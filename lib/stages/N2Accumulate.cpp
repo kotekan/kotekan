@@ -470,7 +470,8 @@ void N2Accumulate::main_thread() {
             // First: accum RFI. Every frame!
             accum_rficounts(rficounts + rficounts_offset_t);
 
-            // Second: If we're an even frame, save pointers to the correlation and counts matrices and get outta here.
+            // Second: If we're an even frame, save pointers to the correlation and counts matrices
+            // and get outta here.
             if (t_abs % 2 == 0) {
                 corr_even = corr + corr_offset_t;
                 counts_mat_even = counts_mat + counts_offset_t;
@@ -478,12 +479,13 @@ void N2Accumulate::main_thread() {
             }
 
             // Third: normalization.  Accumulate the number of valid ticks in the last two samples
-            accum_counts(counts_mat + counts_offset_t, counts_mat_even, n_valid_fpga_samples_t0, n_valid_fpga_samples_t1);
+            accum_counts(counts_mat + counts_offset_t, counts_mat_even, n_valid_fpga_samples_t0,
+                         n_valid_fpga_samples_t1);
 
             // Fourth: Now for the hard part, visibilities and weights
             accum_corr_and_weight(corr + corr_offset_t, corr_even, frame_metadata, seq, target_eop,
-                                  n_valid_fpga_samples_t0, n_valid_fpga_samples_t1,
-                                  fringe_phase_t0, fringe_phase_t1);
+                                  n_valid_fpga_samples_t0, n_valid_fpga_samples_t1, fringe_phase_t0,
+                                  fringe_phase_t1);
 
             // We're adding frames in pairs, increment frame count by 2
             _vis_samples_in_out_frame += 2;
@@ -630,7 +632,7 @@ bool N2Accumulate::is_seq_start_of_bin(uint64_t seq, int64_t bin_idx) {
 
 void N2Accumulate::accum_counts(const int32_t* counts_mat_t0, const int32_t* counts_mat_t1,
                                 std::vector<int32_t>& count_t0, std::vector<int32_t>& count_t1) {
-    
+
     int64_t counts_stride_f = _n2k_counts_num_products;
 
     assert(_packet_loss_is_scalar);
@@ -659,9 +661,8 @@ void N2Accumulate::accum_rficounts(const int32_t* rficounts) {
 
 void N2Accumulate::accum_corr_and_weight(const int32_t* corr_t0, const int32_t* corr_t1,
                                          std::shared_ptr<chordMetadata> corr_meta, int64_t seq,
-                                         EOP& target_eop,
-                                         std::vector<int32_t>& count_t0,
-                                         std::vector<int32_t>& count_t1, 
+                                         EOP& target_eop, std::vector<int32_t>& count_t0,
+                                         std::vector<int32_t>& count_t1,
                                          std::vector<std::complex<float>>& fringe_phase_t0,
                                          std::vector<std::complex<float>>& fringe_phase_t1) {
 
@@ -686,8 +687,7 @@ void N2Accumulate::accum_corr_and_weight(const int32_t* corr_t0, const int32_t* 
     else if (_debug_accum_mode == 3) {
         EOP eop_even =
             _tel.get_EOP_at_time(_tel.to_time(seq - _n_fpga_samples_per_n2k_correlation / 2));
-        EOP eop =
-            _tel.get_EOP_at_time(_tel.to_time(seq + _n_fpga_samples_per_n2k_correlation / 2));
+        EOP eop = _tel.get_EOP_at_time(_tel.to_time(seq + _n_fpga_samples_per_n2k_correlation / 2));
 
 #pragma omp parallel for num_threads(_num_workers)
         for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
@@ -765,10 +765,8 @@ void N2Accumulate::accum_corr_and_weight(const int32_t* corr_t0, const int32_t* 
                                     vis_even *= phase_even;
                                 }
 
-                                _vis[offset_fb + idx + 0] +=
-                                    vis_even.real() + vis_odd.real();
-                                _vis[offset_fb + idx + 1] +=
-                                    vis_even.imag() + vis_odd.imag();
+                                _vis[offset_fb + idx + 0] += vis_even.real() + vis_odd.real();
+                                _vis[offset_fb + idx + 1] += vis_even.imag() + vis_odd.imag();
 
                                 std::complex<float> dvis = vis_odd - vis_even;
 
@@ -804,13 +802,10 @@ void N2Accumulate::accum_corr_and_weight(const int32_t* corr_t0, const int32_t* 
                                     vis_even *= phase_even;
                                 }
 
-                                _vis[offset_fb + idx + 0] +=
-                                    vis_even.real() + vis_odd.real();
-                                _vis[offset_fb + idx + 1] +=
-                                    vis_even.imag() + vis_odd.imag();
+                                _vis[offset_fb + idx + 0] += vis_even.real() + vis_odd.real();
+                                _vis[offset_fb + idx + 1] += vis_even.imag() + vis_odd.imag();
 
-                                std::complex<float> dvis =
-                                    inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
+                                std::complex<float> dvis = inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
                                 _weights[weight_offset_fb + w_idx] +=
                                     inv_dvis_var
                                     * (dvis.real() * dvis.real() + dvis.imag() * dvis.imag());
