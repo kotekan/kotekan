@@ -155,7 +155,7 @@ class N2Buffer(object):
             ("evec", np.complex64, num_ev * num_elements),
             ("emethod", np.int32, 1),
             ("erms", np.float32, 1),
-            ("radiometer_chi2", np.float32, 1),
+            ("radiometer_chi2", np.float32, 3),
             ("gain", np.complex64, num_elements),
             ("mask", np.uint8, num_elements),
         ]
