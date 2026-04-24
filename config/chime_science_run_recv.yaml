@@ -124,7 +124,8 @@ vis_buffer:
 # Subset of good frequencies to output whole for monitoring
 mfreq: &mfreq [107, 344, 619, 938]
 # Subset of frequencies to save to a separate acquisition for comparing to upgrade test node
-extra_mfreq: &extra_mfreq [269, 277, 285, 293, 301, 477, 485, 493, 541, 717, 749, 901, 957, 981, 989, 1005]
+# extra_mfreq: &extra_mfreq [269, 277, 285, 293, 301, 477, 485, 493, 541, 717, 749, 901, 957, 981, 989, 1005]
+extra_mfreq: &extra_mfreq [58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978]
 # Larger subset to be sent to map maker, spanning entire band
 mapfreq: &mapfreq [
         1, 12, 23, 36, 47, 58, 70, 82, 92, 103, 184, 194, 205, 216,
