@@ -52,7 +52,8 @@
  *   /flags/{vis_weight, flags, frac_lost, frac_rfi} when file_mode == CHIME.
  * - Per-time metadata: /fpga_start_tick, /frame_length_fpga_ticks,
  *   /time_center_ut1_ns, /bin_ut1_ns, /bin_start_ERA_deg, /bin_end_ERA_deg,
- *   /bin_start_ERAL, /bin_end_ERAL.
+ *   /bin_start_ERAL, /bin_end_ERAL, /rfi_frame_excision_enabled, /rfi_frame_excision_num,
+ *   /rfi_frame_excision_threshold, /rfi_frame_excision_fraction.
  * - /config_json grows on flush with snapshots from configTracker.
  *
  * @par Chunking and compression
@@ -99,7 +100,7 @@ public:
 
 protected:
     // Datasets to be stored until ready to write
-    // f = freq, p = prod, e = eigen, i = input, t = time
+    // f = freq, p = prod, e = eigen, i = input, t = time, k = threshold
     std::vector<N2::cfloat> vis;   // (f, p, t)
     std::vector<float> vis_weight; // (f, p, t)
     std::vector<float> eval;       // (f, e, t)
@@ -111,14 +112,18 @@ protected:
     std::vector<float> flags;      // (f, i, t)
 
     // t-dependent metadata
-    std::vector<uint64_t> fpga_start_tick;         // (t)
-    std::vector<uint64_t> frame_length_fpga_ticks; // (t)
-    std::vector<int64_t> time_center_ut1;          // (t)
-    std::vector<int64_t> bin_ut1;                  // (t)
-    std::vector<double> bin_start_ERA_deg;         // (t)
-    std::vector<double> bin_end_ERA_deg;           // (t)
-    std::vector<double> bin_start_ERAL;            // (t)
-    std::vector<double> bin_end_ERAL;              // (t)
+    std::vector<uint64_t> fpga_start_tick;           // (t)
+    std::vector<uint64_t> frame_length_fpga_ticks;   // (t)
+    std::vector<int64_t> time_center_ut1;            // (t)
+    std::vector<int64_t> bin_ut1;                    // (t)
+    std::vector<double> bin_start_ERA_deg;           // (t)
+    std::vector<double> bin_end_ERA_deg;             // (t)
+    std::vector<double> bin_start_ERAL;              // (t)
+    std::vector<double> bin_end_ERAL;                // (t)
+    std::vector<bool> rfi_frame_excision_enabled;    // (t)
+    std::vector<int32_t> rfi_frame_excision_num;     // (t)
+    std::vector<float> rfi_frame_excision_threshold; // (t, k)
+    std::vector<float> rfi_frame_excision_fraction;  // (t, k)
 
     // Tracking what (f, t) pairs have been added
     std::vector<uint8_t> added_ft; // size = num_file_f * num_file_t

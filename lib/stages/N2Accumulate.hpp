@@ -159,7 +159,8 @@ public:
      * @param out_frame_id The output frame ID.
      * @return bool True if successful, false otherwise.
      */
-    bool output_and_reset(frameID& in_frame_id, frameID& in_rfiframemask_frame_id, frameID& out_frame_id);
+    bool output_and_reset(frameID& in_frame_id, frameID& in_rfiframemask_frame_id,
+                          frameID& out_frame_id);
 
 private:
     // Buffers to read/write

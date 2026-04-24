@@ -6,6 +6,7 @@
 #include "util.h"         // for mkdir_p
 
 #include "json.hpp"
+#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 
 #include <N2FrameView.hpp>
 #include <N2Metadata.hpp>
@@ -545,6 +546,18 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/bin_end_ERAL", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_enabled", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<bool>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_num", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<int32_t>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_threshold",
+                              {num_file_t_, jsonMetadata::MAX_NUM_RFI_THRESHOLDS},
+                              {"time", "threshold"}, HighFive::create_datatype<float>(),
+                              props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_fraction",
+                              {num_file_t_, jsonMetadata::MAX_NUM_RFI_THRESHOLDS},
+                              {"time", "threshold"}, HighFive::create_datatype<float>(),
+                              props_empty);
 
         // Digital gains: copy entire gains file verbatim into /digital_gains/ group
         if (!baseband_gain_file.empty() && !file->exist("/digital_gains")) {
@@ -646,6 +659,11 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     bin_end_ERA_deg.assign(num_file_t, 0.0);
     bin_start_ERAL.assign(num_file_t, 0.0);
     bin_end_ERAL.assign(num_file_t, 0.0);
+    rfi_frame_excision_enabled.assign(num_file_t, false);
+    rfi_frame_excision_num.assign(num_file_t, 0);
+    rfi_frame_excision_threshold.assign(num_file_t * jsonMetadata::MAX_NUM_RFI_THRESHOLDS, 0.0f);
+    rfi_frame_excision_fraction.assign(num_file_t * jsonMetadata::MAX_NUM_RFI_THRESHOLDS, 0.0f);
+
 
     added_ft.assign(num_file_f * num_file_t, 0);
 }
@@ -688,10 +706,13 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
             && !ns_close(time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns))
         || (bin_ut1[t_index] > 0 && !ns_close(bin_ut1[t_index], fv.bin_eop.t_ut1_ns))
         || (bin_start_ERA_deg[t_index] < 0) || (bin_start_ERA_deg[t_index] > 360)
-        || (bin_end_ERA_deg[t_index] < 0) || (bin_end_ERA_deg[t_index] > 360)) {
+        || (bin_end_ERA_deg[t_index] < 0)
+        || (bin_end_ERA_deg[t_index] > 360)
         // TODO: Don't check these yet, but do when we have ERAL values
         // || (bin_start_ERAL[t_index] < 0) || (bin_start_ERAL[t_index] > 360)
         // || (bin_end_ERAL[t_index] < 0) || (bin_end_ERAL[t_index] > 360)
+        || (rfi_frame_excision_num[t_index] < 0)
+        || (rfi_frame_excision_num[t_index] > jsonMetadata::MAX_NUM_RFI_THRESHOLDS)) {
         FATAL_ERROR_NON_OO(
             "N2FileData: frame information mismatch or invalid at (f={}, t={}): "
             "fv.vis.size()={}, fv.weight.size()={}, fv.eval.size()={}, fv.evec.size()={}, "
@@ -700,13 +721,15 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
             "fv.frame_length_fpga_ticks={}, frame_length_fpga_ticks[t_index]={}, "
             "time_center_ut1[t_index]={}, fv.time_center_eop.t_ut1_ns={}, bin_ut1[t_index]={}, "
             "fv.bin_eop.t_ut1_ns={}, bin_start_ERA_deg[t_index]={}, bin_end_ERA_deg[t_index]={}, "
-            "bin_start_ERAL[t_index]={}, bin_end_ERAL[t_index]={}",
+            "bin_start_ERAL[t_index]={}, bin_end_ERAL[t_index]={}, "
+            "rfi_frame_excision_num[t_index]={}",
             f_index, t_index, fv.vis.size(), fv.weight.size(), fv.eval.size(), fv.evec.size(),
             fv.gain.size(), fv.flags.size(), fv.num_elements, fv.num_prod, fv.num_ev,
             fpga_start_tick[t_index], fv.fpga_start_tick, fv.frame_length_fpga_ticks,
             frame_length_fpga_ticks[t_index], time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns,
             bin_ut1[t_index], fv.bin_eop.t_ut1_ns, bin_start_ERA_deg[t_index],
-            bin_end_ERA_deg[t_index], bin_start_ERAL[t_index], bin_end_ERAL[t_index]);
+            bin_end_ERA_deg[t_index], bin_start_ERAL[t_index], bin_end_ERAL[t_index],
+            rfi_frame_excision_num[t_index]);
         return AddFrameStatus::MetadataMismatch;
     }
 
@@ -746,6 +769,13 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     bin_end_ERA_deg[t_index] = fv.bin_end_ERA_deg;
     bin_start_ERAL[t_index] = fv.bin_start_ERAL;
     bin_end_ERAL[t_index] = fv.bin_end_ERAL;
+    rfi_frame_excision_enabled[t_index] = fv.rfi_frame_excision_enabled;
+    rfi_frame_excision_num[t_index] = fv.rfi_frame_excision_num;
+    std::copy(fv.rfi_frame_excision_threshold.begin(), fv.rfi_frame_excision_threshold.end(),
+              rfi_frame_excision_threshold.begin()
+                  + t_index * jsonMetadata::MAX_NUM_RFI_THRESHOLDS);
+    std::copy(fv.rfi_frame_excision_fraction.begin(), fv.rfi_frame_excision_fraction.end(),
+              rfi_frame_excision_fraction.begin() + t_index * jsonMetadata::MAX_NUM_RFI_THRESHOLDS);
 
     // Mark (f, t) as added
     size_t si = idx_ft(f_index, t_index);
@@ -876,6 +906,14 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/bin_end_ERA_deg").write(bin_end_ERA_deg);
         h5_file->getDataSet("/bin_start_ERAL").write(bin_start_ERAL);
         h5_file->getDataSet("/bin_end_ERAL").write(bin_end_ERAL);
+        h5_file->getDataSet("/rfi_frame_excision_enabled").write(rfi_frame_excision_enabled);
+        h5_file->getDataSet("/rfi_frame_excision_num").write(rfi_frame_excision_num);
+        h5_file->getDataSet("/rfi_frame_excision_threshold")
+            .select({0, 0}, {num_file_t, jsonMetadata::MAX_NUM_RFI_THRESHOLDS})
+            .write_raw(rfi_frame_excision_threshold.data());
+        h5_file->getDataSet("/rfi_frame_excision_fraction")
+            .select({0, 0}, {num_file_t, jsonMetadata::MAX_NUM_RFI_THRESHOLDS})
+            .write_raw(rfi_frame_excision_fraction.data());
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
         has_error = true;

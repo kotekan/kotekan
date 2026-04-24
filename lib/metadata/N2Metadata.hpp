@@ -8,11 +8,11 @@
 #include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
-#include "jsonMetadata.hpp"   // for jsonMetadata
 #include "timeUtil.hpp"       // for EOP
 
-#include "fmt.hpp"  // for compile_string_to_view
-#include "json.hpp" // for json
+#include "fmt.hpp"          // for compile_string_to_view
+#include "json.hpp"         // for json
+#include "jsonMetadata.hpp" // for jsonMetadata
 
 using kotekan::Config;
 
