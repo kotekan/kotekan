@@ -402,7 +402,7 @@ public:
         auto erms_dset = file.createDataSet("erms", erms_space, float_type, erms_props);
         auto gain_dset = file.createDataSet("gain", gain_space, float_type, gain_props);
         auto radiometer_chi2_dset =
-            file.createDataSet("radiometer_chi2", radiometer_chi2_space, float_type, gain_props);
+            file.createDataSet("radiometer_chi2", radiometer_chi2_space, float_type, radiometer_chi2_props);
 
         vis_dset.write_raw(frame.vis.data(), float_type);
         weight_dset.write_raw(frame.weight.data(), float_type);
