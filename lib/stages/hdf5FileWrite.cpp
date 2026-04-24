@@ -364,7 +364,7 @@ public:
         const std::vector<size_t> emethod_dims({1});
         const std::vector<size_t> erms_dims({1});
         const std::vector<size_t> gain_dims({frame.num_elements, 2});
-        const std::vector<size_t> radiometer_chi2_dims({1});
+        const std::vector<size_t> radiometer_chi2_dims({3});
 
         // Create dataspaces
         const DataSpace vis_space(vis_dims);
@@ -401,7 +401,8 @@ public:
         auto emethod_dset = file.createDataSet("emethod", emethod_space, int_type, emethod_props);
         auto erms_dset = file.createDataSet("erms", erms_space, float_type, erms_props);
         auto gain_dset = file.createDataSet("gain", gain_space, float_type, gain_props);
-        auto radiometer_chi2_dset = file.createDataSet("radiometer_chi2", radiometer_chi2_space, float_type, gain_props);
+        auto radiometer_chi2_dset =
+            file.createDataSet("radiometer_chi2", radiometer_chi2_space, float_type, gain_props);
 
         vis_dset.write_raw(frame.vis.data(), float_type);
         weight_dset.write_raw(frame.weight.data(), float_type);
@@ -411,7 +412,7 @@ public:
         emethod_dset.write_raw(&frame.emethod, int_type);
         erms_dset.write_raw(&frame.erms, float_type);
         gain_dset.write_raw(frame.gain.data(), float_type);
-        radiometer_chi2_dset.write_raw(&frame.radiometer_chi2, float_type);
+        radiometer_chi2_dset.write_raw(frame.radiometer_chi2.data(), float_type);
 
         // Set metadata as file-level attributes
         file.createAttribute("num_elements", frame.num_elements);

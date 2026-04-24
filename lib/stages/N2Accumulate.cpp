@@ -1067,7 +1067,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
             } // ihi
 
             out_vis.erms = -1;
-            out_vis.radiometer_chi2 = 1.0f;
+            std::fill(out_vis.radiometer_chi2.begin(), out_vis.radiometer_chi2.end(), 1.0f);
             std::fill(out_vis.flags.begin(), out_vis.flags.end(), 0);
             std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
             std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(1u));

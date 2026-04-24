@@ -59,7 +59,7 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     evec(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::evec])),
     emethod(bind_scalar<N2EigenMethod>(_frame, frame_layout.fields[N2Field::emethod])),
     erms(bind_scalar<float>(_frame, frame_layout.fields[N2Field::erms])),
-    radiometer_chi2(bind_scalar<float>(_frame, frame_layout.fields[N2Field::radiometer_chi2])),
+    radiometer_chi2(bind_span<float>(_frame, frame_layout.fields[N2Field::radiometer_chi2])),
     gain(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::gain])),
     mask(bind_span<uint8_t>(_frame, frame_layout.fields[N2Field::mask])) {
 
@@ -118,7 +118,8 @@ void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Fie
         erms = frame_to_copy_from.erms;
 
     if (copy_member(N2Field::radiometer_chi2))
-        radiometer_chi2 = frame_to_copy_from.radiometer_chi2;
+        std::copy(frame_to_copy_from.radiometer_chi2.begin(),
+                  frame_to_copy_from.radiometer_chi2.end(), radiometer_chi2.begin());
 
     if (copy_member(N2Field::gain))
         std::copy(frame_to_copy_from.gain.begin(), frame_to_copy_from.gain.end(), gain.begin());

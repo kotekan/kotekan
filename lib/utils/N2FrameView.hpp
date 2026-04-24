@@ -112,8 +112,8 @@ public:
     N2EigenMethod& emethod;
     /// The RMS of residual visibilities
     float& erms;
-    /// Radiometer chi2 statistic.
-    float& radiometer_chi2;
+    /// Radiometer chi2 statistic for each polarization pair
+    const gsl_lite::span<float> radiometer_chi2;
     /// View of the applied gains
     const gsl_lite::span<N2::cfloat> gain;
     /// View of per-element masks (uint8_t per element)

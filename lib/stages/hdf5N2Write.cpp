@@ -518,7 +518,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(*file, "/gain", {num_file_f, fv.num_elements, num_file_t_},
                               {"frequency", "element", "time"}, HighFive::create_datatype<cfloat>(),
                               props_empty);
-        _check_create_dataset(*file, "/radiometer_chi2", {num_file_f, num_file_t_}, {"frequency", "time"},
+        _check_create_dataset(*file, "/radiometer_chi2", {num_file_f, num_file_t_, 3},
+                              {"frequency", "time", "pol_product"},
                               HighFive::create_datatype<float>(), props_empty);
 
         _check_create_dataset(
@@ -651,7 +652,7 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     frac_lost.assign(num_file_f * num_file_t, 1.0f); // match empty frames by default
     frac_rfi.assign(num_file_f * num_file_t, 0.0f);
     flags.assign(num_elements * num_file_f * num_file_t, 0.0f);
-    radiometer_chi2.assign(num_file_f * num_file_t, 0.0f);
+    radiometer_chi2.assign(num_file_f * num_file_t * 3, 0.0f);
 
     // Additional metadata
     fpga_start_tick.assign(num_file_t, 0);
@@ -751,11 +752,12 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     }
     // Store erms, gain, flags
     erms[idx_ft(f_index, t_index)] = fv.erms;
-    radiometer_chi2[idx_ft(f_index, t_index)] = fv.radiometer_chi2;
     for (size_t i = 0; i < num_elements; ++i) {
         gain[idx_fit(f_index, i, t_index)] = fv.gain[i];
         flags[idx_fit(f_index, i, t_index)] = fv.flags[i];
     }
+    for (size_t i = 0; i < 3; i++)
+        radiometer_chi2[3 * idx_ft(f_index, t_index) + i] = fv.radiometer_chi2[i];
     // Store fraction lost and RFI
     const uint64_t frame_len_ticks = fv.frame_length_fpga_ticks;
     const uint64_t n_valid = fv.n_valid_fpga_ticks;
@@ -902,7 +904,7 @@ bool N2FileData::flush_to_disk() {
             .select({0, 0, 0}, {num_file_f, num_elements, num_file_t})
             .write_raw(flags.data());
         h5_file->getDataSet("/radiometer_chi2")
-            .select({0, 0}, {num_file_f, num_file_t})
+            .select({0, 0, 0}, {num_file_f, num_file_t, 3})
             .write_raw(radiometer_chi2.data());
 
         h5_file->getDataSet("/fpga_start_tick").write(fpga_start_tick);
