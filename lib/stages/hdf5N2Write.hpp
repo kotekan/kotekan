@@ -52,7 +52,7 @@
  *   /flags/{vis_weight, flags, frac_lost, frac_rfi} when file_mode == CHIME.
  * - Per-time metadata: /fpga_start_tick, /frame_length_fpga_ticks,
  *   /time_center_ut1_ns, /bin_ut1_ns, /bin_start_ERA_deg, /bin_end_ERA_deg,
- *   /bin_start_LAST, /bin_end_LAST.
+ *   /bin_start_ERAL, /bin_end_ERAL.
  * - /config_json grows on flush with snapshots from configTracker.
  *
  * @par Chunking and compression
@@ -117,8 +117,8 @@ protected:
     std::vector<int64_t> bin_ut1;                  // (t)
     std::vector<double> bin_start_ERA_deg;         // (t)
     std::vector<double> bin_end_ERA_deg;           // (t)
-    std::vector<double> bin_start_LAST;            // (t)
-    std::vector<double> bin_end_LAST;              // (t)
+    std::vector<double> bin_start_ERAL;            // (t)
+    std::vector<double> bin_end_ERAL;              // (t)
 
     // Tracking what (f, t) pairs have been added
     std::vector<uint8_t> added_ft; // size = num_file_f * num_file_t

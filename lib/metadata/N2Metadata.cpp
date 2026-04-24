@@ -39,13 +39,13 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
     bin_eop = fmt->bin_eop;
     bin_start_ERA_deg = fmt->bin_start_ERA_deg;
     bin_end_ERA_deg = fmt->bin_end_ERA_deg;
-    bin_start_LAST = fmt->bin_start_LAST;
-    bin_end_LAST = fmt->bin_end_LAST;
+    bin_start_ERAL = fmt->bin_start_ERAL;
+    bin_end_ERAL = fmt->bin_end_ERAL;
 
-    rfi_excision_enabled = fmt->rfi_excision_enabled;
-    rfi_excision_num = fmt->rfi_excision_num;
-    rfi_excision_threshold = fmt->rfi_excision_threshold;
-    rfi_excision_fraction = fmt->rfi_excision_fraction;
+    rfi_frame_excision_enabled = fmt->rfi_frame_excision_enabled;
+    rfi_frame_excision_num = fmt->rfi_frame_excision_num;
+    rfi_frame_excision_threshold = fmt->rfi_frame_excision_threshold;
+    rfi_frame_excision_fraction = fmt->rfi_frame_excision_fraction;
 
     return sizeof(N2MetadataFormat);
 }
@@ -67,13 +67,13 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->bin_eop = bin_eop;
     fmt->bin_start_ERA_deg = bin_start_ERA_deg;
     fmt->bin_end_ERA_deg = bin_end_ERA_deg;
-    fmt->bin_start_LAST = bin_start_LAST;
-    fmt->bin_end_LAST = bin_end_LAST;
+    fmt->bin_start_ERAL = bin_start_ERAL;
+    fmt->bin_end_ERAL = bin_end_ERAL;
 
-    fmt->rfi_excision_enabled = rfi_excision_enabled;
-    fmt->rfi_excision_num = rfi_excision_num;
-    fmt->rfi_excision_threshold = rfi_excision_threshold;
-    fmt->rfi_excision_fraction = rfi_excision_fraction;
+    fmt->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
+    fmt->rfi_frame_excision_num = rfi_frame_excision_num;
+    fmt->rfi_frame_excision_threshold = rfi_frame_excision_threshold;
+    fmt->rfi_frame_excision_fraction = rfi_frame_excision_fraction;
 
     return sizeof(N2MetadataFormat);
 }
@@ -123,13 +123,13 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
     j.emplace("bin_eop", m.bin_eop);
     j.emplace("bin_start_ERA_deg", m.bin_start_ERA_deg);
     j.emplace("bin_end_ERA_deg", m.bin_end_ERA_deg);
-    j.emplace("bin_start_LAST", m.bin_start_LAST);
-    j.emplace("bin_end_LAST", m.bin_end_LAST);
+    j.emplace("bin_start_ERAL", m.bin_start_ERAL);
+    j.emplace("bin_end_ERAL", m.bin_end_ERAL);
 
-    j.emplace("rfi_excision_enabled", m.rfi_excision_enabled);
-    j.emplace("rfi_excision_num", m.rfi_excision_num);
-    j.emplace("rfi_excision_threshold", m.rfi_excision_threshold);
-    j.emplace("rfi_excision_fraction", m.rfi_excision_fraction);
+    j.emplace("rfi_frame_excision_enabled", m.rfi_frame_excision_enabled);
+    j.emplace("rfi_frame_excision_num", m.rfi_frame_excision_num);
+    j.emplace("rfi_frame_excision_threshold", m.rfi_frame_excision_threshold);
+    j.emplace("rfi_frame_excision_fraction", m.rfi_frame_excision_fraction);
 }
 
 void from_json(const nlohmann::json& j, N2Metadata& m) {
@@ -148,11 +148,11 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.bin_eop = j.at("bin_eop");
     m.bin_start_ERA_deg = j.at("bin_start_ERA_deg");
     m.bin_end_ERA_deg = j.at("bin_end_ERA_deg");
-    m.bin_start_LAST = j.at("bin_start_LAST");
-    m.bin_end_LAST = j.at("bin_end_LAST");
+    m.bin_start_ERAL = j.at("bin_start_ERAL");
+    m.bin_end_ERAL = j.at("bin_end_ERAL");
 
-    m.rfi_excision_enabled = j.at("rfi_excision_enabled");
-    m.rfi_excision_num = j.at("rfi_excision_num");
-    m.rfi_excision_threshold = j.at("rfi_excision_threshold");
-    m.rfi_excision_fraction = j.at("rfi_excision_fraction");
+    m.rfi_frame_excision_enabled = j.at("rfi_frame_excision_enabled");
+    m.rfi_frame_excision_num = j.at("rfi_frame_excision_num");
+    m.rfi_frame_excision_threshold = j.at("rfi_frame_excision_threshold");
+    m.rfi_frame_excision_fraction = j.at("rfi_frame_excision_fraction");
 }

@@ -89,9 +89,9 @@ static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_in
     auto meta = get_N2_metadata(buf, frame_id);
     BOOST_REQUIRE(meta);
     meta->freq_id = get_abs_freq_id(f_index);
-    // Keep LAST within the valid bounds enforced by add_frame bounds checks
-    meta->bin_start_LAST = 1.23 + double(t_index);
-    meta->bin_end_LAST = 4.56 + double(t_index);
+    // Keep ERAL within the valid bounds enforced by add_frame bounds checks
+    meta->bin_start_ERAL = 1.23 + double(t_index);
+    meta->bin_end_ERAL = 4.56 + double(t_index);
 }
 
 

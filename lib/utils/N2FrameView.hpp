@@ -70,8 +70,8 @@ public:
     struct EOP& bin_eop;
     double& bin_start_ERA_deg;
     double& bin_end_ERA_deg;
-    double& bin_start_LAST;
-    double& bin_end_LAST;
+    double& bin_start_ERAL;
+    double& bin_end_ERAL;
 
     /// The sequence number of the first FPGA frame integrated into this
     /// visibility frame (time<0> in VisFrameView)
@@ -86,13 +86,13 @@ public:
     uint64_t& n_rfi_fpga_ticks;
 
     /// Whether second stage RFI excision was applied to this frame
-    bool& rfi_excision_enabled;
+    bool& rfi_frame_excision_enabled;
     /// The number of active RFI excision thresholds.
-    int32_t& rfi_excision_num;
+    int32_t& rfi_frame_excision_num;
     /// The SK thresholds (in sigma) for RFI excision
-    std::array<float, 8>& rfi_excision_threshold;
+    std::array<float, 8>& rfi_frame_excision_threshold;
     /// The fraction of samples above threshold that trigger RFI excision.
-    std::array<float, 8>& rfi_excision_fraction;
+    std::array<float, 8>& rfi_frame_excision_fraction;
 
     /// CHIME dataset id tracking updateable config item changes
     dset_id_t& dataset_id;

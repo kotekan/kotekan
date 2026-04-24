@@ -131,7 +131,7 @@ public:
      *
      * @return  The EOP for the center of the bin.
      */
-    EOP get_accum_bin_eop(int64_t accum_bin_idx);
+    EOP get_accum_bin_EOP(int64_t accum_bin_idx);
 
     /**
      * @brief   Check if the given sequence number is the beginning of the given accumulation bin.
@@ -159,7 +159,7 @@ public:
      * @param out_frame_id The output frame ID.
      * @return bool True if successful, false otherwise.
      */
-    bool output_and_reset(frameID& in_frame_id, frameID& out_frame_id);
+    bool output_and_reset(frameID& in_frame_id, frameID& in_rfiframemask_frame_id, frameID& out_frame_id);
 
 private:
     // Buffers to read/write

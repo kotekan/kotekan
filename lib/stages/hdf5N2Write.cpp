@@ -541,9 +541,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/bin_end_ERA_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
-        _check_create_dataset(*file, "/bin_start_LAST", {num_file_t_}, {"time"},
+        _check_create_dataset(*file, "/bin_start_ERAL", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
-        _check_create_dataset(*file, "/bin_end_LAST", {num_file_t_}, {"time"},
+        _check_create_dataset(*file, "/bin_end_ERAL", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
 
         // Digital gains: copy entire gains file verbatim into /digital_gains/ group
@@ -644,8 +644,8 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     bin_ut1.assign(num_file_t, 0);
     bin_start_ERA_deg.assign(num_file_t, 0.0);
     bin_end_ERA_deg.assign(num_file_t, 0.0);
-    bin_start_LAST.assign(num_file_t, 0.0);
-    bin_end_LAST.assign(num_file_t, 0.0);
+    bin_start_ERAL.assign(num_file_t, 0.0);
+    bin_end_ERAL.assign(num_file_t, 0.0);
 
     added_ft.assign(num_file_f * num_file_t, 0);
 }
@@ -689,9 +689,9 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
         || (bin_ut1[t_index] > 0 && !ns_close(bin_ut1[t_index], fv.bin_eop.t_ut1_ns))
         || (bin_start_ERA_deg[t_index] < 0) || (bin_start_ERA_deg[t_index] > 360)
         || (bin_end_ERA_deg[t_index] < 0) || (bin_end_ERA_deg[t_index] > 360)) {
-        // TODO: Don't check these yet, but do when we have LAST values
-        // || (bin_start_LAST[t_index] < 0) || (bin_start_LAST[t_index] > 360)
-        // || (bin_end_LAST[t_index] < 0) || (bin_end_LAST[t_index] > 360)
+        // TODO: Don't check these yet, but do when we have ERAL values
+        // || (bin_start_ERAL[t_index] < 0) || (bin_start_ERAL[t_index] > 360)
+        // || (bin_end_ERAL[t_index] < 0) || (bin_end_ERAL[t_index] > 360)
         FATAL_ERROR_NON_OO(
             "N2FileData: frame information mismatch or invalid at (f={}, t={}): "
             "fv.vis.size()={}, fv.weight.size()={}, fv.eval.size()={}, fv.evec.size()={}, "
@@ -700,13 +700,13 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
             "fv.frame_length_fpga_ticks={}, frame_length_fpga_ticks[t_index]={}, "
             "time_center_ut1[t_index]={}, fv.time_center_eop.t_ut1_ns={}, bin_ut1[t_index]={}, "
             "fv.bin_eop.t_ut1_ns={}, bin_start_ERA_deg[t_index]={}, bin_end_ERA_deg[t_index]={}, "
-            "bin_start_LAST[t_index]={}, bin_end_LAST[t_index]={}",
+            "bin_start_ERAL[t_index]={}, bin_end_ERAL[t_index]={}",
             f_index, t_index, fv.vis.size(), fv.weight.size(), fv.eval.size(), fv.evec.size(),
             fv.gain.size(), fv.flags.size(), fv.num_elements, fv.num_prod, fv.num_ev,
             fpga_start_tick[t_index], fv.fpga_start_tick, fv.frame_length_fpga_ticks,
             frame_length_fpga_ticks[t_index], time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns,
             bin_ut1[t_index], fv.bin_eop.t_ut1_ns, bin_start_ERA_deg[t_index],
-            bin_end_ERA_deg[t_index], bin_start_LAST[t_index], bin_end_LAST[t_index]);
+            bin_end_ERA_deg[t_index], bin_start_ERAL[t_index], bin_end_ERAL[t_index]);
         return AddFrameStatus::MetadataMismatch;
     }
 
@@ -744,8 +744,8 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     bin_ut1[t_index] = fv.bin_eop.t_ut1_ns;
     bin_start_ERA_deg[t_index] = fv.bin_start_ERA_deg;
     bin_end_ERA_deg[t_index] = fv.bin_end_ERA_deg;
-    bin_start_LAST[t_index] = fv.bin_start_LAST;
-    bin_end_LAST[t_index] = fv.bin_end_LAST;
+    bin_start_ERAL[t_index] = fv.bin_start_ERAL;
+    bin_end_ERAL[t_index] = fv.bin_end_ERAL;
 
     // Mark (f, t) as added
     size_t si = idx_ft(f_index, t_index);
@@ -874,8 +874,8 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/bin_ut1_ns").write(bin_ut1);
         h5_file->getDataSet("/bin_start_ERA_deg").write(bin_start_ERA_deg);
         h5_file->getDataSet("/bin_end_ERA_deg").write(bin_end_ERA_deg);
-        h5_file->getDataSet("/bin_start_LAST").write(bin_start_LAST);
-        h5_file->getDataSet("/bin_end_LAST").write(bin_end_LAST);
+        h5_file->getDataSet("/bin_start_ERAL").write(bin_start_ERAL);
+        h5_file->getDataSet("/bin_end_ERAL").write(bin_end_ERAL);
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
         has_error = true;

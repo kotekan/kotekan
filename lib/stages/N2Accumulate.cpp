@@ -9,6 +9,7 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
+#include "jsonMetadata.hpp"      // for MAX_NUM_RFI_THRESHOLDS
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "timeUtil.hpp"          // for EOP
@@ -433,7 +434,7 @@ void N2Accumulate::main_thread() {
                     _vis_samples_in_out_frame = 0;
                     _accum_fpga_start_tick = seq;
                     _accum_bin_idx = bin_idx;
-                    target_eop = get_accum_bin_eop(bin_idx);
+                    target_eop = get_accum_bin_EOP(bin_idx);
 
                     mode = Mode::ACCUMULATING;
                     DEBUG("MODE: Setting accum_fpga_start_tick: {0:d}", _accum_fpga_start_tick);
@@ -462,7 +463,7 @@ void N2Accumulate::main_thread() {
                 INFO("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
                      _vis_samples_in_out_frame);
                 samples_in_out_frame.set(_vis_samples_in_out_frame);
-                output_and_reset(in_frame_id, out_frame_id);
+                output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
 
                 _vis_samples_in_out_frame = 0;
                 _accum_fpga_start_tick =
@@ -539,12 +540,12 @@ void N2Accumulate::main_thread() {
                 INFO("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
                      _vis_samples_in_out_frame);
                 samples_in_out_frame.set(_vis_samples_in_out_frame);
-                output_and_reset(in_frame_id, out_frame_id);
+                output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
 
                 _vis_samples_in_out_frame = 0;
                 _accum_fpga_start_tick = seq + _n_fpga_samples_per_n2k_correlation;
                 _accum_bin_idx = next_bin_idx;
-                target_eop = get_accum_bin_eop(next_bin_idx);
+                target_eop = get_accum_bin_EOP(next_bin_idx);
             }
 
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
@@ -612,7 +613,7 @@ int64_t N2Accumulate::get_accum_abs_bin_idx(uint64_t seq) {
     }
 }
 
-EOP N2Accumulate::get_accum_bin_eop(int64_t accum_bin_idx) {
+EOP N2Accumulate::get_accum_bin_EOP(int64_t accum_bin_idx) {
     if (_bin_in_ERA) {
         // extract the rotation number and ERA bin from the index
         int64_t nrot = accum_bin_idx / _num_bins_per_rotation;
@@ -818,12 +819,61 @@ void N2Accumulate::accum_corr_and_weight(int32_t* vis_f, float* weight_f, const 
     } // debug_accum_mode 3
 }
 
-bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id) {
+bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframemask_frame_id, frameID& out_frame_id) {
     [[maybe_unused]] double prof_out_start_time = omp_get_wtime();
     // Different frame for each frequency
-    // But, same metadata
+    // But, mostly same metadata
     std::shared_ptr<chordMetadata> chord_frame_metadata = get_chord_metadata(in_buf, in_frame_id);
+    std::shared_ptr<chordMetadata> rfiframemask_metadata = get_chord_metadata(in_rfiframemask_buf, in_rfiframemask_frame_id);
 
+    int64_t ticks_in_accum = _vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation;
+
+    EOP eop_time_center = _tel.get_EOP_at_time(
+                _tel.to_time(_accum_fpga_start_tick + ticks_in_accum / 2));
+    EOP eop_target = get_accum_bin_EOP(_accum_bin_idx);
+
+    double ERA_deg_start = -1.0;
+    double ERA_deg_end = -1.0;
+    double ERAL_deg_start = -1.0;
+    double ERAL_deg_end = -1.0;
+
+    if (_bin_in_ERA) {
+        double era = eop_target.ERA_deg;
+        int32_t era_idx = static_cast<int32_t>(floor((era / 360.0) * _num_bins_per_rotation));
+        ERA_deg_start = (era_idx * 360.0) / _num_bins_per_rotation;
+        ERA_deg_end = ((era_idx+1) * 360.0) / _num_bins_per_rotation;
+        ERAL_deg_start = -1; //TODO: update
+        ERAL_deg_end = -1;   //TODO: update
+    } else {
+        ERA_deg_start = _tel.get_EOP_at_time(_tel.to_time(_accum_fpga_start_tick)).ERA_deg;
+        ERA_deg_end = _tel.get_EOP_at_time(_tel.to_time(_accum_fpga_start_tick + ticks_in_accum)).ERA_deg;
+        ERAL_deg_start = -1; //TODO: update
+        ERAL_deg_end = -1;   //TODO: update
+    }
+           
+    int64_t accum_start_time_ns = _tel.to_time_ns(_accum_fpga_start_tick);
+
+    // Grab RFI excision metadata to paste into N2 metadata.
+    if (!rfiframemask_metadata->has_rfi_frame_excision_enabled()) 
+        FATAL_ERROR("RFIFrameMask buffer {:s}[{:d}] does not have rfi_frame_excision_enabled metadata.", in_rfiframemask_buf->buffer_name, in_rfiframemask_frame_id);
+    
+    bool rfi_frame_excision_enabled = rfiframemask_metadata->get_rfi_frame_excision_enabled();
+    
+    if (!rfiframemask_metadata->has_rfi_frame_excision_thresholds()) 
+        FATAL_ERROR("RFIFrameMask buffer {:s}[{:d}] does not have rfi_frame_excision_thresholds metadata.", in_rfiframemask_buf->buffer_name, in_rfiframemask_frame_id);
+
+    std::vector<std::array<float, 2>> thresholds_pack = rfiframemask_metadata->get_rfi_frame_excision_thresholds();
+    if (thresholds_pack.size() > jsonMetadata::MAX_NUM_RFI_THRESHOLDS) {
+        FATAL_ERROR("RFIFrameMask buffer {:s}[{:d}] has too large rfi thresholds buffer {:d}, expected <= {:d}", in_rfiframemask_buf->buffer_name, in_rfiframemask_frame_id, thresholds_pack.size(), jsonMetadata::MAX_NUM_RFI_THRESHOLDS);
+    }
+
+    size_t num_thresholds = thresholds_pack.size();
+    std::array<float, jsonMetadata::MAX_NUM_RFI_THRESHOLDS> rfi_threshold = {0.0f};
+    std::array<float, jsonMetadata::MAX_NUM_RFI_THRESHOLDS> rfi_fraction = {0.0f};
+    for (size_t k = 0; k < num_thresholds; k++) {
+        rfi_threshold[k] = thresholds_pack[k][0];
+        rfi_fraction[k] = thresholds_pack[k][1];
+    }
 
     // strides into the N2K shaped accumulation array
     int64_t stride_ilo = _n2k_correlation_blocksize;
@@ -876,30 +926,32 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
 
             std::shared_ptr<N2Metadata> meta = metas[f_idx];
 
-            meta->fpga_start_tick = _accum_fpga_start_tick;
-            meta->frame_length_fpga_ticks =
-                _vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation;
-
-            meta->abs_time_idx = _accum_bin_idx;
             meta->freq_id = chord_frame_metadata->get_coarse_freq()[f];
-            meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
-
-            meta->frame_start_time_ns = _tel.to_time_ns(meta->fpga_start_tick);
             meta->freq_MHz = _tel.to_freq_MHz(meta->freq_id);
+            
+            meta->abs_time_idx = _accum_bin_idx;
 
-            meta->time_center_eop = eop_null; // TODO: update
-            meta->bin_eop = _tel.get_EOP_at_time(
-                _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
-            meta->bin_start_ERA_deg =
-                _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick)).ERA_deg;
-            meta->bin_end_ERA_deg =
-                _tel.get_EOP_at_time(
-                        _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks))
-                    .ERA_deg;
-            meta->bin_start_LAST = -1; // TODO: update
-            meta->bin_end_LAST = -1;   // TODO: update
+            meta->time_center_eop = eop_time_center;
+            meta->bin_eop = eop_target;
+            
+            meta->bin_start_ERA_deg = ERA_deg_start;
+            meta->bin_end_ERA_deg = ERA_deg_end;
+            meta->bin_start_ERAL = ERAL_deg_start; // TODO: update
+            meta->bin_end_ERAL = ERAL_deg_end;   // TODO: update
+
+            meta->fpga_start_tick = _accum_fpga_start_tick;
+            meta->frame_start_time_ns = accum_start_time_ns;
+            meta->frame_length_fpga_ticks = ticks_in_accum;
+            meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
             meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];
+            
+            meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
+            meta->rfi_frame_excision_num = num_thresholds;
+            meta->rfi_frame_excision_threshold = rfi_threshold;
+            meta->rfi_frame_excision_fraction = rfi_fraction;
 
+            std::vector<std::array<float, 2>> thresholds = rfiframemask_metadata->get_rfi_frame_excision_thresholds();
+            
             if (chord_frame_metadata->has_dataset_id()) {
                 meta->dataset_id = chord_frame_metadata->get_dataset_id();
             }

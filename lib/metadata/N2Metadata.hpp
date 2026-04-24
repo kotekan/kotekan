@@ -8,6 +8,7 @@
 #include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
+#include "jsonMetadata.hpp"   // for jsonMetadata
 #include "timeUtil.hpp"       // for EOP
 
 #include "fmt.hpp"  // for compile_string_to_view
@@ -40,8 +41,8 @@ struct N2MetadataFormat {
     // bin start/end info for convenience
     double bin_start_ERA_deg = 0.0; /// Earth Rotation Angle at start of bin
     double bin_end_ERA_deg = 0.0;   /// Earth Rotation Angle at end of bin
-    double bin_start_LAST = 0.0;    /// local apparent sidereal time (nanoseconds) at start of bin
-    double bin_end_LAST = 0.0;      /// local apparent sidereal time (nanoseconds) at end of bin
+    double bin_start_ERAL = 0.0;    /// local apparent sidereal time (nanoseconds) at start of bin
+    double bin_end_ERAL = 0.0;      /// local apparent sidereal time (nanoseconds) at end of bin
 
     /// The sequence number of the first FPGA frame integrated into this visibility frame
     uint64_t fpga_start_tick = 0;
@@ -57,13 +58,13 @@ struct N2MetadataFormat {
     /// lost samples (= @c frame_length_fpga_ticks - @c n_valid_fpga_ticks) instead.
     uint64_t n_rfi_fpga_ticks = 0;
     /// Whether second stage RFI excision was applied to this frame
-    bool rfi_excision_enabled = false;
+    bool rfi_frame_excision_enabled = false;
     /// The number of active RFI excision thresholds.
-    int32_t rfi_excision_num = 0;
+    int32_t rfi_frame_excision_num = 0;
     /// The SK thresholds (in sigma) for RFI excision
-    std::array<float, 8> rfi_excision_threshold = {0};
+    std::array<float, jsonMetadata::MAX_NUM_RFI_THRESHOLDS> rfi_frame_excision_threshold = {0};
     /// The fraction of samples above threshold that trigger RFI excision.
-    std::array<float, 8> rfi_excision_fraction = {0};
+    std::array<float, jsonMetadata::MAX_NUM_RFI_THRESHOLDS> rfi_frame_excision_fraction = {0};
     /// CHIME dataset id tracking updateable config item changes
     dset_id_t dataset_id = dset_id_t::null;
 };

@@ -37,7 +37,7 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 
     time_center_eop(_metadata->time_center_eop), bin_eop(_metadata->bin_eop),
     bin_start_ERA_deg(_metadata->bin_start_ERA_deg), bin_end_ERA_deg(_metadata->bin_end_ERA_deg),
-    bin_start_LAST(_metadata->bin_start_LAST), bin_end_LAST(_metadata->bin_end_LAST),
+    bin_start_ERAL(_metadata->bin_start_ERAL), bin_end_ERAL(_metadata->bin_end_ERAL),
 
     fpga_start_tick(_metadata->fpga_start_tick),
     frame_start_time_ns(_metadata->frame_start_time_ns),
@@ -45,10 +45,10 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     n_valid_fpga_ticks(_metadata->n_valid_fpga_ticks),
     n_rfi_fpga_ticks(_metadata->n_rfi_fpga_ticks),
 
-    rfi_excision_enabled(_metadata->rfi_excision_enabled),
-    rfi_excision_num(_metadata->rfi_excision_num),
-    rfi_excision_threshold(_metadata->rfi_excision_threshold),
-    rfi_excision_fraction(_metadata->rfi_excision_fraction),
+    rfi_frame_excision_enabled(_metadata->rfi_frame_excision_enabled),
+    rfi_frame_excision_num(_metadata->rfi_frame_excision_num),
+    rfi_frame_excision_threshold(_metadata->rfi_frame_excision_threshold),
+    rfi_frame_excision_fraction(_metadata->rfi_frame_excision_fraction),
 
     dataset_id(_metadata->dataset_id),
 

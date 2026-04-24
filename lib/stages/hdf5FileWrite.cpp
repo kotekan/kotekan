@@ -430,8 +430,8 @@ public:
         file.createAttribute("bin_eop.yp_as", frame.bin_eop.yp_as);
         file.createAttribute("bin_start_ERA_deg", frame.bin_start_ERA_deg);
         file.createAttribute("bin_end_ERA_deg", frame.bin_end_ERA_deg);
-        file.createAttribute("bin_start_LAST", frame.bin_start_LAST);
-        file.createAttribute("bin_end_LAST", frame.bin_end_LAST);
+        file.createAttribute("bin_start_ERAL", frame.bin_start_ERAL);
+        file.createAttribute("bin_end_ERAL", frame.bin_end_ERAL);
         file.createAttribute("fpga_start_tick", frame.fpga_start_tick);
         file.createAttribute("frame_start_time_ns", frame.frame_start_time_ns);
         file.createAttribute("frame_length_fpga_ticks", frame.frame_length_fpga_ticks);
