@@ -30,6 +30,7 @@ add_library(
     cudaFRBBeamReformer.cpp
     cudaMemsetInt.cu
     chordMVPSetup.cpp
+    cudaPLMaskAccumulator.cpp
     cudaPLMaskExpander.cpp
     cudaPL1bitCorrelator.cpp
     cudaQuantize4.cpp

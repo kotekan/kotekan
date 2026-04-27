@@ -18,6 +18,7 @@ add_library(
     gpuSimulateN2kCorr.cpp
     gpuSimulateN2kPLExpand.cpp
     gpuSimulateN2kPL1bitCorr.cpp
+    gpuSimulatePLMaskAccumulator.cpp
     gpuSimulateRFIS012.cpp
     gpuSimulateRFIS012bar.cpp
     gpuSimulateRFIS012tilde.cpp
