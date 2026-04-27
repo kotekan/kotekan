@@ -83,8 +83,12 @@ public:
     uint64_t& frame_length_fpga_ticks;
     /// The actual amount of data accumulated in FPGA ticks (fpga_seq_total)
     uint64_t& n_valid_fpga_ticks;
-    /// The number of lost samples due to RFI (rfi_total)
+    /// The number of lost samples due to RFI (rfi_total). Might contain Packet Loss as well.
     uint64_t& n_rfi_fpga_ticks;
+    /// The number of lost samples due to RFI only
+    uint64_t& n_rfi_only_fpga_ticks;
+    /// The number of lost samples due to Packet Loss (PL)
+    uint64_t& n_pl_fpga_ticks;
 
     /// Whether second stage RFI excision was applied to this frame
     bool& rfi_frame_excision_enabled;

@@ -192,6 +192,8 @@ void FakeN2::main_thread() {
             meta->n_valid_fpga_ticks = delta_seq;
             // Set number of rfi ticks (default to 0)
             meta->n_rfi_fpga_ticks = 0;
+            meta->n_rfi_only_fpga_ticks = 0;
+            meta->n_pl_fpga_ticks = 0;
 
             DEBUG("Output frame seq={:d} time_ns={:d}", meta->fpga_start_tick,
                   meta->frame_start_time_ns);

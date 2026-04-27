@@ -57,6 +57,12 @@ struct N2MetadataFormat {
     /// as well as RFI. For renormalization this value should NOT be used, use
     /// lost samples (= @c frame_length_fpga_ticks - @c n_valid_fpga_ticks) instead.
     uint64_t n_rfi_fpga_ticks = 0;
+    /// Number of received (not lost) FPGA samples flagged as containing RFI. No
+    /// contamination with lost samples.
+    /// frame_length = n_valid + n_rfi_only + n_pl
+    uint64_t n_rfi_only_fpga_ticks = 0;
+    /// Number of FPGA samples lost to Packet Loss.
+    uint64_t n_pl_fpga_ticks = 0;
     /// Whether second stage RFI excision was applied to this frame
     bool rfi_frame_excision_enabled = false;
     /// The number of active RFI excision thresholds.

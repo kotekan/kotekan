@@ -48,6 +48,8 @@ class N2Metadata(ctypes.Structure):
         ("frame_length_fpga_ticks", ctypes.c_uint64),
         ("n_valid_fpga_ticks", ctypes.c_uint64),
         ("n_rfi_fpga_ticks", ctypes.c_uint64),
+        ("n_rfi_only_fpga_ticks", ctypes.c_uint64),
+        ("n_pl_fpga_ticks", ctypes.c_uint64),
         # RFI Excision
         ("rfi_excision_enabled", ctypes.c_bool),
         ("rfi_excision_num", ctypes.c_uint32),

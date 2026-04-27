@@ -44,6 +44,8 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     frame_length_fpga_ticks(_metadata->frame_length_fpga_ticks),
     n_valid_fpga_ticks(_metadata->n_valid_fpga_ticks),
     n_rfi_fpga_ticks(_metadata->n_rfi_fpga_ticks),
+    n_rfi_only_fpga_ticks(_metadata->n_rfi_only_fpga_ticks),
+    n_pl_fpga_ticks(_metadata->n_pl_fpga_ticks),
 
     rfi_frame_excision_enabled(_metadata->rfi_frame_excision_enabled),
     rfi_frame_excision_num(_metadata->rfi_frame_excision_num),

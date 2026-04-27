@@ -156,6 +156,10 @@ public:
         }
     }
 
+    bool has_name() const {
+        return true;
+    }
+
     void set_name(const std::string& name) {
         // Manually copying in a for loop to avoid possibly buggy GCC warning
         // about array bounds and stringop-truncation.

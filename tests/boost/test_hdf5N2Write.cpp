@@ -293,6 +293,8 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     meta->frame_length_fpga_ticks = 100;
     meta->n_valid_fpga_ticks = 80;
     meta->n_rfi_fpga_ticks = 5;
+    meta->n_rfi_only_fpga_ticks = 4;
+    meta->n_pl_fpga_ticks = 100 - (80 + 4);
     meta->abs_time_idx = 5;
     meta->time_center_eop.t_ut1_ns = 333;
     meta->bin_eop.t_ut1_ns = 444;
@@ -374,7 +376,9 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     meta1->frame_start_time_ns = 2000;
     meta1->frame_length_fpga_ticks = 100;
     meta1->n_valid_fpga_ticks = 80;
-    meta1->n_rfi_fpga_ticks = 30; // sum > frame_len -> should clamp to 20
+    meta1->n_rfi_fpga_ticks = 30;      // sum > frame_len -> should clamp to 20
+    meta1->n_rfi_only_fpga_ticks = 30; // sum > frame_len -> should clamp to 20
+    meta1->n_pl_fpga_ticks = 30;       // sum > frame_len -> should clamp to 20
     meta1->abs_time_idx = 10;
     meta1->time_center_eop.t_ut1_ns = 10'000;
     meta1->bin_eop.t_ut1_ns = 10'000;
@@ -384,6 +388,9 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     *meta2 = *meta1;
     meta2->n_valid_fpga_ticks = 150; // > frame len -> clamp to 100
     meta2->n_rfi_fpga_ticks = 50;    // will be ignored because slot already set; kept for symmetry
+    meta2->n_rfi_only_fpga_ticks =
+        50;                      // will be ignored because slot already set; kept for symmetry
+    meta2->n_pl_fpga_ticks = 50; // will be ignored because slot already set; kept for symmetry
     meta2->time_center_eop.t_ut1_ns = 11'000; // should not overwrite the first set value
     meta2->bin_eop.t_ut1_ns = 11'000;
     meta2->time_center_eop.ERA_deg = 12.34;

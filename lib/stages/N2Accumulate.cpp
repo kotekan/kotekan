@@ -58,7 +58,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _packet_loss_is_scalar(config.get<bool>(unique_name, "packet_loss_is_scalar")),
     _n_fpga_samples_per_n2k_frame(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _n_fpga_samples_per_n2k_correlation(config.get<int64_t>(unique_name, "sub_integration_ntime")),
-    _num_elements(config.get<int64_t>(unique_name, "num_elements")),
+    _num_polarizations(config.get<int64_t>(unique_name, "num_polarizations")),
+    _num_dishes(config.get<int64_t>(unique_name, "num_dishes")),
+    _num_elements(_num_polarizations * _num_dishes),
     _num_workers(config.get_default<int>(unique_name, "num_workers", 1)),
     _output_batch_size(config.get_default<int>(unique_name, "output_batch_size", 1)),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
@@ -85,6 +87,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
     in_rficounts_buf = get_buffer("in_rficounts_buf");
     in_rficounts_buf->register_consumer(unique_name);
+
+    in_plcounts_buf = get_buffer("in_plcounts_buf");
+    in_plcounts_buf->register_consumer(unique_name);
 
     in_rfiframemask_buf = get_buffer("in_rfiframemask_buf");
     in_rfiframemask_buf->register_consumer(unique_name);
@@ -182,7 +187,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     // number of fpga samples, per frequency, in frame
     _n_valid_fpga_samples_in_vis = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
     _n_valid_sample_diff_sq_sum = std::vector<float>(_num_freq_per_n2k_frame, 0);
-    _n_rfi_samples_in_vis = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
+    _n_rfi_samples_in_vis = std::vector<uint64_t>(_num_freq_per_n2k_frame, 0);
+    _n_pl_samples_in_vis = std::vector<uint64_t>(_num_freq_per_n2k_frame, 0);
 
     _vis_samples_in_out_frame = 0;
     _accum_fpga_start_tick = -1;
@@ -204,6 +210,11 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     in_rficounts_buf->allocate_ndarray_frame_desc(
         kotekan::int32, "RFImask_count", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
         {"Tc", "F"});
+
+    in_plcounts_buf->allocate_ndarray_frame_desc(
+        kotekan::uint64, "pl_count",
+        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame, _num_polarizations, _num_dishes},
+        {"Tc", "F", "P", "D"});
 
     in_rfiframemask_buf->allocate_ndarray_frame_desc(
         kotekan::uint8, "RFIFrameMask", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
@@ -257,12 +268,14 @@ void N2Accumulate::main_thread() {
     frameID in_frame_id(in_buf);
     frameID in_counts_frame_id(in_counts_buf);
     frameID in_rficounts_frame_id(in_rficounts_buf);
+    frameID in_plcounts_frame_id(in_plcounts_buf);
     frameID in_rfiframemask_frame_id(in_rfiframemask_buf);
     frameID out_frame_id(out_buf);
 
     int previous_in_frame_id = -1;
     int previous_in_counts_frame_id = -1;
     int previous_in_rficounts_frame_id = -1;
+    int previous_in_plcounts_frame_id = -1;
     int previous_in_rfiframemask_frame_id = -1;
 
     INFO("Accumulating GPU output for {:s}[{:d}] putting result in {:s}[{:d}]", in_buf->buffer_name,
@@ -272,6 +285,8 @@ void N2Accumulate::main_thread() {
     uint64_t corr_stride_f = 2 * _n2k_correlation_num_products;
     int64_t counts_stride_t = _n2k_counts_num_products * _num_freq_per_n2k_frame;
     int64_t counts_stride_f = _n2k_counts_num_products;
+    int64_t plcounts_stride_t = _num_elements * _num_freq_per_n2k_frame;
+    int64_t plcounts_stride_f = _num_elements;
 
     // A buffer to store the (possibly fringestopped) correlations of a single time and all
     // frequencies
@@ -282,11 +297,10 @@ void N2Accumulate::main_thread() {
     const int32_t* counts_mat_t1 = nullptr;
     const int32_t* rficounts_t0 = nullptr;
     const int32_t* rficounts_t1 = nullptr;
+    const uint64_t* plcounts_t0 = nullptr;
+    const uint64_t* plcounts_t1 = nullptr;
     const uint8_t* rfiframemask_t0 = nullptr;
     const uint8_t* rfiframemask_t1 = nullptr;
-
-    std::vector<int32_t> n_valid_fpga_samples_t0(_num_freq_per_n2k_frame, 0);
-    std::vector<int32_t> n_valid_fpga_samples_t1(_num_freq_per_n2k_frame, 0);
 
     // vis_even may be an odd frame if the first frame eencountered is odd,
     // since fpga_seq_num does not have to start from 0, in which case we skip
@@ -336,6 +350,14 @@ void N2Accumulate::main_thread() {
         if (rficounts == nullptr)
             break;
 
+        // Fetch a new plcounts frame and get its sequence id
+        DEBUG("Waiting for new input RFIcounts frame {:s}[{:d}].", in_plcounts_buf->buffer_name,
+              in_plcounts_frame_id);
+        const uint64_t* plcounts =
+            (uint64_t*)in_plcounts_buf->wait_for_full_frame(unique_name, in_plcounts_frame_id);
+        if (plcounts == nullptr)
+            break;
+
         // Fetch a new rfiframemask frame and get its sequence id
         DEBUG("Waiting for new input RFIFrameMask frame {:s}[{:d}].",
               in_rfiframemask_buf->buffer_name, in_rfiframemask_frame_id);
@@ -351,6 +373,8 @@ void N2Accumulate::main_thread() {
             get_chord_metadata(in_counts_buf, in_counts_frame_id);
         std::shared_ptr<chordMetadata> rficounts_metadata =
             get_chord_metadata(in_rficounts_buf, in_rficounts_frame_id);
+        std::shared_ptr<chordMetadata> plcounts_metadata =
+            get_chord_metadata(in_plcounts_buf, in_plcounts_frame_id);
         std::shared_ptr<chordMetadata> rfiframemask_metadata =
             get_chord_metadata(in_rfiframemask_buf, in_rfiframemask_frame_id);
 
@@ -368,6 +392,13 @@ void N2Accumulate::main_thread() {
                         in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
                         in_rficounts_buf->buffer_name, in_rficounts_frame_id,
                         rficounts_metadata->get_fpga_seq_num());
+        }
+        if (frame_metadata->get_fpga_seq_num() != plcounts_metadata->get_fpga_seq_num()) {
+            FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
+                        "PLCounts buffer {:s}[{:d}] seq={:d}",
+                        in_buf->buffer_name, in_frame_id, frame_metadata->get_fpga_seq_num(),
+                        in_plcounts_buf->buffer_name, in_plcounts_frame_id,
+                        plcounts_metadata->get_fpga_seq_num());
         }
         if (frame_metadata->get_fpga_seq_num() != rfiframemask_metadata->get_fpga_seq_num()) {
             FATAL_ERROR("Correlation buffer {:s}[{:d}] seq={:d} has lost synchronization with "
@@ -473,6 +504,7 @@ void N2Accumulate::main_thread() {
             uint64_t corr_offset_t = t * corr_stride_t;
             uint64_t counts_offset_t = t * counts_stride_t;
             uint64_t rfi_offset_t = t * _num_freq_per_n2k_frame;
+            uint64_t plcounts_offset_t = t * plcounts_stride_t;
 
             // Double checking the accumulation arrays are the right shape
             assert(_vis.size() == corr_stride_t);
@@ -485,6 +517,7 @@ void N2Accumulate::main_thread() {
                 corr_t0 = corr + corr_offset_t;
                 counts_mat_t0 = counts_mat + counts_offset_t;
                 rficounts_t0 = rficounts + rfi_offset_t;
+                plcounts_t0 = plcounts + plcounts_offset_t;
                 rfiframemask_t0 = rfiframemask + rfi_offset_t;
                 continue;
             }
@@ -492,6 +525,7 @@ void N2Accumulate::main_thread() {
             corr_t1 = corr + corr_offset_t;
             counts_mat_t1 = counts_mat + counts_offset_t;
             rficounts_t1 = rficounts + rfi_offset_t;
+            plcounts_t1 = plcounts + plcounts_offset_t;
             rfiframemask_t1 = rfiframemask + rfi_offset_t;
 
             EOP eop_t0 =
@@ -499,18 +533,26 @@ void N2Accumulate::main_thread() {
             EOP eop_t1 =
                 _tel.get_EOP_at_time(_tel.to_time(seq + _n_fpga_samples_per_n2k_correlation / 2));
 
+            int64_t n_samples_per_pair = 2 * _n_fpga_samples_per_n2k_correlation;
+
 #pragma omp parallel for num_threads(_num_workers)
             for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+
+                // Second: accum packet loss, it's always present.
+                int64_t pl_count_idx = f * plcounts_stride_f;
+                _n_pl_samples_in_vis[f] +=
+                    n_samples_per_pair - (plcounts_t0[pl_count_idx] + plcounts_t1[pl_count_idx]);
+
+                // Second-stage RFI excision.
                 if (rfiframemask_t0[f] == 0 || rfiframemask_t1[f] == 0) {
-                    _n_rfi_samples_in_vis[f] += 2 * _n_fpga_samples_per_n2k_correlation;
+                    _n_rfi_samples_in_vis[f] += n_samples_per_pair;
                     continue;
                 }
 
-                // Second: accum RFI.
+                // Third: accum RFI sampes
                 _n_rfi_samples_in_vis[f] += rficounts_t0[f] + rficounts_t1[f];
 
-                // Third: normalization.  Accumulate the number of valid ticks in the last two
-                // samples
+                // Fourth: Normalization - accum the remaining good ticks.
                 int64_t count_idx = f * counts_stride_f;
 
                 int32_t count_t0 = counts_mat_t0[count_idx];
@@ -523,7 +565,8 @@ void N2Accumulate::main_thread() {
 
                 double freq_MHz =
                     _tel.to_freq_MHz(static_cast<freq_id_t>(frame_metadata->get_coarse_freq()[f]));
-                // Fourth: Now for the hard part, visibilities and weights
+
+                // Fifth: Now for the hard part, visibilities and weights
                 accum_corr_and_weight(
                     _vis.data() + f * corr_stride_f, _weights.data() + f * corr_stride_f / 2,
                     corr_t0 + f * corr_stride_f, corr_t1 + f * corr_stride_f, freq_MHz, target_eop,
@@ -566,6 +609,9 @@ void N2Accumulate::main_thread() {
         if (previous_in_rficounts_frame_id != -1)
             in_rficounts_buf->mark_frame_empty(unique_name, previous_in_rficounts_frame_id);
         previous_in_rficounts_frame_id = in_rficounts_frame_id++;
+        if (previous_in_plcounts_frame_id != -1)
+            in_plcounts_buf->mark_frame_empty(unique_name, previous_in_plcounts_frame_id);
+        previous_in_plcounts_frame_id = in_plcounts_frame_id++;
         if (previous_in_rfiframemask_frame_id != -1)
             in_rfiframemask_buf->mark_frame_empty(unique_name, previous_in_rfiframemask_frame_id);
         previous_in_rfiframemask_frame_id = in_rfiframemask_frame_id++;
@@ -955,6 +1001,9 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
             meta->frame_length_fpga_ticks = ticks_in_accum;
             meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
             meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];
+            meta->n_rfi_only_fpga_ticks =
+                ticks_in_accum - _n_valid_fpga_samples_in_vis[f] - _n_pl_samples_in_vis[f];
+            meta->n_pl_fpga_ticks = _n_pl_samples_in_vis[f];
 
             meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
             meta->rfi_frame_excision_num = num_thresholds;
@@ -1107,6 +1156,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);
     std::fill(_n_valid_sample_diff_sq_sum.begin(), _n_valid_sample_diff_sq_sum.end(), 0);
     std::fill(_n_rfi_samples_in_vis.begin(), _n_rfi_samples_in_vis.end(), 0);
+    std::fill(_n_pl_samples_in_vis.begin(), _n_pl_samples_in_vis.end(), 0);
 
     [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
 

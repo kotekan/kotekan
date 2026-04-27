@@ -525,10 +525,28 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(
             *file, flags_group_prefix + "/flags", {num_file_f, fv.num_elements, num_file_t_},
             {"frequency", "element", "time"}, HighFive::create_datatype<float>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/valid_fpga_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/rfi_fpga_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/rfi_only_fpga_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/pl_fpga_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
         _check_create_dataset(*file, flags_group_prefix + "/frac_lost", {num_file_f, num_file_t_},
                               {"frequency", "time"}, HighFive::create_datatype<float>(),
                               props_empty);
         _check_create_dataset(*file, flags_group_prefix + "/frac_rfi", {num_file_f, num_file_t_},
+                              {"frequency", "time"}, HighFive::create_datatype<float>(),
+                              props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/frac_rfi_only",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<float>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/frac_pl", {num_file_f, num_file_t_},
                               {"frequency", "time"}, HighFive::create_datatype<float>(),
                               props_empty);
 
@@ -649,8 +667,14 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     evec.assign(num_ev * num_elements * num_file_f * num_file_t, N2::cfloat{0.0f, 0.0f});
     erms.assign(num_file_f * num_file_t, 0.0f);
     gain.assign(num_elements * num_file_f * num_file_t, N2::cfloat{0.0f, 0.0f});
+    valid_fpga_count.assign(num_file_f * num_file_t, 0);
+    rfi_fpga_count.assign(num_file_f * num_file_t, 0);
+    rfi_only_fpga_count.assign(num_file_f * num_file_t, 0);
+    pl_fpga_count.assign(num_file_f * num_file_t, 0);
     frac_lost.assign(num_file_f * num_file_t, 1.0f); // match empty frames by default
     frac_rfi.assign(num_file_f * num_file_t, 0.0f);
+    frac_rfi_only.assign(num_file_f * num_file_t, 0.0f);
+    frac_pl.assign(num_file_f * num_file_t, 0.0f);
     flags.assign(num_elements * num_file_f * num_file_t, 0.0f);
     radiometer_chi2.assign(num_file_f * num_file_t * 3, 0.0f);
 
@@ -762,10 +786,20 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     const uint64_t frame_len_ticks = fv.frame_length_fpga_ticks;
     const uint64_t n_valid = fv.n_valid_fpga_ticks;
     const uint64_t n_rfi = fv.n_rfi_fpga_ticks;
+    const uint64_t n_rfi_only = fv.n_rfi_only_fpga_ticks;
+    const uint64_t n_pl = fv.n_pl_fpga_ticks;
+    valid_fpga_count[idx_ft(f_index, t_index)] = n_valid;
+    rfi_fpga_count[idx_ft(f_index, t_index)] = n_rfi;
+    rfi_only_fpga_count[idx_ft(f_index, t_index)] = n_rfi_only;
+    pl_fpga_count[idx_ft(f_index, t_index)] = n_pl;
     frac_lost[idx_ft(f_index, t_index)] =
         (frame_len_ticks > 0) ? (1.0f - float(n_valid) / float(frame_len_ticks)) : 0.0f;
     frac_rfi[idx_ft(f_index, t_index)] =
         (frame_len_ticks > 0) ? (float(n_rfi) / float(frame_len_ticks)) : 0.0f;
+    frac_rfi_only[idx_ft(f_index, t_index)] =
+        (frame_len_ticks > 0) ? (float(n_rfi_only) / float(frame_len_ticks)) : 0.0f;
+    frac_pl[idx_ft(f_index, t_index)] =
+        (frame_len_ticks > 0) ? (float(n_pl) / float(frame_len_ticks)) : 0.0f;
     // Store per-time metadata
     fpga_start_tick[t_index] = fv.fpga_start_tick;
     frame_length_fpga_ticks[t_index] = fv.frame_length_fpga_ticks;
@@ -891,12 +925,30 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/erms")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(erms.data());
+        h5_file->getDataSet(flags_group_prefix + "/valid_fpga_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(valid_fpga_count.data());
+        h5_file->getDataSet(flags_group_prefix + "/rfi_fpga_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(rfi_fpga_count.data());
+        h5_file->getDataSet(flags_group_prefix + "/rfi_only_fpga_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(rfi_only_fpga_count.data());
+        h5_file->getDataSet(flags_group_prefix + "/pl_fpga_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(pl_fpga_count.data());
         h5_file->getDataSet(flags_group_prefix + "/frac_lost")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(frac_lost.data());
         h5_file->getDataSet(flags_group_prefix + "/frac_rfi")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(frac_rfi.data());
+        h5_file->getDataSet(flags_group_prefix + "/frac_rfi_only")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(frac_rfi_only.data());
+        h5_file->getDataSet(flags_group_prefix + "/frac_pl")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(frac_pl.data());
         h5_file->getDataSet("/gain")
             .select({0, 0, 0}, {num_file_f, num_elements, num_file_t})
             .write_raw(gain.data());

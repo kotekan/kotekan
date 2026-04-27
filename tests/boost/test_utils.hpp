@@ -361,6 +361,8 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     meta->frame_length_fpga_ticks = frame_length_ticks;
     meta->n_valid_fpga_ticks = 80;
     meta->n_rfi_fpga_ticks = 5;
+    meta->n_rfi_only_fpga_ticks = 4;
+    meta->n_pl_fpga_ticks = frame_length_ticks - (80 + 4);
     meta->time_center_eop.ERA_deg = 9.87 + double(t_index);
     meta->bin_eop.ERA_deg = 9.87 + double(t_index);
     meta->bin_start_ERA_deg = 1.23 + double(t_index);

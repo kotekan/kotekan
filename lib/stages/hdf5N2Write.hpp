@@ -101,16 +101,22 @@ public:
 protected:
     // Datasets to be stored until ready to write
     // f = freq, p = prod, e = eigen, i = input, t = time, k = threshold, pp = pol_prod
-    std::vector<N2::cfloat> vis;        // (f, p, t)
-    std::vector<float> vis_weight;      // (f, p, t)
-    std::vector<float> eval;            // (f, e, t)
-    std::vector<N2::cfloat> evec;       // (f, e, i, t)
-    std::vector<float> erms;            // (f, t)
-    std::vector<N2::cfloat> gain;       // (f, i, t)
-    std::vector<float> frac_lost;       // (f, t) ; uses n_valid_fpga_ticks
-    std::vector<float> frac_rfi;        // (f, t) ; uses n_rfi_fpga_ticks
-    std::vector<float> flags;           // (f, i, t)
-    std::vector<float> radiometer_chi2; // (f, t, pp)
+    std::vector<N2::cfloat> vis;               // (f, p, t)
+    std::vector<float> vis_weight;             // (f, p, t)
+    std::vector<float> eval;                   // (f, e, t)
+    std::vector<N2::cfloat> evec;              // (f, e, i, t)
+    std::vector<float> erms;                   // (f, t)
+    std::vector<N2::cfloat> gain;              // (f, i, t)
+    std::vector<uint64_t> valid_fpga_count;    // (f, t)
+    std::vector<uint64_t> rfi_fpga_count;      // (f, t)
+    std::vector<uint64_t> rfi_only_fpga_count; // (f, t)
+    std::vector<uint64_t> pl_fpga_count;       // (f, t)
+    std::vector<float> frac_lost;              // (f, t) ; uses n_valid_fpga_ticks
+    std::vector<float> frac_rfi;               // (f, t) ; uses n_rfi_fpga_ticks
+    std::vector<float> frac_rfi_only;          // (f, t) ; uses n_rfi_only_fpga_ticks
+    std::vector<float> frac_pl;                // (f, t) ; uses n_pl_fpga_ticks
+    std::vector<float> flags;                  // (f, i, t)
+    std::vector<float> radiometer_chi2;        // (f, t, pp)
 
     // t-dependent metadata
     std::vector<uint64_t> fpga_start_tick;           // (t)

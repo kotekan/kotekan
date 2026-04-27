@@ -64,6 +64,10 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * in each n2k correlation.
  *         @buffer_format   NDArray int32 [num_integrations, num_freq]
  *         @buffer_metadata chordMetadata
+ * @buffer  in_plcounts_buf  PLcounts buffer, the count of good (plmask=1) samples in the PL mask
+ * in each n2k correlation.
+ *         @buffer_format   NDArray uint64 [num_integrations, num_freq, num_pol, num_dishes]
+ *         @buffer_metadata chordMetadata
  * @buffer  in_rfiframemask_buf  RFIFrameMask buffer, a mask marking specific correlator samples to
  * excise.
  *         @buffer_format   NDArray uint8 [num_integrations, num_freq]
@@ -167,6 +171,7 @@ private:
     Buffer* in_buf;              /// Buffer containing input correlations
     Buffer* in_counts_buf;       /// Buffer containing input counts
     Buffer* in_rficounts_buf;    /// Buffer containing input rficounts
+    Buffer* in_plcounts_buf;     /// Buffer containing input plcounts
     Buffer* in_rfiframemask_buf; /// Buffer containing input rfiframemask
     Buffer* out_buf;             /// Output for the main vis dataset only
 
@@ -182,7 +187,9 @@ private:
     const int64_t _n_fpga_samples_per_n2k_correlation;
     int64_t _n_integrations_per_n2k_frame;
 
-    const int64_t _num_elements; ///< Total number of telescope elements (~2 * num dishes)
+    const int64_t _num_polarizations; ///< Total number of telescope elements (~2 * num dishes)
+    const int64_t _num_dishes;        ///< Total number of telescope elements (~2 * num dishes)
+    const int64_t _num_elements;      ///< Total number of telescope elements (~2 * num dishes)
 
     const int _num_workers;       ///< number of OpenMP threads to use to process data
     const int _output_batch_size; ///< number of OpenMP threads to use to process data
@@ -217,7 +224,8 @@ private:
     // number of fpga samples, per frequency, in frame
     std::vector<int32_t> _n_valid_fpga_samples_in_vis;
     std::vector<float> _n_valid_sample_diff_sq_sum;
-    std::vector<int32_t> _n_rfi_samples_in_vis;
+    std::vector<uint64_t> _n_rfi_samples_in_vis;
+    std::vector<uint64_t> _n_pl_samples_in_vis;
     int64_t _vis_samples_in_out_frame;
     uint64_t _accum_fpga_start_tick;
     int64_t _accum_bin_idx;
