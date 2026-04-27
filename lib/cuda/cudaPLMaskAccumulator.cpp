@@ -140,7 +140,6 @@ int cudaPLMaskAccumulator::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
     DEBUG("Waiting for pl_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t pl_samples_per_frame = num_times / 128;
-    std::ptrdiff_t pl_mask_read = -1;
     const int pl_mask_errcode =
         pl_mask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
             if (available_elements < pl_samples_per_frame)
@@ -151,8 +150,9 @@ int cudaPLMaskAccumulator::wait_on_precondition() {
         });
     if (pl_mask_errcode < 0)
         return pl_mask_errcode;
+    
     DEBUG("Done waiting for pl_mask input ringbuffer data for frame {:d}; will read {:d} elements",
-          gpu_frame_id, pl_mask_read);
+          gpu_frame_id, pl_samples_per_frame);
 
     return 0;
 }
@@ -165,8 +165,8 @@ cudaEvent_t cudaPLMaskAccumulator::execute(cudaPipelineState& /*pipestate*/,
     pl_mask.check_metadata();
     pl_counts.set_metadata(pl_mask.get_metadata());
 
-    // TODO: Set these metadata only once
     const auto& pl_counts_meta = pl_counts.get_metadata();
+    pl_counts_meta->set_fpga_seq_num(pl_mask.get_read_valid().begin() * 128);
     pl_counts_meta->set_time_downsampling_fpga(
         div_noremainder(pl_counts_meta->get_time_downsampling_fpga(), 128) * sub_integration_ntime);
 
@@ -193,17 +193,19 @@ cudaEvent_t cudaPLMaskAccumulator::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Tmin = Tplmin * 128;
     const std::ptrdiff_t Tsize = Tplsize * 128;
 
-    const std::ptrdiff_t T_stride = pl_counts.get_ndarray().stride(0);
+    //const std::ptrdiff_t Tint_stride = pl_counts.get_ndarray().stride(0);
     const std::ptrdiff_t F_stride = pl_counts.get_ndarray().stride(1);
 
     // Current offset into the pl_counts buffer
-    const std::ptrdiff_t Tint_offset = div_noremainder(Tmin, sub_integration_ntime) * T_stride;
+    //const std::ptrdiff_t Tint_offset = div_noremainder(Tmin, sub_integration_ntime) * Tint_stride;
 
     const auto& pl_mask_meta = pl_mask.get_metadata();
     const std::ptrdiff_t Tpl_stride = pl_mask.get_ndarray().stride(0);
     const std::ptrdiff_t Tpl_offset = Tplmin * Tpl_stride;
 
-    n2k::launch_s0_kernel((ulong*)(pl_counts_memory + Tint_offset),
+    DEBUG("Executing s0 kernel on frame {:d}, for T={:d} from Tmin={:d}, reading PL from offset {:d} and writing counts to offset {:d}", gpu_frame_id, T, Tmin, Tpl_offset, 0);
+
+    n2k::launch_s0_kernel((ulong*)pl_counts_memory,
                           (const ulong*)(pl_mask_memory + Tpl_offset), T, 0, Tsize, num_frequencies,
                           num_dishes * num_polarizations, sub_integration_ntime, F_stride,
                           device.getStream(cuda_stream_id));
