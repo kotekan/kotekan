@@ -25,8 +25,9 @@ rfi_vals = [255, 0, 255, 255]
 global_params = {
     "fft_length": 16384,
     "sampling_rate_MHz": 3.2e3,
-    "num_elements": 64,
+    "num_polarizations": 2,
     "num_dishes": 32,
+    "num_elements": 64,
     "num_ev": 0,
     "samples_per_data_set": 16384,  # Must be at least 4x sub_integration_ntime
     "sub_integration_ntime": 4096,
@@ -183,6 +184,7 @@ def accumulate_data(tmpdir_factory):
     input_buffers = runner.FakeN2KBuffers(
         global_params["samples_per_data_set"],
         global_params["num_local_freq"],
+        global_params["sub_integration_ntime"],
         {
             "first_frame_index": start_frame_idx,
             "correlation_type": "f_times_ee_plus_t",
@@ -192,6 +194,7 @@ def accumulate_data(tmpdir_factory):
             "num_frames": global_params["total_frames"],
         },
         {"type": "const", "values": rfi_vals, "first_frame_index": start_frame_idx},
+        {"type": "random32", "first_frame_index": start_frame_idx},
         {
             "num_frames": global_params["total_frames"],
             "freq_ids": freq_ids,
@@ -215,6 +218,7 @@ def accumulate_data(tmpdir_factory):
     accumulate_run_params = accumulate_params.copy()
     accumulate_run_params["in_counts_buf"] = input_buffers.counts_name
     accumulate_run_params["in_rficounts_buf"] = input_buffers.rficounts_name
+    accumulate_run_params["in_plcounts_buf"] = input_buffers.plcounts_name
     accumulate_run_params["in_rfiframemask_buf"] = input_buffers.rfiframemask_name
 
     test = runner.KotekanStageTester(

@@ -52,10 +52,10 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     assert(type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
            || type == "const16" || type == "const32" || type == "constf16" || type == "random"
            || type == "random_signed" || type == "random_signed_offset" || type == "random1x8"
-           || type == "random32" || type == "const64" || type == "random64"
-           || type == "constu64" || type == "randomu64" || type == "random8" || type == "ramp"
-           || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
-           || type == "square" || type == "onehot");
+           || type == "random32" || type == "const64" || type == "random64" || type == "constu64"
+           || type == "randomu64" || type == "random8" || type == "ramp" || type == "tpluse"
+           || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square"
+           || type == "onehot");
     assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
     int type_size = 1; // default
     if (type == "const")
@@ -73,9 +73,9 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     if (type == "constu64" || type == "randomu64" || type == "const64" || type == "random64")
         type_size = 8;
     if (type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
-        || type == "const16" || type == "const32" || type == "random" || type == "random32" || type == "random_signed"
-        || type == "random_signed_offset" || type == "random1x8" || type == "random8"
-        || type == "ramp" || type == "onehot") {
+        || type == "const16" || type == "const32" || type == "random" || type == "random32"
+        || type == "random_signed" || type == "random_signed_offset" || type == "random1x8"
+        || type == "random8" || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
         _value_array =
             config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
@@ -86,7 +86,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     } else if (type == "constu64" || type == "randomu64") {
         ulvalue = config.get_default<uint64_t>(unique_name, "value", 0);
         _ulvalue_array = config.get_default<std::vector<uint64_t>>(unique_name, "values",
-                                                                  std::vector<uint64_t>());
+                                                                   std::vector<uint64_t>());
     } else if (type == "const64" || type == "random64") {
         lvalue = config.get_default<uint64_t>(unique_name, "value", 0);
         _lvalue_array = config.get_default<std::vector<uint64_t>>(unique_name, "values",

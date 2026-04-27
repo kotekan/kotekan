@@ -399,8 +399,10 @@ class FakeN2KBuffers(InputBuffer):
         self,
         samples_per_data_set,
         num_local_freq,
+        sub_integration_ntime,
         n2k_kwargs,
         rfi_kwargs,
+        plcounts_kwargs,
         rfiframemask_kwargs,
     ):
 
@@ -408,11 +410,13 @@ class FakeN2KBuffers(InputBuffer):
         self.counts_name = "faken2k_counts_buf%i" % self._buf_ind
         self.rfi_name = "faken2k_rfi_buf%i" % self._buf_ind
         self.rficounts_name = "faken2k_rficounts_buf%i" % self._buf_ind
+        self.plcounts_name = "faken2k_plcounts_buf%i" % self._buf_ind
         self.rfiframemask_name = "faken2k_rfiframemask_buf%i" % self._buf_ind
 
         n2k_stage_name = "faken2k_gen_%i" % self._buf_ind
         rfi_stage_name = "faken2k_gen_rfi_%i" % self._buf_ind
         rficount_stage_name = "faken2k_rficount_%i" % self._buf_ind
+        plcounts_stage_name = "faken2k_plcounts_%i" % self._buf_ind
         rfiframemask_stage_name = "faken2k_gen_rfiframemask_%i" % self._buf_ind
 
         self.__class__._buf_ind += 1
@@ -457,6 +461,13 @@ class FakeN2KBuffers(InputBuffer):
                 "sizeof_int": 4,
                 "frame_size": "(samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int",
             },
+            self.plcounts_name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "chord_pool",
+                "num_frames": "buffer_depth",
+                "sizeof_int": 4,
+                "frame_size": "(samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int",
+            },
             self.rfiframemask_name: {
                 "kotekan_buffer": "standard",
                 "metadata_pool": "chord_pool",
@@ -491,6 +502,19 @@ class FakeN2KBuffers(InputBuffer):
             "in_buf": self.rfi_name,
             "out_buf": self.rficounts_name,
         }
+        plcounts_gen_config = {
+            "kotekan_stage": "testDataGen",
+            "out_buf": self.plcounts_name,
+            "type": "const32",
+            "value": 0,
+            "name": "pl_lost_counts_scalar",
+            "array_shape": [
+                samples_per_data_set / sub_integration_ntime,
+                num_local_freq,
+            ],
+            "dim_name": ["Tc", "F"],
+            "meta_time_downsample_factor": sub_integration_ntime,
+        }
         rfiframemask_gen_config = {
             "kotekan_stage": "testRFIFrameMaskGen",
             "out_buf": self.rfiframemask_name,
@@ -500,18 +524,20 @@ class FakeN2KBuffers(InputBuffer):
 
         n2k_gen_config.update(n2k_kwargs)
         rfi_gen_config.update(rfi_kwargs)
+        plcounts_gen_config.update(plcounts_kwargs)
         rfiframemask_gen_config.update(rfiframemask_kwargs)
 
         self.stage_block = {
             n2k_stage_name: n2k_gen_config,
             rfi_stage_name: rfi_gen_config,
             rficount_stage_name: rficount_config,
+            plcounts_stage_name: plcounts_gen_config,
             rfiframemask_stage_name: rfiframemask_gen_config,
         }
         self.global_block = {
             "chord_pool": {
                 "kotekan_metadata_pool": "chordMetadata",
-                "num_metadata_objects": "5 * buffer_depth",
+                "num_metadata_objects": "6 * buffer_depth",
             }
         }
 
