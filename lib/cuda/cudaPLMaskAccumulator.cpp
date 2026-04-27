@@ -33,8 +33,8 @@ using kotekan::round_down;
 class cudaPLMaskAccumulator : public cudaCommand {
 public:
     cudaPLMaskAccumulator(kotekan::Config& config, const std::string& unique_name,
-                kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
-                const int instance_num);
+                          kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                          const int instance_num);
     virtual ~cudaPLMaskAccumulator();
 
     int wait_on_precondition() override;
@@ -84,9 +84,10 @@ private:
 
 REGISTER_CUDA_COMMAND(cudaPLMaskAccumulator);
 
-cudaPLMaskAccumulator::cudaPLMaskAccumulator(kotekan::Config& config, const std::string& unique_name,
-                         kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
-                         const int instance_num) :
+cudaPLMaskAccumulator::cudaPLMaskAccumulator(kotekan::Config& config,
+                                             const std::string& unique_name,
+                                             kotekan::bufferContainer& host_buffers,
+                                             cudaDeviceInterface& device, const int instance_num) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "cudaPLMaskAccumulator"),
     // Parameters
@@ -108,9 +109,9 @@ cudaPLMaskAccumulator::cudaPLMaskAccumulator(kotekan::Config& config, const std:
                                           div_noremainder(num_dishes, 8), 64 / 8},
             std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"}, *this),
     pl_counts(pl_counts_name, "pl_counts",
-             std::array<std::ptrdiff_t, 4>{num_subintegrations, num_frequencies,
-                                           num_polarizations, num_dishes},
-             std::array<std::string, 4>{"Tc", "F", "P", "D"}, *this)
+              std::array<std::ptrdiff_t, 4>{num_subintegrations, num_frequencies, num_polarizations,
+                                            num_dishes},
+              std::array<std::string, 4>{"Tc", "F", "P", "D"}, *this)
 //
 {
     // For pl_mask_T128_sample_bytes
@@ -143,9 +144,10 @@ int cudaPLMaskAccumulator::wait_on_precondition() {
     const int pl_mask_errcode =
         pl_mask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
             if (available_elements < pl_samples_per_frame)
-                return read_descriptor_t{.claimed=0, .read=0};
+                return read_descriptor_t{.claimed = 0, .read = 0};
             else
-                return read_descriptor_t{.claimed=pl_samples_per_frame, .read=pl_samples_per_frame};
+                return read_descriptor_t{.claimed = pl_samples_per_frame,
+                                         .read = pl_samples_per_frame};
         });
     if (pl_mask_errcode < 0)
         return pl_mask_errcode;
@@ -156,7 +158,7 @@ int cudaPLMaskAccumulator::wait_on_precondition() {
 }
 
 cudaEvent_t cudaPLMaskAccumulator::execute(cudaPipelineState& /*pipestate*/,
-                                 const std::vector<cudaEvent_t>& /*pre_events*/) {
+                                           const std::vector<cudaEvent_t>& /*pre_events*/) {
     pre_execute();
     record_start_event();
 
@@ -165,7 +167,8 @@ cudaEvent_t cudaPLMaskAccumulator::execute(cudaPipelineState& /*pipestate*/,
 
     // TODO: Set these metadata only once
     const auto& pl_counts_meta = pl_counts.get_metadata();
-    pl_counts_meta->set_time_downsampling_fpga(div_noremainder(pl_counts_meta->get_time_downsampling_fpga(), 128) * sub_integration_ntime);
+    pl_counts_meta->set_time_downsampling_fpga(
+        div_noremainder(pl_counts_meta->get_time_downsampling_fpga(), 128) * sub_integration_ntime);
 
     // There is no poison value
     // if (poison_buffers)
@@ -179,9 +182,10 @@ cudaEvent_t cudaPLMaskAccumulator::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Tplmin = pl_mask.get_read_valid().begin() % Tplsize;
     const std::ptrdiff_t Tpl = pl_mask.get_read_valid().size();
     if (Tplmin + Tpl > Tplsize) {
-        FATAL_ERROR("Chunk starting at Tplmin={:d} of size Tpl={:d} runs past end of ringbuffer {:s} "
-                    "of size Tplsize={:d}",
-                    Tplmin, Tpl, pl_mask.get_buffer_name(), Tplsize);
+        FATAL_ERROR(
+            "Chunk starting at Tplmin={:d} of size Tpl={:d} runs past end of ringbuffer {:s} "
+            "of size Tplsize={:d}",
+            Tplmin, Tpl, pl_mask.get_buffer_name(), Tplsize);
     }
     assert(Tplmin + Tpl <= Tplsize);
 

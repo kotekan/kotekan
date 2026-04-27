@@ -69,7 +69,7 @@ using N2::frameID;
 class gpuSimulatePLMaskAccumulator : public kotekan::Stage {
 public:
     gpuSimulatePLMaskAccumulator(kotekan::Config& config, const std::string& unique_name,
-                       kotekan::bufferContainer& buffer_container);
+                                 kotekan::bufferContainer& buffer_container);
     ~gpuSimulatePLMaskAccumulator();
     void main_thread() override;
 
@@ -89,9 +89,11 @@ private:
 
 REGISTER_KOTEKAN_STAGE(gpuSimulatePLMaskAccumulator);
 
-gpuSimulatePLMaskAccumulator::gpuSimulatePLMaskAccumulator(Config& config, const std::string& unique_name,
-                                       bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&gpuSimulatePLMaskAccumulator::main_thread, this)),
+gpuSimulatePLMaskAccumulator::gpuSimulatePLMaskAccumulator(Config& config,
+                                                           const std::string& unique_name,
+                                                           bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container,
+          std::bind(&gpuSimulatePLMaskAccumulator::main_thread, this)),
     _num_polarizations(config.get<int64_t>(unique_name, "num_polarizations")),
     _num_dishes(config.get<int64_t>(unique_name, "num_dishes")),
     _num_elements(_num_polarizations * _num_dishes),
@@ -126,7 +128,9 @@ gpuSimulatePLMaskAccumulator::gpuSimulatePLMaskAccumulator(Config& config, const
 
     // Make frame desc for produced buffer (this also checks the size)
     in_buf->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 5>(
-        "pl_mask", {div_noremainder(_samples_per_data_set, 128), div_noremainder(_num_local_freq, 4), _num_polarizations, div_noremainder(_num_dishes, 8), 64/8},
+        "pl_mask",
+        {div_noremainder(_samples_per_data_set, 128), div_noremainder(_num_local_freq, 4),
+         _num_polarizations, div_noremainder(_num_dishes, 8), 64 / 8},
         {"T2hi64", "F4", "P", "D8", "T2lo64"});
     out_buf->allocate_ndarray_frame_desc<uint64_t, 4>(
         "pl_counts", {_num_integrations, _num_local_freq, _num_polarizations, _num_dishes},
@@ -141,12 +145,10 @@ void gpuSimulatePLMaskAccumulator::main_thread() {
     frameID out_frame_id(out_buf);
 
     while (!stop_thread) {
-        uint64_t* pl_mask =
-            (uint64_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
+        uint64_t* pl_mask = (uint64_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (pl_mask == nullptr)
             break;
-        uint64_t* pl_counts =
-            (uint64_t*)out_buf->wait_for_empty_frame(unique_name, out_frame_id);
+        uint64_t* pl_counts = (uint64_t*)out_buf->wait_for_empty_frame(unique_name, out_frame_id);
         if (pl_counts == nullptr)
             break;
 
@@ -187,7 +189,8 @@ void gpuSimulatePLMaskAccumulator::main_thread() {
                 for (uint64_t f = 0; f < nf; f++) {
                     for (uint64_t e = 0; e < ne; e++) {
 
-                        uint64_t idx_pl_counts = e + fstride_pl_counts * f + tstride_pl_counts * t_int;
+                        uint64_t idx_pl_counts =
+                            e + fstride_pl_counts * f + tstride_pl_counts * t_int;
 
                         uint64_t e_pl = e / 8;
                         uint64_t f_pl = f / 4;
@@ -206,16 +209,14 @@ void gpuSimulatePLMaskAccumulator::main_thread() {
         } // t_rfi
 
         // Fetch input metadata
-        const std::shared_ptr<const metadataObject> mc_in =
-            in_buf->get_metadata(in_frame_id);
+        const std::shared_ptr<const metadataObject> mc_in = in_buf->get_metadata(in_frame_id);
         if (!mc_in) {
-            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_buf->buffer_name,
-                        in_frame_id);
+            FATAL_ERROR("Buffer {:s} frame {:d} had no metadata", in_buf->buffer_name, in_frame_id);
         }
         assert(mc_in);
         if (!metadata_is_chord(mc_in)) {
-            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
-                        in_buf->buffer_name, in_frame_id);
+            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata", in_buf->buffer_name,
+                        in_frame_id);
         }
         assert(metadata_is_chord(mc_in));
 
@@ -223,16 +224,15 @@ void gpuSimulatePLMaskAccumulator::main_thread() {
 
         // Create output metadata
         out_buf->allocate_new_metadata_object(out_frame_id);
-        const std::shared_ptr<metadataObject> mc =
-            out_buf->get_metadata(out_frame_id);
+        const std::shared_ptr<metadataObject> mc = out_buf->get_metadata(out_frame_id);
         if (!mc) {
-            FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata",
-                        out_buf->buffer_name, out_frame_id);
+            FATAL_ERROR("Buffer {:s} frame {:d} cannot allocate metadata", out_buf->buffer_name,
+                        out_frame_id);
         }
         assert(mc);
         if (!metadata_is_chord(mc)) {
-            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata",
-                        out_buf->buffer_name, out_frame_id);
+            FATAL_ERROR("Buffer {:s} frame {:d} does not have CHORD metadata", out_buf->buffer_name,
+                        out_frame_id);
         }
         assert(metadata_is_chord(mc));
         const std::shared_ptr<chordMetadata> meta_out = get_chord_metadata(mc);
@@ -245,8 +245,8 @@ void gpuSimulatePLMaskAccumulator::main_thread() {
 
         // Set non-NDArray things.
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
-        meta_out->set_time_downsampling_fpga(div_noremainder(meta_in->get_time_downsampling_fpga(), 128)
-                                             * _sub_integration_ntime);
+        meta_out->set_time_downsampling_fpga(
+            div_noremainder(meta_in->get_time_downsampling_fpga(), 128) * _sub_integration_ntime);
 
         // test that things are consistent
         meta_out->check_frame_desc(out_buf->get_ndarray_frame_desc());
