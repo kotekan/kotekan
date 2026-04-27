@@ -64,9 +64,9 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * in each n2k correlation.
  *         @buffer_format   NDArray int32 [num_integrations, num_freq]
  *         @buffer_metadata chordMetadata
- * @buffer  in_plcounts_buf  PLcounts buffer, the count of good (plmask=1) samples in the PL mask
+ * @buffer  in_plcounts_buf  PLcounts buffer, the count of bad (plmask=0) samples in the PL mask
  * in each n2k correlation.
- *         @buffer_format   NDArray uint64 [num_integrations, num_freq, num_pol, num_dishes]
+ *         @buffer_format   NDArray uint64 [num_integrations, num_freq]
  *         @buffer_metadata chordMetadata
  * @buffer  in_rfiframemask_buf  RFIFrameMask buffer, a mask marking specific correlator samples to
  * excise.

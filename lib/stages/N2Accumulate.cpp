@@ -212,9 +212,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         {"Tc", "F"});
 
     in_plcounts_buf->allocate_ndarray_frame_desc(
-        kotekan::uint64, "pl_count",
-        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame, _num_polarizations, _num_dishes},
-        {"Tc", "F", "P", "D"});
+        kotekan::int32, "pl_lost_counts_scalar",
+        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame}, {"Tc", "F"});
 
     in_rfiframemask_buf->allocate_ndarray_frame_desc(
         kotekan::uint8, "RFIFrameMask", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
@@ -285,8 +284,6 @@ void N2Accumulate::main_thread() {
     uint64_t corr_stride_f = 2 * _n2k_correlation_num_products;
     int64_t counts_stride_t = _n2k_counts_num_products * _num_freq_per_n2k_frame;
     int64_t counts_stride_f = _n2k_counts_num_products;
-    int64_t plcounts_stride_t = _num_elements * _num_freq_per_n2k_frame;
-    int64_t plcounts_stride_f = _num_elements;
 
     // A buffer to store the (possibly fringestopped) correlations of a single time and all
     // frequencies
@@ -503,8 +500,7 @@ void N2Accumulate::main_thread() {
 
             uint64_t corr_offset_t = t * corr_stride_t;
             uint64_t counts_offset_t = t * counts_stride_t;
-            uint64_t rfi_offset_t = t * _num_freq_per_n2k_frame;
-            uint64_t plcounts_offset_t = t * plcounts_stride_t;
+            uint64_t rfipl_offset_t = t * _num_freq_per_n2k_frame;
 
             // Double checking the accumulation arrays are the right shape
             assert(_vis.size() == corr_stride_t);
@@ -516,17 +512,17 @@ void N2Accumulate::main_thread() {
             if (t_abs % 2 == 0) {
                 corr_t0 = corr + corr_offset_t;
                 counts_mat_t0 = counts_mat + counts_offset_t;
-                rficounts_t0 = rficounts + rfi_offset_t;
-                plcounts_t0 = plcounts + plcounts_offset_t;
-                rfiframemask_t0 = rfiframemask + rfi_offset_t;
+                rficounts_t0 = rficounts + rfipl_offset_t;
+                plcounts_t0 = plcounts + rfipl_offset_t;
+                rfiframemask_t0 = rfiframemask + rfipl_offset_t;
                 continue;
             }
 
             corr_t1 = corr + corr_offset_t;
             counts_mat_t1 = counts_mat + counts_offset_t;
-            rficounts_t1 = rficounts + rfi_offset_t;
-            plcounts_t1 = plcounts + plcounts_offset_t;
-            rfiframemask_t1 = rfiframemask + rfi_offset_t;
+            rficounts_t1 = rficounts + rfipl_offset_t;
+            plcounts_t1 = plcounts + rfipl_offset_t;
+            rfiframemask_t1 = rfiframemask + rfipl_offset_t;
 
             EOP eop_t0 =
                 _tel.get_EOP_at_time(_tel.to_time(seq - _n_fpga_samples_per_n2k_correlation / 2));
@@ -539,9 +535,7 @@ void N2Accumulate::main_thread() {
             for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
 
                 // Second: accum packet loss, it's always present.
-                int64_t pl_count_idx = f * plcounts_stride_f;
-                _n_pl_samples_in_vis[f] +=
-                    n_samples_per_pair - (plcounts_t0[pl_count_idx] + plcounts_t1[pl_count_idx]);
+                _n_pl_samples_in_vis[f] += plcounts_t0[f] + plcounts_t1[f];
 
                 // Second-stage RFI excision.
                 if (rfiframemask_t0[f] == 0 || rfiframemask_t1[f] == 0) {
