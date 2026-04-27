@@ -30,6 +30,44 @@
 using kotekan::div_noremainder;
 using kotekan::round_down;
 
+/**
+ * @class cudaPLMaskAccumulator
+ * @brief cudaCommand for downsampling the Packet Loss (PL) mask in time, with CUDA code from
+ * Kendrick.
+ *
+ * @author Geoffrey Ryan
+ *
+ * An example of this stage being used can be found in `config/tests/verify_cuda_pl_accum.yaml`.
+ *
+ * A CPU implementation is in `lib/testing/gpuSimulatePLMaskAccumulator.hpp`.
+ *
+ * @par GPU Memory
+ * @gpu_mem Input PL mask
+ *   @gpu_mem_buffer    @c ring
+ *   @gpu_mem_quantity  @c pl_mask
+ *   @gpu_mem_type      @c uint1x8
+ *   @gpu_mem_dim_name  [@c T2hi64][@c F4][@c P][@c D8][@c T2lo64]
+ *   @gpu_mem_shape     [@c buffer_depth * num_times/128][@c num_freq/4][@c num_pol][@c
+ * num_dishes/8][@c 8]
+ *   @gpu_mem_metadata  @c chordMetadata
+ * @gpu_mem Output PL counts
+ *   num_subintegrations := samples_per_data_set / sub_integration_ntime
+ *   @gpu_mem_buffer    @c standard
+ *   @gpu_mem_quantity  @c pl_counts
+ *   @gpu_mem_type      @c uint64
+ *   @gpu_mem_dim_name  [@c Tc][@c F][@c P][@c D]
+ *   @gpu_mem_shape     [@c num_subintegrations][@c num_freq][@c num_pol][@c num_dishes]
+ *   @gpu_mem_metadata  @c chordMetadata
+ * @conf  buffer_depth           Int.     The number of GPU frames used for pipelining commands.
+ * @conf  num_times              Int.     Number of time samples per frame.
+ * @conf  num_frequencies        Int.     Number of time samples per frame.
+ * @conf  num_polarizations      Int.     Number of polarizations.
+ * @conf  num_dishes             Int.     Number of dishes.
+ * @conf  sub_integration_ntime  Int.     Number of time samples that will be summed into the
+ *                                        correlation matrix.
+ * @conf  pl_mask_name           String.  Base name for the PL mask buffers.
+ * @conf  pl_counts_name         String.  Base name for the PL counts buffers.
+ */
 class cudaPLMaskAccumulator : public cudaCommand {
 public:
     cudaPLMaskAccumulator(kotekan::Config& config, const std::string& unique_name,
@@ -43,26 +81,6 @@ public:
     void finalize_frame() override;
 
 private:
-    // Some terminology:
-
-    //    Quantity    Definition
-    //     ---------------------
-    //    S012        S statistics
-    //    SK          SK statistic
-    //    RFImask     RFI mask
-    //    ...tilde    summed over feeds
-    //    ...bar      downsampled in time
-
-    //    Quantity    Producer
-    //     -------------------
-    //    S012        s0_kernel, s12_kernel
-    //    S012tilde   s012_station_downsample_kernel
-    //    S012bar     s012_time_downsample_kernel
-    //    SKtilde     skKernel
-    //    RFImask     skKernel
-    //    SKbar       skKernel
-    //    SKbartilde  skKernel
-
     // Parameters
     const int buffer_depth;
     const int num_times;
@@ -98,7 +116,6 @@ cudaPLMaskAccumulator::cudaPLMaskAccumulator(kotekan::Config& config,
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     sub_integration_ntime(config.get<int>(unique_name, "sub_integration_ntime")),
     num_subintegrations(div_noremainder(num_times, sub_integration_ntime)),
-    poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
     pl_mask_name(config.get<std::string>(unique_name, "pl_mask_name")),
     pl_counts_name(config.get<std::string>(unique_name, "pl_counts_name")),
@@ -150,7 +167,7 @@ int cudaPLMaskAccumulator::wait_on_precondition() {
         });
     if (pl_mask_errcode < 0)
         return pl_mask_errcode;
-    
+
     DEBUG("Done waiting for pl_mask input ringbuffer data for frame {:d}; will read {:d} elements",
           gpu_frame_id, pl_samples_per_frame);
 
@@ -169,10 +186,6 @@ cudaEvent_t cudaPLMaskAccumulator::execute(cudaPipelineState& /*pipestate*/,
     pl_counts_meta->set_fpga_seq_num(pl_mask.get_read_valid().begin() * 128);
     pl_counts_meta->set_time_downsampling_fpga(
         div_noremainder(pl_counts_meta->get_time_downsampling_fpga(), 128) * sub_integration_ntime);
-
-    // There is no poison value
-    // if (poison_buffers)
-    //     rfi_S012.set_to_poison(0xff);
 
     const kotekan::uint1x8_t* const pl_mask_memory = pl_mask.get_ndarray().data();
     std::uint64_t* const pl_counts_memory = pl_counts.get_ndarray().data();
@@ -193,29 +206,22 @@ cudaEvent_t cudaPLMaskAccumulator::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Tmin = Tplmin * 128;
     const std::ptrdiff_t Tsize = Tplsize * 128;
 
-    //const std::ptrdiff_t Tint_stride = pl_counts.get_ndarray().stride(0);
     const std::ptrdiff_t F_stride = pl_counts.get_ndarray().stride(1);
-
-    // Current offset into the pl_counts buffer
-    //const std::ptrdiff_t Tint_offset = div_noremainder(Tmin, sub_integration_ntime) * Tint_stride;
 
     const auto& pl_mask_meta = pl_mask.get_metadata();
     const std::ptrdiff_t Tpl_stride = pl_mask.get_ndarray().stride(0);
     const std::ptrdiff_t Tpl_offset = Tplmin * Tpl_stride;
 
-    DEBUG("Executing s0 kernel on frame {:d}, for T={:d} from Tmin={:d}, reading PL from offset {:d} and writing counts to offset {:d}", gpu_frame_id, T, Tmin, Tpl_offset, 0);
+    DEBUG(
+        "Executing s0 kernel on frame {:d}, for T={:d} from Tmin={:d}, reading PL from offset {:d}",
+        gpu_frame_id, T, Tmin, Tpl_offset, 0);
 
-    n2k::launch_s0_kernel((ulong*)pl_counts_memory,
-                          (const ulong*)(pl_mask_memory + Tpl_offset), T, 0, Tsize, num_frequencies,
-                          num_dishes * num_polarizations, sub_integration_ntime, F_stride,
-                          device.getStream(cuda_stream_id));
+    n2k::launch_s0_kernel((ulong*)pl_counts_memory, (const ulong*)(pl_mask_memory + Tpl_offset), T,
+                          0, Tsize, num_frequencies, num_dishes * num_polarizations,
+                          sub_integration_ntime, F_stride, device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
-
-    // There is no poison value
-    // if (poison_buffers)
-    //     rfi_S012.check_for_poison(0xff);
 
     return record_end_event();
 }
