@@ -131,9 +131,6 @@ cudaPLMaskAccumulator::cudaPLMaskAccumulator(kotekan::Config& config,
 //
 {
     // For pl_mask_T128_sample_bytes
-    if (num_frequencies % 4 != 0)
-        FATAL_ERROR("num_frequencies % 4 != 0");
-
     if (sub_integration_ntime % 128 != 0)
         FATAL_ERROR("sub_integration_ntime % 128 != 0");
 

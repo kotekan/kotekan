@@ -111,9 +111,6 @@ CountLostPLSamplesScalar::CountLostPLSamplesScalar(Config& config, const std::st
     if (_samples_per_data_set % _sub_integration_ntime != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of sub_integration_ntime");
     }
-    if (_num_local_freq % 4 != 0) {
-        FATAL_ERROR("num_local_freq must be a multiple of 4");
-    }
     if (_num_dishes % 8 != 0) {
         FATAL_ERROR("num_dishes must be a multiple of 8");
     }
@@ -121,7 +118,7 @@ CountLostPLSamplesScalar::CountLostPLSamplesScalar(Config& config, const std::st
     // Make frame desc for produced buffer (this also checks the size)
     in_buf->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 5>(
         "pl_mask",
-        {div_noremainder(_samples_per_data_set, 128), div_noremainder(_num_local_freq + 3, 4),
+        {div_noremainder(_samples_per_data_set, 128), (_num_local_freq + 3) / 4,
          _num_polarizations, div_noremainder(_num_dishes, 8), 64 / 8},
         {"T2hi64", "F4", "P", "D8", "T2lo64"});
     out_buf->allocate_ndarray_frame_desc<int32_t, 2>(
@@ -230,7 +227,7 @@ void CountLostPLSamplesScalar::main_thread() {
         meta_out->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
 
         // Set non-NDArray things.
-        meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
+        meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num()); // just in case
         meta_out->set_time_downsampling_fpga(
             div_noremainder(meta_in->get_time_downsampling_fpga(), 128) * _sub_integration_ntime);
 

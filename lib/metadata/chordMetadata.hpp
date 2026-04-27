@@ -38,7 +38,7 @@ const int CHORD_META_MAX_FREQ = 4096;
 const int CHORD_META_MAX_DIM = 10;
 
 // Maximum length of dimension names for arrays
-const int CHORD_META_MAX_DIMNAME = 20;
+const int CHORD_META_MAX_DIMNAME = 24;
 
 // Maximum number of visibility matrix samples in a frame
 const int CHORD_META_MAX_VIS_SAMPLES = 64;
