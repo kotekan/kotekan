@@ -89,7 +89,6 @@ private:
     const int num_dishes;
     const int sub_integration_ntime;
     const int num_subintegrations;
-    const bool poison_buffers;
 
     // Kotekan buffer names
     const std::string pl_mask_name;
