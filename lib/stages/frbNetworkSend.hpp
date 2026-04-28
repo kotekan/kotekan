@@ -74,55 +74,6 @@
  *
  */
 
-struct SrcAddrSocket {
-    const sockaddr_in addr;
-    const int socket_fd;
-};
-
-
-/**
- * @brief Convenience struct used to hold all relevant information about an FRB L1 destination
- */
-struct DestIpSocket {
-    /// Regular constructor used with data from the config file
-    DestIpSocket(std::string host, sockaddr_in addr, int s, bool active = true);
-
-    /// Move constructor is necessary for inserting into standard containers
-    DestIpSocket(DestIpSocket&& other);
-
-    //@{
-    /// host address as a std::string and a `sockaddr` structure
-    const std::string host;
-    const sockaddr_in addr;
-    //@}
-
-    /// index of the entry in @p src_sockets used to communicate with the destination
-    const int sending_socket;
-
-    /// flag to indicate if the destination is a "dummy" placeholder
-    const bool active;
-
-    /// flag to indicate if the host has been responding to pings
-    std::atomic_bool live;
-};
-
-/**
- * @brief internal data type for keeping track of host checks and replies
- */
-struct DestIpSocketTime {
-    DestIpSocket* dst;
-    std::chrono::steady_clock::time_point last_responded;
-    std::chrono::steady_clock::time_point next_check;
-    std::chrono::steady_clock::time_point last_checked = last_responded;
-    uint16_t ping_seq = 0;
-    friend bool operator<(const DestIpSocketTime& l, const DestIpSocketTime& r) {
-        if (l.next_check == r.next_check) {
-            // break check time ties by host address
-            return l.dst->addr.sin_addr.s_addr > r.dst->addr.sin_addr.s_addr;
-        } else
-            return l.next_check > r.next_check;
-    }
-};
 
 class frbNetworkSend : public kotekan::Stage {
 public:
@@ -144,6 +95,61 @@ public:
     void main_thread() override;
 
 private:
+    struct SrcAddrSocket {
+        const sockaddr_in addr;
+        const int socket_fd;
+    };
+
+
+    /**
+     * @brief Convenience struct used to hold all relevant information about an FRB L1 destination
+     */
+    struct DestIpSocket {
+        /// Regular constructor used with data from the config file
+        DestIpSocket(std::string host, sockaddr_in addr, int s, bool active = true) :
+            host(std::move(host)), addr(std::move(addr)), sending_socket(s), active(active),
+            live(false) {};
+
+
+        /// Move constructor is necessary for inserting into standard containers
+        DestIpSocket(DestIpSocket&& other) :
+            host(std::move(other.host)), addr(std::move(other.addr)),
+            sending_socket(other.sending_socket), active(other.active), live(other.live.load()) {};
+
+        //@{
+        /// host address as a std::string and a `sockaddr` structure
+        const std::string host;
+        const sockaddr_in addr;
+        //@}
+
+        /// index of the entry in @p src_sockets used to communicate with the destination
+        const int sending_socket;
+
+        /// flag to indicate if the destination is a "dummy" placeholder
+        const bool active;
+
+        /// flag to indicate if the host has been responding to pings
+        std::atomic_bool live;
+    };
+
+    /**
+     * @brief internal data type for keeping track of host checks and replies
+     */
+    struct DestIpSocketTime {
+        DestIpSocket* dst;
+        std::chrono::steady_clock::time_point last_responded;
+        std::chrono::steady_clock::time_point next_check;
+        std::chrono::steady_clock::time_point last_checked = last_responded;
+        uint16_t ping_seq = 0;
+        friend bool operator<(const DestIpSocketTime& l, const DestIpSocketTime& r) {
+            if (l.next_check == r.next_check) {
+                // break check time ties by host address
+                return l.dst->addr.sin_addr.s_addr > r.dst->addr.sin_addr.s_addr;
+            } else
+                return l.next_check > r.next_check;
+        }
+    };
+
     /// pointer to input beams buffer
     Buffer* in_buf;
 
