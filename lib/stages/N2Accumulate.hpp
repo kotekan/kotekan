@@ -147,11 +147,11 @@ public:
      */
     bool is_seq_start_of_bin(uint64_t seq, int64_t bin_idx);
 
-    void accum_corr_and_weight(int32_t* vis_f, float* weight_f, const int32_t* corr_t0_f,
-                               const int32_t* corr_t1_f, double freq_MHz, EOP& target_eop,
-                               EOP& eop_t0, EOP& eop_t1, int32_t count_t0, int32_t count_t1,
-                               std::vector<std::complex<float>>& fringe_phase_t0,
-                               std::vector<std::complex<float>>& fringe_phase_t1);
+    void accum_corr_and_var(int32_t* vis_f, float* weight_f, const int32_t* corr_t0_f,
+                            const int32_t* corr_t1_f, double freq_MHz, EOP& target_eop, EOP& eop_t0,
+                            EOP& eop_t1, int32_t count_t0, int32_t count_t1,
+                            std::vector<std::complex<float>>& fringe_phase_t0,
+                            std::vector<std::complex<float>>& fringe_phase_t1);
 
     /**
      * @brief Copy accumulated visibility matrix and weights to the output buffer,
@@ -220,7 +220,7 @@ private:
     // The below vectors are initialized in the constructor after _num_vis_products
     // and _num_freq_in_frame are known.
     std::vector<int32_t> _vis;
-    std::vector<float> _weights;
+    std::vector<float> _var;
     // number of fpga samples, per frequency, in frame
     std::vector<int32_t> _n_valid_fpga_samples_in_vis;
     std::vector<float> _n_valid_sample_diff_sq_sum;

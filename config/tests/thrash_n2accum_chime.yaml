@@ -58,6 +58,8 @@ telescope:
   num_dishes_y: 48
   dish_inputs: []
 
+freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
 gps_time:
   frame0_nano: start_time_s * GIGA
 
@@ -111,6 +113,12 @@ fake_rficounts_buffer:
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
     metadata_pool: main_pool
 
+fake_plcounts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    metadata_pool: main_pool
+
 fake_rfiframemask_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -131,7 +139,6 @@ gen_fake_rfi_RFImask:
     value: 0xFF
     num_frames: frames_to_generate
     repeat_count: repeat
-    freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 gen_fake_corr_counts:
     kotekan_stage: testN2kGen
@@ -148,7 +155,14 @@ gen_fake_corr_counts:
     mul_correlation_by_counts: True
     num_frames: frames_to_generate
     repeat_count: repeat
-    freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+gen_pl_lost_counts:
+    kotekan_stage: testLostPLCountsScalarGen
+    cpu_affinity: [3]
+    out_buf: fake_plcounts_buffer
+    type: random
+    num_frames: frames_to_generate
+    repeat_count: repeat
 
 gen_fake_rfiframemask:
     kotekan_stage: testRFIFrameMaskGen
@@ -158,7 +172,6 @@ gen_fake_rfiframemask:
     value: 1
     num_frames: frames_to_generate
     repeat_count: repeat
-    freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 rfimask_to_counts:
     kotekan_stage: RfiMaskSum
@@ -172,6 +185,7 @@ N2_accumulate:
     in_buf: fake_correlation_buffer
     in_counts_buf: fake_counts_buffer
     in_rficounts_buf: fake_rficounts_buffer
+    in_plcounts_buf: fake_plcounts_buffer
     in_rfiframemask_buf: fake_rfiframemask_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq

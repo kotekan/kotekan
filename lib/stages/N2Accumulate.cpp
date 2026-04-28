@@ -181,8 +181,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     // _num_freq_per_n2k_frame (accumulate the full, blocked matrix x frequencies from the GPU)
     _vis = std::vector<int32_t>(2 * _num_freq_per_n2k_frame * _n2k_correlation_num_products,
                                 0); // vis with complex as 2 ints
-    _weights = std::vector<float>(_num_freq_per_n2k_frame * _n2k_correlation_num_products,
-                                  0.0f); // real-valued weights
+    _var = std::vector<float>(_num_freq_per_n2k_frame * _n2k_correlation_num_products,
+                              0.0f); // real-valued variance estimates
 
     // number of fpga samples, per frequency, in frame
     _n_valid_fpga_samples_in_vis = std::vector<int32_t>(_num_freq_per_n2k_frame, 0);
@@ -484,7 +484,7 @@ void N2Accumulate::main_thread() {
 
 
             // Finalize accumulation if the visibility elements are past the output time...
-            //  end on an odd frame too so we accumulate weights.
+            //  end on an odd frame too so we accumulate variances.
             // if (t_vis_s > t_output && t_abs % 2 == 1) { }
             if (_vis_samples_in_out_frame == _num_n2k_samples_to_accumulate) {
 
@@ -504,7 +504,7 @@ void N2Accumulate::main_thread() {
 
             // Double checking the accumulation arrays are the right shape
             assert(_vis.size() == corr_stride_t);
-            assert(_weights.size() == corr_stride_t / 2);
+            assert(_var.size() == corr_stride_t / 2);
 
 
             // First: If we're an even frame, save pointers to the correlation and counts matrices
@@ -560,11 +560,11 @@ void N2Accumulate::main_thread() {
                 double freq_MHz =
                     _tel.to_freq_MHz(static_cast<freq_id_t>(frame_metadata->get_coarse_freq()[f]));
 
-                // Fifth: Now for the hard part, visibilities and weights
-                accum_corr_and_weight(
-                    _vis.data() + f * corr_stride_f, _weights.data() + f * corr_stride_f / 2,
-                    corr_t0 + f * corr_stride_f, corr_t1 + f * corr_stride_f, freq_MHz, target_eop,
-                    eop_t0, eop_t1, count_t0, count_t1, fringe_phase_t0, fringe_phase_t1);
+                // Fifth: Now for the hard part, visibilities and variances
+                accum_corr_and_var(_vis.data() + f * corr_stride_f,
+                                   _var.data() + f * corr_stride_f / 2, corr_t0 + f * corr_stride_f,
+                                   corr_t1 + f * corr_stride_f, freq_MHz, target_eop, eop_t0,
+                                   eop_t1, count_t0, count_t1, fringe_phase_t0, fringe_phase_t1);
             }
 
             // We're adding frames in pairs, increment frame count by 2
@@ -717,12 +717,11 @@ bool N2Accumulate::is_seq_start_of_bin(uint64_t seq, int64_t bin_idx) {
     }
 }
 
-void N2Accumulate::accum_corr_and_weight(int32_t* vis_f, float* weight_f, const int32_t* corr_t0_f,
-                                         const int32_t* corr_t1_f, double freq_MHz, EOP& target_eop,
-                                         EOP& eop_t0, EOP& eop_t1, int32_t count_t0,
-                                         int32_t count_t1,
-                                         std::vector<std::complex<float>>& fringe_phase_t0,
-                                         std::vector<std::complex<float>>& fringe_phase_t1) {
+void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_t* corr_t0_f,
+                                      const int32_t* corr_t1_f, double freq_MHz, EOP& target_eop,
+                                      EOP& eop_t0, EOP& eop_t1, int32_t count_t0, int32_t count_t1,
+                                      std::vector<std::complex<float>>& fringe_phase_t0,
+                                      std::vector<std::complex<float>>& fringe_phase_t1) {
 
     if (_debug_accum_mode == 0) {
         for (int64_t d = 0; d < 2 * _n2k_correlation_num_products; d++) {
@@ -731,13 +730,12 @@ void N2Accumulate::accum_corr_and_weight(int32_t* vis_f, float* weight_f, const 
         for (int64_t d = 0; d < _n2k_correlation_num_products; d++) {
             float dr = corr_t1_f[2 * d + 0] - corr_t0_f[2 * d + 0];
             float di = corr_t1_f[2 * d + 1] - corr_t0_f[2 * d + 1];
-            weight_f[d] += dr * dr + di * di;
+            var_f[d] += dr * dr + di * di;
         }
     } // debug_accum_mode 0
     else if (_debug_accum_mode == 3) {
 
         uint64_t corr_stride_b = 2 * _n2k_correlation_blocksize * _n2k_correlation_blocksize;
-        int num_dishes = _tel.cast<CHORDTelescope>().get_num_dishes();
 
         // 1/N for even (idx ~ 0) sample
         float inv_n_t0 = (count_t0 <= 0) ? 0.0f : 1.0f / count_t0;
@@ -767,15 +765,15 @@ void N2Accumulate::accum_corr_and_weight(int32_t* vis_f, float* weight_f, const 
                 // multiple of 4 correlation_linear_blocks.  So for num_polarization
                 // = 2, a block will not cross a polarization boundary, and we're
                 // guaranteed all elements in a block will share a polarization.
-                uint64_t di0 = _n2k_correlation_blocksize * ihi % num_dishes;
-                uint64_t dj0 = _n2k_correlation_blocksize * jhi % num_dishes;
+                uint64_t di0 = _n2k_correlation_blocksize * ihi % _num_dishes;
+                uint64_t dj0 = _n2k_correlation_blocksize * jhi % _num_dishes;
                 uint64_t offset_b = block_idx * corr_stride_b;
-                uint64_t weight_offset_b = block_idx * corr_stride_b / 2;
+                uint64_t var_offset_b = block_idx * corr_stride_b / 2;
 
                 const int32_t* corr_t0_fb = corr_t0_f + offset_b;
                 const int32_t* corr_t1_fb = corr_t1_f + offset_b;
                 int32_t* vis_fb = vis_f + offset_b;
-                float* weight_fb = weight_f + weight_offset_b;
+                float* var_fb = var_f + var_offset_b;
 
                 const std::complex<float>* phase_i = fringe_phase_t1.data() + di0;
                 const std::complex<float>* phase_j = fringe_phase_t1.data() + dj0;
@@ -813,8 +811,7 @@ void N2Accumulate::accum_corr_and_weight(int32_t* vis_f, float* weight_f, const 
 
                             std::complex<float> dvis = vis_odd - vis_even;
 
-                            weight_fb[w_idx] +=
-                                dvis.real() * dvis.real() + dvis.imag() * dvis.imag();
+                            var_fb[w_idx] += dvis.real() * dvis.real() + dvis.imag() * dvis.imag();
                         } // jlo
                     } // ilo
                 } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
@@ -847,7 +844,7 @@ void N2Accumulate::accum_corr_and_weight(int32_t* vis_f, float* weight_f, const 
                             vis_fb[idx + 1] += vis_even.imag() + vis_odd.imag();
 
                             std::complex<float> dvis = inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
-                            weight_fb[w_idx] +=
+                            var_fb[w_idx] +=
                                 inv_dvis_var
                                 * (dvis.real() * dvis.real() + dvis.imag() * dvis.imag());
                         } // jlo
@@ -1012,7 +1009,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
             }
             N2FrameView out_vis(out_buf, out_frame_id + f_idx);
 
-            // Sample numbers for normalizing weights
+            // Sample numbers for normalizing variaces/weights
             int64_t ns = _n_valid_fpga_samples_in_vis[f]; // ns = "number of samples"
             float ins = (ns != 0) ? (1.0f / ((float)ns)) : 0.0f;
 
@@ -1063,27 +1060,17 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
                             N2::cfloat v{(float)_vis[2 * idx], (float)_vis[2 * idx + 1]};
                             out_vis.vis[n2_idx] = ins * std::conj(v);
 
+                            float weight = 0.0f;
+
                             if (_variance_mode == N2VarianceMode::CHIMEv1) {
                                 float bias =
                                     std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
 
+                                float var = _var[idx] - bias;
 
-                                // DEBUG("{} {} w1: {:.12f} v2: {:.12f} |v|^2: {:.12f}, dN^2:
-                                // {:.12f} |v|^2 dN^2: {:.12f} diff: {:.12e} ==: {}", i, j,
-                                // _weights[idx], std::norm(v), std::norm(v)*ins*ins,
-                                // _n_valid_sample_diff_sq_sum[f], bias, _weights[idx] - bias,
-                                // _weights[idx] == bias);
+                                if (ns > 0 && var != 0.0f)
+                                    weight = ns * (ns / var);
 
-                                if (ns > 0) {
-                                    _weights[idx] -= bias;
-                                }
-
-                                // DEBUG("{} {} w2: {}", i, j, _weights[idx]);
-
-                                out_vis.weight[n2_idx] = (ns > 0 && _weights[idx] != 0.0f)
-                                                             ? ns * (ns / _weights[idx])
-                                                             : 0.0f;
-                                // DEBUG("{} {} w3: {}", i, j, out_vis.weight[n2_idx]);
                             } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
                                 if (_vis_samples_in_out_frame % 2 != 0) {
                                     FATAL_ERROR(
@@ -1096,12 +1083,17 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
                                 int64_t num_var_samp = _vis_samples_in_out_frame / 2;
                                 int64_t norm = ns * num_var_samp;
-                                out_vis.weight[n2_idx] =
-                                    (norm > 0 && _weights[idx] > 0) ? norm / _weights[idx] : 0.0f;
+
+                                float var = _var[idx];
+
+                                if (norm > 0 && var != 0.0f)
+                                    weight = norm / var;
                             } else {
                                 FATAL_ERROR("Cannot output weights for variance_mode: {}",
                                             _variance_mode);
                             }
+
+                            out_vis.weight[n2_idx] = weight;
                         } // jlo
                     } // ilo
 
@@ -1110,10 +1102,12 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
             } // ihi
 
             out_vis.erms = -1;
-            std::fill(out_vis.radiometer_chi2.begin(), out_vis.radiometer_chi2.end(), 1.0f);
+
+            // Fill with sentinel values to be filled by another stage.
+            std::fill(out_vis.radiometer_chi2.begin(), out_vis.radiometer_chi2.end(), -1.0f);
             std::fill(out_vis.flags.begin(), out_vis.flags.end(), 0);
             std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
-            std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(1u));
+            std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(255u));
         } // f_idx
 
         [[maybe_unused]] double prof_out_t2 = omp_get_wtime();
@@ -1137,14 +1131,14 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
     [[maybe_unused]] double prof_out_fill_time = omp_get_wtime();
 
-    // _vis and _weights are large, 0 them in parallel.
+    // _vis and _var are large, 0 them in parallel.
 #pragma omp parallel for simd num_threads(_num_workers)
     for (uint64_t i = 0; i < _vis.size(); i++)
         _vis[i] = 0;
 
 #pragma omp parallel for simd num_threads(_num_workers)
-    for (uint64_t i = 0; i < _weights.size(); i++)
-        _weights[i] = 0.0f;
+    for (uint64_t i = 0; i < _var.size(); i++)
+        _var[i] = 0.0f;
 
     // These arrays are smaller, single threaded is fine.
     std::fill(_n_valid_fpga_samples_in_vis.begin(), _n_valid_fpga_samples_in_vis.end(), 0);
