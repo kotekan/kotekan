@@ -34,8 +34,8 @@ public:
         const int chunk_size = 256;
 
         const int ntimes = 512;
-        const int nfreqs = 32;
-        const int nbeams = 64;
+        const int nfreqs = 256;
+        const int nbeams = 1024;
 
         ////////////////////////////////////////////////////////////////////////////////
 
@@ -214,11 +214,7 @@ public:
 
         // Quantize on the CPU
         INFO("Testing on CPU...");
-        cpu_quantize8chime(input.data(), offsetscale.data(), beams.data(),                 //
-                           ntimes, nfreqs, nbeams, ntimes, ntimes * nfreqs,                //
-                           2 * nchunks, nfreqs, nbeams, 2 * nchunks, 2 * nchunks * nfreqs, //
-                           ntimes, nfreqs, nbeams, ntimes, ntimes * nfreqs                 //
-        );
+        cpu_quantize8chime(input.data(), offsetscale.data(), beams.data());
 
         // Check CPU result
         check_result();
@@ -249,12 +245,7 @@ public:
 
         // Quantize on the GPU
         INFO("Testing on GPU...");
-        gpu_quantize8chime(gpu_input, gpu_offsetscale, gpu_beams,                          //
-                           ntimes, nfreqs, nbeams, ntimes, ntimes * nfreqs,                //
-                           2 * nchunks, nfreqs, nbeams, 2 * nchunks, 2 * nchunks * nfreqs, //
-                           ntimes, nfreqs, nbeams, ntimes, ntimes * nfreqs,                //
-                           nullptr                                                         //
-        );
+        gpu_quantize8chime(gpu_input, gpu_offsetscale, gpu_beams, nullptr);
 
         // Copy output from GPU
         CHECK_CUDA_ERROR(cudaMemcpy(offsetscale.data(), gpu_offsetscale,

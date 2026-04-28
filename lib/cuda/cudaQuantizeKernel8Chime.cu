@@ -12,15 +12,31 @@
 
 // Global constants
 
+// Input array layout
+static constexpr int in_ntimes = 256;
+static constexpr int in_nfreqs = 256; // 16 coarse channels, upchannelized by 16
+static constexpr int in_nbeams = 1024;
+
+// Output array layout
 // The output is quantized in "chunks". Each chunk has a different offset and scale.
-static constexpr int chunk_size1 = 16; // goes with a stride of 1
-static constexpr int chunk_size2 = 16; // goes with chunk_stride2
+static constexpr int out_ntimes_chunk = 16;
+static constexpr int out_nfreqs_chunk = 16;
+// Chunks are combined into packets.
+static constexpr int out_nfreqs_packet = 4;
+static constexpr int out_nbeams_packet = 8;
+// There are several packets.
+static constexpr int out_ntimes_outer = 16;
+static constexpr int out_nfreqs_outer = 4;
+static constexpr int out_nbeams_outer = 128;
+
+static_assert(out_ntimes_chunk * out_ntimes_outer == in_ntimes);
+static_assert(out_nfreqs_chunk * out_nfreqs_packet * out_nfreqs_outer == in_nfreqs);
+static_assert(out_nbeams_packet * out_nbeams_outer == in_nbeams);
 
 // For efficiency we proceess several chunks at once on the GPU.
 static constexpr int nchunks = 32;
 
-// Number of threads per block
-static constexpr int nthreads = nchunks;
+static_assert(out_nbeams_outer % nchunks == 0);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -67,22 +83,17 @@ __device__ __host__ static inline int sane_lrint(const float x) {
 // Quantize a "chunk". This is a CPU implementation that is
 // straightforward and thus "obviously correct". If the GPU version
 // produces a different result, then the GPU version is wrong.
-void cpu_quantize8chime_chunk(const float* __restrict__ const input, const int chunk_stride2,
-                              float16_t* __restrict__ const outputf,
+void cpu_quantize8chime_chunk(const float* __restrict__ const input,
+                              __half* __restrict__ const outputf,
                               std::uint8_t* __restrict__ const outputi) {
-    static_assert(chunk_size1 >= 0);
-    static_assert(chunk_size2 >= 0);
-    assert(chunk_stride2 > 0);
-
     using std::isfinite, std::max, std::min;
 
-    // Find the minimum and maximum of all input values. Calculate
-    // everything as `float` for convenience.
+    // Find the minimum and maximum of all input values.
     float minval = +1.0f / 0.0f, maxval = -1.0f / 0.0f;
-    for (int ind2 = 0; ind2 < chunk_size2; ++ind2) {
-        for (int ind1 = 0; ind1 < chunk_size1; ++ind1) {
-            const int i = ind1 + chunk_stride2 * ind2;
-            const float x = input[i];
+    for (int freq = 0; freq < out_nfreqs_chunk; ++freq) {
+        for (int time = 0; time < out_ntimes_chunk; ++time) {
+            const int in_ind = time + in_ntimes * freq;
+            const float x = input[in_ind];
             minval = sane_fmin(minval, x);
             maxval = sane_fmax(maxval, x);
         }
@@ -118,12 +129,12 @@ void cpu_quantize8chime_chunk(const float* __restrict__ const input, const int c
     outputf[1] = __float2half(scale);
 
     // We encode values as unsigned 8-bit integers.
-    for (int ind2 = 0; ind2 < chunk_size2; ++ind2) {
-        for (int ind1 = 0; ind1 < chunk_size1; ++ind1) {
-            const int indin = ind1 + chunk_stride2 * ind2; // input
-            const int indout = ind1 + chunk_size1 * ind2;  // output
+    for (int freq = 0; freq < out_nfreqs_chunk; ++freq) {
+        for (int time = 0; time < out_ntimes_chunk; ++time) {
+            const int in_ind = time + in_ntimes * freq;
+            const int out_ind = time + out_ntimes_chunk * freq;
             // Get value
-            const float x = input[indin];
+            const float x = input[in_ind];
             // Scale
             const float y = (x - offset) / scale;
             // Round
@@ -131,72 +142,84 @@ void cpu_quantize8chime_chunk(const float* __restrict__ const input, const int c
             // Clamp; use 0 for nan
             const int k = isnan(y) ? 0 : max(outi_min, min(outi_max, j));
             // Store
-            outputi[indout] = k;
+            outputi[out_ind] = k;
         }
     }
 }
 
 // Quantize a set of "chunk"s. This is an efficient GPU implementation.
-__global__ void gpu_quantize8chime_chunks(
-    const float* __restrict__ const input0, __half* __restrict__ const outputf0,
-    std::uint8_t* __restrict__ const outputi0, const int input_size1, const int input_size2,
-    const int input_size3, const int input_stride2, const int input_stride3,
-    const int outputf_size1, const int outputf_size2, const int outputf_size3,
-    const int outputf_stride2, const int outputf_stride3, const int outputi_size1,
-    const int outputi_size2, const int outputi_size3, const int outputi_stride2,
-    const int outputi_stride3) {
-    static_assert(chunk_size1 >= 0);
-    static_assert(chunk_size2 >= 0);
-    static_assert(chunk_size1 * chunk_size2 % (8 * nthreads) == 0);
+__global__ void gpu_quantize8chime_chunks(const float* __restrict__ const input,
+                                          __half* __restrict__ const outputf,
+                                          std::uint8_t* __restrict__ const outputi) {
+    using std::isfinite, std::max, std::min;
 
-    // Calculate array indices and convert to SIMD reference
-    const auto input = [&](const int dim1, const int dim2, const int dim3) -> const float& {
-        assert(dim1 >= 0 && dim1 < input_size1);
-        assert(dim2 >= 0 && dim2 < input_size2);
-        assert(dim3 >= 0 && dim3 < input_size3);
-        return *(const float*)&(input0[dim1 + input_stride2 * dim2 + input_stride3 * dim3]);
-    };
-    const auto outputi = [&](const int dim1, const int dim2, const int dim3) -> std::uint64_t& {
-        assert(dim1 >= 0 && dim1 < outputi_size1);
-        assert(dim2 >= 0 && dim2 < outputi_size2);
-        assert(dim3 >= 0 && dim3 < outputi_size3);
-        return *(std::uint64_t*)&(outputi0[dim1 + outputi_stride2 * dim2 + outputi_stride3 * dim3]);
-    };
-    const auto outputf = [&](const int dim1, const int dim2, const int dim3) -> __half2& {
-        assert(dim1 >= 0 && dim1 < outputf_size1);
-        assert(dim2 >= 0 && dim2 < outputf_size2);
-        assert(dim3 >= 0 && dim3 < outputf_size3);
-        return *(__half2*)&(outputf0[dim1 + outputf_stride2 * dim2 + outputf_stride3 * dim3]);
-    };
-
-    // // Find our position in the arrays
+    // Find our position in the arrays
     const int thread = threadIdx.x;
-    const int dim1 = blockIdx.x * chunk_size1;
-    const int dim2 = blockIdx.y * chunk_size2;
-    const int dim3 = blockIdx.z * nchunks;
-    const int outf_dim1 = 2 * blockIdx.x;
-    const int outf_dim2 = blockIdx.y;
-    const int outf_dim3 = blockIdx.z * nchunks;
-    const int outi_dim1 = (chunk_size1 * chunk_size2) * blockIdx.x;
-    const int outi_dim2 = blockIdx.y;
-    const int outi_dim3 = blockIdx.z * nchunks;
+    const int time_outer = blockIdx.x;
+    const int freq_packet = blockIdx.y % out_nfreqs_packet;
+    const int freq_outer = blockIdx.y / out_nfreqs_packet;
+    const int beam_packet = blockIdx.z % out_nbeams_packet;
+    const int beam_outer0 = nchunks * (blockIdx.z / out_nbeams_packet); // not adding threadIdx.x
 
-    static_assert(nchunks == nthreads);
+    // Calculate input indices
+    const auto time = [&](int time_chunk, int time_outer) {
+        return time_chunk + out_ntimes_chunk * time_outer;
+    };
+    const auto freq = [&](int freq_chunk, int freq_packet, int freq_outer) {
+        return freq_chunk + out_nfreqs_chunk * (freq_packet + out_nfreqs_packet * freq_outer);
+    };
+    const auto beam = [&](int beam_packet, int beam_outer) {
+        return beam_packet + out_nbeams_packet * beam_outer;
+    };
+
+    const auto input_offset = [&](int time, int freq, int beam) {
+        return time + in_ntimes * (freq + in_nfreqs * beam);
+    };
+
+    // Calculate output indices
+    const auto outputf_offset = [&](int freq_packet, int beam_packet, int time_outer,
+                                    int freq_outer, int beam_outer) {
+        return freq_packet
+               + out_nfreqs_packet
+                     * (beam_packet
+                        + out_nbeams_packet
+                              * (time_outer
+                                 + out_ntimes_outer
+                                       * (freq_outer + out_nfreqs_outer * beam_outer)));
+    };
+    const auto outputi_offset = [&](int time_chunk, int freq_chunk, int freq_packet,
+                                    int beam_packet, int time_outer, int freq_outer,
+                                    int beam_outer) {
+        return time_chunk
+               + out_ntimes_chunk
+                     * (freq_chunk
+                        + out_nfreqs_chunk
+                              * outputf_offset(freq_packet, beam_packet, time_outer, freq_outer,
+                                               beam_outer));
+    };
+
     // We store offset and scale only after finishing the loop over all chunks. Each thread stores
     // one offset/scale pair.
     __half2 outf;
-    // Loop over all chunks in the frame
+    // Loop over all beams we're handling
     for (int chunk = 0; chunk < nchunks; ++chunk) {
-        static_assert(chunk_size1 * chunk_size2 == 8 * nthreads);
+        const int beam_outer = beam_outer0 + chunk;
 
         // Load all values in this chunk. We load all values at once in the beginning.
-        // Note: This way of loading values is not cache-efficient; we are loading only half of each
-        // cache line. We need to fix this if it's too slow.
-        const int ind = 8 * thread;
-        const int ind1 = ind % chunk_size1;
-        const int ind2 = ind / chunk_size1;
-        const float4 xs0123 = load_float4(&input(dim1 + ind1, dim2 + ind2, dim3 + chunk));
-        const float4 xs4567 = load_float4(&input(dim1 + ind1, dim2 + ind2, dim3 + chunk));
+        // There are 256 values and 32 threads, so each thread loads 8 values.
+        // We load these 8 values in 2 batches of 4 times each.
+        // We space these batches 4 * 32 = 128 elements apart to be cache-efficient.
+        const int in_time_chunk = 4 * threadIdx.x % 4; // 0...15 in steps of 4
+        const int in_freq_chunk = threadIdx.x / 4;     // 0...7
+        const int input_offset_0123 = input_offset(time(in_time_chunk, time_outer),
+                                                   freq(in_freq_chunk + 0, freq_packet, freq_outer),
+                                                   beam(beam_packet, beam_outer));
+        const int input_offset_4567 = input_offset(time(in_time_chunk, time_outer),
+                                                   freq(in_freq_chunk + 8, freq_packet, freq_outer),
+                                                   beam(beam_packet, beam_outer));
+
+        const float4 xs0123 = load_float4(input + input_offset_0123);
+        const float4 xs4567 = load_float4(input + input_offset_4567);
         const float x0 = xs0123.x;
         const float x1 = xs0123.y;
         const float x2 = xs0123.z;
@@ -239,13 +262,12 @@ __global__ void gpu_quantize8chime_chunks(
         __half inv_scaleh = __float2half_rn(inv_scale);
 
         // Avoid non-finite numbers
-        using std::isfinite;
         if (!isfinite(__half2float(offseth)) || !isfinite(__half2float(scaleh))) {
             // Offset or scale are non-finite
             offseth = __float2half_rn(0.0f);
             scaleh = __float2half_rn(0.0f);
-            inv_offseth = __float2half_rn(inv_offset);
-            inv_scaleh = __float2half_rn(inv_scale);
+            inv_offseth = __float2half_rn(0.0f);
+            inv_scaleh = __float2half_rn(0.0f);
         } else if (!isfinite(__half2float(inv_offseth)) || !isfinite(__half2float(inv_scaleh))) {
             // Offset and scale are fine, but the inverse scale is non-finite. This means the scale
             // is too close to zero.
@@ -255,7 +277,7 @@ __global__ void gpu_quantize8chime_chunks(
         }
 
         if (chunk == thread)
-            outf = __halves2half2(offseth, scaleh);
+            outf = {offset, scale};
 
         const __half2 minh = __half2half2(__int2half_rn(outi_min));
         const __half2 maxh = __half2half2(__int2half_rn(outi_max));
@@ -305,129 +327,79 @@ __global__ void gpu_quantize8chime_chunks(
                                    | (std::uint64_t(i4) << 0x20) | (std::uint64_t(i5) << 0x28)
                                    | (std::uint64_t(i6) << 0x30) | (std::uint64_t(i7) << 0x38);
 
-        outputi(outi_dim1 + ind, outi_dim2, outi_dim3 + chunk) = outi;
+        const int out_time_chunk = 8 * (chunk % 2); // 0...15 in steps of 8
+        const int out_freq_chunk = chunk / 2;       // 0...7
+        *(std::uint64_t*)(outputi
+                          + outputi_offset(out_time_chunk, out_freq_chunk, freq_packet, beam_packet,
+                                           time_outer, freq_outer, beam_outer)) = outi;
     }
-    outputf(outf_dim1, outf_dim2, outf_dim3 + thread) = outf;
+    const int out_beam_outer = beam_outer0 + thread;
+    *((__half2*)outputf
+      + outputf_offset(freq_packet, beam_packet, time_outer, freq_outer, out_beam_outer)) = outf;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // Drivers (externally visible)
 
-void cpu_quantize8chime(const float* __restrict__ const input,
-                        float16_t* __restrict__ const outputf,
-                        std::uint8_t* __restrict__ const outputi, const int input_size1,
-                        const int input_size2, const int input_size3, const int input_stride2,
-                        const int input_stride3, const int outputf_size1, const int outputf_size2,
-                        const int outputf_size3, const int outputf_stride2,
-                        const int outputf_stride3, const int outputi_size1, const int outputi_size2,
-                        const int outputi_size3, const int outputi_stride2,
-                        const int outputi_stride3) {
+void cpu_quantize8chime(const float* __restrict__ const input, __half* __restrict__ const outputf,
+                        std::uint8_t* __restrict__ const outputi) {
     assert(input);
     assert(outputf);
     assert(outputi);
 
-    assert(input_size1 >= 0);
-    assert(input_size2 >= 0);
-    assert(input_size3 >= 0);
-    assert(input_stride2 >= 0);
-    assert(input_stride3 >= 0);
-    assert(outputf_size1 >= 0);
-    assert(outputf_size2 >= 0);
-    assert(outputf_size3 >= 0);
-    assert(outputf_stride2 >= 0);
-    assert(outputf_stride3 >= 0);
-    assert(outputi_size1 >= 0);
-    assert(outputi_size2 >= 0);
-    assert(outputi_size3 >= 0);
-    assert(outputi_stride2 >= 0);
-    assert(outputi_stride3 >= 0);
-    static_assert(chunk_size1 > 0);
-    static_assert(chunk_size2 > 0);
+    // Loop over all packets
+    for (int beam_outer = 0; beam_outer < out_nbeams_outer; ++beam_outer) {
+        for (int freq_outer = 0; freq_outer < out_nfreqs_outer; ++freq_outer) {
+            for (int time_outer = 0; time_outer < out_ntimes_outer; ++time_outer) {
 
-    assert(input_size1 % chunk_size1 == 0);
-    assert(input_size2 % chunk_size2 == 0);
+                // Loop over the chunks in each packets
+                for (int beam_packet = 0; beam_packet < out_nbeams_packet; ++beam_packet) {
+                    for (int freq_packet = 0; freq_packet < out_nfreqs_packet; ++freq_packet) {
 
-    assert(outputf_size1 == 2 * (input_size1 / chunk_size1));
-    assert(outputf_size2 == input_size2 / chunk_size2);
-    assert(outputf_size3 == input_size3);
-    assert(outputi_size1 == (chunk_size1 * chunk_size2) * (input_size1 / chunk_size1));
-    assert(outputi_size2 == input_size2 / chunk_size2);
-    assert(outputi_size3 == input_size3);
+                        // Process one chunk
+                        const int time = out_ntimes_chunk * time_outer;
+                        const int freq =
+                            out_nfreqs_chunk * (freq_packet + out_nfreqs_packet * freq_outer);
+                        const int beam = beam_packet + out_nbeams_packet * beam_outer;
+                        const int input_offset = time + in_ntimes * (freq + in_nfreqs * beam);
 
-    for (int dim3 = 0; dim3 < input_size3; ++dim3) {
-        for (int dim2 = 0; dim2 < input_size2; dim2 += chunk_size2) {
-            for (int dim1 = 0; dim1 < input_size1; dim1 += chunk_size1) {
-                const int input_dim1 = dim1;
-                const int input_dim2 = dim2;
-                const int outputf_dim1 = 2 * (dim1 / chunk_size1);
-                const int outputf_dim2 = dim2 / chunk_size2;
-                const int outputi_dim1 = (chunk_size1 * chunk_size2) * (dim1 / chunk_size1);
-                const int outputi_dim2 = dim2 / chunk_size2;
-                const int input_offset =
-                    input_dim1 + input_stride2 * input_dim2 + input_stride3 * dim3;
-                const int outputf_offset =
-                    outputf_dim1 + outputf_stride2 * outputf_dim2 + outputf_stride3 * dim3;
-                const int outputi_offset =
-                    outputi_dim1 + outputi_stride2 * outputi_dim2 + outputi_stride3 * dim3;
-                cpu_quantize8chime_chunk(input + input_offset, input_stride2,
-                                         outputf + outputf_offset, outputi + outputi_offset);
+                        const int outputf_offset =
+                            freq_packet
+                            + out_nfreqs_packet
+                                  * (beam_packet
+                                     + out_nbeams_packet
+                                           * (time_outer
+                                              + out_ntimes_outer
+                                                    * (freq_outer
+                                                       + out_nfreqs_outer * beam_outer)));
+                        const int outputi_offset =
+                            out_ntimes_chunk * out_nfreqs_chunk * outputf_offset;
+
+                        cpu_quantize8chime_chunk(input + input_offset, outputf + outputf_offset,
+                                                 outputi + outputi_offset);
+                    }
+                }
             }
         }
     }
 }
 
-void gpu_quantize8chime(const float* __restrict__ const input,
-                        float16_t* __restrict__ const outputf,
-                        std::uint8_t* __restrict__ const outputi, const int input_size1,
-                        const int input_size2, const int input_size3, const int input_stride2,
-                        const int input_stride3, const int outputf_size1, const int outputf_size2,
-                        const int outputf_size3, const int outputf_stride2,
-                        const int outputf_stride3, const int outputi_size1, const int outputi_size2,
-                        const int outputi_size3, const int outputi_stride2,
-                        const int outputi_stride3, cudaStream_t stream) {
+void gpu_quantize8chime(const float* __restrict__ const input, __half* __restrict__ const outputf,
+                        std::uint8_t* __restrict__ const outputi, cudaStream_t stream) {
     assert(input);
     assert(outputf);
     assert(outputi);
 
-    assert(input_size1 >= 0);
-    assert(input_size2 >= 0);
-    assert(input_size3 >= 0);
-    assert(input_stride2 >= 0);
-    assert(input_stride3 >= 0);
-    assert(outputf_size1 >= 0);
-    assert(outputf_size2 >= 0);
-    assert(outputf_size3 >= 0);
-    assert(outputf_stride2 >= 0);
-    assert(outputf_stride3 >= 0);
-    assert(outputi_size1 >= 0);
-    assert(outputi_size2 >= 0);
-    assert(outputi_size3 >= 0);
-    assert(outputi_stride2 >= 0);
-    assert(outputi_stride3 >= 0);
-    static_assert(chunk_size1 > 0);
-    static_assert(chunk_size2 > 0);
-    static_assert(nchunks > 0);
-
-    assert(input_size1 % chunk_size1 == 0);
-    assert(input_size2 % chunk_size2 == 0);
-    assert(input_size3 % nchunks == 0);
-
-    assert(outputf_size1 == 2 * (input_size1 / chunk_size1));
-    assert(outputf_size2 == input_size2 / chunk_size2);
-    assert(outputf_size3 == input_size3);
-    assert(outputi_size1 == (chunk_size1 * chunk_size2) * (input_size1 / chunk_size1));
-    assert(outputi_size2 == input_size2 / chunk_size2);
-    assert(outputi_size3 == input_size3);
-
+    dim3 nthreads;
+    nthreads.x = nchunks;
+    nthreads.y = 1;
+    nthreads.z = 1;
     dim3 nblocks;
-    nblocks.x = input_size1 / chunk_size1;
-    nblocks.y = input_size2 / chunk_size2;
-    nblocks.z = input_size3 / nchunks;
+    nblocks.x = out_ntimes_outer;
+    nblocks.y = out_nfreqs_packet * out_nfreqs_outer;
+    nblocks.z = out_nbeams_packet * out_nbeams_outer / nchunks;
     const int shmem_nbytes = 0;
-    gpu_quantize8chime_chunks<<<nblocks, nthreads, shmem_nbytes, stream>>>(
-        input, outputf, outputi, input_size1, input_size2, input_size3, input_stride2,
-        input_stride3, outputf_size1, outputf_size2, outputf_size3, outputf_stride2,
-        outputf_stride3, outputi_size1, outputi_size2, outputi_size3, outputi_stride2,
-        outputi_stride3);
+
+    gpu_quantize8chime_chunks<<<nblocks, nthreads, shmem_nbytes, stream>>>(input, outputf, outputi);
 }
