@@ -73,8 +73,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    INFO("Variance mode: {}", _variance_mode);
-
     // Ensure outgoing buffer is of type N2
     if (out_buf->buffer_type != "N2")
         FATAL_ERROR("N2Accumulate out_buf ({:s}) is not of type N2.", out_buf->buffer_name);
@@ -488,7 +486,7 @@ void N2Accumulate::main_thread() {
             // if (t_vis_s > t_output && t_abs % 2 == 1) { }
             if (_vis_samples_in_out_frame == _num_n2k_samples_to_accumulate) {
 
-                INFO("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
+                DEBUG("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
                      _vis_samples_in_out_frame);
                 samples_in_out_frame.set(_vis_samples_in_out_frame);
                 output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
@@ -574,7 +572,7 @@ void N2Accumulate::main_thread() {
             int64_t next_bin_idx = get_accum_abs_bin_idx(seq + _n_fpga_samples_per_n2k_correlation);
             if (next_bin_idx != _accum_bin_idx) {
 
-                INFO("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
+                DEBUG("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
                      _vis_samples_in_out_frame);
                 samples_in_out_frame.set(_vis_samples_in_out_frame);
                 output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
@@ -586,7 +584,7 @@ void N2Accumulate::main_thread() {
             }
 
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
-            INFO("Adding input frame pair took {:f} ms + {:f} ms idle",
+            DEBUG("Adding input frame pair took {:f} ms + {:f} ms idle",
                  (prof_curr_time - prof_start_time) * 1000,
                  (prof_start_time - prof_last_time) * 1000);
             prof_last_time = prof_curr_time;
@@ -879,10 +877,16 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     if (_bin_in_ERA) {
         double era = eop_target.ERA_deg;
         int32_t era_idx = static_cast<int32_t>(floor((era / 360.0) * _num_bins_per_rotation));
+        int64_t nrot = 0;  // TODO: Make less awkward, put nrot into EOP.
+        get_ERA_from_UT1(eop_target.t_ut1_ns, &nrot);
         ERA_deg_start = (era_idx * 360.0) / _num_bins_per_rotation;
         ERA_deg_end = ((era_idx + 1) * 360.0) / _num_bins_per_rotation;
-        ERAL_deg_start = -1; // TODO: update
-        ERAL_deg_end = -1;   // TODO: update
+        int64_t ut1_start = get_UT1_from_ERA(nrot, ERA_deg_start);
+        int64_t ut1_end = get_UT1_from_ERA(nrot, ERA_deg_end);
+        EOP eop_bin_start = _tel.get_EOP_at_UT1(ut1_start);
+        EOP eop_bin_end = _tel.get_EOP_at_UT1(ut1_end);
+        ERAL_deg_start = _tel.cast<CHORDTelescope>().get_ERAL_deg(eop_bin_start);
+        ERAL_deg_end = _tel.cast<CHORDTelescope>().get_ERAL_deg(eop_bin_end);
     } else {
         ERA_deg_start = _tel.get_EOP_at_time(_tel.to_time(_accum_fpga_start_tick)).ERA_deg;
         ERA_deg_end =
@@ -1148,7 +1152,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
     [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
 
-    INFO("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  "
+    DEBUG("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  "
          "{:f} ms\n    fill:  {:f} ms",
          _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
          1000 * prof_out_setup_time, 1000 * prof_out_work_time, 1000 * prof_out_free_time,

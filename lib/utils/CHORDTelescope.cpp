@@ -890,6 +890,19 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t stream_id, uint32_t index) const {
 size_t CHORDTelescope::num_freq_per_stream() const {
     return 48;
 }
+    
+double CHORDTelescope::get_ERAL_deg(EOP& eop) const {
+    double era = eop.ERA_deg;
+    double lon = get_origin_itrs_lon_deg();
+    double eral = era + lon;  // Ignore TIO locator s', it is only ~12 micro arcseconds.
+
+    if (eral < 0.0)
+        eral += 360.0;
+    if (eral >= 360.0)
+        eral -= 360.0;
+
+    return eral;
+}
 
 void to_json(nlohmann::json& j, const dishInfo& d) {
     j = {};

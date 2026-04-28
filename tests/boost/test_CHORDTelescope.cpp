@@ -1175,3 +1175,24 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
                           1.0e-7, 1.0e-5, "tel_phase4", "test_phase4");
     }
 }
+
+/*
+ * @brief   Test local ERA calculation
+ */
+BOOST_AUTO_TEST_CASE(_eral) {
+    BOOST_TEST_MESSAGE(fmt::format("Testing telescope position."));
+
+    double lon = -123.45678;
+    double lat = 49.321123;
+
+    json json_config = json::parse(default_config_str);
+    json_config["telescope"]["origin_itrs_lat_deg"] = lat;
+    json_config["telescope"]["origin_itrs_lon_deg"] = lon;
+
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    EOP eop = eop_null;
+    eop.ERA_deg = 3.45678;
+
+    BOOST_CHECK_EQUAL(tel.get_ERAL_deg(eop), 240.0);
+}
