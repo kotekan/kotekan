@@ -503,17 +503,10 @@ class FakeN2KBuffers(InputBuffer):
             "out_buf": self.rficounts_name,
         }
         plcounts_gen_config = {
-            "kotekan_stage": "testDataGen",
+            "kotekan_stage": "testLostPLCountsScalarGen",
             "out_buf": self.plcounts_name,
-            "type": "const32",
+            "type": "const",
             "value": 0,
-            "name": "pl_lost_counts_scalar",
-            "array_shape": [
-                samples_per_data_set / sub_integration_ntime,
-                num_local_freq,
-            ],
-            "dim_name": ["Tc", "F"],
-            "meta_time_downsample_factor": sub_integration_ntime,
         }
         rfiframemask_gen_config = {
             "kotekan_stage": "testRFIFrameMaskGen",
@@ -780,7 +773,7 @@ class ReadChordBuffer(InputBuffer):
 
     def __init__(self, input_dir, buffer_list):
 
-        self.name = "hdf5fileread_buf"
+        self.name = "hdf5fileread_buf%i" % self._buf_ind
         stage_name = "hdf5fileread%i" % self._buf_ind
         self.__class__._buf_ind += 1
 
@@ -1498,14 +1491,21 @@ class KotekanStageTester(KotekanRunner):
             }
         else:
             if buffers_in is None:
-                buffers_in = []
+                buffers_in_list = []
+            elif isinstance(buffers_in, dict):
+                buffers_in_list = []
+                for key, buf in buffers_in.items():
+                    config[key] = buf.name
+                    parallel_config[key] = buf.name
+                    buffers_in_list.append(buf)
             elif isinstance(buffers_in, (list, tuple)):
                 config["in_bufs"] = [buf.name for buf in buffers_in]
                 parallel_config["in_bufs"] = [buf.name for buf in buffers_in]
+                buffers_in_list = buffers_in
             else:
                 config["in_buf"] = buffers_in.name
                 parallel_config["in_buf"] = buffers_in.name
-                buffers_in = [buffers_in]
+                buffers_in_list = [buffers_in]
 
         if buffers_out is None:
             buffers_out = []
@@ -1520,7 +1520,7 @@ class KotekanStageTester(KotekanRunner):
         stage_block = {(stage_type + "_test"): config}
         buffer_block = {}
 
-        for buf in itertools.chain(buffers_in, buffers_out):
+        for buf in itertools.chain(buffers_in_list, buffers_out):
             stage_block.update(buf.stage_block)
             buffer_block.update(buf.buffer_block)
             if hasattr(buf, "global_block"):

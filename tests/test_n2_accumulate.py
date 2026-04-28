@@ -185,7 +185,7 @@ def accumulate_data(tmpdir_factory):
         global_params["samples_per_data_set"],
         global_params["num_local_freq"],
         global_params["sub_integration_ntime"],
-        {
+        n2k_kwargs={
             "first_frame_index": start_frame_idx,
             "correlation_type": "f_times_ee_plus_t",
             "counts_type": "const_scalar",
@@ -193,9 +193,17 @@ def accumulate_data(tmpdir_factory):
             "freq_ids": freq_ids,
             "num_frames": global_params["total_frames"],
         },
-        {"type": "const", "values": rfi_vals, "first_frame_index": start_frame_idx},
-        {"type": "random32", "first_frame_index": start_frame_idx},
-        {
+        rfi_kwargs={
+            "type": "const",
+            "values": rfi_vals,
+            "first_frame_index": start_frame_idx,
+        },
+        plcounts_kwargs={
+            "type": "random",
+            "first_frame_index": start_frame_idx,
+            "num_frames": global_params["total_frames"],
+        },
+        rfiframemask_kwargs={
             "num_frames": global_params["total_frames"],
             "freq_ids": freq_ids,
             "first_frame_index": start_frame_idx,

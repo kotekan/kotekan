@@ -65,7 +65,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _output_batch_size(config.get_default<int>(unique_name, "output_batch_size", 1)),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
     _variance_mode(config.get<N2VarianceMode>(unique_name, "variance_mode")),
-    _debug_accum_mode(config.get_default<int>(unique_name, "debug_accum_mode", 2)),
+    _debug_accum_mode(config.get_default<int>(unique_name, "debug_accum_mode", 3)),
     _tel(Telescope::instance()),
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
@@ -305,16 +305,10 @@ void N2Accumulate::main_thread() {
     // EOP at target fringestop time.
     EOP target_eop = eop_null;
 
-    int num_dishes = _tel.cast<CHORDTelescope>().get_num_dishes();
     // storage for a single frequency's fringe phases, declared here so it is only
     // allocated once.
-    std::vector<std::complex<float>> fringe_phase_t0(num_dishes, 1.0f);
-    std::vector<std::complex<float>> fringe_phase_t1(num_dishes, 1.0f);
-
-    if (_num_elements % num_dishes != 0)
-        FATAL_ERROR("num_dishes {:d} (from telescope) is not a multiple of num_elements {:d}",
-                    num_dishes, _num_elements);
-    assert(_num_elements % num_dishes == 0);
+    std::vector<std::complex<float>> fringe_phase_t0(_num_dishes, 1.0f);
+    std::vector<std::complex<float>> fringe_phase_t1(_num_dishes, 1.0f);
 
     // We start with START.
     Mode mode = Mode::START;
