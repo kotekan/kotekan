@@ -309,12 +309,14 @@ void frbNetworkSend::main_thread() {
                                     .protocol_version = 2,
                                     .data_nbytes = _nbeams * _nfreq_coarse * _factor_upchan_out
                                                    * _timesamples_per_frb_packet,
-                                    .fpga_counts_per_sample = fpga_counts_per_sample,
-                                    .fpga0_ns = tel.to_time_ns(0), // a constant over the run
+                                    .fpga_counts_per_sample =
+                                        static_cast<uint16_t>(time_downsampling_fpga),
+                                    .fpga0_ns = static_cast<uint64_t>(
+                                        tel.to_time_ns(0)), // a constant over the run
                                     .fpga_count =
-                                        metadata
-                                            ->get_fpga_seq_num(), // TODO: check if more than one
-                                                                  // packet in one kotekan frame
+                                        metadata->get_fpga_seq_num()
+                                        + frame * _timesamples_per_frb_packet
+                                              * static_cast<uint64_t>(time_downsampling_fpga),
                                     .nbeams = _nbeams,
                                     .nfreq_coarse = _nfreq_coarse, // 4
                                     .nupfreq = _factor_upchan_out,
