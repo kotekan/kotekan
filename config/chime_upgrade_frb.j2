@@ -922,6 +922,67 @@ switch_failed_out:
     updatable_config: /updatable_config/enable_failed_out
 
 ################################################################################
+# FRB beamforming
+
+FRB:
+    factor_upchan_out: 16
+    upchan_U16_max_num_channels: 16 # probably should be {{ num_freq_gpu_buf }}
+    upchan_U16_min_channel: 0
+    upchan_U16_max_channel: 16 # probably should be {{ num_freq_gpu_buf }}
+
+    # Buffers
+
+    # Gains
+    host_upchan_U16_gain_buffer:
+        # TODO: check why not element specific, is here gains == complex_phase_for_ideal_system?
+        kotekan_buffer: standard
+        num_frames: 1
+        # TODO: check if factor_upchan_out was the correct 16 to use here
+        frame_size: sizeof_float16 * upchan_U16_max_num_channels * factor_upchan_out
+        metadata_pool: main_pool
+
+    # Upchannelized voltages
+    host_upchan_U16_voltage_buffer:
+        kotekan_buffer: standard
+        num_frames: host_buffer_depth
+        frame_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (num_times / factor_upchan_out)
+        metadata_pool: main_pool
+    host_upchan_U16_voltage_ringbuffer:
+        kotekan_buffer: ring
+        ring_buffer_size: gpu_buffer_depth * num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (num_times / factor_upchan_out)
+        metadata_pool: main_pool
+
+    # Stages
+
+    run_set_upchan_U16_gain:
+        kotekan_stage: setUpchanGain
+        upchan_factor: factor_upchan_out
+        upchan_max_num_channels: upchan_U16_max_num_channels
+        upchan_gain: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        upchan_gain_buffer: host_upchan_U16_gain_buffer
+
+    run_upchan_U16:
+        gpu_0:
+            kotekan_stage: cudaProcess
+            gpu_id: 0
+            in_buffers:
+                host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+                host_upchan_U16_gain_buffer: host_upchan_U16_gain_buffer
+            out_buffers:
+                host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
+            commands:
+            - name: cudaInputData
+              do_once: true
+              in_buf: host_upchan_U16_gain_buffer
+              gpu_mem: upchan_U16_gain_buffer
+            - name: cudaSyncInput
+            - name: cudaUpchannelizer_chime_U16
+              voltage_name: xposed_voltage
+              upchan_U16_gain_name: upchan_U16_gain
+              upchan_U16_voltage_name: upchan_U16_voltage
+              Fmin: upchan_U16_min_channel
+              Fmax: upchan_U16_max_channel
+################################################################################
 # output to receivers
 
 # this will move to the baseband receiver eventually
