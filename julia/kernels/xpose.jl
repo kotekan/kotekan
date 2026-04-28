@@ -7,15 +7,6 @@ using Mustache
 
 const Memory = IndexSpaces.Memory
 
-const card = "A40"
-
-if CUDA.functional()
-    println("[Choosing CUDA device...]")
-    CUDA.device!(0)
-    println(name(device()))
-    @assert name(device()) == "NVIDIA $card"
-end
-
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 
 @enum CHORDTag CplxTag DishTag FreqTag PolrTag TimeTag ThreadTag WarpTag BlockTag
@@ -343,7 +334,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     end
 
     if output_kernel
-        open("output-$card/xpose_$setup.jl", "w") do fh
+        open("output/xpose_$setup.jl", "w") do fh
             return println(fh, xpose_stmts)
         end
     end
@@ -359,7 +350,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     shmem_bytes = kernel_setup.shmem_bytes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm xpose_kernel(
+    kernel = @cuda launch = false cap = compute_capability ptx = ptx_compat minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm xpose_kernel(
         CUDA.zeros(Int4x8, 0), CUDA.zeros(Int4x8, 0), CUDA.zeros(Int32, 0)
     )
     attributes(kernel.fun)[CUDA.CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES] = shmem_bytes
@@ -369,13 +360,13 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     end
 
     if output_kernel
-        ptx = read("output-$card/xpose_$setup.ptx", String)
+        ptx = read("output/xpose_$setup.ptx", String)
         ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
-        open("output-$card/xpose_$setup.ptx", "w") do fh
+        open("output/xpose_$setup.ptx", "w") do fh
             return write(fh, ptx)
         end
         kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-        open("output-$card/xpose_$setup.yaml", "w") do fh
+        open("output/xpose_$setup.yaml", "w") do fh
             return print(
                 fh,
                 """
@@ -487,7 +478,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                 ],
             ),
         )
-        write("output-$card/xpose_$setup.cxx", cxx)
+        write("output/xpose_$setup.cxx", cxx)
     end
 
     println("Done.")
@@ -496,12 +487,12 @@ end
 
 if CUDA.functional()
     # Output kernel
-    open("output-$card/xpose_$setup.ptx", "w") do fh
+    open("output/xpose_$setup.ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true)
         end
     end
-    open("output-$card/xpose_$setup.sass", "w") do fh
+    open("output/xpose_$setup.sass", "w") do fh
         redirect_stdout(fh) do
             @device_code_sass main(; compile_only=true)
         end
