@@ -179,14 +179,14 @@ void frbNetworkSend::main_thread() {
     // TODO: this is almost certainly wrong!
     auto const expected_beams_frame_desc = kotekan::GenericNDArray::create(
         kotekan::DataType::uint8, "I3",
-        {1, num_frequencies / _freq_coarse, total_nbeams, _nfreq_coarse, _factor_upchan_out,
+        {1, num_frequencies / _nfreq_coarse, _total_nbeams, _nfreq_coarse, _factor_upchan_out,
          _timesamples_per_frb_packet},
         {"Ttildehi16", "Fhi4", "R", "Flo4", "Fbar", "Ttildelo16"}, nullptr);
     assert(*beams_frame_desc == *expected_beams_frame_desc);
 
     auto const expected_offsetscale_frame_desc = kotekan::GenericNDArray::create(
         kotekan::DataType::float16, "offset/scale",
-        {1, num_frequencies / _freq_coarse, total_nbeams, _nfreq_coarse},
+        {1, num_frequencies / _nfreq_coarse, _total_nbeams, _nfreq_coarse},
         {"Ttildehi16", "Fhi4", "R", "Flo4"}, nullptr);
     assert(*offsetscale_frame_desc == *expected_offsetscale_frame_desc);
 

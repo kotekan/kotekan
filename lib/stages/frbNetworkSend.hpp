@@ -179,7 +179,8 @@ private:
     static const int _nfreq_coarse = 4;
     static const int _factor_upchan_out = 16;
     static const int _timesamples_per_frb_packet = 16;
-    static const int _nbeams = 8;
+    static const int _nbeams = 8;          // number of beams per FRB network packets
+    static const int _total_nbeams = 1024; // number of beams formed by beamformer
 
     // Beam kotekan::Configuration Mode
     bool column_mode;
