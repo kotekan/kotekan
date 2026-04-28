@@ -275,97 +275,114 @@ void frbNetworkSend::main_thread() {
         DEBUG("Beam offset: {:d}", local_beam_offset);
 
         for (int frame = 0; frame < packets_per_stream; frame++) {
-            for (int stream = 0; stream < total_nbeams / _nbeams; stream++) {
-                int e_stream = my_sequence_id
-                               + stream; // making sure no two nodes send packets to same L1 node
-                if (e_stream > 255)
-                    e_stream -= 256;
-                CLOCK_ABS_NANOSLEEP(CLOCK_MONOTONIC, t1);
+            for (int freq4 = 0; freq4 < num_frequencies / _nfreq_coarse; ++freq4) {
+                const int nstreams = _total_nbeams / _nbeams;
+                for (int stream = 0; stream < nstreams; stream++) {
+                    int e_stream =
+                        (my_sequence_id + stream)
+                        % (_total_nbeams
+                           / _nbeams); // making sure no two nodes send packets to same L1 node
+                    CLOCK_ABS_NANOSLEEP(CLOCK_MONOTONIC, t1);
 
-                for (int link = 0; link < number_of_l1_links; link++) {
-                    if (e_stream == local_beam_offset / 4 + link) {
-                        DestIpSocket& dst = stream_dest[link];
-                        if (dst.active
-                            && (_ping_dead_threshold == std::chrono::seconds::zero() || dst.live)) {
-                            static_assert(sizeof(FRBHeader) == 32);
-                            const size_t variable_size_part =
-                                sizeof(uint16_t) * _nbeams +       // beam_ids
-                                sizeof(uint16_t) * _nfreq_coarse + // coarse_freq_ids
-                                // TODO: see how the quantizer generates these
-                                sizeof(float) * _nbeams * _nfreq_coarse + // scale
-                                sizeof(float) * _nbeams * _nfreq_coarse;  // offset
-                            std::vector<char> header_buf(sizeof(FRBHeader) + variable_size_part);
+                    for (int link = 0; link < number_of_l1_links; link++) {
+                        if (e_stream
+                            == local_beam_offset / 4 + link) { // RH: not sure what the `/4` means.
+                            DestIpSocket& dst = stream_dest[link];
+                            if (dst.active
+                                && (_ping_dead_threshold == std::chrono::seconds::zero()
+                                    || dst.live)) {
+                                // TODO: this is mostly constant and could be mostly
+                                // moved outside of this inner loop
+                                static_assert(sizeof(FRBHeader) == 32);
+                                const size_t variable_size_part =
+                                    sizeof(uint16_t) * _nbeams +       // beam_ids
+                                    sizeof(uint16_t) * _nfreq_coarse + // coarse_freq_ids
+                                    // TODO: see how the quantizer generates these
+                                    sizeof(float) * _nbeams * _nfreq_coarse + // scale
+                                    sizeof(float) * _nbeams * _nfreq_coarse;  // offset
+                                std::vector<char> header_buf(sizeof(FRBHeader)
+                                                             + variable_size_part);
 
-                            FRBHeader& header(*reinterpret_cast<FRBHeader*>(&header_buf.front()));
-                            header = FRBHeader{
-                                .protocol_version = 2,
-                                .data_nbytes = _nbeams * _nfreq_coarse * _factor_upchan_out
-                                               * _timesamples_per_frb_packet,
-                                .fpga_counts_per_sample = fpga_counts_per_sample,
-                                .fpga0_ns = tel.to_time_ns(0), // a constant over the run
-                                .fpga_count =
-                                    metadata->get_fpga_seq_num(), // TODO: check if more than one
+                                FRBHeader& header(
+                                    *reinterpret_cast<FRBHeader*>(&header_buf.front()));
+                                header = FRBHeader{
+                                    .protocol_version = 2,
+                                    .data_nbytes = _nbeams * _nfreq_coarse * _factor_upchan_out
+                                                   * _timesamples_per_frb_packet,
+                                    .fpga_counts_per_sample = fpga_counts_per_sample,
+                                    .fpga0_ns = tel.to_time_ns(0), // a constant over the run
+                                    .fpga_count =
+                                        metadata
+                                            ->get_fpga_seq_num(), // TODO: check if more than one
                                                                   // packet in one kotekan frame
-                                .nbeams = _nbeams,
-                                .nfreq_coarse = _nfreq_coarse, // 4
-                                .nupfreq = _factor_upchan_out,
-                                .ntsamp = _timesamples_per_frb_packet};
+                                    .nbeams = _nbeams,
+                                    .nfreq_coarse = _nfreq_coarse, // 4
+                                    .nupfreq = _factor_upchan_out,
+                                    .ntsamp = _timesamples_per_frb_packet};
 
-                            uint16_t* beam_ids = reinterpret_cast<uint16_t*>(&header + 1);
-                            // TODO: check if the beam ids are actually consecutive
-                            std::iota(beam_ids, beam_ids + _nbeams, starting_value);
+                                uint16_t* beam_ids = reinterpret_cast<uint16_t*>(&header + 1);
+                                // TODO: check if the beam ids are actually consecutive
+                                std::iota(beam_ids, beam_ids + _nbeams, e_stream * _nbeams);
 
-                            uint16_t* coarse_freq_ids =
-                                reinterpret_cast<uint16_t*>(beam_ids + _nbeams);
-                            std::copy_n(metadata->get_coarse_freq().begin() + starting_value,
-                                        _nfreq_coarse, coarse_freq_ids);
+                                uint16_t* coarse_freq_ids =
+                                    reinterpret_cast<uint16_t*>(beam_ids + _nbeams);
+                                std::copy_n(metadata->get_coarse_freq().begin()
+                                                + freq4 * _nfreq_coarse,
+                                            _nfreq_coarse, coarse_freq_ids);
 
-                            float* scale =
-                                reinterpret_cast<float*>(coarse_freq_ids + _nfreq_coarse);
-                            float* offset =
-                                reinterpret_cast<float*>(scale + _nbeams * _nfreq_coarse);
-                            assert(reinterpret_cast<char*>(offset + _nbeams * _nfreq_coarse)
-                                   == &*header_buf.cend());
-                            for (int b = 0; b < _nbeams; ++b) {
-                                for (int f = 0; f < _nfreq_coarse; ++f) {
-                                    const ptrdiff_t idx = b * _nfreq_coarse + f;
-                                    offset[idx] =
-                                        static_cast<float>(offsetscale_buffer[2 * idx + 0]);
-                                    scale[idx] =
-                                        static_cast<float>(offsetscale_buffer[2 * idx + 1]);
+                                float* scale =
+                                    reinterpret_cast<float*>(coarse_freq_ids + _nfreq_coarse);
+                                float* offset =
+                                    reinterpret_cast<float*>(scale + _nbeams * _nfreq_coarse);
+                                assert(reinterpret_cast<char*>(offset + _nbeams * _nfreq_coarse)
+                                       == &*header_buf.cend());
+                                for (int b = 0; b < _nbeams; ++b) {
+                                    for (int f = 0; f < _nfreq_coarse; ++f) {
+                                        // TODO: see if b * num_frequencies works better
+                                        const ptrdiff_t idx =
+                                            freq4 * _nbeams * _nfreq_coarse * _nfreq_coarse + f;
+                                        offset[idx] =
+                                            static_cast<float>(offsetscale_buffer[2 * idx + 0]);
+                                        scale[idx] =
+                                            static_cast<float>(offsetscale_buffer[2 * idx + 1]);
+                                    }
                                 }
+
+                                struct iovec msg_iov[2] = {
+                                    {.iov_base = &header, .iov_len = sizeof(header)},
+                                    // FIXME: this is missing ofsetscale
+                                    {.iov_base =
+                                         &beams_buffer[(freq4 * nstreams * packets_per_stream
+                                                        + e_stream * packets_per_stream + frame)
+                                                       * header.data_nbytes],
+                                     .iov_len = static_cast<size_t>(header.data_nbytes)},
+                                };
+                                struct msghdr hdr = {.msg_name = (void*)&dst.addr,
+                                                     .msg_namelen = sizeof(dst.addr),
+                                                     .msg_iov = msg_iov,
+                                                     .msg_iovlen =
+                                                         sizeof(msg_iov) / sizeof(msg_iov[0]),
+                                                     .msg_control = nullptr,
+                                                     .msg_controllen = 0,
+                                                     .msg_flags = 0};
+
+                                const ssize_t rc =
+                                    sendmsg(src_sockets[dst.sending_socket].socket_fd, &hdr, 0);
+                                assert(rc
+                                       == static_cast<ssize_t>(msg_iov[0].iov_len
+                                                               + msg_iov[1].iov_len));
                             }
-
-                            struct iovec msg_iov[2] = {
-                                {.iov_base = &header, .iov_len = sizeof(header)},
-                                // FIXME: this is missing ofsetscale
-                                {.iov_base = &beams_buffer[(e_stream * packets_per_stream + frame)
-                                                           * header.data_nbytes],
-                                 .iov_len = static_cast<size_t>(header.data_nbytes)},
-                            };
-                            struct msghdr hdr = {.msg_name = (void*)&dst.addr,
-                                                 .msg_namelen = sizeof(dst.addr),
-                                                 .msg_iov = msg_iov,
-                                                 .msg_iovlen = sizeof(msg_iov) / sizeof(msg_iov[0]),
-                                                 .msg_control = nullptr,
-                                                 .msg_controllen = 0,
-                                                 .msg_flags = 0};
-
-                            const ssize_t rc =
-                                sendmsg(src_sockets[dst.sending_socket].socket_fd, &hdr, 0);
-                            assert(
-                                rc
-                                == static_cast<ssize_t>(msg_iov[0].iov_len + msg_iov[1].iov_len));
                         }
                     }
+                    // TODO: this may need adjustment since we are sending more data
+                    long wait_per_packet = (long)(50000);
+
+                    // 61521.25 is the theoretical seperation of packets in ns
+                    // I have used 58880 for convinence and also hope this will take care for
+                    // any clock glitches.
+
+                    add_nsec(t1, wait_per_packet);
                 }
-                long wait_per_packet = (long)(50000);
-
-                // 61521.25 is the theoretical seperation of packets in ns
-                // I have used 58880 for convinence and also hope this will take care for
-                // any clock glitches.
-
-                add_nsec(t1, wait_per_packet);
             }
         }
 
