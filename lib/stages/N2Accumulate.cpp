@@ -487,7 +487,7 @@ void N2Accumulate::main_thread() {
             if (_vis_samples_in_out_frame == _num_n2k_samples_to_accumulate) {
 
                 DEBUG("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
-                     _vis_samples_in_out_frame);
+                      _vis_samples_in_out_frame);
                 samples_in_out_frame.set(_vis_samples_in_out_frame);
                 output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
 
@@ -573,7 +573,7 @@ void N2Accumulate::main_thread() {
             if (next_bin_idx != _accum_bin_idx) {
 
                 DEBUG("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
-                     _vis_samples_in_out_frame);
+                      _vis_samples_in_out_frame);
                 samples_in_out_frame.set(_vis_samples_in_out_frame);
                 output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
 
@@ -585,8 +585,8 @@ void N2Accumulate::main_thread() {
 
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
             DEBUG("Adding input frame pair took {:f} ms + {:f} ms idle",
-                 (prof_curr_time - prof_start_time) * 1000,
-                 (prof_start_time - prof_last_time) * 1000);
+                  (prof_curr_time - prof_start_time) * 1000,
+                  (prof_start_time - prof_last_time) * 1000);
             prof_last_time = prof_curr_time;
 
         } // t (vis samples in frame)
@@ -877,7 +877,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     if (_bin_in_ERA) {
         double era = eop_target.ERA_deg;
         int32_t era_idx = static_cast<int32_t>(floor((era / 360.0) * _num_bins_per_rotation));
-        int64_t nrot = 0;  // TODO: Make less awkward, put nrot into EOP.
+        int64_t nrot = 0; // TODO: Make less awkward, put nrot into EOP.
         get_ERA_from_UT1(eop_target.t_ut1_ns, &nrot);
         ERA_deg_start = (era_idx * 360.0) / _num_bins_per_rotation;
         ERA_deg_end = ((era_idx + 1) * 360.0) / _num_bins_per_rotation;
@@ -1153,10 +1153,10 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
 
     DEBUG("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  "
-         "{:f} ms\n    fill:  {:f} ms",
-         _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
-         1000 * prof_out_setup_time, 1000 * prof_out_work_time, 1000 * prof_out_free_time,
-         1000 * (prof_out_end_time - prof_out_fill_time));
+          "{:f} ms\n    fill:  {:f} ms",
+          _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
+          1000 * prof_out_setup_time, 1000 * prof_out_work_time, 1000 * prof_out_free_time,
+          1000 * (prof_out_end_time - prof_out_fill_time));
 
     return true;
 }

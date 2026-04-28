@@ -767,11 +767,11 @@ public:
 
     /**
      * @brief   Compute the local ERA (eral in SOFA) at the telescope site.
-     *      
+     *
      *  The local ERA is:
-     *      
+     *
      *      ERAL = ERA + longitude(ITRS) + s',
-     *  
+     *
      *  where:
      *      ERA is the Earth Rotation Angle (era00 in SOFA),
      *      longitude(ITRS) is the geodetic longitude of the site in ITRS
