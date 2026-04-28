@@ -77,6 +77,9 @@ frbNetworkSend::frbNetworkSend(Config& config_, const std::string& unique_name,
     column_mode = config.get_default<bool>(unique_name, "column_mode", false);
     samples_per_packet = config.get_default<int>(unique_name, "timesamples_per_frb_packet", 16);
     num_frequencies = config.get<int>(unique_name, "num_frequencies");
+
+    assert(samples_per_packet == _timesamples_per_frb_packet);
+
     assert(num_frequencies % _nfreq_coarse == 0);
     if (_ping_dead_threshold != std::chrono::seconds::zero()) {
         INFO("Pinging every {} / {}", _quick_ping_interval, _ping_interval);
