@@ -1469,12 +1469,12 @@ class KotekanStageTester(KotekanRunner):
         if global_config is None:
             global_config = {}
 
+        buffers_in_list = []
+
         if noise:
-            if buffers_in is None:
-                buffers_in = []
-            else:
+            if buffers_in is not None:
                 noise_config["in_buf"] = buffers_in.name
-                buffers_in = [buffers_in]
+                buffers_in_list = [buffers_in]
             noise_config["kotekan_stage"] = "visNoise"
             noise_config["out_buf"] = "noise_buf"
             if noise == "random":
@@ -1490,9 +1490,7 @@ class KotekanStageTester(KotekanRunner):
                 }
             }
         else:
-            if buffers_in is None:
-                buffers_in_list = []
-            elif isinstance(buffers_in, dict):
+            if isinstance(buffers_in, dict):
                 buffers_in_list = []
                 for key, buf in buffers_in.items():
                     config[key] = buf.name
@@ -1502,7 +1500,7 @@ class KotekanStageTester(KotekanRunner):
                 config["in_bufs"] = [buf.name for buf in buffers_in]
                 parallel_config["in_bufs"] = [buf.name for buf in buffers_in]
                 buffers_in_list = buffers_in
-            else:
+            elif buffers_in is not None:
                 config["in_buf"] = buffers_in.name
                 parallel_config["in_buf"] = buffers_in.name
                 buffers_in_list = [buffers_in]
