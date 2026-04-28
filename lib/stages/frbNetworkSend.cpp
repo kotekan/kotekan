@@ -182,13 +182,13 @@ void frbNetworkSend::main_thread() {
         {1, num_frequencies / _freq_coarse, total_nbeams, _nfreq_coarse, _factor_upchan_out,
          _timesamples_per_frb_packet},
         {"Ttildehi16", "Fhi4", "R", "Flo4", "Fbar", "Ttildelo16"}, nullptr);
-    assert(*beams_frame_desc() == *expected_beams_frame_desc);
+    assert(*beams_frame_desc == *expected_beams_frame_desc);
 
     auto const expected_offsetscale_frame_desc = kotekan::GenericNDArray::create(
         kotekan::DataType::float16, "offset/scale",
         {1, num_frequencies / _freq_coarse, total_nbeams, _nfreq_coarse},
         {"Ttildehi16", "Fhi4", "R", "Flo4"}, nullptr);
-    assert(*offsetscale_frame_desc() == *expected_offsetscale_frame_desc);
+    assert(*offsetscale_frame_desc == *expected_offsetscale_frame_desc);
 
     // waiting for at least two frames for the buffer to fill up takes care of the random delay at
     // the start.
