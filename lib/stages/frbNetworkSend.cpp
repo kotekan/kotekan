@@ -529,11 +529,10 @@ void frbNetworkSend::initialize_pinging_sockets() {
 }
 
 
-using RefDestIpSocketTime = std::reference_wrapper<DestIpSocketTime>;
-
 void frbNetworkSend::ping_destinations() {
     assert(!ping_src_fd.empty());
     // quick destination lookup by next scheduled check time
+    using RefDestIpSocketTime = std::reference_wrapper<DestIpSocketTime>;
     std::priority_queue<RefDestIpSocketTime> dest_by_time;
     for (auto& ipaddr_dst : dest_by_ip) {
         DestIpSocketTime& dest_ping_info = std::get<1>(ipaddr_dst);
@@ -698,10 +697,3 @@ void frbNetworkSend::receive_ping_responses() {
         }
     }
 }
-
-DestIpSocket::DestIpSocket(std::string host, sockaddr_in addr, int s, bool active) :
-    host(std::move(host)), addr(std::move(addr)), sending_socket(s), active(active), live(false) {}
-
-DestIpSocket::DestIpSocket(DestIpSocket&& other) :
-    host(std::move(other.host)), addr(std::move(other.addr)), sending_socket(other.sending_socket),
-    active(other.active), live(other.live.load()) {}
