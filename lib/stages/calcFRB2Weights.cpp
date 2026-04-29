@@ -216,32 +216,11 @@ public:
 
         // Set W2
         {
-            // Kendrick's FRB beamforming note, equation 7:
-            //   theta = M (nhat ⋅ sigma) / lambda
-            // where nhat is the unit vector in the direction of the sky location
-            // sigma is the dish displacement in meters East-West.
-            //
-            // We'll assume that the dishes are pointed along the meridian, so
-            // the boresight lies in the y,z plane (x=0)
-            //   nhat_0_x = 0  (x is the direction of RA = EW, y of Dec = NS)
-            //   nhat_0_y = cos(zd)
-            //   nhat_0_z = sin(zd)
-            // And nhat for each beam will be
-            //   nhat_z ~ sin(zd - ddec)
-            //   nhat_x ~ cos(zd - ddec) * sin(dra)
-            //   nhat_y ~ cos(zd - ddec) * cos(dra)
-            // We could probably get away with small-angle
-            // approximations of beam_dra,beam_ddec,
-            //   nhat_z ~ sin(zd)
-            //   nhat_y ~ cos(zd) - ddec * sin(zd)    (cos(a-b) ~ cos(a) + b sin(a) when b->0);
-            //   cos(dra)~1 nhat_x ~ cos(zd) * dra
-            // (but here we don't use the small-angle approx)
-
             // Start timer
             DEBUG("Calculating FRB2 beam weights...");
             const double t0 = current_time();
 
-            using std::cos, std::sin;
+            using std::cos, std::sin, std::sqrt;
 
             const float c0 = 299792458.0f; // speed of light in vacuum [m/s]
 
@@ -253,13 +232,22 @@ public:
                     float A = s == 0 || s == M ? 0.5f : 1.0f;
                     acc += A * cos(float(M_PI) * (2 * theta - p) * s / M);
                 }
-                return acc;
+                return acc / M;
             };
 
             const std::ptrdiff_t str_beamP = 1;
             const std::ptrdiff_t str_beamQ = str_beamP * frb1_num_beams_x;
             const std::ptrdiff_t str_beamR = str_beamQ * frb1_num_beams_y;
             const std::ptrdiff_t str_freq = str_beamR * frb2_num_beams;
+
+            // TODO: Take these from the telescope object
+            const float sigmax_x = 6.3;
+            const float sigmax_y = 0;
+            const float sigmax_z = 0;
+
+            const float sigmay_x = 0;
+            const float sigmay_y = 8.5;
+            const float sigmay_z = 0;
 
 #pragma omp parallel
             {
@@ -273,8 +261,21 @@ public:
                     const float wavelength = c0 / afreq;
 
                     for (int beamR = 0; beamR < frb2_num_beams; ++beamR) {
-                        const float theta_x = frb2_beam_positions_frame[2 * beamR + 0] / wavelength;
-                        const float theta_y = frb2_beam_positions_frame[2 * beamR + 1] / wavelength;
+                        // Unit vector pointing to sky location
+                        const float nx = sin(frb2_beam_positions_frame[2 * beamR + 0]);
+                        const float ny = sin(frb2_beam_positions_frame[2 * beamR + 1]);
+                        const float nz = sqrt(1 - (nx * nx + ny * ny));
+
+                        // Kendrick's FRB beamforming notes, equation 7:
+                        //   theta = M (nhat ⋅ sigma) / lambda
+                        // where nhat is the unit vector in the direction of the sky location
+                        // sigma is the dish displacement in meters East-West.
+                        const float theta_x = num_dishes_x
+                                              * (nx * sigmax_x + ny * sigmax_y + nz * sigmax_z)
+                                              / wavelength;
+                        const float theta_y = num_dishes_y
+                                              * (nx * sigmay_x + ny * sigmay_y + nz * sigmay_z)
+                                              / wavelength;
 
                         for (int i = 0; i < frb1_num_beams_x; ++i)
                             Up[i] = Ufunc(i, num_dishes_x, theta_x);
