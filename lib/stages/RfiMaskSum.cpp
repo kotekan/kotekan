@@ -107,7 +107,7 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
     // Sanity checks on initialization
     {
         // number of frequencies in incoming frames from n2k
-        if (_num_local_freq <= 0)
+        if (!(_num_local_freq > 0))
             FATAL_ERROR("num_local_freq is not positive: {:d}", _num_local_freq);
 
         // sampling information
@@ -119,6 +119,8 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
             FATAL_ERROR(
                 "samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d})",
                 _samples_per_data_set, _sub_integration_ntime);
+        if (!(_samples_per_data_set % 1024 == 0))
+            FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of 1024", _samples_per_data_set);
 
         // RFI downsampling factor checks
         if (!(_rfi_downsampling_factor > 0))
@@ -137,6 +139,8 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
         FATAL_ERROR("RfiMaskSum in_buf ({:s}) has frame size {:d}. Expected {:d}.",
                     in_buf->buffer_name, in_buf->frame_size, in_rfimask_frame_size);
 
+    in_buf->allocate_ndarray_frame_desc(kotekan::uint1x8, "RFImask",
+                                         {div_noremainder(_samples_per_data_set, 1024), _num_local_freq, 1024 / 8}, {"T8hi128", "F", "T8lo128"});
     out_buf->allocate_ndarray_frame_desc(kotekan::int32, "RFImask_counts",
                                          {_num_integrations, _num_local_freq}, {"Tc", "F"});
 }
@@ -196,7 +200,7 @@ void RfiMaskSum::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_
     //
     // Each RFI mask frame has structure:
     //
-    //      rfimask[Thi/1024, F, Tlo]
+    //      rfimask[Thi1024, F, Tlo1024/sizeof(unit-size)]
     //
     // In particular:
     //
@@ -218,8 +222,8 @@ void RfiMaskSum::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_
     // Furthermore, the RFI mask is only computed every rfi_downsampling_factor
     // samples, so t can be incremented by rfi_downsampling_factor.
 
-    uint64_t rfi_stride_f = 128; // = rfimask_fast_time_len / bits_per_entry = 1024 / 8;
-    uint64_t rfi_stride_thi = rfi_stride_f * _num_local_freq;
+    const uint64_t rfi_stride_f = 128; // = rfimask_fast_time_len / bits_per_entry = 1024 / 8;
+    const uint64_t rfi_stride_thi = rfi_stride_f * _num_local_freq;
 
     for (int64_t f = 0; f < _num_local_freq; ++f) {
         rfimask_count[f] = 0;
@@ -229,13 +233,13 @@ void RfiMaskSum::accumulate_rfimask_in_sample(const uint8_t* rfimask, int64_t t_
             // Casting to a uint64_t here is a micro-optimization,
             // the assembly is slighty simpler if the compliler knows
             // the numerator is non-negative.
-            int64_t thi = ((uint64_t)t) / 1024;
-            int64_t tlo = (((uint64_t)t) % 1024) / 8;
-            int64_t tbit = ((uint64_t)t) % 8;
+            const int64_t thi = ((uint64_t)t) / 1024;
+            const int64_t tlo = (((uint64_t)t) % 1024) / 8;
+            const int64_t tbit = ((uint64_t)t) % 8;
 
-            int64_t idx = thi * rfi_stride_thi + f * rfi_stride_f + tlo;
+            const int64_t idx = thi * rfi_stride_thi + f * rfi_stride_f + tlo;
 
-            uint8_t rfimask_val = (rfimask[idx] >> tbit) & 0x1;
+            const uint8_t rfimask_val = (rfimask[idx] >> tbit) & 0x1;
 
             rfimask_count[f] += (1 - rfimask_val) * _rfi_downsampling_factor;
         } // t

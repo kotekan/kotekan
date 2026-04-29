@@ -13,7 +13,6 @@
 #include <assert.h>   // for assert
 #include <cstdlib>    // for abort, size_t
 #include <functional> // for bind, function
-#include <omp.h>      // for omp_get_wtime
 #include <random>     // for uniform_int_distribution, mt19937
 #include <stdint.h>   // for int32_t, uint32_t, uint64_t, int64_t
 #include <utility>    // for swap
@@ -236,8 +235,6 @@ void testLostCountsGen::main_thread() {
         store.resize(num_entries * num_frames);
     }
 
-    [[maybe_unused]] double last_time = omp_get_wtime();
-
     while (!stop_thread) {
 
         // grab frames
@@ -251,8 +248,6 @@ void testLostCountsGen::main_thread() {
             if (n2k_counts == nullptr)
                 break;
         }
-
-        [[maybe_unused]] double start_time = omp_get_wtime();
 
         // create metadata
         const std::shared_ptr<chordMetadata> meta = get_new_metadata(out_buf, frame_id);
@@ -303,11 +298,6 @@ void testLostCountsGen::main_thread() {
             DEBUG("Generated a {:s} test PL count data set in {:s}[{:d}] at seq {:d}", type,
                   out_buf->buffer_name, frame_id, seq_num);
         }
-
-        [[maybe_unused]] double curr_time = omp_get_wtime();
-        DEBUG("Frame generation took {:f} ms + {:f} ms idle", (curr_time - start_time) * 1000,
-              (start_time - last_time) * 1000);
-        last_time = curr_time;
 
         out_buf->mark_frame_full(unique_name, frame_id++);
 

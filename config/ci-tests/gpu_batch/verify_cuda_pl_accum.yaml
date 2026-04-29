@@ -27,7 +27,7 @@ num_dishes: 64
 num_elements: num_polarizations * num_dishes
 num_local_freq: 8
 
-sub_integration_ntime: 256
+sub_integration_ntime: 64
 
 # Pool
 main_pool:
@@ -114,12 +114,6 @@ cpu_pl_counts:
     kotekan_stage: gpuSimulatePLMaskAccumulator
     in_buf: host_pl_mask_buffer
     out_buf: simulated_pl_counts_buffer
-
-cpu_pl_lost_counts:
-    kotekan_stage: CountLostPLSamplesScalar
-    in_buf: host_pl_mask_buffer
-    out_buf: host_pl_lost_counts_buffer
-
 
 check_pl_counts_data:
   kotekan_stage: testDataCheckUlong

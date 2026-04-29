@@ -299,17 +299,8 @@ void N2TimeDownsample::main_thread() {
                     size_t d_i = i % num_dishes;
                     size_t d_j = j % num_dishes;
 
-                    // Computing the total phase in double precision
-                    // in case one of the dish phases is small.
-                    // Adding the weighting by valid samples here as well.
-                    // std::complex<double> w_doub = (fringe_phase[d_i] *
-                    // std::conj(fringe_phase[d_j]))
-                    //                              * ((double)frame.n_valid_fpga_ticks);
-
-                    // Now truncate the phase to a float to match vis[]
-                    // Have to be explicit about this, compiler complains
-                    // otherwise.
-                    // N2::cfloat w{(float)w_doub.real(), (float)w_doub.imag()};
+                    // Weight by number of valid samples and include a fringe-stopping phase
+                    // (will be 1.0 if do_fringestop is false)
                     std::complex<float> w = (fringe_phase[d_i] * std::conj(fringe_phase[d_j]))
                                             * ((float)frame.n_valid_fpga_ticks);
 

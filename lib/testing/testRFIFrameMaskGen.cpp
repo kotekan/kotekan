@@ -13,7 +13,9 @@
 #include <assert.h>   // for assert
 #include <cstdlib>    // for abort, size_t
 #include <functional> // for bind, function
+#ifdef WITH_OMP
 #include <omp.h>      // for omp_get_wtime
+#endif
 #include <random>     // for uniform_int_distribution, mt19937
 #include <stdint.h>   // for int32_t, uint32_t, uint64_t, int64_t
 #include <utility>    // for swap
@@ -207,7 +209,9 @@ void testRFIFrameMaskGen::main_thread() {
         store.resize(num_entries * num_frames);
     }
 
+#ifdef WITH_OMP
     [[maybe_unused]] double last_time = omp_get_wtime();
+#endif
 
     while (!stop_thread) {
 
@@ -216,7 +220,9 @@ void testRFIFrameMaskGen::main_thread() {
         if (framemask == nullptr)
             break;
 
+#ifdef WITH_OMP
         [[maybe_unused]] double start_time = omp_get_wtime();
+#endif
 
         // create metadata
         const std::shared_ptr<chordMetadata> meta = get_new_metadata(out_buf, frame_id);
@@ -259,10 +265,12 @@ void testRFIFrameMaskGen::main_thread() {
                   out_buf->buffer_name, frame_id, seq_num);
         }
 
+#ifdef WITH_OMP
         [[maybe_unused]] double curr_time = omp_get_wtime();
         DEBUG("Frame generation took {:f} ms + {:f} ms idle", (curr_time - start_time) * 1000,
               (start_time - last_time) * 1000);
         last_time = curr_time;
+#endif
 
         out_buf->mark_frame_full(unique_name, frame_id++);
 

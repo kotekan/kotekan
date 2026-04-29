@@ -157,7 +157,7 @@ public:
     }
 
     bool has_name() const {
-        return true;
+        return (strnlen(this->name, CHORD_META_MAX_DIMNAME) > 0);
     }
 
     void set_name(const std::string& name) {

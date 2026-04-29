@@ -131,14 +131,17 @@ cudaPLMaskAccumulator::cudaPLMaskAccumulator(kotekan::Config& config,
 //
 {
     // For pl_mask_T128_sample_bytes
-    if (sub_integration_ntime % 128 != 0)
-        FATAL_ERROR("sub_integration_ntime % 128 != 0");
+    if (sub_integration_ntime % 2 != 0)
+        FATAL_ERROR("sub_integration_ntime % 2 != 0");
 
     if (num_times % 128 != 0)
         FATAL_ERROR("num_times % 128 != 0");
 
     if (num_times % sub_integration_ntime != 0)
         FATAL_ERROR("num_times % sub_integration_ntime != 0");
+    
+    if ((num_dishes * num_polarizations) % 128 != 0)
+        FATAL_ERROR("num_elements (dish x pol) % 128 != 0");
 
     pl_mask.register_consumer();
     pl_counts.register_producer();

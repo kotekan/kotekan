@@ -15,7 +15,9 @@
 #include <assert.h>   // for assert
 #include <cstdlib>    // for abort, size_t
 #include <functional> // for bind, function
+#ifdef WITH_OMP
 #include <omp.h>      // for omp_get_wtime
+#endif
 #include <random>     // for uniform_int_distribution, mt19937
 #include <stdint.h>   // for int32_t, uint32_t, uint64_t, int64_t
 #include <utility>    // for swap
@@ -260,8 +262,9 @@ void testN2kGen::main_thread() {
         corr_store.resize(corr_num_entries * num_frames);
         count_store.resize(count_num_entries * num_frames);
     }
-
+#ifdef WITH_OMP
     [[maybe_unused]] double last_time = omp_get_wtime();
+#endif
 
     while (!stop_thread) {
 
@@ -273,7 +276,9 @@ void testN2kGen::main_thread() {
         if (count == nullptr)
             break;
 
+#ifdef WITH_OMP
         [[maybe_unused]] double start_time = omp_get_wtime();
+#endif
 
         // create metadata
         const std::shared_ptr<chordMetadata> corr_meta = get_new_metadata(corr_buf, corr_frame_id);
@@ -443,25 +448,13 @@ void testN2kGen::main_thread() {
                   count_buf->buffer_name, count_frame_id, seq_num);
 
         } // if (repeat <= 0 or num_frames_generated < num_frames)
-        /*
-        else if (repeat_count > 0) {
-            // We're repeating!  Just copy from the store into the buffer.
-            size_t store_index = num_frames_generated % num_frames;
-            std::copy(corr_store.begin() + store_index * corr_num_entries,
-                      corr_store.begin() + (store_index + 1) * corr_num_entries, corr);
-            std::copy(count_store.begin() + store_index * count_num_entries,
-                      count_store.begin() + (store_index + 1) * count_num_entries, count);
-            // DEBUG("Repeated a {:s} test correlation data set into {:s}[{:d}] at seq {:d}",
-            //       corr_type, corr_buf->buffer_name, corr_frame_id, seq_num);
-            // DEBUG("Repeated a {:s} test counts data set into {:s}[{:d}] at seq {:d}", count_type,
-            //       count_buf->buffer_name, count_frame_id, seq_num);
-        }
-        */
 
+#ifdef WITH_OMP
         [[maybe_unused]] double curr_time = omp_get_wtime();
         DEBUG("Frame generation took {:f} ms + {:f} ms idle", (curr_time - start_time) * 1000,
               (start_time - last_time) * 1000);
         last_time = curr_time;
+#endif
 
         corr_buf->mark_frame_full(unique_name, corr_frame_id++);
         count_buf->mark_frame_full(unique_name, count_frame_id++);

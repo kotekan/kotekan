@@ -23,7 +23,9 @@
 #include <cstdlib>    // for abort
 #include <functional> // for bind, function, placeholders
 #include <memory>     // for shared_ptr, __shared_ptr_access
+#ifdef WITH_OMP
 #include <omp.h>
+#endif
 #include <sched.h>
 #include <time.h> // for size_t, timespec
 #include <vector> // for vector
@@ -313,7 +315,9 @@ void N2Accumulate::main_thread() {
     // We start with START.
     Mode mode = Mode::START;
 
+#ifdef WITH_OMP
     [[maybe_unused]] double prof_last_time = omp_get_wtime();
+#endif
 
     while (!stop_thread) {
 
@@ -431,7 +435,9 @@ void N2Accumulate::main_thread() {
         // t_outer
         for (int64_t t = 0; t < _n_integrations_per_n2k_frame; ++t) {
 
+#ifdef WITH_OMP
             [[maybe_unused]] double prof_start_time = omp_get_wtime();
+#endif
 
 
             // "absolute" vis sample number
@@ -523,7 +529,9 @@ void N2Accumulate::main_thread() {
 
             int64_t n_samples_per_pair = 2 * _n_fpga_samples_per_n2k_correlation;
 
+#ifdef WITH_OMP
 #pragma omp parallel for num_threads(_num_workers)
+#endif
             for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
 
                 // Second: accum packet loss, it's always present.
@@ -577,11 +585,13 @@ void N2Accumulate::main_thread() {
                 target_eop = get_accum_bin_EOP(next_bin_idx);
             }
 
+#ifdef WITH_OMP
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
             DEBUG("Adding input frame pair took {:f} ms + {:f} ms idle",
                   (prof_curr_time - prof_start_time) * 1000,
                   (prof_start_time - prof_last_time) * 1000);
             prof_last_time = prof_curr_time;
+#endif
 
         } // t (vis samples in frame)
 
@@ -850,7 +860,9 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
 
 bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframemask_frame_id,
                                     frameID& out_frame_id) {
+#ifdef WITH_OMP
     [[maybe_unused]] double prof_out_start_time = omp_get_wtime();
+#endif
     // Different frame for each frequency
     // But, mostly same metadata
     std::shared_ptr<chordMetadata> chord_frame_metadata = get_chord_metadata(in_buf, in_frame_id);
@@ -927,7 +939,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     int64_t stride_f = stride_block * _n2k_correlation_num_blocks;
 
     const int64_t freq_block_size = _output_batch_size;
-    const int64_t num_output_workers = std::min(_num_workers, _output_batch_size);
+    [[maybe_unused]] const int64_t num_output_workers = std::min(_num_workers, _output_batch_size);
     const int64_t num_freq_blocks =
         (_num_freq_per_n2k_frame + freq_block_size - 1) / freq_block_size;
 
@@ -942,7 +954,9 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     // Loop over frequency blocks
     for (int64_t fb = 0; fb < num_freq_blocks; fb++) {
 
+#ifdef WITH_OMP
         [[maybe_unused]] double prof_out_t0 = omp_get_wtime();
+#endif
         // Wait for a block of frames to be available.  Grab them and get them metadata.
         for (int64_t f_idx = 0; f_idx < freq_block_size; f_idx++) {
             int64_t f = f_idx + fb * freq_block_size;
@@ -960,11 +974,15 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
                 metas[f_idx] = nullptr;
             }
         } // f_idx
+#ifdef WITH_OMP
         [[maybe_unused]] double prof_out_t1 = omp_get_wtime();
+#endif
 
         // Write the accumulated data to the output frames, and set their metadata.
         // We can do this in parallel!
+#ifdef WITH_OMP
 #pragma omp parallel for num_threads(num_output_workers)
+#endif
         for (int64_t f_idx = 0; f_idx < freq_block_size; f_idx++) {
             int64_t f = f_idx + fb * freq_block_size;
             if (f >= _num_freq_per_n2k_frame)
@@ -1108,7 +1126,9 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
             std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(255u));
         } // f_idx
 
+#ifdef WITH_OMP
         [[maybe_unused]] double prof_out_t2 = omp_get_wtime();
+#endif
 
         // All the frames in the block are full. Release them and increment out_frame_id;
         for (int64_t f_idx = 0; f_idx < freq_block_size; f_idx++) {
@@ -1117,24 +1137,31 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
                 out_buf->mark_frame_full(unique_name, out_frame_id++);
         } // f_idx
 
+#ifdef WITH_OMP
         [[maybe_unused]] double prof_out_t3 = omp_get_wtime();
-
         prof_out_setup_time += prof_out_t1 - prof_out_t0;
         prof_out_work_time += prof_out_t2 - prof_out_t1;
         prof_out_free_time += prof_out_t3 - prof_out_t2;
+#endif
 
     } // fb
 
     DEBUG("Wrapping up accumulation buffer output copy.");
 
+#ifdef WITH_OMP
     [[maybe_unused]] double prof_out_fill_time = omp_get_wtime();
+#endif
 
     // _vis and _var are large, 0 them in parallel.
+#ifdef WITH_OMP
 #pragma omp parallel for simd num_threads(_num_workers)
+#endif
     for (uint64_t i = 0; i < _vis.size(); i++)
         _vis[i] = 0;
 
+#ifdef WITH_OMP
 #pragma omp parallel for simd num_threads(_num_workers)
+#endif
     for (uint64_t i = 0; i < _var.size(); i++)
         _var[i] = 0.0f;
 
@@ -1144,6 +1171,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     std::fill(_n_rfi_samples_in_vis.begin(), _n_rfi_samples_in_vis.end(), 0);
     std::fill(_n_pl_samples_in_vis.begin(), _n_pl_samples_in_vis.end(), 0);
 
+#ifdef WITH_OMP
     [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
 
     DEBUG("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  "
@@ -1151,6 +1179,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
           _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
           1000 * prof_out_setup_time, 1000 * prof_out_work_time, 1000 * prof_out_free_time,
           1000 * (prof_out_end_time - prof_out_fill_time));
+#endif
 
     return true;
 }

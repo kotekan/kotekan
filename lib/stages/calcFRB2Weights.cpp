@@ -11,6 +11,9 @@
 
 #include <cassert>
 #include <cstdint>
+#ifdef WITH_OMP
+#include <omp.h>
+#endif
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -249,12 +252,16 @@ public:
             const float sigmay_y = 8.5;
             const float sigmay_z = 0;
 
+#ifdef WITH_OMP
 #pragma omp parallel
+#endif
             {
                 std::vector<float> Up(frb1_num_beams_x);
                 std::vector<float> Uq(frb1_num_beams_y);
 
+#ifdef WITH_OMP
 #pragma omp for
+#endif
                 for (int freq = 0; freq < frb2_num_frequencies; ++freq) {
                     // Calculate physical frequency from channel index
                     const float afreq = frequencies.at(freq);

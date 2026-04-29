@@ -31,7 +31,7 @@ struct N2MetadataFormat {
     double freq_MHz = 0.0;
 
     /// absolute time index of this frame in its stream. Begins at 0 at some
-    /// epoch and counts monitonically afterwards.
+    /// epoch and counts monotonically upwards afterwards.
     uint64_t abs_time_idx = 0;
 
     /// Earth Orientation Parameters at the center of the integration/accumulation time

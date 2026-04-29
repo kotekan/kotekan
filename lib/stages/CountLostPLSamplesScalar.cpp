@@ -102,6 +102,21 @@ CountLostPLSamplesScalar::CountLostPLSamplesScalar(Config& config, const std::st
     out_buf->register_producer(unique_name);
 
     // Check input sizes and buffer compatibility
+    if (_samples_per_data_set <= 0) {
+        FATAL_ERROR("samples_per_data_set %d must be positive", _samples_per_data_set);
+    }
+    if (_sub_integration_ntime <= 0) {
+        FATAL_ERROR("sub_integration_ntime %d must be positive", _sub_integration_ntime);
+    }
+    if (_num_local_freq <= 0) {
+        FATAL_ERROR("num_local_freq %d must be positive", _num_local_freq);
+    }
+    if (_num_dishes <= 0) {
+        FATAL_ERROR("num_dishes %d must be positive", _num_dishes);
+    }
+    if (_num_polarizations <= 0) {
+        FATAL_ERROR("num_polarizations %d must be positive", _num_polarizations);
+    }
     if (_samples_per_data_set % 128 != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of 128");
     }
@@ -156,12 +171,12 @@ void CountLostPLSamplesScalar::main_thread() {
         uint64_t fstride_pl = ne_pl;
         uint64_t tstride_pl = ne_pl * nf_pl;
 
+        // Initialize to 0
+        for (uint64_t ft = 0; ft < nt_int * nf; ft++)
+            pl_counts[ft] = 0;
+
         // Looping over entries in the pl_counts buffer.
         for (uint64_t t_int = 0; t_int < nt_int; t_int++) {
-
-            // Initialize to 0
-            for (uint64_t f = 0; f < nf; f++)
-                pl_counts[f + t_int * nf] = 0;
 
             // Accumulate over outer (T/128) PL time axis
             for (uint64_t t_sub_pl = 0; t_sub_pl < nsub_pl; t_sub_pl++) {
@@ -224,10 +239,10 @@ void CountLostPLSamplesScalar::main_thread() {
         // Start with a copy
         meta_out->deepCopy(meta_in);
 
+        // Set NDArray fields
         meta_out->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
 
         // Set non-NDArray things.
-        meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num()); // just in case
         meta_out->set_time_downsampling_fpga(
             div_noremainder(meta_in->get_time_downsampling_fpga(), 128) * _sub_integration_ntime);
 

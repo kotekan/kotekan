@@ -155,7 +155,6 @@ gen_pl_lost_counts:
     use_n2k_counts: True
 
 gen_fake_corr_counts:
-    log_level: DEBUG
     kotekan_stage: testN2kGen
     out_buf: fake_correlation_buffer
     out_counts_buf: fake_counts_buffer

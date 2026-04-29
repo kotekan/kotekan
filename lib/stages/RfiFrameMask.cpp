@@ -171,7 +171,7 @@ RfiFrameMask::RfiFrameMask(Config& config, const std::string& unique_name,
     // Sanity checks on initialization
     {
         // number of frequencies in incoming frames from n2k
-        if (_num_local_freq <= 0)
+        if (!(_num_local_freq > 0))
             FATAL_ERROR("num_local_freq is not positive: {:d}", _num_local_freq);
 
         // sampling information
@@ -261,12 +261,12 @@ void RfiFrameMask::main_thread() {
         // Get metadata for incoming SK frame.
         std::shared_ptr<chordMetadata> in_meta = get_chord_metadata(in_buf, in_frame_id);
 
-        int64_t sk_f_stride = 3;
-        int64_t sk_t_stride = 3 * _num_local_freq;
-        int64_t mask_t_stride = _num_local_freq;
+        const int64_t sk_f_stride = 3; // For 3 SK quantities in the buffer: {SK, bias, sigma}
+        const int64_t sk_t_stride = 3 * _num_local_freq;
+        const int64_t mask_t_stride = _num_local_freq;
 
         // update the thresholds and enabled status for this frame.
-        int64_t seq_num = in_meta->get_fpga_seq_num();
+        const int64_t seq_num = in_meta->get_fpga_seq_num();
         update_enabled_and_thresholds(seq_num);
 
         if (_threshold.size() != _fraction.size()

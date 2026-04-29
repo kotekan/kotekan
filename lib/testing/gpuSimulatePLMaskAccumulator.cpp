@@ -113,8 +113,8 @@ gpuSimulatePLMaskAccumulator::gpuSimulatePLMaskAccumulator(Config& config,
     if (_samples_per_data_set % 128 != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of 128");
     }
-    if (_sub_integration_ntime % 128 != 0) {
-        FATAL_ERROR("samples_per_data_set must be a multiple of 128");
+    if (_sub_integration_ntime % 2 != 0) {
+        FATAL_ERROR("sub_integration_ntime must be even");
     }
     if (_samples_per_data_set % _sub_integration_ntime != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of sub_integration_ntime");
@@ -124,6 +124,9 @@ gpuSimulatePLMaskAccumulator::gpuSimulatePLMaskAccumulator(Config& config,
     }
     if (_num_dishes % 8 != 0) {
         FATAL_ERROR("num_dishes must be a multiple of 8");
+    }
+    if (_num_elements % 128 != 0) {
+        FATAL_ERROR("num_elements (dish x pol) must be a multiple of 128");
     }
 
     // Make frame desc for produced buffer (this also checks the size)
@@ -145,7 +148,7 @@ void gpuSimulatePLMaskAccumulator::main_thread() {
     frameID out_frame_id(out_buf);
 
     while (!stop_thread) {
-        uint64_t* pl_mask = (uint64_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
+        const uint64_t* pl_mask = (uint64_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (pl_mask == nullptr)
             break;
         uint64_t* pl_counts = (uint64_t*)out_buf->wait_for_empty_frame(unique_name, out_frame_id);
@@ -156,28 +159,28 @@ void gpuSimulatePLMaskAccumulator::main_thread() {
              in_buf->buffer_name, in_frame_id, out_buf->buffer_name, out_frame_id);
 
         // number of elements = number of dishes * polarizations
-        uint64_t nf = _num_local_freq;
-        uint64_t ne = _num_elements;
+        const uint64_t nf = _num_local_freq;
+        const uint64_t ne = _num_elements;
 
-        uint64_t nsub = _sub_integration_ntime;
-        uint64_t nt_int = _num_integrations;
+        const uint64_t nsub = _sub_integration_ntime;
+        const uint64_t nt_int = _num_integrations;
 
-        uint64_t nf_pl = (_num_local_freq + 3) / 4;
+        const uint64_t nf_pl = (_num_local_freq + 3) / 4;
         uint64_t ne_pl = _num_elements / 8;
 
         // array access strides in raw (downsampled) PL mask
-        uint64_t fstride_pl = ne_pl;
-        uint64_t tstride_pl = ne_pl * nf_pl;
+        const uint64_t fstride_pl = ne_pl;
+        const uint64_t tstride_pl = ne_pl * nf_pl;
 
         // array access strides in S012
-        uint64_t fstride_pl_counts = ne;
-        uint64_t tstride_pl_counts = nf * ne;
+        const uint64_t fstride_pl_counts = ne;
+        const uint64_t tstride_pl_counts = nf * ne;
 
         // Set to 0 to start.
         for (uint64_t tfe = 0; tfe < tstride_pl_counts * nt_int; tfe++)
             pl_counts[tfe] = 0;
 
-        // Looping over entries in the rfi buffer.
+        // Looping over entries in the PL counts buffer.
         for (uint64_t t_int = 0; t_int < nt_int; t_int++) {
 
             // Now accumulate.
