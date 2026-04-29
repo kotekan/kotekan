@@ -14,7 +14,7 @@ prod_config = {
     "num_n2k_samples_to_accumulate": 2,
     "variance_mode": "EvenOddPosDef",
     "num_ev": 0,
-    "num_workers": 1
+    "num_workers": 1,
 }
 
 
@@ -43,7 +43,19 @@ def setup(request):
     return request.param
 
 
-def make_zeroed_chord_buffer(name, dtype, typename, shape, dim_names, seq0, dseq, num_frames, freq_ids=None, time_downsampling=None, extra_meta=None):
+def make_zeroed_chord_buffer(
+    name,
+    dtype,
+    typename,
+    shape,
+    dim_names,
+    seq0,
+    dseq,
+    num_frames,
+    freq_ids=None,
+    time_downsampling=None,
+    extra_meta=None,
+):
 
     bufs = []
 
@@ -53,11 +65,11 @@ def make_zeroed_chord_buffer(name, dtype, typename, shape, dim_names, seq0, dseq
         data = np.zeros(shape, dtype=dtype)
 
         meta = runner.chordbuffer.get_metadata(name, typename, dim_names)
-        meta['fpga_seq_num'] = seq
+        meta["fpga_seq_num"] = seq
         if freq_ids is not None:
-            meta['coarse_freq'] = freq_ids
+            meta["coarse_freq"] = freq_ids
         if time_downsampling is not None:
-            meta['time_downsampling_fpga'] = time_downsampling
+            meta["time_downsampling_fpga"] = time_downsampling
 
         if extra_meta is not None:
             for key, val in extra_meta.items():
@@ -101,11 +113,18 @@ def corr_data(setup):
 
     shape = (num_int, num_freq, num_blocks, blocksize, blocksize, 2)
 
-    bufs = make_zeroed_chord_buffer("n2k_correlation", np.int32, "int32", shape,
-                                    ("Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"),
-                                    0, config['samples_per_data_set'], setup['num_frames'],
-                                    freq_ids=freq_ids,
-                                    time_downsampling=config['sub_integration_ntime'])
+    bufs = make_zeroed_chord_buffer(
+        "n2k_correlation",
+        np.int32,
+        "int32",
+        shape,
+        ("Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"),
+        0,
+        config["samples_per_data_set"],
+        setup["num_frames"],
+        freq_ids=freq_ids,
+        time_downsampling=config["sub_integration_ntime"],
+    )
 
     return bufs
 
@@ -141,13 +160,20 @@ def count_data(setup):
 
     shape = (num_int, num_freq, num_blocks, blocksize, blocksize)
 
-    bufs = make_zeroed_chord_buffer("n2k_counts", np.int32, "int32", shape,
-                                    ("Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"),
-                                    0, config['samples_per_data_set'], setup['num_frames'],
-                                    time_downsampling=config['sub_integration_ntime'])
+    bufs = make_zeroed_chord_buffer(
+        "n2k_counts",
+        np.int32,
+        "int32",
+        shape,
+        ("Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"),
+        0,
+        config["samples_per_data_set"],
+        setup["num_frames"],
+        time_downsampling=config["sub_integration_ntime"],
+    )
 
     for buf in bufs:
-        buf.data[...] = config['sub_integration_ntime']
+        buf.data[...] = config["sub_integration_ntime"]
 
     return bufs
 
@@ -174,11 +200,18 @@ def rficount_data(setup):
     num_freq = config["num_local_freq"]
 
     shape = (num_int, num_freq)
-    
-    bufs = make_zeroed_chord_buffer("RFImask_count", np.int32, "int32", shape,
-                                    ("Tc", "F"),
-                                    0, config['samples_per_data_set'], setup['num_frames'],
-                                    time_downsampling=config['sub_integration_ntime'])
+
+    bufs = make_zeroed_chord_buffer(
+        "RFImask_count",
+        np.int32,
+        "int32",
+        shape,
+        ("Tc", "F"),
+        0,
+        config["samples_per_data_set"],
+        setup["num_frames"],
+        time_downsampling=config["sub_integration_ntime"],
+    )
 
     return bufs
 
@@ -205,11 +238,18 @@ def plcount_data(setup):
     num_freq = config["num_local_freq"]
 
     shape = (num_int, num_freq)
-    
-    bufs = make_zeroed_chord_buffer("pl_lost_counts_scalar", np.int32, "int32", shape,
-                                    ("Tc", "F"),
-                                    0, config['samples_per_data_set'], setup['num_frames'],
-                                    time_downsampling=config['sub_integration_ntime'])
+
+    bufs = make_zeroed_chord_buffer(
+        "pl_lost_counts_scalar",
+        np.int32,
+        "int32",
+        shape,
+        ("Tc", "F"),
+        0,
+        config["samples_per_data_set"],
+        setup["num_frames"],
+        time_downsampling=config["sub_integration_ntime"],
+    )
 
     return bufs
 
@@ -236,14 +276,22 @@ def rfiframemask_data(setup):
     num_freq = config["num_local_freq"]
 
     shape = (num_int, num_freq)
-    
-    bufs = make_zeroed_chord_buffer("RFIFrameMask", np.uint8, "uint8", shape,
-                                    ("Tc", "F"),
-                                    0, config['samples_per_data_set'], setup['num_frames'],
-                                    time_downsampling=config['sub_integration_ntime'],
-                                    extra_meta={
-                                        "rfi_frame_excision_enabled": False,
-                                        "rfi_frame_excision_thresholds": np.empty((0,0), dtype=np.float32)})
+
+    bufs = make_zeroed_chord_buffer(
+        "RFIFrameMask",
+        np.uint8,
+        "uint8",
+        shape,
+        ("Tc", "F"),
+        0,
+        config["samples_per_data_set"],
+        setup["num_frames"],
+        time_downsampling=config["sub_integration_ntime"],
+        extra_meta={
+            "rfi_frame_excision_enabled": False,
+            "rfi_frame_excision_thresholds": np.empty((0, 0), dtype=np.float32),
+        },
+    )
 
     for buf in bufs:
         buf.data[...] = 1
