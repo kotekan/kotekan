@@ -32,8 +32,8 @@ add_library(
     testDataCheck.cpp
     testDataGenQuad.cpp
     testDataGenFloat.cpp
+    testLostCountsGen.cpp
     testLostSamplesToPLMask.cpp
-    testLostPLCountsScalarGen.cpp
     testN2kGen.cpp
     testRFIS012Gen.cpp
     testRFImaskGen.cpp

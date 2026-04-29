@@ -146,14 +146,13 @@ gen_RFI_frame_mask:
     num_frames: frames_to_generate
 
 gen_pl_lost_counts:
-    kotekan_stage: testDataGen
+    kotekan_stage: testLostCountsGen
+    in_buf: fake_counts_buffer
     out_buf: fake_plcounts_buffer
-    type: random32
     name: "pl_lost_counts_scalar"
-    array_shape: [2, 16,]  # [samples_per_data_set / 1024, num_local_freq, 128]
-    dim_name: ["Tc", "F"]
-    meta_time_downsample_factor: sub_integration_ntime
+    type: random
     num_frames: frames_to_generate
+    use_n2k_counts: True
 
 gen_fake_corr_counts:
     log_level: DEBUG

@@ -329,7 +329,6 @@ def accum_data(
     config = setup["config"]
 
     tmpdir = tmpdir_factory.mktemp("n2accum")
-    tmpdir = "test-accum-data"
 
     # Make input buffer and write the files for it to read.
     corr_buffer = runner.ReadChordBuffer(str(tmpdir), corr_data)
@@ -382,12 +381,11 @@ def test_meta(accum_data, setup):
 
     for idx, frame in enumerate(accum_data):
 
-        assert frame.metadata["name"] == "pl_lost_counts_scalar"
-        assert (frame.metadata["dim_names"] == ["Tc", "F"]).all()
-        assert (
-            frame.metadata["time_downsampling_fpga"] == config["sub_integration_ntime"]
-        )
-        assert frame.metadata["fpga_seq_num"] == idx * config["samples_per_data_set"]
+        t = idx // config["num_local_freq"]
+        f = idx % config["num_local_freq"]
+
+        assert frame.metadata.freq_id == f
+        assert frame.metadata.abs_time_idx == t
 
 
 """

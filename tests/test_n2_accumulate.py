@@ -20,7 +20,7 @@ freq_ids = [0, 1024, 8191]
 
 # count_vals and rfi_vals lengths are mutually prime so all combinations get used with eachother.
 count_vals = [0, 4096, 4095, 20, 3000]
-rfi_vals = [255, 0, 255, 255]
+rficount_vals = [4096, 0, 3, 1]
 
 global_params = {
     "fft_length": 16384,
@@ -193,10 +193,12 @@ def accumulate_data(tmpdir_factory):
             "freq_ids": freq_ids,
             "num_frames": global_params["total_frames"],
         },
-        rfi_kwargs={
+        rficounts_kwargs={
             "type": "const",
-            "values": rfi_vals,
+            "value_array": rficount_vals,
             "first_frame_index": start_frame_idx,
+            "num_frames": global_params["total_frames"],
+            "use_n2k_counts": False,
         },
         plcounts_kwargs={
             "type": "random",
@@ -489,13 +491,15 @@ def test_rfi(accumulate_data):
 
         start_tick = frame.metadata.fpga_start_tick
 
-        subframe_idx = start_tick // global_params["sub_integration_ntime"]
+        subframe_idx0 = start_tick // global_params["sub_integration_ntime"]
+        freq_idx = idx % global_params["num_local_freq"]
 
         n_rfi = 0
-        for _ in range(accumulate_params["num_n2k_samples_to_accumulate"]):
-            dset_idx = subframe_idx // num_integrations
-            mask_val = 0 if rfi_vals[dset_idx % len(rfi_vals)] == 0 else 1
-            n_rfi += (1 - mask_val) * global_params["sub_integration_ntime"]
-            subframe_idx += 1
+        for subframe_idx in range(
+            subframe_idx0,
+            subframe_idx0 + accumulate_params["num_n2k_samples_to_accumulate"],
+        ):
+            rfi_idx = subframe_idx * global_params["num_local_freq"] + freq_idx
+            n_rfi += rficount_vals[rfi_idx % len(rficount_vals)]
 
         assert frame.metadata.n_rfi_fpga_ticks == n_rfi

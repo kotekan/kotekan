@@ -37,8 +37,6 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     corr_buf->register_producer(unique_name);
     count_buf = get_buffer("out_counts_buf");
     count_buf->register_producer(unique_name);
-    rfi_buf = get_buffer("in_rfimask_buf");
-    rfi_buf->register_consumer(unique_name);
 
     // Get generation parameters
     corr_name = config.get_default<std::string>(unique_name, "correlation_name", "n2k_correlation");
@@ -145,32 +143,15 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     count_num_entries =
         count_blocksize * count_blocksize * count_num_blocks * num_local_freq * num_integrations;
 
-    // Check frame sizes
-    size_t corr_frame_size = 2 * sizeof(int32_t) * corr_blocksize * corr_blocksize * corr_num_blocks
-                             * num_local_freq * num_integrations;
-    size_t count_frame_size = sizeof(int32_t) * count_blocksize * count_blocksize * count_num_blocks
-                              * num_local_freq * num_integrations;
-    size_t rfi_frame_size = num_local_freq * samples_per_data_set / 8;
-
-    if (corr_buf->frame_size != corr_frame_size) {
-        FATAL_ERROR("out_buf ({:s}) has frame size {:d}, expected {:d}.", corr_buf->buffer_name,
-                    corr_buf->frame_size, corr_frame_size);
-        std::abort();
-    }
-    if (count_buf->frame_size != count_frame_size) {
-        FATAL_ERROR("out_count_buf ({:s}) has frame size {:d}, expected {:d}.",
-                    count_buf->buffer_name, count_buf->frame_size, count_frame_size);
-        std::abort();
-    }
-    if (rfi_buf->frame_size != rfi_frame_size) {
-        FATAL_ERROR("out_buf ({:s}) has frame size {:d}, expected {:d}.", rfi_buf->buffer_name,
-                    rfi_buf->frame_size, rfi_frame_size);
-        std::abort();
-    }
-
     // allocate frame descriptors
-    allocate_correlation_frame_desc(corr_buf);
-    allocate_counts_frame_desc(count_buf);
+    corr_buf->allocate_ndarray_frame_desc(
+        kotekan::int32, "n2k_correlation",
+        {num_integrations, num_local_freq, corr_num_blocks, corr_blocksize, corr_blocksize, 2},
+        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
+    count_buf->allocate_ndarray_frame_desc(
+        kotekan::int32, "n2k_counts",
+        {num_integrations, num_local_freq, count_num_blocks, count_blocksize, count_blocksize},
+        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
 }
 
 std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID frame_id) {
@@ -192,33 +173,7 @@ std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID
     return meta;
 }
 
-void testN2kGen::allocate_correlation_frame_desc(Buffer* buf) {
-    buf->allocate_ndarray_frame_desc(
-        kotekan::int32, "n2k_correlation",
-        {num_integrations, num_local_freq, corr_num_blocks, corr_blocksize, corr_blocksize, 2},
-        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
-}
-
-void testN2kGen::allocate_counts_frame_desc(Buffer* buf) {
-    buf->allocate_ndarray_frame_desc(
-        kotekan::int32, "n2k_counts",
-        {num_integrations, num_local_freq, count_num_blocks, count_blocksize, count_blocksize},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
-}
-
-void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& meta,
-                                          uint64_t seq_num) {
-    meta->set_name(corr_name);
-    meta->type = kotekan::int32;
-    meta->dims = 6;
-    assert(meta->dims <= CHORD_META_MAX_DIM);
-    meta->set_array_dimension(0, num_integrations, "Tc");
-    meta->set_array_dimension(1, num_local_freq, "F");
-    meta->set_array_dimension(2, corr_num_blocks, "DPhi");
-    meta->set_array_dimension(3, corr_blocksize, "DPlo1");
-    meta->set_array_dimension(4, corr_blocksize, "DPlo2");
-    meta->set_array_dimension(5, 2, "C");
-    meta->set_strides_simple();
+void testN2kGen::set_shared_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num) {
 
     meta->set_fpga_seq_num(seq_num);
     meta->set_time_downsampling_fpga(sub_integration_ntime);
@@ -241,38 +196,6 @@ void testN2kGen::set_correlation_metadata(const std::shared_ptr<chordMetadata>& 
     if (dset_id) {
         meta->set_dataset_id(dset_id.value());
     }
-}
-
-void testN2kGen::set_counts_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num) {
-    meta->set_name(count_name);
-    meta->type = kotekan::int32;
-    meta->dims = 5;
-    assert(meta->dims <= CHORD_META_MAX_DIM);
-    meta->set_array_dimension(0, num_integrations, "Tc");
-    meta->set_array_dimension(1, num_local_freq, "F");
-    meta->set_array_dimension(2, count_num_blocks, "D8Phi");
-    meta->set_array_dimension(3, count_blocksize, "D8Plo1");
-    meta->set_array_dimension(4, count_blocksize, "D8Plo2");
-    meta->set_strides_simple();
-
-    // This looks inconsistent
-    meta->set_fpga_seq_num(seq_num);
-    meta->set_time_downsampling_fpga(sub_integration_ntime);
-
-    std::vector<int> coarse_freq(num_local_freq);
-    std::vector<int> freq_upchan_factor(num_local_freq);
-    std::vector<int> freq_upchan_index(num_local_freq);
-
-    for (int f = 0; f < num_local_freq; f++) {
-        coarse_freq[f] = freq_ids[f % freq_ids.size()];
-        freq_upchan_factor[f] = 1;
-        freq_upchan_index[f] = 0;
-    }
-
-    meta->set_coarse_freq(coarse_freq);
-    meta->set_freq_upchan_factor(freq_upchan_factor);
-    meta->set_freq_upchan_index(freq_upchan_index);
-    assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
 }
 
 void testN2kGen::get_blocked_indices(int i, int j, int blocksize, int& ihi, int& jhi, int& ilo,
@@ -307,7 +230,6 @@ void testN2kGen::main_thread() {
 
     frameID corr_frame_id(corr_buf);
     frameID count_frame_id(count_buf);
-    frameID rfi_frame_id(rfi_buf);
     int num_frames_generated = 0;
     uint64_t seq_num = first_frame_index * samples_per_data_set;
     int t_idx_start = seq_num / sub_integration_ntime;
@@ -350,9 +272,6 @@ void testN2kGen::main_thread() {
         int32_t* count = (int32_t*)count_buf->wait_for_empty_frame(unique_name, count_frame_id);
         if (count == nullptr)
             break;
-        int32_t* rfi = (int32_t*)rfi_buf->wait_for_full_frame(unique_name, rfi_frame_id);
-        if (rfi == nullptr)
-            break;
 
         [[maybe_unused]] double start_time = omp_get_wtime();
 
@@ -362,8 +281,10 @@ void testN2kGen::main_thread() {
             get_new_metadata(count_buf, count_frame_id);
 
         // fill metadata
-        set_correlation_metadata(corr_meta, seq_num);
-        set_counts_metadata(count_meta, seq_num);
+        corr_meta->set_from_frame_desc(corr_buf->get_ndarray_frame_desc());
+        count_meta->set_from_frame_desc(count_buf->get_ndarray_frame_desc());
+        set_shared_metadata(corr_meta, seq_num);
+        set_shared_metadata(count_meta, seq_num);
 
         // check frame descriptors match metadata
         corr_meta->check_frame_desc(corr_buf->get_ndarray_frame_desc());
@@ -544,7 +465,6 @@ void testN2kGen::main_thread() {
 
         corr_buf->mark_frame_full(unique_name, corr_frame_id++);
         count_buf->mark_frame_full(unique_name, count_frame_id++);
-        rfi_buf->mark_frame_empty(unique_name, rfi_frame_id++);
 
         num_frames_generated++;
         seq_num += samples_per_data_set;

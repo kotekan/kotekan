@@ -61,7 +61,6 @@ public:
 private:
     Buffer* corr_buf;
     Buffer* count_buf;
-    Buffer* rfi_buf;
     std::string corr_name;
     std::string corr_type;
     std::string count_name;
@@ -98,10 +97,7 @@ private:
     int count_num_entries;
 
     std::shared_ptr<chordMetadata> get_new_metadata(Buffer* buf, frameID frame_id);
-    void allocate_correlation_frame_desc(Buffer* buf);
-    void allocate_counts_frame_desc(Buffer* buf);
-    void set_correlation_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num);
-    void set_counts_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num);
+    void set_shared_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num);
     void get_blocked_indices(int i, int j, int blocksize, int& ihi, int& jhi, int& ilo, int& jlo0,
                              int& block_idx);
 };

@@ -101,12 +101,6 @@ fake_counts_buffer:
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
     metadata_pool: main_pool
 
-fake_rfimask_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: (samples_per_data_set * num_local_freq) / 8
-    metadata_pool: main_pool
-
 fake_rficounts_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -131,22 +125,11 @@ n2_buffer:
     num_frames: buffer_depth * num_local_freq
     metadata_pool: n2_pool
 
-gen_fake_rfi_RFImask:
-    kotekan_stage: testRFImaskGen
-    cpu_affinity: [3]
-    out_buf: fake_rfimask_buffer
-    type: "random"
-    value: 0xFF
-    num_frames: frames_to_generate
-    repeat_count: repeat
-    freq_ids: 
-
 gen_fake_corr_counts:
     kotekan_stage: testN2kGen
     cpu_affinity: [3]
     out_buf: fake_correlation_buffer
     out_counts_buf: fake_counts_buffer
-    in_rfimask_buf: fake_rfimask_buffer
     correlation_type: "f_times_ee"
     counts_type: "random_scalar"
     correlation_value: [ 1, -1 ]
@@ -157,13 +140,27 @@ gen_fake_corr_counts:
     num_frames: frames_to_generate
     repeat_count: repeat
 
-gen_pl_lost_counts:
-    kotekan_stage: testLostPLCountsScalarGen
+gen_rfi_counts:
+    kotekan_stage: testLostCountsGen
     cpu_affinity: [3]
-    out_buf: fake_plcounts_buffer
+    in_buf: fake_counts_buffer
+    out_buf: fake_rficounts_buffer
+    name: RFImask_counts
     type: random
     num_frames: frames_to_generate
     repeat_count: repeat
+    use_n2k_counts: true
+
+gen_pl_lost_counts:
+    kotekan_stage: testLostCountsGen
+    cpu_affinity: [3]
+    in_buf: fake_counts_buffer
+    out_buf: fake_plcounts_buffer
+    type: random
+    name: pl_lost_counts_scalar
+    num_frames: frames_to_generate
+    repeat_count: repeat
+    use_n2k_counts: true
 
 gen_fake_rfiframemask:
     kotekan_stage: testRFIFrameMaskGen
@@ -174,13 +171,8 @@ gen_fake_rfiframemask:
     num_frames: frames_to_generate
     repeat_count: repeat
 
-rfimask_to_counts:
-    kotekan_stage: RfiMaskSum
-    cpu_affinity: [3]
-    in_buf: fake_rfimask_buffer
-    out_buf: fake_rficounts_buffer
-
 N2_accumulate:
+    log_level: DEBUG
     kotekan_stage: N2Accumulate
     cpu_affinity: [8, 9, 10, 11]
     in_buf: fake_correlation_buffer

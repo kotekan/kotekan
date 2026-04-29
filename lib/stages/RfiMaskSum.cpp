@@ -137,7 +137,7 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
         FATAL_ERROR("RfiMaskSum in_buf ({:s}) has frame size {:d}. Expected {:d}.",
                     in_buf->buffer_name, in_buf->frame_size, in_rfimask_frame_size);
 
-    out_buf->allocate_ndarray_frame_desc(kotekan::int32, "RFImask_count",
+    out_buf->allocate_ndarray_frame_desc(kotekan::int32, "RFImask_counts",
                                          {_num_integrations, _num_local_freq}, {"Tc", "F"});
 }
 

@@ -206,7 +206,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                                                {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
 
     in_rficounts_buf->allocate_ndarray_frame_desc(
-        kotekan::int32, "RFImask_count", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
+        kotekan::int32, "RFImask_counts", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
         {"Tc", "F"});
 
     in_plcounts_buf->allocate_ndarray_frame_desc(
