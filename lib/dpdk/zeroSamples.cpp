@@ -68,6 +68,8 @@ void zeroSamples::main_thread() {
         if (flag_frame == nullptr)
             break;
 
+	get_chord_metadata(out_buf, out_buf_frame_id)->set_lost_timesamples(0);
+
         for (size_t i = 0; i < lost_samples_buf->frame_size; ++i) {
             zero_location = i * sample_size;
             // Check array bounds
