@@ -524,15 +524,10 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     buf.send_shutdown_signal();
     stage.join();
 
-    // Find exactly one dataset in base_dir
-    auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> datasets;
-    for (auto& e : entries) {
-        if (e.find(suffix) != std::string::npos)
-            datasets.push_back(e);
-    }
+    // Find exactly one dataset under base_dir's acquisition subdir
+    auto datasets = list_h5_datasets(base_dir);
     BOOST_REQUIRE_MESSAGE(datasets.size() == 1, "Expected 1 dataset, found " << datasets.size());
-    const std::string ds_path = join_path(base_dir, datasets[0]);
+    const std::string ds_path = datasets[0];
 
     {
         File f(ds_path, File::ReadOnly);
@@ -540,7 +535,6 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     }
 
     // Cleanup
-    rm_tree_if_exists(ds_path);
     rm_tree_if_exists(base_dir);
 }
 
@@ -607,14 +601,9 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     buf.send_shutdown_signal();
     stage.join();
 
-    auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> datasets;
-    for (auto& e : entries) {
-        if (e.find(suffix) != std::string::npos)
-            datasets.push_back(e);
-    }
+    auto datasets = list_h5_datasets(base_dir);
     BOOST_REQUIRE_MESSAGE(datasets.size() == 1, "Expected 1 dataset, found " << datasets.size());
-    const std::string ds_path = join_path(base_dir, datasets[0]);
+    const std::string ds_path = datasets[0];
 
     {
         File f(ds_path, File::ReadOnly);
@@ -633,7 +622,6 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     }
 
     // Cleanup
-    rm_tree_if_exists(ds_path);
     rm_tree_if_exists(base_dir);
 }
 
@@ -708,19 +696,12 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     buf.send_shutdown_signal();
     stage.join();
 
-    auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> datasets;
-    for (auto& e : entries) {
-        if (e.find(suffix) != std::string::npos)
-            datasets.push_back(e);
-    }
+    auto datasets = list_h5_datasets(base_dir);
     BOOST_REQUIRE_MESSAGE(datasets.size() == 2, "Expected 2 datasets, found " << datasets.size());
     // Validate each one opens and contents make sense
-    for (const auto& e : datasets) {
-        const std::string p = join_path(base_dir, e);
+    for (const auto& p : datasets) {
         File f(p, File::ReadOnly);
         validate_dataset_content(f, num_input, num_ev, nfreq, num_file_t);
-        rm_tree_if_exists(p);
     }
     rm_tree_if_exists(base_dir);
 }
@@ -792,16 +773,10 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     buf.send_shutdown_signal();
     stage.join();
 
-    // Both datasets should exist in base_dir and have different names
-    std::vector<std::string> datasets;
-    for (auto& e : list_dir_entries(base_dir)) {
-        if (e.find(suffix) != std::string::npos)
-            datasets.push_back(join_path(base_dir, e));
-    }
+    // Both datasets should exist under base_dir/acq_*/ and have different names
+    auto datasets = list_h5_datasets(base_dir);
     BOOST_REQUIRE_MESSAGE(datasets.size() == 2, "Expected 2 datasets, found " << datasets.size());
     BOOST_CHECK(datasets[0] != datasets[1]);
-    for (auto& d : datasets)
-        rm_tree_if_exists(d);
     rm_tree_if_exists(base_dir);
 }
 
@@ -875,15 +850,8 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     buf.send_shutdown_signal();
     stage.join();
 
-    auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> datasets;
-    for (auto& e : entries) {
-        if (e.find(suffix) != std::string::npos)
-            datasets.push_back(e);
-    }
+    auto datasets = list_h5_datasets(base_dir);
     BOOST_REQUIRE_MESSAGE(datasets.size() >= 1, "Expected at least 1 finalized dataset");
-    for (auto& e : datasets)
-        rm_tree_if_exists(join_path(base_dir, e));
     rm_tree_if_exists(base_dir);
 }
 
@@ -928,9 +896,12 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
     const uint64_t file_start_time_ns = base_time_ns; // aligned to 1-second file window
 
-    // Pre-create a final dataset path to force drop
-    const std::string ds_final = get_dataset_name(base_dir, 0, file_start_time_ns, suffix);
-    ensure_directory(base_dir);
+    // The writer creates an `acq_<timestamp>` subdir at startup; pre-create the
+    // final dataset there so the writer's drop-on-existing-final logic triggers.
+    const std::string acq_dir = wait_for_acq_dir(base_dir);
+    BOOST_REQUIRE_MESSAGE(!acq_dir.empty(),
+                          "Writer did not create an acq_* subdir under " << base_dir);
+    const std::string ds_final = get_dataset_name(acq_dir, 0, file_start_time_ns, suffix);
     {
         FILE* fp = std::fopen(ds_final.c_str(), "wb");
         BOOST_REQUIRE(fp != nullptr);
@@ -966,19 +937,12 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     stage.join();
 
     // Expect exactly one new dataset in addition to the pre-existing marker
-    auto entries = list_dir_entries(base_dir);
-    size_t datasets = 0;
-    for (auto& e : entries) {
-        if (e.find(suffix) != std::string::npos)
-            datasets++;
-    }
-    BOOST_REQUIRE_MESSAGE(datasets == 2,
-                          "Expected 2 dataset entries (pre-existing + new), found " << datasets);
+    auto datasets = list_h5_datasets(base_dir);
+    BOOST_REQUIRE_MESSAGE(datasets.size() == 2,
+                          "Expected 2 dataset entries (pre-existing + new), found "
+                              << datasets.size());
 
     // Cleanup
-    for (auto& e : entries) {
-        rm_tree_if_exists(join_path(base_dir, e));
-    }
     rm_tree_if_exists(base_dir);
 }
 
@@ -1037,15 +1001,9 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_basic) {
     stage.join();
 
     // Dataset should still exist and be readable
-    auto entries = list_dir_entries(base_dir);
-    std::string ds_path;
-    for (auto& e : entries) {
-        if (e.find(suffix) != std::string::npos) {
-            ds_path = join_path(base_dir, e);
-            break;
-        }
-    }
-    BOOST_REQUIRE(!ds_path.empty());
+    auto datasets = list_h5_datasets(base_dir);
+    BOOST_REQUIRE(!datasets.empty());
+    const std::string ds_path = datasets[0];
     {
         File f(ds_path, File::ReadOnly);
         // Quick sanity: check arrays exist
