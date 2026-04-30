@@ -100,12 +100,11 @@ void TimeData::setup() {
 
     std::cout.flush();
     int sys_ret_val = std::system(cmd.c_str());
-    BOOST_REQUIRE_MESSAGE(
-        WEXITSTATUS(sys_ret_val) == 0,
-        fmt::format("system python call terminated abnormally with status {:d} "
-                    "(timeUtil.py requires 'astropy' and 'mpmath'; ensure they "
-                    "are importable by the 'python3' on PATH)",
-                    WEXITSTATUS(sys_ret_val)));
+    BOOST_REQUIRE_MESSAGE(WEXITSTATUS(sys_ret_val) == 0,
+                          fmt::format("system python call terminated abnormally with status {:d} "
+                                      "(timeUtil.py requires 'astropy' and 'mpmath'; ensure they "
+                                      "are importable by the 'python3' on PATH)",
+                                      WEXITSTATUS(sys_ret_val)));
 
     std::ifstream file(filename);
     for (std::string line; std::getline(file, line);) {

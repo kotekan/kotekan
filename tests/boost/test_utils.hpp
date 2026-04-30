@@ -157,8 +157,7 @@ struct CompareCTypes {
 }
 
 // List all `.h5` file paths under the writer's `base_dir/acq_*/` subdirectories.
-[[maybe_unused]] static std::vector<std::string>
-list_h5_datasets(const std::string& base_dir) {
+[[maybe_unused]] static std::vector<std::string> list_h5_datasets(const std::string& base_dir) {
     std::vector<std::string> out;
     DIR* dir = opendir(base_dir.c_str());
     if (!dir)
