@@ -533,7 +533,8 @@ public:
 
     /**
      * @brief Allocates a new frame description object holding a D dimensional
-     *        array of type T
+     *        array of type T, or checks the given values are consistent with
+     *        the existing frame descriptor, if it exists.
      * @param[in] extents Array extentds in the D dimensions
      * @param[in] dimnames Array axis labels in the D dimensions
      */
@@ -581,7 +582,8 @@ public:
 
     /**
      * @brief Allocates a new frame description object holding a D dimensional
-     *        array of type T
+     *        array of type T, or checks the given values are consistent with
+     *        the existing frame descriptor, if it exists.
      * @param[in] value_type the kotekan type enumerator of the values stored
      * @param[in] rank dimensionality of the data array
      * @param[in] extents Array extentds in the D dimensions
@@ -597,25 +599,25 @@ public:
         } else {
             auto nd_desc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
             if (!nd_desc) {
-                ERROR("Frame desc mismatch: existing desc is not an NDArray");
+                FATAL_ERROR("Frame desc mismatch: existing desc is not an NDArray");
                 return;
             }
             if (extents.size() != nd_desc->get_rank())
-                ERROR("Rank mismatch: {:d} != {:d}", extents.size(), nd_desc->get_rank());
+                FATAL_ERROR("Rank mismatch: {:d} != {:d}", extents.size(), nd_desc->get_rank());
             if (value_type != nd_desc->get_value_datatype())
-                ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(value_type),
-                      kotekan::type_to_string(nd_desc->get_value_datatype()));
+                FATAL_ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(value_type),
+                            kotekan::type_to_string(nd_desc->get_value_datatype()));
             if (quantity_name != nd_desc->get_quantity_name())
-                ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
-                      nd_desc->get_quantity_name());
+                FATAL_ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
+                            nd_desc->get_quantity_name());
             if (extents != nd_desc->get_extents())
-                ERROR("Extents do not match: [{:s}] != [{:s}]",
-                      fmt::format("{:s}", fmt::join(extents, ", ")),
-                      fmt::format("{:s}", fmt::join(nd_desc->get_extents(), ", ")));
+                FATAL_ERROR("Extents do not match: [{:s}] != [{:s}]",
+                            fmt::format("{:s}", fmt::join(extents, ", ")),
+                            fmt::format("{:s}", fmt::join(nd_desc->get_extents(), ", ")));
             if (dimnames != nd_desc->get_dimnames())
-                ERROR("Dimnames do not match: [{:s}] != [{:s}]",
-                      fmt::format("{:s}", fmt::join(dimnames, ", ")),
-                      fmt::format("{:s}", fmt::join(nd_desc->get_dimnames(), ", ")));
+                FATAL_ERROR("Dimnames do not match: [{:s}] != [{:s}]",
+                            fmt::format("{:s}", fmt::join(dimnames, ", ")),
+                            fmt::format("{:s}", fmt::join(nd_desc->get_dimnames(), ", ")));
         }
 
         if (frames_desc->get_byte_size() != frame_size) {
