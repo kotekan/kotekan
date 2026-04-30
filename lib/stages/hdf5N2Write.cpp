@@ -56,11 +56,14 @@
 using namespace HighFive;
 
 /// Compute a hash of a file's contents for change detection.
-static size_t hash_file_contents(const std::string& path) {
+static std::optional<size_t> hash_file_contents(const std::string& path) {
     std::ifstream ifs(path, std::ios::binary);
     if (!ifs)
-        return 0;
-    std::string contents((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+        return std::nullopt;
+    std::string contents((std::istreambuf_iterator<char>(ifs)),
+                         std::istreambuf_iterator<char>());
+    if (ifs.bad())  // I/O error during read
+        return std::nullopt;
     return std::hash<std::string>{}(contents);
 }
 
@@ -103,8 +106,8 @@ static void download_url_to_file(const std::string& url, const std::string& dest
     }
     evhttp_uri_free(uri);
 
-    INFO_NON_OO("hdf5N2Write: downloading gains file from http://{}:{}{}", host, port, path);
-    // GET (empty JSON body). No auth, no custom headers — matches endpoint constraints.
+    INFO_NON_OO("hdf5N2Write: downloading digial gains file from fpga_master at http://{}:{}{}", host, port, path);
+    // GET with empty JSON body
     restClient::restReply reply = restClient::instance().make_request_blocking(
         path, nlohmann::json::object(), host, static_cast<unsigned short>(port));
     if (!reply.first) {
@@ -125,11 +128,17 @@ static void download_url_to_file(const std::string& url, const std::string& dest
         return;
     }
     ofs.close();
+    if (!ofs) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: failed to finalize writing downloaded gains file to '{}'",
+                           dest_path);
+        return;
+    }
+
     INFO_NON_OO("hdf5N2Write: wrote {} bytes to '{}'", reply.second.size(), dest_path);
 }
 
 /// Generate an acquisition base directory path: base_dir/acq_YYYYMMDD_HHMMSS_NNNNNNNNN
-static std::string make_acq_base_dir(const std::string& base_dir) {
+static std::string get_acq_base_dir_path(const std::string& base_dir) {
     // Strip trailing slashes
     std::string dir = base_dir;
     while (dir.size() > 1 && dir.back() == '/')
@@ -850,9 +859,9 @@ bool N2FileData::flush_to_disk() {
     }
 
     // Verify digital gains file hasn't been modified since it was copied at file creation
-    if (!baseband_gain_file.empty() && gains_file_hash != 0) {
-        size_t current_hash = hash_file_contents(baseband_gain_file);
-        if (current_hash != gains_file_hash) {
+    if (!baseband_gain_file.empty() && gains_file_hash) {
+        std::optional<size_t> current_hash = hash_file_contents(baseband_gain_file);
+        if (current_hash && current_hash != gains_file_hash) {
             FATAL_ERROR_NON_OO("Digital gains file {} has been modified since file creation!",
                                baseband_gain_file);
             has_error = true;
@@ -878,7 +887,7 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
           [](const kotekan::Stage& stage) {
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
-    _base_dir(make_acq_base_dir(config.get<std::string>(unique_name, "base_dir"))),
+    _base_dir(get_acq_base_dir_path(config.get<std::string>(unique_name, "base_dir"))),
     _baseband_gain_file(config.get_default<std::string>(unique_name, "baseband_gain_file", "")),
     _baseband_gain_url(config.get_default<std::string>(unique_name, "baseband_gain_url", "")),
     _baseband_gain_update_idx(config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)),
