@@ -52,6 +52,7 @@ dpdk:
     main_lcore_cpu: 3
     fpga_packet_size: 4928
     samples_per_packet: 2
+    using_switch: true
     alignment: samples_per_data_set * 100
     # Format is index = lcore, value = array of port IDs
     # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
