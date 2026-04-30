@@ -18,9 +18,8 @@ log_level: INFO
 samples_per_data_set: 65536
 sample_block_size: 2048
 buffer_depth: 10
-cpu_affinity: [0,1,2,5,6,7]
+cpu_affinity: [0,1,2,10,11,12]
 num_disks: 10
-instrument_name: lab_test
 
 # Pool
 main_pool:
@@ -28,14 +27,53 @@ main_pool:
     num_metadata_objects: 15 * buffer_depth
 
 # Buffers
-network_buffer:
+network_buffer_0:
     kotekan_buffer: standard
     num_frames: buffer_depth * num_disks
     frame_size: samples_per_data_set * sample_block_size
     metadata_pool: main_pool
     use_hugepages: true
 
-lost_samples_buffer:
+lost_samples_buffer_0:
+    kotekan_buffer: standard
+    num_frames: buffer_depth * num_disks
+    frame_size: samples_per_data_set
+    metadata_pool: main_pool
+
+network_buffer_1:
+    kotekan_buffer: standard
+    num_frames: buffer_depth * num_disks
+    frame_size: samples_per_data_set * sample_block_size
+    metadata_pool: main_pool
+    use_hugepages: true
+
+lost_samples_buffer_1:
+    kotekan_buffer: standard
+    num_frames: buffer_depth * num_disks
+    frame_size: samples_per_data_set
+    metadata_pool: main_pool
+
+network_buffer_2:
+    kotekan_buffer: standard
+    num_frames: buffer_depth * num_disks
+    frame_size: samples_per_data_set * sample_block_size
+    metadata_pool: main_pool
+    use_hugepages: true
+
+lost_samples_buffer_2:
+    kotekan_buffer: standard
+    num_frames: buffer_depth * num_disks
+    frame_size: samples_per_data_set
+    metadata_pool: main_pool
+
+network_buffer_3:
+    kotekan_buffer: standard
+    num_frames: buffer_depth * num_disks
+    frame_size: samples_per_data_set * sample_block_size
+    metadata_pool: main_pool
+    use_hugepages: true
+
+lost_samples_buffer_3:
     kotekan_buffer: standard
     num_frames: buffer_depth * num_disks
     frame_size: samples_per_data_set
@@ -48,7 +86,7 @@ lost_samples_buffer:
 dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [4]
+    lcore_cpu_map: [4,5,6,7]
     main_lcore_cpu: 3
     fpga_packet_size: 4928
     samples_per_packet: 2
@@ -64,14 +102,23 @@ dpdk:
         - 9f:00.1
     lcore_port_map:
         - [0]
+        - [1]
+        - [2]
+        - [3]
     # One handler must be given per port on the system.
     handlers:
         - dpdk_handler: iceBoardStandard
-          out_buf: network_buffer
-          lost_samples_buf: lost_samples_buffer
-        - dpdk_handler: none
-        - dpdk_handler: none
-        - dpdk_handler: none
+          out_buf: network_buffer_0
+          lost_samples_buf: lost_samples_buffer_0
+        - dpdk_handler: iceBoardStandard
+          out_buf: network_buffer_1
+          lost_samples_buf: lost_samples_buffer_1
+        - dpdk_handler: iceBoardStandard
+          out_buf: network_buffer_2
+          lost_samples_buf: lost_samples_buffer_2
+        - dpdk_handler: iceBoardStandard
+          out_buf: network_buffer_3
+          lost_samples_buf: lost_samples_buffer_3
         - dpdk_handler: none
         - dpdk_handler: none
         - dpdk_handler: none
@@ -85,9 +132,28 @@ dpdk:
         - dpdk_handler: none
         - dpdk_handler: none
 
-zero_samples:
+zero_samples_0:
     kotekan_stage: zeroSamples
-    out_buf: network_buffer
-    lost_samples_buf: lost_samples_buffer
+    out_buf: network_buffer_0
+    lost_samples_buf: lost_samples_buffer_0
     zero_value: 0x88
+
+zero_samples_0:
+    kotekan_stage: zeroSamples
+    out_buf: network_buffer_1
+    lost_samples_buf: lost_samples_buffer_1
+    zero_value: 0x88
+
+zero_samples_0:
+    kotekan_stage: zeroSamples
+    out_buf: network_buffer_2
+    lost_samples_buf: lost_samples_buffer_2
+    zero_value: 0x88
+
+zero_samples_0:
+    kotekan_stage: zeroSamples
+    out_buf: network_buffer_3
+    lost_samples_buf: lost_samples_buffer_3
+    zero_value: 0x88
+
 
