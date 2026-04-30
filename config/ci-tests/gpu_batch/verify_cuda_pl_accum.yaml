@@ -116,9 +116,9 @@ cpu_pl_counts:
     out_buf: simulated_pl_counts_buffer
 
 check_pl_counts_data:
-  kotekan_stage: testDataCheckUlong
-  first_buf: host_pl_counts_buffer
-  second_buf: simulated_pl_counts_buffer
-  max_num_errors_logged: 384
-  num_frames_to_test: 2*buffer_depth
-  check_metadata: True
+    kotekan_stage: testDataCheckUlong
+    first_buf: host_pl_counts_buffer
+    second_buf: simulated_pl_counts_buffer
+    max_num_errors_logged: 384
+    num_frames_to_test: 2*buffer_depth
+    check_metadata: True

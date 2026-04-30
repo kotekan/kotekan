@@ -686,7 +686,7 @@ public:
      *                  least num_dishes. The phases will be written to the
      *                  first num_dishes elements of this vector.
      **/
-    void fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
+    void fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
                               std::vector<std::complex<float>>& phases) const;
 
     /**

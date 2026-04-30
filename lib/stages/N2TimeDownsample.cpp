@@ -240,7 +240,7 @@ void N2TimeDownsample::main_thread() {
 
             if (do_fringestop) {
                 // Get the per-dish fringestopping phases.
-                tel.fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, fringe_phase);
+                tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, fringe_phase);
 
                 // This indexing requires the el_id = (n_dish)*pol_id + dish_id
                 size_t idx = 0;
@@ -290,7 +290,7 @@ void N2TimeDownsample::main_thread() {
 
             // Recalculate fringestop phases
             if (do_fringestop)
-                tel.fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, fringe_phase);
+                tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, fringe_phase);
             // Accumulate contents of buffer
             size_t idx = 0;
             for (size_t i = 0; i < num_elements; i++) {

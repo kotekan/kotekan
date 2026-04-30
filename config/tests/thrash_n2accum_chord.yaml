@@ -188,7 +188,7 @@ N2_accumulate:
     num_workers: 2
     output_batch_size: 8
     do_fringestop: True
-    debug_accum_mode: 3
+    debug_accum_mode: False
 
 eat_n2:
   kotekan_stage: dropAllFrames

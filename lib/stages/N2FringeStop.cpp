@@ -114,7 +114,7 @@ void N2FringeStop::main_thread() {
         output_frame.bin_end_ERAL = -1;      // TODO: update
 
         if (fringestop_mode > 0)
-            tel.fringestop_phases_1d(in_frame.freq_MHz, eop, eop_target, fringe_phase);
+            tel.fill_fringestop_phases_1d(in_frame.freq_MHz, eop, eop_target, fringe_phase);
 
         size_t idx = 0;
         for (size_t i = 0; i < num_elements; i++) {

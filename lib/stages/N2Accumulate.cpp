@@ -40,7 +40,7 @@ using N2::frameID;
 
 REGISTER_KOTEKAN_STAGE(N2Accumulate);
 
-enum class Mode {
+enum class AccumState {
     START,
     WAITING_FOR_ALIGNMENT,
     READY,
@@ -66,7 +66,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _output_batch_size(config.get_default<int>(unique_name, "output_batch_size", 1)),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
     _variance_mode(config.get<N2VarianceMode>(unique_name, "variance_mode")),
-    _debug_accum_mode(config.get_default<int>(unique_name, "debug_accum_mode", 3)),
+    _debug_accum_mode(config.get_default<bool>(unique_name, "debug_accum_mode", false)),
     _tel(Telescope::instance()),
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
@@ -106,6 +106,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                         "(bin_in_ERA is false) with non-positive or odd (should be "
                         "positive and even!) num_n2k_samples_to_accumulate: {:d}",
                         _num_n2k_samples_to_accumulate);
+        if (_bin_in_ERA && _num_bins_per_rotation <= 0)
+            FATAL_ERROR("N2Accumulate configured to use ERA-based binning (bin_in_ERA is true) with non-positive num_bins_per_rotation {:d}.", _num_bins_per_rotation);
 
         if (!_packet_loss_is_scalar)
             FATAL_ERROR(
@@ -251,9 +253,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
             FATAL_ERROR("N2Accumulate: Output buffer n2_layout must be FullUpperTri");
         }
     }
-
-    // TODO... Should we ensure output buffer has enough frames (>= # frequencies) to take the
-    // output without filling completely?
 }
 
 void N2Accumulate::main_thread() {
@@ -284,9 +283,7 @@ void N2Accumulate::main_thread() {
     int64_t counts_stride_t = _n2k_counts_num_products * _num_freq_per_n2k_frame;
     int64_t counts_stride_f = _n2k_counts_num_products;
 
-    // A buffer to store the (possibly fringestopped) correlations of a single time and all
-    // frequencies
-    std::vector<int32_t> vis_even_vec(corr_stride_t, 0);
+    // Pointers to individual frames' data
     const int32_t* corr_t0 = nullptr;
     const int32_t* corr_t1 = nullptr;
     const int32_t* counts_mat_t0 = nullptr;
@@ -298,11 +295,6 @@ void N2Accumulate::main_thread() {
     const uint8_t* rfiframemask_t0 = nullptr;
     const uint8_t* rfiframemask_t1 = nullptr;
 
-    // vis_even may be an odd frame if the first frame eencountered is odd,
-    // since fpga_seq_num does not have to start from 0, in which case we skip
-    // it.
-    // int32_t const* vis_even = nullptr;
-
     // EOP at target fringestop time.
     EOP target_eop = eop_null;
 
@@ -312,7 +304,7 @@ void N2Accumulate::main_thread() {
     std::vector<std::complex<float>> fringe_phase_t1(_num_dishes, 1.0f);
 
     // We start with START.
-    Mode mode = Mode::START;
+    AccumState state = AccumState::START;
 
 #ifdef WITH_OMP
     [[maybe_unused]] double prof_last_time = omp_get_wtime();
@@ -320,13 +312,13 @@ void N2Accumulate::main_thread() {
 
     while (!stop_thread) {
 
-        // Fetch a new frame and get its sequence id
+        // Fetch a new correlation frame
         DEBUG("Waiting for new correlation frame {:s}[{:d}].", in_buf->buffer_name, in_frame_id);
         const int32_t* corr = (int32_t*)in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (corr == nullptr)
             break;
 
-        // Fetch a new counts frame and get its sequence id
+        // Fetch a new counts frame
         DEBUG("Waiting for new input counts frame {:s}[{:d}].", in_counts_buf->buffer_name,
               in_counts_frame_id);
         const int32_t* counts_mat =
@@ -334,7 +326,7 @@ void N2Accumulate::main_thread() {
         if (counts_mat == nullptr)
             break;
 
-        // Fetch a new rficounts frame and get its sequence id
+        // Fetch a new rficounts frame
         DEBUG("Waiting for new input RFIcounts frame {:s}[{:d}].", in_rficounts_buf->buffer_name,
               in_rficounts_frame_id);
         const int32_t* rficounts =
@@ -342,7 +334,7 @@ void N2Accumulate::main_thread() {
         if (rficounts == nullptr)
             break;
 
-        // Fetch a new plcounts frame and get its sequence id
+        // Fetch a new plcounts frame
         DEBUG("Waiting for new input RFIcounts frame {:s}[{:d}].", in_plcounts_buf->buffer_name,
               in_plcounts_frame_id);
         const uint64_t* plcounts =
@@ -350,7 +342,7 @@ void N2Accumulate::main_thread() {
         if (plcounts == nullptr)
             break;
 
-        // Fetch a new rfiframemask frame and get its sequence id
+        // Fetch a new rfiframemask frame
         DEBUG("Waiting for new input RFIFrameMask frame {:s}[{:d}].",
               in_rfiframemask_buf->buffer_name, in_rfiframemask_frame_id);
         const uint8_t* rfiframemask = (uint8_t*)in_rfiframemask_buf->wait_for_full_frame(
@@ -412,7 +404,7 @@ void N2Accumulate::main_thread() {
 
 
         // Do some first-time initialization
-        if (mode == Mode::START) {
+        if (state == AccumState::START) {
 
             // During startup, _accum_bin_idx stores the bin index of the last
             // sample (e.g. the one *before* the stage started). This is usually
@@ -427,7 +419,7 @@ void N2Accumulate::main_thread() {
             // Now the WAITING_FOR_ALIGNMENT check later will correctly detect
             // if the current frame starts a new bin.
 
-            mode = Mode::WAITING_FOR_ALIGNMENT;
+            state = AccumState::WAITING_FOR_ALIGNMENT;
         }
 
         // Accumulate each visibility sample in the in_frame
@@ -450,10 +442,9 @@ void N2Accumulate::main_thread() {
             int64_t bin_idx = get_accum_abs_bin_idx(seq);
 
             // Startup - wait to be at the beginning of an accumulation bin.
-            if (mode == Mode::WAITING_FOR_ALIGNMENT) {
+            if (state == AccumState::WAITING_FOR_ALIGNMENT) {
 
-
-                if (bin_idx != _accum_bin_idx) {
+                if (bin_idx > _accum_bin_idx) {
                     // Away we go!
                     assert(t_abs % 2 == 0);
                     _vis_samples_in_out_frame = 0;
@@ -461,13 +452,13 @@ void N2Accumulate::main_thread() {
                     _accum_bin_idx = bin_idx;
                     target_eop = get_accum_bin_EOP(bin_idx);
 
-                    mode = Mode::ACCUMULATING;
+                    state = AccumState::ACCUMULATING;
                     DEBUG("MODE: Setting accum_fpga_start_tick: {0:d}", _accum_fpga_start_tick);
                 }
             }
 
             // If we're not ready to accumulate, keep on spinning until we reach the correct frame.
-            if (mode != Mode::ACCUMULATING) {
+            if (state != AccumState::ACCUMULATING) {
                 DEBUG("Waiting for accumulation bin {:d} to start, currently at {:d}. Skipping"
                       " visibility sample {:d} of {:d} in frame with seq {:d}.",
                       _accum_bin_idx + 1, bin_idx, t, _n_integrations_per_n2k_frame, seq);
@@ -476,24 +467,6 @@ void N2Accumulate::main_thread() {
 
             DEBUG("Accumulating new visibility sample ({:d} of {:d} in frame).", t,
                   _n_integrations_per_n2k_frame);
-            // DEBUG("   Times are [start, end, out, num] = [{:d}, {:d}, {:d}, {:d}]",
-            //     t_vis_s, t_vis_e, t_output, t_abs );
-
-
-            // Finalize accumulation if the visibility elements are past the output time...
-            //  end on an odd frame too so we accumulate variances.
-            // if (t_vis_s > t_output && t_abs % 2 == 1) { }
-            if (_vis_samples_in_out_frame == _num_n2k_samples_to_accumulate) {
-
-                DEBUG("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
-                      _vis_samples_in_out_frame);
-                samples_in_out_frame.set(_vis_samples_in_out_frame);
-                output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
-
-                _vis_samples_in_out_frame = 0;
-                _accum_fpga_start_tick =
-                    frame_metadata->get_fpga_seq_num() + t * _n_fpga_samples_per_n2k_correlation;
-            }
 
             uint64_t corr_offset_t = t * corr_stride_t;
             uint64_t counts_offset_t = t * counts_stride_t;
@@ -515,6 +488,7 @@ void N2Accumulate::main_thread() {
                 continue;
             }
 
+            // If we're here, this is an odd frame, and the _t0 pointers have been set.
             corr_t1 = corr + corr_offset_t;
             counts_mat_t1 = counts_mat + counts_offset_t;
             rficounts_t1 = rficounts + rfipl_offset_t;
@@ -537,7 +511,7 @@ void N2Accumulate::main_thread() {
                 _n_pl_samples_in_vis[f] += plcounts_t0[f] + plcounts_t1[f];
 
                 // Second-stage RFI excision.
-                if (rfiframemask_t0[f] == 0 || rfiframemask_t1[f] == 0) {
+                if ((!rfiframemask_t0[f]) || (!rfiframemask_t1[f])) {
                     _n_rfi_samples_in_vis[f] += n_samples_per_pair;
                     continue;
                 }
@@ -724,7 +698,7 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
                                       std::vector<std::complex<float>>& fringe_phase_t0,
                                       std::vector<std::complex<float>>& fringe_phase_t1) {
 
-    if (_debug_accum_mode == 0) {
+    if (_debug_accum_mode) {
         for (int64_t d = 0; d < 2 * _n2k_correlation_num_products; d++) {
             vis_f[d] += corr_t0_f[d] + corr_t1_f[d];
         }
@@ -733,128 +707,128 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
             float di = corr_t1_f[2 * d + 1] - corr_t0_f[2 * d + 1];
             var_f[d] += dr * dr + di * di;
         }
-    } // debug_accum_mode 0
-    else if (_debug_accum_mode == 3) {
 
-        uint64_t corr_stride_b = 2 * _n2k_correlation_blocksize * _n2k_correlation_blocksize;
+        return;
+    } // if debug_accum_mode
 
-        // 1/N for even (idx ~ 0) sample
-        float inv_n_t0 = (count_t0 <= 0) ? 0.0f : 1.0f / count_t0;
-        // 1/N for odd  (idx ~ 1) sample
-        float inv_n_t1 = (count_t1 <= 0) ? 0.0f : 1.0f / count_t1;
-        // var(corr_e/Ne / corr_o/No) ~ 1/Ne + 1/No
-        // 1/var ~ 1/(1/Ne + 1/No) = Ne No / (Ne + No)
-        float inv_dvis_var = 0.0f;
-        if (count_t0 > 0 && count_t1 > 0) {
-            inv_dvis_var = static_cast<float>(count_t0 * count_t1) / (count_t0 + count_t1);
-        }
+    uint64_t corr_stride_b = 2 * _n2k_correlation_blocksize * _n2k_correlation_blocksize;
 
-        if (_do_fringestop) {
-            // Physical frequency for this f
-            // Compute the fringestopping phases for this frequency
-            _tel.cast<CHORDTelescope>().fringestop_phases_1d(freq_MHz, eop_t1, target_eop,
-                                                             fringe_phase_t1);
-            _tel.cast<CHORDTelescope>().fringestop_phases_1d(freq_MHz, eop_t0, target_eop,
-                                                             fringe_phase_t0);
-        }
+    // 1/N for even (idx ~ 0) sample
+    float inv_n_t0 = (count_t0 <= 0) ? 0.0f : 1.0f / count_t0;
+    // 1/N for odd  (idx ~ 1) sample
+    float inv_n_t1 = (count_t1 <= 0) ? 0.0f : 1.0f / count_t1;
+    // var(corr_e/Ne / corr_o/No) ~ 1/Ne + 1/No
+    // 1/var ~ 1/(1/Ne + 1/No) = Ne No / (Ne + No)
+    float inv_dvis_var = 0.0f;
+    if (count_t0 > 0 && count_t1 > 0) {
+        inv_dvis_var = static_cast<float>(count_t0 * count_t1) / (count_t0 + count_t1);
+    }
 
-        uint64_t block_idx = 0;
-        for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
-            for (int64_t jhi = 0; jhi <= ihi; jhi++) {
-                // For this stage to run, _num_elements must be a multiple of 64.
-                // Since correlation blocksize is 16, there will always be a
-                // multiple of 4 correlation_linear_blocks.  So for num_polarization
-                // = 2, a block will not cross a polarization boundary, and we're
-                // guaranteed all elements in a block will share a polarization.
-                uint64_t di0 = _n2k_correlation_blocksize * ihi % _num_dishes;
-                uint64_t dj0 = _n2k_correlation_blocksize * jhi % _num_dishes;
-                uint64_t offset_b = block_idx * corr_stride_b;
-                uint64_t var_offset_b = block_idx * corr_stride_b / 2;
+    if (_do_fringestop) {
+        // Physical frequency for this f
+        // Compute the fringestopping phases for this frequency
+        _tel.cast<CHORDTelescope>().fill_fringestop_phases_1d(freq_MHz, eop_t1, target_eop,
+                                                         fringe_phase_t1);
+        _tel.cast<CHORDTelescope>().fill_fringestop_phases_1d(freq_MHz, eop_t0, target_eop,
+                                                         fringe_phase_t0);
+    }
 
-                const int32_t* corr_t0_fb = corr_t0_f + offset_b;
-                const int32_t* corr_t1_fb = corr_t1_f + offset_b;
-                int32_t* vis_fb = vis_f + offset_b;
-                float* var_fb = var_f + var_offset_b;
+    uint64_t block_idx = 0;
+    for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
+        for (int64_t jhi = 0; jhi <= ihi; jhi++) {
+            // For this stage to run, _num_elements must be a multiple of 64.
+            // Since correlation blocksize is 16, there will always be a
+            // multiple of 4 correlation_linear_blocks.  So for num_polarization
+            // = 2, a block will not cross a polarization boundary, and we're
+            // guaranteed all elements in a block will share a polarization.
+            uint64_t di0 = _n2k_correlation_blocksize * ihi % _num_dishes;
+            uint64_t dj0 = _n2k_correlation_blocksize * jhi % _num_dishes;
+            uint64_t offset_b = block_idx * corr_stride_b;
+            uint64_t var_offset_b = block_idx * corr_stride_b / 2;
 
-                const std::complex<float>* phase_i = fringe_phase_t1.data() + di0;
-                const std::complex<float>* phase_j = fringe_phase_t1.data() + dj0;
-                const std::complex<float>* phase_even_i = fringe_phase_t0.data() + di0;
-                const std::complex<float>* phase_even_j = fringe_phase_t0.data() + dj0;
+            const int32_t* corr_t0_fb = corr_t0_f + offset_b;
+            const int32_t* corr_t1_fb = corr_t1_f + offset_b;
+            int32_t* vis_fb = vis_f + offset_b;
+            float* var_fb = var_f + var_offset_b;
 
-                if (_variance_mode == N2VarianceMode::CHIMEv1) {
-                    for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
-                        for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
+            const std::complex<float>* phase_i = fringe_phase_t1.data() + di0;
+            const std::complex<float>* phase_j = fringe_phase_t1.data() + dj0;
+            const std::complex<float>* phase_even_i = fringe_phase_t0.data() + di0;
+            const std::complex<float>* phase_even_j = fringe_phase_t0.data() + dj0;
 
-                            uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
-                            uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
+            if (_variance_mode == N2VarianceMode::CHIMEv1) {
+                for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
+                    for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
 
-                            std::complex<float> vis_even{static_cast<float>(corr_t0_fb[idx + 0]),
-                                                         static_cast<float>(corr_t0_fb[idx + 1])};
-                            std::complex<float> vis_odd{static_cast<float>(corr_t1_fb[idx + 0]),
-                                                        static_cast<float>(corr_t1_fb[idx + 1])};
+                        uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
+                        uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
 
-                            if (_do_fringestop) {
-                                // To apply phases:
-                                //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
-                                //                   = V_ij * Phase_i *
-                                //                   conj(Phase_j)
-                                std::complex<float> phase_odd =
-                                    phase_i[ilo] * std::conj(phase_j[jlo]);
-                                std::complex<float> phase_even =
-                                    phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
+                        std::complex<float> vis_even{static_cast<float>(corr_t0_fb[idx + 0]),
+                                                     static_cast<float>(corr_t0_fb[idx + 1])};
+                        std::complex<float> vis_odd{static_cast<float>(corr_t1_fb[idx + 0]),
+                                                    static_cast<float>(corr_t1_fb[idx + 1])};
 
-                                vis_odd *= phase_odd;
-                                vis_even *= phase_even;
-                            }
+                        if (_do_fringestop) {
+                            // To apply phases:
+                            //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
+                            //                   = V_ij * Phase_i *
+                            //                   conj(Phase_j)
+                            std::complex<float> phase_odd =
+                                phase_i[ilo] * std::conj(phase_j[jlo]);
+                            std::complex<float> phase_even =
+                                phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
 
-                            vis_fb[idx + 0] += vis_even.real() + vis_odd.real();
-                            vis_fb[idx + 1] += vis_even.imag() + vis_odd.imag();
+                            vis_odd *= phase_odd;
+                            vis_even *= phase_even;
+                        }
 
-                            std::complex<float> dvis = vis_odd - vis_even;
+                        vis_fb[idx + 0] += vis_even.real() + vis_odd.real();
+                        vis_fb[idx + 1] += vis_even.imag() + vis_odd.imag();
 
-                            var_fb[w_idx] += dvis.real() * dvis.real() + dvis.imag() * dvis.imag();
-                        } // jlo
-                    } // ilo
-                } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
-                    for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
-                        for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
+                        std::complex<float> dvis = vis_odd - vis_even;
 
-                            uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
-                            uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
+                        var_fb[w_idx] += dvis.real() * dvis.real() + dvis.imag() * dvis.imag();
+                    } // jlo
+                } // ilo
+            } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
+                for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
+                    for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
 
-                            std::complex<float> vis_even{static_cast<float>(corr_t0_fb[idx + 0]),
-                                                         static_cast<float>(corr_t0_fb[idx + 1])};
-                            std::complex<float> vis_odd{static_cast<float>(corr_t1_fb[idx + 0]),
-                                                        static_cast<float>(corr_t1_fb[idx + 1])};
+                        uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
+                        uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
 
-                            if (_do_fringestop) {
-                                // To apply phases:
-                                //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
-                                //                   = V_ij * Phase_i *
-                                //                   conj(Phase_j)
-                                std::complex<float> phase_odd =
-                                    phase_i[ilo] * std::conj(phase_j[jlo]);
-                                std::complex<float> phase_even =
-                                    phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
+                        std::complex<float> vis_even{static_cast<float>(corr_t0_fb[idx + 0]),
+                                                     static_cast<float>(corr_t0_fb[idx + 1])};
+                        std::complex<float> vis_odd{static_cast<float>(corr_t1_fb[idx + 0]),
+                                                    static_cast<float>(corr_t1_fb[idx + 1])};
 
-                                vis_odd *= phase_odd;
-                                vis_even *= phase_even;
-                            }
+                        if (_do_fringestop) {
+                            // To apply phases:
+                            //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
+                            //                   = V_ij * Phase_i *
+                            //                   conj(Phase_j)
+                            std::complex<float> phase_odd =
+                                phase_i[ilo] * std::conj(phase_j[jlo]);
+                            std::complex<float> phase_even =
+                                phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
 
-                            vis_fb[idx + 0] += vis_even.real() + vis_odd.real();
-                            vis_fb[idx + 1] += vis_even.imag() + vis_odd.imag();
+                            vis_odd *= phase_odd;
+                            vis_even *= phase_even;
+                        }
 
-                            std::complex<float> dvis = inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
-                            var_fb[w_idx] +=
-                                inv_dvis_var
-                                * (dvis.real() * dvis.real() + dvis.imag() * dvis.imag());
-                        } // jlo
-                    } // ilo
-                } // variance_mode
-                block_idx++;
-            } // jhi
-        } // ihi
-    } // debug_accum_mode 3
+                        vis_fb[idx + 0] += vis_even.real() + vis_odd.real();
+                        vis_fb[idx + 1] += vis_even.imag() + vis_odd.imag();
+
+                        std::complex<float> dvis = inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
+                        var_fb[w_idx] +=
+                            inv_dvis_var
+                            * (dvis.real() * dvis.real() + dvis.imag() * dvis.imag());
+                    } // jlo
+                } // ilo
+            } // variance_mode
+            block_idx++;
+        } // jhi
+    } // ihi
 }
 
 bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframemask_frame_id,
@@ -967,8 +941,6 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
                 metas[f_idx] = get_N2_metadata(out_buf, out_frame_id + f_idx);
                 DEBUG("Creating N2FrameView for freq f[{:d}] = {:d}", f,
                       chord_frame_metadata->get_coarse_freq()[f]);
-                // out_fv[f_idx] = out_vis;
-                // out_fv[f_idx]{out_buf, out_frame_id + f_idx};
             } else {
                 metas[f_idx] = nullptr;
             }

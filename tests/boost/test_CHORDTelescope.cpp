@@ -1109,7 +1109,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     const CHORDTelescope& tel = get_telescope(json_config);
 
-    tel.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
+    tel.fill_fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
 
     for (int i = 0; i < 4; i++) {
         check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
@@ -1128,7 +1128,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     std::vector<double> test_phases2({0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel2 = get_telescope(json_config);
-    tel2.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
+    tel2.fill_fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
 
     for (int i = 0; i < 4; i++) {
         check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
@@ -1147,7 +1147,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     std::vector<double> test_phases3({0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel3 = get_telescope(json_config);
-    tel3.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
+    tel3.fill_fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
 
     for (int i = 0; i < 4; i++) {
         check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
@@ -1167,7 +1167,7 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     std::vector<double> test_phases4({0.0, 0.0, -test_phase_val, -test_phase_val});
 
     const CHORDTelescope& tel4 = get_telescope(json_config);
-    tel4.fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
+    tel4.fill_fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
 
     for (int i = 0; i < 4; i++) {
         check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");

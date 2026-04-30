@@ -198,7 +198,7 @@ def pllostcounts_data(tmpdir_factory, setup, plmask_data):
     # The test stage!
     test = runner.KotekanStageTester(
         "CountLostPLSamplesScalar",
-        {},
+        {"packet_loss_is_scalar": True},
         input_buffer,
         dump_buffer,
         config,

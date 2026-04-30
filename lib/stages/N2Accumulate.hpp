@@ -38,10 +38,7 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * This stage accumulates output from the N2k GPU correlator into integrated
  * visibility buffers.
  *
- * TODO:    - ERA binning
- *          - fringestopping
- *          - radiometer_chi2
- *          - improved variance estimator
+ * TODO:    - radiometer_chi2
  *
  * num_integrations := samples_per_dataset / sub_integration_ntime
  * num_freq := num_freq_per_n2k_frame
@@ -196,7 +193,7 @@ private:
 
     const bool _do_fringestop; ///< Whether to fringestop
     const N2VarianceMode _variance_mode;
-    const int _debug_accum_mode;
+    const bool _debug_accum_mode;
 
 
     // Some derived parameters

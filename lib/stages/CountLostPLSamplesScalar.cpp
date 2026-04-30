@@ -78,6 +78,7 @@ private:
     const int64_t _samples_per_data_set;
     const int64_t _sub_integration_ntime;
     const int64_t _num_integrations;
+    const bool _packet_loss_is_scalar;
 };
 
 REGISTER_KOTEKAN_STAGE(CountLostPLSamplesScalar);
@@ -92,7 +93,8 @@ CountLostPLSamplesScalar::CountLostPLSamplesScalar(Config& config, const std::st
     _num_local_freq(config.get<int64_t>(unique_name, "num_local_freq")),
     _samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _sub_integration_ntime(config.get<int64_t>(unique_name, "sub_integration_ntime")),
-    _num_integrations(div_noremainder(_samples_per_data_set, _sub_integration_ntime)) {
+    _num_integrations(div_noremainder(_samples_per_data_set, _sub_integration_ntime)),
+    _packet_loss_is_scalar(config.get<bool>(unique_name, "packet_loss_is_scalar")) {
 
     // Grab Buffers
     in_buf = get_buffer("in_buf");
@@ -128,6 +130,9 @@ CountLostPLSamplesScalar::CountLostPLSamplesScalar(Config& config, const std::st
     }
     if (_num_dishes % 8 != 0) {
         FATAL_ERROR("num_dishes must be a multiple of 8");
+    }
+    if (!_packet_loss_is_scalar) {
+        FATAL_ERROR("_packet_loss_is_scalar is false, this stage requires the Packet Loss is scalar in elements.");
     }
 
     // Make frame desc for produced buffer (this also checks the size)
@@ -170,6 +175,8 @@ void CountLostPLSamplesScalar::main_thread() {
         // array access strides in raw (downsampled) PL mask
         uint64_t fstride_pl = ne_pl;
         uint64_t tstride_pl = ne_pl * nf_pl;
+
+        assert(_packet_loss_is_scalar);
 
         // Initialize to 0
         for (uint64_t ft = 0; ft < nt_int * nf; ft++)
