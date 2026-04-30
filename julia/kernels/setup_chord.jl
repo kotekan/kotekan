@@ -1,5 +1,7 @@
 # Configuration name
 const setup = :chord
+const compute_capability = v"8.6" # A40
+const ptx_compat = v"8.0"
 
 # Time between time samples
 const sampling_time_μsec = 16384 / 3200

@@ -57,7 +57,7 @@ sizeof_int32: 4
 sizeof_uint64: 8
 sizeof_short: 2
 
-use_hugepages: true
+use_hugepages: false
 
 # Telescope
 telescope:
@@ -117,6 +117,7 @@ host_voltage_buffers:
   num_frames: baseband_buffer_depth
   frame_size: samples_per_data_set * num_elements * num_freq_host_buf
   metadata_pool: main_pool
+  use_hugepages: true
   numa_0:
     numa_node: 0
 {%- for id in range(num_freq_gpu_buf) %}
@@ -152,6 +153,9 @@ dpdk:
   main_lcore_cpu: 3
   status_cadence: 60
   max_rx_pkt_len: 5000
+  num_mbufs: 4096
+  rx_ring_size: 2048
+  mbuf_cache_size: 500  
   # Set to true when using a switch to replicate packets
   using_switch: true
   alignment: samples_per_data_set * 4
@@ -719,6 +723,7 @@ n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_coun
 host_n2k_correlation_buffer:
     kotekan_buffer: standard
     num_frames: gpu_buffer_depth
+    use_hugepages: true
     frame_size: sizeof_int32 * num_components * n2k_correlation_triangle_size * num_freq_gpu_buf * n2k_num_subintegrations
     metadata_pool: main_pool
 
