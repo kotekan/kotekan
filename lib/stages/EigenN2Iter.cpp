@@ -215,34 +215,27 @@ void EigenN2Iter::main_thread() {
                 N2FrameView failed_frame(failed_buf, failed_frame_id);
                 failed_frame.copy_data(input_frame, {N2Field::eval, N2Field::evec, N2Field::erms});
 
+                // "hack" consistent with behavior below, negative RMS indicates failure to converge
+                failed_frame.erms = -std::numeric_limits<float>::max();
+                failed_frame.emethod = N2EigenMethod::none; // No method used since we failed
+                for (uint32_t i = 0; i < _num_eigenvectors; i++) {
+                    failed_frame.eval[i] = 0.0f;
+                    for (uint32_t j = 0; j < num_elements; j++) {
+                        failed_frame.evec[i * num_elements + j] = {0.0f, 0.0f};
+                    }
+                }
+
                 failed_buf->mark_frame_full(unique_name, failed_frame_id++);
             }
 
-            // Pass through vis data even when eigen computation fails
-            if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
-                break;
-            }
-            in_buf->pass_metadata(input_frame_id, out_buf, output_frame_id);
-            N2FrameView output_frame(out_buf, output_frame_id);
-            output_frame.copy_data(input_frame, {N2Field::eval, N2Field::evec, N2Field::erms});
-            for (uint32_t i = 0; i < _num_eigenvectors; i++) {
-                output_frame.eval[i] = 0.0f;
-                for (uint32_t j = 0; j < num_elements; j++) {
-                    output_frame.evec[i * num_elements + j] = {0.0f, 0.0f};
-                }
-            }
-            output_frame.erms = 0.0f;
-            output_frame.emethod = N2EigenMethod::none;
-
             in_buf->mark_frame_empty(unique_name, input_frame_id++);
-            out_buf->mark_frame_full(unique_name, output_frame_id++);
             continue;
         }
         auto& evals = eigpair.first;
         auto& evecs = eigpair.second;
 
         // Stop the calculation clock. This doesn't include time to copy stuff into
-        // the buffers, but that has to wait for one to be available.
+        // the buffers (except on error).
         double elapsed_time = current_time() - start_time;
 
         // Report all eigenvalues to stdout.
