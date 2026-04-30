@@ -38,6 +38,8 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * This stage accumulates output from the N2k GPU correlator into integrated
  * visibility buffers.
  *
+ * ACCUMULATION BINNING STRATEGY
+ *
  * The GPU correlation frames are accumulated into bins. The binning strategy is
  * either by "fixed number of frames" (bin_in_ERA false) or by Earth Rotation Angle (ERA, bin_in_ERA true). Both binning strategies ingest frames two at a time, so bins will always contain an even number of frames, and bin boundaries will always occur at an even frame count. If second-stage RFI excision (via the input RFIFrameMask) signals a frame should be dropped, both frames in the pair are dropped.
  *
@@ -51,6 +53,22 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *
  * The stage output is single-frequency N2FrameViews. At the end of an accumulation the stage loops through
  * the input frequencies, for each one produces an N2FrameView with associated metadata. The frequencies are always released into the output buffer in the order they appear in the input arrays (ie. round robin).  The output stream will see frames in the order: [T0F0 T0F1 T0F2 T1F0 T1F1 T1F2 ...]
+ *
+ * VARIANCE ESTIMATION
+ *
+ * The output N2FrameViews include the visibility matrix (normalized by the number of good fpga samples in the accumulation) and the `weights`: the reciprocal of the estimated variance of the visibilities.  Because the visibilities may have a linear drift (due to fringes, etc) we cannot use
+ * the standard estimator, we want to measure the variance of the visibility apart from linear drift. To accomplish this, both variance estimators currently implemented follow an "even-odd" pattern, building up an estimate of the variance by differencing adjacent samples.  Schematically for a data stream [x0 x1 x2 x3 x4...] both estimators build up a sum like:
+ *
+ *   S2 = (x1 - x0)^2 + (x3 - x2)^2 + (x5 - x4)^2 + ...
+ *
+ * Only using even-odd pairs in this manner produces a noisier estimate of the variance, but allows
+ * for relatively simple normalization and improves memory bandwidth as frames can be loaded in chunks of 2 and then dropped.
+ *
+ * The implemented estimators are "CHIMEv1" and "EvenOddPosDef". 
+ *
+ * The "CHIMEv1" estimator is the original estimator used in CHIME. It differences the unnormalized correlations directly, which produces a biased estimate if the number of samples in each frame changes. A bias correction is applied, however, it is not guaranteed the resulting variance value is positive definite.
+ *
+ * The "EvenOddPosDef" estimator differences normalized visibility samples and accounts for the number of samples in each. It produces an unbiased estimate of the variance and is positive definite, it only produces 0 if the visibilities in each pair are identical or there are no samples in the accumulation bin. On Gaussian data it has the same variance as the CHIMEv1 estimator.
  *
  * TODO:    - radiometer_chi2
  *
