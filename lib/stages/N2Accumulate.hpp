@@ -38,6 +38,20 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * This stage accumulates output from the N2k GPU correlator into integrated
  * visibility buffers.
  *
+ * The GPU correlation frames are accumulated into bins. The binning strategy is
+ * either by "fixed number of frames" (bin_in_ERA false) or by Earth Rotation Angle (ERA, bin_in_ERA true). Both binning strategies ingest frames two at a time, so bins will always contain an even number of frames, and bin boundaries will always occur at an even frame count. If second-stage RFI excision (via the input RFIFrameMask) signals a frame should be dropped, both frames in the pair are dropped.
+ *
+ * In "fixed number of frames" the beginning of bin 0 is at instrument start (seq = 0),
+ * and each bin covers exactly sub_integration_ntime * num_n2k_samples_to_accumulate fpga seq numbers.
+ *
+ * In "ERA" binning the beginning of bin 0 is when ERA = 0 just before 2000 Jan 1 Noon. Every Earth rotation (sidereal day) is divided into num_bins_per_rotation bins equally sized in ERA, with a bin edge at ERA = 0.
+ *
+ * This stage will often come online after there is data in the pipeline (because of a node restart, 
+ * an X-engine restart, or simply a delay between F-engine activation and X-engine).  When started, it will check if the first frame it sees is the start of a bin. If so it will immediately begin accumulating. If not, it will drop frames until it sees the start of a bin, and then begin accumulating. An accumulation ends when the stage sees that the next frame will be in a new bin. At this point the accumulated visibility matrix is output, internal buffers and counters are reset, and a new accumulation begins.
+ *
+ * The stage output is single-frequency N2FrameViews. At the end of an accumulation the stage loops through
+ * the input frequencies, for each one produces an N2FrameView with associated metadata. The frequencies are always released into the output buffer in the order they appear in the input arrays (ie. round robin).  The output stream will see frames in the order: [T0F0 T0F1 T0F2 T1F0 T1F1 T1F2 ...]
+ *
  * TODO:    - radiometer_chi2
  *
  * num_integrations := samples_per_dataset / sub_integration_ntime
