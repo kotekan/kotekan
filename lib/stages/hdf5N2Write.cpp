@@ -135,6 +135,34 @@ static void download_url_to_file(const std::string& url, const std::string& dest
     INFO_NON_OO("hdf5N2Write: wrote {} bytes to '{}'", reply.second.size(), dest_path);
 }
 
+namespace {
+/// Walk the config tree and collect (unique_name, base_dir) for every
+/// hdf5N2Write stage block. Mirrors StageFactory::build_from_tree's notion
+/// of unique_name: "/" + slash-joined keys.
+void collect_hdf5N2Write_base_dirs(const nlohmann::json& tree, const std::string& path,
+                                   std::vector<std::pair<std::string, std::string>>& out) {
+    for (auto it = tree.begin(); it != tree.end(); ++it) {
+        if (!it.value().is_object())
+            continue;
+        const std::string sub = path + "/" + it.key();
+        if (it.value().value("kotekan_stage", std::string{}) == "hdf5N2Write") {
+            const auto bd = it.value().find("base_dir");
+            if (bd != it.value().end() && bd->is_string())
+                out.emplace_back(sub, bd->get<std::string>());
+        }
+        collect_hdf5N2Write_base_dirs(it.value(), sub, out);
+    }
+}
+
+/// Canonicalize a path for collision comparison; falls back to the raw
+/// string if weakly_canonical fails (e.g. permission denied on a parent).
+std::string normalize_base_dir(const std::string& dir) {
+    std::error_code ec;
+    auto canonical = std::filesystem::weakly_canonical(dir, ec);
+    return ec ? dir : canonical.string();
+}
+} // namespace
+
 /// Generate an acquisition base directory path: base_dir/acq_YYYYMMDD_HHMMSS_NNNNNNNNN
 static std::string get_acq_base_dir_path(const std::string& base_dir) {
     // Strip trailing slashes
@@ -939,6 +967,24 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     // Ensure the input buffer is an N2Buffer
     if (_buffer->buffer_type != "N2") {
         FATAL_ERROR("Input buffer must be a N2-type buffer.");
+    }
+
+    // Reject configs where two hdf5N2Write instances share an output directory.
+    {
+        std::vector<std::pair<std::string, std::string>> peers;
+        collect_hdf5N2Write_base_dirs(config.get_full_config_json(), "", peers);
+
+        const std::string my_dir = config.get<std::string>(unique_name, "base_dir");
+        const std::string my_norm = normalize_base_dir(my_dir);
+        for (const auto& [peer_name, peer_dir] : peers) {
+            if (peer_name == unique_name)
+                continue;
+            if (normalize_base_dir(peer_dir) == my_norm) {
+                FATAL_ERROR("hdf5N2Write[{}]: base_dir '{}' conflicts with stage '{}'. "
+                            "Each hdf5N2Write instance must use a unique base_dir.",
+                            unique_name, my_dir, peer_name);
+            }
+        }
     }
 
     if (_max_frames >= 0) {
