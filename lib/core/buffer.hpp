@@ -563,9 +563,10 @@ public:
             if (!std::equal(extents.begin(), extents.end(), nd_desc->get_extents().begin())) {
                 // Building individual strings with move() avoids nasty constexpr/fmt::join
                 // compilation error.
-                std::string ex1_str = fmt::format("{}", std::move(fmt::join(extents, ", ")));
-                std::string ex2_str =
-                    fmt::format("{}", std::move(fmt::join(nd_desc->get_extents(), ", ")));
+                auto ex1_j = fmt::join(extents, ", ");
+                auto ex2_j = fmt::join(nd_desc->get_extents(), ", ");
+                std::string ex1_str = fmt::format("{}", std::move(ex1_j));
+                std::string ex2_str = fmt::format("{}", std::move(ex2_j));
                 FATAL_ERROR("Extents do not match: [{:s}] != [{:s}]", ex1_str, ex2_str);
             }
             if (!std::equal(dimnames.begin(), dimnames.end(), nd_desc->get_dimnames().begin()))

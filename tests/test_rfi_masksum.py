@@ -177,7 +177,7 @@ def test_meta(rfimasksum_data, setup):
 
     for idx, frame in enumerate(rfimasksum_data):
 
-        assert frame.metadata["name"] == "RFImask_count"
+        assert frame.metadata["name"] == "RFImask_counts"
         assert (frame.metadata["dim_names"] == ["Tc", "F"]).all()
         assert (
             frame.metadata["time_downsampling_fpga"] == config["sub_integration_ntime"]
