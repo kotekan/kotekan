@@ -7,8 +7,6 @@
 
 #include "json.hpp"
 
-#include <event2/http.h> // for evhttp_uri_parse
-
 #include <N2FrameView.hpp>
 #include <N2Metadata.hpp>
 #include <Stage.hpp>
@@ -26,6 +24,7 @@
 #include <ctime>
 #include <errno.h>
 #include <errors.h>
+#include <event2/http.h> // for evhttp_uri_parse
 #include <filesystem>
 #include <fmt/ranges.h>
 #include <fstream>
@@ -60,9 +59,8 @@ static std::optional<size_t> hash_file_contents(const std::string& path) {
     std::ifstream ifs(path, std::ios::binary);
     if (!ifs)
         return std::nullopt;
-    std::string contents((std::istreambuf_iterator<char>(ifs)),
-                         std::istreambuf_iterator<char>());
-    if (ifs.bad())  // I/O error during read
+    std::string contents((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+    if (ifs.bad()) // I/O error during read
         return std::nullopt;
     return std::hash<std::string>{}(contents);
 }
@@ -80,8 +78,7 @@ static void download_url_to_file(const std::string& url, const std::string& dest
     const char* scheme = evhttp_uri_get_scheme(uri);
     if (!scheme || std::string(scheme) != "http") {
         evhttp_uri_free(uri);
-        FATAL_ERROR_NON_OO(
-            "hdf5N2Write: baseband_gain_url must use plain http:// (got '{}')", url);
+        FATAL_ERROR_NON_OO("hdf5N2Write: baseband_gain_url must use plain http:// (got '{}')", url);
         return;
     }
 
@@ -106,7 +103,8 @@ static void download_url_to_file(const std::string& url, const std::string& dest
     }
     evhttp_uri_free(uri);
 
-    INFO_NON_OO("hdf5N2Write: downloading digial gains file from fpga_master at http://{}:{}{}", host, port, path);
+    INFO_NON_OO("hdf5N2Write: downloading digial gains file from fpga_master at http://{}:{}{}",
+                host, port, path);
     // GET with empty JSON body
     restClient::restReply reply = restClient::instance().make_request_blocking(
         path, nlohmann::json::object(), host, static_cast<unsigned short>(port));
@@ -123,8 +121,8 @@ static void download_url_to_file(const std::string& url, const std::string& dest
     }
     ofs.write(reply.second.data(), static_cast<std::streamsize>(reply.second.size()));
     if (!ofs) {
-        FATAL_ERROR_NON_OO("hdf5N2Write: failed to write {} bytes to '{}'",
-                           reply.second.size(), dest_path);
+        FATAL_ERROR_NON_OO("hdf5N2Write: failed to write {} bytes to '{}'", reply.second.size(),
+                           dest_path);
         return;
     }
     ofs.close();

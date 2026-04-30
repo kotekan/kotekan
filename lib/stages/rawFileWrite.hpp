@@ -46,8 +46,6 @@ private:
     uint32_t _exit_after_n_files;
     // Prefix file name with hostname or not
     bool _prefix_hostname;
-    // Include metadata (not this breaks compatibility with files with metadata)
-    bool _include_metadata = true;
 };
 
 #endif

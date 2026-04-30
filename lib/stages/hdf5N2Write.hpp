@@ -94,7 +94,8 @@ public:
 
     double last_update_wall_s;               // last frame receipt
     std::unique_ptr<HighFive::File> h5_file; // Working on-disk HDF5 file handle
-    std::optional<size_t> gains_file_hash = std::nullopt; // hash of gains file contents at copy time
+    std::optional<size_t> gains_file_hash =
+        std::nullopt; // hash of gains file contents at copy time
 
 protected:
     // Datasets to be stored until ready to write
