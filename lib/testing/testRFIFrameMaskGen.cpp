@@ -14,12 +14,12 @@
 #include <cstdlib>    // for abort, size_t
 #include <functional> // for bind, function
 #ifdef WITH_OMP
-#include <omp.h>      // for omp_get_wtime
+#include <omp.h> // for omp_get_wtime
 #endif
-#include <random>     // for uniform_int_distribution, mt19937
-#include <stdint.h>   // for int32_t, uint32_t, uint64_t, int64_t
-#include <utility>    // for swap
-#include <vector>     // for vector
+#include <random>   // for uniform_int_distribution, mt19937
+#include <stdint.h> // for int32_t, uint32_t, uint64_t, int64_t
+#include <utility>  // for swap
+#include <vector>   // for vector
 
 
 using kotekan::bufferContainer;

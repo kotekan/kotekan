@@ -132,7 +132,8 @@ CountLostPLSamplesScalar::CountLostPLSamplesScalar(Config& config, const std::st
         FATAL_ERROR("num_dishes must be a multiple of 8");
     }
     if (!_packet_loss_is_scalar) {
-        FATAL_ERROR("_packet_loss_is_scalar is false, this stage requires the Packet Loss is scalar in elements.");
+        FATAL_ERROR("_packet_loss_is_scalar is false, this stage requires the Packet Loss is "
+                    "scalar in elements.");
     }
 
     // Make frame desc for produced buffer (this also checks the size)
@@ -186,10 +187,10 @@ void CountLostPLSamplesScalar::main_thread() {
         for (uint64_t t_int = 0; t_int < nt_int; t_int++) {
 
             uint64_t ta = t_int * nsub;
-            uint64_t tb = (t_int + 1) * nsub;  // this is the first time *not included* in the sum.
+            uint64_t tb = (t_int + 1) * nsub; // this is the first time *not included* in the sum.
 
             uint64_t ta_pl = ta / 2;
-            uint64_t tb_pl = tb / 2 - 1;  // this is the last PL time *included* in the sum
+            uint64_t tb_pl = tb / 2 - 1; // this is the last PL time *included* in the sum
 
             uint64_t ta_pl_hi = ta_pl / 64;
             uint64_t ta_pl_lo = ta_pl % 64;
@@ -210,10 +211,10 @@ void CountLostPLSamplesScalar::main_thread() {
 
                 // Zero out the end of the mask if necessary
                 if (bit_end < 63)
-                    mask &= (1ul << (bit_end+1)) - 1;  // mask[bit_end] and all lower bits are 1.
+                    mask &= (1ul << (bit_end + 1)) - 1; // mask[bit_end] and all lower bits are 1.
 
                 // Zero out the start of the mask
-                mask ^= (1ul << bit_start) - 1;  // mask[bit_start-1] and all lower bits are 0.
+                mask ^= (1ul << bit_start) - 1; // mask[bit_start-1] and all lower bits are 0.
 
                 for (uint64_t f = 0; f < nf; f++) {
 
@@ -230,11 +231,13 @@ void CountLostPLSamplesScalar::main_thread() {
                     uint64_t pl_counts_idx = f + t_int * nf;
 
                     // pl_mask here is a uint64, covering 128 time samples.
-                    // Want to count bad samples, not good, so first take complement (~pl_mask[pl_idx])
-                    // We might be accumulating over a subset of samples, so & with the mask.
-                    // Sum over inner time axis (the whole uint64 value) with popcount/bitset::count
-                    // Multiply by 2 to account for x2 downsampling. Each bit covers 2 time samples.
-                    pl_counts[pl_counts_idx] += 2 * std::bitset<64>((~pl_mask[pl_idx]) & mask).count();
+                    // Want to count bad samples, not good, so first take complement
+                    // (~pl_mask[pl_idx]) We might be accumulating over a subset of samples, so &
+                    // with the mask. Sum over inner time axis (the whole uint64 value) with
+                    // popcount/bitset::count Multiply by 2 to account for x2 downsampling. Each bit
+                    // covers 2 time samples.
+                    pl_counts[pl_counts_idx] +=
+                        2 * std::bitset<64>((~pl_mask[pl_idx]) & mask).count();
                 } // f
             } // t_sub_pl
         } // t_int

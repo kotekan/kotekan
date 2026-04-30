@@ -10,7 +10,7 @@
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
 #include "restServer.hpp"      // for restServer, connectionInstance
 
-#include "fmt.hpp"          // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
 
 #include <assert.h>   // for assert
 #include <functional> // for bind, function, placeholders
@@ -268,8 +268,7 @@ void RfiFrameMask::main_thread() {
         const int64_t seq_num = in_meta->get_fpga_seq_num();
         update_enabled_and_thresholds(seq_num);
 
-        if (_threshold.size() != _fraction.size()
-            || _threshold.size() > MAX_NUM_RFI_THRESHOLDS) {
+        if (_threshold.size() != _fraction.size() || _threshold.size() > MAX_NUM_RFI_THRESHOLDS) {
             FATAL_ERROR("'threshold' and 'fraction' arrays have bad sizes ({:d} and {:d}). Must be "
                         "identical and at most {:d}",
                         _threshold.size(), _fraction.size(), MAX_NUM_RFI_THRESHOLDS);

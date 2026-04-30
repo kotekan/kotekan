@@ -571,13 +571,11 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(*file, "/rfi_frame_excision_num", {num_file_t_}, {"time"},
                               HighFive::create_datatype<int32_t>(), props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_threshold",
-                              {num_file_t_, MAX_NUM_RFI_THRESHOLDS},
-                              {"time", "threshold"}, HighFive::create_datatype<float>(),
-                              props_empty);
+                              {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
+                              HighFive::create_datatype<float>(), props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_fraction",
-                              {num_file_t_, MAX_NUM_RFI_THRESHOLDS},
-                              {"time", "threshold"}, HighFive::create_datatype<float>(),
-                              props_empty);
+                              {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
+                              HighFive::create_datatype<float>(), props_empty);
 
         // Digital gains: copy entire gains file verbatim into /digital_gains/ group
         if (!baseband_gain_file.empty() && !file->exist("/digital_gains")) {
@@ -811,8 +809,7 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     rfi_frame_excision_enabled[t_index] = fv.rfi_frame_excision_enabled;
     rfi_frame_excision_num[t_index] = fv.rfi_frame_excision_num;
     std::copy(fv.rfi_frame_excision_threshold.begin(), fv.rfi_frame_excision_threshold.end(),
-              rfi_frame_excision_threshold.begin()
-                  + t_index * MAX_NUM_RFI_THRESHOLDS);
+              rfi_frame_excision_threshold.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
     std::copy(fv.rfi_frame_excision_fraction.begin(), fv.rfi_frame_excision_fraction.end(),
               rfi_frame_excision_fraction.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
 

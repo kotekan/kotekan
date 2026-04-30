@@ -11,8 +11,8 @@
 #include "metadata.hpp"       // for metadataObject, metadataPool
 #include "timeUtil.hpp"       // for EOP
 
-#include "fmt.hpp"          // for compile_string_to_view
-#include "json.hpp"         // for json
+#include "fmt.hpp"  // for compile_string_to_view
+#include "json.hpp" // for json
 
 using kotekan::Config;
 

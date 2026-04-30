@@ -120,7 +120,8 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
                 "samples_per_data_set ({:d}) is not a multiple of sub_integration_ntime ({:d})",
                 _samples_per_data_set, _sub_integration_ntime);
         if (!(_samples_per_data_set % 1024 == 0))
-            FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of 1024", _samples_per_data_set);
+            FATAL_ERROR("samples_per_data_set ({:d}) is not a multiple of 1024",
+                        _samples_per_data_set);
 
         // RFI downsampling factor checks
         if (!(_rfi_downsampling_factor > 0))
@@ -139,8 +140,10 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
         FATAL_ERROR("RfiMaskSum in_buf ({:s}) has frame size {:d}. Expected {:d}.",
                     in_buf->buffer_name, in_buf->frame_size, in_rfimask_frame_size);
 
-    in_buf->allocate_ndarray_frame_desc(kotekan::uint1x8, "RFImask",
-                                         {div_noremainder(_samples_per_data_set, 1024), _num_local_freq, 1024 / 8}, {"T8hi128", "F", "T8lo128"});
+    in_buf->allocate_ndarray_frame_desc(
+        kotekan::uint1x8, "RFImask",
+        {div_noremainder(_samples_per_data_set, 1024), _num_local_freq, 1024 / 8},
+        {"T8hi128", "F", "T8lo128"});
     out_buf->allocate_ndarray_frame_desc(kotekan::int32, "RFImask_counts",
                                          {_num_integrations, _num_local_freq}, {"Tc", "F"});
 }

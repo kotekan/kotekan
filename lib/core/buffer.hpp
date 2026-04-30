@@ -554,21 +554,22 @@ public:
                 FATAL_ERROR("Rank mismatch: {:d} != {:d}", D, nd_desc->get_rank());
             if (kotekan::GetDataType_v<T> != nd_desc->get_value_datatype())
                 FATAL_ERROR("Type mismatch: {:s} != {:s}",
-                      kotekan::type_to_string(kotekan::GetDataType_v<T>),
-                      kotekan::type_to_string(nd_desc->get_value_datatype()));
+                            kotekan::type_to_string(kotekan::GetDataType_v<T>),
+                            kotekan::type_to_string(nd_desc->get_value_datatype()));
             if (quantity_name != nd_desc->get_quantity_name())
                 FATAL_ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
-                      nd_desc->get_quantity_name());
+                            nd_desc->get_quantity_name());
             if (!std::equal(extents.begin(), extents.end(), nd_desc->get_extents().begin())) {
                 // Building individual strings with move() avoids nasty constexpr/fmt::join
                 // compilation error.
                 std::string ex1_str = fmt::format("{}", std::move(fmt::join(extents, ", ")));
-                std::string ex2_str = fmt::format("{}", std::move(fmt::join(nd_desc->get_extents(), ", ")));
+                std::string ex2_str =
+                    fmt::format("{}", std::move(fmt::join(nd_desc->get_extents(), ", ")));
                 FATAL_ERROR("Extents do not match: [{:s}] != [{:s}]", ex1_str, ex2_str);
             }
             if (!std::equal(dimnames.begin(), dimnames.end(), nd_desc->get_dimnames().begin()))
                 FATAL_ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "),
-                      fmt::join(nd_desc->get_dimnames(), ", "));
+                            fmt::join(nd_desc->get_dimnames(), ", "));
         }
 
         if (frames_desc->get_byte_size() != frame_size) {

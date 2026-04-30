@@ -687,7 +687,7 @@ public:
      *                  first num_dishes elements of this vector.
      **/
     void fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
-                              std::vector<std::complex<float>>& phases) const;
+                                   std::vector<std::complex<float>>& phases) const;
 
     /**
      * @brief   Fill a dishInputFields struct with dish information. Will possibly

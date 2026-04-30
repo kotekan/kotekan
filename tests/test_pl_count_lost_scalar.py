@@ -63,7 +63,7 @@ bad_config = {
             "fail": False,
         },
     ],
-    ids=["bad-size", "accum2", "accum-whole", "accum48-allPL", "accum48-noPL", "prod"]
+    ids=["bad-size", "accum2", "accum-whole", "accum48-allPL", "accum48-noPL", "prod"],
 )
 def setup(request):
     """
@@ -231,7 +231,7 @@ def count_lost_samples(plmask, config):
     nint = config["samples_per_data_set"] // config["sub_integration_ntime"]
 
     nf = config["num_local_freq"]
-    
+
     nf4 = plmask.data.shape[1]
 
     # Allocate data array
@@ -252,11 +252,11 @@ def count_lost_samples(plmask, config):
         # (thi, f4, tlo) to (f4, thi, tlo)
         plmask_ftt = plmask.data[:, :, 0, 0, :].transpose((1, 0, 2))
 
-        
-
         plmask_ft = plmask_ftt.reshape((nf4, -1))
 
-        lost_bits_ft = np.unpackbits(np.bitwise_not(plmask_ft), axis=1, bitorder='little')
+        lost_bits_ft = np.unpackbits(
+            np.bitwise_not(plmask_ft), axis=1, bitorder="little"
+        )
         lost_counts_f4 = 2 * lost_bits_ft[:, tpl0:tpl1].astype(np.int32).sum(axis=1)
 
         # grab the pl slice for our integtation, count the 1's in each u8, cast to int32s, then
@@ -313,7 +313,7 @@ def test_pl_lost_counts(pllostcounts_data, setup, plmask_data):
         assert frame.data.dtype == pl_lost_counts.dtype
 
         # Check the counts are identical
-        print("setup pl_vals:", setup['pl_vals'])
+        print("setup pl_vals:", setup["pl_vals"])
         print("kotekan:", frame.data[0])
         print("python:", pl_lost_counts[0])
         assert (frame.data == pl_lost_counts).all()

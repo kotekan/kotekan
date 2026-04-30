@@ -13,8 +13,8 @@
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
 #include "timeUtil.hpp"          // for EOP
 
-#include "fmt.hpp"          // for compile_string_to_view
-#include "gsl-lite.hpp"     // for span
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
 
 #include <algorithm>  // for fill, copy
 #include <assert.h>   // for assert
@@ -107,7 +107,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                         "positive and even!) num_n2k_samples_to_accumulate: {:d}",
                         _num_n2k_samples_to_accumulate);
         if (_bin_in_ERA && _num_bins_per_rotation <= 0)
-            FATAL_ERROR("N2Accumulate configured to use ERA-based binning (bin_in_ERA is true) with non-positive num_bins_per_rotation {:d}.", _num_bins_per_rotation);
+            FATAL_ERROR("N2Accumulate configured to use ERA-based binning (bin_in_ERA is true) "
+                        "with non-positive num_bins_per_rotation {:d}.",
+                        _num_bins_per_rotation);
 
         if (!_packet_loss_is_scalar)
             FATAL_ERROR(
@@ -728,9 +730,9 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
         // Physical frequency for this f
         // Compute the fringestopping phases for this frequency
         _tel.cast<CHORDTelescope>().fill_fringestop_phases_1d(freq_MHz, eop_t1, target_eop,
-                                                         fringe_phase_t1);
+                                                              fringe_phase_t1);
         _tel.cast<CHORDTelescope>().fill_fringestop_phases_1d(freq_MHz, eop_t0, target_eop,
-                                                         fringe_phase_t0);
+                                                              fringe_phase_t0);
     }
 
     uint64_t block_idx = 0;
@@ -773,8 +775,7 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
                             //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
                             //                   = V_ij * Phase_i *
                             //                   conj(Phase_j)
-                            std::complex<float> phase_odd =
-                                phase_i[ilo] * std::conj(phase_j[jlo]);
+                            std::complex<float> phase_odd = phase_i[ilo] * std::conj(phase_j[jlo]);
                             std::complex<float> phase_even =
                                 phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
 
@@ -807,8 +808,7 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
                             //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
                             //                   = V_ij * Phase_i *
                             //                   conj(Phase_j)
-                            std::complex<float> phase_odd =
-                                phase_i[ilo] * std::conj(phase_j[jlo]);
+                            std::complex<float> phase_odd = phase_i[ilo] * std::conj(phase_j[jlo]);
                             std::complex<float> phase_even =
                                 phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
 
@@ -821,8 +821,7 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
 
                         std::complex<float> dvis = inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
                         var_fb[w_idx] +=
-                            inv_dvis_var
-                            * (dvis.real() * dvis.real() + dvis.imag() * dvis.imag());
+                            inv_dvis_var * (dvis.real() * dvis.real() + dvis.imag() * dvis.imag());
                     } // jlo
                 } // ilo
             } // variance_mode

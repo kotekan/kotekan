@@ -139,7 +139,7 @@ cudaPLMaskAccumulator::cudaPLMaskAccumulator(kotekan::Config& config,
 
     if (num_times % sub_integration_ntime != 0)
         FATAL_ERROR("num_times % sub_integration_ntime != 0");
-    
+
     if ((num_dishes * num_polarizations) % 128 != 0)
         FATAL_ERROR("num_elements (dish x pol) % 128 != 0");
 

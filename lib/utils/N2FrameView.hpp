@@ -12,11 +12,11 @@
 #include "FrameView.hpp"      // for FrameView
 #include "N2FrameDesc.hpp"    // for N2FrameDesc
 #include "N2Metadata.hpp"     // for N2Metadata
-#include "chordMetadata.hpp"  // for MAX_NUM_RFI_THRESHOLDS
 #include "N2Util.hpp"         // for cfloat, get_num_prod
 #include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for MAX_NUM_RFI_THRESHOLDS
 
-#include "gsl-lite.hpp"     // for span
+#include "gsl-lite.hpp" // for span
 
 #include <algorithm> // for max
 #include <exception> // for exception
