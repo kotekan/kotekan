@@ -120,8 +120,8 @@ CountLostPLSamplesScalar::CountLostPLSamplesScalar(Config& config, const std::st
     if (_samples_per_data_set % 128 != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of 128");
     }
-    if (_sub_integration_ntime % 128 != 0) {
-        FATAL_ERROR("sub_integration_ntime must be a multiple of 128");
+    if (_sub_integration_ntime % 2 != 0) {
+        FATAL_ERROR("sub_integration_ntime must be a multiple of 2");
     }
     if (_samples_per_data_set % _sub_integration_ntime != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of sub_integration_ntime");
@@ -161,7 +161,7 @@ void CountLostPLSamplesScalar::main_thread() {
         // number of elements = number of dishes * polarizations
         uint64_t nf = _num_local_freq;
 
-        uint64_t nsub_pl = div_noremainder(_sub_integration_ntime, 128);
+        uint64_t nsub = _sub_integration_ntime;
         uint64_t nt_int = _num_integrations;
 
         uint64_t nf_pl = (_num_local_freq + 3) / 4;
@@ -178,15 +178,40 @@ void CountLostPLSamplesScalar::main_thread() {
         // Looping over entries in the pl_counts buffer.
         for (uint64_t t_int = 0; t_int < nt_int; t_int++) {
 
+            uint64_t ta = t_int * nsub;
+            uint64_t tb = (t_int + 1) * nsub;  // this is the first time *not included* in the sum.
+
+            uint64_t ta_pl = ta / 2;
+            uint64_t tb_pl = tb / 2 - 1;  // this is the last PL time *included* in the sum
+
+            uint64_t ta_pl_hi = ta_pl / 64;
+            uint64_t ta_pl_lo = ta_pl % 64;
+            uint64_t tb_pl_hi = tb_pl / 64;
+            uint64_t tb_pl_lo = tb_pl % 64;
+
             // Accumulate over outer (T/128) PL time axis
-            for (uint64_t t_sub_pl = 0; t_sub_pl < nsub_pl; t_sub_pl++) {
+            for (uint64_t t_pl_hi = ta_pl_hi; t_pl_hi <= tb_pl_hi; t_pl_hi++) {
+
+                // If we're on the first or last 64 bit chunk, set the start & end bits,
+                // otherwise we'll use the whole chunk.
+                // These indices are *inclusive*: the first and last bits to include in this chunk.
+                uint64_t bit_start = (t_pl_hi == ta_pl_hi) ? ta_pl_lo : 0;
+                uint64_t bit_end = (t_pl_hi == tb_pl_hi) ? tb_pl_lo : 63;
+
+                // Mask to encode which bits are included in this chunk of the accumulation.
+                uint64_t mask = ~(0ul); // Start with all 1's, everything included.
+
+                // Zero out the end of the mask if necessary
+                if (bit_end < 63)
+                    mask &= (1ul << (bit_end+1)) - 1;  // mask[bit_end] and all lower bits are 1.
+
+                // Zero out the start of the mask
+                mask ^= (1ul << bit_start) - 1;  // mask[bit_start-1] and all lower bits are 0.
+
                 for (uint64_t f = 0; f < nf; f++) {
 
                     // We're ignoring the element axis of the PL Mask here, assuming its a scalar
                     // (values identical for all elements).
-
-                    // PL Mask outer time axis index.
-                    uint64_t t_pl_hi = t_sub_pl + nsub_pl * t_int;
 
                     // PL Mask frequency axis index
                     uint64_t f_pl = f / 4;
@@ -198,10 +223,11 @@ void CountLostPLSamplesScalar::main_thread() {
                     uint64_t pl_counts_idx = f + t_int * nf;
 
                     // pl_mask here is a uint64, covering 128 time samples.
-                    // Sum over inner time axis (the whole uint64 value) with popcount.
-                    // Want to count bad samples, not good, so take complement (64 - popcount())
+                    // Want to count bad samples, not good, so first take complement (~pl_mask[pl_idx])
+                    // We might be accumulating over a subset of samples, so & with the mask.
+                    // Sum over inner time axis (the whole uint64 value) with popcount/bitset::count
                     // Multiply by 2 to account for x2 downsampling. Each bit covers 2 time samples.
-                    pl_counts[pl_counts_idx] += 2 * (64 - std::bitset<64>(pl_mask[pl_idx]).count());
+                    pl_counts[pl_counts_idx] += 2 * std::bitset<64>((~pl_mask[pl_idx]) & mask).count();
                 } // f
             } // t_sub_pl
         } // t_int

@@ -12,11 +12,11 @@
 #include "FrameView.hpp"      // for FrameView
 #include "N2FrameDesc.hpp"    // for N2FrameDesc
 #include "N2Metadata.hpp"     // for N2Metadata
+#include "chordMetadata.hpp"  // for MAX_NUM_RFI_THRESHOLDS
 #include "N2Util.hpp"         // for cfloat, get_num_prod
 #include "buffer.hpp"         // for Buffer
 
 #include "gsl-lite.hpp"     // for span
-#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 
 #include <algorithm> // for max
 #include <exception> // for exception
@@ -95,9 +95,9 @@ public:
     /// The number of active RFI excision thresholds.
     int32_t& rfi_frame_excision_num;
     /// The SK thresholds (in sigma) for RFI excision
-    std::array<float, jsonMetadata::MAX_NUM_RFI_THRESHOLDS>& rfi_frame_excision_threshold;
+    std::array<float, MAX_NUM_RFI_THRESHOLDS>& rfi_frame_excision_threshold;
     /// The fraction of samples above threshold that trigger RFI excision.
-    std::array<float, jsonMetadata::MAX_NUM_RFI_THRESHOLDS>& rfi_frame_excision_fraction;
+    std::array<float, MAX_NUM_RFI_THRESHOLDS>& rfi_frame_excision_fraction;
 
     /// CHIME dataset id tracking updateable config item changes
     dset_id_t& dataset_id;

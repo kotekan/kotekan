@@ -5,6 +5,7 @@
 #include "N2Layout.hpp" // for N2Layout
 #include "N2Metadata.hpp"
 #include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for MAX_NUM_RFI_THRESHOLDS
 #include "dataset.hpp"        // for dset_id_t
 #include "kotekanLogging.hpp" // for WARN_NON_OO
 #include "metadata.hpp"       // for metadataObject, metadataPool
@@ -12,7 +13,6 @@
 
 #include "fmt.hpp"          // for compile_string_to_view
 #include "json.hpp"         // for json
-#include "jsonMetadata.hpp" // for jsonMetadata
 
 using kotekan::Config;
 
@@ -68,9 +68,9 @@ struct N2MetadataFormat {
     /// The number of active RFI excision thresholds.
     int32_t rfi_frame_excision_num = 0;
     /// The SK thresholds (in sigma) for RFI excision
-    std::array<float, jsonMetadata::MAX_NUM_RFI_THRESHOLDS> rfi_frame_excision_threshold = {0};
+    std::array<float, MAX_NUM_RFI_THRESHOLDS> rfi_frame_excision_threshold = {0};
     /// The fraction of samples above threshold that trigger RFI excision.
-    std::array<float, jsonMetadata::MAX_NUM_RFI_THRESHOLDS> rfi_frame_excision_fraction = {0};
+    std::array<float, MAX_NUM_RFI_THRESHOLDS> rfi_frame_excision_fraction = {0};
     /// CHIME dataset id tracking updateable config item changes
     dset_id_t dataset_id = dset_id_t::null;
 };

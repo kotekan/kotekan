@@ -12,11 +12,11 @@ prod_config = {
     "num_dishes": 512,
 }
 
-bad_config = {
+medium_config = {
     "buffer_depth": 2,
-    "samples_per_data_set": 1024,
+    "samples_per_data_set": 384,
     "num_local_freq": 4,
-    "sub_integration_ntime": 64,
+    "sub_integration_ntime": 48,
     "num_polarizations": 2,
     "num_dishes": 8,
 }
@@ -30,18 +30,40 @@ small_config = {
     "num_dishes": 8,
 }
 
+very_small_config = {
+    "buffer_depth": 2,
+    "samples_per_data_set": 256,
+    "num_local_freq": 4,
+    "sub_integration_ntime": 2,
+    "num_polarizations": 2,
+    "num_dishes": 8,
+}
+
+bad_config = {
+    "buffer_depth": 2,
+    "samples_per_data_set": 1024,
+    "num_local_freq": 4,
+    "sub_integration_ntime": 48,
+    "num_polarizations": 2,
+    "num_dishes": 8,
+}
+
 
 @pytest.fixture(
     scope="module",
     params=[
-        {"config": small_config, "pl_vals": [[1, 0, 7, 255, 16]], "fail": False},
         {"config": bad_config, "pl_vals": [[255]], "fail": True},
+        {"config": very_small_config, "pl_vals": [[1, 0, 7, 255, 16]], "fail": False},
+        {"config": small_config, "pl_vals": [[1, 0, 7, 255, 16]], "fail": False},
+        {"config": medium_config, "pl_vals": [[0]], "fail": False},
+        {"config": medium_config, "pl_vals": [[255]], "fail": False},
         {
             "config": prod_config,
             "pl_vals": [[255], [0], [2, 3, 5, 7, 11, 13, 17, 23, 29, 31, 37]],
             "fail": False,
         },
     ],
+    ids=["bad-size", "accum2", "accum-whole", "accum48-allPL", "accum48-noPL", "prod"]
 )
 def setup(request):
     """
@@ -103,7 +125,7 @@ def plmask_data(setup):
         meta["fpga_seq_num"] = seq_num
         meta["time_downsampling_fpga"] = 128
 
-        # We're pruducing the PL mask out of u8's. Each u8 represents 16 time samples,
+        # We're producing the PL mask out of u8's. Each u8 represents 16 time samples,
         # so we'll index with "t16"
         t16_0 = (idx * config["samples_per_data_set"]) // 16
         t16_1 = ((idx + 1) * config["samples_per_data_set"]) // 16
@@ -209,6 +231,8 @@ def count_lost_samples(plmask, config):
     nint = config["samples_per_data_set"] // config["sub_integration_ntime"]
 
     nf = config["num_local_freq"]
+    
+    nf4 = plmask.data.shape[1]
 
     # Allocate data array
     lost_counts = np.empty((nint, nf), dtype=np.int32)
@@ -220,15 +244,26 @@ def count_lost_samples(plmask, config):
         t0 = tint * config["sub_integration_ntime"]
         t1 = (tint + 1) * config["sub_integration_ntime"]
 
-        # t0 and t1 in the "slow" PL mask time.
-        tpl0 = t0 // 128
-        tpl1 = t1 // 128
+        # t0 and t1 in PL mask time (downsampled by 2).
+        tpl0 = t0 // 2
+        tpl1 = t1 // 2
+
+        # plmask with element axes stripped out and transposed from
+        # (thi, f4, tlo) to (f4, thi, tlo)
+        plmask_ftt = plmask.data[:, :, 0, 0, :].transpose((1, 0, 2))
+
+        
+
+        plmask_ft = plmask_ftt.reshape((nf4, -1))
+
+        lost_bits_ft = np.unpackbits(np.bitwise_not(plmask_ft), axis=1, bitorder='little')
+        lost_counts_f4 = 2 * lost_bits_ft[:, tpl0:tpl1].astype(np.int32).sum(axis=1)
 
         # grab the pl slice for our integtation, count the 1's in each u8, cast to int32s, then
         # sum over remaining time indices.
-        lost_counts_f4 = config["sub_integration_ntime"] - 2 * np.bitwise_count(
-            plmask.data[tpl0:tpl1, :, 0, 0, :]
-        ).astype(np.int32).sum(axis=(0, 2))
+        # lost_counts_f4 = config["sub_integration_ntime"] - 2 * np.bitwise_count(
+        #     plmask.data[tpl0:tpl1, :, 0, 0, :]
+        # ).astype(np.int32).sum(axis=(0, 2))
 
         # place the counts into appropriate frequency bins.
         for f in range(config["num_local_freq"]):
@@ -278,4 +313,7 @@ def test_pl_lost_counts(pllostcounts_data, setup, plmask_data):
         assert frame.data.dtype == pl_lost_counts.dtype
 
         # Check the counts are identical
+        print("setup pl_vals:", setup['pl_vals'])
+        print("kotekan:", frame.data[0])
+        print("python:", pl_lost_counts[0])
         assert (frame.data == pl_lost_counts).all()

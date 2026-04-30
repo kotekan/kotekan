@@ -896,10 +896,9 @@ double CHORDTelescope::get_ERAL_deg(EOP& eop) const {
     double lon = get_origin_itrs_lon_deg();
     double eral = era + lon; // Ignore TIO locator s', it is only ~12 micro arcseconds.
 
-    if (eral < 0.0)
-        eral += 360.0;
-    if (eral >= 360.0)
-        eral -= 360.0;
+    // Reset eral to [0, 360)
+    double n_off = std::floor(eral / 360.0);
+    eral -= n_off * 360;
 
     return eral;
 }

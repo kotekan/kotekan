@@ -11,7 +11,6 @@
 #include "restServer.hpp"      // for restServer, connectionInstance
 
 #include "fmt.hpp"          // for compile_string_to_view
-#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 
 #include <assert.h>   // for assert
 #include <functional> // for bind, function, placeholders
@@ -244,7 +243,7 @@ void RfiFrameMask::main_thread() {
     INFO("Generating RFI Frame Mask from {:s}[{:d}] putting result in {:s}[{:d}]",
          in_buf->buffer_name, in_frame_id, out_buf->buffer_name, out_frame_id);
 
-    std::vector<int64_t> num_sk_exceeds(jsonMetadata::MAX_NUM_RFI_THRESHOLDS);
+    std::vector<int64_t> num_sk_exceeds(MAX_NUM_RFI_THRESHOLDS);
 
     while (!stop_thread) {
 
@@ -270,10 +269,10 @@ void RfiFrameMask::main_thread() {
         update_enabled_and_thresholds(seq_num);
 
         if (_threshold.size() != _fraction.size()
-            || _threshold.size() > jsonMetadata::MAX_NUM_RFI_THRESHOLDS) {
+            || _threshold.size() > MAX_NUM_RFI_THRESHOLDS) {
             FATAL_ERROR("'threshold' and 'fraction' arrays have bad sizes ({:d} and {:d}). Must be "
                         "identical and at most {:d}",
-                        _threshold.size(), _fraction.size(), jsonMetadata::MAX_NUM_RFI_THRESHOLDS);
+                        _threshold.size(), _fraction.size(), MAX_NUM_RFI_THRESHOLDS);
         }
 
         DEBUG("Computing RFI frame mask");
@@ -440,10 +439,10 @@ bool RfiFrameMask::receive_rfi_excision_thresholds(nlohmann::json& update) {
         return false;
     }
 
-    if (j.size() > jsonMetadata::MAX_NUM_RFI_THRESHOLDS) {
+    if (j.size() > MAX_NUM_RFI_THRESHOLDS) {
         WARN("RfiFrameMask failed to read update to {:s} - 'thresholds' has length {:d}, maximum "
              "accepted is {:d}",
-             _thresholds_config_path, j.size(), jsonMetadata::MAX_NUM_RFI_THRESHOLDS);
+             _thresholds_config_path, j.size(), MAX_NUM_RFI_THRESHOLDS);
         return false;
     }
 

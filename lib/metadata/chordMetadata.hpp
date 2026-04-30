@@ -440,7 +440,7 @@ public:
     // Second stage RFI excision (whole GPU frames) thresholds
     void set_rfi_frame_excision_thresholds(const std::vector<std::array<float, 2>> thresholds) {
         std::lock_guard<std::mutex> lock(this->lock);
-        assert(thresholds.size() <= jsonMetadata::MAX_NUM_RFI_THRESHOLDS);
+        assert(thresholds.size() <= MAX_NUM_RFI_THRESHOLDS);
         metadata[jsonMetadata::RFI_FRAME_EXCISION_THRESHOLDS] = thresholds;
     }
 

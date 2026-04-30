@@ -15,7 +15,6 @@
 
 #include "fmt.hpp"          // for compile_string_to_view
 #include "gsl-lite.hpp"     // for span
-#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 
 #include <algorithm>  // for fill, copy
 #include <assert.h>   // for assert
@@ -918,16 +917,16 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
     std::vector<std::array<float, 2>> thresholds_pack =
         rfiframemask_metadata->get_rfi_frame_excision_thresholds();
-    if (thresholds_pack.size() > jsonMetadata::MAX_NUM_RFI_THRESHOLDS) {
+    if (thresholds_pack.size() > MAX_NUM_RFI_THRESHOLDS) {
         FATAL_ERROR("RFIFrameMask buffer {:s}[{:d}] has too large rfi thresholds buffer {:d}, "
                     "expected <= {:d}",
                     in_rfiframemask_buf->buffer_name, in_rfiframemask_frame_id,
-                    thresholds_pack.size(), jsonMetadata::MAX_NUM_RFI_THRESHOLDS);
+                    thresholds_pack.size(), MAX_NUM_RFI_THRESHOLDS);
     }
 
     size_t num_thresholds = thresholds_pack.size();
-    std::array<float, jsonMetadata::MAX_NUM_RFI_THRESHOLDS> rfi_threshold = {0.0f};
-    std::array<float, jsonMetadata::MAX_NUM_RFI_THRESHOLDS> rfi_fraction = {0.0f};
+    std::array<float, MAX_NUM_RFI_THRESHOLDS> rfi_threshold = {0.0f};
+    std::array<float, MAX_NUM_RFI_THRESHOLDS> rfi_fraction = {0.0f};
     for (size_t k = 0; k < num_thresholds; k++) {
         rfi_threshold[k] = thresholds_pack[k][0];
         rfi_fraction[k] = thresholds_pack[k][1];

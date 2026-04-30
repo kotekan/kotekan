@@ -20,8 +20,8 @@ namespace jsonMetadata {
 // these must match chimeMetadata and choordMetadata for now
 // in namespace for C++ const
 #define MAX_NUM_BEAMS 20
+#define MAX_NUM_RFI_THRESHOLDS 8
 const int CHORD_META_MAX_FREQ = 4096;
-constexpr int MAX_NUM_RFI_THRESHOLDS = 8;
 
 typedef nlohmann::json metadata;
 

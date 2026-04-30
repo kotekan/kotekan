@@ -364,7 +364,8 @@ public:
         const std::vector<size_t> emethod_dims({1});
         const std::vector<size_t> erms_dims({1});
         const std::vector<size_t> gain_dims({frame.num_elements, 2});
-        const std::vector<size_t> radiometer_chi2_dims({3});
+        const std::vector<size_t> radiometer_chi2_dims({3}); // 3 pol pairs XX, XY, YY
+
 
         // Create dataspaces
         const DataSpace vis_space(vis_dims);
