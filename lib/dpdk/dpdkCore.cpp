@@ -465,19 +465,23 @@ int dpdkCore::lcore_rx(void* args) {
     if (lcore >= core->lcore_port_list.size()) {
         uint32_t worker_id = lcore - core->lcore_port_list.size();
         INFO_NON_OO("Starting worker: worker_id {:d}, lcore {:d}", worker_id, lcore);
+
+        // Cache the worker pointer and ring pointer locally; neither changes at runtime.
+        dpdkRXhandler* local_worker = core->workers.at(worker_id);
+        rte_ring* local_ring = core->worker_rings.at(worker_id);
+
         while (!core->stop_thread) {
-            uint16_t num_rx = rte_ring_dequeue_burst(core->worker_rings.at(worker_id),
-                                                     (void**)mbufs, core->burst_size, NULL);
+            uint16_t num_rx =
+                rte_ring_dequeue_burst(local_ring, (void**)mbufs, core->burst_size, NULL);
 
             if (num_rx == 0)
                 continue;
 
             for (uint16_t j = 0; j < num_rx; ++j) {
-                if (unlikely(core->workers.at(worker_id)->handle_packet(mbufs[j]) != 0)) {
+                if (unlikely(local_worker->handle_packet(mbufs[j]) != 0)) {
                     rte_pktmbuf_free(mbufs[j]);
                     goto exit_loop;
                 }
-                // INFO_NON_OO("Worker {:d} processed a packet, freeing the buffer", worker_id);
                 rte_pktmbuf_free(mbufs[j]);
             }
         }
@@ -508,22 +512,49 @@ int dpdkCore::lcore_rx(void* args) {
     // ready.  There might be a function to check their readness state we could query?
     sleep(40);
     const uint32_t num_local_ports = ports.size();
-    while (!core->stop_thread) {
-        for (uint32_t i = 0; i < num_local_ports; ++i) {
-            uint32_t port = ports[i];
 
-            // INFO_NON_OO("Polling port {:d} for packets", port);
-            const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
-            //INFO_NON_OO("Port {:d} received {:d} packets", port, num_rx);
-            for (uint16_t j = 0; j < num_rx; ++j) {
+    // Enforce that all handlers on this lcore are either all distributors or all
+    // non-distributors.
+    const bool is_distributor_lcore = core->handlers[ports[0]]->is_distributor();
+    for (uint32_t i = 1; i < num_local_ports; ++i) {
+        if (core->handlers[ports[i]]->is_distributor() != is_distributor_lcore) {
+            throw std::runtime_error(
+                "All handlers on a single lcore must be either all distributors or all "
+                "non-distributors. Mixed lcores are not supported.");
+        }
+    }
 
-                // Process the packet with the required handler
-                // NOTE: Ideally this wouldn't be a call to a virtual function,
-                // but it's an overhead that's hard to avoid here.
-                if (unlikely(core->handlers[port]->handle_packet(mbufs[j]) != 0)) {
-                    goto exit_lcore;
+    // Cache handler pointers locally. The handlers array does not change at runtime.
+    std::vector<dpdkRXhandler*> local_handlers(num_local_ports);
+    for (uint32_t i = 0; i < num_local_ports; ++i) {
+        local_handlers[i] = core->handlers[ports[i]];
+    }
+
+    if (is_distributor_lcore) {
+        // Distributor handlers take ownership of the mbuf; do not free here.
+        // Instead the free happens in the worker (above)
+        while (!core->stop_thread) {
+            for (uint32_t i = 0; i < num_local_ports; ++i) {
+                uint32_t port = ports[i];
+                const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
+                for (uint16_t j = 0; j < num_rx; ++j) {
+                    if (unlikely(local_handlers[i]->handle_packet(mbufs[j]) != 0)) {
+                        goto exit_lcore;
+                    }
                 }
-                rte_pktmbuf_free(mbufs[j]);
+            }
+        }
+    } else {
+        while (!core->stop_thread) {
+            for (uint32_t i = 0; i < num_local_ports; ++i) {
+                uint32_t port = ports[i];
+                const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
+                for (uint16_t j = 0; j < num_rx; ++j) {
+                    if (unlikely(local_handlers[i]->handle_packet(mbufs[j]) != 0)) {
+                        goto exit_lcore;
+                    }
+                    rte_pktmbuf_free(mbufs[j]);
+                }
             }
         }
     }
