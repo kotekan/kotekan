@@ -27,6 +27,8 @@ chord_tel = {
     "num_dishes_x": 12,
     "num_dishes_y": 6,
     "dish_inputs": [],
+    "origin_itrs_lat_deg": 50.0,
+    "origin_itrs_lon_deg": -120.0,
 }
 
 chime_tel = {
@@ -35,9 +37,13 @@ chime_tel = {
     "fft_length": 2048,
     "nyquist_zone": 2,
     "require_gps": False,
+    "origin_itrs_lat_deg": 50.0,
+    "origin_itrs_lon_deg": -120.0,
 }
 
-ERA_TOL = 4e-12  # ~1 ns of Earth Rotation
+NS_TOL = 5  # Allowing 5 ns of slop in eop
+ERA_TOL = 2e-12 * NS_TOL  # There are ~2e-12 deg of Earth Rotation per ns
+DUT1_TOL = 1e-14  # Just a big bigger than roundoff error
 PM_TOL = 1e-14  # Just a big bigger than roundoff error
 
 
@@ -535,7 +541,7 @@ def accum_data(
 def accum_list(setup):
 
     config = setup["config"]
-    accum = setup["accum"]
+    accum_setup = setup["accum"]
 
     seq0 = config["first_frame_index"] * config["samples_per_data_set"]
     num_sub_per_frame = (
@@ -545,10 +551,10 @@ def accum_list(setup):
     subs = np.arange(num_sub_per_frame * config["num_frames"])
     seqs = seq0 + config["sub_integration_ntime"] * subs
 
-    if accum["bin_in_ERA"]:
+    if accum_setup["bin_in_ERA"]:
         pass
     else:
-        subs_per_accum = accum["num_n2k_samples_to_accumulate"]
+        subs_per_accum = accum_setup["num_n2k_samples_to_accumulate"]
         seq_per_accum = subs_per_accum * config["sub_integration_ntime"]
 
         accum_idx_sub = seqs // seq_per_accum
@@ -556,9 +562,6 @@ def accum_list(setup):
         first_sub_in_accum = subs[seqs % seq_per_accum == 0][0]
 
     accum_bin_idx = np.unique(accum_idx_sub[first_sub_in_accum:])
-
-    accum_subs = []
-    accum_seqs = []
 
     accums = []
 
@@ -574,6 +577,37 @@ def accum_list(setup):
                 "seq_len": config["sub_integration_ntime"] * len(subs[mask]),
             }
         )
+
+    for accum in accums:
+        if accum_setup["bin_in_ERA"]:
+            dera = 360.0 / accum_setup["num_bins_per_rotation"]
+            accum["bin_start_ERA_deg"] = (
+                accum["bin_idx"] % accum_setup["num_bins_per_rotation"]
+            ) * dera
+            accum["bin_end_ERA_deg"] = (
+                (accum["bin_idx"] + 1) % accum_setup["num_bins_per_rotation"]
+            ) * dera
+            accum["bin_start_ERAL_deg"] = (
+                accum["bin_start_ERA_deg"] + setup["tel"]["origin_itrs_lon_deg"]
+            )
+            accum["bin_end_ERAL_deg"] = (
+                accum["bin_end_ERA_deg"] + setup["tel"]["origin_itrs_lon_deg"]
+            )
+        else:
+            seq_start = accum["seq"]
+            seq_end = accum["seq"] + accum["seq_len"]
+            t_start = tel.get_t_inst_ns(seq_start, setup["tel"])
+            t_end = tel.get_t_inst_ns(seq_end, setup["tel"])
+            accum["bin_start_ERA_deg"] = tel.get_ERA_at_t_inst_ns(
+                t_start, setup["tel"], setup["set_eop"]
+            )
+            accum["bin_end_ERA_deg"] = tel.get_ERA_at_t_inst_ns(
+                t_end, setup["tel"], setup["set_eop"]
+            )
+            accum["bin_start_ERAL_deg"] = -1.0
+            accum["bin_end_ERAL_deg"] = -1.0
+            # accum['bin_start_ERAL_deg'] = tel.get_local_ERA_at_t_inst_ns(t_start, setup['tel'], setup['set_eop'])
+            # accum['bin_end_ERAL_deg'] = tel.get_local_ERA_at_t_inst_ns(t_end, setup['tel'], setup['set_eop'])
 
     return accums
 
@@ -595,7 +629,7 @@ def test_simple_meta(accum_data, setup, accum_list):
         assert frame.metadata.abs_time_idx == accum_list[t]["bin_idx"]
         assert frame.metadata.fpga_start_tick == expected_seq
         assert frame.metadata.frame_length_fpga_ticks == accum_list[t]["seq_len"]
-        assert frame.metadata.frame_start_time_ns == tel.get_t_inst(
+        assert frame.metadata.frame_start_time_ns == tel.get_t_inst_ns(
             expected_seq, setup["tel"]
         )
 
@@ -622,22 +656,70 @@ def test_eop_meta(accum_data, setup, accum_list):
 
     config = setup["config"]
 
+    t_inst_cen = []
+    t_inst_bin = []
+
+    # First we run through the frames to get the list of times we'll need EOP for.
     for idx, frame in enumerate(accum_data):
 
         t = idx // config["num_local_freq"]
         f = idx % config["num_local_freq"]
 
-        seq_t_cen = accum_list[t]["seq"] + accum_list[t]["seq_len"] // 2
-        t_inst_cen = tel.get_t_inst(seq_t_cen, setup["tel"])
+        if f == 0:
+            seq_t_cen = accum_list[t]["seq"] + accum_list[t]["seq_len"] // 2
+            t_inst_cen.append(tel.get_t_inst_ns(seq_t_cen, setup["tel"]))
 
-        eop = tel.get_EOP_at_t_inst_ns(t_inst_cen, setup["tel"], setup["set_eop"])
+            # Doing this check a little backwards to avoid having to reconstruct a time
+            # from an ERA
+            t_inst_bin.append(frame.metadata.bin_eop.t_inst_ns)
 
-        assert frame.metadata.time_center_eop.t_inst_ns == eop.t_inst_ns
-        assert frame.metadata.time_center_eop.t_ut1_ns == eop.t_ut1_ns
-        assert frame.metadata.time_center_eop.delta_UT1_inst == eop.delta_UT1_inst
+    # Now make the expected EOP (this is slow to do one at a time)
+    t_inst_cen = np.array(t_inst_cen)
+    t_inst_bin = np.array(t_inst_bin)
+    eop_cen = tel.get_EOP_at_t_inst_ns(t_inst_cen, setup["tel"], setup["set_eop"])
+    eop_bin = tel.get_EOP_at_t_inst_ns(t_inst_bin, setup["tel"], setup["set_eop"])
+
+    # Now check everything has the correct values
+    for idx, frame in enumerate(accum_data):
+        t = idx // config["num_local_freq"]
+
+        eop = eop_cen[t]
+        assert abs(frame.metadata.time_center_eop.t_inst_ns - eop.t_inst_ns) <= NS_TOL
+        assert abs(frame.metadata.time_center_eop.t_ut1_ns - eop.t_ut1_ns) <= NS_TOL
+        assert (
+            abs(frame.metadata.time_center_eop.delta_UT1_inst - eop.delta_UT1_inst)
+            <= DUT1_TOL
+        )
         assert abs(frame.metadata.time_center_eop.ERA_deg - eop.ERA_deg) <= ERA_TOL
         assert abs(frame.metadata.time_center_eop.xp_as - eop.xp_as) <= PM_TOL
         assert abs(frame.metadata.time_center_eop.yp_as - eop.yp_as) <= PM_TOL
+
+        eop = eop_bin[t]
+        assert abs(frame.metadata.bin_eop.t_inst_ns - eop.t_inst_ns) <= NS_TOL
+        assert abs(frame.metadata.bin_eop.t_ut1_ns - eop.t_ut1_ns) <= NS_TOL
+        assert (
+            abs(frame.metadata.bin_eop.delta_UT1_inst - eop.delta_UT1_inst) <= DUT1_TOL
+        )
+        assert abs(frame.metadata.bin_eop.ERA_deg - eop.ERA_deg) <= ERA_TOL
+        assert abs(frame.metadata.bin_eop.xp_as - eop.xp_as) <= PM_TOL
+        assert abs(frame.metadata.bin_eop.yp_as - eop.yp_as) <= PM_TOL
+
+        assert (
+            abs(frame.metadata.bin_start_ERA_deg - accum_list[t]["bin_start_ERA_deg"])
+            <= ERA_TOL
+        )
+        assert (
+            abs(frame.metadata.bin_end_ERA_deg - accum_list[t]["bin_end_ERA_deg"])
+            <= ERA_TOL
+        )
+        assert (
+            abs(frame.metadata.bin_start_ERAL - accum_list[t]["bin_start_ERAL_deg"])
+            <= ERA_TOL
+        )
+        assert (
+            abs(frame.metadata.bin_end_ERAL - accum_list[t]["bin_end_ERAL_deg"])
+            <= ERA_TOL
+        )
 
 
 """

@@ -52,7 +52,7 @@ def get_unix_time_ns(time_str):
     return int(t.unix * 1e9)
 
 
-def get_t_inst(seq, tel_config):
+def get_t_inst_ns(seq, tel_config):
 
     sampling_rate_MHz, fft_length, ny_zone = get_sampling_params(tel_config)
     dseq_ns = int((fft_length / sampling_rate_MHz) * 1e3)
@@ -74,26 +74,61 @@ def get_EOP_table(t0_ns, ndays):
 
 def get_EOP_at_t_inst_ns(t_ns, tel_config, use_eop):
 
+    t_ns = np.atleast_1d(t_ns)
+
     t = calc_astropy_time_from_inst_ns(t_ns, tel_config["frame0_nano"])
     if not use_eop:
         t.delta_ut1_utc = 0.0
 
-    eop = EOP()
-    eop.t_inst_ns = t_ns
-    eop.t_ut1_ns = calc_ut1_ns_from_t(t)
-    eop.delta_UT1_inst = t.delta_ut1_utc
-    eop.ERA_deg = t.earth_rotation_angle("tio").to_value("deg")
-    if use_eop:
-        iers = astropy.utils.iers.IERS_Auto.open()
-        x, y, status = iers.pm_xy(t, None, True)
-        eop.xp_as = x.to_value("arcsecond")
-        eop.yp_as = y.to_value("arcsecond")
-        iers.close()
-    else:
-        eop.xp_as = 0.0
-        eop.yp_as = 0.0
+    n = len(t_ns)
 
-    return eop
+    eops = []
+
+    iers = astropy.utils.iers.IERS_Auto.open()
+    x, y, status = iers.pm_xy(t, None, True)
+    iers.close()
+
+    for i in range(n):
+        eop = EOP()
+        eop.t_inst_ns = t_ns[i]
+        eop.t_ut1_ns = calc_ut1_ns_from_t(t[i])
+        eop.delta_UT1_inst = t[i].delta_ut1_utc
+        eop.ERA_deg = t[i].earth_rotation_angle("tio").to_value("deg")
+        if use_eop:
+            eop.xp_as = x[i].to_value("arcsecond")
+            eop.yp_as = y[i].to_value("arcsecond")
+        else:
+            eop.xp_as = 0.0
+            eop.yp_as = 0.0
+        eops.append(eop)
+
+    if n == 1:
+        return eops[0]
+    return eops
+
+
+def get_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
+
+    t_ns = np.atleast_1d(t_ns)
+
+    t = calc_astropy_time_from_inst_ns(t_ns, tel_config["frame0_nano"])
+    if not use_eop:
+        t.delta_ut1_utc = 0.0
+
+    return t.earth_rotation_angle("tio").to_value("deg")
+
+
+def get_local_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
+
+    t_ns = np.atleast_1d(t_ns)
+
+    t = calc_astropy_time_from_inst_ns(t_ns, tel_config["frame0_nano"])
+    if not use_eop:
+        t.delta_ut1_utc = 0.0
+
+    return t.earth_rotation_angle(
+        tel_config["origin_itrs_lon_deg"] * units.deg
+    ).to_value("deg")
 
 
 def calc_delta_tai_utc(t):
@@ -220,7 +255,7 @@ def calc_astropy_time_from_inst_ns(t_inst_ns, time0_ns):
     t0 = calc_astropy_time_from_unix_ns(time0_ns)
 
     # Now add the difference from t0 in TAI nanoseconds
-    dt = TimeDelta((t_inst_ns - time0_ns) * units.ns, scale="tai")
+    dt = TimeDelta(0 * units.ns, val2=(t_inst_ns - time0_ns) * units.ns, scale="tai")
 
     return t0 + dt
 

@@ -187,110 +187,111 @@ void testRFIFrameMaskGen::set_metadata(const std::shared_ptr<chordMetadata>& met
     std::vector<std::array<float, 2>> thresholds;
 
     for (size_t i = 0; i < std::max(threshold.size(), fraction.size()); i++) {
-        thresholds.push_back({threshold.at(i % threshold.size()), fraction.at(i % fraction.size())});
+        thresholds.push_back(
+            {threshold.at(i % threshold.size()), fraction.at(i % fraction.size())});
     }
 
     meta->set_rfi_frame_excision_enabled(enabled);
     meta->set_rfi_frame_excision_thresholds(thresholds);
 
     assert(meta->get_nfreq() <= CHORD_META_MAX_FREQ);
+}
+
+
+void testRFIFrameMaskGen::main_thread() {
+
+    frameID frame_id(out_buf);
+    int num_frames_generated = 0;
+    int64_t seq_num = first_frame_index * samples_per_data_set;
+
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<uint8_t> dist(0, 1);
+
+    int total_frames = num_frames;
+    if (repeat_count > 0) {
+        total_frames *= repeat_count;
     }
 
+    int val_idx = num_entries * first_frame_index;
 
-    void testRFIFrameMaskGen::main_thread() {
+    // If repeating, buffers to store the constructed frames.
+    std::vector<uint8_t> store;
 
-        frameID frame_id(out_buf);
-        int num_frames_generated = 0;
-        int64_t seq_num = first_frame_index * samples_per_data_set;
-
-        std::mt19937 rng(seed);
-        std::uniform_int_distribution<uint8_t> dist(0, 1);
-
-        int total_frames = num_frames;
-        if (repeat_count > 0) {
-            total_frames *= repeat_count;
-        }
-
-        int val_idx = num_entries * first_frame_index;
-
-        // If repeating, buffers to store the constructed frames.
-        std::vector<uint8_t> store;
-
-        if (repeat_count > 0) {
-            store.resize(num_entries * num_frames);
-        }
+    if (repeat_count > 0) {
+        store.resize(num_entries * num_frames);
+    }
 
 #ifdef WITH_OMP
-        [[maybe_unused]] double last_time = omp_get_wtime();
+    [[maybe_unused]] double last_time = omp_get_wtime();
 #endif
 
-        while (!stop_thread) {
+    while (!stop_thread) {
 
-            // grab frames
-            uint8_t* framemask = (uint8_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
-            if (framemask == nullptr)
-                break;
+        // grab frames
+        uint8_t* framemask = (uint8_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
+        if (framemask == nullptr)
+            break;
 
 #ifdef WITH_OMP
-            [[maybe_unused]] double start_time = omp_get_wtime();
+        [[maybe_unused]] double start_time = omp_get_wtime();
 #endif
 
-            // create metadata
-            const std::shared_ptr<chordMetadata> meta = get_new_metadata(out_buf, frame_id);
+        // create metadata
+        const std::shared_ptr<chordMetadata> meta = get_new_metadata(out_buf, frame_id);
 
-            // fill metadata
-            set_metadata(meta, seq_num);
+        // fill metadata
+        set_metadata(meta, seq_num);
 
-            // check frame descriptors match metadata
-            meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
+        // check frame descriptors match metadata
+        meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
 
-            // If we're not repeating, or we're in the first num_frames, generate data
-            if (repeat_count <= 0 || (num_frames > 0 && num_frames_generated < num_frames)) {
+        // If we're not repeating, or we're in the first num_frames, generate data
+        if (repeat_count <= 0 || (num_frames > 0 && num_frames_generated < num_frames)) {
 
-                for (int64_t tc = 0; tc < num_integrations; tc++) {
-                    for (int f = 0; f < num_local_freq; f++) {
+            for (int64_t tc = 0; tc < num_integrations; tc++) {
+                for (int f = 0; f < num_local_freq; f++) {
 
-                        int64_t idx = f + tc * num_local_freq;
-                        if (type == "const") {
-                            if (value_array.size() > 0) {
-                                framemask[idx] = value_array[val_idx % value_array.size()];
-                                val_idx++;
-                            } else {
-                                framemask[idx] = value;
-                            }
-                        } else if (type == "random") {
-                            framemask[idx] = dist(rng);
+                    int64_t idx = f + tc * num_local_freq;
+                    if (type == "const") {
+                        if (value_array.size() > 0) {
+                            framemask[idx] = value_array[val_idx % value_array.size()];
+                            val_idx++;
                         } else {
-                            FATAL_ERROR("unknown generation type: {:s}", type);
+                            framemask[idx] = value;
                         }
-                    } // f
-                } // tc
+                    } else if (type == "random") {
+                        framemask[idx] = dist(rng);
+                    } else {
+                        FATAL_ERROR("unknown generation type: {:s}", type);
+                    }
+                } // f
+            } // tc
 
-                // If we're repeating, copy the frames into storage before moving on.
-                if (repeat_count > 0) {
-                    std::copy(framemask, framemask + num_entries,
-                              store.begin() + num_frames_generated * num_entries);
-                }
-
-                DEBUG("Generated a {:s} test correlation data set in {:s}[{:d}] at seq {:d}", type,
-                      out_buf->buffer_name, frame_id, seq_num);
+            // If we're repeating, copy the frames into storage before moving on.
+            if (repeat_count > 0) {
+                std::copy(framemask, framemask + num_entries,
+                          store.begin() + num_frames_generated * num_entries);
             }
+
+            DEBUG("Generated a {:s} test correlation data set in {:s}[{:d}] at seq {:d}", type,
+                  out_buf->buffer_name, frame_id, seq_num);
+        }
 
 #ifdef WITH_OMP
-            [[maybe_unused]] double curr_time = omp_get_wtime();
-            DEBUG("Frame generation took {:f} ms + {:f} ms idle", (curr_time - start_time) * 1000,
-                  (start_time - last_time) * 1000);
-            last_time = curr_time;
+        [[maybe_unused]] double curr_time = omp_get_wtime();
+        DEBUG("Frame generation took {:f} ms + {:f} ms idle", (curr_time - start_time) * 1000,
+              (start_time - last_time) * 1000);
+        last_time = curr_time;
 #endif
 
-            out_buf->mark_frame_full(unique_name, frame_id++);
+        out_buf->mark_frame_full(unique_name, frame_id++);
 
-            num_frames_generated++;
-            seq_num += samples_per_data_set;
+        num_frames_generated++;
+        seq_num += samples_per_data_set;
 
-            if (num_frames >= 0 && num_frames_generated >= total_frames) {
-                INFO("Generated the requested number of frames ({:d}) - exiting", total_frames);
-                break;
-            }
+        if (num_frames >= 0 && num_frames_generated >= total_frames) {
+            INFO("Generated the requested number of frames ({:d}) - exiting", total_frames);
+            break;
         }
     }
+}
