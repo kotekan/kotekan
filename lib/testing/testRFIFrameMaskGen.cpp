@@ -104,8 +104,7 @@ testRFIFrameMaskGen::testRFIFrameMaskGen(Config& config, const std::string& uniq
     freq_ids(config.get_default<std::vector<uint32_t>>(unique_name, "freq_ids", {4096})),
     enabled(config.get_default<bool>(unique_name, "enabled", true)),
     threshold(config.get_default<std::vector<float>>(unique_name, "threshold", {2.0f})),
-    threshold(config.get_default<std::vector<float>>(unique_name, "fraction", {0.8f})),
-    enabled(config.get_default<bool>(unique_name, "enabled", true)),
+    fraction(config.get_default<std::vector<float>>(unique_name, "fraction", {0.8f})),
     seed(config.get_default<uint64_t>(unique_name, "seed", 123245)),
     first_frame_index(config.get_default<int64_t>(unique_name, "first_frame_index", 0)),
     repeat_count(config.get_default<int64_t>(unique_name, "repeat_count", 0)),
@@ -188,7 +187,7 @@ void testRFIFrameMaskGen::set_metadata(const std::shared_ptr<chordMetadata>& met
     std::vector<std::array<float, 2>> thresholds;
 
     for (size_t i = 0; i < std::max(threshold.size(), fraction.size()); i++) {
-        thresholds.push_back({threshold.at(i % threshold.size()), fraction.at(i % fraction.size()));
+        thresholds.push_back({threshold.at(i % threshold.size()), fraction.at(i % fraction.size())});
     }
 
     meta->set_rfi_frame_excision_enabled(enabled);
