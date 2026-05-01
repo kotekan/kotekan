@@ -152,6 +152,11 @@ dpdk:
   main_lcore_cpu: 3
   status_cadence: 60
   max_rx_pkt_len: 5000
+  rx_ring_size: 192
+  tx_ring_size: 128
+  num_mbufs: 512
+  mbuf_cache_size: 128
+
   # Set to true when using a switch to replicate packets
   using_switch: true
   alignment: samples_per_data_set * 4
@@ -249,6 +254,7 @@ dbg_read_lostsamples_{{ id }}:
 {%- endfor %}
 
 {%- endif %}
+
 
 ################################################################################
 # Baseband capture and dump system

@@ -118,6 +118,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     num_ports = unique_ports.size();
 
     // Allocate worker rings
+    if (config.exists(unique_name, "worker_ring_map")) {
     json worker_ring_map = config.get_value(unique_name, "worker_ring_map");
     for (const auto& ring : worker_ring_map) {
         string ring_name = ring["name"];
@@ -136,6 +137,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
                                      + std::string(rte_strerror(rte_errno)));
         }
         worker_rings.push_back(r);
+    }
     }
 
     create_handlers(buffer_container);
@@ -250,6 +252,8 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
 void dpdkCore::create_workers(bufferContainer& buffer_container) {
     // Create the workers
     // Does not use the factory model because this is header only.
+    if (!config.exists(unique_name, "workers"))
+        return;
     vector<json> workers_block = config.get<std::vector<json>>(unique_name, "workers");
     workers.resize(workers_block.size());
     uint32_t worker_id = 0;
@@ -476,7 +480,6 @@ int dpdkCore::lcore_rx(void* args) {
                 // INFO_NON_OO("Worker {:d} processed a packet, freeing the buffer", worker_id);
                 rte_pktmbuf_free(mbufs[j]);
             }
-            // rte_pktmbuf_free_bulk(mbufs, num_rx);
         }
     exit_loop:
 
@@ -503,14 +506,15 @@ int dpdkCore::lcore_rx(void* args) {
     // TODO Figure out why this sleep is need.  It seems like the when starting the E810
     // ports, there is a delay between when they are started in DPDK and when they become
     // ready.  There might be a function to check their readness state we could query?
-    sleep(10);
+    sleep(40);
+    const uint32_t num_local_ports = ports.size();
     while (!core->stop_thread) {
-        for (uint32_t i = 0; i < ports.size(); ++i) {
+        for (uint32_t i = 0; i < num_local_ports; ++i) {
             uint32_t port = ports[i];
 
             // INFO_NON_OO("Polling port {:d} for packets", port);
             const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
-            // INFO_NON_OO("Port {:d} received {:d} packets", port, num_rx);
+            //INFO_NON_OO("Port {:d} received {:d} packets", port, num_rx);
             for (uint16_t j = 0; j < num_rx; ++j) {
 
                 // Process the packet with the required handler
@@ -519,9 +523,7 @@ int dpdkCore::lcore_rx(void* args) {
                 if (unlikely(core->handlers[port]->handle_packet(mbufs[j]) != 0)) {
                     goto exit_lcore;
                 }
-
-                // TODO, free the mbuf in the handler.
-                // rte_pktmbuf_free(mbufs[j]);
+                rte_pktmbuf_free(mbufs[j]);
             }
         }
     }
