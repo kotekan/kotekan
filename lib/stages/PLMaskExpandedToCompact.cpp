@@ -136,7 +136,7 @@ void PLMaskExpandedToCompact::main_thread() {
                 for (size_t e = 0; e < E_div_8; e++) {
 
                     // Start with all bits set (all valid)
-                    uint64_t compact_val = 0xffffffffffffffffULL;
+                    uint64_t compact_val = ~0x0ULL;
 
                     // AND together up to 4 frequencies in this group
                     size_t f_base = f4 * 4;
