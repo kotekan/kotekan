@@ -78,19 +78,11 @@ inline int crs16BoardDistributor::handle_packet(struct rte_mbuf* mbuf) {
     int err = rte_ring_enqueue(worker_rings[worker_ring_ids[ring_index]], mbuf);
     if (err != 0) {
         // TODO Make this into a metric
-        // WARN_NON_OO("Failed to enqueue packet into worker ring {:d}, dropping packet",
-        // worker_ring_ids[ring_index]);
+        // Failed to enqueue packet into worker ring, dropping packet
         rte_pktmbuf_free(mbuf);
     } else {
         total_packets++;
     }
-
-    // if (total_packets % 1000000 == 0) {
-    // INFO_NON_OO("Distributed {:d} packets so far", total_packets);
-    //}
-
-    // DEBUG_NON_OO("Distributed packet with Stream ID {:d} to worker ring {:d}", stream_id,
-    // ring_index);
 
     return 0;
 }

@@ -69,28 +69,6 @@ inline crs1BoardDistributor::crs1BoardDistributor(kotekan::Config& config,
 
 inline int crs1BoardDistributor::handle_packet(struct rte_mbuf* mbuf) {
 
-    /*
-    uint64_t seq_number = get_crs_packet_seq_num(mbuf);
-    uint16_t source_id = get_crs_packet_source_id(mbuf);
-    INFO("Stream ID: {:d}, Seq Number: {:d}, Source ID: {:d}", stream_id, seq_number, source_id);
-
-    // Hex dump of the first 128 bytes of the packet for debugging
-    uint8_t* data_ptr = rte_pktmbuf_mtod(mbuf, uint8_t*);
-    std::string hex_dump;
-    for (size_t i = 0; i < 128; ++i) {
-        hex_dump += fmt::format(fmt("{:02x} "), data_ptr[i]);
-    }
-    INFO("Packet Hex Dump: {:s}", hex_dump);
-
-    // Print out the destination IP address and port for debugging
-    struct ip_header* ip_hdr = (struct ip_header*)(data_ptr + sizeof(ethernet_header));
-    struct udp_header* udp_hdr = (struct udp_header*)(data_ptr + sizeof(ethernet_header) +
-    sizeof(ip_header)); uint32_t dest_ip = ntohl(ip_hdr->dest_addr); uint16_t dest_port =
-    ntohs(udp_hdr->dest_port); INFO("Destination IP: {:d}.{:d}.{:d}.{:d}, Destination Port: {:d}",
-         (dest_ip >> 24) & 0xFF, (dest_ip >> 16) & 0xFF,
-         (dest_ip >> 8) & 0xFF, dest_ip & 0xFF, dest_port);
-    */
-
     uint16_t stream_id = get_crs_packet_stream_id(mbuf);
 
     // Divide the streams between the worker rings
@@ -110,9 +88,6 @@ inline int crs1BoardDistributor::handle_packet(struct rte_mbuf* mbuf) {
     if (total_packets % 1000000 == 0) {
         INFO_NON_OO("Distributed {:d} packets so far", total_packets);
     }
-
-    // DEBUG_NON_OO("Distributed packet with Stream ID {:d} to worker ring {:d}", stream_id,
-    // ring_index);
 
     return 0;
 }
