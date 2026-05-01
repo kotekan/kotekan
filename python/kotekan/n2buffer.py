@@ -13,18 +13,7 @@ import io
 
 import numpy as np
 from kotekan import timespec
-
-
-class EOP(ctypes.Structure):
-
-    _fields_ = [
-        ("t_inst_ns", ctypes.c_int64),
-        ("t_ut1_ns", ctypes.c_int64),
-        ("delta_UT1_inst", ctypes.c_double),
-        ("ERA_deg", ctypes.c_double),
-        ("xp_as", ctypes.c_double),
-        ("yp_as", ctypes.c_double),
-    ]
+from kotekan import telescope
 
 
 class N2Metadata(ctypes.Structure):
@@ -36,8 +25,8 @@ class N2Metadata(ctypes.Structure):
         # Time index
         ("abs_time_idx", ctypes.c_uint64),
         # Earth orientation parameters
-        ("time_center_eop", EOP),
-        ("bin_eop", EOP),
+        ("time_center_eop", telescope.EOP),
+        ("bin_eop", telescope.EOP),
         ("bin_start_ERA_deg", ctypes.c_double),
         ("bin_end_ERA_deg", ctypes.c_double),
         ("bin_start_ERAL", ctypes.c_double),
@@ -51,10 +40,10 @@ class N2Metadata(ctypes.Structure):
         ("n_rfi_only_fpga_ticks", ctypes.c_uint64),
         ("n_pl_fpga_ticks", ctypes.c_uint64),
         # RFI Excision
-        ("rfi_excision_enabled", ctypes.c_bool),
-        ("rfi_excision_num", ctypes.c_uint32),
-        ("rfi_excision_threshold", ctypes.c_float * 8),
-        ("rfi_excision_fraction", ctypes.c_float * 8),
+        ("rfi_frame_excision_enabled", ctypes.c_bool),
+        ("rfi_frame_excision_num", ctypes.c_uint32),
+        ("rfi_frame_excision_threshold", ctypes.c_float * 8),
+        ("rfi_frame_excision_fraction", ctypes.c_float * 8),
         # For CHIME: dataset_id
         ("dataset_id", ctypes.c_uint64 * 2),
     ]
