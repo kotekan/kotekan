@@ -76,7 +76,9 @@ public:
      *
      * @return bool True if this handler is a distributor, false otherwise.
      */
-    virtual bool is_distributor() const { return false; }
+    virtual bool is_distributor() const {
+        return false;
+    }
 
     /**
      * @brief Called every 1 second to update stats

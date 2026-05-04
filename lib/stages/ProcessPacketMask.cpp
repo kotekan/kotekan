@@ -214,7 +214,7 @@ void ProcessPacketMask::main_thread() {
             break;
 
         DEBUG2("ProcessPacketMask: Processing voltage frame {:d} with {:d} bitmap frames",
-              (int)voltage_frame_id, bitmap_frames.size());
+               (int)voltage_frame_id, bitmap_frames.size());
 
         // Combine receipt bitmaps casting to uint64_t for faster processing
         uint64_t* combined_bitmap_ptr = (uint64_t*)combined_bitmap_frame;
@@ -238,7 +238,7 @@ void ProcessPacketMask::main_thread() {
             }
         }
         DEBUG2("ProcessPacketMask: Voltage frame {:d} has {:d} missing packets in combined bitmap",
-              (int)voltage_frame_id, missing_packet_count);
+               (int)voltage_frame_id, missing_packet_count);
 
         // Calcuate a packet loss rate based on the missing packet count
         // and the number of working source IDs
@@ -262,9 +262,9 @@ void ProcessPacketMask::main_thread() {
         }
 
         DEBUG("ProcessPacketMask: Voltage frame {:d} packet loss = {:.4f}% ({:d} missing "
-             "/ {:d} total) | Cumulative: {:.4f}%",
-             (int)voltage_frame_id, packet_loss_percentage, (int)missing_packet_count,
-             (int)frame_total_packets, cumulative_loss_percentage);
+              "/ {:d} total) | Cumulative: {:.4f}%",
+              (int)voltage_frame_id, packet_loss_percentage, (int)missing_packet_count,
+              (int)frame_total_packets, cumulative_loss_percentage);
 
         // Generate the packet loss mask (pl_mask)
         // pl_mask shape: uint64_t [T/64][F][E/8]

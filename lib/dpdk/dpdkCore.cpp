@@ -119,25 +119,25 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
 
     // Allocate worker rings
     if (config.exists(unique_name, "worker_ring_map")) {
-    json worker_ring_map = config.get_value(unique_name, "worker_ring_map");
-    for (const auto& ring : worker_ring_map) {
-        string ring_name = ring["name"];
-        uint32_t num_slots = ring["num_slots"];
-        int socket_id = ring["socket_id"];
+        json worker_ring_map = config.get_value(unique_name, "worker_ring_map");
+        for (const auto& ring : worker_ring_map) {
+            string ring_name = ring["name"];
+            uint32_t num_slots = ring["num_slots"];
+            int socket_id = ring["socket_id"];
 
-        DEBUG("Creating worker ring '{:s}' with {:d} slots on socket {:d}", ring_name, num_slots,
-              socket_id);
+            DEBUG("Creating worker ring '{:s}' with {:d} slots on socket {:d}", ring_name,
+                  num_slots, socket_id);
 
-        // TODO Possibly make the flags configurable?
-        // We are assuming single producer single consumer for now.
-        struct rte_ring* r =
-            rte_ring_create(ring_name.c_str(), num_slots, socket_id, RING_F_SP_ENQ | RING_F_SC_DEQ);
-        if (r == nullptr) {
-            throw std::runtime_error("Cannot create worker ring: "
-                                     + std::string(rte_strerror(rte_errno)));
+            // TODO Possibly make the flags configurable?
+            // We are assuming single producer single consumer for now.
+            struct rte_ring* r = rte_ring_create(ring_name.c_str(), num_slots, socket_id,
+                                                 RING_F_SP_ENQ | RING_F_SC_DEQ);
+            if (r == nullptr) {
+                throw std::runtime_error("Cannot create worker ring: "
+                                         + std::string(rte_strerror(rte_errno)));
+            }
+            worker_rings.push_back(r);
         }
-        worker_rings.push_back(r);
-    }
     }
 
     create_handlers(buffer_container);

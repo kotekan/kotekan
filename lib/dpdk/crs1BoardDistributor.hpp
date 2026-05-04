@@ -31,7 +31,9 @@ public:
     virtual void update_stats() override {};
 
     /// This is a distributor: it takes ownership of the mbuf.
-    bool is_distributor() const override { return true; }
+    bool is_distributor() const override {
+        return true;
+    }
 
 protected:
     std::vector<uint32_t> worker_ring_ids;
