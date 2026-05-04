@@ -213,7 +213,7 @@ void ProcessPacketMask::main_thread() {
         if (!got_all_frames)
             break;
 
-        DEBUG("ProcessPacketMask: Processing voltage frame {:d} with {:d} bitmap frames",
+        DEBUG2("ProcessPacketMask: Processing voltage frame {:d} with {:d} bitmap frames",
               (int)voltage_frame_id, bitmap_frames.size());
 
         // Combine receipt bitmaps casting to uint64_t for faster processing
@@ -237,7 +237,7 @@ void ProcessPacketMask::main_thread() {
                 missing_packet_count += __builtin_popcountll(word);
             }
         }
-        DEBUG("ProcessPacketMask: Voltage frame {:d} has {:d} missing packets in combined bitmap",
+        DEBUG2("ProcessPacketMask: Voltage frame {:d} has {:d} missing packets in combined bitmap",
               (int)voltage_frame_id, missing_packet_count);
 
         // Calcuate a packet loss rate based on the missing packet count
@@ -261,8 +261,7 @@ void ProcessPacketMask::main_thread() {
                 (double)total_packets_missing / (double)total_packets_received * 100.0;
         }
 
-        // Re
-        INFO("ProcessPacketMask: Voltage frame {:d} packet loss = {:.4f}% ({:d} missing "
+        DEBUG("ProcessPacketMask: Voltage frame {:d} packet loss = {:.4f}% ({:d} missing "
              "/ {:d} total) | Cumulative: {:.4f}%",
              (int)voltage_frame_id, packet_loss_percentage, (int)missing_packet_count,
              (int)frame_total_packets, cumulative_loss_percentage);
