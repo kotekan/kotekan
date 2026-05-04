@@ -50,6 +50,7 @@ cpu_affinity: [0, 10, 11, 12, 13] #, 14, 15, 16, 17, 18, 19]
 
 # Constants
 sizeof_float: 4
+sizeof_float16: 2
 sizeof_float32: 4
 sizeof_int8: 1
 sizeof_int: 4
@@ -924,6 +925,23 @@ switch_failed_out:
 ################################################################################
 # FRB beamforming
 
+# UpchannelizationSchedule (used by setUpchanGain) expects these in the root level of the config tree.
+# TODO: change this and get the frequency indices from get_coarse_freq() so
+# that input files do not contain per-node information
+#
+# adapted from fengine_chime.j2
+# TODO: this cannot be a fixed list since the frequencies change per x-engine node
+#       instead we can / should used coarse_freq metadata entry
+# The frequency channels we keep.
+#     Channel 1024 has 400 MHz for CHIME, channel 0 has 800 MHz.
+#     There are 2.56 channels per MHz, with a channel width of 390625 Hz.
+frequency_channels: [ 269, 485, 493, 1005, 477, 957, 981, 989, 277, 301, 717, 901, 285, 293, 541, 749 ]
+
+upchan_factors: [16]
+# ranges are [min, max)
+upchan_channel_ranges:
+    16: [0, 2048]
+
 FRB:
     factor_upchan_out: 16
     upchan_U16_max_num_channels: 16 # probably should be {{ num_freq_gpu_buf }}
@@ -945,11 +963,11 @@ FRB:
     host_upchan_U16_voltage_buffer:
         kotekan_buffer: standard
         num_frames: host_buffer_depth
-        frame_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (num_times / factor_upchan_out)
+        frame_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
         metadata_pool: main_pool
     host_upchan_U16_voltage_ringbuffer:
         kotekan_buffer: ring
-        ring_buffer_size: gpu_buffer_depth * num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (num_times / factor_upchan_out)
+        ring_buffer_size: gpu_buffer_depth * num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
         metadata_pool: main_pool
 
     # Stages
@@ -965,6 +983,10 @@ FRB:
         gpu_0:
             kotekan_stage: cudaProcess
             gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            # maybe? Depends on the chunking of the previous stage
+            frame_arrival_period: network_frame_arrival_period
+            num_times: samples_per_data_set
             in_buffers:
                 host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
                 host_upchan_U16_gain_buffer: host_upchan_U16_gain_buffer
