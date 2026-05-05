@@ -23,8 +23,14 @@ prefix_host_rank: true
 {% include "include/n2k_chime.j2" %}
 {% include "include/bb_chime.j2" %}
 {% include "include/upchan_chime.j2" %}
+{% include "include/upchan_hfb_chime.j2" %}
 {% include "include/frb_chime.j2" %}
+{% include "include/frb_hfb_chime.j2" %}
 
 {% include "include/input_chime.j2" %}
 {% include "include/output_chime.j2" %}
 ...
+
+# TODO: 1024 achromatic FRB beams, downsampled to the max (10 s), U128
+
+# TODO: measure memory usage

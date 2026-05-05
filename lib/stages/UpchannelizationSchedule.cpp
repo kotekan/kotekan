@@ -3,6 +3,7 @@
 #include "CHORDTelescope.hpp"
 
 #include <cstddef>
+#include <mutex>
 #include <sstream>
 
 std::vector<int> UpchannelizationSchedule::make_frequency_channels() const {
@@ -162,10 +163,11 @@ bool UpchannelizationSchedule::invariant() const {
     return true;
 }
 
-UpchannelizationSchedule::UpchannelizationSchedule(kotekan::Config& config) :
+UpchannelizationSchedule::UpchannelizationSchedule(kotekan::Config& config,
+                                                   const std::string& unique_name) :
     kotekan::kotekanLogging(),
     //
-    unique_name(""), config(config),
+    unique_name(unique_name), config(config),
     //
     frequency_channels(make_frequency_channels()),
     frequency_channels_to_indices(make_frequency_channels_to_indices()),
@@ -180,8 +182,14 @@ UpchannelizationSchedule::UpchannelizationSchedule(kotekan::Config& config) :
     assert(invariant());
 }
 
-const UpchannelizationSchedule& UpchannelizationSchedule::instance(kotekan::Config& config) {
-    static const UpchannelizationSchedule the_instance(config);
+const UpchannelizationSchedule& UpchannelizationSchedule::instance(kotekan::Config& config,
+                                                                   const std::string& unique_name) {
+    static std::map<std::string, UpchannelizationSchedule> the_instances;
+    static std::mutex the_mutex;
+
+    std::lock_guard<std::mutex> lock(the_mutex);
+    const UpchannelizationSchedule& the_instance =
+        the_instances.try_emplace(unique_name, config, unique_name).first->second;
     return the_instance;
 }
 

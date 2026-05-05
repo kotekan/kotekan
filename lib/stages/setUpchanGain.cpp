@@ -14,6 +14,8 @@
 #include <vector>
 
 class setUpchanGain : public kotekan::Stage {
+    const std::string upchannelization_schedule_name =
+        config.get_default<std::string>(unique_name, "upchannelization_schedule_name", "");
     const int upchan_factor = config.get<int>(unique_name, "upchan_factor");
     const int upchan_max_num_channels = config.get<int>(unique_name, "upchan_max_num_channels");
     const std::vector<double> upchan_gain =
@@ -53,7 +55,8 @@ public:
             return;
 
         // Upchannelization schedule
-        const auto& upchan_schedule = UpchannelizationSchedule::instance(config);
+        const auto& upchan_schedule =
+            UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
 
         // Wait for buffer
         DEBUG("[{:s}/{:d}] Waiting for buffer...", upchan_gain_buffer->buffer_name, frame_index);
