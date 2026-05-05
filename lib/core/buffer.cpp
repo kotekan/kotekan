@@ -213,7 +213,7 @@ std::string GenericBuffer::get_dot_node_label() {
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                const std::string& _buffer_name, const std::string& _buffer_type, int _numa_node,
                bool _use_hugepages, bool _mlock_frames, const std::vector<int>& cpu_affinity,
-               bool zero_new_frames) :
+               bool zero_new_frames, uint8_t zero_value) :
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
     _zero_frames(false), frames(num_frames, nullptr), frames_desc(nullptr),
@@ -251,7 +251,7 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
     for (int i = 0; i < num_frames; ++i) {
         if (len) {
             frames[i] = buffer_malloc(aligned_frame_size, numa_node, use_hugepages, mlock_frames,
-                                      zero_new_frames);
+                                      zero_new_frames, zero_value);
             if (frames[i] == nullptr) {
                 throw std::runtime_error(
                     fmt::format(fmt("Failed to allocate Buffer memory: {} bytes: {} ({})"),
@@ -734,7 +734,7 @@ bool is_frame_buffer(GenericBuffer* buf) {
 }
 
 uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock_frames,
-                       bool zero_new_frames) {
+                       bool zero_new_frames, uint8_t zero_value) {
 
     uint8_t* frame = nullptr;
 
@@ -795,7 +795,7 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
 #endif
     // Zero the new frame
     if (zero_new_frames)
-        memset(frame, 0x0, len);
+        memset(frame, zero_value, len);
 
     return frame;
 }

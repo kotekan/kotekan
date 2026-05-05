@@ -222,7 +222,7 @@ public:
 
         // Strip blocks with an kotekan_update_endpoint before hashing
         nlohmann::json filtered_json = _strip_update_endpoints(config_json);
-        std::string json_hash = _jsonHash(filtered_json);
+        std::string json_hash = _jsonHash(filtered_json, host, port);
 
         ConfigInfo info =
             ConfigInfo(filtered_json, json_hash, kotekan_version, kotekan_build_branch,
@@ -437,7 +437,8 @@ public:
             if (config_response_json.contains(host_port_str)) {
                 ConfigInfo info = ConfigInfo(config_response_json[host_port_str]);
                 // check that the new hash matches expectations.
-                if (_jsonHash(info.config) != hash || info.json_hash != hash)
+                if (_jsonHash(info.config, upstream_host, upstream_port) != hash
+                    || info.json_hash != hash)
                     ERROR_NON_OO(
                         "ConfigTracker: Returned hash or config is inconsistent with hash {}!",
                         hash);
@@ -579,18 +580,25 @@ private:
     static constexpr const char* _metrics_stage_name = "config_tracker";
 
     /**
-     * @brief Get the md5 hash of a (json) config.
+     * @brief Get the md5 hash of a tracker entry.
      *
-     * This function generates a hash for a given configuration JSON object.
+     * The hash is computed over the tuple (host, port, filtered config JSON)
+     * so that two nodes with identical configs produce distinct hashes. This
+     * preserves the 1:1 invariant between _configs (keyed by host:port) and
+     * _config_hashes (keyed by hash).
+     *
      * In the context of the configTracker, the JSON object must have any
      * blocks containing a "kotekan_update_endpoint" stripped before hashing.
      * (This function only checks for that, and errors, expecting a caller to
      * supply a compliant config json.)
      *
      * @param filtered_json The configuration JSON object to hash.
+     * @param host The host claiming this config.
+     * @param port The port claiming this config.
      * @returns The canonical hash as a string.
      */
-    std::string _jsonHash(const nlohmann::json& filtered_json) const {
+    std::string _jsonHash(const nlohmann::json& filtered_json, const std::string& host,
+                          uint16_t port) const {
         std::stringstream ss;
 
         // nlohmann::json::dump() uses an alpha-ordered map for objects, so the
@@ -603,10 +611,12 @@ private:
                 "ConfigTracker: _jsonHash called with kotekan_update_endpoint present.");
         }
 
+        // Prefix host:port so that (host, port, config) is the unit of identity.
         // Stick to a string dump for now
         // TODO: a binary dump storing the full double precision bit pattern could be more
         // consistent.
-        ss << filtered_json.dump(-1, '\0', false, nlohmann::json::error_handler_t::strict);
+        ss << host << ":" << port << "|"
+           << filtered_json.dump(-1, '\0', false, nlohmann::json::error_handler_t::strict);
 
         std::string serialized = ss.str();
         unsigned char md5_result[MD5_DIGEST_LENGTH];

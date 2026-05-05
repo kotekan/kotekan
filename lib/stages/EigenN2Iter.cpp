@@ -168,11 +168,11 @@ void EigenN2Iter::main_thread() {
         EigConvergenceStats stats;
 
         // Get input visibilities. We assume the shape of these doesn't change.
-        INFO("EigenN2Iter waiting for input frame...");
+        DEBUG("EigenN2Iter waiting for input frame...");
         if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
-        INFO("EigenN2Iter got input frame.");
+        DEBUG("EigenN2Iter got input frame.");
         N2FrameView input_frame(in_buf, input_frame_id);
 
         // Check that we have the full triangle
@@ -183,7 +183,7 @@ void EigenN2Iter::main_thread() {
         }
 
         // Start the calculation clock.
-        uint64_t start_time = current_time();
+        double start_time = current_time();
 
         // Initialise the mask
         if (!initialized) {
@@ -215,8 +215,19 @@ void EigenN2Iter::main_thread() {
                 N2FrameView failed_frame(failed_buf, failed_frame_id);
                 failed_frame.copy_data(input_frame, {N2Field::eval, N2Field::evec, N2Field::erms});
 
+                // "hack" consistent with behavior below, negative RMS indicates failure to converge
+                failed_frame.erms = -std::numeric_limits<float>::max();
+                failed_frame.emethod = N2EigenMethod::none; // No method used since we failed
+                for (uint32_t i = 0; i < _num_eigenvectors; i++) {
+                    failed_frame.eval[i] = 0.0f;
+                    for (uint32_t j = 0; j < num_elements; j++) {
+                        failed_frame.evec[i * num_elements + j] = {0.0f, 0.0f};
+                    }
+                }
+
                 failed_buf->mark_frame_full(unique_name, failed_frame_id++);
             }
+
             in_buf->mark_frame_empty(unique_name, input_frame_id++);
             continue;
         }
@@ -224,15 +235,15 @@ void EigenN2Iter::main_thread() {
         auto& evecs = eigpair.second;
 
         // Stop the calculation clock. This doesn't include time to copy stuff into
-        // the buffers, but that has to wait for one to be available.
-        uint64_t elapsed_time = current_time() - start_time;
+        // the buffers (except on error).
+        double elapsed_time = current_time() - start_time;
 
         // Report all eigenvalues to stdout.
         std::string str_evals = "";
         for (uint32_t i = 0; i < _num_eigenvectors; i++) {
             str_evals = fmt::format("{} {}", str_evals, evals[i]);
         }
-        DEBUG("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:d} s. Took {:d}/{:d} "
+        DEBUG("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:.3f} s. Took {:d}/{:d} "
               "iterations.",
               str_evals, stats.rms, elapsed_time, stats.iterations, _max_iterations);
 
@@ -276,7 +287,7 @@ void EigenN2Iter::main_thread() {
 }
 
 
-void EigenN2Iter::update_metrics(int freq_id, u_int64_t elapsed_time, const eig_t<cfloat>& eigpair,
+void EigenN2Iter::update_metrics(int freq_id, double elapsed_time, const eig_t<cfloat>& eigpair,
                                  const EigConvergenceStats& stats) {
     // Update average write time in prometheus
     auto& calc_time = calc_time_map[freq_id];

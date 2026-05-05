@@ -44,6 +44,7 @@ const std::string RFI_FLAGGED_SAMPLES(
 const std::string LOST_TIMESAMPLES("LOST_TIMESAMPLES"); // a int32_t of samples lost
 const std::string
     STREAM_ID("STREAM_ID"); // a uint64_t stream identifier set originally by the FPGA board
+const std::string STREAM_IDS("STREAM_IDS");       // an array of uint32_t stream identifiers
 const std::string FRAME_COUNTER("FRAME_COUNTER"); // an int
 
 const std::string FIRST_PACKET_RECV_TIME(

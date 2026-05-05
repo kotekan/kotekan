@@ -1,8 +1,9 @@
 #include "hdf5N2Write.hpp"
 
 #include "H5Support.hpp"
-#include "Telescope.hpp" // for Telescope
-#include "util.h"        // for mkdir_p
+#include "Telescope.hpp"  // for Telescope
+#include "restClient.hpp" // for restClient
+#include "util.h"         // for mkdir_p
 
 #include "json.hpp"
 
@@ -23,6 +24,7 @@
 #include <ctime>
 #include <errno.h>
 #include <errors.h>
+#include <event2/http.h> // for evhttp_uri_parse
 #include <filesystem>
 #include <fmt/ranges.h>
 #include <fstream>
@@ -51,6 +53,136 @@
 #include <waitingForMaxFrames.hpp> // for waiting_for_max_frames
 
 using namespace HighFive;
+
+/// Compute a hash of a file's contents for change detection.
+static std::optional<size_t> hash_file_contents(const std::string& path) {
+    std::ifstream ifs(path, std::ios::binary);
+    if (!ifs)
+        return std::nullopt;
+    std::string contents((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+    if (ifs.bad()) // I/O error during read
+        return std::nullopt;
+    return std::hash<std::string>{}(contents);
+}
+
+/// Fetch `url` over plain HTTP via kotekan's built-in restClient and write the
+/// response body verbatim to `dest_path`. FATAL on any parse/fetch/write error.
+/// Intended for small files (bytes land in a std::string before hitting disk).
+static void download_url_to_file(const std::string& url, const std::string& dest_path) {
+    struct evhttp_uri* uri = evhttp_uri_parse(url.c_str());
+    if (!uri) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: could not parse URL '{}'", url);
+        return;
+    }
+
+    const char* scheme = evhttp_uri_get_scheme(uri);
+    if (!scheme || std::string(scheme) != "http") {
+        evhttp_uri_free(uri);
+        FATAL_ERROR_NON_OO("hdf5N2Write: baseband_gain_url must use plain http:// (got '{}')", url);
+        return;
+    }
+
+    const char* host_c = evhttp_uri_get_host(uri);
+    if (!host_c || host_c[0] == '\0') {
+        evhttp_uri_free(uri);
+        FATAL_ERROR_NON_OO("hdf5N2Write: baseband_gain_url has no host: '{}'", url);
+        return;
+    }
+    const std::string host = host_c;
+
+    int port = evhttp_uri_get_port(uri);
+    if (port <= 0)
+        port = 80;
+
+    const char* path_c = evhttp_uri_get_path(uri);
+    std::string path = (path_c && path_c[0] != '\0') ? path_c : "/";
+    const char* query_c = evhttp_uri_get_query(uri);
+    if (query_c && query_c[0] != '\0') {
+        path += "?";
+        path += query_c;
+    }
+    evhttp_uri_free(uri);
+
+    INFO_NON_OO("hdf5N2Write: downloading digial gains file from fpga_master at http://{}:{}{}",
+                host, port, path);
+    // GET with empty JSON body
+    restClient::restReply reply = restClient::instance().make_request_blocking(
+        path, nlohmann::json::object(), host, static_cast<unsigned short>(port));
+    if (!reply.first) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: failed to fetch gains file from '{}'", url);
+        return;
+    }
+
+    std::ofstream ofs(dest_path, std::ios::binary | std::ios::trunc);
+    if (!ofs) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: could not open '{}' for writing downloaded gains file",
+                           dest_path);
+        return;
+    }
+    ofs.write(reply.second.data(), static_cast<std::streamsize>(reply.second.size()));
+    if (!ofs) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: failed to write {} bytes to '{}'", reply.second.size(),
+                           dest_path);
+        return;
+    }
+    ofs.close();
+    if (!ofs) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: failed to finalize writing downloaded gains file to '{}'",
+                           dest_path);
+        return;
+    }
+
+    INFO_NON_OO("hdf5N2Write: wrote {} bytes to '{}'", reply.second.size(), dest_path);
+}
+
+namespace {
+/// Walk the config tree and collect (unique_name, base_dir) for every
+/// hdf5N2Write stage block. Mirrors StageFactory::build_from_tree's notion
+/// of unique_name: "/" + slash-joined keys.
+void collect_hdf5N2Write_base_dirs(const nlohmann::json& tree, const std::string& path,
+                                   std::vector<std::pair<std::string, std::string>>& out) {
+    for (auto it = tree.begin(); it != tree.end(); ++it) {
+        if (!it.value().is_object())
+            continue;
+        const std::string sub = path + "/" + it.key();
+        if (it.value().value("kotekan_stage", std::string{}) == "hdf5N2Write") {
+            const auto bd = it.value().find("base_dir");
+            if (bd != it.value().end() && bd->is_string())
+                out.emplace_back(sub, bd->get<std::string>());
+        }
+        collect_hdf5N2Write_base_dirs(it.value(), sub, out);
+    }
+}
+
+/// Canonicalize a path for collision comparison; falls back to the raw
+/// string if weakly_canonical fails (e.g. permission denied on a parent).
+std::string normalize_base_dir(const std::string& dir) {
+    std::error_code ec;
+    auto canonical = std::filesystem::weakly_canonical(dir, ec);
+    return ec ? dir : canonical.string();
+}
+} // namespace
+
+/// Generate an acquisition base directory path: base_dir/acq_YYYYMMDD_HHMMSS_NNNNNNNNN
+static std::string get_acq_base_dir_path(const std::string& base_dir) {
+    // Strip trailing slashes
+    std::string dir = base_dir;
+    while (dir.size() > 1 && dir.back() == '/')
+        dir.pop_back();
+
+    auto now = std::chrono::system_clock::now();
+    auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count()
+              % 1'000'000'000LL;
+
+    std::tm tm_buf{};
+    gmtime_r(&time_t_now, &tm_buf);
+
+    std::ostringstream oss;
+    oss << dir << "/acq_" << std::put_time(&tm_buf, "%Y%m%d_%H%M%S") << "_" << std::setfill('0')
+        << std::setw(9) << ns;
+    return oss.str();
+}
 
 // Monotonic time in seconds
 inline double mono_time_s() {
@@ -141,93 +273,6 @@ void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& 
     auto dataset = file.createDataSet(name, space, dtype, props);
     dataset.createAttribute("axis", dim_names);
 };
-
-std::optional<N2FileData::DigitalGains> N2FileData::_get_digital_gains() const {
-
-    // If no gains directory specified, skip digital gains
-    if (gains_base_directory.empty()) {
-        DEBUG_NON_OO("No gains_base_directory specified, skipping digital gains.");
-        return std::nullopt;
-    }
-
-    // Search for *most recent* time in directories names as "YYYYMMDDTHHMMSSZ_baseband" :
-    std::filesystem::path base_path(gains_base_directory);
-    // Get a list of directories in gains_base_directory
-    std::vector<std::filesystem::path> dir_list;
-    for (const auto& entry : std::filesystem::directory_iterator(base_path)) {
-        if (entry.is_directory()) {
-            dir_list.push_back(entry.path());
-        }
-    }
-    // Sort directories by name (timestamp)
-    std::sort(dir_list.begin(), dir_list.end());
-    // Assume the most recent directory was used
-    // (TODO: use API instead)
-    if (dir_list.empty()) {
-        FATAL_ERROR_NON_OO("No baseband gains directories found in {}, cannot read digital gains.",
-                           gains_base_directory);
-        return std::nullopt;
-    }
-    std::filesystem::path latest_dir = dir_list.back();
-
-    // Gains file should be named "gains.hdf5" in this directory
-    std::filesystem::path gains_path = latest_dir / "gains.hdf5";
-    if (!std::filesystem::exists(gains_path)) {
-        FATAL_ERROR_NON_OO("Digital gains file {} does not exist.", gains_path.string());
-        return std::nullopt;
-    }
-
-    // Open gains file
-    std::unique_ptr<HighFive::File> gains_file;
-    try {
-        gains_file =
-            std::make_unique<HighFive::File>(gains_path.string(), HighFive::File::ReadOnly);
-    } catch (const HighFive::Exception& e) {
-        FATAL_ERROR_NON_OO("Failed to open digital gains file {}: {}", gains_path.string(),
-                           e.what());
-        return std::nullopt;
-    }
-    // Verify two vectors named "gains_lin" and "gains_log" exist
-    if (!gains_file->exist("gains_lin") || !gains_file->exist("gains_log")) {
-        FATAL_ERROR_NON_OO(
-            "Digital gains file {} does not contain required datasets 'gains_lin' and "
-            "'gains_log'.",
-            gains_path.string());
-        return std::nullopt;
-    }
-    if (gains_file->getObjectType("gains_lin") != HighFive::ObjectType::Dataset
-        || gains_file->getObjectType("gains_log") != HighFive::ObjectType::Dataset) {
-        FATAL_ERROR_NON_OO(
-            "Digital gains file {} does not contain required datasets 'gains_lin' and "
-            "'gains_log' as datasets.",
-            gains_path.string());
-        return std::nullopt;
-    }
-    // Verify datasets are of type uint16_t
-    auto ds_lin_type = gains_file->getDataSet("gains_lin").getDataType();
-    auto ds_log_type = gains_file->getDataSet("gains_log").getDataType();
-    HighFive::AtomicType<std::uint16_t> expected_uint16_type;
-    if (ds_lin_type != expected_uint16_type || ds_log_type != expected_uint16_type) {
-        FATAL_ERROR_NON_OO("Digital gains datasets in file {} are not of type uint16_t!",
-                           gains_path.string());
-        return std::nullopt;
-    }
-    // Read datasets into vectors
-    std::vector<std::uint16_t> gains_lin;
-    std::vector<std::uint16_t> gains_log;
-    try {
-        auto ds_lin = gains_file->getDataSet("gains_lin");
-        ds_lin.read(gains_lin);
-        auto ds_log = gains_file->getDataSet("gains_log");
-        ds_log.read(gains_log);
-    } catch (const HighFive::Exception& e) {
-        FATAL_ERROR_NON_OO("Failed to read digital gains datasets from file {}: {}",
-                           gains_path.string(), e.what());
-        return std::nullopt;
-    }
-
-    return DigitalGains{gains_lin, gains_log, gains_path.string()};
-}
 
 std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::string& filepath,
                                                                  const uint64_t num_file_t_,
@@ -501,25 +546,45 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(*file, "/bin_end_LAST", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
 
-        // Digital gains
-        if (!gains_base_directory.empty()) {
-            std::optional<DigitalGains> gains_data = _get_digital_gains();
-            if (!gains_data) {
-                FATAL_ERROR_NON_OO("Failed to read digital gains! Will try again on file close.");
+        // Digital gains: copy entire gains file verbatim into /digital_gains/ group
+        if (!baseband_gain_file.empty() && !file->exist("/digital_gains")) {
+            if (!std::filesystem::exists(baseband_gain_file)) {
+                FATAL_ERROR_NON_OO("Digital gains file {} does not exist.", baseband_gain_file);
             } else {
-                _check_create_attribute(*file, "digital_gains_source_file",
-                                        gains_data->full_filepath);
+                try {
+                    HighFive::File src(baseband_gain_file, HighFive::File::ReadOnly);
 
-                _check_create_dataset(*file, "/digital_gains/gains_lin",
-                                      {gains_data->gains_lin.size()}, {"input"},
-                                      HighFive::create_datatype<uint16_t>(), props_empty);
+                    // Copy entire gains file root group as /digital_gains
+                    herr_t err = H5Ocopy(src.getId(), ".", file->getId(), "digital_gains",
+                                         H5P_DEFAULT, H5P_DEFAULT);
+                    if (err < 0) {
+                        FATAL_ERROR_NON_OO("H5Ocopy failed copying gains file {} into output.",
+                                           baseband_gain_file);
+                    } else {
+                        // Add source file path and selected update index as attributes
+                        _check_create_attribute(*file, "digital_gains_source_file",
+                                                baseband_gain_file);
 
-                _check_create_dataset(*file, "/digital_gains/gains_log",
-                                      {gains_data->gains_log.size()}, {"input"},
-                                      HighFive::create_datatype<uint16_t>(), props_empty);
+                        auto dg_group = file->getGroup("/digital_gains");
+                        int selected_idx = baseband_gain_update_idx;
+                        if (selected_idx < 0 && dg_group.exist("gain_coeff")) {
+                            auto dims = dg_group.getDataSet("gain_coeff").getDimensions();
+                            if (!dims.empty() && dims[0] > 0)
+                                selected_idx = static_cast<int>(dims[0] - 1);
+                        }
+                        dg_group.createAttribute("selected_update_idx", selected_idx);
+
+                        INFO_NON_OO(
+                            "Copied digital gains from {} into output (selected_update_idx={}).",
+                            baseband_gain_file, selected_idx);
+                    }
+                } catch (const HighFive::Exception& e) {
+                    FATAL_ERROR_NON_OO("Failed to copy gains file {} into output: {}",
+                                       baseband_gain_file, e.what());
+                }
             }
-        } else {
-            DEBUG_NON_OO("No gains_base_directory specified, skipping digital gains.");
+        } else if (baseband_gain_file.empty()) {
+            DEBUG_NON_OO("No baseband_gain_file specified, skipping digital gains.");
         }
 
         return file;
@@ -538,20 +603,27 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
                        const size_t blocksize_f_, const size_t blocksize_p_,
                        const size_t blocksize_t_, const std::string compression_,
                        const size_t compression_level_, const bool use_bitshuffle_,
-                       const std::string base_dir_, const std::string gains_base_directory_) :
+                       const std::string base_dir_, const std::string baseband_gain_file_,
+                       const int baseband_gain_update_idx_) :
     num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev),
     num_file_f(Telescope::instance().cast<CHORDTelescope>().num_science_freqs()),
     num_file_t(num_file_t_), file_mode(file_mode_), blocksize_f(blocksize_f_),
     blocksize_p(blocksize_p_), blocksize_t(blocksize_t_), compression(compression_),
     compression_level(compression_level_), use_bitshuffle(use_bitshuffle_),
     open_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_), base_dir(std::move(base_dir_)),
-    gains_base_directory(std::move(gains_base_directory_)),
+    baseband_gain_file(std::move(baseband_gain_file_)),
+    baseband_gain_update_idx(baseband_gain_update_idx_),
     partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(abs_file_idx_) + ".h5"),
     n2_layout(fv.n2_layout), last_update_wall_s(open_wall_s_),
     h5_file(_open_or_create_file(partial_filepath, num_file_t_, fv, file_mode)) {
 
     if (!h5_file) {
         FATAL_ERROR_NON_OO("N2FileData: failed to open or create HDF5 file {}", partial_filepath);
+    }
+
+    // Record gains file hash for change detection at flush time
+    if (!baseband_gain_file.empty() && std::filesystem::exists(baseband_gain_file)) {
+        gains_file_hash = hash_file_contents(baseband_gain_file);
     }
 
     // resize arrays to hold data across (freq, time) blocks
@@ -812,44 +884,16 @@ bool N2FileData::flush_to_disk() {
         has_error = true;
     }
 
-    // Check and write digital gains
-    if (!gains_base_directory.empty()) {
-        std::optional<DigitalGains> gains_data = _get_digital_gains();
-        if (!gains_data) {
-            FATAL_ERROR_NON_OO("Failed to read digital gains! Gains datasets not updated.");
+    // Verify digital gains file hasn't been modified since it was copied at file creation
+    if (!baseband_gain_file.empty() && gains_file_hash) {
+        std::optional<size_t> current_hash = hash_file_contents(baseband_gain_file);
+        if (current_hash && current_hash != gains_file_hash) {
+            FATAL_ERROR_NON_OO("Digital gains file {} has been modified since file creation!",
+                               baseband_gain_file);
             has_error = true;
-        } else {
-            if (gains_data->full_filepath
-                != h5_file->getAttribute("digital_gains_source_file").read<std::string>()) {
-                // Digital gains source file has changed since file creation
-                FATAL_ERROR_NON_OO("Digital gains source file has changed since file creation! "
-                                   "Not writing gains datasets.");
-                has_error = true;
-                // Add attribute to indicate conflict, don't write datasets
-                _check_create_attribute(*h5_file, "digital_gains_source_file_conflict",
-                                        gains_data->full_filepath);
-            } else {
-                // Write gains datasets
-                try {
-                    h5_file->getDataSet("/digital_gains/gains_lin")
-                        .select({0}, {gains_data->gains_lin.size()})
-                        .write(gains_data->gains_lin);
-                    h5_file->getDataSet("/digital_gains/gains_log")
-                        .select({0}, {gains_data->gains_log.size()})
-                        .write(gains_data->gains_log);
-                } catch (const HighFive::Exception& e) {
-                    FATAL_ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}",
-                                       partial_filepath, e.what());
-                    has_error = true;
-                } catch (const std::exception& e) {
-                    FATAL_ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}",
-                                       partial_filepath, e.what());
-                    has_error = true;
-                }
-            }
+            _check_create_attribute(*h5_file, "digital_gains_source_file_modified",
+                                    std::string("true"));
         }
-    } else {
-        DEBUG_NON_OO("No gains_base_directory specified, skipping digital gains write.");
     }
 
     return !has_error;
@@ -869,8 +913,10 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
           [](const kotekan::Stage& stage) {
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
-    _base_dir(config.get<std::string>(unique_name, "base_dir")),
-    _gains_base_directory(config.get_default<std::string>(unique_name, "gains_base_directory", "")),
+    _base_dir(get_acq_base_dir_path(config.get<std::string>(unique_name, "base_dir"))),
+    _baseband_gain_file(config.get_default<std::string>(unique_name, "baseband_gain_file", "")),
+    _baseband_gain_url(config.get_default<std::string>(unique_name, "baseband_gain_url", "")),
+    _baseband_gain_update_idx(config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)),
     _num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),
     _compression(config.get_default<std::string>(unique_name, "compression", "none")),
     _compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),
@@ -905,6 +951,15 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
 
     _buffer->register_consumer(unique_name);
 
+    // baseband_gain_file and baseband_gain_url are mutually exclusive. If the URL is
+    // set, the actual local path is filled in from main_thread() after the .partial
+    // directory exists.
+    if (!_baseband_gain_file.empty() && !_baseband_gain_url.empty()) {
+        FATAL_ERROR("baseband_gain_file and baseband_gain_url are mutually exclusive; set only "
+                    "one of them (file='{}', url='{}')",
+                    _baseband_gain_file, _baseband_gain_url);
+    }
+
     // Validate file window configuration
     if (_num_file_t == 0) {
         FATAL_ERROR("num_file_t must be > 0 for hdf5N2Write");
@@ -912,6 +967,24 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     // Ensure the input buffer is an N2Buffer
     if (_buffer->buffer_type != "N2") {
         FATAL_ERROR("Input buffer must be a N2-type buffer.");
+    }
+
+    // Reject configs where two hdf5N2Write instances share an output directory.
+    {
+        std::vector<std::pair<std::string, std::string>> peers;
+        collect_hdf5N2Write_base_dirs(config.get_full_config_json(), "", peers);
+
+        const std::string my_dir = config.get<std::string>(unique_name, "base_dir");
+        const std::string my_norm = normalize_base_dir(my_dir);
+        for (const auto& [peer_name, peer_dir] : peers) {
+            if (peer_name == unique_name)
+                continue;
+            if (normalize_base_dir(peer_dir) == my_norm) {
+                FATAL_ERROR("hdf5N2Write[{}]: base_dir '{}' conflicts with stage '{}'. "
+                            "Each hdf5N2Write instance must use a unique base_dir.",
+                            unique_name, my_dir, peer_name);
+            }
+        }
     }
 
     if (_max_frames >= 0) {
@@ -1098,7 +1171,8 @@ void hdf5N2Write::main_thread() {
     /// Keyed by absolute file id = absolute frame index / _num_file_t
     std::map<size_t, std::unique_ptr<N2FileData>> filedata;
 
-    // Create base_dir and partial dir if necessary (recursively)
+    // Create acquisition base_dir and partial dir if necessary (recursively)
+    INFO("Acquisition directory: {}", _base_dir);
     {
         if (mkdir_p(_base_dir.c_str(), 0777) != 0) {
             const char* const msg = strerror(errno);
@@ -1108,6 +1182,15 @@ void hdf5N2Write::main_thread() {
         if (mkdir_p(partial_dir.c_str(), 0777) != 0) {
             const char* const msg = strerror(errno);
             FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", partial_dir.c_str(), msg);
+        }
+
+        // If a URL was provided instead of a local path, fetch the gains file
+        // once into the partial dir and point _baseband_gain_file at the cached
+        // copy. From here on the existing local-file code path is used.
+        if (!_baseband_gain_url.empty()) {
+            const std::string cached = partial_dir + "/baseband_gains.h5";
+            download_url_to_file(_baseband_gain_url, cached);
+            _baseband_gain_file = cached;
         }
     }
 
@@ -1155,7 +1238,7 @@ void hdf5N2Write::main_thread() {
             auto N2FileData_obj = std::make_unique<N2FileData>(
                 N2FileData::CHORD, _num_file_t, fv, frame_recv_time, abs_file_idx, _blocksize_f,
                 _blocksize_p, _blocksize_t, _compression, _compression_level, _use_bitshuffle,
-                _base_dir, _gains_base_directory);
+                _base_dir, _baseband_gain_file, _baseband_gain_update_idx);
 
             filedata.emplace(abs_file_idx, std::move(N2FileData_obj));
             N2FileData_ptr = filedata.find(abs_file_idx)->second.get();

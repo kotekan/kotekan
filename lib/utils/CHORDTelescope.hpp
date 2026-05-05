@@ -242,6 +242,9 @@ struct GeographicParams {
     /// Description of the grid of dishes
     dishGrid dish_grid;
 
+    /// Whether to fatal on duplicate dish grid locations (default: true).
+    bool check_duplicate_dish_grid = true;
+
     /**
      * @brief Build full dish parameters (including rotation matrices and positions)
      * from the config for this telescope.
@@ -264,6 +267,8 @@ struct GeographicParams {
      * @conf   num_dishes           size_t. Total number of dishes.
      * @conf   num_dishes_x         size_t. Number of dishes in the E/W (x) direction.
      * @conf   num_dishes_y         size_t. Number of dishes in the N/S (y) direction.
+     * @conf   check_duplicate_dish_grid  bool. Fatal on duplicate dish grid locations.
+     *                              Default: true.
      *
      * @param   config  The config.
      * @param   path    This telescope's path in the config.
@@ -751,16 +756,12 @@ public:
     size_t num_science_freqs() const;
 
     /**
-     * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
-     * dpdk. This stub remains to satisfy inheritance and will likely be removed in the future, it
-     * will abort if called.
+     * @brief Convert a stream and index within that stream to a global frequency ID.
      */
     freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
 
     /**
-     * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
-     * dpdk. This stub remains to satisfy inheritance and will likely be removed in the future, it
-     * will abort if called.
+     * @brief Return the number of frequencies per F-engine stream.
      */
     size_t num_freq_per_stream() const override;
 

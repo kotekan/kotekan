@@ -285,6 +285,22 @@ public:
         return metadata.at(jsonMetadata::COARSE_FREQ).template get<std::vector<int>>();
     }
 
+    // Stream IDs - the stream identifiers for packets received
+    void set_stream_ids(const std::vector<uint32_t>& stream_ids) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::STREAM_IDS] = stream_ids;
+    }
+
+    bool has_stream_ids() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::STREAM_IDS);
+    }
+
+    std::vector<uint32_t> get_stream_ids() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::STREAM_IDS).template get<std::vector<uint32_t>>();
+    }
+
     // TODO: remove this, it's not setting anything anymore (and assumes that
     // fpga_seq_num is set)
     void set_gps_time([[maybe_unused]] const timespec gps_time) {

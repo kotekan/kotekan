@@ -44,7 +44,7 @@ BOOST_AUTO_TEST_CASE(add_json) {
     // Check hashing
     BOOST_TEST_MESSAGE("Config hash from getTrackerHash: " << tracker.getTrackerHash());
 
-    BOOST_CHECK_EQUAL(tracker.getTrackerHash(), "c22c499bdcf3ad0414da2bba51d232");
+    BOOST_CHECK_EQUAL(tracker.getTrackerHash(), "62a11a73649969dd3b7a3943672f6af");
     BOOST_CHECK_EQUAL(tracker.n_configs(), 1);
 }
 

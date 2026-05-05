@@ -104,7 +104,7 @@ public:
 
 private:
     // Update the prometheus metrics
-    void update_metrics(int freq_id, u_int64_t elapsed_time, const eig_t<cfloat>& eigpair,
+    void update_metrics(int freq_id, double elapsed_time, const eig_t<cfloat>& eigpair,
                         const EigConvergenceStats& stats);
 
     // Calculate the mask to apply from the object parameters

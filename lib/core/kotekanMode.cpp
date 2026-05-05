@@ -19,14 +19,57 @@
 #include "fmt.hpp"  // for compile_string_to_view, format, format_string
 #include "json.hpp" // for json, basic_json
 
-#include <exception>  // for exception
-#include <functional> // for bind, function, _1
-#include <stdint.h>   // for uint16_t
-#include <utility>    // for pair
+#include <arpa/inet.h>  // for inet_ntop
+#include <exception>    // for exception
+#include <functional>   // for bind, function, _1
+#include <ifaddrs.h>    // for getifaddrs, freeifaddrs, ifaddrs
+#include <net/if.h>     // for IFF_LOOPBACK, IFF_UP
+#include <netinet/in.h> // for sockaddr_in, AF_INET
+#include <stdint.h>     // for uint16_t
+#include <string>       // for string
+#include <utility>      // for pair
 
 using namespace std::placeholders;
 
 namespace kotekan {
+
+namespace {
+/**
+ * @brief Return the first non-loopback IPv4 address on this host as a
+ * dotted-quad string, or empty string if none found.
+ *
+ * Used to give this kotekan instance a globally unique self-identity in
+ * ConfigTracker when REST is bound to 0.0.0.0. Falling back to 127.0.0.1
+ * causes every node to self-label identically and collide when peers
+ * exchange configs over REST.
+ */
+std::string first_non_loopback_ipv4() {
+    struct ifaddrs* ifap = nullptr;
+    if (getifaddrs(&ifap) != 0 || ifap == nullptr)
+        return {};
+
+    std::string result;
+    for (struct ifaddrs* ifa = ifap; ifa != nullptr; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == nullptr)
+            continue;
+        if (ifa->ifa_addr->sa_family != AF_INET)
+            continue;
+        if ((ifa->ifa_flags & IFF_UP) == 0)
+            continue;
+        if ((ifa->ifa_flags & IFF_LOOPBACK) != 0)
+            continue;
+
+        char buf[INET_ADDRSTRLEN] = {0};
+        auto* sin = reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr);
+        if (inet_ntop(AF_INET, &sin->sin_addr, buf, sizeof(buf)) != nullptr) {
+            result = buf;
+            break;
+        }
+    }
+    freeifaddrs(ifap);
+    return result;
+}
+} // namespace
 
 kotekanMode::kotekanMode(Config& config_) : config(config_) {
 
@@ -118,11 +161,15 @@ void kotekanMode::initalize_stages() {
     ConfigTracker::instance().register_with_server(&restServer::instance());
     try {
         auto cfg_json = config.get_full_config_json();
-        // Use the bound REST address and port for identification. If bound to 0.0.0.0, use
-        // loopback which will work for local tests.
+        // Use the bound REST address and port for identification. If bound
+        // to 0.0.0.0, try to resolve a real non-loopback IPv4 so this node's
+        // self-identity in ConfigTracker is globally unique. Fall back to
+        // loopback only if no external IPv4 is available (e.g. local tests).
         std::string host = restServer::instance().bind_address();
-        if (host == "0.0.0.0" || host == "localhost")
-            host = "127.0.0.1";
+        if (host == "0.0.0.0" || host == "localhost") {
+            std::string resolved = first_non_loopback_ipv4();
+            host = resolved.empty() ? std::string("127.0.0.1") : resolved;
+        }
         uint16_t port = restServer::instance().port();
 
         ConfigTracker::instance().insertRawConfig(host, port, cfg_json, get_kotekan_version(),
