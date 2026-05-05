@@ -262,9 +262,9 @@ void ProcessPacketMask::main_thread() {
         }
 
         INFO("ProcessPacketMask: Voltage frame {:d} packet loss = {:.4f}% ({:d} missing "
-              "/ {:d} total) | Cumulative: {:.4f}%",
-              (int)voltage_frame_id, packet_loss_percentage, (int)missing_packet_count,
-              (int)frame_total_packets, cumulative_loss_percentage);
+             "/ {:d} total) | Cumulative: {:.4f}%",
+             (int)voltage_frame_id, packet_loss_percentage, (int)missing_packet_count,
+             (int)frame_total_packets, cumulative_loss_percentage);
 
         // Generate the packet loss mask (pl_mask)
         // pl_mask shape: uint64_t [T/64][F][E/8]
