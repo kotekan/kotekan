@@ -80,6 +80,10 @@ applyGenPL::applyGenPL(Config& config, const std::string& unique_name,
                     output_buf->buffer_name, output_buf->frame_size, voltage_frame_size);
         std::abort();
     }
+
+    output_buf->allocate_ndarray_frame_desc(
+        kotekan::int4x2_swapped_withoffset, "E",
+        {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"});
 }
 
 applyGenPL::~applyGenPL() {}
@@ -91,13 +95,13 @@ void applyGenPL::main_thread() {
     int output_frame_id = 0;
 
     while (!stop_thread) {
-        char* input = (char*)input_buf->wait_for_full_frame(unique_name, input_frame_id);
+        uint8_t* input = (uint8_t*)input_buf->wait_for_full_frame(unique_name, input_frame_id);
         if (input == nullptr)
             break;
         uint64_t* plmask = (uint64_t*)plmask_buf->wait_for_full_frame(unique_name, plmask_frame_id);
         if (plmask == nullptr)
             break;
-        char* output = (char*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
+        uint8_t* output = (uint8_t*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
         if (output == nullptr)
             break;
 
@@ -129,7 +133,7 @@ void applyGenPL::main_thread() {
                     if (pl)
                         output[v_idx] = input[v_idx];
                     else
-                        output[v_idx] = 8; // = 0 in offset-encoding
+                        output[v_idx] = 0x88; // = 0 in offset-encoding
                 } // e
             } // f
         } // tout

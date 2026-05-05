@@ -10,6 +10,7 @@
 
 #include <algorithm>  // for lower_bound, copy, sort, max
 #include <assert.h>   // for assert
+#include <chrono>     // for system_clock, duration_cast, nanoseconds
 #include <exception>  // for exception
 #include <functional> // for bind, _1, function
 #include <math.h>     // for sin, cos, M_PI
@@ -20,6 +21,18 @@
 REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
 
 #define GIGA 1'000'000'000L
+#define SECONDS_PER_DAY 86'400L
+#define DAYS_PER_WEEK 7L
+#define GPS_WEEK_ROLLOVER 1024L
+#define GPS_EPOCH_S                                                                                \
+    315964800L // This is the UNIX timestamp of the GPS epoch:
+               // 00:00:00, Jan 6, 1980 UTC.
+               // It is equal to:
+               // (365 * 8   (days in 197[01345789])
+               //  + 366 * 2 (days in 197[26])
+               //  + 5 )     (Jan 1 midnight to Jan 6 midnight)
+               //  * 86400   (UTC seconds per UTC day)
+               //  = 315964800
 
 static constexpr double C = 2.99792458e8;
 static constexpr double deg2rad = M_PI / 180.0;
@@ -78,6 +91,10 @@ GeographicParams GeographicParams::from_config(const kotekan::Config& config,
         dish.R_topo_to_dish[1][i] = dish_y[i];
         dish.R_topo_to_dish[2][i] = dish_z[i];
     }
+
+    // Whether to check for duplicate dish grid locations
+    dish.check_duplicate_dish_grid =
+        config.get_default<bool>(path, "check_duplicate_dish_grid", true);
 
     // Set all dish input data: num_dishes, dish_info_table, dish_position, ...
     dish.set_dish_info(config, path);
@@ -186,8 +203,7 @@ void GeographicParams::set_dish_info(const kotekan::Config& config, const std::s
         // Catch inconsistencies
         assert(dish_info.idx == dish);
         dish_index_t& dish_index = dish_grid.dish_index(dish_info.grid_x_idx, dish_info.grid_y_idx);
-        // Catch inconsistencies
-        if (dish_index != -1) {
+        if (check_duplicate_dish_grid && dish_index != -1) {
             FATAL_ERROR_NON_OO("dish {:s} has duplicate grid location ({:d},{:d})", dish_info.label,
                                dish_info.grid_x_idx, dish_info.grid_y_idx);
         }
@@ -301,10 +317,11 @@ GPSTimeParams GPSTimeParams::from_config(const kotekan::Config& config, const st
     gps.gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
     gps.gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
     gps.gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
+    gps.auto_correct_gps_week_rollover =
+        config.get_default<bool>(path, "auto_correct_gps_week_rollover", false);
 
     if (gps.query_gps)
-        set_gps_time_params_from_remote(gps, gps.gps_host, gps.gps_port,
-                                        gps.gps_endpoint); // sets gps_enabled, time0_ns
+        set_gps_time_params_from_remote(gps); // sets gps_enabled, time0_ns
     if (!gps.gps_enabled)
         set_gps_time_params_from_config(gps, config); // sets gps_enabled, time0_ns
     if (gps.require_gps && !gps.gps_enabled)
@@ -312,8 +329,10 @@ GPSTimeParams GPSTimeParams::from_config(const kotekan::Config& config, const st
 
     if (gps.gps_enabled)
         INFO_NON_OO("Telescope configured with GPS time0: {:d} ns", gps.time0_ns);
-    else
-        INFO_NON_OO("Telescope GPS time not enabled.");
+    else {
+        INFO_NON_OO("Telescope GPS time not enabled, using system time.");
+        set_gps_time_params_from_system(gps); // sets gps_enabled, time0_ns
+    }
 
     return gps;
 }
@@ -341,16 +360,44 @@ void GPSTimeParams::set_gps_time_params_from_config(GPSTimeParams& gps,
 }
 
 // static
-void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps, const std::string& host,
-                                                    const uint32_t port, const std::string& path) {
-    INFO_NON_OO("Requesting GPS time from server: {:s}.{:d}{:s} This might take some time...", host,
-                port, path);
+void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps) {
 
-    auto reply = restClient::instance().make_request_blocking(path, {}, host, port, 0, 30);
+    uint64_t time0_ns = 0;
+
+    // The REST request might fail. The gps struct for this call is `const`,
+    // so we provide a different variable to write the time to if successful.
+    bool success = get_gps_time0_ns_from_remote(gps, time0_ns, 30);
+
+    // Get out of here if there was a problem.
+    if (!success) {
+        gps.gps_enabled = false;
+        return;
+    }
+
+    // Otherwise, we successfully have the time!
+    gps.time0_ns = time0_ns;
+    gps.gps_enabled = true;
+    INFO_NON_OO("GPS frame0 time set to {:d}", gps.time0_ns);
+}
+
+void GPSTimeParams::set_gps_time_params_from_system(GPSTimeParams& gps) {
+    gps.time0_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
+    gps.gps_enabled = false;
+}
+
+bool GPSTimeParams::get_gps_time0_ns_from_remote(const GPSTimeParams& gps, uint64_t& time0_ns,
+                                                 int timeout) {
+    INFO_NON_OO("Requesting GPS time from server: {:s}:{:d}{:s} This might take some time...",
+                gps.gps_host, gps.gps_port, gps.gps_endpoint);
+
+    auto reply = restClient::instance().make_request_blocking(gps.gps_endpoint, {}, gps.gps_host,
+                                                              gps.gps_port, 0, timeout);
 
     if (!reply.first) {
         WARN_NON_OO("Failed to get GPS time, using system time");
-        return;
+        return false;
     }
 
     auto json_reply = nlohmann::json::parse(reply.second);
@@ -358,19 +405,59 @@ void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps, const st
     if (json_reply.count("error") == 1) {
         std::string error_message = json_reply["error"];
         WARN_NON_OO("Error returned by GPS server, error: {:s}", error_message);
-        return;
+        return false;
     }
 
     if (json_reply.count("frame0_nano") == 0) {
         WARN_NON_OO(
             "No `frame0_nano` value returned by GPS server, the server reply was: {:s} - {:s}",
             reply.second, json_reply.dump());
-        return;
+        return false;
     }
 
-    gps.time0_ns = json_reply["frame0_nano"].get<uint64_t>();
-    INFO_NON_OO("GPS frame0 time set to {:d}", gps.time0_ns);
-    gps.gps_enabled = true;
+    uint64_t raw_time0_ns = json_reply["frame0_nano"].get<uint64_t>();
+
+    uint64_t week_rollover_offset_ns = 0;
+
+    if (gps.auto_correct_gps_week_rollover) {
+        // Number of nanoseconds to adjust for the 1024 week rollover.
+
+        // Can only do this if the GPS Server (fpga_master) sent a "start_ctime"
+        if (json_reply.count("start_ctime") == 0) {
+            WARN_NON_OO(
+                "No `start_ctime` value returned by GPS server, the server reply was: {:s} - {:s}",
+                reply.second, json_reply.dump());
+            return false;
+        }
+
+        // FPGA start time is not subject to the GPS rollover, so that is
+        // our baseline.
+        uint64_t fpga_start_s = json_reply["start_ctime"].get<uint64_t>();
+        uint64_t fpga_start_ns = GIGA * fpga_start_s;
+
+        // nanoseconds in the rollover period
+        uint64_t dt_rollover_ns = GPS_WEEK_ROLLOVER * DAYS_PER_WEEK * SECONDS_PER_DAY * GIGA;
+
+        // GPS epoch (when GPS time started) in ns.
+        uint64_t gps0_ns = GPS_EPOCH_S * GIGA;
+
+        // Compute the (correct) number of rollovers at the fpga start time
+        // and the apparent number of rollovers in the sent GPS time0.
+        uint64_t rollovers_at_start = (fpga_start_ns - gps0_ns) / dt_rollover_ns;
+        uint64_t rollovers_in_time0 = (raw_time0_ns - gps0_ns) / dt_rollover_ns;
+
+        INFO_NON_OO("Correcting GPS time by {} 1024 week rollover periods.",
+                    rollovers_at_start - rollovers_in_time0);
+
+        // add 1 rollover of nanoseconds for each rollover time0 is off fpga_start by.
+        week_rollover_offset_ns = dt_rollover_ns * (rollovers_at_start - rollovers_in_time0);
+    }
+
+    // Set final time0, raw from GPS plus optional rollover correction.
+    time0_ns = raw_time0_ns + week_rollover_offset_ns;
+
+    // Success!
+    return true;
 }
 
 
@@ -378,6 +465,7 @@ void GPSTimeParams::set_gps_time_params_from_remote(GPSTimeParams& gps, const st
 
 CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(path, config.get<std::string>(path, "log_level"),
+              config.get_default<bool>(path, "require_eop", false),
               config.get_default<std::string>(path, "eop_updatable_config", "")),
     // Frequency sampling parameters
     _freq_params(FreqParams::from_config(config, path)),
@@ -406,6 +494,18 @@ uint64_t CHORDTelescope::to_seq(timespec time) const {
 
 bool CHORDTelescope::gps_time_enabled() const {
     return _gps_time_params.gps_enabled;
+}
+
+bool CHORDTelescope::query_gps_time0_ns(uint64_t& time0_ns, int timeout) const {
+
+    if (_gps_time_params.query_gps) {
+        // If we were set to query GPS, then query the GPS and return.
+        return _gps_time_params.get_gps_time0_ns_from_remote(_gps_time_params, time0_ns, timeout);
+    }
+
+    // Otherwise, we were set from config, which cannot change. Simply return that value.
+    time0_ns = _gps_time_params.time0_ns;
+    return true;
 }
 
 uint64_t CHORDTelescope::seq_length_nsec() const {
@@ -782,7 +882,7 @@ size_t CHORDTelescope::num_science_freqs() const {
 
 freq_id_t CHORDTelescope::to_freq_id(stream_t stream_id, uint32_t index) const {
     // The frequency ID is currently defined by the following formula:
-    // freq_id = min_science_freq_id() + index * 128  + stream_id 
+    // freq_id = min_science_freq_id() + index * 128  + stream_id
     return min_science_freq_id() + index * 128 + stream_id.id;
 }
 

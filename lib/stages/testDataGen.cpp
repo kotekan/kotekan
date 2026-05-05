@@ -52,8 +52,9 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     assert(type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
            || type == "const16" || type == "const32" || type == "constf16" || type == "random"
            || type == "random_signed" || type == "random_signed_offset" || type == "random1x8"
-           || type == "ramp" || type == "tpluse" || type == "tpluseplusf"
-           || type == "tpluseplusfprime" || type == "square" || type == "onehot");
+           || type == "constu64" || type == "randomu64" || type == "random8" || type == "ramp"
+           || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
+           || type == "square" || type == "onehot");
     assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
     int type_size = 1; // default
     if (type == "const")
@@ -68,10 +69,12 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         type_size = 4;
     if (type == "constf16")
         type_size = 2;
+    if (type == "constu64" || type == "randomu64")
+        type_size = 8;
     if (type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
         || type == "const16" || type == "const32" || type == "random" || type == "random_signed"
-        || type == "random_signed_offset" || type == "random1x8" || type == "ramp"
-        || type == "onehot") {
+        || type == "random_signed_offset" || type == "random1x8" || type == "random8"
+        || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
         _value_array =
             config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
@@ -79,6 +82,10 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         fvalue = config.get_default<float>(unique_name, "value", -1.0);
         _fvalue_array =
             config.get_default<std::vector<float>>(unique_name, "values", std::vector<float>());
+    } else if (type == "constu64" || type == "randomu64") {
+        lvalue = config.get_default<uint64_t>(unique_name, "value", 0);
+        _lvalue_array = config.get_default<std::vector<uint64_t>>(unique_name, "values",
+                                                                  std::vector<uint64_t>());
     }
     _reuse_random = config.get_default<bool>(unique_name, "reuse_random", false);
     _seed = config.get_default<int>(unique_name, "seed", 0);
@@ -106,6 +113,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     num_links = config.get_default<uint32_t>(unique_name, "num_links", 1);
+    set_dish_index = config.get_default<bool>(unique_name, "set_dish_index", false);
     // TODO: rename this parameter to `num_freq_per_stream` in the config
     _num_freq_in_frame = config.get_default<size_t>(unique_name, "num_local_freq", 1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
@@ -178,6 +186,7 @@ void testDataGen::main_thread() {
     int8_t* frame8 = nullptr;
     int16_t* frame16 = nullptr;
     int32_t* frame32 = nullptr;
+    uint64_t* frameu64 = nullptr;
     uint64_t seq_num = samples_per_data_set * _first_frame_index;
     bool finished_seeding_constant = false;
     static struct timeval now;
@@ -223,6 +232,37 @@ void testDataGen::main_thread() {
         chordmeta->set_strides_simple();
         // frame_desc is set only after "type" has been decoded below
 
+        // Set dish information
+        // (This is the outdated way; the modern way uses the telescope object)
+        if (set_dish_index && !chordmeta->dish_index) {
+            const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
+            const auto& dish_grid = chord_telescope.get_dish_grid();
+            const int num_dish_locations_ew = dish_grid.get_num_dishes_x();
+            const int num_dish_locations_ns = dish_grid.get_num_dishes_y();
+            const int num_dish_locations = num_dish_locations_ew * num_dish_locations_ns;
+            std::vector<int> dish_index(num_dish_locations, -1);
+            int num_dishes = 0;
+            for (int dish_loc_ns = 0; dish_loc_ns < num_dish_locations_ns; ++dish_loc_ns) {
+                for (int dish_loc_ew = 0; dish_loc_ew < num_dish_locations_ew; ++dish_loc_ew) {
+                    const int dish_ind = dish_grid.dish_index(dish_loc_ew, dish_loc_ns);
+                    if (dish_ind >= 0) {
+                        ++num_dishes;
+                        assert(dish_index.at(dish_loc_ew + num_dish_locations_ew * dish_loc_ns)
+                               == -1);
+                        dish_index.at(dish_loc_ew + num_dish_locations_ew * dish_loc_ns) = dish_ind;
+                    }
+                }
+            }
+            chordmeta->ndishes = num_dishes;
+            chordmeta->n_dish_locations_ew = num_dish_locations_ew;
+            chordmeta->n_dish_locations_ns = num_dish_locations_ns;
+            chordmeta->dish_index =
+                new dish_index_t[chordmeta->n_dish_locations_ns * chordmeta->n_dish_locations_ew];
+            std::copy(dish_index.begin(), dish_index.end(), chordmeta->dish_index);
+        }
+
+        // Set frequency channel metadata
+
         assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
         std::vector<int> coarse_freq(_num_freq_in_frame);
         std::vector<int> freq_upchan_factor(coarse_freq.size());
@@ -258,7 +298,7 @@ void testDataGen::main_thread() {
             frame8 = (int8_t*)frame;
             if (chordmeta)
                 chordmeta->type = kotekan::int4x2_swapped_withoffset;
-        } else if (type == "const8") {
+        } else if (type == "const8" || type == "random8") {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
             if (chordmeta)
@@ -285,6 +325,14 @@ void testDataGen::main_thread() {
             if (chordmeta)
                 chordmeta->type = kotekan::float16;
 #endif
+        } else if (type == "constu64" || type == "randomu64") {
+            n_to_set /= sizeof(uint64_t);
+            frameu64 = (uint64_t*)frame;
+            if (chordmeta)
+                chordmeta->type = kotekan::uint64;
+        } else if (type == "random") {
+            if (chordmeta)
+                chordmeta->type = kotekan::uint4x2;
         } else if (type == "random_signed") {
             if (chordmeta)
                 chordmeta->type = kotekan::int4x2;
@@ -294,6 +342,9 @@ void testDataGen::main_thread() {
         } else if (type == "random1x8") {
             if (chordmeta)
                 chordmeta->type = kotekan::uint1x8;
+        } else if (type == "ramp") {
+            if (chordmeta)
+                chordmeta->type = kotekan::uint8;
         } else if (type == "tpluse") {
             if (chordmeta)
                 chordmeta->type = kotekan::uint1x8;
@@ -306,8 +357,11 @@ void testDataGen::main_thread() {
         } else if (type == "square") {
             if (chordmeta)
                 chordmeta->type = kotekan::int4x2;
+        } else if (type == "onehot") {
+            if (chordmeta)
+                chordmeta->type = kotekan::uint8;
         } else {
-            ERROR("unexpected type: {s}", type);
+            ERROR("unexpected type: {:s}", type);
             throw std::runtime_error("unexpected type: " + type);
         }
 
@@ -358,6 +412,8 @@ void testDataGen::main_thread() {
                 || (type == "const1x8") || (type == "const16") || (type == "const32")))
             // Cycle through "values" array, if given
             value = _value_array[frame_id_abs % _value_array.size()];
+        if (_lvalue_array.size() && type == "constu64")
+            lvalue = _lvalue_array[frame_id_abs % _lvalue_array.size()];
         for (uint j = 0; j < n_to_set; ++j) {
             if (type == "const") {
                 if (finished_seeding_constant)
@@ -385,6 +441,10 @@ void testDataGen::main_thread() {
                     break;
                 framef16[j] = (float16_t)fvalue;
 #endif
+            } else if (type == "constu64") {
+                if (finished_seeding_constant)
+                    break;
+                frameu64[j] = lvalue;
             } else if (type == "ramp") {
                 frame[j] = fmod(j * value, 256 * value);
                 //                frame[j] = j*value;
@@ -423,6 +483,18 @@ void testDataGen::main_thread() {
                     break;
                 uint8_t rand_val = rng() & 0xFFu;
                 frame[j] = rand_val;
+            } else if (type == "randomu64") {
+                if (_reuse_random && finished_seeding_constant)
+                    break;
+                uint64_t lo = static_cast<uint64_t>(rng());
+                uint64_t hi = static_cast<uint64_t>(rng());
+                frameu64[j] = (hi << 32) | lo;
+            } else if (type == "random8") {
+                if (_reuse_random && finished_seeding_constant)
+                    break;
+                uint32_t rand_val = rng() % 256;                           // rand in [0, 255]
+                int32_t rand_i_val = static_cast<int32_t>(rand_val) - 128; // rand in [-128, 127]
+                frame8[j] = static_cast<int8_t>(rand_i_val);
             } else if (type == "tpluse") {
                 int time_idx = j / num_elements;
                 int elem_idx = j % num_elements;
@@ -458,7 +530,7 @@ void testDataGen::main_thread() {
                 temp_output = ((new_real << 4) & 0xF0) + (new_imaginary & 0x0F);
                 frame[j] = temp_output;
             } else {
-                ERROR("unexpected type: {s}", type);
+                ERROR("unexpected type: {:s}", type);
                 throw std::runtime_error("unexpected type: " + type);
             }
         }

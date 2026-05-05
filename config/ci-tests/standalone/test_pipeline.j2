@@ -124,15 +124,15 @@ earth_rotation_data:
   kotekan_update_endpoint: json
   earth_orientation_parameter_table: [
     {
-      time_inst_ns: 1750000000000000000,
+      t_inst_ns: 1750000000000000000,
       delta_UT1_inst: 0.5,
-      x_pm: 0.1,
-      y_pm: 0.2
+      xp_as: 0.1,
+      yp_as: 0.2
     }, {
-      time_inst_ns: 1770000000000000000,
+      t_inst_ns: 1770000000000000000,
       delta_UT1_inst: -0.5,
-      x_pm: 0.3,
-      y_pm: 0.4
+      xp_as: 0.3,
+      yp_as: 0.4
     }]
 
 
@@ -547,7 +547,7 @@ hdf5_N2_write_final:
     num_ev: num_ev_to_calculate
     vis_layout: "FullUpperTri"
     num_file_t: 10
-    gains_base_directory: "" # "/mnt/cs00/data/baseband_gains/"
+    baseband_gain_file: "" # e.g. "/path/to/digital_gains/00000000.h5"
 
 # Autocorrelations-only subset
 hdf5_N2_write_autocorr:

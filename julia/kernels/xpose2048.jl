@@ -7,15 +7,6 @@ using Mustache
 
 const Memory = IndexSpaces.Memory
 
-const card = "A40"
-
-if CUDA.functional()
-    println("[Choosing CUDA device...]")
-    CUDA.device!(0)
-    println(name(device()))
-    @assert name(device()) == "NVIDIA $card"
-end
-
 chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
 unchimify(x) = chimify(x)
 
@@ -28,14 +19,14 @@ function shrink(value::Integer)
     return value
 end
 function shrinkmul(x::Integer, y::Symbol, ymax::Integer)
-    @assert x >= 0 && ymax >= 0
+    @assert x >= 0 && ymax >= 1
     # We assume 0 <= y < ymax
     if x * (ymax - 1) <= typemax(Int32)
-        # We can use 32-bit arithmetic        
-        return :($(Int32(x)) * $y)
+        # We can use 32-bit arithmetic
+        return :(IndexSpaces.mul($(Int32(x)), $y))
     elseif x * (ymax - 1) <= typemax(Int64)
-        # We need to use 64-bit arithmetic        
-        return :($(Int64(x)) * $y)
+        # We need to use 64-bit arithmetic
+        return :(IndexSpaces.mul($(Int64(x)), $y))
     else
         # Something is wrong
         @assert false
@@ -57,12 +48,13 @@ const Time = Index{Physics,TimeTag} # time
 # Setup
 
 @assert D * P == 2048
-@assert T % 16384 == 0
+
+const T16384 = 16384
+const Tin = idiv(T, T16384)
 
 const T1 = 32
-
 const Tblocks = 8
-const Tloop = idiv(T, T1 * Tblocks)
+const Tloop = idiv(T16384, T1 * Tblocks)
 
 const W = 16                    # warps
 const B = F * Tblocks           # blocks
@@ -111,24 +103,24 @@ end
 # Here "dish" means "dish or polr". "time" means "time or freq"
 
 # Phys     Glob    Reg       |   Reg       Shared   Phys
-#                            |             
+#                            |
 # dish0    mbyte0  simd0     |   simd0     sbyte0    time0
 # dish1    mbyte1  simd1     |   simd1     sbyte1    time1
 # dish2    mbyte2  reg0      |   thread2   bank0     time2
 # dish3    mbyte3  reg1      |   thread3   bank1     time3
 # dish4    mbyte4  thread0   |   thread4   bank2     time4
-# dish5    mbyte5  thread1   |   thread0   bank3     dish0 
-# dish6    mbyte6  thread2   |   thread1   bank4     dish1 
-# dish7    line0   warp0     |   reg0      shared0   dish2 
-# dish8    line1   warp1     |   reg1      shared1   dish3 
-# dish9    line2   warp2     |   reg2      shared2   dish4 
-# dish10   line3   warp3     |   reg3      shared3   dish5 
-# time0    line4   reg2      |   reg4      shared4   dish6 
-# time1    line5   reg3      |   warp0     shared5   dish7 
-# time2    line6   reg4      |   warp1     shared6   dish8 
-# time3    line7   thread3   |   warp2     shared7   dish9 
+# dish5    mbyte5  thread1   |   thread0   bank3     dish0
+# dish6    mbyte6  thread2   |   thread1   bank4     dish1
+# dish7    line0   warp0     |   reg0      shared0   dish2
+# dish8    line1   warp1     |   reg1      shared1   dish3
+# dish9    line2   warp2     |   reg2      shared2   dish4
+# dish10   line3   warp3     |   reg3      shared3   dish5
+# time0    line4   reg2      |   reg4      shared4   dish6
+# time1    line5   reg3      |   warp0     shared5   dish7
+# time2    line6   reg4      |   warp1     shared6   dish8
+# time3    line7   thread3   |   warp2     shared7   dish9
 # time4    line8   thread4   |   warp3     shared8   dish10
-# 
+#
 # Swaps necessary:
 #     dish0/simd0   <-> time0/reg2
 #     dish1/simd1   <-> time1/reg3
@@ -140,7 +132,7 @@ end
 
 const layout_Ein_memory = let
     physics_indices = Index{Physics}[
-        IntValue(:intvalue, 1, 4), Cplx(:cplx, 1, C), Dish(:dish, 1, D), Polr(:polr, 1, P), Time(:time, 1, 16384), Freq(:freq, 1, F), Time(:time, 16384, T ÷ 16384)
+        IntValue(:intvalue, 1, 4), Cplx(:cplx, 1, C), Dish(:dish, 1, D), Polr(:polr, 1, P), Time(:time, 1, T16384), Freq(:freq, 1, F), Time(:time, T16384, T ÷ T16384)
     ]
     machine_indices = Index{Machine}[SIMD(:simd, 1, 32), Memory(:memory, 1, 2^55)]
     match_indices(physics_indices, machine_indices)
@@ -156,7 +148,7 @@ end
 
 const layout_E_registers = let
     physics_indices = Index{Physics}[
-        IntValue(:intvalue, 1, 4), Cplx(:cplx, 1, C), Dish(:dish, 1, D), Polr(:polr, 1, P), Time(:time, 1, T), Freq(:freq, 1, F)
+        IntValue(:intvalue, 1, 4), Cplx(:cplx, 1, C), Dish(:dish, 1, D), Polr(:polr, 1, P), Time(:time, 1, T16384), Freq(:freq, 1, F)
     ]
     machine_indices = Index{Machine}[
         SIMD(:simd, 1, 32),
@@ -182,7 +174,7 @@ const layout_E_shared = let
         Freq(:freq, 1, F),
     ]
     machine_indices = Index{Machine}[
-        SIMD(:simd, 1, 32), Shared(:shared, 1, 16384), Loop(:time_loop, T1, Tloop), Block(:block, 1, B)
+        SIMD(:simd, 1, 32), Shared(:shared, 1, T16384), Loop(:time_loop, T1, Tloop), Block(:block, 1, B)
     ]
     match_indices(physics_indices, machine_indices)
 end
@@ -228,7 +220,7 @@ function make_xpose2048_kernel()
     apply!(emitter, :info => layout_info_registers, 1i32)
     store!(emitter, :info_memory => layout_info_memory, :info)
 
-    if!(emitter, :(!(Tinmin % 16384i32 == 0i32 && Tinmax == Tinmin + 16384i32 && Tmin == Tinmin && Tmax == Tinmax))) do emitter
+    if!(emitter, :(!(Tinmax == Tinmin + 1i32 && Tmin == Int32(T16384) * Tinmin && Tmax == Int32(T16384) * Tinmax))) do emitter
         apply!(emitter, :info => layout_info_registers, 2i32)
         store!(emitter, :info_memory => layout_info_memory, :info)
         trap!(emitter)
@@ -245,12 +237,25 @@ function make_xpose2048_kernel()
             align=16,
             postprocess=addr -> :(
                 let
-                    offset = $(shrinkmul(idiv(D, 4) * P * F, :Tinmin, T))
-                    length = $(shrink(idiv(D, 4) * P * F * T))
-                    mod($addr + offset, length)
+                    addr = $addr
+                    offset = $(shrinkmul(idiv(D, 4) * P * T16384 * F, :Tinmin, Tin))
+                    length = $(shrink(idiv(D, 4) * P * T16384 * F * Tin))
+                    IndexSpaces.imod(IndexSpaces.add(addr, offset), length)
                 end
             ),
         )
+
+        # There are 32 registers. (We should confirm that.)
+        push!(emitter.statements, :(anyzero = false))
+        for reg in 0:31
+            push!(emitter.statements, :(anyzero |= any_zero($(Symbol(:E0_register, "$reg")))))
+        end
+        if!(emitter, :anyzero) do emitter
+            apply!(emitter, :info => layout_info_registers, 3i32)
+            store!(emitter, :info_memory => layout_info_memory, :info)
+            trap!(emitter)
+            return nothing
+        end
 
         # dish0/simd0   <-> time0/reg2
         permute!(emitter, :E1, :E0, Register(:register, 4, 2), SIMD(:simd, 8, 2))
@@ -372,7 +377,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     end
 
     if output_kernel
-        open("output-$card/xpose2048_$setup.jl", "w") do fh
+        open("output/xpose2048_$setup.jl", "w") do fh
             return println(fh, xpose2048_stmts)
         end
     end
@@ -388,7 +393,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     shmem_bytes = kernel_setup.shmem_bytes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm xpose2048_kernel(
+    kernel = @cuda launch = false cap = compute_capability ptx = ptx_compat minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm xpose2048_kernel(
         Int32(0),
         Int32(0),
         Int32(0),
@@ -416,11 +421,11 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
         scatter_indices_memory[i + 1] = i
     end
 
-    Tinmin = Int32(0)
-    Tinmax = Int32(fld(T, 4))
+    Tinmin = Int32(0 ÷ T16384)
+    Tinmax = Int32(fld(T, 4) ÷ T16384)
 
-    Tmin = Int32(Tinmin)
-    Tmax = Int32(Tinmax)
+    Tmin = Int32(T16384 * Tinmin)
+    Tmax = Int32(T16384 * Tinmax)
 
     println("Copying data from CPU to GPU...")
     Ein_cuda = CuArray(chimify.(Ein_memory))
@@ -446,18 +451,20 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
 
     println("Copying data back from GPU to CPU...")
     E_memory = unchimify.(Array(E_cuda))
-    @assert all(!isnan, (@view E_memory[1:(D * P * F * Tmax)]))
+    @assert all(!isnan, (@view E_memory[1:(idiv(D, 4) * P * F * Tmax)]))
+    @assert all(isnan, (@view E_memory[(idiv(D, 4) * P * F * Tmax + 1):end]))
     info_memory = Array(info_cuda)
     @assert all(info_memory .== 0)
 
     if output_kernel
-        ptx = read("output-$card/xpose2048_$setup.ptx", String)
+        ptx = read("output/xpose2048_$setup.ptx", String)
         ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
-        open("output-$card/xpose2048_$setup.ptx", "w") do fh
+        ptx = replace(ptx, r".extern .func julia_AssertionError_([^;]*);"s => s".func julia_AssertionError_\1.noreturn\n{\n\ttrap;\n}")
+        open("output/xpose2048_$setup.ptx", "w") do fh
             return write(fh, ptx)
         end
         kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-        open("output-$card/xpose2048_$setup.yaml", "w") do fh
+        open("output/xpose2048_$setup.yaml", "w") do fh
             return print(
                 fh,
                 """
@@ -496,8 +503,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
               intent: in
               type: Int4
               indices: [C, E, Tlo16384, F, Thi16384]
-              shape: [$C, $(D*P), 16384, F, T ÷ 16384]
-              strides: [1, $C, $(C*D*P), $(C*D*P*16384), $(C*D*P*16384*F)]
+              shape: [$C, $(D*P), T16384, F, T ÷ T16384]
+              strides: [1, $C, $(C*D*P), $(C*D*P*T16384), $(C*D*P*T16384*F)]
             - name: "E"
               intent: out
               type: Int4
@@ -531,7 +538,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     Dict("type" => "int", "name" => "cuda_number_of_frequencies", "value" => "$F"),
                     Dict("type" => "int", "name" => "cuda_number_of_polarizations", "value" => "$P"),
                     Dict("type" => "int", "name" => "cuda_max_number_of_timesamples", "value" => "$T"),
-                    Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "16384"),
+                    Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$T16384"),
                 ],
                 "minthreads" => num_threads * num_warps,
                 "num_blocks_per_sm" => num_blocks_per_sm,
@@ -583,9 +590,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                         "type" => "int4x2_swapped_withoffset",
                         "axes" => [
                             Dict("label" => "E", "length" => D * P),
-                            Dict("label" => "Tlo16384", "length" => 16384),
+                            Dict("label" => "Tlo16384", "length" => T16384),
                             Dict("label" => "F", "length" => F),
-                            Dict("label" => "Thi16384", "length" => T ÷ 16384),
+                            Dict("label" => "Thi16384", "length" => T ÷ T16384),
                         ],
                         "isoutput" => false,
                         "hasbuffer" => true,
@@ -629,7 +636,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                 ],
             ),
         )
-        write("output-$card/xpose2048_$setup.cxx", cxx)
+        write("output/xpose2048_$setup.cxx", cxx)
     end
 
     println("Done.")
@@ -638,12 +645,12 @@ end
 
 if CUDA.functional()
     # Output kernel
-    open("output-$card/xpose2048_$setup.ptx", "w") do fh
+    open("output/xpose2048_$setup.ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true)
         end
     end
-    open("output-$card/xpose2048_$setup.sass", "w") do fh
+    open("output/xpose2048_$setup.sass", "w") do fh
         redirect_stdout(fh) do
             @device_code_sass main(; compile_only=true)
         end

@@ -18,6 +18,14 @@ add_library(
     gpuSimulateN2kCorr.cpp
     gpuSimulateN2kPLExpand.cpp
     gpuSimulateN2kPL1bitCorr.cpp
+    gpuSimulateRFIS012.cpp
+    gpuSimulateRFIS012bar.cpp
+    gpuSimulateRFIS012tilde.cpp
+    gpuSimulateRFISK.cpp
+    inventBFMask.cpp
+    inventVoltage.cpp
+    inventVoltageCHIME.cpp
+    inventPLMask.cpp
     networkOutputSim.cpp
     simVdifData.cpp
     testDataCheck.cpp
@@ -25,13 +33,16 @@ add_library(
     testDataGenFloat.cpp
     testLostSamplesToPLMask.cpp
     testN2kGen.cpp
+    testRFIS012Gen.cpp
     TestDropFrames.cpp
     testCHORDTelescope.cpp
+    testXpose.cpp
     TimeUtilDump.cpp
     GenHFBFrames.cpp
     pulsarSimProcess.cpp
     visNoise.cpp
     visDrop.cpp
+    waitingForAllTests.cpp
     zeroLowerTriangle.cpp
     visTestPattern.cpp)
 

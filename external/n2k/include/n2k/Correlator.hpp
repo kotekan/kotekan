@@ -1,7 +1,7 @@
 #ifndef _N2K_CORRELATOR_HPP
 #define _N2K_CORRELATOR_HPP
 
-#include <gputils/Array.hpp>
+#include <ksgpu/Array.hpp>
 
 
 namespace n2k {
@@ -147,8 +147,8 @@ public:
     //  - We define the visibility matrix as V_{ij} = sum_t E_{it} E_{jt}^*, with the complex
     //    conjugate on the second factor. (This would be trivial to change.)
     //
-    //  - The kernel will segfault if run on a GPU which is not the cuda default device.
-    //    This will be easy to fix later.
+    //  - The kernel must be launched on the same cuda device that was active when the
+    //    Correlator was constructed. The launch() method checks this and throws if not.
     //
     //  - The same Correlator object can be used to launch multiple kernels concurrently (either in
     //    serial using the same cuda stream, or in parallel using different cuda streams).
@@ -160,7 +160,7 @@ public:
     void launch(int *vis_out, const int8_t *e_in, const uint *rfimask,
 		int nt_outer, int nt_inner, cudaStream_t stream=nullptr, bool sync=false) const;
 
-    // This version of launch() uses gputils::Array objects instead of bare pointers.
+    // This version of launch() uses ksgpu::Array objects instead of bare pointers.
     // Both arrays must be allocated on the GPU.
     //
     // The 'vis_out' array must have shape (nt_outer, nfreq, nvtiles, 16, 16, 2).
@@ -172,7 +172,7 @@ public:
     // The 'rfimask' array must have shape (nfreq, nt_outer * nt_inner / 32).
     // (See previous long comment for indexing logic.)
     
-    void launch(gputils::Array<int> &vis_out, const gputils::Array<int8_t> &e_in, const gputils::Array<uint> &rfimask,
+    void launch(ksgpu::Array<int> &vis_out, const ksgpu::Array<int8_t> &e_in, const ksgpu::Array<uint> &rfimask,
 		int nt_outer, int nt_inner, cudaStream_t stream=nullptr, bool sync=false) const;
     
     // Initialized by constructor.
@@ -182,6 +182,8 @@ public:
     using kernel_t = void (*)(int *, const int8_t *, const uint *, const int *, int, int);
 
 protected:
+    int cuda_device;
+
     // This small (currently 27 KB) array will persist in GPU memory for the lifetime of the Correlator object.
     // Note that the shared_ptr destructor will call cudaFree().
     std::shared_ptr<int> precomputed_offsets;

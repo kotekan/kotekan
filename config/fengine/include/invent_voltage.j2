@@ -1,0 +1,13 @@
+# -*-yaml-*-
+
+# Generate initial conditions for benchmarks
+
+################################################################################
+
+# Stages
+
+generate_voltage:
+    kotekan_stage: inventVoltage
+    voltage: host_voltage_buffer
+    input_kind: random
+    reuse_frames: true          # otherwise we're too slow

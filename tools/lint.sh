@@ -127,7 +127,7 @@ fi
 
 # clang-format
 echo "Running clang-format..."
-find $KOTEKAN_DIR -type d \( -name "build-iwyu" -o -name "build" -o -name "external" \) -prune -o -type f -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
+find $KOTEKAN_DIR -type d \( -name "build-iwyu" -o -name "build" -o -name "external" -o -name ".venv" -o -name "scratch" \) -prune -o -type f -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
 if ! git diff --exit-code; then
     echo "Error: clang-format found formatting issues" >&2
     ERROR=1

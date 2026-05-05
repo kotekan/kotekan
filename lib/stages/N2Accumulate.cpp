@@ -1,6 +1,5 @@
 #include "N2Accumulate.hpp"
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope, EOP
 #include "Config.hpp"            // for Config
 #include "N2FrameView.hpp"       // for N2FrameView
 #include "N2Metadata.hpp"        // for N2Metadata, get_N2_metadata
@@ -12,6 +11,7 @@
 #include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "timeUtil.hpp"          // for EOP
 
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
@@ -301,8 +301,7 @@ void N2Accumulate::main_thread() {
         }
 
         // Record the current frame time being processed.
-        comp_time_seconds_metric.set(
-            timespec_to_nanosec_i64(_tel.to_time(frame_metadata->get_fpga_seq_num())) / 1e9);
+        comp_time_seconds_metric.set(_tel.to_time_ns(frame_metadata->get_fpga_seq_num()) / 1e9);
 
         // Accumulate each visibility sample in the in_frame
         // t_outer
@@ -500,7 +499,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
         meta->frame_start_time_ns = _tel.to_time_ns(meta->fpga_start_tick);
         meta->freq_MHz = _tel.to_freq_MHz(meta->freq_id);
 
-        meta->time_center_eop = eop_null; // TODO: update
+        meta->time_center_eop = _tel.get_EOP_at_time(
+            _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
         meta->bin_eop = _tel.get_EOP_at_time(
             _tel.to_time(meta->fpga_start_tick + meta->frame_length_fpga_ticks / 2));
         meta->bin_start_ERA_deg = _tel.get_EOP_at_time(_tel.to_time(meta->fpga_start_tick)).ERA_deg;
@@ -511,6 +511,10 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& out_frame_id)
         meta->bin_end_LAST = -1;   // TODO: update
 
         meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];
+
+        if (chord_frame_metadata->has_dataset_id()) {
+            meta->dataset_id = chord_frame_metadata->get_dataset_id();
+        }
 
         DEBUG("Creating N2FrameView for freq f[{:d}] = {:d}", f,
               chord_frame_metadata->get_coarse_freq()[f]);

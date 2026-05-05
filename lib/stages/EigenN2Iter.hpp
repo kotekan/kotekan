@@ -44,6 +44,10 @@
  * @buffer out_buf Output stream with the calculated eigen-pairs.
  *         @buffer_format N2Buffer structured
  *         @buffer_metadata N2Metadata
+ * @buffer failed_buf Output stream to which buffers for which eigenvalues
+ *         cannot be computed are sent. Leave empty to drop these frames.
+ *         @buffer_format N2Buffer structured
+ *         @buffer_metadata N2Metadata
  *
  * @conf  num_elements     Int. The number of elements (i.e. inputs) in the
  *                         correlator data.
@@ -69,6 +73,8 @@
  * @conf  num_ev_conv      UInt. Test only the top `num_ev_conv` eigenpairs for convergence.
  * @conf  krylov           UInt, default 2. Size of the Krylov basis to use.
  * @conf  subspace         UInt, default 3. Number of subspace iteration substeps.
+ * @conf  num_blaze_workers UInt, default 0. If greater than 0 limit number of
+ *                          blaze worker threads (kotekan wide)
  *
  * @par Metrics
  * @metric kotekan_eigenN2iter_comp_time_seconds
@@ -82,6 +88,9 @@
  *         Eigenvalue convergence parameter of the last sample.
  * @metric kotekan_eigenN2iter_eigenvector_convergence
  *         Eigenvector convergence parameter of the last sample.
+ * @metric kotekan_eigenN2iter_num_failed_eigencalc
+ *         The number of failed eigenvector decompositions.
+ *
  *
  * @author Richard Shaw, Kiyoshi Masui
  */
@@ -103,6 +112,7 @@ private:
 
     Buffer* in_buf;
     Buffer* out_buf;
+    Buffer* failed_buf;
 
     const size_t _num_eigenvectors;
 
@@ -113,6 +123,9 @@ private:
     const size_t _max_iterations;
     const size_t _krylov;
     const size_t _subspace;
+
+    /// Blaze number of threads
+    uint32_t _num_blaze_workers;
 
     /// Parameters for masking the matrix
     std::vector<size_t> _exclude_inputs;
@@ -127,6 +140,7 @@ private:
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& iterations_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvalue_convergence_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvector_convergence_metric;
+    kotekan::prometheus::Counter& num_failed_eigencalc;
 };
 
 #endif

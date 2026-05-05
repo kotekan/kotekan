@@ -1,5 +1,8 @@
 # Configuration name
 const setup = :chime
+# const compute_capability = v"8.9" # L40S
+const compute_capability = v"8.6" # for convenience
+const ptx_compat = v"8.0"
 
 # Time between time samples
 const sampling_time_μsec = 4096 / 1600

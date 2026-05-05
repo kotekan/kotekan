@@ -12,15 +12,15 @@ setups='
     chime_U16 chime_U128
 '
 
-mkdir -p output-A40
+mkdir -p output
 
 # Delete previous output (so that we don't accidentally re-use it)
 for setup in ${setups}; do
-    rm -f output-A40/chimefrb_${setup}.cxx
-    rm -f output-A40/chimefrb_${setup}.jl
-    rm -f output-A40/chimefrb_${setup}.ptx
-    rm -f output-A40/chimefrb_${setup}.sass
-    rm -f output-A40/chimefrb_${setup}.yaml
+    rm -f output/chimefrb_${setup}.cxx
+    rm -f output/chimefrb_${setup}.jl
+    rm -f output/chimefrb_${setup}.ptx
+    rm -f output/chimefrb_${setup}.sass
+    rm -f output/chimefrb_${setup}.yaml
     rm -f ../lib/cuda/generated/cudaCHIMEFRBBeamformer_${setup}.cpp
     rm -f ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.jl
     rm -f ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.ptx
@@ -29,32 +29,34 @@ done
 
 # Generate kernel
 for setup in ${setups}; do
-    julia --project=@. --optimize kernels/chimefrb_${setup}.jl 2>&1 | tee output-A40/chimefrb_${setup}.out &
+    julia --project=@. --optimize kernels/chimefrb_${setup}.jl 2>&1 | tee output/chimefrb_${setup}.out &
 done
 wait
 
 # Check whether kernels were generated
 for setup in ${setups}; do
-    test -f output-A40/chimefrb_${setup}.cxx
-    test -f output-A40/chimefrb_${setup}.jl
-    test -f output-A40/chimefrb_${setup}.ptx
-    test -f output-A40/chimefrb_${setup}.sass
-    test -f output-A40/chimefrb_${setup}.yaml
+    test -f output/chimefrb_${setup}.cxx
+    test -f output/chimefrb_${setup}.jl
+    test -f output/chimefrb_${setup}.ptx
+    test -f output/chimefrb_${setup}.sass
+    test -f output/chimefrb_${setup}.yaml
 done
 
 # Format generated C++ code
 for setup in ${setups}; do
-    clang-format-18 -i output-A40/chimefrb_${setup}.cxx &
+    clang-format-18 -i output/chimefrb_${setup}.cxx &
 done
 
 # Format generated Julia code
-julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("output-A40")' &
+for setup in ${setups}; do
+    julia --project=@. --eval 'using JuliaFormatter; JuliaFormatter.format_file("'output/chimefrb_${setup}.jl'")' &
+done
 wait
 
 # Copy kernels into Kotekan
 for setup in ${setups}; do
-    cp output-A40/chimefrb_${setup}.cxx ../lib/cuda/generated/cudaCHIMEFRBBeamformer_${setup}.cpp
-    cp output-A40/chimefrb_${setup}.jl ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.jl
-    cp output-A40/chimefrb_${setup}.ptx ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.ptx
-    cp output-A40/chimefrb_${setup}.yaml ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.yaml
+    cp output/chimefrb_${setup}.cxx ../lib/cuda/generated/cudaCHIMEFRBBeamformer_${setup}.cpp
+    cp output/chimefrb_${setup}.jl ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.jl
+    cp output/chimefrb_${setup}.ptx ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.ptx
+    cp output/chimefrb_${setup}.yaml ../lib/cuda/generated/CHIMEFRBBeamformer_${setup}.yaml
 done

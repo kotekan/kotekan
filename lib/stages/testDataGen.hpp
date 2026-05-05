@@ -79,6 +79,8 @@ private:
     std::vector<int> _value_array;
     float fvalue;
     std::vector<float> _fvalue_array;
+    uint64_t lvalue;
+    std::vector<uint64_t> _lvalue_array;
     int step_to_frame;
     bool _pathfinder_test_mode;
     int samples_per_data_set;
@@ -86,6 +88,7 @@ private:
     std::string rest_mode;
     int num_frames;
     bool _reuse_random;
+    bool set_dish_index;
     size_t _num_freq_in_frame;
     stream_t stream_id;
     uint32_t _first_frame_index;

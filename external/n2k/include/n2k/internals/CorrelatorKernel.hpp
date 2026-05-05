@@ -3,7 +3,7 @@
 
 #include "../Correlator.hpp"
 #include "device_inlines.hpp"                // lop3(), blend(), FULL_MASK
-#include <gputils/constexpr_functions.hpp>   // constexpr_is_divisible()
+#include <ksgpu/constexpr_functions.hpp>   // constexpr_is_divisible()
 
 // This source file is used internally in CUDA kernels.
 // It probably won't be useful "externally" to n2k.
@@ -31,7 +31,7 @@ namespace n2k {
 template<int NS, int NF>
 struct CorrelatorKernel
 {
-    static_assert(gputils::constexpr_is_divisible(NS,128));
+    static_assert(ksgpu::constexpr_is_divisible(NS,128));
     
     static constexpr int emat_fstride = NS/4;        // int32 stride, not bytes
     static constexpr int emat_tstride = NF*(NS/4);   // int32 stride, not bytes

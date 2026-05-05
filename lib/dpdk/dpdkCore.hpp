@@ -68,6 +68,19 @@ public:
     virtual int handle_packet(struct rte_mbuf* mbuf) = 0;
 
     /**
+     * @brief Returns true if this handler is a distributor.
+     *
+     * Distributor handlers take ownership of the mbuf (either enqueuing it into
+     * a worker ring or freeing it on drop) and must NOT have rte_pktmbuf_free
+     * called on them by the caller after handle_packet returns.
+     *
+     * @return bool True if this handler is a distributor, false otherwise.
+     */
+    virtual bool is_distributor() const {
+        return false;
+    }
+
+    /**
      * @brief Called every 1 second to update stats
      *
      * Implement any stat updates, like prometheus metrics, here.

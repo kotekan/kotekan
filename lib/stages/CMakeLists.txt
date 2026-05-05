@@ -17,6 +17,7 @@ add_library(
     integratePowerStream.cpp
     monitorBuffer.cpp
     networkInputPowerStream.cpp
+    parseReorderDefault.cpp
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
@@ -28,6 +29,7 @@ add_library(
     $<$<BOOL:${GDAL_FOUND}>:gdalFiles.cpp>
     $<${HDF5_CONDITION}:hdf5N2Write.cpp>
     $<${HDF5_CONDITION}:hdf5FileRead.cpp>
+    $<${HDF5_CONDITION}:hdf5FileReadSingleFile.cpp>
     $<${HDF5_CONDITION}:hdf5FileWrite.cpp>
     $<${HDF5_CONDITION}:hdf5Files.cpp>
     vdifStream.cpp
@@ -62,9 +64,15 @@ add_library(
     bufferCopy.cpp
     bufferSwitch.cpp
     bufferDelay.cpp
+    bufferQuiet.cpp
     BufferSplit.cpp
     InputSubset.cpp
-    $<$<BOOL:${Julia_FOUND}>:FEngine.cpp>
+    setScatterIndices.cpp
+    UpchannelizationSchedule.cpp
+    calcBBPhase.cpp
+    setUpchanGain.cpp
+    setFRB1Phase.cpp
+    calcFRB2Weights.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
@@ -76,6 +84,7 @@ add_library(
     HFBAccumulate.cpp
     compressLostSamples.cpp
     lostSamplesToPLMask.cpp
+    lostSamplesToN2Counts.cpp
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
@@ -83,6 +92,7 @@ add_library(
     BeamExtract.cpp
     BeamInspect.cpp
     configTrackerWriter.cpp
+    givenDataGen.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
@@ -96,6 +106,8 @@ add_library(
     N2TimeDownsample.cpp
     N2FringeStop.cpp
     TransposeBasebandArray.cpp
+    dropAllFrames.cpp
+    N2FrameToVisFrame.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
@@ -115,7 +127,6 @@ endif()
 
 if(ASDF_CXX_FOUND)
     target_include_directories(kotekan_stages PRIVATE ${ASDF_CXX_INCLUDE_DIRS})
-    target_link_directories(kotekan_stages PUBLIC ${ASDF_CXX_LIBRARY_DIRS})
     target_link_options(kotekan_stages PUBLIC ${ASDF_CXX_LDFLAGS})
     target_link_libraries(kotekan_stages PUBLIC ${ASDF_CXX_LIBRARIES})
 endif()

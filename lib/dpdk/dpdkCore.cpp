@@ -118,24 +118,26 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     num_ports = unique_ports.size();
 
     // Allocate worker rings
-    json worker_ring_map = config.get_value(unique_name, "worker_ring_map");
-    for (const auto& ring : worker_ring_map) {
-        string ring_name = ring["name"];
-        uint32_t num_slots = ring["num_slots"];
-        int socket_id = ring["socket_id"];
+    if (config.exists(unique_name, "worker_ring_map")) {
+        json worker_ring_map = config.get_value(unique_name, "worker_ring_map");
+        for (const auto& ring : worker_ring_map) {
+            string ring_name = ring["name"];
+            uint32_t num_slots = ring["num_slots"];
+            int socket_id = ring["socket_id"];
 
-        DEBUG("Creating worker ring '{:s}' with {:d} slots on socket {:d}", ring_name, num_slots,
-              socket_id);
+            DEBUG("Creating worker ring '{:s}' with {:d} slots on socket {:d}", ring_name,
+                  num_slots, socket_id);
 
-        // TODO Possibly make the flags configurable?
-        // We are assuming single producer single consumer for now.
-        struct rte_ring* r =
-            rte_ring_create(ring_name.c_str(), num_slots, socket_id, RING_F_SP_ENQ | RING_F_SC_DEQ);
-        if (r == nullptr) {
-            throw std::runtime_error("Cannot create worker ring: "
-                                     + std::string(rte_strerror(rte_errno)));
+            // TODO Possibly make the flags configurable?
+            // We are assuming single producer single consumer for now.
+            struct rte_ring* r = rte_ring_create(ring_name.c_str(), num_slots, socket_id,
+                                                 RING_F_SP_ENQ | RING_F_SC_DEQ);
+            if (r == nullptr) {
+                throw std::runtime_error("Cannot create worker ring: "
+                                         + std::string(rte_strerror(rte_errno)));
+            }
+            worker_rings.push_back(r);
         }
-        worker_rings.push_back(r);
     }
 
     create_handlers(buffer_container);
@@ -250,6 +252,8 @@ void dpdkCore::create_handlers(bufferContainer& buffer_container) {
 void dpdkCore::create_workers(bufferContainer& buffer_container) {
     // Create the workers
     // Does not use the factory model because this is header only.
+    if (!config.exists(unique_name, "workers"))
+        return;
     vector<json> workers_block = config.get<std::vector<json>>(unique_name, "workers");
     workers.resize(workers_block.size());
     uint32_t worker_id = 0;
@@ -461,22 +465,25 @@ int dpdkCore::lcore_rx(void* args) {
     if (lcore >= core->lcore_port_list.size()) {
         uint32_t worker_id = lcore - core->lcore_port_list.size();
         INFO_NON_OO("Starting worker: worker_id {:d}, lcore {:d}", worker_id, lcore);
+
+        // Cache the worker pointer and ring pointer locally; neither changes at runtime.
+        dpdkRXhandler* local_worker = core->workers.at(worker_id);
+        rte_ring* local_ring = core->worker_rings.at(worker_id);
+
         while (!core->stop_thread) {
-            uint16_t num_rx = rte_ring_dequeue_burst(core->worker_rings.at(worker_id),
-                                                     (void**)mbufs, core->burst_size, NULL);
+            uint16_t num_rx =
+                rte_ring_dequeue_burst(local_ring, (void**)mbufs, core->burst_size, NULL);
 
             if (num_rx == 0)
                 continue;
 
             for (uint16_t j = 0; j < num_rx; ++j) {
-                if (unlikely(core->workers.at(worker_id)->handle_packet(mbufs[j]) != 0)) {
+                if (unlikely(local_worker->handle_packet(mbufs[j]) != 0)) {
                     rte_pktmbuf_free(mbufs[j]);
                     goto exit_loop;
                 }
-                // INFO_NON_OO("Worker {:d} processed a packet, freeing the buffer", worker_id);
                 rte_pktmbuf_free(mbufs[j]);
             }
-            // rte_pktmbuf_free_bulk(mbufs, num_rx);
         }
     exit_loop:
 
@@ -503,25 +510,51 @@ int dpdkCore::lcore_rx(void* args) {
     // TODO Figure out why this sleep is need.  It seems like the when starting the E810
     // ports, there is a delay between when they are started in DPDK and when they become
     // ready.  There might be a function to check their readness state we could query?
-    sleep(10);
-    while (!core->stop_thread) {
-        for (uint32_t i = 0; i < ports.size(); ++i) {
-            uint32_t port = ports[i];
+    sleep(40);
+    const uint32_t num_local_ports = ports.size();
 
-            // INFO_NON_OO("Polling port {:d} for packets", port);
-            const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
-            // INFO_NON_OO("Port {:d} received {:d} packets", port, num_rx);
-            for (uint16_t j = 0; j < num_rx; ++j) {
+    // Enforce that all handlers on this lcore are either all distributors or all
+    // non-distributors.
+    const bool is_distributor_lcore = core->handlers[ports[0]]->is_distributor();
+    for (uint32_t i = 1; i < num_local_ports; ++i) {
+        if (core->handlers[ports[i]]->is_distributor() != is_distributor_lcore) {
+            throw std::runtime_error(
+                "All handlers on a single lcore must be either all distributors or all "
+                "non-distributors. Mixed lcores are not supported.");
+        }
+    }
 
-                // Process the packet with the required handler
-                // NOTE: Ideally this wouldn't be a call to a virtual function,
-                // but it's an overhead that's hard to avoid here.
-                if (unlikely(core->handlers[port]->handle_packet(mbufs[j]) != 0)) {
-                    goto exit_lcore;
+    // Cache handler pointers locally. The handlers array does not change at runtime.
+    std::vector<dpdkRXhandler*> local_handlers(num_local_ports);
+    for (uint32_t i = 0; i < num_local_ports; ++i) {
+        local_handlers[i] = core->handlers[ports[i]];
+    }
+
+    if (is_distributor_lcore) {
+        // Distributor handlers take ownership of the mbuf; do not free here.
+        // Instead the free happens in the worker (above)
+        while (!core->stop_thread) {
+            for (uint32_t i = 0; i < num_local_ports; ++i) {
+                uint32_t port = ports[i];
+                const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
+                for (uint16_t j = 0; j < num_rx; ++j) {
+                    if (unlikely(local_handlers[i]->handle_packet(mbufs[j]) != 0)) {
+                        goto exit_lcore;
+                    }
                 }
-
-                // TODO, free the mbuf in the handler.
-                // rte_pktmbuf_free(mbufs[j]);
+            }
+        }
+    } else {
+        while (!core->stop_thread) {
+            for (uint32_t i = 0; i < num_local_ports; ++i) {
+                uint32_t port = ports[i];
+                const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
+                for (uint16_t j = 0; j < num_rx; ++j) {
+                    if (unlikely(local_handlers[i]->handle_packet(mbufs[j]) != 0)) {
+                        goto exit_lcore;
+                    }
+                    rte_pktmbuf_free(mbufs[j]);
+                }
             }
         }
     }

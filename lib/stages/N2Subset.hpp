@@ -13,8 +13,8 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 
-#include <cstddef>  // for size_t
-#include <cstdint>  // for uint32_t
+#include <cstddef> // for size_t
+#include <cstdint> // for uint32_t
 #include <memory>  // for shared_ptr
 #include <string>  // for string
 #include <vector>  // for vector

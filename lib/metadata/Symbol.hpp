@@ -1,7 +1,8 @@
 #ifndef SYMBOL_HPP
 #define SYMBOL_HPP
 
-#include "fmt.hpp" // for formatter
+#include "fmt.hpp"  // for formatter
+#include "json.hpp" // for json
 
 #include <array>         // for array
 #include <cstring>       // for size_t
@@ -117,6 +118,10 @@ std::array<kotekan::Symbol, D> strings_to_symbols(const std::array<const char*, 
         symbols[d] = strings[d];
     return symbols;
 }
+
+// JSON <--> Symbol
+void to_json(nlohmann::json& j, const Symbol& s);
+void from_json(const nlohmann::json& j, Symbol& s);
 
 } // namespace kotekan
 

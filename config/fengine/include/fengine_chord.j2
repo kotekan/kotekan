@@ -31,15 +31,15 @@ telescope:
     dish_vert_axis: [0.0, 0.0, 1.0]
     dish_coelev_deg: 0.0
 
-    eop_updatable_config: "/earth_rotation_data"
+    require_eop: false
 
     dish_separation_x_m: 6.3
     dish_separation_y_m: 8.5
 
     dish_inputs:
-    {% for y in range(0, 24) %}
-    {% for x in range(0, 24) %}
-    {% if x+24*y < 512 %}
+{% for y in range(0, 24) %}
+{%   for x in range(0, 24) %}
+{%     if x+24*y < 512 %}
     - dish_idx: {{x+24*y}}
       grid_x_idx: {{x}}
       grid_y_idx: {{y}}
@@ -47,15 +47,9 @@ telescope:
       coelev_disp_deg: 0.0
       type: ArrayDish
       label: CHORD-{{"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[y]}}{{"{:02d}".format(x+1)}}
-    {% endif %}
-    {% endfor %}
-    {% endfor %}
-dummy_declaration_to_eat_jinja2_white_space_keep_this_right_after_the_telescope_definition:
-
-earth_rotation_data:
-    kotekan_update_endpoint: json
-    earth_orientation_parameter_table:
-    - {time_inst_ns: 0, delta_UT1_inst: 0.0, x_pm: 0.0, y_pm: 0.0}
+{%     endif %}
+{%   endfor %}
+{% endfor %}
 
 ################################################################################
 
@@ -132,21 +126,17 @@ host_voltage_ringbuffer:
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times
     metadata_pool: main_pool
 
-# host_expected_bb_beams_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
-#     metadata_pool: main_pool
-# 
-# host_expected_frb1_beams_buffer:
-#     kotekan_buffer: standard
-#     num_frames: buffer_depth
-#     frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
-#     metadata_pool: main_pool
-
 ################################################################################
 
 # Stages
+
+run_invent_bf_mask:
+    kotekan_stage: inventBFMask
+    bf_mask: host_bf_mask_buffer
+
+run_invent_pl_mask:
+    kotekan_stage: inventPLMask
+    pl_mask: host_pl_mask_buffer
 
 # run_send_bf_mask:
 #     gpu_0:

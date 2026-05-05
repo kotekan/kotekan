@@ -11,6 +11,7 @@
 #include "kotekanLogging.hpp"  // for INFO, ERROR, DEBUG, FATAL_ERROR
 #include "metadata.hpp"        // for metadataObject
 #include "visUtil.hpp"         // for format_nice_string
+#include "waitingForAllTests.hpp" // for waiting_for_all_tests
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -29,7 +30,7 @@
 #define CHECK_META_SCALAR_INT_DIRECT(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1,         \
                                      BUF_NAME2, FRAME_ID2)                                         \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         if ((META1)->FIELD != (META2)->FIELD) {                                                    \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:d} {:d}", (BUF_NAME1),   \
                   (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2), #FIELD, (META1)->FIELD,           \
@@ -41,7 +42,7 @@
 #define CHECK_META_SCALAR_INT(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2,     \
                               FRAME_ID2)                                                           \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         if ((META1)->get_##FIELD() != (META2)->get_##FIELD()) {                                    \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:d} {:d}", (BUF_NAME1),   \
                   (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2), #FIELD, (META1)->get_##FIELD(),   \
@@ -53,7 +54,7 @@
 #define CHECK_META_SCALAR_STREAM_T(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1,           \
                                    BUF_NAME2, FRAME_ID2)                                           \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         if ((META1)->get_##FIELD().id != (META2)->get_##FIELD().id) {                              \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:d} {:d}", (BUF_NAME1),   \
                   (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2), #FIELD,                           \
@@ -65,7 +66,7 @@
 #define CHECK_META_ARR1_INT(FIELD, LEN, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2,  \
                             FRAME_ID2)                                                             \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         for (int meta_idx = 0; meta_idx < (LEN); meta_idx++) {                                     \
             if ((META1)->get_##FIELD()[meta_idx] != (META2)->get_##FIELD()[meta_idx]) {            \
                 ERROR(                                                                             \
@@ -80,7 +81,7 @@
 #define CHECK_META_ARR1_INT_DIRECT(FIELD, LEN, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1,      \
                                    BUF_NAME2, FRAME_ID2)                                           \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         for (int meta_idx = 0; meta_idx < (LEN); meta_idx++) {                                     \
             if ((META1)->FIELD[meta_idx] != (META2)->FIELD[meta_idx]) {                            \
                 ERROR(                                                                             \
@@ -95,7 +96,7 @@
 #define CHECK_META_SCALAR_STR(FIELD, META1, META2, ERR_COUNT, BUF_NAME1, FRAME_ID1, BUF_NAME2,     \
                               FRAME_ID2)                                                           \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         if ((META1)->get_##FIELD() != (META2)->get_##FIELD()) {                                    \
             ERROR("metadata {:s}[{:d}] {:s} != {:s}[{:d}] {:s}; values: {:s} {:s}", (BUF_NAME1),   \
                   (FRAME_ID1), #FIELD, (BUF_NAME2), (FRAME_ID2), #FIELD, (META1)->get_##FIELD(),   \
@@ -107,7 +108,7 @@
 #define CHECK_META_ARR1_CSTR_DIRECT(FIELD, ARR_LEN, STR_LEN, META1, META2, ERR_COUNT, BUF_NAME1,   \
                                     FRAME_ID1, BUF_NAME2, FRAME_ID2)                               \
     do {                                                                                           \
-        INFO("Checking meta field {:s}", #FIELD);                                                  \
+        DEBUG2("Checking meta field {:s}", #FIELD);                                                \
         for (int meta_idx = 0; meta_idx < (ARR_LEN); meta_idx++) {                                 \
             if (strncmp((META1)->FIELD[meta_idx], (META2)->FIELD[meta_idx], (STR_LEN))) {          \
                 ERROR(                                                                             \
@@ -161,6 +162,9 @@ testDataCheck<A_Type>::testDataCheck(kotekan::Config& config, const std::string&
     trigger_exit_on_pass = config.get_default<bool>(unique_name, "trigger_exit_on_pass", true);
 
     check_metadata = config.get_default<bool>(unique_name, "check_metadata", false);
+
+    if (trigger_exit_on_pass && num_frames_to_test >= 0)
+        waiting_for_all_tests++;
 }
 
 template<typename A_Type>
@@ -342,15 +346,25 @@ void testDataCheck<A_Type>::main_thread() {
 
 
         if (num_frames_to_test == frames) {
+
             if (num_errors == 0) {
                 if (trigger_exit_on_pass) {
                     INFO("Test passed, exiting.");
-                    TEST_PASSED();
+                    // Unregister to allow the pipeline to continue, unless I'm the last
+                    // consumer on this buffer.
+                    first_buf->unregister_consumer(unique_name, true);
+                    if (--waiting_for_all_tests == 0) {
+                        TEST_PASSED();
+                    }
                 } else {
                     INFO("Test passed.");
                 }
             }
         } // frames
+
+        if (num_errors > 0) {
+            break;
+        }
     }
 }
 

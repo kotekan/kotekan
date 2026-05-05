@@ -57,15 +57,15 @@ const std::string default_config_str = R"config_str({
     "kotekan_update_endpoint": "json",
     "earth_orientation_parameter_table": [
         {
-            "time_inst_ns": 1761883200000000000,
+            "t_inst_ns": 1761883200000000000,
             "delta_UT1_inst": 0.0,
-            "x_pm": 0.0,
-            "y_pm": 0.0
+            "xp_as": 0.0,
+            "yp_as": 0.0
         }, {
-            "time_inst_ns": 1761969600000000000,
+            "t_inst_ns": 1761969600000000000,
             "delta_UT1_inst": 0.0,
-            "x_pm": 0.0,
-            "y_pm": 0.0
+            "xp_as": 0.0,
+            "yp_as": 0.0
         }]
     }
 })config_str";
@@ -197,6 +197,24 @@ BOOST_AUTO_TEST_CASE(_DishType_from_json) {
 
     json fake_int = -1;
     BOOST_CHECK_THROW(fake_int.get<DishType>(), std::runtime_error);
+}
+
+/*
+ * @brief   Test position getters.
+ */
+BOOST_AUTO_TEST_CASE(_query_gps_time_config) {
+    BOOST_TEST_MESSAGE(fmt::format("Testing time0 query from config."));
+
+    uint64_t time0_ns = 1234567890123;
+
+    json json_config = json::parse(default_config_str);
+    json_config["gps_time"]["frame0_nano"] = time0_ns;
+
+    const CHORDTelescope& tel = get_telescope(json_config);
+
+    uint64_t test_time0_val = 0;
+    tel.query_gps_time0_ns(test_time0_val, 30);
+    BOOST_CHECK_EQUAL(test_time0_val, time0_ns);
 }
 
 
@@ -837,8 +855,12 @@ BOOST_AUTO_TEST_CASE(_vec_cirs_to_itrs) {
     const CHORDTelescope& tel = get_telescope(json_config);
 
     // test EOP
-    EOP eop = {
-        .t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0.0, .xp_as = 0.0, .yp_as = 0.0};
+    EOP eop = {.t_inst_ns = 0,
+               .t_ut1_ns = 0,
+               .delta_UT1_inst = 0,
+               .ERA_deg = 0.0,
+               .xp_as = 0.0,
+               .yp_as = 0.0};
 
     check_close_vec3d(tel.vec_cirs_to_itrs(n1, eop),
                       cirs_to_itrs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
@@ -922,8 +944,12 @@ BOOST_AUTO_TEST_CASE(_vec_itrs_to_cirs) {
     const CHORDTelescope& tel = get_telescope(json_config);
 
     // test EOP
-    EOP eop = {
-        .t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0.0, .xp_as = 0.0, .yp_as = 0.0};
+    EOP eop = {.t_inst_ns = 0,
+               .t_ut1_ns = 0,
+               .delta_UT1_inst = 0,
+               .ERA_deg = 0.0,
+               .xp_as = 0.0,
+               .yp_as = 0.0};
 
     check_close_vec3d(tel.vec_itrs_to_cirs(n1, eop),
                       itrs_to_cirs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
@@ -1041,8 +1067,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     dishInfo d3 = dishInfo(3, 2, 2, {-lambda, -lambda, 0.0}, 0.0, DishType::ArrayDish, "D11");
 
     double t = 1.0; // A short time to get only 1st order effects
-    EOP eop0 = {.t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0, .xp_as = 0, .yp_as = 0};
-    EOP eop = {.t_inst = 0, .t_ut1 = 0, .delta_UT1_inst = 0, .ERA_deg = 0, .xp_as = 0, .yp_as = 0};
+    EOP eop0 = eop_null;
+    EOP eop = eop_null;
     eop.ERA_deg = t * w_e * 180.0 / M_PI;
 
     json json_config = json::parse(default_config_str);

@@ -73,8 +73,8 @@ void N2FringeStop::main_thread() {
 
     int64_t ut1 = get_UT1_from_ERA(num_rot_target, era_target_deg);
 
-    struct EOP eop_target = {.t_inst = ut1,
-                             .t_ut1 = ut1,
+    struct EOP eop_target = {.t_inst_ns = ut1,
+                             .t_ut1_ns = ut1,
                              .delta_UT1_inst = 0.0,
                              .ERA_deg = era_target_deg,
                              .xp_as = xp_target_as,

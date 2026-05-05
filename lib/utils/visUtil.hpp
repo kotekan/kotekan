@@ -464,6 +464,20 @@ std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
 parse_reorder_default(kotekan::Config& config, const std::string base_path);
 
 /**
+ * @brief Fixed mapping from CHIME cylinder ordering to beamformer ordering.
+ * @return Array of indices mapping cylinder order to beamformer oreder.
+ */
+constexpr std::array<size_t, 2048> get_cylinder_to_beamformer_reorder_table() {
+    std::array<size_t, 2048> mapping{};
+
+    for (size_t i = 0; i < 2048; ++i) {
+        mapping[i] = 256 * (i / 1024) + 2 * (256 * (i / 256) % 1024) + (i % 256);
+    }
+
+    return mapping;
+}
+
+/**
  * @brief Return the next aligned location for a given type size
  * @param  offset Start offset.
  * @param  size   Item size.
@@ -956,6 +970,12 @@ inline std::string format_nice_string(uint32_t x) {
     return fmt::format("{} = 0x{:x}", x, x);
 }
 inline std::string format_nice_string(int x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+inline std::string format_nice_string(int64_t x) {
+    return fmt::format("{} = 0x{:x}", x, x);
+}
+inline std::string format_nice_string(uint64_t x) {
     return fmt::format("{} = 0x{:x}", x, x);
 }
 #if KOTEKAN_FLOAT16

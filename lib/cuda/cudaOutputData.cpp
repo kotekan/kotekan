@@ -69,9 +69,8 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
 cudaOutputData::~cudaOutputData() {
     if (output_buffer->frame_size) {
         uint flags;
-        // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue
-            == cudaHostGetFlags(&flags, output_buffer->frames[instance_num])) {
+        // only unregister if it's already been registered
+        if (cudaSuccess == cudaHostGetFlags(&flags, output_buffer->frames[instance_num])) {
             CHECK_CUDA_ERROR(cudaHostUnregister(output_buffer->frames[instance_num]));
         }
     }

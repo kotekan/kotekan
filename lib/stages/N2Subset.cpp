@@ -61,19 +61,20 @@ N2Subset::N2Subset(Config& config, const std::string& unique_name,
         FATAL_ERROR("N2Subset: out_buf does not have an N2FrameDesc");
     }
 
+    // Store num_elements from descriptors
+    _in_num_elements = in_desc->get_num_elements();
+    _out_num_elements = out_desc->get_num_elements();
+
     // Validate that output num_elements <= input (we can subset elements)
-    if (out_desc->get_num_elements() > in_desc->get_num_elements()) {
+    if (_out_num_elements > _in_num_elements) {
         FATAL_ERROR("N2Subset: output num_elements ({:d}) cannot exceed input ({:d})",
-                    out_desc->get_num_elements(), in_desc->get_num_elements());
+                    _out_num_elements, _in_num_elements);
     }
     // Validate num_ev matches (eigenvector fields must have same size if present)
     if (in_desc->get_num_ev() != out_desc->get_num_ev()) {
         FATAL_ERROR("N2Subset: num_ev mismatch: in_buf has {:d}, out_buf has {:d}",
                     in_desc->get_num_ev(), out_desc->get_num_ev());
     }
-
-    _in_num_elements = in_desc->get_num_elements();
-    _out_num_elements = out_desc->get_num_elements();
 
     // Get product lists for input and output from frame descriptors
     const auto& in_prods = in_desc->get_product_list();
@@ -150,9 +151,8 @@ void N2Subset::main_thread() {
             // Different num_elements: copy per-element fields (flags, gain) manually,
             // extracting only the first _out_num_elements entries.
             // eval, emethod, erms are independent of num_elements and can be copied.
-            output_vis.copy_data(input_vis,
-                                 {N2Field::vis, N2Field::weight, N2Field::flags, N2Field::gain,
-                                  N2Field::evec});
+            output_vis.copy_data(input_vis, {N2Field::vis, N2Field::weight, N2Field::flags,
+                                             N2Field::gain, N2Field::evec});
 
             // Copy first _out_num_elements of flags and gain
             for (uint32_t i = 0; i < _out_num_elements; ++i) {

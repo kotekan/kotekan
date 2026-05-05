@@ -48,6 +48,8 @@ pl_mask_buffers:
 gen_test_data:
     log_level: WARN
     kotekan_stage: testLostSamplesToPLMask
+    # num_dishes: num_dishes # set via global
+    # num_polarizations: num_polarizations # set via global
     pl_mask_buf: cmp_pl_mask_buffer
     lost_samples_buffers:
       - lost_samples_buffer_0
@@ -56,6 +58,8 @@ gen_test_data:
 
 lostSamplesToPLMask:
     kotekan_stage: lostSamplesToPLMask
+    # num_dishes: num_dishes # set via global
+    # num_polarizations: num_polarizations # set via global
     pl_mask_buf: out_pl_mask_buffer
     lost_samples_buffers:
       - lost_samples_buffer_0
