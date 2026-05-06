@@ -11,6 +11,7 @@ from astropy.time import Time, TimeDelta
 import astropy.units as units
 
 from kotekan import runner
+from tolerance import FP32_RTOL
 
 T_rot_sec = 86400 / 1.001234567890123456  #  / 1.00273781191135448
 n_bins_per_rot = 20000  # 21600  # approx 4 seconds per bin
@@ -514,10 +515,10 @@ def test_contents(n2_data):
                 )
             )
         """
-        assert np.allclose(frame.vis, model_vis, rtol=1e-6, atol=0)
-        assert np.allclose(frame.evec, model_evec, rtol=1e-6, atol=0)
-        assert np.allclose(frame.eval, model_eval, rtol=1e-6, atol=0)
-        assert np.isclose(frame.erms, 1.0, rtol=1e-6, atol=0)
+        assert np.allclose(frame.vis, model_vis, rtol=FP32_RTOL, atol=0)
+        assert np.allclose(frame.evec, model_evec, rtol=FP32_RTOL, atol=0)
+        assert np.allclose(frame.eval, model_eval, rtol=FP32_RTOL, atol=0)
+        assert np.isclose(frame.erms, 1.0, rtol=FP32_RTOL, atol=0)
 
     # weights get an extra factor of nsamp
     for i, frame in enumerate(n2_data):

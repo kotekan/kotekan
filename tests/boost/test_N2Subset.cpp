@@ -148,8 +148,8 @@ BOOST_AUTO_TEST_CASE(test_fulluppertri_to_autocorrelations) {
     // Check vis values: should be diagonal elements (i, i)
     for (uint32_t i = 0; i < num_elements; ++i) {
         N2::cfloat expected{float(i), float(i)};
-        BOOST_CHECK_SMALL(out_fv.vis[i].real() - expected.real(), 1e-5f);
-        BOOST_CHECK_SMALL(out_fv.vis[i].imag() - expected.imag(), 1e-5f);
+        BOOST_CHECK_EQUAL(out_fv.vis[i].real(), expected.real());
+        BOOST_CHECK_EQUAL(out_fv.vis[i].imag(), expected.imag());
     }
 
     // Check weights: diagonal elements in FullUpperTri are at cmap(i,i,n)
@@ -248,8 +248,8 @@ BOOST_AUTO_TEST_CASE(test_fulluppertri_to_general_subset) {
     // Check vis values match the subset
     for (size_t i = 0; i < product_list.size(); ++i) {
         N2::cfloat expected(float(product_list[i].input_a), float(product_list[i].input_b));
-        BOOST_CHECK_SMALL(out_fv.vis[i].real() - expected.real(), 1e-5f);
-        BOOST_CHECK_SMALL(out_fv.vis[i].imag() - expected.imag(), 1e-5f);
+        BOOST_CHECK_EQUAL(out_fv.vis[i].real(), expected.real());
+        BOOST_CHECK_EQUAL(out_fv.vis[i].imag(), expected.imag());
     }
 
     // Mark output frame as empty so stage can exit cleanly
@@ -325,8 +325,8 @@ BOOST_AUTO_TEST_CASE(test_autocorrelations_to_autocorrelations) {
 
     for (uint32_t i = 0; i < num_elements; ++i) {
         N2::cfloat expected{float(i), float(i)};
-        BOOST_CHECK_SMALL(out_fv.vis[i].real() - expected.real(), 1e-5f);
-        BOOST_CHECK_SMALL(out_fv.vis[i].imag() - expected.imag(), 1e-5f);
+        BOOST_CHECK_EQUAL(out_fv.vis[i].real(), expected.real());
+        BOOST_CHECK_EQUAL(out_fv.vis[i].imag(), expected.imag());
     }
 
     // Mark output frame as empty so stage can exit cleanly
@@ -409,8 +409,8 @@ BOOST_AUTO_TEST_CASE(test_have_inputs_subset) {
 
     for (size_t i = 0; i < product_list.size(); ++i) {
         N2::cfloat expected(float(product_list[i].input_a), float(product_list[i].input_b));
-        BOOST_CHECK_SMALL(out_fv.vis[i].real() - expected.real(), 1e-5f);
-        BOOST_CHECK_SMALL(out_fv.vis[i].imag() - expected.imag(), 1e-5f);
+        BOOST_CHECK_EQUAL(out_fv.vis[i].real(), expected.real());
+        BOOST_CHECK_EQUAL(out_fv.vis[i].imag(), expected.imag());
     }
 
     // Mark output frame as empty so stage can exit cleanly
@@ -491,8 +491,8 @@ BOOST_AUTO_TEST_CASE(test_only_inputs_subset) {
 
     for (size_t i = 0; i < product_list.size(); ++i) {
         N2::cfloat expected(float(product_list[i].input_a), float(product_list[i].input_b));
-        BOOST_CHECK_SMALL(out_fv.vis[i].real() - expected.real(), 1e-5f);
-        BOOST_CHECK_SMALL(out_fv.vis[i].imag() - expected.imag(), 1e-5f);
+        BOOST_CHECK_EQUAL(out_fv.vis[i].real(), expected.real());
+        BOOST_CHECK_EQUAL(out_fv.vis[i].imag(), expected.imag());
     }
 
     // Mark output frame as empty so stage can exit cleanly
