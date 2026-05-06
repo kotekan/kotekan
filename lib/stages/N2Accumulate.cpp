@@ -637,7 +637,7 @@ EOP N2Accumulate::get_accum_bin_EOP(int64_t accum_bin_idx) {
         int64_t ERA_idx = accum_bin_idx % _num_bins_per_rotation;
 
         // ERA of bin center
-        double ERA_cen = (360.0 * ERA_idx) / _num_bins_per_rotation;
+        double ERA_cen = (360.0 * (ERA_idx + 0.5)) / _num_bins_per_rotation;
 
         // UT1 time at bin center
         int64_t t_ut1 = get_UT1_from_ERA(nrot, ERA_cen);
@@ -917,7 +917,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
     std::vector<std::shared_ptr<N2Metadata>> metas(freq_block_size);
 
-    assert(_vis_samples_in_out_frame == _num_n2k_samples_to_accumulate);
+    if (!_bin_in_ERA)
+        assert(_vis_samples_in_out_frame == _num_n2k_samples_to_accumulate);
 
     [[maybe_unused]] double prof_out_setup_time = 0;
     [[maybe_unused]] double prof_out_work_time = 0;

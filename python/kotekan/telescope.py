@@ -118,6 +118,24 @@ def get_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
     return t.earth_rotation_angle("tio").to_value("deg")
 
 
+def get_nrot_at_t_inst_ns(t_ns, tel_config, use_eop):
+
+    t_ns = np.atleast_1d(t_ns)
+
+    t = calc_astropy_time_from_inst_ns(t_ns, tel_config["frame0_nano"])
+    if not use_eop:
+        t.delta_ut1_utc = 0.0
+
+    dt_jd = (t.ut1.jd1 - 2451545.0) + t.ut1.jd2
+
+    # Eq 5.14 of IERS Conventions (2010) Ch. 5. defines these values
+    # for ERA you take this quanity mod 1.0 (for fractions of a revolution)
+    # for number of rotations take the floor
+    nrot = np.floor(0.7790572732640 + dt_jd * 1.00273781191135448)
+
+    return nrot.astype(int)
+
+
 def get_local_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
 
     t_ns = np.atleast_1d(t_ns)

@@ -49,6 +49,34 @@ PM_TOL = 1e-14  # Just a big bigger than roundoff error
 
 @pytest.fixture(
     scope="module",
+    ids=["by-frame-pos-weights", "by-frame-chime-weights", "by-ERA-pos-weights"],
+    params=[
+        {
+            "bin_in_ERA": False,
+            "num_n2k_samples_to_accumulate": 6,
+            "variance_mode": "EvenOddPosDef",
+            "do_fringestop": False,
+        },
+        {
+            "bin_in_ERA": False,
+            "num_n2k_samples_to_accumulate": 8,
+            "variance_mode": "CHIMEv1",
+            "do_fringestop": False,
+        },
+        {
+            "bin_in_ERA": True,
+            "num_bins_per_rotation": 3 * 86400,
+            "variance_mode": "CHIMEv1",
+            "do_fringestop": False,
+        },
+    ],
+)
+def accum_setup(request):
+    return request.param
+
+
+@pytest.fixture(
+    scope="module",
     ids=["chord-prod", "chime-prod"],
     params=[
         {
@@ -85,7 +113,7 @@ PM_TOL = 1e-14  # Just a big bigger than roundoff error
         },
     ],
 )
-def setup(request):
+def setup(request, accum_setup):
     """
     Generate the base config and setup parameters to run a test. This (and the other fixtures) should provide *everything* needed to test a stage.
 
@@ -124,29 +152,10 @@ def setup(request):
 
     request.param["rng"] = np.random.default_rng()
 
+    if accum_setup["bin_in_ERA"] and request.param["tel"]["name"] != "CHORDTelescope":
+        request.param["fail"] = True
+
     yield request.param
-
-
-@pytest.fixture(
-    scope="module",
-    ids=["by-frame-pos-weights", "by-frame-chime-weights"],
-    params=[
-        {
-            "bin_in_ERA": False,
-            "num_n2k_samples_to_accumulate": 6,
-            "variance_mode": "EvenOddPosDef",
-            "do_fringestop": False,
-        },
-        {
-            "bin_in_ERA": False,
-            "num_n2k_samples_to_accumulate": 8,
-            "variance_mode": "CHIMEv1",
-            "do_fringestop": False,
-        },
-    ],
-)
-def accum_setup(request):
-    return request.param
 
 
 def make_zeroed_chord_buffer(
@@ -550,38 +559,69 @@ def accum_data(
     yield dump_buffer.load()
 
 
+def get_era_nrot_idx_of_seq(seq, tel_config, use_eop, num_bins_per_rotation):
+    t = tel.get_t_inst_ns(seq, tel_config)
+    era = tel.get_ERA_at_t_inst_ns(t, tel_config, use_eop)
+    nrot = tel.get_nrot_at_t_inst_ns(t, tel_config, use_eop)
+
+    era_idx = np.floor((era / 360.0) * num_bins_per_rotation).astype(int)
+    era_nrot_idx = era_idx + nrot * num_bins_per_rotation
+    return era_nrot_idx
+
+
 @pytest.fixture(scope="module")
 def accum_list(setup, accum_setup):
 
     config = setup["config"]
 
     seq0 = config["first_frame_index"] * config["samples_per_data_set"]
-    num_sub_per_frame = (
+    num_subs_per_frame = (
         config["samples_per_data_set"] // config["sub_integration_ntime"]
     )
 
-    subs = np.arange(num_sub_per_frame * config["num_frames"])
+    num_subs = num_subs_per_frame * config["num_frames"]
+    subs = np.arange(num_subs)
     seqs_per_sub = config["sub_integration_ntime"]
     seqs = seq0 + seqs_per_sub * subs
 
+    seqs_ext = np.concatenate(
+        ([seqs[0] - seqs_per_sub], seqs, [seqs[-1] + seqs_per_sub])
+    )
+
     if accum_setup["bin_in_ERA"]:
-        pass
+        seq_pair_cen = np.empty_like(seqs_ext)
+
+        sub_idx = seqs_ext // seqs_per_sub
+        even = sub_idx % 2 == 0
+        seq_pair_cen[even] = seqs_ext[even] + seqs_per_sub
+        seq_pair_cen[~even] = seqs_ext[~even]
+
+        accum_sub_idx_ext = get_era_nrot_idx_of_seq(
+            seq_pair_cen,
+            setup["tel"],
+            setup["set_eop"],
+            accum_setup["num_bins_per_rotation"],
+        )
     else:
         subs_per_accum = accum_setup["num_n2k_samples_to_accumulate"]
-        seq_per_accum = subs_per_accum * seqs_per_sub 
+        seq_per_accum = subs_per_accum * seqs_per_sub
 
-        accum_idx_sub = seqs // seq_per_accum
+        accum_sub_idx_ext = seqs_ext // seq_per_accum
 
-        first_sub_in_accum = subs[seqs % seq_per_accum == 0][0]
-        last_accum_full = (seqs[-1] + seqs_per_sub) % seq_per_accum == 0
+    accum_sub_idx = accum_sub_idx_ext[1:-1]
 
-    accum_bin_idx = np.unique(accum_idx_sub[first_sub_in_accum:])
+    idx_diff = np.diff(accum_sub_idx_ext)
+    accum_edges = np.nonzero(idx_diff)[0]
+    first_sub_in_accum = accum_edges[0]
+    last_accum_full = accum_edges[-1] == num_subs
+
+    accum_bin_idx = np.unique(accum_sub_idx[first_sub_in_accum:])
 
     accums = []
 
     for idx in accum_bin_idx:
 
-        mask = accum_idx_sub == idx
+        mask = accum_sub_idx == idx
 
         accums.append(
             {
@@ -631,7 +671,7 @@ def accum_list(setup, accum_setup):
 
 def safe_invert(x, dtype=float):
 
-    mask = (x != 0)
+    mask = x != 0
     inv_x = np.zeros(x.shape, dtype=dtype)
     inv_x[mask] = 1.0 / x[mask]
 
@@ -639,14 +679,23 @@ def safe_invert(x, dtype=float):
 
 
 @pytest.fixture(scope="module")
-def expected_accum(setup, accum_setup, corr_data, count_data, rficount_data, plcount_data, rfiframemask_data, accum_list):
+def expected_accum(
+    setup,
+    accum_setup,
+    corr_data,
+    count_data,
+    rficount_data,
+    plcount_data,
+    rfiframemask_data,
+    accum_list,
+):
 
-    config = setup['config']
+    config = setup["config"]
 
     # sizes
-    num_int = config['samples_per_data_set'] // config['sub_integration_ntime']
-    num_freq = config['num_local_freq']
-    num_el = config['num_polarizations'] * config['num_dishes']
+    num_int = config["samples_per_data_set"] // config["sub_integration_ntime"]
+    num_freq = config["num_local_freq"]
+    num_el = config["num_polarizations"] * config["num_dishes"]
     num_accum = len(accum_list)
     num_n2_prod = (num_el * (num_el + 1)) // 2
     blocksize = 16
@@ -664,11 +713,11 @@ def expected_accum(setup, accum_setup, corr_data, count_data, rficount_data, plc
         for n2_j in range(n2_i, num_el):
             corr_i = n2_j
             corr_j = n2_i
-            
+
             bi = corr_i // blocksize
             bj = corr_j // blocksize
-            
-            b = (bi * (bi + 1))//2 + bj
+
+            b = (bi * (bi + 1)) // 2 + bj
             sbi = corr_i % blocksize
             sbj = corr_j % blocksize
 
@@ -694,59 +743,74 @@ def expected_accum(setup, accum_setup, corr_data, count_data, rficount_data, plc
     for i, accum in enumerate(accum_list):
 
         # Accumulate subframes in pairs for weights and rfi rejection
-        for tsub in accum['sub_idx'][::2]:
+        for tsub in accum["sub_idx"][::2]:
             # grab and frame and subintegration (correlation) indices for each pair
             tf1 = tsub // num_int
             tc1 = tsub % num_int
-            tf2 = (tsub+1) // num_int
-            tc2 = (tsub+1) % num_int
+            tf2 = (tsub + 1) // num_int
+            tc2 = (tsub + 1) % num_int
 
             # grab the RFI Frame Mask for the pair (these are still arrays over frequency)
-            mask = (rfiframemask_data[tf1].data[tc1] & rfiframemask_data[tf2].data[tc2]).astype(np.int32)
+            mask = (
+                rfiframemask_data[tf1].data[tc1] & rfiframemask_data[tf2].data[tc2]
+            ).astype(np.int32)
             corr_mask = mask[:, None, None, None, None]
 
             corr1 = corr_data[tf1].data[tc1]
             corr2 = corr_data[tf2].data[tc2]
             N1 = count_data[tf1].data[tc1, :, 0, 0, 0]
             N2 = count_data[tf2].data[tc2, :, 0, 0, 0]
-           
+
             # apply the RFI frame mask and accumulate!
             accum_corr[i] += corr_mask * (corr1 + corr2)
             accum_count[i] += mask * (N1 + N2)
-            accum_plcount[i] += mask * (plcount_data[tf1].data[tc1] + plcount_data[tf2].data[tc2])
-            accum_rficount[i] += mask * (rficount_data[tf1].data[tc1] + rficount_data[tf2].data[tc2])
+            accum_plcount[i] += mask * (
+                plcount_data[tf1].data[tc1] + plcount_data[tf2].data[tc2]
+            )
+            accum_rficount[i] += mask * (
+                rficount_data[tf1].data[tc1] + rficount_data[tf2].data[tc2]
+            )
 
             # Accumulate the weights too.
-            if accum_setup['variance_mode'] == "CHIMEv1":
-                dcorr = (corr2 - corr1).astype(float)   # int32s will overflow when squaring
-                dcorr2 = dcorr[..., 0]**2 + dcorr[..., 1]**2
+            if accum_setup["variance_mode"] == "CHIMEv1":
+                dcorr = (corr2 - corr1).astype(
+                    float
+                )  # int32s will overflow when squaring
+                dcorr2 = dcorr[..., 0] ** 2 + dcorr[..., 1] ** 2
                 accum_var[i] += mask[:, None, None, None] * dcorr2
-                accum_bias[i] += (mask * ((N2 - N1)**2))[:, None, None, None]
-            elif accum_setup['variance_mode'] == "EvenOddPosDef":
+                accum_bias[i] += (mask * ((N2 - N1) ** 2))[:, None, None, None]
+            elif accum_setup["variance_mode"] == "EvenOddPosDef":
                 inv_N1 = safe_invert(N1, float)
                 inv_N2 = safe_invert(N2, float)
                 inv_var = safe_invert(inv_N1 + inv_N2, float)
                 vis1 = corr1 * inv_N1[:, None, None, None, None]
                 vis2 = corr2 * inv_N2[:, None, None, None, None]
                 dvis = vis2 - vis1
-                dvis2 = dvis[..., 0]**2 + dvis[..., 1]**2
+                dvis2 = dvis[..., 0] ** 2 + dvis[..., 1] ** 2
                 accum_var[i] += (mask * inv_var)[:, None, None, None] * dvis2
 
         # Remap the accumulated correlation array to the N2 array
         for f in range(num_freq):
             # We're storing Upper Triangular entries now so take the complex conjugate.
-            accum_n2[i, f, :] = accum_corr[i, f, corr_idx_b, corr_idx_i, corr_idx_j, 0] - 1.0j * accum_corr[i, f, corr_idx_b, corr_idx_i, corr_idx_j, 1]
+            accum_n2[i, f, :] = (
+                accum_corr[i, f, corr_idx_b, corr_idx_i, corr_idx_j, 0]
+                - 1.0j * accum_corr[i, f, corr_idx_b, corr_idx_i, corr_idx_j, 1]
+            )
             inv_N = safe_invert(accum_count[i, f], float)
 
-            if accum_setup['variance_mode'] == "CHIMEv1":
+            if accum_setup["variance_mode"] == "CHIMEv1":
                 vis = accum_corr[i, f] * inv_N
                 bias = accum_bias[i, f] * (vis[..., 0] ** 2 + vis[..., 1] ** 2)
-                accum_n2_var[i, f, :] = (accum_var[i, f] - bias)[corr_idx_b, corr_idx_i, corr_idx_j] * (inv_N**2)
+                accum_n2_var[i, f, :] = (accum_var[i, f] - bias)[
+                    corr_idx_b, corr_idx_i, corr_idx_j
+                ] * (inv_N ** 2)
 
-            elif accum_setup['variance_mode'] == "EvenOddPosDef":
-                M = len(accum['sub_idx'])
+            elif accum_setup["variance_mode"] == "EvenOddPosDef":
+                M = len(accum["sub_idx"])
                 norm = 2 * inv_N / M
-                accum_n2_var[i, f, :] = accum_var[i, f, corr_idx_b, corr_idx_i, corr_idx_j] * norm
+                accum_n2_var[i, f, :] = (
+                    accum_var[i, f, corr_idx_b, corr_idx_i, corr_idx_j] * norm
+                )
 
     # Normalize N2 by the valid counts, if counts are 0, then 0 the vis
     inv_count = safe_invert(accum_count, float)
@@ -760,13 +824,13 @@ def expected_accum(setup, accum_setup, corr_data, count_data, rficount_data, plc
 
 def test_structure(accum_data, accum_list, setup):
 
-    config = setup['config']
-    num_el = config['num_elements']
-    num_freq = config['num_local_freq']
+    config = setup["config"]
+    num_el = config["num_elements"]
+    num_freq = config["num_local_freq"]
     num_ev = 0
     num_n2_prod = (num_el * (num_el + 1)) // 2
 
-    if setup['fail']:
+    if setup["fail"]:
         assert len(accum_data) == 0
         return
 
@@ -775,19 +839,19 @@ def test_structure(accum_data, accum_list, setup):
     for frame in accum_data:
         assert frame.vis.shape == (num_n2_prod,)
         assert frame.vis.dtype == np.complex64
-        
+
         assert frame.weight.shape == (num_n2_prod,)
         assert frame.weight.dtype == np.float32
-        
+
         assert frame.flags.shape == (num_el,)
         assert frame.flags.dtype == np.float32
 
         assert frame.eval.shape == (num_ev,)
         assert frame.eval.dtype == np.float32
-        
+
         assert frame.evec.shape == (num_ev * num_el,)
         assert frame.evec.dtype == np.complex64
-        
+
         assert frame.emethod.shape == (1,)
         assert frame.emethod.dtype == np.int32
 
@@ -843,7 +907,7 @@ def test_simple_meta(accum_data, setup, accum_list):
         assert (data_fraction == setup["rfiframemask"]["thresholds"][:, 1]).all()
 
 
-def test_eop_meta(accum_data, setup, accum_list):
+def test_eop_meta(setup, accum_setup, accum_data, accum_list):
     # Test the metadata
 
     config = setup["config"]
@@ -887,6 +951,13 @@ def test_eop_meta(accum_data, setup, accum_list):
         assert abs(frame.metadata.time_center_eop.yp_as - eop.yp_as) <= PM_TOL
 
         eop = eop_bin[t]
+        start_era = accum_list[t]["bin_start_ERA_deg"]
+        end_era = accum_list[t]["bin_end_ERA_deg"]
+        if end_era < start_era:
+            end_era += 360.0
+        era_cen = 0.5 * (start_era + end_era)
+        assert abs(eop.ERA_deg - era_cen) <= ERA_TOL
+
         assert abs(frame.metadata.bin_eop.t_inst_ns - eop.t_inst_ns) <= NS_TOL
         assert abs(frame.metadata.bin_eop.t_ut1_ns - eop.t_ut1_ns) <= NS_TOL
         assert (
@@ -916,7 +987,7 @@ def test_eop_meta(accum_data, setup, accum_list):
 
 def test_counts(accum_data, expected_accum, accum_list, setup):
 
-    config = setup['config']
+    config = setup["config"]
 
     _, _, exp_cnts, exp_rficnts, exp_plcnts = expected_accum
 
@@ -927,12 +998,14 @@ def test_counts(accum_data, expected_accum, accum_list, setup):
         frame.metadata.n_valid_fpga_ticks = exp_cnts[t, f]
         frame.metadata.n_rfi_fpga_ticks = exp_rficnts[t, f]
         frame.metadata.n_pl_fpga_ticks = exp_plcnts[t, f]
-        frame.metadata.n_rfi_only_fpga_ticks = accum_list[t]['seq_len'] - (exp_cnts[t, f] + exp_plcnts[t, f])
+        frame.metadata.n_rfi_only_fpga_ticks = accum_list[t]["seq_len"] - (
+            exp_cnts[t, f] + exp_plcnts[t, f]
+        )
 
 
 def test_vis(accum_data, expected_accum, accum_list, setup):
 
-    config = setup['config']
+    config = setup["config"]
 
     exp_vis, _, _, _, _ = expected_accum
 
@@ -941,15 +1014,15 @@ def test_vis(accum_data, expected_accum, accum_list, setup):
         f = idx % config["num_local_freq"]
 
         assert frame.vis.shape == exp_vis[t, f].shape
-        
+
         # vis_diff = frame.vis - exp_vis[t, f]
-        # tol =  1.0e-6 + 1.0e-6 * 0.5*np.abs(frame.vis + exp_vis[t, f]) 
+        # tol =  1.0e-6 + 1.0e-6 * 0.5*np.abs(frame.vis + exp_vis[t, f])
         np.testing.assert_allclose(frame.vis, exp_vis[t, f], 1.0e-6, 1.0e-6)
 
 
 def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
 
-    config = setup['config']
+    config = setup["config"]
 
     _, exp_w, _, _, _ = expected_accum
 
@@ -961,20 +1034,21 @@ def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
 
         var_data = safe_invert(frame.weight, float)
         var_exp = safe_invert(exp_w[t, f], float)
-        
-        if accum_setup['variance_mode'] == "CHIMEv1":
+
+        if accum_setup["variance_mode"] == "CHIMEv1":
             # The bias subtraction can introduce a LOT of truncation error on random
             # data, so need to set the tolerances wide (in lieu of replicating the truncation
             # error in this test)
             rtol = 1.0e-2
             atol = 1.0e-2
-        elif accum_setup['variance_mode'] == "EvenOddPosDef":
+        elif accum_setup["variance_mode"] == "EvenOddPosDef":
             rtol = 1.0e-4
             atol = 1.0e-5
 
-        bad = (np.abs(var_data - var_exp) > atol + rtol * np.abs(var_exp))
+        bad = np.abs(var_data - var_exp) > atol + rtol * np.abs(var_exp)
         msg = ""
         if bad.any():
-            msg = "First bad value - actual: {:e} expected {:e}".format(var_data[bad][0], var_exp[bad][0])
-        np.testing.assert_allclose(var_data, var_exp, rtol, atol,
-                                   err_msg=msg)
+            msg = "First bad value - actual: {:e} expected {:e}".format(
+                var_data[bad][0], var_exp[bad][0]
+            )
+        np.testing.assert_allclose(var_data, var_exp, rtol, atol, err_msg=msg)
