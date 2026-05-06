@@ -70,6 +70,7 @@ RUN apt-get update && \
         libsystemd-dev \
         libxtensor-dev \
         libyaml-cpp-dev \
+        lld \
         make \
         pkg-config \
         python3 \
