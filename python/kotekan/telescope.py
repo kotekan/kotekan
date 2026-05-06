@@ -6,6 +6,12 @@ import astropy.utils.iers
 from astropy.time import Time, TimeDelta
 
 
+# Eq 5.14 of IERS Conventions (2010) Ch. 5. defines these values
+# for converting from UT1 to ERA
+ERA_A = 0.7790572732640
+ERA_B = 1.00273781191135448
+
+
 class EOP(ctypes.Structure):
 
     _fields_ = [
@@ -74,6 +80,8 @@ def get_EOP_table(t0_ns, ndays):
 
 def get_EOP_at_t_inst_ns(t_ns, tel_config, use_eop):
 
+    print("get_EOP_inst", t_ns.shape)
+
     t_ns = np.atleast_1d(t_ns)
 
     t = calc_astropy_time_from_inst_ns(t_ns, tel_config["frame0_nano"])
@@ -131,9 +139,41 @@ def get_nrot_at_t_inst_ns(t_ns, tel_config, use_eop):
     # Eq 5.14 of IERS Conventions (2010) Ch. 5. defines these values
     # for ERA you take this quanity mod 1.0 (for fractions of a revolution)
     # for number of rotations take the floor
-    nrot = np.floor(0.7790572732640 + dt_jd * 1.00273781191135448)
+    nrot = np.floor(ERA_A + dt_jd * ERA_B)
 
     return nrot.astype(int)
+
+
+def get_ut1_ns_at_ERA_nrot(era_deg, nrot):
+
+    dt1_jd = (nrot - ERA_A) / ERA_B
+    dt2_jd = (era_deg/360.0) / ERA_B
+
+    dt = TimeDelta(dt1_jd, dt2_jd, format='jd', scale='ut1')
+
+    return calc_ut1_ns_from_dt(dt)
+
+
+def get_t_inst_ns_from_ut1_ns(ut1_ns, tel_config, use_eop):
+
+    t0 = calc_astropy_time_from_unix_ns(tel_config['frame0_nano'])
+
+    t = Time(2_451_545, format='jd', scale='ut1') + TimeDelta(0 * units.ns, ut1_ns * units.ns, scale='ut1')
+
+    if not use_eop:
+        t.delta_ut1_utc = 0.0
+
+    dt = t.utc - t0
+
+    dt_ns = calc_tai_ns_from_dt(dt)
+
+    return tel_config['frame0_nano'] + dt_ns
+
+def get_t_inst_ns_at_ERA_nrot(era_deg, nrot, tel_config, use_eop):
+
+    ut1_ns = get_ut1_ns_at_ERA_nrot(era_deg, nrot)
+
+    return get_t_inst_ns_from_ut1_ns(ut1_ns, tel_config, use_eop)
 
 
 def get_local_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
@@ -344,7 +384,7 @@ def calc_ns_from_dt(dt):
     ns2_f = 86400 * 1e9 * dt.jd2
 
     # Round the first component to the nearest integer nanosecond.
-    ns1 = round(ns1_f)
+    ns1 = np.round(ns1_f).astype(int)
 
     # Compute the floating point remainder nanoseconds from rounding the first
     # part
@@ -352,9 +392,11 @@ def calc_ns_from_dt(dt):
 
     # Compute the integer nanoseconds from the second part, including the
     # difference from the first rounding.
-    ns2 = round(ns2_f + dns)
+    ns2 = np.round(ns2_f + dns).astype(int)
 
-    # Return the sum.
+    if np.ndim(dt) == 0:
+        return int(ns1 + ns2)
+    
     return ns1 + ns2
 
 
