@@ -125,6 +125,7 @@ def get_ut1_ns_at_t_inst_ns(ut1_ns, tel_config, use_eop):
 
     return calc_ut1_ns_from_t(t)
 
+
 def get_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
 
     t = calc_astropy_time_from_inst_ns(t_ns, tel_config["frame0_nano"])
@@ -132,6 +133,7 @@ def get_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
         t.delta_ut1_utc = 0.0
 
     return t.earth_rotation_angle("tio").to_value("deg")
+
 
 def get_ERA_at_ut1_ns(ut1_ns):
 
@@ -169,7 +171,7 @@ def get_nrot_at_t(t):
     nrot = np.empty(t.shape, dtype=int)
     for i in range(len(nrot.flat)):
         nrot.flat[i] = int(mp.floor(ERA_A + dt_jd[i] * ERA_B))
-    
+
     return nrot
 
 
@@ -191,16 +193,16 @@ def get_ut1_ns_at_ERA_nrot(era_deg_in, nrot):
         dt1_jd = float(dt1_jd[0])
         dt2_jd = float(dt2_jd[0])
 
-    dt = TimeDelta(dt1_jd, dt2_jd, format='jd', scale='ut1')
+    dt = TimeDelta(dt1_jd, dt2_jd, format="jd", scale="ut1")
 
     return calc_ut1_ns_from_dt(dt)
 
 
 def get_t_inst_ns_at_ut1_ns(ut1_ns, tel_config, use_eop):
 
-    t0 = calc_astropy_time_from_unix_ns(tel_config['frame0_nano'])
+    t0 = calc_astropy_time_from_unix_ns(tel_config["frame0_nano"])
 
-    t = calc_astropy_time_from_ut1_ns(ut1_ns) 
+    t = calc_astropy_time_from_ut1_ns(ut1_ns)
     if not use_eop:
         t.delta_ut1_utc = 0.0
 
@@ -208,7 +210,8 @@ def get_t_inst_ns_at_ut1_ns(ut1_ns, tel_config, use_eop):
 
     dt_ns = calc_tai_ns_from_dt(dt)
 
-    return tel_config['frame0_nano'] + dt_ns
+    return tel_config["frame0_nano"] + dt_ns
+
 
 def get_t_inst_ns_at_ERA_nrot(era_deg, nrot, tel_config, use_eop):
 
@@ -382,8 +385,8 @@ def calc_astropy_time_from_ut1_ns(ut1_ns):
     """
 
     # First calculate t0, the UT1 0 time in ERA definition.
-    t0 = Time(2_451_545, format='jd', scale='ut1')
-    
+    t0 = Time(2_451_545, format="jd", scale="ut1")
+
     split_scale_ns = 100_000_000_000_000  # roughly 1 day
     ut1_1_ns = split_scale_ns * (ut1_ns // split_scale_ns)
     ut1_2_ns = ut1_ns - ut1_1_ns
@@ -472,7 +475,7 @@ def calc_ns_from_dt(dt):
 
     if np.ndim(dt) == 0:
         return int(ns1 + ns2)
-    
+
     return ns1 + ns2
 
 
