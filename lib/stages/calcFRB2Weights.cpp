@@ -90,11 +90,12 @@ public:
             return;
 
         // Telescope
-        const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
+        const auto& telescope = Telescope::instance();
 
         // Upchannelization schedule
         const auto& upchan_schedule = UpchannelizationSchedule::instance(config);
 
+#if 0 // not used
         // Calculate dish positions
         const float dish_separation_x = chord_telescope.get_dish_separation_x_m();
         const float dish_separation_y = chord_telescope.get_dish_separation_y_m();
@@ -115,6 +116,7 @@ public:
             }
         }
         assert(std::ptrdiff_t(dish_loc_x.size()) == num_dishes);
+#endif
 
         // Calculate frequencies
         const auto& frequency_channels = upchan_schedule.get_frequency_channels();
@@ -123,8 +125,8 @@ public:
         std::vector<int> freq_upchan_index;
         std::vector<float> frequencies;
         for (const int channel : frequency_channels) {
-            const float frequency = chord_telescope.to_freq_MHz(channel) * 1.0e+6f;
-            const float frequency_spacing = chord_telescope.freq_width_MHz(channel) * 1.0e+6f;
+            const float frequency = telescope.to_freq_MHz(freq_id_t(channel)) * 1.0e+6f;
+            const float frequency_spacing = telescope.freq_width_MHz(freq_id_t(channel)) * 1.0e+6f;
             const auto& upchan_factors = upchan_schedule.get_upchan_factors(channel);
             if (upchan_factors.empty()) {
                 // Assume we keep the frequency itself
