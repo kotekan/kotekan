@@ -20,13 +20,13 @@ if(CUDAToolkit_FOUND)
     # Treat vendored ksgpu/n2k headers as system headers for consumers, so their pre-existing
     # diagnostics (e.g. -Wclass-conversion in ksgpu/Array.hpp) don't fail kotekan's -Werror build.
     # Their own sources still see -Wall.
-    foreach(_t ksgpu n2k)
-        get_target_property(_inc ${_t} INTERFACE_INCLUDE_DIRECTORIES)
-        if(_inc)
+    foreach(tgt ksgpu n2k)
+        get_target_property(inc ${tgt} INTERFACE_INCLUDE_DIRECTORIES)
+        if(inc)
             set_property(
-                TARGET ${_t}
+                TARGET ${tgt}
                 APPEND
-                PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES ${_inc})
+                PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES ${inc})
         endif()
     endforeach()
 endif()
