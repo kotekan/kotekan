@@ -1198,9 +1198,10 @@ FRB:
 
     run_set_frb1_U16_phase:
         kotekan_stage: setFRB1Phase
-        num_dishes_x: num_dishes_y           # transposed dish layout
-        num_dishes_y: num_dishes_x
+        num_dishes_x: 256         # transposed dish layout, cannot use variables
+        num_dishes_y: 4
         upchan_factor: factor_upchan_out
+        frb1_input_scale: 1.0 / 1024
         upchan_min_channel: upchan_U16_min_channel
         upchan_max_channel: upchan_U16_max_channel
         upchan_max_num_channels: upchan_U16_max_num_channels
