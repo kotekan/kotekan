@@ -1,3 +1,5 @@
+// 4-bit FRB beam quantizer for CHORD
+
 #include <cuda_fp16.h>              // for __half
 #include <cuda_runtime_api.h>       // for cudaGetLastError
 #include <algorithm>                // for max
@@ -23,6 +25,7 @@
 #include "bufferContainer.hpp"      // for bufferContainer
 #include "driver_types.h"           // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
 #include "fmt.hpp"                  // for format
+#include "metadata.hpp"             // for metadataObject
 
 using kotekan::bufferContainer;
 using kotekan::Config;

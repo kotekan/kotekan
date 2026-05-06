@@ -1,3 +1,5 @@
+// Test 4-bit FRB beam quantizer for CHORD
+
 #include <algorithm>                // for fill, fill_n
 #include <cassert>                  // for assert
 #include <cfloat>                   // for FLT_MAX

@@ -1,3 +1,6 @@
+// 8-bit FRB beam quantizer for CHIME, using the float16 FRB beamformer and CHIME's
+// sending-to-Bonsai network format
+
 #include <cuda_fp16.h>              // for __half
 #include <cuda_runtime_api.h>       // for cudaGetLastError
 #include <algorithm>                // for max
@@ -23,6 +26,7 @@
 #include "bufferContainer.hpp"      // for bufferContainer
 #include "driver_types.h"           // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
 #include "fmt.hpp"                  // for format
+#include "metadata.hpp"             // for metadataObject
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -95,9 +99,14 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
                                            *this);
     }()),
     beam_buffer([&]() {
-        const std::array<std::ptrdiff_t, 8> beam_lengths{1, out_nbeams_outer,
-                                                         out_nfreqs_outer, out_ntimes_outer, out_nbeams_packet,
-                                                         out_nfreqs_packet, out_nfreqs_chunk, out_ntimes_chunk};
+        const std::array<std::ptrdiff_t, 8> beam_lengths{1,
+                                                         out_nbeams_outer,
+                                                         out_nfreqs_outer,
+                                                         out_ntimes_outer,
+                                                         out_nbeams_packet,
+                                                         out_nfreqs_packet,
+                                                         out_nfreqs_chunk,
+                                                         out_ntimes_chunk};
         const std::array<std::string, 8> beam_dimnames{"Ttilde256",     "R8",        "Fbar64",
                                                        "Ttilde16_lo16", "Rlo8",      "Fbar16_lo4",
                                                        "Fbarlo16",      "Ttildelo16"};
@@ -105,9 +114,13 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
                                               *this);
     }()),
     offsetscale_buffer([&]() {
-        const std::array<std::ptrdiff_t, 7> offsetscale_lengths{1, out_nbeams_outer,
-                                                         out_nfreqs_outer, out_ntimes_outer, out_nbeams_packet,
-                                                         out_nfreqs_packet, 2};
+        const std::array<std::ptrdiff_t, 7> offsetscale_lengths{1,
+                                                                out_nbeams_outer,
+                                                                out_nfreqs_outer,
+                                                                out_ntimes_outer,
+                                                                out_nbeams_packet,
+                                                                out_nfreqs_packet,
+                                                                2};
         const std::array<std::string, 7> offsetscale_dimnames{
             "Ttilde256", "R8", "Fbar64", "Ttilde16_lo16", "Rlo8", "Fbar16_lo4", "offset/scale"};
         return NDArrayBuffer<float16_t, 7>(_gpu_mem_beams_offsetscale, "I3_offsetscale",
@@ -124,7 +137,8 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
 
     // these sizes are hard-coded in the CUDA kernel
     if (_num_beams != in_nbeams || _num_frequencies != in_nfreqs || _num_times != in_ntimes) {
-        FATAL_ERROR("This stage's CUDA kernel hard-codes [num_beams, num_frequencies, num_times] to [{:d}, {:d}, {:d}] and does not support [{:d}, {:d}, {:d}]",
+        FATAL_ERROR("This stage's CUDA kernel hard-codes [num_beams, num_frequencies, num_times] "
+                    "to [{:d}, {:d}, {:d}] and does not support [{:d}, {:d}, {:d}]",
                     in_nbeams, in_nfreqs, in_ntimes, _num_beams, _num_frequencies, _num_times);
     }
 }
@@ -146,41 +160,16 @@ cudaEvent_t cudaQuantize8::execute(cudaPipelineState&, const std::vector<cudaEve
 
     const auto& input_ndarray = input_buffer.get_ndarray();
     const float16_t* const input = input_ndarray.data();
-    const int input_size1 = input_ndarray.extent(3); // time
-    const int input_size2 = input_ndarray.extent(2); // freq
-    const int input_size3 = input_ndarray.extent(1); // beam
     assert(input_ndarray.extent(0) == 1);
-    assert(input_ndarray.stride(3) == 1);              // time
-    const int input_stride2 = input_ndarray.stride(2); // freq
-    const int input_stride3 = input_ndarray.stride(1); // beam
 
     auto& offsetscale_ndarray = offsetscale_buffer.get_ndarray();
     float16_t* const outputf = offsetscale_ndarray.data();
-    const int outputf_size1 = offsetscale_ndarray.extent(3); // time
-    const int outputf_size2 = offsetscale_ndarray.extent(2); // freq
-    const int outputf_size3 = offsetscale_ndarray.extent(1); // beam
-    assert(offsetscale_ndarray.extent(0) == 1);
-    assert(offsetscale_ndarray.stride(3) == 1);                // time
-    const int outputf_stride2 = offsetscale_ndarray.stride(2); // freq
-    const int outputf_stride3 = offsetscale_ndarray.stride(1); // beam
 
     auto& beam_ndarray = beam_buffer.get_ndarray();
     std::uint8_t* const outputi = beam_ndarray.data();
-    const int outputi_size1 = beam_ndarray.extent(3); // time
-    const int outputi_size2 = beam_ndarray.extent(2); // freq
-    const int outputi_size3 = beam_ndarray.extent(1); // beam
-    assert(beam_ndarray.extent(0) == 1);
-    assert(beam_ndarray.stride(3) == 1);                // time
-    const int outputi_stride2 = beam_ndarray.stride(2); // freq
-    const int outputi_stride3 = beam_ndarray.stride(1); // beam
 
     cudaStream_t stream = device.getStream(cuda_stream_id);
-
-    gpu_quantize8(input, outputf, outputi,                                                       //
-                  input_size1, input_size2, input_size3, input_stride2, input_stride3,           //
-                  outputf_size1, outputf_size2, outputf_size3, outputf_stride2, outputf_stride3, //
-                  outputi_size1, outputi_size2, outputi_size3, outputi_stride2, outputi_stride3, //
-                  stream);
+    gpu_quantize8(input, outputf, outputi, stream);
     CHECK_CUDA_ERROR(cudaGetLastError());
 
     return record_end_event();
