@@ -49,7 +49,7 @@ struct n2frame_layout_t {
  *
  * Use this enum to refer to the method used to compute Eigenvalues and Eigenvectors.
  **/
-enum class N2EigenMethod : int32_t { none, cheevr, iterative };
+enum class N2EigenMethod : int32_t { none, cheevr, iterative, failed_iterative };
 
 class N2FrameDesc : public FrameDesc {
 public:
