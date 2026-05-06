@@ -39,18 +39,7 @@ smallchime_global_params = {
 chime_stage_params = {"stack_type": "chime_in_cyl"}
 
 
-def float_allclose(a, b):
-    """Compare two float (arrays).
-
-    This comparison uses a tolerance related to the precision of the datatypes
-    to account for rounding errors in arithmetic.
-    """
-
-    res_a = np.finfo(np.array(a).dtype).resolution
-    res_b = np.finfo(np.array(b).dtype).resolution
-
-    tol = max(res_a, res_b)
-    return np.allclose(a, b, rtol=tol, atol=0)
+from tolerance import float_allclose  # noqa: F401  (re-exported for back-compat)
 
 
 def _chime_feed_props(chan_id):

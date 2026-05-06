@@ -214,9 +214,7 @@ void TransposeBasebandArray::transpose_block_avx512(const uint8_t* in, uint8_t* 
 
             // Combine and test if any bits are set
             __m512i check_combined = _mm512_or_si512(check_lo, check_hi);
-            bool has_zero_nibble = !_mm512_test_epi64_mask(check_combined, check_combined) == 0;
-            // Simpler: check if result is non-zero
-            has_zero_nibble = _mm512_test_epi64_mask(check_combined, check_combined) != 0;
+            bool has_zero_nibble = _mm512_test_epi64_mask(check_combined, check_combined) != 0;
 
             if (has_zero_nibble) {
                 ERROR(
