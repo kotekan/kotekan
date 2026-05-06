@@ -12,6 +12,7 @@
 #include <cassert>
 #include <cstdint>
 #include <string>
+#include <sched.h>
 #include <unistd.h>
 #include <vector>
 
@@ -251,7 +252,12 @@ public:
             const float sigmay_y = 8.5;
             const float sigmay_z = 0;
 
-#pragma omp parallel
+            // avoid over-subscribing the CPUs we can run on
+            cpu_set_t available_cpus;
+            CPU_ZERO(&available_cpus);
+            sched_getaffinity(0, sizeof(available_cpus), &available_cpus);
+            const int num_available_cpus = CPU_COUNT(&available_cpus);
+#pragma omp parallel num_threads(num_available_cpus)
             {
                 std::vector<float> Up(frb1_num_beams_x);
                 std::vector<float> Uq(frb1_num_beams_y);
