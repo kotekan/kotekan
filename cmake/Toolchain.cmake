@@ -147,9 +147,9 @@ endif()
 if(CMAKE_BUILD_TYPE MATCHES Release)
     add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wno-unused-variable>)
 
-    # Link-time optimization (opt-in via -DUSE_LTO=ON).
-    # Uses ThinLTO on Clang/icpx (requires lld), -flto=auto on GCC.
-    # Note: check_cxx_compiler_flag caches results; delete the build dir when switching compilers.
+    # Link-time optimization (opt-in via -DUSE_LTO=ON). Uses ThinLTO on Clang/icpx (requires lld),
+    # -flto=auto on GCC. Note: check_cxx_compiler_flag caches results; delete the build dir when
+    # switching compilers.
     if("${USE_LTO}" STREQUAL "ON" OR "${USE_LTO}" STREQUAL "AUTO")
         if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|IntelLLVM")
             set(_lto_flag "-flto=thin")
@@ -157,16 +157,26 @@ if(CMAKE_BUILD_TYPE MATCHES Release)
             add_link_options(-fuse-ld=lld -Wl,--allow-multiple-definition)
             # lld doesn't search /usr/local/lib by default (GNU ld does).
             link_directories(/usr/local/lib)
-            # Use the compiler-matched LLVM tools for ar/ranlib so the gold plugin version
-            # matches the bitcode produced by the compiler.
+            # Use the compiler-matched LLVM tools for ar/ranlib so the gold plugin version matches
+            # the bitcode produced by the compiler.
             get_filename_component(_cxx_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
-            find_program(_llvm_ar NAMES llvm-ar HINTS "${_cxx_dir}" "${_cxx_dir}/compiler")
-            find_program(_llvm_ranlib NAMES llvm-ranlib HINTS "${_cxx_dir}" "${_cxx_dir}/compiler")
+            find_program(
+                _llvm_ar
+                NAMES llvm-ar
+                HINTS "${_cxx_dir}" "${_cxx_dir}/compiler")
+            find_program(
+                _llvm_ranlib
+                NAMES llvm-ranlib
+                HINTS "${_cxx_dir}" "${_cxx_dir}/compiler")
             if(_llvm_ar)
-                set(CMAKE_AR "${_llvm_ar}" CACHE FILEPATH "LTO-aware archiver" FORCE)
+                set(CMAKE_AR
+                    "${_llvm_ar}"
+                    CACHE FILEPATH "LTO-aware archiver" FORCE)
             endif()
             if(_llvm_ranlib)
-                set(CMAKE_RANLIB "${_llvm_ranlib}" CACHE FILEPATH "LTO-aware ranlib" FORCE)
+                set(CMAKE_RANLIB
+                    "${_llvm_ranlib}"
+                    CACHE FILEPATH "LTO-aware ranlib" FORCE)
             endif()
         elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             set(_lto_flag "-flto=auto")

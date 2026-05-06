@@ -89,12 +89,10 @@ public:
      * @param kernel_names Vector list of kernel names in the kernel file
      * @param opts         List of options to pass to nvrtc
      **/
-    void build(const std::string& kernel_filename,
-               const std::vector<std::string>& kernel_names,
+    void build(const std::string& kernel_filename, const std::vector<std::string>& kernel_names,
                const std::vector<std::string>& opts);
 
-    void build_ptx(const std::string& kernel_filename,
-                   const std::vector<std::string>& kernel_names,
+    void build_ptx(const std::string& kernel_filename, const std::vector<std::string>& kernel_names,
                    const std::vector<std::string>& opts,
                    const std::string& kernel_name_prefix = "");
 

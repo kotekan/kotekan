@@ -78,7 +78,7 @@ public:
 
 } // namespace kotekan
 
-#define REGISTER_KOTEKAN_STAGE(T) \
+#define REGISTER_KOTEKAN_STAGE(T)                                                                  \
     __attribute__((used)) static ::kotekan::StageMakerTemplate<T> maker##T(#T);
 
 #endif /* STAGE_FACTORY_HPP */
