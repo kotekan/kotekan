@@ -4,8 +4,6 @@ These constants and helpers are for *numerical* comparisons (rounding error
 from arithmetic on floats). They are not intended for physically-motivated
 tolerances (e.g. nanoseconds of time, degrees of rotation), which should
 remain local to the test that defines them.
-
-Kept consistent with the C++ side in tests/boost/test_tolerance.hpp.
 """
 
 import numpy as np
