@@ -719,9 +719,7 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
 
     // Structural data consistency checks
     std::string structural_checks_failures = "";
-    auto add_failure = [&](std::string msg) {
-        structural_checks_failures += "\n  - " + msg;
-    };
+    auto add_failure = [&](std::string msg) { structural_checks_failures += "\n  - " + msg; };
 
     if (n2_layout != fv.n2_layout)
         add_failure(fmt::format("n2_layout: {} != {}", N2Layout_to_string(n2_layout),
@@ -729,14 +727,14 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     if (fv.eval.size() != fv.num_ev)
         add_failure(fmt::format("eval.size() != num_ev: {} != {}", fv.eval.size(), fv.num_ev));
     if (fv.evec.size() != fv.num_ev * fv.num_elements)
-        add_failure(fmt::format("evec.size() != num_ev * num_elements: {} != {}",
-                                fv.evec.size(), fv.num_ev * fv.num_elements));
+        add_failure(fmt::format("evec.size() != num_ev * num_elements: {} != {}", fv.evec.size(),
+                                fv.num_ev * fv.num_elements));
     if (fv.gain.size() != fv.num_elements)
-        add_failure(fmt::format("gain.size() != num_elements: {} != {}",
-                                fv.gain.size(), fv.num_elements));
+        add_failure(
+            fmt::format("gain.size() != num_elements: {} != {}", fv.gain.size(), fv.num_elements));
     if (fv.flags.size() != fv.num_elements)
-        add_failure(fmt::format("flags.size() != num_elements: {} != {}",
-                                fv.flags.size(), fv.num_elements));
+        add_failure(fmt::format("flags.size() != num_elements: {} != {}", fv.flags.size(),
+                                fv.num_elements));
     if (fv.num_elements != num_elements)
         add_failure(fmt::format("num_elements: {} != {}", fv.num_elements, num_elements));
     if (fv.num_prod != num_prod)
@@ -744,43 +742,42 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     if (fv.num_ev != num_ev)
         add_failure(fmt::format("num_ev: {} != {}", fv.num_ev, num_ev));
     if (fv.frame_length_fpga_ticks == 0)
-        add_failure(fmt::format("frame_length_fpga_ticks must be > 0, got {}",
-                                fv.frame_length_fpga_ticks));
+        add_failure(
+            fmt::format("frame_length_fpga_ticks must be > 0, got {}", fv.frame_length_fpga_ticks));
     if (fpga_start_tick[t_index] > 0 && fpga_start_tick[t_index] != fv.fpga_start_tick)
-        add_failure(fmt::format("fpga_start_tick[t={}] mismatch: stored {} != incoming {}",
-                                t_index, fpga_start_tick[t_index], fv.fpga_start_tick));
+        add_failure(fmt::format("fpga_start_tick[t={}] mismatch: stored {} != incoming {}", t_index,
+                                fpga_start_tick[t_index], fv.fpga_start_tick));
     if (frame_length_fpga_ticks[t_index] > 0
         && frame_length_fpga_ticks[t_index] != fv.frame_length_fpga_ticks)
         add_failure(fmt::format("frame_length_fpga_ticks[t={}] mismatch: stored {} != incoming {}",
                                 t_index, frame_length_fpga_ticks[t_index],
                                 fv.frame_length_fpga_ticks));
     if (rfi_frame_excision_num[t_index] < 0)
-        add_failure(fmt::format("rfi_frame_excision_num[t={}] negative: {}",
-                                t_index, rfi_frame_excision_num[t_index]));
+        add_failure(fmt::format("rfi_frame_excision_num[t={}] negative: {}", t_index,
+                                rfi_frame_excision_num[t_index]));
     if (rfi_frame_excision_num[t_index] > MAX_NUM_RFI_THRESHOLDS)
-        add_failure(fmt::format("rfi_frame_excision_num[t={}] exceeds MAX_NUM_RFI_THRESHOLDS: {} > {}",
-                                t_index, rfi_frame_excision_num[t_index],
-                                MAX_NUM_RFI_THRESHOLDS));
+        add_failure(
+            fmt::format("rfi_frame_excision_num[t={}] exceeds MAX_NUM_RFI_THRESHOLDS: {} > {}",
+                        t_index, rfi_frame_excision_num[t_index], MAX_NUM_RFI_THRESHOLDS));
     if (time_center_ut1[t_index] > 0
         && !ns_close(time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns))
         add_failure(fmt::format("time_center_ut1[t={}] mismatch: stored {} != incoming {} (ns)",
-                                t_index, time_center_ut1[t_index],
-                                fv.time_center_eop.t_ut1_ns));
+                                t_index, time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns));
     if (bin_ut1[t_index] > 0 && !ns_close(bin_ut1[t_index], fv.bin_eop.t_ut1_ns))
-        add_failure(fmt::format("bin_ut1[t={}] mismatch: stored {} != incoming {} (ns)",
-                                t_index, bin_ut1[t_index], fv.bin_eop.t_ut1_ns));
+        add_failure(fmt::format("bin_ut1[t={}] mismatch: stored {} != incoming {} (ns)", t_index,
+                                bin_ut1[t_index], fv.bin_eop.t_ut1_ns));
     if (bin_start_ERA_deg[t_index] < 0)
-        add_failure(fmt::format("bin_start_ERA_deg[t={}] < 0: {}",
-                                t_index, bin_start_ERA_deg[t_index]));
-    if (bin_start_ERA_deg[t_index] > 360)
-        add_failure(fmt::format("bin_start_ERA_deg[t={}] > 360: {}",
-                                t_index, bin_start_ERA_deg[t_index]));
+        add_failure(
+            fmt::format("bin_start_ERA_deg[t={}] < 0: {}", t_index, bin_start_ERA_deg[t_index]));
+    if (bin_start_ERA_deg[t_index] >= 360)
+        add_failure(
+            fmt::format("bin_start_ERA_deg[t={}] >= 360: {}", t_index, bin_start_ERA_deg[t_index]));
     if (bin_end_ERA_deg[t_index] < 0)
-        add_failure(fmt::format("bin_end_ERA_deg[t={}] < 0: {}",
-                                t_index, bin_end_ERA_deg[t_index]));
-    if (bin_end_ERA_deg[t_index] > 360)
-        add_failure(fmt::format("bin_end_ERA_deg[t={}] > 360: {}",
-                                t_index, bin_end_ERA_deg[t_index]));
+        add_failure(
+            fmt::format("bin_end_ERA_deg[t={}] < 0: {}", t_index, bin_end_ERA_deg[t_index]));
+    if (bin_end_ERA_deg[t_index] >= 360)
+        add_failure(
+            fmt::format("bin_end_ERA_deg[t={}] >= 360: {}", t_index, bin_end_ERA_deg[t_index]));
     // TODO: Don't check these yet, but do when we have ERAL values
     // (bin_start_ERAL[t_index] < 0)
     // (bin_start_ERAL[t_index] > 360)
