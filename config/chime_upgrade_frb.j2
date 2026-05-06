@@ -26,6 +26,8 @@ log_level: info
 {% set num_elements = num_polarizations * num_dishes %}
 num_polarizations: {{ num_polarizations }}
 num_dishes: {{ num_dishes }}
+num_dishes_x: 4
+num_dishes_y: 256
 num_elements: {{ num_elements }}
 
 num_components: 2 # Re/Im
@@ -57,6 +59,7 @@ sizeof_int: 4
 sizeof_int32: 4
 sizeof_uint64: 8
 sizeof_short: 2
+sizeof_uint8: 1
 
 use_hugepages: false
 
@@ -237,6 +240,13 @@ zero_samples:
 
 {%- else %}
 
+# frequencies in merged-GPU buffer must be ordered for the UpchanScheduler to
+# work, as a workaround here I shuffle the input files wrt to their buffers.
+# This fails to correctly handle lost samples masks since those are for 4
+# frequencies each (would need to modify zeroSamples)
+# The best solution will be for UchanScheduler to be stage and consume a frame
+# to look at the metadata (and thus frequency ordering) in there.
+#{#
 {%- for id in range(16) %}
 dbg_read_voltages_{{ id }}:
     kotekan_stage: hdf5FileRead
@@ -244,6 +254,103 @@ dbg_read_voltages_{{ id }}:
     out_buf: host_voltage_buffer_{{ id }}
     file_name: host_voltage_buffer_{{ id }}
 {%- endfor %}
+##}
+
+dbg_read_voltages_0:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_0
+    file_name: host_voltage_buffer_0
+
+dbg_read_voltages_1:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_1
+    file_name: host_voltage_buffer_8
+
+dbg_read_voltages_2:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_2
+    file_name: host_voltage_buffer_12
+
+dbg_read_voltages_3:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_3
+    file_name: host_voltage_buffer_13
+
+dbg_read_voltages_4:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_4
+    file_name: host_voltage_buffer_9
+
+dbg_read_voltages_5:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_5
+    file_name: host_voltage_buffer_4
+
+dbg_read_voltages_6:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_6
+    file_name: host_voltage_buffer_1
+
+dbg_read_voltages_7:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_7
+    file_name: host_voltage_buffer_2
+
+dbg_read_voltages_8:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_8
+    file_name: host_voltage_buffer_14
+
+dbg_read_voltages_9:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_9
+    file_name: host_voltage_buffer_10
+
+dbg_read_voltages_10:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_10
+    file_name: host_voltage_buffer_15
+
+dbg_read_voltages_11:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_11
+    file_name: host_voltage_buffer_11
+
+dbg_read_voltages_12:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_12
+    file_name: host_voltage_buffer_5
+
+dbg_read_voltages_13:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_13
+    file_name: host_voltage_buffer_6
+
+dbg_read_voltages_14:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_14
+    file_name: host_voltage_buffer_7
+
+dbg_read_voltages_15:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_15
+    file_name: host_voltage_buffer_3
 
 {%- for id in range(4) %}
 dbg_read_lostsamples_{{ id }}:
@@ -900,13 +1007,15 @@ vis_convert:
     kotekan_stage: n2FrameToVisFrame
     n2_buf: eig_10s_buffer
     vis_buf: vis_buffer
-    freq_ids: [ 269, 485, 493, 1005, 477, 957, 981, 989, 277, 301, 717, 901, 285, 293, 541, 749 ]
+    # best to keep these sorted
+    freq_ids: [ 269, 277, 285, 293, 301, 477, 485, 493, 541, 717, 749, 901, 957, 981, 989, 1005 ]
 
 failed_vis_convert:
     kotekan_stage: n2FrameToVisFrame
     n2_buf: failed_10s_buffer
     vis_buf: failed_vis_buffer
-    freq_ids: [ 269, 485, 493, 1005, 477, 957, 981, 989, 277, 301, 717, 901, 285, 293, 541, 749 ]
+    # best to keep these sorted
+    freq_ids: [ 269, 277, 285, 293, 301, 477, 485, 493, 541, 717, 749, 901, 957, 981, 989, 1005 ]
 
 switch_vis_out:
     kotekan_stage: bufferSwitch
@@ -935,7 +1044,10 @@ switch_failed_out:
 # The frequency channels we keep.
 #     Channel 1024 has 400 MHz for CHIME, channel 0 has 800 MHz.
 #     There are 2.56 channels per MHz, with a channel width of 390625 Hz.
-frequency_channels: [ 269, 485, 493, 1005, 477, 957, 981, 989, 277, 301, 717, 901, 285, 293, 541, 749 ]
+#
+# NOTE: these *must* be sorted since the are passed through a std::set which
+# sorts them
+frequency_channels: [ 269, 277, 285, 293, 301, 477, 485, 493, 541, 717, 749, 901, 957, 981, 989, 1005 ]
 
 upchan_factors: [16]
 # ranges are [min, max)
@@ -943,14 +1055,38 @@ upchan_channel_ranges:
     16: [0, 2048]
 
 FRB:
+    # cudaQuantize requires `frb_num_output_times` to be a multiple of 256
+    frb_num_output_times: 256
+    frb_chunk_size: 256
+
     factor_upchan_out: 16
     upchan_U16_max_num_channels: 16 # probably should be {{ num_freq_gpu_buf }}
     upchan_U16_min_channel: 0
     upchan_U16_max_channel: 16 # probably should be {{ num_freq_gpu_buf }}
+    # TODO: not sure why not this, given that FEngine simulator uses one of its upchan sizes
+    # # for now, since only U16 is used
+    # upchan_all_min_output_channel: upchan_U16_min_channel
+    # upchan_all_max_output_channel: upchan_U16_max_channel
+    # the way it's used below this must actually be the upchannelized number of frequencies
+    upchan_all_min_output_channel: upchan_U16_min_channel * factor_upchan_out
+    upchan_all_max_output_channel: upchan_U16_max_channel * factor_upchan_out
+    upchan_all_max_num_output_channels: 256 # why 256? 16 inputs x 16 upchan_factor ?
+
+    # TODO: remove
+    frb_num_beams_P: 2 * num_dishes_y
+    frb_num_beams_Q: 2 * num_dishes_x
+    frb1_swap_xy: true # TODO: move to stage
+
+    # TODO: this should be 4x256 = 1024
+    frb2_num_beams_x: 8
+    frb2_num_beams_y: 512
+    frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
+    frb2_beam_separation_x: 0.010   # TODO
+    frb2_beam_separation_y: 0.001
 
     # Buffers
 
-    # Gains
+    # Upchanneling Gains
     host_upchan_U16_gain_buffer:
         # TODO: check why not element specific, is here gains == complex_phase_for_ideal_system?
         kotekan_buffer: standard
@@ -968,6 +1104,60 @@ FRB:
     host_upchan_U16_voltage_ringbuffer:
         kotekan_buffer: ring
         ring_buffer_size: gpu_buffer_depth * num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
+        metadata_pool: main_pool
+
+    # Beam locations
+
+    host_frb2_beam_positions_buffer:
+        kotekan_buffer: standard
+        num_frames: 1
+        frame_size: sizeof_float32 * 2 * frb2_num_beams
+        metadata_pool: main_pool
+
+    # Beamforming Phases and interpolation weights
+
+    host_frb1_U16_phase_buffer:
+        kotekan_buffer: standard
+        num_frames: 1
+        # TODO: check what this "16" is
+        frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U16_max_num_channels * 16 * num_polarizations
+        metadata_pool: main_pool
+
+    host_frb2_weights_buffer:
+        kotekan_buffer: standard
+        num_frames: 1
+        frame_size: sizeof_float16 * (2 * num_dishes_y) * (2 * num_dishes_x) * (frb2_num_beams_x * frb2_num_beams_y) * (upchan_all_max_output_channel - upchan_all_min_output_channel)
+        metadata_pool: main_pool
+
+    # (Intermediate) Beams
+
+    host_frb1_beams_buffer:
+        kotekan_buffer: standard
+        num_frames: host_buffer_depth
+        frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+        metadata_pool: main_pool
+    host_frb1_beams_ringbuffer:
+        kotekan_buffer: ring
+        ring_buffer_size: gpu_buffer_depth * sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+        metadata_pool: main_pool
+
+    host_frb2_beams_buffer:
+        kotekan_buffer: standard
+        num_frames: host_buffer_depth
+        frame_size: sizeof_float16 * frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times
+        metadata_pool: main_pool
+
+    host_frb3_beams_buffer:
+        kotekan_buffer: standard
+        num_frames: host_buffer_depth
+        frame_size: sizeof_uint8 * frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times
+        metadata_pool: main_pool
+
+    host_frb3_beams_offsetscale_buffer:
+        kotekan_buffer: standard
+        num_frames: host_buffer_depth
+        # the output is quantized in chunks of `frb_chunk_size`
+        frame_size: sizeof_float16 * 2 * frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times / frb_chunk_size
         metadata_pool: main_pool
 
     # Stages
@@ -1004,6 +1194,93 @@ FRB:
               upchan_U16_voltage_name: upchan_U16_voltage
               Fmin: upchan_U16_min_channel
               Fmax: upchan_U16_max_channel
+
+    # FRB 1
+
+    run_frb1_U16:
+        gpu_0:
+            kotekan_stage: cudaProcess
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            # maybe? Depends on the chunking of the previous stage
+            frame_arrival_period: network_frame_arrival_period
+            num_times: samples_per_data_set
+            in_buffers:
+                host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
+                host_frb1_U16_phase_buffer: host_frb1_U16_phase_buffer
+            out_buffers:
+                host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
+            commands:
+            - name: cudaInputData
+              do_once: true
+              in_buf: host_frb1_U16_phase_buffer
+              gpu_mem: frb1_U16_phase_buffer
+            - name: cudaSyncInput
+            - name: cudaCHIMEFRBBeamformer_chime_U16
+              voltage_name: upchan_U16_voltage
+              frb_phase_name: frb1_U16_phase
+              frb_beamgrid_name: frb1_beams
+
+    # FRB 2 and 3
+
+    run_calc_frb2_weights:
+        kotekan_stage: calcFRB2Weights
+        frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
+        frb2_beam_positions: host_frb2_beam_positions_buffer
+        frb2_weights: host_frb2_weights_buffer
+
+    run_frb23:
+        gpu_0:
+            kotekan_stage: cudaProcess
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            # maybe? Depends on the chunking of the previous stage
+            frame_arrival_period: network_frame_arrival_period
+            num_times: samples_per_data_set
+            in_buffers:
+                host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
+                host_frb2_weights_buffer: host_frb2_weights_buffer
+            out_buffers:
+                host_frb2_beams_buffer: host_frb2_beams_buffer
+                host_frb3_beams_buffer: host_frb3_beams_buffer
+                host_frb3_beams_offsetscale_buffer: host_frb3_beams_offsetscale_buffer
+            commands:
+            - name: cudaInputData
+              do_once: true
+              in_buf: host_frb2_weights_buffer
+              gpu_mem: frb2_weights_buffer
+            - name: cudaFRBBeamReformer
+              frb1_max_num_frequencies: upchan_all_max_num_output_channels
+              frb1_max_num_times: buffer_depth * frb_num_output_times
+              frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
+              frb1_num_beams_P: frb_num_beams_P
+              frb1_num_beams_Q: frb_num_beams_Q
+              # frb2_num_beams: frb2_num_beams
+              frb2_num_times: frb_num_output_times
+              in_signal: host_frb1_beams_ringbuffer
+              frb1_beams_name: frb1_beams
+              frb2_weights_name: frb2_weights
+              frb2_beams_name: frb2_beams
+            - name: cudaQuantize8 # TODOL use "CHIME" variant
+              # the output is quantized in chunks of `frb_chunk_size`
+              num_beams: frb2_num_beams
+              num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
+              num_times: frb_num_output_times
+              gpu_mem_input: frb2_beams
+              gpu_mem_output: frb3_beams
+              gpu_mem_offsetscale: frb3_beams_offsetscale
+            - name: cudaSyncOutput
+            - name: cudaOutputData
+              # TODO: Don't do this in production
+              gpu_mem: frb2_beams_buffer
+              out_buf: host_frb2_beams_buffer
+            - name: cudaOutputData
+              gpu_mem: frb3_beams_buffer
+              out_buf: host_frb3_beams_buffer
+            - name: cudaOutputData
+              gpu_mem: frb3_beams_offsetscale_buffer
+              out_buf: host_frb3_beams_offsetscale_buffer
+
 ################################################################################
 # output to receivers
 
