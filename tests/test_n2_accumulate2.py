@@ -645,10 +645,10 @@ def accum_list(setup, accum_setup):
                 (accum["bin_idx"] + 1) % accum_setup["num_bins_per_rotation"]
             ) * dera
             accum["bin_start_ERAL_deg"] = (
-                accum["bin_start_ERA_deg"] + setup["tel"]["origin_itrs_lon_deg"]
+                np.remainder(accum["bin_start_ERA_deg"] + setup["tel"]["origin_itrs_lon_deg"], 360.0)
             )
             accum["bin_end_ERAL_deg"] = (
-                accum["bin_end_ERA_deg"] + setup["tel"]["origin_itrs_lon_deg"]
+                np.remainder(accum["bin_end_ERA_deg"] + setup["tel"]["origin_itrs_lon_deg"], 360.0)
             )
         else:
             seq_start = accum["seq"]
