@@ -27,6 +27,7 @@
 #ifdef WITH_OMP
 #include <omp.h>
 #endif
+#include <sched.h>
 #include <string>   // for allocator, basic_string, string
 #include <unistd.h> // for sleep
 #include <vector>   // for vector
@@ -230,8 +231,14 @@ public:
 
             std::atomic<int> nfreqs_done = 0;
 
+            // avoid over-subscribing the CPUs we can run on
+            cpu_set_t available_cpus;
+            CPU_ZERO(&available_cpus);
+            sched_getaffinity(0, sizeof(available_cpus), &available_cpus);
+            const int num_available_cpus = CPU_COUNT(&available_cpus);
+
 #ifdef WITH_OMP
-#pragma omp parallel num_threads(num_threads)
+#pragma omp parallel num_threads(std::min(num_available_cpus, num_threads))
 #endif
             {
                 std::vector<float> Up(frb1_num_beams_P);
