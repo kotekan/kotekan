@@ -1,4 +1,6 @@
-#include "DataType.hpp"
+// 8-bit FRB beam quantizer for CHIME, using the chromatic CHIME float32 FRB beamformer and CHIME's
+// sending-to-Bonsai network format
+
 #include "cudaQuantizeKernel8Chime.hpp"
 
 #include <algorithm>
@@ -84,9 +86,9 @@ __device__ __host__ static inline int sane_lrint(const float x) {
 // straightforward and thus "obviously correct". If the GPU version
 // produces a different result, then the GPU version is wrong.
 void cpu_quantize8chime_chunk(const float* __restrict__ const input,
-                              __half* __restrict__ const outputf,
+                              float* __restrict__ const outputf,
                               std::uint8_t* __restrict__ const outputi) {
-    using std::isfinite, std::max, std::min;
+    using std::isfinite, std::isnan, std::max, std::min;
 
     // Find the minimum and maximum of all input values.
     float minval = +1.0f / 0.0f, maxval = -1.0f / 0.0f;
@@ -101,6 +103,7 @@ void cpu_quantize8chime_chunk(const float* __restrict__ const input,
     // Calculate offset and scale. Ensure the scale is nonzero.
     // There are 254 possible uint8 values since we don't use 0 or 255.
     // Values are reconstructed as `offset + scale * n`, with `uint8 n`.
+    // NaN in the input is represented as `n = 0`.
     constexpr int outi_min = 1;
     constexpr int outi_max = 254;
     constexpr float outf_min = outi_min - 0.5f;
@@ -109,24 +112,29 @@ void cpu_quantize8chime_chunk(const float* __restrict__ const input,
     //     minval => outf_min
     //     maxval => outf_max
     const float outf_range = outf_max - outf_min;
-    const float in_range = maxval - minval;
+    float in_range = maxval - minval;
+    // Ensure that the input range is not too small, which woud lead to an overflow when dividing by
+    // the scale
+    constexpr float min_in_range = 1.0e-6f; // approximately eps(float)
+    if (in_range < min_in_range) {
+        const float avgval = (minval + maxval) / 2;
+        minval = avgval - min_in_range / 2;
+        maxval = avgval + min_in_range / 2;
+        in_range = maxval - minval;
+    }
 
     float scale = in_range / outf_range;
     float offset = minval - outf_min * scale;
-    __half offseth = __float2half(offset);
-    __half scaleh = __float2half(scale);
 
     // Avoid non-finite numbers
-    if (!isfinite(__half2float(offseth)) || !isfinite(__half2float(scaleh))) {
+    if (!isfinite(offset) || !isfinite(scale)) {
         offset = 0.0f;
         scale = 0.0f;
-        offseth = __float2half(offset);
-        scaleh = __float2half(scale);
     }
 
     // Store offset and scale in the output array
-    outputf[0] = __float2half(offset);
-    outputf[1] = __float2half(scale);
+    outputf[0] = offset;
+    outputf[1] = scale;
 
     // We encode values as unsigned 8-bit integers.
     for (int freq = 0; freq < out_nfreqs_chunk; ++freq) {
@@ -149,9 +157,9 @@ void cpu_quantize8chime_chunk(const float* __restrict__ const input,
 
 // Quantize a set of "chunk"s. This is an efficient GPU implementation.
 __global__ void gpu_quantize8chime_chunks(const float* __restrict__ const input,
-                                          __half* __restrict__ const outputf,
+                                          float* __restrict__ const outputf,
                                           std::uint8_t* __restrict__ const outputi) {
-    using std::isfinite, std::max, std::min;
+    using std::isfinite;
 
     // Find our position in the arrays
     const int thread = threadIdx.x;
@@ -179,13 +187,14 @@ __global__ void gpu_quantize8chime_chunks(const float* __restrict__ const input,
     // Calculate output indices
     const auto outputf_offset = [&](int freq_packet, int beam_packet, int time_outer,
                                     int freq_outer, int beam_outer) {
-        return freq_packet
-               + out_nfreqs_packet
-                     * (beam_packet
-                        + out_nbeams_packet
-                              * (time_outer
-                                 + out_ntimes_outer
-                                       * (freq_outer + out_nfreqs_outer * beam_outer)));
+        return 2
+               * (freq_packet
+                  + out_nfreqs_packet
+                        * (beam_packet
+                           + out_nbeams_packet
+                                 * (time_outer
+                                    + out_ntimes_outer
+                                          * (freq_outer + out_nfreqs_outer * beam_outer))));
     };
     const auto outputi_offset = [&](int time_chunk, int freq_chunk, int freq_packet,
                                     int beam_packet, int time_outer, int freq_outer,
@@ -194,13 +203,19 @@ __global__ void gpu_quantize8chime_chunks(const float* __restrict__ const input,
                + out_ntimes_chunk
                      * (freq_chunk
                         + out_nfreqs_chunk
-                              * outputf_offset(freq_packet, beam_packet, time_outer, freq_outer,
-                                               beam_outer));
+                              * (freq_packet
+                                 + out_nfreqs_packet
+                                       * (beam_packet
+                                          + out_nbeams_packet
+                                                * (time_outer
+                                                   + out_ntimes_outer
+                                                         * (freq_outer
+                                                            + out_nfreqs_outer * beam_outer)))));
     };
 
     // We store offset and scale only after finishing the loop over all chunks. Each thread stores
     // one offset/scale pair.
-    __half2 outf;
+    float2 outf;
     // Loop over all beams we're handling
     for (int chunk = 0; chunk < nchunks; ++chunk) {
         const int beam_outer = beam_outer0 + chunk;
@@ -208,7 +223,8 @@ __global__ void gpu_quantize8chime_chunks(const float* __restrict__ const input,
         // Load all values in this chunk. We load all values at once in the beginning.
         // There are 256 values and 32 threads, so each thread loads 8 values.
         // We load these 8 values in 2 batches of 4 times each.
-        // We space these batches 4 * 32 = 128 elements apart to be cache-efficient.
+        // We space these batches 4 * 32 = 128 elements apart.
+        // (This is not cache-efficient because the frequencies are not adjacent.)
         const int in_time_chunk = 4 * threadIdx.x % 4; // 0...15 in steps of 4
         const int in_freq_chunk = threadIdx.x / 4;     // 0...7
         const int input_offset_0123 = input_offset(time(in_time_chunk, time_outer),
@@ -251,76 +267,48 @@ __global__ void gpu_quantize8chime_chunks(const float* __restrict__ const input,
         constexpr float outf_max = outi_max + 0.5f;
         const float outf_range = outf_max - outf_min;
         const float in_range = maxval - minval;
-        const float scale = in_range / outf_range;
-        const float offset = minval - outf_min * scale;
+        float scale = in_range / outf_range;
+        float offset = minval - outf_min * scale;
 
-        const float inv_offset = -offset / scale;
-        const float inv_scale = 1.0f / scale;
-        __half offseth = __float2half_rn(offset);
-        __half scaleh = __float2half_rn(scale);
-        __half inv_offseth = __float2half_rn(inv_offset);
-        __half inv_scaleh = __float2half_rn(inv_scale);
+        float inv_offset = -offset / scale;
+        float inv_scale = 1.0f / scale;
 
         // Avoid non-finite numbers
-        if (!isfinite(__half2float(offseth)) || !isfinite(__half2float(scaleh))) {
+        if (!isfinite(offset) || !isfinite(scale)) {
             // Offset or scale are non-finite
-            offseth = __float2half_rn(0.0f);
-            scaleh = __float2half_rn(0.0f);
-            inv_offseth = __float2half_rn(0.0f);
-            inv_scaleh = __float2half_rn(0.0f);
-        } else if (!isfinite(__half2float(inv_offseth)) || !isfinite(__half2float(inv_scaleh))) {
+            offset = 0.0f;
+            scale = 0.0f;
+            inv_offset = 0.0f;
+            inv_scale = 0.0f;
+        } else if (!isfinite(inv_offset) || !isfinite(inv_scale)) {
             // Offset and scale are fine, but the inverse scale is non-finite. This means the scale
             // is too close to zero.
-            scaleh = __float2half_rn(0.0f);
-            inv_offseth = -offseth;
-            inv_scaleh = __float2half_rn(0.0f);
+            scale = 0.0f;
+            inv_offset = -offset;
+            inv_scale = 0.0f;
         }
 
         if (chunk == thread)
             outf = {offset, scale};
 
-        const __half2 minh = __half2half2(__int2half_rn(outi_min));
-        const __half2 maxh = __half2half2(__int2half_rn(outi_max));
-        const __half2 inv_offseth2 = __half2half2(inv_offseth);
-        const __half2 inv_scaleh2 = __half2half2(inv_scaleh);
+        const float minf = outi_min;
+        const float maxf = outi_max;
 
-        // Note:
-        //     float2int_rn(+/-0) returns 0.
-        //     float2int_rn(+Inf) returns INT_MAX = 0x7FFFFFFF.
-        //     float2int_rn(-Inf) returns INT_MIN = 0x80000000.
-        //     float2int_rn(NaN)  returns 0.
-        // This is consistent with what we need. There is also no performance penalty.
-
-        const auto half2int = [](const __half x) {
-            // This special case is not necessary since float2int_rn maps nan to 0 anyway
-            // if (__hisnan(x))
-            //     return 0;
-            return __half2int_rn(x);
+        // Clamp, then convert to int. Map nan to 0.
+        const auto clamp_and_convert = [](const float x, const float xlo, const float xhi) {
+            if (isnan(x) || isnan(xlo) || isnan(xhi))
+                return 0;
+            return __float2int_rn(fmaxf(xlo, fminf(xhi, x)));
         };
 
-        const __half2 x01 = __floats2half2_rn(x0, x1);
-        const __half2 y01 =
-            __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x01, inv_scaleh2, inv_offseth2)));
-        const int i0 = half2int(__low2half(y01));
-        const int i1 = half2int(__high2half(y01));
-
-        const __half2 x23 = __floats2half2_rn(x2, x3);
-        const __half2 y23 =
-            __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x23, inv_scaleh2, inv_offseth2)));
-        const int i2 = half2int(__low2half(y23));
-        const int i3 = half2int(__high2half(y23));
-
-        const __half2 x45 = __floats2half2_rn(x4, x5);
-        const __half2 y45 =
-            __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x45, inv_scaleh2, inv_offseth2)));
-        const int i4 = half2int(__low2half(y45));
-        const int i5 = half2int(__high2half(y45));
-
-        const __half2 x67 = __floats2half2_rn(x6, x7);
-        const __half2 y67 =
-            __hmax2_nan(minh, __hmin2_nan(maxh, __hfma2(x67, inv_scaleh2, inv_offseth2)));
-        const int i6 = half2int(__low2half(y67));
-        const int i7 = half2int(__high2half(y67));
+        const float i0 = clamp_and_convert(fmaf(x0, inv_scale, inv_offset), minf, maxf);
+        const float i1 = clamp_and_convert(fmaf(x1, inv_scale, inv_offset), minf, maxf);
+        const float i2 = clamp_and_convert(fmaf(x2, inv_scale, inv_offset), minf, maxf);
+        const float i3 = clamp_and_convert(fmaf(x3, inv_scale, inv_offset), minf, maxf);
+        const float i4 = clamp_and_convert(fmaf(x4, inv_scale, inv_offset), minf, maxf);
+        const float i5 = clamp_and_convert(fmaf(x5, inv_scale, inv_offset), minf, maxf);
+        const float i6 = clamp_and_convert(fmaf(x6, inv_scale, inv_offset), minf, maxf);
+        const float i7 = clamp_and_convert(fmaf(x7, inv_scale, inv_offset), minf, maxf);
 
         const std::uint64_t outi = (std::uint64_t(i0) << 0x00) | (std::uint64_t(i1) << 0x08)
                                    | (std::uint64_t(i2) << 0x10) | (std::uint64_t(i3) << 0x18)
@@ -334,15 +322,16 @@ __global__ void gpu_quantize8chime_chunks(const float* __restrict__ const input,
                                            time_outer, freq_outer, beam_outer)) = outi;
     }
     const int out_beam_outer = beam_outer0 + thread;
-    *((__half2*)outputf
-      + outputf_offset(freq_packet, beam_packet, time_outer, freq_outer, out_beam_outer)) = outf;
+    *(float2*)(outputf
+               + outputf_offset(freq_packet, beam_packet, time_outer, freq_outer, out_beam_outer)) =
+        outf;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // Drivers (externally visible)
 
-void cpu_quantize8chime(const float* __restrict__ const input, __half* __restrict__ const outputf,
+void cpu_quantize8chime(const float* __restrict__ const input, float* __restrict__ const outputf,
                         std::uint8_t* __restrict__ const outputi) {
     assert(input);
     assert(outputf);
@@ -365,16 +354,25 @@ void cpu_quantize8chime(const float* __restrict__ const input, __half* __restric
                         const int input_offset = time + in_ntimes * (freq + in_nfreqs * beam);
 
                         const int outputf_offset =
-                            freq_packet
-                            + out_nfreqs_packet
-                                  * (beam_packet
-                                     + out_nbeams_packet
-                                           * (time_outer
-                                              + out_ntimes_outer
-                                                    * (freq_outer
-                                                       + out_nfreqs_outer * beam_outer)));
+                            2
+                            * (freq_packet
+                               + out_nfreqs_packet
+                                     * (beam_packet
+                                        + out_nbeams_packet
+                                              * (time_outer
+                                                 + out_ntimes_outer
+                                                       * (freq_outer
+                                                          + out_nfreqs_outer * beam_outer))));
                         const int outputi_offset =
-                            out_ntimes_chunk * out_nfreqs_chunk * outputf_offset;
+                            out_ntimes_chunk * out_nfreqs_chunk
+                            * (freq_packet
+                               + out_nfreqs_packet
+                                     * (beam_packet
+                                        + out_nbeams_packet
+                                              * (time_outer
+                                                 + out_ntimes_outer
+                                                       * (freq_outer
+                                                          + out_nfreqs_outer * beam_outer))));
 
                         cpu_quantize8chime_chunk(input + input_offset, outputf + outputf_offset,
                                                  outputi + outputi_offset);
@@ -385,7 +383,7 @@ void cpu_quantize8chime(const float* __restrict__ const input, __half* __restric
     }
 }
 
-void gpu_quantize8chime(const float* __restrict__ const input, __half* __restrict__ const outputf,
+void gpu_quantize8chime(const float* __restrict__ const input, float* __restrict__ const outputf,
                         std::uint8_t* __restrict__ const outputi, cudaStream_t stream) {
     assert(input);
     assert(outputf);

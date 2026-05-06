@@ -1,3 +1,5 @@
+// 4-bit FRB beam quantizer for CHORD
+
 #include "DataType.hpp"
 #include "cudaQuantizeKernel4.hpp"
 
