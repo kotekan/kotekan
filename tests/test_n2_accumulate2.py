@@ -649,8 +649,23 @@ def accum_list(setup, accum_setup):
             era_end = ((accum["bin_idx"] + 1) % accum_setup["num_bins_per_rotation"]) * dera
         
             t_bin_start = tel.get_t_inst_ns_at_ERA_nrot(era_start, nrot, setup["tel"], setup["set_eop"])
-            t_bin_cen = tel.get_t_inst_ns_at_ERA_nrot(era_start, nrot, setup["tel"], setup["set_eop"])
+            t_bin_cen = tel.get_t_inst_ns_at_ERA_nrot(era_start + 0.5*dera, nrot, setup["tel"], setup["set_eop"])
             t_bin_end = tel.get_t_inst_ns_at_ERA_nrot(era_start + dera, nrot, setup["tel"], setup["set_eop"])
+
+            era_cen = era_start + 0.5*dera
+            ut1_cen = tel.get_ut1_ns_at_ERA_nrot(era_cen, nrot)
+            era_ut1_cen = tel.get_ERA_at_ut1_ns(ut1_cen)
+
+            print("accum", accum["bin_idx"])
+            print("era_start", era_start, t_bin_start, tel.get_ERA_at_t_inst_ns(t_bin_start, setup["tel"], setup["set_eop"]))
+            print("era_cen", era_start + 0.5 * dera, t_bin_cen, tel.get_ERA_at_t_inst_ns(t_bin_cen, setup["tel"], setup["set_eop"]))
+            print("era_end", era_start + dera, t_bin_end, tel.get_ERA_at_t_inst_ns(t_bin_end, setup["tel"], setup["set_eop"]))
+            print("era->ut1->era", era_cen, ut1_cen, tel.get_ERA_at_ut1_ns(ut1_cen))
+            print("ut1->era->ut1", ut1_cen, era_ut1_cen, tel.get_ut1_ns_at_ERA_nrot(era_cen, nrot))
+            print("inst->ut1->inst", t_bin_cen, tel.get_ut1_ns_at_t_inst_ns(t_bin_cen, setup["tel"], setup["set_eop"]),
+                  tel.get_t_inst_ns_at_ut1_ns(tel.get_ut1_ns_at_t_inst_ns(t_bin_cen, setup["tel"], setup["set_eop"]), setup["tel"], setup["set_eop"]))
+            print("ut1->inst->ut1", ut1_cen, tel.get_t_inst_ns_at_ut1_ns(ut1_cen, setup["tel"], setup["set_eop"]), tel.get_ut1_ns_at_t_inst_ns(tel.get_t_inst_ns_at_ut1_ns(ut1_cen, setup["tel"], setup["set_eop"]), setup["tel"], setup["set_eop"]))
+
 
             accum["t_bin_cen"] = t_bin_cen
             accum["bin_start_ERA_deg"] = era_start
@@ -934,6 +949,21 @@ def test_eop_meta(setup, accum_setup, accum_data, accum_list):
             seq_t_cen = accum_list[t]["seq"] + accum_list[t]["seq_len"] // 2
             t_inst_cen[t] = tel.get_t_inst_ns(seq_t_cen, setup["tel"])
             t_inst_bin[t] = accum_list[t]["t_bin_cen"]
+
+            if accum_setup['bin_in_ERA']:
+                eop = tel.get_EOP_at_t_inst_ns(frame.metadata.bin_eop.t_inst_ns, setup["tel"], setup["set_eop"])
+                eop2 = tel.get_EOP_at_t_inst_ns(t_inst_bin[t], setup["tel"], setup["set_eop"])
+
+                bin_idx = accum_list[t]['bin_idx']
+                bin_per_rot = accum_setup['num_bins_per_rotation']
+                
+                print("accum", "idx", accum_list[t]['bin_idx'], bin_idx // bin_per_rot, bin_idx % bin_per_rot, (bin_idx % bin_per_rot) * 360.0 / bin_per_rot, ((bin_idx % bin_per_rot) + 0.5) * 360.0 / bin_per_rot, ((bin_idx % bin_per_rot) + 1) * 360.0 / bin_per_rot)
+                print(t, "inst", frame.metadata.bin_eop.t_inst_ns, "ut1", frame.metadata.bin_eop.t_ut1_ns, "dut1", frame.metadata.bin_eop.delta_UT1_inst)
+                print(t, "    ", eop.t_inst_ns, "   ", eop.t_ut1_ns, "    ", eop.delta_UT1_inst)
+                print(t, "    ", eop2.t_inst_ns, "   ", eop2.t_ut1_ns, "    ", eop2.delta_UT1_inst)
+                print("   era", frame.metadata.bin_eop.ERA_deg, "xp", frame.metadata.bin_eop.xp_as, "yp", frame.metadata.bin_eop.yp_as)
+                print("      ", eop.ERA_deg, "  ", eop.xp_as, "  ", eop.yp_as)
+                print("      ", eop2.ERA_deg, "  ", eop2.xp_as, "  ", eop2.yp_as)
 
     # Now make the expected EOP (this is slow to do one at a time)
     eop_cen = tel.get_EOP_at_t_inst_ns(t_inst_cen, setup["tel"], setup["set_eop"])

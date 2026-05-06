@@ -4,12 +4,16 @@ import numpy as np
 import astropy.units as units
 import astropy.utils.iers
 from astropy.time import Time, TimeDelta
+from mpmath import mp
 
+mp.dps = 40
 
 # Eq 5.14 of IERS Conventions (2010) Ch. 5. defines these values
 # for converting from UT1 to ERA
-ERA_A = 0.7790572732640
-ERA_B = 1.00273781191135448
+ERA_A = mp.mpf(779_057_273_264_000_000) / mp.mpf(1e18)
+ERA_B = mp.mpf(1_002_737_811_911_354_480) / mp.mpf(1e18)
+
+mp_floor = np.frompyfunc(mp.floor, nin=1, nout=1)
 
 
 class EOP(ctypes.Structure):
@@ -80,8 +84,6 @@ def get_EOP_table(t0_ns, ndays):
 
 def get_EOP_at_t_inst_ns(t_ns, tel_config, use_eop):
 
-    print("get_EOP_inst", t_ns.shape)
-
     t_ns = np.atleast_1d(t_ns)
 
     t = calc_astropy_time_from_inst_ns(t_ns, tel_config["frame0_nano"])
@@ -115,9 +117,15 @@ def get_EOP_at_t_inst_ns(t_ns, tel_config, use_eop):
     return eops
 
 
-def get_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
+def get_ut1_ns_at_t_inst_ns(ut1_ns, tel_config, use_eop):
 
-    t_ns = np.atleast_1d(t_ns)
+    t = calc_astropy_time_from_inst_ns(ut1_ns, tel_config["frame0_nano"])
+    if not use_eop:
+        t.delta_ut1_utc = 0.0
+
+    return calc_ut1_ns_from_t(t)
+
+def get_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
 
     t = calc_astropy_time_from_inst_ns(t_ns, tel_config["frame0_nano"])
     if not use_eop:
@@ -125,45 +133,78 @@ def get_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
 
     return t.earth_rotation_angle("tio").to_value("deg")
 
+def get_ERA_at_ut1_ns(ut1_ns):
+
+    t = calc_astropy_time_from_ut1_ns(ut1_ns)
+
+    return t.earth_rotation_angle("tio").to_value("deg")
+
 
 def get_nrot_at_t_inst_ns(t_ns, tel_config, use_eop):
-
-    t_ns = np.atleast_1d(t_ns)
 
     t = calc_astropy_time_from_inst_ns(t_ns, tel_config["frame0_nano"])
     if not use_eop:
         t.delta_ut1_utc = 0.0
 
-    dt_jd = (t.ut1.jd1 - 2451545.0) + t.ut1.jd2
+    return get_nrot_at_t(t)
+
+
+def get_nrot_at_ut1_ns(ut1_ns):
+
+    t = calc_astropy_time_from_ut1_ns(ut1_ns)
+
+    return get_nrot_at_t(t)
+
+
+def get_nrot_at_t(t):
+
+    dt_jd = (t.ut1.jd1 - mp.mpf(2451545.0)) + t.ut1.jd2
 
     # Eq 5.14 of IERS Conventions (2010) Ch. 5. defines these values
     # for ERA you take this quanity mod 1.0 (for fractions of a revolution)
     # for number of rotations take the floor
-    nrot = np.floor(ERA_A + dt_jd * ERA_B)
+    if np.ndim(t) == 0:
+        return int(mp.floor(ERA_A + dt_jd * ERA_B))
 
-    return nrot.astype(int)
+    nrot = np.empty(t.shape, dtype=int)
+    for i in range(len(nrot.flat)):
+        nrot.flat[i] = int(mp.floor(ERA_A + dt_jd[i] * ERA_B))
+    
+    return nrot
 
 
-def get_ut1_ns_at_ERA_nrot(era_deg, nrot):
+def get_ut1_ns_at_ERA_nrot(era_deg_in, nrot):
 
-    dt1_jd = (nrot - ERA_A) / ERA_B
-    dt2_jd = (era_deg/360.0) / ERA_B
+    era_deg = np.atleast_1d(era_deg_in)
+
+    frac_rot = era_deg / mp.mpf(360.0)
+
+    dt_jd_mp = (nrot + frac_rot - ERA_A) / ERA_B
+
+    dt1_jd = np.empty_like(era_deg)
+    dt2_jd = np.empty_like(era_deg)
+    for i in range(len(dt_jd_mp.flat)):
+        dt1_jd.flat[i] = float(mp.floor(dt_jd_mp.flat[i]))
+        dt2_jd.flat[i] = float(dt_jd_mp[i] - dt1_jd.flat[i])
+
+    if era_deg_in.ndim == 0:
+        dt1_jd = float(dt1_jd[0])
+        dt2_jd = float(dt2_jd[0])
 
     dt = TimeDelta(dt1_jd, dt2_jd, format='jd', scale='ut1')
 
     return calc_ut1_ns_from_dt(dt)
 
 
-def get_t_inst_ns_from_ut1_ns(ut1_ns, tel_config, use_eop):
+def get_t_inst_ns_at_ut1_ns(ut1_ns, tel_config, use_eop):
 
     t0 = calc_astropy_time_from_unix_ns(tel_config['frame0_nano'])
 
-    t = Time(2_451_545, format='jd', scale='ut1') + TimeDelta(0 * units.ns, ut1_ns * units.ns, scale='ut1')
-
+    t = calc_astropy_time_from_ut1_ns(ut1_ns) 
     if not use_eop:
         t.delta_ut1_utc = 0.0
 
-    dt = t.utc - t0
+    dt = t.tai - t0.tai
 
     dt_ns = calc_tai_ns_from_dt(dt)
 
@@ -173,7 +214,7 @@ def get_t_inst_ns_at_ERA_nrot(era_deg, nrot, tel_config, use_eop):
 
     ut1_ns = get_ut1_ns_at_ERA_nrot(era_deg, nrot)
 
-    return get_t_inst_ns_from_ut1_ns(ut1_ns, tel_config, use_eop)
+    return get_t_inst_ns_at_ut1_ns(ut1_ns, tel_config, use_eop)
 
 
 def get_local_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
@@ -312,8 +353,43 @@ def calc_astropy_time_from_inst_ns(t_inst_ns, time0_ns):
     # First calculate t0, a good UNIX time
     t0 = calc_astropy_time_from_unix_ns(time0_ns)
 
+    split_scale_ns = 100_000_000_000_000  # roughly 1 day
+
+    dt_ns = t_inst_ns - time0_ns
+
+    # Split dt into large and small parts to help astropy with precision.
+    dt1_ns = split_scale_ns * (dt_ns // split_scale_ns)
+    dt2_ns = dt_ns - dt1_ns
+
     # Now add the difference from t0 in TAI nanoseconds
-    dt = TimeDelta(0 * units.ns, val2=(t_inst_ns - time0_ns) * units.ns, scale="tai")
+    dt = TimeDelta(dt1_ns * units.ns, dt2_ns * units.ns, scale="tai")
+
+    return t0 + dt
+
+
+def calc_astropy_time_from_ut1_ns(ut1_ns):
+    r"""
+    Constuct an astropy Time object corresponding to an Instrument time in nanoseconds. 
+    Parameters
+    ----------
+    t_inst_ns : int
+        An Instrument time in nanoseconds.
+
+    Returns
+    -------
+    Astropy Time object
+        A Time object representing the given time.
+    """
+
+    # First calculate t0, the UT1 0 time in ERA definition.
+    t0 = Time(2_451_545, format='jd', scale='ut1')
+    
+    split_scale_ns = 100_000_000_000_000  # roughly 1 day
+    ut1_1_ns = split_scale_ns * (ut1_ns // split_scale_ns)
+    ut1_2_ns = ut1_ns - ut1_1_ns
+
+    # Now add the difference from t0 in TAI nanoseconds
+    dt = TimeDelta(ut1_1_ns * units.ns, ut1_2_ns * units.ns, scale="ut1")
 
     return t0 + dt
 
