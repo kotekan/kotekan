@@ -1,3 +1,5 @@
+// 8-bit FRB beam quantizer for CHIME, using the float16 FRB beamformer and CHIME's sending-to-Bonsai network format
+
 #include "DataType.hpp"            // for float16_t
 #include "NDArray.hpp"             // for NDArray
 #include "NDArrayBuffer.hpp"       // for NDArrayBuffer
@@ -128,41 +130,16 @@ cudaEvent_t cudaQuantize8::execute(cudaPipelineState&, const std::vector<cudaEve
 
     const auto& input_ndarray = input_buffer.get_ndarray();
     const float16_t* const input = input_ndarray.data();
-    const int input_size1 = input_ndarray.extent(3); // time
-    const int input_size2 = input_ndarray.extent(2); // freq
-    const int input_size3 = input_ndarray.extent(1); // beam
     assert(input_ndarray.extent(0) == 1);
-    assert(input_ndarray.stride(3) == 1);              // time
-    const int input_stride2 = input_ndarray.stride(2); // freq
-    const int input_stride3 = input_ndarray.stride(1); // beam
 
     auto& offsetscale_ndarray = offsetscale_buffer.get_ndarray();
     float16_t* const outputf = offsetscale_ndarray.data();
-    const int outputf_size1 = offsetscale_ndarray.extent(3); // time
-    const int outputf_size2 = offsetscale_ndarray.extent(2); // freq
-    const int outputf_size3 = offsetscale_ndarray.extent(1); // beam
-    assert(offsetscale_ndarray.extent(0) == 1);
-    assert(offsetscale_ndarray.stride(3) == 1);                // time
-    const int outputf_stride2 = offsetscale_ndarray.stride(2); // freq
-    const int outputf_stride3 = offsetscale_ndarray.stride(1); // beam
 
     auto& beam_ndarray = beam_buffer.get_ndarray();
     std::uint8_t* const outputi = beam_ndarray.data();
-    const int outputi_size1 = beam_ndarray.extent(3); // time
-    const int outputi_size2 = beam_ndarray.extent(2); // freq
-    const int outputi_size3 = beam_ndarray.extent(1); // beam
-    assert(beam_ndarray.extent(0) == 1);
-    assert(beam_ndarray.stride(3) == 1);                // time
-    const int outputi_stride2 = beam_ndarray.stride(2); // freq
-    const int outputi_stride3 = beam_ndarray.stride(1); // beam
 
     cudaStream_t stream = device.getStream(cuda_stream_id);
-
-    gpu_quantize8(input, outputf, outputi,                                                       //
-                  input_size1, input_size2, input_size3, input_stride2, input_stride3,           //
-                  outputf_size1, outputf_size2, outputf_size3, outputf_stride2, outputf_stride3, //
-                  outputi_size1, outputi_size2, outputi_size3, outputi_stride2, outputi_stride3, //
-                  stream);
+    gpu_quantize8(input, outputf, outputi, stream);
     CHECK_CUDA_ERROR(cudaGetLastError());
 
     return record_end_event();

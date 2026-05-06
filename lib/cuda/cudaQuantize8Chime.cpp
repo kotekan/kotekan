@@ -1,3 +1,5 @@
+// 8-bit FRB beam quantizer for CHIME, using the chromatic CHIME float32 FRB beamformer and CHIME's sending-to-Bonsai network format
+
 #include "DataType.hpp"            // for float16_t
 #include "NDArray.hpp"             // for NDArray
 #include "NDArrayBuffer.hpp"       // for NDArrayBuffer
@@ -50,7 +52,7 @@ private:
 
     const NDArrayBuffer<float, 4> input_buffer;
     NDArrayBuffer<std::uint8_t, 8> beam_buffer;
-    NDArrayBuffer<float16_t, 7> offsetscale_buffer;
+    NDArrayBuffer<float, 7> offsetscale_buffer;
 };
 
 REGISTER_CUDA_COMMAND(cudaQuantize8Chime);
@@ -87,8 +89,8 @@ cudaQuantize8Chime::cudaQuantize8Chime(Config& config, const std::string& unique
         const std::array<std::ptrdiff_t, 7> offsetscale_lengths{1, _num_beams, _num_frequencies, 2};
         const std::array<std::string, 7> offsetscale_dimnames{
             "Ttilde256", "R8", "Fbar64", "Ttilde16_lo16", "Rlo8", "Fbar16_lo4", "offset/scale"};
-        return NDArrayBuffer<float16_t, 7>(_gpu_mem_beams_offsetscale, "I3_offsetscale",
-                                           offsetscale_lengths, offsetscale_dimnames, *this);
+        return NDArrayBuffer<float, 7>(_gpu_mem_beams_offsetscale, "I3_offsetscale",
+                                       offsetscale_lengths, offsetscale_dimnames, *this);
     }())
 //
 {
@@ -120,7 +122,7 @@ cudaEvent_t cudaQuantize8Chime::execute(cudaPipelineState&, const std::vector<cu
     assert(input_ndarray.extent(0) == 1);
 
     auto& offsetscale_ndarray = offsetscale_buffer.get_ndarray();
-    float16_t* const outputf = offsetscale_ndarray.data();
+    float* const outputf = offsetscale_ndarray.data();
 
     auto& beam_ndarray = beam_buffer.get_ndarray();
     std::uint8_t* const outputi = beam_ndarray.data();

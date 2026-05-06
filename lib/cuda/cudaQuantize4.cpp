@@ -1,3 +1,5 @@
+// 4-bit FRB beam quantizer for CHORD
+
 #include "DataType.hpp"            // for int4x2_t, float16_t
 #include "NDArray.hpp"             // for NDArray
 #include "NDArrayBuffer.hpp"       // for NDArrayBuffer

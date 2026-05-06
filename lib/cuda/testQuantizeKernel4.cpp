@@ -1,3 +1,5 @@
+// Test 4-bit FRB beam quantizer for CHORD
+
 #include "Config.hpp"
 #include "DataType.hpp"
 #include "Stage.hpp"
