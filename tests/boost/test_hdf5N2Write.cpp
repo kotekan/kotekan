@@ -90,7 +90,7 @@ static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_in
     BOOST_REQUIRE(meta);
     meta->freq_id = get_abs_freq_id(f_index);
     // Keep ERAL within the valid bounds enforced by add_frame bounds checks
-    meta->bin_end_ERA_deg = 7.89 + double(t_index);
+    meta->bin_end_ERA_deg = -1.0; // 7.89 + double(t_index);
     meta->bin_start_ERAL = 1.23 + double(t_index);
     meta->bin_end_ERAL = 4.56 + double(t_index);
 }
@@ -457,6 +457,8 @@ BOOST_TEST_GLOBAL_FIXTURE(TelescopeFixture);
 
 // Test 1: Full-block flush with transpose validation
 BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
+
+    kotekan_test_logging::configure();
 
     const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer";
