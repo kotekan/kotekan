@@ -772,12 +772,12 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     if (bin_start_ERA_deg[t_index] >= 360)
         add_failure(
             fmt::format("bin_start_ERA_deg[t={}] >= 360: {}", t_index, bin_start_ERA_deg[t_index]));
-    if (bin_end_ERA_deg[t_index] < 0)
+    if (bin_end_ERA_deg[t_index] <= 0)
         add_failure(
-            fmt::format("bin_end_ERA_deg[t={}] < 0: {}", t_index, bin_end_ERA_deg[t_index]));
-    if (bin_end_ERA_deg[t_index] >= 360)
+            fmt::format("bin_end_ERA_deg[t={}] <= 0: {}", t_index, bin_end_ERA_deg[t_index]));
+    if (bin_end_ERA_deg[t_index] > 360)
         add_failure(
-            fmt::format("bin_end_ERA_deg[t={}] >= 360: {}", t_index, bin_end_ERA_deg[t_index]));
+            fmt::format("bin_end_ERA_deg[t={}] > 360: {}", t_index, bin_end_ERA_deg[t_index]));
     // TODO: Don't check these yet, but do when we have ERAL values
     // (bin_start_ERAL[t_index] < 0)
     // (bin_start_ERAL[t_index] > 360)

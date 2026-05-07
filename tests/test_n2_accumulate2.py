@@ -46,8 +46,8 @@ ERA_TOL = 2e-12 * NS_TOL  # There are ~2e-12 deg of Earth Rotation per ns
 ERAL_TOL = (
     5e-9  # Kotekan ignores the 47 uas per century TIO drift = 1.3e-8 deg per century
 )
-DUT1_TOL = 1e-14  # Just a big bigger than roundoff error
-PM_TOL = 1e-14  # Just a big bigger than roundoff error
+DUT1_TOL = 1e-14  # Just a bit bigger than roundoff error
+PM_TOL = 1e-14  # Just a bit bigger than roundoff error
 
 
 @pytest.fixture(
@@ -139,15 +139,16 @@ def setup(request, accum_setup):
 
     config["num_frames"] = request.param["num_frames"]
 
-    current_time = tel.get_unix_time_ns("now")
+    # start frames ~0.5 s before ERA rollover.
+    boot_time = tel.get_unix_time_ns("2026-01-01T17:15:50.5", "utc")
 
-    request.param["tel"]["frame0_nano"] = current_time
-    config["gps_time"] = {"frame0_nano": current_time}
+    request.param["tel"]["frame0_nano"] = boot_time
+    config["gps_time"] = {"frame0_nano": boot_time}
 
     if request.param["set_eop"]:
         config["eop"] = {
             "kotekan_update_endpoint": "json",
-            "earth_orientation_parameter_table": tel.get_EOP_table(current_time, 3),
+            "earth_orientation_parameter_table": tel.get_EOP_table(boot_time, 3),
         }
         request.param["tel"]["eop_updatable_config"] = "/eop"
 
@@ -650,7 +651,7 @@ def accum_list(setup, accum_setup):
             dera = 360.0 / accum_setup["num_bins_per_rotation"]
             era_start = (accum["bin_idx"] % accum_setup["num_bins_per_rotation"]) * dera
             era_end = (
-                (accum["bin_idx"] + 1) % accum_setup["num_bins_per_rotation"]
+                (accum["bin_idx"] % accum_setup["num_bins_per_rotation"] + 1)
             ) * dera
 
             t_bin_start = tel.get_t_inst_ns_at_ERA_nrot(
@@ -727,6 +728,7 @@ def expected_accum(
     num_accum = len(accum_list)
     num_n2_prod = (num_el * (num_el + 1)) // 2
     blocksize = 16
+    num_lin_blocks = num_el // blocksize
 
     # indices to correlation array for each N2 entry
     # correlation format: blocked lower triangular
@@ -753,6 +755,18 @@ def expected_accum(
             corr_idx_i[idx] = sbi
             corr_idx_j[idx] = sbj
             idx += 1
+
+    el_i_corr = np.empty(corr_data[0].data.shape[2:5], dtype=int)
+    el_j_corr = np.empty(corr_data[0].data.shape[2:5], dtype=int)
+
+    for bi in range(num_lin_blocks):
+        for bj in range(bi+1):
+            b = (bi * (bi + 1)) // 2 + bj
+            el_i = np.arange(blocksize*bi, blocksize*(bi+1))
+            el_j = np.arange(blocksize*bj, blocksize*(bj+1))
+            el_i_corr[b, :, :] = el_i[:, None]
+            el_j_corr[b, :, :] = el_j[None, :]
+
 
     # accumulation arrays
     corr_shape = (num_accum, num_freq) + corr_data[0].data.shape[2:]

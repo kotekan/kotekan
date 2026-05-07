@@ -52,12 +52,12 @@ def get_freq_MHz(freq_id, tel_config):
     return freq0_MHz + freq_id * df_MHz
 
 
-def get_unix_time_ns(time_str):
+def get_unix_time_ns(time_str, scale="utc"):
 
     if time_str == "now":
         t = Time.now()
     else:
-        t = Time(time_str, scale="utc")
+        t = Time(time_str, scale=scale)
 
     return int(t.unix * 1e9)
 
