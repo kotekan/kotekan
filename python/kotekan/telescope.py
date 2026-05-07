@@ -6,14 +6,17 @@ import astropy.utils.iers
 from astropy.time import Time, TimeDelta
 from mpmath import mp
 
+"""
+Telescope and time utilities for Kotekan. This module provides similar implementations of Telescope and timeUtil appropriate for testing.
+"""
+
+# Set precision for arbitrary-precision floats.
 mp.dps = 40
 
 # Eq 5.14 of IERS Conventions (2010) Ch. 5. defines these values
 # for converting from UT1 to ERA
 ERA_A = mp.mpf(779_057_273_264_000_000) / mp.mpf(1e18)
 ERA_B = mp.mpf(1_002_737_811_911_354_480) / mp.mpf(1e18)
-
-mp_floor = np.frompyfunc(mp.floor, nin=1, nout=1)
 
 
 class EOP(ctypes.Structure):
@@ -165,11 +168,14 @@ def get_nrot_at_ut1_ns(ut1_ns):
 
 def get_nrot_at_t(t):
 
+    # ERA_A and ERA_B are greater precision than can fit in a float64,
+    # so we do this calculation with large precision floats, switching to a
+    # normal integer at the end.
+
+    # Kotekan measures UT1 from 2 451 545 JD UT1, the same point
+    # as in the definition of ERA
     dt_jd = (t.ut1.jd1 - mp.mpf(2451545.0)) + t.ut1.jd2
 
-    # Eq 5.14 of IERS Conventions (2010) Ch. 5. defines these values
-    # for ERA you take this quanity mod 1.0 (for fractions of a revolution)
-    # for number of rotations take the floor
     if np.ndim(t) == 0:
         return int(mp.floor(ERA_A + dt_jd * ERA_B))
 
@@ -182,12 +188,19 @@ def get_nrot_at_t(t):
 
 def get_ut1_ns_at_ERA_nrot(era_deg_in, nrot):
 
+    # ERA_A and ERA_B are greater precision than can fit in a float64,
+    # so we do this calculation with large precision floats,
+
     era_deg = np.atleast_1d(era_deg_in)
 
     frac_rot = era_deg / mp.mpf(360.0)
 
+    # Invert the definition of ERA to get the elapsed UT1 JD since 2 451 545.
     dt_jd_mp = (nrot + frac_rot - ERA_A) / ERA_B
 
+    # We need to turn this into an astropy time, using both parts to maintain precision.
+    # the larger part (jd1) gets the integer number of JD, and the smaller part (jd2) gets
+    # the remainder.
     dt1_jd = np.empty_like(era_deg)
     dt2_jd = np.empty_like(era_deg)
     for i in range(len(dt_jd_mp.flat)):
@@ -198,6 +211,7 @@ def get_ut1_ns_at_ERA_nrot(era_deg_in, nrot):
         dt1_jd = float(dt1_jd[0])
         dt2_jd = float(dt2_jd[0])
 
+    # Now we can make the astropy time delta, and get the nanosecond count.
     dt = TimeDelta(dt1_jd, dt2_jd, format="jd", scale="ut1")
 
     return calc_ut1_ns_from_dt(dt)

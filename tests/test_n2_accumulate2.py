@@ -69,12 +69,25 @@ PM_TOL = 1e-14  # Just a bit bigger than roundoff error
         {
             "bin_in_ERA": True,
             "num_bins_per_rotation": 3 * 86400,
-            "variance_mode": "CHIMEv1",
+            "variance_mode": "EvenOddPosDef",
             "do_fringestop": False,
         },
     ],
 )
 def accum_setup(request):
+    """
+    Provide the configuration parameters for the N2Accumulate stage for each setup.
+
+    Parameters
+    ----------
+    request : pytest magic
+        Provides the parameterized values.
+
+    Returns
+    -------
+    tuple
+        The base config, as well as parameters to generate input PL mask data
+    """
     return request.param
 
 
@@ -125,10 +138,14 @@ def setup(request, accum_setup):
     request : pytest magic
         Provides the parameterized values.
 
+    accum_setup: fixture
+        Accumulate config parameters. Added to the running config later, needed here
+        because certain combinations of base config + accumulate should fail.
+
     Returns
     -------
-    tuple
-        The base config, as well as parameters to generate input PL mask data
+    dict
+        The base config, as well as parameters to generate input data.
     """
     config = request.param["config"]
     request.param["config"]["num_elements"] = (
@@ -175,6 +192,38 @@ def make_zeroed_chord_buffer(
     time_downsampling=None,
     extra_meta=None,
 ):
+    """
+    Produce ChordBuffer objects containing 0's in sequence.
+    
+    Parameters
+    ----------
+    name : String
+        Quantity name
+    dtype : numpy dtype
+        dtype of Numpy data array for this buffer (e.g. np.uint8)
+    typename : String
+        Name of kotekan type in buffer (e.g. int4x8_swapped_withoffset)
+    shape : [int, ...]
+        Shape of data array
+    dim_names : [String, ...]
+        Names of each data axis
+    seq0 : int
+        FPGA sequence number for start of first buffer
+    dseq : int
+        number of FPGA sequence numbers covered by each buffer
+    num_frames : int
+        number of buffers to produce
+    freq_ids : [int, ...], optional
+        frequency ids, for `coarse_freq`
+    time_downsampling: int, optional
+        time_downsampling_fpga value
+    extra_meta : dict, optional
+        further metadata values to add to buffers
+
+    Returns
+    -------
+    List of ChordBuffer objects
+    """
 
     bufs = []
 
@@ -202,16 +251,16 @@ def make_zeroed_chord_buffer(
 @pytest.fixture(scope="module")
 def corr_data(setup):
     """
-    Generate a list of input PLmask frames in ChordBuffers
+    Generate a list of n2k_correlations in ChordBuffers
 
     Parameters
     ----------
     setup : fixture
-        Includes the base config as well as PL mask generation parameters
+        Includes the base config as well as generation parameters
 
     Returns
     -------
-    List of ChordBuffers each containing a PL mask frame.
+    List of ChordBuffers each containing an n2k_correlation frame.
     """
 
     config = setup["config"]
@@ -262,16 +311,16 @@ def corr_data(setup):
 @pytest.fixture(scope="module")
 def count_data(setup):
     """
-    Generate a list of input PLmask frames in ChordBuffers
+    Generate a list of n2k_counts frames in ChordBuffers
 
     Parameters
     ----------
     setup : fixture
-        Includes the base config as well as PL mask generation parameters
+        Includes the base config as well as generation parameters
 
     Returns
     -------
-    List of ChordBuffers each containing a PL mask frame.
+    List of ChordBuffers each containing n2k_counts.
     """
 
     config = setup["config"]
@@ -323,16 +372,19 @@ def count_data(setup):
 @pytest.fixture(scope="module")
 def rficount_data(setup, count_data):
     """
-    Generate a list of input PLmask frames in ChordBuffers
+    Generate a list of input RFImask_counts frames in ChordBuffers
 
     Parameters
     ----------
     setup : fixture
-        Includes the base config as well as PL mask generation parameters
+        Includes the base config as well as generation parameters
+    count_data : List of n2k_counts ChordBuffers
+        number of good counts in a frame, used to optionally normalize the rficounts
+        to ensure consistent data.
 
     Returns
     -------
-    List of ChordBuffers each containing a PL mask frame.
+    List of ChordBuffers each containing an RFImask_count frame.
     """
 
     config = setup["config"]
@@ -376,16 +428,19 @@ def rficount_data(setup, count_data):
 @pytest.fixture(scope="module")
 def plcount_data(setup, count_data):
     """
-    Generate a list of input PLmask frames in ChordBuffers
+    Generate a list of pl_lost_counts_scalar frames in ChordBuffers
 
     Parameters
     ----------
     setup : fixture
-        Includes the base config as well as PL mask generation parameters
+        Includes the base config as well as generation parameters
+    count_data : List of n2k_counts ChordBuffers
+        number of good counts in a frame, used to optionally normalize the plcounts
+        to ensure consistent data.
 
     Returns
     -------
-    List of ChordBuffers each containing a PL mask frame.
+    List of ChordBuffers each containing a pl_lost_counts_scalar frame.
     """
 
     config = setup["config"]
@@ -429,16 +484,16 @@ def plcount_data(setup, count_data):
 @pytest.fixture(scope="module")
 def rfiframemask_data(setup):
     """
-    Generate a list of input PLmask frames in ChordBuffers
+    Generate a list of input RFIFrameMask frames in ChordBuffers
 
     Parameters
     ----------
     setup : fixture
-        Includes the base config as well as PL mask generation parameters
+        Includes the base config as well as generation parameters
 
     Returns
     -------
-    List of ChordBuffers each containing a PL mask frame.
+    List of ChordBuffers each containing an RFIFrameMask frame.
     """
 
     config = setup["config"]
@@ -496,7 +551,7 @@ def accum_data(
     accum_list,
 ):
     """
-    Run the CountLostPLSamplesScalar stage on the given input and yield the output buffers.
+    Run the N2Accumualte stage on the given input and yield the output buffers.
 
     Parameters
     ----------
@@ -504,12 +559,24 @@ def accum_data(
         Generates temporary directories
     setup : fixture
         Includes the base config
-    plmask_data : fixture
-        A List of ChordBuffers for input
+    accum_setup : fixture
+        Accumulation config
+    corr_data : fixture
+        input n2k_correlation
+    count_data : fixture
+        input n2k_counts
+    rficount_data : fixture
+        input RFIMask_count
+    plcount_data : fixture
+        input pl_lost_counts_scalar
+    rfiframemask_data : fixture
+        input RFIFrameMask
+    accum_list : fixture
+        List of expected output accumulation frame metadata. Used only to set the number of expected output frames.
 
     Yields
     ------
-    List of ChordBuffers each containing an PL Lost Counts frame generated by CountLostPLSamples.
+    List of N2Buffers, the output of N2Accumulate
     """
 
     config = setup["config"]
@@ -558,51 +625,109 @@ def accum_data(
         expect_failure=setup["fail"],
     )
 
-    print(config)
-    print(accum_config)
-
     test.run()
 
     yield dump_buffer.load()
 
 
 def get_era_nrot_idx_of_seq(seq, tel_config, use_eop, num_bins_per_rotation):
+    """
+    Compute the bin ERA-based bin index of the bin containing the given sequence number
+
+    Parameters
+    ----------
+    seq : int
+        Sequence number
+    tel_config : dict
+        The telescope config, including 'frame0_nano'
+    use_eop : bool
+        Whether to use generated EOP (esp. dut1)
+    num_bins_per_rotation : int
+        number of bins per full earth revolution
+
+    Returns
+    ------
+    int
+        The bin index.
+    """
+    # Get ERA and nrot for given sequence num
     t = tel.get_t_inst_ns(seq, tel_config)
     era = tel.get_ERA_at_t_inst_ns(t, tel_config, use_eop)
     nrot = tel.get_nrot_at_t_inst_ns(t, tel_config, use_eop)
 
+    # ERA part of the index (fractional rotationa)
     era_idx = np.floor((era / 360.0) * num_bins_per_rotation).astype(int)
+    # plus nrot part of the index (full rotations)
     era_nrot_idx = era_idx + nrot * num_bins_per_rotation
+
     return era_nrot_idx
 
 
 @pytest.fixture(scope="module")
 def accum_list(setup, accum_setup):
+    """
+    Produce the list of expected accumulations. This does not perform the accumulation,
+    but it computes the expected bin edges, frames in each bin, and related metadata
 
+    Parameters
+    ----------
+    setup : fixture
+        The base config and other setup variables
+    accum_setup : fixture
+        The accumulation config
+
+    Returns
+    ------
+    List of dicts
+        List of `accum` dicts containing:
+        - `bin_idx`: the bin index for this accum
+        - `sub_idx`: array of ints, the index of each sub-integration included in this accum.
+        - `seq`: The sequence number of the first frame in this accum
+        - `seq_len`: Number of seqs covered by this accum
+        - `t_bin_cen`: int, instrument time at bin center
+        - as well as `bin_start_ERA_deg` and related metadata.
+
+
+    """
+
+    # Grab the config for convenience
     config = setup["config"]
 
-    seq0 = config["first_frame_index"] * config["samples_per_data_set"]
+    # Produce array of all generated subintegrations.
     num_subs_per_frame = (
         config["samples_per_data_set"] // config["sub_integration_ntime"]
     )
-
     num_subs = num_subs_per_frame * config["num_frames"]
     subs = np.arange(num_subs)
+
+    # Produce array of the starting sequence number for each subintegration
+    seq0 = config["first_frame_index"] * config["samples_per_data_set"]
     seqs_per_sub = config["sub_integration_ntime"]
     seqs = seq0 + seqs_per_sub * subs
 
+    # Add one subintegration before and after the generated data. This will make it easier
+    # to determine where the accumulations start and end.
     seqs_ext = np.concatenate(
         ([seqs[0] - seqs_per_sub], seqs, [seqs[-1] + seqs_per_sub])
     )
 
+    # For each subintegration, compute the accumulation bin it would appear in,
+    # this happens differently for the different bin types.
     if accum_setup["bin_in_ERA"]:
-        seq_pair_cen = np.empty_like(seqs_ext)
-
+        # We bin in *pairs* of subintegrations, always starting with an even number: [01], [23], ...
+        # work out which subintegrations are even.
         sub_idx = seqs_ext // seqs_per_sub
         even = sub_idx % 2 == 0
+
+        # For each subintegration, get the sequence number of the center of its pair.
+        # For even subs, it is the start of the next (odd) sub
+        # For odd subs, it is its own start.
+        seq_pair_cen = np.empty_like(seqs_ext)
         seq_pair_cen[even] = seqs_ext[even] + seqs_per_sub
         seq_pair_cen[~even] = seqs_ext[~even]
 
+        # compute the bin index for each sub. using the center of the pair so pairs get put in
+        # the same bin.
         accum_sub_idx_ext = get_era_nrot_idx_of_seq(
             seq_pair_cen,
             setup["tel"],
@@ -610,26 +735,33 @@ def accum_list(setup, accum_setup):
             accum_setup["num_bins_per_rotation"],
         )
     else:
+        # much easier if we're binning in subintegrations directly.
         subs_per_accum = accum_setup["num_subintegrations_per_bin"]
         seq_per_accum = subs_per_accum * seqs_per_sub
-
+        # The bin index is just counting fixed-length accums from seq 0
         accum_sub_idx_ext = seqs_ext // seq_per_accum
 
-    accum_sub_idx = accum_sub_idx_ext[1:-1]
-
+    # Determine the first accum that *starts* during our coverage, and whether the last sub finishes an accum.  Easier with the `_ext` arrays
     idx_diff = np.diff(accum_sub_idx_ext)
     accum_edges = np.nonzero(idx_diff)[0]
     first_sub_in_accum = accum_edges[0]
     last_accum_full = accum_edges[-1] == num_subs
 
+    # Start and end done, strip off the extra beginning and end.
+    accum_sub_idx = accum_sub_idx_ext[1:-1]
+
+    # The list of actual accums hit by the input data.
     accum_bin_idx = np.unique(accum_sub_idx[first_sub_in_accum:])
 
+    # Start producing the list of accum data
     accums = []
 
     for idx in accum_bin_idx:
 
+        # mask for subs in this accum
         mask = accum_sub_idx == idx
 
+        # add the data for this accum.
         accums.append(
             {
                 "bin_idx": idx,
@@ -643,6 +775,7 @@ def accum_list(setup, accum_setup):
         accums = accums[:-1]
 
     for accum in accums:
+        # Add some bin timing and ERA metadata
         if accum_setup["bin_in_ERA"]:
 
             t_cen = tel.get_t_inst_ns(accum["seq"] + accum["seq_len"], setup["tel"])
@@ -699,6 +832,21 @@ def accum_list(setup, accum_setup):
 
 
 def safe_invert(x, dtype=float):
+    """
+    Return the inverse (1/x) of the input array, keeping 0's as 0.
+
+    Parameters
+    ----------
+    x : ndarray
+        Input
+    dtype : dtype
+        dtype of output
+
+    Returns
+    ------
+    ndarray, shape of x, dtype
+        1/x, unless x was 0
+    """
 
     mask = x != 0
     inv_x = np.zeros(x.shape, dtype=dtype)
@@ -718,6 +866,32 @@ def expected_accum(
     rfiframemask_data,
     accum_list,
 ):
+    """
+    Perform the expected accumulation. This is a re-implementation of N2Accumulate
+
+    Parameters
+    ----------
+    setup : fixture
+        Includes the base config
+    accum_setup : fixture
+        Accumulation config
+    corr_data : fixture
+        input n2k_correlation
+    count_data : fixture
+        input n2k_counts
+    rficount_data : fixture
+        input RFIMask_count
+    plcount_data : fixture
+        input pl_lost_counts_scalar
+    rfiframemask_data : fixture
+        input RFIFrameMask
+    accum_list : fixture
+        List of expected output accumulation frame metadata. Used only to set the number of expected output frames.
+
+    Returns
+    ------
+    NDArrays containing accum data: vis, weights, valid counts, RFI counts, PL counts
+    """
 
     config = setup["config"]
 
@@ -755,18 +929,6 @@ def expected_accum(
             corr_idx_i[idx] = sbi
             corr_idx_j[idx] = sbj
             idx += 1
-
-    el_i_corr = np.empty(corr_data[0].data.shape[2:5], dtype=int)
-    el_j_corr = np.empty(corr_data[0].data.shape[2:5], dtype=int)
-
-    for bi in range(num_lin_blocks):
-        for bj in range(bi+1):
-            b = (bi * (bi + 1)) // 2 + bj
-            el_i = np.arange(blocksize*bi, blocksize*(bi+1))
-            el_j = np.arange(blocksize*bj, blocksize*(bj+1))
-            el_i_corr[b, :, :] = el_i[:, None]
-            el_j_corr[b, :, :] = el_j[None, :]
-
 
     # accumulation arrays
     corr_shape = (num_accum, num_freq) + corr_data[0].data.shape[2:]
