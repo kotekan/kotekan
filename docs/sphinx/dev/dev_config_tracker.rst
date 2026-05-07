@@ -4,14 +4,26 @@ ConfigTracker
 Overview
 --------
 ``ConfigTracker`` is a singleton service that records the *startup-time* configuration
-JSONs of all Kotekan instances participating in a pipeline. Each unique
-``(host, port)`` pair has exactly one configuration entry, keyed by a canonical
-hash of the JSON (with any blocks containing ``kotekan_update_endpoint`` pruned).
+JSONs of all Kotekan instances participating in a pipeline. The tracker keeps the
+node's own *local* config separate from configs received from upstream peers:
 
-The tracker exposes two REST endpoints:
+- The local config is identified by its JSON content alone (hash over the JSON,
+  no host:port). This avoids any dependence on which IP this node decides to
+  publish itself under, since a downstream peer may see this node from a
+  different address.
+- Each upstream entry is keyed by the ``(host, port)`` this node observed when
+  it dialed the peer, with the hash baking in that ``(host, port)`` so two
+  distinct peers with identical configs still produce distinct hashes.
+- Blocks containing ``kotekan_update_endpoint`` are pruned before hashing.
 
-- ``GET /config_tracker_configs`` — returns the stored configurations (optionally filtered by ``hash`` query arg).
-- ``GET /config_tracker_hashes`` — returns the map of config-hash → ``host:port``.
+The tracker exposes four REST endpoints:
+
+- ``GET /config_tracker_local`` — returns this node's local ``ConfigInfo``.
+- ``GET /config_tracker_local_hash`` — returns ``{"hash": "..."}`` for the local config.
+- ``GET /config_tracker_upstream_configs`` — returns the stored upstream configurations
+  (optionally filtered by ``hash`` query arg).
+- ``GET /config_tracker_upstream_hashes`` — returns the map of upstream config-hash →
+  ``{host, port}``.
 
 Why this exists
 ^^^^^^^^^^^^^^^
@@ -35,9 +47,11 @@ since the last transmission.
 
 Prometheus metrics
 ------------------
-- ``kotekan_config_tracker_configs_total`` — current number of stored configs.
-- ``kotekan_config_tracker_config_present{host,port,hash}`` — labels identify each stored
+- ``kotekan_config_tracker_configs_total`` — current number of stored configs (local + upstream).
+- ``kotekan_config_tracker_config_present{host,port,hash}`` — labels identify each stored upstream
   ``host:port`` + hash; value is ``1`` while present.
+- ``kotekan_config_tracker_local_config_present{hash}`` — labels identify the local config's hash;
+  value is ``1`` while present.
 - ``kotekan_config_tracker_hash_changes_total`` and
   ``kotekan_config_tracker_last_change_timestamp_seconds`` — change counter and last-change time
   when the combined tracker hash updates or the tracker is reset.
@@ -48,8 +62,8 @@ Operational Flow
 ----------------
 
 1. **Startup registration**
-   The local node registers its config with the tracker as a part of kotekan startup, and 
-   the tracker exposes the REST endpoints.
+   The local node sets its config via ``setLocalConfig`` as part of kotekan startup, and the
+   tracker exposes the REST endpoints.
 
 2. **Sending data**
    A sender (using ``bufferSend``) compares its current tracker-combined-hash to the one last
@@ -58,9 +72,16 @@ Operational Flow
 
 3. **Receiving data**
    Upon seeing ``config_tracker_update = true``, the receiver calls
-   ``getUpstreamConfigs(client_ip, client_port)`` to retrieve any missing configs.
+   ``getUpstreamConfigs(client_ip, client_port)``. The two-step protocol then:
+
+   1. Fetches ``/config_tracker_local`` from the peer, re-keys that ``ConfigInfo`` under
+      the ``(client_ip, client_port)`` actually dialed, and stores it as an upstream entry.
+      The dialed address is the validated identity from this node's perspective, regardless
+      of how the peer self-named.
+   2. Fetches ``/config_tracker_upstream_hashes`` and pulls any missing entries via
+      ``/config_tracker_upstream_configs?hash=...``, validating each against its advertised hash.
+
    (See the full `doxygen docs <html/>`_ or code for implementation details.)
-   The receiver blocks further processing until required configs are present locally.
 
 Threading & Safety
 ------------------

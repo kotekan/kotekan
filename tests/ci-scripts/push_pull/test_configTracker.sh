@@ -44,14 +44,21 @@ CONFIG_OUT_DIR="${KOTEKAN_BUILD_DIR}/config_writes"
 rm -rf "${CONFIG_OUT_DIR}"
 mkdir -p "${CONFIG_OUT_DIR}"
 
-# Run two instances of kotekan, keep track of the process IDs to kill them later.
+# Run three instances of kotekan in an A -> B -> C chain. This exercises both
+# steps of getUpstreamConfigs on instance 3:
+#   - step 1: fetches B's local config via /config_tracker_local
+#   - step 2: discovers and fetches A's config via B's upstream-hashes index
 "${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_1.yaml" &
 KOTEKAN_PID_1=$!
 "${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_2.yaml" -b 127.0.0.1:12748 &
 KOTEKAN_PID_2=$!
+"${KOTEKAN_EXECUTABLE}" -c "${SCRIPT_DIR}/test_configTracker_3.yaml" -b 127.0.0.1:12848 &
+KOTEKAN_PID_3=$!
 
-# Allow some time for kotekan to start and exchange tracker info, then kill the processes.
-sleep 2
+# Allow some time for kotekan to start and the chain to converge (frames must
+# flow A -> B and trigger B -> A config fetch, then frames B -> C and trigger
+# C -> B config fetch, including the upstream-by-hash step).
+sleep 3
 
 # Kill kotekan processes, make sure they exit cleanly.
 kill $KOTEKAN_PID_1
@@ -60,6 +67,9 @@ EXIT_STATUS_1=$?
 kill $KOTEKAN_PID_2
 wait $KOTEKAN_PID_2
 EXIT_STATUS_2=$?
+kill $KOTEKAN_PID_3
+wait $KOTEKAN_PID_3
+EXIT_STATUS_3=$?
 
 sleep 1 # Wait a moment to ensure output is flushed
 
@@ -68,15 +78,27 @@ ERROR=0
 # Print exit statuses
 echo "kotekan instance 1 exit status: $EXIT_STATUS_1"
 echo "kotekan instance 2 exit status: $EXIT_STATUS_2"
-# Exit with error if either instance did not exit cleanly
-if [ $EXIT_STATUS_1 -ne 0 ] || [ $EXIT_STATUS_2 -ne 0 ]; then
-    echo "One or both kotekan instances did not exit cleanly!"
+echo "kotekan instance 3 exit status: $EXIT_STATUS_3"
+# Exit with error if any instance did not exit cleanly
+if [ $EXIT_STATUS_1 -ne 0 ] || [ $EXIT_STATUS_2 -ne 0 ] || [ $EXIT_STATUS_3 -ne 0 ]; then
+    echo "One or more kotekan instances did not exit cleanly!"
     ERROR=1
 fi
 
-# Verify that the config writer produced exactly two JSON files
-if [ "$(ls -1 "${CONFIG_OUT_DIR}"/*.json 2>/dev/null | wc -l)" -ne 2 ]; then
-    echo "Expected 2 JSON files in ${CONFIG_OUT_DIR}, found $(ls -1 "${CONFIG_OUT_DIR}"/*.json 2>/dev/null | wc -l)"
+# Verify that the config writer (on instance 3) produced exactly three JSON
+# files:
+#   local.json              -- instance 3's own (local) config; identity-by-content
+#   127.0.0.1_12748.json    -- B's local config, fetched by C's bufferRecv via
+#                              /config_tracker_local and re-keyed under
+#                              (client_ip, upstream_rest_port) = (127.0.0.1, 12748)
+#                              (step 1)
+#   127.0.0.1_12048.json    -- A's config, discovered via B's upstream-hashes
+#                              index and fetched as
+#                              /config_tracker_upstream_configs?hash=...
+#                              (step 2)
+if [ "$(ls -1 "${CONFIG_OUT_DIR}"/*.json 2>/dev/null | wc -l)" -ne 3 ]; then
+    echo "Expected 3 JSON files in ${CONFIG_OUT_DIR}, found $(ls -1 "${CONFIG_OUT_DIR}"/*.json 2>/dev/null | wc -l)"
+    ls -1 "${CONFIG_OUT_DIR}"/*.json 2>/dev/null
     ERROR=1
 fi
 
@@ -89,33 +111,53 @@ for file in "${CONFIG_OUT_DIR}"/*.json; do
     sed -i '/"kotekan_cmake_options":/d' "$file"
 done
 
-# We expect the modified 127.0.0.1_12048.json to exist and have the correct md5sum
-EXPECTED_HASH1="b4b5beb0768e88ed50f49bbbe0a2526d"
-HASH1=$(md5sum "${CONFIG_OUT_DIR}/127.0.0.1_12048.json" | awk '{print $1}')
-if [ "$HASH1" != "$EXPECTED_HASH1" ]; then
-    echo "MD5 checksum for ${CONFIG_OUT_DIR}/127.0.0.1_12048.json does not match expected value!"
-    echo "  Expected $EXPECTED_HASH1, got ${HASH1} instead."
-    echo "File contents:"
-    echo "--------------"
-    cat "${CONFIG_OUT_DIR}/127.0.0.1_12048.json"
-    echo ""
-    echo "--------------"
-    echo ""
+# Compare files against expected md5 sums.
+#
+# NOTE: these literals must be regenerated whenever the canonical
+# ConfigTracker JSON format or hashing changes. After the local/upstream
+# split, the on-disk JSONs include a `json_hash` field whose value depends on
+# how the entry is keyed (local: hash over JSON only; upstream: hash over
+# host:port|JSON), so the file md5 changes when that protocol changes. On
+# mismatch the script prints the actual hash and the (pruned) file contents
+# so the literal can be updated in one shot.
+check_file_hash() {
+    local file="$1"
+    local expected="$2"
+    if [ ! -f "$file" ]; then
+        echo "Expected file not found: $file"
+        return 1
+    fi
+    local actual
+    actual=$(md5sum "$file" | awk '{print $1}')
+    if [ "$actual" != "$expected" ]; then
+        echo "MD5 checksum for $file does not match expected value!"
+        echo "  Expected $expected, got ${actual} instead."
+        echo "File contents:"
+        echo "--------------"
+        cat "$file"
+        echo ""
+        echo "--------------"
+        return 1
+    fi
+    return 0
+}
+
+# Instance 3's own (local) config
+EXPECTED_LOCAL_HASH="92399a1da54d2be2ac47def623904540"
+if ! check_file_hash "${CONFIG_OUT_DIR}/local.json" "$EXPECTED_LOCAL_HASH"; then
     ERROR=1
 fi
 
-# We expect the modified 127.0.0.1_12748.json to exist and have a md5sum
-EXPECTED_HASH2="63173271620d8a25531ccd971f52c24a"
-HASH2=$(md5sum "${CONFIG_OUT_DIR}/127.0.0.1_12748.json" | awk '{print $1}')
-if [ "$HASH2" != "$EXPECTED_HASH2" ]; then
-    echo "MD5 checksum for ${CONFIG_OUT_DIR}/127.0.0.1_12748.json does not match expected value!"
-    echo "  Expected $EXPECTED_HASH2, got ${HASH2} instead."
-    echo "File contents:"
-    echo "--------------"
-    cat "${CONFIG_OUT_DIR}/127.0.0.1_12748.json"
-    echo ""
-    echo "--------------"
-    echo ""
+# B's local config as seen by C (step 1, re-keyed under 127.0.0.1:12748)
+EXPECTED_B_HASH="da1cdba9ec73a32346009a215b7fdfad"
+if ! check_file_hash "${CONFIG_OUT_DIR}/127.0.0.1_12748.json" "$EXPECTED_B_HASH"; then
+    ERROR=1
+fi
+
+# A's config, discovered via B's upstream-hashes (step 2; B already had A
+# stored under 127.0.0.1:12048, and C trusts that key transitively).
+EXPECTED_A_HASH="85cbade661dc71b4eca7d84d498fe3e5"
+if ! check_file_hash "${CONFIG_OUT_DIR}/127.0.0.1_12048.json" "$EXPECTED_A_HASH"; then
     ERROR=1
 fi
 
@@ -124,5 +166,5 @@ if [ $ERROR -ne 0 ]; then
     exit 1
 fi
 
-echo "configTrackerWriter test passed: Two matching config files found in ${CONFIG_OUT_DIR}."
+echo "configTrackerWriter test passed: three matching config files found in ${CONFIG_OUT_DIR}."
 exit 0
