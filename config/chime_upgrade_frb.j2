@@ -38,7 +38,7 @@ num_ev_to_calculate: 4            # from n2 test case
 samples_per_data_set: 16384
 sample_period_ns: 2560
 network_frame_arrival_period: 16384 * sample_period_ns / 1e9
-baseband_buffer_depth: 3*272 # 3*272 = ~33 seconds after accounting for active frames
+baseband_buffer_depth: 3*32 # 3*272 = ~33 seconds after accounting for active frames
 # see where / if / how to use host_buffer_depth and gpu_buffer_depth
 # must be at least size of gpu_buffer_depth
 host_buffer_depth: 12
@@ -144,7 +144,7 @@ lost_samples_buffer_{{ id }}:
 # Stages
 
 # set to False on instead read data from disk
-{%- if True %}
+{%- if False %}
 
 # This configuration assumes that the system ports are ordered in as 4x10G
 # links for each QSFP+, and that each QSFP+ port comes from exactly one iceBoard
@@ -1291,6 +1291,20 @@ FRB:
             - name: cudaOutputData
               gpu_mem: frb3_beams_offsetscale_buffer
               out_buf: host_frb3_beams_offsetscale_buffer
+
+    # dump data for debugging
+    dump_frb_beams:
+        beams:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_beams
+            in_buf: host_frb3_beams_buffer
+            file_name: host_frb3_beams_buffer
+        offsetscale:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_beams
+            in_buf: host_frb3_beams_offsetscale_buffer
+            file_name: host_frb3_offsetscale_buffer
+
 
 ################################################################################
 # output to receivers
