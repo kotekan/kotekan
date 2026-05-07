@@ -229,6 +229,8 @@ public:
         ConfigInfo info(filtered_json, json_hash, kotekan_version, kotekan_build_branch,
                         kotekan_git_commit_hash, kotekan_cmake_options);
 
+        bool inserted = false;
+        bool hash_changed = false;
         {
             std::lock_guard<std::mutex> lock(_lock);
 
@@ -245,10 +247,20 @@ public:
             _local_config = info;
             _local_config_present_metric().labels({json_hash}).set(1.0);
             _refresh_count_metric_locked();
+            // Recompute the combined tracker hash in the same critical section
+            // as the map update so readers never observe new entries with a
+            // stale tracker hash.
+            hash_changed = _recomputeTrackerHashLocked();
+            inserted = true;
         }
 
-        _setTrackerHash();
-        DEBUG_NON_OO("ConfigTracker: set local config, hash: {}", json_hash);
+        if (inserted) {
+            if (hash_changed) {
+                _hash_changes_total().inc();
+                _last_change_timestamp().set(_now_seconds());
+            }
+            DEBUG_NON_OO("ConfigTracker: set local config, hash: {}", json_hash);
+        }
     }
 
     /**
@@ -743,6 +755,7 @@ private:
 
         HostPort host_port{host, port};
         bool inserted = false;
+        bool hash_changed = false;
         {
             std::lock_guard<std::mutex> lock(_lock);
             auto it = target.find(host_port);
@@ -759,11 +772,18 @@ private:
             presence_metric.labels({host_port.host, std::to_string(host_port.port), info.json_hash})
                 .set(1.0);
             _refresh_count_metric_locked();
+            // Recompute the combined tracker hash in the same critical section
+            // as the map update so readers never observe new entries with a
+            // stale tracker hash.
+            hash_changed = _recomputeTrackerHashLocked();
             inserted = true;
         }
 
         if (inserted) {
-            _setTrackerHash();
+            if (hash_changed) {
+                _hash_changes_total().inc();
+                _last_change_timestamp().set(_now_seconds());
+            }
             DEBUG_NON_OO("ConfigTracker: inserted {} for {}:{}, hash: {}", category_name, host,
                          port, info.json_hash);
         }
@@ -975,33 +995,33 @@ private:
     }
 
     /**
-     * @brief Combined tracker hash: local hash (if present), then sorted
-     * upstream + FPGA config + FPGA timing hashes. The order is fixed so the
-     * combined hash is deterministic regardless of insertion order.
+     * @brief Recompute and store the combined tracker hash from current map
+     * state. Caller must hold @c _lock.
+     *
+     * The hash composes: local hash (if present), then sorted upstream + FPGA
+     * config + FPGA timing hashes. The order is fixed so the combined hash is
+     * deterministic regardless of insertion order. Computing inside the
+     * existing critical section guarantees that any reader observing a new
+     * entry also observes the matching tracker hash.
+     *
+     * @return true if @c _tracker_hash actually changed value.
      */
-    void _setTrackerHash() {
-        bool changed = false;
-        {
-            std::lock_guard<std::mutex> lock(_lock);
-            std::stringstream ss;
-            if (_local_config.has_value())
-                ss << _local_config->json_hash;
-            for (const auto& [hash, _] : _upstream_config_hashes)
-                ss << hash;
-            for (const auto& [hash, _] : _fpga_config_hashes)
-                ss << hash;
-            for (const auto& [hash, _] : _fpga_timing_hashes)
-                ss << hash;
+    bool _recomputeTrackerHashLocked() {
+        std::stringstream ss;
+        if (_local_config.has_value())
+            ss << _local_config->json_hash;
+        for (const auto& [hash, _] : _upstream_config_hashes)
+            ss << hash;
+        for (const auto& [hash, _] : _fpga_config_hashes)
+            ss << hash;
+        for (const auto& [hash, _] : _fpga_timing_hashes)
+            ss << hash;
 
-            const std::string new_hash = _md5_hex(ss.str());
-            changed = (_tracker_hash != new_hash);
-            _tracker_hash = new_hash;
-            DEBUG_NON_OO("ConfigTracker: combined tracker hash is now {}", _tracker_hash);
-        }
-        if (changed) {
-            _hash_changes_total().inc();
-            _last_change_timestamp().set(_now_seconds());
-        }
+        const std::string new_hash = _md5_hex(ss.str());
+        bool changed = (_tracker_hash != new_hash);
+        _tracker_hash = new_hash;
+        DEBUG_NON_OO("ConfigTracker: combined tracker hash is now {}", _tracker_hash);
+        return changed;
     }
 
     /// Compare two ConfigInfos for full equality (hash + version metadata).
