@@ -57,6 +57,8 @@ class calcFRB2Weights : public kotekan::Stage {
     const float frb2_beam_separation_y = config.get<float>(unique_name, "frb2_beam_separation_y");
     const int frb2_num_frequencies = config.get<int>(unique_name, "frb2_num_frequencies");
 
+    const int num_threads = config.get_default<int>(unique_name, "num_threads", 1);
+
     const std::ptrdiff_t frb2_beam_positions_frame_size [[maybe_unused]] =
         sizeof(float) * 2 * frb2_num_beams;
     const std::ptrdiff_t W2_frame_size [[maybe_unused]] =
@@ -78,6 +80,8 @@ public:
     {
         assert(frb2_beam_positions_buffer);
         assert(W2_buffer);
+        if (num_threads < 0)
+            FATAL_ERROR("num_threads %d must be positive", num_threads);
         frb2_beam_positions_buffer->register_producer(unique_name);
         W2_buffer->register_producer(unique_name);
     }
@@ -253,7 +257,7 @@ public:
             const float sigmay_z = 0;
 
 #ifdef WITH_OMP
-#pragma omp parallel
+#pragma omp parallel num_threads(num_threads)
 #endif
             {
                 std::vector<float> Up(frb1_num_beams_x);
