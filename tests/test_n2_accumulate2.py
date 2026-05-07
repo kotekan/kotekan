@@ -13,7 +13,7 @@ prod_config = {
     "first_frame_index": 1,
     "num_polarizations": 2,
     "num_dishes": 64,
-    "num_n2k_samples_to_accumulate": 2,
+    "num_subintegrations_per_bin": 2,
     "variance_mode": "EvenOddPosDef",
     "num_ev": 0,
     "freq_ids": [0, 8191, 300, 1000, 4000],
@@ -56,13 +56,13 @@ PM_TOL = 1e-14  # Just a bit bigger than roundoff error
     params=[
         {
             "bin_in_ERA": False,
-            "num_n2k_samples_to_accumulate": 6,
+            "num_subintegrations_per_bin": 6,
             "variance_mode": "EvenOddPosDef",
             "do_fringestop": False,
         },
         {
             "bin_in_ERA": False,
-            "num_n2k_samples_to_accumulate": 8,
+            "num_subintegrations_per_bin": 8,
             "variance_mode": "CHIMEv1",
             "do_fringestop": False,
         },
@@ -610,7 +610,7 @@ def accum_list(setup, accum_setup):
             accum_setup["num_bins_per_rotation"],
         )
     else:
-        subs_per_accum = accum_setup["num_n2k_samples_to_accumulate"]
+        subs_per_accum = accum_setup["num_subintegrations_per_bin"]
         seq_per_accum = subs_per_accum * seqs_per_sub
 
         accum_sub_idx_ext = seqs_ext // seq_per_accum

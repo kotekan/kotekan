@@ -48,7 +48,7 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * pair are dropped.
  *
  * In "fixed number of frames" the beginning of bin 0 is at instrument start (seq = 0),
- * and each bin covers exactly sub_integration_ntime * num_n2k_samples_to_accumulate fpga seq
+ * and each bin covers exactly sub_integration_ntime * num_subintegrations_per_bin fpga seq
  * numbers.
  *
  * In "ERA" binning the beginning of bin 0 is when ERA = 0 just before 2000 Jan 1 Noon. Every Earth
@@ -135,7 +135,7 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *
  * @conf    num_freq_per_n2k_frame          int64_t Number of frequencies in
  *                                          buffers, required.
- * @conf    num_n2k_samples_to_accumulate   int64_t Number of samples (subintegrations)
+ * @conf    num_subintegrations_per_bin   int64_t Number of samples (subintegrations)
  *                                          to accumulate in each output frame. Default: 0.
  * @conf    packet_loss_is_scalar           bool    Whether the packet loss (ie. the counts
  *                                          matrix) is a scalar in dish element or not.  If so,
@@ -235,7 +235,7 @@ private:
     // Parameters saved from the config files
     const int64_t _num_freq_per_n2k_frame;
     const bool _bin_in_ERA;
-    const int64_t _num_n2k_samples_to_accumulate;
+    const int64_t _num_subintegrations_per_bin;
     const uint32_t _num_bins_per_rotation;
 
     const bool _packet_loss_is_scalar;

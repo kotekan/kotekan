@@ -875,9 +875,9 @@ vis_accumulate:
     num_workers: 3
     # round_to_even(10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
     # round_up_to_even(10s / ( 16384 * 2.56us ) * 1) = 240
-    # num_n2k_samples_to_accumulate_maybe_odd: 10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
-    # num_n2k_samples_to_accumulate: (num_n2k_samples_to_accumulate_maybe_odd + 1) / 2 * 2
-    num_n2k_samples_to_accumulate: 240
+    # num_subintegrations_per_bin_maybe_odd: 10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
+    # num_subintegrations_per_bin: (num_subintegrations_per_bin_maybe_odd + 1) / 2 * 2
+    num_subintegrations_per_bin: 240
     # these recap values from cudaCorrelator
     num_freq_per_n2k_frame: num_freq_gpu_buf
     #samples_per_data_set: n2k_samples_per_data_set # a global of this nam exists used by n2k_samples_per_data_set

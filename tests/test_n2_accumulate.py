@@ -137,7 +137,7 @@ global_params = {
 
 accumulate_params = {
     "num_freq_per_n2k_frame": "num_local_freq",
-    "num_n2k_samples_to_accumulate": 6,  # Must be even, and not a multiple of
+    "num_subintegrations_per_bin": 6,  # Must be even, and not a multiple of
     # (samples_per_dataset /
     #  sub_integration_ntime)
     "packet_loss_is_scalar": True,
@@ -151,7 +151,7 @@ accumulate_params = {
 
 def get_accum_start_idx(glob_params, accum_params):
     seq_per_accum = (
-        accumulate_params["num_n2k_samples_to_accumulate"]
+        accumulate_params["num_subintegrations_per_bin"]
         * glob_params["sub_integration_ntime"]
     )
 
@@ -214,7 +214,7 @@ def accumulate_data(tmpdir_factory):
     # Number of accumulated frames expected at the output (per freq).
     expected_frames = global_params["num_local_freq"] * (
         global_params["total_frames"]
-        // accumulate_params["num_n2k_samples_to_accumulate"]
+        // accumulate_params["num_subintegrations_per_bin"]
     )
 
     dump_buffer = runner.DumpN2Buffer(
@@ -256,10 +256,10 @@ def gen_vis_data(t_idx, f_idx):
     seq0 = (
         (t_idx + t_idx_start)
         * global_params["sub_integration_ntime"]
-        * accumulate_params["num_n2k_samples_to_accumulate"]
+        * accumulate_params["num_subintegrations_per_bin"]
     )
 
-    t_n2k_0 = (t_idx + t_idx_start) * accumulate_params["num_n2k_samples_to_accumulate"]
+    t_n2k_0 = (t_idx + t_idx_start) * accumulate_params["num_subintegrations_per_bin"]
 
     vis = np.zeros(n_prod, dtype=np.complex64)
     weights = np.zeros(n_prod, dtype=np.float32)
@@ -272,7 +272,7 @@ def gen_vis_data(t_idx, f_idx):
     even_vis = np.zeros(n_prod, dtype=np.complex64)
     even_counts = 0
 
-    num_frames_in_accum = accumulate_params["num_n2k_samples_to_accumulate"]
+    num_frames_in_accum = accumulate_params["num_subintegrations_per_bin"]
 
     for t in range(t_n2k_0, t_n2k_0 + num_frames_in_accum):
 
@@ -335,7 +335,7 @@ def test_structure(accumulate_data):
     # Check that we have the expected number of samples
     nsamp = global_params["num_local_freq"] * (
         global_params["total_frames"]
-        // accumulate_params["num_n2k_samples_to_accumulate"]
+        // accumulate_params["num_subintegrations_per_bin"]
     )
     assert len(accumulate_data) == nsamp
 
@@ -348,7 +348,7 @@ def test_metadata(accumulate_data):
 
         assert (
             frame.metadata.frame_length_fpga_ticks
-            == accumulate_params["num_n2k_samples_to_accumulate"]
+            == accumulate_params["num_subintegrations_per_bin"]
             * global_params["sub_integration_ntime"]
         )
         assert frame.metadata.freq_id == freq_ids[f_idx]
@@ -378,7 +378,7 @@ def test_time(accumulate_data):
         assert (
             frame.metadata.fpga_start_tick
             == (t_idx + t_idx_start)
-            * accumulate_params["num_n2k_samples_to_accumulate"]
+            * accumulate_params["num_subintegrations_per_bin"]
             * global_params["sub_integration_ntime"]
         )
         assert (
@@ -406,7 +406,7 @@ def test_EOP(accumulate_data):
 
         t_idx = idx // len(freq_ids)
         seq_len = (
-            accumulate_params["num_n2k_samples_to_accumulate"]
+            accumulate_params["num_subintegrations_per_bin"]
             * global_params["sub_integration_ntime"]
         )
         seq0 = (t_idx + t_idx_start) * seq_len
@@ -486,7 +486,7 @@ def test_rfi(accumulate_data):
         n_rfi = 0
         for subframe_idx in range(
             subframe_idx0,
-            subframe_idx0 + accumulate_params["num_n2k_samples_to_accumulate"],
+            subframe_idx0 + accumulate_params["num_subintegrations_per_bin"],
         ):
             rfi_idx = subframe_idx * global_params["num_local_freq"] + freq_idx
             n_rfi += rficount_vals[rfi_idx % len(rficount_vals)]

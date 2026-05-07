@@ -21,7 +21,7 @@ num_elements: num_polarizations * num_dishes
 num_local_freq: 16
 num_ev: 0
 
-num_n2k_samples_to_accumulate: 32
+num_subintegrations_per_bin: 32
 
 #counts matrix size
 counts_blocksize: 8
@@ -33,11 +33,11 @@ vis_blocksize: 16
 vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 
-frames_to_generate: buffer_depth  # must be at least n2_frames_to_write * num_n2k_samples_to_accumulate
+frames_to_generate: buffer_depth  # must be at least n2_frames_to_write * num_subintegrations_per_bin
 repeat: 64
 corr_frames: repeat * frames_to_generate
 n2_samples_per_frame: samples_per_data_set / sub_integration_ntime
-n2_frames: num_local_freq * (corr_frames * samples_per_data_set) / (sub_integration_ntime * num_n2k_samples_to_accumulate)
+n2_frames: num_local_freq * (corr_frames * samples_per_data_set) / (sub_integration_ntime * num_subintegrations_per_bin)
 
 
 GIGA: 1000000000

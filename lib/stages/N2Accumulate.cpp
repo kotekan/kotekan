@@ -53,8 +53,8 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&N2Accumulate::main_thread, this)),
     _num_freq_per_n2k_frame(config.get<int64_t>(unique_name, "num_freq_per_n2k_frame")),
     _bin_in_ERA(config.get_default<bool>(unique_name, "bin_in_ERA", false)),
-    _num_n2k_samples_to_accumulate(
-        config.get_default<int64_t>(unique_name, "num_n2k_samples_to_accumulate", 0)),
+    _num_subintegrations_per_bin(
+        config.get_default<int64_t>(unique_name, "num_subintegrations_per_bin", 0)),
     _num_bins_per_rotation(config.get_default<uint32_t>(unique_name, "num_bins_per_rotation", 0)),
     _packet_loss_is_scalar(config.get<bool>(unique_name, "packet_loss_is_scalar")),
     _n_fpga_samples_per_n2k_frame(config.get<int64_t>(unique_name, "samples_per_data_set")),
@@ -101,11 +101,11 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 
         // accumulation setup
         if (!_bin_in_ERA
-            && (_num_n2k_samples_to_accumulate <= 0 || _num_n2k_samples_to_accumulate % 2 != 0))
+            && (_num_subintegrations_per_bin <= 0 || _num_subintegrations_per_bin % 2 != 0))
             FATAL_ERROR("N2Accumulate configured to use fixed-sample accumulation "
                         "(bin_in_ERA is false) with non-positive or odd (should be "
-                        "positive and even!) num_n2k_samples_to_accumulate: {:d}",
-                        _num_n2k_samples_to_accumulate);
+                        "positive and even!) num_subintegrations_per_bin: {:d}",
+                        _num_subintegrations_per_bin);
         if (_bin_in_ERA && _num_bins_per_rotation <= 0)
             FATAL_ERROR("N2Accumulate configured to use ERA-based binning (bin_in_ERA is true) "
                         "with non-positive num_bins_per_rotation {:d}.",
@@ -623,7 +623,7 @@ int64_t N2Accumulate::get_accum_abs_bin_idx(uint64_t seq) {
 
     } else {
         int64_t fpga_ticks_per_accum =
-            _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
+            _num_subintegrations_per_bin * _n_fpga_samples_per_n2k_correlation;
         int64_t idx = seq / fpga_ticks_per_accum;
 
         return idx;
@@ -648,7 +648,7 @@ EOP N2Accumulate::get_accum_bin_EOP(int64_t accum_bin_idx) {
 
         // extract the sequence number of the start of the bin
         int64_t fpga_ticks_per_accum =
-            _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
+            _num_subintegrations_per_bin * _n_fpga_samples_per_n2k_correlation;
         uint64_t seq_start = static_cast<uint64_t>(accum_bin_idx) * fpga_ticks_per_accum;
 
         // sequence number at center of bin, we know fpga_ticks_per_accum is even
@@ -688,7 +688,7 @@ bool N2Accumulate::is_seq_start_of_bin(uint64_t seq, int64_t bin_idx) {
 
     } else {
         int64_t fpga_ticks_per_accum =
-            _num_n2k_samples_to_accumulate * _n_fpga_samples_per_n2k_correlation;
+            _num_subintegrations_per_bin * _n_fpga_samples_per_n2k_correlation;
 
         return (seq % fpga_ticks_per_accum == 0);
     }
@@ -918,7 +918,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     std::vector<std::shared_ptr<N2Metadata>> metas(freq_block_size);
 
     if (!_bin_in_ERA)
-        assert(_vis_samples_in_out_frame == _num_n2k_samples_to_accumulate);
+        assert(_vis_samples_in_out_frame == _num_subintegrations_per_bin);
 
     [[maybe_unused]] double prof_out_setup_time = 0;
     [[maybe_unused]] double prof_out_work_time = 0;
