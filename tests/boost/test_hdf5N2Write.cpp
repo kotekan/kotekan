@@ -455,7 +455,53 @@ struct TelescopeFixture {
 
 BOOST_TEST_GLOBAL_FIXTURE(TelescopeFixture);
 
-// Test 1: Full-block flush with transpose validation
+// Test 1: Two hdf5N2Write stage blocks pointing at the same base_dir should
+// be rejected at construction. Placed before any test that calls
+// kotekan_test_logging::configure() — that helper installs a SIGTERM handler
+// that _Exits the process, which would prevent BOOST_CHECK_THROW from catching
+// the FATAL_ERROR.
+BOOST_AUTO_TEST_CASE(test_writer_base_dir_conflict_detection) {
+
+    const std::string base_dir = "test_hdf5N2Write_conflict";
+    const std::string unique_a = "/hdf5_vis_writer_conflict_a";
+    const std::string in_buf_name = "n2buf_conflict";
+    rm_tree_if_exists(base_dir);
+
+    auto conf = make_writer_config(unique_a, in_buf_name, base_dir, /*file_name*/ "vis",
+                                   /*prefix_hostname*/ false, /*num_file_t*/ 2,
+                                   /*blocksize_f*/ 0, /*blocksize_p*/ 0,
+                                   /*blocksize_t*/ 2, /*grace*/ 60,
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_FILE);
+
+    // Inject a peer hdf5N2Write stage block sharing the same base_dir.
+    {
+        auto cfg = conf.get_full_config_json();
+        nlohmann::json peer;
+        peer["kotekan_stage"] = "hdf5N2Write";
+        peer["base_dir"] = base_dir;
+        cfg["hdf5_vis_writer_conflict_b"] = peer;
+        conf.update_config(cfg);
+    }
+
+    // Minimal buffer setup (the stage's constructor needs in_buf to exist).
+    const size_t num_input = 2, num_ev = 1;
+    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
+    auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_conflict", "N2Metadata");
+    Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
+               /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
+    buf.set_frame_desc(
+        std::make_shared<N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::FullUpperTri));
+    buf.register_producer("test-producer");
+    kotekan::bufferContainer bc;
+    bc.add_buffer(in_buf_name, &buf);
+
+    BOOST_CHECK_THROW(hdf5N2Write(conf, unique_a, bc), std::runtime_error);
+
+    rm_tree_if_exists(base_dir);
+}
+
+// Test 2: Full-block flush with transpose validation
 BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
 
     kotekan_test_logging::configure();
@@ -548,53 +594,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     rm_tree_if_exists(base_dir);
 }
 
-// Two hdf5N2Write stage blocks pointing at the same base_dir should be
-// rejected at construction. Placed before any test that calls
-// kotekan_test_logging::configure() — that helper installs a SIGTERM handler
-// that _Exits the process, which would prevent BOOST_CHECK_THROW from catching
-// the FATAL_ERROR.
-BOOST_AUTO_TEST_CASE(test_writer_base_dir_conflict_detection) {
-
-    const std::string base_dir = "test_hdf5N2Write_conflict";
-    const std::string unique_a = "/hdf5_vis_writer_conflict_a";
-    const std::string in_buf_name = "n2buf_conflict";
-    rm_tree_if_exists(base_dir);
-
-    auto conf = make_writer_config(unique_a, in_buf_name, base_dir, /*file_name*/ "vis",
-                                   /*prefix_hostname*/ false, /*num_file_t*/ 2,
-                                   /*blocksize_f*/ 0, /*blocksize_p*/ 0,
-                                   /*blocksize_t*/ 2, /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_FILE);
-
-    // Inject a peer hdf5N2Write stage block sharing the same base_dir.
-    {
-        auto cfg = conf.get_full_config_json();
-        nlohmann::json peer;
-        peer["kotekan_stage"] = "hdf5N2Write";
-        peer["base_dir"] = base_dir;
-        cfg["hdf5_vis_writer_conflict_b"] = peer;
-        conf.update_config(cfg);
-    }
-
-    // Minimal buffer setup (the stage's constructor needs in_buf to exist).
-    const size_t num_input = 2, num_ev = 1;
-    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
-    const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
-    auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_conflict", "N2Metadata");
-    Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
-               /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
-    buf.set_frame_desc(
-        std::make_shared<N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::FullUpperTri));
-    buf.register_producer("test-producer");
-    kotekan::bufferContainer bc;
-    bc.add_buffer(in_buf_name, &buf);
-
-    BOOST_CHECK_THROW(hdf5N2Write(conf, unique_a, bc), std::runtime_error);
-
-    rm_tree_if_exists(base_dir);
-}
-
-// Test 2: Partial flush triggered on exit (incomplete time block)
+// Test 3: Partial flush triggered on exit (incomplete time block)
 BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
 
     kotekan_test_logging::configure();
@@ -681,7 +681,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 3: Multi-file rollover when time crosses a file window
+// Test 4: Multi-file rollover when time crosses a file window
 BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
 
     kotekan_test_logging::configure();
@@ -762,7 +762,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 4: Adjacent file windows produce distinct dataset names
+// Test 5: Adjacent file windows produce distinct dataset names
 BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
 
     kotekan_test_logging::configure();
@@ -836,7 +836,7 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 5: Grace-based finalize of partial dataset (late_frame_grace_seconds=0)
+// Test 6: Grace-based finalize of partial dataset (late_frame_grace_seconds=0)
 BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
 
     kotekan_test_logging::configure();
@@ -911,7 +911,7 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     rm_tree_if_exists(base_dir);
 }
 
-// Test 6: Late-frame drop when final already exists
+// Test 7: Late-frame drop when final already exists
 BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
 
     kotekan_test_logging::configure();
@@ -1002,7 +1002,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     rm_tree_if_exists(base_dir);
 }
 
-/// Test 7: Basic geometry write test
+/// Test 8: Basic geometry write test
 BOOST_AUTO_TEST_CASE(test_writer_geometry_basic) {
 
     kotekan_test_logging::configure();
