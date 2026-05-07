@@ -458,6 +458,8 @@ BOOST_TEST_GLOBAL_FIXTURE(TelescopeFixture);
 // Test 1: Full-block flush with transpose validation
 BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
 
+    kotekan_test_logging::configure();
+
     const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer";
     const std::string in_buf_name = "n2buf";

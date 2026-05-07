@@ -766,18 +766,14 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     if (bin_ut1[t_index] > 0 && !ns_close(bin_ut1[t_index], fv.bin_eop.t_ut1_ns))
         add_failure(fmt::format("bin_ut1[t={}] mismatch: stored {} != incoming {} (ns)", t_index,
                                 bin_ut1[t_index], fv.bin_eop.t_ut1_ns));
-    if (bin_start_ERA_deg[t_index] < 0)
-        add_failure(
-            fmt::format("bin_start_ERA_deg[t={}] < 0: {}", t_index, bin_start_ERA_deg[t_index]));
-    if (bin_start_ERA_deg[t_index] >= 360)
-        add_failure(
-            fmt::format("bin_start_ERA_deg[t={}] >= 360: {}", t_index, bin_start_ERA_deg[t_index]));
-    if (bin_end_ERA_deg[t_index] < 0)
-        add_failure(
-            fmt::format("bin_end_ERA_deg[t={}] < 0: {}", t_index, bin_end_ERA_deg[t_index]));
-    if (bin_end_ERA_deg[t_index] > 360)
-        add_failure(
-            fmt::format("bin_end_ERA_deg[t={}] > 360: {}", t_index, bin_end_ERA_deg[t_index]));
+    if (fv.bin_start_ERA_deg < 0)
+        add_failure(fmt::format("bin_start_ERA_deg < 0: {}", fv.bin_start_ERA_deg));
+    if (fv.bin_start_ERA_deg >= 360)
+        add_failure(fmt::format("bin_start_ERA_deg >= 360: {}", fv.bin_start_ERA_deg));
+    if (fv.bin_end_ERA_deg < 0)
+        add_failure(fmt::format("bin_end_ERA_deg < 0: {}", fv.bin_end_ERA_deg));
+    if (fv.bin_end_ERA_deg > 360)
+        add_failure(fmt::format("bin_end_ERA_deg > 360: {}", fv.bin_end_ERA_deg));
     // TODO: Don't check these yet, but do when we have ERAL values
     // (bin_start_ERAL[t_index] < 0)
     // (bin_start_ERAL[t_index] > 360)
