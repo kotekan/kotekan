@@ -132,12 +132,17 @@ def get_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
     if not use_eop:
         t.delta_ut1_utc = 0.0
 
-    return t.earth_rotation_angle("tio").to_value("deg")
+    return get_ERA_at_t(t)
 
 
 def get_ERA_at_ut1_ns(ut1_ns):
 
     t = calc_astropy_time_from_ut1_ns(ut1_ns)
+
+    return get_ERA_at_t(t)
+
+
+def get_ERA_at_t(t):
 
     return t.earth_rotation_angle("tio").to_value("deg")
 
