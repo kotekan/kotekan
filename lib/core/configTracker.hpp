@@ -328,46 +328,55 @@ public:
                            "fpga timing", _fpga_timing_present_metric());
     }
 
+    /// True if a local config has been set.
     bool hasLocalConfig() const {
         std::lock_guard<std::mutex> lock(_lock);
         return _local_config.has_value();
     }
 
+    /// True if an upstream entry exists for the given (host, port).
     bool hasUpstreamConfig(const std::string& host, uint16_t port) const {
         std::lock_guard<std::mutex> lock(_lock);
         return _upstream_configs.count({host, port}) > 0;
     }
 
+    /// True if an upstream entry exists with the given hash.
     bool hasUpstreamConfig(const std::string& hash) const {
         std::lock_guard<std::mutex> lock(_lock);
         return _upstream_config_hashes.count(hash) > 0;
     }
 
+    /// True if an FPGA config entry exists for the given controller (host, port).
     bool hasFpgaConfig(const std::string& host, uint16_t port) const {
         std::lock_guard<std::mutex> lock(_lock);
         return _fpga_configs.count({host, port}) > 0;
     }
 
+    /// True if an FPGA config entry exists with the given hash.
     bool hasFpgaConfig(const std::string& hash) const {
         std::lock_guard<std::mutex> lock(_lock);
         return _fpga_config_hashes.count(hash) > 0;
     }
 
+    /// True if an FPGA timing entry exists for the given controller (host, port).
     bool hasFpgaTiming(const std::string& host, uint16_t port) const {
         std::lock_guard<std::mutex> lock(_lock);
         return _fpga_timings.count({host, port}) > 0;
     }
 
+    /// True if an FPGA timing entry exists with the given hash.
     bool hasFpgaTiming(const std::string& hash) const {
         std::lock_guard<std::mutex> lock(_lock);
         return _fpga_timing_hashes.count(hash) > 0;
     }
 
+    /// Copy of the local ConfigInfo, or std::nullopt if not yet set.
     std::optional<ConfigInfo> getLocalConfigInfo() const {
         std::lock_guard<std::mutex> lock(_lock);
         return _local_config;
     }
 
+    /// Local config's hash, or "" if not yet set.
     std::string getLocalConfigHash() const {
         std::lock_guard<std::mutex> lock(_lock);
         return _local_config.has_value() ? _local_config->json_hash : std::string{};
@@ -496,13 +505,16 @@ public:
         // inserted as-is and validated against the advertised hash.
         _pull_categorized_from_peer(host, port, "/config_tracker_upstream_hashes",
                                     "/config_tracker_upstream_configs", _upstream_configs,
-                                    _upstream_config_hashes, "upstream");
+                                    _upstream_config_hashes, "upstream",
+                                    _config_present_metric());
         _pull_categorized_from_peer(host, port, "/config_tracker_fpga_config_hashes",
                                     "/config_tracker_fpga_configs", _fpga_configs,
-                                    _fpga_config_hashes, "fpga config");
+                                    _fpga_config_hashes, "fpga config",
+                                    _fpga_config_present_metric());
         _pull_categorized_from_peer(host, port, "/config_tracker_fpga_timing_hashes",
                                     "/config_tracker_fpga_timings", _fpga_timings,
-                                    _fpga_timing_hashes, "fpga timing");
+                                    _fpga_timing_hashes, "fpga timing",
+                                    _fpga_timing_present_metric());
 
         std::lock_guard<std::mutex> lock(_lock);
         _check_consistent_locked(_upstream_configs, _upstream_config_hashes, "upstream");
@@ -516,18 +528,22 @@ public:
     std::vector<std::string> getAllJSONConfigs() const {
         std::vector<std::string> configs;
         std::lock_guard<std::mutex> lock(_lock);
-        auto append = [&configs](const ConfigInfo& info) {
+        if (_local_config.has_value()) {
+            configs.push_back(_local_config->to_json().dump(
+                4, ' ', false, nlohmann::json::error_handler_t::strict));
+        }
+        for (const auto& [_, info] : _upstream_configs) {
             configs.push_back(
                 info.to_json().dump(4, ' ', false, nlohmann::json::error_handler_t::strict));
-        };
-        if (_local_config.has_value())
-            append(*_local_config);
-        for (const auto& [_, info] : _upstream_configs)
-            append(info);
-        for (const auto& [_, info] : _fpga_configs)
-            append(info);
-        for (const auto& [_, info] : _fpga_timings)
-            append(info);
+        }
+        for (const auto& [_, info] : _fpga_configs) {
+            configs.push_back(
+                info.to_json().dump(4, ' ', false, nlohmann::json::error_handler_t::strict));
+        }
+        for (const auto& [_, info] : _fpga_timings) {
+            configs.push_back(
+                info.to_json().dump(4, ' ', false, nlohmann::json::error_handler_t::strict));
+        }
         return configs;
     }
 
@@ -808,16 +824,24 @@ private:
     }
 
     /**
-     * @brief Generic "fetch a category from a peer" helper used by
-     * getUpstreamConfigs. GETs the peer's hash index, then for each missing
-     * hash GETs the matching entry and inserts it.
+     * @brief Pull a categorized tracker section from a peer.
+     *
+     * GETs the peer's hash-index endpoint, then for each missing hash GETs
+     * the matching entry from configs_endpoint and inserts it under the
+     * (host, port) the peer reported. Used by getUpstreamConfigs for
+     * upstream-peer entries and both FPGA categories.
+     *
+     * Conflicts (same hash, different (host, port)) are fatal. Network and
+     * parse errors on individual entries are logged and counted but not
+     * fatal.
      */
     void _pull_categorized_from_peer(const std::string& peer_host, uint16_t peer_port,
                                      const std::string& hashes_endpoint,
                                      const std::string& configs_endpoint,
                                      std::map<HostPort, ConfigInfo>& target,
                                      std::map<std::string, HostPort>& reverse,
-                                     const char* category_name) {
+                                     const char* category_name,
+                                     prometheus::MetricFamily<prometheus::Gauge>& presence_metric) {
         restClient::restReply reply = restClient::instance().make_request_blocking(
             hashes_endpoint, {}, peer_host, peer_port, 1, -1);
         if (!reply.first) {
@@ -839,11 +863,6 @@ private:
         }
         _record_upstream_fetch(peer_host, peer_port, true);
 
-        prometheus::MetricFamily<prometheus::Gauge>& presence_metric =
-            (&target == &_upstream_configs) ? _config_present_metric()
-            : (&target == &_fpga_configs)   ? _fpga_config_present_metric()
-                                            : _fpga_timing_present_metric();
-
         for (const auto& item : hashes_json.items()) {
             const std::string& hash = item.key();
             const nlohmann::json& host_port_json = item.value();
@@ -863,72 +882,57 @@ private:
                 }
             }
 
-            _fetch_and_insert_peer_categorized(peer_host, peer_port, configs_endpoint, entry_host,
-                                               entry_port, hash, target, reverse, category_name,
-                                               presence_metric);
-        }
-    }
+            // Fetch the entry by hash from the peer.
+            const std::string path = configs_endpoint + "?hash=" + hash;
+            restClient::restReply entry_reply = restClient::instance().make_request_blocking(
+                path, {}, peer_host, peer_port, 1, -1);
+            if (!entry_reply.first) {
+                ERROR_NON_OO("ConfigTracker: failed to GET {} for {} hash {} from peer {}:{}",
+                             configs_endpoint, category_name, hash, peer_host, peer_port);
+                _record_upstream_fetch(entry_host, entry_port, false);
+                continue;
+            }
 
-    /**
-     * @brief Fetch a single categorized entry by hash from a peer, validate,
-     * and insert under the (entry_host, entry_port) the peer reported.
-     */
-    void _fetch_and_insert_peer_categorized(const std::string& peer_host, uint16_t peer_port,
-                                            const std::string& configs_endpoint,
-                                            const std::string& entry_host, uint16_t entry_port,
-                                            const std::string& expected_hash,
-                                            std::map<HostPort, ConfigInfo>& target,
-                                            std::map<std::string, HostPort>& reverse,
-                                            const char* category_name,
-                                            prometheus::MetricFamily<prometheus::Gauge>& metric) {
-        const std::string path = configs_endpoint + "?hash=" + expected_hash;
-        restClient::restReply reply =
-            restClient::instance().make_request_blocking(path, {}, peer_host, peer_port, 1, -1);
-        if (!reply.first) {
-            ERROR_NON_OO("ConfigTracker: failed to GET {} for {} hash {} from peer {}:{}",
-                         configs_endpoint, category_name, expected_hash, peer_host, peer_port);
-            _record_upstream_fetch(entry_host, entry_port, false);
-            return;
-        }
+            nlohmann::json response;
+            try {
+                response = nlohmann::json::parse(entry_reply.second);
+            } catch (const nlohmann::json::parse_error& e) {
+                ERROR_NON_OO("ConfigTracker: failed to parse {} response for {} hash {}: {}",
+                             configs_endpoint, category_name, hash, e.what());
+                _record_upstream_fetch(entry_host, entry_port, false);
+                continue;
+            }
 
-        nlohmann::json response;
-        try {
-            response = nlohmann::json::parse(reply.second);
-        } catch (const nlohmann::json::parse_error& e) {
-            ERROR_NON_OO("ConfigTracker: failed to parse {} response for {} hash {}: {}",
-                         configs_endpoint, category_name, expected_hash, e.what());
-            _record_upstream_fetch(entry_host, entry_port, false);
-            return;
-        }
+            const std::string host_port_str = entry_host + ":" + std::to_string(entry_port);
+            if (!response.contains(host_port_str)) {
+                ERROR_NON_OO("ConfigTracker: peer {}:{} did not return {} for {} (hash {})",
+                             peer_host, peer_port, category_name, host_port_str, hash);
+                _record_upstream_fetch(entry_host, entry_port, false);
+                continue;
+            }
 
-        const std::string host_port_str = entry_host + ":" + std::to_string(entry_port);
-        if (!response.contains(host_port_str)) {
-            ERROR_NON_OO("ConfigTracker: peer {}:{} did not return {} for {} (hash {})", peer_host,
-                         peer_port, category_name, host_port_str, expected_hash);
-            _record_upstream_fetch(entry_host, entry_port, false);
-            return;
-        }
+            ConfigInfo info;
+            try {
+                info = ConfigInfo(response[host_port_str]);
+            } catch (const std::exception& e) {
+                ERROR_NON_OO("ConfigTracker: malformed {} payload for {} (hash {}): {}",
+                             category_name, host_port_str, hash, e.what());
+                _record_upstream_fetch(entry_host, entry_port, false);
+                continue;
+            }
 
-        ConfigInfo info;
-        try {
-            info = ConfigInfo(response[host_port_str]);
-        } catch (const std::exception& e) {
-            ERROR_NON_OO("ConfigTracker: malformed {} payload for {} (hash {}): {}", category_name,
-                         host_port_str, expected_hash, e.what());
-            _record_upstream_fetch(entry_host, entry_port, false);
-            return;
-        }
+            if (_jsonHashWithEndpoint(info.config, entry_host, entry_port) != hash
+                || info.json_hash != hash) {
+                ERROR_NON_OO("ConfigTracker: {} hash mismatch for {} (expected {}); dropping",
+                             category_name, host_port_str, hash);
+                _record_upstream_fetch(entry_host, entry_port, false);
+                continue;
+            }
 
-        if (_jsonHashWithEndpoint(info.config, entry_host, entry_port) != expected_hash
-            || info.json_hash != expected_hash) {
-            ERROR_NON_OO("ConfigTracker: {} hash mismatch for {} (expected {}); dropping",
-                         category_name, host_port_str, expected_hash);
-            _record_upstream_fetch(entry_host, entry_port, false);
-            return;
+            _insertCategorized(target, reverse, entry_host, entry_port, info, category_name,
+                               presence_metric);
+            _record_upstream_fetch(entry_host, entry_port, true);
         }
-
-        _insertCategorized(target, reverse, entry_host, entry_port, info, category_name, metric);
-        _record_upstream_fetch(entry_host, entry_port, true);
     }
 
     /**

@@ -421,12 +421,15 @@ void dpdkCore::fpga_controller_fetch_thread() {
     bool got_timing = false;
 
     while (!stop_thread && (!got_config || !got_timing)) {
+        bool progressed = false;
+
         if (!got_config) {
             auto resp = _try_fetch_fpga_endpoint(_fpga_host, _fpga_port, _fpga_config_endpoint,
                                                  _fpga_request_timeout_seconds);
             if (resp.has_value()) {
                 ConfigTracker::instance().setFpgaConfig(_fpga_host, _fpga_port, *resp);
                 got_config = true;
+                progressed = true;
                 INFO("dpdkCore: FPGA controller config registered ({:s}:{:d}{:s})", _fpga_host,
                      _fpga_port, _fpga_config_endpoint);
             }
@@ -437,6 +440,7 @@ void dpdkCore::fpga_controller_fetch_thread() {
             if (resp.has_value()) {
                 ConfigTracker::instance().setFpgaTiming(_fpga_host, _fpga_port, *resp);
                 got_timing = true;
+                progressed = true;
                 INFO("dpdkCore: FPGA controller timing registered ({:s}:{:d}{:s})", _fpga_host,
                      _fpga_port, _fpga_timing_endpoint);
             }
@@ -445,16 +449,23 @@ void dpdkCore::fpga_controller_fetch_thread() {
         if (got_config && got_timing)
             break;
 
-        ++consecutive_failures;
-        if (consecutive_failures >= _fpga_max_consecutive_failures) {
-            FATAL_ERROR("dpdkCore: failed to fetch FPGA controller state from {:s}:{:d} after "
-                        "{:d} attempts (config={}, timing={})",
-                        _fpga_host, _fpga_port, consecutive_failures, got_config, got_timing);
-            return;
+        // Partial success counts as progress (one of two endpoints landed) and
+        // resets the counter; an iteration with zero successes ticks it.
+        if (progressed) {
+            consecutive_failures = 0;
+        } else {
+            ++consecutive_failures;
+            if (consecutive_failures >= _fpga_max_consecutive_failures) {
+                FATAL_ERROR("dpdkCore: failed to fetch FPGA controller state from {:s}:{:d} "
+                            "after {:d} attempts (config={}, timing={})",
+                            _fpga_host, _fpga_port, consecutive_failures, got_config, got_timing);
+                return;
+            }
+            WARN("dpdkCore: FPGA controller fetch attempt {:d} of {:d} failed; retrying in {:d}s",
+                 consecutive_failures, _fpga_max_consecutive_failures,
+                 _fpga_retry_interval_seconds);
         }
 
-        WARN("dpdkCore: FPGA controller fetch attempt {:d} of {:d} failed; retrying in {:d}s",
-             consecutive_failures, _fpga_max_consecutive_failures, _fpga_retry_interval_seconds);
         for (int slept = 0; slept < _fpga_retry_interval_seconds && !stop_thread; ++slept)
             std::this_thread::sleep_for(1s);
     }

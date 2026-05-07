@@ -127,11 +127,15 @@ pipelines. Commonly used config parameters include (under ``dataset_manager``):
   - REST: ``/dataset-manager/force-update`` forces re-registration with the broker.
   - Metrics: ``kotekan_datasetbroker_error_count`` (broker comms errors), plus per-stage dataset
     metrics (see writer/transform stages).
-- The Config Tracker is intended as a more lightweight replacement for the dataset manager. It stores 
-snapshots of both local and upstream config blocks, and optionally writes them to disk. You can use the
-  ``configTrackerWriter`` stage with:
+- The Config Tracker is intended as a more lightweight replacement for the dataset manager. It stores
+  snapshots of this node's own (local) config, configs from upstream peers, and (when ``dpdkCore`` has
+  a ``fpga_controller`` block) the upstream FPGA controller's startup config and timing JSON. Each
+  category propagates to downstream nodes over REST. You can use the ``configTrackerWriter`` stage with:
+
   - ``base_dir``: directory to write JSON snapshots (created if missing).
-  - Output naming follows the config tracker; files are rotated on hash change.
+  - Output naming: ``local.json`` for the local entry, ``<host>_<port>.json`` for upstream peers,
+    ``<host>_<port>_fpga_config.json`` and ``<host>_<port>_fpga_timing.json`` for FPGA entries.
+  - Files are rotated on tracker-hash change.
 
 
 Stages
