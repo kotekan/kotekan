@@ -189,4 +189,109 @@ BOOST_AUTO_TEST_CASE(write_configs) {
     boost::filesystem::remove(upstream_path);
 }
 
+BOOST_AUTO_TEST_CASE(set_fpga_config_and_timing) {
+    auto& tracker = ConfigTracker::instance();
+
+    json fpga_config = {{"fpga_serial", "0xdeadbeef"}, {"clock_mhz", 800}};
+    json fpga_timing = {{"frame_zero_unix_ns", 1700000000000000000LL}, {"sample_count", 0}};
+
+    tracker.setFpgaConfig("10.6.0.1", 54321, fpga_config);
+    tracker.setFpgaTiming("10.6.0.1", 54321, fpga_timing);
+
+    BOOST_CHECK_EQUAL(tracker.n_configs(), 2u);
+    BOOST_CHECK(tracker.hasFpgaConfig("10.6.0.1", 54321));
+    BOOST_CHECK(tracker.hasFpgaTiming("10.6.0.1", 54321));
+    BOOST_CHECK(!tracker.hasFpgaConfig("10.6.0.2", 54321));
+}
+
+BOOST_AUTO_TEST_CASE(set_fpga_config_idempotent) {
+    auto& tracker = ConfigTracker::instance();
+
+    json fpga_config = {{"fpga_serial", "0xdeadbeef"}, {"clock_mhz", 800}};
+
+    tracker.setFpgaConfig("10.6.0.1", 54321, fpga_config);
+    tracker.setFpgaConfig("10.6.0.1", 54321, fpga_config);
+    BOOST_CHECK_EQUAL(tracker.n_configs(), 1u);
+}
+
+BOOST_AUTO_TEST_CASE(set_fpga_config_conflict_throws) {
+    auto& tracker = ConfigTracker::instance();
+
+    json fpga_config_v1 = {{"fpga_serial", "0xdeadbeef"}, {"clock_mhz", 800}};
+    json fpga_config_v2 = {{"fpga_serial", "0xdeadbeef"}, {"clock_mhz", 1200}};
+
+    tracker.setFpgaConfig("10.6.0.1", 54321, fpga_config_v1);
+    BOOST_CHECK_THROW(tracker.setFpgaConfig("10.6.0.1", 54321, fpga_config_v2),
+                      std::runtime_error);
+}
+
+BOOST_AUTO_TEST_CASE(set_fpga_timing_conflict_throws) {
+    auto& tracker = ConfigTracker::instance();
+
+    json fpga_timing_v1 = {{"frame_zero_unix_ns", 1700000000000000000LL}};
+    json fpga_timing_v2 = {{"frame_zero_unix_ns", 1700000000999999999LL}};
+
+    tracker.setFpgaTiming("10.6.0.1", 54321, fpga_timing_v1);
+    BOOST_CHECK_THROW(tracker.setFpgaTiming("10.6.0.1", 54321, fpga_timing_v2),
+                      std::runtime_error);
+}
+
+BOOST_AUTO_TEST_CASE(all_categories_coexist) {
+    auto& tracker = ConfigTracker::instance();
+
+    json fpga_config = {{"fpga_serial", "0xdeadbeef"}};
+    json fpga_timing = {{"frame_zero_unix_ns", 1700000000000000000LL}};
+
+    tracker.setLocalConfig(kSampleJson1, kVersion, kBranch, kCommit, kCmake);
+    tracker.insertUpstreamConfig("127.0.0.1", 8080, kSampleJson2, kVersion, kBranch, kCommit,
+                                 kCmake);
+    tracker.setFpgaConfig("10.6.0.1", 54321, fpga_config);
+    tracker.setFpgaTiming("10.6.0.1", 54321, fpga_timing);
+
+    BOOST_CHECK_EQUAL(tracker.n_configs(), 4u);
+    BOOST_CHECK(tracker.hasLocalConfig());
+    BOOST_CHECK(tracker.hasUpstreamConfig("127.0.0.1", 8080));
+    BOOST_CHECK(tracker.hasFpgaConfig("10.6.0.1", 54321));
+    BOOST_CHECK(tracker.hasFpgaTiming("10.6.0.1", 54321));
+
+    // Each category is in its own slot: identical content under identical
+    // (host, port) across categories does not collide.
+    tracker.reset();
+    tracker.setFpgaConfig("10.6.0.1", 54321, fpga_config);
+    tracker.setFpgaTiming("10.6.0.1", 54321, fpga_config);
+    BOOST_CHECK_EQUAL(tracker.n_configs(), 2u);
+}
+
+BOOST_AUTO_TEST_CASE(write_configs_with_fpga) {
+    auto& tracker = ConfigTracker::instance();
+
+    json fpga_config = {{"fpga_serial", "0xdeadbeef"}};
+    json fpga_timing = {{"frame_zero_unix_ns", 1700000000000000000LL}};
+
+    tracker.setLocalConfig(kSampleJson1, kVersion, kBranch, kCommit, kCmake);
+    tracker.insertUpstreamConfig("127.0.0.1", 8080, kSampleJson2, kVersion, kBranch, kCommit,
+                                 kCmake);
+    tracker.setFpgaConfig("10.6.0.1", 54321, fpga_config);
+    tracker.setFpgaTiming("10.6.0.1", 54321, fpga_timing);
+
+    boost::filesystem::path temp_dir = boost::filesystem::temp_directory_path();
+    boost::filesystem::path local_path = temp_dir / "local.json";
+    boost::filesystem::path upstream_path = temp_dir / "127.0.0.1_8080.json";
+    boost::filesystem::path fpga_cfg_path = temp_dir / "10.6.0.1_54321_fpga_config.json";
+    boost::filesystem::path fpga_tim_path = temp_dir / "10.6.0.1_54321_fpga_timing.json";
+
+    for (const auto& p : {local_path, upstream_path, fpga_cfg_path, fpga_tim_path})
+        boost::filesystem::remove(p);
+
+    size_t n = tracker.writeConfigsToDisk(temp_dir.string());
+    BOOST_CHECK_EQUAL(n, 4u);
+    BOOST_CHECK(boost::filesystem::exists(local_path));
+    BOOST_CHECK(boost::filesystem::exists(upstream_path));
+    BOOST_CHECK(boost::filesystem::exists(fpga_cfg_path));
+    BOOST_CHECK(boost::filesystem::exists(fpga_tim_path));
+
+    for (const auto& p : {local_path, upstream_path, fpga_cfg_path, fpga_tim_path})
+        boost::filesystem::remove(p);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

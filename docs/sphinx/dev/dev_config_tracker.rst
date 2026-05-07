@@ -16,7 +16,19 @@ node's own *local* config separate from configs received from upstream peers:
   distinct peers with identical configs still produce distinct hashes.
 - Blocks containing ``kotekan_update_endpoint`` are pruned before hashing.
 
-The tracker exposes four REST endpoints:
+The tracker also stores two extra categories for an upstream FPGA controller
+(populated by ``dpdkCore`` when its optional ``fpga_controller`` block is
+configured):
+
+- The controller's startup *config* JSON.
+- The controller's startup *timing* JSON.
+
+Both are keyed by the controller's REST ``(host, port)``. Any change to either
+after the initial fetch is treated as a controller reset and is fatal. These
+entries propagate to downstream nodes the same way upstream-peer entries do,
+so an HDF5 writer downstream of the dpdk node sees them.
+
+The tracker exposes eight REST endpoints:
 
 - ``GET /config_tracker_local`` — returns this node's local ``ConfigInfo``.
 - ``GET /config_tracker_local_hash`` — returns ``{"hash": "..."}`` for the local config.
@@ -24,6 +36,10 @@ The tracker exposes four REST endpoints:
   (optionally filtered by ``hash`` query arg).
 - ``GET /config_tracker_upstream_hashes`` — returns the map of upstream config-hash →
   ``{host, port}``.
+- ``GET /config_tracker_fpga_configs`` — FPGA controller configs (optional ``hash`` filter).
+- ``GET /config_tracker_fpga_config_hashes`` — map of FPGA config-hash → ``{host, port}``.
+- ``GET /config_tracker_fpga_timings`` — FPGA controller timings (optional ``hash`` filter).
+- ``GET /config_tracker_fpga_timing_hashes`` — map of FPGA timing-hash → ``{host, port}``.
 
 Why this exists
 ^^^^^^^^^^^^^^^
@@ -52,6 +68,10 @@ Prometheus metrics
   ``host:port`` + hash; value is ``1`` while present.
 - ``kotekan_config_tracker_local_config_present{hash}`` — labels identify the local config's hash;
   value is ``1`` while present.
+- ``kotekan_config_tracker_fpga_config_present{host,port,hash}`` — labels identify each stored
+  FPGA controller config; value is ``1`` while present.
+- ``kotekan_config_tracker_fpga_timing_present{host,port,hash}`` — labels identify each stored
+  FPGA controller timing snapshot; value is ``1`` while present.
 - ``kotekan_config_tracker_hash_changes_total`` and
   ``kotekan_config_tracker_last_change_timestamp_seconds`` — change counter and last-change time
   when the combined tracker hash updates or the tracker is reset.
@@ -80,6 +100,10 @@ Operational Flow
       of how the peer self-named.
    2. Fetches ``/config_tracker_upstream_hashes`` and pulls any missing entries via
       ``/config_tracker_upstream_configs?hash=...``, validating each against its advertised hash.
+   3. Repeats the same hash-then-fetch pattern against
+      ``/config_tracker_fpga_config_hashes`` + ``/config_tracker_fpga_configs`` so the FPGA
+      controller's startup config from any node further upstream propagates downstream.
+   4. Same for ``/config_tracker_fpga_timing_hashes`` + ``/config_tracker_fpga_timings``.
 
    (See the full `doxygen docs <html/>`_ or code for implementation details.)
 
