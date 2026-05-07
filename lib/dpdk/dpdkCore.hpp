@@ -236,9 +236,10 @@ private:
      * Returns the parsed JSON body on success, or std::nullopt on any error
      * (HTTP failure, parse failure). Logs on failure.
      */
-    static std::optional<nlohmann::json>
-    _try_fetch_fpga_endpoint(const std::string& host, uint16_t port,
-                             const std::string& endpoint, int timeout_seconds);
+    static std::optional<nlohmann::json> _try_fetch_fpga_endpoint(const std::string& host,
+                                                                  uint16_t port,
+                                                                  const std::string& endpoint,
+                                                                  int timeout_seconds);
 
     /// The pool of DPDK mbufs, one per numa node
     std::vector<struct rte_mempool*> mbuf_pools;

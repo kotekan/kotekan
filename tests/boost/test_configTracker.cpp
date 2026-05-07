@@ -221,8 +221,7 @@ BOOST_AUTO_TEST_CASE(set_fpga_config_conflict_throws) {
     json fpga_config_v2 = {{"fpga_serial", "0xdeadbeef"}, {"clock_mhz", 1200}};
 
     tracker.setFpgaConfig("10.6.0.1", 54321, fpga_config_v1);
-    BOOST_CHECK_THROW(tracker.setFpgaConfig("10.6.0.1", 54321, fpga_config_v2),
-                      std::runtime_error);
+    BOOST_CHECK_THROW(tracker.setFpgaConfig("10.6.0.1", 54321, fpga_config_v2), std::runtime_error);
 }
 
 BOOST_AUTO_TEST_CASE(set_fpga_timing_conflict_throws) {
@@ -232,8 +231,7 @@ BOOST_AUTO_TEST_CASE(set_fpga_timing_conflict_throws) {
     json fpga_timing_v2 = {{"frame_zero_unix_ns", 1700000000999999999LL}};
 
     tracker.setFpgaTiming("10.6.0.1", 54321, fpga_timing_v1);
-    BOOST_CHECK_THROW(tracker.setFpgaTiming("10.6.0.1", 54321, fpga_timing_v2),
-                      std::runtime_error);
+    BOOST_CHECK_THROW(tracker.setFpgaTiming("10.6.0.1", 54321, fpga_timing_v2), std::runtime_error);
 }
 
 BOOST_AUTO_TEST_CASE(all_categories_coexist) {

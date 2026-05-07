@@ -118,9 +118,9 @@ void kotekanMode::initalize_stages() {
     // fetch /config_tracker_local.
     ConfigTracker::instance().register_with_server(&restServer::instance());
     try {
-        ConfigTracker::instance().setLocalConfig(
-            config.get_full_config_json(), get_kotekan_version(), get_git_branch(),
-            get_git_commit_hash(), get_cmake_build_options());
+        ConfigTracker::instance().setLocalConfig(config.get_full_config_json(),
+                                                 get_kotekan_version(), get_git_branch(),
+                                                 get_git_commit_hash(), get_cmake_build_options());
     } catch (const std::exception& e) {
         ERROR_NON_OO("Failed to set local config in ConfigTracker: {:s}", e.what());
     }

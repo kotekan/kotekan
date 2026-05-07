@@ -279,8 +279,8 @@ public:
         ConfigInfo info(filtered_json, json_hash, kotekan_version, kotekan_build_branch,
                         kotekan_git_commit_hash, kotekan_cmake_options);
 
-        _insertCategorized(_upstream_configs, _upstream_config_hashes, host, port, info,
-                           "upstream", _config_present_metric());
+        _insertCategorized(_upstream_configs, _upstream_config_hashes, host, port, info, "upstream",
+                           _config_present_metric());
     }
 
     /**
@@ -449,8 +449,7 @@ public:
     void register_with_server(restServer* rest_server) {
         using namespace std::placeholders;
         rest_server->register_get_callback(
-            "/config_tracker_local",
-            std::bind(&ConfigTracker::trackers_local_callback, this, _1));
+            "/config_tracker_local", std::bind(&ConfigTracker::trackers_local_callback, this, _1));
         rest_server->register_get_callback(
             "/config_tracker_local_hash",
             std::bind(&ConfigTracker::trackers_local_hash_callback, this, _1));
@@ -505,16 +504,13 @@ public:
         // inserted as-is and validated against the advertised hash.
         _pull_categorized_from_peer(host, port, "/config_tracker_upstream_hashes",
                                     "/config_tracker_upstream_configs", _upstream_configs,
-                                    _upstream_config_hashes, "upstream",
-                                    _config_present_metric());
-        _pull_categorized_from_peer(host, port, "/config_tracker_fpga_config_hashes",
-                                    "/config_tracker_fpga_configs", _fpga_configs,
-                                    _fpga_config_hashes, "fpga config",
-                                    _fpga_config_present_metric());
-        _pull_categorized_from_peer(host, port, "/config_tracker_fpga_timing_hashes",
-                                    "/config_tracker_fpga_timings", _fpga_timings,
-                                    _fpga_timing_hashes, "fpga timing",
-                                    _fpga_timing_present_metric());
+                                    _upstream_config_hashes, "upstream", _config_present_metric());
+        _pull_categorized_from_peer(
+            host, port, "/config_tracker_fpga_config_hashes", "/config_tracker_fpga_configs",
+            _fpga_configs, _fpga_config_hashes, "fpga config", _fpga_config_present_metric());
+        _pull_categorized_from_peer(
+            host, port, "/config_tracker_fpga_timing_hashes", "/config_tracker_fpga_timings",
+            _fpga_timings, _fpga_timing_hashes, "fpga timing", _fpga_timing_present_metric());
 
         std::lock_guard<std::mutex> lock(_lock);
         _check_consistent_locked(_upstream_configs, _upstream_config_hashes, "upstream");
@@ -687,11 +683,11 @@ private:
      * upstream-peer configs and FPGA config/timing entries. Caller must have
      * stripped any kotekan_update_endpoint blocks.
      */
-    std::string _jsonHashWithEndpoint(const nlohmann::json& filtered_json,
-                                      const std::string& host, uint16_t port) const {
+    std::string _jsonHashWithEndpoint(const nlohmann::json& filtered_json, const std::string& host,
+                                      uint16_t port) const {
         if (_has_kotekan_update_endpoint(filtered_json)) {
-            FATAL_ERROR_NON_OO(
-                "ConfigTracker: _jsonHashWithEndpoint called with kotekan_update_endpoint present.");
+            FATAL_ERROR_NON_OO("ConfigTracker: _jsonHashWithEndpoint called with "
+                               "kotekan_update_endpoint present.");
         }
         std::stringstream ss;
         ss << host << ":" << port << "|"
@@ -884,8 +880,8 @@ private:
 
             // Fetch the entry by hash from the peer.
             const std::string path = configs_endpoint + "?hash=" + hash;
-            restClient::restReply entry_reply = restClient::instance().make_request_blocking(
-                path, {}, peer_host, peer_port, 1, -1);
+            restClient::restReply entry_reply =
+                restClient::instance().make_request_blocking(path, {}, peer_host, peer_port, 1, -1);
             if (!entry_reply.first) {
                 ERROR_NON_OO("ConfigTracker: failed to GET {} for {} hash {} from peer {}:{}",
                              configs_endpoint, category_name, hash, peer_host, peer_port);
@@ -1088,8 +1084,7 @@ private:
                 std::ofstream file(temp_filename);
                 if (!file)
                     FATAL_ERROR_NON_OO("ConfigTracker: cannot open {} for writing", temp_filename);
-                file << info.to_json().dump(4, ' ', false,
-                                            nlohmann::json::error_handler_t::strict);
+                file << info.to_json().dump(4, ' ', false, nlohmann::json::error_handler_t::strict);
                 if (!file.good())
                     FATAL_ERROR_NON_OO("ConfigTracker: write failed for {}", temp_filename);
             }
@@ -1109,17 +1104,16 @@ private:
                                   const std::map<std::string, HostPort>& reverse,
                                   const char* category_name) const {
         if (entries.size() != reverse.size()) {
-            FATAL_ERROR_NON_OO(
-                "ConfigTracker: {} entries ({}) and hashes ({}) sizes differ", category_name,
-                entries.size(), reverse.size());
+            FATAL_ERROR_NON_OO("ConfigTracker: {} entries ({}) and hashes ({}) sizes differ",
+                               category_name, entries.size(), reverse.size());
         }
     }
 
     /// Refresh the total-configs gauge. Caller must hold _lock.
     void _refresh_count_metric_locked() {
-        _configs_total_metric().set(static_cast<double>(
-            (_local_config.has_value() ? 1u : 0u) + _upstream_configs.size()
-            + _fpga_configs.size() + _fpga_timings.size()));
+        _configs_total_metric().set(
+            static_cast<double>((_local_config.has_value() ? 1u : 0u) + _upstream_configs.size()
+                                + _fpga_configs.size() + _fpga_timings.size()));
     }
 
     void _record_upstream_fetch(const std::string& host, uint16_t port, bool success) {
@@ -1150,24 +1144,24 @@ private:
 
     static prometheus::MetricFamily<prometheus::Gauge>& _local_config_present_metric() {
         static prometheus::MetricFamily<prometheus::Gauge>& metric =
-            prometheus::Metrics::instance().add_gauge(
-                "kotekan_config_tracker_local_config_present", _metrics_stage_name, {"hash"});
+            prometheus::Metrics::instance().add_gauge("kotekan_config_tracker_local_config_present",
+                                                      _metrics_stage_name, {"hash"});
         return metric;
     }
 
     static prometheus::MetricFamily<prometheus::Gauge>& _fpga_config_present_metric() {
         static prometheus::MetricFamily<prometheus::Gauge>& metric =
-            prometheus::Metrics::instance().add_gauge(
-                "kotekan_config_tracker_fpga_config_present", _metrics_stage_name,
-                {"host", "port", "hash"});
+            prometheus::Metrics::instance().add_gauge("kotekan_config_tracker_fpga_config_present",
+                                                      _metrics_stage_name,
+                                                      {"host", "port", "hash"});
         return metric;
     }
 
     static prometheus::MetricFamily<prometheus::Gauge>& _fpga_timing_present_metric() {
         static prometheus::MetricFamily<prometheus::Gauge>& metric =
-            prometheus::Metrics::instance().add_gauge(
-                "kotekan_config_tracker_fpga_timing_present", _metrics_stage_name,
-                {"host", "port", "hash"});
+            prometheus::Metrics::instance().add_gauge("kotekan_config_tracker_fpga_timing_present",
+                                                      _metrics_stage_name,
+                                                      {"host", "port", "hash"});
         return metric;
     }
 

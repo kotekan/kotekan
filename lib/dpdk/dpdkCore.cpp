@@ -471,11 +471,12 @@ void dpdkCore::fpga_controller_fetch_thread() {
     }
 }
 
-std::optional<nlohmann::json>
-dpdkCore::_try_fetch_fpga_endpoint(const std::string& host, uint16_t port,
-                                   const std::string& endpoint, int timeout_seconds) {
-    auto reply = restClient::instance().make_request_blocking(endpoint, {}, host, port, 0,
-                                                              timeout_seconds);
+std::optional<nlohmann::json> dpdkCore::_try_fetch_fpga_endpoint(const std::string& host,
+                                                                 uint16_t port,
+                                                                 const std::string& endpoint,
+                                                                 int timeout_seconds) {
+    auto reply =
+        restClient::instance().make_request_blocking(endpoint, {}, host, port, 0, timeout_seconds);
     if (!reply.first) {
         ERROR_NON_OO("dpdkCore: GET {:s} from {:s}:{:d} failed", endpoint, host, port);
         return std::nullopt;
@@ -483,8 +484,8 @@ dpdkCore::_try_fetch_fpga_endpoint(const std::string& host, uint16_t port,
     try {
         return nlohmann::json::parse(reply.second);
     } catch (const nlohmann::json::parse_error& e) {
-        ERROR_NON_OO("dpdkCore: failed to parse {:s} response from {:s}:{:d}: {:s}", endpoint,
-                     host, port, e.what());
+        ERROR_NON_OO("dpdkCore: failed to parse {:s} response from {:s}:{:d}: {:s}", endpoint, host,
+                     port, e.what());
         return std::nullopt;
     }
 }
