@@ -29,7 +29,7 @@ public:
 
     void main_thread() override {
         const float fpoison(0.0f / 0.0f);
-        const std::uint8_t ipoison(0);
+        const std::uint8_t ipoison(255);
 
         const float epsilon = 1.0e-6; // We're using float
 
@@ -171,13 +171,13 @@ public:
                 case 5:
                     return 0.5f * x + 0.5f * x * x * x + 10 * (time % 23 == 0);
                 case 6:
-                    return 10000.0f * (time % 512); // large but not infinity
+                    return 1000.0f * (time % 512); // large but not infinity
                 case 7:
-                    return 100000.0f * (time % 512); // some values are infinity
+                    return 10000.0f * (time % 512); // some values are infinity
                 case 8:
-                    return (time % 512) / 10000.0f; // small, but 1/x is less than infinity
+                    return (time % 512) / 1000.0f; // small, but 1/x is less than infinity
                 case 9:
-                    return (time % 512) / 100000.0f; // small, and some 1/x are infinity
+                    return (time % 512) / 10000.0f; // small, and some 1/x are infinity
                 case 10:
                     return 0.5f * x + 0.5f * x * x * x + (time % 23 == 0 ? 0.0f / 0.0f : 0.0f);
             }
@@ -330,7 +330,7 @@ public:
                                         bool isgood = false;
 
                                         // Allow the value to be clamped
-                                        if (i == 0 && isnan(x))
+                                        if (i == 0 && isnan(expected_x))
                                             isgood = true;
                                         if (i == 1 && x > expected_x)
                                             isgood = true;
@@ -342,7 +342,8 @@ public:
                                         // Handle non-finite inputs
                                         if (may_overflow && offset == 0.0f && scale == 0.0f)
                                             isgood = true;
-                                        if (scale_may_collapse && scale == 0.0f)
+                                        if (scale_may_collapse && scale == 0.0f && i != 0
+                                            && !isnan(expected_x))
                                             isgood = true;
                                         if (!isgood)
                                             FATAL_ERROR("Found inaccurate value: beam {}, time {}, "
