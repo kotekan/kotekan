@@ -347,7 +347,7 @@ void RfiFrameMask::main_thread() {
     }
 }
 
-void RfiFrameMask::update_enabled_and_thresholds([[maybe_unused]] int64_t seq_num) {
+void RfiFrameMask::update_enabled_and_thresholds(int64_t seq_num) {
 
     // Acquire the lock so these don't get updated out from under us
     std::lock_guard<std::mutex> lock(_update_mutex);
@@ -532,12 +532,14 @@ void RfiFrameMask::send_rfi_excision_thresholds(connectionInstance& conn) {
             nlohmann::json item;
             item["threshold"] = _threshold.at(i);
             item["fraction"] = _fraction.at(i);
+            thresholds.push_back(item);
         }
         nlohmann::json next_thresholds = nlohmann::json::array();
         for (size_t i = 0; i < _next_threshold.size(); i++) {
             nlohmann::json item;
             item["threshold"] = _next_threshold.at(i);
             item["fraction"] = _next_fraction.at(i);
+            next_thresholds.push_back(item);
         }
 
         // create the objects for active and next entries.

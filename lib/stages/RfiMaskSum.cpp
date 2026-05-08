@@ -93,7 +93,7 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
     _samples_per_data_set(config.get<int64_t>(unique_name, "samples_per_data_set")),
     _sub_integration_ntime(config.get<int64_t>(unique_name, "sub_integration_ntime")),
     _rfi_downsampling_factor(config.get<int64_t>(unique_name, "rfi_downsampling_factor")),
-    _num_integrations(_samples_per_data_set / _sub_integration_ntime) {
+    _num_integrations(div_noremainder(_samples_per_data_set, _sub_integration_ntime)) {
 
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);

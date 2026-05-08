@@ -321,9 +321,6 @@ void N2TimeDownsample::main_thread() {
                     int k = i * num_elements + j;
                     size_t d_j = j % num_dishes;
                     // Ensure 1st element of each evec doesn't get a phase.
-                    // std::complex<double> phase_doub =
-                    fringe_phase[d_j] * std::conj(fringe_phase[0]);
-                    // N2::cfloat phase{(float)phase_doub.real(), (float)phase_doub.imag()};
                     std::complex<float> phase = fringe_phase[d_j] * std::conj(fringe_phase[0]);
                     output_frame.evec[k] +=
                         frame.evec[k] * phase * ((float)frame.n_valid_fpga_ticks);

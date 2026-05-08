@@ -118,7 +118,7 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
 
     j.emplace("n_valid_fpga_ticks", m.n_valid_fpga_ticks);
     j.emplace("n_rfi_fpga_ticks", m.n_rfi_fpga_ticks);
-    j.emplace("n_rfi_onlyfpga_ticks", m.n_rfi_only_fpga_ticks);
+    j.emplace("n_rfi_only_fpga_ticks", m.n_rfi_only_fpga_ticks);
     j.emplace("n_pl_fpga_ticks", m.n_pl_fpga_ticks);
 
     j.emplace("abs_time_idx", m.abs_time_idx);
