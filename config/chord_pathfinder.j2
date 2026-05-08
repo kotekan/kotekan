@@ -294,12 +294,16 @@ host_rfi_RFIframemask_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    zero_new_frames: true
+    zero_value: 0xFF
     metadata_pool: main_pool
 
 host_rfi_RFIframemask_buffer_1:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    zero_new_frames: true
+    zero_value: 0xFF
     metadata_pool: main_pool
 
 vis_blocksize: 16
@@ -804,19 +808,19 @@ count_PL_1:
     out_buf: host_pl_counts_buffer_1
     packet_loss_is_scalar: true
 
-generate_RFI_frame_mask:
-    kotekan_stage: testRFIFrameMaskGen
-    out_buf: host_rfi_RFIframemask_buffer
-    type: const
-    value: 1
-    num_frames: -1
+# generate_RFI_frame_mask:
+#     kotekan_stage: testRFIFrameMaskGen
+#     out_buf: host_rfi_RFIframemask_buffer
+#     type: const
+#     value: 1
+#     num_frames: -1
 
-generate_RFI_frame_mask_1:
-    kotekan_stage: testRFIFrameMaskGen
-    out_buf: host_rfi_RFIframemask_buffer_1
-    type: const
-    value: 1
-    num_frames: -1
+# generate_RFI_frame_mask_1:
+#     kotekan_stage: testRFIFrameMaskGen
+#     out_buf: host_rfi_RFIframemask_buffer_1
+#     type: const
+#     value: 1
+#     num_frames: -1
 
 n2_accumulate:
     kotekan_stage: N2Accumulate
