@@ -49,10 +49,10 @@
 
 # n2k sub-integrations to combine into each output N2 frame by N2Accumulate.
 # Choose a multiple of integrations_per_frame so n2k_frames_per_output is an integer and generators run long enough.
-{% set num_n2k_samples_to_accumulate = 96 %}
+{% set num_subintegrations_per_bin = 96 %}
 
 # correlation frames needed to form one output N2 frame
-{% set n2k_frames_per_output = num_n2k_samples_to_accumulate // integrations_per_frame %}
+{% set n2k_frames_per_output = num_subintegrations_per_bin // integrations_per_frame %}
 
 # number of frames testDataGen should emit so the writer receives num_output_frames
 {% set frames_to_generate = n2k_frames_per_output * num_output_frames %}
@@ -428,7 +428,7 @@ n2_accumulate:
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
-    num_n2k_samples_to_accumulate: {{ num_n2k_samples_to_accumulate }}
+    num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
 
 
 # Add eigen calculation

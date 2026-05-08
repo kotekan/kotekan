@@ -192,6 +192,8 @@ void FakeN2::main_thread() {
             meta->n_valid_fpga_ticks = delta_seq;
             // Set number of rfi ticks (default to 0)
             meta->n_rfi_fpga_ticks = 0;
+            meta->n_rfi_only_fpga_ticks = 0;
+            meta->n_pl_fpga_ticks = 0;
 
             DEBUG("Output frame seq={:d} time_ns={:d}", meta->fpga_start_tick,
                   meta->frame_start_time_ns);
@@ -203,12 +205,12 @@ void FakeN2::main_thread() {
 
             struct EOP bin_start_eop = tel.get_EOP_at_time(tel.to_time(fpga_seq + t * delta_seq));
             meta->bin_start_ERA_deg = bin_start_eop.ERA_deg;
-            meta->bin_start_LAST = -1;
+            meta->bin_start_ERAL = -1;
 
             struct EOP bin_end_eop =
                 tel.get_EOP_at_time(tel.to_time(fpga_seq + t * delta_seq + delta_seq));
             meta->bin_end_ERA_deg = bin_end_eop.ERA_deg;
-            meta->bin_end_LAST = -1;
+            meta->bin_end_ERAL = -1;
 
             DEBUG("Creating N2FrameView.");
             DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}", num_elements,

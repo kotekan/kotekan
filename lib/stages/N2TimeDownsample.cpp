@@ -102,7 +102,7 @@ void N2TimeDownsample::main_thread() {
 
     // Make an array to hold the per-dish phases.
     int num_dishes = tel.get_num_dishes();
-    std::vector<std::complex<double>> fringe_phase(num_dishes, 1.0);
+    std::vector<std::complex<float>> fringe_phase(num_dishes, 1.0);
 
     while (!stop_thread) {
         // Wait for the buffer to be filled with data
@@ -213,8 +213,8 @@ void N2TimeDownsample::main_thread() {
             output_frame.bin_eop = eop_target;
             output_frame.bin_start_ERA_deg = era_deg_lo;
             output_frame.bin_end_ERA_deg = era_deg_hi;
-            output_frame.bin_start_LAST = -1; // TODO: update
-            output_frame.bin_end_LAST = -1;   // TODO: update
+            output_frame.bin_start_ERAL = -1; // TODO: update
+            output_frame.bin_end_ERAL = -1;   // TODO: update
 
             // Set the output absolute time index, from the difference between the current ERA bin
             // and the ERA bin at startup
@@ -240,7 +240,7 @@ void N2TimeDownsample::main_thread() {
 
             if (do_fringestop) {
                 // Get the per-dish fringestopping phases.
-                tel.fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, fringe_phase);
+                tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, fringe_phase);
 
                 // This indexing requires the el_id = (n_dish)*pol_id + dish_id
                 size_t idx = 0;
@@ -290,7 +290,7 @@ void N2TimeDownsample::main_thread() {
 
             // Recalculate fringestop phases
             if (do_fringestop)
-                tel.fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, fringe_phase);
+                tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, fringe_phase);
             // Accumulate contents of buffer
             size_t idx = 0;
             for (size_t i = 0; i < num_elements; i++) {
@@ -299,16 +299,10 @@ void N2TimeDownsample::main_thread() {
                     size_t d_i = i % num_dishes;
                     size_t d_j = j % num_dishes;
 
-                    // Computing the total phase in double precision
-                    // in case one of the dish phases is small.
-                    // Adding the weighting by valid samples here as well.
-                    std::complex<double> w_doub = (fringe_phase[d_i] * std::conj(fringe_phase[d_j]))
-                                                  * ((double)frame.n_valid_fpga_ticks);
-
-                    // Now truncate the phase to a float to match vis[]
-                    // Have to be explicit about this, compiler complains
-                    // otherwise.
-                    N2::cfloat w{(float)w_doub.real(), (float)w_doub.imag()};
+                    // Weight by number of valid samples and include a fringe-stopping phase
+                    // (will be 1.0 if do_fringestop is false)
+                    std::complex<float> w = (fringe_phase[d_i] * std::conj(fringe_phase[d_j]))
+                                            * ((float)frame.n_valid_fpga_ticks);
 
                     // Accumulate
                     output_frame.vis[idx] += w * frame.vis[idx];
@@ -327,9 +321,7 @@ void N2TimeDownsample::main_thread() {
                     int k = i * num_elements + j;
                     size_t d_j = j % num_dishes;
                     // Ensure 1st element of each evec doesn't get a phase.
-                    std::complex<double> phase_doub =
-                        fringe_phase[d_j] * std::conj(fringe_phase[0]);
-                    N2::cfloat phase{(float)phase_doub.real(), (float)phase_doub.imag()};
+                    std::complex<float> phase = fringe_phase[d_j] * std::conj(fringe_phase[0]);
                     output_frame.evec[k] +=
                         frame.evec[k] * phase * ((float)frame.n_valid_fpga_ticks);
                 }
@@ -339,6 +331,8 @@ void N2TimeDownsample::main_thread() {
             // Accumulate integration totals
             output_frame.n_valid_fpga_ticks += frame.n_valid_fpga_ticks;
             output_frame.n_rfi_fpga_ticks += frame.n_rfi_fpga_ticks;
+            output_frame.n_rfi_only_fpga_ticks += frame.n_rfi_only_fpga_ticks;
+            output_frame.n_pl_fpga_ticks += frame.n_pl_fpga_ticks;
             output_frame.frame_length_fpga_ticks += frame.frame_length_fpga_ticks;
 
             // Move to next frame

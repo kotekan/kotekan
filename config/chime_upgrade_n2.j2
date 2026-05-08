@@ -738,6 +738,12 @@ host_n2k_counts_buffer:
     frame_size: sizeof_int32 * n2k_counts_triangle_size * num_freq_gpu_buf * n2k_num_subintegrations
     metadata_pool: main_pool
 
+host_n2k_RFIcounts_buffer:
+    kotekan_buffer: standard
+    num_frames: gpu_buffer_depth
+    frame_size: sizeof_int32 * num_freq_gpu_buf * n2k_num_subintegrations
+    metadata_pool: main_pool
+
 # Stages
 
 run_n2k_correlation:
@@ -853,20 +859,25 @@ run_recv_rfi_RFImask:
           ring_buffer_size: gpu_buffer_depth * output_size
           out_buf: host_rfi_RFImask_buffer
 
+rfi_RFImask_count:
+    kotekan_stage: RfiMaskSum
+    in_buf: host_rfi_RFImask_buffer
+    out_buf: host_rfi_RFIcounts_buffer
+
 vis_accumulate:
     kotekan_stage: N2Accumulate
     in_buf: host_n2k_correlation_buffer
     in_counts_buf: host_n2k_counts_buffer
-    in_rfimask_buf: host_rfi_RFImask_buffer
+    in_rficounts_buf: host_rfi_RFIcounts_buffer
     out_buf: vis_10s_buffer
     packet_loss_is_scalar: True
     cpu_affinity: [17, 18, 19]
     num_workers: 3
     # round_to_even(10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
     # round_up_to_even(10s / ( 16384 * 2.56us ) * 1) = 240
-    # num_n2k_samples_to_accumulate_maybe_odd: 10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
-    # num_n2k_samples_to_accumulate: (num_n2k_samples_to_accumulate_maybe_odd + 1) / 2 * 2
-    num_n2k_samples_to_accumulate: 240
+    # num_subintegrations_per_bin_maybe_odd: 10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
+    # num_subintegrations_per_bin: (num_subintegrations_per_bin_maybe_odd + 1) / 2 * 2
+    num_subintegrations_per_bin: 240
     # these recap values from cudaCorrelator
     num_freq_per_n2k_frame: num_freq_gpu_buf
     #samples_per_data_set: n2k_samples_per_data_set # a global of this nam exists used by n2k_samples_per_data_set

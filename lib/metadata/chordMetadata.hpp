@@ -38,7 +38,7 @@ const int CHORD_META_MAX_FREQ = 4096;
 const int CHORD_META_MAX_DIM = 10;
 
 // Maximum length of dimension names for arrays
-const int CHORD_META_MAX_DIMNAME = 20;
+const int CHORD_META_MAX_DIMNAME = 24;
 
 // Maximum number of visibility matrix samples in a frame
 const int CHORD_META_MAX_VIS_SAMPLES = 64;
@@ -154,6 +154,10 @@ public:
             assert(this->dim[d] >= 0);
             np *= this->dim[d];
         }
+    }
+
+    bool has_name() const {
+        return (strnlen(this->name, CHORD_META_MAX_DIMNAME) > 0);
     }
 
     void set_name(const std::string& name) {
@@ -416,6 +420,41 @@ public:
         std::lock_guard<std::mutex> lock(this->lock);
         return metadata.at(jsonMetadata::FREQ_UPCHAN_INDEX).template get<std::vector<int>>();
     }
+
+    // Whether second stage RFI excision (at the GPU frame level) is enabled
+    void set_rfi_frame_excision_enabled(const bool rfi_frame_excision_enabled) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::RFI_FRAME_EXCISION_ENABLED] = rfi_frame_excision_enabled;
+    }
+
+    bool has_rfi_frame_excision_enabled() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::RFI_FRAME_EXCISION_ENABLED);
+    }
+
+    bool get_rfi_frame_excision_enabled() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::RFI_FRAME_EXCISION_ENABLED).template get<bool>();
+    }
+
+    // Second stage RFI excision (whole GPU frames) thresholds
+    void set_rfi_frame_excision_thresholds(const std::vector<std::array<float, 2>> thresholds) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        assert(thresholds.size() <= MAX_NUM_RFI_THRESHOLDS);
+        metadata[jsonMetadata::RFI_FRAME_EXCISION_THRESHOLDS] = thresholds;
+    }
+
+    bool has_rfi_frame_excision_thresholds() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::RFI_FRAME_EXCISION_THRESHOLDS);
+    }
+
+    std::vector<std::array<float, 2>> get_rfi_frame_excision_thresholds() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::RFI_FRAME_EXCISION_THRESHOLDS)
+            .template get<std::vector<std::array<float, 2>>>();
+    }
+
 
     // non-science metadata
 

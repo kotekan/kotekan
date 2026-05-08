@@ -280,6 +280,14 @@ public:
             if (meta->has_freq_upchan_index())
                 dataset.createAttribute("freq_upchan_index", meta->get_freq_upchan_index());
 
+            if (meta->has_rfi_frame_excision_enabled())
+                dataset.createAttribute("rfi_frame_excision_enabled",
+                                        meta->get_rfi_frame_excision_enabled());
+
+            if (meta->has_rfi_frame_excision_thresholds())
+                dataset.createAttribute("rfi_frame_excision_thresholds",
+                                        meta->get_rfi_frame_excision_thresholds());
+
             if (meta->ndishes >= 0) {
                 dataset.createAttribute("ndishes", meta->ndishes);
                 // const DataSpace space{std::size_t(meta->n_dish_locations_ns),
@@ -356,6 +364,8 @@ public:
         const std::vector<size_t> emethod_dims({1});
         const std::vector<size_t> erms_dims({1});
         const std::vector<size_t> gain_dims({frame.num_elements, 2});
+        const std::vector<size_t> radiometer_chi2_dims({3}); // 3 pol pairs XX, XY, YY
+
 
         // Create dataspaces
         const DataSpace vis_space(vis_dims);
@@ -366,6 +376,7 @@ public:
         const DataSpace emethod_space(emethod_dims);
         const DataSpace erms_space(erms_dims);
         const DataSpace gain_space(gain_dims);
+        const DataSpace radiometer_chi2_space(radiometer_chi2_dims);
 
         // Create datatypes
         const DataType float_type = chord2hdf5(kotekan::float32);
@@ -380,6 +391,7 @@ public:
         auto emethod_props = make_chunked_props(emethod_dims);
         auto erms_props = make_chunked_props(erms_dims);
         auto gain_props = make_chunked_props(gain_dims);
+        auto radiometer_chi2_props = make_chunked_props(radiometer_chi2_dims);
 
         // Create dataset
         auto vis_dset = file.createDataSet("vis", vis_space, float_type, vis_props);
@@ -390,6 +402,8 @@ public:
         auto emethod_dset = file.createDataSet("emethod", emethod_space, int_type, emethod_props);
         auto erms_dset = file.createDataSet("erms", erms_space, float_type, erms_props);
         auto gain_dset = file.createDataSet("gain", gain_space, float_type, gain_props);
+        auto radiometer_chi2_dset = file.createDataSet("radiometer_chi2", radiometer_chi2_space,
+                                                       float_type, radiometer_chi2_props);
 
         vis_dset.write_raw(frame.vis.data(), float_type);
         weight_dset.write_raw(frame.weight.data(), float_type);
@@ -399,6 +413,7 @@ public:
         emethod_dset.write_raw(&frame.emethod, int_type);
         erms_dset.write_raw(&frame.erms, float_type);
         gain_dset.write_raw(frame.gain.data(), float_type);
+        radiometer_chi2_dset.write_raw(frame.radiometer_chi2.data(), float_type);
 
         // Set metadata as file-level attributes
         file.createAttribute("num_elements", frame.num_elements);
@@ -422,13 +437,19 @@ public:
         file.createAttribute("bin_eop.yp_as", frame.bin_eop.yp_as);
         file.createAttribute("bin_start_ERA_deg", frame.bin_start_ERA_deg);
         file.createAttribute("bin_end_ERA_deg", frame.bin_end_ERA_deg);
-        file.createAttribute("bin_start_LAST", frame.bin_start_LAST);
-        file.createAttribute("bin_end_LAST", frame.bin_end_LAST);
+        file.createAttribute("bin_start_ERAL", frame.bin_start_ERAL);
+        file.createAttribute("bin_end_ERAL", frame.bin_end_ERAL);
         file.createAttribute("fpga_start_tick", frame.fpga_start_tick);
         file.createAttribute("frame_start_time_ns", frame.frame_start_time_ns);
         file.createAttribute("frame_length_fpga_ticks", frame.frame_length_fpga_ticks);
         file.createAttribute("n_valid_fpga_ticks", frame.n_valid_fpga_ticks);
         file.createAttribute("n_rfi_fpga_ticks", frame.n_rfi_fpga_ticks);
+        file.createAttribute("n_rfi_only_fpga_ticks", frame.n_rfi_only_fpga_ticks);
+        file.createAttribute("n_pl_fpga_ticks", frame.n_pl_fpga_ticks);
+        file.createAttribute("rfi_frame_excision_enabled", frame.rfi_frame_excision_enabled);
+        file.createAttribute("rfi_frame_excision_num", frame.rfi_frame_excision_num);
+        file.createAttribute("rfi_frame_excision_threshold", frame.rfi_frame_excision_threshold);
+        file.createAttribute("rfi_frame_excision_fraction", frame.rfi_frame_excision_fraction);
     }
 
     /**

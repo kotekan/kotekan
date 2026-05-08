@@ -47,12 +47,13 @@
  * - Index maps: /index_map/freq (MHz + width per file frequency), /index_map/prod,
  *   /index_map/grid_x_idx, /index_map/grid_y_idx, /index_map/feed_pos_disp_m,
  *   /index_map/coelev_disp_deg, /index_map/type, /index_map/dish_positions_in_grid_coords.
- * - Per-(f, p, t)/(f, t) datasets: /vis, /eval, /evec, /erms, /gain, /frames_added;
- *   vis_weight, flags, frac_lost, and frac_rfi live at the root (CHORD) or under
+ * - Per-(f, p, t)/(f, t) datasets: /vis, /eval, /evec, /erms, /gain, /radiometer_chi2,
+ * /frames_added; vis_weight, flags, frac_lost, and frac_rfi live at the root (CHORD) or under
  *   /flags/{vis_weight, flags, frac_lost, frac_rfi} when file_mode == CHIME.
  * - Per-time metadata: /fpga_start_tick, /frame_length_fpga_ticks,
  *   /time_center_ut1_ns, /bin_ut1_ns, /bin_start_ERA_deg, /bin_end_ERA_deg,
- *   /bin_start_LAST, /bin_end_LAST.
+ *   /bin_start_ERAL, /bin_end_ERAL, /rfi_frame_excision_enabled, /rfi_frame_excision_num,
+ *   /rfi_frame_excision_threshold, /rfi_frame_excision_fraction.
  * - /config_json grows on flush with snapshots from configTracker.
  *
  * @par Chunking and compression
@@ -99,26 +100,37 @@ public:
 
 protected:
     // Datasets to be stored until ready to write
-    // f = freq, p = prod, e = eigen, i = input, t = time
-    std::vector<N2::cfloat> vis;   // (f, p, t)
-    std::vector<float> vis_weight; // (f, p, t)
-    std::vector<float> eval;       // (f, e, t)
-    std::vector<N2::cfloat> evec;  // (f, e, i, t)
-    std::vector<float> erms;       // (f, t)
-    std::vector<N2::cfloat> gain;  // (f, i, t)
-    std::vector<float> frac_lost;  // (f, t) ; uses n_valid_fpga_ticks
-    std::vector<float> frac_rfi;   // (f, t) ; uses n_rfi_fpga_ticks
-    std::vector<float> flags;      // (f, i, t)
+    // f = freq, p = prod, e = eigen, i = input, t = time, k = threshold, pp = pol_prod
+    std::vector<N2::cfloat> vis;               // (f, p, t)
+    std::vector<float> vis_weight;             // (f, p, t)
+    std::vector<float> eval;                   // (f, e, t)
+    std::vector<N2::cfloat> evec;              // (f, e, i, t)
+    std::vector<float> erms;                   // (f, t)
+    std::vector<N2::cfloat> gain;              // (f, i, t)
+    std::vector<uint64_t> valid_fpga_count;    // (f, t)
+    std::vector<uint64_t> rfi_fpga_count;      // (f, t)
+    std::vector<uint64_t> rfi_only_fpga_count; // (f, t)
+    std::vector<uint64_t> pl_fpga_count;       // (f, t)
+    std::vector<float> frac_lost;              // (f, t) ; uses n_valid_fpga_ticks
+    std::vector<float> frac_rfi;               // (f, t) ; uses n_rfi_fpga_ticks
+    std::vector<float> frac_rfi_only;          // (f, t) ; uses n_rfi_only_fpga_ticks
+    std::vector<float> frac_pl;                // (f, t) ; uses n_pl_fpga_ticks
+    std::vector<float> flags;                  // (f, i, t)
+    std::vector<float> radiometer_chi2;        // (f, t, pp)
 
     // t-dependent metadata
-    std::vector<uint64_t> fpga_start_tick;         // (t)
-    std::vector<uint64_t> frame_length_fpga_ticks; // (t)
-    std::vector<int64_t> time_center_ut1;          // (t)
-    std::vector<int64_t> bin_ut1;                  // (t)
-    std::vector<double> bin_start_ERA_deg;         // (t)
-    std::vector<double> bin_end_ERA_deg;           // (t)
-    std::vector<double> bin_start_LAST;            // (t)
-    std::vector<double> bin_end_LAST;              // (t)
+    std::vector<uint64_t> fpga_start_tick;           // (t)
+    std::vector<uint64_t> frame_length_fpga_ticks;   // (t)
+    std::vector<int64_t> time_center_ut1;            // (t)
+    std::vector<int64_t> bin_ut1;                    // (t)
+    std::vector<double> bin_start_ERA_deg;           // (t)
+    std::vector<double> bin_end_ERA_deg;             // (t)
+    std::vector<double> bin_start_ERAL;              // (t)
+    std::vector<double> bin_end_ERAL;                // (t)
+    std::vector<bool> rfi_frame_excision_enabled;    // (t)
+    std::vector<int32_t> rfi_frame_excision_num;     // (t)
+    std::vector<float> rfi_frame_excision_threshold; // (t, k)
+    std::vector<float> rfi_frame_excision_fraction;  // (t, k)
 
     // Tracking what (f, t) pairs have been added
     std::vector<uint8_t> added_ft; // size = num_file_f * num_file_t

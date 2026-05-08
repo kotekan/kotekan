@@ -37,13 +37,20 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 
     time_center_eop(_metadata->time_center_eop), bin_eop(_metadata->bin_eop),
     bin_start_ERA_deg(_metadata->bin_start_ERA_deg), bin_end_ERA_deg(_metadata->bin_end_ERA_deg),
-    bin_start_LAST(_metadata->bin_start_LAST), bin_end_LAST(_metadata->bin_end_LAST),
+    bin_start_ERAL(_metadata->bin_start_ERAL), bin_end_ERAL(_metadata->bin_end_ERAL),
 
     fpga_start_tick(_metadata->fpga_start_tick),
     frame_start_time_ns(_metadata->frame_start_time_ns),
     frame_length_fpga_ticks(_metadata->frame_length_fpga_ticks),
     n_valid_fpga_ticks(_metadata->n_valid_fpga_ticks),
     n_rfi_fpga_ticks(_metadata->n_rfi_fpga_ticks),
+    n_rfi_only_fpga_ticks(_metadata->n_rfi_only_fpga_ticks),
+    n_pl_fpga_ticks(_metadata->n_pl_fpga_ticks),
+
+    rfi_frame_excision_enabled(_metadata->rfi_frame_excision_enabled),
+    rfi_frame_excision_num(_metadata->rfi_frame_excision_num),
+    rfi_frame_excision_threshold(_metadata->rfi_frame_excision_threshold),
+    rfi_frame_excision_fraction(_metadata->rfi_frame_excision_fraction),
 
     dataset_id(_metadata->dataset_id),
 
@@ -54,7 +61,9 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
     evec(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::evec])),
     emethod(bind_scalar<N2EigenMethod>(_frame, frame_layout.fields[N2Field::emethod])),
     erms(bind_scalar<float>(_frame, frame_layout.fields[N2Field::erms])),
-    gain(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::gain])) {
+    radiometer_chi2(bind_span<float>(_frame, frame_layout.fields[N2Field::radiometer_chi2])),
+    gain(bind_span<N2::cfloat>(_frame, frame_layout.fields[N2Field::gain])),
+    mask(bind_span<uint8_t>(_frame, frame_layout.fields[N2Field::mask])) {
 
     // User-facing error if frame size does not match size required by N2FrameView
     if (buf->frame_size != data_size()) {
@@ -110,6 +119,13 @@ void N2FrameView::copy_data(N2FrameView frame_to_copy_from, const std::set<N2Fie
     if (copy_member(N2Field::erms))
         erms = frame_to_copy_from.erms;
 
+    if (copy_member(N2Field::radiometer_chi2))
+        std::copy(frame_to_copy_from.radiometer_chi2.begin(),
+                  frame_to_copy_from.radiometer_chi2.end(), radiometer_chi2.begin());
+
     if (copy_member(N2Field::gain))
         std::copy(frame_to_copy_from.gain.begin(), frame_to_copy_from.gain.end(), gain.begin());
+
+    if (copy_member(N2Field::mask))
+        std::copy(frame_to_copy_from.mask.begin(), frame_to_copy_from.mask.end(), mask.begin());
 }
