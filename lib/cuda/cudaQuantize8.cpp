@@ -1,4 +1,5 @@
-// 8-bit FRB beam quantizer for CHIME, using the float16 FRB beamformer and CHIME's sending-to-Bonsai network format
+// 8-bit FRB beam quantizer for CHIME, using the float16 FRB beamformer and CHIME's
+// sending-to-Bonsai network format
 
 #include "DataType.hpp"            // for float16_t
 #include "NDArray.hpp"             // for NDArray

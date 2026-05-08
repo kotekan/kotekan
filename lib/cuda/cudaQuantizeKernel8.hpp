@@ -1,4 +1,5 @@
-// 8-bit FRB beam quantizer for CHIME, using the float16 FRB beamformer and CHIME's sending-to-Bonsai network format
+// 8-bit FRB beam quantizer for CHIME, using the float16 FRB beamformer and CHIME's
+// sending-to-Bonsai network format
 
 #ifndef CUDA_QUANTIZE_KERNEL_8_HPP
 #define CUDA_QUANTIZE_KERNEL_8_HPP
