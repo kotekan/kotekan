@@ -74,14 +74,16 @@ __device__ __host__ static inline float sane_fmin(const float x, const float y) 
 }
 
 // Round to nearest integer, avoiding all the implementation-defined cases
-__device__ __host__ static inline int sane_lrint(const float x) {
+static int sane_lrint(const float x) {
     using std::isnan, std::lrint;
+    // INT_MIN = -2^31 is exact in float; INT_MAX = 2^31 - 1 rounds up to 2^31
+    // when promoted, so the upper check uses `>=`.
+    if (isnan(x))
+        return 0; // we could mask to -8 instead
     if (x < INT_MIN)
         return INT_MIN;
-    if (x > INT_MAX)
+    if (x >= INT_MAX)
         return INT_MAX;
-    if (isnan(x))
-        return 0; // we could mask to 0 instead
     return int(lrint(x));
 }
 
@@ -107,7 +109,7 @@ void cpu_quantize8_chunk(const __half* __restrict__ const input, __half* __restr
             maxval = sane_fmax(maxval, x);
         }
     }
-    // Calculate offset and scale. Ensure the scale is nonzero.
+    // Calculate offset and scale.
     // There are 254 possible uint8 values since we don't use 0 or 255 for regular values.
     // Values are reconstructed as `offset + scale * n`, with `uint8 n`.
     // NaN in the input is represented as `n = 0`.
@@ -119,16 +121,7 @@ void cpu_quantize8_chunk(const __half* __restrict__ const input, __half* __restr
     //     minval => outf_min
     //     maxval => outf_max
     const float outf_range = outf_max - outf_min;
-    float in_range = maxval - minval;
-    // Ensure that the input range is not too small, which woud lead to an overflow when dividing by
-    // the scale
-    constexpr float min_in_range = 1.0e-3f; // approximately eps(__half)
-    if (in_range < min_in_range) {
-        const float avgval = (minval + maxval) / 2;
-        minval = avgval - min_in_range / 2;
-        maxval = avgval + min_in_range / 2;
-        in_range = maxval - minval;
-    }
+    const float in_range = maxval - minval;
 
     float scale = in_range / outf_range;
     float offset = minval - outf_min * scale;
@@ -144,8 +137,12 @@ void cpu_quantize8_chunk(const __half* __restrict__ const input, __half* __restr
     }
 
     // Store offset and scale in the output array
-    outputf[0] = __float2half(offset);
-    outputf[1] = __float2half(scale);
+    outputf[0] = offseth;
+    outputf[1] = scaleh;
+
+    // Recalculate offset and scale from the stored half precision values
+    offset = __half2float(offseth);
+    scale = __half2float(scaleh);
 
     // We encode values as unsigned 8-bit integers.
     for (int freq = 0; freq < out_nfreqs_chunk; ++freq) {
@@ -155,11 +152,11 @@ void cpu_quantize8_chunk(const __half* __restrict__ const input, __half* __restr
             // Get value
             const float x = __half2float(input[in_ind]);
             // Scale
-            const float y = (x - offset) / scale;
+            const float y = scale == 0 ? float(outi_min + outi_max) / 2.0f : (x - offset) / scale;
             // Round
             const int j = sane_lrint(y);
             // Clamp; use 0 for nan
-            const int k = isnan(y) ? 0 : max(outi_min, min(outi_max, j));
+            const int k = isnan(x) ? 0 : max(outi_min, min(outi_max, j));
             // Store
             outputi[out_ind] = k;
         }
@@ -224,6 +221,11 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
                                                             + out_nfreqs_outer * beam_outer)))));
     };
 
+    // Per-thread tile within each chunk: 8 contiguous times × 1 freq. 32 threads
+    // cover the 16 × 16 chunk as 2 time-groups × 16 freqs = 32 tiles.
+    const int in_time_chunk = 8 * (threadIdx.x % 2); // 0 or 8
+    const int in_freq_chunk = threadIdx.x / 2;       // 0..15
+
     // We store offset and scale only after finishing the loop over all chunks. Each thread stores
     // one offset/scale pair.
     __half2 outf;
@@ -235,8 +237,6 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
         // There are 256 values and 32 threads, so each thread loads 8 values.
         // We load these 8 values as a batch of 8 times.
         // (This is not cache-efficient because the frequencies are not adjacent.)
-        const int in_time_chunk = 2 * threadIdx.x % 2; // 0...15 in steps of 8
-        const int in_freq_chunk = threadIdx.x / 2;     // 0...15
         const int input_offset_01234567 = input_offset(time(in_time_chunk, time_outer),
                                                        freq(in_freq_chunk, freq_packet, freq_outer),
                                                        beam(beam_packet, beam_outer));
@@ -298,7 +298,7 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
             // Offset and scale are fine, but the inverse scale is non-finite. This means the scale
             // is too close to zero.
             scaleh = __float2half_rn(0.0f);
-            inv_offseth = -offseth;
+            inv_offseth = __float2half_rn(0.0f);
             inv_scaleh = __float2half_rn(0.0f);
         }
 
@@ -349,10 +349,9 @@ __global__ void gpu_quantize8_chunks(const __half* __restrict__ const input,
                                    | (std::uint64_t(i4) << 0x20) | (std::uint64_t(i5) << 0x28)
                                    | (std::uint64_t(i6) << 0x30) | (std::uint64_t(i7) << 0x38);
 
-        const int out_time_chunk = 8 * (chunk % 2); // 0...15 in steps of 8
-        const int out_freq_chunk = chunk / 2;       // 0...7
+        // Each thread writes its own tile, the same (in_time_chunk, in_freq_chunk) it loaded from.
         *(std::uint64_t*)(outputi
-                          + outputi_offset(out_time_chunk, out_freq_chunk, freq_packet, beam_packet,
+                          + outputi_offset(in_time_chunk, in_freq_chunk, freq_packet, beam_packet,
                                            time_outer, freq_outer, beam_outer)) = outi;
     }
     const int out_beam_outer = beam_outer0 + thread;
