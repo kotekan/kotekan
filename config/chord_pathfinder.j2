@@ -252,6 +252,55 @@ host_pl_mask_exp_buffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
+host_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+
+host_pl_mask_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+    numa_node: 1
+
+host_rfi_RFImask_counts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int8
+    metadata_pool: main_pool
+
+host_rfi_RFImask_counts_buffer_1:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int8
+    metadata_pool: main_pool
+
+host_PL_counts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int8
+    metadata_pool: main_pool
+
+host_PL_counts_buffer_1:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int8
+    metadata_pool: main_pool
+
+host_rfi_RFIframemask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    metadata_pool: main_pool
+
+host_rfi_RFIframemask_buffer_1:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    metadata_pool: main_pool
+
 vis_blocksize: 16
 vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
@@ -722,17 +771,66 @@ hex_dump:
     in_buf: n2_buffer_1
     len: 4096
 
+PL_mask_compactor:
+    kotekan_stage: PLMaskExpandedToCompact
+    in_buf: host_pl_mask_exp_buffer
+    out_buf: host_pl_mask_buffer
+
+PL_mask_compactor_1:
+    kotekan_stage: PLMaskExpandedToCompact
+    in_buf: host_pl_mask_exp_buffer_1
+    out_buf: host_pl_mask_buffer_1
+
+count_rfi_mask:
+    kotekan_stage: RfiMaskSum
+    in_buf: host_rfi_RFImask_buffer
+    out_buf: host_rfi_RFImask_counts_buffer
+
+count_rfi_mask_1:
+    kotekan_stage: RfiMaskSum
+    in_buf: host_rfi_RFImask_buffer_1
+    out_buf: host_rfi_RFImask_counts_buffer_1
+
+count_PL:
+    kotekan_stage: CountLostPLSamplesScalar
+    in_buf: host_pl_mask_buffer
+    out_buf: host_PL_counts_buffer
+    packet_loss_is_scalar: true
+
+count_PL_1:
+    kotekan_stage: CountLostPLSamplesScalar
+    in_buf: host_pl_mask_buffer_1
+    out_buf: host_PL_counts_buffer_1
+    packet_loss_is_scalar: true
+
+generate_RFI_frame_mask:
+    kotekan_stage: testRFIFrameMaskGen
+    out_buf: host_rfi_RFIframemask_buffer
+    type: const
+    value: 1
+
+generate_RFI_frame_mask_1:
+    kotekan_stage: testRFIFrameMaskGen
+    out_buf: host_rfi_RFIframemask_buffer_1
+    type: const
+    value: 1
+
 n2_accumulate:
     kotekan_stage: N2Accumulate
     cpu_affinity: [9]
     log_level: info
     in_buf: host_correlation_buffer
     in_counts_buf: host_counts_buffer
-    in_rfimask_buf: host_rfi_RFImask_buffer
+    in_rficounts_buf: host_rfi_RFImask_counts_buffer
+    in_plcounts_buf: host_PL_counts_buffer
+    in_rfiframemask_buf: host_rfi_RFIframemask_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
+    variance_mode: EvenOddPosDef
+    output_batch_size: 12
+    num_workers: 1
 
 n2_accumulate_1:
     kotekan_stage: N2Accumulate
@@ -740,11 +838,18 @@ n2_accumulate_1:
     log_level: info
     in_buf: host_correlation_buffer_1
     in_counts_buf: host_counts_buffer_1
-    in_rfimask_buf: host_rfi_RFImask_buffer_1
+    in_rficounts_buf: host_rfi_RFImask_counts_buffer_1
+    in_plcounts_buf: host_PL_counts_buffer_1
+    in_rfiframemask_buf: host_rfi_RFIframemask_buffer_1
     out_buf: n2_buffer_1
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
+    variance_mode: EvenOddPosDef
+    bin_in_ERA: false
+    do_fringestop: false
+    output_batch_size: 12
+    num_workers: 1
 
 
 # Subset to first 12 elements (6 dishes x 2 polarizations)
