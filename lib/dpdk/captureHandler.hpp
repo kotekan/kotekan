@@ -118,7 +118,6 @@ inline int captureHandler::handle_packet(struct rte_mbuf* mbuf) {
         return 0;
     }
 
-
     // Copy the packet.
     assert((packet_location + 1) * packet_size <= (uint32_t)out_buf->frame_size);
     int offset = 0;

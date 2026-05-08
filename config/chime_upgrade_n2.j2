@@ -57,7 +57,7 @@ sizeof_int32: 4
 sizeof_uint64: 8
 sizeof_short: 2
 
-use_hugepages: true
+use_hugepages: false
 
 # Telescope
 telescope:
@@ -117,6 +117,7 @@ host_voltage_buffers:
   num_frames: baseband_buffer_depth
   frame_size: samples_per_data_set * num_elements * num_freq_host_buf
   metadata_pool: main_pool
+  use_hugepages: true
   numa_0:
     numa_node: 0
 {%- for id in range(num_freq_gpu_buf) %}
@@ -152,6 +153,11 @@ dpdk:
   main_lcore_cpu: 3
   status_cadence: 60
   max_rx_pkt_len: 5000
+  rx_ring_size: 192
+  tx_ring_size: 128
+  num_mbufs: 512
+  mbuf_cache_size: 128
+
   # Set to true when using a switch to replicate packets
   using_switch: true
   alignment: samples_per_data_set * 4
@@ -249,6 +255,7 @@ dbg_read_lostsamples_{{ id }}:
 {%- endfor %}
 
 {%- endif %}
+
 
 ################################################################################
 # Baseband capture and dump system
@@ -474,8 +481,10 @@ rfi_second_downsampling_factor: 64
 rfi_sk_rfimask_sigmas: 5.0
 rfi_single_feed_min_good_frac: 0.8
 rfi_feed_averaged_min_good_frac: 0.8
+# range [2,50] as suggested in SK estimation note in software design document
+# (overleaf 671416c2d6343fda483e336b) and references to the SK note therein.
 rfi_mu_min: 2.0
-rfi_mu_max: 20.0
+rfi_mu_max: 50.0
 
 # Buffers
 
@@ -719,6 +728,7 @@ n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_coun
 host_n2k_correlation_buffer:
     kotekan_buffer: standard
     num_frames: gpu_buffer_depth
+    use_hugepages: true
     frame_size: sizeof_int32 * num_components * n2k_correlation_triangle_size * num_freq_gpu_buf * n2k_num_subintegrations
     metadata_pool: main_pool
 
@@ -894,13 +904,13 @@ vis_convert:
     kotekan_stage: n2FrameToVisFrame
     n2_buf: eig_10s_buffer
     vis_buf: vis_buffer
-    freq_ids: [ 269, 485, 493, 1005, 477, 957, 981, 989, 277, 301, 717, 901, 285, 293, 541, 749 ]
+    freq_ids: [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ]
 
 failed_vis_convert:
     kotekan_stage: n2FrameToVisFrame
     n2_buf: failed_10s_buffer
     vis_buf: failed_vis_buffer
-    freq_ids: [ 269, 485, 493, 1005, 477, 957, 981, 989, 277, 301, 717, 901, 285, 293, 541, 749 ]
+    freq_ids: [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ]
 
 switch_vis_out:
     kotekan_stage: bufferSwitch

@@ -131,6 +131,57 @@ struct CompareCTypes {
     conf.update_config(cfg);
 }
 
+// Wait for the writer's `acq_*` subdirectory to appear under base_dir.
+// hdf5N2Write generates a fresh `base_dir/acq_<timestamp>` per stage and creates it
+// asynchronously from main_thread, so callers that need the path before pushing
+// frames must poll. Returns the joined path or empty string on timeout.
+[[maybe_unused]] static std::string wait_for_acq_dir(const std::string& base_dir,
+                                                     double timeout_s = 5.0) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(timeout_s);
+    while (std::chrono::steady_clock::now() < deadline) {
+        DIR* dir = opendir(base_dir.c_str());
+        if (dir) {
+            while (dirent* ent = readdir(dir)) {
+                std::string name = ent->d_name;
+                if (name.rfind("acq_", 0) == 0) {
+                    closedir(dir);
+                    return base_dir + (base_dir.empty() || base_dir.back() == '/' ? "" : "/")
+                           + name;
+                }
+            }
+            closedir(dir);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return {};
+}
+
+// List all `.h5` file paths under the writer's `base_dir/acq_*/` subdirectories.
+[[maybe_unused]] static std::vector<std::string> list_h5_datasets(const std::string& base_dir) {
+    std::vector<std::string> out;
+    DIR* dir = opendir(base_dir.c_str());
+    if (!dir)
+        return out;
+    while (dirent* ent = readdir(dir)) {
+        std::string name = ent->d_name;
+        if (name.rfind("acq_", 0) != 0)
+            continue;
+        const std::string acq =
+            base_dir + (base_dir.empty() || base_dir.back() == '/' ? "" : "/") + name;
+        DIR* sub = opendir(acq.c_str());
+        if (!sub)
+            continue;
+        while (dirent* sent = readdir(sub)) {
+            std::string sname = sent->d_name;
+            if (sname.find(".h5") != std::string::npos)
+                out.push_back(acq + "/" + sname);
+        }
+        closedir(sub);
+    }
+    closedir(dir);
+    return out;
+}
+
 // Helper function to list items in a directory
 [[maybe_unused]] static std::vector<std::string> list_dir_entries(const std::string& path) {
     std::vector<std::string> out;
@@ -262,7 +313,7 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
                    uint64_t num_file_t, uint64_t blocksize_f = 0, uint64_t blocksize_p = 0,
                    uint64_t blocksize_t = 1, uint64_t late_frame_grace_seconds = 60,
                    uint64_t seq_length_nsec_override = 0,
-                   const std::string& gains_base_directory = "") {
+                   const std::string& baseband_gain_file = "") {
     using json = nlohmann::json;
 
     json cfg;
@@ -281,7 +332,7 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     stage["num_file_t"] = num_file_t;
     stage["join_timeout"] = 5;
     stage["late_frame_grace_seconds"] = late_frame_grace_seconds;
-    stage["gains_base_directory"] = gains_base_directory;
+    stage["baseband_gain_file"] = baseband_gain_file;
     if (seq_length_nsec_override > 0)
         stage["seq_length_nsec_override"] = seq_length_nsec_override;
 

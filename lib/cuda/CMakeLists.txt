@@ -58,7 +58,6 @@ if(NOT ${IWYU})
                 generated/cudaBasebandBeamformer_chord.cpp
                 generated/cudaBasebandBeamformer_hirax.cpp
                 generated/cudaBasebandBeamformer_pathfinder.cpp
-                generated/cudaBasebandBeamformer_smallfinder.cpp
                 generated/cudaCHIMEFRBBeamformer_chime_U16.cpp
                 generated/cudaCHIMEFRBBeamformer_chime_U128.cpp
                 generated/cudaFRBBeamformer_chord_U1.cpp
@@ -84,13 +83,6 @@ if(NOT ${IWYU})
                 generated/cudaFRBBeamformer_pathfinder_U16.cpp
                 generated/cudaFRBBeamformer_pathfinder_U32.cpp
                 generated/cudaFRBBeamformer_pathfinder_U64.cpp
-                generated/cudaFRBBeamformer_smallfinder_U1.cpp
-                generated/cudaFRBBeamformer_smallfinder_U2.cpp
-                generated/cudaFRBBeamformer_smallfinder_U4.cpp
-                generated/cudaFRBBeamformer_smallfinder_U8.cpp
-                generated/cudaFRBBeamformer_smallfinder_U16.cpp
-                generated/cudaFRBBeamformer_smallfinder_U32.cpp
-                generated/cudaFRBBeamformer_smallfinder_U64.cpp
                 generated/cudaUpchannelizer_chime_U2.cpp
                 generated/cudaUpchannelizer_chime_U4.cpp
                 generated/cudaUpchannelizer_chime_U8.cpp
@@ -115,13 +107,7 @@ if(NOT ${IWYU})
                 generated/cudaUpchannelizer_pathfinder_U8.cpp
                 generated/cudaUpchannelizer_pathfinder_U16.cpp
                 generated/cudaUpchannelizer_pathfinder_U32.cpp
-                generated/cudaUpchannelizer_pathfinder_U64.cpp
-                generated/cudaUpchannelizer_smallfinder_U2.cpp
-                generated/cudaUpchannelizer_smallfinder_U4.cpp
-                generated/cudaUpchannelizer_smallfinder_U8.cpp
-                generated/cudaUpchannelizer_smallfinder_U16.cpp
-                generated/cudaUpchannelizer_smallfinder_U32.cpp
-                generated/cudaUpchannelizer_smallfinder_U64.cpp)
+                generated/cudaUpchannelizer_pathfinder_U64.cpp)
 endif()
 
 # C++17

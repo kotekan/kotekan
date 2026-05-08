@@ -20,6 +20,15 @@ macro(_kotekan_detect_dpdk OUT_FOUND)
 
     pkg_check_modules(DPDK libdpdk>=19.11)
     if(DPDK_FOUND)
+        # Distro DPDK pkg-config hardcodes -march=corei7 as a portability baseline,
+        # which collides with the project-wide -march=${ARCH} and is fatal under
+        # -Werror on clang/icpx (-Woverriding-option). Drop -march/-mtune from
+        # DPDK's flag lists; other flags (-mrtm, -include rte_config.h, -I...) stay.
+        foreach(_v DPDK_CFLAGS DPDK_CFLAGS_OTHER DPDK_STATIC_CFLAGS DPDK_STATIC_CFLAGS_OTHER)
+            if(DEFINED ${_v})
+                list(FILTER ${_v} EXCLUDE REGEX "^-m(arch|tune)=")
+            endif()
+        endforeach()
         set(${OUT_FOUND} ON)
     endif()
 endmacro()
