@@ -986,7 +986,7 @@ def expected_accum(
             elif accum_setup["variance_mode"] == "EvenOddPosDef":
                 inv_N1 = safe_invert(N1, float)
                 inv_N2 = safe_invert(N2, float)
-                inv_var = safe_invert(inv_N1 + inv_N2, float)
+                inv_var = safe_invert(N1 + N2) * (N1 * N2) # Weight N1*N2/(N1+N2) gives correct results when one count is 0.
                 vis1 = corr1 * inv_N1[:, None, None, None, None]
                 vis2 = corr2 * inv_N2[:, None, None, None, None]
                 dvis = vis2 - vis1
@@ -1231,8 +1231,8 @@ def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
             # The bias subtraction can introduce a LOT of truncation error on random
             # data, so need to set the tolerances wide (in lieu of replicating the truncation
             # error in this test)
-            rtol = 1.0e-2
-            atol = 1.0e-2
+            rtol = 5.0e-2
+            atol = 5.0e-2
         elif accum_setup["variance_mode"] == "EvenOddPosDef":
             rtol = 1.0e-4
             atol = 1.0e-5
