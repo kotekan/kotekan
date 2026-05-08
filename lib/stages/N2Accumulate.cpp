@@ -292,8 +292,8 @@ void N2Accumulate::main_thread() {
     const int32_t* counts_mat_t1 = nullptr;
     const int32_t* rficounts_t0 = nullptr;
     const int32_t* rficounts_t1 = nullptr;
-    const uint64_t* plcounts_t0 = nullptr;
-    const uint64_t* plcounts_t1 = nullptr;
+    const int32_t* plcounts_t0 = nullptr;
+    const int32_t* plcounts_t1 = nullptr;
     const uint8_t* rfiframemask_t0 = nullptr;
     const uint8_t* rfiframemask_t1 = nullptr;
 
@@ -337,10 +337,10 @@ void N2Accumulate::main_thread() {
             break;
 
         // Fetch a new plcounts frame
-        DEBUG("Waiting for new input RFIcounts frame {:s}[{:d}].", in_plcounts_buf->buffer_name,
+        DEBUG("Waiting for new input PLcounts frame {:s}[{:d}].", in_plcounts_buf->buffer_name,
               in_plcounts_frame_id);
-        const uint64_t* plcounts =
-            (uint64_t*)in_plcounts_buf->wait_for_full_frame(unique_name, in_plcounts_frame_id);
+        const int32_t* plcounts =
+            (int32_t*)in_plcounts_buf->wait_for_full_frame(unique_name, in_plcounts_frame_id);
         if (plcounts == nullptr)
             break;
 

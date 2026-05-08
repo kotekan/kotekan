@@ -752,13 +752,11 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
         add_failure(fmt::format("frame_length_fpga_ticks[t={}] mismatch: stored {} != incoming {}",
                                 t_index, frame_length_fpga_ticks[t_index],
                                 fv.frame_length_fpga_ticks));
-    if (rfi_frame_excision_num[t_index] < 0)
-        add_failure(fmt::format("rfi_frame_excision_num[t={}] negative: {}", t_index,
-                                rfi_frame_excision_num[t_index]));
-    if (rfi_frame_excision_num[t_index] > MAX_NUM_RFI_THRESHOLDS)
-        add_failure(
-            fmt::format("rfi_frame_excision_num[t={}] exceeds MAX_NUM_RFI_THRESHOLDS: {} > {}",
-                        t_index, rfi_frame_excision_num[t_index], MAX_NUM_RFI_THRESHOLDS));
+    if (fv.rfi_frame_excision_num < 0)
+        add_failure(fmt::format("rfi_frame_excision_num negative: {}", fv.rfi_frame_excision_num));
+    if (fv.rfi_frame_excision_num > MAX_NUM_RFI_THRESHOLDS)
+        add_failure(fmt::format("rfi_frame_excision_num exceeds MAX_NUM_RFI_THRESHOLDS: {} > {}",
+                                fv.rfi_frame_excision_num, MAX_NUM_RFI_THRESHOLDS));
     if (time_center_ut1[t_index] > 0
         && !ns_close(time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns))
         add_failure(fmt::format("time_center_ut1[t={}] mismatch: stored {} != incoming {} (ns)",

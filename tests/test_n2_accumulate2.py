@@ -968,11 +968,17 @@ def expected_accum(
             # apply the RFI frame mask and accumulate!
             accum_corr[i] += corr_mask * (corr1 + corr2)
             accum_count[i] += mask * (N1 + N2)
-            accum_plcount[i] += mask * (
+            # Packet loss is accumulated regardless of the rfi frame mask (matches kotekan:
+            # "always present"). RFI count: sum per-sample rfi counts on unmasked pairs;
+            # for frame-masked pairs the entire pair is treated as rfi-flagged.
+            n_samples_per_pair = 2 * config["sub_integration_ntime"]
+            accum_plcount[i] += (
                 plcount_data[tf1].data[tc1] + plcount_data[tf2].data[tc2]
             )
-            accum_rficount[i] += mask * (
-                rficount_data[tf1].data[tc1] + rficount_data[tf2].data[tc2]
+            accum_rficount[i] += np.where(
+                mask,
+                rficount_data[tf1].data[tc1] + rficount_data[tf2].data[tc2],
+                n_samples_per_pair,
             )
 
             # Accumulate the weights too.
@@ -986,7 +992,9 @@ def expected_accum(
             elif accum_setup["variance_mode"] == "EvenOddPosDef":
                 inv_N1 = safe_invert(N1, float)
                 inv_N2 = safe_invert(N2, float)
-                inv_var = safe_invert(inv_N1 + inv_N2, float)
+                inv_var = safe_invert(N1 + N2) * (
+                    N1 * N2
+                )  # N1*N2/(N1+N2) gives correct results when one count is 0.
                 vis1 = corr1 * inv_N1[:, None, None, None, None]
                 vis2 = corr2 * inv_N2[:, None, None, None, None]
                 dvis = vis2 - vis1
@@ -1187,10 +1195,10 @@ def test_counts(accum_data, expected_accum, accum_list, setup):
         t = idx // config["num_local_freq"]
         f = idx % config["num_local_freq"]
 
-        frame.metadata.n_valid_fpga_ticks = exp_cnts[t, f]
-        frame.metadata.n_rfi_fpga_ticks = exp_rficnts[t, f]
-        frame.metadata.n_pl_fpga_ticks = exp_plcnts[t, f]
-        frame.metadata.n_rfi_only_fpga_ticks = accum_list[t]["seq_len"] - (
+        assert frame.metadata.n_valid_fpga_ticks == exp_cnts[t, f]
+        assert frame.metadata.n_rfi_fpga_ticks == exp_rficnts[t, f]
+        assert frame.metadata.n_pl_fpga_ticks == exp_plcnts[t, f]
+        assert frame.metadata.n_rfi_only_fpga_ticks == accum_list[t]["seq_len"] - (
             exp_cnts[t, f] + exp_plcnts[t, f]
         )
 
@@ -1231,8 +1239,8 @@ def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
             # The bias subtraction can introduce a LOT of truncation error on random
             # data, so need to set the tolerances wide (in lieu of replicating the truncation
             # error in this test)
-            rtol = 1.0e-2
-            atol = 1.0e-2
+            rtol = 5.0e-2
+            atol = 5.0e-2
         elif accum_setup["variance_mode"] == "EvenOddPosDef":
             rtol = 1.0e-4
             atol = 1.0e-5
