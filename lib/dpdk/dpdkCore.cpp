@@ -28,7 +28,6 @@
 #include "Config.hpp"                  // for Config
 #include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
 #include "captureHandler.hpp"          // for captureHandler
-#include "configTracker.hpp"           // for ConfigTracker
 #include "crs16BoardCaptureWorker.hpp" // for crs16BoardCaptureWorker
 #include "crs16BoardDistributor.hpp"   // for crs16BoardDistributor
 #include "crs1BoardCaptureWorker.hpp"  // for crsCaptureWorker
@@ -36,7 +35,6 @@
 #include "iceBoardShuffle.hpp"         // for iceBoardShuffle
 #include "iceBoardStandard.hpp"        // for iceBoardStandard
 #include "iceBoardVDIF.hpp"            // for iceBoardVDIF
-#include "restClient.hpp"              // for restClient
 
 #include "fmt.hpp"  // for compile_string_to_view, format, fmt, format_string
 #include "json.hpp" // for basic_json, iter_impl, json
@@ -202,32 +200,6 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
         }
         i++;
     }
-
-    // Optional FPGA-controller tracking. If the block is absent, no calls
-    // are made and no fetch thread is started.
-    if (config.exists(unique_name, "fpga_controller")) {
-        const std::string fpga_path = unique_name + "/fpga_controller";
-        _fpga_host = config.get<std::string>(fpga_path, "host");
-        int fpga_port_int = config.get<int>(fpga_path, "port");
-        if (fpga_port_int <= 0 || fpga_port_int > 65535) {
-            throw std::runtime_error(
-                fmt::format(fmt("dpdkCore: invalid fpga_controller.port {:d}"), fpga_port_int));
-        }
-        _fpga_port = static_cast<uint16_t>(fpga_port_int);
-        _fpga_config_endpoint =
-            config.get_default<std::string>(fpga_path, "config_endpoint", "/config");
-        _fpga_timing_endpoint =
-            config.get_default<std::string>(fpga_path, "timing_endpoint", "/timing");
-        _fpga_request_timeout_seconds =
-            config.get_default<int>(fpga_path, "request_timeout_seconds", 10);
-        _fpga_retry_interval_seconds =
-            config.get_default<int>(fpga_path, "retry_interval_seconds", 5);
-        _fpga_max_consecutive_failures =
-            config.get_default<int>(fpga_path, "max_consecutive_failures", 3);
-        INFO("dpdkCore: FPGA controller tracking enabled, target {:s}:{:d} (config {:s}, "
-             "timing {:s})",
-             _fpga_host, _fpga_port, _fpga_config_endpoint, _fpga_timing_endpoint);
-    }
 }
 
 void dpdkCore::create_handlers(bufferContainer& buffer_container) {
@@ -383,13 +355,6 @@ void dpdkCore::main_thread() {
     // Start the packet receiving lcores (basically pthreads)
     rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MAIN);
 
-    // Spawn the FPGA controller fetch thread (one-shot retrying fetch).
-    // Runs concurrently with the stats loop so stats updates aren't blocked
-    // by REST timeouts.
-    if (!_fpga_host.empty()) {
-        _fpga_fetch_thread = std::thread(&dpdkCore::fpga_controller_fetch_thread, this);
-    }
-
     while (!stop_thread) {
         sleep(1);
 
@@ -405,89 +370,8 @@ void dpdkCore::main_thread() {
         // TODO Check port status
     }
 
-    if (_fpga_fetch_thread.joinable())
-        _fpga_fetch_thread.join();
-
     // Wait for the lcores to join
     rte_eal_mp_wait_lcore();
-}
-
-void dpdkCore::fpga_controller_fetch_thread() {
-    using namespace std::chrono_literals;
-    using kotekan::ConfigTracker;
-
-    int consecutive_failures = 0;
-    bool got_config = false;
-    bool got_timing = false;
-
-    while (!stop_thread && (!got_config || !got_timing)) {
-        bool progressed = false;
-
-        if (!got_config) {
-            auto resp = _try_fetch_fpga_endpoint(_fpga_host, _fpga_port, _fpga_config_endpoint,
-                                                 _fpga_request_timeout_seconds);
-            if (resp.has_value()) {
-                ConfigTracker::instance().setFpgaConfig(_fpga_host, _fpga_port, *resp);
-                got_config = true;
-                progressed = true;
-                INFO("dpdkCore: FPGA controller config registered ({:s}:{:d}{:s})", _fpga_host,
-                     _fpga_port, _fpga_config_endpoint);
-            }
-        }
-        if (!stop_thread && !got_timing) {
-            auto resp = _try_fetch_fpga_endpoint(_fpga_host, _fpga_port, _fpga_timing_endpoint,
-                                                 _fpga_request_timeout_seconds);
-            if (resp.has_value()) {
-                ConfigTracker::instance().setFpgaTiming(_fpga_host, _fpga_port, *resp);
-                got_timing = true;
-                progressed = true;
-                INFO("dpdkCore: FPGA controller timing registered ({:s}:{:d}{:s})", _fpga_host,
-                     _fpga_port, _fpga_timing_endpoint);
-            }
-        }
-
-        if (got_config && got_timing)
-            break;
-
-        // Partial success counts as progress (one of two endpoints landed) and
-        // resets the counter; an iteration with zero successes ticks it.
-        if (progressed) {
-            consecutive_failures = 0;
-        } else {
-            ++consecutive_failures;
-            if (consecutive_failures >= _fpga_max_consecutive_failures) {
-                FATAL_ERROR("dpdkCore: failed to fetch FPGA controller state from {:s}:{:d} "
-                            "after {:d} attempts (config={}, timing={})",
-                            _fpga_host, _fpga_port, consecutive_failures, got_config, got_timing);
-                return;
-            }
-            WARN("dpdkCore: FPGA controller fetch attempt {:d} of {:d} failed; retrying in {:d}s",
-                 consecutive_failures, _fpga_max_consecutive_failures,
-                 _fpga_retry_interval_seconds);
-        }
-
-        for (int slept = 0; slept < _fpga_retry_interval_seconds && !stop_thread; ++slept)
-            std::this_thread::sleep_for(1s);
-    }
-}
-
-std::optional<nlohmann::json> dpdkCore::_try_fetch_fpga_endpoint(const std::string& host,
-                                                                 uint16_t port,
-                                                                 const std::string& endpoint,
-                                                                 int timeout_seconds) {
-    auto reply =
-        restClient::instance().make_request_blocking(endpoint, {}, host, port, 0, timeout_seconds);
-    if (!reply.first) {
-        ERROR_NON_OO("dpdkCore: GET {:s} from {:s}:{:d} failed", endpoint, host, port);
-        return std::nullopt;
-    }
-    try {
-        return nlohmann::json::parse(reply.second);
-    } catch (const nlohmann::json::parse_error& e) {
-        ERROR_NON_OO("dpdkCore: failed to parse {:s} response from {:s}:{:d}: {:s}", endpoint, host,
-                     port, e.what());
-        return std::nullopt;
-    }
 }
 
 dpdkCore::~dpdkCore() {

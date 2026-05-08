@@ -124,6 +124,28 @@ void kotekanMode::initalize_stages() {
     } catch (const std::exception& e) {
         ERROR_NON_OO("Failed to set local config in ConfigTracker: {:s}", e.what());
     }
+
+    // Optionally fetch the upstream FPGA controller's config + timing. If the
+    // block is present, both endpoints must succeed at startup (otherwise
+    // ConfigTracker FATALs).
+    if (config.exists("/", "fpga_controller")) {
+        const std::string fpga_path = "/fpga_controller";
+        const std::string host = config.get<std::string>(fpga_path, "host");
+        const int port_int = config.get<int>(fpga_path, "port");
+        if (port_int <= 0 || port_int > 65535) {
+            FATAL_ERROR_NON_OO("kotekanMode: invalid fpga_controller.port: {}", port_int);
+        }
+        const std::string config_endpoint =
+            config.get_default<std::string>(fpga_path, "config_endpoint", "/config");
+        const std::string timing_endpoint =
+            config.get_default<std::string>(fpga_path, "timing_endpoint", "/get-frame0-time");
+        const int request_timeout_seconds =
+            config.get_default<int>(fpga_path, "request_timeout_seconds", 30);
+
+        ConfigTracker::instance().fetchAndRegisterFpgaTracking(
+            host, static_cast<uint16_t>(port_int), config_endpoint, timing_endpoint,
+            request_timeout_seconds);
+    }
 }
 
 void kotekanMode::join() {

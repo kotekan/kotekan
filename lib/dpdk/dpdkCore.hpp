@@ -20,13 +20,8 @@ extern "C" {
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for kotekanLogging
 
-#include "json.hpp" // for json
-
-#include <atomic>   // for atomic
-#include <optional> // for optional
-#include <string>   // for string, allocator, basic_string
-#include <thread>   // for thread
-#include <vector>   // for vector
+#include <string> // for string, allocator, basic_string
+#include <vector> // for vector
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port
@@ -160,20 +155,6 @@ protected:
  * @conf   init_mem_alloc   Int.  Default 256  The initial memory allocation in MB
  * @conf   pcie_block_list  Array of strings.  List of PCIe devices to block DPDK from using.
  *
- * @par FPGA controller tracking (optional)
- * If a `fpga_controller` block is present, dpdkCore fetches the controller's
- * startup config and timing JSON over REST and registers them with the
- * ConfigTracker. Any subsequent change to either (i.e., the controller reset)
- * is treated as a fatal inconsistency.
- *
- * @conf   fpga_controller.host                       String. Controller host (IPv4).
- * @conf   fpga_controller.port                       Int. Controller REST port.
- * @conf   fpga_controller.config_endpoint            String. Default "/config".
- * @conf   fpga_controller.timing_endpoint            String. Default "/timing".
- * @conf   fpga_controller.request_timeout_seconds    Int. Default 10.
- * @conf   fpga_controller.retry_interval_seconds     Int. Default 5.
- * @conf   fpga_controller.max_consecutive_failures   Int. Default 3.
- *
  * @author Andre Renard
  */
 class dpdkCore : public kotekan::Stage {
@@ -221,26 +202,6 @@ private:
 
     void create_workers(kotekan::bufferContainer& buffer_container);
 
-    /**
-     * @brief Background-thread body that pulls the FPGA controller's config
-     *        and timing JSON over REST and registers them with the
-     *        ConfigTracker. Retries on transient failure; FATAL_ERRORs after
-     *        @c _fpga_max_consecutive_failures consecutive failures.
-     *
-     * Bails early if @c stop_thread becomes true.
-     */
-    void fpga_controller_fetch_thread();
-
-    /**
-     * @brief Helper used by @c fpga_controller_fetch_thread for one endpoint.
-     * Returns the parsed JSON body on success, or std::nullopt on any error
-     * (HTTP failure, parse failure). Logs on failure.
-     */
-    static std::optional<nlohmann::json> _try_fetch_fpga_endpoint(const std::string& host,
-                                                                  uint16_t port,
-                                                                  const std::string& endpoint,
-                                                                  int timeout_seconds);
-
     /// The pool of DPDK mbufs, one per numa node
     std::vector<struct rte_mempool*> mbuf_pools;
 
@@ -285,18 +246,6 @@ private:
 
     /// Active workers (exit when all have stopped)
     std::atomic<int32_t> active_workers;
-
-    /// FPGA controller endpoint config (empty host disables tracking).
-    std::string _fpga_host;
-    uint16_t _fpga_port = 0;
-    std::string _fpga_config_endpoint;
-    std::string _fpga_timing_endpoint;
-    int _fpga_request_timeout_seconds = 10;
-    int _fpga_retry_interval_seconds = 5;
-    int _fpga_max_consecutive_failures = 3;
-
-    /// Background thread for the FPGA fetch (only joined if started).
-    std::thread _fpga_fetch_thread;
 };
 
 

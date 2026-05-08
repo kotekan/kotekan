@@ -49,7 +49,7 @@
 #include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for iter_impl, json, json_ref, iteration_proxy_value, basic_json
 
-#include <arpa/inet.h>   // for inet_pton
+#include <arpa/inet.h>   // for inet_pton, inet_ntop
 #include <chrono>        // for duration, duration_cast, system_clock
 #include <cstdio>        // for remove, rename, size_t
 #include <errno.h>       // for errno
@@ -59,6 +59,7 @@
 #include <iomanip>       // for operator<<, setfill, setw
 #include <map>           // for map, operator!=, _Rb_tree_iterator, _Rb_tree_const_iterator
 #include <mutex>         // for mutex, lock_guard
+#include <netdb.h>       // for getaddrinfo, freeaddrinfo, gai_strerror
 #include <netinet/in.h>  // for sockaddr_in
 #include <openssl/md5.h> // for MD5, MD5_DIGEST_LENGTH
 #include <optional>      // for optional
@@ -66,7 +67,7 @@
 #include <stdint.h>      // for uint16_t
 #include <string.h>      // for strerror
 #include <string>        // for basic_string, allocator, char_traits, operator+, string
-#include <sys/socket.h>  // for AF_INET
+#include <sys/socket.h>  // for AF_INET, SOCK_STREAM
 #include <sys/stat.h>    // for stat, S_ISDIR
 #include <tuple>         // for tie, operator<, tuple
 #include <utility>       // for pair
@@ -338,6 +339,51 @@ public:
     void insertFpgaTiming(std::string host, uint16_t port, ConfigInfo info) {
         _insertCategorized(_fpga_timings, _fpga_timing_hashes, host, port, std::move(info),
                            "fpga timing", _fpga_timing_present_metric());
+    }
+
+    /**
+     * @brief Fetch the upstream FPGA controller's config and timing JSON via
+     * REST and register them with the tracker. Intended to be called once at
+     * kotekan startup (see kotekanMode).
+     *
+     * The hostname is resolved to a canonical IPv4 string up front; that
+     * IPv4 is used both as the @c host argument to @c restClient and as the
+     * storage key, so downstream peers fetching the entry transitively land
+     * on the same key.
+     *
+     * Failure to resolve the hostname, to issue either GET, or to parse
+     * either response is fatal — kotekan will not start without a confirmed
+     * FPGA controller snapshot when this is called.
+     *
+     * @param host                    Hostname or IPv4 address of the FPGA
+     *                                controller's REST server.
+     * @param port                    REST port.
+     * @param config_endpoint         Path to the controller's config JSON.
+     * @param timing_endpoint         Path to the controller's timing JSON.
+     * @param request_timeout_seconds REST timeout in seconds.
+     */
+    void fetchAndRegisterFpgaTracking(const std::string& host, uint16_t port,
+                                      const std::string& config_endpoint,
+                                      const std::string& timing_endpoint,
+                                      int request_timeout_seconds) {
+        const std::string ip = _resolveToIPv4(host);
+        if (host != ip) {
+            INFO_NON_OO("ConfigTracker: resolved FPGA controller {}:{} to {}:{}", host, port, ip,
+                        port);
+        }
+
+        nlohmann::json cfg_json = _fpga_get_or_fatal(ip, port, config_endpoint, "config",
+                                                    request_timeout_seconds);
+        nlohmann::json tim_json = _fpga_get_or_fatal(ip, port, timing_endpoint, "timing",
+                                                    request_timeout_seconds);
+
+        setFpgaConfig(ip, port, cfg_json);
+        setFpgaTiming(ip, port, tim_json);
+
+        INFO_NON_OO(
+            "ConfigTracker: registered FPGA controller config and timing from {}:{} (config {}, "
+            "timing {})",
+            ip, port, config_endpoint, timing_endpoint);
     }
 
     /// True if a local config has been set.
@@ -1030,6 +1076,59 @@ private:
                && a.kotekan_build_branch == b.kotekan_build_branch
                && a.kotekan_git_commit_hash == b.kotekan_git_commit_hash
                && a.kotekan_cmake_options == b.kotekan_cmake_options;
+    }
+
+    /**
+     * @brief Resolve a hostname-or-IPv4 string to its canonical IPv4
+     * representation. Fatal on resolution failure.
+     */
+    static std::string _resolveToIPv4(const std::string& host_or_ip) {
+        // If it already parses as IPv4, return as-is.
+        struct sockaddr_in sa4;
+        if (inet_pton(AF_INET, host_or_ip.c_str(), &(sa4.sin_addr)) == 1)
+            return host_or_ip;
+
+        struct addrinfo hints = {};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+
+        struct addrinfo* res = nullptr;
+        const int err = getaddrinfo(host_or_ip.c_str(), nullptr, &hints, &res);
+        if (err != 0 || res == nullptr) {
+            FATAL_ERROR_NON_OO("ConfigTracker: failed to resolve host '{}': {}", host_or_ip,
+                               gai_strerror(err));
+        }
+
+        char buf[INET_ADDRSTRLEN] = {0};
+        auto* sa = reinterpret_cast<struct sockaddr_in*>(res->ai_addr);
+        inet_ntop(AF_INET, &sa->sin_addr, buf, sizeof(buf));
+        freeaddrinfo(res);
+        return std::string(buf);
+    }
+
+    /**
+     * @brief GET a single FPGA controller endpoint and return the parsed JSON
+     * body. Fatal on HTTP failure or parse failure.
+     */
+    static nlohmann::json _fpga_get_or_fatal(const std::string& ip, uint16_t port,
+                                             const std::string& endpoint, const char* what,
+                                             int request_timeout_seconds) {
+        auto reply = restClient::instance().make_request_blocking(endpoint, {}, ip, port, 0,
+                                                                  request_timeout_seconds);
+        if (!reply.first) {
+            FATAL_ERROR_NON_OO(
+                "ConfigTracker: failed to GET FPGA {} from {}:{}{} (timeout {}s)", what, ip, port,
+                endpoint, request_timeout_seconds);
+        }
+        try {
+            return nlohmann::json::parse(reply.second);
+        } catch (const nlohmann::json::parse_error& e) {
+            FATAL_ERROR_NON_OO(
+                "ConfigTracker: failed to parse FPGA {} response from {}:{}{}: {}", what, ip, port,
+                endpoint, e.what());
+        }
+        // Unreachable; FATAL_ERROR_NON_OO throws.
+        return nlohmann::json{};
     }
 
     /// MD5 of a string, returned as a 32-char lowercase hex string.

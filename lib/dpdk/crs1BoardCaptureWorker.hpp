@@ -59,6 +59,14 @@ protected:
 
     /// Previous seq num
     uint64_t last_seq = 0;
+
+    /// Sample-based FPGA seq monotonicity check. At each sample the seq must
+    /// be strictly greater than the previous sample's, otherwise we treat it
+    /// as an FPGA reset and shut down. Sampled every @c _seq_check_interval
+    /// packets, which at typical CRS packet rates is roughly once per second.
+    static constexpr uint64_t _seq_check_interval = 500000;
+    uint64_t _last_check_seq = 0;
+    uint64_t _seq_check_packet_count = 0;
 };
 
 inline crs1BoardCaptureWorker::crs1BoardCaptureWorker(kotekan::Config& config,
@@ -118,6 +126,20 @@ inline int crs1BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         WARN("Port: {:d}; Got packet with size {:d}, but expected size was {:d}", port,
              rte_pktmbuf_pkt_len(mbuf), packet_size);
         return 0;
+    }
+
+    // Sample-based FPGA seq monotonicity check: at each sample boundary the
+    // current seq must be strictly greater than the previous sample's,
+    // otherwise the FPGA likely reset.
+    if (unlikely(++_seq_check_packet_count >= _seq_check_interval)) {
+        if (unlikely(_last_check_seq != 0 && seq_num < _last_check_seq)) {
+            FATAL_ERROR("Port: {:d}; CRS FPGA seq went backwards ({:d} -> {:d}), controller "
+                        "likely reset, kotekan stopping...",
+                        port, _last_check_seq, seq_num);
+            return -1;
+        }
+        _last_check_seq = seq_num;
+        _seq_check_packet_count = 0;
     }
 
     // Copy the packet.
