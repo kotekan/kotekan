@@ -122,7 +122,7 @@ void kotekanMode::initalize_stages() {
                                                  get_kotekan_version(), get_git_branch(),
                                                  get_git_commit_hash(), get_cmake_build_options());
     } catch (const std::exception& e) {
-        ERROR_NON_OO("Failed to set local config in ConfigTracker: {:s}", e.what());
+        FATAL_ERROR_NON_OO("Failed to set local config in ConfigTracker: {:s}", e.what());
     }
 
     // Optionally fetch the upstream FPGA controller's config + timing. If the
