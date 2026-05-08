@@ -33,14 +33,11 @@ STAGE_CONSTRUCTOR(PLMaskExpandedToCompact) {
     samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
 
     if (samples_per_data_set % 128 != 0) {
-        throw std::runtime_error(fmt::format(
-            fmt("PLMaskExpandedToCompact: samples_per_data_set ({:d}) must be a multiple of 128"),
-            samples_per_data_set));
+        FATAL_ERROR("PLMaskExpandedToCompact: samples_per_data_set ({:d}) must be a multiple of 128",
+            samples_per_data_set);
     }
     if (num_elements % 8 != 0) {
-        throw std::runtime_error(
-            fmt::format(fmt("PLMaskExpandedToCompact: num_elements ({:d}) must be a multiple of 8"),
-                        num_elements));
+        FATAL_ERROR("PLMaskExpandedToCompact: num_elements ({:d}) must be a multiple of 8", num_elements);
     }
 
     const size_t T = samples_per_data_set;
@@ -51,22 +48,24 @@ STAGE_CONSTRUCTOR(PLMaskExpandedToCompact) {
     // Validate expanded input buffer size: [T/64][F][E/8] uint64_t
     size_t expected_in_size = (T / 64) * F * E_div_8 * sizeof(uint64_t);
     if (in_buf->frame_size != expected_in_size) {
-        throw std::runtime_error(fmt::format(
-            fmt("PLMaskExpandedToCompact: in_buf frame size ({:d}) does not match expected "
-                "expanded size ({:d}) for [T/64={:d}][F={:d}][E/8={:d}] * 8"),
-            in_buf->frame_size, expected_in_size, T / 64, F, E_div_8));
+        FATAL_ERROR("PLMaskExpandedToCompact: in_buf frame size ({:d}) does not match expected "
+                "expanded size ({:d}) for [T/64={:d}][F={:d}][E/8={:d}] * 8",
+            in_buf->frame_size, expected_in_size, T / 64, F, E_div_8);
     }
 
     // Validate compact output buffer size: [T/128][F_compact][E/8] uint64_t
     size_t expected_out_size = (T / 128) * F_compact * E_div_8 * sizeof(uint64_t);
     if (out_buf->frame_size != expected_out_size) {
-        throw std::runtime_error(fmt::format(
-            fmt("PLMaskExpandedToCompact: out_buf frame size ({:d}) does not match expected "
-                "compact size ({:d}) for [T/128={:d}][F_compact={:d}][E/8={:d}] * 8"),
-            out_buf->frame_size, expected_out_size, T / 128, F_compact, E_div_8));
+        FATAL_ERROR("PLMaskExpandedToCompact: out_buf frame size ({:d}) does not match expected "
+                "compact size ({:d}) for [T/128={:d}][F_compact={:d}][E/8={:d}] * 8",
+            out_buf->frame_size, expected_out_size, T / 128, F_compact, E_div_8);
     }
 
-    // Set up ndarray frame descriptor for the output
+    // Set up ndarray frame descriptor for the input and output
+    in_buf->allocate_ndarray_frame_desc(
+        kotekan::uint1x8, "pl_mask_exp",
+        {(ptrdiff_t)(T / 64), (ptrdiff_t)F, 2, (ptrdiff_t)(E_div_8 / 2), 8},
+        {"Thi64", "F", "P", "D8", "Tlo64"});
     out_buf->allocate_ndarray_frame_desc(
         kotekan::uint1x8, "pl_mask",
         {(ptrdiff_t)(T / 128), (ptrdiff_t)F_compact, 2, (ptrdiff_t)(E_div_8 / 2), 8},
