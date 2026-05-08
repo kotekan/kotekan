@@ -936,12 +936,14 @@ def expected_accum(
 
     accum_corr = np.zeros(corr_shape, dtype=np.int32)
     accum_var = np.zeros(corr_shape[:-1], dtype=float)
-    accum_bias = np.zeros(corr_shape[:-1], dtype=float)
+    accum_var_chime = np.zeros(corr_shape[:-1], dtype=np.float32)
+    accum_bias_chime = np.zeros(corr_shape[:-1], dtype=np.float32)
     accum_count = np.zeros(count_shape, dtype=np.int32)
     accum_plcount = np.zeros(count_shape, dtype=np.int32)
     accum_rficount = np.zeros(count_shape, dtype=np.int32)
     accum_n2 = np.zeros((num_accum, num_freq, num_n2_prod), dtype=np.complex128)
-    accum_n2_var = np.zeros((num_accum, num_freq, num_n2_prod), dtype=float)
+    accum_n2_var_pos = np.zeros((num_accum, num_freq, num_n2_prod), dtype=float)
+    accum_n2_var_chime = np.zeros((num_accum, num_freq, num_n2_prod), dtype=np.float32)
 
     # Run the actual accumulation
     for i, accum in enumerate(accum_list):
@@ -968,38 +970,40 @@ def expected_accum(
             # apply the RFI frame mask and accumulate!
             accum_corr[i] += corr_mask * (corr1 + corr2)
             accum_count[i] += mask * (N1 + N2)
-            # Packet loss is accumulated regardless of the rfi frame mask (matches kotekan:
-            # "always present"). RFI count: sum per-sample rfi counts on unmasked pairs;
-            # for frame-masked pairs the entire pair is treated as rfi-flagged.
-            n_samples_per_pair = 2 * config["sub_integration_ntime"]
+            # Packet loss is accumulated regardless of the rfi frame mask
             accum_plcount[i] += (
                 plcount_data[tf1].data[tc1] + plcount_data[tf2].data[tc2]
             )
+
+            # RFI count: sum per-sample rfi counts on unmasked pairs;
+            # for frame-masked pairs the entire pair is treated as rfi-flagged.
+            n_samples_per_pair = 2 * config["sub_integration_ntime"]
             accum_rficount[i] += np.where(
                 mask,
                 rficount_data[tf1].data[tc1] + rficount_data[tf2].data[tc2],
                 n_samples_per_pair,
             )
 
-            # Accumulate the weights too.
-            if accum_setup["variance_mode"] == "CHIMEv1":
-                dcorr = (corr2 - corr1).astype(
-                    float
-                )  # int32s will overflow when squaring
-                dcorr2 = dcorr[..., 0] ** 2 + dcorr[..., 1] ** 2
-                accum_var[i] += mask[:, None, None, None] * dcorr2
-                accum_bias[i] += (mask * ((N2 - N1) ** 2))[:, None, None, None]
-            elif accum_setup["variance_mode"] == "EvenOddPosDef":
-                inv_N1 = safe_invert(N1, float)
-                inv_N2 = safe_invert(N2, float)
-                inv_var = safe_invert(N1 + N2) * (
-                    N1 * N2
-                )  # N1*N2/(N1+N2) gives correct results when one count is 0.
-                vis1 = corr1 * inv_N1[:, None, None, None, None]
-                vis2 = corr2 * inv_N2[:, None, None, None, None]
-                dvis = vis2 - vis1
-                dvis2 = dvis[..., 0] ** 2 + dvis[..., 1] ** 2
-                accum_var[i] += (mask * inv_var)[:, None, None, None] * dvis2
+            # Accumulate the CHIMEv1 variance and bias.
+            # Being pedantic about datatypes to replicate something close to what the kotekan stage does.
+            # There can be large truncation error in the stage.
+            mask_32 = mask.astype(np.float32)
+            dN = (N2 - N1).astype(np.float32)
+
+            dcorr = (corr2 - corr1).astype(np.float32)
+            dcorr2 = dcorr[..., 0] ** 2 + dcorr[..., 1] ** 2
+            accum_var_chime[i] += mask_32[:, None, None, None] * dcorr2
+            accum_bias_chime[i] += (mask_32 * (dN ** 2))[:, None, None, None]
+
+            # Accumulate the EvenOddPosDef variance. Less worried about replicating truncation here.
+            inv_N1 = safe_invert(N1, float)
+            inv_N2 = safe_invert(N2, float)
+            inv_var = N1 * N2 * safe_invert(N1 + N2)  # Must be 0 if N1 or N2 are.
+            vis1 = corr1 * inv_N1[:, None, None, None, None]
+            vis2 = corr2 * inv_N2[:, None, None, None, None]
+            dvis = vis2 - vis1
+            dvis2 = dvis[..., 0] ** 2 + dvis[..., 1] ** 2
+            accum_var[i] += (mask * inv_var)[:, None, None, None] * dvis2
 
         # Remap the accumulated correlation array to the N2 array
         for f in range(num_freq):
@@ -1010,26 +1014,30 @@ def expected_accum(
             )
             inv_N = safe_invert(accum_count[i, f], float)
 
-            if accum_setup["variance_mode"] == "CHIMEv1":
-                vis = accum_corr[i, f] * inv_N
-                bias = accum_bias[i, f] * (vis[..., 0] ** 2 + vis[..., 1] ** 2)
-                accum_n2_var[i, f, :] = (accum_var[i, f] - bias)[
-                    corr_idx_b, corr_idx_i, corr_idx_j
-                ] * (inv_N ** 2)
+            # compute final CHIMEv1 var
+            inv_N_32 = inv_N.astype(np.float32)
+            vis = accum_corr[i, f].astype(np.float32) * inv_N_32
+            bias = accum_bias_chime[i, f] * (vis[..., 0] ** 2 + vis[..., 1] ** 2)
+            accum_n2_var_chime[i, f, :] = (accum_var_chime[i, f] - bias)[
+                corr_idx_b, corr_idx_i, corr_idx_j
+            ] * (inv_N_32 ** 2)
 
-            elif accum_setup["variance_mode"] == "EvenOddPosDef":
-                M = len(accum["sub_idx"])
-                norm = 2 * inv_N / M
-                accum_n2_var[i, f, :] = (
-                    accum_var[i, f, corr_idx_b, corr_idx_i, corr_idx_j] * norm
-                )
+            # compute final EvenOddPosDef var
+            M = len(accum["sub_idx"])
+            norm = 2 * inv_N / M
+            accum_n2_var_pos[i, f, :] = (
+                accum_var[i, f, corr_idx_b, corr_idx_i, corr_idx_j] * norm
+            )
 
     # Normalize N2 by the valid counts, if counts are 0, then 0 the vis
     inv_count = safe_invert(accum_count, float)
 
     vis = accum_n2 * inv_count[:, :, None]
 
-    w = safe_invert(accum_n2_var, float)
+    if accum_setup["variance_mode"] == "CHIMEv1":
+        w = safe_invert(accum_n2_var_chime, float)
+    elif accum_setup["variance_mode"] == "EvenOddPosDef":
+        w = safe_invert(accum_n2_var_pos, float)
 
     return vis, w, accum_count, accum_rficount, accum_plcount
 
@@ -1083,6 +1091,9 @@ def test_structure(accum_data, accum_list, setup):
 def test_simple_meta(accum_data, setup, accum_list):
     # Test the metadata
 
+    if setup["fail"]:
+        return
+
     config = setup["config"]
 
     for idx, frame in enumerate(accum_data):
@@ -1121,6 +1132,9 @@ def test_simple_meta(accum_data, setup, accum_list):
 
 def test_eop_meta(setup, accum_setup, accum_data, accum_list):
     # Test the metadata
+
+    if setup["fail"]:
+        return
 
     config = setup["config"]
 
@@ -1187,6 +1201,9 @@ def test_eop_meta(setup, accum_setup, accum_data, accum_list):
 
 def test_counts(accum_data, expected_accum, accum_list, setup):
 
+    if setup["fail"]:
+        return
+
     config = setup["config"]
 
     _, _, exp_cnts, exp_rficnts, exp_plcnts = expected_accum
@@ -1205,6 +1222,9 @@ def test_counts(accum_data, expected_accum, accum_list, setup):
 
 def test_vis(accum_data, expected_accum, accum_list, setup):
 
+    if setup["fail"]:
+        return
+
     config = setup["config"]
 
     exp_vis, _, _, _, _ = expected_accum
@@ -1221,6 +1241,9 @@ def test_vis(accum_data, expected_accum, accum_list, setup):
 
 
 def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
+
+    if setup["fail"]:
+        return
 
     config = setup["config"]
 
@@ -1239,8 +1262,8 @@ def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
             # The bias subtraction can introduce a LOT of truncation error on random
             # data, so need to set the tolerances wide (in lieu of replicating the truncation
             # error in this test)
-            rtol = 5.0e-2
-            atol = 5.0e-2
+            rtol = 1.0e-2
+            atol = 1.0e-2
         elif accum_setup["variance_mode"] == "EvenOddPosDef":
             rtol = 1.0e-4
             atol = 1.0e-5

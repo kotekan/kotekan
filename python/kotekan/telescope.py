@@ -30,6 +30,16 @@ class EOP(ctypes.Structure):
         ("yp_as", ctypes.c_double),
     ]
 
+    def __repr__(self):
+        return "{{t_inst_ns: {:d}, t_ut1_ns: {:d}, delta_UT1_inst: {:f}, ERA_deg: {:f}, xp_as: {:f}, yp_as: {:f}}}".format(
+            self.t_inst_ns,
+            self.t_ut1_ns,
+            self.delta_UT1_inst,
+            self.ERA_deg,
+            self.xp_as,
+            self.yp_as,
+        )
+
 
 def get_sampling_params(tel_config):
     sampling_rate_MHz = (
