@@ -67,14 +67,16 @@ __device__ __host__ static inline float sane_fmin(const float x, const float y) 
 }
 
 // Round to nearest integer, avoiding all the implementation-defined cases
-__device__ __host__ static inline int sane_lrint(const float x) {
+static int sane_lrint(const float x) {
     using std::isnan, std::lrint;
+    // INT_MIN = -2^31 is exact in float; INT_MAX = 2^31 - 1 rounds up to 2^31
+    // when promoted, so the upper check uses `>=`.
+    if (isnan(x))
+        return 0; // we could mask to -8 instead
     if (x < INT_MIN)
         return INT_MIN;
-    if (x > INT_MAX)
+    if (x >= INT_MAX)
         return INT_MAX;
-    if (isnan(x))
-        return 0; // we could mask to 0 instead
     return int(lrint(x));
 }
 
@@ -100,7 +102,7 @@ void cpu_quantize8chime_chunk(const float* __restrict__ const input,
             maxval = sane_fmax(maxval, x);
         }
     }
-    // Calculate offset and scale. Ensure the scale is nonzero.
+    // Calculate offset and scale.
     // There are 254 possible uint8 values since we don't use 0 or 255.
     // Values are reconstructed as `offset + scale * n`, with `uint8 n`.
     // NaN in the input is represented as `n = 0`.
@@ -112,16 +114,7 @@ void cpu_quantize8chime_chunk(const float* __restrict__ const input,
     //     minval => outf_min
     //     maxval => outf_max
     const float outf_range = outf_max - outf_min;
-    float in_range = maxval - minval;
-    // Ensure that the input range is not too small, which woud lead to an overflow when dividing by
-    // the scale
-    constexpr float min_in_range = 1.0e-6f; // approximately eps(float)
-    if (in_range < min_in_range) {
-        const float avgval = (minval + maxval) / 2;
-        minval = avgval - min_in_range / 2;
-        maxval = avgval + min_in_range / 2;
-        in_range = maxval - minval;
-    }
+    const float in_range = maxval - minval;
 
     float scale = in_range / outf_range;
     float offset = minval - outf_min * scale;
@@ -144,11 +137,11 @@ void cpu_quantize8chime_chunk(const float* __restrict__ const input,
             // Get value
             const float x = input[in_ind];
             // Scale
-            const float y = (x - offset) / scale;
+            const float y = scale == 0 ? float(outi_min + outi_max) / 2.0f : (x - offset) / scale;
             // Round
             const int j = sane_lrint(y);
             // Clamp; use 0 for nan
-            const int k = isnan(y) ? 0 : max(outi_min, min(outi_max, j));
+            const int k = isnan(x) ? 0 : max(outi_min, min(outi_max, j));
             // Store
             outputi[out_ind] = k;
         }
@@ -225,8 +218,8 @@ __global__ void gpu_quantize8chime_chunks(const float* __restrict__ const input,
         // We load these 8 values in 2 batches of 4 times each.
         // We space these batches 4 * 32 = 128 elements apart.
         // (This is not cache-efficient because the frequencies are not adjacent.)
-        const int in_time_chunk = 4 * threadIdx.x % 4; // 0...15 in steps of 4
-        const int in_freq_chunk = threadIdx.x / 4;     // 0...7
+        const int in_time_chunk = 4 * (threadIdx.x % 4); // 0...15 in steps of 4
+        const int in_freq_chunk = threadIdx.x / 4;       // 0...7
         const int input_offset_0123 = input_offset(time(in_time_chunk, time_outer),
                                                    freq(in_freq_chunk + 0, freq_packet, freq_outer),
                                                    beam(beam_packet, beam_outer));
@@ -284,7 +277,7 @@ __global__ void gpu_quantize8chime_chunks(const float* __restrict__ const input,
             // Offset and scale are fine, but the inverse scale is non-finite. This means the scale
             // is too close to zero.
             scale = 0.0f;
-            inv_offset = -offset;
+            inv_offset = 0.0f;
             inv_scale = 0.0f;
         }
 
@@ -301,25 +294,30 @@ __global__ void gpu_quantize8chime_chunks(const float* __restrict__ const input,
             return __float2int_rn(fmaxf(xlo, fminf(xhi, x)));
         };
 
-        const float i0 = clamp_and_convert(fmaf(x0, inv_scale, inv_offset), minf, maxf);
-        const float i1 = clamp_and_convert(fmaf(x1, inv_scale, inv_offset), minf, maxf);
-        const float i2 = clamp_and_convert(fmaf(x2, inv_scale, inv_offset), minf, maxf);
-        const float i3 = clamp_and_convert(fmaf(x3, inv_scale, inv_offset), minf, maxf);
-        const float i4 = clamp_and_convert(fmaf(x4, inv_scale, inv_offset), minf, maxf);
-        const float i5 = clamp_and_convert(fmaf(x5, inv_scale, inv_offset), minf, maxf);
-        const float i6 = clamp_and_convert(fmaf(x6, inv_scale, inv_offset), minf, maxf);
-        const float i7 = clamp_and_convert(fmaf(x7, inv_scale, inv_offset), minf, maxf);
+        const int i0 = clamp_and_convert(fmaf(x0, inv_scale, inv_offset), minf, maxf);
+        const int i1 = clamp_and_convert(fmaf(x1, inv_scale, inv_offset), minf, maxf);
+        const int i2 = clamp_and_convert(fmaf(x2, inv_scale, inv_offset), minf, maxf);
+        const int i3 = clamp_and_convert(fmaf(x3, inv_scale, inv_offset), minf, maxf);
+        const int i4 = clamp_and_convert(fmaf(x4, inv_scale, inv_offset), minf, maxf);
+        const int i5 = clamp_and_convert(fmaf(x5, inv_scale, inv_offset), minf, maxf);
+        const int i6 = clamp_and_convert(fmaf(x6, inv_scale, inv_offset), minf, maxf);
+        const int i7 = clamp_and_convert(fmaf(x7, inv_scale, inv_offset), minf, maxf);
 
-        const std::uint64_t outi = (std::uint64_t(i0) << 0x00) | (std::uint64_t(i1) << 0x08)
-                                   | (std::uint64_t(i2) << 0x10) | (std::uint64_t(i3) << 0x18)
-                                   | (std::uint64_t(i4) << 0x20) | (std::uint64_t(i5) << 0x28)
-                                   | (std::uint64_t(i6) << 0x30) | (std::uint64_t(i7) << 0x38);
-
-        const int out_time_chunk = 8 * (chunk % 2); // 0...15 in steps of 8
-        const int out_freq_chunk = chunk / 2;       // 0...7
-        *(std::uint64_t*)(outputi
-                          + outputi_offset(out_time_chunk, out_freq_chunk, freq_packet, beam_packet,
-                                           time_outer, freq_outer, beam_outer)) = outi;
+        // The thread loaded 4 contiguous times at freq+0 (x0..x3) and 4 contiguous times at
+        // freq+8 (x4..x7), so the encoded bytes span two freqs and need two separate 4-byte
+        // writes — one per freq, at the same (in_time_chunk, in_freq_chunk) tile it loaded.
+        const std::uint32_t outi_lo = std::uint32_t(i0) << 0x00 | std::uint32_t(i1) << 0x08
+                                      | std::uint32_t(i2) << 0x10 | std::uint32_t(i3) << 0x18;
+        const std::uint32_t outi_hi = std::uint32_t(i4) << 0x00 | std::uint32_t(i5) << 0x08
+                                      | std::uint32_t(i6) << 0x10 | std::uint32_t(i7) << 0x18;
+        *(std::uint32_t*)(outputi
+                          + outputi_offset(in_time_chunk, in_freq_chunk + 0, freq_packet,
+                                           beam_packet, time_outer, freq_outer, beam_outer)) =
+            outi_lo;
+        *(std::uint32_t*)(outputi
+                          + outputi_offset(in_time_chunk, in_freq_chunk + 8, freq_packet,
+                                           beam_packet, time_outer, freq_outer, beam_outer)) =
+            outi_hi;
     }
     const int out_beam_outer = beam_outer0 + thread;
     *(float2*)(outputf
