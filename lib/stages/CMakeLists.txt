@@ -111,6 +111,7 @@ add_library(
     RfiMaskSum.cpp
     RfiFrameMask.cpp
     CountLostPLSamplesScalar.cpp
+    PLMaskExpandedToCompact.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
