@@ -53,13 +53,6 @@ parseReorderDefault::parseReorderDefault(Config& config, const std::string& uniq
         FATAL_ERROR("Input element order {} is not a CHIME order.", _input_order);
     }
 
-    if (_output_order_str != CHIME_ORDER_CORRELATOR
-            && _output_order_str != CHIME_ORDER_CYLINDER
-            && _output_order_str != CHIME_ORDER_BEAMFORMER) {
-        FATAL_ERROR("Output element order {} is not a CHIME order.", _output_order);
-    }
-
-    
 
 #if 0 // this is what it should be
     if(_input_order == ElementOrder::CHIMECorrelator) {
@@ -112,16 +105,9 @@ void parseReorderDefault::main_thread() {
         if (frame == nullptr)
             break;
 
-        // TODO: This is probably somewhat inefficient. Might be better to build
-        // a conversion table from the beginning.
-        // TODO: This assumes the station IDs are consecutive and begin at 0,
-        // which restricts this stage to CHIME orderings.
-        for (int st_idx = 0; st_idx < _num_polarizations * _num_dishes; ++st_idx) {
+        for (int idx = 0; idx < static_cast<int>(_input_reorder.size()); ++idx) {
             // indexed by input_index, returns output_index
-            const station_id_t station_id = static_cast<station_id_t>(st_idx);
-            const int input_idx = tel.station_id_to_element_index(station_id, _input_order);
-            const int output_idx = tel.station_id_to_element_index(station_id, _output_order);
-            frame[input_idx] = static_cast<int32_t>(output_idx);
+            frame[idx] = static_cast<int32_t>((this->*station_id_to_output_index)((this->*input_index_to_station_id)(idx)));
         }
 
         _out_buf->allocate_new_metadata_object(frame_id);
