@@ -39,12 +39,8 @@ public:
 
 private:
 
-    static ElementOrder parseOrderStr(const std::string &ord_str);
-
     Buffer* const _out_buf;
     const std::string _name;
-    const std::string _input_order_str;
-    const std::string _output_order_str;
     const ElementOrder _input_order;
     const ElementOrder _output_order;
     const int _num_polarizations;
