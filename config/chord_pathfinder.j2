@@ -176,6 +176,18 @@ host_bf_mask_buffer:
     num_frames: 1
     frame_size: sizeof_int8 * num_dishes * num_polarizations
     metadata_pool: main_pool
+    zero_new_frames: true
+    zero_value: 0xFF
+    numa_node: 0
+
+host_bf_mask_buffer_1:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    metadata_pool: main_pool
+    zero_new_frames: true
+    zero_value: 0xFF
+    numa_node: 1
 
 # Buffers
 network_input_buffers:
@@ -258,22 +270,6 @@ host_pl_mask_exp_buffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
-host_bf_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: num_elements
-    metadata_pool: main_pool
-    zero_new_frames: true
-    zero_value: 0xFF
-
-host_bf_mask_buffer_1:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: num_elements
-    metadata_pool: main_pool
-    zero_new_frames: true
-    zero_value: 0xFF
-
 host_pl_mask_buffer:
     kotekan_buffer: standard
     num_frames: host_side_buffer_depth
@@ -298,6 +294,7 @@ host_rfi_sktilde_buffer_1:
     num_frames: buffer_depth
     frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
     metadata_pool: main_pool
+    numa_node: 1
 
 host_rfi_RFImask_counts_buffer:
     kotekan_buffer: standard
@@ -310,6 +307,7 @@ host_rfi_RFImask_counts_buffer_1:
     num_frames: buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
+    numa_node: 1
 
 host_pl_counts_buffer:
     kotekan_buffer: standard
@@ -322,6 +320,7 @@ host_pl_counts_buffer_1:
     num_frames: buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
+    numa_node: 1
 
 host_rfi_RFIframemask_buffer:
     kotekan_buffer: standard
@@ -338,6 +337,7 @@ host_rfi_RFIframemask_buffer_1:
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
+    numa_node: 1
 
 vis_blocksize: 16
 vis_num_blocks_lin: num_elements / vis_blocksize
@@ -469,6 +469,7 @@ host_pl_mask_ringbuffer_1:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
     metadata_pool: main_pool
+    numa_node: 1
 
 host_pl_mask_exp_ringbuffer:
     kotekan_buffer: ring
@@ -481,11 +482,6 @@ host_pl_mask_exp_ringbuffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
-host_pl_mask_ringbuffer:
-    kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
-    metadata_pool: main_pool
-
 host_rfi_s012_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_uint64
@@ -495,6 +491,7 @@ host_rfi_s012_ringbuffer_1:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_uint64
     metadata_pool: main_pool
+    numa_node: 1
 
 host_rfi_sktilde_ringbuffer:
     kotekan_buffer: ring
@@ -505,6 +502,7 @@ host_rfi_sktilde_ringbuffer_1:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
     metadata_pool: main_pool
+    numa_node: 1
 
 host_rfi_RFImask_dummy_ringbuffer:
     kotekan_buffer: ring
