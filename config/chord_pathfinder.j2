@@ -76,6 +76,7 @@ cpu_affinity: [0,1,8,11,12,13,14,15]
 frame_arrival_period: 5.12e-6 * {{ samples_per_data_set }}
 sizeof_gpu_int: 4 # bytes
 sizeof_int8: 1
+sizeof_int32: 4
 sizeof_uint64: 8
 sizeof_float32: 4
 
@@ -268,25 +269,25 @@ host_pl_mask_buffer_1:
 host_rfi_RFImask_counts_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int8
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
 
 host_rfi_RFImask_counts_buffer_1:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int8
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
 
-host_PL_counts_buffer:
+host_pl_counts_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int8
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
 
-host_PL_counts_buffer_1:
+host_pl_counts_buffer_1:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int8
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
 
 host_rfi_RFIframemask_buffer:
@@ -794,13 +795,13 @@ count_rfi_mask_1:
 count_PL:
     kotekan_stage: CountLostPLSamplesScalar
     in_buf: host_pl_mask_buffer
-    out_buf: host_PL_counts_buffer
+    out_buf: host_pl_counts_buffer
     packet_loss_is_scalar: true
 
 count_PL_1:
     kotekan_stage: CountLostPLSamplesScalar
     in_buf: host_pl_mask_buffer_1
-    out_buf: host_PL_counts_buffer_1
+    out_buf: host_pl_counts_buffer_1
     packet_loss_is_scalar: true
 
 generate_RFI_frame_mask:
@@ -822,7 +823,7 @@ n2_accumulate:
     in_buf: host_correlation_buffer
     in_counts_buf: host_counts_buffer
     in_rficounts_buf: host_rfi_RFImask_counts_buffer
-    in_plcounts_buf: host_PL_counts_buffer
+    in_plcounts_buf: host_pl_counts_buffer
     in_rfiframemask_buf: host_rfi_RFIframemask_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
@@ -839,7 +840,7 @@ n2_accumulate_1:
     in_buf: host_correlation_buffer_1
     in_counts_buf: host_counts_buffer_1
     in_rficounts_buf: host_rfi_RFImask_counts_buffer_1
-    in_plcounts_buf: host_PL_counts_buffer_1
+    in_plcounts_buf: host_pl_counts_buffer_1
     in_rfiframemask_buf: host_rfi_RFIframemask_buffer_1
     out_buf: n2_buffer_1
     num_freq_per_n2k_frame: num_local_freq
