@@ -33,11 +33,13 @@ STAGE_CONSTRUCTOR(PLMaskExpandedToCompact) {
     samples_per_data_set = config.get<uint32_t>(unique_name, "samples_per_data_set");
 
     if (samples_per_data_set % 128 != 0) {
-        FATAL_ERROR("PLMaskExpandedToCompact: samples_per_data_set ({:d}) must be a multiple of 128",
+        FATAL_ERROR(
+            "PLMaskExpandedToCompact: samples_per_data_set ({:d}) must be a multiple of 128",
             samples_per_data_set);
     }
     if (num_elements % 8 != 0) {
-        FATAL_ERROR("PLMaskExpandedToCompact: num_elements ({:d}) must be a multiple of 8", num_elements);
+        FATAL_ERROR("PLMaskExpandedToCompact: num_elements ({:d}) must be a multiple of 8",
+                    num_elements);
     }
 
     const size_t T = samples_per_data_set;
@@ -49,16 +51,16 @@ STAGE_CONSTRUCTOR(PLMaskExpandedToCompact) {
     size_t expected_in_size = (T / 64) * F * E_div_8 * sizeof(uint64_t);
     if (in_buf->frame_size != expected_in_size) {
         FATAL_ERROR("PLMaskExpandedToCompact: in_buf frame size ({:d}) does not match expected "
-                "expanded size ({:d}) for [T/64={:d}][F={:d}][E/8={:d}] * 8",
-            in_buf->frame_size, expected_in_size, T / 64, F, E_div_8);
+                    "expanded size ({:d}) for [T/64={:d}][F={:d}][E/8={:d}] * 8",
+                    in_buf->frame_size, expected_in_size, T / 64, F, E_div_8);
     }
 
     // Validate compact output buffer size: [T/128][F_compact][E/8] uint64_t
     size_t expected_out_size = (T / 128) * F_compact * E_div_8 * sizeof(uint64_t);
     if (out_buf->frame_size != expected_out_size) {
         FATAL_ERROR("PLMaskExpandedToCompact: out_buf frame size ({:d}) does not match expected "
-                "compact size ({:d}) for [T/128={:d}][F_compact={:d}][E/8={:d}] * 8",
-            out_buf->frame_size, expected_out_size, T / 128, F_compact, E_div_8);
+                    "compact size ({:d}) for [T/128={:d}][F_compact={:d}][E/8={:d}] * 8",
+                    out_buf->frame_size, expected_out_size, T / 128, F_compact, E_div_8);
     }
 
     // Set up ndarray frame descriptor for the input and output
@@ -168,19 +170,13 @@ void PLMaskExpandedToCompact::main_thread() {
         auto out_meta = get_chord_metadata(out_buf, out_frame_id);
         auto in_meta = get_chord_metadata(in_buf, in_frame_id);
 
-        out_meta->set_fpga_seq_num(in_meta->get_fpga_seq_num());
-        out_meta->type = kotekan::uint1x8;
-        out_meta->dims = 5;
-        out_meta->set_array_dimension(0, T_div_128, "T2hi64");
-        out_meta->set_array_dimension(1, F_compact, "F4");
-        out_meta->set_array_dimension(2, 2, "P");
-        out_meta->set_array_dimension(3, E_div_8 / 2, "D8");
-        out_meta->set_array_dimension(4, 8, "T2lo64");
-        out_meta->set_name("pl_mask");
-        out_meta->set_strides_simple();
+        // Start by copying all fields from in_meta
+        out_meta->deepCopy(in_meta);
 
-        out_meta->set_coarse_freq(in_meta->get_coarse_freq());
-        out_meta->set_freq_upchan_factor(in_meta->get_freq_upchan_factor());
+        // Set NDArray meta from the frame descriptor
+        out_meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+
+        // Other updates from in_meta
         // Compact mask covers 128 baseband samples per uint64 (vs 64 for expanded)
         out_meta->set_time_downsampling_fpga(in_meta->get_time_downsampling_fpga() * 2);
 

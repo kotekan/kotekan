@@ -907,6 +907,32 @@ run_recv_rfi_sktilde:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_sktilde_buffer_out
 
+run_pl_expand:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer_1
+        out_buffers:
+            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer_1
+        commands:
+        - name: cudaPLMaskExpander
+          num_frequencies: num_local_freq
+          pl_mask_name: pl_mask
+          pl_expanded_mask_name: pl_mask_exp
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+        out_buffers:
+            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
+        commands:
+        - name: cudaPLMaskExpander
+          num_frequencies: num_local_freq
+          pl_mask_name: pl_mask
+          pl_expanded_mask_name: pl_mask_exp
+
 # Packet-loss correlator to produce counts for N2Accumulate
 
 run_pl_corr:

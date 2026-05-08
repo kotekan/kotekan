@@ -170,7 +170,7 @@ void gpuSimulateN2kPLExpand::main_thread() {
 
         // Start with a copy
         meta_out->deepCopy(meta_in);
-        
+
         // frame_desc set in constructor
         meta_out->set_from_frame_desc(output_buf->get_ndarray_frame_desc());
 
@@ -196,7 +196,7 @@ void gpuSimulateN2kPLExpand::main_thread() {
         meta_out->set_freq_upchan_factor(freq_upchan_factor);
         meta_out->set_freq_upchan_index(freq_upchan_index);
         assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
-        
+
         /* test that things are consistent */
         meta_out->check_frame_desc(output_buf->get_ndarray_frame_desc());
 
