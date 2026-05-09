@@ -1,0 +1,39 @@
+{#-
+  chord_pathfinder.j2
+  Basic N2 pipeline with F-engine packet capture
+-#}
+
+# Buffer sends
+
+write_n2:
+
+    max_frames: -1
+    compression: zstd
+    compression_level: 9
+    use_bitshuffle: true
+
+    write_subsets:
+        base_dir: subset_file_dir
+
+        write_n2_subset:
+            kotekan_stage: hdf5N2Write
+            in_buf: n2_eigen_buffer
+            num_file_t: 4
+
+        write_n2_subset_1:
+            kotekan_stage: hdf5N2Write
+            in_buf: n2_eigen_buffer_1
+            num_file_t: 4
+
+    write_fulls:
+        base_dir: full_file_dir
+
+        write_n2_full:
+            kotekan_stage: hdf5N2Write
+            in_buf: n2_buffer
+            num_file_t: 4
+
+        write_n2_full_1:
+            kotekan_stage: hdf5N2Write
+            in_buf: n2_buffer_1
+            num_file_t: 4

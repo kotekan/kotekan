@@ -1,0 +1,261 @@
+{#-
+  chord_pathfinder.j2
+  Basic N2 pipeline with F-engine packet capture
+-#}
+
+# Buffers
+network_input_buffers:
+    log_level: info
+    num_frames: host_side_buffer_depth
+    frame_size: dpdk_output_frame_size
+    metadata_pool: main_pool
+    use_hugepages: true
+    
+    # The workers share an output buffer
+    network_input_buffer_0:
+        zero_new_frames: true
+        numa_node: 0
+        zero_value: 0x88
+        kotekan_buffer: standard
+    network_input_buffer_1:
+        zero_new_frames: true
+        numa_node: 1
+        zero_value: 0x88
+        kotekan_buffer: standard
+    # Main voltage buffer after transpose
+    host_voltage_buffer_0:
+        kotekan_buffer: standard
+        numa_node: 0
+    host_voltage_buffer_1:
+        kotekan_buffer: standard
+        numa_node: 1
+
+
+packet_receipt_bitmap_buffers:
+    log_level: info
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / time_samples_per_packet) * num_crs_boards  # One bit per stream
+    metadata_pool: main_pool
+    use_hugepages: true
+    packet_receipt_bitmap_buffer_0:
+        kotekan_buffer: standard
+    packet_receipt_bitmap_buffer_1:
+        kotekan_buffer: standard
+    combined_receipt_bitmap_buffer_0:
+        kotekan_buffer: standard
+    packet_receipt_bitmap_buffer_2:
+        kotekan_buffer: standard
+        numa_node: 1
+    packet_receipt_bitmap_buffer_3:
+        kotekan_buffer: standard
+        numa_node: 1
+    combined_receipt_bitmap_buffer_1:
+        kotekan_buffer: standard
+        numa_node: 1
+
+host_rfi_RFImask_dummy_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: num_local_freq * samples_per_data_set / 8
+    zero_new_frames: true
+    zero_value: 0xFF
+    metadata_pool: main_pool
+
+host_rfi_RFImask_dummy_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: num_local_freq * samples_per_data_set / 8
+    zero_new_frames: true
+    zero_value: 0xFF
+    numa_node: 1
+    metadata_pool: main_pool
+
+# Note this is the expanded version of the pl_mask, which is used for correlator input
+host_pl_mask_exp_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+
+host_pl_mask_exp_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+    numa_node: 1
+
+host_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+
+host_pl_mask_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+    numa_node: 1
+
+
+# Stages
+
+##  Packet capture from the F-engine ##
+dpdk:
+    kotekan_stage: dpdkCore
+    log_level: info
+    # Format is index = lcore, value = cpu core
+    lcore_cpu_map: [5, 6, 7, 21, 22, 23] # [5,6,7]
+    main_lcore_cpu: 4
+    num_mbufs: 16384
+    rx_ring_size: 1024
+    mbuf_cache_size: 512
+    packet_size: 6208
+    payload_size: 6144
+    max_rx_pkt_len: 6208
+    burst_size: 32
+    # The number of stream IDs expected per worker
+    num_expected_stream_ids: 4
+    # List of PCIe addresses to block from DPDK use
+    pcie_block_list:
+        - "0000:37:00.0"
+        - "0000:37:00.1"
+        - "0000:b5:00.0"
+        - "0000:b5:00.1"
+    worker_ring_map:
+        - name: worker_ring_0
+          num_slots: 512
+          socket_id: 0
+        - name: worker_ring_1
+          num_slots: 512
+          socket_id: 0
+        - name: worker_ring_2
+          num_slots: 512
+          socket_id: 1
+        - name: worker_ring_3
+          num_slots: 512
+          socket_id: 1
+    # Format is index = lcore, value = array of port IDs
+    # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+    # and lcore 1 to service ports 2 and 3.
+    lcore_port_map:
+        - [0]
+        - [1]
+    # One handler must be given per port
+    handlers:
+        - dpdk_handler: crs16BoardDistributor
+          worker_rings: [0,1]
+        - dpdk_handler: crs16BoardDistributor
+          worker_rings: [2,3]
+    # Exactly One worker must be given per worker ring
+    workers:
+        - dpdk_handler: crs16BoardCaptureWorker
+          frame_service_cpu_affinity: [4]
+          worker_ring: 0
+          port: 0
+          allocate_metadata: true
+          out_buf: network_input_buffer_0
+          receipt_bitmap_buf: packet_receipt_bitmap_buffer_0
+        - dpdk_handler: crs16BoardCaptureWorker
+          frame_service_cpu_affinity: [4]
+          worker_ring: 1
+          port: 0
+          out_buf: network_input_buffer_0
+          receipt_bitmap_buf: packet_receipt_bitmap_buffer_1
+        - dpdk_handler: crs16BoardCaptureWorker
+          frame_service_cpu_affinity: [20]
+          worker_ring: 2
+          port: 1
+          allocate_metadata: true
+          out_buf: network_input_buffer_1
+          receipt_bitmap_buf: packet_receipt_bitmap_buffer_2
+        - dpdk_handler: crs16BoardCaptureWorker
+          frame_service_cpu_affinity: [20]
+          worker_ring: 3
+          port: 1
+          out_buf: network_input_buffer_1
+          receipt_bitmap_buf: packet_receipt_bitmap_buffer_3
+
+# Combine packet receipt bitmaps and generate packet-loss masks
+process_packet_mask_0:
+    kotekan_stage: ProcessPacketMask
+    voltage_buf: network_input_buffer_0
+    receipt_bitmap_bufs:
+        - packet_receipt_bitmap_buffer_0
+        - packet_receipt_bitmap_buffer_1
+    combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_0
+    pl_mask_buf: host_pl_mask_exp_buffer
+    rfi_mask_buf: host_rfi_RFImask_dummy_buffer
+    num_frequency: num_local_freq
+    num_source_ids: num_crs_boards
+    # Update this as we add more CRS (F-engine) boards 
+    missing_source_ids: [4,5,6,7,8,9,10,11,12,13,14,15]
+
+process_packet_mask_1:
+    kotekan_stage: ProcessPacketMask
+    cpu_affinity: [16]
+    voltage_buf: network_input_buffer_1
+    receipt_bitmap_bufs:
+        - packet_receipt_bitmap_buffer_2
+        - packet_receipt_bitmap_buffer_3
+    combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_1
+    pl_mask_buf: host_pl_mask_exp_buffer_1
+    rfi_mask_buf: host_rfi_RFImask_dummy_buffer_1
+    num_frequency: num_local_freq
+    num_source_ids: num_crs_boards
+    # Update this as we add more CRS (F-engine) boards 
+    missing_source_ids: [4,5,6,7,8,9,10,11,12,13,14,15]
+
+# Transpose the voltage data from the network input buffer into a more convenient layout
+# for the GPU and baseband dump processing. 
+# This also applies the packet-loss mask to the data
+transpose_voltage_0:
+    kotekan_stage: TransposeBasebandArray
+    cpu_affinity: [2]
+    timesamples_per_frame: samples_per_data_set
+    in_buf: network_input_buffer_0
+    pl_mask_buf: host_pl_mask_exp_buffer
+    out_buf: host_voltage_buffer_0
+    frame_mode: even
+    log_level: info
+
+transpose_voltage_1:
+    kotekan_stage: TransposeBasebandArray
+    cpu_affinity: [3]
+    timesamples_per_frame: samples_per_data_set
+    in_buf: network_input_buffer_0
+    pl_mask_buf: host_pl_mask_exp_buffer
+    out_buf: host_voltage_buffer_0
+    frame_mode: odd
+    log_level: info
+
+transpose_voltage_2:
+    kotekan_stage: TransposeBasebandArray
+    cpu_affinity: [17]
+    timesamples_per_frame: samples_per_data_set
+    in_buf: network_input_buffer_1
+    pl_mask_buf: host_pl_mask_exp_buffer_1
+    out_buf: host_voltage_buffer_1
+    frame_mode: even
+    log_level: info
+
+transpose_voltage_3:
+    kotekan_stage: TransposeBasebandArray
+    cpu_affinity: [18]
+    timesamples_per_frame: samples_per_data_set
+    in_buf: network_input_buffer_1
+    pl_mask_buf: host_pl_mask_exp_buffer_1
+    out_buf: host_voltage_buffer_1
+    frame_mode: odd
+    log_level: info
+
+PL_mask_compactor:
+    kotekan_stage: PLMaskExpandedToCompact
+    in_buf: host_pl_mask_exp_buffer
+    out_buf: host_pl_mask_buffer
+
+PL_mask_compactor_1:
+    kotekan_stage: PLMaskExpandedToCompact
+    in_buf: host_pl_mask_exp_buffer_1
+    out_buf: host_pl_mask_buffer_1
+
