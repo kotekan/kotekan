@@ -81,7 +81,7 @@ gen_pl_exp_mask:
     value: 120
     kotekan_stage: testDataGen
     out_buf: host_pl_mask_exp_buffer
-    name: "pl_mask"
+    name: "pl_mask_exp"
     array_shape: [ 64, 16, 2, 8, 8 ]  # = num_times/64, num_freq, 2, num_dishes/8, 8
     dim_name: ["Thi64", "F", "P", "D8", "Tlo64" ]
     num_frames: buffer_depth  # Must be at least what check_data expects
