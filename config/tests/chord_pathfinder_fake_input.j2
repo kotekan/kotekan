@@ -97,3 +97,11 @@ gen_dummy_rfi_mask:
         kotekan_stage: testRFImaskGen
         out_buf: host_rfi_RFImask_dummy_buffer_1
 
+gen_fake_bf_mask:
+    bf_mask_0:
+        kotekan_stage: inventBFMask
+        bf_mask: host_bf_mask_buffer
+    bf_mask_1:
+        kotekan_stage: inventBFMask
+        bf_mask: host_bf_mask_buffer_1
+

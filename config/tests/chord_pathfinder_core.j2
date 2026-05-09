@@ -45,46 +45,46 @@ host_rfi_RFImask_buffer_1:
 
 host_rfi_sktilde_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
     metadata_pool: main_pool
 
 host_rfi_sktilde_buffer_1:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
     metadata_pool: main_pool
     numa_node: 1
 
 host_rfi_RFImask_counts_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
 
 host_rfi_RFImask_counts_buffer_1:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
     numa_node: 1
 
 host_pl_counts_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
 
 host_pl_counts_buffer_1:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
     numa_node: 1
 
 host_rfi_RFIframemask_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
     zero_new_frames: true
     zero_value: 0xFF
@@ -92,7 +92,7 @@ host_rfi_RFIframemask_buffer:
 
 host_rfi_RFIframemask_buffer_1:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
     zero_new_frames: true
     zero_value: 0xFF
@@ -416,7 +416,7 @@ run_rfi_sktilde:
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer
-            host_rfi_mask_ringbuffer: host_rfi_RFImask_dummy_ringbuffer
+            host_rfi_mask_ringbuffer: host_rfi_RFImask_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
@@ -439,7 +439,7 @@ run_rfi_sktilde:
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer_1
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer_1
-            host_rfi_mask_ringbuffer: host_rfi_RFImask_dummy_ringbuffer_1
+            host_rfi_mask_ringbuffer: host_rfi_RFImask_ringbuffer_1
         commands:
         - name: cudaInputData
           do_once: true
