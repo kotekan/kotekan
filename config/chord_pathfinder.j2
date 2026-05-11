@@ -239,6 +239,69 @@ packet_receipt_bitmap_buffers:
         kotekan_buffer: standard
         numa_node: 1
 
+# These are the dummy RFI masks produced by DPDK
+host_rfi_RFImask_dummy_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: num_local_freq * samples_per_data_set / 8
+    zero_new_frames: true
+    zero_value: 0xFF
+    metadata_pool: main_pool
+
+host_rfi_RFImask_dummy_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: num_local_freq * samples_per_data_set / 8
+    zero_new_frames: true
+    zero_value: 0xFF
+    numa_node: 1
+    metadata_pool: main_pool
+
+# Note this is the expanded version of the pl_mask, produced by DPDK. It will be compressed to
+# the normal PL mask before being sent to the GPU.
+host_pl_mask_exp_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+
+host_pl_mask_exp_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+    numa_node: 1
+
+# This is the PL mask, sent to GPU and used for n2k_counts and the RFI SK system.
+host_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+
+host_pl_mask_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+    numa_node: 1
+
+# This contains the SK statistics averaged over elements.
+host_rfi_sktilde_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    metadata_pool: main_pool
+
+host_rfi_sktilde_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    metadata_pool: main_pool
+    numa_node: 1
+
+# This is the RFI Mask recieved from the GPU, that was applied to produce n2k_correlation & n2k_counts.
+# It may contain either the dummy DPDK-generated mask or the real mask computed by SKtilde.
 host_rfi_RFImask_buffer:
     kotekan_buffer: standard
     num_frames: host_side_buffer_depth
@@ -256,75 +319,36 @@ host_rfi_RFImask_buffer_1:
     numa_node: 1
     metadata_pool: main_pool
 
-# Note this is the expanded version of the pl_mask, which is used for correlator input
-host_pl_mask_exp_buffer:
-    kotekan_buffer: standard
-    num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
-    metadata_pool: main_pool
-
-host_pl_mask_exp_buffer_1:
-    kotekan_buffer: standard
-    num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
-    metadata_pool: main_pool
-    numa_node: 1
-
-host_pl_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
-    metadata_pool: main_pool
-
-host_pl_mask_buffer_1:
-    kotekan_buffer: standard
-    num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
-    metadata_pool: main_pool
-    numa_node: 1
-
-host_rfi_sktilde_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
-    metadata_pool: main_pool
-
-host_rfi_sktilde_buffer_1:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
-    metadata_pool: main_pool
-    numa_node: 1
-
 host_rfi_RFImask_counts_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
 
 host_rfi_RFImask_counts_buffer_1:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
     numa_node: 1
 
 host_pl_counts_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
 
 host_pl_counts_buffer_1:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
     numa_node: 1
 
+# The mask for second stage RFI excision.
 host_rfi_RFIframemask_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
     zero_new_frames: true
     zero_value: 0xFF
@@ -332,7 +356,7 @@ host_rfi_RFIframemask_buffer:
 
 host_rfi_RFIframemask_buffer_1:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
     zero_new_frames: true
     zero_value: 0xFF
@@ -603,7 +627,7 @@ process_packet_mask_0:
         - packet_receipt_bitmap_buffer_1
     combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_0
     pl_mask_buf: host_pl_mask_exp_buffer
-    rfi_mask_buf: host_rfi_RFImask_buffer
+    rfi_mask_buf: host_rfi_RFImask_dummy_buffer
     num_frequency: num_local_freq
     num_source_ids: num_crs_boards
     # Update this as we add more CRS (F-engine) boards 
@@ -618,7 +642,7 @@ process_packet_mask_1:
         - packet_receipt_bitmap_buffer_3
     combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_1
     pl_mask_buf: host_pl_mask_exp_buffer_1
-    rfi_mask_buf: host_rfi_RFImask_buffer_1
+    rfi_mask_buf: host_rfi_RFImask_dummy_buffer_1
     num_frequency: num_local_freq
     num_source_ids: num_crs_boards
     # Update this as we add more CRS (F-engine) boards 
@@ -667,6 +691,17 @@ transpose_voltage_3:
     frame_mode: odd
     log_level: info
 
+# Downsample the PL mask to its "normal" form, which will be sent to the GPU.
+PL_mask_compactor:
+    kotekan_stage: PLMaskExpandedToCompact
+    in_buf: host_pl_mask_exp_buffer
+    out_buf: host_pl_mask_buffer
+
+PL_mask_compactor_1:
+    kotekan_stage: PLMaskExpandedToCompact
+    in_buf: host_pl_mask_exp_buffer_1
+    out_buf: host_pl_mask_buffer_1
+
 
 ## Send data to GPU ringbuffers ##
 
@@ -701,12 +736,15 @@ run_send_voltage:
           signal_buf: host_voltage_ringbuffer_out
           gpu_mem_output: voltage_buffer
 
-run_send_rfi_RFImask:
+# Copy the dummy RFI mask to the RFI mask on the GPU
+# To activate the 1st stage RFI excision, do not run this stage! Instead make sure the
+# SKtilde stage produces the RFI mask and places it in the host_rfi_RFImask_buffer
+run_send_rfi_RFImask_dummy:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_rfi_RFImask_buffer_in: host_rfi_RFImask_buffer
+            host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer
         out_buffers:
             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
         commands:
@@ -721,7 +759,7 @@ run_send_rfi_RFImask:
         gpu_id: 1
         cpu_affinity: [25, 26, 27]
         in_buffers:
-            host_rfi_RFImask_buffer_in: host_rfi_RFImask_buffer_1
+            host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer_1
         out_buffers:
             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer_1
         commands:
@@ -763,37 +801,6 @@ run_send_pl_mask:
           signal_buf: host_pl_mask_ringbuffer
           gpu_mem_output: pl_mask_buffer
 
-run_send_pl_mask_exp:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        in_buffers:
-            host_pl_mask_exp_buffer_in: host_pl_mask_exp_buffer
-        out_buffers:
-            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
-        commands:
-        - name: cudaCopyToRingbuffer
-          input_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
-          ring_buffer_size: buffer_depth * input_size
-          in_buf: host_pl_mask_exp_buffer_in
-          signal_buf: host_pl_mask_exp_ringbuffer
-          gpu_mem_output: pl_mask_exp_buffer
-    gpu_1:
-        kotekan_stage: cudaProcess
-        gpu_id: 1
-        cpu_affinity: [25, 26, 27]
-        in_buffers:
-            host_pl_mask_exp_buffer_in: host_pl_mask_exp_buffer_1
-        out_buffers:
-            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer_1
-        commands:
-        - name: cudaCopyToRingbuffer
-          input_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
-          ring_buffer_size: buffer_depth * input_size
-          in_buf: host_pl_mask_exp_buffer_in
-          signal_buf: host_pl_mask_exp_ringbuffer
-          gpu_mem_output: pl_mask_exp_buffer
-
 run_rfi_s012:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -828,8 +835,11 @@ run_rfi_s012:
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
 
+# This stage produces SK statistics averaged over all input elements and the RFI mask.
+# If the pipeline is using the dummy DPDK-produced RFI mask, then this stage needs to direct its
+# mask to "_dummy" buffers.  If the pipeline is using this RFI mask, then the buffers should
+# *not* contain "_dummy", and the DPDK-produced mask should not be sent to the GPU.
 run_rfi_sktilde:
-    log_level: DEBUG
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -838,7 +848,7 @@ run_rfi_sktilde:
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer
-            host_rfi_mask_ringbuffer: host_rfi_RFImask_dummy_ringbuffer
+            host_rfi_mask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
@@ -849,7 +859,7 @@ run_rfi_sktilde:
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask
           rfi_SKtilde_name: rfi_sktilde
-          rfi_RFImask_name: rfi_mask
+          rfi_RFImask_name: rfi_mask_dummy
           num_times: samples_per_data_set
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
@@ -861,7 +871,7 @@ run_rfi_sktilde:
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer_1
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer_1
-            host_rfi_mask_ringbuffer: host_rfi_RFImask_dummy_ringbuffer_1
+            host_rfi_mask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer_1
         commands:
         - name: cudaInputData
           do_once: true
@@ -872,7 +882,7 @@ run_rfi_sktilde:
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask
           rfi_SKtilde_name: rfi_sktilde
-          rfi_RFImask_name: rfi_mask
+          rfi_RFImask_name: rfi_mask_dummy
           num_times: samples_per_data_set
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
@@ -907,14 +917,49 @@ run_recv_rfi_sktilde:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_sktilde_buffer_out
 
+# This copies the RFI Mask that was used in N2K kernels back out to the CPU into the
+# host_rfi_RFImask_buffer. It may contain either the DPDK-produced dummy mask or the
+# SKtilde-produced real mask.
+run_recv_rfi_RFImask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_RFImask_ringbuffer_in: host_rfi_RFImask_ringbuffer
+        out_buffers:
+            host_rfi_RFImask_buffer_out: host_rfi_RFImask_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_RFImask_ringbuffer_in
+          gpu_mem_input: rfi_RFImask_buffer
+          output_size: samples_per_data_set * num_local_freq / 8
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_RFImask_buffer_out
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_RFImask_ringbuffer_in: host_rfi_RFImask_ringbuffer_1
+        out_buffers:
+            host_rfi_RFImask_buffer_out: host_rfi_RFImask_buffer_1
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_RFImask_ringbuffer_in
+          gpu_mem_input: rfi_RFImask_buffer
+          output_size: samples_per_data_set * num_local_freq / 8
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_RFImask_buffer_out
+
+# Only the "normal" (downsampled) PL mask is sent to the GPU. This expands that mask for
+# the 1 bit correlator kernel. Other stages use the downsampled mask directly.
 run_pl_expand:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer_1
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
         out_buffers:
-            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer_1
+            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
         commands:
         - name: cudaPLMaskExpander
           num_frequencies: num_local_freq
@@ -924,9 +969,9 @@ run_pl_expand:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer_1
         out_buffers:
-            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
+            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer_1
         commands:
         - name: cudaPLMaskExpander
           num_frequencies: num_local_freq
@@ -1022,16 +1067,6 @@ hex_dump:
     in_buf: n2_buffer_1
     len: 4096
 
-PL_mask_compactor:
-    kotekan_stage: PLMaskExpandedToCompact
-    in_buf: host_pl_mask_exp_buffer
-    out_buf: host_pl_mask_buffer
-
-PL_mask_compactor_1:
-    kotekan_stage: PLMaskExpandedToCompact
-    in_buf: host_pl_mask_exp_buffer_1
-    out_buf: host_pl_mask_buffer_1
-
 count_rfi_mask:
     kotekan_stage: RfiMaskSum
     in_buf: host_rfi_RFImask_buffer
@@ -1054,20 +1089,22 @@ count_PL_1:
     out_buf: host_pl_counts_buffer_1
     packet_loss_is_scalar: true
 
-generate_RFI_frame_mask:
+# This computes the second stage RFI excision mask.
+compute_RFI_frame_mask:
     kotekan_stage: RfiFrameMask
     in_buf: host_rfi_sktilde_buffer
     out_buf: host_rfi_RFIframemask_buffer
     enabled_updatable_config: /rfi_second_stage_enabled
     thresholds_updatable_config: /rfi_second_stage_thresholds
 
-generate_RFI_frame_mask_1:
+compute_RFI_frame_mask_1:
     kotekan_stage: RfiFrameMask
     in_buf: host_rfi_sktilde_buffer_1
     out_buf: host_rfi_RFIframemask_buffer_1
     enabled_updatable_config: /rfi_second_stage_enabled
     thresholds_updatable_config: /rfi_second_stage_thresholds
 
+# Updatable Config for second stage RFI excision.
 rfi_second_stage_enabled:
     kotekan_update_endpoint: json
     enabled: false
@@ -1077,13 +1114,6 @@ rfi_second_stage_thresholds:
     kotekan_update_endpoint: json
     thresholds: []
     valid_at_time_ns: 0
-
-generate_RFI_frame_mask_1:
-    kotekan_stage: testRFIFrameMaskGen
-    out_buf: host_rfi_RFIframemask_buffer_1
-    type: const
-    value: 1
-    num_frames: -1
 
 n2_accumulate:
     kotekan_stage: N2Accumulate

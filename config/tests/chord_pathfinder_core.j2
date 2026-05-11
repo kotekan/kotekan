@@ -311,36 +311,39 @@ run_send_voltage:
           signal_buf: host_voltage_ringbuffer_out
           gpu_mem_output: voltage_buffer
 
+# Copy the dummy RFI mask to the RFI mask on the GPU
+# To activate the 1st stage RFI excision, do not run this stage! Instead make sure the
+# SKtilde stage produces the RFI mask and places it in the host_rfi_RFImask_buffer
 run_send_rfi_RFImask_dummy:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_rfi_RFImask_dummy_buffer_in: host_rfi_RFImask_dummy_buffer
+            host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer
         out_buffers:
-            host_rfi_RFImask_dummy_ringbuffer_out: host_rfi_RFImask_dummy_ringbuffer
+            host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
         commands:
         - name: cudaCopyToRingbuffer
           input_size: num_local_freq * samples_per_data_set / 8
           ring_buffer_size: buffer_depth * input_size
-          in_buf: host_rfi_RFImask_dummy_buffer_in
-          signal_buf: host_rfi_RFImask_dummy_ringbuffer_out
-          gpu_mem_output: rfi_RFImask_dummy_buffer
+          in_buf: host_rfi_RFImask_buffer_in
+          signal_buf: host_rfi_RFImask_ringbuffer_out
+          gpu_mem_output: rfi_RFImask_buffer
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
         cpu_affinity: [25, 26, 27]
         in_buffers:
-            host_rfi_RFImask_dummy_buffer_in: host_rfi_RFImask_dummy_buffer_1
+            host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer_1
         out_buffers:
-            host_rfi_RFImask_dummy_ringbuffer_out: host_rfi_RFImask_dummy_ringbuffer_1
+            host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer_1
         commands:
         - name: cudaCopyToRingbuffer
           input_size: num_local_freq * samples_per_data_set / 8
           ring_buffer_size: buffer_depth * input_size
-          in_buf: host_rfi_RFImask_dummy_buffer_in
-          signal_buf: host_rfi_RFImask_dummy_ringbuffer_out
-          gpu_mem_output: rfi_RFImask_dummy_buffer
+          in_buf: host_rfi_RFImask_buffer_in
+          signal_buf: host_rfi_RFImask_ringbuffer_out
+          gpu_mem_output: rfi_RFImask_buffer
 
 run_send_pl_mask:
     gpu_0:
@@ -407,6 +410,10 @@ run_rfi_s012:
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
 
+# This stage produces SK statistics averaged over all input elements and the RFI mask.
+# If the pipeline is using the dummy DPDK-produced RFI mask, then this stage needs to direct its
+# mask to "_dummy" buffers.  If the pipeline is using this RFI mask, then the buffers should
+# *not* contain "_dummy", and the DPDK-produced mask should not be sent to the GPU.
 run_rfi_sktilde:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -416,7 +423,7 @@ run_rfi_sktilde:
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer
-            host_rfi_mask_ringbuffer: host_rfi_RFImask_ringbuffer
+            host_rfi_mask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
@@ -427,7 +434,7 @@ run_rfi_sktilde:
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask
           rfi_SKtilde_name: rfi_sktilde
-          rfi_RFImask_name: rfi_mask
+          rfi_RFImask_name: rfi_mask_dummy
           num_times: samples_per_data_set
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
@@ -439,7 +446,7 @@ run_rfi_sktilde:
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer_1
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer_1
-            host_rfi_mask_ringbuffer: host_rfi_RFImask_ringbuffer_1
+            host_rfi_mask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer_1
         commands:
         - name: cudaInputData
           do_once: true
@@ -450,7 +457,7 @@ run_rfi_sktilde:
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask
           rfi_SKtilde_name: rfi_sktilde
-          rfi_RFImask_name: rfi_mask
+          rfi_RFImask_name: rfi_mask_dummy
           num_times: samples_per_data_set
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
@@ -485,14 +492,49 @@ run_recv_rfi_sktilde:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_sktilde_buffer_out
 
+# This copies the RFI Mask that was used in N2K kernels back out to the CPU into the
+# host_rfi_RFImask_buffer. It may contain either the DPDK-produced dummy mask or the
+# SKtilde-produced real mask.
+run_recv_rfi_RFImask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_RFImask_ringbuffer_in: host_rfi_RFImask_ringbuffer
+        out_buffers:
+            host_rfi_RFImask_buffer_out: host_rfi_RFImask_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_RFImask_ringbuffer_in
+          gpu_mem_input: rfi_RFImask_buffer
+          output_size: samples_per_data_set * num_local_freq / 8
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_RFImask_buffer_out
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_RFImask_ringbuffer_in: host_rfi_RFImask_ringbuffer_1
+        out_buffers:
+            host_rfi_RFImask_buffer_out: host_rfi_RFImask_buffer_1
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_RFImask_ringbuffer_in
+          gpu_mem_input: rfi_RFImask_buffer
+          output_size: samples_per_data_set * num_local_freq / 8
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_RFImask_buffer_out
+
+# Only the "normal" (downsampled) PL mask is sent to the GPU. This expands that mask for
+# the 1 bit correlator kernel. Other stages use the downsampled mask directly.
 run_pl_expand:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer_1
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
         out_buffers:
-            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer_1
+            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
         commands:
         - name: cudaPLMaskExpander
           num_frequencies: num_local_freq
@@ -502,9 +544,9 @@ run_pl_expand:
         kotekan_stage: cudaProcess
         gpu_id: 0
         in_buffers:
-            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer_1
         out_buffers:
-            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
+            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer_1
         commands:
         - name: cudaPLMaskExpander
           num_frequencies: num_local_freq
@@ -560,14 +602,14 @@ run_n2k:
         gpu_id: 0
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
-            host_rfi_RFImask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         out_buffers:
             host_correlation: host_correlation_buffer
         commands:
         - name: cudaCorrelator
           n2k_correlation_name: correlation
           voltage_name: voltage
-          rfi_RFImask_name: rfi_RFImask_dummy
+          rfi_RFImask_name: rfi_RFImask
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: correlation_buffer
@@ -578,14 +620,14 @@ run_n2k:
         cpu_affinity: [25, 26, 27]
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer_1
-            host_rfi_RFImask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer_1
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer_1
         out_buffers:
             host_correlation: host_correlation_buffer_1
         commands:
         - name: cudaCorrelator
           n2k_correlation_name: correlation
           voltage_name: voltage
-          rfi_RFImask_name: rfi_RFImask_dummy
+          rfi_RFImask_name: rfi_RFImask
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: correlation_buffer
@@ -602,12 +644,12 @@ hex_dump:
 
 count_rfi_mask:
     kotekan_stage: RfiMaskSum
-    in_buf: host_rfi_RFImask_dummy_buffer
+    in_buf: host_rfi_RFImask_buffer
     out_buf: host_rfi_RFImask_counts_buffer
 
 count_rfi_mask_1:
     kotekan_stage: RfiMaskSum
-    in_buf: host_rfi_RFImask_dummy_buffer_1
+    in_buf: host_rfi_RFImask_buffer_1
     out_buf: host_rfi_RFImask_counts_buffer_1
 
 count_PL:
