@@ -63,7 +63,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _num_dishes(config.get<int64_t>(unique_name, "num_dishes")),
     _num_elements(_num_polarizations * _num_dishes),
     _num_workers(config.get_default<int>(unique_name, "num_workers", 1)),
-    _output_batch_size(config.get_default<int>(unique_name, "output_batch_size", 1)),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
     _variance_mode(config.get<N2VarianceMode>(unique_name, "variance_mode")),
     _debug_accum_mode(config.get_default<bool>(unique_name, "debug_accum_mode", false)),
@@ -139,13 +138,6 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         if (!(_num_elements % (8 * _n2k_counts_blocksize) == 0))
             FATAL_ERROR("num_elements ({:d}) / 8 is not a multiple of the counts block size ({:d})",
                         _num_elements, _n2k_counts_blocksize);
-
-        // We output frames in batches. Make sure a whole batch will fit in the output buffer.
-        if (_output_batch_size > out_buf->num_frames) {
-            FATAL_ERROR("output_batch_size ({:d}) is greater than out_buf's num_frames (aka "
-                        "buffer_depth) ({:d})",
-                        _output_batch_size, out_buf->num_frames);
-        }
     }
 
     // Compute derived quantities
@@ -424,6 +416,8 @@ void N2Accumulate::main_thread() {
             state = AccumState::WAITING_FOR_ALIGNMENT;
         }
 
+        const auto& coarse_freq = frame_metadata->get_coarse_freq();
+
         // Accumulate each visibility sample in the in_frame
         // t_outer
         for (int64_t t = 0; t < _n_integrations_per_n2k_frame; ++t) {
@@ -532,8 +526,7 @@ void N2Accumulate::main_thread() {
                 float samples_diff = count_t1 - count_t0;
                 _n_valid_sample_diff_sq_sum[f] += samples_diff * samples_diff;
 
-                double freq_MHz =
-                    _tel.to_freq_MHz(static_cast<freq_id_t>(frame_metadata->get_coarse_freq()[f]));
+                double freq_MHz = _tel.to_freq_MHz(static_cast<freq_id_t>(coarse_freq.at(f)));
 
                 // Fifth: Now for the hard part, visibilities and variances
                 accum_corr_and_var(_vis.data() + f * corr_stride_f,
@@ -562,9 +555,9 @@ void N2Accumulate::main_thread() {
 
 #ifdef WITH_OMP
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
-            DEBUG("Adding input frame pair took {:f} ms + {:f} ms idle",
-                  (prof_curr_time - prof_start_time) * 1000,
-                  (prof_start_time - prof_last_time) * 1000);
+            INFO("Adding input frame pair took {:f} ms + {:f} ms idle",
+                 (prof_curr_time - prof_start_time) * 1000,
+                 (prof_start_time - prof_last_time) * 1000);
             prof_last_time = prof_curr_time;
 #endif
 
@@ -910,99 +903,91 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
     int64_t stride_block = stride_ilo * _n2k_correlation_blocksize;
     int64_t stride_f = stride_block * _n2k_correlation_num_blocks;
 
-    const int64_t freq_block_size = _output_batch_size;
-    [[maybe_unused]] const int64_t num_output_workers = std::min(_num_workers, _output_batch_size);
-    const int64_t num_freq_blocks =
-        (_num_freq_per_n2k_frame + freq_block_size - 1) / freq_block_size;
-
-    std::vector<std::shared_ptr<N2Metadata>> metas(freq_block_size);
+    std::vector<std::shared_ptr<N2Metadata>> metas(_num_freq_per_n2k_frame);
 
     if (!_bin_in_ERA)
         assert(_vis_samples_in_out_frame == _num_subintegrations_per_bin);
+
+    const auto& coarse_freq = chord_frame_metadata->get_coarse_freq();
+    const dset_id_t dataset_id = chord_frame_metadata->has_dataset_id()
+                                     ? chord_frame_metadata->get_dataset_id()
+                                     : dset_id_t::null;
+
+    const std::vector<std::array<float, 2>>& thresholds =
+        rfiframemask_metadata->get_rfi_frame_excision_thresholds();
 
     [[maybe_unused]] double prof_out_setup_time = 0;
     [[maybe_unused]] double prof_out_work_time = 0;
     [[maybe_unused]] double prof_out_free_time = 0;
 
-    // Loop over frequency blocks
-    for (int64_t fb = 0; fb < num_freq_blocks; fb++) {
-
 #ifdef WITH_OMP
-        [[maybe_unused]] double prof_out_t0 = omp_get_wtime();
-#endif
-        // Wait for a block of frames to be available.  Grab them and get them metadata.
-        for (int64_t f_idx = 0; f_idx < freq_block_size; f_idx++) {
-            int64_t f = f_idx + fb * freq_block_size;
-            if (f < _num_freq_per_n2k_frame) {
-                if (out_buf->wait_for_empty_frame(unique_name, out_frame_id + f_idx) == nullptr) {
-                    return false;
-                }
-                out_buf->allocate_new_metadata_object(out_frame_id + f_idx);
-                metas[f_idx] = get_N2_metadata(out_buf, out_frame_id + f_idx);
-                DEBUG("Creating N2FrameView for freq f[{:d}] = {:d}", f,
-                      chord_frame_metadata->get_coarse_freq()[f]);
-            } else {
-                metas[f_idx] = nullptr;
-            }
-        } // f_idx
-#ifdef WITH_OMP
-        [[maybe_unused]] double prof_out_t1 = omp_get_wtime();
+    [[maybe_unused]] double prof_out_t0 = omp_get_wtime();
 #endif
 
-        // Write the accumulated data to the output frames, and set their metadata.
-        // We can do this in parallel!
+    // Wait for a block of frames to be available.  Grab them and get them metadata.
+    for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+        if (out_buf->wait_for_empty_frame(unique_name, out_frame_id + f) == nullptr) {
+            return false;
+        }
+        out_buf->allocate_new_metadata_object(out_frame_id + f);
+        metas.at(f) = get_N2_metadata(out_buf, out_frame_id + f);
+        DEBUG("Creating N2FrameView for freq f[{:d}] = {:d}", f, coarse_freq.at(f));
+    }
+
 #ifdef WITH_OMP
-#pragma omp parallel for num_threads(num_output_workers)
+    [[maybe_unused]] double prof_out_t1 = omp_get_wtime();
 #endif
-        for (int64_t f_idx = 0; f_idx < freq_block_size; f_idx++) {
-            int64_t f = f_idx + fb * freq_block_size;
-            if (f >= _num_freq_per_n2k_frame)
-                continue;
 
-            std::shared_ptr<N2Metadata> meta = metas[f_idx];
+    // Write the accumulated data to the output frames, and set their metadata.
+    // We can do this in parallel!
+#ifdef WITH_OMP
+#pragma omp parallel for num_threads(_num_workers)
+#endif
+    for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
 
-            meta->freq_id = chord_frame_metadata->get_coarse_freq()[f];
-            meta->freq_MHz = _tel.to_freq_MHz(meta->freq_id);
+        const std::shared_ptr<N2Metadata>& meta = metas.at(f);
 
-            meta->abs_time_idx = _accum_bin_idx;
+        meta->freq_id = coarse_freq.at(f);
+        meta->freq_MHz = _tel.to_freq_MHz(meta->freq_id);
 
-            meta->time_center_eop = eop_time_center;
-            meta->bin_eop = eop_target;
+        meta->abs_time_idx = _accum_bin_idx;
 
-            meta->bin_start_ERA_deg = ERA_deg_start;
-            meta->bin_end_ERA_deg = ERA_deg_end;
-            meta->bin_start_ERAL = ERAL_deg_start; // TODO: update
-            meta->bin_end_ERAL = ERAL_deg_end;     // TODO: update
+        meta->time_center_eop = eop_time_center;
+        meta->bin_eop = eop_target;
 
-            meta->fpga_start_tick = _accum_fpga_start_tick;
-            meta->frame_start_time_ns = accum_start_time_ns;
-            meta->frame_length_fpga_ticks = ticks_in_accum;
-            meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis[f];
-            meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis[f];
-            meta->n_rfi_only_fpga_ticks =
-                ticks_in_accum - _n_valid_fpga_samples_in_vis[f] - _n_pl_samples_in_vis[f];
-            meta->n_pl_fpga_ticks = _n_pl_samples_in_vis[f];
+        meta->bin_start_ERA_deg = ERA_deg_start;
+        meta->bin_end_ERA_deg = ERA_deg_end;
+        meta->bin_start_ERAL = ERAL_deg_start; // TODO: update
+        meta->bin_end_ERAL = ERAL_deg_end;     // TODO: update
 
-            meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
-            meta->rfi_frame_excision_num = num_thresholds;
-            meta->rfi_frame_excision_threshold = rfi_threshold;
-            meta->rfi_frame_excision_fraction = rfi_fraction;
+        meta->fpga_start_tick = _accum_fpga_start_tick;
+        meta->frame_start_time_ns = accum_start_time_ns;
+        meta->frame_length_fpga_ticks = ticks_in_accum;
+        meta->n_valid_fpga_ticks = _n_valid_fpga_samples_in_vis.at(f);
+        meta->n_rfi_fpga_ticks = _n_rfi_samples_in_vis.at(f);
+        meta->n_rfi_only_fpga_ticks =
+            ticks_in_accum - _n_valid_fpga_samples_in_vis.at(f) - _n_pl_samples_in_vis.at(f);
+        meta->n_pl_fpga_ticks = _n_pl_samples_in_vis.at(f);
 
-            std::vector<std::array<float, 2>> thresholds =
-                rfiframemask_metadata->get_rfi_frame_excision_thresholds();
+        meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
+        meta->rfi_frame_excision_num = num_thresholds;
+        meta->rfi_frame_excision_threshold = rfi_threshold;
+        meta->rfi_frame_excision_fraction = rfi_fraction;
 
-            if (chord_frame_metadata->has_dataset_id()) {
-                meta->dataset_id = chord_frame_metadata->get_dataset_id();
-            }
-            N2FrameView out_vis(out_buf, out_frame_id + f_idx);
+        if (dataset_id != dset_id_t::null) {
+            meta->dataset_id = dataset_id;
+        }
+        N2FrameView out_vis(out_buf, out_frame_id + f);
 
-            // Sample numbers for normalizing variaces/weights
-            int64_t ns = _n_valid_fpga_samples_in_vis[f]; // ns = "number of samples"
-            float ins = (ns != 0) ? (1.0f / ((float)ns)) : 0.0f;
+        // Sample numbers for normalizing variaces/weights
+        int64_t ns = _n_valid_fpga_samples_in_vis.at(f); // ns = "number of samples"
+        float ins = (ns != 0) ? (1.0f / ((float)ns)) : 0.0f;
 
-            // Copy data into buffer.
-            // This requires changing from the GPU's blocked format to the triangular format
-            // N2Buffer expects.
+        // Copy data into buffer.
+        // This requires changing from the GPU's blocked format to the triangular format
+        // N2Buffer expects.
+
+        if (_variance_mode == N2VarianceMode::CHIMEv1) {
 
             // iterate over the N2K format (blocked lower triangular)
             int64_t block_idx = 0;
@@ -1049,36 +1034,13 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
                             float weight = 0.0f;
 
-                            if (_variance_mode == N2VarianceMode::CHIMEv1) {
-                                float bias =
-                                    std::norm(v) * _n_valid_sample_diff_sq_sum[f] * ins * ins;
+                            float bias =
+                                std::norm(v) * _n_valid_sample_diff_sq_sum.at(f) * ins * ins;
 
-                                float var = _var[idx] - bias;
+                            float var = _var[idx] - bias;
 
-                                if (ns > 0 && var != 0.0f)
-                                    weight = ns * (ns / var);
-
-                            } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
-                                if (_vis_samples_in_out_frame % 2 != 0) {
-                                    FATAL_ERROR(
-                                        "EvenOdd variance estimator requires an even number of "
-                                        "frames, got: {} for accumulation {} at seq {}",
-                                        _vis_samples_in_out_frame, _accum_bin_idx,
-                                        _accum_fpga_start_tick);
-                                }
-                                assert(_vis_samples_in_out_frame % 2 == 0);
-
-                                int64_t num_var_samp = _vis_samples_in_out_frame / 2;
-                                int64_t norm = ns * num_var_samp;
-
-                                float var = _var[idx];
-
-                                if (norm > 0 && var != 0.0f)
-                                    weight = norm / var;
-                            } else {
-                                FATAL_ERROR("Cannot output weights for variance_mode: {}",
-                                            _variance_mode);
-                            }
+                            if (ns > 0 && var != 0.0f)
+                                weight = ns * (ns / var);
 
                             out_vis.weight[n2_idx] = weight;
                         } // jlo
@@ -1088,34 +1050,103 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
                 } // jhi
             } // ihi
 
-            out_vis.erms = -1;
+        } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
+            if (_vis_samples_in_out_frame % 2 != 0) {
+                FATAL_ERROR("EvenOdd variance estimator requires an even number of "
+                            "frames, got: {} for accumulation {} at seq {}",
+                            _vis_samples_in_out_frame, _accum_bin_idx, _accum_fpga_start_tick);
+            }
+            assert(_vis_samples_in_out_frame % 2 == 0);
 
-            // Fill with sentinel values to be filled by another stage.
-            std::fill(out_vis.radiometer_chi2.begin(), out_vis.radiometer_chi2.end(), -1.0f);
-            std::fill(out_vis.flags.begin(), out_vis.flags.end(), 0);
-            std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
-            std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(255u));
-        } // f_idx
+            // iterate over the N2K format (blocked lower triangular)
+            int64_t block_idx = 0;
+            for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
+                // Lower triangular blocks
+                for (int64_t jhi = 0; jhi <= ihi; jhi++) {
+                    for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
+                        for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
+                            // 2D indices into the N2K matrix.
+                            int64_t i = ilo + _n2k_correlation_blocksize * ihi;
+                            int64_t j = jlo + _n2k_correlation_blocksize * jhi;
+
+                            // Only proceed if we're in the *true* lower-triangular section of the
+                            // matrix
+                            if (j > i)
+                                continue;
+
+                            // index into the intermediate N2K-shaped array
+                            int64_t idx =
+                                jlo + ilo * stride_ilo + block_idx * stride_block + f * stride_f;
+
+                            // Get the index into the n2 view.  N2 is an *upper* triangular
+                            // unblocked form, so we use the global matrix indices to the
+                            // lower-triangular N2K form, and compute the triangular index with
+                            // their transpose.
+                            //
+                            //  N2K:                    N2:
+                            //       j                        j
+                            //       0  1  2  3               0  1  2  3
+                            //      -----------              -----------
+                            // i  0| 0                  i  0| 0  1  2  3
+                            //    1| 1  2                  1|    4  5  6
+                            //    2| 3  4  5               2|       7  8
+                            //    3| 6  7  8  9            3|          9
+                            //
+                            // vis_N2(i, j) = vis_n2k(j, i)*
+
+                            int64_t n2_idx = N2::cmap(j, i, _num_elements);
+
+                            // Populate the visibility matrix, remember the upper-tri element
+                            // is the conjugate of the lower-tri element.
+                            N2::cfloat v{(float)_vis[2 * idx], (float)_vis[2 * idx + 1]};
+                            out_vis.vis[n2_idx] = ins * std::conj(v);
+
+                            float weight = 0.0f;
+
+                            int64_t num_var_samp = _vis_samples_in_out_frame / 2;
+                            int64_t norm = ns * num_var_samp;
+
+                            float var = _var[idx];
+
+                            if (norm > 0 && var != 0.0f)
+                                weight = norm / var;
+
+                            out_vis.weight[n2_idx] = weight;
+                        } // jlo
+                    } // ilo
+
+                    block_idx++;
+                } // jhi
+            } // ihi
+
+        } else {
+            FATAL_ERROR("Cannot output weights for variance_mode: {}", _variance_mode);
+        }
+
+        out_vis.erms = -1;
+
+        // Fill with sentinel values to be filled by another stage.
+        std::fill(out_vis.radiometer_chi2.begin(), out_vis.radiometer_chi2.end(), -1.0f);
+        std::fill(out_vis.flags.begin(), out_vis.flags.end(), 0);
+        std::fill(out_vis.gain.begin(), out_vis.gain.end(), N2::cfloat{-1.0f, 0.0f});
+        std::fill(out_vis.mask.begin(), out_vis.mask.end(), static_cast<uint8_t>(255u));
+    } // f
 
 #ifdef WITH_OMP
-        [[maybe_unused]] double prof_out_t2 = omp_get_wtime();
+    [[maybe_unused]] double prof_out_t2 = omp_get_wtime();
 #endif
 
-        // All the frames in the block are full. Release them and increment out_frame_id;
-        for (int64_t f_idx = 0; f_idx < freq_block_size; f_idx++) {
-            int64_t f = f_idx + fb * freq_block_size;
-            if (f < _num_freq_per_n2k_frame)
-                out_buf->mark_frame_full(unique_name, out_frame_id++);
-        } // f_idx
+    // All the frames in the block are full. Release them and increment out_frame_id;
+    for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+        out_buf->mark_frame_full(unique_name, out_frame_id++);
+    } // f
 
 #ifdef WITH_OMP
-        [[maybe_unused]] double prof_out_t3 = omp_get_wtime();
-        prof_out_setup_time += prof_out_t1 - prof_out_t0;
-        prof_out_work_time += prof_out_t2 - prof_out_t1;
-        prof_out_free_time += prof_out_t3 - prof_out_t2;
+    [[maybe_unused]] double prof_out_t3 = omp_get_wtime();
+    prof_out_setup_time += prof_out_t1 - prof_out_t0;
+    prof_out_work_time += prof_out_t2 - prof_out_t1;
+    prof_out_free_time += prof_out_t3 - prof_out_t2;
 #endif
-
-    } // fb
 
     DEBUG("Wrapping up accumulation buffer output copy.");
 
@@ -1145,11 +1176,11 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 #ifdef WITH_OMP
     [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
 
-    DEBUG("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  "
-          "{:f} ms\n    fill:  {:f} ms",
-          _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
-          1000 * prof_out_setup_time, 1000 * prof_out_work_time, 1000 * prof_out_free_time,
-          1000 * (prof_out_end_time - prof_out_fill_time));
+    INFO("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  "
+         "{:f} ms\n    fill:  {:f} ms",
+         _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
+         1000 * prof_out_setup_time, 1000 * prof_out_work_time, 1000 * prof_out_free_time,
+         1000 * (prof_out_end_time - prof_out_fill_time));
 #endif
 
     return true;
