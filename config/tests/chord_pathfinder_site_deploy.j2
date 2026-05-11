@@ -1,6 +1,10 @@
 {#-
-  chord_pathfinder.j2
-  Basic N2 pipeline with F-engine packet capture
+  chord_pathfinder_site_deploy.j2
+  Full 2-numa X-engine pipeline.
+  This file includes:
+    - chord_pathfinder_dpdk.j2 to receive data from the F-engine
+    - chord_pathfinder_core.j2 including gpu kernels, CPU accumulation, and eigensolvers
+    - chord_pathfinder_send.j2 to send data to the recv node.
 -#}
 
 

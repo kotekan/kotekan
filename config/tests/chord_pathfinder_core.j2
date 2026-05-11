@@ -1,10 +1,14 @@
 {#-
-  chord_pathfinder.j2
-  Basic N2 pipeline with F-engine packet capture
+  chord_pathfinder_core.j2
+  GPU stages and accumulation
+  Runs on cores [9,10,11,12,13,14] and (_1) [25,26,27,28,29,30]
+                and some others tbd?
 -#}
 
 
+#########
 # Buffers
+#########
 
 # Bad feed mask - marks which feeds to exclude from RFI calculations
 # Shape: [P, D] = [2, num_dishes] - all ones means all feeds are good
@@ -276,7 +280,9 @@ host_rfi_RFImask_dummy_ringbuffer_1:
     numa_node: 1
 
 
+########
 # Stages
+########
 
 ## Send data to GPU ringbuffers ##
 
@@ -284,6 +290,7 @@ run_send_voltage:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cpu_affinity: [12, 13, 14]
         in_buffers:
             host_voltage_buffer_in: host_voltage_buffer_0
         out_buffers:
@@ -315,6 +322,7 @@ run_send_rfi_RFImask_dummy:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cpu_affinity: [12, 13, 14]
         in_buffers:
             host_rfi_RFImask_dummy_buffer_in: host_rfi_RFImask_dummy_buffer
         out_buffers:
@@ -346,6 +354,7 @@ run_send_pl_mask:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cpu_affinity: [12, 13, 14]
         in_buffers:
             host_pl_mask_buffer_in: host_pl_mask_buffer
         out_buffers:
@@ -372,6 +381,8 @@ run_send_pl_mask:
           in_buf: host_pl_mask_buffer_in
           signal_buf: host_pl_mask_ringbuffer
           gpu_mem_output: pl_mask_buffer
+
+## Run GPU stages ##
 
 run_rfi_s012:
     gpu_0:
@@ -512,7 +523,6 @@ run_pl_expand:
           pl_expanded_mask_name: pl_mask_exp
 
 # Packet-loss correlator to produce counts for N2Accumulate
-
 run_pl_corr:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -535,7 +545,6 @@ run_pl_corr:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
-        cpu_affinity: [25, 26, 27]
         in_buffers:
             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer_1
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer_1
@@ -553,11 +562,11 @@ run_pl_corr:
           out_buf: host_counts_buffer
 
 # Run N2K correlator
-
 run_n2k:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cpu_affinity: [12, 13, 14]
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
             host_rfi_RFImask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer
@@ -592,7 +601,7 @@ run_n2k:
           out_buf: host_correlation
 
 
-# Accumulate N2K visibilities on CPU
+## Debugging / counting stages ##
 
 hex_dump:
     #kotekan_stage: hexDump
@@ -646,6 +655,8 @@ rfi_second_stage_thresholds:
     thresholds: []
     valid_at_time_ns: 0
 
+## Accumulate N2K visibilities on CPU ##
+
 n2_accumulate:
     kotekan_stage: N2Accumulate
     cpu_affinity: [9]
@@ -681,7 +692,7 @@ n2_accumulate_1:
     num_workers: 1
 
 
-# Subset to first 12 elements (6 dishes x 2 polarizations)
+# Subset to first 8 elements (4 dishes x 2 polarizations)
 
 n2_subset:
     kotekan_stage: N2Subset
@@ -695,7 +706,7 @@ n2_subset_1:
     in_buf: n2_buffer_1
     out_buf: n2_subset_buffer_1
 
-# Add eigen calculation (runs on subsetted data)
+# Eigenmode calculation (runs only on subsetted data for now)
 
 eigencalc:
     kotekan_stage: EigenN2Iter
