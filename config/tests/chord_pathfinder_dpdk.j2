@@ -1,9 +1,14 @@
 {#-
-  chord_pathfinder.j2
-  Basic N2 pipeline with F-engine packet capture
+  chord_pathfinder_dpdk.j2
+  DPDK buffers and stages for CHORD x-engine nodes
+  Runs on cores [1,2,3,4,5,6,7, ] and (_1) [16,17,18, 20,21,22,23]
 -#}
 
+
+#########
 # Buffers
+#########
+
 network_input_buffers:
     log_level: info
     num_frames: host_side_buffer_depth
@@ -29,7 +34,6 @@ network_input_buffers:
     host_voltage_buffer_1:
         kotekan_buffer: standard
         numa_node: 1
-
 
 packet_receipt_bitmap_buffers:
     log_level: info
@@ -98,14 +102,16 @@ host_pl_mask_buffer_1:
     numa_node: 1
 
 
+########
 # Stages
+########
 
 ##  Packet capture from the F-engine ##
 dpdk:
     kotekan_stage: dpdkCore
     log_level: info
     # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [5, 6, 7, 21, 22, 23] # [5,6,7]
+    lcore_cpu_map: [5, 6, 7, 21, 22, 23]
     main_lcore_cpu: 4
     num_mbufs: 16384
     rx_ring_size: 1024
@@ -179,6 +185,7 @@ dpdk:
 # Combine packet receipt bitmaps and generate packet-loss masks
 process_packet_mask_0:
     kotekan_stage: ProcessPacketMask
+    cpu_affinity: [1]
     voltage_buf: network_input_buffer_0
     receipt_bitmap_bufs:
         - packet_receipt_bitmap_buffer_0
@@ -251,11 +258,12 @@ transpose_voltage_3:
 
 PL_mask_compactor:
     kotekan_stage: PLMaskExpandedToCompact
+    cpu_affinity: [1] # TODO: change?
     in_buf: host_pl_mask_exp_buffer
     out_buf: host_pl_mask_buffer
 
 PL_mask_compactor_1:
     kotekan_stage: PLMaskExpandedToCompact
+    cpu_affinity: [16] # TODO: change?
     in_buf: host_pl_mask_exp_buffer_1
     out_buf: host_pl_mask_buffer_1
-
