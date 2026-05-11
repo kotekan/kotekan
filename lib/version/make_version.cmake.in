@@ -54,12 +54,40 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-execute_process(
-  COMMAND python -c "import kotekan; print(kotekan.__version__)"
-  WORKING_DIRECTORY ${SOURCE_DIR}/python/
-  OUTPUT_VARIABLE KOTEKAN_VERSION
-  OUTPUT_STRIP_TRAILING_WHITESPACE
+# Try Python interpreters in order: a plain `python` (may be a user-activated
+# venv), the system `python3`, then the site-wide `/opt/kotekan_env` venv which
+# is known to have the required deps (e.g. `future`). The import must run with
+# CWD set to ${SOURCE_DIR}/python/ so the in-tree `kotekan` package is picked up
+# rather than the top-level C++ source directory of the same name.
+set(KOTEKAN_VERSION "")
+set(_kotekan_python_candidates
+    "python"
+    "python3"
+    "/opt/kotekan_env/bin/python"
 )
+foreach(_py IN LISTS _kotekan_python_candidates)
+  execute_process(
+    COMMAND ${_py} -c "import kotekan; print(kotekan.__version__)"
+    WORKING_DIRECTORY ${SOURCE_DIR}/python/
+    OUTPUT_VARIABLE _kotekan_version_out
+    ERROR_VARIABLE _kotekan_version_err
+    RESULT_VARIABLE _kotekan_version_result
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  if(_kotekan_version_result EQUAL 0 AND NOT _kotekan_version_out STREQUAL "")
+    set(KOTEKAN_VERSION "${_kotekan_version_out}")
+    set(_kotekan_python_used "${_py}")
+    break()
+  endif()
+endforeach()
+
+if(KOTEKAN_VERSION STREQUAL "")
+  message(FATAL_ERROR
+    "Could not determine kotekan version. None of the candidate Python "
+    "interpreters could run `import kotekan; print(kotekan.__version__)`: "
+    "${_kotekan_python_candidates}. Last error: ${_kotekan_version_err}")
+endif()
+message(STATUS "kotekan version (via ${_kotekan_python_used}): ${KOTEKAN_VERSION}")
 
 execute_process(
   COMMAND git rev-parse --abbrev-ref HEAD
