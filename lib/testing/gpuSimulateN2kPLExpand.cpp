@@ -46,7 +46,7 @@ gpuSimulateN2kPLExpand::gpuSimulateN2kPLExpand(Config& config, const std::string
     int nf = _num_local_freq;
     int ne = _num_elements / 8;
     output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::uint1x8>::type, 5>(
-        "pl_mask", {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"});
+        "pl_mask_exp", {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"});
 }
 
 gpuSimulateN2kPLExpand::~gpuSimulateN2kPLExpand() {}
@@ -171,21 +171,10 @@ void gpuSimulateN2kPLExpand::main_thread() {
         // Start with a copy
         meta_out->deepCopy(meta_in);
 
-        // Update changes
-        meta_out->set_name("pl_mask");
-        meta_out->type = kotekan::uint1x8;
-        meta_out->dims = 5;
-        assert(meta_out->dims <= CHORD_META_MAX_DIM);
-        meta_out->set_array_dimension(0, nt, "Thi64");
-        meta_out->set_array_dimension(1, nf, "F");
-        meta_out->set_array_dimension(2, 2, "P");
-        meta_out->set_array_dimension(3, ne / 2, "D8");
-        meta_out->set_array_dimension(4, 8, "Tlo64");
-        meta_out->set_strides_simple();
         // frame_desc set in constructor
-        /* test that things are consistent */
-        meta_out->check_frame_desc(output_buf->get_ndarray_frame_desc());
+        meta_out->set_from_frame_desc(output_buf->get_ndarray_frame_desc());
 
+        // Update changes
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->set_time_downsampling_fpga(
             div_noremainder(meta_in->get_time_downsampling_fpga(), 2));
@@ -207,6 +196,9 @@ void gpuSimulateN2kPLExpand::main_thread() {
         meta_out->set_freq_upchan_factor(freq_upchan_factor);
         meta_out->set_freq_upchan_index(freq_upchan_index);
         assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
+
+        /* test that things are consistent */
+        meta_out->check_frame_desc(output_buf->get_ndarray_frame_desc());
 
         input_buf->mark_frame_empty(unique_name, input_frame_id);
         output_buf->mark_frame_full(unique_name, output_frame_id);

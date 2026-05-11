@@ -1,0 +1,107 @@
+{#-
+  chord_pathfinder.j2
+  Basic N2 pipeline with F-engine packet capture
+-#}
+
+# Buffers
+
+# Main voltage buffer
+host_voltage_buffer_0:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: samples_per_data_set * num_local_freq * num_elements
+    metadata_pool: main_pool
+    numa_node: 0
+host_voltage_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: samples_per_data_set * num_local_freq * num_elements
+    metadata_pool: main_pool
+    numa_node: 1
+
+
+host_rfi_RFImask_dummy_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: num_local_freq * samples_per_data_set / 8
+    zero_new_frames: true
+    zero_value: 0xFF
+    metadata_pool: main_pool
+
+host_rfi_RFImask_dummy_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: num_local_freq * samples_per_data_set / 8
+    zero_new_frames: true
+    zero_value: 0xFF
+    numa_node: 1
+    metadata_pool: main_pool
+
+host_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+
+host_pl_mask_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+    numa_node: 1
+
+
+# Stages
+
+gen_fake_voltage:
+    type: random_signed_offset
+    value: 120
+    name: "E"
+    array_shape: [ 8192, 16, 2, 64 ]
+    dim_name: ["T", "F", "P", "D" ]
+    num_frames: -1
+
+    voltage_0:
+        kotekan_stage: testDataGen
+        out_buf: host_voltage_buffer_0
+    voltage_1:
+        kotekan_stage: testDataGen
+        out_buf: host_voltage_buffer_1
+
+gen_fake_pl_mask:
+    type: random1x8 
+    value: 120
+    name: "pl_mask"
+    array_shape: [ 64, 4, 2, 8, 8 ]  # = num_times/128, num_freq/4, 2, num_dishes/8, 8
+    dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
+    num_frames: -1
+    meta_time_downsample_factor: 128 
+
+    pl_mask_0:
+        kotekan_stage: testDataGen
+        out_buf: host_pl_mask_buffer
+    pl_mask_1:
+        kotekan_stage: testDataGen
+        out_buf: host_pl_mask_buffer_1
+
+gen_dummy_rfi_mask:
+    type: const
+    value: 255
+    name: "RFImask"
+    num_frames: -1
+
+    dummy_rfimask_0:
+        kotekan_stage: testRFImaskGen
+        out_buf: host_rfi_RFImask_dummy_buffer
+    dummy_rfimask_1:
+        kotekan_stage: testRFImaskGen
+        out_buf: host_rfi_RFImask_dummy_buffer_1
+
+gen_fake_bf_mask:
+    bf_mask_0:
+        kotekan_stage: inventBFMask
+        bf_mask: host_bf_mask_buffer
+    bf_mask_1:
+        kotekan_stage: inventBFMask
+        bf_mask: host_bf_mask_buffer_1
+

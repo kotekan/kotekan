@@ -126,7 +126,7 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
     rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
     n2k_counts_name(config.get<std::string>(unique_name, "n2k_counts_name")),
     // Buffers
-    pl_expanded_mask(pl_expanded_mask_name, "pl_mask",
+    pl_expanded_mask(pl_expanded_mask_name, "pl_mask_exp",
                      std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 64),
                                                    num_frequencies, num_polarizations,
                                                    div_noremainder(num_dishes, 8), 64 / 8},

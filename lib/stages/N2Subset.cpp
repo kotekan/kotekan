@@ -152,12 +152,13 @@ void N2Subset::main_thread() {
             // extracting only the first _out_num_elements entries.
             // eval, emethod, erms are independent of num_elements and can be copied.
             output_vis.copy_data(input_vis, {N2Field::vis, N2Field::weight, N2Field::flags,
-                                             N2Field::gain, N2Field::evec});
+                                             N2Field::gain, N2Field::evec, N2Field::mask});
 
             // Copy first _out_num_elements of flags and gain
             for (uint32_t i = 0; i < _out_num_elements; ++i) {
                 output_vis.flags[i] = input_vis.flags[i];
                 output_vis.gain[i] = input_vis.gain[i];
+                output_vis.mask[i] = input_vis.mask[i];
             }
 
             // Copy evec if present (num_ev > 0): each eigenvector has num_elements entries
