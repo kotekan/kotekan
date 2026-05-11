@@ -10,26 +10,6 @@
 # Buffers
 #########
 
-# Bad feed mask - marks which feeds to exclude from RFI calculations
-# Shape: [P, D] = [2, num_dishes] - all ones means all feeds are good
-host_bf_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
-    metadata_pool: main_pool
-    zero_new_frames: true
-    zero_value: 0xFF
-    numa_node: 0
-
-host_bf_mask_buffer_1:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
-    metadata_pool: main_pool
-    zero_new_frames: true
-    zero_value: 0xFF
-    numa_node: 1
-
 host_rfi_RFImask_buffer:
     kotekan_buffer: standard
     num_frames: host_side_buffer_depth
