@@ -621,6 +621,7 @@ dpdk:
 # Combine packet receipt bitmaps and generate packet-loss masks
 process_packet_mask_0:
     kotekan_stage: ProcessPacketMask
+    cpu_affinity: [1]
     voltage_buf: network_input_buffer_0
     receipt_bitmap_bufs:
         - packet_receipt_bitmap_buffer_0
@@ -694,14 +695,23 @@ transpose_voltage_3:
 # Downsample the PL mask to its "normal" form, which will be sent to the GPU.
 PL_mask_compactor:
     kotekan_stage: PLMaskExpandedToCompact
+    cpu_affinity: [1]
     in_buf: host_pl_mask_exp_buffer
     out_buf: host_pl_mask_buffer
 
 PL_mask_compactor_1:
     kotekan_stage: PLMaskExpandedToCompact
+    cpu_affinity: [16]
     in_buf: host_pl_mask_exp_buffer_1
     out_buf: host_pl_mask_buffer_1
 
+gen_fake_bf_mask:
+    bf_mask_0:
+        kotekan_stage: inventBFMask
+        bf_mask: host_bf_mask_buffer
+    bf_mask_1:
+        kotekan_stage: inventBFMask
+        bf_mask: host_bf_mask_buffer_1
 
 ## Send data to GPU ringbuffers ##
 
@@ -709,6 +719,7 @@ run_send_voltage:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cpu_affinity: [12, 13, 14]
         in_buffers:
             host_voltage_buffer_in: host_voltage_buffer_0
         out_buffers:
@@ -743,6 +754,7 @@ run_send_rfi_RFImask_dummy:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cpu_affinity: [12, 13, 14]
         in_buffers:
             host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer
         out_buffers:
@@ -774,6 +786,7 @@ run_send_pl_mask:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cpu_affinity: [12, 13, 14]
         in_buffers:
             host_pl_mask_buffer_in: host_pl_mask_buffer
         out_buffers:
@@ -820,7 +833,7 @@ run_rfi_s012:
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
     gpu_1:
         kotekan_stage: cudaProcess
-        gpu_id: 0
+        gpu_id: 1
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer_1
             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer_1
@@ -865,7 +878,7 @@ run_rfi_sktilde:
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
     gpu_1:
         kotekan_stage: cudaProcess
-        gpu_id: 0
+        gpu_id: 1
         in_buffers:
             host_bf_mask_buffer: host_bf_mask_buffer_1
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer_1
@@ -904,7 +917,7 @@ run_recv_rfi_sktilde:
           out_buf: host_rfi_sktilde_buffer_out
     gpu_1:
         kotekan_stage: cudaProcess
-        gpu_id: 0
+        gpu_id: 1
         in_buffers:
             host_rfi_sktilde_ringbuffer_in: host_rfi_sktilde_ringbuffer_1
         out_buffers:
@@ -937,7 +950,7 @@ run_recv_rfi_RFImask:
           out_buf: host_rfi_RFImask_buffer_out
     gpu_1:
         kotekan_stage: cudaProcess
-        gpu_id: 0
+        gpu_id: 1
         in_buffers:
             host_rfi_RFImask_ringbuffer_in: host_rfi_RFImask_ringbuffer_1
         out_buffers:
@@ -967,7 +980,7 @@ run_pl_expand:
           pl_expanded_mask_name: pl_mask_exp
     gpu_1:
         kotekan_stage: cudaProcess
-        gpu_id: 0
+        gpu_id: 1
         in_buffers:
             host_pl_mask_ringbuffer: host_pl_mask_ringbuffer_1
         out_buffers:
@@ -1002,7 +1015,6 @@ run_pl_corr:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
-        cpu_affinity: [25, 26, 27]
         in_buffers:
             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer_1
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer_1
@@ -1025,6 +1037,7 @@ run_n2k:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cpu_affinity: [12, 13, 14]
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
