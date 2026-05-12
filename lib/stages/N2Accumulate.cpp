@@ -555,9 +555,9 @@ void N2Accumulate::main_thread() {
 
 #ifdef WITH_OMP
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
-            INFO("Adding input frame pair took {:f} ms + {:f} ms idle",
-                 (prof_curr_time - prof_start_time) * 1000,
-                 (prof_start_time - prof_last_time) * 1000);
+            DEBUG("Adding input frame pair took {:f} ms + {:f} ms idle",
+                  (prof_curr_time - prof_start_time) * 1000,
+                  (prof_start_time - prof_last_time) * 1000);
             prof_last_time = prof_curr_time;
 #endif
 
@@ -1114,11 +1114,11 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 #ifdef WITH_OMP
     [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
 
-    INFO("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  "
-         "{:f} ms\n    fill:  {:f} ms",
-         _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
-         1000 * prof_out_setup_time, 1000 * prof_out_work_time, 1000 * prof_out_free_time,
-         1000 * (prof_out_end_time - prof_out_fill_time));
+    DEBUG("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  "
+          "{:f} ms\n    fill:  {:f} ms",
+          _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
+          1000 * prof_out_setup_time, 1000 * prof_out_work_time, 1000 * prof_out_free_time,
+          1000 * (prof_out_end_time - prof_out_fill_time));
 #endif
 
     return true;
