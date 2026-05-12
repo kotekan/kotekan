@@ -751,73 +751,51 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
             const std::complex<float>* phase_even_i = fringe_phase_t0.data() + di0;
             const std::complex<float>* phase_even_j = fringe_phase_t0.data() + dj0;
 
+            const auto loop_over_block = [&](const auto calc_var_fb) {
+                for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
+                    for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
+
+                        uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
+                        uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
+
+                        std::complex<float> vis_even{static_cast<float>(corr_t0_fb[idx + 0]),
+                                                     static_cast<float>(corr_t0_fb[idx + 1])};
+                        std::complex<float> vis_odd{static_cast<float>(corr_t1_fb[idx + 0]),
+                                                    static_cast<float>(corr_t1_fb[idx + 1])};
+
+                        if (_do_fringestop) {
+                            // To apply phases:
+                            //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
+                            //                   = V_ij * Phase_i *
+                            //                   conj(Phase_j)
+                            std::complex<float> phase_odd = phase_i[ilo] * std::conj(phase_j[jlo]);
+                            std::complex<float> phase_even =
+                                phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
+
+                            vis_odd *= phase_odd;
+                            vis_even *= phase_even;
+                        }
+
+                        vis_fb[idx + 0] += vis_even.real() + vis_odd.real();
+                        vis_fb[idx + 1] += vis_even.imag() + vis_odd.imag();
+
+                        var_fb[w_idx] += calc_var_fb(vis_even, vis_odd);
+                    } // jlo
+                } // ilo
+            };
+
             if (_variance_mode == N2VarianceMode::CHIMEv1) {
-                for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
-                    for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
-
-                        uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
-                        uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
-
-                        std::complex<float> vis_even{static_cast<float>(corr_t0_fb[idx + 0]),
-                                                     static_cast<float>(corr_t0_fb[idx + 1])};
-                        std::complex<float> vis_odd{static_cast<float>(corr_t1_fb[idx + 0]),
-                                                    static_cast<float>(corr_t1_fb[idx + 1])};
-
-                        if (_do_fringestop) {
-                            // To apply phases:
-                            //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
-                            //                   = V_ij * Phase_i *
-                            //                   conj(Phase_j)
-                            std::complex<float> phase_odd = phase_i[ilo] * std::conj(phase_j[jlo]);
-                            std::complex<float> phase_even =
-                                phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
-
-                            vis_odd *= phase_odd;
-                            vis_even *= phase_even;
-                        }
-
-                        vis_fb[idx + 0] += vis_even.real() + vis_odd.real();
-                        vis_fb[idx + 1] += vis_even.imag() + vis_odd.imag();
-
-                        std::complex<float> dvis = vis_odd - vis_even;
-
-                        var_fb[w_idx] += dvis.real() * dvis.real() + dvis.imag() * dvis.imag();
-                    } // jlo
-                } // ilo
+                loop_over_block([&](std::complex<float> vis_even, std::complex<float> vis_odd) {
+                    std::complex<float> dvis = vis_odd - vis_even;
+                    return dvis.real() * dvis.real() + dvis.imag() * dvis.imag();
+                });
             } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
-                for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
-                    for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
-
-                        uint64_t idx = 2 * (ilo * _n2k_correlation_blocksize + jlo);
-                        uint64_t w_idx = ilo * _n2k_correlation_blocksize + jlo;
-
-                        std::complex<float> vis_even{static_cast<float>(corr_t0_fb[idx + 0]),
-                                                     static_cast<float>(corr_t0_fb[idx + 1])};
-                        std::complex<float> vis_odd{static_cast<float>(corr_t1_fb[idx + 0]),
-                                                    static_cast<float>(corr_t1_fb[idx + 1])};
-
-                        if (_do_fringestop) {
-                            // To apply phases:
-                            //  Fringestop(V_ij) = V_ij * exp{i*(phi_i - phi_j)}
-                            //                   = V_ij * Phase_i *
-                            //                   conj(Phase_j)
-                            std::complex<float> phase_odd = phase_i[ilo] * std::conj(phase_j[jlo]);
-                            std::complex<float> phase_even =
-                                phase_even_i[ilo] * std::conj(phase_even_j[jlo]);
-
-                            vis_odd *= phase_odd;
-                            vis_even *= phase_even;
-                        }
-
-                        vis_fb[idx + 0] += vis_even.real() + vis_odd.real();
-                        vis_fb[idx + 1] += vis_even.imag() + vis_odd.imag();
-
-                        std::complex<float> dvis = inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
-                        var_fb[w_idx] +=
-                            inv_dvis_var * (dvis.real() * dvis.real() + dvis.imag() * dvis.imag());
-                    } // jlo
-                } // ilo
+                loop_over_block([&](std::complex<float> vis_even, std::complex<float> vis_odd) {
+                    std::complex<float> dvis = inv_n_t1 * vis_odd - inv_n_t0 * vis_even;
+                    return inv_dvis_var * (dvis.real() * dvis.real() + dvis.imag() * dvis.imag());
+                });
             } // variance_mode
+
             block_idx++;
         } // jhi
     } // ihi
@@ -987,13 +965,13 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         // This requires changing from the GPU's blocked format to the triangular format
         // N2Buffer expects.
 
-        if (_variance_mode == N2VarianceMode::CHIMEv1) {
+        // iterate over the N2K format (blocked lower triangular)
+        int64_t block_idx = 0;
+        for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
+            // Lower triangular blocks
+            for (int64_t jhi = 0; jhi <= ihi; jhi++) {
 
-            // iterate over the N2K format (blocked lower triangular)
-            int64_t block_idx = 0;
-            for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
-                // Lower triangular blocks
-                for (int64_t jhi = 0; jhi <= ihi; jhi++) {
+                const auto loop_over_block = [&](const auto calc_out_vis_weight) {
                     for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
                         for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
                             // 2D indices into the N2K matrix.
@@ -1032,96 +1010,56 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
                             N2::cfloat v{(float)_vis[2 * idx], (float)_vis[2 * idx + 1]};
                             out_vis.vis[n2_idx] = ins * std::conj(v);
 
-                            float weight = 0.0f;
+                            out_vis.weight[n2_idx] = calc_out_vis_weight(idx, v);
 
-                            float bias =
-                                std::norm(v) * _n_valid_sample_diff_sq_sum.at(f) * ins * ins;
-
-                            float var = _var[idx] - bias;
-
-                            if (ns > 0 && var != 0.0f)
-                                weight = ns * (ns / var);
-
-                            out_vis.weight[n2_idx] = weight;
                         } // jlo
                     } // ilo
+                };
 
-                    block_idx++;
-                } // jhi
-            } // ihi
+                if (_variance_mode == N2VarianceMode::CHIMEv1) {
+                    loop_over_block([&](int64_t idx, N2::cfloat v) {
+                        float weight = 0.0f;
 
-        } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
-            if (_vis_samples_in_out_frame % 2 != 0) {
-                FATAL_ERROR("EvenOdd variance estimator requires an even number of "
-                            "frames, got: {} for accumulation {} at seq {}",
-                            _vis_samples_in_out_frame, _accum_bin_idx, _accum_fpga_start_tick);
-            }
-            assert(_vis_samples_in_out_frame % 2 == 0);
+                        float bias = std::norm(v) * _n_valid_sample_diff_sq_sum.at(f) * ins * ins;
 
-            // iterate over the N2K format (blocked lower triangular)
-            int64_t block_idx = 0;
-            for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
-                // Lower triangular blocks
-                for (int64_t jhi = 0; jhi <= ihi; jhi++) {
-                    for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
-                        for (int64_t jlo = 0; jlo < _n2k_correlation_blocksize; jlo++) {
-                            // 2D indices into the N2K matrix.
-                            int64_t i = ilo + _n2k_correlation_blocksize * ihi;
-                            int64_t j = jlo + _n2k_correlation_blocksize * jhi;
+                        float var = _var[idx] - bias;
 
-                            // Only proceed if we're in the *true* lower-triangular section of the
-                            // matrix
-                            if (j > i)
-                                continue;
+                        if (ns > 0 && var != 0.0f)
+                            weight = ns * (ns / var);
 
-                            // index into the intermediate N2K-shaped array
-                            int64_t idx =
-                                jlo + ilo * stride_ilo + block_idx * stride_block + f * stride_f;
+                        return weight;
+                    });
 
-                            // Get the index into the n2 view.  N2 is an *upper* triangular
-                            // unblocked form, so we use the global matrix indices to the
-                            // lower-triangular N2K form, and compute the triangular index with
-                            // their transpose.
-                            //
-                            //  N2K:                    N2:
-                            //       j                        j
-                            //       0  1  2  3               0  1  2  3
-                            //      -----------              -----------
-                            // i  0| 0                  i  0| 0  1  2  3
-                            //    1| 1  2                  1|    4  5  6
-                            //    2| 3  4  5               2|       7  8
-                            //    3| 6  7  8  9            3|          9
-                            //
-                            // vis_N2(i, j) = vis_n2k(j, i)*
+                } else if (_variance_mode == N2VarianceMode::EvenOddPosDef) {
+                    if (_vis_samples_in_out_frame % 2 != 0) {
+                        FATAL_ERROR("EvenOdd variance estimator requires an even number of "
+                                    "frames, got: {} for accumulation {} at seq {}",
+                                    _vis_samples_in_out_frame, _accum_bin_idx,
+                                    _accum_fpga_start_tick);
+                    }
+                    assert(_vis_samples_in_out_frame % 2 == 0);
 
-                            int64_t n2_idx = N2::cmap(j, i, _num_elements);
+                    loop_over_block([&](int64_t idx, [[maybe_unused]] N2::cfloat v) {
+                        float weight = 0.0f;
 
-                            // Populate the visibility matrix, remember the upper-tri element
-                            // is the conjugate of the lower-tri element.
-                            N2::cfloat v{(float)_vis[2 * idx], (float)_vis[2 * idx + 1]};
-                            out_vis.vis[n2_idx] = ins * std::conj(v);
+                        int64_t num_var_samp = _vis_samples_in_out_frame / 2;
+                        int64_t norm = ns * num_var_samp;
 
-                            float weight = 0.0f;
+                        float var = _var[idx];
 
-                            int64_t num_var_samp = _vis_samples_in_out_frame / 2;
-                            int64_t norm = ns * num_var_samp;
+                        if (norm > 0 && var != 0.0f)
+                            weight = norm / var;
 
-                            float var = _var[idx];
+                        return weight;
+                    });
 
-                            if (norm > 0 && var != 0.0f)
-                                weight = norm / var;
+                } else {
+                    FATAL_ERROR("Cannot output weights for variance_mode: {}", _variance_mode);
+                }
 
-                            out_vis.weight[n2_idx] = weight;
-                        } // jlo
-                    } // ilo
-
-                    block_idx++;
-                } // jhi
-            } // ihi
-
-        } else {
-            FATAL_ERROR("Cannot output weights for variance_mode: {}", _variance_mode);
-        }
+                block_idx++;
+            } // jhi
+        } // ihi
 
         out_vis.erms = -1;
 
