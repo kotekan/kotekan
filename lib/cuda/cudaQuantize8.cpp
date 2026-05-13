@@ -38,10 +38,6 @@ public:
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
 
-    // These are the exact array sizes supported by the Cuda code
-    static constexpr int CHUNK_SIZE = 256;
-    static constexpr int FRAME_SIZE = 32;
-
 private:
     const int _num_beams;
     const int _num_frequencies;
@@ -55,9 +51,30 @@ private:
     /// GPU side memory name for mean,stdev output
     const std::string _gpu_mem_beams_offsetscale;
 
+    // Input array layout
+    static constexpr int in_ntimes = 256;
+    static constexpr int in_nfreqs = 256; // 16 coarse channels, upchannelized by 16
+    static constexpr int in_nbeams = 1024;
+
+    // Output array layout
+    // The output is quantized in "chunks". Each chunk has a different offset and scale.
+    static constexpr int out_ntimes_chunk = 16;
+    static constexpr int out_nfreqs_chunk = 16;
+    // Chunks are combined into packets.
+    static constexpr int out_nfreqs_packet = 4;
+    static constexpr int out_nbeams_packet = 8;
+    // There are several packets.
+    static constexpr int out_ntimes_outer = 16;
+    static constexpr int out_nfreqs_outer = 4;
+    static constexpr int out_nbeams_outer = 128;
+
+    static_assert(out_ntimes_chunk * out_ntimes_outer == in_ntimes);
+    static_assert(out_nfreqs_chunk * out_nfreqs_packet * out_nfreqs_outer == in_nfreqs);
+    static_assert(out_nbeams_packet * out_nbeams_outer == in_nbeams);
+
     const NDArrayBuffer<float16_t, 4> input_buffer;
-    NDArrayBuffer<std::uint8_t, 4> beam_buffer;
-    NDArrayBuffer<float16_t, 4> offsetscale_buffer;
+    NDArrayBuffer<std::uint8_t, 8> beam_buffer;
+    NDArrayBuffer<float16_t, 7> offsetscale_buffer;
 };
 
 REGISTER_CUDA_COMMAND(cudaQuantize8);
@@ -69,8 +86,6 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
     _num_beams(config.get<std::int64_t>(unique_name, "num_beams")),
     _num_frequencies(config.get<std::int64_t>(unique_name, "num_frequencies")),
     _num_times(config.get<std::int64_t>(unique_name, "num_times")),
-    _num_chunks(1LL * _num_beams * _num_frequencies
-                * kotekan::div_noremainder(_num_times, CHUNK_SIZE)),
     //
     _gpu_mem_input(config.get<std::string>(unique_name, "gpu_mem_input")),
     _gpu_mem_beams(config.get<std::string>(unique_name, "gpu_mem_output")),
@@ -84,28 +99,26 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
                                            *this);
     }()),
     beam_buffer([&]() {
-        assert(_num_times % CHUNK_SIZE == 0);
-        assert(_num_beams % FRAME_SIZE == 0);
-        const std::array<std::ptrdiff_t, 4> beam_lengths{1, _num_beams, _num_frequencies,
-                                                         _num_times};
-        const std::array<std::string, 4> beam_dimnames{"Ttildehi256", "R", "Fbar", "Ttildelo256"};
-        return NDArrayBuffer<std::uint8_t, 4>(_gpu_mem_beams, "I3", beam_lengths, beam_dimnames,
+        const std::array<std::ptrdiff_t, 8> beam_lengths{1, out_nbeams_outer,
+                                                         out_nfreqs_outer, out_ntimes_outer, out_nbeams_packet,
+                                                         out_nfreqs_packet, out_nfreqs_chunk, out_ntimes_chunk};
+        const std::array<std::string, 8> beam_dimnames{"Ttilde256",     "R8",        "Fbar64",
+                                                       "Ttilde16_lo16", "Rlo8",      "Fbar16_lo4",
+                                                       "Fbarlo16",      "Ttildelo16"};
+        return NDArrayBuffer<std::uint8_t, 8>(_gpu_mem_beams, "I3", beam_lengths, beam_dimnames,
                                               *this);
     }()),
     offsetscale_buffer([&]() {
-        assert(_num_times % CHUNK_SIZE == 0);
-        assert(_num_beams % FRAME_SIZE == 0);
-        const std::array<std::ptrdiff_t, 4> offsetscale_lengths{1, _num_beams, _num_frequencies, 2};
-        const std::array<std::string, 4> offsetscale_dimnames{"Ttilde256", "R", "Fbar",
-                                                              "offset/scale"};
-        return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_offsetscale, "I3_offsetscale",
+        const std::array<std::ptrdiff_t, 7> offsetscale_lengths{1, out_nbeams_outer,
+                                                         out_nfreqs_outer, out_ntimes_outer, out_nbeams_packet,
+                                                         out_nfreqs_packet, 2};
+        const std::array<std::string, 7> offsetscale_dimnames{
+            "Ttilde256", "R8", "Fbar64", "Ttilde16_lo16", "Rlo8", "Fbar16_lo4", "offset/scale"};
+        return NDArrayBuffer<float16_t, 7>(_gpu_mem_beams_offsetscale, "I3_offsetscale",
                                            offsetscale_lengths, offsetscale_dimnames, *this);
     }())
 //
 {
-    if (_num_chunks % FRAME_SIZE)
-        throw std::runtime_error("The num_chunks parameter must be a multiple of 32");
-
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaQuantize8");
 
