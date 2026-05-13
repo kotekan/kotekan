@@ -75,19 +75,22 @@ parseReorderDefault::parseReorderDefault(Config& config, const std::string& uniq
 #endif
 }
 
-int parseReorderDefault::correlator_index_to_station_id(const int idx) const {
+parseReorderDefault::station_id_t
+parseReorderDefault::correlator_index_to_station_id(const int idx) const {
     assert(idx >= 0 && idx < _num_dishes * _num_polarizations);
     const auto id_it = std::find(_input_reorder.cbegin(), _input_reorder.cend(), idx);
     assert(id_it != _input_reorder.end());
-    return static_cast<int>(id_it - _input_reorder.cbegin());
+    return static_cast<station_id_t>(id_it - _input_reorder.cbegin());
 }
 
-int parseReorderDefault::cylinder_index_to_station_id(const int idx) const {
+parseReorderDefault::station_id_t
+parseReorderDefault::cylinder_index_to_station_id(const int idx) const {
     assert(idx >= 0 && idx <= _num_dishes * _num_polarizations);
-    return idx;
+    return static_cast<station_id_t>(idx);
 }
 
-int parseReorderDefault::beamformer_index_to_station_id(const int idx) const {
+parseReorderDefault::station_id_t
+parseReorderDefault::beamformer_index_to_station_id(const int idx) const {
     assert(idx >= 0 && idx < _num_dishes * _num_polarizations);
     constexpr auto cylinder_to_beamforrmer_table = get_cylinder_to_beamformer_reorder_table();
     const auto cylinder_idx_it = std::find(cylinder_to_beamforrmer_table.cbegin(),
@@ -96,17 +99,17 @@ int parseReorderDefault::beamformer_index_to_station_id(const int idx) const {
     return cylinder_index_to_station_id(*cylinder_idx_it);
 }
 
-int parseReorderDefault::station_id_to_correlator_index(const int id) const {
+int parseReorderDefault::station_id_to_correlator_index(const station_id_t id) const {
     assert(id >= 0 && id <= _num_dishes * _num_polarizations);
     return static_cast<int>(_input_reorder.at(id));
 }
 
-int parseReorderDefault::station_id_to_cylinder_index(const int id) const {
+int parseReorderDefault::station_id_to_cylinder_index(const station_id_t id) const {
     assert(id >= 0 && id <= _num_dishes * _num_polarizations);
     return id;
 }
 
-int parseReorderDefault::station_id_to_beamformer_index(const int id) const {
+int parseReorderDefault::station_id_to_beamformer_index(const station_id_t id) const {
     assert(id >= 0 && id < _num_dishes * _num_polarizations);
     constexpr auto cylinder_to_beamforrmer_table = get_cylinder_to_beamformer_reorder_table();
     const int cylinder_idx = station_id_to_cylinder_index(id);
@@ -116,7 +119,7 @@ int parseReorderDefault::station_id_to_beamformer_index(const int id) const {
 void parseReorderDefault::main_thread() {
     int abs_frame_id = 0;
 
-    int (parseReorderDefault::*input_index_to_station_id)(const int) const;
+    station_id_t (parseReorderDefault::*input_index_to_station_id)(const int) const;
     if (_input_order == CHIME_ORDER_CORRELATOR)
         input_index_to_station_id = &parseReorderDefault::correlator_index_to_station_id;
     else if (_input_order == CHIME_ORDER_CYLINDER)
@@ -126,13 +129,13 @@ void parseReorderDefault::main_thread() {
     else
         FATAL_ERROR("Unexpected order {:s}", _input_order);
 
-    int (parseReorderDefault::*station_id_to_output_index)(const int) const;
+    int (parseReorderDefault::*station_id_to_output_index)(const station_id_t) const;
     if (_output_order == CHIME_ORDER_CORRELATOR)
-        station_id_to_output_index = &parseReorderDefault::correlator_index_to_station_id;
+        station_id_to_output_index = &parseReorderDefault::station_id_to_correlator_index;
     else if (_output_order == CHIME_ORDER_CYLINDER)
-        station_id_to_output_index = &parseReorderDefault::cylinder_index_to_station_id;
+        station_id_to_output_index = &parseReorderDefault::station_id_to_cylinder_index;
     else if (_output_order == CHIME_ORDER_BEAMFORMER)
-        station_id_to_output_index = &parseReorderDefault::beamformer_index_to_station_id;
+        station_id_to_output_index = &parseReorderDefault::station_id_to_beamformer_index;
     else
         FATAL_ERROR("Unexpected order {:s}", _output_order);
 
