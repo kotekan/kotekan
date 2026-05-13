@@ -64,6 +64,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
 
     num_mem_channels = config.get_default<uint32_t>(unique_name, "num_mem_channels", 4);
     init_mem_alloc = config.get_default<std::string>(unique_name, "init_mem_alloc", "256");
+    lcore_start_delay = config.get_default<uint32_t>(unique_name, "lcore_start_delay", 40);
 
     // Setup the lcore mappings
     // Basically this is mapping the DPDK EAL framework way of assigning threads
@@ -507,10 +508,11 @@ int dpdkCore::lcore_rx(void* args) {
         }
     }
 
-    // TODO Figure out why this sleep is need.  It seems like the when starting the E810
+    // TODO Figure out why this sleep is needed.  It seems like when starting the E810
     // ports, there is a delay between when they are started in DPDK and when they become
-    // ready.  There might be a function to check their readness state we could query?
-    sleep(40);
+    // ready.  There might be a function to check their readiness state we could query?
+    INFO_NON_OO("DPDK Sleeping for {} seconds before starting network handlers", core->lcore_start_delay);
+    sleep(core->lcore_start_delay);
     const uint32_t num_local_ports = ports.size();
 
     // Enforce that all handlers on this lcore are either all distributors or all
