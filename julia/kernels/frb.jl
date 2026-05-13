@@ -2250,13 +2250,20 @@ function fix_ptx_kernel()
         write(fh, ptx)
         return nothing
     end
-    sass = read("output/frb_$(setup)_U$(U).sass", String)
     open("output/frb_$(setup)_U$(U).sass", "w") do fh
         println(fh, "// SASS kernel code for CUDA frb beamformer")
         println(fh, "// This file has been generated automatically by `frb.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
         println(fh)
-        write(fh, sass)
+        CUDA.code_sass(fh, frb, Tuple{Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32,
+                                      CuDeviceVector{Int16x2,1},
+                                      CuDeviceVector{Float16x2,1},
+                                      CuDeviceVector{Int4x8,1},
+                                      CuDeviceVector{Float16x2,1},
+                                      CuDeviceVector{Int32,1}};
+                       cap=compute_capability, ptx=ptx_compat,
+                       minthreads=(num_threads, num_warps),
+                       blocks_per_sm=num_blocks_per_sm)
         return nothing
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
@@ -2527,11 +2534,6 @@ if CUDA.functional()
     open("output/frb_$(setup)_U$(U).ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true, silent=true)
-        end
-    end
-    open("output/frb_$(setup)_U$(U).sass", "w") do fh
-        redirect_stdout(fh) do
-            @device_code_sass main(; compile_only=true, silent=true)
         end
     end
     fix_ptx_kernel()
