@@ -69,26 +69,6 @@ parseReorderDefault::parseReorderDefault(Config& config, const std::string& uniq
 #endif
 }
 
-parseReorderDefault::station_id_t parseReorderDefault::correlator_index_to_station_id(const int idx) const {
-    assert(idx >= 0 && idx < _num_dishes * _num_polarizations);
-    const auto id_it = std::find(_input_reorder.cbegin(), _input_reorder.cend(), idx);
-    assert(id_it != _input_reorder.end());
-    return static_cast<station_id_t>(id_it - _input_reorder.cbegin());
-}
-
-parseReorderDefault::station_id_t parseReorderDefault::cylinder_index_to_station_id(const int idx) const {
-    assert(idx >= 0 && idx <= _num_dishes * _num_polarizations);
-    return static_cast<station_id_t>(idx);
-}
-
-parseReorderDefault::station_id_t parseReorderDefault::beamformer_index_to_station_id(const int idx) const {
-    assert(idx >= 0 && idx < _num_dishes * _num_polarizations); 
-    constexpr auto cylinder_to_beamforrmer_table = get_cylinder_to_beamformer_reorder_table();
-    const auto cylinder_idx_it = std::find(cylinder_to_beamforrmer_table.cbegin(), cylinder_to_beamforrmer_table.cend(), idx);
-    assert(cylinder_idx_it != cylinder_to_beamforrmer_table.cend());
-    return cylinder_index_to_station_id(*cylinder_idx_it);
-}
-
 int parseReorderDefault::station_id_to_correlator_index(const station_id_t id) const {
     assert(id >= 0 && id <= _num_dishes * _num_polarizations);
     return static_cast<int>(_input_reorder.at(id));
@@ -101,21 +81,25 @@ int parseReorderDefault::station_id_to_cylinder_index(const station_id_t id) con
 
 int parseReorderDefault::station_id_to_beamformer_index(const station_id_t id) const {
     assert(id >= 0 && id < _num_dishes * _num_polarizations); 
-    constexpr auto cylinder_to_beamforrmer_table = get_cylinder_to_beamformer_reorder_table();
+    // this table is indexed by the index of a station in beamformer order and
+    // returns that index of the station in cylinder order
+    constexpr auto cylinder_to_beamformer_table = get_cylinder_to_beamformer_reorder_table();
     const int cylinder_idx = station_id_to_cylinder_index(id);
-    return static_cast<int>(cylinder_to_beamforrmer_table.at(cylinder_idx));
+    const auto cylinder_idx_it = std::find(cylinder_to_beamformer_table.cbegin(), cylinder_to_beamformer_table.cend(), cylinder_idx);
+    assert(cylinder_idx_it != cylinder_to_beamformer_table.cend());
+    return static_cast<int>(cylinder_idx_it - cylinder_to_beamformer_table.cbegin());
 }
 
 void parseReorderDefault::main_thread() {
     int abs_frame_id = 0;
 
-    station_id_t (parseReorderDefault::*input_index_to_station_id)(const int) const;
+    int (parseReorderDefault::*station_id_to_input_index)(const station_id_t) const;
     if (_input_order == CHIME_ORDER_CORRELATOR)
-      input_index_to_station_id = &parseReorderDefault::correlator_index_to_station_id;
+      station_id_to_input_index = &parseReorderDefault::station_id_to_correlator_index;
     else if (_input_order == CHIME_ORDER_CYLINDER)
-      input_index_to_station_id = &parseReorderDefault::cylinder_index_to_station_id;
+      station_id_to_input_index = &parseReorderDefault::station_id_to_cylinder_index;
     else if (_input_order == CHIME_ORDER_BEAMFORMER)
-      input_index_to_station_id = &parseReorderDefault::beamformer_index_to_station_id;
+      station_id_to_input_index = &parseReorderDefault::station_id_to_beamformer_index;
     else
       FATAL_ERROR("Unexpected order {:s}", _input_order);
 
@@ -145,7 +129,10 @@ void parseReorderDefault::main_thread() {
 
         for (int idx = 0; idx < static_cast<int>(_input_reorder.size()); ++idx) {
             // indexed by input_index, returns output_index
-            frame[idx] = static_cast<int32_t>((this->*station_id_to_output_index)((this->*input_index_to_station_id)(idx)));
+            const station_id_t station_id = static_cast<station_id_t>(idx);
+            const int input_idx = (this->*station_id_to_input_index)(station_id);
+            const int output_idx = (this->*station_id_to_output_index)(station_id);
+            frame[input_idx] = static_cast<int32_t>(output_idx);
         }
 
         _out_buf->allocate_new_metadata_object(frame_id);
