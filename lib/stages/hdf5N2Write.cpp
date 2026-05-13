@@ -1203,7 +1203,7 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
 
     // The /config_json dataset in each output file is populated from the
     // ConfigTracker. If the tracker is disabled globally, output files will
-    // have an empty /config_json — note that, but keep running.
+    // have an empty /config_json: note that, but keep running.
     if (config.exists("/", "config_tracker")
         && !config.get_default<bool>("/config_tracker", "enabled", true)) {
         WARN("hdf5N2Write: /config_tracker.enabled is false; HDF5 files will be written without "

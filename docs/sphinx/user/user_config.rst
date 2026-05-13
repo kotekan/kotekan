@@ -142,13 +142,12 @@ pipelines. Commonly used config parameters include (under ``dataset_manager``):
     config_tracker:
         enabled: true                          # default; false disables the tracker globally
         fpga_host_info: /fpga_controller       # optional; names the controller block
-        fpga_request_timeout_seconds: 30       # FPGA startup fetch (fatal on failure)
-        upstream_fetch_retries: 1              # peer pulls
-        upstream_fetch_timeout_seconds: 50     # peer pulls
+        upstream_fetch_retries: 2              # retries per HTTP request (FPGA + peer pulls)
+        upstream_fetch_timeout_seconds: 10     # per-attempt HTTP timeout (FPGA + peer pulls)
 
   The ``fpga_host_info`` indirection lets a pipeline define the FPGA controller address and
-  endpoints once and have multiple consumers — the Config Tracker plus the Telescope's
-  ``gps_host_info`` — point at it. The Telescope also picks up
+  endpoints once and have multiple consumers (the Config Tracker plus the Telescope's
+  ``gps_host_info``) point at it. The Telescope also picks up
   ``timing_endpoint`` from the same block as the default for its own ``gps_endpoint``, so
   the path isn't duplicated. Stages that support the tracker (``bufferSend``/``bufferRecv``)
   read their per-stage ``use_config_tracker`` first; if unset, they fall back to

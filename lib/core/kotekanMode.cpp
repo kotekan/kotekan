@@ -111,11 +111,8 @@ void kotekanMode::initalize_stages() {
     restServer::instance().register_get_callback(
         "/pipeline_dot", std::bind(&kotekanMode::pipeline_dot_graph_callback, this, _1));
 
-    // ConfigTracker setup. The /config_tracker block (optional) is an object
-    // whose keys configure the tracker. Defaults preserve today's behavior
-    // when the block is absent. The legacy bare-bool form ``config_tracker:
-    // false`` was documented but never read; we now require the object form
-    // and FATAL on the bool form to surface stale configs.
+    // ConfigTracker setup. The optional /config_tracker block (an object)
+    // configures the tracker; defaults apply when absent.
     const std::string ct_path = "/config_tracker";
     bool ct_enabled = true;
     if (config.exists("/", "config_tracker")) {
@@ -142,12 +139,12 @@ void kotekanMode::initalize_stages() {
             FATAL_ERROR_NON_OO("Failed to set local config in ConfigTracker: {:s}", e.what());
         }
 
-        // Peer-fetch HTTP policy applies to every getUpstreamConfigs call
-        // (logged-and-continue on failure). Distinct from the FPGA-fetch
-        // timeout below, which is one-shot at startup and FATAL on failure.
-        const int upstream_retries = config.get_default<int>(ct_path, "upstream_fetch_retries", 1);
+        // HTTP retry/timeout policy. Applies to every upstream fetch (both
+        // the one-shot FPGA fetch below and every getUpstreamConfigs call).
+        // FATAL after retries are exhausted.
+        const int upstream_retries = config.get_default<int>(ct_path, "upstream_fetch_retries", 2);
         const int upstream_timeout =
-            config.get_default<int>(ct_path, "upstream_fetch_timeout_seconds", 50);
+            config.get_default<int>(ct_path, "upstream_fetch_timeout_seconds", 10);
         ConfigTracker::instance().setUpstreamFetchPolicy(upstream_retries, upstream_timeout);
 
         // Optionally fetch the upstream FPGA controller's config + timing.
@@ -167,12 +164,9 @@ void kotekanMode::initalize_stages() {
                 config.get_default<std::string>(fpga_ref, "config_endpoint", "/config");
             const std::string timing_endpoint =
                 config.get_default<std::string>(fpga_ref, "timing_endpoint", "/get-frame0-time");
-            const int request_timeout_seconds =
-                config.get_default<int>(ct_path, "fpga_request_timeout_seconds", 30);
 
             ConfigTracker::instance().fetchAndRegisterFpgaTracking(
-                host, static_cast<uint16_t>(port_int), config_endpoint, timing_endpoint,
-                request_timeout_seconds);
+                host, static_cast<uint16_t>(port_int), config_endpoint, timing_endpoint);
         }
     }
 }

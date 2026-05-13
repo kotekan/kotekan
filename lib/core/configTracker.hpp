@@ -289,18 +289,14 @@ public:
     }
 
     /**
-     * @brief Set the retry/timeout policy used by @c getUpstreamConfigs for
-     * peer fetches. Intended to be called once at kotekan startup from
-     * kotekanMode after reading the /config_tracker block.
+     * @brief Set the retry/timeout policy used by both
+     * @c fetchAndRegisterFpgaTracking (the one-shot FPGA fetch at startup)
+     * and @c getUpstreamConfigs (peer fetches on every wire-update flag).
+     * Intended to be called once at kotekan startup from kotekanMode after
+     * reading the /config_tracker block. After retries are exhausted on any
+     * fetch, the call is fatal.
      *
-     * Note this is distinct from the timeout used during the one-shot FPGA
-     * controller fetch in @c fetchAndRegisterFpgaTracking, which has its own
-     * dedicated argument; the FPGA fetch is once-at-startup and fatal-on-
-     * failure, while peer fetches happen on every wire-update flag and are
-     * logged-and-continued, so the two timeouts have different operational
-     * semantics.
-     *
-     * @param retries          Number of retries for each peer-side
+     * @param retries          Number of retries for each upstream
      *                         @c make_request_blocking call.
      * @param timeout_seconds  HTTP timeout in seconds (-1 = restClient default).
      */
@@ -325,30 +321,38 @@ public:
      * propagation path.
      *
      * Failure to resolve the hostname, to issue either GET, or to parse
-     * either response is fatal — kotekan will not start without a confirmed
+     * either response is fatal: kotekan will not start without a confirmed
      * FPGA controller snapshot when this is called.
      *
-     * @param host                    Hostname or IPv4 address of the FPGA
-     *                                controller's REST server.
-     * @param port                    REST port.
-     * @param config_endpoint         Path to the controller's config JSON.
-     * @param timing_endpoint         Path to the controller's timing JSON.
-     * @param request_timeout_seconds REST timeout in seconds.
+     * Uses the retry/timeout policy set via @c setUpstreamFetchPolicy.
+     *
+     * @param host             Hostname or IPv4 address of the FPGA
+     *                         controller's REST server.
+     * @param port             REST port.
+     * @param config_endpoint  Path to the controller's config JSON.
+     * @param timing_endpoint  Path to the controller's timing JSON.
      */
     void fetchAndRegisterFpgaTracking(const std::string& host, uint16_t port,
                                       const std::string& config_endpoint,
-                                      const std::string& timing_endpoint,
-                                      int request_timeout_seconds) {
+                                      const std::string& timing_endpoint) {
         const std::string ip = _resolveToIPv4(host);
         if (host != ip) {
             INFO_NON_OO("ConfigTracker: resolved FPGA controller {}:{} to {}:{}", host, port, ip,
                         port);
         }
 
+        int retries;
+        int timeout_seconds;
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+            retries = _upstream_fetch_retries;
+            timeout_seconds = _upstream_fetch_timeout_seconds;
+        }
+
         nlohmann::json cfg_json =
-            _fpga_get_or_fatal(ip, port, config_endpoint, "config", request_timeout_seconds);
+            _fpga_get_or_fatal(ip, port, config_endpoint, "config", timeout_seconds, retries);
         nlohmann::json tim_json =
-            _fpga_get_or_fatal(ip, port, timing_endpoint, "timing", request_timeout_seconds);
+            _fpga_get_or_fatal(ip, port, timing_endpoint, "timing", timeout_seconds, retries);
 
         // Combine config + timing into a single upstream entry. Storage and
         // propagation are uniform with peer kotekan configs from here on.
@@ -482,9 +486,10 @@ public:
      *      which we trust transitively). FPGA snapshots are ordinary
      *      upstream entries and ride along on this same path.
      *
-     * Network/parse errors on individual fetches are logged and counted but
-     * not fatal. Conflict between an existing entry and new content for the
-     * same (host, port) is fatal.
+     * Any network/parse failure (after the configured HTTP retries) or
+     * any content-validation failure is fatal. The wire flag is one-shot
+     * per sender-side hash change, so a silently-skipped fetch would leave
+     * downstream state permanently stale.
      */
     void getUpstreamConfigs(const std::string& host, uint16_t port) {
         // Snapshot the fetch policy under the lock; we'll use it for all
@@ -503,33 +508,32 @@ public:
             restClient::restReply reply = restClient::instance().make_request_blocking(
                 "/config_tracker_local", {}, host, port, retries, timeout_seconds);
             if (!reply.first) {
-                ERROR_NON_OO("ConfigTracker: failed to GET /config_tracker_local from {}:{}", host,
-                             port);
                 _record_upstream_fetch(host, port, false);
-                return;
+                FATAL_ERROR_NON_OO(
+                    "ConfigTracker: failed to GET /config_tracker_local from {}:{} after {} "
+                    "retries",
+                    host, port, retries);
             }
 
             nlohmann::json local_json;
             try {
                 local_json = nlohmann::json::parse(reply.second);
             } catch (const nlohmann::json::parse_error& e) {
-                ERROR_NON_OO("ConfigTracker: failed to parse /config_tracker_local response from "
-                             "{}:{}: {}",
-                             host, port, e.what());
-                DEBUG2_NON_OO("Response was: {}", reply.second);
                 _record_upstream_fetch(host, port, false);
-                return;
+                DEBUG2_NON_OO("Response was: {}", reply.second);
+                FATAL_ERROR_NON_OO(
+                    "ConfigTracker: failed to parse /config_tracker_local response from {}:{}: {}",
+                    host, port, e.what());
             }
 
             ConfigInfo peer_local;
             try {
                 peer_local = ConfigInfo(local_json);
             } catch (const std::exception& e) {
-                ERROR_NON_OO(
+                _record_upstream_fetch(host, port, false);
+                FATAL_ERROR_NON_OO(
                     "ConfigTracker: malformed /config_tracker_local payload from {}:{}: {}", host,
                     port, e.what());
-                _record_upstream_fetch(host, port, false);
-                return;
             }
 
             // Re-key under the dialed (host, port) and re-hash accordingly.
@@ -548,22 +552,22 @@ public:
         restClient::restReply reply = restClient::instance().make_request_blocking(
             "/config_tracker_upstream_hashes", {}, host, port, retries, timeout_seconds);
         if (!reply.first) {
-            ERROR_NON_OO("ConfigTracker: failed to GET /config_tracker_upstream_hashes from {}:{}",
-                         host, port);
             _record_upstream_fetch(host, port, false);
-            return;
+            FATAL_ERROR_NON_OO(
+                "ConfigTracker: failed to GET /config_tracker_upstream_hashes from {}:{} after "
+                "{} retries",
+                host, port, retries);
         }
 
         nlohmann::json hashes_json;
         try {
             hashes_json = nlohmann::json::parse(reply.second);
         } catch (const nlohmann::json::parse_error& e) {
-            ERROR_NON_OO("ConfigTracker: failed to parse /config_tracker_upstream_hashes response "
-                         "from {}:{}: {}",
-                         host, port, e.what());
-            DEBUG2_NON_OO("Response was: {}", reply.second);
             _record_upstream_fetch(host, port, false);
-            return;
+            DEBUG2_NON_OO("Response was: {}", reply.second);
+            FATAL_ERROR_NON_OO("ConfigTracker: failed to parse /config_tracker_upstream_hashes "
+                               "response from {}:{}: {}",
+                               host, port, e.what());
         }
         _record_upstream_fetch(host, port, true);
 
@@ -590,50 +594,47 @@ public:
             restClient::restReply entry_reply = restClient::instance().make_request_blocking(
                 path, {}, host, port, retries, timeout_seconds);
             if (!entry_reply.first) {
-                ERROR_NON_OO("ConfigTracker: failed to GET /config_tracker_upstream_configs for "
-                             "hash {} from peer {}:{}",
-                             hash, host, port);
                 _record_upstream_fetch(entry_host, entry_port, false);
-                continue;
+                FATAL_ERROR_NON_OO(
+                    "ConfigTracker: failed to GET /config_tracker_upstream_configs for hash {} "
+                    "from peer {}:{} after {} retries",
+                    hash, host, port, retries);
             }
 
             nlohmann::json response;
             try {
                 response = nlohmann::json::parse(entry_reply.second);
             } catch (const nlohmann::json::parse_error& e) {
-                ERROR_NON_OO(
-                    "ConfigTracker: failed to parse upstream-config response for hash {}: {}", hash,
-                    e.what());
                 _record_upstream_fetch(entry_host, entry_port, false);
-                continue;
+                FATAL_ERROR_NON_OO(
+                    "ConfigTracker: failed to parse upstream-config response for hash {}: {}",
+                    hash, e.what());
             }
 
             const std::string host_port_str = entry_host + ":" + std::to_string(entry_port);
             if (!response.contains(host_port_str)) {
-                ERROR_NON_OO("ConfigTracker: peer {}:{} did not return upstream entry for {} "
-                             "(hash {})",
-                             host, port, host_port_str, hash);
                 _record_upstream_fetch(entry_host, entry_port, false);
-                continue;
+                FATAL_ERROR_NON_OO(
+                    "ConfigTracker: peer {}:{} did not return upstream entry for {} (hash {})",
+                    host, port, host_port_str, hash);
             }
 
             ConfigInfo info;
             try {
                 info = ConfigInfo(response[host_port_str]);
             } catch (const std::exception& e) {
-                ERROR_NON_OO(
+                _record_upstream_fetch(entry_host, entry_port, false);
+                FATAL_ERROR_NON_OO(
                     "ConfigTracker: malformed upstream-config payload for {} (hash {}): {}",
                     host_port_str, hash, e.what());
-                _record_upstream_fetch(entry_host, entry_port, false);
-                continue;
             }
 
             if (_jsonHashWithEndpoint(info.config, entry_host, entry_port) != hash
                 || info.json_hash != hash) {
-                ERROR_NON_OO("ConfigTracker: upstream hash mismatch for {} (expected {}); dropping",
-                             host_port_str, hash);
                 _record_upstream_fetch(entry_host, entry_port, false);
-                continue;
+                FATAL_ERROR_NON_OO(
+                    "ConfigTracker: upstream hash mismatch for {} (expected {})", host_port_str,
+                    hash);
             }
 
             _insertUpstream(entry_host, entry_port, info);
@@ -751,11 +752,12 @@ private:
     /// upstream hashes in sorted order).
     std::string _tracker_hash;
 
-    /// HTTP retry/timeout policy for peer fetches in getUpstreamConfigs. Set
-    /// once at startup via setUpstreamFetchPolicy; defaults preserve the
-    /// pre-existing hardcoded behavior.
-    int _upstream_fetch_retries = 1;
-    int _upstream_fetch_timeout_seconds = -1;
+    /// HTTP retry/timeout policy for all upstream fetches: the one-shot FPGA
+    /// controller fetch in @c fetchAndRegisterFpgaTracking and every peer
+    /// fetch in @c getUpstreamConfigs. Set once at startup via
+    /// @c setUpstreamFetchPolicy.
+    int _upstream_fetch_retries = 2;
+    int _upstream_fetch_timeout_seconds = 10;
 
     mutable std::mutex _lock;
 
@@ -917,16 +919,17 @@ private:
 
     /**
      * @brief GET a single FPGA controller endpoint and return the parsed JSON
-     * body. Fatal on HTTP failure or parse failure.
+     * body. Fatal on HTTP failure (after retries) or parse failure.
      */
     static nlohmann::json _fpga_get_or_fatal(const std::string& ip, uint16_t port,
                                              const std::string& endpoint, const char* what,
-                                             int request_timeout_seconds) {
-        auto reply = restClient::instance().make_request_blocking(endpoint, {}, ip, port, 0,
-                                                                  request_timeout_seconds);
+                                             int request_timeout_seconds, int request_retries) {
+        auto reply = restClient::instance().make_request_blocking(
+            endpoint, {}, ip, port, request_retries, request_timeout_seconds);
         if (!reply.first) {
-            FATAL_ERROR_NON_OO("ConfigTracker: failed to GET FPGA {} from {}:{}{} (timeout {}s)",
-                               what, ip, port, endpoint, request_timeout_seconds);
+            FATAL_ERROR_NON_OO("ConfigTracker: failed to GET FPGA {} from {}:{}{} after {} retries "
+                               "(timeout {}s per attempt)",
+                               what, ip, port, endpoint, request_retries, request_timeout_seconds);
         }
         try {
             return nlohmann::json::parse(reply.second);

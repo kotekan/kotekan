@@ -70,26 +70,18 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: WARN
 
-# Single source of truth for the upstream FPGA controller's REST interface.
-# Referenced by /CHORDTelescope/gps_host_info (which also picks up
-# timing_endpoint as the default for gps_endpoint) and by
-# /config_tracker/fpga_host_info.
+# Referenced by /CHORDTelescope/gps_host_info and /config_tracker/fpga_host_info.
 fpga_controller:
     host: "chive"
     port: 54321
     config_endpoint: /config
     timing_endpoint: /get-frame0-time
 
-# ConfigTracker settings. Fetches the FPGA controller's startup config and
-# timing JSON once at startup and registers them as an upstream entry that
-# propagates downstream over REST. Endpoint paths come from /fpga_controller
-# so they're not duplicated across consumers.
 config_tracker:
     enabled: true
     fpga_host_info: /fpga_controller
-    fpga_request_timeout_seconds: 30
-    upstream_fetch_retries: 1
-    upstream_fetch_timeout_seconds: 50
+    upstream_fetch_retries: 2
+    upstream_fetch_timeout_seconds: 10
 
 numa_node: 0
 

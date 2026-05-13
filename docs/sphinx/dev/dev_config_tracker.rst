@@ -56,20 +56,18 @@ The tracker is enabled by default. Its behaviour is configured by an optional to
   config_tracker:
       enabled: true                         # default; set false to disable globally
       fpga_host_info: /fpga_controller      # optional; if set, fetch FPGA snapshot at startup
-      fpga_request_timeout_seconds: 30      # one-shot FPGA fetch HTTP timeout (FATAL on miss)
-      upstream_fetch_retries: 1             # peer-pull HTTP retries
-      upstream_fetch_timeout_seconds: 50    # peer-pull HTTP timeout
+      upstream_fetch_retries: 2             # retries per HTTP request
+      upstream_fetch_timeout_seconds: 10    # per-attempt HTTP timeout
+
+The retry/timeout policy applies to every upstream fetch — both the one-shot
+FPGA controller fetch at startup and the per-frame peer fetches triggered by
+``bufferRecv``'s wire flag. After retries are exhausted on any fetch, the call
+is fatal (no silent skip).
 
 The controller's two endpoint paths live on the controller block itself so the
 Telescope (which reads ``timing_endpoint`` from the same block via
 ``gps_host_info`` and uses it as the default for ``gps_endpoint``) and the
 ConfigTracker share one source of truth.
-
-Note the two timeouts have different semantics: ``fpga_request_timeout_seconds`` controls
-the one-shot FPGA fetch at startup, which is fatal on failure, so a longer value is
-reasonable. ``upstream_fetch_timeout_seconds`` controls every peer fetch triggered by an
-inbound ``config_tracker_update`` wire flag; those are logged-and-continued on failure and
-run on a ``bufferRecv`` worker thread, so a shorter value is reasonable.
 
 Stages that support the tracker (``bufferSend``, ``bufferRecv``) read their per-stage
 ``use_config_tracker`` first; if unset, they fall back to ``/config_tracker/enabled``;
