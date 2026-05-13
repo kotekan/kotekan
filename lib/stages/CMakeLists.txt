@@ -40,6 +40,8 @@ add_library(
     bufferSend.cpp
     bufferRecv.cpp
     simpleAutocorr.cpp
+    SampleAutocorr.cpp
+    SimpleCrosscorr.cpp
     freqSplit.cpp
     FreqSubset.cpp
     prodSubset.cpp
@@ -122,6 +124,10 @@ if(LIBAIRSPY_FOUND)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${LIBAIRSPY_INCLUDE_DIR})
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${LIBAIRSPY_LIBRARIES})
+    if(FFTW_FOUND)
+        target_sources(kotekan_stages PRIVATE AirspyAlign.cpp)
+        target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
+    endif()
 endif()
 
 if(FFTW_FOUND)
