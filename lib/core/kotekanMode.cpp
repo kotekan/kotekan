@@ -160,12 +160,15 @@ void kotekanMode::initalize_stages() {
             if (port_int <= 0 || port_int > 65535) {
                 FATAL_ERROR_NON_OO("kotekanMode: invalid {}.port: {}", fpga_ref, port_int);
             }
+            // The endpoint paths live on the controller block itself so the
+            // Telescope (which reads ``timing_endpoint`` from the same block
+            // via ``gps_host_info``) and the ConfigTracker share one source.
             const std::string config_endpoint =
-                config.get_default<std::string>(ct_path, "config_endpoint", "/config");
+                config.get_default<std::string>(fpga_ref, "config_endpoint", "/config");
             const std::string timing_endpoint =
-                config.get_default<std::string>(ct_path, "timing_endpoint", "/get-frame0-time");
+                config.get_default<std::string>(fpga_ref, "timing_endpoint", "/get-frame0-time");
             const int request_timeout_seconds =
-                config.get_default<int>(ct_path, "request_timeout_seconds", 30);
+                config.get_default<int>(ct_path, "fpga_request_timeout_seconds", 30);
 
             ConfigTracker::instance().fetchAndRegisterFpgaTracking(
                 host, static_cast<uint16_t>(port_int), config_endpoint, timing_endpoint,

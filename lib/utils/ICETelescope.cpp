@@ -32,16 +32,24 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
     // ``host`` and ``port`` for the GPS / FPGA-master REST server. This
     // lets a pipeline define the FPGA controller address once (typically
     // under /fpga_controller) and have multiple consumers reference it.
-    // Legacy in-stage gps_host/gps_port keys are used as the fallback.
+    // The same block may also carry ``timing_endpoint``, which we use as
+    // the default for gps_endpoint here so the path isn't duplicated across
+    // the Telescope and ConfigTracker. A stage-local gps_endpoint, if set,
+    // still wins.
+    // Legacy in-stage gps_host/gps_port keys are used as the fallback when
+    // gps_host_info isn't set.
+    std::string default_gps_endpoint = "/get-frame0-time";
     if (config.exists(path, "gps_host_info")) {
         const std::string ref = config.get<std::string>(path, "gps_host_info");
         _gps_host = config.get<std::string>(ref, "host");
         _gps_port = config.get<uint32_t>(ref, "port");
+        if (config.exists(ref, "timing_endpoint"))
+            default_gps_endpoint = config.get<std::string>(ref, "timing_endpoint");
     } else {
         _gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
         _gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
     }
-    _gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
+    _gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", default_gps_endpoint);
     if (_query_gps)
         set_gps(_gps_host, _gps_port, _gps_endpoint);
     if (!gps_enabled)
