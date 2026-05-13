@@ -50,13 +50,14 @@ private:
     static const int _num_chime_cylinders = 4;
 
     // the actual mappings (these are terribly inefficient)
-    int correlator_index_to_station_id(const int idx) const;
-    int cylinder_index_to_station_id(const int idx) const;
-    int beamformer_index_to_station_id(const int idx) const;
+    enum station_id_t {};
+    station_id_t correlator_index_to_station_id(const int idx) const;
+    station_id_t cylinder_index_to_station_id(const int idx) const;
+    station_id_t beamformer_index_to_station_id(const int idx) const;
 
-    int station_id_to_correlator_index(const int id) const;
-    int station_id_to_cylinder_index(const int id) const;
-    int station_id_to_beamformer_index(const int id) const;
+    int station_id_to_correlator_index(const station_id_t id) const;
+    int station_id_to_cylinder_index(const station_id_t id) const;
+    int station_id_to_beamformer_index(const station_id_t id) const;
 };
 
 #endif
