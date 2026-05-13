@@ -17,7 +17,7 @@
 
 #include "json.hpp" // for json
 
-#include <bits/chrono.h> // for duration
+#include <chrono>       // for duration
 #include <stddef.h>      // for size_t
 #include <stdint.h>      // for uint32_t, uint64_t
 #include <string>        // for string, basic_string

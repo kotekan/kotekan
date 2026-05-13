@@ -12,7 +12,7 @@
 
 #include <algorithm>     // for max
 #include <array>         // for array
-#include <bits/chrono.h> // for milliseconds
+#include <chrono>       // for milliseconds
 #include <functional>    // for bind, function
 #include <stdint.h>      // for int64_t
 #include <thread>        // for sleep_for

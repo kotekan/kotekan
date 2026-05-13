@@ -23,7 +23,7 @@
 
 #include <algorithm>     // for max
 #include <array>         // for array
-#include <bits/chrono.h> // for system_clock
+#include <chrono>        // for system_clock
 #include <complex>       // for complex, imag, real
 #include <cstdint>       // for uint32_t, int8_t, uint16_t, uint8_t, int64_t, uint64_t, int32_t
 #include <cstdlib>       // for size_t, div

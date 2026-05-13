@@ -9,7 +9,7 @@
 #include "fmt.hpp" // for compile_string_to_view, format, format_string
 
 #include <algorithm>     // for max
-#include <bits/chrono.h> // for duration, operator-, operator/, operator>, seconds, ste...
+#include <chrono>       // for duration, operator-, operator/, operator>, seconds, ste...
 #include <functional>    // for bind, function
 #include <math.h>        // for round
 #include <memory>        // for __shared_ptr_access, shared_ptr

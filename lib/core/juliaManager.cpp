@@ -8,7 +8,7 @@
 
 #include <algorithm>     // for copy
 #include <any>           // for any
-#include <bits/chrono.h> // for operator""ms
+#include <chrono>       // for operator""ms
 #include <cassert>       // for assert
 #include <cstdio>        // for fflush
 #include <cstdlib>       // for abort

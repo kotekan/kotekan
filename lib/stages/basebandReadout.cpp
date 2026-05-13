@@ -15,7 +15,7 @@
 
 #include <algorithm>     // for max, copy, equal, min
 #include <assert.h>      // for assert
-#include <bits/chrono.h> // for system_clock, nanoseconds
+#include <chrono>       // for system_clock, nanoseconds
 #include <cstdint>       // for int64_t, uint32_t, uint64_t, uint8_t
 #include <cstdio>        // for snprintf
 #include <ctime>         // for timespec

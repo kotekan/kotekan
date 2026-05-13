@@ -5,7 +5,7 @@
 #include "fmt.hpp"  // for compile_string_to_view, format, fmt
 #include "json.hpp" // for json, operator<<
 
-#include <bits/chrono.h> // for system_clock
+#include <chrono>       // for system_clock
 #include <cstdio>        // for snprintf
 #include <ctime>         // for tm, localtime_r, time_t
 #include <errno.h>       // for errno

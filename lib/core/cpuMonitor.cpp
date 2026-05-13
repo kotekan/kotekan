@@ -6,7 +6,7 @@
 #include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for basic_json, json
 
-#include <bits/chrono.h> // for operator""ms
+#include <chrono>       // for operator""ms
 #include <exception>     // for exception
 #include <functional>    // for bind, _1, function
 #include <math.h>        // for floor

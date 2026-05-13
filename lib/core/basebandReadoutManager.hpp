@@ -11,7 +11,7 @@
 
 #include "SynchronizedQueue.hpp" // for SynchronizedQueue
 
-#include <bits/chrono.h> // for system_clock
+#include <chrono>       // for system_clock
 #include <forward_list>  // for forward_list
 #include <functional>    // for reference_wrapper
 #include <memory>        // for allocator, shared_ptr, unique_ptr

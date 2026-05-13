@@ -12,7 +12,7 @@
 #include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
 
 #include <arpa/inet.h>   // for htons, inet_addr
-#include <bits/chrono.h> // for seconds
+#include <chrono>       // for seconds
 #include <cerrno>        // for errno
 #include <cstring>       // for strerror, size_t
 #include <functional>    // for bind, ref, function

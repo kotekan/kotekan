@@ -9,7 +9,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
-#include <bits/chrono.h> // for duration_cast, system_clock, duration, milliseconds
+#include <chrono>       // for duration_cast, system_clock, duration, milliseconds
 #include <ctime>         // for localtime_r, time_t, tm, timespec
 #include <exception>     // for exception
 #include <functional>    // for bind, _1, function, _2

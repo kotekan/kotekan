@@ -12,7 +12,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <bits/chrono.h> // for seconds
+#include <chrono>       // for seconds
 #include <exception>     // for exception
 #include <functional>    // for bind, function, _1
 #include <memory>        // for __shared_ptr_access, shared_ptr

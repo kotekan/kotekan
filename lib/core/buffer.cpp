@@ -1,7 +1,7 @@
 #include "buffer.hpp"
 
 #include <assert.h>      // for assert
-#include <bits/chrono.h> // for duration, operator+, nanoseconds, seconds, system_clock
+#include <chrono>       // for duration, operator+, nanoseconds, seconds, system_clock
 #include <errno.h>       // for errno
 #include <pthread.h>     // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
 #include <sched.h>       // for CPU_SET, CPU_ZERO, cpu_set_t
