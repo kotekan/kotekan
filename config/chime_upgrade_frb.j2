@@ -1235,6 +1235,7 @@ FRB:
 
     run_calc_frb2_weights:
         kotekan_stage: calcFRB2Weights
+        cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
         frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
         frb2_beam_positions: host_frb2_beam_positions_buffer
         frb1_swap_xy: true # yes, this is used by FRB 2
