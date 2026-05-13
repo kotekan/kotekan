@@ -27,7 +27,6 @@ telescope:
   gps_host_info: /fpga_controller
   require_frequency_map: true
   query_frequency_map: true
-  frequency_map_host_info: /fpga_controller
   allow_default_frequency_map: false
 
 dataset_manager:

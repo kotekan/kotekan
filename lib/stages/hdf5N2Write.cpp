@@ -967,12 +967,9 @@ bool N2FileData::flush_to_disk() {
 
     std::string flags_group_prefix = file_mode == CHIME ? "/flags" : "";
 
-    // Add and write configs in configTracker. If the tracker is disabled
-    // globally (or hasn't been populated yet) getAllJSONConfigs returns an
-    // empty vector and we skip the write — the /config_json dataset stays
-    // empty rather than appending a zero-length slab. hdf5N2Write's
-    // constructor emits a WARN at startup when the tracker is disabled so
-    // this state is surfaced once, not silently.
+    // Write configTracker snapshots to /config_json. Skip when empty
+    // (tracker disabled or not yet populated) so we don't append a
+    // zero-length slab.
     try {
         std::vector<std::string> json_objs = kotekan::ConfigTracker::instance().getAllJSONConfigs();
         if (!json_objs.empty()) {

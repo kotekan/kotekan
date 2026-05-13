@@ -28,10 +28,9 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
     set_sampling_params(800.0, 2048, 2);
 
     // Get the GPS time, either from the config or fpga_master. gps_host_info
-    // names a sibling config block holding ``host`` and ``port``, and
-    // optionally ``timing_endpoint`` (used as the default gps_endpoint). A
-    // stage-local gps_endpoint, if set, still wins. gps_host_info is
-    // required when query_gps is true.
+    // names a sibling block (typically /fpga_controller) holding ``host``,
+    // ``port``, and optionally ``timing_endpoint`` (the default for
+    // gps_endpoint). Required when query_gps is true.
     bool require_gps = config.get_default<bool>(path, "require_gps", true);
     _query_gps = config.get_default<bool>(path, "query_gps", false);
     std::string default_gps_endpoint = "/get-frame0-time";
@@ -56,20 +55,10 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
     _allow_default_frequency_map =
         config.get_default<bool>(path, "allow_default_frequency_map", true);
 
-    // Get the frequency map, either from config or fpga_master.
-    // frequency_map_host_info names a sibling config block holding ``host``
-    // and ``port``. Required when query_frequency_map is true.
+    // Get the frequency map, either from config or fpga_master
     _query_frequency_map = config.get_default<bool>(path, "query_frequency_map", false);
-    if (config.exists(path, "frequency_map_host_info")) {
-        const std::string ref = config.get<std::string>(path, "frequency_map_host_info");
-        _frequency_map_host = config.get<std::string>(ref, "host");
-        _frequency_map_port = config.get<uint32_t>(ref, "port");
-    } else if (_query_frequency_map) {
-        FATAL_ERROR_NON_OO("CHIMETelescope ({}): query_frequency_map is true but "
-                           "frequency_map_host_info is not set; point it at the FPGA controller "
-                           "block (e.g. /fpga_controller).",
-                           path);
-    }
+    _frequency_map_host = config.get_default<std::string>(path, "frequency_map_host", "10.1.13.1");
+    _frequency_map_port = config.get_default<uint32_t>(path, "frequency_map_port", 54321);
     _frequency_map_endpoint =
         config.get_default<std::string>(path, "frequency_map_endpoint", "/get-frequency-map");
 

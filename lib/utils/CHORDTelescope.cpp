@@ -314,11 +314,9 @@ GPSTimeParams GPSTimeParams::from_config(const kotekan::Config& config, const st
 
     gps.require_gps = config.get_default<bool>(path, "require_gps", false);
     gps.query_gps = config.get_default<bool>(path, "query_gps", false);
-    // gps_host_info names a sibling config block holding ``host`` and
-    // ``port`` for the GPS / FPGA-master REST server, and optionally
-    // ``timing_endpoint`` (used as the default gps_endpoint). A stage-local
-    // gps_endpoint, if set, still wins. gps_host_info is required when
-    // query_gps is true.
+    // gps_host_info names a sibling block (typically /fpga_controller)
+    // holding ``host``, ``port``, and optionally ``timing_endpoint`` (the
+    // default for gps_endpoint). Required when query_gps is true.
     std::string default_gps_endpoint = "/get-frame0-time";
     if (config.exists(path, "gps_host_info")) {
         const std::string ref = config.get<std::string>(path, "gps_host_info");
