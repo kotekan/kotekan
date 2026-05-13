@@ -743,7 +743,7 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     auto deg_close = [](double a, double b, double tol_deg = 1e-11) {
         return std::fabs(a - b) <= tol_deg;
     };
-    // Accept polar motion drift equivalent to 2 ns of rotation. 
+    // Accept polar motion drift equivalent to 2 ns of rotation.
     auto arcsec_close = [](double a, double b, double tol_as = 3e-8) {
         return std::fabs(a - b) <= tol_as;
     };
@@ -790,34 +790,36 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
                                 fv.rfi_frame_excision_num, MAX_NUM_RFI_THRESHOLDS));
     if (time_center_t_inst_ns[t_index] > 0
         && !ns_close(time_center_t_inst_ns[t_index], fv.time_center_eop.t_inst_ns))
-        add_failure(fmt::format("time_center_t_inst_ns[t={}] mismatch: stored {} != incoming {} (ns)",
-                                t_index, time_center_t_inst_ns[t_index], fv.time_center_eop.t_inst_ns));
+        add_failure(
+            fmt::format("time_center_t_inst_ns[t={}] mismatch: stored {} != incoming {} (ns)",
+                        t_index, time_center_t_inst_ns[t_index], fv.time_center_eop.t_inst_ns));
     if (time_center_ut1_ns[t_index] > 0
         && !ns_close(time_center_ut1_ns[t_index], fv.time_center_eop.t_ut1_ns))
         add_failure(fmt::format("time_center_ut1_ns[t={}] mismatch: stored {} != incoming {} (ns)",
                                 t_index, time_center_ut1_ns[t_index], fv.time_center_eop.t_ut1_ns));
     if (bin_t_inst_ns[t_index] > 0 && !ns_close(bin_t_inst_ns[t_index], fv.bin_eop.t_inst_ns))
-        add_failure(fmt::format("bin_t_inst_ns[t={}] mismatch: stored {} != incoming {} (ns)", t_index,
-                                bin_t_inst_ns[t_index], fv.bin_eop.t_inst_ns));
+        add_failure(fmt::format("bin_t_inst_ns[t={}] mismatch: stored {} != incoming {} (ns)",
+                                t_index, bin_t_inst_ns[t_index], fv.bin_eop.t_inst_ns));
     if (bin_ut1_ns[t_index] > 0 && !ns_close(bin_ut1_ns[t_index], fv.bin_eop.t_ut1_ns))
         add_failure(fmt::format("bin_ut1_ns[t={}] mismatch: stored {} != incoming {} (ns)", t_index,
                                 bin_ut1_ns[t_index], fv.bin_eop.t_ut1_ns));
-    if (bin_delta_ut1_inst[t_index] > 0 && !sec_close(bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst))
-        add_failure(fmt::format("bin_delta_ut1_inst[t={}] mismatch: stored {} != incoming {} (deg)", t_index,
-                                bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst));
+    if (bin_delta_ut1_inst[t_index] > 0
+        && !sec_close(bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst))
+        add_failure(fmt::format("bin_delta_ut1_inst[t={}] mismatch: stored {} != incoming {} (deg)",
+                                t_index, bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst));
     if (bin_era_deg[t_index] > 0 && !deg_close(bin_era_deg[t_index], fv.bin_eop.ERA_deg))
-        add_failure(fmt::format("bin_era_deg[t={}] mismatch: stored {} != incoming {} (deg)", t_index,
-                                bin_era_deg[t_index], fv.bin_eop.ERA_deg));
+        add_failure(fmt::format("bin_era_deg[t={}] mismatch: stored {} != incoming {} (deg)",
+                                t_index, bin_era_deg[t_index], fv.bin_eop.ERA_deg));
     if (fv.bin_eop.ERA_deg < 0)
         add_failure(fmt::format("bin_eop.ERA_deg < 0: {}", fv.bin_eop.ERA_deg));
     if (fv.bin_eop.ERA_deg >= 360)
         add_failure(fmt::format("bin_eop.ERA_deg >= 360: {}", fv.bin_eop.ERA_deg));
     if (bin_xp_as[t_index] > 0 && !arcsec_close(bin_xp_as[t_index], fv.bin_eop.xp_as))
-        add_failure(fmt::format("bin_xp_as[t={}] mismatch: stored {} != incoming {} (arcsec)", t_index,
-                                bin_xp_as[t_index], fv.bin_eop.xp_as));
+        add_failure(fmt::format("bin_xp_as[t={}] mismatch: stored {} != incoming {} (arcsec)",
+                                t_index, bin_xp_as[t_index], fv.bin_eop.xp_as));
     if (bin_yp_as[t_index] > 0 && !arcsec_close(bin_yp_as[t_index], fv.bin_eop.yp_as))
-        add_failure(fmt::format("bin_yp_as[t={}] mismatch: stored {} != incoming {} (arcsec)", t_index,
-                                bin_yp_as[t_index], fv.bin_eop.yp_as));
+        add_failure(fmt::format("bin_yp_as[t={}] mismatch: stored {} != incoming {} (arcsec)",
+                                t_index, bin_yp_as[t_index], fv.bin_eop.yp_as));
     if (fv.bin_start_ERA_deg < 0)
         add_failure(fmt::format("bin_start_ERA_deg < 0: {}", fv.bin_start_ERA_deg));
     if (fv.bin_start_ERA_deg >= 360)
@@ -1046,7 +1048,7 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/bin_t_inst_ns").write(bin_t_inst_ns);
         h5_file->getDataSet("/bin_ut1_ns").write(bin_ut1_ns);
         h5_file->getDataSet("/bin_delta_ut1_inst").write(bin_delta_ut1_inst);
-        h5_file->getDataSet("/bin_era_deg").write(bin_era_deg);
+        h5_file->getDataSet("/bin_ERA_deg").write(bin_era_deg);
         h5_file->getDataSet("/bin_xp_as").write(bin_xp_as);
         h5_file->getDataSet("/bin_yp_as").write(bin_yp_as);
         h5_file->getDataSet("/bin_start_ERA_deg").write(bin_start_ERA_deg);
