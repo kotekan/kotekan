@@ -10,6 +10,8 @@ if not runner.has_hdf5():
 
 parseReorderDefault_params = {
     "out_buf": "reorder_buffer",
+    "input_order": "correlator",
+    "output_order": "beamformer",
     "name": "scatter_indices",
 }
 
@@ -71,12 +73,12 @@ def scatter_indices(tmpdir_factory):
     )
     test.run()
 
-    yield h5py.File(fname, "r")["reorder_buffer"], adc_ids
+    yield h5py.File(fname, "r")["reorder_buffer"], station_ids, adc_ids
 
 
 def test_scatter_indices(scatter_indices):
 
-    reorder_buffer, adc_ids = scatter_indices
+    reorder_buffer, station_ids, adc_ids = scatter_indices
 
     # metadata and array description
     assert reorder_buffer.attrs["name"] == "scatter_indices"
@@ -86,10 +88,15 @@ def test_scatter_indices(scatter_indices):
     assert reorder_buffer.dtype == np.int32
 
     # payload
-    inverse_mapping = np.empty_like(reorder_buffer)
-    inverse_mapping[:] = -1
+    mapping = np.empty_like(reorder_buffer)
+    mapping[:] = -1
     for el in range(2048):
         adc_id = adc_ids[el]
-        inverse_mapping[adc_id // 1024][adc_id % 1024] = el
-    assert np.all(inverse_mapping != -1)
-    assert np.all(inverse_mapping == reorder_buffer)
+        station_id = station_ids[el]
+        # beamformer order from station_id (cylinder order index)
+        cylinder = station_id // 512
+        polarization = (station_id % 512) // 256
+        dish = (station_id % 512) % 256
+        mapping[adc_id // 1024][adc_id % 1024] = polarization * 1024 + cylinder * 256 + dish
+    assert np.all(mapping != -1)
+    assert np.all(mapping == reorder_buffer)
