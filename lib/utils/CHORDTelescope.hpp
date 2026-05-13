@@ -686,8 +686,8 @@ public:
      *                  least num_dishes. The phases will be written to the
      *                  first num_dishes elements of this vector.
      **/
-    void fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
-                              std::vector<std::complex<double>>& phases) const;
+    void fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
+                                   std::vector<std::complex<float>>& phases) const;
 
     /**
      * @brief   Fill a dishInputFields struct with dish information. Will possibly
@@ -764,6 +764,30 @@ public:
      * @brief Return the number of frequencies per F-engine stream.
      */
     size_t num_freq_per_stream() const override;
+
+    /**
+     * @brief   Compute the local ERA (eral in SOFA) at the telescope site.
+     *
+     *  The local ERA is:
+     *
+     *      ERAL = ERA + longitude(ITRS) + s',
+     *
+     *  where:
+     *      ERA is the Earth Rotation Angle (era00 in SOFA),
+     *      longitude(ITRS) is the geodetic longitude of the site in ITRS
+     *      s' is the TIO locator (sp00 in SOFA)
+     *
+     *  This is the equivalent to Local Apparent Sidereal Time (LAST) in the CIO-based
+     *  coordinate systems implemented by the IAU in 2000.
+     *
+     *  The s' is very small, it accrues at 47 microarcseconds per century, and is
+     *  ignored in this calculation.
+     *
+     * @param   eop  An EOP object for the time at which the ERAL is requested.
+     *
+     * @return The local ERA in degrees.
+     **/
+    double get_ERAL_deg(EOP& eop) const;
 
     // A forwarding constructor, such that derived classes can skip the main
     // CHORDTelescope constructor but still construct the Telescope class

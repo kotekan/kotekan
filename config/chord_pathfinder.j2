@@ -47,10 +47,10 @@
 # n2k sub-integrations to combine into each output N2 frame by N2Accumulate.
 # Choose a multiple of integrations_per_frame so n2k_frames_per_output is an integer and generators run long enough.
 # 238 ~= 10 seconds. 
-{% set num_n2k_samples_to_accumulate = 238 %} 
+{% set num_subintegrations_per_bin = 238 %} 
 
 # correlation frames needed to form one output N2 frame
-{% set n2k_frames_per_output = num_n2k_samples_to_accumulate // integrations_per_frame %}
+{% set n2k_frames_per_output = num_subintegrations_per_bin // integrations_per_frame %}
 
 # RFI Detection Parameters
 {% set rfi_downsampling_factor = 256 %}
@@ -76,6 +76,7 @@ cpu_affinity: [0,1,8,11,12,13,14,15]
 frame_arrival_period: 5.12e-6 * {{ samples_per_data_set }}
 sizeof_gpu_int: 4 # bytes
 sizeof_int8: 1
+sizeof_int32: 4
 sizeof_uint64: 8
 sizeof_float32: 4
 
@@ -85,6 +86,11 @@ rfi_downsampling_factor: {{ rfi_downsampling_factor }}
 rfi_second_downsampling_factor: {{ rfi_second_downsampling_factor }}
 rfi_num_times: {{ rfi_num_times }}
 rfi_num_times_bar: {{ rfi_num_times_bar }}
+rfi_sk_rfimask_sigmas: 5.0
+rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are good
+rfi_feed_averaged_min_good_frac: 0.25   # Wide open (0.25) so most averaged feeds are good
+rfi_mu_min: 2.0       # Should be small (2) to let in many samples.
+rfi_mu_max: 80.0      # Should be big (80) to let in many samples.
 num_times: samples_per_data_set  # New N2K needs this.
 num_polarizations: 2
 num_dishes: {{ num_dishes }}
@@ -170,6 +176,18 @@ host_bf_mask_buffer:
     num_frames: 1
     frame_size: sizeof_int8 * num_dishes * num_polarizations
     metadata_pool: main_pool
+    zero_new_frames: true
+    zero_value: 0xFF
+    numa_node: 0
+
+host_bf_mask_buffer_1:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    metadata_pool: main_pool
+    zero_new_frames: true
+    zero_value: 0xFF
+    numa_node: 1
 
 # Buffers
 network_input_buffers:
@@ -221,6 +239,69 @@ packet_receipt_bitmap_buffers:
         kotekan_buffer: standard
         numa_node: 1
 
+# These are the dummy RFI masks produced by DPDK
+host_rfi_RFImask_dummy_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: num_local_freq * samples_per_data_set / 8
+    zero_new_frames: true
+    zero_value: 0xFF
+    metadata_pool: main_pool
+
+host_rfi_RFImask_dummy_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: num_local_freq * samples_per_data_set / 8
+    zero_new_frames: true
+    zero_value: 0xFF
+    numa_node: 1
+    metadata_pool: main_pool
+
+# Note this is the expanded version of the pl_mask, produced by DPDK. It will be compressed to
+# the normal PL mask before being sent to the GPU.
+host_pl_mask_exp_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+
+host_pl_mask_exp_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+    numa_node: 1
+
+# This is the PL mask, sent to GPU and used for n2k_counts and the RFI SK system.
+host_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+
+host_pl_mask_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    metadata_pool: main_pool
+    numa_node: 1
+
+# This contains the SK statistics averaged over elements.
+host_rfi_sktilde_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    metadata_pool: main_pool
+
+host_rfi_sktilde_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    metadata_pool: main_pool
+    numa_node: 1
+
+# This is the RFI Mask recieved from the GPU, that was applied to produce n2k_correlation & n2k_counts.
+# It may contain either the dummy DPDK-generated mask or the real mask computed by SKtilde.
 host_rfi_RFImask_buffer:
     kotekan_buffer: standard
     num_frames: host_side_buffer_depth
@@ -238,17 +319,47 @@ host_rfi_RFImask_buffer_1:
     numa_node: 1
     metadata_pool: main_pool
 
-# Note this is the expanded version of the pl_mask, which is used for correlator input
-host_pl_mask_exp_buffer:
+host_rfi_RFImask_counts_buffer:
     kotekan_buffer: standard
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
     metadata_pool: main_pool
 
-host_pl_mask_exp_buffer_1:
+host_rfi_RFImask_counts_buffer_1:
     kotekan_buffer: standard
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    metadata_pool: main_pool
+    numa_node: 1
+
+host_pl_counts_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    metadata_pool: main_pool
+
+host_pl_counts_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    metadata_pool: main_pool
+    numa_node: 1
+
+# The mask for second stage RFI excision.
+host_rfi_RFIframemask_buffer:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    zero_new_frames: true
+    zero_value: 0xFF
+    metadata_pool: main_pool
+
+host_rfi_RFIframemask_buffer_1:
+    kotekan_buffer: standard
+    num_frames: host_side_buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    zero_new_frames: true
+    zero_value: 0xFF
     metadata_pool: main_pool
     numa_node: 1
 
@@ -373,6 +484,17 @@ host_rfi_RFImask_ringbuffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
+host_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
+    metadata_pool: main_pool
+
+host_pl_mask_ringbuffer_1:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
+    metadata_pool: main_pool
+    numa_node: 1
+
 host_pl_mask_exp_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (samples_per_data_set * num_local_freq * (num_elements / 8)) / 8
@@ -381,6 +503,39 @@ host_pl_mask_exp_ringbuffer:
 host_pl_mask_exp_ringbuffer_1:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (samples_per_data_set * num_local_freq * (num_elements / 8)) / 8
+    metadata_pool: main_pool
+    numa_node: 1
+
+host_rfi_s012_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_uint64
+    metadata_pool: main_pool
+
+host_rfi_s012_ringbuffer_1:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_uint64
+    metadata_pool: main_pool
+    numa_node: 1
+
+host_rfi_sktilde_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    metadata_pool: main_pool
+
+host_rfi_sktilde_ringbuffer_1:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    metadata_pool: main_pool
+    numa_node: 1
+
+host_rfi_RFImask_dummy_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_local_freq * samples_per_data_set / 8
+    metadata_pool: main_pool
+
+host_rfi_RFImask_dummy_ringbuffer_1:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_local_freq * samples_per_data_set / 8
     metadata_pool: main_pool
     numa_node: 1
 
@@ -466,13 +621,14 @@ dpdk:
 # Combine packet receipt bitmaps and generate packet-loss masks
 process_packet_mask_0:
     kotekan_stage: ProcessPacketMask
+    cpu_affinity: [1]
     voltage_buf: network_input_buffer_0
     receipt_bitmap_bufs:
         - packet_receipt_bitmap_buffer_0
         - packet_receipt_bitmap_buffer_1
     combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_0
     pl_mask_buf: host_pl_mask_exp_buffer
-    rfi_mask_buf: host_rfi_RFImask_buffer
+    rfi_mask_buf: host_rfi_RFImask_dummy_buffer
     num_frequency: num_local_freq
     num_source_ids: num_crs_boards
     # Update this as we add more CRS (F-engine) boards 
@@ -487,7 +643,7 @@ process_packet_mask_1:
         - packet_receipt_bitmap_buffer_3
     combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_1
     pl_mask_buf: host_pl_mask_exp_buffer_1
-    rfi_mask_buf: host_rfi_RFImask_buffer_1
+    rfi_mask_buf: host_rfi_RFImask_dummy_buffer_1
     num_frequency: num_local_freq
     num_source_ids: num_crs_boards
     # Update this as we add more CRS (F-engine) boards 
@@ -536,6 +692,26 @@ transpose_voltage_3:
     frame_mode: odd
     log_level: info
 
+# Downsample the PL mask to its "normal" form, which will be sent to the GPU.
+PL_mask_compactor:
+    kotekan_stage: PLMaskExpandedToCompact
+    cpu_affinity: [1]
+    in_buf: host_pl_mask_exp_buffer
+    out_buf: host_pl_mask_buffer
+
+PL_mask_compactor_1:
+    kotekan_stage: PLMaskExpandedToCompact
+    cpu_affinity: [16]
+    in_buf: host_pl_mask_exp_buffer_1
+    out_buf: host_pl_mask_buffer_1
+
+gen_fake_bf_mask:
+    bf_mask_0:
+        kotekan_stage: inventBFMask
+        bf_mask: host_bf_mask_buffer
+    bf_mask_1:
+        kotekan_stage: inventBFMask
+        bf_mask: host_bf_mask_buffer_1
 
 ## Send data to GPU ringbuffers ##
 
@@ -543,6 +719,7 @@ run_send_voltage:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cpu_affinity: [12, 13, 14]
         in_buffers:
             host_voltage_buffer_in: host_voltage_buffer_0
         out_buffers:
@@ -570,12 +747,16 @@ run_send_voltage:
           signal_buf: host_voltage_ringbuffer_out
           gpu_mem_output: voltage_buffer
 
-run_send_rfi_RFImask:
+# Copy the dummy RFI mask to the RFI mask on the GPU
+# To activate the 1st stage RFI excision, do not run this stage! Instead make sure the
+# SKtilde stage produces the RFI mask and places it in the host_rfi_RFImask_buffer
+run_send_rfi_RFImask_dummy:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cpu_affinity: [12, 13, 14]
         in_buffers:
-            host_rfi_RFImask_buffer_in: host_rfi_RFImask_buffer
+            host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer
         out_buffers:
             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
         commands:
@@ -590,7 +771,7 @@ run_send_rfi_RFImask:
         gpu_id: 1
         cpu_affinity: [25, 26, 27]
         in_buffers:
-            host_rfi_RFImask_buffer_in: host_rfi_RFImask_buffer_1
+            host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer_1
         out_buffers:
             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer_1
         commands:
@@ -605,33 +786,210 @@ run_send_pl_mask:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cpu_affinity: [12, 13, 14]
         in_buffers:
-            host_pl_mask_exp_buffer_in: host_pl_mask_exp_buffer
+            host_pl_mask_buffer_in: host_pl_mask_buffer
         out_buffers:
-            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
         commands:
         - name: cudaCopyToRingbuffer
-          input_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+          input_size: (samples_per_data_set / 128) * (num_local_freq / 4) * (num_elements / 8) * 8
           ring_buffer_size: buffer_depth * input_size
-          in_buf: host_pl_mask_exp_buffer_in
-          signal_buf: host_pl_mask_exp_ringbuffer
-          gpu_mem_output: pl_mask_exp_buffer
+          in_buf: host_pl_mask_buffer_in
+          signal_buf: host_pl_mask_ringbuffer
+          gpu_mem_output: pl_mask_buffer
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
         cpu_affinity: [25, 26, 27]
         in_buffers:
-            host_pl_mask_exp_buffer_in: host_pl_mask_exp_buffer_1
+            host_pl_mask_buffer_in: host_pl_mask_buffer_1
+        out_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer_1
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: (samples_per_data_set / 128) * (num_local_freq / 4) * (num_elements / 8) * 8
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_pl_mask_buffer_in
+          signal_buf: host_pl_mask_ringbuffer
+          gpu_mem_output: pl_mask_buffer
+
+run_rfi_s012:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+        out_buffers:
+            host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
+        commands:
+        - name: cudaRFIS012
+          voltage_name: voltage
+          pl_mask_name: pl_mask
+          rfi_S012_name: rfi_s012
+          num_times: samples_per_data_set
+          num_frequencies: num_local_freq
+          rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 1
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer_1
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer_1
+        out_buffers:
+            host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer_1
+        commands:
+        - name: cudaRFIS012
+          voltage_name: voltage
+          pl_mask_name: pl_mask
+          rfi_S012_name: rfi_s012
+          num_times: samples_per_data_set
+          num_frequencies: num_local_freq
+          rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+
+# This stage produces SK statistics averaged over all input elements and the RFI mask.
+# If the pipeline is using the dummy DPDK-produced RFI mask, then this stage needs to direct its
+# mask to "_dummy" buffers.  If the pipeline is using this RFI mask, then the buffers should
+# *not* contain "_dummy", and the DPDK-produced mask should not be sent to the GPU.
+run_rfi_sktilde:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+            host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
+        out_buffers:
+            host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer
+            host_rfi_mask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_bf_mask_buffer
+          gpu_mem: bf_mask_buffer
+        - name: cudaSyncInput
+        - name: cudaRFISKtilde
+          rfi_S012_name: rfi_s012
+          bf_mask_name: bf_mask
+          rfi_SKtilde_name: rfi_sktilde
+          rfi_RFImask_name: rfi_mask_dummy
+          num_times: samples_per_data_set
+          num_frequencies: num_local_freq
+          rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 1
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer_1
+            host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer_1
+        out_buffers:
+            host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer_1
+            host_rfi_mask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer_1
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_bf_mask_buffer
+          gpu_mem: bf_mask_buffer
+        - name: cudaSyncInput
+        - name: cudaRFISKtilde
+          rfi_S012_name: rfi_s012
+          bf_mask_name: bf_mask
+          rfi_SKtilde_name: rfi_sktilde
+          rfi_RFImask_name: rfi_mask_dummy
+          num_times: samples_per_data_set
+          num_frequencies: num_local_freq
+          rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+
+run_recv_rfi_sktilde:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_sktilde_ringbuffer_in: host_rfi_sktilde_ringbuffer
+        out_buffers:
+            host_rfi_sktilde_buffer_out: host_rfi_sktilde_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_sktilde_ringbuffer_in
+          gpu_mem_input: rfi_sktilde_buffer
+          output_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_sktilde_buffer_out
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 1
+        in_buffers:
+            host_rfi_sktilde_ringbuffer_in: host_rfi_sktilde_ringbuffer_1
+        out_buffers:
+            host_rfi_sktilde_buffer_out: host_rfi_sktilde_buffer_1
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_sktilde_ringbuffer_in
+          gpu_mem_input: rfi_sktilde_buffer
+          output_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_sktilde_buffer_out
+
+# This copies the RFI Mask that was used in N2K kernels back out to the CPU into the
+# host_rfi_RFImask_buffer. It may contain either the DPDK-produced dummy mask or the
+# SKtilde-produced real mask.
+run_recv_rfi_RFImask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_RFImask_ringbuffer_in: host_rfi_RFImask_ringbuffer
+        out_buffers:
+            host_rfi_RFImask_buffer_out: host_rfi_RFImask_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_RFImask_ringbuffer_in
+          gpu_mem_input: rfi_RFImask_buffer
+          output_size: samples_per_data_set * num_local_freq / 8
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_RFImask_buffer_out
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 1
+        in_buffers:
+            host_rfi_RFImask_ringbuffer_in: host_rfi_RFImask_ringbuffer_1
+        out_buffers:
+            host_rfi_RFImask_buffer_out: host_rfi_RFImask_buffer_1
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_RFImask_ringbuffer_in
+          gpu_mem_input: rfi_RFImask_buffer
+          output_size: samples_per_data_set * num_local_freq / 8
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_RFImask_buffer_out
+
+# Only the "normal" (downsampled) PL mask is sent to the GPU. This expands that mask for
+# the 1 bit correlator kernel. Other stages use the downsampled mask directly.
+run_pl_expand:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+        out_buffers:
+            host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer
+        commands:
+        - name: cudaPLMaskExpander
+          num_frequencies: num_local_freq
+          pl_mask_name: pl_mask
+          pl_expanded_mask_name: pl_mask_exp
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 1
+        in_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer_1
         out_buffers:
             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer_1
         commands:
-        - name: cudaCopyToRingbuffer
-          input_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
-          ring_buffer_size: buffer_depth * input_size
-          in_buf: host_pl_mask_exp_buffer_in
-          signal_buf: host_pl_mask_exp_ringbuffer
-          gpu_mem_output: pl_mask_exp_buffer
-
+        - name: cudaPLMaskExpander
+          num_frequencies: num_local_freq
+          pl_mask_name: pl_mask
+          pl_expanded_mask_name: pl_mask_exp
 
 # Packet-loss correlator to produce counts for N2Accumulate
 
@@ -657,7 +1015,6 @@ run_pl_corr:
     gpu_1:
         kotekan_stage: cudaProcess
         gpu_id: 1
-        cpu_affinity: [25, 26, 27]
         in_buffers:
             host_pl_mask_exp_ringbuffer: host_pl_mask_exp_ringbuffer_1
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer_1
@@ -680,6 +1037,7 @@ run_n2k:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cpu_affinity: [12, 13, 14]
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
@@ -722,17 +1080,70 @@ hex_dump:
     in_buf: n2_buffer_1
     len: 4096
 
+count_rfi_mask:
+    kotekan_stage: RfiMaskSum
+    in_buf: host_rfi_RFImask_buffer
+    out_buf: host_rfi_RFImask_counts_buffer
+
+count_rfi_mask_1:
+    kotekan_stage: RfiMaskSum
+    in_buf: host_rfi_RFImask_buffer_1
+    out_buf: host_rfi_RFImask_counts_buffer_1
+
+count_PL:
+    kotekan_stage: CountLostPLSamplesScalar
+    in_buf: host_pl_mask_buffer
+    out_buf: host_pl_counts_buffer
+    packet_loss_is_scalar: true
+
+count_PL_1:
+    kotekan_stage: CountLostPLSamplesScalar
+    in_buf: host_pl_mask_buffer_1
+    out_buf: host_pl_counts_buffer_1
+    packet_loss_is_scalar: true
+
+# This computes the second stage RFI excision mask.
+compute_RFI_frame_mask:
+    kotekan_stage: RfiFrameMask
+    in_buf: host_rfi_sktilde_buffer
+    out_buf: host_rfi_RFIframemask_buffer
+    enabled_updatable_config: /rfi_second_stage_enabled
+    thresholds_updatable_config: /rfi_second_stage_thresholds
+
+compute_RFI_frame_mask_1:
+    kotekan_stage: RfiFrameMask
+    in_buf: host_rfi_sktilde_buffer_1
+    out_buf: host_rfi_RFIframemask_buffer_1
+    enabled_updatable_config: /rfi_second_stage_enabled
+    thresholds_updatable_config: /rfi_second_stage_thresholds
+
+# Updatable Config for second stage RFI excision.
+rfi_second_stage_enabled:
+    kotekan_update_endpoint: json
+    enabled: false
+    valid_at_time_ns: 0
+
+rfi_second_stage_thresholds:
+    kotekan_update_endpoint: json
+    thresholds: []
+    valid_at_time_ns: 0
+
 n2_accumulate:
     kotekan_stage: N2Accumulate
     cpu_affinity: [9]
     log_level: info
     in_buf: host_correlation_buffer
     in_counts_buf: host_counts_buffer
-    in_rfimask_buf: host_rfi_RFImask_buffer
+    in_rficounts_buf: host_rfi_RFImask_counts_buffer
+    in_plcounts_buf: host_pl_counts_buffer
+    in_rfiframemask_buf: host_rfi_RFIframemask_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
-    num_n2k_samples_to_accumulate: {{ num_n2k_samples_to_accumulate }}
+    num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
+    variance_mode: EvenOddPosDef
+    output_batch_size: 12
+    num_workers: 1
 
 n2_accumulate_1:
     kotekan_stage: N2Accumulate
@@ -740,11 +1151,18 @@ n2_accumulate_1:
     log_level: info
     in_buf: host_correlation_buffer_1
     in_counts_buf: host_counts_buffer_1
-    in_rfimask_buf: host_rfi_RFImask_buffer_1
+    in_rficounts_buf: host_rfi_RFImask_counts_buffer_1
+    in_plcounts_buf: host_pl_counts_buffer_1
+    in_rfiframemask_buf: host_rfi_RFIframemask_buffer_1
     out_buf: n2_buffer_1
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
-    num_n2k_samples_to_accumulate: {{ num_n2k_samples_to_accumulate }}
+    num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
+    variance_mode: EvenOddPosDef
+    bin_in_ERA: false
+    do_fringestop: false
+    output_batch_size: 12
+    num_workers: 1
 
 
 # Subset to first 12 elements (6 dishes x 2 polarizations)

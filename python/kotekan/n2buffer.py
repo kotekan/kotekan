@@ -13,27 +13,7 @@ import io
 
 import numpy as np
 from kotekan import timespec
-
-"""
-class CTimeSpec(ctypes.Structure):
-
-    _fields_ = [
-        ("tv_sec", ctypes.c_time_t),
-        ("tv_nsec", ctypes.c_long),
-    ]
-"""
-
-
-class EOP(ctypes.Structure):
-
-    _fields_ = [
-        ("t_inst_ns", ctypes.c_int64),
-        ("t_ut1_ns", ctypes.c_int64),
-        ("delta_UT1_inst", ctypes.c_double),
-        ("ERA_deg", ctypes.c_double),
-        ("xp_as", ctypes.c_double),
-        ("yp_as", ctypes.c_double),
-    ]
+from kotekan import telescope
 
 
 class N2Metadata(ctypes.Structure):
@@ -45,18 +25,26 @@ class N2Metadata(ctypes.Structure):
         # Time index
         ("abs_time_idx", ctypes.c_uint64),
         # Earth orientation parameters
-        ("time_center_eop", EOP),
-        ("bin_eop", EOP),
+        ("time_center_eop", telescope.EOP),
+        ("bin_eop", telescope.EOP),
         ("bin_start_ERA_deg", ctypes.c_double),
         ("bin_end_ERA_deg", ctypes.c_double),
-        ("bin_start_LAST", ctypes.c_double),
-        ("bin_end_LAST", ctypes.c_double),
+        ("bin_start_ERAL", ctypes.c_double),
+        ("bin_end_ERAL", ctypes.c_double),
         # FPGA timing
         ("fpga_start_tick", ctypes.c_uint64),
         ("frame_start_time_ns", ctypes.c_uint64),
         ("frame_length_fpga_ticks", ctypes.c_uint64),
         ("n_valid_fpga_ticks", ctypes.c_uint64),
         ("n_rfi_fpga_ticks", ctypes.c_uint64),
+        ("n_rfi_only_fpga_ticks", ctypes.c_uint64),
+        ("n_pl_fpga_ticks", ctypes.c_uint64),
+        # RFI Excision
+        ("rfi_frame_excision_enabled", ctypes.c_bool),
+        ("rfi_frame_excision_num", ctypes.c_uint32),
+        ("rfi_frame_excision_threshold", ctypes.c_float * 8),
+        ("rfi_frame_excision_fraction", ctypes.c_float * 8),
+        # For CHIME: dataset_id
         ("dataset_id", ctypes.c_uint64 * 2),
     ]
 
@@ -117,6 +105,17 @@ class N2Buffer(object):
 
         layout = self.__class__.calculate_layout(num_elements, num_prod, num_ev)
 
+        if layout["size"] != len(_data):
+            raise RuntimeError(
+                "Received buffer length {0:d} (Total {1:d} - Metadata {2:d})".format(
+                    len(_data), len(self._buffer), ctypes.sizeof(N2Metadata)
+                )
+                + " does not match expected size {0:d}".format(layout["size"])
+                + " from num_elements {0:d} num_ev {1:d} num_prod {2:d}".format(
+                    num_elements, num_ev, num_prod
+                )
+            )
+
         for member in layout["members"]:
 
             arr = np.frombuffer(
@@ -147,13 +146,15 @@ class N2Buffer(object):
             ("evec", np.complex64, num_ev * num_elements),
             ("emethod", np.int32, 1),
             ("erms", np.float32, 1),
+            ("radiometer_chi2", np.float32, 3),
             ("gain", np.complex64, num_elements),
+            ("mask", np.uint8, num_elements),
         ]
 
         end = 0
 
         members = []
-        maxsize = 0
+        maxalign = 0
 
         for name, dtype, num in structure:
 
@@ -161,10 +162,12 @@ class N2Buffer(object):
 
             size = np.dtype(dtype).itemsize
 
-            # Update the maximum size
-            maxsize = size if maxsize < size else maxsize
+            align = size // 2 if dtype in (np.complex64, np.complex128) else size
 
-            member["start"] = _offset(end, size)
+            # Update the maximum alignment
+            maxalign = align if maxalign < align else maxalign
+
+            member["start"] = _offset(end, align)
             end = member["start"] + num * size
             member["end"] = end
             member["size"] = num * size
@@ -180,8 +183,9 @@ class N2Buffer(object):
 
             members.append(member)
 
-        struct_end = _offset(members[-1]["end"], maxsize)
+        struct_end = _offset(members[-1]["end"], maxalign)
         layout = {"size": struct_end, "members": members}
+
         return layout
 
     @classmethod
@@ -267,7 +271,7 @@ class N2Buffer(object):
         return cls(buf, skip=0)
 
 
-def _offset(offset, size):
-    """Calculate the start of a member of `size` after `offset` within a
+def _offset(offset, align):
+    """Calculate the start of a member with alignment `align` after `offset` within a
     struct."""
-    return ((size - (offset % size)) % size) + offset
+    return ((align - (offset % align)) % align) + offset

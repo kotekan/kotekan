@@ -102,9 +102,13 @@ freq_id_t Telescope::to_freq_id(stream_t stream) const {
     return to_freq_id(stream, 0);
 }
 
+uint64_t Telescope::to_seq(int64_t time_ns) const {
+    return to_seq(nanosec_i64_to_timespec(time_ns));
+}
+
 timespec Telescope::seq_length() const {
     auto dt_ns = seq_length_nsec();
-    return {(time_t)(dt_ns / 1000000000), (long)(dt_ns % 1000000000)};
+    return {(time_t)(dt_ns / GIGA), (long)(dt_ns % GIGA)};
 }
 
 bool Telescope::receive_eop_updates(nlohmann::json& json) {

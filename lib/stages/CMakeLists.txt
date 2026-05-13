@@ -108,6 +108,10 @@ add_library(
     TransposeBasebandArray.cpp
     dropAllFrames.cpp
     N2FrameToVisFrame.cpp
+    RfiMaskSum.cpp
+    RfiFrameMask.cpp
+    CountLostPLSamplesScalar.cpp
+    PLMaskExpandedToCompact.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 

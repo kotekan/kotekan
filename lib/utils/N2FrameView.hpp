@@ -14,6 +14,7 @@
 #include "N2Metadata.hpp"     // for N2Metadata
 #include "N2Util.hpp"         // for cfloat, get_num_prod
 #include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for MAX_NUM_RFI_THRESHOLDS
 
 #include "gsl-lite.hpp" // for span
 
@@ -70,8 +71,8 @@ public:
     struct EOP& bin_eop;
     double& bin_start_ERA_deg;
     double& bin_end_ERA_deg;
-    double& bin_start_LAST;
-    double& bin_end_LAST;
+    double& bin_start_ERAL;
+    double& bin_end_ERAL;
 
     /// The sequence number of the first FPGA frame integrated into this
     /// visibility frame (time<0> in VisFrameView)
@@ -82,8 +83,22 @@ public:
     uint64_t& frame_length_fpga_ticks;
     /// The actual amount of data accumulated in FPGA ticks (fpga_seq_total)
     uint64_t& n_valid_fpga_ticks;
-    /// The number of lost samples due to RFI (rfi_total)
+    /// The number of lost samples due to RFI (rfi_total). Might contain Packet Loss as well.
     uint64_t& n_rfi_fpga_ticks;
+    /// The number of lost samples due to RFI only
+    uint64_t& n_rfi_only_fpga_ticks;
+    /// The number of lost samples due to Packet Loss (PL)
+    uint64_t& n_pl_fpga_ticks;
+
+    /// Whether second stage RFI excision was applied to this frame
+    bool& rfi_frame_excision_enabled;
+    /// The number of active RFI excision thresholds.
+    int32_t& rfi_frame_excision_num;
+    /// The SK thresholds (in sigma) for RFI excision
+    std::array<float, MAX_NUM_RFI_THRESHOLDS>& rfi_frame_excision_threshold;
+    /// The fraction of samples above threshold that trigger RFI excision.
+    std::array<float, MAX_NUM_RFI_THRESHOLDS>& rfi_frame_excision_fraction;
+
     /// CHIME dataset id tracking updateable config item changes
     dset_id_t& dataset_id;
 
@@ -101,8 +116,12 @@ public:
     N2EigenMethod& emethod;
     /// The RMS of residual visibilities
     float& erms;
+    /// Radiometer chi2 statistic for each polarization pair
+    const gsl_lite::span<float> radiometer_chi2;
     /// View of the applied gains
     const gsl_lite::span<N2::cfloat> gain;
+    /// View of per-element masks (uint8_t per element)
+    const gsl_lite::span<uint8_t> mask;
 
     /**
      * @brief Create view without modifying layout.
