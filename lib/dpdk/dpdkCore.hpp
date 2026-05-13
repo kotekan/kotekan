@@ -154,6 +154,9 @@ protected:
  * @conf   num_mem_channels Int. Default 4     The number of system memory channels
  * @conf   init_mem_alloc   Int.  Default 256  The initial memory allocation in MB
  * @conf   pcie_block_list  Array of strings.  List of PCIe devices to block DPDK from using.
+ * @conf   lcore_start_delay Int. Default 40   Seconds to wait after port start before the
+ *                                             lcore RX loop begins. Required on E810 NICs
+ *                                             to allow ports to become ready.
  *
  * @author Andre Renard
  */
@@ -234,6 +237,9 @@ private:
 
     /// Initial memory allocation in MB
     std::string init_mem_alloc;
+
+    /// Seconds to wait after port start before the lcore RX loop begins
+    uint32_t lcore_start_delay;
 
     /// One of these exists per system port
     dpdkRXhandler** handlers;
