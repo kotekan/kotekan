@@ -1075,13 +1075,21 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             write(fh, ptx)
             return nothing
         end
-        sass = read("output/bb_$setup.sass", String)
         open("output/bb_$setup.sass", "w") do fh
             println(fh, "// SASS kernel code for CUDA baseband beamformer")
             println(fh, "// This file has been generated automatically by `bb.jl`.")
             println(fh, "// Do not modify this file, your changes will be lost.")
             println(fh)
-            write(fh, sass)
+            CUDA.code_sass(fh, bb, Tuple{Int32, Int32,
+                                         CuDeviceVector{Int8x4,1},
+                                         CuDeviceVector{Int4x8,1},
+                                         CuDeviceVector{Int32,1},
+                                         CuDeviceVector{Int4x8,1},
+                                         CuDeviceVector{Int32,1},
+                                         CuDeviceVector{Int32,1}};
+                           cap=compute_capability, ptx=ptx_compat,
+                           minthreads=(num_threads, num_warps),
+                           blocks_per_sm=num_blocks_per_sm)
             return nothing
         end
         kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
@@ -1536,11 +1544,6 @@ if CUDA.functional()
     open("output/bb_$setup.ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true)
-        end
-    end
-    open("output/bb_$setup.sass", "w") do fh
-        redirect_stdout(fh) do
-            @device_code_sass main(; compile_only=true)
         end
     end
     # This call needs to happen after generating PTX code since it

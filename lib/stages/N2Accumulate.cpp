@@ -66,6 +66,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
     _variance_mode(config.get<N2VarianceMode>(unique_name, "variance_mode")),
     _debug_accum_mode(config.get_default<bool>(unique_name, "debug_accum_mode", false)),
+    _profile_info(config.get_default<bool>(unique_name, "profile_info", false)),
     _tel(Telescope::instance()),
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
@@ -555,9 +556,15 @@ void N2Accumulate::main_thread() {
 
 #ifdef WITH_OMP
             [[maybe_unused]] double prof_curr_time = omp_get_wtime();
-            DEBUG("Adding input frame pair took {:f} ms + {:f} ms idle",
-                  (prof_curr_time - prof_start_time) * 1000,
-                  (prof_start_time - prof_last_time) * 1000);
+            if (_profile_info) {
+                INFO("Adding input frame pair took {:f} ms + {:f} ms idle",
+                     (prof_curr_time - prof_start_time) * 1000,
+                     (prof_start_time - prof_last_time) * 1000);
+            } else {
+                DEBUG("Adding input frame pair took {:f} ms + {:f} ms idle",
+                      (prof_curr_time - prof_start_time) * 1000,
+                      (prof_start_time - prof_last_time) * 1000);
+            }
             prof_last_time = prof_curr_time;
 #endif
 
@@ -1113,12 +1120,21 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
 #ifdef WITH_OMP
     [[maybe_unused]] double prof_out_end_time = omp_get_wtime();
-
-    DEBUG("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    free:  "
-          "{:f} ms\n    fill:  {:f} ms",
-          _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
-          1000 * prof_out_setup_time, 1000 * prof_out_work_time, 1000 * prof_out_free_time,
-          1000 * (prof_out_end_time - prof_out_fill_time));
+    if (_profile_info) {
+        INFO("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    "
+             "free:  "
+             "{:f} ms\n    fill:  {:f} ms",
+             _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
+             1000 * prof_out_setup_time, 1000 * prof_out_work_time, 1000 * prof_out_free_time,
+             1000 * (prof_out_end_time - prof_out_fill_time));
+    } else {
+        DEBUG("Outputting {:d} frames took {:f} ms\n    setup: {:f} ms\n    work:  {:f} ms\n    "
+              "free:  "
+              "{:f} ms\n    fill:  {:f} ms",
+              _num_freq_per_n2k_frame, 1000 * (prof_out_end_time - prof_out_start_time),
+              1000 * prof_out_setup_time, 1000 * prof_out_work_time, 1000 * prof_out_free_time,
+              1000 * (prof_out_end_time - prof_out_fill_time));
+    }
 #endif
 
     return true;
