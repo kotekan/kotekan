@@ -51,10 +51,6 @@ private:
 
     // the actual mappings (these are terribly inefficient)
     enum station_id_t {};
-    station_id_t correlator_index_to_station_id(const int idx) const;
-    station_id_t cylinder_index_to_station_id(const int idx) const;
-    station_id_t beamformer_index_to_station_id(const int idx) const;
-
     int station_id_to_correlator_index(const station_id_t id) const;
     int station_id_to_cylinder_index(const station_id_t id) const;
     int station_id_to_beamformer_index(const station_id_t id) const;
