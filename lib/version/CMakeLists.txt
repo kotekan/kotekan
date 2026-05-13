@@ -14,13 +14,17 @@
 # There are other solutions to this problem, but they all involve some kind of ulgy hack like this,
 # or the cause the system to take forever every time you run make because they do too much work.
 
-# Capture directory-scope compile flags from the top-level scope. This project pushes most
-# flags through add_compile_options() / add_definitions(), so CMAKE_CXX_FLAGS alone misses
-# things like -march=${ARCH}, -Wall, -fvisibility=hidden, -flto, -D_GNU_SOURCE, etc.
-get_property(KOTEKAN_DIR_COMPILE_OPTIONS DIRECTORY "${CMAKE_SOURCE_DIR}"
-             PROPERTY COMPILE_OPTIONS)
-get_property(KOTEKAN_DIR_COMPILE_DEFINITIONS DIRECTORY "${CMAKE_SOURCE_DIR}"
-             PROPERTY COMPILE_DEFINITIONS)
+# Capture directory-scope compile flags from the top-level scope. This project pushes most flags
+# through add_compile_options() / add_definitions(), so CMAKE_CXX_FLAGS alone misses things like
+# -march=${ARCH}, -Wall, -fvisibility=hidden, -flto, -D_GNU_SOURCE, etc.
+get_property(
+    KOTEKAN_DIR_COMPILE_OPTIONS
+    DIRECTORY "${CMAKE_SOURCE_DIR}"
+    PROPERTY COMPILE_OPTIONS)
+get_property(
+    KOTEKAN_DIR_COMPILE_DEFINITIONS
+    DIRECTORY "${CMAKE_SOURCE_DIR}"
+    PROPERTY COMPILE_DEFINITIONS)
 string(REPLACE ";" " " KOTEKAN_DIR_COMPILE_OPTIONS "${KOTEKAN_DIR_COMPILE_OPTIONS}")
 string(REPLACE ";" " " KOTEKAN_DIR_COMPILE_DEFINITIONS "${KOTEKAN_DIR_COMPILE_DEFINITIONS}")
 
