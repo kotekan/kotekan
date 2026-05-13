@@ -19,6 +19,11 @@
 #include <sys/types.h>  // for uint
 #include <unistd.h>     // for close
 
+#ifndef MSG_NOSIGNAL
+// macOS uses SO_NOSIGPIPE on the socket instead (set up below); make sendto() portable.
+#define MSG_NOSIGNAL 0
+#endif
+
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -117,7 +122,7 @@ void networkPowerStream::main_thread() {
                            freqs * sizeof(uint));
                     // Send data to remote server.
                     uint32_t bytes_sent =
-                        sendto(socket_fd, packet_buffer, packet_length, 0,
+                        sendto(socket_fd, packet_buffer, packet_length, MSG_NOSIGNAL,
                                (struct sockaddr*)&saddr_remote, sizeof(sockaddr_in));
                     if (bytes_sent != packet_length)
                         ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
