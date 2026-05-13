@@ -13,6 +13,7 @@
 #include <StageFactory.hpp>
 #include <algorithm>
 #include <cassert>
+#include <cfloat>
 #include <chordMetadata.hpp>
 #include <chrono>
 #include <complex>
@@ -695,10 +696,10 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     time_center_ut1_ns.assign(num_file_t, 0.0);
     bin_t_inst_ns.assign(num_file_t, 0.0);
     bin_ut1_ns.assign(num_file_t, 0.0);
-    bin_delta_ut1_inst.assign(num_file_t, 0.0);
-    bin_era_deg.assign(num_file_t, 0.0);
-    bin_xp_as.assign(num_file_t, 0.0);
-    bin_yp_as.assign(num_file_t, 0.0);
+    bin_delta_ut1_inst.assign(num_file_t, -DBL_MAX);
+    bin_era_deg.assign(num_file_t, -DBL_MAX);
+    bin_xp_as.assign(num_file_t, -DBL_MAX);
+    bin_yp_as.assign(num_file_t, -DBL_MAX);
     bin_start_ERA_deg.assign(num_file_t, 0.0);
     bin_end_ERA_deg.assign(num_file_t, 0.0);
     bin_start_ERAL.assign(num_file_t, 0.0);
@@ -803,20 +804,20 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     if (bin_ut1_ns[t_index] > 0 && !ns_close(bin_ut1_ns[t_index], fv.bin_eop.t_ut1_ns))
         add_failure(fmt::format("bin_ut1_ns[t={}] mismatch: stored {} != incoming {} (ns)", t_index,
                                 bin_ut1_ns[t_index], fv.bin_eop.t_ut1_ns));
-    if (!sec_close(bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst))
+    if (bin_delta_ut1_inst[t_index] != -DBL_MAX && !sec_close(bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst))
         add_failure(fmt::format("bin_delta_ut1_inst[t={}] mismatch: stored {} != incoming {} (deg)",
                                 t_index, bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst));
-    if (!deg_close(bin_era_deg[t_index], fv.bin_eop.ERA_deg))
+    if (bin_era_deg[t_index] != -DBL_MAX && !deg_close(bin_era_deg[t_index], fv.bin_eop.ERA_deg))
         add_failure(fmt::format("bin_era_deg[t={}] mismatch: stored {} != incoming {} (deg)",
                                 t_index, bin_era_deg[t_index], fv.bin_eop.ERA_deg));
     if (fv.bin_eop.ERA_deg < 0)
         add_failure(fmt::format("bin_eop.ERA_deg < 0: {}", fv.bin_eop.ERA_deg));
     if (fv.bin_eop.ERA_deg >= 360)
         add_failure(fmt::format("bin_eop.ERA_deg >= 360: {}", fv.bin_eop.ERA_deg));
-    if (!arcsec_close(bin_xp_as[t_index], fv.bin_eop.xp_as))
+    if (bin_xp_as[t_index] != -DBL_MAX && !arcsec_close(bin_xp_as[t_index], fv.bin_eop.xp_as))
         add_failure(fmt::format("bin_xp_as[t={}] mismatch: stored {} != incoming {} (arcsec)",
                                 t_index, bin_xp_as[t_index], fv.bin_eop.xp_as));
-    if (!arcsec_close(bin_yp_as[t_index], fv.bin_eop.yp_as))
+    if (bin_yp_as[t_index] != -DBL_MAX && !arcsec_close(bin_yp_as[t_index], fv.bin_eop.yp_as))
         add_failure(fmt::format("bin_yp_as[t={}] mismatch: stored {} != incoming {} (arcsec)",
                                 t_index, bin_yp_as[t_index], fv.bin_eop.yp_as));
     if (fv.bin_start_ERA_deg < 0)
