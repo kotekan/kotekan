@@ -13,6 +13,7 @@
 #include <StageFactory.hpp>
 #include <algorithm>
 #include <cassert>
+#include <cfloat>
 #include <chordMetadata.hpp>
 #include <chrono>
 #include <complex>
@@ -352,6 +353,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         // _check_create_attribute(*file, "num_stacks", telescope.get_num_stacks());
         _check_create_attribute(*file, "nyquist_zone", telescope.nyquist_zone());
         _check_create_attribute(*file, "gps_time_enabled", telescope.gps_time_enabled());
+        _check_create_attribute(*file, "frame0_t_inst_ns", telescope.to_time_ns(0));
         _check_create_attribute(*file, "fpga_seq_length_nsec", telescope.seq_length_nsec());
         _check_create_attribute(*file, "origin_itrs_lon_deg", telescope.get_origin_itrs_lon_deg());
         _check_create_attribute(*file, "origin_itrs_lat_deg", telescope.get_origin_itrs_lat_deg());
@@ -554,10 +556,22 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(*file, "/frame_length_fpga_ticks", {num_file_t_}, {"time"},
                               HighFive::create_datatype<uint64_t>(), props_empty);
 
+        _check_create_dataset(*file, "/time_center_t_inst_ns", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<int64_t>(), props_empty);
         _check_create_dataset(*file, "/time_center_ut1_ns", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<int64_t>(), props_empty);
+        _check_create_dataset(*file, "/bin_t_inst_ns", {num_file_t_}, {"time"},
                               HighFive::create_datatype<int64_t>(), props_empty);
         _check_create_dataset(*file, "/bin_ut1_ns", {num_file_t_}, {"time"},
                               HighFive::create_datatype<int64_t>(), props_empty);
+        _check_create_dataset(*file, "/bin_delta_ut1_inst", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<double>(), props_empty);
+        _check_create_dataset(*file, "/bin_ERA_deg", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<double>(), props_empty);
+        _check_create_dataset(*file, "/bin_xp_as", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<double>(), props_empty);
+        _check_create_dataset(*file, "/bin_yp_as", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/bin_start_ERA_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/bin_end_ERA_deg", {num_file_t_}, {"time"},
@@ -678,8 +692,14 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     // Additional metadata
     fpga_start_tick.assign(num_file_t, 0);
     frame_length_fpga_ticks.assign(num_file_t, 0);
-    time_center_ut1.assign(num_file_t, 0.0);
-    bin_ut1.assign(num_file_t, 0);
+    time_center_t_inst_ns.assign(num_file_t, 0.0);
+    time_center_ut1_ns.assign(num_file_t, 0.0);
+    bin_t_inst_ns.assign(num_file_t, 0.0);
+    bin_ut1_ns.assign(num_file_t, 0.0);
+    bin_delta_ut1_inst.assign(num_file_t, -DBL_MAX);
+    bin_era_deg.assign(num_file_t, -DBL_MAX);
+    bin_xp_as.assign(num_file_t, -DBL_MAX);
+    bin_yp_as.assign(num_file_t, -DBL_MAX);
     bin_start_ERA_deg.assign(num_file_t, 0.0);
     bin_end_ERA_deg.assign(num_file_t, 0.0);
     bin_start_ERAL.assign(num_file_t, 0.0);
@@ -715,6 +735,18 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     // Accept timing differences up to 2 ns (e.g. fuzz on EOP table updates)
     auto ns_close = [](int64_t a, int64_t b, int64_t tol_ns = 2) {
         return std::llabs(a - b) <= tol_ns;
+    };
+    // Accept timing differences up to 2 ns (e.g. fuzz on EOP table updates)
+    auto sec_close = [](double a, double b, double tol_sec = 2e-9) {
+        return std::fabs(a - b) <= tol_sec;
+    };
+    // Accept timing differences up to 2 ns ~ 8.3e-12 deg (e.g. fuzz on EOP table updates)
+    auto deg_close = [](double a, double b, double tol_deg = 1e-11) {
+        return std::fabs(a - b) <= tol_deg;
+    };
+    // Accept polar motion drift equivalent to 2 ns of rotation.
+    auto arcsec_close = [](double a, double b, double tol_as = 3e-8) {
+        return std::fabs(a - b) <= tol_as;
     };
 
     // Structural data consistency checks
@@ -757,13 +789,38 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     if (fv.rfi_frame_excision_num > MAX_NUM_RFI_THRESHOLDS)
         add_failure(fmt::format("rfi_frame_excision_num exceeds MAX_NUM_RFI_THRESHOLDS: {} > {}",
                                 fv.rfi_frame_excision_num, MAX_NUM_RFI_THRESHOLDS));
-    if (time_center_ut1[t_index] > 0
-        && !ns_close(time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns))
-        add_failure(fmt::format("time_center_ut1[t={}] mismatch: stored {} != incoming {} (ns)",
-                                t_index, time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns));
-    if (bin_ut1[t_index] > 0 && !ns_close(bin_ut1[t_index], fv.bin_eop.t_ut1_ns))
-        add_failure(fmt::format("bin_ut1[t={}] mismatch: stored {} != incoming {} (ns)", t_index,
-                                bin_ut1[t_index], fv.bin_eop.t_ut1_ns));
+    if (time_center_t_inst_ns[t_index] > 0
+        && !ns_close(time_center_t_inst_ns[t_index], fv.time_center_eop.t_inst_ns))
+        add_failure(
+            fmt::format("time_center_t_inst_ns[t={}] mismatch: stored {} != incoming {} (ns)",
+                        t_index, time_center_t_inst_ns[t_index], fv.time_center_eop.t_inst_ns));
+    if (time_center_ut1_ns[t_index] > 0
+        && !ns_close(time_center_ut1_ns[t_index], fv.time_center_eop.t_ut1_ns))
+        add_failure(fmt::format("time_center_ut1_ns[t={}] mismatch: stored {} != incoming {} (ns)",
+                                t_index, time_center_ut1_ns[t_index], fv.time_center_eop.t_ut1_ns));
+    if (bin_t_inst_ns[t_index] > 0 && !ns_close(bin_t_inst_ns[t_index], fv.bin_eop.t_inst_ns))
+        add_failure(fmt::format("bin_t_inst_ns[t={}] mismatch: stored {} != incoming {} (ns)",
+                                t_index, bin_t_inst_ns[t_index], fv.bin_eop.t_inst_ns));
+    if (bin_ut1_ns[t_index] > 0 && !ns_close(bin_ut1_ns[t_index], fv.bin_eop.t_ut1_ns))
+        add_failure(fmt::format("bin_ut1_ns[t={}] mismatch: stored {} != incoming {} (ns)", t_index,
+                                bin_ut1_ns[t_index], fv.bin_eop.t_ut1_ns));
+    if (bin_delta_ut1_inst[t_index] != -DBL_MAX
+        && !sec_close(bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst))
+        add_failure(fmt::format("bin_delta_ut1_inst[t={}] mismatch: stored {} != incoming {} (deg)",
+                                t_index, bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst));
+    if (bin_era_deg[t_index] != -DBL_MAX && !deg_close(bin_era_deg[t_index], fv.bin_eop.ERA_deg))
+        add_failure(fmt::format("bin_era_deg[t={}] mismatch: stored {} != incoming {} (deg)",
+                                t_index, bin_era_deg[t_index], fv.bin_eop.ERA_deg));
+    if (fv.bin_eop.ERA_deg < 0)
+        add_failure(fmt::format("bin_eop.ERA_deg < 0: {}", fv.bin_eop.ERA_deg));
+    if (fv.bin_eop.ERA_deg >= 360)
+        add_failure(fmt::format("bin_eop.ERA_deg >= 360: {}", fv.bin_eop.ERA_deg));
+    if (bin_xp_as[t_index] != -DBL_MAX && !arcsec_close(bin_xp_as[t_index], fv.bin_eop.xp_as))
+        add_failure(fmt::format("bin_xp_as[t={}] mismatch: stored {} != incoming {} (arcsec)",
+                                t_index, bin_xp_as[t_index], fv.bin_eop.xp_as));
+    if (bin_yp_as[t_index] != -DBL_MAX && !arcsec_close(bin_yp_as[t_index], fv.bin_eop.yp_as))
+        add_failure(fmt::format("bin_yp_as[t={}] mismatch: stored {} != incoming {} (arcsec)",
+                                t_index, bin_yp_as[t_index], fv.bin_eop.yp_as));
     if (fv.bin_start_ERA_deg < 0)
         add_failure(fmt::format("bin_start_ERA_deg < 0: {}", fv.bin_start_ERA_deg));
     if (fv.bin_start_ERA_deg >= 360)
@@ -824,8 +881,14 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     // Store per-time metadata
     fpga_start_tick[t_index] = fv.fpga_start_tick;
     frame_length_fpga_ticks[t_index] = fv.frame_length_fpga_ticks;
-    time_center_ut1[t_index] = fv.time_center_eop.t_ut1_ns;
-    bin_ut1[t_index] = fv.bin_eop.t_ut1_ns;
+    time_center_t_inst_ns[t_index] = fv.time_center_eop.t_inst_ns;
+    time_center_ut1_ns[t_index] = fv.time_center_eop.t_ut1_ns;
+    bin_t_inst_ns[t_index] = fv.bin_eop.t_inst_ns;
+    bin_ut1_ns[t_index] = fv.bin_eop.t_ut1_ns;
+    bin_delta_ut1_inst[t_index] = fv.bin_eop.delta_UT1_inst;
+    bin_era_deg[t_index] = fv.bin_eop.ERA_deg;
+    bin_xp_as[t_index] = fv.bin_eop.xp_as;
+    bin_yp_as[t_index] = fv.bin_eop.yp_as;
     bin_start_ERA_deg[t_index] = fv.bin_start_ERA_deg;
     bin_end_ERA_deg[t_index] = fv.bin_end_ERA_deg;
     bin_start_ERAL[t_index] = fv.bin_start_ERAL;
@@ -981,8 +1044,14 @@ bool N2FileData::flush_to_disk() {
 
         h5_file->getDataSet("/fpga_start_tick").write(fpga_start_tick);
         h5_file->getDataSet("/frame_length_fpga_ticks").write(frame_length_fpga_ticks);
-        h5_file->getDataSet("/time_center_ut1_ns").write(time_center_ut1);
-        h5_file->getDataSet("/bin_ut1_ns").write(bin_ut1);
+        h5_file->getDataSet("/time_center_t_inst_ns").write(time_center_t_inst_ns);
+        h5_file->getDataSet("/time_center_ut1_ns").write(time_center_ut1_ns);
+        h5_file->getDataSet("/bin_t_inst_ns").write(bin_t_inst_ns);
+        h5_file->getDataSet("/bin_ut1_ns").write(bin_ut1_ns);
+        h5_file->getDataSet("/bin_delta_ut1_inst").write(bin_delta_ut1_inst);
+        h5_file->getDataSet("/bin_ERA_deg").write(bin_era_deg);
+        h5_file->getDataSet("/bin_xp_as").write(bin_xp_as);
+        h5_file->getDataSet("/bin_yp_as").write(bin_yp_as);
         h5_file->getDataSet("/bin_start_ERA_deg").write(bin_start_ERA_deg);
         h5_file->getDataSet("/bin_end_ERA_deg").write(bin_end_ERA_deg);
         h5_file->getDataSet("/bin_start_ERAL").write(bin_start_ERAL);
