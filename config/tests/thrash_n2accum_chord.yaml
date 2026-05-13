@@ -172,7 +172,6 @@ gen_fake_rfiframemask:
     repeat_count: repeat
 
 N2_accumulate:
-    log_level: DEBUG
     kotekan_stage: N2Accumulate
     cpu_affinity: [8, 9, 10, 11]
     in_buf: fake_correlation_buffer
@@ -185,10 +184,10 @@ N2_accumulate:
     packet_loss_is_scalar: True
     # variance_mode: CHIMEv1
     variance_mode: EvenOddPosDef
-    num_workers: 2
+    num_workers: 4
     output_batch_size: 8
     do_fringestop: True
-    debug_accum_mode: False
+    profile_info: True
 
 eat_n2:
   kotekan_stage: dropAllFrames
