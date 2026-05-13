@@ -83,6 +83,12 @@ rfi_combined: True
 rfi_sigma_cut: 5
 trunc_bias_switch: True
 
+# Single source of truth for the upstream FPGA controller's REST interface.
+# Referenced by /telescope/{gps,frequency_map}_host_info.
+fpga_controller:
+  host: 10.1.13.1
+  port: 54321
+
 ####################
 #### Telescope #####
 ####################
@@ -90,7 +96,9 @@ telescope:
   name: CHIMETelescope
   require_gps: false # Still run the config if fpga_master is down.
   query_gps: true
+  gps_host_info: /fpga_controller
   query_frequency_map: true
+  frequency_map_host_info: /fpga_controller
   require_frequency_map: false
   allow_default_frequency_map: true
 

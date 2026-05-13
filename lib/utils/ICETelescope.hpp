@@ -93,11 +93,13 @@ protected:
     /// Should we try to get the GPS time from remote server
     bool _query_gps;
 
-    /// The GPS server IP address
+    /// The GPS server IP address. Resolved from the block named by
+    /// /<path>/gps_host_info; left empty when that key is absent (in which
+    /// case @c _query_gps must also be false).
     std::string _gps_host;
 
-    /// The port number on the GPS server
-    uint32_t _gps_port;
+    /// The port number on the GPS server. Same lookup as @c _gps_host.
+    uint32_t _gps_port = 0;
 
     /// The endpoint with the GPS time
     std::string _gps_endpoint;

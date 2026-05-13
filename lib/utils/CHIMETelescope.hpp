@@ -47,11 +47,14 @@ private:
     /// Query the frequency map directly from fpga_master (only used for testing)
     bool _query_frequency_map;
 
-    /// The frequency map server IP address
+    /// The frequency map server IP address. Resolved from the block named
+    /// by /<path>/frequency_map_host_info; left empty when that key is
+    /// absent (in which case @c _query_frequency_map must also be false).
     std::string _frequency_map_host;
 
-    /// The port number on the frequency map server.
-    uint32_t _frequency_map_port;
+    /// The port number on the frequency map server. Same lookup as
+    /// @c _frequency_map_host.
+    uint32_t _frequency_map_port = 0;
 
     /// The endpoint with the frequency map.
     std::string _frequency_map_endpoint;
