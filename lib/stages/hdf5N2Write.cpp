@@ -804,7 +804,8 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     if (bin_ut1_ns[t_index] > 0 && !ns_close(bin_ut1_ns[t_index], fv.bin_eop.t_ut1_ns))
         add_failure(fmt::format("bin_ut1_ns[t={}] mismatch: stored {} != incoming {} (ns)", t_index,
                                 bin_ut1_ns[t_index], fv.bin_eop.t_ut1_ns));
-    if (bin_delta_ut1_inst[t_index] != -DBL_MAX && !sec_close(bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst))
+    if (bin_delta_ut1_inst[t_index] != -DBL_MAX
+        && !sec_close(bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst))
         add_failure(fmt::format("bin_delta_ut1_inst[t={}] mismatch: stored {} != incoming {} (deg)",
                                 t_index, bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst));
     if (bin_era_deg[t_index] != -DBL_MAX && !deg_close(bin_era_deg[t_index], fv.bin_eop.ERA_deg))
