@@ -1,0 +1,5 @@
+*************
+AirspyAlign
+*************
+
+.. doxygenclass:: AirspyAlign
