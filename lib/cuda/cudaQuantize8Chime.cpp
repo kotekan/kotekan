@@ -51,6 +51,27 @@ private:
     /// GPU side memory name for mean,stdev output
     const std::string _gpu_mem_beams_offsetscale;
 
+    // Input array layout
+    static constexpr int in_ntimes = 256;
+    static constexpr int in_nfreqs = 256; // 16 coarse channels, upchannelized by 16
+    static constexpr int in_nbeams = 1024;
+
+    // Output array layout
+    // The output is quantized in "chunks". Each chunk has a different offset and scale.
+    static constexpr int out_ntimes_chunk = 16;
+    static constexpr int out_nfreqs_chunk = 16;
+    // Chunks are combined into packets.
+    static constexpr int out_nfreqs_packet = 4;
+    static constexpr int out_nbeams_packet = 8;
+    // There are several packets.
+    static constexpr int out_ntimes_outer = 16;
+    static constexpr int out_nfreqs_outer = 4;
+    static constexpr int out_nbeams_outer = 128;
+
+    static_assert(out_ntimes_chunk * out_ntimes_outer == in_ntimes);
+    static_assert(out_nfreqs_chunk * out_nfreqs_packet * out_nfreqs_outer == in_nfreqs);
+    static_assert(out_nbeams_packet * out_nbeams_outer == in_nbeams);
+
     const NDArrayBuffer<float, 4> input_buffer;
     NDArrayBuffer<std::uint8_t, 8> beam_buffer;
     NDArrayBuffer<float, 7> offsetscale_buffer;
@@ -78,8 +99,9 @@ cudaQuantize8Chime::cudaQuantize8Chime(Config& config, const std::string& unique
         return NDArrayBuffer<float, 4>(_gpu_mem_input, "I2", input_lengths, input_dimnames, *this);
     }()),
     beam_buffer([&]() {
-        const std::array<std::ptrdiff_t, 8> beam_lengths{1, _num_beams, _num_frequencies,
-                                                         _num_times};
+        const std::array<std::ptrdiff_t, 8> beam_lengths{1, out_nbeams_outer,
+                                                         out_nfreqs_outer, out_ntimes_outer, out_nbeams_packet,
+                                                         out_nfreqs_packet, out_nfreqs_chunk, out_ntimes_chunk};
         const std::array<std::string, 8> beam_dimnames{"Ttilde256",     "R8",        "Fbar64",
                                                        "Ttilde16_lo16", "Rlo8",      "Fbar16_lo4",
                                                        "Fbarlo16",      "Ttildelo16"};
@@ -87,7 +109,9 @@ cudaQuantize8Chime::cudaQuantize8Chime(Config& config, const std::string& unique
                                               *this);
     }()),
     offsetscale_buffer([&]() {
-        const std::array<std::ptrdiff_t, 7> offsetscale_lengths{1, _num_beams, _num_frequencies, 2};
+        const std::array<std::ptrdiff_t, 7> offsetscale_lengths{1, out_nbeams_outer,
+                                                         out_nfreqs_outer, out_ntimes_outer, out_nbeams_packet,
+                                                         out_nfreqs_packet, 2};
         const std::array<std::string, 7> offsetscale_dimnames{
             "Ttilde256", "R8", "Fbar64", "Ttilde16_lo16", "Rlo8", "Fbar16_lo4", "offset/scale"};
         return NDArrayBuffer<float, 7>(_gpu_mem_beams_offsetscale, "I3_offsetscale",
