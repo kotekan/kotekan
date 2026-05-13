@@ -64,7 +64,12 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
 
     socket_fd = -1;
 
-    use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
+    // The stage-local use_config_tracker overrides the global default; if it
+    // isn't set, fall back to /config_tracker/enabled (default true).
+    const bool ct_default = config.exists("/", "config_tracker")
+                                ? config.get_default<bool>("/config_tracker", "enabled", true)
+                                : true;
+    use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", ct_default);
     config_tracker_combined_hash = "";
 }
 
@@ -133,10 +138,8 @@ void bufferSend::main_thread() {
             }
 
 
-            // If the frame sent successfully,
-            if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
-                config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
-            }
+            // Record the tracker state we just signaled to the receiver.
+            config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
             DEBUG2("Sent header: {:d}", n_sent);
 
             // Send metadata

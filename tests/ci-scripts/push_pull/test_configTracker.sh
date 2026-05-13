@@ -143,20 +143,20 @@ check_file_hash() {
 }
 
 # Instance 3's own (local) config
-EXPECTED_LOCAL_HASH="92399a1da54d2be2ac47def623904540"
+EXPECTED_LOCAL_HASH="92d32f5195eaeb8f9354a3a8eb860115"
 if ! check_file_hash "${CONFIG_OUT_DIR}/local.json" "$EXPECTED_LOCAL_HASH"; then
     ERROR=1
 fi
 
 # B's local config as seen by C (step 1, re-keyed under 127.0.0.1:12748)
-EXPECTED_B_HASH="da1cdba9ec73a32346009a215b7fdfad"
+EXPECTED_B_HASH="3cf1d34c37eb9179cf078dedd9ba0a68"
 if ! check_file_hash "${CONFIG_OUT_DIR}/127.0.0.1_12748.json" "$EXPECTED_B_HASH"; then
     ERROR=1
 fi
 
 # A's config, discovered via B's upstream-hashes (step 2; B already had A
 # stored under 127.0.0.1:12048, and C trusts that key transitively).
-EXPECTED_A_HASH="85cbade661dc71b4eca7d84d498fe3e5"
+EXPECTED_A_HASH="7a4f644e999a4c6789d187b2c385406e"
 if ! check_file_hash "${CONFIG_OUT_DIR}/127.0.0.1_12048.json" "$EXPECTED_A_HASH"; then
     ERROR=1
 fi

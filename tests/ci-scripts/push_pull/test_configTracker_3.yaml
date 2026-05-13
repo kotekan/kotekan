@@ -8,9 +8,6 @@
 #   - upstream(127.0.0.1, 12048): A's config, discovered via B's upstream
 #                                  hashes (via step 2)
 
-# use the config tracker
-config_tracker: true
-
 type: config
 log_level: debug
 

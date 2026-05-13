@@ -52,11 +52,17 @@ REGISTER_KOTEKAN_STAGE(bufferRecv);
 bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
-    use_config_tracker(config.get_default<bool>(unique_name, "use_config_tracker", true)),
     dropped_frame_counter(
         Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)),
     transfer_time_seconds(Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
                                                         unique_name, {"source"})) {
+
+    // The stage-local use_config_tracker overrides the global default; if it
+    // isn't set, fall back to /config_tracker/enabled (default true).
+    const bool ct_default = config.exists("/", "config_tracker")
+                                ? config.get_default<bool>("/config_tracker", "enabled", true)
+                                : true;
+    use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", ct_default);
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);

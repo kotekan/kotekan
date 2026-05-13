@@ -127,12 +127,29 @@ pipelines. Commonly used config parameters include (under ``dataset_manager``):
   - REST: ``/dataset-manager/force-update`` forces re-registration with the broker.
   - Metrics: ``kotekan_datasetbroker_error_count`` (broker comms errors), plus per-stage dataset
     metrics (see writer/transform stages).
-- The Config Tracker is intended as a more lightweight replacement for the dataset manager. It
-  stores snapshots of this node's own (local) config and configs from upstream peers; an
-  optional top-level ``fpga_controller`` block makes the tracker fetch a combined
-  ``{"config": ..., "timing": ...}`` JSON from the controller's REST endpoints at startup
-  and register it as an ordinary upstream entry. All entries propagate to downstream nodes
-  over REST. You can use the ``configTrackerWriter`` stage with:
+- The Config Tracker is intended as a more lightweight replacement for the dataset manager.
+  It stores snapshots of this node's own (local) config and configs from upstream peers, and
+  optionally a combined ``{"config": ..., "timing": ...}`` snapshot fetched from an upstream
+  FPGA controller. All entries propagate to downstream nodes over REST. Configured by an
+  optional top-level ``config_tracker`` block::
+
+    config_tracker:
+        enabled: true                        # default; false disables the tracker globally
+        fpga_host_info: /fpga_controller     # optional; names a sibling block with host/port
+        config_endpoint: /config
+        timing_endpoint: /get-frame0-time
+        request_timeout_seconds: 30          # FPGA startup fetch (fatal on failure)
+        upstream_fetch_retries: 1            # peer pulls
+        upstream_fetch_timeout_seconds: 50   # peer pulls
+
+  The ``fpga_host_info`` indirection lets a pipeline define the FPGA controller address once
+  (e.g. under ``/fpga_controller: {host: ..., port: ...}``) and have multiple consumers — the
+  Config Tracker plus the Telescope's ``gps_host_info`` / ``frequency_map_host_info`` —
+  point at it. Stages that support the tracker (``bufferSend``/``bufferRecv``) read their
+  per-stage ``use_config_tracker`` first; if unset, they fall back to
+  ``/config_tracker/enabled``.
+
+  You can use the ``configTrackerWriter`` stage with:
 
   - ``base_dir``: directory to write JSON snapshots (created if missing).
   - Output naming: ``local.json`` for the local entry, ``<host>_<port>.json`` for every

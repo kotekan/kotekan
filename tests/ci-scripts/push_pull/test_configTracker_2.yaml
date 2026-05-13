@@ -7,9 +7,6 @@
 #   - step 2: discovers and fetches A's config via B's
 #             /config_tracker_upstream_hashes + /config_tracker_upstream_configs
 
-# use the config tracker
-config_tracker: true
-
 type: config
 log_level: debug
 

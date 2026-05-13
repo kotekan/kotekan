@@ -314,8 +314,17 @@ GPSTimeParams GPSTimeParams::from_config(const kotekan::Config& config, const st
 
     gps.require_gps = config.get_default<bool>(path, "require_gps", false);
     gps.query_gps = config.get_default<bool>(path, "query_gps", false);
-    gps.gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
-    gps.gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
+    // gps_host_info (if set) names a sibling config block holding ``host``
+    // and ``port`` for the GPS / FPGA-master REST server; legacy in-stage
+    // gps_host/gps_port keys are used as the fallback.
+    if (config.exists(path, "gps_host_info")) {
+        const std::string ref = config.get<std::string>(path, "gps_host_info");
+        gps.gps_host = config.get<std::string>(ref, "host");
+        gps.gps_port = config.get<uint32_t>(ref, "port");
+    } else {
+        gps.gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
+        gps.gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
+    }
     gps.gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
     gps.auto_correct_gps_week_rollover =
         config.get_default<bool>(path, "auto_correct_gps_week_rollover", false);

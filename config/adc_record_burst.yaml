@@ -29,12 +29,18 @@ buffer_depth: 105
 cpu_affinity: [2,3]
 instrument_name: mcgill_lab_test
 
+# Single source of truth for the upstream FPGA controller's REST address.
+# Set this to the real fpga_master host (and port if non-default).
+fpga_controller:
+  host: 127.0.0.1
+  port: 54321
+
 # Telescope
 telescope:
   name: ICETelescope
   require_gps: false
   query_gps: true # If fpga_master provides GPS time set to true
-  gps_host: 127.0.0.1 # Set this to the fpga_master host
+  gps_host_info: /fpga_controller
   num_local_freq: 1 # This value doesn't apply to ADC capture
 
 # Pool

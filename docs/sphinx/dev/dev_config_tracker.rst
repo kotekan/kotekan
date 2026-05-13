@@ -16,15 +16,16 @@ node's own *local* config separate from configs received from upstream peers:
   distinct peers with identical configs still produce distinct hashes.
 - Blocks containing ``kotekan_update_endpoint`` are pruned before hashing.
 
-An upstream FPGA controller (when ``kotekanMode`` is configured with an
-``fpga_controller`` block) is registered as a regular upstream entry: a
-single combined ``{"config": ..., "timing": ...}`` JSON, keyed by the
-controller's REST ``(host, port)``. The hostname is resolved to a canonical
-IPv4 string up front so downstream peers transitively land on the same key.
-Any change to either part after the initial fetch indicates a controller
-reset and is fatal. The FPGA snapshot rides along on the same propagation
-path as peer kotekan configs, so an HDF5 writer downstream of the FPGA-
-adjacent node sees it as an ordinary upstream entry.
+An upstream FPGA controller, when ``/config_tracker/fpga_host_info`` points
+at a sibling config block holding ``host`` and ``port``, is registered as a
+regular upstream entry: a single combined ``{"config": ..., "timing": ...}``
+JSON, keyed by the controller's REST ``(host, port)``. The hostname is
+resolved to a canonical IPv4 string up front so downstream peers
+transitively land on the same key. Any change to either part after the
+initial fetch indicates a controller reset and is fatal. The FPGA snapshot
+rides along on the same propagation path as peer kotekan configs, so an
+HDF5 writer downstream of the FPGA-adjacent node sees it as an ordinary
+upstream entry.
 
 The tracker exposes four REST endpoints:
 
@@ -41,12 +42,31 @@ Downstream writers can persist the configuration that produced their data.
 Instead of shipping full configs with every frame, the sender only flags changes.
 The receiver then pulls missing configs via REST and caches them locally using the tracker.
 
-Config key
-----------
-The tracker is enabled by default. To disable it globally, set ``config_tracker: false`` in the
-*top-level* of your config (not inside a stage block). Stages that support it (e.g. ``bufferSend``,
-``bufferRecv``) respect this global setting unless explicitly overridden with a stage-local
-``use_config_tracker``.
+Config block
+------------
+The tracker is enabled by default. Its behaviour is configured by an optional top-level
+``config_tracker`` object (NOT a bare bool — that form is no longer accepted)::
+
+  config_tracker:
+      enabled: true                        # default; set false to disable globally
+      fpga_host_info: /fpga_controller     # optional; if set, fetch FPGA snapshot at startup
+      config_endpoint: /config              # FPGA controller config path
+      timing_endpoint: /get-frame0-time     # FPGA controller timing path
+      request_timeout_seconds: 30           # one-shot FPGA fetch HTTP timeout (FATAL on miss)
+      upstream_fetch_retries: 1             # peer-pull HTTP retries
+      upstream_fetch_timeout_seconds: 50    # peer-pull HTTP timeout
+
+Note the two timeouts have different semantics: ``request_timeout_seconds`` controls the
+one-shot FPGA fetch at startup, which is fatal on failure, so a longer value is reasonable.
+``upstream_fetch_timeout_seconds`` controls every peer fetch triggered by an inbound
+``config_tracker_update`` wire flag; those are logged-and-continued on failure and run on a
+``bufferRecv`` worker thread, so a shorter value is reasonable.
+
+Stages that support the tracker (``bufferSend``, ``bufferRecv``) read their per-stage
+``use_config_tracker`` first; if unset, they fall back to ``/config_tracker/enabled``;
+otherwise they default to ``true``. ``enabled: false`` should be coordinated across the
+pipeline — a peer dialing a disabled node sees 404 on the REST endpoints (logged-and-
+continued, but noisy).
 
 Tracker-combined-hash
 ---------------------

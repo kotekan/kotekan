@@ -967,16 +967,23 @@ bool N2FileData::flush_to_disk() {
 
     std::string flags_group_prefix = file_mode == CHIME ? "/flags" : "";
 
-    // Add and write configs in configTracker
+    // Add and write configs in configTracker. If the tracker is disabled
+    // globally (or hasn't been populated yet) getAllJSONConfigs returns an
+    // empty vector and we skip the write — the /config_json dataset stays
+    // empty rather than appending a zero-length slab. hdf5N2Write's
+    // constructor emits a WARN at startup when the tracker is disabled so
+    // this state is surfaced once, not silently.
     try {
         std::vector<std::string> json_objs = kotekan::ConfigTracker::instance().getAllJSONConfigs();
-        HighFive::DataSet json_dset = h5_file->getDataSet("/config_json");
-        auto space = json_dset.getSpace();
-        auto cur_dims = space.getDimensions();
-        std::size_t old_n = cur_dims.empty() ? 0 : cur_dims[0];
-        std::size_t extra_n = json_objs.size();
-        json_dset.resize({old_n + extra_n});
-        json_dset.select({old_n}, {extra_n}).write(json_objs);
+        if (!json_objs.empty()) {
+            HighFive::DataSet json_dset = h5_file->getDataSet("/config_json");
+            auto space = json_dset.getSpace();
+            auto cur_dims = space.getDimensions();
+            std::size_t old_n = cur_dims.empty() ? 0 : cur_dims[0];
+            std::size_t extra_n = json_objs.size();
+            json_dset.resize({old_n + extra_n});
+            json_dset.select({old_n}, {extra_n}).write(json_objs);
+        }
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to write config JSON to HDF5 file {}: {}", partial_filepath,
                            e.what());
@@ -1147,6 +1154,20 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
                     "one of them (file='{}', url='{}')",
                     _baseband_gain_file, _baseband_gain_url);
     }
+    if (_baseband_gain_file.empty() && _baseband_gain_url.empty()) {
+        WARN("hdf5N2Write: no digital gains configured (set 'baseband_gain_file: <path>' or "
+             "'baseband_gain_url: http://<host>/<path>'). Output files will be written without a "
+             "/digital_gains dataset, which downstream analysis usually needs to apply per-input "
+             "gains to the visibilities. Set this unless you truly intend to skip gains.");
+    } else if (!_baseband_gain_file.empty() && !std::filesystem::exists(_baseband_gain_file)) {
+        // The URL path resolves _baseband_gain_file later in main_thread; only
+        // warn here if a literal file path was given and isn't on disk yet.
+        // Per-file open will still FATAL if the file is missing when needed.
+        WARN("hdf5N2Write: baseband_gain_file '{}' does not exist at startup. "
+             "If it's still missing when the first output file is opened, kotekan will FATAL. "
+             "Check the path, or use baseband_gain_url to fetch it.",
+             _baseband_gain_file);
+    }
 
     // Validate file window configuration
     if (_num_file_t == 0) {
@@ -1181,6 +1202,15 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
                  "be partially filled.",
                  _max_frames, _num_file_t);
         ++waiting_for_max_frames;
+    }
+
+    // The /config_json dataset in each output file is populated from the
+    // ConfigTracker. If the tracker is disabled globally, output files will
+    // have an empty /config_json — note that, but keep running.
+    if (config.exists("/", "config_tracker")
+        && !config.get_default<bool>("/config_tracker", "enabled", true)) {
+        WARN("hdf5N2Write: /config_tracker.enabled is false; HDF5 files will be written without "
+             "any /config_json entries.");
     }
 }
 

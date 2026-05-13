@@ -289,6 +289,28 @@ public:
     }
 
     /**
+     * @brief Set the retry/timeout policy used by @c getUpstreamConfigs for
+     * peer fetches. Intended to be called once at kotekan startup from
+     * kotekanMode after reading the /config_tracker block.
+     *
+     * Note this is distinct from the timeout used during the one-shot FPGA
+     * controller fetch in @c fetchAndRegisterFpgaTracking, which has its own
+     * dedicated argument; the FPGA fetch is once-at-startup and fatal-on-
+     * failure, while peer fetches happen on every wire-update flag and are
+     * logged-and-continued, so the two timeouts have different operational
+     * semantics.
+     *
+     * @param retries          Number of retries for each peer-side
+     *                         @c make_request_blocking call.
+     * @param timeout_seconds  HTTP timeout in seconds (-1 = restClient default).
+     */
+    void setUpstreamFetchPolicy(int retries, int timeout_seconds) {
+        std::lock_guard<std::mutex> lock(_lock);
+        _upstream_fetch_retries = retries;
+        _upstream_fetch_timeout_seconds = timeout_seconds;
+    }
+
+    /**
      * @brief Fetch the upstream FPGA controller's config and timing JSON via
      * REST and register them as a single upstream entry. Intended to be
      * called once at kotekan startup (see kotekanMode).
@@ -465,11 +487,21 @@ public:
      * same (host, port) is fatal.
      */
     void getUpstreamConfigs(const std::string& host, uint16_t port) {
+        // Snapshot the fetch policy under the lock; we'll use it for all
+        // three peer fetches in this invocation.
+        int retries;
+        int timeout_seconds;
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+            retries = _upstream_fetch_retries;
+            timeout_seconds = _upstream_fetch_timeout_seconds;
+        }
+
         // Step 1: GET /config_tracker_local from the peer; re-key under the
         // dialed (host, port) and store as an upstream entry.
         {
             restClient::restReply reply = restClient::instance().make_request_blocking(
-                "/config_tracker_local", {}, host, port, 1, -1);
+                "/config_tracker_local", {}, host, port, retries, timeout_seconds);
             if (!reply.first) {
                 ERROR_NON_OO("ConfigTracker: failed to GET /config_tracker_local from {}:{}", host,
                              port);
@@ -514,7 +546,7 @@ public:
         // Entries (including FPGA snapshots) carry their own (host, port)
         // identity from the peer; we trust that transitively.
         restClient::restReply reply = restClient::instance().make_request_blocking(
-            "/config_tracker_upstream_hashes", {}, host, port, 1, -1);
+            "/config_tracker_upstream_hashes", {}, host, port, retries, timeout_seconds);
         if (!reply.first) {
             ERROR_NON_OO("ConfigTracker: failed to GET /config_tracker_upstream_hashes from {}:{}",
                          host, port);
@@ -550,14 +582,13 @@ public:
                     FATAL_ERROR_NON_OO(
                         "ConfigTracker: upstream hash {} already known for {}:{}, but peer {}:{} "
                         "reports it as {}:{}",
-                        hash, it->second.host, it->second.port, host, port, entry_host,
-                        entry_port);
+                        hash, it->second.host, it->second.port, host, port, entry_host, entry_port);
                 }
             }
 
             const std::string path = std::string("/config_tracker_upstream_configs?hash=") + hash;
-            restClient::restReply entry_reply =
-                restClient::instance().make_request_blocking(path, {}, host, port, 1, -1);
+            restClient::restReply entry_reply = restClient::instance().make_request_blocking(
+                path, {}, host, port, retries, timeout_seconds);
             if (!entry_reply.first) {
                 ERROR_NON_OO("ConfigTracker: failed to GET /config_tracker_upstream_configs for "
                              "hash {} from peer {}:{}",
@@ -571,8 +602,8 @@ public:
                 response = nlohmann::json::parse(entry_reply.second);
             } catch (const nlohmann::json::parse_error& e) {
                 ERROR_NON_OO(
-                    "ConfigTracker: failed to parse upstream-config response for hash {}: {}",
-                    hash, e.what());
+                    "ConfigTracker: failed to parse upstream-config response for hash {}: {}", hash,
+                    e.what());
                 _record_upstream_fetch(entry_host, entry_port, false);
                 continue;
             }
@@ -590,8 +621,9 @@ public:
             try {
                 info = ConfigInfo(response[host_port_str]);
             } catch (const std::exception& e) {
-                ERROR_NON_OO("ConfigTracker: malformed upstream-config payload for {} (hash {}): {}",
-                             host_port_str, hash, e.what());
+                ERROR_NON_OO(
+                    "ConfigTracker: malformed upstream-config payload for {} (hash {}): {}",
+                    host_port_str, hash, e.what());
                 _record_upstream_fetch(entry_host, entry_port, false);
                 continue;
             }
@@ -719,6 +751,12 @@ private:
     /// upstream hashes in sorted order).
     std::string _tracker_hash;
 
+    /// HTTP retry/timeout policy for peer fetches in getUpstreamConfigs. Set
+    /// once at startup via setUpstreamFetchPolicy; defaults preserve the
+    /// pre-existing hardcoded behavior.
+    int _upstream_fetch_retries = 1;
+    int _upstream_fetch_timeout_seconds = -1;
+
     mutable std::mutex _lock;
 
     static constexpr const char* _metrics_stage_name = "config_tracker";
@@ -770,8 +808,8 @@ private:
 
         struct sockaddr_in sa4;
         if (inet_pton(AF_INET, host.c_str(), &(sa4.sin_addr)) != 1) {
-            FATAL_ERROR_NON_OO("ConfigTracker: upstream insert called with invalid IPv4 address: {}",
-                               host);
+            FATAL_ERROR_NON_OO(
+                "ConfigTracker: upstream insert called with invalid IPv4 address: {}", host);
         }
         if (port == 0) {
             FATAL_ERROR_NON_OO("ConfigTracker: upstream insert called with invalid port: {}", port);
@@ -887,16 +925,14 @@ private:
         auto reply = restClient::instance().make_request_blocking(endpoint, {}, ip, port, 0,
                                                                   request_timeout_seconds);
         if (!reply.first) {
-            FATAL_ERROR_NON_OO(
-                "ConfigTracker: failed to GET FPGA {} from {}:{}{} (timeout {}s)", what, ip, port,
-                endpoint, request_timeout_seconds);
+            FATAL_ERROR_NON_OO("ConfigTracker: failed to GET FPGA {} from {}:{}{} (timeout {}s)",
+                               what, ip, port, endpoint, request_timeout_seconds);
         }
         try {
             return nlohmann::json::parse(reply.second);
         } catch (const nlohmann::json::parse_error& e) {
-            FATAL_ERROR_NON_OO(
-                "ConfigTracker: failed to parse FPGA {} response from {}:{}{}: {}", what, ip, port,
-                endpoint, e.what());
+            FATAL_ERROR_NON_OO("ConfigTracker: failed to parse FPGA {} response from {}:{}{}: {}",
+                               what, ip, port, endpoint, e.what());
         }
         // Unreachable; FATAL_ERROR_NON_OO throws.
         return nlohmann::json{};
@@ -985,16 +1021,15 @@ private:
     /// the same size. Caller must hold _lock.
     void _check_upstream_consistent_locked() const {
         if (_upstream_configs.size() != _upstream_config_hashes.size()) {
-            FATAL_ERROR_NON_OO(
-                "ConfigTracker: upstream entries ({}) and hashes ({}) sizes differ",
-                _upstream_configs.size(), _upstream_config_hashes.size());
+            FATAL_ERROR_NON_OO("ConfigTracker: upstream entries ({}) and hashes ({}) sizes differ",
+                               _upstream_configs.size(), _upstream_config_hashes.size());
         }
     }
 
     /// Refresh the total-configs gauge. Caller must hold _lock.
     void _refresh_count_metric_locked() {
-        _configs_total_metric().set(static_cast<double>(
-            (_local_config.has_value() ? 1u : 0u) + _upstream_configs.size()));
+        _configs_total_metric().set(
+            static_cast<double>((_local_config.has_value() ? 1u : 0u) + _upstream_configs.size()));
     }
 
     void _record_upstream_fetch(const std::string& host, uint16_t port, bool success) {
