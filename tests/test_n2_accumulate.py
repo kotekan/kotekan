@@ -6,7 +6,7 @@ from kotekan.chordbuffer import ChordBuffer
 import kotekan.telescope as tel
 
 prod_config = {
-    "buffer_depth": 5,
+    "buffer_depth": 12,
     "samples_per_data_set": 16384,
     "num_local_freq": 12,
     "sub_integration_ntime": 8192,
