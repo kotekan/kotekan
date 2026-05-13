@@ -254,6 +254,7 @@ private:
     const bool _do_fringestop; ///< Whether to fringestop
     const N2VarianceMode _variance_mode;
     const bool _debug_accum_mode;
+    const bool _profile_info;
 
 
     // Some derived parameters

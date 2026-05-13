@@ -145,10 +145,10 @@ public:
         return frame_length_fpga_ticks.at(t);
     }
     int64_t get_time_center_ut1(size_t t) const {
-        return time_center_ut1.at(t);
+        return time_center_ut1_ns.at(t);
     }
     int64_t get_bin_ut1(size_t t) const {
-        return bin_ut1.at(t);
+        return bin_ut1_ns.at(t);
     }
     size_t get_added_count() const {
         return added_count;
