@@ -125,6 +125,12 @@ cudaQuantize8Chime::cudaQuantize8Chime(Config& config, const std::string& unique
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams, true, false, true));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams_offsetscale, true, false, true));
+
+    // these sizes are hard-coded in the CUDA kernel
+    if (_num_beams != in_nbeams || _num_frequencies != in_nfreqs || _num_times != in_ntimes) {
+        FATAL_ERROR("This stage's CUDA kernel hard-codes [num_beams, num_frequencies, num_times] to [{:d}, {:d}, {:d}] and does not support [{:d}, {:d}, {:d}]",
+                    in_nbeams, in_nfreqs, in_ntimes, _num_beams, _num_frequencies, _num_times);
+    }
 }
 
 cudaQuantize8Chime::~cudaQuantize8Chime() {}
