@@ -204,7 +204,6 @@ host_bf_mask_buffer_1:
 
 # Buffers
 network_input_buffers:
-    log_level: info
     num_frames: host_side_buffer_depth
     frame_size: dpdk_output_frame_size
     metadata_pool: main_pool
@@ -231,7 +230,6 @@ network_input_buffers:
 
 
 packet_receipt_bitmap_buffers:
-    log_level: info
     num_frames: host_side_buffer_depth
     frame_size: (samples_per_data_set / time_samples_per_packet) * num_crs_boards  # One bit per stream
     metadata_pool: main_pool
@@ -558,7 +556,6 @@ host_rfi_RFImask_dummy_ringbuffer_1:
 ##  Packet capture from the F-engine ##
 dpdk:
     kotekan_stage: dpdkCore
-    log_level: info
     # Format is index = lcore, value = cpu core
     lcore_cpu_map: [5, 6, 7, 21, 22, 23] # [5,6,7]
     main_lcore_cpu: 4
@@ -674,7 +671,6 @@ transpose_voltage_0:
     pl_mask_buf: host_pl_mask_exp_buffer
     out_buf: host_voltage_buffer_0
     frame_mode: even
-    log_level: info
 
 transpose_voltage_1:
     kotekan_stage: TransposeBasebandArray
@@ -684,7 +680,6 @@ transpose_voltage_1:
     pl_mask_buf: host_pl_mask_exp_buffer
     out_buf: host_voltage_buffer_0
     frame_mode: odd
-    log_level: info
 
 transpose_voltage_2:
     kotekan_stage: TransposeBasebandArray
@@ -694,7 +689,6 @@ transpose_voltage_2:
     pl_mask_buf: host_pl_mask_exp_buffer_1
     out_buf: host_voltage_buffer_1
     frame_mode: even
-    log_level: info
 
 transpose_voltage_3:
     kotekan_stage: TransposeBasebandArray
@@ -704,7 +698,6 @@ transpose_voltage_3:
     pl_mask_buf: host_pl_mask_exp_buffer_1
     out_buf: host_voltage_buffer_1
     frame_mode: odd
-    log_level: info
 
 # Downsample the PL mask to its "normal" form, which will be sent to the GPU.
 PL_mask_compactor:
@@ -1145,7 +1138,6 @@ rfi_second_stage_thresholds:
 n2_accumulate:
     kotekan_stage: N2Accumulate
     cpu_affinity: [9]
-    log_level: info
     in_buf: host_correlation_buffer
     in_counts_buf: host_counts_buffer
     in_rficounts_buf: host_rfi_RFImask_counts_buffer
@@ -1156,13 +1148,14 @@ n2_accumulate:
     packet_loss_is_scalar: True
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
     variance_mode: EvenOddPosDef
+    bin_in_ERA: True
+    do_fringestop: True
     output_batch_size: 12
     num_workers: 1
 
 n2_accumulate_1:
     kotekan_stage: N2Accumulate
     cpu_affinity: [28]
-    log_level: info
     in_buf: host_correlation_buffer_1
     in_counts_buf: host_counts_buffer_1
     in_rficounts_buf: host_rfi_RFImask_counts_buffer_1
@@ -1173,8 +1166,8 @@ n2_accumulate_1:
     packet_loss_is_scalar: True
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
     variance_mode: EvenOddPosDef
-    bin_in_ERA: false
-    do_fringestop: false
+    bin_in_ERA: True
+    do_fringestop: True
     output_batch_size: 12
     num_workers: 1
 
@@ -1199,7 +1192,6 @@ eigencalc:
     kotekan_stage: EigenN2Iter
     num_ev: num_ev_to_calculate
     cpu_affinity: [10]
-    log_level: info
     num_blaze_workers: 1
     in_buf: n2_subset_buffer
     out_buf: n2_eigen_buffer
@@ -1215,7 +1207,6 @@ eigencalc_1:
     kotekan_stage: EigenN2Iter
     num_ev: num_ev_to_calculate
     cpu_affinity: [30]
-    log_level: info
     num_blaze_workers: 1
     in_buf: n2_subset_buffer_1
     out_buf: n2_eigen_buffer_1
