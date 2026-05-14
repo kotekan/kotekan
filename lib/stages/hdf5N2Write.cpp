@@ -399,8 +399,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
             std::array<double, 9> dish_orientation;
             for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < 3; j++) {
-                    grid_orientation[3*i+j] = telescope.get_grid_orientation_el(i, j);
-                    dish_orientation[3*i+j] = telescope.get_dish_orientation_el(i, j);
+                    grid_orientation[3 * i + j] = telescope.get_grid_orientation_el(i, j);
+                    dish_orientation[3 * i + j] = telescope.get_dish_orientation_el(i, j);
                 }
             }
             _check_create_attribute(*file, "grid_orientation", grid_orientation);
@@ -446,9 +446,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
             }
             dataset_type.write(type_int);
 
-            _check_create_dataset(*file, "/index_map/label",
-                                  {dish_inputs.label.size()}, {"element"},
-                                  HighFive::create_datatype<std::string>(), props_empty);
+            _check_create_dataset(*file, "/index_map/label", {dish_inputs.label.size()},
+                                  {"element"}, HighFive::create_datatype<std::string>(),
+                                  props_empty);
             auto dataset_label = file->getDataSet("/index_map/label");
             dataset_label.write(dish_inputs.label);
         }
