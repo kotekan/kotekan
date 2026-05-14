@@ -102,12 +102,17 @@ spectrum_output:
     out_buf: post_fengine_bufB
 
 correlation_output:
-  # Four floats per bin (AA, BB, Re{AB*}, Im{AB*}) + one uint count per integration.
+  # Per-element layout: ``[freqs floats, 1 uint count]`` repeated once per
+  # visibility stream (AA, BB, Re{AB*}, Im{AB*}). That's the layout
+  # ``networkPowerStream`` expects when ``num_elements == 4``; the redundant
+  # per-element count (all four equal the same integration tick) costs an
+  # extra 12 B per integration in exchange for keeping the network stage
+  # general-purpose.
   post_corr_buf:
     kotekan_buffer: standard
     metadata_pool: meta_pool
     num_frames: buffer_depth
-    frame_size: ( spectrum_length * 4 + one ) * sizeof_float
+    frame_size: ( spectrum_length + one ) * 4 * sizeof_float
 
   xengine:
     kotekan_stage: SimpleCrosscorr
@@ -120,6 +125,13 @@ correlation_output:
     num_elements: 4
     num_freq: spectrum_length
     power_integration_length: integration_length
+    # Override the file-global ``samples_per_data_set`` so ``times`` lands
+    # at 1 -- ``SimpleCrosscorr`` writes one integration per frame, but
+    # without this override ``networkPowerStream`` would inherit the
+    # 32768-sample value (from the airspy input stage) and try to read
+    # ``32`` integrations out of each frame, walking past the end and
+    # segfaulting.
+    samples_per_data_set: integration_length
     destination_port: 23401
     destination_ip: "127.0.0.1"
     destination_protocol: TCP

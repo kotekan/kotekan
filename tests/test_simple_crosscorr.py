@@ -62,7 +62,9 @@ def _run_crosscorr(tmpdir, A, B):
     _write_raw_frames(in_dir, "inB", B, NUM_FRAMES)
 
     in_frame_size = SAMPLES_PER_FRAME * 2 * 4  # complex float pairs
-    out_frame_size = (SPECTRUM_LENGTH * 4 + 1) * 4  # AA, BB, ReAB*, ImAB*, count
+    # Per-element layout: ``[freqs floats, 1 uint count]`` repeated once per
+    # visibility stream. Same layout networkPowerStream consumes.
+    out_frame_size = (SPECTRUM_LENGTH + 1) * 4 * 4
 
     buffers = {
         "in_bufA": {
@@ -130,15 +132,24 @@ def _run_crosscorr(tmpdir, A, B):
 
 
 def _unpack_output(raw):
-    """Unpack a SimpleCrosscorr output frame into (AA, BB, ReABstar, ImABstar, count)."""
-    nfloats = SPECTRUM_LENGTH * 4
-    floats = np.frombuffer(raw[: nfloats * 4], dtype=np.float32)
-    count = struct.unpack("<I", raw[nfloats * 4 : nfloats * 4 + 4])[0]
-    AA = floats[0 * SPECTRUM_LENGTH : 1 * SPECTRUM_LENGTH]
-    BB = floats[1 * SPECTRUM_LENGTH : 2 * SPECTRUM_LENGTH]
-    ReAB = floats[2 * SPECTRUM_LENGTH : 3 * SPECTRUM_LENGTH]
-    ImAB = floats[3 * SPECTRUM_LENGTH : 4 * SPECTRUM_LENGTH]
-    return AA, BB, ReAB, ImAB, count
+    """Unpack a SimpleCrosscorr output frame into (AA, BB, ReABstar, ImABstar, count).
+
+    Format: ``[freqs floats, 1 uint count]`` repeated once per visibility
+    stream (AA, BB, Re{AB*}, Im{AB*}). All four counts are equal -- we read
+    the AA one and assert the others match.
+    """
+    block_floats = SPECTRUM_LENGTH + 1   # ``+1`` is the trailing count
+    flat = np.frombuffer(raw, dtype=np.float32, count=block_floats * 4)
+    AA   = flat[0 * block_floats : 0 * block_floats + SPECTRUM_LENGTH]
+    BB   = flat[1 * block_floats : 1 * block_floats + SPECTRUM_LENGTH]
+    ReAB = flat[2 * block_floats : 2 * block_floats + SPECTRUM_LENGTH]
+    ImAB = flat[3 * block_floats : 3 * block_floats + SPECTRUM_LENGTH]
+    counts = [
+        struct.unpack_from("<I", raw, (e * block_floats + SPECTRUM_LENGTH) * 4)[0]
+        for e in range(4)
+    ]
+    assert counts[0] == counts[1] == counts[2] == counts[3], counts
+    return AA, BB, ReAB, ImAB, counts[0]
 
 
 def test_simple_crosscorr_identical(tmpdir):

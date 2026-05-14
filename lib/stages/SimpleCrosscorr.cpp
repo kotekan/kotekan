@@ -76,9 +76,17 @@ void SimpleCrosscorr::main_thread() {
                 if (out_local == nullptr)
                     return;
 
-                for (uint32_t i = 0; i < _spectrum_length * 4; i++)
-                    out_local[out_loc++] = spectrum_out[i];
-                ((uint32_t*)out_local)[out_loc++] = integration_ct;
+                // Per-element layout: ``[freqs floats, 1 uint count]`` repeated
+                // once per visibility stream (AA, BB, Re{AB*}, Im{AB*}). That's
+                // the format ``networkPowerStream`` expects to see when
+                // ``num_elements == 4``; without the per-element count slot
+                // it indexes past the end of the frame and crashes on the
+                // first integration.
+                for (uint32_t e = 0; e < 4; e++) {
+                    for (uint32_t i = 0; i < _spectrum_length; i++)
+                        out_local[out_loc++] = spectrum_out[i + _spectrum_length * e];
+                    ((uint32_t*)out_local)[out_loc++] = integration_ct;
+                }
 
                 if (out_loc * sizeof(uint32_t) == (uint32_t)buf_out->frame_size) {
                     buf_out->mark_frame_full(unique_name, frame_out);
