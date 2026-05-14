@@ -907,7 +907,12 @@ class DumpN2Buffer(OutputBuffer):
     name = None
 
     def __init__(
-        self, output_dir, exit_after_n_files=0, num_elements=None, num_ev=None
+        self,
+        output_dir,
+        exit_after_n_files=0,
+        num_elements=None,
+        num_ev=None,
+        num_freq=None,
     ):
 
         self.name = "dumpn2_buf%i" % self._buf_ind
@@ -923,12 +928,16 @@ class DumpN2Buffer(OutputBuffer):
             self.num_prod = None
         self.num_ev = num_ev
 
+        # If num_freq is given, size the buffer to hold one full accumulation
+        # cycle (one frame per frequency) so the producer never stalls.
+        num_frames = num_freq if num_freq is not None else "buffer_depth"
+
         self.buffer_block = {
             self.name: {
                 "kotekan_buffer": "N2",
                 "n2_layout": "FullUpperTri",
                 "metadata_pool": "N2_pool",
-                "num_frames": "buffer_depth",
+                "num_frames": num_frames,
             }
         }
 

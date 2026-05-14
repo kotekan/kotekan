@@ -601,6 +601,7 @@ def accum_data(
         exit_after_n_files=(config["num_local_freq"] * len(accum_list)),
         num_elements=config["num_elements"],
         num_ev=config["num_ev"],
+        num_freq=config["num_local_freq"],
     )
 
     accum_config = {
