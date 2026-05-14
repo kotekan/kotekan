@@ -161,10 +161,10 @@ telescope:
         {dish_idx: 5, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p2}
     ]
 
-    require_gps: True
-    query_gps: True
+    require_gps: true
+    query_gps: true
     gps_host_info: /fpga_controller
-    auto_correct_gps_week_rollover: True
+    auto_correct_gps_week_rollover: true
 
     eop_updatable_config: /earth_rotation_data
 
@@ -1136,40 +1136,31 @@ rfi_second_stage_thresholds:
     valid_at_time_ns: 0
 
 n2_accumulate:
-    kotekan_stage: N2Accumulate
-    cpu_affinity: [9]
-    in_buf: host_correlation_buffer
-    in_counts_buf: host_counts_buffer
-    in_rficounts_buf: host_rfi_RFImask_counts_buffer
-    in_plcounts_buf: host_pl_counts_buffer
-    in_rfiframemask_buf: host_rfi_RFIframemask_buffer
-    out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
-    packet_loss_is_scalar: True
+    packet_loss_is_scalar: true
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
     variance_mode: EvenOddPosDef
-    bin_in_ERA: True
-    do_fringestop: True
-    output_batch_size: 12
+    bin_in_ERA: true
+    do_fringestop: false
     num_workers: 1
-
-n2_accumulate_1:
-    kotekan_stage: N2Accumulate
-    cpu_affinity: [28]
-    in_buf: host_correlation_buffer_1
-    in_counts_buf: host_counts_buffer_1
-    in_rficounts_buf: host_rfi_RFImask_counts_buffer_1
-    in_plcounts_buf: host_pl_counts_buffer_1
-    in_rfiframemask_buf: host_rfi_RFIframemask_buffer_1
-    out_buf: n2_buffer_1
-    num_freq_per_n2k_frame: num_local_freq
-    packet_loss_is_scalar: True
-    num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
-    variance_mode: EvenOddPosDef
-    bin_in_ERA: True
-    do_fringestop: True
-    output_batch_size: 12
-    num_workers: 1
+    accum_0:
+        kotekan_stage: N2Accumulate
+        cpu_affinity: [9]
+        in_buf: host_correlation_buffer
+        in_counts_buf: host_counts_buffer
+        in_rficounts_buf: host_rfi_RFImask_counts_buffer
+        in_plcounts_buf: host_pl_counts_buffer
+        in_rfiframemask_buf: host_rfi_RFIframemask_buffer
+        out_buf: n2_buffer
+    accum_1:
+        kotekan_stage: N2Accumulate
+        cpu_affinity: [28]
+        in_buf: host_correlation_buffer_1
+        in_counts_buf: host_counts_buffer_1
+        in_rficounts_buf: host_rfi_RFImask_counts_buffer_1
+        in_plcounts_buf: host_pl_counts_buffer_1
+        in_rfiframemask_buf: host_rfi_RFIframemask_buffer_1
+        out_buf: n2_buffer_1
 
 
 # Subset to first 12 elements (6 dishes x 2 polarizations)
