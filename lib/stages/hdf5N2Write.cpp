@@ -353,8 +353,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         // _check_create_attribute(*file, "num_stacks", telescope.get_num_stacks());
         _check_create_attribute(*file, "nyquist_zone", telescope.nyquist_zone());
         _check_create_attribute(*file, "gps_time_enabled", telescope.gps_time_enabled());
-        _check_create_attribute(*file, "frame0_t_inst_ns", telescope.to_time_ns(0));
-        _check_create_attribute(*file, "fpga_seq_length_nsec", telescope.seq_length_nsec());
+        _check_create_attribute(*file, "frame0_unix_ns", telescope.to_time_ns(0));
+        _check_create_attribute(*file, "fpga_seq_length_ns", telescope.seq_length_nsec());
         _check_create_attribute(*file, "origin_itrs_lon_deg", telescope.get_origin_itrs_lon_deg());
         _check_create_attribute(*file, "origin_itrs_lat_deg", telescope.get_origin_itrs_lat_deg());
         _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
@@ -395,12 +395,12 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
 
         // Store grid orientation (3x3 matrix) and dish orientation (3x3 matrix)
         {
-            std::vector<double> grid_orientation(9);
-            std::vector<double> dish_orientation(9);
+            std::array<double, 9> grid_orientation;
+            std::array<double, 9> dish_orientation;
             for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < 3; j++) {
-                    grid_orientation[i * 3 + j] = telescope.get_grid_orientation_el(i, j);
-                    dish_orientation[i * 3 + j] = telescope.get_dish_orientation_el(i, j);
+                    grid_orientation[3 * i + j] = telescope.get_grid_orientation_el(i, j);
+                    dish_orientation[3 * i + j] = telescope.get_dish_orientation_el(i, j);
                 }
             }
             _check_create_attribute(*file, "grid_orientation", grid_orientation);
@@ -445,6 +445,12 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                 type_int[i] = static_cast<int32_t>(dish_inputs.type[i]);
             }
             dataset_type.write(type_int);
+
+            _check_create_dataset(*file, "/index_map/label", {dish_inputs.label.size()},
+                                  {"element"}, HighFive::create_datatype<std::string>(),
+                                  props_empty);
+            auto dataset_label = file->getDataSet("/index_map/label");
+            dataset_label.write(dish_inputs.label);
         }
 
         // Store full dish positions
