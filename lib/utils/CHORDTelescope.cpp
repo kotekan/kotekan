@@ -8,6 +8,7 @@
 #include <chrono>              // for duration_cast, duration, nanoseconds, system_clock
 
 #include "Telescope.hpp"       // for freq_id_t, Telescope, nyquist_zone_t, stream_t, REGISTER_T...
+#include "geoUtil.hpp"         // for GeoFrame
 #include "kotekanLogging.hpp"  // for FATAL_ERROR_NON_OO, WARN_NON_OO, INFO_NON_OO, DEBUG, FATAL...
 #include "restClient.hpp"      // for restClient
 #include "timeUtil.hpp"        // for EOP, nanosec_i64_to_timespec
@@ -484,6 +485,16 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     // Instrument geographic coordinates
     _geographic_params(GeographicParams::from_config(config, path)) {
     DEBUG("Building CHORDTelescope");
+    
+    vec3d_t grid_x_axis = config.get_default<vec3d_t>(path, "grid_x_axis", {1.0, 0.0, 0.0});
+    vec3d_t grid_y_axis = config.get_default<vec3d_t>(path, "grid_y_axis", {0.0, 1.0, 0.0});
+
+    GeoFrame grid_frame(config.get<std::string>(path, "log_level"),
+                        "grid",
+                        config.get_default<double>(path, "origin_itrs_lat_deg", 0.0),
+                        config.get_default<double>(path, "origin_itrs_lon_deg", 0.0),
+                        {0.0, 0.0, 0.0},
+                        grid_x_axis, grid_y_axis, vec3d_cross(grid_x_axis, grid_y_axis));
 }
 
 CHORDTelescope::~CHORDTelescope() {
