@@ -92,7 +92,7 @@ elseif setup ≡ :pathfinder || setup ≡ :smallfinder
 elseif setup ≡ :chime
 
     # CHIME
-    const B = 16
+    const B = 32                # 16
 
     const T1_stride = 128
     const T2_stride = 32
