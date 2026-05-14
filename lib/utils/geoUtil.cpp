@@ -1,21 +1,16 @@
 #include "geoUtil.hpp"
 
-#include "kotekanLogging.hpp"  // for set_log_level, set_log_prefix
+#include "kotekanLogging.hpp" // for set_log_level, set_log_prefix
 
 #include "fmt.hpp"
 
 static constexpr double deg2rad = M_PI / 180.0;
 
-GeoFrame::GeoFrame(const std::string& log_level, const std::string& name,
-                   double itrs_lat_deg, double itrs_lon_deg,
-                   const vec3d_t& offset_m, const vec3d_t& x_axis, const vec3d_t& y_axis, const vec3d_t& z_axis) : 
-    name(name),
-    itrs_lat_deg(itrs_lat_deg),
-    itrs_lon_deg(itrs_lon_deg),
-    offset_m(offset_m),
-    x_axis(x_axis),
-    y_axis(y_axis),
-    z_axis(z_axis),
+GeoFrame::GeoFrame(const std::string& log_level, const std::string& name, double itrs_lat_deg,
+                   double itrs_lon_deg, const vec3d_t& offset_m, const vec3d_t& x_axis,
+                   const vec3d_t& y_axis, const vec3d_t& z_axis) :
+    name(name), itrs_lat_deg(itrs_lat_deg), itrs_lon_deg(itrs_lon_deg), offset_m(offset_m),
+    x_axis(x_axis), y_axis(y_axis), z_axis(z_axis),
     R_topo_to_frame(make_R_topo_to_frame(x_axis, y_axis, z_axis)),
     R_itrs_to_topo(make_R_itrs_to_topo(itrs_lat_deg, itrs_lon_deg)) {
 
@@ -47,7 +42,8 @@ GeoFrame::GeoFrame(const std::string& log_level, const std::string& name,
     }
 }
 
-mat3x3d_t GeoFrame::make_R_topo_to_frame(const vec3d_t& x_axis, const vec3d_t& y_axis, const vec3d_t& z_axis) {
+mat3x3d_t GeoFrame::make_R_topo_to_frame(const vec3d_t& x_axis, const vec3d_t& y_axis,
+                                         const vec3d_t& z_axis) {
     mat3x3d_t R;
 
     for (int j = 0; j < 3; j++) {
@@ -86,14 +82,14 @@ mat3x3d_t GeoFrame::make_R_itrs_to_topo(double lat_deg, double lon_deg) {
     return R;
 }
 
-vec3d_t vec3d_cross(const vec3d_t &a, const vec3d_t &b) {
+vec3d_t vec3d_cross(const vec3d_t& a, const vec3d_t& b) {
     vec3d_t c;
-    c[0] = a[1]*b[2] - a[2]*b[1];
-    c[1] = a[2]*b[0] - a[0]*b[2];
-    c[2] = a[0]*b[1] - a[1]*b[0];
+    c[0] = a[1] * b[2] - a[2] * b[1];
+    c[1] = a[2] * b[0] - a[0] * b[2];
+    c[2] = a[0] * b[1] - a[1] * b[0];
     return c;
 }
 
-double vec3d_dot(const vec3d_t &a, const vec3d_t &b) {
-    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+double vec3d_dot(const vec3d_t& a, const vec3d_t& b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
