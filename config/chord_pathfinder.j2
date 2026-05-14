@@ -1130,40 +1130,32 @@ rfi_second_stage_thresholds:
     valid_at_time_ns: 0
 
 n2_accumulate:
-    kotekan_stage: N2Accumulate
-    cpu_affinity: [9]
-    log_level: info
-    in_buf: host_correlation_buffer
-    in_counts_buf: host_counts_buffer
-    in_rficounts_buf: host_rfi_RFImask_counts_buffer
-    in_plcounts_buf: host_pl_counts_buffer
-    in_rfiframemask_buf: host_rfi_RFIframemask_buffer
-    out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
     variance_mode: EvenOddPosDef
-    output_batch_size: 12
-    num_workers: 1
-
-n2_accumulate_1:
-    kotekan_stage: N2Accumulate
-    cpu_affinity: [28]
-    log_level: info
-    in_buf: host_correlation_buffer_1
-    in_counts_buf: host_counts_buffer_1
-    in_rficounts_buf: host_rfi_RFImask_counts_buffer_1
-    in_plcounts_buf: host_pl_counts_buffer_1
-    in_rfiframemask_buf: host_rfi_RFIframemask_buffer_1
-    out_buf: n2_buffer_1
-    num_freq_per_n2k_frame: num_local_freq
-    packet_loss_is_scalar: True
-    num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
-    variance_mode: EvenOddPosDef
-    bin_in_ERA: false
+    bin_in_ERA: true
     do_fringestop: false
-    output_batch_size: 12
     num_workers: 1
+    accum_0:
+        kotekan_stage: N2Accumulate
+        cpu_affinity: [9]
+        in_buf: host_correlation_buffer
+        in_counts_buf: host_counts_buffer
+        in_rficounts_buf: host_rfi_RFImask_counts_buffer
+        in_plcounts_buf: host_pl_counts_buffer
+        in_rfiframemask_buf: host_rfi_RFIframemask_buffer
+        out_buf: n2_buffer
+    accum_1:
+        kotekan_stage: N2Accumulate
+        cpu_affinity: [28]
+        log_level: info
+        in_buf: host_correlation_buffer_1
+        in_counts_buf: host_counts_buffer_1
+        in_rficounts_buf: host_rfi_RFImask_counts_buffer_1
+        in_plcounts_buf: host_pl_counts_buffer_1
+        in_rfiframemask_buf: host_rfi_RFIframemask_buffer_1
+        out_buf: n2_buffer_1
 
 
 # Subset to first 12 elements (6 dishes x 2 polarizations)
