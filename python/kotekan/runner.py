@@ -907,7 +907,12 @@ class DumpN2Buffer(OutputBuffer):
     name = None
 
     def __init__(
-        self, output_dir, exit_after_n_files=0, num_elements=None, num_ev=None, num_freq=None
+        self,
+        output_dir,
+        exit_after_n_files=0,
+        num_elements=None,
+        num_ev=None,
+        num_freq=None,
     ):
 
         self.name = "dumpn2_buf%i" % self._buf_ind
