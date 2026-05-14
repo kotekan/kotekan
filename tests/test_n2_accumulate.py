@@ -6,7 +6,7 @@ from kotekan.chordbuffer import ChordBuffer
 import kotekan.telescope as tel
 
 prod_config = {
-    "buffer_depth": 12,
+    "buffer_depth": 5,
     "samples_per_data_set": 16384,
     "num_local_freq": 12,
     "sub_integration_ntime": 8192,
@@ -601,6 +601,7 @@ def accum_data(
         exit_after_n_files=(config["num_local_freq"] * len(accum_list)),
         num_elements=config["num_elements"],
         num_ev=config["num_ev"],
+        num_freq=config["num_local_freq"],
     )
 
     accum_config = {
