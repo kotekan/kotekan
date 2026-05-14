@@ -167,11 +167,11 @@ _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
 ; Location ./int.jl:86
         LOP3.LUT R4, R49.reuse, 0xfffffe83, RZ, 0xfc, !PT ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R28, R0, 0.00097465887665748596191 ;
+        FMUL R28, R0, 0.0009765625 ;
 ; Location ./int.jl:86
         LOP3.LUT R0, R49.reuse, 0xfffffe01, RZ, 0xfc, !PT ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R13, R2, 0.00097465887665748596191 ;
+        FMUL R13, R2, 0.0009765625 ;
 ; Location ./float.jl:245
         I2FP.F32.S32 R4, R4 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:18
@@ -182,11 +182,11 @@ _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
         FMUL R54, RZ, R13 ;
         FSETP.GT.AND P0, PT, |R28|, 16777216, PT ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R16, R4, 0.00097465887665748596191 ;
+        FMUL R16, R4, 0.0009765625 ;
 ; Location ./int.jl:86
         LOP3.LUT R5, R49, 0xffffff01, RZ, 0xfc, !PT ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R55, R0, 0.00097465887665748596191 ;
+        FMUL R55, R0, 0.0009765625 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:18
         FSEL R14, R3, R28, P0 ;
         FMUL R41, RZ, R16 ;
@@ -205,7 +205,7 @@ _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
         FRND R18, R8 ;
         FSETP.GT.AND P0, PT, |R13|, 16777216, PT ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R12, R3, 0.00097465887665748596191 ;
+        FMUL R12, R3, 0.0009765625 ;
 ; Location ./float.jl:245
         I2FP.F32.S32 R5, R5 ;
         FADD R30, R53, R53 ;
@@ -214,7 +214,7 @@ _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
         FMUL R43, RZ, R12.reuse ;
         FSETP.GT.AND P0, PT, |R12|, 16777216, PT ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R33, R5, 0.00097465887665748596191 ;
+        FMUL R33, R5, 0.0009765625 ;
 ; Location ./int.jl:86
         LOP3.LUT R0, R49, 0xffffff81, RZ, 0xfc, !PT ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:18
@@ -232,7 +232,7 @@ _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:18
         FSEL R41, R41, R16, P0 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R25, R0, 0.00097465887665748596191 ;
+        FMUL R25, R0, 0.0009765625 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:18
         FSETP.GT.AND P0, PT, |R33|, 16777216, PT ;
 ; Location ./float.jl:245
@@ -245,7 +245,7 @@ _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
         FADD R48, R41, R41 ;
         FSEL R44, R44, R33, P0 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R21, R2, 0.00097465887665748596191 ;
+        FMUL R21, R2, 0.0009765625 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:18
         FSETP.GT.AND P0, PT, |R25|, 16777216, PT ;
         FRND R50, R34 ;
@@ -259,7 +259,7 @@ _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
         FADD R47, R44, R44 ;
         FSEL R5, R0, R25, P0 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R22, R3, 0.00097465887665748596191 ;
+        FMUL R22, R3, 0.0009765625 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:18
         FSETP.GT.AND P0, PT, |R21|, 16777216, PT ;
         FRND R56, R40 ;
@@ -274,7 +274,7 @@ _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
 ; Location ./int.jl:86
         LOP3.LUT R0, R49, 0x101, RZ, 0xfc, !PT ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R27, R8, 0.00097465887665748596191 ;
+        FMUL R27, R8, 0.0009765625 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:18
         FSEL R4, R4, R21, P0 ;
         FRND R42, R48 ;
@@ -289,11 +289,11 @@ _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
 ; Location /home/eschnett/src/kotekan/julia/kernels/upchan.jl:1586
         SHF.R.U32.HI R2, RZ, 0x3, R11.reuse ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R26, R9, 0.00097465887665748596191 ;
+        FMUL R26, R9, 0.0009765625 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:18
         FSEL R36, R3, R22, P0 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R32, R0, 0.00097465887665748596191 ;
+        FMUL R32, R0, 0.0009765625 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:18
         FSETP.GT.AND P0, PT, |R27|, 16777216, PT ;
         FMUL R3, RZ, R26 ;
@@ -815,7 +815,7 @@ _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
 ; Location ./float.jl:621
         BSSY B0, `(.L_x_19) ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R57, R33, 0.00097465887665748596191 ;
+        FMUL R57, R33, 0.0009765625 ;
 ; Location ./fastmath.jl:169
         FMUL R37, R27, 4 ;
         FMUL R36, R26, 4 ;
@@ -1092,13 +1092,13 @@ _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
         BSYNC B0 ;
 
 .L_x_27:
-        FMUL R28, R37, 0.00097465887665748596191 ;
+        FMUL R28, R37, 0.0009765625 ;
 ; Location ./fastmath.jl:169
         FMUL R37, R32, 4 ;
         F2I.NTZ R30, R30 ;
         FFMA R58, R43, R60, -1.334560394287109375 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R29, R36, 0.00097465887665748596191 ;
+        FMUL R29, R36, 0.0009765625 ;
 ; Location ./fastmath.jl:169
         FMUL R33, R28, 4 ;
 ; Location ./float.jl:621
@@ -1319,7 +1319,7 @@ _Z9upchan1285Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi
         ISETP.NE.U32.AND P2, PT, R4, 0x1, PT ;
         ISETP.NE.U32.AND P0, PT, R50, 0x1, PT ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R49, R49, 0.00097465887665748596191 ;
+        FMUL R49, R49, 0.0009765625 ;
         LOP3.LUT R4, R40, 0x1, RZ, 0xc0, !PT ;
         F2I.NTZ R47, R47 ;
         FSEL R53, R53, R52, !P0 ;
