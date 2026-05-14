@@ -607,8 +607,8 @@ public:
             } catch (const nlohmann::json::parse_error& e) {
                 _record_upstream_fetch(entry_host, entry_port, false);
                 FATAL_ERROR_NON_OO(
-                    "ConfigTracker: failed to parse upstream-config response for hash {}: {}",
-                    hash, e.what());
+                    "ConfigTracker: failed to parse upstream-config response for hash {}: {}", hash,
+                    e.what());
             }
 
             const std::string host_port_str = entry_host + ":" + std::to_string(entry_port);
@@ -632,9 +632,8 @@ public:
             if (_jsonHashWithEndpoint(info.config, entry_host, entry_port) != hash
                 || info.json_hash != hash) {
                 _record_upstream_fetch(entry_host, entry_port, false);
-                FATAL_ERROR_NON_OO(
-                    "ConfigTracker: upstream hash mismatch for {} (expected {})", host_port_str,
-                    hash);
+                FATAL_ERROR_NON_OO("ConfigTracker: upstream hash mismatch for {} (expected {})",
+                                   host_port_str, hash);
             }
 
             _insertUpstream(entry_host, entry_port, info);
