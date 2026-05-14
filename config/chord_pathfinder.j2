@@ -66,12 +66,14 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: WARN
 
-# Referenced by /CHORDTelescope/gps_host_info and /config_tracker/fpga_host_info.
+# Referenced by /CHORDTelescope/gps_host_info, /config_tracker/fpga_host_info,
+# and per-stage baseband_gain_host_info (e.g. on hdf5N2Write).
 fpga_controller:
     host: "chive"
     port: 54321
     config_endpoint: /config
     timing_endpoint: /get-frame0-time
+    gains_endpoint: /get-current-gain-file
 
 config_tracker:
     enabled: true

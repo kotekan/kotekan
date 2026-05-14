@@ -136,8 +136,9 @@ pipelines. Commonly used config parameters include (under ``dataset_manager``):
     fpga_controller:
         host: chive.site.chord-observatory.ca
         port: 54321
-        config_endpoint: /config
-        timing_endpoint: /get-frame0-time
+        config_endpoint: /config                  # consumed by ConfigTracker
+        timing_endpoint: /get-frame0-time         # consumed by Telescope + ConfigTracker
+        gains_endpoint: /get-current-gain-file    # consumed by hdf5N2Write
 
     config_tracker:
         enabled: true                          # default; false disables the tracker globally
@@ -147,11 +148,12 @@ pipelines. Commonly used config parameters include (under ``dataset_manager``):
 
   The ``fpga_host_info`` indirection lets a pipeline define the FPGA controller address and
   endpoints once and have multiple consumers (the Config Tracker plus the Telescope's
-  ``gps_host_info``) point at it. The Telescope also picks up
-  ``timing_endpoint`` from the same block as the default for its own ``gps_endpoint``, so
-  the path isn't duplicated. Stages that support the tracker (``bufferSend``/``bufferRecv``)
-  read their per-stage ``use_config_tracker`` first; if unset, they fall back to
-  ``/config_tracker/enabled``.
+  ``gps_host_info`` and ``hdf5N2Write``'s ``baseband_gain_host_info``) point at it. The
+  Telescope picks up ``timing_endpoint`` from the same block as the default for its own
+  ``gps_endpoint``, and ``hdf5N2Write`` picks up ``gains_endpoint`` (default
+  ``/get-current-gain-file``) for the startup gains-file fetch, so paths aren't duplicated.
+  Stages that support the tracker (``bufferSend``/``bufferRecv``) read their per-stage
+  ``use_config_tracker`` first; if unset, they fall back to ``/config_tracker/enabled``.
 
   You can use the ``configTrackerWriter`` stage with:
 

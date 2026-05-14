@@ -61,12 +61,14 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: WARN
 
-# Referenced by /CHORDTelescope/gps_host_info and /config_tracker/fpga_host_info.
+# Referenced by /CHORDTelescope/gps_host_info, /config_tracker/fpga_host_info,
+# and per-stage baseband_gain_host_info (e.g. on hdf5N2Write).
 fpga_controller:
     host: "chive"
     port: 54321
     config_endpoint: /config
     timing_endpoint: /get-frame0-time
+    gains_endpoint: /get-current-gain-file
 
 config_tracker:
     enabled: true
@@ -191,7 +193,7 @@ hdf5_N2_write_subset:
     cpu_affinity: [12]
     in_buf: n2_recv_subset_buffer
     base_dir: /mnt/cs00/data/kotekan_vis_files/subset/
-    baseband_gain_url: http://chive.site.chord-observatory.ca:54321/get-current-gain-file
+    baseband_gain_host_info: /fpga_controller
     file_name: pipeline_test
     prefix_hostname: false
     use_bitshuffle: true
@@ -213,6 +215,7 @@ hdf5_N2_write_full:
     cpu_affinity: [12]
     in_buf: n2_recv_full_buffer
     base_dir: /mnt/cs00/data/kotekan_vis_files/full/
+    baseband_gain_host_info: /fpga_controller
     file_name: pipeline_test
     prefix_hostname: false
     use_bitshuffle: true
