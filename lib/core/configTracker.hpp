@@ -290,7 +290,7 @@ public:
 
     /**
      * @brief Set the retry/timeout policy used by both
-     * @c fetchAndRegisterFpgaTracking (the one-shot FPGA fetch at startup)
+     * @c fetchAndRegisterFpgaTracking (the one-time FPGA fetch at startup)
      * and @c getUpstreamConfigs (peer fetches on every wire-update flag).
      * Intended to be called once at kotekan startup from kotekanMode after
      * reading the /config_tracker block. After retries are exhausted on any
@@ -478,7 +478,7 @@ public:
      *
      * Two-step protocol against the peer at (host, port):
      *   1. GET /config_tracker_local. The returned ConfigInfo is the peer's
-     *      own local config; this node re-keys it under (host, port) (the
+     *      own local config; this node keys it under (host, port) (the
      *      address it actually dialed) and stores it as an upstream entry.
      *   2. GET /config_tracker_upstream_hashes. For each hash not already
      *      present locally, GET /config_tracker_upstream_configs?hash=<...>
@@ -487,13 +487,13 @@ public:
      *      upstream entries and ride along on this same path.
      *
      * Any network/parse failure (after the configured HTTP retries) or
-     * any content-validation failure is fatal. The wire flag is one-shot
-     * per sender-side hash change, so a silently-skipped fetch would leave
-     * downstream state permanently stale.
+     * any content-validation failure is fatal. The flag used by buffer send/recv
+     * is sent once per sender-side hash change, so a silently-skipped update
+     * will leave downstream state permanently stale.
      */
     void getUpstreamConfigs(const std::string& host, uint16_t port) {
-        // Snapshot the fetch policy under the lock; we'll use it for all
-        // three peer fetches in this invocation.
+        // Snapshot the fetch policy under the lock; it is used for all
+        // fetches in this method.
         int retries;
         int timeout_seconds;
         {
@@ -502,7 +502,7 @@ public:
             timeout_seconds = _upstream_fetch_timeout_seconds;
         }
 
-        // Step 1: GET /config_tracker_local from the peer; re-key under the
+        // Step 1: GET /config_tracker_local from the peer and key under the
         // dialed (host, port) and store as an upstream entry.
         {
             restClient::restReply reply = restClient::instance().make_request_blocking(
@@ -520,7 +520,7 @@ public:
                 local_json = nlohmann::json::parse(reply.second);
             } catch (const nlohmann::json::parse_error& e) {
                 _record_upstream_fetch(host, port, false);
-                DEBUG2_NON_OO("Response was: {}", reply.second);
+                DEBUG_NON_OO("Response was: {}", reply.second);
                 FATAL_ERROR_NON_OO(
                     "ConfigTracker: failed to parse /config_tracker_local response from {}:{}: {}",
                     host, port, e.what());
@@ -536,7 +536,7 @@ public:
                     port, e.what());
             }
 
-            // Re-key under the dialed (host, port) and re-hash accordingly.
+            // Key under (host, port) and re-hash accordingly.
             nlohmann::json filtered = _strip_update_endpoints(peer_local.config);
             peer_local.config = filtered;
             peer_local.json_hash = _jsonHashWithEndpoint(filtered, host, port);
@@ -548,96 +548,100 @@ public:
         // Step 2: GET /config_tracker_upstream_hashes; for each missing hash
         // pull /config_tracker_upstream_configs?hash=<...> and insert.
         // Entries (including FPGA snapshots) carry their own (host, port)
-        // identity from the peer; we trust that transitively.
-        restClient::restReply reply = restClient::instance().make_request_blocking(
-            "/config_tracker_upstream_hashes", {}, host, port, retries, timeout_seconds);
-        if (!reply.first) {
-            _record_upstream_fetch(host, port, false);
-            FATAL_ERROR_NON_OO(
-                "ConfigTracker: failed to GET /config_tracker_upstream_hashes from {}:{} after "
-                "{} retries",
-                host, port, retries);
-        }
-
-        nlohmann::json hashes_json;
-        try {
-            hashes_json = nlohmann::json::parse(reply.second);
-        } catch (const nlohmann::json::parse_error& e) {
-            _record_upstream_fetch(host, port, false);
-            DEBUG2_NON_OO("Response was: {}", reply.second);
-            FATAL_ERROR_NON_OO("ConfigTracker: failed to parse /config_tracker_upstream_hashes "
-                               "response from {}:{}: {}",
-                               host, port, e.what());
-        }
-        _record_upstream_fetch(host, port, true);
-
-        for (const auto& item : hashes_json.items()) {
-            const std::string& hash = item.key();
-            const nlohmann::json& host_port_json = item.value();
-            std::string entry_host = host_port_json.value("host", host);
-            uint16_t entry_port = host_port_json.value("port", port);
-
-            {
-                std::lock_guard<std::mutex> lock(_lock);
-                auto it = _upstream_config_hashes.find(hash);
-                if (it != _upstream_config_hashes.end()) {
-                    if (it->second.host == entry_host && it->second.port == entry_port)
-                        continue;
-                    FATAL_ERROR_NON_OO(
-                        "ConfigTracker: upstream hash {} already known for {}:{}, but peer {}:{} "
-                        "reports it as {}:{}",
-                        hash, it->second.host, it->second.port, host, port, entry_host, entry_port);
-                }
-            }
-
-            const std::string path = std::string("/config_tracker_upstream_configs?hash=") + hash;
-            restClient::restReply entry_reply = restClient::instance().make_request_blocking(
-                path, {}, host, port, retries, timeout_seconds);
-            if (!entry_reply.first) {
-                _record_upstream_fetch(entry_host, entry_port, false);
+        // identity from the peer, which is trusted transitively.
+        {
+            restClient::restReply reply = restClient::instance().make_request_blocking(
+                "/config_tracker_upstream_hashes", {}, host, port, retries, timeout_seconds);
+            if (!reply.first) {
+                _record_upstream_fetch(host, port, false);
                 FATAL_ERROR_NON_OO(
-                    "ConfigTracker: failed to GET /config_tracker_upstream_configs for hash {} "
-                    "from peer {}:{} after {} retries",
-                    hash, host, port, retries);
+                    "ConfigTracker: failed to GET /config_tracker_upstream_hashes from {}:{} after "
+                    "{} retries",
+                    host, port, retries);
             }
 
-            nlohmann::json response;
+            nlohmann::json hashes_json;
             try {
-                response = nlohmann::json::parse(entry_reply.second);
+                hashes_json = nlohmann::json::parse(reply.second);
             } catch (const nlohmann::json::parse_error& e) {
-                _record_upstream_fetch(entry_host, entry_port, false);
-                FATAL_ERROR_NON_OO(
-                    "ConfigTracker: failed to parse upstream-config response for hash {}: {}", hash,
-                    e.what());
+                _record_upstream_fetch(host, port, false);
+                DEBUG_NON_OO("Response was: {}", reply.second);
+                FATAL_ERROR_NON_OO("ConfigTracker: failed to parse /config_tracker_upstream_hashes "
+                                   "response from {}:{}: {}",
+                                   host, port, e.what());
             }
+            _record_upstream_fetch(host, port, true);
 
-            const std::string host_port_str = entry_host + ":" + std::to_string(entry_port);
-            if (!response.contains(host_port_str)) {
-                _record_upstream_fetch(entry_host, entry_port, false);
-                FATAL_ERROR_NON_OO(
-                    "ConfigTracker: peer {}:{} did not return upstream entry for {} (hash {})",
-                    host, port, host_port_str, hash);
+            for (const auto& item : hashes_json.items()) {
+                const std::string& hash = item.key();
+                const nlohmann::json& host_port_json = item.value();
+                std::string entry_host = host_port_json.value("host", host);
+                uint16_t entry_port = host_port_json.value("port", port);
+
+                {
+                    std::lock_guard<std::mutex> lock(_lock);
+                    auto it = _upstream_config_hashes.find(hash);
+                    if (it != _upstream_config_hashes.end()) {
+                        if (it->second.host == entry_host && it->second.port == entry_port)
+                            continue;
+                        FATAL_ERROR_NON_OO("ConfigTracker: upstream hash {} already known for "
+                                           "{}:{}, but peer {}:{} "
+                                           "reports it as {}:{}",
+                                           hash, it->second.host, it->second.port, host, port,
+                                           entry_host, entry_port);
+                    }
+                }
+
+                const std::string path =
+                    std::string("/config_tracker_upstream_configs?hash=") + hash;
+                restClient::restReply entry_reply = restClient::instance().make_request_blocking(
+                    path, {}, host, port, retries, timeout_seconds);
+                if (!entry_reply.first) {
+                    _record_upstream_fetch(entry_host, entry_port, false);
+                    FATAL_ERROR_NON_OO(
+                        "ConfigTracker: failed to GET /config_tracker_upstream_configs for hash {} "
+                        "from peer {}:{} after {} retries",
+                        hash, host, port, retries);
+                }
+
+                nlohmann::json response;
+                try {
+                    response = nlohmann::json::parse(entry_reply.second);
+                } catch (const nlohmann::json::parse_error& e) {
+                    _record_upstream_fetch(entry_host, entry_port, false);
+                    FATAL_ERROR_NON_OO(
+                        "ConfigTracker: failed to parse upstream-config response for hash {}: {}",
+                        hash, e.what());
+                }
+
+                const std::string host_port_str = entry_host + ":" + std::to_string(entry_port);
+                if (!response.contains(host_port_str)) {
+                    _record_upstream_fetch(entry_host, entry_port, false);
+                    FATAL_ERROR_NON_OO(
+                        "ConfigTracker: peer {}:{} did not return upstream entry for {} (hash {})",
+                        host, port, host_port_str, hash);
+                }
+
+                ConfigInfo info;
+                try {
+                    info = ConfigInfo(response[host_port_str]);
+                } catch (const std::exception& e) {
+                    _record_upstream_fetch(entry_host, entry_port, false);
+                    FATAL_ERROR_NON_OO(
+                        "ConfigTracker: malformed upstream-config payload for {} (hash {}): {}",
+                        host_port_str, hash, e.what());
+                }
+
+                if (_jsonHashWithEndpoint(info.config, entry_host, entry_port) != hash
+                    || info.json_hash != hash) {
+                    _record_upstream_fetch(entry_host, entry_port, false);
+                    FATAL_ERROR_NON_OO("ConfigTracker: upstream hash mismatch for {} (expected {})",
+                                       host_port_str, hash);
+                }
+
+                _insertUpstream(entry_host, entry_port, info);
+                _record_upstream_fetch(entry_host, entry_port, true);
             }
-
-            ConfigInfo info;
-            try {
-                info = ConfigInfo(response[host_port_str]);
-            } catch (const std::exception& e) {
-                _record_upstream_fetch(entry_host, entry_port, false);
-                FATAL_ERROR_NON_OO(
-                    "ConfigTracker: malformed upstream-config payload for {} (hash {}): {}",
-                    host_port_str, hash, e.what());
-            }
-
-            if (_jsonHashWithEndpoint(info.config, entry_host, entry_port) != hash
-                || info.json_hash != hash) {
-                _record_upstream_fetch(entry_host, entry_port, false);
-                FATAL_ERROR_NON_OO("ConfigTracker: upstream hash mismatch for {} (expected {})",
-                                   host_port_str, hash);
-            }
-
-            _insertUpstream(entry_host, entry_port, info);
-            _record_upstream_fetch(entry_host, entry_port, true);
         }
 
         std::lock_guard<std::mutex> lock(_lock);
