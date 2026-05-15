@@ -265,10 +265,8 @@ public:
                                     FATAL_ERROR("Found non-finite offset {}", offset);
 
                                 // Check relative error of offset
-                                bool offset_is_good =
-                                    fabs(offset - expected_offset)
-                                    <= epsilon
-                                           * fmax(1.0f, fmax(fabs(offset), fabs(expected_offset)));
+                                bool offset_is_good = fabs(offset - expected_offset)
+                                                      <= epsilon * fabs(expected_offset);
                                 // If we think an overflow is allowed, and if the other
                                 // implementation might have detected one (offset=0), then
                                 // all is fine as well
@@ -286,8 +284,9 @@ public:
                                         scale_may_collapse);
                                 }
 
-                                // Check absolute error of scale
-                                bool scale_is_good = fabs(scale - expected_scale) <= epsilon;
+                                // Check relative error of scale
+                                bool scale_is_good =
+                                    fabs(scale - expected_scale) <= epsilon * fabs(expected_scale);
                                 // If the scale is close to zero then don't worry about the
                                 // scale at all
                                 if (scale_may_collapse)
