@@ -62,8 +62,8 @@ void TestCHORDTelescope::main_thread() {
         INFO("CHORD Tel - GPS enabled: {:d}", tel.gps_time_enabled());
         INFO("            time0:       {:d} s + {:d} ns", t0.tv_sec, t0.tv_nsec);
 
-        double lat = tel.get_origin_itrs_lat_deg();
-        double lon = tel.get_origin_itrs_lon_deg();
+        double lat = tel.get_itrs_lat_deg();
+        double lon = tel.get_itrs_lon_deg();
         INFO("            lat:         {:f} deg", lat);
         INFO("            lon:         {:f} deg", lon);
         INFO("            Telescope Orientation: {0:.6f} {1:.6f} {2:.6f}",

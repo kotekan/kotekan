@@ -28,7 +28,7 @@ static constexpr BareEOP dummy_bare_eop_last = {.t_inst_ns = std::numeric_limits
 Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
                      const std::string& eop_updatable_config_path,
                      const GeoFrame &frame) :
-    frame(frame), _unique_name(tel_path), _require_eop(require_eop) {
+    _unique_name(tel_path), _frame(frame), _require_eop(require_eop) {
     set_log_level(log_level);
     set_log_prefix("/telescope");
 
@@ -356,4 +356,25 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1_ns) const {
 
 
     return eop;
+}
+
+double Telescope::get_itrs_lon_deg() const {
+    return _frame.get_itrs_lon_deg();
+}
+
+double Telescope::get_itrs_lat_deg() const {
+    return _frame.get_itrs_lat_deg();
+}
+
+
+double Telescope::get_ERAL_deg(EOP& eop) const {
+    double era = eop.ERA_deg;
+    double lon = _frame.get_itrs_lon_deg();
+    double eral = era + lon; // Ignore TIO locator s', it is only ~12 micro arcseconds.
+
+    // Reset eral to [0, 360)
+    double n_off = std::floor(eral / 360.0);
+    eral -= n_off * 360;
+
+    return eral;
 }

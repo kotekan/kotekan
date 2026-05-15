@@ -257,8 +257,10 @@ def get_local_ERA_at_t_inst_ns(t_ns, tel_config, use_eop):
     if not use_eop:
         t.delta_ut1_utc = 0.0
 
+    lon_deg = tel_config["origin_itrs_lon_deg"] if "origin_itrs_lon_deg" in tel_config else tel_config["inst_long"]
+
     return t.earth_rotation_angle(
-        tel_config["origin_itrs_lon_deg"] * units.deg
+        lon_deg * units.deg
     ).to_value("deg")
 
 

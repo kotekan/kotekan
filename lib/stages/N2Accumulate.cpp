@@ -852,11 +852,14 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         ERAL_deg_start = _tel.cast<CHORDTelescope>().get_ERAL_deg(eop_bin_start);
         ERAL_deg_end = _tel.cast<CHORDTelescope>().get_ERAL_deg(eop_bin_end);
     } else {
-        ERA_deg_start = _tel.get_EOP_at_time(_tel.to_time(_accum_fpga_start_tick)).ERA_deg;
-        ERA_deg_end =
-            _tel.get_EOP_at_time(_tel.to_time(_accum_fpga_start_tick + ticks_in_accum)).ERA_deg;
-        ERAL_deg_start = -1; // TODO: update
-        ERAL_deg_end = -1;   // TODO: update
+        // If not ERA, binning is simply the beginning of the first frame to end of the last.
+        EOP eop_start = _tel.get_EOP_at_time(_tel.to_time(_accum_fpga_start_tick));
+        EOP eop_end = _tel.get_EOP_at_time(_tel.to_time(_accum_fpga_start_tick + ticks_in_accum));
+
+        ERA_deg_start = eop_start.ERA_deg;
+        ERA_deg_end = eop_end.ERA_deg;
+        ERAL_deg_start = _tel.get_ERAL_deg(eop_start);
+        ERAL_deg_end = _tel.get_ERAL_deg(eop_end);
     }
 
     int64_t accum_start_time_ns = _tel.to_time_ns(_accum_fpga_start_tick);
@@ -950,8 +953,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
         meta->bin_start_ERA_deg = ERA_deg_start;
         meta->bin_end_ERA_deg = ERA_deg_end;
-        meta->bin_start_ERAL_deg = ERAL_deg_start; // TODO: update
-        meta->bin_end_ERAL_deg = ERAL_deg_end;     // TODO: update
+        meta->bin_start_ERAL_deg = ERAL_deg_start;
+        meta->bin_end_ERAL_deg = ERAL_deg_end;
 
         meta->fpga_start_tick = _accum_fpga_start_tick;
         meta->frame_start_time_ns = accum_start_time_ns;
