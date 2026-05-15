@@ -4,6 +4,8 @@
 
 #include "fmt.hpp"
 
+#include <iostream>
+
 static constexpr double deg2rad = M_PI / 180.0;
 
 GeoFrame::GeoFrame(const std::string& log_level, const std::string& name, double itrs_lat_deg,
@@ -16,8 +18,6 @@ GeoFrame::GeoFrame(const std::string& log_level, const std::string& name, double
 
     set_log_level(log_level);
     set_log_prefix(fmt::format("GeoFrame[{:s}]", name));
-
-    WARN("I'm here!");
 
     const double tol = 1.0e-14;
 
@@ -37,9 +37,68 @@ GeoFrame::GeoFrame(const std::string& log_level, const std::string& name, double
         FATAL_ERROR("x & z axes are not orthogonal, dot product: {}", vec3d_dot(x_axis, z_axis));
     }
     if (std::abs(vec3d_dot(y_axis, z_axis)) > tol) {
-
         FATAL_ERROR("y & z axes are not orthogonal, dot product: {}", vec3d_dot(y_axis, z_axis));
     }
+}
+
+std::string GeoFrame::get_name() const {
+    return name;
+}
+
+double GeoFrame::get_itrs_lat_deg() const {
+    return itrs_lat_deg;
+}
+
+double GeoFrame::get_itrs_lon_deg() const {
+    return itrs_lon_deg;
+}
+
+vec3d_t GeoFrame::get_x_axis() const {
+    return x_axis;
+}
+
+vec3d_t GeoFrame::get_y_axis() const {
+    return y_axis;
+}
+
+vec3d_t GeoFrame::get_z_axis() const {
+    return z_axis;
+}
+
+mat3x3d_t GeoFrame::get_R_topo_to_frame() const {
+    return R_topo_to_frame;
+}
+
+mat3x3d_t GeoFrame::get_R_itrs_to_topo() const {
+    return R_itrs_to_topo;
+}
+
+vec3d_t GeoFrame::vec_itrs_to_topo(const vec3d_t& v_itrs) const {
+    return mat3x3d_vecmul(R_itrs_to_topo, v_itrs);
+}
+
+vec3d_t GeoFrame::vec_topo_to_itrs(const vec3d_t& v_topo) const {
+    return mat3x3d_vecmul_transpose(R_itrs_to_topo, v_topo);
+}
+
+vec3d_t GeoFrame::vec_topo_to_frame(const vec3d_t& v_topo) const {
+    return mat3x3d_vecmul(R_topo_to_frame, v_topo);
+}
+
+vec3d_t GeoFrame::vec_frame_to_topo(const vec3d_t& v_frame) const {
+    return mat3x3d_vecmul_transpose(R_topo_to_frame, v_frame);
+}
+
+vec3d_t GeoFrame::vec_itrs_to_frame(const vec3d_t& v_itrs) const {
+    vec3d_t v_topo = vec_itrs_to_topo(v_itrs);
+    vec3d_t v_frame = vec_topo_to_frame(v_topo);
+    return v_frame;
+}
+
+vec3d_t GeoFrame::vec_frame_to_itrs(const vec3d_t& v_frame) const {
+    vec3d_t v_topo = vec_frame_to_topo(v_frame);
+    vec3d_t v_itrs = vec_topo_to_itrs(v_topo);
+    return v_itrs;
 }
 
 mat3x3d_t GeoFrame::make_R_topo_to_frame(const vec3d_t& x_axis, const vec3d_t& y_axis,
@@ -92,4 +151,24 @@ vec3d_t vec3d_cross(const vec3d_t& a, const vec3d_t& b) {
 
 double vec3d_dot(const vec3d_t& a, const vec3d_t& b) {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+vec3d_t mat3x3d_vecmul(const mat3x3d_t A, const vec3d_t& x) {
+    vec3d_t y = {0, 0, 0};
+
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 3; j++)
+            y[i] += A[i][j] * x[j];
+
+    return y;
+}
+
+vec3d_t mat3x3d_vecmul_transpose(const mat3x3d_t A, const vec3d_t& x) {
+    vec3d_t y = {0, 0, 0};
+
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 3; j++)
+            y[i] += A[j][i] * x[j];
+
+    return y;
 }
