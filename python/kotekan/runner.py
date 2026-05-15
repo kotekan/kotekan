@@ -1002,14 +1002,15 @@ class DumpN2Buffer(OutputBuffer):
 
         # If num_freq is given, size the buffer to hold one full accumulation
         # cycle (one frame per frequency) so the producer never stalls.
-        num_frames = num_freq if num_freq is not None else "buffer_depth"
+
+        num_freq_in_buffer = num_freq if num_freq is not None else 1
 
         self.buffer_block = {
             self.name: {
                 "kotekan_buffer": "N2",
                 "n2_layout": "FullUpperTri",
                 "metadata_pool": "N2_pool",
-                "num_frames": num_frames,
+                "num_frames": "buffer_depth * {:d}".format(num_freq_in_buffer),
             }
         }
 
