@@ -136,7 +136,7 @@ _Z7upchan45Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location ./int.jl:86
         LOP3.LUT R0, R15, 0xfffffff1, RZ, 0xfc, !PT ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R7, R3, 0.029411764815449714661 ;
+        FMUL R7, R3, 0.03125 ;
 ; Location ./int.jl:86
         LOP3.LUT R2, R15, 0xfffffff5, RZ, 0xfc, !PT ;
 ; Location ./float.jl:245
@@ -146,11 +146,11 @@ _Z7upchan45Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location ./float.jl:245
         I2FP.F32.S32 R2, R2 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R6, R0, 0.029411764815449714661 ;
+        FMUL R6, R0, 0.03125 ;
 ; Location ./float.jl:621
         FSETP.NEU.AND P0, PT, R3, RZ, PT ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R9, R2, 0.029411764815449714661 ;
+        FMUL R9, R2, 0.03125 ;
 ; Location ./fastmath.jl:169
         FMUL R17, R6, 4 ;
         FMUL R21, R9, 4 ;
@@ -307,7 +307,7 @@ _Z7upchan45Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
         BSYNC B0 ;
 
 .L_x_9:
-        FMUL R4, R20, 0.029411764815449714661 ;
+        FMUL R4, R20, 0.03125 ;
 ; Location ./int.jl:86
         LOP3.LUT R3, R28, 0xd, RZ, 0xfc, !PT ;
 ; Location ./float.jl:621
@@ -327,17 +327,17 @@ _Z7upchan45Int32S_S_S_S_S_13CuDeviceArrayI9Float16x2Li1ELi1EES0_I6Int4x8Li1ELi1E
 ; Location ./float.jl:245
         I2FP.F32.S32 R10, R3 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R3, R21, 0.029411764815449714661 ;
+        FMUL R3, R21, 0.03125 ;
 ; Location ./float.jl:245
         I2FP.F32.S32 R0, R0 ;
         I2FP.F32.S32 R2, R2 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R10, R10, 0.029411764815449714661 ;
+        FMUL R10, R10, 0.03125 ;
 ; Location ./fastmath.jl:169
         FMUL R25, R3, 4 ;
 ; Location /home/eschnett/.julia/packages/CUDA/bjncr/src/device/intrinsics/math.jl:395
-        FMUL R5, R0, 0.029411764815449714661 ;
-        FMUL R8, R2, 0.029411764815449714661 ;
+        FMUL R5, R0, 0.03125 ;
+        FMUL R8, R2, 0.03125 ;
 ; Location ./fastmath.jl:169
         FMUL R24, R10, 4 ;
         FMUL R20, R5, 4 ;
