@@ -12,6 +12,7 @@
 
 #include "Config.hpp"     // for Config
 #include "Telescope.hpp"  // for freq_id_t, nyquist_zone_t, Telescope, stream_t
+#include "geoUtil.hpp"    // for GeoFrame
 #include "timeUtil.hpp"   // for EOP
 #include "json.hpp"       // for json
 
@@ -43,7 +44,7 @@ void from_json(const nlohmann::json& j, DishType& t);
  * increases east
  * @param   grid_y_idx          dish_index_t Grid location N/S (y) index. 0 = southmost row,
  * increases north
- * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid
+ * @param   feed_pos_disp_m      vec3d_t   Feed position displacement from grid
  * location, meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.
  * actual_pos = grid_pos + disp
  * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
@@ -55,7 +56,7 @@ struct dishInfo {
     dish_index_t idx;
     dish_index_t grid_x_idx;
     dish_index_t grid_y_idx;
-    std::array<double, 3> feed_pos_disp_m;
+    vec3d_t feed_pos_disp_m;
     double coelev_disp_deg;
     DishType type;
     std::string label;
@@ -78,7 +79,7 @@ struct dishInfo {
      * @brief   Constructor for dishInfo with all fields.
      */
     dishInfo(dish_index_t idx, dish_index_t grid_x_idx, dish_index_t grid_y_idx,
-             const std::array<double, 3>& feed_pos_disp_m, double coelev_disp_deg, DishType type,
+             const vec3d_t& feed_pos_disp_m, double coelev_disp_deg, DishType type,
              const std::string& label) :
         idx(idx), grid_x_idx(grid_x_idx), grid_y_idx(grid_y_idx), feed_pos_disp_m(feed_pos_disp_m),
         coelev_disp_deg(coelev_disp_deg), type(type), label(label) {}
@@ -106,7 +107,7 @@ void from_json(const nlohmann::json& j, dishInfo& d);
  * increases east
  * @param   grid_y_idx          dish_index_t Grid location N/S (y) index. 0 = southmost row,
  * increases north
- * @param   feed_pos_disp_m      std::array<double, 3>   Feed position displacement from grid
+ * @param   feed_pos_disp_m      vec3d_t   Feed position displacement from grid
  * location, meters, Telescope coordinates: X = dish E/W separation, Y = dish N/S separation.
  * actual_pos = grid_pos + disp
  * @param   coelev_disp_deg double  Co-elevation displacement from target, in degrees.
@@ -117,7 +118,7 @@ void from_json(const nlohmann::json& j, dishInfo& d);
 struct dishInputFields {
     std::vector<dish_index_t> grid_x_idx;
     std::vector<dish_index_t> grid_y_idx;
-    std::vector<std::array<double, 3>> feed_pos_disp_m;
+    std::vector<vec3d_t> feed_pos_disp_m;
     std::vector<double> coelev_disp_deg;
     std::vector<DishType> type;
     std::vector<std::string> label;
@@ -202,24 +203,8 @@ public:
  * from configuration parameters using the from_config() static method.
  **/
 struct GeographicParams {
-    /// Instument geographic coordinates in degrees.
-    double origin_itrs_lon_deg = 0.0;
-    double origin_itrs_lat_deg = 0.0;
-
-    /// Matrix to transform from local topocentric coordinates to the
-    /// grid (ie. dish position) coordinate system.
-    double R_topo_to_grid[3][3] = {};
-
     /// Dish pointing angle.  Measured in degrees from vertical.
     double dish_coelev_deg = 0.0;
-
-    /// Matrix to transform from local topocentric coordinates to the
-    /// dish (ie. z is dish zenith, x is elevation axis) coordinate system.
-    double R_topo_to_dish[3][3] = {};
-
-    /// Matrix to transform vectors from ITRS geocentric coordinates (ECEF) to
-    /// local topocentric coordinates
-    double R_itrs_to_topo[3][3] = {};
 
     /// Total number of dishes in the telescope, each provides 2 polarizations,
     /// so num_elements = 2 * num_dishes.
@@ -232,7 +217,7 @@ struct GeographicParams {
     double dish_separation_y_m = 0.0;
 
     /// Dish positions in dish coordinate system.
-    std::vector<std::array<double, 3>> dish_positions;
+    std::vector<vec3d_t> dish_positions;
 
     /// Full dish info table (Fake + real dishes), used to build dish_positions.
     std::vector<dishInfo> dish_info_table;
@@ -549,7 +534,7 @@ public:
      *
      * @param   i   Dish index, int, 0 <= i < num_dishes
      **/
-    std::array<double, 3> get_dish_position_in_grid_coords(int i) const;
+    vec3d_t get_dish_position_in_grid_coords(int i) const;
 
     /**
      * @brief   Return the number of dishes.
@@ -577,56 +562,56 @@ public:
      * @param   dec Target Declination in CIRS frame.
      * @param   eop EOP for the time of observation.
      **/
-    std::array<double, 3> get_sky_vec_in_grid_coords(double ra, double dec, const EOP& eop) const;
+    vec3d_t get_sky_vec_in_grid_coords(double ra, double dec, const EOP& eop) const;
 
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the
      *          phase center), in Dish coordinates (x is elevation axis (~East),
      *          y is ~North, z is co-elevation = 0 deg (~up).
      **/
-    std::array<double, 3> get_pointing_vec_in_dish_coords() const;
+    vec3d_t get_pointing_vec_in_dish_coords() const;
 
     /**
      * @brief   Transform the given vector from topocentric to dish coords.
      *
      * @param   v_topo  Vector in topocentric coordinates.
      **/
-    std::array<double, 3> vec_topocen_to_dish(const std::array<double, 3>& v_topo) const;
+    vec3d_t vec_topocen_to_dish(const vec3d_t& v_topo) const;
 
     /**
      * @brief   Transform the given vector from Dish to Topocentric coords.
      *
      * @param   v_topo  Vector in dish coordinates.
      **/
-    std::array<double, 3> vec_dish_to_topocen(const std::array<double, 3>& v_dish) const;
+    vec3d_t vec_dish_to_topocen(const vec3d_t& v_dish) const;
 
     /**
      * @brief   Transform the given vector from topocentric to grid coords.
      *
      * @param   v_topo  Vector in topocentric coordinates.
      **/
-    std::array<double, 3> vec_topocen_to_grid(const std::array<double, 3>& v_topo) const;
+    vec3d_t vec_topocen_to_grid(const vec3d_t& v_topo) const;
 
     /**
      * @brief   Transform the given vector from grid to topocentric coords.
      *
      * @param   v_grid  Vector in grid coordinates.
      **/
-    std::array<double, 3> vec_grid_to_topocen(const std::array<double, 3>& v_grid) const;
+    vec3d_t vec_grid_to_topocen(const vec3d_t& v_grid) const;
 
     /**
      * @brief   Transform the given vector from ITRS to topocentric coords.
      *
      * @param   v_topo  Vector in ITRS coordinates.
      **/
-    std::array<double, 3> vec_itrs_to_topocen(const std::array<double, 3>& v_itrs) const;
+    vec3d_t vec_itrs_to_topocen(const vec3d_t& v_itrs) const;
 
     /**
      * @brief   Transform the given vector from topocentric to ITRS coords.
      *
      * @param   v_topo  Vector in topocentric coordinates.
      **/
-    std::array<double, 3> vec_topocen_to_itrs(const std::array<double, 3>& v_topo) const;
+    vec3d_t vec_topocen_to_itrs(const vec3d_t& v_topo) const;
 
     /**
      * @brief   Transform the given vector from CIRS to ITRS coords.
@@ -634,7 +619,7 @@ public:
      * @param   v_topo  Vector in CIRS coordinates.
      * @param   eop     EOP for time of transformation.
      **/
-    std::array<double, 3> vec_cirs_to_itrs(const std::array<double, 3>& v_cirs,
+    vec3d_t vec_cirs_to_itrs(const vec3d_t& v_cirs,
                                            const EOP& eop) const;
 
     /**
@@ -643,7 +628,7 @@ public:
      * @param   v_topo  Vector in ITRS coordinates.
      * @param   eop     EOP for time of transformation.
      **/
-    std::array<double, 3> vec_itrs_to_cirs(const std::array<double, 3>& v_itrs,
+    vec3d_t vec_itrs_to_cirs(const vec3d_t& v_itrs,
                                            const EOP& eop) const;
 
     /**
@@ -653,7 +638,7 @@ public:
      * @param   v       Input vector
      * @param   theta   Angle basis is rotated by, in radians.
      **/
-    std::array<double, 3> vec_axes_rotation_R1(const std::array<double, 3>& v, double theta) const;
+    vec3d_t vec_axes_rotation_R1(const vec3d_t& v, double theta) const;
 
     /**
      * @brief   Transform the given vector to a frame where the basis has
@@ -662,7 +647,7 @@ public:
      * @param   v       Input vector
      * @param   theta   Angle basis is rotated by, in radians.
      **/
-    std::array<double, 3> vec_axes_rotation_R2(const std::array<double, 3>& v, double theta) const;
+    vec3d_t vec_axes_rotation_R2(const vec3d_t& v, double theta) const;
 
     /**
      * @brief   Transform the given vector to a frame where the basis has
@@ -671,7 +656,7 @@ public:
      * @param   v       Input vector
      * @param   theta   Angle basis is rotated by, in radians.
      **/
-    std::array<double, 3> vec_axes_rotation_R3(const std::array<double, 3>& v, double theta) const;
+    vec3d_t vec_axes_rotation_R3(const vec3d_t& v, double theta) const;
 
     /**
      * @brief   Compute the fringestopping phases for each dish.
@@ -795,6 +780,10 @@ public:
     ~CHORDTelescope();
 
 protected:
+
+    static GeoFrame grid_frame_from_config(const kotekan::Config& config, const std::string& path);
+    static GeoFrame dish_frame_from_config(const kotekan::Config& config, const std::string& path);
+
     // Frequency parameters
     const FreqParams _freq_params;
 
@@ -803,6 +792,9 @@ protected:
 
     /// Dish / array geometry and coordinate transforms.
     const GeographicParams _geographic_params;
+
+    const GeoFrame _grid_frame;
+    const GeoFrame _dish_frame;
 };
 
 #endif // CHORD_TELESCOPE_HPP

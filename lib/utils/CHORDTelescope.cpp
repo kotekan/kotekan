@@ -44,51 +44,9 @@ GeographicParams GeographicParams::from_config(const kotekan::Config& config,
     GeographicParams dish;
 
     // Instrument geographic coordinates
-    dish.origin_itrs_lon_deg = config.get_default<double>(path, "origin_itrs_lon_deg", 0.0);
-    dish.origin_itrs_lat_deg = config.get_default<double>(path, "origin_itrs_lat_deg", 0.0);
     dish.dish_coelev_deg = config.get_default<double>(path, "dish_coelev_deg", 0.0);
     dish.dish_separation_x_m = config.get_default<double>(path, "dish_separation_x_m", 6.3);
     dish.dish_separation_y_m = config.get_default<double>(path, "dish_separation_y_m", 8.5);
-
-    // Read in the Telescope Coord axes. Must be normalized and orthogonal.
-    std::array<double, 3> sep_x =
-        config.get_default<std::array<double, 3>>(path, "grid_x_axis", {1.0, 0.0, 0.0});
-    std::array<double, 3> sep_y =
-        config.get_default<std::array<double, 3>>(path, "grid_y_axis", {0.0, 1.0, 0.0});
-    // Compute the Z axis as X x Y
-    std::array<double, 3> sep_z = {
-        sep_x[1] * sep_y[2] - sep_x[2] * sep_y[1],
-        sep_x[2] * sep_y[0] - sep_x[0] * sep_y[2],
-        sep_x[0] * sep_y[1] - sep_x[1] * sep_y[0],
-    };
-
-    // Construct the topocentric -> grid rotation matrix.
-    // We assume the inverse is the transpose.
-    for (int i = 0; i < 3; i++) {
-        dish.R_topo_to_grid[0][i] = sep_x[i];
-        dish.R_topo_to_grid[1][i] = sep_y[i];
-        dish.R_topo_to_grid[2][i] = sep_z[i];
-    }
-
-    // Read in the Dish Coord axes. Must be normalized and orthogonal.
-    std::array<double, 3> dish_x =
-        config.get_default<std::array<double, 3>>(path, "dish_elev_axis", {1.0, 0.0, 0.0});
-    std::array<double, 3> dish_z =
-        config.get_default<std::array<double, 3>>(path, "dish_vert_axis", {0.0, 0.0, 1.0});
-    // Compute the Y axis as Z x X
-    std::array<double, 3> dish_y = {
-        dish_z[1] * dish_x[2] - dish_z[2] * dish_x[1],
-        dish_z[2] * dish_x[0] - dish_z[0] * dish_x[2],
-        dish_z[0] * dish_x[1] - dish_z[1] * dish_x[0],
-    };
-
-    // Construct the topocentric -> dish rotation matrix.
-    // We assume the inverse is the transpose.
-    for (int i = 0; i < 3; i++) {
-        dish.R_topo_to_dish[0][i] = dish_x[i];
-        dish.R_topo_to_dish[1][i] = dish_y[i];
-        dish.R_topo_to_dish[2][i] = dish_z[i];
-    }
 
     // Whether to check for duplicate dish grid locations
     dish.check_duplicate_dish_grid =
@@ -96,26 +54,6 @@ GeographicParams GeographicParams::from_config(const kotekan::Config& config,
 
     // Set all dish input data: num_dishes, dish_info_table, dish_position, ...
     dish.set_dish_info(config, path);
-
-    double cos_lon = cos(deg2rad * dish.origin_itrs_lon_deg);
-    double sin_lon = sin(deg2rad * dish.origin_itrs_lon_deg);
-    double cos_lat = cos(deg2rad * dish.origin_itrs_lat_deg);
-    double sin_lat = sin(deg2rad * dish.origin_itrs_lat_deg);
-
-    // Topocentric X (East) in ITRS (Earth-centered, Earth-fixed) coords
-    dish.R_itrs_to_topo[0][0] = -sin_lon;
-    dish.R_itrs_to_topo[0][1] = cos_lon;
-    dish.R_itrs_to_topo[0][2] = 0.0;
-
-    // Topocentric Y (North) in ITRS (Earth-centered, Earth-fixed) coords
-    dish.R_itrs_to_topo[1][0] = -sin_lat * cos_lon;
-    dish.R_itrs_to_topo[1][1] = -sin_lat * sin_lon;
-    dish.R_itrs_to_topo[1][2] = cos_lat;
-
-    // Topocentric Z (Up) in ITRS (Earth-centered, Earth-fixed) coords
-    dish.R_itrs_to_topo[2][0] = cos_lat * cos_lon;
-    dish.R_itrs_to_topo[2][1] = cos_lat * sin_lon;
-    dish.R_itrs_to_topo[2][2] = sin_lat;
 
     return dish;
 }
@@ -181,7 +119,7 @@ void GeographicParams::set_dish_info(const kotekan::Config& config, const std::s
                 num_dishes, cfg_tab.size());
 
     // Make dish positions table.
-    dish_positions = std::vector<std::array<double, 3>>();
+    dish_positions = std::vector<vec3d_t>();
 
     // Calculate and fill the dish positions table.
     for (const dishInfo& d : dish_info_table) {
@@ -483,21 +421,46 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     // GPS time configuration parameters
     _gps_time_params(GPSTimeParams::from_config(config, path)),
     // Instrument geographic coordinates
-    _geographic_params(GeographicParams::from_config(config, path)) {
-    DEBUG("Building CHORDTelescope");
+    _geographic_params(GeographicParams::from_config(config, path)),
+    _grid_frame(grid_frame_from_config(config, path)),
+    _dish_frame(dish_frame_from_config(config, path)) {
 
+    DEBUG("Building CHORDTelescope");
+}
+
+CHORDTelescope::~CHORDTelescope() {
+    DEBUG("Removing CHORDTelescope");
+}
+
+GeoFrame CHORDTelescope::grid_frame_from_config(const kotekan::Config& config, const std::string& path) {
+    
     vec3d_t grid_x_axis = config.get_default<vec3d_t>(path, "grid_x_axis", {1.0, 0.0, 0.0});
     vec3d_t grid_y_axis = config.get_default<vec3d_t>(path, "grid_y_axis", {0.0, 1.0, 0.0});
+    vec3d_t grid_z_axis = vec3d_cross(grid_x_axis, grid_y_axis);
 
     GeoFrame grid_frame(config.get<std::string>(path, "log_level"), "grid",
                         config.get_default<double>(path, "origin_itrs_lat_deg", 0.0),
                         config.get_default<double>(path, "origin_itrs_lon_deg", 0.0),
                         {0.0, 0.0, 0.0}, grid_x_axis, grid_y_axis,
-                        vec3d_cross(grid_x_axis, grid_y_axis));
+                        grid_z_axis);
+
+    return grid_frame;
 }
 
-CHORDTelescope::~CHORDTelescope() {
-    DEBUG("Removing CHORDTelescope");
+GeoFrame CHORDTelescope::dish_frame_from_config(const kotekan::Config& config, const std::string& path) {
+    
+    vec3d_t dish_x =
+        config.get_default<vec3d_t>(path, "dish_elev_axis", {1.0, 0.0, 0.0});
+    vec3d_t dish_z =
+        config.get_default<vec3d_t>(path, "dish_vert_axis", {0.0, 0.0, 1.0});
+    vec3d_t dish_y = vec3d_cross(dish_z, dish_x);
+
+    GeoFrame dish_frame(config.get<std::string>(path, "log_level"), "dish",
+                        config.get_default<double>(path, "origin_itrs_lat_deg", 0.0),
+                        config.get_default<double>(path, "origin_itrs_lon_deg", 0.0),
+                        {0.0, 0.0, 0.0}, dish_x, dish_y, dish_z);
+
+    return dish_frame;
 }
 
 timespec CHORDTelescope::to_time(uint64_t seq) const {
@@ -533,18 +496,18 @@ uint64_t CHORDTelescope::seq_length_nsec() const {
 }
 
 double CHORDTelescope::get_origin_itrs_lon_deg() const {
-    return _geographic_params.origin_itrs_lon_deg;
+    return _grid_frame.get_itrs_lon_deg();
 }
 
 double CHORDTelescope::get_origin_itrs_lat_deg() const {
-    return _geographic_params.origin_itrs_lat_deg;
+    return _grid_frame.get_itrs_lat_deg();
 }
 
 double CHORDTelescope::get_dish_coelev_deg() const {
     return _geographic_params.dish_coelev_deg;
 }
 
-std::array<double, 3> CHORDTelescope::get_sky_vec_in_grid_coords(double ra, double dec,
+vec3d_t CHORDTelescope::get_sky_vec_in_grid_coords(double ra, double dec,
                                                                  const EOP& eop) const {
 
     // Taking the ra & dec to be in CIRS frame
@@ -554,18 +517,18 @@ std::array<double, 3> CHORDTelescope::get_sky_vec_in_grid_coords(double ra, doub
 
     // unit vector pointing to ra/dec in spherical coordinates
     // fixed to the Earth.  phi=0 ~ Greenwich
-    std::array<double, 3> n_cirs = {cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta)};
+    vec3d_t n_cirs = {cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta)};
 
     DEBUG("n_cirs: {} {} {}", n_cirs[0], n_cirs[1], n_cirs[2]);
 
     // Transform CIRS -> ITRS -> TOPO -> Telescope.
-    std::array<double, 3> n_itrs = vec_cirs_to_itrs(n_cirs, eop);
-    std::array<double, 3> n_topo = vec_itrs_to_topocen(n_itrs);
+    vec3d_t n_itrs = vec_cirs_to_itrs(n_cirs, eop);
+    vec3d_t n_topo = vec_itrs_to_topocen(n_itrs);
 
     return vec_topocen_to_grid(n_topo);
 }
 
-std::array<double, 3> CHORDTelescope::get_pointing_vec_in_dish_coords() const {
+vec3d_t CHORDTelescope::get_pointing_vec_in_dish_coords() const {
 
     // Dish coordinates are fixed with z "up" (co-elevation 0 degrees) and x
     // along the elevation axis of the dish mount.  In this frame the pointing
@@ -574,124 +537,71 @@ std::array<double, 3> CHORDTelescope::get_pointing_vec_in_dish_coords() const {
     double coelev = deg2rad * _geographic_params.dish_coelev_deg;
 
     // coelev=90 ==> North (y), coelev=0 => Up (z), coelev=-90 -> South (-y)
-    std::array<double, 3> n_point = {0.0, sin(coelev), cos(coelev)};
+    vec3d_t n_point = {0.0, sin(coelev), cos(coelev)};
 
     return n_point;
 }
 
-std::array<double, 3>
-CHORDTelescope::vec_topocen_to_dish(const std::array<double, 3>& v_topocen) const {
-
-    // Just multiply by known Rotation matrix.
-    std::array<double, 3> v_dish = {0, 0, 0};
-    for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
-            v_dish[i] += _geographic_params.R_topo_to_dish[i][j] * v_topocen[j];
-
-    return v_dish;
+vec3d_t CHORDTelescope::vec_topocen_to_dish(const vec3d_t& v_topocen) const {
+    return _dish_frame.vec_topo_to_frame(v_topocen);
+}
+vec3d_t CHORDTelescope::vec_topocen_to_grid(const vec3d_t& v_topocen) const {
+    return _grid_frame.vec_topo_to_frame(v_topocen);
+}
+vec3d_t CHORDTelescope::vec_topocen_to_itrs(const vec3d_t& v_topocen) const {
+    return _grid_frame.vec_topo_to_itrs(v_topocen);
+}
+vec3d_t CHORDTelescope::vec_dish_to_topocen(const vec3d_t& v_dish) const {
+    return _dish_frame.vec_frame_to_topo(v_dish);
+}
+vec3d_t CHORDTelescope::vec_grid_to_topocen(const vec3d_t& v_grid) const {
+    return _grid_frame.vec_frame_to_topo(v_grid);
+}
+vec3d_t CHORDTelescope::vec_itrs_to_topocen(const vec3d_t& v_itrs) const {
+    return _grid_frame.vec_itrs_to_topo(v_itrs);
 }
 
-std::array<double, 3>
-CHORDTelescope::vec_dish_to_topocen(const std::array<double, 3>& v_dish) const {
-
-    // Inverse transform, use R transpose.
-    std::array<double, 3> v_topo = {0, 0, 0};
-    for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
-            v_topo[i] += _geographic_params.R_topo_to_dish[j][i] * v_dish[j];
-
-    return v_topo;
-}
-
-std::array<double, 3>
-CHORDTelescope::vec_topocen_to_grid(const std::array<double, 3>& v_topocen) const {
-
-    // Just multiply by known Rotation matrix.
-    std::array<double, 3> v_grid = {0, 0, 0};
-    for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
-            v_grid[i] += _geographic_params.R_topo_to_grid[i][j] * v_topocen[j];
-
-    return v_grid;
-}
-
-std::array<double, 3>
-CHORDTelescope::vec_grid_to_topocen(const std::array<double, 3>& v_grid) const {
-
-    // Inverse transform, use R transpose.
-    std::array<double, 3> v_topocen = {0, 0, 0};
-    for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
-            v_topocen[i] += _geographic_params.R_topo_to_grid[j][i] * v_grid[j];
-
-    return v_topocen;
-}
-
-std::array<double, 3> CHORDTelescope::vec_axes_rotation_R1(const std::array<double, 3>& v,
+vec3d_t CHORDTelescope::vec_axes_rotation_R1(const vec3d_t& v,
                                                            double theta) const {
     // Return coordinates of vector v in frame rotated by theta about x-axis
 
     double cos_th = cos(theta);
     double sin_th = sin(theta);
 
-    std::array<double, 3> v_rot = {v[0], cos_th * v[1] + sin_th * v[2],
+    vec3d_t v_rot = {v[0], cos_th * v[1] + sin_th * v[2],
                                    -sin_th * v[1] + cos_th * v[2]};
 
     return v_rot;
 }
 
-std::array<double, 3> CHORDTelescope::vec_axes_rotation_R2(const std::array<double, 3>& v,
+vec3d_t CHORDTelescope::vec_axes_rotation_R2(const vec3d_t& v,
                                                            double theta) const {
     // Return coordinates of vector v in frame rotated by theta about y-axis
 
     double cos_th = cos(theta);
     double sin_th = sin(theta);
 
-    std::array<double, 3> v_rot = {cos_th * v[0] - sin_th * v[2], v[1],
+    vec3d_t v_rot = {cos_th * v[0] - sin_th * v[2], v[1],
                                    sin_th * v[0] + cos_th * v[2]};
 
     return v_rot;
 }
 
-std::array<double, 3> CHORDTelescope::vec_axes_rotation_R3(const std::array<double, 3>& v,
+vec3d_t CHORDTelescope::vec_axes_rotation_R3(const vec3d_t& v,
                                                            double theta) const {
     // Return coordinates of vector v in frame rotated by theta about z-axis
 
     double cos_th = cos(theta);
     double sin_th = sin(theta);
 
-    std::array<double, 3> v_rot = {cos_th * v[0] + sin_th * v[1], -sin_th * v[0] + cos_th * v[1],
+    vec3d_t v_rot = {cos_th * v[0] + sin_th * v[1], -sin_th * v[0] + cos_th * v[1],
                                    v[2]};
 
     return v_rot;
 }
 
 
-std::array<double, 3>
-CHORDTelescope::vec_itrs_to_topocen(const std::array<double, 3>& v_itrs) const {
-
-    // Just multiply by known Rotation matrix.
-    std::array<double, 3> v_topo = {0, 0, 0};
-    for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
-            v_topo[i] += _geographic_params.R_itrs_to_topo[i][j] * v_itrs[j];
-
-    return v_topo;
-}
-
-std::array<double, 3>
-CHORDTelescope::vec_topocen_to_itrs(const std::array<double, 3>& v_topo) const {
-
-    // Inverse transform, use R transpose.
-    std::array<double, 3> v_itrs = {0, 0, 0};
-    for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
-            v_itrs[i] += _geographic_params.R_itrs_to_topo[j][i] * v_topo[j];
-
-    return v_itrs;
-}
-
-std::array<double, 3> CHORDTelescope::vec_cirs_to_itrs(const std::array<double, 3>& v_cirs,
+vec3d_t CHORDTelescope::vec_cirs_to_itrs(const vec3d_t& v_cirs,
                                                        const EOP& eop) const {
 
     // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the
@@ -712,16 +622,16 @@ std::array<double, 3> CHORDTelescope::vec_cirs_to_itrs(const std::array<double, 
     double yp = arcsec2rad * eop.yp_as;
 
     // 5.5 inverse
-    std::array<double, 3> v1 = vec_axes_rotation_R3(v_cirs, era);
+    vec3d_t v1 = vec_axes_rotation_R3(v_cirs, era);
     // 5.3, second factor, inverse
-    std::array<double, 3> v2 = vec_axes_rotation_R2(v1, -xp);
+    vec3d_t v2 = vec_axes_rotation_R2(v1, -xp);
     // 5.3, first factor, inverse
-    std::array<double, 3> v_itrs = vec_axes_rotation_R1(v2, -yp);
+    vec3d_t v_itrs = vec_axes_rotation_R1(v2, -yp);
 
     return v_itrs;
 }
 
-std::array<double, 3> CHORDTelescope::vec_itrs_to_cirs(const std::array<double, 3>& v_itrs,
+vec3d_t CHORDTelescope::vec_itrs_to_cirs(const vec3d_t& v_itrs,
                                                        const EOP& eop) const {
 
     // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the
@@ -740,11 +650,11 @@ std::array<double, 3> CHORDTelescope::vec_itrs_to_cirs(const std::array<double, 
     double yp = arcsec2rad * eop.yp_as;
 
     // 5.3 (First factor in W)
-    std::array<double, 3> v1 = vec_axes_rotation_R1(v_itrs, yp);
+    vec3d_t v1 = vec_axes_rotation_R1(v_itrs, yp);
     // 5.3 (Second factor in W)
-    std::array<double, 3> v2 = vec_axes_rotation_R2(v1, xp);
+    vec3d_t v2 = vec_axes_rotation_R2(v1, xp);
     // 5.5
-    std::array<double, 3> v_cirs = vec_axes_rotation_R3(v2, -era);
+    vec3d_t v_cirs = vec_axes_rotation_R3(v2, -era);
 
     return v_cirs;
 }
@@ -754,24 +664,24 @@ void CHORDTelescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, 
 
     // Get the pointing vector (phase center) for the telescope in dish coordinates. This is
     // constant in time.
-    std::array<double, 3> n_dish0 = get_pointing_vec_in_dish_coords();
+    vec3d_t n_dish0 = get_pointing_vec_in_dish_coords();
 
     // Transform the pointing vector into topocentric coordinates (from which we can
     // transform to the sky), and grid coordinates (where the dish locations live).
     // These are also constant in time.
-    std::array<double, 3> n_topo0 = vec_dish_to_topocen(n_dish0);
-    std::array<double, 3> n_grid0 = vec_topocen_to_grid(n_topo0);
+    vec3d_t n_topo0 = vec_dish_to_topocen(n_dish0);
+    vec3d_t n_grid0 = vec_topocen_to_grid(n_topo0);
 
     // Take the pointing vector for the telescope and find it in the CIRS frame at ERA0.
     // This is the point we are attempting to stop the fringes at.
-    std::array<double, 3> n_itrs0 = vec_topocen_to_itrs(n_topo0);
-    std::array<double, 3> n_cirs = vec_itrs_to_cirs(n_itrs0, eop0);
+    vec3d_t n_itrs0 = vec_topocen_to_itrs(n_topo0);
+    vec3d_t n_cirs = vec_itrs_to_cirs(n_itrs0, eop0);
 
     // Now, given this CIRS vector, find its components in the telescope
     // frame at the requested (current) ERA
-    std::array<double, 3> n_itrs = vec_cirs_to_itrs(n_cirs, eop);
-    std::array<double, 3> n_topo = vec_itrs_to_topocen(n_itrs);
-    std::array<double, 3> n_grid = vec_topocen_to_grid(n_topo);
+    vec3d_t n_itrs = vec_cirs_to_itrs(n_cirs, eop);
+    vec3d_t n_topo = vec_itrs_to_topocen(n_itrs);
+    vec3d_t n_grid = vec_topocen_to_grid(n_topo);
 
     // n_grid is now (at ERA) the point on the sky which will be at the
     // phase center (n_grid0) at ERA0.
@@ -826,14 +736,14 @@ uint64_t CHORDTelescope::get_num_stacks() const {
 }
 
 double CHORDTelescope::get_grid_orientation_el(int i, int j) const {
-    return _geographic_params.R_topo_to_grid[i][j];
+    return _grid_frame.get_R_topo_to_frame()[i][j];
 }
 
 double CHORDTelescope::get_dish_orientation_el(int i, int j) const {
-    return _geographic_params.R_topo_to_dish[i][j];
+    return _dish_frame.get_R_topo_to_frame()[i][j];
 }
 
-std::array<double, 3> CHORDTelescope::get_dish_position_in_grid_coords(int i) const {
+vec3d_t CHORDTelescope::get_dish_position_in_grid_coords(int i) const {
     return _geographic_params.dish_positions[i];
 }
 
