@@ -138,10 +138,10 @@ def _unpack_output(raw):
     stream (AA, BB, Re{AB*}, Im{AB*}). All four counts are equal -- we read
     the AA one and assert the others match.
     """
-    block_floats = SPECTRUM_LENGTH + 1   # ``+1`` is the trailing count
+    block_floats = SPECTRUM_LENGTH + 1  # ``+1`` is the trailing count
     flat = np.frombuffer(raw, dtype=np.float32, count=block_floats * 4)
-    AA   = flat[0 * block_floats : 0 * block_floats + SPECTRUM_LENGTH]
-    BB   = flat[1 * block_floats : 1 * block_floats + SPECTRUM_LENGTH]
+    AA = flat[0 * block_floats : 0 * block_floats + SPECTRUM_LENGTH]
+    BB = flat[1 * block_floats : 1 * block_floats + SPECTRUM_LENGTH]
     ReAB = flat[2 * block_floats : 2 * block_floats + SPECTRUM_LENGTH]
     ImAB = flat[3 * block_floats : 3 * block_floats + SPECTRUM_LENGTH]
     counts = [
@@ -181,12 +181,14 @@ def test_simple_crosscorr_orthogonal(tmpdir):
 def test_simple_crosscorr_random_matches_numpy(tmpdir, seed):
     """Random complex inputs: result must match the numpy reference computation."""
     rng = np.random.default_rng(seed)
-    A = (rng.standard_normal(SAMPLES_PER_FRAME) + 1j * rng.standard_normal(SAMPLES_PER_FRAME)).astype(
-        np.complex64
-    )
-    B = (rng.standard_normal(SAMPLES_PER_FRAME) + 1j * rng.standard_normal(SAMPLES_PER_FRAME)).astype(
-        np.complex64
-    )
+    A = (
+        rng.standard_normal(SAMPLES_PER_FRAME)
+        + 1j * rng.standard_normal(SAMPLES_PER_FRAME)
+    ).astype(np.complex64)
+    B = (
+        rng.standard_normal(SAMPLES_PER_FRAME)
+        + 1j * rng.standard_normal(SAMPLES_PER_FRAME)
+    ).astype(np.complex64)
     raw = _run_crosscorr(tmpdir, A, B)
     AA, BB, ReAB, ImAB, count = _unpack_output(raw)
 
