@@ -353,7 +353,7 @@ public:
      * @return The local ERA in degrees.
      **/
     double get_ERAL_deg(EOP& eop) const;
-    
+
     /**
      * @brief   Return the longitude of the instrument.
      **/
@@ -388,8 +388,7 @@ protected:
      *                      and the orientation of the feed grid axes.
      **/
     Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
-              const std::string& eop_updatable_config_path,
-              const GeoFrame& frame);
+              const std::string& eop_updatable_config_path, const GeoFrame& frame);
 
     /**
      * @brief Callback to update EOP data
@@ -416,12 +415,12 @@ protected:
      * The telescope's name in the config
      */
     const std::string _unique_name;
-    
+
     /**
      *  Stores information about the geographic position and orientation of the telescope
      *  on the Earth.
      */
-    const GeoFrame _frame;  
+    const GeoFrame _frame;
 
     /**
      * Whether to require an EOP table. If false and no (or an empty) EOP table

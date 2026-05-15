@@ -832,8 +832,12 @@ def accum_list(setup, accum_setup):
             )
             # accum["bin_start_ERAL_deg"] = -1.0
             # accum["bin_end_ERAL_deg"] = -1.0
-            accum['bin_start_ERAL_deg'] = tel.get_local_ERA_at_t_inst_ns(t_start, setup['tel'], setup['set_eop'])
-            accum['bin_end_ERAL_deg'] = tel.get_local_ERA_at_t_inst_ns(t_end, setup['tel'], setup['set_eop'])
+            accum["bin_start_ERAL_deg"] = tel.get_local_ERA_at_t_inst_ns(
+                t_start, setup["tel"], setup["set_eop"]
+            )
+            accum["bin_end_ERAL_deg"] = tel.get_local_ERA_at_t_inst_ns(
+                t_end, setup["tel"], setup["set_eop"]
+            )
 
     return accums
 

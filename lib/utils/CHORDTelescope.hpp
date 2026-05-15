@@ -609,8 +609,7 @@ public:
      * @param   v_topo  Vector in CIRS coordinates.
      * @param   eop     EOP for time of transformation.
      **/
-    vec3d_t vec_cirs_to_itrs(const vec3d_t& v_cirs,
-                                           const EOP& eop) const;
+    vec3d_t vec_cirs_to_itrs(const vec3d_t& v_cirs, const EOP& eop) const;
 
     /**
      * @brief   Transform the given vector from ITRS to CIRS coords.
@@ -618,8 +617,7 @@ public:
      * @param   v_topo  Vector in ITRS coordinates.
      * @param   eop     EOP for time of transformation.
      **/
-    vec3d_t vec_itrs_to_cirs(const vec3d_t& v_itrs,
-                                           const EOP& eop) const;
+    vec3d_t vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const;
 
     /**
      * @brief   Transform the given vector to a frame where the basis has
@@ -746,7 +744,6 @@ public:
     ~CHORDTelescope();
 
 protected:
-
     static GeoFrame grid_frame_from_config(const kotekan::Config& config, const std::string& path);
     static GeoFrame dish_frame_from_config(const kotekan::Config& config, const std::string& path);
 

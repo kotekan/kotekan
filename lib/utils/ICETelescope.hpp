@@ -81,7 +81,7 @@ protected:
      * @param path   The endpoint resource name (e.g. /get-frame0-time)
      */
     void set_gps(const std::string& host, const uint32_t port, const std::string& path);
-    
+
     static GeoFrame grid_frame_from_config(const kotekan::Config& config, const std::string& path);
 
     // The number of frequencies per stream

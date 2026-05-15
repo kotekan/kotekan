@@ -53,9 +53,9 @@ public:
                   config.get<bool>(path, "require_eop"),
                   config.get<std::string>(path, "eop_updatable_config"),
                   GeoFrame(config.get<std::string>(path, "log_level"), "grid",
-                      config.get_default<double>(path, "inst_lat", 0.0),
-                      config.get_default<double>(path, "inst_long", 0.0),
-                      {0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1})) {}
+                           config.get_default<double>(path, "inst_lat", 0.0),
+                           config.get_default<double>(path, "inst_long", 0.0), {0, 0, 0}, {1, 0, 0},
+                           {0, 1, 0}, {0, 0, 1})) {}
 
     // These functions don't have to do anything, they're not being tested.
     freq_id_t to_freq_id([[maybe_unused]] stream_t stream,
@@ -230,7 +230,7 @@ BOOST_FIXTURE_TEST_CASE(_name_tel, TelescopeFixture) {
  */
 BOOST_FIXTURE_TEST_CASE(_instrument_position, TelescopeFixture) {
     BOOST_TEST_MESSAGE(fmt::format("Testing telescope position."));
-    
+
     const Telescope& tel = Telescope::instance();
 
     BOOST_CHECK_EQUAL(tel.get_itrs_lat_deg(), 50.123);
