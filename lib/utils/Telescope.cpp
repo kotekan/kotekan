@@ -8,6 +8,7 @@
 #include <limits>             // for numeric_limits
 
 #include "configUpdater.hpp"  // for configUpdater
+#include "geoUtil.hpp"        // for GeoFrame
 #include "restServer.hpp"     // for restServer, connectionInstance
 #include "timeUtil.hpp"       // for EOP, BareEOP, get_ERA_from_UT1, EOP_comp_time, eop_null
 #include "fmt.hpp"            // for compile_string_to_view
@@ -25,8 +26,9 @@ static constexpr BareEOP dummy_bare_eop_last = {.t_inst_ns = std::numeric_limits
                                                 .yp_as = 0.0};
 
 Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
-                     const std::string& eop_updatable_config_path) :
-    _unique_name(tel_path), _require_eop(require_eop) {
+                     const std::string& eop_updatable_config_path,
+                     const GeoFrame &frame) :
+    frame(frame), _unique_name(tel_path), _require_eop(require_eop) {
     set_log_level(log_level);
     set_log_prefix("/telescope");
 

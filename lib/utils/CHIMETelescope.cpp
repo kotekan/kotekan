@@ -7,6 +7,7 @@
 
 #include "ICETelescope.hpp"    // for ice_stream_id_t, ice_encode_stream_id, ice_extract_stream_id
 #include "Telescope.hpp"       // for stream_t, Telescope, REGISTER_TELESCOPE, _factory_aliasTel...
+#include "geoUtil.hpp"         // for GeoFrame
 #include "kotekanLogging.hpp"  // for ERROR, INFO, WARN, DEBUG2, FATAL_ERROR_NON_OO
 #include "restClient.hpp"      // for restClient
 #include "fmt.hpp"             // for compile_string_to_view, format, format_string
@@ -18,7 +19,8 @@ REGISTER_TELESCOPE(CHIMETelescope, "CHIMETelescope");
 CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string& path) :
     ICETelescope(path, config.get<std::string>(path, "log_level"),
                  config.get_default<bool>(path, "require_eop", false),
-                 config.get_default<std::string>(path, "eop_updatable_config", "")) {
+                 config.get_default<std::string>(path, "eop_updatable_config", ""),
+                 grid_frame_from_config(config, path)) {
     INFO("Building CHIMETelescope");
 
     // This is always 1 for CHIME
@@ -179,4 +181,19 @@ freq_id_t CHIMETelescope::to_freq_id(stream_t stream, uint32_t /* ind */) const 
         ERROR("{}", msg);
         throw std::runtime_error(msg);
     }
+}
+
+GeoFrame CHIMETelescope::grid_frame_from_config(const kotekan::Config& config, const std::string& path) {
+    
+    vec3d_t grid_x_axis = config.get_default<vec3d_t>(path, "grid_x_axis", {1.0, 0.0, 0.0});
+    vec3d_t grid_y_axis = config.get_default<vec3d_t>(path, "grid_y_axis", {0.0, 1.0, 0.0});
+    vec3d_t grid_z_axis = vec3d_cross(grid_x_axis, grid_y_axis);
+
+    GeoFrame grid_frame(config.get<std::string>(path, "log_level"), "grid",
+                        config.get_default<double>(path, "inst_lat", 0.0),
+                        config.get_default<double>(path, "inst_long", 0.0),
+                        {0.0, 0.0, 0.0}, grid_x_axis, grid_y_axis,
+                        grid_z_axis);
+
+    return grid_frame;
 }

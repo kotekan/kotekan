@@ -12,6 +12,7 @@
 
 #include "Config.hpp"          // for Config
 #include "factory.hpp"         // for FACTORY, CREATE_FACTORY, REGISTER_NAMED_TYPE_WITH_FACTORY
+#include "geoUtil.hpp"         // for GeoFrame
 #include "kotekanLogging.hpp"  // for ERROR, kotekanLogging
 #include "restServer.hpp"      // for connectionInstance
 #include "timeUtil.hpp"        // for EOP
@@ -329,6 +330,12 @@ public:
      **/
     EOP get_EOP_at_UT1(int64_t ut1) const;
 
+    /**
+     *  Stores information about the geographic position and orientation of the telescope
+     *  on the Earth.
+     */
+    const GeoFrame frame;  
+
 private:
     static std::unique_ptr<Telescope>& tel_instance();
 
@@ -348,9 +355,12 @@ protected:
      * @param   eop_updatable_config_path   The value of "eop_updatable_config" in
      *          the telescope Config, pointing to the updatable field which
      *          contains "earth_orientation_parameter_table"
+     * @param   frame       Object containing the position of the telescope on the Earth
+     *                      and the orientation of the feed grid axes.
      **/
     Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
-              const std::string& eop_updatable_config_path);
+              const std::string& eop_updatable_config_path,
+              const GeoFrame& frame);
 
     /**
      * @brief Callback to update EOP data

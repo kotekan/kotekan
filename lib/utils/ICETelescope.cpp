@@ -4,6 +4,7 @@
 #include <stdexcept>           // for invalid_argument, runtime_error
 
 #include "Telescope.hpp"       // for Telescope, stream_t, freq_id_t, REGISTER_TELESCOPE, _facto...
+#include "geoUtil.hpp"         // for GeoFrame
 #include "kotekanLogging.hpp"  // for WARN, INFO, FATAL_ERROR, FATAL_ERROR_NON_OO
 #include "restClient.hpp"      // for restClient
 #include "fmt.hpp"             // for compile_string_to_view, format, format_string
@@ -17,7 +18,8 @@ REGISTER_TELESCOPE(ICETelescope, "ICETelescope");
 ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(path, config.get<std::string>(path, "log_level"),
               config.get_default<bool>(path, "require_eop", false),
-              config.get_default<std::string>(path, "eop_updatable_config", "")) {
+              config.get_default<std::string>(path, "eop_updatable_config", ""),
+              grid_frame_from_config(config, path)) {
     INFO("Building ICETelescope");
 
     // TODO: rename this parameter to `num_freq_per_stream` in the config
@@ -207,6 +209,21 @@ uint8_t ICETelescope::nyquist_zone() const {
     return ny_zone;
 }
 
+GeoFrame ICETelescope::grid_frame_from_config(const kotekan::Config& config, const std::string& path) {
+    
+    vec3d_t grid_x_axis = config.get_default<vec3d_t>(path, "grid_x_axis", {1.0, 0.0, 0.0});
+    vec3d_t grid_y_axis = config.get_default<vec3d_t>(path, "grid_y_axis", {0.0, 1.0, 0.0});
+    vec3d_t grid_z_axis = vec3d_cross(grid_x_axis, grid_y_axis);
+
+    GeoFrame grid_frame(config.get<std::string>(path, "log_level"), "grid",
+                        config.get_default<double>(path, "inst_lat", 0.0),
+                        config.get_default<double>(path, "inst_long", 0.0),
+                        {0.0, 0.0, 0.0}, grid_x_axis, grid_y_axis,
+                        grid_z_axis);
+
+    return grid_frame;
+}
+
 ice_stream_id_t ice_extract_stream_id(const stream_t encoded_stream_id) {
     ice_stream_id_t stream_id;
 
@@ -228,3 +245,4 @@ stream_t ice_encode_stream_id(const ice_stream_id_t s_stream_id) {
 
     return {(uint64_t)stream_id};
 }
+

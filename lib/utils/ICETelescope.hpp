@@ -3,6 +3,7 @@
 
 #include "Config.hpp"    // for Config
 #include "Telescope.hpp" // for freq_id_t, stream_t, Telescope
+#include "geoUtil.hpp"   // for GeoFrame
 
 #include <stdint.h> // for uint32_t, uint8_t, uint64_t
 #include <string>   // for string, basic_string
@@ -80,6 +81,8 @@ protected:
      * @param path   The endpoint resource name (e.g. /get-frame0-time)
      */
     void set_gps(const std::string& host, const uint32_t port, const std::string& path);
+    
+    static GeoFrame grid_frame_from_config(const kotekan::Config& config, const std::string& path);
 
     // The number of frequencies per stream
     uint32_t _num_freq_per_stream;
