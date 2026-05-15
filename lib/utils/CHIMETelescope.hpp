@@ -4,6 +4,7 @@
 #include "Config.hpp"       // for Config
 #include "ICETelescope.hpp" // for ICETelescope
 #include "Telescope.hpp"    // for freq_id_t, stream_t
+#include "geoUtil.hpp"      // for GeoFrame
 
 #include "json.hpp" // for json
 
@@ -80,6 +81,9 @@ private:
      * @param fpga_freq_map_json  JSON The frequency map from the FPGAs
      */
     void set_frequency_map(nlohmann::json& fpga_freq_map_json);
+
+protected:
+    static GeoFrame grid_frame_from_config(const kotekan::Config& config, const std::string& path);
 };
 
 

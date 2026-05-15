@@ -49,7 +49,9 @@ public:
     TestTelescope(const Config& config, const std::string& path) :
         Telescope(path, config.get<std::string>(path, "log_level"),
                   config.get<bool>(path, "require_eop"),
-                  config.get<std::string>(path, "eop_updatable_config")) {}
+                  config.get<std::string>(path, "eop_updatable_config"),
+                  GeoFrame(config.get<std::string>(path, "log_level"), "grid", 0.0, 0.0,
+                      {0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1})) {}
 
     // These functions don't have to do anything, they're not being tested.
     freq_id_t to_freq_id([[maybe_unused]] stream_t stream,

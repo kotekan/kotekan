@@ -8,6 +8,7 @@
 #include "errors.h"           // for ReturnCode, exit_kotekan
 #include "factory.hpp"        // for FACTORY
 #include "fakeGpuPattern.hpp" // for FakeGpuPattern, _factory_aliasFakeGpuPattern
+#include "geoUtil.hpp"        // for GeoFrame
 #include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
 #include "visUtil.hpp"        // for frameID, gpu_N2_size, modulo, operator+
 
@@ -178,7 +179,9 @@ void FakeGpu::main_thread() {
 FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(path, config.get<std::string>(path, "log_level"),
               config.get_default<bool>(path, "require_eop", false),
-              config.get_default<std::string>(path, "eop_updatable_config", "")) {
+              config.get_default<std::string>(path, "eop_updatable_config", ""),
+              GeoFrame(config.get<std::string>(path, "log_level"), "grid", 0.0, 0.0,
+                  {0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1})) {
     _num_local_freq = config.get_default<size_t>(path, "num_local_freq", 1);
 }
 
