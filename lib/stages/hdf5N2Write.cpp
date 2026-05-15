@@ -339,8 +339,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "gps_time_enabled", telescope.gps_time_enabled());
         _check_create_attribute(*file, "frame0_unix_ns", telescope.to_time_ns(0));
         _check_create_attribute(*file, "fpga_seq_length_ns", telescope.seq_length_nsec());
-        _check_create_attribute(*file, "origin_itrs_lon_deg", telescope.get_origin_itrs_lon_deg());
-        _check_create_attribute(*file, "origin_itrs_lat_deg", telescope.get_origin_itrs_lat_deg());
+        _check_create_attribute(*file, "origin_itrs_lon_deg", telescope.get_itrs_lon_deg());
+        _check_create_attribute(*file, "origin_itrs_lat_deg", telescope.get_itrs_lat_deg());
         _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
         _check_create_attribute(*file, "num_dishes", telescope.get_num_dishes());
         _check_create_attribute(*file, "num_file_f",

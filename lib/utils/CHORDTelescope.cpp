@@ -496,14 +496,6 @@ uint64_t CHORDTelescope::seq_length_nsec() const {
     return _freq_params.dt_ns;
 }
 
-double CHORDTelescope::get_origin_itrs_lon_deg() const {
-    return _grid_frame.get_itrs_lon_deg();
-}
-
-double CHORDTelescope::get_origin_itrs_lat_deg() const {
-    return _grid_frame.get_itrs_lat_deg();
-}
-
 double CHORDTelescope::get_dish_coelev_deg() const {
     return _geographic_params.dish_coelev_deg;
 }
@@ -820,18 +812,6 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t stream_id, uint32_t index) const {
 // Currently hard coded in the F-engine packet format.
 size_t CHORDTelescope::num_freq_per_stream() const {
     return 48;
-}
-
-double CHORDTelescope::get_ERAL_deg(EOP& eop) const {
-    double era = eop.ERA_deg;
-    double lon = get_origin_itrs_lon_deg();
-    double eral = era + lon; // Ignore TIO locator s', it is only ~12 micro arcseconds.
-
-    // Reset eral to [0, 360)
-    double n_off = std::floor(eral / 360.0);
-    eral -= n_off * 360;
-
-    return eral;
 }
 
 void to_json(nlohmann::json& j, const dishInfo& d) {

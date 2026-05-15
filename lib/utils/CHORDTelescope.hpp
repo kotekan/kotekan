@@ -497,16 +497,6 @@ public:
     bool query_gps_time0_ns(uint64_t& time0_ns, int timeout) const;
 
     /**
-     * @brief   Return the longitude of the instrument.
-     **/
-    double get_origin_itrs_lon_deg() const;
-
-    /**
-     * @brief   Return the latitude of the instrument.
-     **/
-    double get_origin_itrs_lat_deg() const;
-
-    /**
      * @brief   Return the co-elevation angle of the instrument. 0.0 is up,
      *          90.0 is North.
      **/
@@ -747,30 +737,6 @@ public:
      * @brief Return the number of frequencies per F-engine stream.
      */
     size_t num_freq_per_stream() const override;
-
-    /**
-     * @brief   Compute the local ERA (eral in SOFA) at the telescope site.
-     *
-     *  The local ERA is:
-     *
-     *      ERAL = ERA + longitude(ITRS) + s',
-     *
-     *  where:
-     *      ERA is the Earth Rotation Angle (era00 in SOFA),
-     *      longitude(ITRS) is the geodetic longitude of the site in ITRS
-     *      s' is the TIO locator (sp00 in SOFA)
-     *
-     *  This is the equivalent to Local Apparent Sidereal Time (LAST) in the CIO-based
-     *  coordinate systems implemented by the IAU in 2000.
-     *
-     *  The s' is very small, it accrues at 47 microarcseconds per century, and is
-     *  ignored in this calculation.
-     *
-     * @param   eop  An EOP object for the time at which the ERAL is requested.
-     *
-     * @return The local ERA in degrees.
-     **/
-    double get_ERAL_deg(EOP& eop) const;
 
     // A forwarding constructor, such that derived classes can skip the main
     // CHORDTelescope constructor but still construct the Telescope class

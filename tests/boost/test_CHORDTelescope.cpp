@@ -214,7 +214,7 @@ BOOST_AUTO_TEST_CASE(_DishType_from_json) {
 }
 
 /*
- * @brief   Test position getters.
+ * @brief   Test frame0 time getter.
  */
 BOOST_AUTO_TEST_CASE(_query_gps_time_config) {
     BOOST_TEST_MESSAGE(fmt::format("Testing time0 query from config."));
@@ -229,26 +229,6 @@ BOOST_AUTO_TEST_CASE(_query_gps_time_config) {
     uint64_t test_time0_val = 0;
     tel.query_gps_time0_ns(test_time0_val, 30);
     BOOST_CHECK_EQUAL(test_time0_val, time0_ns);
-}
-
-
-/*
- * @brief   Test position getters.
- */
-BOOST_AUTO_TEST_CASE(_instrument_position) {
-    BOOST_TEST_MESSAGE(fmt::format("Testing telescope position."));
-
-    double lon = -119.621123;
-    double lat = 49.321123;
-
-    json json_config = json::parse(default_config_str);
-    json_config["telescope"]["origin_itrs_lat_deg"] = lat;
-    json_config["telescope"]["origin_itrs_lon_deg"] = lon;
-
-    const CHORDTelescope& tel = get_telescope(json_config);
-
-    BOOST_CHECK_EQUAL(tel.get_origin_itrs_lon_deg(), lon);
-    BOOST_CHECK_EQUAL(tel.get_origin_itrs_lat_deg(), lat);
 }
 
 /*

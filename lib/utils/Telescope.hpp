@@ -331,10 +331,39 @@ public:
     EOP get_EOP_at_UT1(int64_t ut1) const;
 
     /**
-     *  Stores information about the geographic position and orientation of the telescope
-     *  on the Earth.
-     */
-    const GeoFrame frame;  
+     * @brief   Compute the local ERA (eral in SOFA) at the telescope site.
+     *
+     *  The local ERA is:
+     *
+     *      ERAL = ERA + longitude(ITRS) + s',
+     *
+     *  where:
+     *      ERA is the Earth Rotation Angle (era00 in SOFA),
+     *      longitude(ITRS) is the geodetic longitude of the site in ITRS
+     *      s' is the TIO locator (sp00 in SOFA)
+     *
+     *  This is the equivalent to Local Apparent Sidereal Time (LAST) in the CIO-based
+     *  coordinate systems implemented by the IAU in 2000.
+     *
+     *  The s' is very small, it accrues at 47 microarcseconds per century, and is
+     *  ignored in this calculation.
+     *
+     * @param   eop  An EOP object for the time at which the ERAL is requested.
+     *
+     * @return The local ERA in degrees.
+     **/
+    double get_ERAL_deg(EOP& eop) const;
+    
+    /**
+     * @brief   Return the longitude of the instrument.
+     **/
+    double get_itrs_lon_deg() const;
+
+    /**
+     * @brief   Return the latitude of the instrument.
+     **/
+    double get_itrs_lat_deg() const;
+
 
 private:
     static std::unique_ptr<Telescope>& tel_instance();
@@ -387,6 +416,12 @@ protected:
      * The telescope's name in the config
      */
     const std::string _unique_name;
+    
+    /**
+     *  Stores information about the geographic position and orientation of the telescope
+     *  on the Earth.
+     */
+    const GeoFrame _frame;  
 
     /**
      * Whether to require an EOP table. If false and no (or an empty) EOP table
