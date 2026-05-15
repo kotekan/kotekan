@@ -17,6 +17,7 @@ public:
     std::string get_name() const;
     double get_itrs_lat_deg() const;
     double get_itrs_lon_deg() const;
+    vec3d_t get_offset_m() const;
     vec3d_t get_x_axis() const;
     vec3d_t get_y_axis() const;
     vec3d_t get_z_axis() const;
