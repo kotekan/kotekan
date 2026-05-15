@@ -53,6 +53,10 @@ double GeoFrame::get_itrs_lon_deg() const {
     return itrs_lon_deg;
 }
 
+vec3d_t GeoFrame::get_offset_m() const {
+    return offset_m;
+}
+
 vec3d_t GeoFrame::get_x_axis() const {
     return x_axis;
 }
