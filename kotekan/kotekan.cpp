@@ -583,14 +583,14 @@ int main(int argc, char** argv) {
             exit(-1);
         }
         config.update_config(config_json);
-        try {
+        //try {
             start_new_kotekan_mode(config, dump_config);
-        } catch (const std::exception& ex) {
-            ERROR_NON_OO("Failed to start kotekan with config file {:s}, error message: {:s}",
-                         config_file_name, ex.what());
-            ERROR_NON_OO("Exiting...");
-            exit(-1);
-        }
+        //} catch (const std::exception& ex) {
+        //    ERROR_NON_OO("Failed to start kotekan with config file {:s}, error message: {:s}",
+        //                 config_file_name, ex.what());
+        //    ERROR_NON_OO("Exiting...");
+        //    exit(-1);
+        //}
         free(config_file_name);
         config_file_name = nullptr;
     }
