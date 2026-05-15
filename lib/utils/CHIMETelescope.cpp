@@ -183,17 +183,17 @@ freq_id_t CHIMETelescope::to_freq_id(stream_t stream, uint32_t /* ind */) const 
     }
 }
 
-GeoFrame CHIMETelescope::grid_frame_from_config(const kotekan::Config& config, const std::string& path) {
-    
+GeoFrame CHIMETelescope::grid_frame_from_config(const kotekan::Config& config,
+                                                const std::string& path) {
+
     vec3d_t grid_x_axis = config.get_default<vec3d_t>(path, "grid_x_axis", {1.0, 0.0, 0.0});
     vec3d_t grid_y_axis = config.get_default<vec3d_t>(path, "grid_y_axis", {0.0, 1.0, 0.0});
     vec3d_t grid_z_axis = vec3d_cross(grid_x_axis, grid_y_axis);
 
     GeoFrame grid_frame(config.get<std::string>(path, "log_level"), "grid",
                         config.get_default<double>(path, "inst_lat", 0.0),
-                        config.get_default<double>(path, "inst_long", 0.0),
-                        {0.0, 0.0, 0.0}, grid_x_axis, grid_y_axis,
-                        grid_z_axis);
+                        config.get_default<double>(path, "inst_long", 0.0), {0.0, 0.0, 0.0},
+                        grid_x_axis, grid_y_axis, grid_z_axis);
 
     return grid_frame;
 }

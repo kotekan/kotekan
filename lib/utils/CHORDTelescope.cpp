@@ -433,8 +433,9 @@ CHORDTelescope::~CHORDTelescope() {
     DEBUG("Removing CHORDTelescope");
 }
 
-GeoFrame CHORDTelescope::grid_frame_from_config(const kotekan::Config& config, const std::string& path) {
-    
+GeoFrame CHORDTelescope::grid_frame_from_config(const kotekan::Config& config,
+                                                const std::string& path) {
+
     vec3d_t grid_x_axis = config.get_default<vec3d_t>(path, "grid_x_axis", {1.0, 0.0, 0.0});
     vec3d_t grid_y_axis = config.get_default<vec3d_t>(path, "grid_y_axis", {0.0, 1.0, 0.0});
     vec3d_t grid_z_axis = vec3d_cross(grid_x_axis, grid_y_axis);
@@ -442,18 +443,16 @@ GeoFrame CHORDTelescope::grid_frame_from_config(const kotekan::Config& config, c
     GeoFrame grid_frame(config.get<std::string>(path, "log_level"), "grid",
                         config.get_default<double>(path, "origin_itrs_lat_deg", 0.0),
                         config.get_default<double>(path, "origin_itrs_lon_deg", 0.0),
-                        {0.0, 0.0, 0.0}, grid_x_axis, grid_y_axis,
-                        grid_z_axis);
+                        {0.0, 0.0, 0.0}, grid_x_axis, grid_y_axis, grid_z_axis);
 
     return grid_frame;
 }
 
-GeoFrame CHORDTelescope::dish_frame_from_config(const kotekan::Config& config, const std::string& path) {
-    
-    vec3d_t dish_x =
-        config.get_default<vec3d_t>(path, "dish_elev_axis", {1.0, 0.0, 0.0});
-    vec3d_t dish_z =
-        config.get_default<vec3d_t>(path, "dish_vert_axis", {0.0, 0.0, 1.0});
+GeoFrame CHORDTelescope::dish_frame_from_config(const kotekan::Config& config,
+                                                const std::string& path) {
+
+    vec3d_t dish_x = config.get_default<vec3d_t>(path, "dish_elev_axis", {1.0, 0.0, 0.0});
+    vec3d_t dish_z = config.get_default<vec3d_t>(path, "dish_vert_axis", {0.0, 0.0, 1.0});
     vec3d_t dish_y = vec3d_cross(dish_z, dish_x);
 
     GeoFrame dish_frame(config.get<std::string>(path, "log_level"), "dish",
@@ -500,8 +499,7 @@ double CHORDTelescope::get_dish_coelev_deg() const {
     return _geographic_params.dish_coelev_deg;
 }
 
-vec3d_t CHORDTelescope::get_sky_vec_in_grid_coords(double ra, double dec,
-                                                                 const EOP& eop) const {
+vec3d_t CHORDTelescope::get_sky_vec_in_grid_coords(double ra, double dec, const EOP& eop) const {
 
     // Taking the ra & dec to be in CIRS frame
 
@@ -554,48 +552,41 @@ vec3d_t CHORDTelescope::vec_itrs_to_topocen(const vec3d_t& v_itrs) const {
     return _grid_frame.vec_itrs_to_topo(v_itrs);
 }
 
-vec3d_t CHORDTelescope::vec_axes_rotation_R1(const vec3d_t& v,
-                                                           double theta) const {
+vec3d_t CHORDTelescope::vec_axes_rotation_R1(const vec3d_t& v, double theta) const {
     // Return coordinates of vector v in frame rotated by theta about x-axis
 
     double cos_th = cos(theta);
     double sin_th = sin(theta);
 
-    vec3d_t v_rot = {v[0], cos_th * v[1] + sin_th * v[2],
-                                   -sin_th * v[1] + cos_th * v[2]};
+    vec3d_t v_rot = {v[0], cos_th * v[1] + sin_th * v[2], -sin_th * v[1] + cos_th * v[2]};
 
     return v_rot;
 }
 
-vec3d_t CHORDTelescope::vec_axes_rotation_R2(const vec3d_t& v,
-                                                           double theta) const {
+vec3d_t CHORDTelescope::vec_axes_rotation_R2(const vec3d_t& v, double theta) const {
     // Return coordinates of vector v in frame rotated by theta about y-axis
 
     double cos_th = cos(theta);
     double sin_th = sin(theta);
 
-    vec3d_t v_rot = {cos_th * v[0] - sin_th * v[2], v[1],
-                                   sin_th * v[0] + cos_th * v[2]};
+    vec3d_t v_rot = {cos_th * v[0] - sin_th * v[2], v[1], sin_th * v[0] + cos_th * v[2]};
 
     return v_rot;
 }
 
-vec3d_t CHORDTelescope::vec_axes_rotation_R3(const vec3d_t& v,
-                                                           double theta) const {
+vec3d_t CHORDTelescope::vec_axes_rotation_R3(const vec3d_t& v, double theta) const {
     // Return coordinates of vector v in frame rotated by theta about z-axis
 
     double cos_th = cos(theta);
     double sin_th = sin(theta);
 
-    vec3d_t v_rot = {cos_th * v[0] + sin_th * v[1], -sin_th * v[0] + cos_th * v[1],
-                                   v[2]};
+    vec3d_t v_rot = {cos_th * v[0] + sin_th * v[1], -sin_th * v[0] + cos_th * v[1], v[2]};
 
     return v_rot;
 }
 
 
-vec3d_t CHORDTelescope::vec_cirs_to_itrs(const vec3d_t& v_cirs,
-                                                       const EOP& eop) const {
+vec3d_t CHORDTelescope::vec_cirs_to_itrs(const vec3d_t& v_cirs, const EOP& eop) const {
 
     // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the
     // ITRS -> CIRS Transformation:
@@ -624,8 +615,7 @@ vec3d_t CHORDTelescope::vec_cirs_to_itrs(const vec3d_t& v_cirs,
     return v_itrs;
 }
 
-vec3d_t CHORDTelescope::vec_itrs_to_cirs(const vec3d_t& v_itrs,
-                                                       const EOP& eop) const {
+vec3d_t CHORDTelescope::vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const {
 
     // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the
     // ITRS -> CIRS Transformation:

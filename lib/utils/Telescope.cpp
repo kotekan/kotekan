@@ -26,8 +26,7 @@ static constexpr BareEOP dummy_bare_eop_last = {.t_inst_ns = std::numeric_limits
                                                 .yp_as = 0.0};
 
 Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
-                     const std::string& eop_updatable_config_path,
-                     const GeoFrame &frame) :
+                     const std::string& eop_updatable_config_path, const GeoFrame& frame) :
     _unique_name(tel_path), _frame(frame), _require_eop(require_eop) {
     set_log_level(log_level);
     set_log_prefix("/telescope");

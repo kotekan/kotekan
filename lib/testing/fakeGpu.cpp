@@ -180,8 +180,8 @@ FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& p
     Telescope(path, config.get<std::string>(path, "log_level"),
               config.get_default<bool>(path, "require_eop", false),
               config.get_default<std::string>(path, "eop_updatable_config", ""),
-              GeoFrame(config.get<std::string>(path, "log_level"), "grid", 0.0, 0.0,
-                  {0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1})) {
+              GeoFrame(config.get<std::string>(path, "log_level"), "grid", 0.0, 0.0, {0, 0, 0},
+                       {1, 0, 0}, {0, 1, 0}, {0, 0, 1})) {
     _num_local_freq = config.get_default<size_t>(path, "num_local_freq", 1);
 }
 
