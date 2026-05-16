@@ -256,6 +256,26 @@ dbg_read_voltages_{{ id }}:
 {%- endfor %}
 ##}
 
+#{#
+{% set frequency_channels = [269, 277, 285, 293, 301, 477, 485, 493, 541, 717, 749, 901, 957, 981, 989, 1005] %}
+{% for id in range(16) %}   # num_frequencies = 16
+    read_voltage_{{ id }}:
+        kotekan_stage: hdf5FileReadSingleFile
+        file_name: voltage
+        frequency_channels: [{{ frequency_channels[id] }}]
+        combine_dishes_and_polarizations: true
+        transpose_frequency_and_time: true
+        out_buf: host_voltage_buffer_{{ id }}
+{% endfor %}
+{% for id in range(16//4) %}   # num_frequencies = 16
+    fake_lost_samples_{{ id }}:
+      kotekan_stage: testDataGen
+      type: const
+      value: 0
+      out_buf: lost_samples_buffer_{{ id }}
+{% endfor %}
+##}
+
 dbg_read_voltages_0:
     kotekan_stage: hdf5FileRead
     input_dir: debug-data
