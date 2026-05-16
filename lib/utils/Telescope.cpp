@@ -365,7 +365,6 @@ double Telescope::get_itrs_lat_deg() const {
     return _frame.get_itrs_lat_deg();
 }
 
-
 double Telescope::get_ERAL_deg(EOP& eop) const {
     double era = eop.ERA_deg;
     double lon = _frame.get_itrs_lon_deg();
@@ -376,4 +375,24 @@ double Telescope::get_ERAL_deg(EOP& eop) const {
     eral -= n_off * 360;
 
     return eral;
+}
+
+mat3x3d_t Telescope::get_grid_orientation() const {
+    return _frame.get_R_topo_to_frame();
+}
+
+vec3d_t Telescope::vec_topo_to_grid(const vec3d_t& v_topo) const {
+    return _frame.vec_topo_to_frame(v_topo);
+}
+
+vec3d_t Telescope::vec_topo_to_itrs(const vec3d_t& v_topo) const {
+    return _frame.vec_topo_to_itrs(v_topo);
+}
+
+vec3d_t Telescope::vec_grid_to_topo(const vec3d_t& v_grid) const {
+    return _frame.vec_frame_to_topo(v_grid);
+}
+
+vec3d_t Telescope::vec_itrs_to_topo(const vec3d_t& v_itrs) const {
+    return _frame.vec_itrs_to_topo(v_itrs);
 }

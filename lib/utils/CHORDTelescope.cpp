@@ -423,7 +423,6 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     _gps_time_params(GPSTimeParams::from_config(config, path)),
     // Instrument geographic coordinates
     _geographic_params(GeographicParams::from_config(config, path)),
-    _grid_frame(grid_frame_from_config(config, path)),
     _dish_frame(dish_frame_from_config(config, path)) {
 
     DEBUG("Building CHORDTelescope");
@@ -514,9 +513,9 @@ vec3d_t CHORDTelescope::get_sky_vec_in_grid_coords(double ra, double dec, const 
 
     // Transform CIRS -> ITRS -> TOPO -> Telescope.
     vec3d_t n_itrs = vec_cirs_to_itrs(n_cirs, eop);
-    vec3d_t n_topo = vec_itrs_to_topocen(n_itrs);
+    vec3d_t n_topo = vec_itrs_to_topo(n_itrs);
 
-    return vec_topocen_to_grid(n_topo);
+    return vec_topo_to_grid(n_topo);
 }
 
 vec3d_t CHORDTelescope::get_pointing_vec_in_dish_coords() const {
@@ -533,23 +532,11 @@ vec3d_t CHORDTelescope::get_pointing_vec_in_dish_coords() const {
     return n_point;
 }
 
-vec3d_t CHORDTelescope::vec_topocen_to_dish(const vec3d_t& v_topocen) const {
-    return _dish_frame.vec_topo_to_frame(v_topocen);
+vec3d_t CHORDTelescope::vec_topo_to_dish(const vec3d_t& v_topo) const {
+    return _dish_frame.vec_topo_to_frame(v_topo);
 }
-vec3d_t CHORDTelescope::vec_topocen_to_grid(const vec3d_t& v_topocen) const {
-    return _grid_frame.vec_topo_to_frame(v_topocen);
-}
-vec3d_t CHORDTelescope::vec_topocen_to_itrs(const vec3d_t& v_topocen) const {
-    return _grid_frame.vec_topo_to_itrs(v_topocen);
-}
-vec3d_t CHORDTelescope::vec_dish_to_topocen(const vec3d_t& v_dish) const {
+vec3d_t CHORDTelescope::vec_dish_to_topo(const vec3d_t& v_dish) const {
     return _dish_frame.vec_frame_to_topo(v_dish);
-}
-vec3d_t CHORDTelescope::vec_grid_to_topocen(const vec3d_t& v_grid) const {
-    return _grid_frame.vec_frame_to_topo(v_grid);
-}
-vec3d_t CHORDTelescope::vec_itrs_to_topocen(const vec3d_t& v_itrs) const {
-    return _grid_frame.vec_itrs_to_topo(v_itrs);
 }
 
 vec3d_t CHORDTelescope::vec_axes_rotation_R1(const vec3d_t& v, double theta) const {
@@ -649,22 +636,22 @@ void CHORDTelescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, 
     // constant in time.
     vec3d_t n_dish0 = get_pointing_vec_in_dish_coords();
 
-    // Transform the pointing vector into topocentric coordinates (from which we can
+    // Transform the pointing vector into topotric coordinates (from which we can
     // transform to the sky), and grid coordinates (where the dish locations live).
     // These are also constant in time.
-    vec3d_t n_topo0 = vec_dish_to_topocen(n_dish0);
-    vec3d_t n_grid0 = vec_topocen_to_grid(n_topo0);
+    vec3d_t n_topo0 = vec_dish_to_topo(n_dish0);
+    vec3d_t n_grid0 = vec_topo_to_grid(n_topo0);
 
     // Take the pointing vector for the telescope and find it in the CIRS frame at ERA0.
     // This is the point we are attempting to stop the fringes at.
-    vec3d_t n_itrs0 = vec_topocen_to_itrs(n_topo0);
+    vec3d_t n_itrs0 = vec_topo_to_itrs(n_topo0);
     vec3d_t n_cirs = vec_itrs_to_cirs(n_itrs0, eop0);
 
     // Now, given this CIRS vector, find its components in the telescope
     // frame at the requested (current) ERA
     vec3d_t n_itrs = vec_cirs_to_itrs(n_cirs, eop);
-    vec3d_t n_topo = vec_itrs_to_topocen(n_itrs);
-    vec3d_t n_grid = vec_topocen_to_grid(n_topo);
+    vec3d_t n_topo = vec_itrs_to_topo(n_itrs);
+    vec3d_t n_grid = vec_topo_to_grid(n_topo);
 
     // n_grid is now (at ERA) the point on the sky which will be at the
     // phase center (n_grid0) at ERA0.
@@ -716,10 +703,6 @@ void CHORDTelescope::fill_input_maps(dishInputFields& input) const {
 uint64_t CHORDTelescope::get_num_stacks() const {
     FATAL_ERROR("get_num_stacks() has not been implemented in CHORDTelescope yet.");
     return 0;
-}
-
-double CHORDTelescope::get_grid_orientation_el(int i, int j) const {
-    return _grid_frame.get_R_topo_to_frame()[i][j];
 }
 
 double CHORDTelescope::get_dish_orientation_el(int i, int j) const {

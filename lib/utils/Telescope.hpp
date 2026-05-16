@@ -364,6 +364,39 @@ public:
      **/
     double get_itrs_lat_deg() const;
 
+    /**
+     * @brief   Return the Topo -> Grid frame rotation matrix.
+     **/
+    mat3x3d_t get_grid_orientation() const;
+
+    /**
+     * @brief   Transform the given vector from topocentric to grid coords.
+     *
+     * @param   v_topo  Vector in topocentric coordinates.
+     **/
+    vec3d_t vec_topo_to_grid(const vec3d_t& v_topo) const;
+
+    /**
+     * @brief   Transform the given vector from grid to topocentric coords.
+     *
+     * @param   v_grid  Vector in grid coordinates.
+     **/
+    vec3d_t vec_grid_to_topo(const vec3d_t& v_grid) const;
+
+    /**
+     * @brief   Transform the given vector from ITRS to topocentric coords.
+     *
+     * @param   v_topo  Vector in ITRS coordinates.
+     **/
+    vec3d_t vec_itrs_to_topo(const vec3d_t& v_itrs) const;
+
+    /**
+     * @brief   Transform the given vector from topocentric to ITRS coords.
+     *
+     * @param   v_topo  Vector in topocentric coordinates.
+     **/
+    vec3d_t vec_topo_to_itrs(const vec3d_t& v_topo) const;
+
 
 private:
     static std::unique_ptr<Telescope>& tel_instance();

@@ -238,13 +238,13 @@ struct GeographicParams {
      * @conf   dish_separation_x_m  double. Dish separation in the E/W (x) direction, meters.
      * @conf   dish_separation_y_m  double. Dish separation in the N/S (y) direction, meters.
      * @conf   grid_x_axis          array<double,3>. Unit vector giving the grid x axis in
-     *                              topocentric coords.
+     *                              topotric coords.
      * @conf   grid_y_axis          array<double,3>. Unit vector giving the grid y axis in
-     *                              topocentric coords.
+     *                              topotric coords.
      * @conf   dish_elev_axis       array<double,3>. Unit vector giving the dish elevation axis in
-     *                              topocentric coords.
+     *                              topotric coords.
      * @conf   dish_vert_axis       array<double,3>. Unit vector giving the dish vertical axis in
-     *                              topocentric coords.
+     *                              topotric coords.
      * @conf   dish_inputs          array<dishInfo>. List of dish inputs, with all fields populated.
      *                              See struct dishInfo for field descriptions.
      * @conf   num_dishes           size_t. Total number of dishes.
@@ -503,15 +503,6 @@ public:
     double get_dish_coelev_deg() const;
 
     /**
-     * @brief   Return a component of the Topo -> Grid frame rotation
-     *          matrix.
-     *
-     * @param   i   First index, int, 0 <= i < 3, row
-     * @param   j   First index, int, 0 <= j < 3, col
-     **/
-    double get_grid_orientation_el(int i, int j) const;
-
-    /**
      * @brief   Return a component of the Topo -> Dish frame rotation matrix.
      *
      * @param   i   First index, int, 0 <= i < 3, row
@@ -562,46 +553,18 @@ public:
     vec3d_t get_pointing_vec_in_dish_coords() const;
 
     /**
-     * @brief   Transform the given vector from topocentric to dish coords.
+     * @brief   Transform the given vector from topotric to dish coords.
      *
-     * @param   v_topo  Vector in topocentric coordinates.
+     * @param   v_topo  Vector in topotric coordinates.
      **/
-    vec3d_t vec_topocen_to_dish(const vec3d_t& v_topo) const;
+    vec3d_t vec_topo_to_dish(const vec3d_t& v_topo) const;
 
     /**
      * @brief   Transform the given vector from Dish to Topocentric coords.
      *
      * @param   v_topo  Vector in dish coordinates.
      **/
-    vec3d_t vec_dish_to_topocen(const vec3d_t& v_dish) const;
-
-    /**
-     * @brief   Transform the given vector from topocentric to grid coords.
-     *
-     * @param   v_topo  Vector in topocentric coordinates.
-     **/
-    vec3d_t vec_topocen_to_grid(const vec3d_t& v_topo) const;
-
-    /**
-     * @brief   Transform the given vector from grid to topocentric coords.
-     *
-     * @param   v_grid  Vector in grid coordinates.
-     **/
-    vec3d_t vec_grid_to_topocen(const vec3d_t& v_grid) const;
-
-    /**
-     * @brief   Transform the given vector from ITRS to topocentric coords.
-     *
-     * @param   v_topo  Vector in ITRS coordinates.
-     **/
-    vec3d_t vec_itrs_to_topocen(const vec3d_t& v_itrs) const;
-
-    /**
-     * @brief   Transform the given vector from topocentric to ITRS coords.
-     *
-     * @param   v_topo  Vector in topocentric coordinates.
-     **/
-    vec3d_t vec_topocen_to_itrs(const vec3d_t& v_topo) const;
+    vec3d_t vec_dish_to_topo(const vec3d_t& v_dish) const;
 
     /**
      * @brief   Transform the given vector from CIRS to ITRS coords.
@@ -756,7 +719,6 @@ protected:
     /// Dish / array geometry and coordinate transforms.
     const GeographicParams _geographic_params;
 
-    const GeoFrame _grid_frame;
     const GeoFrame _dish_frame;
 };
 

@@ -448,9 +448,9 @@ BOOST_AUTO_TEST_CASE(_pointing_vec_dish) {
 }
 
 /*
- * @brief   Test topocen -> dish conversion
+ * @brief   Test topo -> dish conversion
  */
-BOOST_AUTO_TEST_CASE(_vec_topocen_to_dish) {
+BOOST_AUTO_TEST_CASE(_vec_topo_to_dish) {
     // Make test frame
     double dphi = -0.5;
     double dtheta = 0.2;
@@ -471,15 +471,15 @@ BOOST_AUTO_TEST_CASE(_vec_topocen_to_dish) {
     std::array<double, 3> n3({0.0, 0.0, 1.0});
 
     // Should just pick out basis vectors.
-    check_close_vec3d(tel.vec_topocen_to_dish(x), n1, 1.0e-14, 1.0e-14, "x_dish - n1");
-    check_close_vec3d(tel.vec_topocen_to_dish(y), n2, 1.0e-14, 1.0e-14, "y_dish - n2");
-    check_close_vec3d(tel.vec_topocen_to_dish(z), n3, 1.0e-14, 1.0e-14, "z_dish - n3");
+    check_close_vec3d(tel.vec_topo_to_dish(x), n1, 1.0e-14, 1.0e-14, "x_dish - n1");
+    check_close_vec3d(tel.vec_topo_to_dish(y), n2, 1.0e-14, 1.0e-14, "y_dish - n2");
+    check_close_vec3d(tel.vec_topo_to_dish(z), n3, 1.0e-14, 1.0e-14, "z_dish - n3");
 }
 
 /*
- * @brief   Test topocen <- dish conversion
+ * @brief   Test topo <- dish conversion
  */
-BOOST_AUTO_TEST_CASE(_vec_dish_to_topocen) {
+BOOST_AUTO_TEST_CASE(_vec_dish_to_topo) {
     // Make test frame
     double dphi = -0.5;
     double dtheta = 0.2;
@@ -500,15 +500,15 @@ BOOST_AUTO_TEST_CASE(_vec_dish_to_topocen) {
     std::array<double, 3> n3({0.0, 0.0, 1.0});
 
     // Should just pick out basis vectors.
-    check_close_vec3d(tel.vec_dish_to_topocen(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x");
-    check_close_vec3d(tel.vec_dish_to_topocen(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y");
-    check_close_vec3d(tel.vec_dish_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z");
+    check_close_vec3d(tel.vec_dish_to_topo(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel.vec_dish_to_topo(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel.vec_dish_to_topo(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z");
 }
 
 /*
- * @brief   Test topocen -> grid conversion
+ * @brief   Test topo -> grid conversion
  */
-BOOST_AUTO_TEST_CASE(_vec_topocen_to_grid) {
+BOOST_AUTO_TEST_CASE(_vec_topo_to_grid) {
     // Make test frame
     double dphi = -0.5;
     double dtheta = 0.2;
@@ -529,15 +529,15 @@ BOOST_AUTO_TEST_CASE(_vec_topocen_to_grid) {
     std::array<double, 3> n3({0.0, 0.0, 1.0});
 
     // Should just pick out basis vectors.
-    check_close_vec3d(tel.vec_topocen_to_grid(x), n1, 1.0e-14, 1.0e-14, "x_grid - n1");
-    check_close_vec3d(tel.vec_topocen_to_grid(y), n2, 1.0e-14, 1.0e-14, "y_grid - n2");
-    check_close_vec3d(tel.vec_topocen_to_grid(z), n3, 1.0e-14, 1.0e-14, "z_grid - n3");
+    check_close_vec3d(tel.vec_topo_to_grid(x), n1, 1.0e-14, 1.0e-14, "x_grid - n1");
+    check_close_vec3d(tel.vec_topo_to_grid(y), n2, 1.0e-14, 1.0e-14, "y_grid - n2");
+    check_close_vec3d(tel.vec_topo_to_grid(z), n3, 1.0e-14, 1.0e-14, "z_grid - n3");
 }
 
 /*
- * @brief   Test topocen <- grid conversion
+ * @brief   Test topo <- grid conversion
  */
-BOOST_AUTO_TEST_CASE(_vec_grid_to_topocen) {
+BOOST_AUTO_TEST_CASE(_vec_grid_to_topo) {
     // Make test frame
     double dphi = -0.5;
     double dtheta = 0.2;
@@ -558,9 +558,9 @@ BOOST_AUTO_TEST_CASE(_vec_grid_to_topocen) {
     std::array<double, 3> n3({0.0, 0.0, 1.0});
 
     // Should just pick out basis vectors.
-    check_close_vec3d(tel.vec_grid_to_topocen(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x");
-    check_close_vec3d(tel.vec_grid_to_topocen(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y");
-    check_close_vec3d(tel.vec_grid_to_topocen(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z");
+    check_close_vec3d(tel.vec_grid_to_topo(n1), x, 1.0e-14, 1.0e-14, "n1_topo - x");
+    check_close_vec3d(tel.vec_grid_to_topo(n2), y, 1.0e-14, 1.0e-14, "n2_topo - y");
+    check_close_vec3d(tel.vec_grid_to_topo(n3), z, 1.0e-14, 1.0e-14, "n3_topo - z");
 }
 
 /*
@@ -608,9 +608,9 @@ BOOST_AUTO_TEST_CASE(_freq_ids_clamping_nyquist_zones) {
 }
 
 /*
- * @brief   Test itrs -> topocen conversion
+ * @brief   Test itrs -> topo conversion
  */
-BOOST_AUTO_TEST_CASE(_vec_itrs_to_topocen) {
+BOOST_AUTO_TEST_CASE(_vec_itrs_to_topo) {
     // test vectors
     std::array<double, 3> n1({1.0, 0.0, 0.0});
     std::array<double, 3> n2({0.0, 1.0, 0.0});
@@ -622,33 +622,33 @@ BOOST_AUTO_TEST_CASE(_vec_itrs_to_topocen) {
     json_config["telescope"]["origin_itrs_lon_deg"] = 0;
     json_config["telescope"]["origin_itrs_lat_deg"] = 0;
     const CHORDTelescope& tel_x = get_telescope(json_config);
-    check_close_vec3d(tel_x.vec_itrs_to_topocen(n1), std::array<double, 3>({0, 0, 1}), 1.0e-14,
+    check_close_vec3d(tel_x.vec_itrs_to_topo(n1), std::array<double, 3>({0, 0, 1}), 1.0e-14,
                       1.0e-14, "n1_topo - x");
-    check_close_vec3d(tel_x.vec_itrs_to_topocen(n2), std::array<double, 3>({1, 0, 0}), 1.0e-14,
+    check_close_vec3d(tel_x.vec_itrs_to_topo(n2), std::array<double, 3>({1, 0, 0}), 1.0e-14,
                       1.0e-14, "n2_topo - y");
-    check_close_vec3d(tel_x.vec_itrs_to_topocen(n3), std::array<double, 3>({0, 1, 0}), 1.0e-14,
+    check_close_vec3d(tel_x.vec_itrs_to_topo(n3), std::array<double, 3>({0, 1, 0}), 1.0e-14,
                       1.0e-14, "n3_topo - z");
 
     // test lat 0 lon 90 -- itrs y
     json_config["telescope"]["origin_itrs_lon_deg"] = 90;
     json_config["telescope"]["origin_itrs_lat_deg"] = 0;
     const CHORDTelescope& tel_y = get_telescope(json_config);
-    check_close_vec3d(tel_y.vec_itrs_to_topocen(n1), std::array<double, 3>({-1, 0, 0}), 1.0e-14,
+    check_close_vec3d(tel_y.vec_itrs_to_topo(n1), std::array<double, 3>({-1, 0, 0}), 1.0e-14,
                       1.0e-14, "n1_topo - x");
-    check_close_vec3d(tel_y.vec_itrs_to_topocen(n2), std::array<double, 3>({0, 0, 1}), 1.0e-14,
+    check_close_vec3d(tel_y.vec_itrs_to_topo(n2), std::array<double, 3>({0, 0, 1}), 1.0e-14,
                       1.0e-14, "n2_topo - y");
-    check_close_vec3d(tel_y.vec_itrs_to_topocen(n3), std::array<double, 3>({0, 1, 0}), 1.0e-14,
+    check_close_vec3d(tel_y.vec_itrs_to_topo(n3), std::array<double, 3>({0, 1, 0}), 1.0e-14,
                       1.0e-14, "n3_topo - z");
 
     // test lat 0 lon 90 -- itrs y
     json_config["telescope"]["origin_itrs_lon_deg"] = -90;
     json_config["telescope"]["origin_itrs_lat_deg"] = 90;
     const CHORDTelescope& tel_z = get_telescope(json_config);
-    check_close_vec3d(tel_z.vec_itrs_to_topocen(n1), std::array<double, 3>({1, 0, 0}), 1.0e-14,
+    check_close_vec3d(tel_z.vec_itrs_to_topo(n1), std::array<double, 3>({1, 0, 0}), 1.0e-14,
                       1.0e-14, "n1_topo - x");
-    check_close_vec3d(tel_z.vec_itrs_to_topocen(n2), std::array<double, 3>({0, 1, 0}), 1.0e-14,
+    check_close_vec3d(tel_z.vec_itrs_to_topo(n2), std::array<double, 3>({0, 1, 0}), 1.0e-14,
                       1.0e-14, "n2_topo - y");
-    check_close_vec3d(tel_z.vec_itrs_to_topocen(n3), std::array<double, 3>({0, 0, 1}), 1.0e-14,
+    check_close_vec3d(tel_z.vec_itrs_to_topo(n3), std::array<double, 3>({0, 0, 1}), 1.0e-14,
                       1.0e-14, "n3_topo - z");
 
     // "harder" test
@@ -676,20 +676,20 @@ BOOST_AUTO_TEST_CASE(_vec_itrs_to_topocen) {
     //        = (cos(lon) * cos(lat), sin(lon) * cos(lat), sin(lat))
 
     // Should just pick out basis vectors.
-    check_close_vec3d(tel.vec_itrs_to_topocen(n1),
+    check_close_vec3d(tel.vec_itrs_to_topo(n1),
                       std::array<double, 3>({-sin(lon), -cos(lon) * sin(lat), cos(lon) * cos(lat)}),
                       1.0e-14, 1.0e-14, "n1_topo - x");
-    check_close_vec3d(tel.vec_itrs_to_topocen(n2),
+    check_close_vec3d(tel.vec_itrs_to_topo(n2),
                       std::array<double, 3>({cos(lon), -sin(lon) * sin(lat), sin(lon) * cos(lat)}),
                       1.0e-14, 1.0e-14, "n2_topo - y");
-    check_close_vec3d(tel.vec_itrs_to_topocen(n3), std::array<double, 3>({0, cos(lat), sin(lat)}),
+    check_close_vec3d(tel.vec_itrs_to_topo(n3), std::array<double, 3>({0, cos(lat), sin(lat)}),
                       1.0e-14, 1.0e-14, "n3_topo - z");
 }
 
 /*
- * @brief   Test itrs <- topocen conversion
+ * @brief   Test itrs <- topo conversion
  */
-BOOST_AUTO_TEST_CASE(_vec_topocen_to_itrs) {
+BOOST_AUTO_TEST_CASE(_vec_topo_to_itrs) {
     // test vectors
     std::array<double, 3> n1({1.0, 0.0, 0.0});
     std::array<double, 3> n2({0.0, 1.0, 0.0});
@@ -701,33 +701,33 @@ BOOST_AUTO_TEST_CASE(_vec_topocen_to_itrs) {
     json_config["telescope"]["origin_itrs_lon_deg"] = 0;
     json_config["telescope"]["origin_itrs_lat_deg"] = 0;
     const CHORDTelescope& tel_x = get_telescope(json_config);
-    check_close_vec3d(tel_x.vec_topocen_to_itrs(n1), std::array<double, 3>({0, 1, 0}), 1.0e-14,
+    check_close_vec3d(tel_x.vec_topo_to_itrs(n1), std::array<double, 3>({0, 1, 0}), 1.0e-14,
                       1.0e-14, "n1_topo - x");
-    check_close_vec3d(tel_x.vec_topocen_to_itrs(n2), std::array<double, 3>({0, 0, 1}), 1.0e-14,
+    check_close_vec3d(tel_x.vec_topo_to_itrs(n2), std::array<double, 3>({0, 0, 1}), 1.0e-14,
                       1.0e-14, "n2_topo - y");
-    check_close_vec3d(tel_x.vec_topocen_to_itrs(n3), std::array<double, 3>({1, 0, 0}), 1.0e-14,
+    check_close_vec3d(tel_x.vec_topo_to_itrs(n3), std::array<double, 3>({1, 0, 0}), 1.0e-14,
                       1.0e-14, "n3_topo - z");
 
     // test lat 0 lon 90 -- itrs y
     json_config["telescope"]["origin_itrs_lon_deg"] = 90;
     json_config["telescope"]["origin_itrs_lat_deg"] = 0;
     const CHORDTelescope& tel_y = get_telescope(json_config);
-    check_close_vec3d(tel_y.vec_topocen_to_itrs(n1), std::array<double, 3>({-1, 0, 0}), 1.0e-14,
+    check_close_vec3d(tel_y.vec_topo_to_itrs(n1), std::array<double, 3>({-1, 0, 0}), 1.0e-14,
                       1.0e-14, "n1_topo - x");
-    check_close_vec3d(tel_y.vec_topocen_to_itrs(n2), std::array<double, 3>({0, 0, 1}), 1.0e-14,
+    check_close_vec3d(tel_y.vec_topo_to_itrs(n2), std::array<double, 3>({0, 0, 1}), 1.0e-14,
                       1.0e-14, "n2_topo - y");
-    check_close_vec3d(tel_y.vec_topocen_to_itrs(n3), std::array<double, 3>({0, 1, 0}), 1.0e-14,
+    check_close_vec3d(tel_y.vec_topo_to_itrs(n3), std::array<double, 3>({0, 1, 0}), 1.0e-14,
                       1.0e-14, "n3_topo - z");
 
     // test lat 0 lon 90 -- itrs y
     json_config["telescope"]["origin_itrs_lon_deg"] = -90;
     json_config["telescope"]["origin_itrs_lat_deg"] = 90;
     const CHORDTelescope& tel_z = get_telescope(json_config);
-    check_close_vec3d(tel_z.vec_topocen_to_itrs(n1), std::array<double, 3>({1, 0, 0}), 1.0e-14,
+    check_close_vec3d(tel_z.vec_topo_to_itrs(n1), std::array<double, 3>({1, 0, 0}), 1.0e-14,
                       1.0e-14, "n1_topo - x");
-    check_close_vec3d(tel_z.vec_topocen_to_itrs(n2), std::array<double, 3>({0, 1, 0}), 1.0e-14,
+    check_close_vec3d(tel_z.vec_topo_to_itrs(n2), std::array<double, 3>({0, 1, 0}), 1.0e-14,
                       1.0e-14, "n2_topo - y");
-    check_close_vec3d(tel_z.vec_topocen_to_itrs(n3), std::array<double, 3>({0, 0, 1}), 1.0e-14,
+    check_close_vec3d(tel_z.vec_topo_to_itrs(n3), std::array<double, 3>({0, 0, 1}), 1.0e-14,
                       1.0e-14, "n3_topo - z");
 
     // "harder" test
@@ -755,12 +755,12 @@ BOOST_AUTO_TEST_CASE(_vec_topocen_to_itrs) {
     //        = (cos(lon) * cos(lat), sin(lon) * cos(lat), sin(lat))
 
     // Should just pick out basis vectors.
-    check_close_vec3d(tel.vec_topocen_to_itrs(n1), std::array<double, 3>({-sin(lon), cos(lon), 0}),
+    check_close_vec3d(tel.vec_topo_to_itrs(n1), std::array<double, 3>({-sin(lon), cos(lon), 0}),
                       1.0e-14, 1.0e-14, "n1_topo - x");
-    check_close_vec3d(tel.vec_topocen_to_itrs(n2),
+    check_close_vec3d(tel.vec_topo_to_itrs(n2),
                       std::array<double, 3>({-cos(lon) * sin(lat), -sin(lon) * sin(lat), cos(lat)}),
                       1.0e-14, 1.0e-14, "n2_topo - y");
-    check_close_vec3d(tel.vec_topocen_to_itrs(n3),
+    check_close_vec3d(tel.vec_topo_to_itrs(n3),
                       std::array<double, 3>({cos(lon) * cos(lat), sin(lon) * cos(lat), sin(lat)}),
                       1.0e-14, 1.0e-14, "n3_topo - z");
 }
