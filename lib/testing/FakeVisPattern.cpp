@@ -581,8 +581,8 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     std::array<double, 3> n = tel.get_sky_vec_in_grid_coords(ra, dec, eop);
 
     std::array<double, 3> n_point_dish = tel.get_pointing_vec_in_dish_coords();
-    std::array<double, 3> n_point_topo = tel.vec_dish_to_topocen(n_point_dish);
-    std::array<double, 3> n_point_grid = tel.vec_topocen_to_grid(n_point_topo);
+    std::array<double, 3> n_point_topo = tel.vec_dish_to_topo(n_point_dish);
+    std::array<double, 3> n_point_grid = tel.vec_topo_to_grid(n_point_topo);
 
     double f = tel.to_freq_MHz(frame.freq_id);
     double lambda = C / (1e6 * f);

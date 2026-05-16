@@ -67,14 +67,14 @@ void TestCHORDTelescope::main_thread() {
         INFO("            lat:         {:f} deg", lat);
         INFO("            lon:         {:f} deg", lon);
         INFO("            Telescope Orientation: {0:.6f} {1:.6f} {2:.6f}",
-             tel.get_grid_orientation_el(0, 0), tel.get_grid_orientation_el(0, 1),
-             tel.get_grid_orientation_el(0, 2));
+             tel.get_grid_orientation()[0][0], tel.get_grid_orientation()[0][1],
+             tel.get_grid_orientation()[0][2]);
         INFO("                                   {0:.6f} {1:.6f} {2:.6f}",
-             tel.get_grid_orientation_el(1, 0), tel.get_grid_orientation_el(1, 1),
-             tel.get_grid_orientation_el(1, 2));
+             tel.get_grid_orientation()[1][0], tel.get_grid_orientation()[1][1],
+             tel.get_grid_orientation()[1][2]);
         INFO("                                   {0:.6f} {1:.6f} {2:.6f}",
-             tel.get_grid_orientation_el(2, 0), tel.get_grid_orientation_el(2, 1),
-             tel.get_grid_orientation_el(2, 2));
+             tel.get_grid_orientation()[2][0], tel.get_grid_orientation()[2][1],
+             tel.get_grid_orientation()[2][2]);
         INFO("            Dish Orientation: {0:.6f} {1:.6f} {2:.6f}",
              tel.get_dish_orientation_el(0, 0), tel.get_dish_orientation_el(0, 1),
              tel.get_dish_orientation_el(0, 2));

@@ -63,6 +63,7 @@
 #include "N2FrameDesc.hpp"                        // for N2FrameDesc
 #include "N2Util.hpp"                             // for freq_ctype, frameID, modulo, cfloat
 #include "fmt.hpp"                                // for compile_string_to_view, format, format_...
+#include "geoUtil.hpp"                            // for mat3x3d_t
 #include "hdf5Files.hpp"                          // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
 #include "jsonMetadata.hpp"                       // for MAX_NUM_RFI_THRESHOLDS
 #include "kotekanLogging.hpp"                     // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
@@ -380,10 +381,11 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         // Store grid orientation (3x3 matrix) and dish orientation (3x3 matrix)
         {
             std::array<double, 9> grid_orientation;
+            mat3x3d_t grid_R = telescope.get_grid_orientation();
             std::array<double, 9> dish_orientation;
             for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < 3; j++) {
-                    grid_orientation[3 * i + j] = telescope.get_grid_orientation_el(i, j);
+                    grid_orientation[3 * i + j] = grid_R[i][j];
                     dish_orientation[3 * i + j] = telescope.get_dish_orientation_el(i, j);
                 }
             }
