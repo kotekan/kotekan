@@ -1258,6 +1258,7 @@ FRB:
                 host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
                 host_frb2_weights_buffer: host_frb2_weights_buffer
             out_buffers:
+                host_frb1_beams_buffer: host_frb1_beams_buffer
                 host_frb2_beams_buffer: host_frb2_beams_buffer
                 host_frb3_beams_buffer: host_frb3_beams_buffer
                 host_frb3_beams_offsetscale_buffer: host_frb3_beams_offsetscale_buffer
@@ -1287,6 +1288,13 @@ FRB:
               gpu_mem_output: frb3_beams
               gpu_mem_offsetscale: frb3_beams_offsetscale
             - name: cudaSyncOutput
+            - name: cudaCopyFromRingbuffer
+              # TODO: Don't do this in production
+              host_signal: host_frb1_beams_ringbuffer
+              gpu_mem_input: frb1_beams_buffer
+              output_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+              ring_buffer_size: gpu_buffer_depth * output_size
+              out_buf: host_frb1_beams_buffer
             - name: cudaOutputData
               # TODO: Don't do this in production
               gpu_mem: frb2_beams_buffer
