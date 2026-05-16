@@ -1308,6 +1308,16 @@ FRB:
 
     # dump data for debugging
     dump_frb_beams:
+        beams1:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_beams
+            in_buf: host_frb1_beams_buffer
+            file_name: host_frb1_beams_buffer
+        beams2:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_beams
+            in_buf: host_frb2_beams_buffer
+            file_name: host_frb2_beams_buffer
         beams:
             kotekan_stage: hdf5FileWrite
             base_dir: frb_beams
