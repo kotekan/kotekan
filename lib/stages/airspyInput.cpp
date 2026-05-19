@@ -276,8 +276,9 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
             short* fr = (short*)frame_ptr;
             const uint32_t n_samples = buf->frame_size / BYTES_PER_SAMPLE;
 
-            // Read dump_adcstat without locking (single bool, set under lock by REST thread).
-            // If true, compute stats then publish under the mutex.
+            // Lock-free atomic read on the hot path (dump_adcstat is
+            // std::atomic<bool>); if a dump was requested, compute stats and
+            // publish them under adcstat_mutex below.
             if (dump_adcstat) {
                 float mean = 0, rms = 0, rail = 0;
                 for (uint32_t i = 0; i < n_samples; i++)
