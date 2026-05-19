@@ -22,6 +22,7 @@
  *   -- setLocalConfig
  *   -- insertUpstreamConfig
  *   -- fetchAndRegisterFpgaTracking
+ *   -- applyConfig
  *   -- hasLocalConfig / hasUpstreamConfig
  *   -- getLocalConfigInfo / getLocalConfigHash
  *   -- trackers_local_callback
@@ -36,6 +37,7 @@
 #ifndef CONFIGTRACKER_H
 #define CONFIGTRACKER_H
 
+#include "Config.hpp"         // for Config
 #include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, ERROR_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO
 #include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily, Metrics
 #include "restClient.hpp"        // for restClient
@@ -292,9 +294,9 @@ public:
      * @brief Set the retry/timeout policy used by both
      * @c fetchAndRegisterFpgaTracking (the one-time FPGA fetch at startup)
      * and @c getUpstreamConfigs (peer fetches on every wire-update flag).
-     * Intended to be called once at kotekan startup from kotekanMode after
-     * reading the /config_tracker block. After retries are exhausted on any
-     * fetch, the call is fatal.
+     * Called from @c applyConfig at kotekan startup after reading the
+     * /config_tracker block. After retries are exhausted on any fetch, the
+     * call is fatal.
      *
      * @param retries          Number of retries for each upstream
      *                         @c make_request_blocking call.
@@ -363,6 +365,46 @@ public:
             "ConfigTracker: registered FPGA controller config and timing from {}:{} (config {}, "
             "timing {})",
             ip, port, config_endpoint, timing_endpoint);
+    }
+
+    /**
+     * @brief Configure this tracker from the kotekan @c Config object.
+     *
+     * Reads the @c /config_tracker block and applies:
+     *  - upstream fetch retry/timeout policy via @c setUpstreamFetchPolicy
+     *    (defaults: 2 retries, 10s timeout);
+     *  - if @c /config_tracker/fpga_host_info is set, the FPGA controller's
+     *    config + timing snapshot via @c fetchAndRegisterFpgaTracking (FATAL
+     *    on any failure).
+     *
+     * The endpoint paths live on the controller block itself so the
+     * Telescope (which reads ``timing_endpoint`` from the same block via
+     * ``gps_host_info``) and the ConfigTracker share one source.
+     *
+     * Intended to be called once at kotekan startup after @c setLocalConfig.
+     */
+    void applyConfig(Config& config) {
+        const std::string ct_path = "/config_tracker";
+
+        const int upstream_retries = config.get_default<int>(ct_path, "upstream_fetch_retries", 2);
+        const int upstream_timeout =
+            config.get_default<int>(ct_path, "upstream_fetch_timeout_seconds", 10);
+        setUpstreamFetchPolicy(upstream_retries, upstream_timeout);
+
+        if (config.exists(ct_path, "fpga_host_info")) {
+            const std::string fpga_ref = config.get<std::string>(ct_path, "fpga_host_info");
+            const std::string host = config.get<std::string>(fpga_ref, "host");
+            const int port_int = config.get<int>(fpga_ref, "port");
+            if (port_int <= 0 || port_int > 65535) {
+                FATAL_ERROR_NON_OO("ConfigTracker: invalid {}.port: {}", fpga_ref, port_int);
+            }
+            const std::string config_endpoint =
+                config.get_default<std::string>(fpga_ref, "config_endpoint", "/config");
+            const std::string timing_endpoint =
+                config.get_default<std::string>(fpga_ref, "timing_endpoint", "/get-frame0-time");
+            fetchAndRegisterFpgaTracking(host, static_cast<uint16_t>(port_int), config_endpoint,
+                                         timing_endpoint);
+        }
     }
 
     /// True if a local config has been set.

@@ -111,17 +111,16 @@ void kotekanMode::initalize_stages() {
     restServer::instance().register_get_callback(
         "/pipeline_dot", std::bind(&kotekanMode::pipeline_dot_graph_callback, this, _1));
 
-    // ConfigTracker setup. The optional /config_tracker block (an object)
-    // configures the tracker; defaults apply when absent.
-    const std::string ct_path = "/config_tracker";
-    bool ct_enabled = true;
+    // ConfigTracker setup. Disabled, unless a /config_tracker block exists.
+    // This enables the tracker, unless explicitly disabled with `enabled: false`.
+    bool ct_enabled = false;
     if (config.exists("/", "config_tracker")) {
         const nlohmann::json ct_node = config.get_value("/", "config_tracker");
         if (!ct_node.is_object()) {
             FATAL_ERROR_NON_OO("kotekanMode: /config_tracker must be an object (e.g. {{enabled: "
-                               "true}}); the legacy bare-bool form is no longer supported.");
+                               "true}}); bare-bool form is not supported.");
         }
-        ct_enabled = config.get_default<bool>(ct_path, "enabled", true);
+        ct_enabled = config.get_default<bool>("/config_tracker", "enabled", true);
     }
 
     if (ct_enabled) {
@@ -139,35 +138,9 @@ void kotekanMode::initalize_stages() {
             FATAL_ERROR_NON_OO("Failed to set local config in ConfigTracker: {:s}", e.what());
         }
 
-        // HTTP retry/timeout policy. Applies to every upstream fetch (both
-        // the one-shot FPGA fetch below and every getUpstreamConfigs call).
-        // FATAL after retries are exhausted.
-        const int upstream_retries = config.get_default<int>(ct_path, "upstream_fetch_retries", 2);
-        const int upstream_timeout =
-            config.get_default<int>(ct_path, "upstream_fetch_timeout_seconds", 10);
-        ConfigTracker::instance().setUpstreamFetchPolicy(upstream_retries, upstream_timeout);
-
-        // Optionally fetch the upstream FPGA controller's config + timing.
-        // If fpga_host_info is set, both endpoints must succeed at startup
-        // (otherwise ConfigTracker FATALs).
-        if (config.exists(ct_path, "fpga_host_info")) {
-            const std::string fpga_ref = config.get<std::string>(ct_path, "fpga_host_info");
-            const std::string host = config.get<std::string>(fpga_ref, "host");
-            const int port_int = config.get<int>(fpga_ref, "port");
-            if (port_int <= 0 || port_int > 65535) {
-                FATAL_ERROR_NON_OO("kotekanMode: invalid {}.port: {}", fpga_ref, port_int);
-            }
-            // The endpoint paths live on the controller block itself so the
-            // Telescope (which reads ``timing_endpoint`` from the same block
-            // via ``gps_host_info``) and the ConfigTracker share one source.
-            const std::string config_endpoint =
-                config.get_default<std::string>(fpga_ref, "config_endpoint", "/config");
-            const std::string timing_endpoint =
-                config.get_default<std::string>(fpga_ref, "timing_endpoint", "/get-frame0-time");
-
-            ConfigTracker::instance().fetchAndRegisterFpgaTracking(
-                host, static_cast<uint16_t>(port_int), config_endpoint, timing_endpoint);
-        }
+        // Apply the rest of the /config_tracker block: upstream fetch
+        // policy and (optionally) the FPGA controller snapshot.
+        ConfigTracker::instance().applyConfig(config);
     }
 }
 
