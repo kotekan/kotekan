@@ -41,7 +41,7 @@ frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
     _factor_upchan = config.get<int32_t>(unique_name, "factor_upchan");
     _factor_upchan_out = config.get<int32_t>(unique_name, "factor_upchan_out");
     _nbeams = config.get<int32_t>(unique_name, "num_beams_per_frb_packet");
-    _timesamples_per_frb_packet = config.get<int32_t>(unique_name, "timesamples_per_frb_packet");
+    _timesamples_per_frb_packet = config.get<int32_t>(unique_name, "timesamples_per_frb_packet"); // 16 for production CHIME
 
     std::vector<int32_t> bd;
     _incoherent_beams =
@@ -49,7 +49,7 @@ frbPostProcess::frbPostProcess(Config& config_, const std::string& unique_name,
     _incoherent_truncation = config.get_default<float>(unique_name, "incoherent_truncation", 1e10);
 
     num_L1_streams = 1024 / _nbeams;
-    num_samples = _samples_per_data_set / _downsample_time / _factor_upchan;
+    num_samples = _samples_per_data_set / _downsample_time / _factor_upchan; // 128 for production CHIME
 
     fpga_counts_per_sample = _downsample_time * _factor_upchan;
     udp_header_size = sizeof(struct FRBHeader) + sizeof(uint16_t) * _nbeams // beam ids
@@ -273,7 +273,7 @@ void frbPostProcess::main_thread() {
 
         float ofs, scl, off;
         for (uint T = 0; T < num_samples;
-             T += _timesamples_per_frb_packet) {                      // loop 128 time samples, in 8
+             T += _timesamples_per_frb_packet) {                      // loop 128 time samples, in 8 steps of 16 time samples
             for (int stream = 0; stream < num_L1_streams; stream++) { // loop 256 streams (output)
                 for (int b = 0; b < _nbeams; b++) {                   // loop 4 beams / stream
                     int beam_id = stream * _nbeams + b;
