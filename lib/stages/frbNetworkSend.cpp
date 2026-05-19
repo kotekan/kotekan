@@ -277,6 +277,7 @@ void frbNetworkSend::main_thread() {
         for (int frame = 0; frame < packets_per_stream; frame++) {
             for (int freq4 = 0; freq4 < num_frequencies / _nfreq_coarse; ++freq4) {
                 const int nstreams = _total_nbeams / _nbeams;
+                assert(nstreams == 128); // TODO: this is all wrong, since there's only 4 beams per stream...
                 for (int stream = 0; stream < nstreams; stream++) {
                     int e_stream =
                         (my_sequence_id + stream)
