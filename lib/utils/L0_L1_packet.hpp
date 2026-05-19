@@ -45,7 +45,7 @@
 // The packet header size in bytes is currently
 //    32 + 2*nbeam + 2*nfreq_coarse + 8*nbeam*nfreq
 //
-// For full CHIME, we expect to use (nbeam, nfreq_coarse, nupfreq, ntsamp) = (8, 4, 16, 16)
+// For full CHIME, we expect to use (nbeam, nfreq_coarse, nupfreq, ntsamp) = (4, 4, 16, 16)
 // which gives a 304-byte header and an 8192-byte data segment.
 //
 // For the pathfinder, I'm currently using  (nbeam, nfreq_coarse, nupfreq, ntsamp) = (1, 32, 1, 256) 
@@ -110,12 +110,12 @@ struct L0_L1_header {
     //
     // Thus in full chime, the uncompressed data array has shape
     //
-    //  uint8 data[8][4][16][16]
+    //  uint8 data[4][4][16][16]
     //             |  |   |   |
     //             |  |   |   +-- 16x 1-ms time samples
     //             |  |   +------ 16x 24 kHz frequency channels 
     //             |  +---------- 4x frequency bands (may not be consecutive in frequency)
-    //             +------------- 8x on-sky beams
+    //             +------------- 4x on-sky beams
     //
     // We need a sentinel value to indicate "this entry in the array is invalid".
     // We currently take both endpoint values to be sentinels, i.e. if a byte is either
