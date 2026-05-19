@@ -828,10 +828,10 @@ public:
     /**
      * @brief Create a new modular number.
      **/
-    modulo(Tu n) : _n(n) {};
+    modulo(Tu n) : _n(n){};
 
     // Default constructor
-    modulo() : modulo(0) {};
+    modulo() : modulo(0){};
 
     /// Assignment of a number into the modular number.
     modulo<T>& operator=(const T& i) {

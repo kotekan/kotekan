@@ -32,6 +32,18 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     buf->register_producer(unique_name);
 
+    // The DC-subtract / Nyquist-flip pass in main_thread walks samples two
+    // at a time (fr[i], fr[i+1]); an odd sample count would read one past
+    // the frame. Sample count = frame_size / BYTES_PER_SAMPLE, so the frame
+    // must be a multiple of 2*BYTES_PER_SAMPLE.
+    if ((buf->frame_size / BYTES_PER_SAMPLE) % 2 != 0) {
+        FATAL_ERROR("airspyInput: out_buf frame_size ({:d} B) must yield an even sample "
+                    "count (multiple of {:d} B); got {:d} samples.",
+                    buf->frame_size, 2 * BYTES_PER_SAMPLE,
+                    buf->frame_size / BYTES_PER_SAMPLE);
+        return;
+    }
+
     freq = config.get_default<float>(unique_name, "freq", 1420) * 1e6;             // MHz
     _sample_rate = config.get_default<float>(unique_name, "sample_bw", 2.5) * 1e6; // MSPS
     _gain_lna = config.get_default<int>(unique_name, "gain_lna", 5);               // 0-14

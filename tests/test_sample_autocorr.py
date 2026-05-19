@@ -5,7 +5,7 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 
 # === End Python 2/3 compatibility
 
-"""SampleAutocorr is a REST-triggered one-shot stage; its compute kernel is the
+"""SampleAutocorr is a REST-triggered on-demand stage; its compute kernel is the
 single-channel reduction of SimpleCrosscorr (AA only), which is covered
 end-to-end in ``test_simple_crosscorr.py``. The test here is therefore a
 minimal smoke test: confirm the stage registers, consumes frames, and the

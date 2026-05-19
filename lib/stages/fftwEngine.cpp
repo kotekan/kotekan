@@ -1,14 +1,16 @@
 #include "fftwEngine.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "fftwPlannerLock.hpp"  // for fftw_planner_mutex
+#include "kotekanLogging.hpp"   // for DEBUG, FATAL_ERROR
 
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <functional> // for bind
+#include <mutex>      // for lock_guard
 #include <stdint.h>   // for int16_t
 #include <string.h>   // for memcpy
 
@@ -28,7 +30,7 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    _spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 1024);
+    _spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 128);
 
     std::string input_type = config.get_default<std::string>(unique_name, "input_type", "complex");
     if (input_type == "real") {
@@ -41,6 +43,8 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
         return;
     }
 
+    // fftwf_malloc is thread-safe; only the planner call needs the lock.
+    std::lock_guard<std::mutex> planner_lock(fftw_planner_mutex());
     if (_real_input) {
         const int fft_len = _spectrum_length * 2;
         real_samples = (float*)fftwf_malloc(sizeof(float) * fft_len);
@@ -55,8 +59,10 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
 }
 
 fftwEngine::~fftwEngine() {
-    if (fft_plan)
+    if (fft_plan) {
+        std::lock_guard<std::mutex> planner_lock(fftw_planner_mutex());
         fftwf_destroy_plan(fft_plan);
+    }
     if (real_samples)
         fftwf_free(real_samples);
     if (complex_samples)

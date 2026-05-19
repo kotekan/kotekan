@@ -26,10 +26,14 @@
  * Two input formats are supported, selectable via @c input_type:
  *  - @c complex (default): packed int16 I/Q pairs. Each FFT consumes
  *    @c spectrum_length complex samples and emits @c spectrum_length complex
- *    bins, with DC shifted into the centre.
+ *    bins. The output is fftshifted -- the two halves of the raw FFT are
+ *    swapped (memcpy of @c spectrum_length/2 bins each way) so DC lands at
+ *    index @c spectrum_length/2 and bins run monotonically from -Fs/2 up to
+ *    +Fs/2.
  *  - @c real: packed int16 real samples. Each FFT consumes
  *    @c 2*spectrum_length real samples and emits @c spectrum_length complex
- *    bins (the first half of an r2c transform; Nyquist bin discarded).
+ *    bins (the first half of an r2c transform; Nyquist bin discarded). No
+ *    fftshift here -- bins run 0 (DC) up to just below Fs/2.
  *
  * Depends on libfftw3.
  *
@@ -41,7 +45,7 @@
  *     @buffer_format Array of @c fftwf_complex
  *     @buffer_metadata none
  *
- * @conf   spectrum_length  Int (default 1024). Number of complex bins per output spectrum.
+ * @conf   spectrum_length  Int (default 128). Number of complex bins per output spectrum.
  * @conf   input_type       String (default "complex"). One of "complex" or "real".
  *
  * @author Keith Vanderlinde

@@ -4,6 +4,7 @@
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "fftwPlannerLock.hpp" // for fftw_planner_mutex
 #include "kotekanLogging.hpp"  // for DEBUG
 
 #include <algorithm>          // for min
@@ -73,15 +74,21 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn, bool send_co
 
     float* samplesA = (float*)fftwf_malloc(sizeof(float) * fft_len);
     fftwf_complex* spectrumA = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * n_bins);
-    fftwf_plan fft_planA = fftwf_plan_dft_r2c_1d(fft_len, samplesA, spectrumA, FFTW_ESTIMATE);
-
     float* samplesB = (float*)fftwf_malloc(sizeof(float) * fft_len);
     fftwf_complex* spectrumB = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * n_bins);
-    fftwf_plan fft_planB = fftwf_plan_dft_r2c_1d(fft_len, samplesB, spectrumB, FFTW_ESTIMATE);
-
     float* samplesC = (float*)fftwf_malloc(sizeof(float) * fft_len);
     fftwf_complex* spectrumC = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * n_bins);
-    fftwf_plan fft_planC = fftwf_plan_dft_c2r_1d(fft_len, spectrumC, samplesC, FFTW_ESTIMATE);
+
+    // FFTW's planner is not thread-safe; this callback runs on a REST
+    // handler thread and can race other stages' plan create/destroy.
+    // Serialize plan creation (fftwf_malloc above is thread-safe).
+    fftwf_plan fft_planA, fft_planB, fft_planC;
+    {
+        std::lock_guard<std::mutex> planner_lock(fftw_planner_mutex());
+        fft_planA = fftwf_plan_dft_r2c_1d(fft_len, samplesA, spectrumA, FFTW_ESTIMATE);
+        fft_planB = fftwf_plan_dft_r2c_1d(fft_len, samplesB, spectrumB, FFTW_ESTIMATE);
+        fft_planC = fftwf_plan_dft_c2r_1d(fft_len, spectrumC, samplesC, FFTW_ESTIMATE);
+    }
 
     for (uint32_t i = 0; i < _lag_window; i++) {
         samplesA[i] = localA[i];
@@ -120,7 +127,11 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn, bool send_co
         meanval += val;
         corr_pos.push_back(val);
 
-        val = fabs(samplesC[fft_len - i] / norm);
+        // Negative-lag side of the circular correlation: lag -i lives at
+        // index (fft_len - i). The modulo keeps i==0 in-bounds (it maps to
+        // index 0, i.e. lag 0, the same sample as the positive side) --
+        // without it, i==0 reads samplesC[fft_len], one past the end.
+        val = fabs(samplesC[(fft_len - i) % fft_len] / norm);
         if (val > maxval) {
             lag = -i;
             maxval = val;
@@ -133,7 +144,7 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn, bool send_co
         float norm = (float)_lag_window - i;
         float val = fabs(samplesC[i] / norm) - meanval;
         var += val * val;
-        val = fabs(samplesC[fft_len - i] / norm) - meanval;
+        val = fabs(samplesC[(fft_len - i) % fft_len] / norm) - meanval;
         var += val * val;
     }
     var /= (_lag_window - edge_truncate) * 2;
@@ -161,9 +172,12 @@ void AirspyAlign::start_callback(kotekan::connectionInstance& conn, bool send_co
     fftwf_free(spectrumA);
     fftwf_free(spectrumB);
     fftwf_free(spectrumC);
-    fftwf_destroy_plan(fft_planA);
-    fftwf_destroy_plan(fft_planB);
-    fftwf_destroy_plan(fft_planC);
+    {
+        std::lock_guard<std::mutex> planner_lock(fftw_planner_mutex());
+        fftwf_destroy_plan(fft_planA);
+        fftwf_destroy_plan(fft_planB);
+        fftwf_destroy_plan(fft_planC);
+    }
 }
 
 void AirspyAlign::main_thread() {
