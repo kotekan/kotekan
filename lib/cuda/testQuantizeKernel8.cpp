@@ -1,30 +1,31 @@
 // Test 8-bit FRB beam quantizer for CHIME, using the float16 FRB beamformer and CHIME's
 // sending-to-Bonsai network format
 
-#include <algorithm>                // for fill, fill_n
-#include <cassert>                  // for assert
-#include <cfloat>                   // for FLT_MAX
-#include <cmath>                    // for fabs, isfinite, isnan, fmax, fmin
-#include <cstdint>                  // for uint8_t
-#include <cstdlib>                  // for abort
-#include <string>                   // for allocator, string
-#include <vector>                   // for vector
-#include <functional>               // for function
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for float16_t
+#include "Stage.hpp"               // for Stage
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaQuantizeKernel8.hpp" // for cpu_quantize8, gpu_quantize8
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "cuda_fp16.h"             // for __half, __half::operator float
+#include "cuda_runtime.h"          // for cudaMalloc
+#include "cuda_runtime_api.h"      // for cudaMemcpy
+#include "driver_types.h"          // for cudaMemcpyKind
+#include "errors.h"                // for TEST_PASSED
+#include "kotekanLogging.hpp"      // for FATAL_ERROR, INFO
 
-#include "Config.hpp"               // for Config
-#include "DataType.hpp"             // for float16_t
-#include "Stage.hpp"                // for Stage
-#include "StageFactory.hpp"         // for REGISTER_KOTEKAN_STAGE
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "cudaQuantizeKernel8.hpp"  // for cpu_quantize8, gpu_quantize8
-#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
-#include "cuda_fp16.h"              // for __half, __half::operator float
-#include "cuda_runtime.h"           // for cudaMalloc
-#include "cuda_runtime_api.h"       // for cudaMemcpy
-#include "driver_types.h"           // for cudaMemcpyKind
-#include "errors.h"                 // for TEST_PASSED
-#include "fmt.hpp"                  // for compile_string_to_view
-#include "kotekanLogging.hpp"       // for FATAL_ERROR, INFO
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for fill, fill_n
+#include <cassert>    // for assert
+#include <cfloat>     // for FLT_MAX
+#include <cmath>      // for fabs, isfinite, isnan, fmax, fmin
+#include <cstdint>    // for uint8_t
+#include <cstdlib>    // for abort
+#include <functional> // for function
+#include <string>     // for allocator, string
+#include <vector>     // for vector
 
 class testQuantizeKernel8 : public kotekan::Stage {
 public:
@@ -53,11 +54,11 @@ public:
         const int out_nfreqs_chunk = 16;
         // Chunks are combined into packets.
         const int out_nfreqs_packet = 4;
-        const int out_nbeams_packet = 8;
+        const int out_nbeams_packet = 4;
         // There are several packets.
         const int out_ntimes_outer = 16;
         const int out_nfreqs_outer = 4;
-        const int out_nbeams_outer = 128;
+        const int out_nbeams_outer = 256;
 
         static_assert(out_ntimes_chunk * out_ntimes_outer == in_ntimes);
         static_assert(out_nfreqs_chunk * out_nfreqs_packet * out_nfreqs_outer == in_nfreqs);
