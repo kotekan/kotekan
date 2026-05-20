@@ -33,18 +33,16 @@
 namespace kotekan_airspy {
 
 /// Raw airspy samples: int16 1-D buffer of length @p n_samples.
-inline std::shared_ptr<kotekan::GenericNDArray>
-make_input_desc(std::ptrdiff_t n_samples) {
-    return kotekan::GenericNDArray::create(kotekan::DataType::int16, "airspy_samples",
-                                           {n_samples}, {"sample"}, nullptr);
+inline std::shared_ptr<kotekan::GenericNDArray> make_input_desc(std::ptrdiff_t n_samples) {
+    return kotekan::GenericNDArray::create(kotekan::DataType::int16, "airspy_samples", {n_samples},
+                                           {"sample"}, nullptr);
 }
 
 /// fftwEngine output spectra: cfloat32 1-D buffer of length @p n_complex.
 /// Same shape regardless of how many FFTs are packed per frame -- the
 /// descriptor records total complex elements, the consumers' indexing
 /// arithmetic comes from their own config.
-inline std::shared_ptr<kotekan::GenericNDArray>
-make_fengine_desc(std::ptrdiff_t n_complex) {
+inline std::shared_ptr<kotekan::GenericNDArray> make_fengine_desc(std::ptrdiff_t n_complex) {
     return kotekan::GenericNDArray::create(kotekan::DataType::cfloat32, "fengine_spectra",
                                            {n_complex}, {"bin"}, nullptr);
 }
@@ -70,8 +68,8 @@ make_power_corr_desc(std::ptrdiff_t num_elements, std::ptrdiff_t spectrum_length
                                                {spectrum_length + 1}, {"bin"}, nullptr);
     }
     return kotekan::GenericNDArray::create(kotekan::DataType::float32, "power_corr",
-                                           {num_elements, spectrum_length + 1},
-                                           {"elem", "bin"}, nullptr);
+                                           {num_elements, spectrum_length + 1}, {"elem", "bin"},
+                                           nullptr);
 }
 
 } // namespace kotekan_airspy

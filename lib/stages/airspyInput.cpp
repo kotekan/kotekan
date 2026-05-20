@@ -40,8 +40,7 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
     if ((buf->frame_size / BYTES_PER_SAMPLE) % 2 != 0) {
         FATAL_ERROR("airspyInput: out_buf frame_size ({:d} B) must yield an even sample "
                     "count (multiple of {:d} B); got {:d} samples.",
-                    buf->frame_size, 2 * BYTES_PER_SAMPLE,
-                    buf->frame_size / BYTES_PER_SAMPLE);
+                    buf->frame_size, 2 * BYTES_PER_SAMPLE, buf->frame_size / BYTES_PER_SAMPLE);
         return;
     }
 

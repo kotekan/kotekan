@@ -1,12 +1,12 @@
 #include "fftwEngine.hpp"
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp"  // for make_fengine_desc
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "fftwPlannerLock.hpp"  // for fftw_planner_mutex
-#include "kotekanLogging.hpp"   // for DEBUG, FATAL_ERROR
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp" // for make_fengine_desc
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "fftwPlannerLock.hpp" // for fftw_planner_mutex
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
 
 #include "fmt.hpp" // for compile_string_to_view
 
