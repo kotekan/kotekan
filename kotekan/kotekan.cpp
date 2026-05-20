@@ -11,6 +11,7 @@
 #include "util.h"                 // for EVER
 #include "version.h"              // for get_kotekan_version, get_cmake_build_options, get_git_...
 #include "visUtil.hpp"            // for regex_split
+#include "SystemInterface.hpp"    // for set_fake_hostname
 
 #include "fmt.hpp"  // for compile_string_to_view, format, fmt
 #include "json.hpp" // for basic_json, input_adapter, json
@@ -420,6 +421,8 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
     update_log_levels(config);
 
     request_backtraces(config.get_default<std::vector<std::string>>("/", "trap_signals", {}));
+
+    set_fake_hostname(config.get_default<std::string>("/", "hostname", ""));
 
     kotekan_mode = new kotekanMode(config);
 
