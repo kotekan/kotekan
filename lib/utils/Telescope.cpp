@@ -26,12 +26,19 @@ static constexpr BareEOP dummy_bare_eop_last = {.t_inst_ns = std::numeric_limits
                                                 .yp_as = 0.0};
 
 Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
-                     const std::string& eop_updatable_config_path, const GeoFrame& frame) :
-    _unique_name(tel_path), _frame(frame), _require_eop(require_eop) {
+                     const std::string& eop_updatable_config_path, const GeoFrame& frame,
+                     double feed_sep_x_m, double feed_sep_y_m) :
+    _unique_name(tel_path), _frame(frame), _feed_sep_x_m(feed_sep_x_m), _feed_sep_y_m(feed_sep_y_m),
+    _require_eop(require_eop) {
     set_log_level(log_level);
     set_log_prefix("/telescope");
 
     DEBUG("Building Telescope");
+
+    if (_feed_sep_x_m < 0.0)
+        FATAL_ERROR("feed_sep_x_m must be positive, got: {}", _feed_sep_x_m);
+    if (_feed_sep_y_m < 0.0)
+        FATAL_ERROR("feed_sep_y_m must be positive, got: {}", _feed_sep_y_m);
 
     // Initializing EOP table with dummy values
     _eop_table = {dummy_bare_eop_first.to_EOP(), dummy_bare_eop_last.to_EOP()};
@@ -363,6 +370,14 @@ double Telescope::get_itrs_lon_deg() const {
 
 double Telescope::get_itrs_lat_deg() const {
     return _frame.get_itrs_lat_deg();
+}
+
+double Telescope::get_feed_sep_x_m() const {
+    return _feed_sep_x_m;
+}
+
+double Telescope::get_feed_sep_y_m() const {
+    return _feed_sep_y_m;
 }
 
 double Telescope::get_ERAL_deg(EOP& eop) const {

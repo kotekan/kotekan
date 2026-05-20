@@ -40,25 +40,25 @@ static constexpr double arcsec2rad = M_PI / (180.0 * 3600);
 // Dish parameters calculation/initialization
 
 GeographicParams GeographicParams::from_config(const kotekan::Config& config,
-                                               const std::string& path) {
+                                               const std::string& path, double dish_separation_x_m,
+                                               double dish_separation_y_m) {
     GeographicParams dish;
 
     // Instrument geographic coordinates
     dish.dish_coelev_deg = config.get_default<double>(path, "dish_coelev_deg", 0.0);
-    dish.dish_separation_x_m = config.get_default<double>(path, "dish_separation_x_m", 6.3);
-    dish.dish_separation_y_m = config.get_default<double>(path, "dish_separation_y_m", 8.5);
 
     // Whether to check for duplicate dish grid locations
     dish.check_duplicate_dish_grid =
         config.get_default<bool>(path, "check_duplicate_dish_grid", true);
 
     // Set all dish input data: num_dishes, dish_info_table, dish_position, ...
-    dish.set_dish_info(config, path);
+    dish.set_dish_info(config, path, dish_separation_x_m, dish_separation_y_m);
 
     return dish;
 }
 
-void GeographicParams::set_dish_info(const kotekan::Config& config, const std::string& path) {
+void GeographicParams::set_dish_info(const kotekan::Config& config, const std::string& path,
+                                     double dish_separation_x_m, double dish_separation_y_m) {
     // Get the number of dishes, make sure its positive.
     num_dishes = config.get<size_t>(path, "num_dishes");
     num_dishes_x = config.get<size_t>(path, "num_dishes_x");
@@ -416,13 +416,15 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     Telescope(path, config.get<std::string>(path, "log_level"),
               config.get_default<bool>(path, "require_eop", false),
               config.get_default<std::string>(path, "eop_updatable_config", ""),
-              grid_frame_from_config(config, path)),
+              grid_frame_from_config(config, path),
+              config.get_default<double>(path, "dish_separation_x_m", 6.3),
+              config.get_default<double>(path, "dish_separation_y_m", 8.5)),
     // Frequency sampling parameters
     _freq_params(FreqParams::from_config(config, path)),
     // GPS time configuration parameters
     _gps_time_params(GPSTimeParams::from_config(config, path)),
     // Instrument geographic coordinates
-    _geographic_params(GeographicParams::from_config(config, path)),
+    _geographic_params(GeographicParams::from_config(config, path, _feed_sep_x_m, _feed_sep_y_m)),
     _dish_frame(dish_frame_from_config(config, path)) {
 
     DEBUG("Building CHORDTelescope");
@@ -724,12 +726,6 @@ size_t CHORDTelescope::get_num_dishes_y() const {
     return _geographic_params.num_dishes_y;
 }
 
-double CHORDTelescope::get_dish_separation_x_m() const {
-    return _geographic_params.dish_separation_x_m;
-}
-double CHORDTelescope::get_dish_separation_y_m() const {
-    return _geographic_params.dish_separation_y_m;
-}
 const dishInfo& CHORDTelescope::get_dish_at_idx(dish_index_t idx) const {
     return _geographic_params.dish_info_table.at(idx);
 }

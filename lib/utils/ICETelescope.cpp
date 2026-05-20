@@ -19,7 +19,9 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
     Telescope(path, config.get<std::string>(path, "log_level"),
               config.get_default<bool>(path, "require_eop", false),
               config.get_default<std::string>(path, "eop_updatable_config", ""),
-              grid_frame_from_config(config, path)) {
+              grid_frame_from_config(config, path),
+              config.get_default<double>(path, "feed_sep_EW", 0.0),
+              config.get_default<double>(path, "feed_sep_NS", 0.0)) {
     INFO("Building ICETelescope");
 
     // TODO: rename this parameter to `num_freq_per_stream` in the config

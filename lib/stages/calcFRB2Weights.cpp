@@ -104,33 +104,10 @@ public:
             return;
 
         // Telescope
-        const auto& telescope = Telescope::instance();
+        const Telescope& telescope = Telescope::instance();
 
         // Upchannelization schedule
         const auto& upchan_schedule = UpchannelizationSchedule::instance(config);
-
-#if 0 // not used
-      // Calculate dish positions
-        const float dish_separation_x = chord_telescope.get_dish_separation_x_m();
-        const float dish_separation_y = chord_telescope.get_dish_separation_y_m();
-        const auto& dish_grid = chord_telescope.get_dish_grid();
-        assert(std::ptrdiff_t(chord_telescope.get_num_dishes()) == num_dishes);
-        std::vector<float> dish_loc_x(num_dishes, -1), dish_loc_y(num_dishes, -1),
-            dish_loc_z(num_dishes, -1);
-        assert(std::ptrdiff_t(dish_grid.get_dish_indices().size()) >= num_dishes);
-        for (const auto dish_index : dish_grid.get_dish_indices()) {
-            if (dish_index >= 0) {
-                const dishInfo& dish_info = chord_telescope.get_dish_at_idx(dish_index);
-                assert(dish_loc_x.at(dish_info.idx) == -1);
-                dish_loc_x.at(dish_info.idx) =
-                    dish_info.grid_x_idx * dish_separation_x + dish_info.feed_pos_disp_m.at(0);
-                dish_loc_y.at(dish_info.idx) =
-                    dish_info.grid_y_idx * dish_separation_y + dish_info.feed_pos_disp_m.at(1);
-                dish_loc_z.at(dish_info.idx) = dish_info.feed_pos_disp_m.at(2);
-            }
-        }
-        assert(std::ptrdiff_t(dish_loc_x.size()) == num_dishes);
-#endif
 
         // Calculate frequencies
         const auto& frequency_channels = upchan_schedule.get_frequency_channels();
@@ -256,13 +233,17 @@ public:
             const std::ptrdiff_t str_beamR = str_beamQ * frb1_num_beams_y;
             const std::ptrdiff_t str_freq = str_beamR * frb2_num_beams;
 
-            // TODO: Take these from the telescope object
-            const float sigmax_x = 6.3;
+            // Vectors giving the feed separation in each axis direction in meters.
+            // These vectors are in the GRID frame, where 'x' and 'y' are aligned
+            // with the feed grid array and are also orthogonal. This makes the
+            // vectors very simple, with a single component in the x and y directions
+            // respectively.
+            const float sigmax_x = telescope.get_feed_sep_x_m();
             const float sigmax_y = 0;
             const float sigmax_z = 0;
 
             const float sigmay_x = 0;
-            const float sigmay_y = 8.5;
+            const float sigmay_y = telescope.get_feed_sep_y_m();
             const float sigmay_z = 0;
 
 #ifdef WITH_OMP
@@ -281,7 +262,7 @@ public:
                     const float wavelength = c0 / afreq;
 
                     for (int beamR = 0; beamR < frb2_num_beams; ++beamR) {
-                        // Unit vector pointing to sky location
+                        // Unit vector pointing to sky location in the GRID frame
                         const float nx = sin(frb2_beam_positions_frame[2 * beamR + 0]);
                         const float ny = sin(frb2_beam_positions_frame[2 * beamR + 1]);
                         const float nz = sqrt(1 - (nx * nx + ny * ny));
