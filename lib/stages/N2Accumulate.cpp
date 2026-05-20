@@ -942,8 +942,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
         meta->bin_start_ERA_deg = ERA_deg_start;
         meta->bin_end_ERA_deg = ERA_deg_end;
-        meta->bin_start_ERAL = ERAL_deg_start; // TODO: update
-        meta->bin_end_ERAL = ERAL_deg_end;     // TODO: update
+        meta->bin_start_ERAL_deg = ERAL_deg_start; // TODO: update
+        meta->bin_end_ERAL_deg = ERAL_deg_end;     // TODO: update
 
         meta->fpga_start_tick = _accum_fpga_start_tick;
         meta->frame_start_time_ns = accum_start_time_ns;

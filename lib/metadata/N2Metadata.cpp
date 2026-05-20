@@ -41,8 +41,8 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
     bin_eop = fmt->bin_eop;
     bin_start_ERA_deg = fmt->bin_start_ERA_deg;
     bin_end_ERA_deg = fmt->bin_end_ERA_deg;
-    bin_start_ERAL = fmt->bin_start_ERAL;
-    bin_end_ERAL = fmt->bin_end_ERAL;
+    bin_start_ERAL_deg = fmt->bin_start_ERAL_deg;
+    bin_end_ERAL_deg = fmt->bin_end_ERAL_deg;
 
     rfi_frame_excision_enabled = fmt->rfi_frame_excision_enabled;
     rfi_frame_excision_num = fmt->rfi_frame_excision_num;
@@ -71,8 +71,8 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->bin_eop = bin_eop;
     fmt->bin_start_ERA_deg = bin_start_ERA_deg;
     fmt->bin_end_ERA_deg = bin_end_ERA_deg;
-    fmt->bin_start_ERAL = bin_start_ERAL;
-    fmt->bin_end_ERAL = bin_end_ERAL;
+    fmt->bin_start_ERAL_deg = bin_start_ERAL_deg;
+    fmt->bin_end_ERAL_deg = bin_end_ERAL_deg;
 
     fmt->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
     fmt->rfi_frame_excision_num = rfi_frame_excision_num;
@@ -129,8 +129,8 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
     j.emplace("bin_eop", m.bin_eop);
     j.emplace("bin_start_ERA_deg", m.bin_start_ERA_deg);
     j.emplace("bin_end_ERA_deg", m.bin_end_ERA_deg);
-    j.emplace("bin_start_ERAL", m.bin_start_ERAL);
-    j.emplace("bin_end_ERAL", m.bin_end_ERAL);
+    j.emplace("bin_start_ERAL_deg", m.bin_start_ERAL_deg);
+    j.emplace("bin_end_ERAL_deg", m.bin_end_ERAL_deg);
 
     j.emplace("rfi_frame_excision_enabled", m.rfi_frame_excision_enabled);
     j.emplace("rfi_frame_excision_num", m.rfi_frame_excision_num);
@@ -156,8 +156,8 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.bin_eop = j.at("bin_eop");
     m.bin_start_ERA_deg = j.at("bin_start_ERA_deg");
     m.bin_end_ERA_deg = j.at("bin_end_ERA_deg");
-    m.bin_start_ERAL = j.at("bin_start_ERAL");
-    m.bin_end_ERAL = j.at("bin_end_ERAL");
+    m.bin_start_ERAL_deg = j.at("bin_start_ERAL_deg");
+    m.bin_end_ERAL_deg = j.at("bin_end_ERAL_deg");
 
     m.rfi_frame_excision_enabled = j.at("rfi_frame_excision_enabled");
     m.rfi_frame_excision_num = j.at("rfi_frame_excision_num");

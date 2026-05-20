@@ -39,10 +39,10 @@ struct N2MetadataFormat {
     /// Earth Orientation Parameters within an integration/accumulation bin
     struct EOP bin_eop = eop_null;
     // bin start/end info for convenience
-    double bin_start_ERA_deg = 0.0; /// Earth Rotation Angle at start of bin
-    double bin_end_ERA_deg = 0.0;   /// Earth Rotation Angle at end of bin
-    double bin_start_ERAL = 0.0;    /// local apparent sidereal time (nanoseconds) at start of bin
-    double bin_end_ERAL = 0.0;      /// local apparent sidereal time (nanoseconds) at end of bin
+    double bin_start_ERA_deg = 0.0;  /// Earth Rotation Angle at start of bin
+    double bin_end_ERA_deg = 0.0;    /// Earth Rotation Angle at end of bin
+    double bin_start_ERAL_deg = 0.0; /// local apparent sidereal time (nanoseconds) at start of bin
+    double bin_end_ERAL_deg = 0.0;   /// local apparent sidereal time (nanoseconds) at end of bin
 
     /// The sequence number of the first FPGA frame integrated into this visibility frame
     uint64_t fpga_start_tick = 0;
