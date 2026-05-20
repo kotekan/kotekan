@@ -31,6 +31,9 @@ num_elements: {{ num_elements }}
 num_components: 2 # Re/Im
 num_freq_host_buf: 1
 {% set num_freq_gpu_buf = 16 %}
+{% set num_global_freq = 1024 %}
+num_global_freq: {{ num_global_freq }}
+num_local_freq: {{ num_freq_gpu_buf }}
 num_freq_gpu_buf: {{ num_freq_gpu_buf }}
 num_ev_to_calculate: 4            # from n2 test case
 samples_per_data_set: 16384
@@ -74,9 +77,20 @@ earth_rotation_data:
   earth_orientation_parameter_table:
     - {t_inst_ns: 0, delta_UT1_inst: 0.0, xp_as: 0.0, yp_as: 0.0}
 
-# these are to trigger visibility dumps while starting kotekan early to avoid
-# packet sync hickups
 updatable_config:
+  # Updatable Config for second stage RFI excision.
+  rfi_second_stage_enabled:
+      kotekan_update_endpoint: json
+      enabled: false
+      valid_at_time_ns: 0
+  
+  rfi_second_stage_thresholds:
+      kotekan_update_endpoint: json
+      thresholds: []
+      valid_at_time_ns: 0
+
+  # these are to trigger visibility dumps while starting kotekan early to avoid
+  # packet sync hickups
   enable_vis_out:
     kotekan_update_endpoint: "json"
     enabled: false
@@ -518,6 +532,14 @@ host_rfi_S012tilde_ringbuffer:
     shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
 
+host_rfi_SKtilde_buffer:
+    kotekan_buffer: standard
+    num_frames: gpu_buffer_depth
+    frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [rfi_num_times, num_freq_gpu_buf, 3]
+    metadata_pool: main_pool
 host_rfi_SKtilde_ringbuffer:
     kotekan_buffer: ring
     num_frames: gpu_buffer_depth
@@ -576,6 +598,15 @@ host_rfi_SKbartilde_ringbuffer:
     type: float32
     dimnames: ["Trfi", "F", "S"]
     shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3]
+    metadata_pool: main_pool
+
+# The mask for second stage RFI excision.
+host_rfi_RFIframemask_buffer:
+    kotekan_buffer: standard
+    num_frames: gpu_buffer_depth
+    frame_size: (samples_per_data_set / n2k_sub_integration_ntime) * num_local_freq
+    zero_new_frames: true
+    zero_value: 0xFF
     metadata_pool: main_pool
 
 # Stages
@@ -701,6 +732,80 @@ run_rfi_SKbar:
           rfi_SKbar_name: rfi_SKbar
           rfi_SKbartilde_name: rfi_SKbartilde
 
+run_rfi_SK_copy_from_GPU:
+    gpu0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        frame_arrival_period: network_frame_arrival_period
+        num_times: rfi_num_times_bar
+        in_buffers:
+            host_rfi_SKbar_ringbuffer: host_rfi_SKbar_ringbuffer
+            host_rfi_SKtilde_ringbuffer: host_rfi_SKtilde_ringbuffer
+        out_buffers:
+            host_rfi_SKbar_buffer: host_rfi_SKbar_buffer
+            host_rfi_SKtilde_buffer: host_rfi_SKtilde_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_SKbar_ringbuffer
+          gpu_mem_input: rfi_SKbar_buffer
+          output_size: sizeof_float32 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times_bar
+          ring_buffer_size: gpu_buffer_depth * output_size
+          out_buf: host_rfi_SKbar_buffer
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_SKtilde_ringbuffer
+          gpu_mem_input: rfi_SKtilde_buffer
+          output_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
+          ring_buffer_size: gpu_buffer_depth * output_size
+          out_buf: host_rfi_SKtilde_buffer
+
+run_rfi_MASK_copy_from_GPU:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        # maybe? Depends on the chunking of the previous stage
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        in_buffers:
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+        out_buffers:
+            host_rfi_RFImask_buffer: host_rfi_RFImask_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_RFImask_ringbuffer
+          gpu_mem_input: rfi_RFImask_buffer
+          output_size: num_freq_gpu_buf * samples_per_data_set / 8
+          ring_buffer_size: gpu_buffer_depth * output_size
+          out_buf: host_rfi_RFImask_buffer
+
+# Second-stage RFI flagging
+compute_RFI_frame_mask:
+    kotekan_stage: RfiFrameMask
+    in_buf: host_rfi_SKtilde_buffer
+    out_buf: host_rfi_RFIframemask_buffer
+    sub_integration_ntime: n2k_sub_integration_ntime
+    enabled_updatable_config: /updatable_config/rfi_second_stage_enabled
+    thresholds_updatable_config: /updatable_config/rfi_second_stage_thresholds
+
+rfi_broadcast:
+    kotekan_stage: rfiBroadcast
+    rfi_sktilde_buf: host_rfi_SKtilde_buffer
+    rfi_skbar_buf: host_rfi_SKbar_buffer
+    rfi_mask_buf: host_rfi_RFImask_buffer
+    # 3-sigma deviations seems reasonable for identifying outliers,
+    # and empirically produces vaguely comparable results to the
+    # old system
+    num_sigma_deviations: 3
+    # Simply selected from the old system, and accounted for by
+    # the receiver. Can be increased or decreased based on the rate
+    # at which we want to be sending packets
+    frames_per_packet: 10
+    destination_port: "3000"
+    # This is the IP of `vm-steelpan-recv1`. Needs to be updated when
+    # production aux nodes are available
+    destination_ip: "10.5.60.1"
+
 ################################################################################
 # n2k setup
 
@@ -744,6 +849,12 @@ host_n2k_RFIcounts_buffer:
     frame_size: sizeof_int32 * num_freq_gpu_buf * n2k_num_subintegrations
     metadata_pool: main_pool
 
+host_n2k_PLcounts_buffer:
+    kotekan_buffer: standard
+    num_frames: gpu_buffer_depth
+    frame_size: sizeof_int32 * num_freq_gpu_buf * n2k_num_subintegrations
+    metadata_pool: main_pool
+
 # Stages
 
 run_n2k_correlation:
@@ -761,7 +872,6 @@ run_n2k_correlation:
         commands:
         - name: cudaCorrelator
           num_elements: num_dishes * num_polarizations
-          num_local_freq: num_freq_gpu_buf
           #samples_per_data_set: n2k_samples_per_data_set # global samples_per_data_set exists and is used in n2k_samples_per_data_set
           sub_integration_ntime: n2k_sub_integration_ntime
           voltage_name: xposed_voltage
@@ -862,13 +972,23 @@ run_recv_rfi_RFImask:
 rfi_RFImask_count:
     kotekan_stage: RfiMaskSum
     in_buf: host_rfi_RFImask_buffer
-    out_buf: host_rfi_RFIcounts_buffer
+    out_buf: host_n2k_RFIcounts_buffer
+    sub_integration_ntime: n2k_sub_integration_ntime
+
+n2k_PLmask_count:
+    kotekan_stage: CountLostPLSamplesScalar
+    in_buf: host_pl_mask_buffer
+    out_buf: host_n2k_PLcounts_buffer
+    sub_integration_ntime: n2k_sub_integration_ntime
+    packet_loss_is_scalar: True
 
 vis_accumulate:
     kotekan_stage: N2Accumulate
     in_buf: host_n2k_correlation_buffer
     in_counts_buf: host_n2k_counts_buffer
-    in_rficounts_buf: host_rfi_RFIcounts_buffer
+    in_rficounts_buf: host_n2k_RFIcounts_buffer
+    in_plcounts_buf: host_n2k_PLcounts_buffer
+    in_rfiframemask_buf: host_rfi_RFIframemask_buffer
     out_buf: vis_10s_buffer
     packet_loss_is_scalar: True
     cpu_affinity: [17, 18, 19]
@@ -886,6 +1006,7 @@ vis_accumulate:
     #rfi_downsampling_factor: rfi_downsampling_factor
     num_elements: n2k_correlation_num_elements
     num_ev: 0 # only allowed value
+    variance_mode: CHIMEv1
 
 eigencalc:
     kotekan_stage: EigenN2Iter
