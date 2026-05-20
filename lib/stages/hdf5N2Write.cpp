@@ -561,7 +561,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               HighFive::create_datatype<uint64_t>(), props_empty);
         _check_create_dataset(*file, "/frame_length_fpga_ticks", {num_file_t_}, {"time"},
                               HighFive::create_datatype<uint64_t>(), props_empty);
-        _check_create_dataset(*file, "/abs_time_index", {num_file_t_}, {"time"},
+        _check_create_dataset(*file, "/bin_abs_index", {num_file_t_}, {"time"},
                               HighFive::create_datatype<uint64_t>(), props_empty);
 
         _check_create_dataset(*file, "/time_center_t_inst_ns", {num_file_t_}, {"time"},
@@ -700,7 +700,7 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     // Additional metadata
     fpga_start_tick.assign(num_file_t, 0);
     frame_length_fpga_ticks.assign(num_file_t, 0);
-    abs_time_index.assign(num_file_t, std::numeric_limits<uint64_t>::max());
+    bin_abs_index.assign(num_file_t, std::numeric_limits<uint64_t>::max());
     time_center_t_inst_ns.assign(num_file_t, 0.0);
     time_center_ut1_ns.assign(num_file_t, 0.0);
     bin_t_inst_ns.assign(num_file_t, 0.0);
@@ -793,10 +793,10 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
         add_failure(fmt::format("frame_length_fpga_ticks[t={}] mismatch: stored {} != incoming {}",
                                 t_index, frame_length_fpga_ticks[t_index],
                                 fv.frame_length_fpga_ticks));
-    if (abs_time_index[t_index] < std::numeric_limits<uint64_t>::max()
-        && abs_time_index[t_index] != fv.abs_time_idx)
-        add_failure(fmt::format("abs_time_index[t={}] mismatch: stored {} != incoming {}", t_index,
-                                abs_time_index[t_index], fv.abs_time_idx));
+    if (bin_abs_index[t_index] < std::numeric_limits<uint64_t>::max()
+        && bin_abs_index[t_index] != fv.abs_time_idx)
+        add_failure(fmt::format("bin_abs_index[t={}] mismatch: stored {} != incoming {}", t_index,
+                                bin_abs_index[t_index], fv.abs_time_idx));
     if (fv.rfi_frame_excision_num < 0)
         add_failure(fmt::format("rfi_frame_excision_num negative: {}", fv.rfi_frame_excision_num));
     if (fv.rfi_frame_excision_num > MAX_NUM_RFI_THRESHOLDS)
@@ -894,7 +894,7 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     // Store per-time metadata
     fpga_start_tick[t_index] = fv.fpga_start_tick;
     frame_length_fpga_ticks[t_index] = fv.frame_length_fpga_ticks;
-    abs_time_index[t_index] = fv.abs_time_idx;
+    bin_abs_index[t_index] = fv.abs_time_idx;
     time_center_t_inst_ns[t_index] = fv.time_center_eop.t_inst_ns;
     time_center_ut1_ns[t_index] = fv.time_center_eop.t_ut1_ns;
     bin_t_inst_ns[t_index] = fv.bin_eop.t_inst_ns;
@@ -1058,7 +1058,7 @@ bool N2FileData::flush_to_disk() {
 
         h5_file->getDataSet("/fpga_start_tick").write(fpga_start_tick);
         h5_file->getDataSet("/frame_length_fpga_ticks").write(frame_length_fpga_ticks);
-        h5_file->getDataSet("/abs_time_index").write(abs_time_index);
+        h5_file->getDataSet("/bin_abs_index").write(bin_abs_index);
         h5_file->getDataSet("/time_center_t_inst_ns").write(time_center_t_inst_ns);
         h5_file->getDataSet("/time_center_ut1_ns").write(time_center_ut1_ns);
         h5_file->getDataSet("/bin_t_inst_ns").write(bin_t_inst_ns);

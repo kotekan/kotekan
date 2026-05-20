@@ -121,7 +121,7 @@ protected:
     // t-dependent metadata
     std::vector<uint64_t> fpga_start_tick;           // (t)
     std::vector<uint64_t> frame_length_fpga_ticks;   // (t)
-    std::vector<uint64_t> abs_time_index;            // (t)
+    std::vector<uint64_t> bin_abs_index;             // (t)
     std::vector<int64_t> time_center_t_inst_ns;      // (t)
     std::vector<int64_t> time_center_ut1_ns;         // (t)
     std::vector<int64_t> bin_t_inst_ns;              // (t)
