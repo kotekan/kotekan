@@ -17,6 +17,13 @@
 const std::string get_username();
 
 /**
+ * @brief Set a pretend hostname for the system, used for testing.
+ *
+ * @param hostname Host name as a string.
+ **/
+void set_fake_hostname(const std::string hostname);
+
+/**
  * @brief Get the hostname of the system.
  *
  * @returns Host name as a string.
