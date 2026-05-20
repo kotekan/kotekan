@@ -212,10 +212,6 @@ struct GeographicParams {
     size_t num_dishes_x = 0;
     size_t num_dishes_y = 0;
 
-    /// Dish-dish grid spacing in the E/W (x) and N/S (y) directions in meters.
-    double dish_separation_x_m = 0.0;
-    double dish_separation_y_m = 0.0;
-
     /// Dish positions in dish coordinate system.
     std::vector<vec3d_t> dish_positions;
 
@@ -235,8 +231,6 @@ struct GeographicParams {
      * @conf   origin_itrs_lon_deg  double. Longitude of the telescope origin in ITRS coords.
      * @conf   origin_itrs_lat_deg  double. Latitude of the telescope origin in ITRS coords.
      * @conf   dish_coelev_deg      double. Dish pointing co-elevation angle.
-     * @conf   dish_separation_x_m  double. Dish separation in the E/W (x) direction, meters.
-     * @conf   dish_separation_y_m  double. Dish separation in the N/S (y) direction, meters.
      * @conf   grid_x_axis          array<double,3>. Unit vector giving the grid x axis in
      *                              topotric coords.
      * @conf   grid_y_axis          array<double,3>. Unit vector giving the grid y axis in
@@ -258,7 +252,8 @@ struct GeographicParams {
      *
      * @return  The built GeographicParams.
      **/
-    static GeographicParams from_config(const kotekan::Config& config, const std::string& path);
+    static GeographicParams from_config(const kotekan::Config& config, const std::string& path,
+                                        double dish_separation_x_m, double dish_separation_y_m);
 
     /**
      * @brief   Set dish information about dish inputs from the config.
@@ -267,7 +262,8 @@ struct GeographicParams {
      * @param   config  The config.
      * @param   path    This telescope's path in the config.
      **/
-    void set_dish_info(const kotekan::Config& config, const std::string& path);
+    void set_dish_info(const kotekan::Config& config, const std::string& path,
+                       double dish_separation_x_m, double dish_separation_y_m);
 };
 
 
@@ -524,9 +520,6 @@ public:
 
     size_t get_num_dishes_x() const;
     size_t get_num_dishes_y() const;
-
-    double get_dish_separation_x_m() const;
-    double get_dish_separation_y_m() const;
 
 
     /**
