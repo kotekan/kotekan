@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp" // for make_input_desc
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "fftwPlannerLock.hpp" // for fftw_planner_mutex
@@ -31,6 +32,13 @@ AirspyAlign::AirspyAlign(Config& config, const std::string& unique_name,
     buf_inA->register_consumer(unique_name);
     buf_inB = get_buffer("in_bufB");
     buf_inB->register_consumer(unique_name);
+
+    // Both inputs are int16 1-D airspy sample streams; set_frame_desc
+    // records or cross-checks against airspyInput's earlier assertion.
+    buf_inA->set_frame_desc(
+        kotekan_airspy::make_input_desc(buf_inA->frame_size / sizeof(short)));
+    buf_inB->set_frame_desc(
+        kotekan_airspy::make_input_desc(buf_inB->frame_size / sizeof(short)));
 
     _lag_window = config.get_default<uint32_t>(unique_name, "lag_window",
                                                buf_inA->frame_size / sizeof(short));

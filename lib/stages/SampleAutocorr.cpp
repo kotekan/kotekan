@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp" // for make_fengine_desc
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for INFO
@@ -25,6 +26,10 @@ SampleAutocorr::SampleAutocorr(Config& config, const std::string& unique_name,
 
     buf_in = get_buffer("in_buf");
     buf_in->register_consumer(unique_name);
+
+    // Input: cfloat32 1-D fengine spectra (consumer-only; no out_buf).
+    buf_in->set_frame_desc(
+        kotekan_airspy::make_fengine_desc(buf_in->frame_size / (2 * sizeof(float))));
 
     _spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 1024);
     _integration_length = config.get_default<int>(unique_name, "integration_length", 1024);
