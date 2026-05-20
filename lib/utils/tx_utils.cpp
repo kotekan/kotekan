@@ -1,6 +1,7 @@
 #include "tx_utils.hpp"
 
 #include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
+#include "SystemInterface.hpp" // for get_hostname
 
 #include <cstring>   // for strlen
 #include <stdexcept> // for runtime_error
@@ -9,11 +10,18 @@
 #include <unistd.h>  // for gethostname
 
 void parse_chime_host_name(int& my_rack, int& my_node, int& my_nos, int& my_node_id) {
+    // https://chime-experiment.slack.com/archives/C05JRHQ8QAW/p1777417193429919
+    // says dvw:
+    // For the GPU node in rack R, slot S, the IP address will be:
+    //
+    // 10.1.R.(S + 10)
+    //
+    // With R running from 0 to 3 and S running from 0 to 7. These are the current
+    // IP addresses for the existing GPU nodes cn0g0 through cn3g7. (Although in
+    // current CHIME, S goes up to 9).
+
     int rack = 0, node = 0, nos = 0;
-    // std::stringstream temp_ip[number_of_subnets];
-    char* my_host_name = (char*)malloc(sizeof(char) * 100);
-    // CHECK_MEM(my_host_name);
-    gethostname(my_host_name, sizeof(my_host_name));
+    const std::string my_host_name(get_hostname());
 
     if (my_host_name[0] != 'c' && my_host_name[3] != 'g') {
         // INFO_NON_OO("Not a valid name \n");
