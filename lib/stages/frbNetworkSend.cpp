@@ -177,20 +177,20 @@ void frbNetworkSend::main_thread() {
     long count = 0;
 
     // check expected frame layout
-    // TODO: this could easily handle any value for R8, Fbar64, Ttilde16_lo16
+    // TODO: this could easily handle any value for R4, Fbar64, Ttilde16_lo16
     auto const expected_beams_frame_desc = kotekan::GenericNDArray::create(
         kotekan::DataType::uint8, "I3",
         {1, _total_nbeams / _nbeams, num_frequencies / (_nfreq_coarse * _factor_upchan_out),
          16 /*TODO: get from option? */ , _nbeams, _nfreq_coarse,
          _factor_upchan_out, _timesamples_per_frb_packet},
-        {"Ttilde256",     "R8",        "Fbar64", "Ttilde16_lo16", "Rlo8",      "Fbar16_lo4", "Fbarlo16",      "Ttildelo16"}, nullptr);
+        {"Ttilde256",     "R4",        "Fbar64", "Ttilde16_lo16", "Rlo4",      "Fbar16_lo4", "Fbarlo16",      "Ttildelo16"}, nullptr);
     assert(*beams_frame_desc == *expected_beams_frame_desc);
 
     auto const expected_offsetscale_frame_desc = kotekan::GenericNDArray::create(
         kotekan::DataType::float16, "offset/scale",
         {1, _total_nbeams / _nbeams, num_frequencies / (_nfreq_coarse * _factor_upchan_out),
          16 /*TODO: get from option? */ , _nbeams, _nfreq_coarse, 2},
-        {"Ttilde256", "R8", "Fbar64", "Ttilde16_lo16", "Rlo8", "Fbar16_lo4", "offset/scale"}, nullptr);
+        {"Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "offset/scale"}, nullptr);
     assert(*offsetscale_frame_desc == *expected_offsetscale_frame_desc);
 
     // waiting for at least two frames for the buffer to fill up takes care of the random delay at
