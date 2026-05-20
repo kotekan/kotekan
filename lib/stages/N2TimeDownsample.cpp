@@ -213,8 +213,8 @@ void N2TimeDownsample::main_thread() {
             output_frame.bin_eop = eop_target;
             output_frame.bin_start_ERA_deg = era_deg_lo;
             output_frame.bin_end_ERA_deg = era_deg_hi;
-            output_frame.bin_start_ERAL = -1; // TODO: update
-            output_frame.bin_end_ERAL = -1;   // TODO: update
+            output_frame.bin_start_ERAL_deg = -1; // TODO: update
+            output_frame.bin_end_ERAL_deg = -1;   // TODO: update
 
             // Set the output absolute time index, from the difference between the current ERA bin
             // and the ERA bin at startup

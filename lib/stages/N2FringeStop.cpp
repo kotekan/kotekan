@@ -108,10 +108,10 @@ void N2FringeStop::main_thread() {
         // Set the target EOP.
         output_frame.time_center_eop = eop_null; // TODO: update
         output_frame.bin_eop = eop_target;
-        output_frame.bin_start_ERA_deg = -1; // TODO: update
-        output_frame.bin_end_ERA_deg = -1;   // TODO: update
-        output_frame.bin_start_ERAL = -1;    // TODO: update
-        output_frame.bin_end_ERAL = -1;      // TODO: update
+        output_frame.bin_start_ERA_deg = -1;  // TODO: update
+        output_frame.bin_end_ERA_deg = -1;    // TODO: update
+        output_frame.bin_start_ERAL_deg = -1; // TODO: update
+        output_frame.bin_end_ERAL_deg = -1;   // TODO: update
 
         if (fringestop_mode > 0)
             tel.fill_fringestop_phases_1d(in_frame.freq_MHz, eop, eop_target, fringe_phase);

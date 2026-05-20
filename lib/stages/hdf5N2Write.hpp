@@ -121,6 +121,7 @@ protected:
     // t-dependent metadata
     std::vector<uint64_t> fpga_start_tick;           // (t)
     std::vector<uint64_t> frame_length_fpga_ticks;   // (t)
+    std::vector<uint64_t> abs_time_index;            // (t)
     std::vector<int64_t> time_center_t_inst_ns;      // (t)
     std::vector<int64_t> time_center_ut1_ns;         // (t)
     std::vector<int64_t> bin_t_inst_ns;              // (t)
@@ -131,8 +132,8 @@ protected:
     std::vector<double> bin_yp_as;                   // (t)
     std::vector<double> bin_start_ERA_deg;           // (t)
     std::vector<double> bin_end_ERA_deg;             // (t)
-    std::vector<double> bin_start_ERAL;              // (t)
-    std::vector<double> bin_end_ERAL;                // (t)
+    std::vector<double> bin_start_ERAL_deg;          // (t)
+    std::vector<double> bin_end_ERAL_deg;            // (t)
     std::vector<bool> rfi_frame_excision_enabled;    // (t)
     std::vector<int32_t> rfi_frame_excision_num;     // (t)
     std::vector<float> rfi_frame_excision_threshold; // (t, k)
