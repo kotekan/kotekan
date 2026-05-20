@@ -45,11 +45,11 @@ public:
         const int out_nfreqs_chunk = 16;
         // Chunks are combined into packets.
         const int out_nfreqs_packet = 4;
-        const int out_nbeams_packet = 8;
+        const int out_nbeams_packet = 4;
         // There are several packets.
         const int out_ntimes_outer = 16;
         const int out_nfreqs_outer = 4;
-        const int out_nbeams_outer = 128;
+        const int out_nbeams_outer = 256;
 
         static_assert(out_ntimes_chunk * out_ntimes_outer == in_ntimes);
         static_assert(out_nfreqs_chunk * out_nfreqs_packet * out_nfreqs_outer == in_nfreqs);
