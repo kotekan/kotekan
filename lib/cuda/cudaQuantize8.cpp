@@ -62,11 +62,11 @@ private:
     static constexpr int out_nfreqs_chunk = 16;
     // Chunks are combined into packets.
     static constexpr int out_nfreqs_packet = 4;
-    static constexpr int out_nbeams_packet = 8;
+    static constexpr int out_nbeams_packet = 4;
     // There are several packets.
     static constexpr int out_ntimes_outer = 16;
     static constexpr int out_nfreqs_outer = 4;
-    static constexpr int out_nbeams_outer = 128;
+    static constexpr int out_nbeams_outer = 256;
 
     static_assert(out_ntimes_chunk * out_ntimes_outer == in_ntimes);
     static_assert(out_nfreqs_chunk * out_nfreqs_packet * out_nfreqs_outer == in_nfreqs);
@@ -107,8 +107,8 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
                                                          out_nfreqs_packet,
                                                          out_nfreqs_chunk,
                                                          out_ntimes_chunk};
-        const std::array<std::string, 8> beam_dimnames{"Ttilde256",     "R8",        "Fbar64",
-                                                       "Ttilde16_lo16", "Rlo8",      "Fbar16_lo4",
+        const std::array<std::string, 8> beam_dimnames{"Ttilde256",     "R4",        "Fbar64",
+                                                       "Ttilde16_lo16", "Rlo4",      "Fbar16_lo4",
                                                        "Fbarlo16",      "Ttildelo16"};
         return NDArrayBuffer<std::uint8_t, 8>(_gpu_mem_beams, "I3", beam_lengths, beam_dimnames,
                                               *this);
@@ -122,7 +122,7 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
                                                                 out_nfreqs_packet,
                                                                 2};
         const std::array<std::string, 7> offsetscale_dimnames{
-            "Ttilde256", "R8", "Fbar64", "Ttilde16_lo16", "Rlo8", "Fbar16_lo4", "offset/scale"};
+            "Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "offset/scale"};
         return NDArrayBuffer<float16_t, 7>(_gpu_mem_beams_offsetscale, "I3_offsetscale",
                                            offsetscale_lengths, offsetscale_dimnames, *this);
     }())
