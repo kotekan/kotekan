@@ -266,8 +266,8 @@ jobs:
 
 
   # Run the linter as its own top-level job (rather than as a matrix entry
-  # inside kotekan-cpu-tests) so the auto-lint-fix job below can key off
-  # this job's result specifically.
+  # inside kotekan-cpu-tests) so the auto-lint-fix job below can run conditioned
+  # on this job's result.
   kotekan-lint:
     name: "Lint"
     needs: kotekan-docker
@@ -281,8 +281,7 @@ jobs:
         git config --global --add safe.directory $GITHUB_WORKSPACE
         bash ./tools/lint.sh
 
-  # If kotekan-lint failed, re-run the linter (which applies formatter
-  # fixes in place) and open a PR with those fixes back to the branch
+  # If kotekan-lint failed, open a PR with lint fixes back to the branch
   # that triggered the failing run. Skipped for PRs from forks because
   # we can't push the fix branch into a fork.
   auto-lint-fix:
@@ -321,8 +320,7 @@ jobs:
           # `lint.sh -e OFF` keeps going after a single formatter fails so
           # every formatter gets a chance to apply its fixes in one pass.
           # The script still exits non-zero whenever any formatter changed
-          # a file, so `|| true` keeps the step from failing here -- we
-          # want to commit those changes below.
+          # a file, so `|| true` keeps the step from failing here.
           docker run --rm \
             --mount type=bind,src="$(pwd)",target=/code/kotekan \
             -w /code/kotekan \

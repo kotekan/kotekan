@@ -6,6 +6,8 @@ ignore: |
     external/
     .venv/
     scratch/
+    julia/
+    lib/cuda/generated/
 
 rules:
     line-length:

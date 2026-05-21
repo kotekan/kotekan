@@ -14,6 +14,8 @@ exclude:
     - "external/**"
     - ".venv/**"
     - "scratch/**"
+    - "julia/**"
+    - "lib/cuda/generated/**"
 
 formatter:
     type: basic
