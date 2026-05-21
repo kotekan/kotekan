@@ -185,6 +185,60 @@ freq_id_t CHIMETelescope::to_freq_id(stream_t stream, uint32_t /* ind */) const 
     }
 }
 
+station_id_t CHIMETelescope::element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const {
+    if (ord == ElementOrder::CHIMECorrelator) {
+        return el_idx;
+    } else if (ord == ElementOrder::CHIMECylinder) {
+        return el_idx;
+    } else if (ord == ElementOrder::CHIMEBeamformer) {
+        const uint64_t polarization = el_idx / 1024;
+        const uint64_t cylinder = (el_idx % 1024) / 256;
+        const uint64_t dish = (el_idx % 1024) % 256;
+        return encode_station_id(cylinder, polarization, dish);
+    }
+
+    FATAL_ERROR("Cannot handle element order {}.", ord);
+}
+
+uint64_t CHIMETelescope::station_id_to_element_index(station_id_t st_id, ElementOrder ord) const {
+    if (ord == ElementOrder::CHIMECorrelator) {
+        return st_id;
+    } else if (ord == ElementOrder::CHIMECylinder) {
+        return st_id;
+    } else if (ord == ElementOrder::CHIMEBeamformer) {
+        uint64_t cylinder, polarization, dish;
+        decode_station_id(st_id, cylinder, polarization, dish);
+        return polarization * 1024 + cylinder * 256 + dish;;
+    }
+
+    FATAL_ERROR("Cannot handle element order {}.", ord);
+}
+
+grid_idx_2d_t CHIMETelescope::station_id_to_grid_indices([[maybe_unused]] station_id_t st_id) const {
+    
+    uint64_t cylinder, polarization, dish;
+    decode_station_id(st_id, cylinder, polarization, dish);
+
+    return grid_idx_2d_t{static_cast<int32_t>(cylinder), static_cast<int32_t>(dish)};
+} 
+
+vec3d_t CHIMETelescope::station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const {
+    uint64_t cylinder, polarization, dish;
+    decode_station_id(st_id, cylinder, polarization, dish);
+
+    return vec3d_t{cylinder * _feed_sep_x_m, dish * _feed_sep_y_m, 0.0};
+}
+
+void CHIMETelescope::decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization, uint64_t& dish) {
+    cylinder = st_id / 512;
+    polarization = (st_id % 512) / 256;
+    dish = (st_id % 512) % 256;
+}
+
+station_id_t CHIMETelescope::encode_station_id(uint64_t cylinder, uint64_t polarization, uint64_t dish) {
+    return cylinder * 512 + polarization * 256 + dish;
+}
+
 GeoFrame CHIMETelescope::grid_frame_from_config(const kotekan::Config& config,
                                                 const std::string& path) {
 
