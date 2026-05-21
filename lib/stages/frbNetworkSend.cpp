@@ -367,10 +367,8 @@ void frbNetworkSend::main_thread() {
                               assert(reinterpret_cast<char*>(offset + _nbeams * _nfreq_coarse)
                                      == &*header_buf.cend());
 
-                              struct iovec msg_iov[4] = {
-                                  {.iov_base = &header, .iov_len = sizeof(header)},
-                                  {.iov_base = scale, .iov_len = sizeof(*scale) * _nbeams * _nfreq_coarse},
-                                  {.iov_base = offset, .iov_len = sizeof(*offset) * _nbeams * _nfreq_coarse},
+                              struct iovec msg_iov[2] = {
+                                  {.iov_base = header_buf.data(), .iov_len = header_buf.size()},
                                   {.iov_base =
                                        &beams_buffer[frb_packet_num * header.data_nbytes],
                                    .iov_len = static_cast<size_t>(header.data_nbytes)},
