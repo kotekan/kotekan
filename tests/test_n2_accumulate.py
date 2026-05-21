@@ -1,9 +1,15 @@
+import os
+
 import pytest
 import numpy as np
 
 from kotekan import runner
 from kotekan.chordbuffer import ChordBuffer
 import kotekan.telescope as tel
+
+# Seed the RNG with a weight/variance that passes tests.
+# Override with env `KOTEKAN_TEST_SEED` for additional testing.
+_TEST_SEED = int(os.environ.get("KOTEKAN_TEST_SEED", "0"))
 
 prod_config = {
     "buffer_depth": 5,
@@ -171,7 +177,7 @@ def setup(request, accum_setup):
 
     config["telescope"] = request.param["tel"]
 
-    request.param["rng"] = np.random.default_rng()
+    request.param["rng"] = np.random.default_rng(seed=_TEST_SEED)
 
     if accum_setup["bin_in_ERA"] and request.param["tel"]["name"] != "CHORDTelescope":
         request.param["fail"] = True
