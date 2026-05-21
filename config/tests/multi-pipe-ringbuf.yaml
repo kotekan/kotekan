@@ -8,7 +8,7 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: debug
 #    log_level: info
-cpu_affinity: [2,3,4,5,8,9,10,11]
+cpu_affinity: [2, 3, 4, 5, 8, 9, 10, 11]
 frame_arrival_period: 0.001
 
 buffer_depth: 4
@@ -58,18 +58,18 @@ gpuA:
     #log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list
-    - name: cudaInputData
-      in_buf: host_in
-      gpu_mem: in
-    - name: cudaSyncInput
-    - name: cudaCopyToRingbuffer
-      #input_size: input_size
-      #output_size: output_size
-      #ring_buffer_size: 30
-      signal_buf: host_sig
-      gpu_mem_input: in
-      gpu_mem_output: ringbuf
-    - name: cudaSyncInput
+        - name: cudaInputData
+          in_buf: host_in
+          gpu_mem: in
+        - name: cudaSyncInput
+        - name: cudaCopyToRingbuffer
+          #input_size: input_size
+          #output_size: output_size
+          #ring_buffer_size: 30
+          signal_buf: host_sig
+          gpu_mem_input: in
+          gpu_mem_output: ringbuf
+        - name: cudaSyncInput
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -85,18 +85,18 @@ gpuB:
     #log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list2
-    #- name: cudaInputData
-    #  in_buf: host_mid
-    - name: cudaCopyFromRingbuffer
-      #output_size: 
-      #ring_buffer_size:
-      gpu_mem_input: ringbuf
-      gpu_mem_output: chunk
-      host_signal: host_sig
-    - name: cudaSyncOutput
-    - name: cudaOutputData
-      gpu_mem: chunk
-      out_buf: host_out
+        #- name: cudaInputData
+        #  in_buf: host_mid
+        - name: cudaCopyFromRingbuffer
+          #output_size: 
+          #ring_buffer_size:
+          gpu_mem_input: ringbuf
+          gpu_mem_output: chunk
+          host_signal: host_sig
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: chunk
+          out_buf: host_out
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0

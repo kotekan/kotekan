@@ -3,8 +3,8 @@
 ########################################################################
 ---
 type: config
-log_level: debug2   # info
-cpu_affinity: [0,1,2,3,4,5,6,7]
+log_level: debug2 # info
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7]
 buffer_depth: 4
 
 frame_arrival_period: 2.56e-6 * num_times
@@ -42,7 +42,7 @@ num_polarizations: 2
 
 num_dishes: 64
 num_frequencies: 128
-num_times: 2048   #TODO 32768
+num_times: 2048 #TODO 32768
 
 # Upchannelizer setup
 upchannelization_factor: 16
@@ -104,8 +104,8 @@ gen_data:
     #array_shape: [ 64, 2, 128, 32768 ]
     #dim_name: ["D", "P", "F", "T"]
     #array_shape: [ 32768, 128, 2, 64 ]
-    array_shape: [ 2048, 128, 2, 64 ]
-    dim_name: ["T", "F", "P", "D" ]
+    array_shape: [2048, 128, 2, 64]
+    dim_name: ["T", "F", "P", "D"]
     out_buf: host_voltage_buffer
 
 gen_data_2:
@@ -114,7 +114,7 @@ gen_data_2:
     value: 1
     out_buf: host_upchan_gain_buffer
     #num_frequencies * upchannelization_factor 
-    array_shape: [ 2048 ]
+    array_shape: [2048]
     dim_name: ["Fbar"]
 
 # # Stages
@@ -150,13 +150,13 @@ gpuA:
     #log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list
-    - name: cudaCopyToRingbuffer
-      input_size: e_chunk_size
-      ring_buffer_size: e_ringbuffer_size
-      in_buf: host_in
-      signal_buf: host_sig
-      gpu_mem_output: e_ringbuf
-    - name: cudaSyncInput
+        - name: cudaCopyToRingbuffer
+          input_size: e_chunk_size
+          ring_buffer_size: e_ringbuffer_size
+          in_buf: host_in
+          signal_buf: host_sig
+          gpu_mem_output: e_ringbuf
+        - name: cudaSyncInput
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -182,27 +182,27 @@ gpuB:
             host_upchan_voltage: host_upchan_voltage_buffer
             host_ebar_sig: host_ebar_signal_buffer
         commands:
-        # - name: cudaInputData
-        #   in_buf: host_voltage
-        #   gpu_mem: voltage
-        - name: cudaInputData
-          in_buf: host_upchan_gain
-          gpu_mem: upchan_gain
-        - name: cudaSyncInput
-        - name: cudaUpchannelizer_pathfinder_U16
-          in_signal: host_e_sig
-          out_signal: host_ebar_sig
-          #gpu_mem_input_voltage: voltage
-          gpu_mem_input_voltage: e_ringbuf
-          #gpu_mem_input_size: e_ringbuffer_size
-          gpu_mem_gain: upchan_gain
-          #gpu_mem_output_voltage: upchan_voltage
-          gpu_mem_output_voltage: upchan_ringbuf
-          #gpu_mem_output_size: ebar_ringbuffer_size
-        - name: cudaSyncOutput
-        # - name: cudaOutputData
-        #   gpu_mem: upchan_voltage
-        #   out_buf: host_upchan_voltage
+            # - name: cudaInputData
+            #   in_buf: host_voltage
+            #   gpu_mem: voltage
+            - name: cudaInputData
+              in_buf: host_upchan_gain
+              gpu_mem: upchan_gain
+            - name: cudaSyncInput
+            - name: cudaUpchannelizer_pathfinder_U16
+              in_signal: host_e_sig
+              out_signal: host_ebar_sig
+              #gpu_mem_input_voltage: voltage
+              gpu_mem_input_voltage: e_ringbuf
+              #gpu_mem_input_size: e_ringbuffer_size
+              gpu_mem_gain: upchan_gain
+              #gpu_mem_output_voltage: upchan_voltage
+              gpu_mem_output_voltage: upchan_ringbuf
+              #gpu_mem_output_size: ebar_ringbuffer_size
+            - name: cudaSyncOutput
+              # - name: cudaOutputData
+              #   gpu_mem: upchan_voltage
+              #   out_buf: host_upchan_voltage
 
 gpuC:
     kernel_path: "lib/cuda/kernels"
@@ -215,20 +215,18 @@ gpuC:
         out_buffers:
             host_upchan_voltage: host_upchan_voltage_buffer
         commands:
-        - name: cudaCopyFromRingbuffer
-          host_signal: host_sig
-          gpu_mem_input: upchan_ringbuf
-          #gpu_mem_output: upchan
-          output_size: ebar_chunk_size
-          ring_buffer_size: ebar_ringbuffer_size
-          # Make it run on the COPY_OUT stream, same as cudaOutputData.
-          #cuda_stream: 1
-          out_buf: host_upchan_voltage
-        # - name: cudaOutputData
-        #   out_buf: host_upchan_voltage
-        #   gpu_mem: upchan
-
-
+            - name: cudaCopyFromRingbuffer
+              host_signal: host_sig
+              gpu_mem_input: upchan_ringbuf
+              #gpu_mem_output: upchan
+              output_size: ebar_chunk_size
+              ring_buffer_size: ebar_ringbuffer_size
+              # Make it run on the COPY_OUT stream, same as cudaOutputData.
+              #cuda_stream: 1
+              out_buf: host_upchan_voltage
+              # - name: cudaOutputData
+              #   out_buf: host_upchan_voltage
+              #   gpu_mem: upchan
 
 write_data:
     base_dir: /tmp/ringbuf_upchan
@@ -249,4 +247,3 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_voltage_buffer
         file_name: upchan_voltage
-...

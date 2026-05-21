@@ -20,7 +20,7 @@ buffer_depth: 120
 packets_per_frame: 65536
 packet_size: 6208
 num_crs_boards: 1
-capture_n_frames: buffer_depth  # Total number of frames to capture, 0 = unlimited
+capture_n_frames: buffer_depth # Total number of frames to capture, 0 = unlimited
 numa_node: 0
 
 # Pool
@@ -40,11 +40,11 @@ network_input_buffers:
     network_input_buffer_1:
         kotekan_buffer: standard
 
-cpu_affinity: [2,3,8,9]
+cpu_affinity: [2, 3, 8, 9]
 dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [5,6,7] # [5,6,7]
+    lcore_cpu_map: [5, 6, 7] # [5,6,7]
     main_lcore_cpu: 4
     num_mbufs: 8192
     mbuf_cache_size: 256
@@ -70,7 +70,7 @@ dpdk:
     # One handler must be given per port
     handlers:
         - dpdk_handler: crs1BoardDistributor
-          worker_rings: [0,1]
+          worker_rings: [0, 1]
     # Exactly One worker must be given per worker ring
     workers:
         - dpdk_handler: crs1BoardCaptureWorker
@@ -79,7 +79,6 @@ dpdk:
         - dpdk_handler: crs1BoardCaptureWorker
           worker_ring: 1
           out_buf: network_input_buffer_1
-
 
 raw_file_writers:
     ### UPDATE THIS PATH FOR EACH RUN ###

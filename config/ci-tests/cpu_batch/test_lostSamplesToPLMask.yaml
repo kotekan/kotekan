@@ -1,3 +1,4 @@
+---
 #
 # Just a simple test pipeline that generates test lost_samples and converts to
 # pl_mask
@@ -16,7 +17,7 @@ pl_mask_dishes_per_bin: 8
 pl_mask_hilo_split: 64
 
 buffer_depth: 5
-num_frame_samples: pl_mask_hilo_split * pl_mask_downsampling_factor * 2  # 2 pl_mask tiles worth of samples
+num_frame_samples: pl_mask_hilo_split * pl_mask_downsampling_factor * 2 # 2 pl_mask tiles worth of samples
 
 # Pools
 main_pool:
@@ -52,9 +53,9 @@ gen_test_data:
     # num_polarizations: num_polarizations # set via global
     pl_mask_buf: cmp_pl_mask_buffer
     lost_samples_buffers:
-      - lost_samples_buffer_0
-      - lost_samples_buffer_1
-      - lost_samples_buffer_2
+        - lost_samples_buffer_0
+        - lost_samples_buffer_1
+        - lost_samples_buffer_2
 
 lostSamplesToPLMask:
     kotekan_stage: lostSamplesToPLMask
@@ -62,9 +63,9 @@ lostSamplesToPLMask:
     # num_polarizations: num_polarizations # set via global
     pl_mask_buf: out_pl_mask_buffer
     lost_samples_buffers:
-      - lost_samples_buffer_0
-      - lost_samples_buffer_1
-      - lost_samples_buffer_2
+        - lost_samples_buffer_0
+        - lost_samples_buffer_1
+        - lost_samples_buffer_2
 
 check_lostSamplesToPLMask:
     kotekan_stage: testDataCheckUchar

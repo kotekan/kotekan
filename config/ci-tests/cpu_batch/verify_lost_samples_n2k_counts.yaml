@@ -1,3 +1,4 @@
+---
 #
 # Tests that the lostSamples --> N2 Counts pipeline for CHIME/HIRAX produces matching output
 # as n2k pipeline for CHORD.
@@ -14,7 +15,7 @@ num_gpus: 1
 frame_arrival_period: 5.12e-6 * samples_per_data_set
 sizeof_int: 4
 
-num_dishes: 64   # Needs to be CHORD/Pathfinder compatible.
+num_dishes: 64 # Needs to be CHORD/Pathfinder compatible.
 num_polarizations: 2
 num_elements: num_polarizations * num_dishes
 num_freq_bins: 3 # actual CHIME has 4, but then its 4 bins of 4 freqs each, which is a worse test case
@@ -32,7 +33,7 @@ buffer_depth: 5
 samples_per_data_set: 2048
 sub_integration_ntime: 1024
 num_times: samples_per_data_set
-  # num_frame_samples: pl_mask_hilo_split * pl_mask_downsampling_factor * 2  # 2 pl_mask tiles worth of samples
+# num_frame_samples: pl_mask_hilo_split * pl_mask_downsampling_factor * 2  # 2 pl_mask tiles worth of samples
 
 # Pools
 main_pool:
@@ -123,28 +124,28 @@ gen_lost_samples:
     # num_polarizations: num_polarizations # set via global
     pl_mask_buf: dummy_pl_mask_buffer
     lost_samples_buffers:
-      - lost_samples_buffer_0
-      - lost_samples_buffer_1
-      - lost_samples_buffer_2
+        - lost_samples_buffer_0
+        - lost_samples_buffer_1
+        - lost_samples_buffer_2
 
 gen_rfimask:
-    type: random1x8  # For the real test, this should be `random1x8`
+    type: random1x8 # For the real test, this should be `random1x8`
     value: 255
     kotekan_stage: testDataGen
     out_buf: host_rfi_RFImask_buffer
     name: "RFImask"
-    array_shape: [ 2, 12, 128 ]  # [samples_per_data_set/1024, num_local_freq, 128]
+    array_shape: [2, 12, 128] # [samples_per_data_set/1024, num_local_freq, 128]
     dim_name: ["T8hi128", "F", "T8lo128"]
     num_frames: 2*buffer_depth
-    meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
+    meta_time_downsample_factor: 1024 # The number of time samples represented by each coarse time index.
 
 lostSamplesToN2Counts:
     kotekan_stage: lostSamplesToN2Counts
     rfi_mask_buf: host_rfi_RFImask_buffer
     lost_samples_buffers:
-      - lost_samples_buffer_0
-      - lost_samples_buffer_1
-      - lost_samples_buffer_2
+        - lost_samples_buffer_0
+        - lost_samples_buffer_1
+        - lost_samples_buffer_2
     n2k_counts_buf: host_ls_counts_buffer
     num_n2k_freq: num_local_freq
 
@@ -152,9 +153,9 @@ lostSamplesToPLMask:
     kotekan_stage: lostSamplesToPLMask
     pl_mask_buf: host_pl_mask_buffer
     lost_samples_buffers:
-      - lost_samples_buffer_0
-      - lost_samples_buffer_1
-      - lost_samples_buffer_2
+        - lost_samples_buffer_0
+        - lost_samples_buffer_1
+        - lost_samples_buffer_2
 
 # run_send_rfi_RFImask:
 #     gpu_0:
@@ -272,10 +273,10 @@ writers:
         kotekan_stage: hdf5FileWrite
         file_name: dummy_pl_mask
         in_buf: dummy_pl_mask_buffer
-#     n2k_counts:
-#         kotekan_stage: hdf5FileWrite
-#         file_name: n2k_counts
-#         in_buf: host_n2k_counts_buffer
+        #     n2k_counts:
+        #         kotekan_stage: hdf5FileWrite
+        #         file_name: n2k_counts
+        #         in_buf: host_n2k_counts_buffer
     cpu_n2k_counts:
         kotekan_stage: hdf5FileWrite
         file_name: cpu_n2k_counts

@@ -1,3 +1,4 @@
+---
 frames_per_packet: 1
 num_global_freq: 1024
 num_local_freq: 1
