@@ -44,6 +44,8 @@ usage() {
                               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first
                               (include-what-you-use.org)
         - cmakelint           lint CMakeList files
+        - yamlfmt + yamllint  reformat + check yaml (configs, workflows)
+        - j2lint.py           Jinja2 syntax + 4-space indent check on .j2 templates
 
         -d KOTEKAN_DIR        Path to kotekan root directory
         -i ENABLE_IWYU        \"ON\" or \"OFF\" to enable or disable include-what-you-use (default:
@@ -151,6 +153,46 @@ echo "Running cmakelint..."
 if ! source ${KOTEKAN_DIR}/tools/cmakelint.sh ${KOTEKAN_DIR}; then
     echo "Error: cmakelint failed" >&2
     ERROR=1
+fi
+
+# yaml: yamlfmt reformats in place; yamllint then verifies + catches things
+# yamlfmt doesn't (duplicate keys, truthy values outside `on:`, etc.)
+echo "Running yamlfmt..."
+if ! command -v yamlfmt > /dev/null 2>&1; then
+    echo "Error: yamlfmt command not found" >&2
+    exit 1
+fi
+# Run without a path argument so yamlfmt honours the `include` patterns in
+# .yamlfmt.yml. Passing `.` would override those and walk everything.
+(cd "${KOTEKAN_DIR}" && yamlfmt -conf "${KOTEKAN_DIR}/.yamlfmt.yml")
+if ! git diff --exit-code; then
+    echo "Error: yamlfmt applied formatting changes" >&2
+    ERROR=1
+fi
+
+echo "Running yamllint..."
+if ! command -v yamllint > /dev/null 2>&1; then
+    echo "Error: yamllint command not found" >&2
+    exit 1
+fi
+if ! yamllint -c "${KOTEKAN_DIR}/.yamllint.yml" "${KOTEKAN_DIR}"; then
+    echo "Error: yamllint found issues" >&2
+    ERROR=1
+fi
+
+# Jinja2 templates (.j2): syntax + 4-space indent check (report-only)
+echo "Running j2lint..."
+mapfile -t J2_FILES < <(
+    find "${KOTEKAN_DIR}" -type d \
+        \( -name "build-iwyu" -o -name "build" -o -name "build-*" \
+           -o -name "external" -o -name ".venv" -o -name "scratch" \) -prune \
+        -o -type f -name "*.j2" -print
+)
+if [ ${#J2_FILES[@]} -gt 0 ]; then
+    if ! python3 "${KOTEKAN_DIR}/tools/j2lint.py" "${J2_FILES[@]}"; then
+        echo "Error: j2lint.py found issues" >&2
+        ERROR=1
+    fi
 fi
 
 if [[ ${ERROR} -ne 0 ]]; then

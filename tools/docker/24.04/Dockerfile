@@ -103,6 +103,7 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
         gmpy2 \
         h5py \
         hdf5plugin \
+        jinja2 \
         mpmath \
         msgpack \
         numpy \
@@ -120,7 +121,8 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
         sphinx_rtd_theme==2.0.* \
         sphinxcontrib-plantuml==0.25 \
         tabulate \
-        wheel
+        wheel \
+        yamllint
 
 # Uncomment this to check what version got installed
 # RUN python3 -m pip show <package>
@@ -128,6 +130,14 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
 
 # We want the `python` command to point to python3
 RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+# Install yamlfmt (Go binary). Pin version so CI is reproducible.
+ARG YAMLFMT_VERSION=0.21.0
+RUN curl -fsSL -o /tmp/yamlfmt.tar.gz \
+        "https://github.com/google/yamlfmt/releases/download/v${YAMLFMT_VERSION}/yamlfmt_${YAMLFMT_VERSION}_Linux_x86_64.tar.gz" && \
+    tar -xzf /tmp/yamlfmt.tar.gz -C /usr/local/bin/ yamlfmt && \
+    rm /tmp/yamlfmt.tar.gz && \
+    yamlfmt -version
 
 # Install Blaze for the eigenvalue processes
 RUN mkdir src && \

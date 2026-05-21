@@ -194,14 +194,6 @@ jobs:
             post_build: |
               cd $GITHUB_WORKSPACE/build-2404 && make docs
 
-          # Run Linter
-          - id: lint
-            cmake_defs: ""
-            post_build: |
-              cd $GITHUB_WORKSPACE
-              git config --global --add safe.directory $GITHUB_WORKSPACE
-              bash ./tools/lint.sh
-
 
   kotekan-gpu-tests:
     name: "GPU"
@@ -271,3 +263,90 @@ jobs:
               ls /data
               rm /data/tmp
             runs_on: self-hosted
+
+
+  # Run the linter as its own top-level job (rather than as a matrix entry
+  # inside kotekan-cpu-tests) so the auto-lint-fix job below can key off
+  # this job's result specifically.
+  kotekan-lint:
+    name: "Lint"
+    needs: kotekan-docker
+    uses: ./.github/workflows/test_kotekan_build.yml
+    with:
+      container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
+      ccache_key: kotekan-lint
+      cmake_defs: ""
+      post_build: |
+        cd $GITHUB_WORKSPACE
+        git config --global --add safe.directory $GITHUB_WORKSPACE
+        bash ./tools/lint.sh
+
+  # If kotekan-lint failed, re-run the linter (which applies formatter
+  # fixes in place) and open a PR with those fixes back to the branch
+  # that triggered the failing run. Skipped for PRs from forks because
+  # we can't push the fix branch into a fork.
+  auto-lint-fix:
+    name: "Auto lint fix"
+    needs: [kotekan-docker, kotekan-lint]
+    if: >-
+      ${{ always() && needs.kotekan-lint.result == 'failure' &&
+          (github.event_name == 'push' ||
+           github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      SOURCE_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply linter fixes inside kotekan CPU container
+        shell: bash
+        run: |
+          set -e
+          IMAGE="${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}"
+          echo "Using image: ${IMAGE}"
+          # `lint.sh -e OFF` keeps going after a single formatter fails so
+          # every formatter gets a chance to apply its fixes in one pass.
+          # The script still exits non-zero whenever any formatter changed
+          # a file, so `|| true` keeps the step from failing here -- we
+          # want to commit those changes below.
+          docker run --rm \
+            --mount type=bind,src="$(pwd)",target=/code/kotekan \
+            -w /code/kotekan \
+            "${IMAGE}" \
+            bash -c "git config --global --add safe.directory /code/kotekan && /code/kotekan/tools/lint.sh -e OFF -d /code/kotekan" \
+            || true
+
+      - name: Restore file ownership (container ran as root)
+        shell: bash
+        run: sudo chown -R "$(id -u):$(id -g)" .
+
+      - name: Open auto-lint pull request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "auto-lint: apply formatter fixes"
+          title: "auto-lint: apply formatter fixes for ${{ env.SOURCE_BRANCH }}"
+          body: |
+            Automatically opened by the `auto-lint-fix` job in `main.yml`
+            after the `kotekan-lint` check failed on `${{ env.SOURCE_BRANCH }}`
+            (commit `${{ env.SOURCE_SHA }}`).
+
+            Merge this PR into `${{ env.SOURCE_BRANCH }}` to clear the lint
+            check on the originating branch/PR.
+          branch: auto-lint-fix/${{ env.SOURCE_BRANCH }}
+          base: ${{ env.SOURCE_BRANCH }}
+          delete-branch: true

@@ -1,0 +1,25 @@
+---
+extends: default
+
+ignore: |
+    build*/
+    external/
+    .venv/
+    scratch/
+
+rules:
+    line-length:
+        max: 120
+        level: warning
+    indentation:
+        spaces: 4
+        indent-sequences: true
+        check-multi-line-strings: false
+    # GitHub Actions uses `on:` which yaml 1.1 reads as a boolean.
+    truthy:
+        check-keys: false
+    comments:
+        min-spaces-from-content: 1
+        require-starting-space: true
+    document-start:
+        present: true
