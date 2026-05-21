@@ -165,8 +165,6 @@ compressed_lost_samples_buffer_cpy:
     frame_size: samples_per_data_set * num_data_sets / (factor_upchan * downsample_time) * sizeof_int
     metadata_pool: main_pool
 
-cpu_affinity: [2,3,8,9]
-
 gen_data:
   test_data_gen_network:
     type: random #const

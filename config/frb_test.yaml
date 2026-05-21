@@ -82,8 +82,6 @@ cpu_output_buffers:
     cpu_output_buffer_0:
         kotekan_buffer: standard
 
-cpu_affinity: [2,3,8,9]
-
 gen_data:
   type: random
   value: 153

@@ -44,7 +44,8 @@ usage() {
                               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first
                               (include-what-you-use.org)
         - cmakelint           lint CMakeList files
-        - yamlfmt + yamllint  reformat + check yaml (configs, workflows)
+        - yamlfix_kotekan.py  ruamel.yaml round-trip: fixes indent/--- in place,
+                              raises on duplicate keys or yaml syntax errors
         - j2lint.py           Jinja2 syntax + 4-space indent check on .j2 templates
 
         -d KOTEKAN_DIR        Path to kotekan root directory
@@ -155,28 +156,19 @@ if ! source ${KOTEKAN_DIR}/tools/cmakelint.sh ${KOTEKAN_DIR}; then
     ERROR=1
 fi
 
-# yaml: yamlfmt reformats in place; yamllint then verifies + catches things
-# yamlfmt doesn't (duplicate keys, truthy values outside `on:`, etc.)
-echo "Running yamlfmt..."
-if ! command -v yamlfmt > /dev/null 2>&1; then
-    echo "Error: yamlfmt command not found" >&2
+# yaml: ruamel.yaml round-trip fixes indent / `---` / trailing whitespace
+# in place, and raises (non-zero exit) on duplicate keys or syntax errors.
+echo "Running yamlfix_kotekan.py..."
+if ! python3 -c "import ruamel.yaml" 2>/dev/null; then
+    echo "Error: ruamel.yaml python package not found" >&2
     exit 1
 fi
-# Run without a path argument so yamlfmt honours the `include` patterns in
-# .yamlfmt.yml. Passing `.` would override those and walk everything.
-(cd "${KOTEKAN_DIR}" && yamlfmt -conf "${KOTEKAN_DIR}/.yamlfmt.yml")
-if ! git diff --exit-code; then
-    echo "Error: yamlfmt applied formatting changes" >&2
+if ! python3 "${KOTEKAN_DIR}/tools/yamlfix_kotekan.py" "${KOTEKAN_DIR}"; then
+    echo "Error: yamlfix_kotekan.py reported parse issues (duplicate keys / syntax)" >&2
     ERROR=1
 fi
-
-echo "Running yamllint..."
-if ! command -v yamllint > /dev/null 2>&1; then
-    echo "Error: yamllint command not found" >&2
-    exit 1
-fi
-if ! yamllint -c "${KOTEKAN_DIR}/.yamllint.yml" "${KOTEKAN_DIR}"; then
-    echo "Error: yamllint found issues" >&2
+if ! git diff --exit-code; then
+    echo "Error: yamlfix_kotekan.py applied formatting changes" >&2
     ERROR=1
 fi
 
