@@ -63,6 +63,8 @@ private:
     size_t num_elements;
     // Need to use the frame_id outside of the main thread
     N2::frameID frame_id;
+
+    std::array<size_t, 2048> reorder;
 };
 
 #endif

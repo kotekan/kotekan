@@ -34,6 +34,13 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
 
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
+
+    // Construct the cylinder -> beamformer reorder table.
+    const Telescope& tel = Telescope::instance();
+    for(size_t beamformer_idx = 0; beamformer_idx < 2048; ++beamformer_idx) {
+        station_id_t st_id = tel.element_index_to_station_id(beamformer_idx, ElementOrder::CHIMEBeamformer);
+        reorder[beamformer_idx] = tel.station_id_to_element_index(st_id, ElementOrder::CHIMECylinder);
+    }
 }
 
 bufferBadInputs::~bufferBadInputs() {}
@@ -45,8 +52,6 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     uint8_t* host_mask = (uint8_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
     // Reset the mask (1 == good)
     std::memset(host_mask, 1U, num_elements);
-    // Get the reorder mapping
-    constexpr const auto reorder = get_cylinder_to_beamformer_reorder_table();
 
     bool all_good = true;
 
