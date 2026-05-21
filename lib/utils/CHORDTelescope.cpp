@@ -801,12 +801,12 @@ uint64_t CHORDTelescope::station_id_to_element_index(station_id_t st_id, Element
     FATAL_ERROR("Cannot handle element order {}.", ord);
 }
 
-grid_idx_2d_t CHORDTelescope::station_id_to_grid_indices(station_id_t st_id) const {
-    return grid_idx_2d_t{static_cast<int32_t>(st_id), static_cast<int32_t>(st_id)};
+grid_idx_2d_t CHORDTelescope::station_id_to_grid_indices([[maybe_unused]] station_id_t st_id) const {
+    FATAL_ERROR("station_id_to_grid_indices not implemented.");
 } 
 
-vec3d_t CHORDTelescope::station_id_to_feed_position_m(station_id_t st_id) const {
-    return vec3d_t{static_cast<double>(st_id), static_cast<double>(st_id), static_cast<double>(st_id)};
+vec3d_t CHORDTelescope::station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const {
+    FATAL_ERROR("station_id_to_feed_position_m not implemented.");
 }
 
 void to_json(nlohmann::json& j, const dishInfo& d) {

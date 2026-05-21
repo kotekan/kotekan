@@ -39,6 +39,11 @@ public:
 
     /// Override the default table to account for remapping and 4-way CPU shuffle
     freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
+    
+    station_id_t element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const override;
+    uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const override;
+    grid_idx_2d_t station_id_to_grid_indices(station_id_t st_id) const override; 
+    vec3d_t station_id_to_feed_position_m(station_id_t st_id) const override;
 
 private:
     /// Require a frequency remapping table in the config, or exit with an error.
@@ -84,6 +89,9 @@ private:
 
 protected:
     static GeoFrame grid_frame_from_config(const kotekan::Config& config, const std::string& path);
+
+    static void decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization, uint64_t& dish);
+    static station_id_t encode_station_id(uint64_t cylinder, uint64_t polarization, uint64_t dish);
 };
 
 
