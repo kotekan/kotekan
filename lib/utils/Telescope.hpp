@@ -29,6 +29,22 @@ CREATE_FACTORY(Telescope, const kotekan::Config&, const std::string&);
 using nyquist_zone_t = std::uint8_t;
 using freq_id_t = std::uint32_t; // logical ID, not necessarily an index
 #define FREQ_ID_NOT_SET UINT32_MAX
+using station_id_t = std::uint32_t;
+using grid_idx_2d_t = std::array<int32_t, 2>;
+
+enum class ElementOrder : int32_t {
+    CHIMECorrelator = 0,
+    CHIMECylinder = 1,
+    CHIMEBeamformer = 2,
+    CHORDEarly = 3,
+    CHORDBeamformer = 4,
+};
+std::string ElementOrder_to_string(const ElementOrder& o);
+ElementOrder ElementOrder_from_string(const std::string& s);
+std::ostream& operator<<(std::ostream& os, const ElementOrder& o);
+std::string format_as(const ElementOrder& o);
+void to_json(nlohmann::json& j, const ElementOrder& o);
+void from_json(const nlohmann::json& j, ElementOrder& o);
 
 
 /**
@@ -297,6 +313,11 @@ public:
      * @return  Length of an FPGA sequence number tick.
      **/
     virtual uint64_t seq_length_nsec() const = 0;
+
+    virtual station_id_t element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const = 0;
+    virtual uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const = 0;
+    virtual grid_idx_2d_t station_id_to_grid_indices(station_id_t st_id) const = 0;
+    virtual vec3d_t station_id_to_feed_position_m(station_id_t st_id) const = 0;
 
     /**
      * @brief   Return a copy of the current EOP table.

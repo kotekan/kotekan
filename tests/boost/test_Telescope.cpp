@@ -93,6 +93,18 @@ public:
     uint64_t seq_length_nsec() const override {
         return 0;
     }
+    station_id_t element_index_to_station_id(uint64_t el_idx, [[maybe_unused]] ElementOrder ord) const override {
+        return el_idx;
+    }
+    uint64_t station_id_to_element_index(station_id_t st_id, [[maybe_unused]] ElementOrder ord) const override {
+        return st_id;
+    }
+    grid_idx_2d_t station_id_to_grid_indices([[maybe_unused]] station_id_t st_id) const override {
+        return grid_idx_2d_t{-1, -1};
+    }
+    vec3d_t station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const override {
+        return vec3d_t{0.0, 0.0, 0.0};
+    }
 };
 
 REGISTER_TELESCOPE(TestTelescope, "TestTelescope");

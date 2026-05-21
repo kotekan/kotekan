@@ -251,7 +251,7 @@ EOP Telescope::get_EOP_at_time_ns(int64_t t_target_ns) const {
             if (t_target_ns > eop_last->t_inst_ns) {
                 WARN(
                     "Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest "
-                    "UT1 = "
+                    "time = "
                     "{:d} s + {:d} ns.",
                     t_target_ns / GIGA, t_target_ns % GIGA, eop_last->t_inst_ns / GIGA,
                     eop_last->t_inst_ns % GIGA);
@@ -410,4 +410,53 @@ vec3d_t Telescope::vec_grid_to_topo(const vec3d_t& v_grid) const {
 
 vec3d_t Telescope::vec_itrs_to_topo(const vec3d_t& v_itrs) const {
     return _frame.vec_itrs_to_topo(v_itrs);
+}
+
+std::string ElementOrder_to_string(const ElementOrder& o) {
+    switch(o) {
+        case ElementOrder::CHIMECorrelator:
+            return "CHIMECorrelator";
+        case ElementOrder::CHIMECylinder:
+            return "CHIMECylinder";
+        case ElementOrder::CHIMEBeamformer:
+            return "CHIMEBeamformer";
+        case ElementOrder::CHORDEarly:
+            return "CHORDEarly";
+        case ElementOrder::CHORDBeamformer:
+            return "CHORDBeamformer";
+        default:
+            FATAL_ERROR_NON_OO("Unknown ElementOrder: {:d}", static_cast<int32_t>(o));
+    }
+}
+
+ElementOrder ElementOrder_from_string(const std::string& s) {
+    if (s == "CHIMECorrelator")
+        return ElementOrder::CHIMECorrelator;
+    else if (s == "CHIMECylinder")
+        return ElementOrder::CHIMECylinder;
+    else if (s == "CHIMEBeamformer")
+        return ElementOrder::CHIMEBeamformer;
+    else if (s == "CHORDEarly")
+        return ElementOrder::CHORDEarly;
+    else if (s == "CHORDBeamformer")
+        return ElementOrder::CHORDBeamformer;
+
+    FATAL_ERROR_NON_OO("Unknown ElementOrder: {:s}", s);
+}
+
+std::ostream& operator<<(std::ostream& os, const ElementOrder& o) {
+    os << ElementOrder_to_string(o);
+    return os;
+}
+
+std::string format_as(const ElementOrder& o) {
+    return ElementOrder_to_string(o);
+}
+
+void to_json(nlohmann::json& j, const ElementOrder& o) {
+    j = ElementOrder_to_string(o);
+}
+
+void from_json(const nlohmann::json& j, ElementOrder& o) {
+    o = ElementOrder_from_string(j);
 }

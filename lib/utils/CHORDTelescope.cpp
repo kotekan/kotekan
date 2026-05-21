@@ -782,6 +782,32 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t stream_id, uint32_t index) const {
 size_t CHORDTelescope::num_freq_per_stream() const {
     return 48;
 }
+    
+station_id_t CHORDTelescope::element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const {
+    if (ord == ElementOrder::CHORDEarly) {
+        return el_idx;
+    } else if (ord == ElementOrder::CHORDBeamformer) {
+        return el_idx;
+    }
+    FATAL_ERROR("Cannot handle element order {}.", ord);
+}
+
+uint64_t CHORDTelescope::station_id_to_element_index(station_id_t st_id, ElementOrder ord) const {
+    if (ord == ElementOrder::CHORDEarly) {
+        return st_id;
+    } else if (ord == ElementOrder::CHORDBeamformer) {
+        return st_id;
+    }
+    FATAL_ERROR("Cannot handle element order {}.", ord);
+}
+
+grid_idx_2d_t CHORDTelescope::station_id_to_grid_indices(station_id_t st_id) const {
+    return grid_idx_2d_t{static_cast<int32_t>(st_id), static_cast<int32_t>(st_id)};
+} 
+
+vec3d_t CHORDTelescope::station_id_to_feed_position_m(station_id_t st_id) const {
+    return vec3d_t{static_cast<double>(st_id), static_cast<double>(st_id), static_cast<double>(st_id)};
+}
 
 void to_json(nlohmann::json& j, const dishInfo& d) {
     j = {};
