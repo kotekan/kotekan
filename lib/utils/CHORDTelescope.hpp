@@ -479,6 +479,11 @@ public:
      *          Uses the epoch of time0_ns.
      */
     int64_t to_time_ns(uint64_t seq) const override;
+    
+    station_id_t element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const override;
+    uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const override;
+    grid_idx_2d_t station_id_to_grid_indices(station_id_t st_id) const override; 
+    vec3d_t station_id_to_feed_position_m(station_id_t st_id) const override;
 
     /**
      * @brief   Queries the source of the GPS time0_ns value. Returns true on success, and updates

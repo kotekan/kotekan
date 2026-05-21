@@ -211,6 +211,38 @@ uint8_t ICETelescope::nyquist_zone() const {
     return ny_zone;
 }
 
+station_id_t ICETelescope::element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const {
+    if (ord == ElementOrder::CHIMECorrelator) {
+        return el_idx;
+    } else if (ord == ElementOrder::CHIMECylinder) {
+        return el_idx;
+    } else if (ord == ElementOrder::CHIMEBeamformer) {
+        return el_idx;
+    }
+
+    FATAL_ERROR("Cannot handle element order {}.", ord);
+}
+
+uint64_t ICETelescope::station_id_to_element_index(station_id_t st_id, ElementOrder ord) const {
+    if (ord == ElementOrder::CHIMECorrelator) {
+        return st_id;
+    } else if (ord == ElementOrder::CHIMECylinder) {
+        return st_id;
+    } else if (ord == ElementOrder::CHIMEBeamformer) {
+        return st_id;
+    }
+
+    FATAL_ERROR("Cannot handle element order {}.", ord);
+}
+
+grid_idx_2d_t ICETelescope::station_id_to_grid_indices(station_id_t st_id) const {
+    return grid_idx_2d_t{static_cast<int32_t>(st_id), static_cast<int32_t>(st_id)};
+} 
+
+vec3d_t ICETelescope::station_id_to_feed_position_m(station_id_t st_id) const {
+    return vec3d_t{static_cast<double>(st_id), static_cast<double>(st_id), static_cast<double>(st_id)};
+}
+
 GeoFrame ICETelescope::grid_frame_from_config(const kotekan::Config& config,
                                               const std::string& path) {
 

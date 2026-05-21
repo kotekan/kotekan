@@ -235,3 +235,19 @@ size_t FakeTelescope::seq_length_nsec() const {
 bool FakeTelescope::gps_time_enabled() const {
     return true;
 }
+
+station_id_t FakeTelescope::element_index_to_station_id(uint64_t el_idx, [[maybe_unused]] ElementOrder ord) const {
+    return el_idx;
+}
+
+uint64_t FakeTelescope::station_id_to_element_index(station_id_t st_id, [[maybe_unused]] ElementOrder ord) const {
+    return st_id;
+}
+
+grid_idx_2d_t FakeTelescope::station_id_to_grid_indices([[maybe_unused]] station_id_t st_id) const {
+    return grid_idx_2d_t{-1, -1};
+}
+
+vec3d_t FakeTelescope::station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const {
+    return vec3d_t{0.0, 0.0, 0.0};
+}
