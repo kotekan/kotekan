@@ -187,7 +187,7 @@ freq_id_t CHIMETelescope::to_freq_id(stream_t stream, uint32_t /* ind */) const 
 
 station_id_t CHIMETelescope::element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const {
     if (ord == ElementOrder::CHIMECorrelator) {
-        return el_idx;
+        FATAL_ERROR("Element order {} not implemented yet.", ord);
     } else if (ord == ElementOrder::CHIMECylinder) {
         return el_idx;
     } else if (ord == ElementOrder::CHIMEBeamformer) {
@@ -202,7 +202,7 @@ station_id_t CHIMETelescope::element_index_to_station_id(uint64_t el_idx, Elemen
 
 uint64_t CHIMETelescope::station_id_to_element_index(station_id_t st_id, ElementOrder ord) const {
     if (ord == ElementOrder::CHIMECorrelator) {
-        return st_id;
+        FATAL_ERROR("Element order {} not implemented yet.", ord);
     } else if (ord == ElementOrder::CHIMECylinder) {
         return st_id;
     } else if (ord == ElementOrder::CHIMEBeamformer) {
