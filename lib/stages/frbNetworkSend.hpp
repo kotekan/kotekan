@@ -177,8 +177,8 @@ private:
     // samples per packet
     int samples_per_packet;
 
-    // total number of frequencies in incoming beams buffer. Must be evenly
-    // divided by _nfreq_coarse
+    // total number of coarse frequencies in incoming beams buffer. Must be
+    // evenly divided by _nfreq_coarse
     int num_frequencies;
 
     // hard-coded size constraints (due ot packet layout expected by receiver)

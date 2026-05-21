@@ -180,15 +180,15 @@ void frbNetworkSend::main_thread() {
     // TODO: this could easily handle any value for R4, Fbar64, Ttilde16_lo16
     auto const expected_beams_frame_desc = kotekan::GenericNDArray::create(
         kotekan::DataType::uint8, "I3",
-        {1, _total_nbeams / _nbeams, num_frequencies / (_nfreq_coarse * _factor_upchan_out),
+        {1, _total_nbeams / _nbeams, num_frequencies / _nfreq_coarse,
          16 /*TODO: get from option? */ , _nbeams, _nfreq_coarse,
          _factor_upchan_out, _timesamples_per_frb_packet},
         {"Ttilde256",     "R4",        "Fbar64", "Ttilde16_lo16", "Rlo4",      "Fbar16_lo4", "Fbarlo16",      "Ttildelo16"}, nullptr);
     assert(*beams_frame_desc == *expected_beams_frame_desc);
 
     auto const expected_offsetscale_frame_desc = kotekan::GenericNDArray::create(
-        kotekan::DataType::float16, "offset/scale",
-        {1, _total_nbeams / _nbeams, num_frequencies / (_nfreq_coarse * _factor_upchan_out),
+        kotekan::DataType::float16, "I3_offsetscale",
+        {1, _total_nbeams / _nbeams, num_frequencies / _nfreq_coarse,
          16 /*TODO: get from option? */ , _nbeams, _nfreq_coarse, 2},
         {"Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "offset/scale"}, nullptr);
     assert(*offsetscale_frame_desc == *expected_offsetscale_frame_desc);
@@ -278,11 +278,11 @@ void frbNetworkSend::main_thread() {
         DEBUG("Beam offset: {:d}", local_beam_offset);
 
         // r8 is e_stream (or link) below
-        for (int fbar64 = 0; fbar64 < num_frequencies / (_nfreq_coarse * _factor_upchan_out); ++fbar64)
+        for (int fbar64 = 0; fbar64 < num_frequencies / _nfreq_coarse; ++fbar64)
         for (int ttilde16_low16_by_packets_per_stream = 0; ttilde16_low16_by_packets_per_stream < 16/packets_per_stream; ++ttilde16_low16_by_packets_per_stream)
         for (int frame = 0; frame < packets_per_stream; frame++) {
               const int nstreams = _total_nbeams / _nbeams;
-              assert(nstreams == 128); // TODO: this is all wrong, since there's only 4 beams per stream...
+              assert(nstreams == 256); 
               for (int stream = 0; stream < nstreams; stream++) {
                   int e_stream =
                       (my_sequence_id + stream)
@@ -301,7 +301,7 @@ void frbNetworkSend::main_thread() {
                               const int r8 = e_stream;
                               const int ttilde16_low16 = ttilde16_low16_by_packets_per_stream * packets_per_stream + frame;
                               const int frb_packet_num =
-                                r8 * num_frequencies / (_nfreq_coarse * _factor_upchan_out) * 16 +
+                                r8 * num_frequencies / _nfreq_coarse * 16 +
                                 fbar64 * 16 +
                                 ttilde16_low16;
 
