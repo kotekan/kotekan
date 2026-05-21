@@ -8,6 +8,7 @@ ignore: |
     scratch/
     julia/
     lib/cuda/generated/
+    .github/workflows/
 
 rules:
     line-length:

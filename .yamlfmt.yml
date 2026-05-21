@@ -16,6 +16,9 @@ exclude:
     - "scratch/**"
     - "julia/**"
     - "lib/cuda/generated/**"
+    # GITHUB_TOKEN can't push commits that touch workflow files, so the
+    # auto-lint-fix PR can't include reformat of these. Skip entirely.
+    - ".github/workflows/**"
 
 formatter:
     type: basic
