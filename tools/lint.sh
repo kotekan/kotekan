@@ -46,7 +46,7 @@ usage() {
         - cmakelint           lint CMakeList files
         - yamlfix_kotekan.py  ruamel.yaml round-trip: fixes indent/--- in place,
                               raises on duplicate keys or yaml syntax errors
-        - j2lint.py           Jinja2 syntax + 4-space indent check on .j2 templates
+        - j2lint.py           render .j2 templates and require valid yaml output
 
         -d KOTEKAN_DIR        Path to kotekan root directory
         -i ENABLE_IWYU        \"ON\" or \"OFF\" to enable or disable include-what-you-use (default:
@@ -172,7 +172,7 @@ if ! git diff --exit-code; then
     ERROR=1
 fi
 
-# Jinja2 templates (.j2): syntax + 4-space indent check (report-only)
+# Jinja2 templates (.j2): render with empty context and require valid yaml output
 echo "Running j2lint..."
 mapfile -t J2_FILES < <(
     find "${KOTEKAN_DIR}" -type d \
