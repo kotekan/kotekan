@@ -58,6 +58,8 @@ static void fill_input_frame(Buffer* buf, int frame_id) {
     meta->frame_length_fpga_ticks = 100;
     meta->n_valid_fpga_ticks = 100;
     meta->n_rfi_fpga_ticks = 0;
+    meta->n_rfi_only_fpga_ticks = 0;
+    meta->n_pl_fpga_ticks = 0;
 
     N2FrameView fv(buf, frame_id);
 

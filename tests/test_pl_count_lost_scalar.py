@@ -1,0 +1,319 @@
+import pytest
+import numpy as np
+
+from kotekan import runner
+
+prod_config = {
+    "buffer_depth": 5,
+    "samples_per_data_set": 16384,
+    "num_local_freq": 12,
+    "sub_integration_ntime": 8192,
+    "num_polarizations": 2,
+    "num_dishes": 512,
+}
+
+medium_config = {
+    "buffer_depth": 2,
+    "samples_per_data_set": 384,
+    "num_local_freq": 4,
+    "sub_integration_ntime": 48,
+    "num_polarizations": 2,
+    "num_dishes": 8,
+}
+
+small_config = {
+    "buffer_depth": 2,
+    "samples_per_data_set": 1024,
+    "num_local_freq": 4,
+    "sub_integration_ntime": 128,
+    "num_polarizations": 2,
+    "num_dishes": 8,
+}
+
+very_small_config = {
+    "buffer_depth": 2,
+    "samples_per_data_set": 256,
+    "num_local_freq": 4,
+    "sub_integration_ntime": 2,
+    "num_polarizations": 2,
+    "num_dishes": 8,
+}
+
+bad_config = {
+    "buffer_depth": 2,
+    "samples_per_data_set": 1024,
+    "num_local_freq": 4,
+    "sub_integration_ntime": 48,
+    "num_polarizations": 2,
+    "num_dishes": 8,
+}
+
+
+@pytest.fixture(
+    scope="module",
+    params=[
+        {"config": bad_config, "pl_vals": [[255]], "fail": True},
+        {"config": very_small_config, "pl_vals": [[1, 0, 7, 255, 16]], "fail": False},
+        {"config": small_config, "pl_vals": [[1, 0, 7, 255, 16]], "fail": False},
+        {"config": medium_config, "pl_vals": [[0]], "fail": False},
+        {"config": medium_config, "pl_vals": [[255]], "fail": False},
+        {
+            "config": prod_config,
+            "pl_vals": [[255], [0], [2, 3, 5, 7, 11, 13, 17, 23, 29, 31, 37]],
+            "fail": False,
+        },
+    ],
+    ids=["bad-size", "accum2", "accum-whole", "accum48-allPL", "accum48-noPL", "prod"],
+)
+def setup(request):
+    """
+    Generate the base config and setup parameters to run a test. This (and the other fixtures) should provide *everything* needed to test a stage.
+
+    Parameters
+    ----------
+    request : pytest magic
+        Provides the parameterized values.
+
+    Returns
+    -------
+    tuple
+        The base config, as well as parameters to generate input PL mask data
+    """
+    return request.param
+
+
+@pytest.fixture(scope="module")
+def plmask_data(setup):
+    """
+    Generate a list of input PLmask frames in ChordBuffers
+
+    Parameters
+    ----------
+    setup : fixture
+        Includes the base config as well as PL mask generation parameters
+
+    Returns
+    -------
+    List of ChordBuffers each containing a PL mask frame.
+    """
+
+    config = setup["config"]
+    pl_vals = setup["pl_vals"]
+
+    num_frames = 2 * config["buffer_depth"]
+
+    bufs = []
+
+    for idx in range(num_frames):
+
+        seq_num = idx * config["samples_per_data_set"]
+
+        data = np.empty(
+            (
+                config["samples_per_data_set"] // 128,
+                config["num_local_freq"] // 4,
+                config["num_polarizations"],
+                config["num_dishes"] // 8,
+                8,
+            ),
+            dtype=np.uint8,
+        )
+
+        meta = runner.chordbuffer.get_metadata(
+            "pl_mask", "uint1x8", ("T2hi64", "F4", "P", "D8", "T2lo64")
+        )
+        meta["fpga_seq_num"] = seq_num
+        meta["time_downsampling_fpga"] = 128
+
+        # We're producing the PL mask out of u8's. Each u8 represents 16 time samples,
+        # so we'll index with "t16"
+        t16_0 = (idx * config["samples_per_data_set"]) // 16
+        t16_1 = ((idx + 1) * config["samples_per_data_set"]) // 16
+
+        # Loop over downsampled frequencies
+        for f4 in range(config["num_local_freq"] // 4):
+            pl_f = pl_vals[f4 % len(pl_vals)]
+
+            # Will store the pl u8 values for one "frequency"
+            pl_timeseries = np.empty(
+                config["samples_per_data_set"] // 16, dtype=np.uint8
+            )
+
+            # Run through the given values and assign the right number to the timeseries
+            for t16 in range(t16_0, t16_1):
+                pl_timeseries[t16 - t16_0] = pl_f[t16 % len(pl_f)]
+
+            # Resize the timeseries to split into PL mask hi- and lo- time indices.  The fast
+            # index runs over 128 times = 64 bits = 8 bytes = 8 u8's
+            pl_timeseries_2d = pl_timeseries.reshape((-1, 8))
+
+            # Now just plug it in the right spot.
+            data[:, f4, :, :, :] = pl_timeseries_2d[:, None, None, :]
+
+        bufs.append(runner.chordbuffer.ChordBuffer(data, meta))
+
+    return bufs
+
+
+@pytest.fixture(scope="module")
+def pllostcounts_data(tmpdir_factory, setup, plmask_data):
+    """
+    Run the CountLostPLSamplesScalar stage on the given input and yield the output buffers.
+
+    Parameters
+    ----------
+    tmpdir_factory : pytest magic
+        Generates temporary directories
+    setup : fixture
+        Includes the base config
+    plmask_data : fixture
+        A List of ChordBuffers for input
+
+    Yields
+    ------
+    List of ChordBuffers each containing an PL Lost Counts frame generated by CountLostPLSamples.
+    """
+
+    config = setup["config"]
+
+    num_frames = len(plmask_data)
+
+    tmpdir = tmpdir_factory.mktemp("plcountlost")
+
+    # Make input buffer and write the files for it to read.
+    input_buffer = runner.ReadChordBuffer(str(tmpdir), plmask_data)
+    input_buffer.write()
+
+    # Make the output buffer we'll read from
+    dump_buffer = runner.DumpChordBuffer(
+        str(tmpdir),
+        shape=(
+            config["samples_per_data_set"] // config["sub_integration_ntime"],
+            config["num_local_freq"],
+        ),
+        dtype=np.int32,
+        max_frames=num_frames,
+    )
+
+    # The test stage!
+    test = runner.KotekanStageTester(
+        "CountLostPLSamplesScalar",
+        {"packet_loss_is_scalar": True},
+        input_buffer,
+        dump_buffer,
+        config,
+        expect_failure=setup["fail"],
+    )
+
+    test.run()
+
+    yield dump_buffer.load()
+
+
+def count_lost_samples(plmask, config):
+    """
+    Count the lost (plmask = 0) samples in the PL mask, assuming values are the same for each element.
+
+    Parameters
+    ----------
+    plmask : ChordBuffer
+        The input PL mask
+    config : dict
+        The base config for the run
+
+    Returns
+    -------
+    ndarray (num_integrations, num_frequency), int32
+        The count of lost (0'd) samples in the PL mask, expanded to the full frequency range, downsampled by sub_integration_ntime in time.
+    """
+
+    # Number of integrations per frame
+    nint = config["samples_per_data_set"] // config["sub_integration_ntime"]
+
+    nf = config["num_local_freq"]
+
+    nf4 = plmask.data.shape[1]
+
+    # Allocate data array
+    lost_counts = np.empty((nint, nf), dtype=np.int32)
+
+    # Loop over integrations
+    for tint in range(nint):
+
+        # Start and stop of sub integration in global time
+        t0 = tint * config["sub_integration_ntime"]
+        t1 = (tint + 1) * config["sub_integration_ntime"]
+
+        # t0 and t1 in PL mask time (downsampled by 2).
+        tpl0 = t0 // 2
+        tpl1 = t1 // 2
+
+        # plmask with element axes stripped out and transposed from
+        # (thi, f4, tlo) to (f4, thi, tlo)
+        plmask_ftt = plmask.data[:, :, 0, 0, :].transpose((1, 0, 2))
+
+        plmask_ft = plmask_ftt.reshape((nf4, -1))
+
+        lost_bits_ft = np.unpackbits(
+            np.bitwise_not(plmask_ft), axis=1, bitorder="little"
+        )
+        lost_counts_f4 = 2 * lost_bits_ft[:, tpl0:tpl1].astype(np.int32).sum(axis=1)
+
+        # grab the pl slice for our integtation, count the 1's in each u8, cast to int32s, then
+        # sum over remaining time indices.
+        # lost_counts_f4 = config["sub_integration_ntime"] - 2 * np.bitwise_count(
+        #     plmask.data[tpl0:tpl1, :, 0, 0, :]
+        # ).astype(np.int32).sum(axis=(0, 2))
+
+        # place the counts into appropriate frequency bins.
+        for f in range(config["num_local_freq"]):
+            lost_counts[tint, f] = lost_counts_f4[f // 4]
+
+    return lost_counts
+
+
+def test_meta(pllostcounts_data, setup):
+    # Test the metadata
+
+    config = setup["config"]
+
+    for idx, frame in enumerate(pllostcounts_data):
+
+        assert frame.metadata["name"] == "pl_lost_counts_scalar"
+        assert (frame.metadata["dim_names"] == ["Tc", "F"]).all()
+        assert (
+            frame.metadata["time_downsampling_fpga"] == config["sub_integration_ntime"]
+        )
+        assert frame.metadata["fpga_seq_num"] == idx * config["samples_per_data_set"]
+
+
+def test_pl_lost_counts(pllostcounts_data, setup, plmask_data):
+    # Test the actual lost sample count.
+
+    config = setup["config"]
+
+    # Should have same number of frames!
+    if not setup["fail"]:
+        assert len(pllostcounts_data) == len(plmask_data)
+
+    for idx, frame in enumerate(pllostcounts_data):
+
+        # Check output is the right shape and type
+        assert frame.data.shape == (
+            config["samples_per_data_set"] // config["sub_integration_ntime"],
+            config["num_local_freq"],
+        )
+        assert frame.data.dtype == np.int32
+
+        # Generate the correct counts
+        pl_lost_counts = count_lost_samples(plmask_data[idx], config)
+
+        # Confirm the Kotekan and Python counts have same shape and type
+        assert frame.data.shape == pl_lost_counts.shape
+        assert frame.data.dtype == pl_lost_counts.dtype
+
+        # Check the counts are identical
+        print("setup pl_vals:", setup["pl_vals"])
+        print("kotekan:", frame.data[0])
+        print("python:", pl_lost_counts[0])
+        assert (frame.data == pl_lost_counts).all()

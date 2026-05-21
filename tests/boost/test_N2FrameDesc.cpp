@@ -322,7 +322,10 @@ BOOST_AUTO_TEST_CASE(test_byte_size) {
                            + sizeof(N2::cfloat) * num_ev * num_elements // evec
                            + sizeof(N2EigenMethod)                      // emethod
                            + sizeof(float)                              // erms
-                           + sizeof(N2::cfloat) * num_elements;         // gain
+                           + sizeof(float) * 3 // radiometer_chi2 - 3 pol pairs XX, XY, YY
+
+                           + sizeof(N2::cfloat) * num_elements // gain
+                           + sizeof(uint8_t) * num_elements;   // mask
 
     BOOST_CHECK_EQUAL(desc.get_byte_size(), expected_size);
 

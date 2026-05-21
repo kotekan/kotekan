@@ -13,6 +13,7 @@
 #include <StageFactory.hpp>
 #include <algorithm>
 #include <cassert>
+#include <cfloat>
 #include <chordMetadata.hpp>
 #include <chrono>
 #include <complex>
@@ -352,7 +353,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         // _check_create_attribute(*file, "num_stacks", telescope.get_num_stacks());
         _check_create_attribute(*file, "nyquist_zone", telescope.nyquist_zone());
         _check_create_attribute(*file, "gps_time_enabled", telescope.gps_time_enabled());
-        _check_create_attribute(*file, "fpga_seq_length_nsec", telescope.seq_length_nsec());
+        _check_create_attribute(*file, "frame0_unix_ns", telescope.to_time_ns(0));
+        _check_create_attribute(*file, "fpga_seq_length_ns", telescope.seq_length_nsec());
         _check_create_attribute(*file, "origin_itrs_lon_deg", telescope.get_origin_itrs_lon_deg());
         _check_create_attribute(*file, "origin_itrs_lat_deg", telescope.get_origin_itrs_lat_deg());
         _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
@@ -393,12 +395,12 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
 
         // Store grid orientation (3x3 matrix) and dish orientation (3x3 matrix)
         {
-            std::vector<double> grid_orientation(9);
-            std::vector<double> dish_orientation(9);
+            std::array<double, 9> grid_orientation;
+            std::array<double, 9> dish_orientation;
             for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < 3; j++) {
-                    grid_orientation[i * 3 + j] = telescope.get_grid_orientation_el(i, j);
-                    dish_orientation[i * 3 + j] = telescope.get_dish_orientation_el(i, j);
+                    grid_orientation[3 * i + j] = telescope.get_grid_orientation_el(i, j);
+                    dish_orientation[3 * i + j] = telescope.get_dish_orientation_el(i, j);
                 }
             }
             _check_create_attribute(*file, "grid_orientation", grid_orientation);
@@ -443,6 +445,12 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                 type_int[i] = static_cast<int32_t>(dish_inputs.type[i]);
             }
             dataset_type.write(type_int);
+
+            _check_create_dataset(*file, "/index_map/label", {dish_inputs.label.size()},
+                                  {"element"}, HighFive::create_datatype<std::string>(),
+                                  props_empty);
+            auto dataset_label = file->getDataSet("/index_map/label");
+            dataset_label.write(dish_inputs.label);
         }
 
         // Store full dish positions
@@ -517,14 +525,35 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(*file, "/gain", {num_file_f, fv.num_elements, num_file_t_},
                               {"frequency", "element", "time"}, HighFive::create_datatype<cfloat>(),
                               props_empty);
+        _check_create_dataset(*file, "/radiometer_chi2", {num_file_f, num_file_t_, 3},
+                              {"frequency", "time", "pol_product"},
+                              HighFive::create_datatype<float>(), props_empty);
 
         _check_create_dataset(
             *file, flags_group_prefix + "/flags", {num_file_f, fv.num_elements, num_file_t_},
             {"frequency", "element", "time"}, HighFive::create_datatype<float>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/valid_fpga_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/rfi_fpga_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/rfi_only_fpga_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/pl_fpga_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
         _check_create_dataset(*file, flags_group_prefix + "/frac_lost", {num_file_f, num_file_t_},
                               {"frequency", "time"}, HighFive::create_datatype<float>(),
                               props_empty);
         _check_create_dataset(*file, flags_group_prefix + "/frac_rfi", {num_file_f, num_file_t_},
+                              {"frequency", "time"}, HighFive::create_datatype<float>(),
+                              props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/frac_rfi_only",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<float>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/frac_pl", {num_file_f, num_file_t_},
                               {"frequency", "time"}, HighFive::create_datatype<float>(),
                               props_empty);
 
@@ -532,19 +561,43 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               HighFive::create_datatype<uint64_t>(), props_empty);
         _check_create_dataset(*file, "/frame_length_fpga_ticks", {num_file_t_}, {"time"},
                               HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, "/bin_abs_index", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
 
+        _check_create_dataset(*file, "/time_center_t_inst_ns", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<int64_t>(), props_empty);
         _check_create_dataset(*file, "/time_center_ut1_ns", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<int64_t>(), props_empty);
+        _check_create_dataset(*file, "/bin_t_inst_ns", {num_file_t_}, {"time"},
                               HighFive::create_datatype<int64_t>(), props_empty);
         _check_create_dataset(*file, "/bin_ut1_ns", {num_file_t_}, {"time"},
                               HighFive::create_datatype<int64_t>(), props_empty);
+        _check_create_dataset(*file, "/bin_delta_ut1_inst", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<double>(), props_empty);
+        _check_create_dataset(*file, "/bin_ERA_deg", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<double>(), props_empty);
+        _check_create_dataset(*file, "/bin_xp_as", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<double>(), props_empty);
+        _check_create_dataset(*file, "/bin_yp_as", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/bin_start_ERA_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/bin_end_ERA_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
-        _check_create_dataset(*file, "/bin_start_LAST", {num_file_t_}, {"time"},
+        _check_create_dataset(*file, "/bin_start_ERAL_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
-        _check_create_dataset(*file, "/bin_end_LAST", {num_file_t_}, {"time"},
+        _check_create_dataset(*file, "/bin_end_ERAL_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_enabled", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<bool>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_num", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<int32_t>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_threshold",
+                              {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
+                              HighFive::create_datatype<float>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_fraction",
+                              {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
+                              HighFive::create_datatype<float>(), props_empty);
 
         // Digital gains: copy entire gains file verbatim into /digital_gains/ group
         if (!baseband_gain_file.empty() && !file->exist("/digital_gains")) {
@@ -633,19 +686,38 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     evec.assign(num_ev * num_elements * num_file_f * num_file_t, N2::cfloat{0.0f, 0.0f});
     erms.assign(num_file_f * num_file_t, 0.0f);
     gain.assign(num_elements * num_file_f * num_file_t, N2::cfloat{0.0f, 0.0f});
+    valid_fpga_count.assign(num_file_f * num_file_t, 0);
+    rfi_fpga_count.assign(num_file_f * num_file_t, 0);
+    rfi_only_fpga_count.assign(num_file_f * num_file_t, 0);
+    pl_fpga_count.assign(num_file_f * num_file_t, 0);
     frac_lost.assign(num_file_f * num_file_t, 1.0f); // match empty frames by default
     frac_rfi.assign(num_file_f * num_file_t, 0.0f);
+    frac_rfi_only.assign(num_file_f * num_file_t, 0.0f);
+    frac_pl.assign(num_file_f * num_file_t, 0.0f);
     flags.assign(num_elements * num_file_f * num_file_t, 0.0f);
+    radiometer_chi2.assign(num_file_f * num_file_t * 3, 0.0f);
 
     // Additional metadata
     fpga_start_tick.assign(num_file_t, 0);
     frame_length_fpga_ticks.assign(num_file_t, 0);
-    time_center_ut1.assign(num_file_t, 0.0);
-    bin_ut1.assign(num_file_t, 0);
+    bin_abs_index.assign(num_file_t, std::numeric_limits<uint64_t>::max());
+    time_center_t_inst_ns.assign(num_file_t, 0.0);
+    time_center_ut1_ns.assign(num_file_t, 0.0);
+    bin_t_inst_ns.assign(num_file_t, 0.0);
+    bin_ut1_ns.assign(num_file_t, 0.0);
+    bin_delta_ut1_inst.assign(num_file_t, -DBL_MAX);
+    bin_era_deg.assign(num_file_t, -DBL_MAX);
+    bin_xp_as.assign(num_file_t, -DBL_MAX);
+    bin_yp_as.assign(num_file_t, -DBL_MAX);
     bin_start_ERA_deg.assign(num_file_t, 0.0);
     bin_end_ERA_deg.assign(num_file_t, 0.0);
-    bin_start_LAST.assign(num_file_t, 0.0);
-    bin_end_LAST.assign(num_file_t, 0.0);
+    bin_start_ERAL_deg.assign(num_file_t, 0.0);
+    bin_end_ERAL_deg.assign(num_file_t, 0.0);
+    rfi_frame_excision_enabled.assign(num_file_t, false);
+    rfi_frame_excision_num.assign(num_file_t, 0);
+    rfi_frame_excision_threshold.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
+    rfi_frame_excision_fraction.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
+
 
     added_ft.assign(num_file_f * num_file_t, 0);
 }
@@ -662,53 +734,123 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
                            "Expected f_index < {}, t_index < {}, and freq_id >= {}",
                            f_index, t_index, num_file_f, num_file_t,
                            telescope.min_science_freq_id());
-        return AddFrameStatus::OutOfBounds;
     }
     size_t check_idx = idx_ft(f_index, t_index);
     if (added_ft[check_idx] != 0) {
         FATAL_ERROR_NON_OO("N2FileData: duplicate frame insertion at (f={}, t={})", f_index,
                            t_index);
-        return AddFrameStatus::Duplicate;
     }
 
     // Accept timing differences up to 2 ns (e.g. fuzz on EOP table updates)
     auto ns_close = [](int64_t a, int64_t b, int64_t tol_ns = 2) {
         return std::llabs(a - b) <= tol_ns;
     };
+    // Accept timing differences up to 2 ns (e.g. fuzz on EOP table updates)
+    auto sec_close = [](double a, double b, double tol_sec = 2e-9) {
+        return std::fabs(a - b) <= tol_sec;
+    };
+    // Accept timing differences up to 2 ns ~ 8.3e-12 deg (e.g. fuzz on EOP table updates)
+    auto deg_close = [](double a, double b, double tol_deg = 1e-11) {
+        return std::fabs(a - b) <= tol_deg;
+    };
+    // Accept polar motion drift equivalent to 2 ns of rotation.
+    auto arcsec_close = [](double a, double b, double tol_as = 3e-8) {
+        return std::fabs(a - b) <= tol_as;
+    };
 
     // Structural data consistency checks
-    if (n2_layout != fv.n2_layout || fv.eval.size() != fv.num_ev
-        || fv.evec.size() != fv.num_ev * fv.num_elements || fv.gain.size() != fv.num_elements
-        || fv.flags.size() != fv.num_elements || fv.num_elements != num_elements
-        || fv.num_prod != num_prod || fv.num_ev != num_ev || fv.frame_length_fpga_ticks == 0
-        || (fpga_start_tick[t_index] > 0 && fpga_start_tick[t_index] != fv.fpga_start_tick)
-        || (frame_length_fpga_ticks[t_index] > 0
-            && frame_length_fpga_ticks[t_index] != fv.frame_length_fpga_ticks)
-        || (time_center_ut1[t_index] > 0
-            && !ns_close(time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns))
-        || (bin_ut1[t_index] > 0 && !ns_close(bin_ut1[t_index], fv.bin_eop.t_ut1_ns))
-        || (bin_start_ERA_deg[t_index] < 0) || (bin_start_ERA_deg[t_index] > 360)
-        || (bin_end_ERA_deg[t_index] < 0) || (bin_end_ERA_deg[t_index] > 360)) {
-        // TODO: Don't check these yet, but do when we have LAST values
-        // || (bin_start_LAST[t_index] < 0) || (bin_start_LAST[t_index] > 360)
-        // || (bin_end_LAST[t_index] < 0) || (bin_end_LAST[t_index] > 360)
-        FATAL_ERROR_NON_OO(
-            "N2FileData: frame information mismatch or invalid at (f={}, t={}): "
-            "fv.vis.size()={}, fv.weight.size()={}, fv.eval.size()={}, fv.evec.size()={}, "
-            "fv.gain.size()={}, fv.flags.size()={}, fv.num_elements={}, fv.num_prod={}, "
-            "fv.num_ev={}, fpga_start_tick[t_index]={}, fv.fpga_start_tick={}, "
-            "fv.frame_length_fpga_ticks={}, frame_length_fpga_ticks[t_index]={}, "
-            "time_center_ut1[t_index]={}, fv.time_center_eop.t_ut1_ns={}, bin_ut1[t_index]={}, "
-            "fv.bin_eop.t_ut1_ns={}, bin_start_ERA_deg[t_index]={}, bin_end_ERA_deg[t_index]={}, "
-            "bin_start_LAST[t_index]={}, bin_end_LAST[t_index]={}",
-            f_index, t_index, fv.vis.size(), fv.weight.size(), fv.eval.size(), fv.evec.size(),
-            fv.gain.size(), fv.flags.size(), fv.num_elements, fv.num_prod, fv.num_ev,
-            fpga_start_tick[t_index], fv.fpga_start_tick, fv.frame_length_fpga_ticks,
-            frame_length_fpga_ticks[t_index], time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns,
-            bin_ut1[t_index], fv.bin_eop.t_ut1_ns, bin_start_ERA_deg[t_index],
-            bin_end_ERA_deg[t_index], bin_start_LAST[t_index], bin_end_LAST[t_index]);
-        return AddFrameStatus::MetadataMismatch;
-    }
+    std::string structural_checks_failures = "";
+    auto add_failure = [&](std::string msg) { structural_checks_failures += "\n  - " + msg; };
+
+    if (n2_layout != fv.n2_layout)
+        add_failure(fmt::format("n2_layout: {} != {}", N2Layout_to_string(n2_layout),
+                                N2Layout_to_string(fv.n2_layout)));
+    if (fv.eval.size() != fv.num_ev)
+        add_failure(fmt::format("eval.size() != num_ev: {} != {}", fv.eval.size(), fv.num_ev));
+    if (fv.evec.size() != fv.num_ev * fv.num_elements)
+        add_failure(fmt::format("evec.size() != num_ev * num_elements: {} != {}", fv.evec.size(),
+                                fv.num_ev * fv.num_elements));
+    if (fv.gain.size() != fv.num_elements)
+        add_failure(
+            fmt::format("gain.size() != num_elements: {} != {}", fv.gain.size(), fv.num_elements));
+    if (fv.flags.size() != fv.num_elements)
+        add_failure(fmt::format("flags.size() != num_elements: {} != {}", fv.flags.size(),
+                                fv.num_elements));
+    if (fv.num_elements != num_elements)
+        add_failure(fmt::format("num_elements: {} != {}", fv.num_elements, num_elements));
+    if (fv.num_prod != num_prod)
+        add_failure(fmt::format("num_prod: {} != {}", fv.num_prod, num_prod));
+    if (fv.num_ev != num_ev)
+        add_failure(fmt::format("num_ev: {} != {}", fv.num_ev, num_ev));
+    if (fv.frame_length_fpga_ticks == 0)
+        add_failure(
+            fmt::format("frame_length_fpga_ticks must be > 0, got {}", fv.frame_length_fpga_ticks));
+    if (fpga_start_tick[t_index] > 0 && fpga_start_tick[t_index] != fv.fpga_start_tick)
+        add_failure(fmt::format("fpga_start_tick[t={}] mismatch: stored {} != incoming {}", t_index,
+                                fpga_start_tick[t_index], fv.fpga_start_tick));
+    if (frame_length_fpga_ticks[t_index] > 0
+        && frame_length_fpga_ticks[t_index] != fv.frame_length_fpga_ticks)
+        add_failure(fmt::format("frame_length_fpga_ticks[t={}] mismatch: stored {} != incoming {}",
+                                t_index, frame_length_fpga_ticks[t_index],
+                                fv.frame_length_fpga_ticks));
+    if (bin_abs_index[t_index] < std::numeric_limits<uint64_t>::max()
+        && bin_abs_index[t_index] != fv.abs_time_idx)
+        add_failure(fmt::format("bin_abs_index[t={}] mismatch: stored {} != incoming {}", t_index,
+                                bin_abs_index[t_index], fv.abs_time_idx));
+    if (fv.rfi_frame_excision_num < 0)
+        add_failure(fmt::format("rfi_frame_excision_num negative: {}", fv.rfi_frame_excision_num));
+    if (fv.rfi_frame_excision_num > MAX_NUM_RFI_THRESHOLDS)
+        add_failure(fmt::format("rfi_frame_excision_num exceeds MAX_NUM_RFI_THRESHOLDS: {} > {}",
+                                fv.rfi_frame_excision_num, MAX_NUM_RFI_THRESHOLDS));
+    if (time_center_t_inst_ns[t_index] > 0
+        && !ns_close(time_center_t_inst_ns[t_index], fv.time_center_eop.t_inst_ns))
+        add_failure(
+            fmt::format("time_center_t_inst_ns[t={}] mismatch: stored {} != incoming {} (ns)",
+                        t_index, time_center_t_inst_ns[t_index], fv.time_center_eop.t_inst_ns));
+    if (time_center_ut1_ns[t_index] > 0
+        && !ns_close(time_center_ut1_ns[t_index], fv.time_center_eop.t_ut1_ns))
+        add_failure(fmt::format("time_center_ut1_ns[t={}] mismatch: stored {} != incoming {} (ns)",
+                                t_index, time_center_ut1_ns[t_index], fv.time_center_eop.t_ut1_ns));
+    if (bin_t_inst_ns[t_index] > 0 && !ns_close(bin_t_inst_ns[t_index], fv.bin_eop.t_inst_ns))
+        add_failure(fmt::format("bin_t_inst_ns[t={}] mismatch: stored {} != incoming {} (ns)",
+                                t_index, bin_t_inst_ns[t_index], fv.bin_eop.t_inst_ns));
+    if (bin_ut1_ns[t_index] > 0 && !ns_close(bin_ut1_ns[t_index], fv.bin_eop.t_ut1_ns))
+        add_failure(fmt::format("bin_ut1_ns[t={}] mismatch: stored {} != incoming {} (ns)", t_index,
+                                bin_ut1_ns[t_index], fv.bin_eop.t_ut1_ns));
+    if (bin_delta_ut1_inst[t_index] != -DBL_MAX
+        && !sec_close(bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst))
+        add_failure(fmt::format("bin_delta_ut1_inst[t={}] mismatch: stored {} != incoming {} (deg)",
+                                t_index, bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst));
+    if (bin_era_deg[t_index] != -DBL_MAX && !deg_close(bin_era_deg[t_index], fv.bin_eop.ERA_deg))
+        add_failure(fmt::format("bin_era_deg[t={}] mismatch: stored {} != incoming {} (deg)",
+                                t_index, bin_era_deg[t_index], fv.bin_eop.ERA_deg));
+    if (fv.bin_eop.ERA_deg < 0)
+        add_failure(fmt::format("bin_eop.ERA_deg < 0: {}", fv.bin_eop.ERA_deg));
+    if (fv.bin_eop.ERA_deg >= 360)
+        add_failure(fmt::format("bin_eop.ERA_deg >= 360: {}", fv.bin_eop.ERA_deg));
+    if (bin_xp_as[t_index] != -DBL_MAX && !arcsec_close(bin_xp_as[t_index], fv.bin_eop.xp_as))
+        add_failure(fmt::format("bin_xp_as[t={}] mismatch: stored {} != incoming {} (arcsec)",
+                                t_index, bin_xp_as[t_index], fv.bin_eop.xp_as));
+    if (bin_yp_as[t_index] != -DBL_MAX && !arcsec_close(bin_yp_as[t_index], fv.bin_eop.yp_as))
+        add_failure(fmt::format("bin_yp_as[t={}] mismatch: stored {} != incoming {} (arcsec)",
+                                t_index, bin_yp_as[t_index], fv.bin_eop.yp_as));
+    if (fv.bin_start_ERA_deg < 0)
+        add_failure(fmt::format("bin_start_ERA_deg < 0: {}", fv.bin_start_ERA_deg));
+    if (fv.bin_start_ERA_deg >= 360)
+        add_failure(fmt::format("bin_start_ERA_deg >= 360: {}", fv.bin_start_ERA_deg));
+    if (fv.bin_end_ERA_deg < 0)
+        add_failure(fmt::format("bin_end_ERA_deg < 0: {}", fv.bin_end_ERA_deg));
+    if (fv.bin_end_ERA_deg > 360)
+        add_failure(fmt::format("bin_end_ERA_deg > 360: {}", fv.bin_end_ERA_deg));
+    // TODO: Don't check these yet, but do when we have ERAL values
+    // (bin_start_ERAL[t_index] < 0)
+    // (bin_start_ERAL[t_index] > 360)
+    // (bin_end_ERAL[t_index] < 0)
+    // (bin_end_ERAL[t_index] > 360)
+
+    if (!structural_checks_failures.empty())
+        FATAL_ERROR_NON_OO("N2FileData: frame information mismatch or invalid at (f={}, t={}):{}",
+                           f_index, t_index, structural_checks_failures);
 
 
     // Store vis + weight
@@ -729,23 +871,48 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
         gain[idx_fit(f_index, i, t_index)] = fv.gain[i];
         flags[idx_fit(f_index, i, t_index)] = fv.flags[i];
     }
+    for (size_t i = 0; i < 3; i++)
+        radiometer_chi2[3 * idx_ft(f_index, t_index) + i] = fv.radiometer_chi2[i];
     // Store fraction lost and RFI
     const uint64_t frame_len_ticks = fv.frame_length_fpga_ticks;
     const uint64_t n_valid = fv.n_valid_fpga_ticks;
     const uint64_t n_rfi = fv.n_rfi_fpga_ticks;
+    const uint64_t n_rfi_only = fv.n_rfi_only_fpga_ticks;
+    const uint64_t n_pl = fv.n_pl_fpga_ticks;
+    valid_fpga_count[idx_ft(f_index, t_index)] = n_valid;
+    rfi_fpga_count[idx_ft(f_index, t_index)] = n_rfi;
+    rfi_only_fpga_count[idx_ft(f_index, t_index)] = n_rfi_only;
+    pl_fpga_count[idx_ft(f_index, t_index)] = n_pl;
     frac_lost[idx_ft(f_index, t_index)] =
         (frame_len_ticks > 0) ? (1.0f - float(n_valid) / float(frame_len_ticks)) : 0.0f;
     frac_rfi[idx_ft(f_index, t_index)] =
         (frame_len_ticks > 0) ? (float(n_rfi) / float(frame_len_ticks)) : 0.0f;
+    frac_rfi_only[idx_ft(f_index, t_index)] =
+        (frame_len_ticks > 0) ? (float(n_rfi_only) / float(frame_len_ticks)) : 0.0f;
+    frac_pl[idx_ft(f_index, t_index)] =
+        (frame_len_ticks > 0) ? (float(n_pl) / float(frame_len_ticks)) : 0.0f;
     // Store per-time metadata
     fpga_start_tick[t_index] = fv.fpga_start_tick;
     frame_length_fpga_ticks[t_index] = fv.frame_length_fpga_ticks;
-    time_center_ut1[t_index] = fv.time_center_eop.t_ut1_ns;
-    bin_ut1[t_index] = fv.bin_eop.t_ut1_ns;
+    bin_abs_index[t_index] = fv.abs_time_idx;
+    time_center_t_inst_ns[t_index] = fv.time_center_eop.t_inst_ns;
+    time_center_ut1_ns[t_index] = fv.time_center_eop.t_ut1_ns;
+    bin_t_inst_ns[t_index] = fv.bin_eop.t_inst_ns;
+    bin_ut1_ns[t_index] = fv.bin_eop.t_ut1_ns;
+    bin_delta_ut1_inst[t_index] = fv.bin_eop.delta_UT1_inst;
+    bin_era_deg[t_index] = fv.bin_eop.ERA_deg;
+    bin_xp_as[t_index] = fv.bin_eop.xp_as;
+    bin_yp_as[t_index] = fv.bin_eop.yp_as;
     bin_start_ERA_deg[t_index] = fv.bin_start_ERA_deg;
     bin_end_ERA_deg[t_index] = fv.bin_end_ERA_deg;
-    bin_start_LAST[t_index] = fv.bin_start_LAST;
-    bin_end_LAST[t_index] = fv.bin_end_LAST;
+    bin_start_ERAL_deg[t_index] = fv.bin_start_ERAL_deg;
+    bin_end_ERAL_deg[t_index] = fv.bin_end_ERAL_deg;
+    rfi_frame_excision_enabled[t_index] = fv.rfi_frame_excision_enabled;
+    rfi_frame_excision_num[t_index] = fv.rfi_frame_excision_num;
+    std::copy(fv.rfi_frame_excision_threshold.begin(), fv.rfi_frame_excision_threshold.end(),
+              rfi_frame_excision_threshold.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
+    std::copy(fv.rfi_frame_excision_fraction.begin(), fv.rfi_frame_excision_fraction.end(),
+              rfi_frame_excision_fraction.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
 
     // Mark (f, t) as added
     size_t si = idx_ft(f_index, t_index);
@@ -855,27 +1022,63 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/erms")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(erms.data());
+        h5_file->getDataSet(flags_group_prefix + "/valid_fpga_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(valid_fpga_count.data());
+        h5_file->getDataSet(flags_group_prefix + "/rfi_fpga_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(rfi_fpga_count.data());
+        h5_file->getDataSet(flags_group_prefix + "/rfi_only_fpga_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(rfi_only_fpga_count.data());
+        h5_file->getDataSet(flags_group_prefix + "/pl_fpga_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(pl_fpga_count.data());
         h5_file->getDataSet(flags_group_prefix + "/frac_lost")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(frac_lost.data());
         h5_file->getDataSet(flags_group_prefix + "/frac_rfi")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(frac_rfi.data());
+        h5_file->getDataSet(flags_group_prefix + "/frac_rfi_only")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(frac_rfi_only.data());
+        h5_file->getDataSet(flags_group_prefix + "/frac_pl")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(frac_pl.data());
         h5_file->getDataSet("/gain")
             .select({0, 0, 0}, {num_file_f, num_elements, num_file_t})
             .write_raw(gain.data());
         h5_file->getDataSet(flags_group_prefix + "/flags")
             .select({0, 0, 0}, {num_file_f, num_elements, num_file_t})
             .write_raw(flags.data());
+        h5_file->getDataSet("/radiometer_chi2")
+            .select({0, 0, 0}, {num_file_f, num_file_t, 3})
+            .write_raw(radiometer_chi2.data());
 
         h5_file->getDataSet("/fpga_start_tick").write(fpga_start_tick);
         h5_file->getDataSet("/frame_length_fpga_ticks").write(frame_length_fpga_ticks);
-        h5_file->getDataSet("/time_center_ut1_ns").write(time_center_ut1);
-        h5_file->getDataSet("/bin_ut1_ns").write(bin_ut1);
+        h5_file->getDataSet("/bin_abs_index").write(bin_abs_index);
+        h5_file->getDataSet("/time_center_t_inst_ns").write(time_center_t_inst_ns);
+        h5_file->getDataSet("/time_center_ut1_ns").write(time_center_ut1_ns);
+        h5_file->getDataSet("/bin_t_inst_ns").write(bin_t_inst_ns);
+        h5_file->getDataSet("/bin_ut1_ns").write(bin_ut1_ns);
+        h5_file->getDataSet("/bin_delta_ut1_inst").write(bin_delta_ut1_inst);
+        h5_file->getDataSet("/bin_ERA_deg").write(bin_era_deg);
+        h5_file->getDataSet("/bin_xp_as").write(bin_xp_as);
+        h5_file->getDataSet("/bin_yp_as").write(bin_yp_as);
         h5_file->getDataSet("/bin_start_ERA_deg").write(bin_start_ERA_deg);
         h5_file->getDataSet("/bin_end_ERA_deg").write(bin_end_ERA_deg);
-        h5_file->getDataSet("/bin_start_LAST").write(bin_start_LAST);
-        h5_file->getDataSet("/bin_end_LAST").write(bin_end_LAST);
+        h5_file->getDataSet("/bin_start_ERAL_deg").write(bin_start_ERAL_deg);
+        h5_file->getDataSet("/bin_end_ERAL_deg").write(bin_end_ERAL_deg);
+        h5_file->getDataSet("/rfi_frame_excision_enabled").write(rfi_frame_excision_enabled);
+        h5_file->getDataSet("/rfi_frame_excision_num").write(rfi_frame_excision_num);
+        h5_file->getDataSet("/rfi_frame_excision_threshold")
+            .select({0, 0}, {num_file_t, MAX_NUM_RFI_THRESHOLDS})
+            .write_raw(rfi_frame_excision_threshold.data());
+        h5_file->getDataSet("/rfi_frame_excision_fraction")
+            .select({0, 0}, {num_file_t, MAX_NUM_RFI_THRESHOLDS})
+            .write_raw(rfi_frame_excision_fraction.data());
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
         has_error = true;

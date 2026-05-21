@@ -729,8 +729,8 @@ std::array<double, 3> CHORDTelescope::vec_itrs_to_cirs(const std::array<double, 
     return v_cirs;
 }
 
-void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
-                                          std::vector<std::complex<double>>& phases) const {
+void CHORDTelescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
+                                               std::vector<std::complex<float>>& phases) const {
 
     // Get the pointing vector (phase center) for the telescope in dish coordinates. This is
     // constant in time.
@@ -765,7 +765,7 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const
                           + _geographic_params.dish_positions[i][1] * (n_grid[1] - n_grid0[1])
                           + _geographic_params.dish_positions[i][2] * (n_grid[2] - n_grid0[2]));
 
-        phases[i] = {cos(phase), sin(phase)};
+        phases[i] = {static_cast<float>(cos(phase)), static_cast<float>(sin(phase))};
     }
 }
 
@@ -889,6 +889,18 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t stream_id, uint32_t index) const {
 // Currently hard coded in the F-engine packet format.
 size_t CHORDTelescope::num_freq_per_stream() const {
     return 48;
+}
+
+double CHORDTelescope::get_ERAL_deg(EOP& eop) const {
+    double era = eop.ERA_deg;
+    double lon = get_origin_itrs_lon_deg();
+    double eral = era + lon; // Ignore TIO locator s', it is only ~12 micro arcseconds.
+
+    // Reset eral to [0, 360)
+    double n_off = std::floor(eral / 360.0);
+    eral -= n_off * 360;
+
+    return eral;
 }
 
 void to_json(nlohmann::json& j, const dishInfo& d) {

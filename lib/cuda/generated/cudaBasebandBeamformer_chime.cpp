@@ -71,7 +71,7 @@ private:
     using array_desc = CuDeviceArray<std::int32_t, 1>;
 
     // Kernel design parameters:
-    static constexpr int cuda_number_of_beams = 16;
+    static constexpr int cuda_number_of_beams = 32;
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 1024;
     static constexpr int cuda_number_of_frequencies = 16;
@@ -81,14 +81,14 @@ private:
     static constexpr int cuda_shift_parameter_sigma = 4;
 
     // Kernel compile parameters:
-    static constexpr int minthreads = 128;
-    static constexpr int blocks_per_sm = 8;
+    static constexpr int minthreads = 256;
+    static constexpr int blocks_per_sm = 4;
 
     // Kernel call parameters:
     static constexpr int threads_x = 32;
-    static constexpr int threads_y = 4;
+    static constexpr int threads_y = 8;
     static constexpr int blocks = 32;
-    static constexpr int shmem_bytes = 43136;
+    static constexpr int shmem_bytes = 51328;
 
     // Kernel name:
     static constexpr const char* kernel_symbol =
@@ -120,7 +120,7 @@ private:
         "C", "D", "B", "P", "F",
     };
     static constexpr std::array<std::ptrdiff_t, A_rank> A_lengths = {
-        2, 1024, 16, 2, 16,
+        2, 1024, 32, 2, 16,
     };
     static constexpr auto A_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -187,7 +187,7 @@ private:
         "F",
     };
     static constexpr std::array<std::ptrdiff_t, s_rank> s_lengths = {
-        16,
+        32,
         2,
         16,
     };
@@ -222,7 +222,7 @@ private:
         "T", "P", "F", "B", "Thi",
     };
     static constexpr std::array<std::ptrdiff_t, J_rank> J_lengths = {
-        16384, 2, 16, 16, 1,
+        16384, 2, 16, 32, 1,
     };
     static constexpr auto J_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -254,7 +254,7 @@ private:
     };
     static constexpr std::array<std::ptrdiff_t, info_rank> info_lengths = {
         32,
-        4,
+        8,
         32,
     };
     static constexpr auto info_calc_stride = [](int dim) {

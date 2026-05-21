@@ -11,6 +11,9 @@
 
 #include <cassert>
 #include <cstdint>
+#ifdef WITH_OMP
+#include <omp.h>
+#endif
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -54,6 +57,8 @@ class calcFRB2Weights : public kotekan::Stage {
     const float frb2_beam_separation_y = config.get<float>(unique_name, "frb2_beam_separation_y");
     const int frb2_num_frequencies = config.get<int>(unique_name, "frb2_num_frequencies");
 
+    const int num_threads = config.get_default<int>(unique_name, "num_threads", 1);
+
     const std::ptrdiff_t frb2_beam_positions_frame_size [[maybe_unused]] =
         sizeof(float) * 2 * frb2_num_beams;
     const std::ptrdiff_t W2_frame_size [[maybe_unused]] =
@@ -75,6 +80,8 @@ public:
     {
         assert(frb2_beam_positions_buffer);
         assert(W2_buffer);
+        if (num_threads < 0)
+            FATAL_ERROR("num_threads %d must be positive", num_threads);
         frb2_beam_positions_buffer->register_producer(unique_name);
         W2_buffer->register_producer(unique_name);
     }
@@ -90,12 +97,13 @@ public:
             return;
 
         // Telescope
-        const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
+        const auto& telescope = Telescope::instance();
 
         // Upchannelization schedule
         const auto& upchan_schedule = UpchannelizationSchedule::instance(config);
 
-        // Calculate dish positions
+#if 0 // not used
+      // Calculate dish positions
         const float dish_separation_x = chord_telescope.get_dish_separation_x_m();
         const float dish_separation_y = chord_telescope.get_dish_separation_y_m();
         const auto& dish_grid = chord_telescope.get_dish_grid();
@@ -115,6 +123,7 @@ public:
             }
         }
         assert(std::ptrdiff_t(dish_loc_x.size()) == num_dishes);
+#endif
 
         // Calculate frequencies
         const auto& frequency_channels = upchan_schedule.get_frequency_channels();
@@ -123,8 +132,8 @@ public:
         std::vector<int> freq_upchan_index;
         std::vector<float> frequencies;
         for (const int channel : frequency_channels) {
-            const float frequency = chord_telescope.to_freq_MHz(channel) * 1.0e+6f;
-            const float frequency_spacing = chord_telescope.freq_width_MHz(channel) * 1.0e+6f;
+            const float frequency = telescope.to_freq_MHz(freq_id_t(channel)) * 1.0e+6f;
+            const float frequency_spacing = telescope.freq_width_MHz(freq_id_t(channel)) * 1.0e+6f;
             const auto& upchan_factors = upchan_schedule.get_upchan_factors(channel);
             if (upchan_factors.empty()) {
                 // Assume we keep the frequency itself
@@ -249,12 +258,16 @@ public:
             const float sigmay_y = 8.5;
             const float sigmay_z = 0;
 
-#pragma omp parallel
+#ifdef WITH_OMP
+#pragma omp parallel num_threads(num_threads)
+#endif
             {
                 std::vector<float> Up(frb1_num_beams_x);
                 std::vector<float> Uq(frb1_num_beams_y);
 
+#ifdef WITH_OMP
 #pragma omp for
+#endif
                 for (int freq = 0; freq < frb2_num_frequencies; ++freq) {
                     // Calculate physical frequency from channel index
                     const float afreq = frequencies.at(freq);

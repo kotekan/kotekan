@@ -14,7 +14,57 @@ set(CURRENT_BINARY_DIR "@CMAKE_CURRENT_BINARY_DIR@")
 
 set(CMAKE_BUILD_TYPE "@CMAKE_BUILD_TYPE@")
 set(CMAKE_CXX_COMPILER "@CMAKE_CXX_COMPILER@")
+set(CMAKE_CXX_COMPILER_ID "@CMAKE_CXX_COMPILER_ID@")
+set(CMAKE_CXX_COMPILER_VERSION "@CMAKE_CXX_COMPILER_VERSION@")
 set(CMAKE_C_COMPILER "@CMAKE_C_COMPILER@")
+set(CMAKE_C_COMPILER_ID "@CMAKE_C_COMPILER_ID@")
+set(CMAKE_C_COMPILER_VERSION "@CMAKE_C_COMPILER_VERSION@")
+
+# Per-language flag strings (base + per-config). The build-type-specific variant is selected
+# below based on CMAKE_BUILD_TYPE. Variants for build types that weren't set will just be
+# empty strings after substitution.
+set(CMAKE_CXX_FLAGS "@CMAKE_CXX_FLAGS@")
+set(CMAKE_CXX_FLAGS_DEBUG "@CMAKE_CXX_FLAGS_DEBUG@")
+set(CMAKE_CXX_FLAGS_RELEASE "@CMAKE_CXX_FLAGS_RELEASE@")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "@CMAKE_CXX_FLAGS_RELWITHDEBINFO@")
+set(CMAKE_CXX_FLAGS_MINSIZEREL "@CMAKE_CXX_FLAGS_MINSIZEREL@")
+set(CMAKE_CXX_FLAGS_TEST "@CMAKE_CXX_FLAGS_TEST@")
+set(CMAKE_C_FLAGS "@CMAKE_C_FLAGS@")
+set(CMAKE_C_FLAGS_DEBUG "@CMAKE_C_FLAGS_DEBUG@")
+set(CMAKE_C_FLAGS_RELEASE "@CMAKE_C_FLAGS_RELEASE@")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "@CMAKE_C_FLAGS_RELWITHDEBINFO@")
+set(CMAKE_C_FLAGS_MINSIZEREL "@CMAKE_C_FLAGS_MINSIZEREL@")
+set(CMAKE_C_FLAGS_TEST "@CMAKE_C_FLAGS_TEST@")
+
+# CUDA toolchain (empty unless CUDA is enabled). NVCC is built around its own flag/arch vars
+# rather than going through CMAKE_CXX_FLAGS.
+set(CMAKE_CUDA_COMPILER "@CMAKE_CUDA_COMPILER@")
+set(CMAKE_CUDA_COMPILER_VERSION "@CMAKE_CUDA_COMPILER_VERSION@")
+set(CMAKE_CUDA_ARCHITECTURES "@CMAKE_CUDA_ARCHITECTURES@")
+set(CMAKE_CUDA_FLAGS "@CMAKE_CUDA_FLAGS@")
+set(CMAKE_CUDA_FLAGS_DEBUG "@CMAKE_CUDA_FLAGS_DEBUG@")
+set(CMAKE_CUDA_FLAGS_RELEASE "@CMAKE_CUDA_FLAGS_RELEASE@")
+set(CMAKE_CUDA_FLAGS_RELWITHDEBINFO "@CMAKE_CUDA_FLAGS_RELWITHDEBINFO@")
+set(CMAKE_CUDA_FLAGS_MINSIZEREL "@CMAKE_CUDA_FLAGS_MINSIZEREL@")
+set(CMAKE_CUDA_FLAGS_TEST "@CMAKE_CUDA_FLAGS_TEST@")
+set(CUDA_NVCC_FLAGS "@CUDA_NVCC_FLAGS@")
+
+# HIP / ROCm GPU targets. AMDGPU_TARGETS is the legacy convention used with the
+# find_package(HIP) flow, CMAKE_HIP_ARCHITECTURES is the modern enable_language(HIP) form,
+# and GPU_TARGETS is what some ROCm CMake configs accept. Record whichever happens to be
+# set so an arch mismatch isn't invisible after the fact.
+set(CMAKE_HIP_ARCHITECTURES "@CMAKE_HIP_ARCHITECTURES@")
+set(AMDGPU_TARGETS "@AMDGPU_TARGETS@")
+set(GPU_TARGETS "@GPU_TARGETS@")
+
+# CPU baseline (passed to -march and -mtune in Toolchain.cmake).
+set(ARCH "@ARCH@")
+
+# Directory-scope compile options and definitions (everything added via add_compile_options /
+# add_definitions, including -march=${ARCH}, -Wall, -fvisibility=hidden, -D_GNU_SOURCE, ...).
+# Captured at cmake-configure time by lib/version/CMakeLists.txt.
+set(KOTEKAN_DIR_COMPILE_OPTIONS "@KOTEKAN_DIR_COMPILE_OPTIONS@")
+set(KOTEKAN_DIR_COMPILE_DEFINITIONS "@KOTEKAN_DIR_COMPILE_DEFINITIONS@")
 set(USE_DPDK "@USE_DPDK@")
 set(USE_OPENCL "@USE_OPENCL@")
 set(USE_HIP "@USE_HIP@")
@@ -23,7 +73,6 @@ set(USE_HDF5 "@USE_HDF5@")
 set(USE_ASDF "@USE_ASDF@")
 set(USE_GDAL "@USE_GDAL@")
 set(USE_LAPACK_BLAZE "@USE_LAPACK_BLAZE@")
-set(OPENBLAS_PATH "@OPENBLAS_PATH@")
 set(USE_AIRSPY "@USE_AIRSPY@")
 set(USE_FFTW "@USE_FFTW@")
 set(USE_OMP "@USE_OMP@")
@@ -54,12 +103,40 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-execute_process(
-  COMMAND python -c "import kotekan; print(kotekan.__version__)"
-  WORKING_DIRECTORY ${SOURCE_DIR}/python/
-  OUTPUT_VARIABLE KOTEKAN_VERSION
-  OUTPUT_STRIP_TRAILING_WHITESPACE
+# Try Python interpreters in order: a plain `python` (may be a user-activated
+# venv), the system `python3`, then the site-wide `/opt/kotekan_env` venv which
+# is known to have the required deps (e.g. `future`). The import must run with
+# CWD set to ${SOURCE_DIR}/python/ so the in-tree `kotekan` package is picked up
+# rather than the top-level C++ source directory of the same name.
+set(KOTEKAN_VERSION "")
+set(_kotekan_python_candidates
+    "python"
+    "python3"
+    "/opt/kotekan_env/bin/python"
 )
+foreach(_py IN LISTS _kotekan_python_candidates)
+  execute_process(
+    COMMAND ${_py} -c "import kotekan; print(kotekan.__version__)"
+    WORKING_DIRECTORY ${SOURCE_DIR}/python/
+    OUTPUT_VARIABLE _kotekan_version_out
+    ERROR_VARIABLE _kotekan_version_err
+    RESULT_VARIABLE _kotekan_version_result
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  if(_kotekan_version_result EQUAL 0 AND NOT _kotekan_version_out STREQUAL "")
+    set(KOTEKAN_VERSION "${_kotekan_version_out}")
+    set(_kotekan_python_used "${_py}")
+    break()
+  endif()
+endforeach()
+
+if(KOTEKAN_VERSION STREQUAL "")
+  message(FATAL_ERROR
+    "Could not determine kotekan version. None of the candidate Python "
+    "interpreters could run `import kotekan; print(kotekan.__version__)`: "
+    "${_kotekan_python_candidates}. Last error: ${_kotekan_version_err}")
+endif()
+message(STATUS "kotekan version (via ${_kotekan_python_used}): ${KOTEKAN_VERSION}")
 
 execute_process(
   COMMAND git rev-parse --abbrev-ref HEAD
@@ -74,6 +151,35 @@ if (${KOTEKAN_BRANCH} MATCHES "master")
 else()
     set(FULL_KOTEKAN_VERSION "${KOTEKAN_BRANCH}.${KOTEKAN_VERSION}")
 endif()
+
+# Combine base flags with the build-type-specific variant so the recorded compile flags
+# reflect what was actually passed to the compiler for this build configuration. This
+# matters for kotekan because Toolchain.cmake puts -ggdb/-O2, sanitizers, etc. into
+# CMAKE_*_FLAGS_DEBUG rather than the base flags string.
+string(TOUPPER "${CMAKE_BUILD_TYPE}" _build_type_upper)
+foreach(_lang CXX C CUDA)
+    set(_base "${CMAKE_${_lang}_FLAGS}")
+    set(_cfg "")
+    if(_build_type_upper AND DEFINED CMAKE_${_lang}_FLAGS_${_build_type_upper})
+        set(_cfg "${CMAKE_${_lang}_FLAGS_${_build_type_upper}}")
+    endif()
+    set(CMAKE_${_lang}_FLAGS_EFFECTIVE "${_base} ${_cfg}")
+    string(STRIP "${CMAKE_${_lang}_FLAGS_EFFECTIVE}" CMAKE_${_lang}_FLAGS_EFFECTIVE)
+endforeach()
+
+# Escape backslashes and double quotes so the flag strings remain valid inside the C
+# string literals in version.c.in. Backslash replacement must run first or it would
+# double-escape the backslashes we just inserted for quotes.
+foreach(_v IN ITEMS
+        CMAKE_CXX_FLAGS_EFFECTIVE
+        CMAKE_C_FLAGS_EFFECTIVE
+        CMAKE_CUDA_FLAGS_EFFECTIVE
+        CUDA_NVCC_FLAGS
+        KOTEKAN_DIR_COMPILE_OPTIONS
+        KOTEKAN_DIR_COMPILE_DEFINITIONS)
+    string(REPLACE "\\" "\\\\" ${_v} "${${_v}}")
+    string(REPLACE "\"" "\\\"" ${_v} "${${_v}}")
+endforeach()
 
 configure_file(
     ${CURRENT_SOURCE_DIR}/version.c.in

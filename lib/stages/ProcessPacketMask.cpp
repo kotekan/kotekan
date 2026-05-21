@@ -131,7 +131,7 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
     }
 
     pl_mask_buf->allocate_ndarray_frame_desc(
-        kotekan::uint1x8, "pl_mask",
+        kotekan::uint1x8, "pl_mask_exp",
         {time_long * time_short / 64, num_frequency, 2, element_long * element_short / 8 / 2, 8},
         {"Thi64", "F", "P", "D8", "Tlo64"});
 
@@ -355,7 +355,7 @@ void ProcessPacketMask::main_thread() {
         pl_mask_meta->set_array_dimension(2, 2, "P");
         pl_mask_meta->set_array_dimension(3, E_DIV_8 / 2, "D8");
         pl_mask_meta->set_array_dimension(4, 8, "Tlo64");
-        pl_mask_meta->set_name("pl_mask");
+        pl_mask_meta->set_name("pl_mask_exp");
 
         pl_mask_meta->set_strides_simple();
 

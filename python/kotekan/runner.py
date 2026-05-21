@@ -19,10 +19,12 @@ import tempfile
 import time
 import warnings
 import re
+import numpy as np
 
 from . import baseband_buffer
 from . import visbuffer
 from . import n2buffer
+from . import chordbuffer
 from . import frbbuffer
 from . import psrbuffer
 
@@ -393,14 +395,28 @@ class FakeN2KBuffers(InputBuffer):
 
     _buf_ind = 0
 
-    def __init__(self, samples_per_data_set, num_local_freq, n2k_kwargs, rfi_kwargs):
+    def __init__(
+        self,
+        samples_per_data_set,
+        num_local_freq,
+        sub_integration_ntime,
+        n2k_kwargs,
+        rficounts_kwargs,
+        plcounts_kwargs,
+        rfiframemask_kwargs,
+    ):
 
         self.name = "faken2k_corr_buf%i" % self._buf_ind
         self.counts_name = "faken2k_counts_buf%i" % self._buf_ind
-        self.rfi_name = "faken2k_rfi_buf%i" % self._buf_ind
+        self.rficounts_name = "faken2k_rficounts_buf%i" % self._buf_ind
+        self.plcounts_name = "faken2k_plcounts_buf%i" % self._buf_ind
+        self.rfiframemask_name = "faken2k_rfiframemask_buf%i" % self._buf_ind
 
         n2k_stage_name = "faken2k_gen_%i" % self._buf_ind
         rfi_stage_name = "faken2k_gen_rfi_%i" % self._buf_ind
+        rficount_stage_name = "faken2k_rficount_%i" % self._buf_ind
+        plcounts_stage_name = "faken2k_plcounts_%i" % self._buf_ind
+        rfiframemask_stage_name = "faken2k_gen_rfiframemask_%i" % self._buf_ind
 
         self.__class__._buf_ind += 1
 
@@ -431,11 +447,25 @@ class FakeN2KBuffers(InputBuffer):
                     " * count_num_blocks * count_blocksize * count_blocksize * sizeof_int"
                 ),
             },
-            self.rfi_name: {
+            self.rficounts_name: {
                 "kotekan_buffer": "standard",
                 "metadata_pool": "chord_pool",
                 "num_frames": "buffer_depth",
-                "frame_size": "(samples_per_data_set * num_local_freq) / 8",
+                "sizeof_int": 4,
+                "frame_size": "(samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int",
+            },
+            self.plcounts_name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "chord_pool",
+                "num_frames": "buffer_depth",
+                "sizeof_int": 4,
+                "frame_size": "(samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int",
+            },
+            self.rfiframemask_name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "chord_pool",
+                "num_frames": "buffer_depth",
+                "frame_size": "(samples_per_data_set / sub_integration_ntime) * num_local_freq",
             },
         }
 
@@ -443,35 +473,52 @@ class FakeN2KBuffers(InputBuffer):
             "kotekan_stage": "testN2kGen",
             "out_buf": self.name,
             "out_counts_buf": self.counts_name,
-            "in_rfimask_buf": self.rfi_name,
             "correlation_type": "const",
             "correlation_value": [1, -2],
             "counts_type": "const",
             "counts_value": "sub_integration_ntime",
             "mul_correlation_by_counts": True,
         }
-        rfi_gen_config = {
-            "kotekan_stage": "testDataGen",
-            "out_buf": self.rfi_name,
-            "type": "const1x8",
-            "value": 255,
-            "name": "RFImask",
-            "array_shape": [samples_per_data_set / 1024, num_local_freq, 128],
-            "dim_name": ["T8hi128", "F", "T8lo128"],
-            "meta_time_downsample_factor": 1024,
+        rficount_gen_config = {
+            "kotekan_stage": "testLostCountsGen",
+            "in_buf": self.counts_name,
+            "out_buf": self.rficounts_name,
+            "name": "RFImask_counts",
+            "type": "const",
+            "value": 0,
+            "use_n2k_counts": True,
+        }
+        plcounts_gen_config = {
+            "kotekan_stage": "testLostCountsGen",
+            "in_buf": self.counts_name,
+            "out_buf": self.plcounts_name,
+            "name": "pl_lost_counts_scalar",
+            "type": "const",
+            "value": 0,
+            "use_n2k_counts": True,
+        }
+        rfiframemask_gen_config = {
+            "kotekan_stage": "testRFIFrameMaskGen",
+            "out_buf": self.rfiframemask_name,
+            "type": "const",
+            "value": 1,
         }
 
         n2k_gen_config.update(n2k_kwargs)
-        rfi_gen_config.update(rfi_kwargs)
+        rficount_gen_config.update(rficounts_kwargs)
+        plcounts_gen_config.update(plcounts_kwargs)
+        rfiframemask_gen_config.update(rfiframemask_kwargs)
 
         self.stage_block = {
             n2k_stage_name: n2k_gen_config,
-            rfi_stage_name: rfi_gen_config,
+            rficount_stage_name: rficount_gen_config,
+            plcounts_stage_name: plcounts_gen_config,
+            rfiframemask_stage_name: rfiframemask_gen_config,
         }
         self.global_block = {
             "chord_pool": {
                 "kotekan_metadata_pool": "chordMetadata",
-                "num_metadata_objects": "3 * buffer_depth",
+                "num_metadata_objects": "6 * buffer_depth",
             }
         }
 
@@ -707,6 +754,105 @@ class DumpVisBuffer(OutputBuffer):
         )
 
 
+class ReadChordBuffer(InputBuffer):
+    """Write down a ChordBuffer and reads it with hdf5FileRead."""
+
+    _buf_ind = 0
+
+    def __init__(self, input_dir, buffer_list):
+
+        self.name = "hdf5fileread_buf%i" % self._buf_ind
+        stage_name = "hdf5fileread%i" % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.input_dir = input_dir
+        self.buffer_list = buffer_list
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+                "num_frames": "buffer_depth",
+                "frame_size": buffer_list[0].data.nbytes,
+            }
+        }
+
+        stage_config = {
+            "kotekan_stage": "hdf5FileRead",
+            "out_buf": self.name,
+            "input_dir": input_dir,
+            "file_name": self.name,
+            "prefix_hostname": False,
+            "prefix_host_rank": False,
+        }
+
+        self.stage_block = {stage_name: stage_config}
+
+    def write(self):
+        """Write a list of ChordBuffer objects to disk."""
+        chordbuffer.ChordBuffer.to_files(
+            self.buffer_list, self.input_dir + "/" + self.name
+        )
+
+
+class DumpChordBuffer(OutputBuffer):
+    """Consume a Chord buffer and provide its content as `ChordBuffer` objects.
+
+    Parameters
+    ----------
+    output_dir : str
+        Temp. directory to output to. Dumped files are not removed.
+    """
+
+    _buf_ind = 0
+
+    name = None
+
+    def __init__(self, output_dir, shape, dtype, max_frames=-1):
+        self.name = f"dumpchord_buf{self._buf_ind}"
+        stage_name = f"dump{self._buf_ind}"
+
+        self.__class__._buf_ind += 1
+
+        self.output_dir = output_dir
+        self.num_entries = int(np.prod(shape))
+        self.max_frames = max_frames
+        self.dtype = dtype
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+                "num_frames": "buffer_depth",
+                "frame_size": self.num_entries * np.dtype(self.dtype).itemsize,
+            }
+        }
+
+        self.stage_block = {
+            stage_name: {
+                "kotekan_stage": "hdf5FileWrite",
+                "in_buf": self.name,
+                "file_name": self.name,
+                "base_dir": output_dir,
+                "prefix_hostname": False,
+                "max_frames": max_frames,
+            }
+        }
+
+    def load(self):
+        """Load the output data from the buffer.
+
+        Returns
+        -------
+        dumps : lost of buffers
+            Buffer output.
+        """
+
+        return chordbuffer.ChordBuffer.load_files(
+            f"{self.output_dir}/*{self.name}*.h5", self.name
+        )
+
+
 class ReadN2Buffer(InputBuffer):
     """Write down an N2Buffer and reads it with rawFileRead."""
 
@@ -761,7 +907,12 @@ class DumpN2Buffer(OutputBuffer):
     name = None
 
     def __init__(
-        self, output_dir, exit_after_n_files=0, num_elements=None, num_ev=None
+        self,
+        output_dir,
+        exit_after_n_files=0,
+        num_elements=None,
+        num_ev=None,
+        num_freq=None,
     ):
 
         self.name = "dumpn2_buf%i" % self._buf_ind
@@ -777,12 +928,16 @@ class DumpN2Buffer(OutputBuffer):
             self.num_prod = None
         self.num_ev = num_ev
 
+        # If num_freq is given, size the buffer to hold one full accumulation
+        # cycle (one frame per frequency) so the producer never stalls.
+        num_frames = num_freq if num_freq is not None else "buffer_depth"
+
         self.buffer_block = {
             self.name: {
                 "kotekan_buffer": "N2",
                 "n2_layout": "FullUpperTri",
                 "metadata_pool": "N2_pool",
-                "num_frames": "buffer_depth",
+                "num_frames": num_frames,
             }
         }
 
@@ -1311,12 +1466,12 @@ class KotekanStageTester(KotekanRunner):
         if global_config is None:
             global_config = {}
 
+        buffers_in_list = []
+
         if noise:
-            if buffers_in is None:
-                buffers_in = []
-            else:
+            if buffers_in is not None:
                 noise_config["in_buf"] = buffers_in.name
-                buffers_in = [buffers_in]
+                buffers_in_list = [buffers_in]
             noise_config["kotekan_stage"] = "visNoise"
             noise_config["out_buf"] = "noise_buf"
             if noise == "random":
@@ -1332,15 +1487,20 @@ class KotekanStageTester(KotekanRunner):
                 }
             }
         else:
-            if buffers_in is None:
-                buffers_in = []
+            if isinstance(buffers_in, dict):
+                buffers_in_list = []
+                for key, buf in buffers_in.items():
+                    config[key] = buf.name
+                    parallel_config[key] = buf.name
+                    buffers_in_list.append(buf)
             elif isinstance(buffers_in, (list, tuple)):
                 config["in_bufs"] = [buf.name for buf in buffers_in]
                 parallel_config["in_bufs"] = [buf.name for buf in buffers_in]
-            else:
+                buffers_in_list = buffers_in
+            elif buffers_in is not None:
                 config["in_buf"] = buffers_in.name
                 parallel_config["in_buf"] = buffers_in.name
-                buffers_in = [buffers_in]
+                buffers_in_list = [buffers_in]
 
         if buffers_out is None:
             buffers_out = []
@@ -1355,7 +1515,7 @@ class KotekanStageTester(KotekanRunner):
         stage_block = {(stage_type + "_test"): config}
         buffer_block = {}
 
-        for buf in itertools.chain(buffers_in, buffers_out):
+        for buf in itertools.chain(buffers_in_list, buffers_out):
             stage_block.update(buf.stage_block)
             buffer_block.update(buf.buffer_block)
             if hasattr(buf, "global_block"):

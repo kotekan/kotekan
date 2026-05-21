@@ -85,6 +85,7 @@ add_library(
     compressLostSamples.cpp
     lostSamplesToPLMask.cpp
     lostSamplesToN2Counts.cpp
+    rfiBroadcast.cpp
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
@@ -108,6 +109,10 @@ add_library(
     TransposeBasebandArray.cpp
     dropAllFrames.cpp
     N2FrameToVisFrame.cpp
+    RfiMaskSum.cpp
+    RfiFrameMask.cpp
+    CountLostPLSamplesScalar.cpp
+    PLMaskExpandedToCompact.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 

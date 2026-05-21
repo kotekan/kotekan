@@ -81,6 +81,8 @@ private:
     std::vector<float> _fvalue_array;
     uint64_t lvalue;
     std::vector<uint64_t> _lvalue_array;
+    uint64_t ulvalue;
+    std::vector<uint64_t> _ulvalue_array;
     int step_to_frame;
     bool _pathfinder_test_mode;
     int samples_per_data_set;
