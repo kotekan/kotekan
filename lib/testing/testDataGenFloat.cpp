@@ -156,7 +156,8 @@ void testDataGenFloat::main_thread() {
         // std::uniform_int_distribution<> dis(0, 255);
         if (type == "random")
             srand(seed);
-        for (uint j = 0; j < buf->frame_size / sizeof(float); ++j) {
+        const uint type_size = kotekan::type_total_bytes(_value_type);
+        for (uint j = 0; j < buf->frame_size / type_size; ++j) {
             float fvalue;
             if (type == "const") {
                 if (finished_seeding_consant)
