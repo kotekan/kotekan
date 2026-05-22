@@ -1,3 +1,4 @@
+---
 # configTracker test 3 (final receiver + writer)
 #
 # Receives data from instance 2 on :11025 and writes all tracked configs to
@@ -11,7 +12,7 @@
 type: config
 log_level: debug
 
-cpu_affinity: [1,2,3,4]
+cpu_affinity: [1, 2, 3, 4]
 
 num_frame_samples: 2048
 buffer_depth: 2
@@ -29,17 +30,17 @@ recv_buffer:
     metadata_pool: main_pool
 
 buffer_recv:
-  log_level: debug
-  recv:
-    kotekan_stage: bufferRecv
-    buf: recv_buffer
-    listen_port: 11025
-    cpu_affinity: [5, 6]
-    num_threads: 2
+    log_level: debug
+    recv:
+        kotekan_stage: bufferRecv
+        buf: recv_buffer
+        listen_port: 11025
+        cpu_affinity: [5, 6]
+        num_threads: 2
     # B's REST server is on a non-default port; tell bufferRecv to dial
     # that port when fetching B's tracker state.
-    upstream_rest_endpoints:
-      - "127.0.0.1:12748"
+        upstream_rest_endpoints:
+            - "127.0.0.1:12748"
 
 # Consume frames so the receive buffer doesn't back up.
 hex_dump:

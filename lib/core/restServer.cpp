@@ -156,6 +156,14 @@ void restServer::start(const std::string& bind_address, u_short port) {
     // Framework level tracking of endpoints.
     using namespace std::placeholders;
     register_get_callback("/endpoints", std::bind(&restServer::endpoint_list_callback, this, _1));
+
+    // Block until http_server_thread has bound the socket and (if `port`
+    // was 0) resolved the OS-assigned port. Callers reading `port()`
+    // immediately after this need a final value, not the initial 0.
+    std::unique_lock<std::mutex> lock(_bind_mutex);
+    while (!_bind_done) {
+        _bind_cv.wait(lock);
+    }
 }
 
 void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
@@ -519,6 +527,13 @@ void restServer::http_server_thread() {
     }
     // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
     INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", _bind_address, _port);
+
+    // Signal `start()` that the socket is bound and `_port` is final.
+    {
+        std::lock_guard<std::mutex> lock(_bind_mutex);
+        _bind_done = true;
+    }
+    _bind_cv.notify_all();
 
     // Create a timer to check for the exit condition
     struct event* timer_event;

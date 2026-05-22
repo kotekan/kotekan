@@ -1,9 +1,10 @@
+---
 # configTracker test 1
 
 type: config
 log_level: debug
 
-cpu_affinity: [1,2,3,4]
+cpu_affinity: [1, 2, 3, 4]
 
 num_frame_samples: 2048
 buffer_depth: 2
@@ -28,15 +29,15 @@ gen_data:
     value: 1532
     kotekan_stage: testDataGen
     out_buf: send_buffer
-    array_shape: [ 2048 ]
+    array_shape: [2048]
     dim_name: ["S"]
 
 # Transmit all the data to the receiver node
 buffer_send:
-  server_ip: 127.0.0.1
-  reconnect_time: 1
-  log_level: debug
-  send:
-    kotekan_stage: bufferSend
-    buf: send_buffer
-    server_port: 11024
+    server_ip: 127.0.0.1
+    reconnect_time: 1
+    log_level: debug
+    send:
+        kotekan_stage: bufferSend
+        buf: send_buffer
+        server_port: 11024

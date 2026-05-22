@@ -1,3 +1,4 @@
+---
 ##########################################
 #
 # Config to test Kendrick & Erik's cuda FRB beamformer kernel
@@ -5,18 +6,17 @@
 # to a non-zero value, with the phase array all one constant value.
 #
 ##########################################
----
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 num_links: 4
-freq_array: [4,7,10,16]
+freq_array: [4, 7, 10, 16]
 timesamples_per_packet: 2
 num_gpus: 1
 num_gpu_frames: 1
-cpu_affinity: [2,3,4,5,8,9,10,11]
+cpu_affinity: [2, 3, 4, 5, 8, 9, 10, 11]
 sizeof_float: 4
 sizeof_float16: 2
 sizeof_int: 4
@@ -122,40 +122,40 @@ gpu:
     log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list
-    - name: cudaInputData
-      in_buf: host_voltage
-      gpu_mem: voltage
-    - name: cudaInputData
-      in_buf: host_phase
-      gpu_mem: phase
+        - name: cudaInputData
+          in_buf: host_voltage
+          gpu_mem: voltage
+        - name: cudaInputData
+          in_buf: host_phase
+          gpu_mem: phase
     # - name: cudaInputData
     #   in_buf: host_beamphase
     #   gpu_mem: beamphase
-    - name: cudaSyncInput
-    - name: cudaFRBBeamformer
-      gpu_mem_voltage: voltage
-      gpu_mem_phase: phase
-      gpu_mem_dishlayout: dishlayout
-      gpu_mem_beamgrid: beamgrid
-      gpu_mem_info: info
-    - name: cudaFRBBeamReformer
-      gpu_mem_beamgrid: beamgrid
-      gpu_mem_phase: beamphase
-      gpu_mem_beamout: beamout
-    - name: cudaSyncOutput
+        - name: cudaSyncInput
+        - name: cudaFRBBeamformer
+          gpu_mem_voltage: voltage
+          gpu_mem_phase: phase
+          gpu_mem_dishlayout: dishlayout
+          gpu_mem_beamgrid: beamgrid
+          gpu_mem_info: info
+        - name: cudaFRBBeamReformer
+          gpu_mem_beamgrid: beamgrid
+          gpu_mem_phase: beamphase
+          gpu_mem_beamout: beamout
+        - name: cudaSyncOutput
     # TEMPorary -- copy back this intermediate product...
-    - name: cudaOutputData
-      gpu_mem: beamgrid
-      out_buf: host_beamgrid
-      in_buf: host_voltage # Metadata transfer from here
-    - name: cudaOutputData
-      gpu_mem: beamout
-      out_buf: host_beamout
-      in_buf: host_voltage # Metadata transfer from here
-    - name: cudaOutputData
-      gpu_mem: info
-      out_buf: host_info
-      in_buf: host_voltage # Metadata transfer from here
+        - name: cudaOutputData
+          gpu_mem: beamgrid
+          out_buf: host_beamgrid
+          in_buf: host_voltage # Metadata transfer from here
+        - name: cudaOutputData
+          gpu_mem: beamout
+          out_buf: host_beamout
+          in_buf: host_voltage # Metadata transfer from here
+        - name: cudaOutputData
+          gpu_mem: info
+          out_buf: host_info
+          in_buf: host_voltage # Metadata transfer from here
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0

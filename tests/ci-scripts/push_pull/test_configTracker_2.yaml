@@ -1,3 +1,4 @@
+---
 # configTracker test 2 (relay)
 #
 # Receives data from instance 1 on :11024 and forwards it to instance 3 on
@@ -7,10 +8,13 @@
 #   - step 2: discovers and fetches A's config via B's
 #             /config_tracker_upstream_hashes + /config_tracker_upstream_configs
 
+# use the config tracker
+config_tracker: true
+
 type: config
 log_level: debug
 
-cpu_affinity: [1,2,3,4]
+cpu_affinity: [1, 2, 3, 4]
 
 num_frame_samples: 2048
 buffer_depth: 2
@@ -28,20 +32,20 @@ recv_buffer:
     metadata_pool: main_pool
 
 buffer_recv:
-  log_level: debug
-  recv:
-    kotekan_stage: bufferRecv
-    buf: recv_buffer
-    listen_port: 11024
-    cpu_affinity: [5, 6]
-    num_threads: 2
+    log_level: debug
+    recv:
+        kotekan_stage: bufferRecv
+        buf: recv_buffer
+        listen_port: 11024
+        cpu_affinity: [5, 6]
+        num_threads: 2
 
 # Forward received frames to instance 3
 buffer_send:
-  server_ip: 127.0.0.1
-  reconnect_time: 1
-  log_level: debug
-  send:
-    kotekan_stage: bufferSend
-    buf: recv_buffer
-    server_port: 11025
+    server_ip: 127.0.0.1
+    reconnect_time: 1
+    log_level: debug
+    send:
+        kotekan_stage: bufferSend
+        buf: recv_buffer
+        server_port: 11025

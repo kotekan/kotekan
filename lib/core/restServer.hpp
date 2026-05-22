@@ -5,16 +5,18 @@
 
 #include "json.hpp" // for json
 
-#include <atomic>        // for atomic
-#include <event2/util.h> // for evutil_socket_t
-#include <evhttp.h>      // for evhttp  // IWYU pragma: keep
-#include <functional>    // for function
-#include <map>           // for map
-#include <shared_mutex>  // for shared_timed_mutex
-#include <stdint.h>      // for uint8_t
-#include <string>        // for string, allocator
-#include <sys/types.h>   // for u_short
-#include <thread>        // for thread
+#include <atomic>             // for atomic
+#include <condition_variable> // for condition_variable
+#include <event2/util.h>      // for evutil_socket_t
+#include <evhttp.h>           // for evhttp  // IWYU pragma: keep
+#include <functional>         // for function
+#include <map>                // for map
+#include <mutex>              // for mutex
+#include <shared_mutex>       // for shared_timed_mutex
+#include <stdint.h>           // for uint8_t
+#include <string>             // for string, allocator
+#include <sys/types.h>        // for u_short
+#include <thread>             // for thread
 
 namespace kotekan {
 
@@ -374,6 +376,14 @@ private:
 
     /// Main server thread handle
     std::thread main_thread;
+
+    /// Mutex + condition_variable + flag used by `start()` to wait until
+    /// `http_server_thread` has finished its socket bind (and resolved
+    /// `_port` if it was 0). Without this barrier, callers reading
+    /// `port()` immediately after `start()` returns can observe 0.
+    std::mutex _bind_mutex;
+    std::condition_variable _bind_cv;
+    bool _bind_done = false;
 
     /// Flag set to true when exit condition is reached
     std::atomic<bool> stop_thread;

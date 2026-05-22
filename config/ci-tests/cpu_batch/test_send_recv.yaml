@@ -1,10 +1,11 @@
+---
 #
 # Just a simple test pipeline that generates random data, does a send/recieve, for different buffer types.
 #
 type: config
 log_level: INFO
 
-cpu_affinity: [0,1]
+cpu_affinity: [0, 1]
 
 num_frame_samples: 2048
 buffer_depth: 10
@@ -19,7 +20,7 @@ telescope:
     grid_y_axis: [0.0, 1.0, 0.0]
     dish_elev_axis: [1.0, 0.0, 0.0]
     dish_vert_axis: [0.0, 0.0, 1.0]
-    require_gps: False
+    require_gps: false
     eop_updatable_config: /earth_rotation_data
     num_dishes_x: 22
     num_dishes_y: 24
@@ -29,10 +30,10 @@ telescope:
 earth_rotation_data:
     kotekan_update_endpoint: json
     earth_orientation_parameter_table:
-      - t_inst_ns: 0
-        delta_UT1_inst: 0.1
-        xp_as: -0.5
-        yp_as: 0.6
+        - t_inst_ns: 0
+          delta_UT1_inst: 0.1
+          xp_as: -0.5
+          yp_as: 0.6
 
 # Pools
 main_pool:
@@ -93,7 +94,7 @@ gen_buffer_data:
     value: 1532
     kotekan_stage: testDataGen
     out_buf: send_buffer
-    array_shape: [ 2048 ]
+    array_shape: [2048]
     dim_name: ["S"]
     num_frames: 6
 
@@ -120,7 +121,7 @@ gen_buffer_data_noCT:
     value: 1532
     kotekan_stage: testDataGen
     out_buf: send_buffer_noCT
-    array_shape: [ 2048 ]
+    array_shape: [2048]
     dim_name: ["S"]
     num_frames: 6
 
@@ -143,7 +144,7 @@ buffer_recv_standard_NoCT:
 
 num_elements: 16
 num_ev: 4
-freq_ids: [0,1,2,3,4]
+freq_ids: [0, 1, 2, 3, 4]
 fake_n2:
     log_level: WARN
     kotekan_stage: FakeN2
@@ -201,7 +202,7 @@ buffer_monitor:
     graceful_shutdown: false # trigger failure
     wait_for_first_frame: true
     bufs:
-      - recv_buffer
-      - recv_buffer_noCT
-      - recv_N2_buffer
+        - recv_buffer
+        - recv_buffer_noCT
+        - recv_N2_buffer
     clean_exit_after_frames: 6 # Trigger success after this many frames have been seen
