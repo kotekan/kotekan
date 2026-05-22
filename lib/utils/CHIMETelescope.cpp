@@ -13,7 +13,6 @@
 #include "fmt.hpp"             // for compile_string_to_view, format, format_string
 #include "json.hpp"            // for json, json_ref, basic_json, input_adapter
 
-
 REGISTER_TELESCOPE(CHIMETelescope, "CHIMETelescope");
 
 CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string& path) :
@@ -77,6 +76,21 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
     if (require_gps && !gps_enabled) {
         throw std::runtime_error("The system requires a GPS time, but none was found.");
     }
+
+    _num_elements = config.get<uint64_t>(path, "num_elements");
+    const auto input_tuple = ICETelescope::parse_reorder_default(config, path, _num_elements);
+    _input_reorder = std::get<0>(input_tuple);
+    _input_map = std::get<1>(input_tuple);
+    if (_input_reorder.size() != _num_elements) {
+        FATAL_ERROR("input_reorder has size {:d}, should be num_elements = {:d}",
+                _input_reorder.size(), _num_elements);
+    }
+    if (_input_reorder.size() != _num_elements) {
+        FATAL_ERROR("input_map (from input_reorder) has size {:d}, should be num_elements = {:d}",
+                _input_map.size(), _num_elements);
+    }
+
+    _correlator_stations = invert_reorder_table(_input_reorder);
 }
 
 nlohmann::json CHIMETelescope::fetch_frequency_map(const std::string& host, const uint32_t port,
@@ -183,73 +197,4 @@ freq_id_t CHIMETelescope::to_freq_id(stream_t stream, uint32_t /* ind */) const 
         ERROR("{}", msg);
         throw std::runtime_error(msg);
     }
-}
-
-station_id_t CHIMETelescope::element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const {
-    if (ord == ElementOrder::CHIMECorrelator) {
-        FATAL_ERROR("Element order {} not implemented yet.", ord);
-    } else if (ord == ElementOrder::CHIMECylinder) {
-        return el_idx;
-    } else if (ord == ElementOrder::CHIMEBeamformer) {
-        const uint64_t polarization = el_idx / 1024;
-        const uint64_t cylinder = (el_idx % 1024) / 256;
-        const uint64_t dish = (el_idx % 1024) % 256;
-        return encode_station_id(cylinder, polarization, dish);
-    }
-
-    FATAL_ERROR("Cannot handle element order {}.", ord);
-}
-
-uint64_t CHIMETelescope::station_id_to_element_index(station_id_t st_id, ElementOrder ord) const {
-    if (ord == ElementOrder::CHIMECorrelator) {
-        FATAL_ERROR("Element order {} not implemented yet.", ord);
-    } else if (ord == ElementOrder::CHIMECylinder) {
-        return st_id;
-    } else if (ord == ElementOrder::CHIMEBeamformer) {
-        uint64_t cylinder, polarization, dish;
-        decode_station_id(st_id, cylinder, polarization, dish);
-        return polarization * 1024 + cylinder * 256 + dish;;
-    }
-
-    FATAL_ERROR("Cannot handle element order {}.", ord);
-}
-
-grid_idx_2d_t CHIMETelescope::station_id_to_grid_indices([[maybe_unused]] station_id_t st_id) const {
-    
-    uint64_t cylinder, polarization, dish;
-    decode_station_id(st_id, cylinder, polarization, dish);
-
-    return grid_idx_2d_t{static_cast<int32_t>(cylinder), static_cast<int32_t>(dish)};
-} 
-
-vec3d_t CHIMETelescope::station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const {
-    uint64_t cylinder, polarization, dish;
-    decode_station_id(st_id, cylinder, polarization, dish);
-
-    return vec3d_t{cylinder * _feed_sep_x_m, dish * _feed_sep_y_m, 0.0};
-}
-
-void CHIMETelescope::decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization, uint64_t& dish) {
-    cylinder = st_id / 512;
-    polarization = (st_id % 512) / 256;
-    dish = (st_id % 512) % 256;
-}
-
-station_id_t CHIMETelescope::encode_station_id(uint64_t cylinder, uint64_t polarization, uint64_t dish) {
-    return cylinder * 512 + polarization * 256 + dish;
-}
-
-GeoFrame CHIMETelescope::grid_frame_from_config(const kotekan::Config& config,
-                                                const std::string& path) {
-
-    vec3d_t grid_x_axis = config.get_default<vec3d_t>(path, "grid_x_axis", {1.0, 0.0, 0.0});
-    vec3d_t grid_y_axis = config.get_default<vec3d_t>(path, "grid_y_axis", {0.0, 1.0, 0.0});
-    vec3d_t grid_z_axis = vec3d_cross(grid_x_axis, grid_y_axis);
-
-    GeoFrame grid_frame(config.get<std::string>(path, "log_level"), "grid",
-                        config.get_default<double>(path, "inst_lat", 0.0),
-                        config.get_default<double>(path, "inst_long", 0.0), {0.0, 0.0, 0.0},
-                        grid_x_axis, grid_y_axis, grid_z_axis);
-
-    return grid_frame;
 }
