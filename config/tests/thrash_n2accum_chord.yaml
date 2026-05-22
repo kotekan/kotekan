@@ -44,27 +44,27 @@ GIGA: 1000000000
 start_time_s: 1760000000
 
 telescope:
-  name: CHORDTelescope
-  origin_itrs_lat_deg: 50.0
-  origin_itrs_lon_deg: -120.0
-  dish_coelev_deg: 90.0
-  grid_x_axis: [1.0, 0.0, 0.0]
-  grid_y_axis: [0.0, 1.0, 0.0]
-  dish_elev_axis: [1.0, 0.0, 0.0]
-  dish_vert_axis: [0.0, 0.0, 1.0]
-  require_gps: False
-  eop_updatable_config: /earth_rotation_data
-  num_dishes_x: 22
-  num_dishes_y: 48
-  dish_inputs: []
+    name: CHORDTelescope
+    origin_itrs_lat_deg: 50.0
+    origin_itrs_lon_deg: -120.0
+    dish_coelev_deg: 90.0
+    grid_x_axis: [1.0, 0.0, 0.0]
+    grid_y_axis: [0.0, 1.0, 0.0]
+    dish_elev_axis: [1.0, 0.0, 0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
+    require_gps: false
+    eop_updatable_config: /earth_rotation_data
+    num_dishes_x: 22
+    num_dishes_y: 48
+    dish_inputs: []
 
 freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 gps_time:
-  frame0_nano: start_time_s * GIGA
+    frame0_nano: start_time_s * GIGA
 
 earth_rotation_data:
-  kotekan_update_endpoint: json
+    kotekan_update_endpoint: json
   # yamlfix:off
   earth_orientation_parameter_table: [
     {
@@ -80,7 +80,6 @@ earth_rotation_data:
     }]
   # yamlfix:on
 
-  
 
 # Pool
 main_pool:
@@ -134,11 +133,11 @@ gen_fake_corr_counts:
     out_counts_buf: fake_counts_buffer
     correlation_type: "f_times_ee"
     counts_type: "random_scalar"
-    correlation_value: [ 1, -1 ]
+    correlation_value: [1, -1]
     counts_value: sub_integration_ntime
     counts_min: 0
     counts_max: sub_integration_ntime
-    mul_correlation_by_counts: True
+    mul_correlation_by_counts: true
     num_frames: frames_to_generate
     repeat_count: repeat
 
@@ -183,16 +182,16 @@ N2_accumulate:
     in_rfiframemask_buf: fake_rfiframemask_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
-    packet_loss_is_scalar: True
+    packet_loss_is_scalar: true
     # variance_mode: CHIMEv1
     variance_mode: EvenOddPosDef
     num_workers: 4
     output_batch_size: 8
-    do_fringestop: True
-    profile_info: True
+    do_fringestop: true
+    profile_info: true
 
 eat_n2:
-  kotekan_stage: dropAllFrames
-  cpu_affinity: [12]
-  in_buf: n2_buffer
-  max_frames: n2_frames
+    kotekan_stage: dropAllFrames
+    cpu_affinity: [12]
+    in_buf: n2_buffer
+    max_frames: n2_frames

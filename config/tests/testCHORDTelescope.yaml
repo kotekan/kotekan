@@ -17,7 +17,7 @@ sec_in_day: 86400
 nsec_in_day: sec_in_day * giga
 
 earth_rotation_data:
-  kotekan_update_endpoint: "json"
+    kotekan_update_endpoint: "json"
   # yamlfix:off
   earth_orientation_parameter_table: [
 # (Un)comment out to use a particular EOP table.
@@ -36,21 +36,21 @@ earth_rotation_data:
 
 
 telescope:
-  name: CHORDTelescope
-  require_gps: false
-  origin_itrs_lon_deg: -119.62081125
-  origin_itrs_lat_deg: 49.3207514444444444
-  grid_x_axis: [1.0, 0.0, 0.0]
-  grid_y_axis: [0.0, 1.0, 0.0]
-  dish_elev_axis: [1.0, 0.0, 0.0]
-  dish_vert_axis: [0.0, 0.0, 1.0]
-  dish_coelev_deg: 0.0
+    name: CHORDTelescope
+    require_gps: false
+    origin_itrs_lon_deg: -119.62081125
+    origin_itrs_lat_deg: 49.3207514444444470
+    grid_x_axis: [1.0, 0.0, 0.0]
+    grid_y_axis: [0.0, 1.0, 0.0]
+    dish_elev_axis: [1.0, 0.0, 0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
+    dish_coelev_deg: 0.0
 
-  eop_updatable_config: "/earth_rotation_data"
-  require_eop: false
+    eop_updatable_config: "/earth_rotation_data"
+    require_eop: false
 
-  dish_separation_x_m: 6.3
-  dish_separation_y_m: 8.5
+    dish_separation_x_m: 6.3
+    dish_separation_y_m: 8.5
 
   # yamlfix:off
   dish_inputs: [
@@ -77,5 +77,5 @@ num_dishes_y: 16
 
 # Add a consumer stage that prints the output buffer to screen
 screen_dump:
-  kotekan_stage: TestCHORDTelescope
-  updatable_config: "/updates"
+    kotekan_stage: TestCHORDTelescope
+    updatable_config: "/updates"
