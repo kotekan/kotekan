@@ -104,8 +104,9 @@ rfi_num_times_bar: {{ rfi_num_times_bar }}
 rfi_sk_rfimask_sigmas: 5.0
 rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are good
 rfi_feed_averaged_min_good_frac: 0.25   # Wide open (0.25) so most averaged feeds are good
-rfi_mu_min: 2.0       # Should be small (2) to let in many samples.
-rfi_mu_max: 80.0      # Should be big (80) to let in many samples.
+rfi_mu_min: 2.0       # Minimum accepted average signal (|E|^2)  Kendrick's RFI Notes recommends 2.0
+rfi_mu_max: 50.0      # Maximum accepted average signal (|E|^2)  Kendrick's RFI Notes recommends 50.0
+
 num_times: samples_per_data_set  # New N2K needs this.
 num_polarizations: 2
 num_dishes: {{ num_dishes }}
@@ -757,37 +758,37 @@ run_send_voltage:
 # Copy the dummy RFI mask to the RFI mask on the GPU
 # To activate the 1st stage RFI excision, do not run this stage! Instead make sure the
 # SKtilde stage produces the RFI mask and places it in the host_rfi_RFImask_buffer
-run_send_rfi_RFImask_dummy:
-    gpu_0:
-        kotekan_stage: cudaProcess
-        gpu_id: 0
-        cpu_affinity: [12, 13, 14]
-        in_buffers:
-            host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer
-        out_buffers:
-            host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
-        commands:
-        - name: cudaCopyToRingbuffer
-          input_size: num_local_freq * samples_per_data_set / 8
-          ring_buffer_size: buffer_depth * input_size
-          in_buf: host_rfi_RFImask_buffer_in
-          signal_buf: host_rfi_RFImask_ringbuffer_out
-          gpu_mem_output: rfi_RFImask_buffer
-    gpu_1:
-        kotekan_stage: cudaProcess
-        gpu_id: 1
-        cpu_affinity: [25, 26, 27]
-        in_buffers:
-            host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer_1
-        out_buffers:
-            host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer_1
-        commands:
-        - name: cudaCopyToRingbuffer
-          input_size: num_local_freq * samples_per_data_set / 8
-          ring_buffer_size: buffer_depth * input_size
-          in_buf: host_rfi_RFImask_buffer_in
-          signal_buf: host_rfi_RFImask_ringbuffer_out
-          gpu_mem_output: rfi_RFImask_buffer
+# run_send_rfi_RFImask_dummy:
+#     gpu_0:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 0
+#         cpu_affinity: [12, 13, 14]
+#         in_buffers:
+#             host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer
+#         out_buffers:
+#             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
+#         commands:
+#         - name: cudaCopyToRingbuffer
+#           input_size: num_local_freq * samples_per_data_set / 8
+#           ring_buffer_size: buffer_depth * input_size
+#           in_buf: host_rfi_RFImask_buffer_in
+#           signal_buf: host_rfi_RFImask_ringbuffer_out
+#           gpu_mem_output: rfi_RFImask_buffer
+#     gpu_1:
+#         kotekan_stage: cudaProcess
+#         gpu_id: 1
+#         cpu_affinity: [25, 26, 27]
+#         in_buffers:
+#             host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer_1
+#         out_buffers:
+#             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer_1
+#         commands:
+#         - name: cudaCopyToRingbuffer
+#           input_size: num_local_freq * samples_per_data_set / 8
+#           ring_buffer_size: buffer_depth * input_size
+#           in_buf: host_rfi_RFImask_buffer_in
+#           signal_buf: host_rfi_RFImask_ringbuffer_out
+#           gpu_mem_output: rfi_RFImask_buffer
 
 run_send_pl_mask:
     gpu_0:
@@ -868,7 +869,7 @@ run_rfi_sktilde:
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer
-            host_rfi_mask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer
+            host_rfi_mask_ringbuffer: host_rfi_RFImask_ringbuffer
         commands:
         - name: cudaInputData
           do_once: true
@@ -879,7 +880,7 @@ run_rfi_sktilde:
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask
           rfi_SKtilde_name: rfi_sktilde
-          rfi_RFImask_name: rfi_mask_dummy
+          rfi_RFImask_name: rfi_mask
           num_times: samples_per_data_set
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
@@ -891,7 +892,7 @@ run_rfi_sktilde:
             host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer_1
         out_buffers:
             host_rfi_sktilde_ringbuffer: host_rfi_sktilde_ringbuffer_1
-            host_rfi_mask_dummy_ringbuffer: host_rfi_RFImask_dummy_ringbuffer_1
+            host_rfi_mask_ringbuffer: host_rfi_RFImask_ringbuffer_1
         commands:
         - name: cudaInputData
           do_once: true
@@ -902,7 +903,7 @@ run_rfi_sktilde:
           rfi_S012_name: rfi_s012
           bf_mask_name: bf_mask
           rfi_SKtilde_name: rfi_sktilde
-          rfi_RFImask_name: rfi_mask_dummy
+          rfi_RFImask_name: rfi_mask
           num_times: samples_per_data_set
           num_frequencies: num_local_freq
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
