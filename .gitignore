@@ -18,5 +18,4 @@ docs/sphinx/html/*
 .ccache/*
 .cache/*
 scratch/*
-Manifest*.toml
 *.log

@@ -126,7 +126,7 @@ $L__BB0_4:                              // %L27
 	@%p17 bra 	$L__BB0_12;
 	bra.uni 	$L__BB0_11;
 $L__BB0_12:                             // %pass295
-	mov.f32 	%f46, 0f41900000;
+	mov.f32 	%f46, 0f41800000;
 	mov.f32 	%f47, 0fC0E00000;
 	div.approx.f32 	%f42, %f47, %f46;
 	mov.f32 	%f49, 0f00000000;

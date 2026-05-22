@@ -20,6 +20,7 @@
 #include "visBuffer.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <boost/test/included/unit_test.hpp>
 #include <chrono>
@@ -28,6 +29,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using namespace std::chrono_literals;
@@ -72,6 +74,10 @@ struct EigenStageTestParams {
     uint32_t num_diagonals_filled = 0;
     std::vector<uint32_t> exclude_inputs;
     string mode = "phase_ij";
+    // For the concurrent-pipeline test. The default settings are equivalent
+    // to the original single-pipeline behaviour.
+    std::vector<int> cpu_affinity = {0};
+    int num_blaze_workers = 0; // 0 leaves blaze::setNumThreads untouched
 };
 
 template<typename Cfloat>
@@ -332,4 +338,201 @@ BOOST_AUTO_TEST_CASE(eigenVisIter_vis_buffers) {
     params.num_elements = 16;
     auto res = run_pipeline(params, "EigenVisIter");
     verify_results(res, params, 1e-4, 1e-4, 1e-4, 2e-2f);
+}
+
+// Run two independent EigenN2Iter pipelines concurrently within one process,
+// each with its own buffers, stages, and CPU affinity. This exercises the
+// path where two stage threads enter Blaze's shared-memory parallel code at
+// the same time. The Blaze headers are patched (see
+// cmake/Features/FeatureMath.cmake) to make the parallel-section guard
+// per-thread; without that patch the static flag is shared process-wide
+// and the concurrent calls throw "Nested parallel sections detected".
+//
+// The test verifies that both pipelines complete and that each one's
+// eigendecomposition results match the single-pipeline tolerances.
+static std::pair<EigenResults, EigenResults>
+run_n2_pipeline_pair(const EigenStageTestParams& params_a,
+                     const EigenStageTestParams& params_b) {
+    ensure_fakevis_patterns_registered();
+    ensure_n2metadata_registered();
+    BOOST_REQUIRE_EQUAL(params_a.num_elements, params_b.num_elements);
+    BOOST_REQUIRE_EQUAL(params_a.num_ev, params_b.num_ev);
+
+    static std::atomic<int> run_counter{0};
+    const int rc = run_counter++;
+    const std::string suffix = "_" + std::to_string(rc);
+    struct Side {
+        std::string label;
+        EigenStageTestParams params;
+        std::string eigen_name;
+        std::string fake_name;
+        std::string in_buf_name;
+        std::string out_buf_name;
+        std::unique_ptr<Buffer> in_buf;
+        std::unique_ptr<Buffer> out_buf;
+        std::unique_ptr<kotekan::Stage> eigen_stage;
+        std::unique_ptr<kotekan::Stage> fake_stage;
+    };
+    std::array<Side, 2> sides;
+    sides[0].label = "a";
+    sides[0].params = params_a;
+    sides[1].label = "b";
+    sides[1].params = params_b;
+    for (auto& s : sides) {
+        s.eigen_name = "eigen_" + s.label + suffix;
+        s.fake_name = "fake_" + s.label + suffix;
+        s.in_buf_name = "in_buf_" + s.label + suffix;
+        s.out_buf_name = "out_buf_" + s.label + suffix;
+    }
+
+    // Build one combined config with both pipelines so the global config
+    // updater is applied exactly once.
+    nlohmann::json cfg;
+    cfg["log_level"] = "ERROR";
+    cfg["num_ev"] = params_a.num_ev;
+    cfg["vis_layout"] = N2Layout::FullUpperTri;
+    cfg["dataset_manager"]["enable_state_caching"] = false;
+    cfg["dataset_manager"]["use_dataset_broker"] = false;
+    // Top-level cpu_affinity acts as a fallback for any stage that does not
+    // override it (here, the FakeN2 producers).
+    cfg["cpu_affinity"] = std::vector<int>{0};
+    for (const auto& s : sides) {
+        cfg[s.fake_name]["kotekan_stage"] = "FakeN2";
+        cfg[s.fake_name]["freq_ids"] = std::vector<uint32_t>{0};
+        cfg[s.fake_name]["num_elements"] = s.params.num_elements;
+        cfg[s.fake_name]["num_frames"] = s.params.total_frames;
+        cfg[s.fake_name]["cadence"] = 1.0;
+        cfg[s.fake_name]["wait"] = false;
+        cfg[s.fake_name]["out_buf"] = s.in_buf_name;
+        cfg[s.fake_name]["mode"] = s.params.mode;
+        cfg[s.fake_name]["kill_on_complete"] = false;
+
+        cfg[s.eigen_name]["kotekan_stage"] = "EigenN2Iter";
+        cfg[s.eigen_name]["in_buf"] = s.in_buf_name;
+        cfg[s.eigen_name]["out_buf"] = s.out_buf_name;
+        cfg[s.eigen_name]["num_ev"] = s.params.num_ev;
+        cfg[s.eigen_name]["num_diagonals_filled"] = s.params.num_diagonals_filled;
+        cfg[s.eigen_name]["num_ev_conv"] = s.params.num_ev_conv;
+        cfg[s.eigen_name]["cpu_affinity"] = s.params.cpu_affinity;
+        if (s.params.num_blaze_workers > 0)
+            cfg[s.eigen_name]["num_blaze_workers"] = s.params.num_blaze_workers;
+        if (!s.params.exclude_inputs.empty())
+            cfg[s.eigen_name]["exclude_inputs"] = s.params.exclude_inputs;
+    }
+    add_test_telescope_config(cfg);
+    kotekan::Config conf;
+    conf.update_config(cfg);
+    kotekan::configUpdater::instance().apply_config(conf);
+    Telescope::instance(conf);
+    datasetManager::instance(conf);
+
+    // Shared buffer metadata; both pipelines have the same shape.
+    const size_t num_prod = kotekan::N2FrameDesc::get_num_prod(
+        params_a.num_elements, N2Layout::FullUpperTri);
+    const size_t frame_size = kotekan::N2FrameDesc::calculate_frame_size(
+        params_a.num_elements, params_a.num_ev, num_prod);
+    auto pool = metadataPool::create(
+        2 * params_a.total_frames + 8, sizeof(N2Metadata), "n2_pool", "N2Metadata");
+    auto n2_desc = std::make_shared<kotekan::N2FrameDesc>(
+        params_a.num_elements, params_a.num_ev, num_prod, N2Layout::FullUpperTri);
+
+    kotekan::bufferContainer bc;
+    for (auto& s : sides) {
+        s.in_buf = std::make_unique<Buffer>(
+            s.params.total_frames, frame_size, pool, s.in_buf_name, "N2", 0,
+            false, false, std::vector<int>{}, true);
+        s.out_buf = std::make_unique<Buffer>(
+            s.params.total_frames, frame_size, pool, s.out_buf_name, "N2", 0,
+            false, false, std::vector<int>{}, true);
+        s.in_buf->set_frame_desc(n2_desc);
+        s.out_buf->set_frame_desc(n2_desc);
+        bc.add_buffer(s.in_buf_name, s.in_buf.get());
+        bc.add_buffer(s.out_buf_name, s.out_buf.get());
+        // Hold the output frames so we can inspect them after the stage exits.
+        s.out_buf->register_consumer("test_sink");
+    }
+
+    for (auto& s : sides) {
+        s.eigen_stage =
+            std::make_unique<EigenN2Iter>(conf, "/" + s.eigen_name, bc);
+        s.fake_stage = std::make_unique<FakeN2>(conf, "/" + s.fake_name, bc);
+    }
+
+    // Start everything before waiting so both eigen stages spin up before
+    // either has finished its frames — this is what reliably causes both
+    // stages to be inside Blaze SMP code at the same time.
+    for (auto& s : sides) s.eigen_stage->start();
+    for (auto& s : sides) s.fake_stage->start();
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    auto done = [&]() {
+        for (const auto& s : sides) {
+            if (s.out_buf->get_num_full_frames() < (int)s.params.total_frames)
+                return false;
+        }
+        return true;
+    };
+    bool timed_out = false;
+    while (!done()) {
+        if (std::chrono::steady_clock::now() > deadline) {
+            timed_out = true;
+            break;
+        }
+        std::this_thread::sleep_for(10ms);
+    }
+
+    for (auto& s : sides) {
+        s.in_buf->send_shutdown_signal();
+        s.out_buf->send_shutdown_signal();
+    }
+    for (auto& s : sides) {
+        s.fake_stage->stop();
+        s.eigen_stage->stop();
+    }
+    for (auto& s : sides) {
+        s.fake_stage->join();
+        s.eigen_stage->join();
+    }
+
+    if (timed_out)
+        BOOST_FAIL("Timed out waiting for concurrent eigen pipelines.");
+
+    auto collect = [](Buffer& out, const EigenStageTestParams& p) {
+        EigenResults r;
+        for (size_t f = 0; f < p.total_frames; ++f) {
+            N2FrameView fv(&out, f);
+            r.eval0.push_back(fv.eval[0]);
+            if (p.num_ev > 1) r.eval1.push_back(fv.eval[1]);
+            r.erms.push_back(fv.erms);
+            std::vector<std::complex<float>> evec(fv.num_elements);
+            for (size_t i = 0; i < fv.num_elements; ++i) evec[i] = fv.evec[i];
+            r.evec0.emplace_back(std::move(evec));
+        }
+        return r;
+    };
+    return {collect(*sides[0].out_buf, params_a),
+            collect(*sides[1].out_buf, params_b)};
+}
+
+BOOST_AUTO_TEST_CASE(eigenN2Iter_concurrent_pipelines) {
+    // Matrix size matches the eigenN2Iter_iterative single-pipeline test so we
+    // can reuse its tolerances; what this case adds is concurrent execution.
+    //
+    // Per-pipeline CPU affinity is kept to a single distinct core so the test
+    // runs on minimal CI hosts (e.g. 2-core GitHub runners) as well as larger
+    // machines. The race the patch guards against fires whenever two stages
+    // are inside Blaze's parallel section at the same time, which is reliably
+    // produced by kernel time-slicing even when the threads share a CPU.
+    EigenStageTestParams params_a;
+    params_a.total_frames = 6;
+    params_a.num_elements = 16;
+    params_a.cpu_affinity = {0};
+    params_a.num_blaze_workers = 2;
+
+    EigenStageTestParams params_b = params_a;
+    params_b.cpu_affinity = {1};
+
+    auto results = run_n2_pipeline_pair(params_a, params_b);
+    verify_results(results.first, params_a, 1e-4, 1e-4, 1e-4, 2e-2f);
+    verify_results(results.second, params_b, 1e-4, 1e-4, 1e-4, 2e-2f);
 }

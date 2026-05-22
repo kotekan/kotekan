@@ -53,7 +53,7 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     _krylov(config.get_default<size_t>(unique_name, "krylov", 2)),
     _subspace(config.get_default<size_t>(unique_name, "subspace", 3)),
 
-    // blaze parallelizations
+    // Blaze SMP thread count
     _num_blaze_workers(config.get_default<uint32_t>(unique_name, "num_blaze_workers", 0)),
 
     // Masking params
@@ -154,7 +154,11 @@ void EigenN2Iter::main_thread() {
     uint32_t num_elements = 0;
     bool initialized = false;
 
-    // these are kotekan wide (process wide) settings
+    // Force serial BLAS so Blaze owns intra-op parallelism via its own OpenMP
+    // path (per-stage team, inherits this stage's cpu_affinity). With a
+    // multithreaded OpenBLAS we'd otherwise hit its process-global pool whose
+    // affinity is fixed at first-call time and bleeds between concurrent
+    // eigen stages.
     openblas_set_num_threads(1);
     if (_num_blaze_workers > 0)
         blaze::setNumThreads(_num_blaze_workers);

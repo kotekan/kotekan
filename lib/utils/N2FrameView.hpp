@@ -71,8 +71,8 @@ public:
     struct EOP& bin_eop;
     double& bin_start_ERA_deg;
     double& bin_end_ERA_deg;
-    double& bin_start_ERAL;
-    double& bin_end_ERAL;
+    double& bin_start_ERAL_deg;
+    double& bin_end_ERAL_deg;
 
     /// The sequence number of the first FPGA frame integrated into this
     /// visibility frame (time<0> in VisFrameView)

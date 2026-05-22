@@ -205,12 +205,12 @@ void FakeN2::main_thread() {
 
             struct EOP bin_start_eop = tel.get_EOP_at_time(tel.to_time(fpga_seq + t * delta_seq));
             meta->bin_start_ERA_deg = bin_start_eop.ERA_deg;
-            meta->bin_start_ERAL = -1;
+            meta->bin_start_ERAL_deg = tel.get_ERAL_deg(bin_start_eop);
 
             struct EOP bin_end_eop =
                 tel.get_EOP_at_time(tel.to_time(fpga_seq + t * delta_seq + delta_seq));
             meta->bin_end_ERA_deg = bin_end_eop.ERA_deg;
-            meta->bin_end_ERAL = -1;
+            meta->bin_end_ERAL_deg = tel.get_ERAL_deg(bin_end_eop);
 
             DEBUG("Creating N2FrameView.");
             DEBUG("  N2Meta: n_el {}, n_prod {}, n_ev {}", num_elements,

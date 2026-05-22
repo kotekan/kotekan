@@ -31,10 +31,13 @@ namespace kotekan {
 
 // Define a "large" type for every arithmetic type
 template<typename Type>
-using LargeType = typename std::conditional<
-    std::is_integral<Type>::value,
-    typename std::conditional<std::is_unsigned<Type>::value, unsigned long long, long long>::type,
-    double>::type;
+using LargeType =
+    typename std::conditional<std::is_integral<Type>::value,
+                              // "long double" will have at least 64bits for the significant plus an
+                              // additional sign bit, enough to hold both int64_t and uint64_t
+                              // do not use "unsigned long long" to avoid unsigned(-1) ==
+                              // unsigned_max issues
+                              long double, double>::type;
 
 // Convert types, with checking for overflows
 template<typename Ret, typename Type>
