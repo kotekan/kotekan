@@ -10,6 +10,7 @@ cpu_affinity: [0, 1]
 
 num_dishes: 1024
 num_polarizations: 2
+num_elements: num_dishes * num_polarizations
 num_freq_bins: 3 # actual CHIME has 4, but then its 4 bins of 4 freqs each, which is a worse test case
 
 pl_mask_downsampling_factor: 2
