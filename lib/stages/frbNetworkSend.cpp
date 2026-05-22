@@ -154,7 +154,7 @@ void frbNetworkSend::main_thread() {
     // config.update_value(unique_name, "beam_offset", beam_offset);
 
     int frame_id = 0;
-    int8_t* beams_buffer = (int8_t*)in_buf->wait_for_full_frame(unique_name, frame_id);
+    uint8_t* beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, frame_id);
     if (beams_buffer == nullptr)
         return;
     float16_t* offsetscale_buffer = (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, frame_id);
@@ -237,7 +237,7 @@ void frbNetworkSend::main_thread() {
 
         // reading the next frame and comparing the fpga clock with the monotonic clock.
         if (count != 0) {
-            beams_buffer = (int8_t*)in_buf->wait_for_full_frame(unique_name, frame_id);
+            beams_buffer = (uint8_t*)in_buf->wait_for_full_frame(unique_name, frame_id);
             if (beams_buffer == nullptr)
                 break;
             offsetscale_buffer =
