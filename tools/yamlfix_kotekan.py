@@ -78,11 +78,53 @@ def extract_protected_regions(text: str) -> list[str]:
     return regions
 
 
+def _shift_block(text: str, shift: int) -> str:
+    """Add `shift` leading spaces to each line (or strip them if shift < 0)."""
+    if shift == 0:
+        return text
+    if shift > 0:
+        pad = " " * shift
+        return "".join(pad + line for line in text.splitlines(keepends=True))
+    n = -shift
+    return "".join(
+        (line[n:] if line.startswith(" " * n) else line)
+        for line in text.splitlines(keepends=True)
+    )
+
+
+def _structural_indent_at(lines: list[str], idx: int, direction: int) -> int | None:
+    """Walk in `direction` (+1 or -1) from `idx`, return indent of first
+    non-empty, non-comment line. Returns None if none found."""
+    step = direction
+    j = idx + step
+    while 0 <= j < len(lines):
+        stripped = lines[j].strip()
+        if stripped and not stripped.startswith("#"):
+            return len(lines[j]) - len(lines[j].lstrip(" "))
+        j += step
+    return None
+
+
+def _expected_indent(lines: list[str], off_idx: int, on_idx: int, current: int) -> int:
+    """Pick the smallest of {before, after} candidates that is >= current.
+    Falls back to whichever is available, or 0 if none. The reformat-
+    increases-indent assumption means the right answer is the smallest
+    indent at or above the protected block's existing indent."""
+    before = _structural_indent_at(lines, off_idx, -1)
+    after = _structural_indent_at(lines, on_idx, +1)
+    candidates = [x for x in (before, after) if x is not None and x >= current]
+    if candidates:
+        return min(candidates)
+    return next((x for x in (before, after) if x is not None), 0)
+
+
 def restore_protected_regions(text: str, originals: list[str]) -> str:
-    """Replace each `# yamlfix:off`..`# yamlfix:on` block in `text` with
-    the matching entry from `originals` (verbatim). Markers' indentation
-    after ruamel may differ from source; we still match by line content
-    after `.strip()`."""
+    """Replace each `# yamlfix:off`..`# yamlfix:on` block with its
+    matching `originals` entry, re-indenting it to match the protected
+    block's sibling context (looking both before the off and after the on
+    marker in ruamel's output). Without this, ruamel's re-indent of
+    mapping keys would leave protected blocks at the old shallower indent
+    and break the yaml structure (ruamel doesn't re-indent comments)."""
     lines = text.splitlines(keepends=True)
     out: list[str] = []
     it = iter(originals)
@@ -98,9 +140,15 @@ def restore_protected_regions(text: str, originals: list[str]) -> str:
                 i += 1
                 continue
             try:
-                out.append(next(it))
+                original = next(it)
             except StopIteration:
-                out.append("".join(lines[i : j + 1]))
+                original = "".join(lines[i : j + 1])
+            orig_lines = original.splitlines(keepends=True)
+            if orig_lines:
+                orig_indent = len(orig_lines[0]) - len(orig_lines[0].lstrip(" "))
+                target = _expected_indent(lines, i, j, orig_indent)
+                original = _shift_block(original, target - orig_indent)
+            out.append(original)
             i = j + 1
         else:
             out.append(lines[i])

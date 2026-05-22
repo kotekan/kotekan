@@ -62,20 +62,20 @@ gps_time:
 
 earth_rotation_data:
     kotekan_update_endpoint: json
-  # yamlfix:off
-  earth_orientation_parameter_table: [
-    {
-      t_inst_ns: 1750000000000000000,
-      delta_UT1_inst: 0.5,
-      xp_as: 0.1,
-      yp_as: 0.2
-    }, {
-      t_inst_ns: 1770000000000000000,
-      delta_UT1_inst: -0.5,
-      xp_as: 0.3,
-      yp_as: 0.4
-    }]
-  # yamlfix:on
+    # yamlfix:off
+    earth_orientation_parameter_table: [
+      {
+        t_inst_ns: 1750000000000000000,
+        delta_UT1_inst: 0.5,
+        xp_as: 0.1,
+        yp_as: 0.2
+      }, {
+        t_inst_ns: 1770000000000000000,
+        delta_UT1_inst: -0.5,
+        xp_as: 0.3,
+        yp_as: 0.4
+      }]
+    # yamlfix:on
 
 
 # Pool
