@@ -29,8 +29,8 @@ class N2Metadata(ctypes.Structure):
         ("bin_eop", telescope.EOP),
         ("bin_start_ERA_deg", ctypes.c_double),
         ("bin_end_ERA_deg", ctypes.c_double),
-        ("bin_start_ERAL", ctypes.c_double),
-        ("bin_end_ERAL", ctypes.c_double),
+        ("bin_start_ERAL_deg", ctypes.c_double),
+        ("bin_end_ERAL_deg", ctypes.c_double),
         # FPGA timing
         ("fpga_start_tick", ctypes.c_uint64),
         ("frame_start_time_ns", ctypes.c_uint64),

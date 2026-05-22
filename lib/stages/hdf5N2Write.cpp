@@ -561,6 +561,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               HighFive::create_datatype<uint64_t>(), props_empty);
         _check_create_dataset(*file, "/frame_length_fpga_ticks", {num_file_t_}, {"time"},
                               HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, "/bin_abs_index", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
 
         _check_create_dataset(*file, "/time_center_t_inst_ns", {num_file_t_}, {"time"},
                               HighFive::create_datatype<int64_t>(), props_empty);
@@ -582,9 +584,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/bin_end_ERA_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
-        _check_create_dataset(*file, "/bin_start_ERAL", {num_file_t_}, {"time"},
+        _check_create_dataset(*file, "/bin_start_ERAL_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
-        _check_create_dataset(*file, "/bin_end_ERAL", {num_file_t_}, {"time"},
+        _check_create_dataset(*file, "/bin_end_ERAL_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_enabled", {num_file_t_}, {"time"},
                               HighFive::create_datatype<bool>(), props_empty);
@@ -698,6 +700,7 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     // Additional metadata
     fpga_start_tick.assign(num_file_t, 0);
     frame_length_fpga_ticks.assign(num_file_t, 0);
+    bin_abs_index.assign(num_file_t, std::numeric_limits<uint64_t>::max());
     time_center_t_inst_ns.assign(num_file_t, 0.0);
     time_center_ut1_ns.assign(num_file_t, 0.0);
     bin_t_inst_ns.assign(num_file_t, 0.0);
@@ -708,8 +711,8 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     bin_yp_as.assign(num_file_t, -DBL_MAX);
     bin_start_ERA_deg.assign(num_file_t, 0.0);
     bin_end_ERA_deg.assign(num_file_t, 0.0);
-    bin_start_ERAL.assign(num_file_t, 0.0);
-    bin_end_ERAL.assign(num_file_t, 0.0);
+    bin_start_ERAL_deg.assign(num_file_t, 0.0);
+    bin_end_ERAL_deg.assign(num_file_t, 0.0);
     rfi_frame_excision_enabled.assign(num_file_t, false);
     rfi_frame_excision_num.assign(num_file_t, 0);
     rfi_frame_excision_threshold.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
@@ -790,6 +793,10 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
         add_failure(fmt::format("frame_length_fpga_ticks[t={}] mismatch: stored {} != incoming {}",
                                 t_index, frame_length_fpga_ticks[t_index],
                                 fv.frame_length_fpga_ticks));
+    if (bin_abs_index[t_index] < std::numeric_limits<uint64_t>::max()
+        && bin_abs_index[t_index] != fv.abs_time_idx)
+        add_failure(fmt::format("bin_abs_index[t={}] mismatch: stored {} != incoming {}", t_index,
+                                bin_abs_index[t_index], fv.abs_time_idx));
     if (fv.rfi_frame_excision_num < 0)
         add_failure(fmt::format("rfi_frame_excision_num negative: {}", fv.rfi_frame_excision_num));
     if (fv.rfi_frame_excision_num > MAX_NUM_RFI_THRESHOLDS)
@@ -887,6 +894,7 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     // Store per-time metadata
     fpga_start_tick[t_index] = fv.fpga_start_tick;
     frame_length_fpga_ticks[t_index] = fv.frame_length_fpga_ticks;
+    bin_abs_index[t_index] = fv.abs_time_idx;
     time_center_t_inst_ns[t_index] = fv.time_center_eop.t_inst_ns;
     time_center_ut1_ns[t_index] = fv.time_center_eop.t_ut1_ns;
     bin_t_inst_ns[t_index] = fv.bin_eop.t_inst_ns;
@@ -897,8 +905,8 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     bin_yp_as[t_index] = fv.bin_eop.yp_as;
     bin_start_ERA_deg[t_index] = fv.bin_start_ERA_deg;
     bin_end_ERA_deg[t_index] = fv.bin_end_ERA_deg;
-    bin_start_ERAL[t_index] = fv.bin_start_ERAL;
-    bin_end_ERAL[t_index] = fv.bin_end_ERAL;
+    bin_start_ERAL_deg[t_index] = fv.bin_start_ERAL_deg;
+    bin_end_ERAL_deg[t_index] = fv.bin_end_ERAL_deg;
     rfi_frame_excision_enabled[t_index] = fv.rfi_frame_excision_enabled;
     rfi_frame_excision_num[t_index] = fv.rfi_frame_excision_num;
     std::copy(fv.rfi_frame_excision_threshold.begin(), fv.rfi_frame_excision_threshold.end(),
@@ -1050,6 +1058,7 @@ bool N2FileData::flush_to_disk() {
 
         h5_file->getDataSet("/fpga_start_tick").write(fpga_start_tick);
         h5_file->getDataSet("/frame_length_fpga_ticks").write(frame_length_fpga_ticks);
+        h5_file->getDataSet("/bin_abs_index").write(bin_abs_index);
         h5_file->getDataSet("/time_center_t_inst_ns").write(time_center_t_inst_ns);
         h5_file->getDataSet("/time_center_ut1_ns").write(time_center_ut1_ns);
         h5_file->getDataSet("/bin_t_inst_ns").write(bin_t_inst_ns);
@@ -1060,8 +1069,8 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/bin_yp_as").write(bin_yp_as);
         h5_file->getDataSet("/bin_start_ERA_deg").write(bin_start_ERA_deg);
         h5_file->getDataSet("/bin_end_ERA_deg").write(bin_end_ERA_deg);
-        h5_file->getDataSet("/bin_start_ERAL").write(bin_start_ERAL);
-        h5_file->getDataSet("/bin_end_ERAL").write(bin_end_ERAL);
+        h5_file->getDataSet("/bin_start_ERAL_deg").write(bin_start_ERAL_deg);
+        h5_file->getDataSet("/bin_end_ERAL_deg").write(bin_end_ERAL_deg);
         h5_file->getDataSet("/rfi_frame_excision_enabled").write(rfi_frame_excision_enabled);
         h5_file->getDataSet("/rfi_frame_excision_num").write(rfi_frame_excision_num);
         h5_file->getDataSet("/rfi_frame_excision_threshold")

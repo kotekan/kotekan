@@ -367,8 +367,8 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     meta->bin_eop.ERA_deg = 9.87 + double(t_index);
     meta->bin_start_ERA_deg = 1.23 + double(t_index);
     meta->bin_end_ERA_deg = 4.56 + double(t_index);
-    meta->bin_start_ERAL = 1000000 + int64_t(t_index) * 1000;
-    meta->bin_end_ERAL = 2000000 + int64_t(t_index) * 1000;
+    meta->bin_start_ERAL_deg = 1000000 + int64_t(t_index) * 1000;
+    meta->bin_end_ERAL_deg = 2000000 + int64_t(t_index) * 1000;
 
     N2FrameView fv(buf, frame_id);
     fv.zero_frame();

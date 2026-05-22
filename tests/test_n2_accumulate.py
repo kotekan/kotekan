@@ -1197,11 +1197,11 @@ def test_eop_meta(setup, accum_setup, accum_data, accum_list):
             <= ERA_TOL
         )
         assert (
-            abs(frame.metadata.bin_start_ERAL - accum_list[t]["bin_start_ERAL_deg"])
+            abs(frame.metadata.bin_start_ERAL_deg - accum_list[t]["bin_start_ERAL_deg"])
             <= ERAL_TOL
         )
         assert (
-            abs(frame.metadata.bin_end_ERAL - accum_list[t]["bin_end_ERAL_deg"])
+            abs(frame.metadata.bin_end_ERAL_deg - accum_list[t]["bin_end_ERAL_deg"])
             <= ERAL_TOL
         )
 

@@ -37,7 +37,8 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 
     time_center_eop(_metadata->time_center_eop), bin_eop(_metadata->bin_eop),
     bin_start_ERA_deg(_metadata->bin_start_ERA_deg), bin_end_ERA_deg(_metadata->bin_end_ERA_deg),
-    bin_start_ERAL(_metadata->bin_start_ERAL), bin_end_ERAL(_metadata->bin_end_ERAL),
+    bin_start_ERAL_deg(_metadata->bin_start_ERAL_deg),
+    bin_end_ERAL_deg(_metadata->bin_end_ERAL_deg),
 
     fpga_start_tick(_metadata->fpga_start_tick),
     frame_start_time_ns(_metadata->frame_start_time_ns),
