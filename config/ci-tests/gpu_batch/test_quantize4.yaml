@@ -6,5 +6,7 @@ log_level: INFO
 
 cpu_affinity: [0]
 
+num_elements: 1024
+
 test_quantize_kernel_4:
     kotekan_stage: testQuantizeKernel4
