@@ -15,7 +15,7 @@
 #include "json.hpp" // for json, operator!=, basic_json, input_adapter
 
 #include <atomic>             // for atomic, __atomic_base
-#include <bits/chrono.h>      // for milliseconds
+#include <chrono>             // for milliseconds
 #include <condition_variable> // for condition_variable
 #include <exception>          // for exception
 #include <functional>         // for function

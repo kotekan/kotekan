@@ -11,20 +11,24 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
-#include <airspy.h>    // for airspy_transfer_t
-#include <pthread.h>   // for pthread_mutex_t
-#include <sys/types.h> // for uint
+#include "json.hpp" // for json
+
+#include <airspy.h>           // for airspy_transfer_t
+#include <atomic>             // for atomic
+#include <condition_variable> // for condition_variable
+#include <mutex>              // for mutex
+#include <pthread.h>          // for pthread_mutex_t
+#include <string>             // for string
+#include <sys/types.h>        // for uint
 
 #define BYTES_PER_SAMPLE 2
-
-#include <string> // for string
 
 /**
  * @class airspyInput
  * @brief Producer ``kotekan::Stage`` which streams radio data from an AirSpy SDR device
- * into a
- * ``Buffer``.
+ *        into a ``Buffer``.
  *
  * This is a simple producer which initializes an AirSpy dongle (https://airspy.com)
  * in streaming mode, filling samples into the provided kotekan buffer.
@@ -33,117 +37,119 @@
  * An internal sub-frame pointer is used to position data in subsequent callbacks within frames.
  * A pthread mutex is used to ensure callbacks don't clobber one another.
  *
+ * Samples are read in @c AIRSPY_SAMPLE_RAW mode (real 12-bit ADC values, packed in 16-bit
+ * shorts). On each completed frame the producer subtracts the 2048-count ADC offset and
+ * applies an alternating-sign multiplication to shift the spectrum into the first Nyquist
+ * zone, then marks the frame full.
+ *
  * This producer depends on ``libairspy``.
  *
  * @par Buffers
- * @buffer out_buf The kotekan buffer which will be fed, can be any size.
- *     @buffer_format Array of @c shorts
+ * @buffer out_buf The kotekan buffer which will be fed; any size.
+ *     @buffer_format Array of @c shorts (real samples, DC-corrected and Nyquist-shifted)
  *     @buffer_metadata none
  *
- * @conf   freq        Float (default 1420.0). LO tuning frequency, in MHz.
- * @conf   sample_bw   Float (default 2.5). Bandwidth to sample from the airspy, in MHz.
- * @conf   gain_lna    Int (default 5). Gain setting of the LNA, in the range 0-14.
- * @conf   gain_mix    Int (default 5). Gain setting of the mixer amplifier, from 0-15.
- * @conf   gain_if     Int (default 5). Gain setting of the IF amplifier, from 0-15.
- * @conf   biast_power Bool (default false). Whether or not to enable the 4.5V DC bias on the AirSpy
- * RF input.
+ * @par REST endpoints (registered under @c <unique_name>/)
+ *  - GET  @c /get_config  — returns current gain/freq/samplerate as JSON.
+ *  - GET  @c /adcstat     — triggers a one-shot ADC stats sample (mean, RMS, rail fraction).
+ *  - GET  @c /restart     — stops, re-opens, and re-starts the airspy device.
+ *  - POST @c /set_config  — updates @c freq, @c gain_lna, @c gain_mix, @c gain_if, or @c add_lag.
  *
- * @warning Just realized that if things bog down and new 2 callbacks come while one is active,
- *          the order of the others will be undefined. This stage may produce out-of-order
- *          samples.
- * @remark  Only operates in I/Q mode currently, and only with packed int16_t samples.
- *          No support for raw samples, etc.
- * @todo    Only handles one device currently -- add checks and index handling.
- *          Undefined behaviour (segfault) if it doesn't exist or is already in use.
+ * @conf   freq         Float (default 1420.0). LO tuning frequency, in MHz.
+ * @conf   sample_bw    Float (default 2.5). Sample rate (samples/s), in MHz. Must be a value
+ *                      reported by @c airspy_get_samplerates() for the connected device
+ *                      (typically 2.5 or 10).
+ * @conf   gain_lna     Int (default 5). Gain setting of the LNA, in the range 0-14.
+ * @conf   gain_mix     Int (default 5). Gain setting of the mixer amplifier, from 0-15.
+ * @conf   gain_if      Int (default 5). Gain setting of the IF amplifier, from 0-15.
+ * @conf   biast_power  Bool (default false). Enable 4.5V DC bias on the RF input.
+ * @conf   serial       Long (default 0). Specific airspy serial-number to open; 0 = any.
+ * @conf   airspy_file  String (default ""). Read from this file instead of a real device; for
+ *                      offline testing. Ignored if @c serial is set.
+ * @conf   autostart    Bool (default true). Start streaming immediately. If false, the device
+ *                      is initialised but waits for a REST @c /restart to begin RX.
+ *
+ * @warning If incoming USB transfers ever overlap, sample ordering becomes undefined.
  *
  * @author Keith Vanderlinde
- *
  */
 class airspyInput : public kotekan::Stage {
 public:
-    /// Constructor, also initializes internal variables from config.
     airspyInput(kotekan::Config& config, const std::string& unique_name,
                 kotekan::bufferContainer& buffer_container);
+    ~airspyInput() override;
 
-    /// Destructor, cleans up local allocs.
-    virtual ~airspyInput();
-
-    /// Primary loop to wait for buffers, stuff in data, mark full, lather, rinse and repeat.
     void main_thread() override;
 
-    /// Initializes the airspy device.
-    /// Also configures runtime parameters: gains, LO tuning, samplerate, and sample type.
+    /// Initialises the airspy device. Also configures gains, LO tuning,
+    /// samplerate, and sample type.
     struct airspy_device* init_device();
 
-    /**
-     * Static function to service the callback generated by the AirSpy after
-     * data has been read and returned.
-     * This function immediately passes processing off to the airspyInput object
-     * controlling the AirSpy device which produced it,
-     * no processing of any sort is done here.
-     * @param transfer Contains the airspy transfer buffer, defined in liairspy/airspy.h
-     *                 Useful portions of the transfer object include:
-     *                 @li @c samples - pointer to the raw stream of samples),
-     *                 @li @c ctx - pointer to the object which called it), and
-     *                 @li @c sample_count - number of samples included in the buffer)
-     * @warning Nobody should ever call this directly, it's only meant to service the
-     *          data-ready AirSpy callback.
-     */
+    /// libairspy DMA-callback trampoline; forwards to @c airspy_producer on the @c ctx instance.
     static int airspy_callback(airspy_transfer_t* transfer);
 
-    /**
-     * Function which actually processes the data returned from the airspy.
-     * Waits for an available frame from @c buf, then copies data into it
-     * until either the entire set of samples is transferred, or the frame is filled.
-     * In the latter case, marks the frame full, waits for a new one, and continues.
-     * @c frame_loc is updated after copying each chunk of data.
-     * Locks the @c recv_busy mutex before beginning, and only releases it after all
-     * samples are copied to into @c buf.
-     * @param transfer Contains the airspy transfer buffer, defined in liairspy/airspy.h
-     *                 Useful portions of the transfer object include:
-     *                 @li @c samples - pointer to the raw stream of samples),
-     *                 @li @c ctx - pointer to the object which called it), and
-     *                 @li @c sample_count - number of samples included in the buffer)
-     * @warning        Nobody should ever call this directly, it's only meant to service the
-     *                 data-ready AirSpy callback.
-     */
+    /// Fills kotekan buffer frames from one USB transfer. See class doc.
     void airspy_producer(airspy_transfer_t* transfer);
 
+    /// REST callbacks.
+    void get_config_callback(kotekan::connectionInstance& conn);
+    void set_config_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
+    void adcstat_callback(kotekan::connectionInstance& conn);
+    void restart_callback(kotekan::connectionInstance& conn);
 
 private:
-    /// kotekan buffer object which will be fed
+    /// Kotekan buffer object which will be fed.
     Buffer* buf;
-    /// handle to the airspy device itself
-    struct airspy_device* a_device;
+    /// Handle to the airspy device.
+    struct airspy_device* a_device = nullptr;
 
-    /// pointer to the current frame's memory
-    unsigned char* frame_ptr;
-    /// memory offset from the start of the current frame
-    /// where the next incoming data will go
-    unsigned int frame_loc;
-    /// index of the current frame
+    /// Pointer to the current frame's memory.
+    unsigned char* frame_ptr = nullptr;
+    /// Memory offset from the start of the current frame.
+    uint32_t frame_loc;
+    /// Index of the current frame.
     int frame_id;
-    /// mutex to keep multiple callbacks from clobbering one another:
-    /// this forces subsequent callbacks to wait their turn before writing to memory,
-    /// marking buffers full, and/or incrementing the relevant counters
+    /// Pending byte-count of samples to skip before next copy (for inter-device alignment).
+    uint32_t lag = 0;
+    /// Whether @c airspy_init() succeeded (gates @c airspy_exit() in the destructor).
+    bool airspy_opened = false;
+    /// Mutex serialising producer-callback invocations.
     pthread_mutex_t recv_busy;
 
-
     // options
-    /// Frequency of the LO, in Hz
-    uint freq;
-    /// Sampling bandwidth, in Hz. Should be 2500000 or 10000000
-    uint sample_bw;
-    /// Gain of the LNA, should be an integer in the range 0-14
-    int gain_lna;
-    /// Gain of the mixer amp, should be an integer in the range 0-15
-    int gain_mix;
-    /// Gain of the IF amp, should be an integer in the range 0-15
-    int gain_if;
-    /// Whether or not the AirSpy should apply 4.5V DC bias on the RF line.
-    /// Binary flag, should be 0 or 1.
-    int biast_power;
-};
+    /// Frequency of the LO, in Hz.
+    uint32_t freq;
+    /// Sample rate, in samples/s. Should be 2500000 or 10000000.
+    uint32_t _sample_rate;
+    /// Gain of the LNA, 0-14.
+    int _gain_lna;
+    /// Gain of the mixer amp, 0-15.
+    int _gain_mix;
+    /// Gain of the IF amp, 0-15.
+    int _gain_if;
+    /// 4.5V DC bias on the RF input (0/1).
+    int _biast_power;
+    /// Optional specific device serial-number; 0 means open any.
+    long _airspy_sn;
+    /// Optional file path to read raw samples from instead of a device.
+    std::string _airspy_fn;
+    /// Whether to begin streaming immediately on startup.
+    bool _autostart;
 
+    // ADC statistics. The REST adcstat handler requests a dump and waits on
+    // @c adcstat_cv until the producer fills @c adc{rms,mean,railfrac} on the
+    // next frame and flips @c adcstat_ready (published under @c adcstat_mutex).
+    // @c dump_adcstat is atomic so the producer's hot-path check is a
+    // well-defined lock-free read rather than a (technically UB) plain-bool
+    // race against the REST writer; @c adcstat_mutex still guards the
+    // multi-field stats publish/consume.
+    std::mutex adcstat_mutex;
+    std::condition_variable adcstat_cv;
+    std::atomic<bool> dump_adcstat{false};
+    bool adcstat_ready = false;
+    float adcrms = 0;
+    float adcmean = 0;
+    float adcrailfrac = 0;
+};
 
 #endif
