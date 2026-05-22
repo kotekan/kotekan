@@ -157,7 +157,7 @@ void frbNetworkSend::main_thread() {
     int8_t* beams_buffer = (int8_t*)in_buf->wait_for_full_frame(unique_name, frame_id);
     if (beams_buffer == nullptr)
         return;
-    float* offsetscale_buffer = (float*)offsetscale_buf->wait_for_full_frame(unique_name, frame_id);
+    float16_t* offsetscale_buffer = (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, frame_id);
     if (offsetscale_buffer == nullptr)
         return;
 
@@ -165,6 +165,10 @@ void frbNetworkSend::main_thread() {
     auto in_coarse_freq = metadata->get_coarse_freq();
     const auto beams_frame_desc = in_buf->get_ndarray_frame_desc();
     const auto offsetscale_frame_desc = offsetscale_buf->get_ndarray_frame_desc();
+
+    // check that we have cast to the correct type
+    assert(kotekan::GetDataType_v<std::remove_reference_t<decltype(*beams_buffer)>> == beams_frame_desc->get_value_datatype());
+    assert(kotekan::GetDataType_v<std::remove_reference_t<decltype(*offsetscale_buffer)>> == offsetscale_frame_desc->get_value_datatype());
 
     // 384 is integration factor and 2560 fpga sampling time in ns
     const uint32_t fpga_ns = tel.seq_length_nsec();
@@ -237,7 +241,7 @@ void frbNetworkSend::main_thread() {
             if (beams_buffer == nullptr)
                 break;
             offsetscale_buffer =
-                (float*)offsetscale_buf->wait_for_full_frame(unique_name, frame_id);
+                (float16_t*)offsetscale_buf->wait_for_full_frame(unique_name, frame_id);
             if (offsetscale_buffer == nullptr)
                 break;
 
