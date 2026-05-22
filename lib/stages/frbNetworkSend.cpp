@@ -280,7 +280,7 @@ void frbNetworkSend::main_thread() {
         }
         DEBUG("Beam offset: {:d}", local_beam_offset);
 
-        // r8 is e_stream (or link) below
+        // r4 is e_stream (or link) below
         for (int fbar64 = 0; fbar64 < num_frequencies / _nfreq_coarse; ++fbar64)
         for (int ttilde16_low16_by_packets_per_stream = 0; ttilde16_low16_by_packets_per_stream < 16/packets_per_stream; ++ttilde16_low16_by_packets_per_stream)
         for (int frame = 0; frame < packets_per_stream; frame++) {
@@ -301,10 +301,10 @@ void frbNetworkSend::main_thread() {
                               && (_ping_dead_threshold == std::chrono::seconds::zero()
                                   || dst.live)) {
 
-                              const int r8 = e_stream;
+                              const int r4 = e_stream;
                               const int ttilde16_low16 = ttilde16_low16_by_packets_per_stream * packets_per_stream + frame;
                               const int frb_packet_num =
-                                r8 * num_frequencies / _nfreq_coarse * 16 +
+                                r4 * num_frequencies / _nfreq_coarse * 16 +
                                 fbar64 * 16 +
                                 ttilde16_low16;
 
