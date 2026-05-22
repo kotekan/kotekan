@@ -63,14 +63,16 @@ def extract_protected_regions(text: str) -> list[str]:
                 if s2 == OFF_MARKER:
                     raise ValueError(f"nested {OFF_MARKER} at line {j + 1}")
                 if s2 == ON_MARKER:
-                    regions.append("".join(lines[start:j + 1]))
+                    regions.append("".join(lines[start : j + 1]))
                     i = j + 1
                     break
                 j += 1
             else:
                 raise ValueError(f"unterminated {OFF_MARKER} at line {start + 1}")
         elif s == ON_MARKER:
-            raise ValueError(f"stray {ON_MARKER} at line {i + 1} (no preceding {OFF_MARKER})")
+            raise ValueError(
+                f"stray {ON_MARKER} at line {i + 1} (no preceding {OFF_MARKER})"
+            )
         else:
             i += 1
     return regions
@@ -98,7 +100,7 @@ def restore_protected_regions(text: str, originals: list[str]) -> str:
             try:
                 out.append(next(it))
             except StopIteration:
-                out.append("".join(lines[i:j + 1]))
+                out.append("".join(lines[i : j + 1]))
             i = j + 1
         else:
             out.append(lines[i])
@@ -120,7 +122,7 @@ def main(argv: list[str]) -> int:
     yaml.preserve_quotes = True
     yaml.indent(mapping=4, sequence=6, offset=4)
     yaml.explicit_start = True
-    yaml.width = 2**31 - 1  # disable width-based wrapping
+    yaml.width = 2 ** 31 - 1  # disable width-based wrapping
 
     errors = 0
     fixed = 0

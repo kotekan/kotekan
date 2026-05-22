@@ -1,14 +1,14 @@
+---
 ##########################################
 #
 ##########################################
----
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: debug
 #    log_level: info
-cpu_affinity: [2,3,4,5,8,9,10,11]
+cpu_affinity: [2, 3, 4, 5, 8, 9, 10, 11]
 frame_arrival_period: 0.001
 
 buffer_depth: 4
@@ -60,24 +60,24 @@ gpuA:
     log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list
-    - name: cudaInputData
-      in_buf: host_in
-      gpu_mem: in
-    - name: cudaSyncInput
-    - name: cudaRechunk
-      gpu_mem_input: in
-      gpu_mem_output: chunk
-      output_async: true
+        - name: cudaInputData
+          in_buf: host_in
+          gpu_mem: in
+        - name: cudaSyncInput
+        - name: cudaRechunk
+          gpu_mem_input: in
+          gpu_mem_output: chunk
+          output_async: true
       #input_columns_field: frb_bf_bytes_per_freq
-      cols_input: 1
-      cols_output: rechunk_factor
-      rows: input_size
-      set_flag: rechunked
-    - name: cudaSyncOutput
-      required_flag: rechunked
-    - name: cudaOutputData
-      required_flag: rechunked
-      out_buf: host_mid
+          cols_input: 1
+          cols_output: rechunk_factor
+          rows: input_size
+          set_flag: rechunked
+        - name: cudaSyncOutput
+          required_flag: rechunked
+        - name: cudaOutputData
+          required_flag: rechunked
+          out_buf: host_mid
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -92,13 +92,13 @@ gpuB:
     log_profiling: true
     kernel_path: "../../lib/cuda/kernels/"
     commands: &command_list2
-    - name: cudaInputData
-      in_buf: host_mid
+        - name: cudaInputData
+          in_buf: host_mid
     #- name: cudaSyncOutput
-    - name: cudaOutputData
+        - name: cudaOutputData
       #gpu_mem: in
-      gpu_mem: chunk
-      out_buf: host_out
+          gpu_mem: chunk
+          out_buf: host_out
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
