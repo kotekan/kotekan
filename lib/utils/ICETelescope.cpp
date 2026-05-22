@@ -7,6 +7,7 @@
 #include "geoUtil.hpp"         // for GeoFrame
 #include "kotekanLogging.hpp"  // for WARN, INFO, FATAL_ERROR, FATAL_ERROR_NON_OO
 #include "restClient.hpp"      // for restClient
+#include "visUtil.hpp"         // for input_ctype
 #include "fmt.hpp"             // for compile_string_to_view, format, format_string
 #include "json.hpp"            // for basic_json, input_adapter, json
 
@@ -55,6 +56,21 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
     if (require_gps && !gps_enabled) {
         throw std::runtime_error("The system requires a GPS time, but none was found.");
     }
+
+    _num_elements = config.get<uint64_t>(path, "num_elements");
+    const auto input_tuple = ICETelescope::parse_reorder_default(config, path, _num_elements);
+    _input_reorder = std::get<0>(input_tuple);
+    _input_map = std::get<1>(input_tuple);
+    if (_input_reorder.size() != _num_elements) {
+        FATAL_ERROR("input_reorder has size {:d}, should be num_elements = {:d}",
+                _input_reorder.size(), _num_elements);
+    }
+    if (_input_reorder.size() != _num_elements) {
+        FATAL_ERROR("input_map (from input_reorder) has size {:d}, should be num_elements = {:d}",
+                _input_map.size(), _num_elements);
+    }
+
+    _correlator_stations = invert_reorder_table(_input_reorder);
 }
 
 
@@ -211,23 +227,6 @@ uint8_t ICETelescope::nyquist_zone() const {
     return ny_zone;
 }
 
-station_id_t ICETelescope::element_index_to_station_id([[maybe_unused]] uint64_t el_idx, [[maybe_unused]] ElementOrder ord) const {
-    FATAL_ERROR("element_index_to_station_id not implemented.");
-}
-
-uint64_t ICETelescope::station_id_to_element_index([[maybe_unused]] station_id_t st_id, [[maybe_unused]] ElementOrder ord) const {
-    FATAL_ERROR("station_id_to_element_index not implemented.");
-}
-
-grid_idx_2d_t ICETelescope::station_id_to_grid_indices([[maybe_unused]] station_id_t st_id) const {
-    return grid_idx_2d_t{static_cast<int32_t>(st_id), static_cast<int32_t>(st_id)};
-    FATAL_ERROR("station_id_to_grid_indices not implemented.");
-} 
-
-vec3d_t ICETelescope::station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const {
-    FATAL_ERROR("station_id_to_feed_position_m not implemented.");
-}
-
 GeoFrame ICETelescope::grid_frame_from_config(const kotekan::Config& config,
                                               const std::string& path) {
 
@@ -242,6 +241,62 @@ GeoFrame ICETelescope::grid_frame_from_config(const kotekan::Config& config,
 
     return grid_frame;
 }
+
+station_id_t ICETelescope::element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const {
+    if (el_idx >= _num_elements) 
+        FATAL_ERROR("Element idx {:d} >= num_elements {:d}", el_idx, _num_elements);
+
+    if (ord == ElementOrder::CHIMECorrelator) {
+        return _correlator_stations.at(el_idx);
+    } else if (ord == ElementOrder::CHIMECylinder) {
+        return el_idx;
+    } else if (ord == ElementOrder::CHIMEBeamformer) {
+        const uint64_t polarization = el_idx / 1024;
+        const uint64_t cylinder = (el_idx % 1024) / 256;
+        const uint64_t dish = (el_idx % 1024) % 256;
+        return encode_station_id(cylinder, polarization, dish);
+    }
+
+    FATAL_ERROR("Cannot handle element order {}.", ord);
+}
+
+uint64_t ICETelescope::station_id_to_element_index(station_id_t st_id, ElementOrder ord) const {
+    if (st_id >= _num_elements) 
+        FATAL_ERROR("Station ID {:d} >= num_elements {:d}", st_id, _num_elements);
+
+    if (ord == ElementOrder::CHIMECorrelator) {
+        return _input_reorder.at(st_id);
+    } else if (ord == ElementOrder::CHIMECylinder) {
+        return st_id;
+    } else if (ord == ElementOrder::CHIMEBeamformer) {
+        uint64_t cylinder, polarization, dish;
+        decode_station_id(st_id, cylinder, polarization, dish);
+        return polarization * 1024 + cylinder * 256 + dish;;
+    }
+
+    FATAL_ERROR("Cannot handle element order {}.", ord);
+}
+
+grid_idx_2d_t ICETelescope::station_id_to_grid_indices(station_id_t st_id) const {
+    if (st_id >= _num_elements) 
+        FATAL_ERROR("Station ID {:d} >= num_elements {:d}", st_id, _num_elements);
+    
+    uint64_t cylinder, polarization, dish;
+    decode_station_id(st_id, cylinder, polarization, dish);
+
+    return grid_idx_2d_t{static_cast<int32_t>(cylinder), static_cast<int32_t>(dish)};
+} 
+
+vec3d_t ICETelescope::station_id_to_feed_position_m(station_id_t st_id) const {
+    if (st_id >= _num_elements) 
+        FATAL_ERROR("Station ID {:d} >= num_elements {:d}", st_id, _num_elements);
+
+    uint64_t cylinder, polarization, dish;
+    decode_station_id(st_id, cylinder, polarization, dish);
+
+    return vec3d_t{cylinder * _feed_sep_x_m, dish * _feed_sep_y_m, 0.0};
+}
+
 
 ice_stream_id_t ice_extract_stream_id(const stream_t encoded_stream_id) {
     ice_stream_id_t stream_id;
@@ -264,3 +319,83 @@ stream_t ice_encode_stream_id(const ice_stream_id_t s_stream_id) {
 
     return {(uint64_t)stream_id};
 }
+void ICETelescope::decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization, uint64_t& dish) {
+    cylinder = st_id / 512;
+    polarization = (st_id % 512) / 256;
+    dish = (st_id % 512) % 256;
+}
+
+station_id_t ICETelescope::encode_station_id(uint64_t cylinder, uint64_t polarization, uint64_t dish) {
+    return cylinder * 512 + polarization * 256 + dish;
+}
+
+std::tuple<uint32_t, uint32_t, std::string> ICETelescope::parse_reorder_single(nlohmann::json j) {
+    if (!j.is_array() || j.size() != 3) {
+        throw std::runtime_error("Could not parse json item for input reordering: " + j.dump());
+    }
+
+    uint32_t adc_id = j[0].get<int>();
+    uint32_t chan_id = j[1].get<int>();
+    std::string serial = j[2].get<std::string>();
+
+    return std::make_tuple(adc_id, chan_id, serial);
+}
+
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> ICETelescope::parse_reorder(nlohmann::json& j) {
+
+    uint32_t adc_id, chan_id;
+    std::string serial;
+
+    std::vector<uint32_t> adc_ids;
+    std::vector<input_ctype> inputmap;
+
+    if (!j.is_array()) {
+        throw std::runtime_error("Was expecting list of input orders.");
+    }
+
+    for (auto& element : j) {
+        std::tie(adc_id, chan_id, serial) = parse_reorder_single(element);
+
+        adc_ids.push_back(adc_id);
+        inputmap.emplace_back(chan_id, serial);
+    }
+
+    return std::make_tuple(adc_ids, inputmap);
+}
+
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> ICETelescope::default_reorder(size_t num_elements) {
+
+    std::vector<uint32_t> adc_ids;
+    std::vector<input_ctype> inputmap;
+
+    for (uint32_t i = 0; i < num_elements; i++) {
+        adc_ids.push_back(i);
+        inputmap.emplace_back(i, "INVALID");
+    }
+
+    return std::make_tuple(adc_ids, inputmap);
+}
+
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+ICETelescope::parse_reorder_default(const kotekan::Config& config, const std::string& path, uint64_t num_elements) {
+
+    try {
+        nlohmann::json reorder_config = config.get<std::vector<nlohmann::json>>(path, "input_reorder");
+
+        return parse_reorder(reorder_config);
+    } catch (const std::exception& e) {
+        return default_reorder(num_elements);
+    }
+}
+std::vector<station_id_t> ICETelescope::invert_reorder_table(const std::vector<uint32_t>& input_reorder) 
+{
+    std::vector<station_id_t> correlator_stations(input_reorder.size());
+
+    for (station_id_t st_id = 0; st_id < input_reorder.size(); st_id++) {
+        uint32_t corr_idx = input_reorder.at(st_id);
+        correlator_stations.at(corr_idx) = st_id;
+    }
+
+    return correlator_stations;
+}
+

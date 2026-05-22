@@ -4,6 +4,7 @@
 #include "Config.hpp"    // for Config
 #include "Telescope.hpp" // for freq_id_t, stream_t, Telescope
 #include "geoUtil.hpp"   // for GeoFrame
+#include "visUtil.hpp"   // for input_ctype
 
 #include <stdint.h> // for uint32_t, uint8_t, uint64_t
 #include <string>   // for string, basic_string
@@ -89,6 +90,21 @@ protected:
 
     static GeoFrame grid_frame_from_config(const kotekan::Config& config, const std::string& path);
 
+    static void decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization, uint64_t& dish);
+    static station_id_t encode_station_id(uint64_t cylinder, uint64_t polarization, uint64_t dish);
+
+    /**
+     * @brief Parse the reordering configuration section
+     * @param config    Configuration handle.
+     * @param base_path Path into YAML file to search from.
+     * @param num_elements Total number of inputs (2048 for production CHIME)
+     * @return          Tuple containing a vector of the input reorder map, and a
+     *                  vector of the input labels for the index map.
+     */
+    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder_default(const kotekan::Config& config, const std::string& path, uint64_t num_elements);
+
+    static std::vector<station_id_t> invert_reorder_table(const std::vector<uint32_t>& input_reorder);
+
     // The number of frequencies per stream
     uint32_t _num_freq_per_stream;
 
@@ -116,11 +132,27 @@ protected:
     bool gps_enabled = false;
     uint64_t time0_ns = 0;
     uint64_t dt_ns;
+    
+    /// Number of elements (2048 for production CHIME)
+    uint64_t _num_elements;
+
+    /// Encodes CHIMECorrelator order
+    std::vector<uint32_t> _input_reorder;
+    /// The inputs index map
+    std::vector<input_ctype> _input_map;
+    /// Encodes inverse CHIMECorrelator order
+    std::vector<station_id_t> _correlator_stations;
 
     // A forwarding constructor, such that derived classes can skip the main
     // ICETelescope constructor but still construct the Telescope class
     template<typename... Args>
     ICETelescope(Args&&... args) : Telescope(std::forward<Args>(args)...){};
+
+private:
+    
+    static std::tuple<uint32_t, uint32_t, std::string> parse_reorder_single(nlohmann::json j);
+    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder(nlohmann::json& j);
+    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> default_reorder(size_t num_elements);
 };
 
 
