@@ -62,6 +62,7 @@ gps_time:
 
 earth_rotation_data:
   kotekan_update_endpoint: json
+  # yamlfix:off
   earth_orientation_parameter_table: [
     {
       t_inst_ns: 1750000000000000000,
@@ -74,6 +75,7 @@ earth_rotation_data:
       xp_as: 0.3,
       yp_as: 0.4
     }]
+  # yamlfix:on
 
   
 

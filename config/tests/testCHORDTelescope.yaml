@@ -18,6 +18,7 @@ nsec_in_day: sec_in_day * giga
 
 earth_rotation_data:
   kotekan_update_endpoint: "json"
+  # yamlfix:off
   earth_orientation_parameter_table: [
 # (Un)comment out to use a particular EOP table.
 #      {
@@ -31,6 +32,7 @@ earth_rotation_data:
 #        xp_as: 3.0,
 #        yp_as: 4.0,
     ]
+  # yamlfix:on
 
 
 telescope:
@@ -50,6 +52,7 @@ telescope:
   dish_separation_x_m: 6.3
   dish_separation_y_m: 8.5
 
+  # yamlfix:off
   dish_inputs: [
     {dish_idx: 0, grid_x_idx: 0, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A01},
     {dish_idx: 1, grid_x_idx: 1, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A02},
@@ -62,6 +65,7 @@ telescope:
     {dish_idx: 8, grid_x_idx: 0, grid_y_idx: 15, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-P01},
     {dish_idx: 9, grid_x_idx: 15, grid_y_idx: 15, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-P16}
   ]
+  # yamlfix:on
 
 # (Un)comment out this block to test a particular GPS time
 # gps_time:

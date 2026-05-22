@@ -40,6 +40,7 @@ telescope:
 
   dish_separation_x_m: 6.300156854906823
   dish_separation_y_m: 8.500057809796308
+  # yamlfix:off
   dish_inputs: [
     {dish_idx: 0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01},
     {dish_idx: 1, grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A02},
@@ -49,9 +50,11 @@ telescope:
     {dish_idx: 5, grid_x_idx: 0,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H01},
     {dish_idx: 6, grid_x_idx: 7,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H08}
   ]
+  # yamlfix:on
 
 earth_rotation_data:
   kotekan_update_endpoint: json
+  # yamlfix:off
   earth_orientation_parameter_table: [
     {
       t_inst_ns: 1764575999000000000,
@@ -64,6 +67,7 @@ earth_rotation_data:
       xp_as: 0.13,
       yp_as: 0.32
     }]
+  # yamlfix:on
 
 gps_time:
   frame0_nano: start_time_s * giga
