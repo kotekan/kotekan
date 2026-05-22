@@ -244,13 +244,28 @@ public:
             const std::ptrdiff_t str_freq = str_beamR * frb2_num_beams;
 
             // TODO: Take these from the telescope object
-            const float sigmax_x = 6.3;
-            const float sigmax_y = 0;
-            const float sigmax_z = 0;
+            float sigmax_x, sigmax_y, sigmax_z;
+            float sigmay_x, sigmay_y, sigmay_z;
 
-            const float sigmay_x = 0;
-            const float sigmay_y = 8.5;
-            const float sigmay_z = 0;
+            if(telescope.get_name() == "CHIMETelescope") {
+                // taken from FEngine simulator chime.jl for now, not quite the
+                // real thing
+                sigmax_x = 20.0;
+                sigmax_y = 0;
+                sigmax_z = 0;
+
+                sigmay_x = 0;
+                sigmay_y = 0.390625;
+                sigmay_z = 0;
+            } else { // CHORD, one assumes
+                sigmax_x = 6.3;
+                sigmax_y = 0;
+                sigmax_z = 0;
+
+                sigmay_x = 0;
+                sigmay_y = 8.5;
+                sigmay_z = 0;
+            }
 
             // avoid over-subscribing the CPUs we can run on
             cpu_set_t available_cpus;
