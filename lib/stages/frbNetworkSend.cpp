@@ -4,7 +4,7 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for get_chord_etadata
+#include "chordMetadata.hpp"     // for get_chord_metadata
 #include "frb_functions.h"       // for FRBHeader
 #include "kotekanLogging.hpp"    // for DEBUG, INFO, WARN, FATAL_ERROR, ERROR
 #include "network_functions.hpp" // for receive_ping, send_ping
@@ -162,6 +162,7 @@ void frbNetworkSend::main_thread() {
         return;
 
     auto metadata = get_chord_metadata(in_buf, frame_id);
+    auto in_coarse_freq = metadata->get_coarse_freq();
     const auto beams_frame_desc = in_buf->get_ndarray_frame_desc();
     const auto offsetscale_frame_desc = offsetscale_buf->get_ndarray_frame_desc();
 
@@ -240,12 +241,14 @@ void frbNetworkSend::main_thread() {
             if (offsetscale_buffer == nullptr)
                 break;
 
+            metadata = get_chord_metadata(in_buf, frame_id);
+            in_coarse_freq = metadata->get_coarse_freq();
+
             clock_gettime(CLOCK_MONOTONIC, &t1);
 
             add_nsec(t0, time_interval);
 
             // discipline the monotonic clock with the fpga time stamps
-            metadata = get_chord_metadata(in_buf, frame_id);
             const uint64_t fpga_samples_skipped =
                 metadata->get_fpga_seq_num() - last_fpga_count - samples_per_frame;
             if (fpga_samples_skipped) {
@@ -345,9 +348,15 @@ void frbNetworkSend::main_thread() {
 
                               uint16_t* coarse_freq_ids =
                                   reinterpret_cast<uint16_t*>(beam_ids + _nbeams);
-                              std::copy_n(metadata->get_coarse_freq().begin()
-                                              + fbar64 * _nfreq_coarse,
-                                          _nfreq_coarse, coarse_freq_ids);
+                              // for unchannelized data coarse_freq holds the
+                              // source frequency for each fine channel, so
+                              // repeats _factor_upchan_out times
+                              for(int f = 0; f < _nfreq_coarse; ++f) {
+                                  coarse_freq_ids[f] = in_coarse_freq.at((fbar64 * _nfreq_coarse + f) * _factor_upchan_out);
+                                  for(int ff = 0; ff < _factor_upchan_out; ++ff) {
+                                      assert(coarse_freq_ids[f] == in_coarse_freq.at((fbar64 * _nfreq_coarse + f) * _factor_upchan_out + ff));
+                                  }
+                              }
 
                               float* scale =
                                   reinterpret_cast<float*>(coarse_freq_ids + _nfreq_coarse);
