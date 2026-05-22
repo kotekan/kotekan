@@ -10,7 +10,6 @@
 #include "Telescope.hpp"        // for ElementOrder
 #include "buffer.hpp"           // for Buffer
 #include "bufferContainer.hpp"  // for bufferContainer
-#include "visUtil.hpp"          // for input_ctype
 
 /**
  * @class parseReorderDefault
