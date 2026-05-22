@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Round-trip yaml via ruamel.yaml: fixes indent and adds `---`.
 
-Raises on duplicate keys / syntax errors. A pre-pass relocates any
-existing `---` to line 1 (or inserts one if missing) so leading comments
-end up between `---` and the first key, where ruamel preserves them.
+Raises on duplicate keys / syntax errors. A pre-pass relocates `---` to
+line 1. Regions wrapped in `# yamlfix:off` / `# yamlfix:on` comments are
+preserved byte-for-byte (useful for hand-laid tables).
 """
 
 import sys
@@ -16,6 +16,9 @@ from ruamel.yaml.error import YAMLError
 EXCLUDED_DIRS = {"build", "external", ".venv", "scratch", "julia", ".git"}
 EXCLUDED_PREFIXES = ("build-",)
 EXCLUDED_PATHS = ("lib/cuda/generated", ".github/workflows")
+
+OFF_MARKER = "# yamlfix:off"
+ON_MARKER = "# yamlfix:on"
 
 
 def excluded(rel: Path) -> bool:
@@ -43,6 +46,66 @@ def ensure_doc_start_at_top(text: str) -> str:
     return "---\n" + "".join(lines)
 
 
+def extract_protected_regions(text: str) -> list[str]:
+    """Return the verbatim text (including markers) of each
+    `# yamlfix:off` ... `# yamlfix:on` region, in source order. Raises
+    on stray `:on`, nested `:off`, or unterminated `:off`."""
+    lines = text.splitlines(keepends=True)
+    regions = []
+    i = 0
+    while i < len(lines):
+        s = lines[i].strip()
+        if s == OFF_MARKER:
+            start = i
+            j = i + 1
+            while j < len(lines):
+                s2 = lines[j].strip()
+                if s2 == OFF_MARKER:
+                    raise ValueError(f"nested {OFF_MARKER} at line {j + 1}")
+                if s2 == ON_MARKER:
+                    regions.append("".join(lines[start:j + 1]))
+                    i = j + 1
+                    break
+                j += 1
+            else:
+                raise ValueError(f"unterminated {OFF_MARKER} at line {start + 1}")
+        elif s == ON_MARKER:
+            raise ValueError(f"stray {ON_MARKER} at line {i + 1} (no preceding {OFF_MARKER})")
+        else:
+            i += 1
+    return regions
+
+
+def restore_protected_regions(text: str, originals: list[str]) -> str:
+    """Replace each `# yamlfix:off`..`# yamlfix:on` block in `text` with
+    the matching entry from `originals` (verbatim). Markers' indentation
+    after ruamel may differ from source; we still match by line content
+    after `.strip()`."""
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    it = iter(originals)
+    i = 0
+    while i < len(lines):
+        if lines[i].strip() == OFF_MARKER:
+            j = i + 1
+            while j < len(lines) and lines[j].strip() != ON_MARKER:
+                j += 1
+            if j >= len(lines):
+                # ruamel ate the closing marker; keep what we have.
+                out.append(lines[i])
+                i += 1
+                continue
+            try:
+                out.append(next(it))
+            except StopIteration:
+                out.append("".join(lines[i:j + 1]))
+            i = j + 1
+        else:
+            out.append(lines[i])
+            i += 1
+    return "".join(out)
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print("usage: yamlfix_kotekan.py <root>", file=sys.stderr)
@@ -68,6 +131,12 @@ def main(argv: list[str]) -> int:
             src = path.read_text()
             staged = ensure_doc_start_at_top(src)
             try:
+                protected = extract_protected_regions(staged)
+            except ValueError as e:
+                print(f"{path}: marker error: {e}", file=sys.stderr)
+                errors += 1
+                continue
+            try:
                 data = yaml.load(staged)
             except YAMLError as e:
                 print(f"{path}: {type(e).__name__}: {e}", file=sys.stderr)
@@ -75,7 +144,7 @@ def main(argv: list[str]) -> int:
                 continue
             buf = StringIO()
             yaml.dump(data, buf)
-            out = buf.getvalue()
+            out = restore_protected_regions(buf.getvalue(), protected)
             if out != src:
                 path.write_text(out)
                 fixed += 1
