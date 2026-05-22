@@ -97,6 +97,7 @@ void EigenVisIter::main_thread() {
     uint32_t num_elements = 0;
     bool initialized = false;
 
+    // Force serial BLAS; Blaze's OpenMP path provides intra-op parallelism.
     openblas_set_num_threads(1);
 
     while (!stop_thread) {
