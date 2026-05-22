@@ -285,7 +285,7 @@ void frbNetworkSend::main_thread() {
         DEBUG("Beam offset: {:d}", local_beam_offset);
 
         // r4 is e_stream (or link) below
-        for (int fbar64 = 0; fbar64 < num_frequencies / _nfreq_coarse; ++fbar64)
+        for (int fbar64 = 0; fbar64 < num_frequencies / _nfreq_coarse; ++fbar64) // TODO: think about swapping this with the ttilde16_low16_by_packets_per_stream loop to keep all frequencies closer together in the network stream
         for (int ttilde16_low16_by_packets_per_stream = 0; ttilde16_low16_by_packets_per_stream < 16/packets_per_stream; ++ttilde16_low16_by_packets_per_stream)
         for (int frame = 0; frame < packets_per_stream; frame++) {
               const int nstreams = _total_nbeams / _nbeams;
@@ -295,6 +295,7 @@ void frbNetworkSend::main_thread() {
                       (my_sequence_id + stream)
                       % (_total_nbeams
                          / _nbeams); // making sure no two nodes send packets to same L1 node
+                  assert(_total_nbeams / _nbeams == nstreams);
                   CLOCK_ABS_NANOSLEEP(CLOCK_MONOTONIC, t1);
 
                   for (int link = 0; link < number_of_l1_links; link++) {
