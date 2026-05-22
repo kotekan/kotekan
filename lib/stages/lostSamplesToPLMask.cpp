@@ -1,22 +1,24 @@
 #include "lostSamplesToPLMask.hpp"
 
-#include "Config.hpp"          // for Config
-#include "Metadata.hpp"        // for GenericNDArray
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
-#include "nt_memset.h"         // for nt_memset
+#include <assert.h>             // for assert
+#include <fmt/core.h>           // for format
+#include <stddef.h>             // for ptrdiff_t
+#include <algorithm>            // for copy, max
+#include <functional>           // for bind, function
+#include <memory>               // for shared_ptr, __shared_ptr_access
+#include <vector>               // for vector
+#include <cstring>              // for size_t, memcpy
 
-#include "json.hpp" // for basic_json, json, iter_impl
-
-#include <algorithm>  // for max
-#include <assert.h>   // for assert
-#include <functional> // for bind, function
-#include <memory>     // for __shared_ptr_access, shared_ptr
-#include <string.h>   // for strncpy, memcpy
-#include <string.h>   // for memcpy, size_t
-#include <vector>     // for vector
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
+#include "json.hpp"             // for basic_json, json, iter_impl
+#include "DataType.hpp"         // for DataType, GetType_t
+#include "NDArray.hpp"          // for GenericNDArray
+#include "fmt.hpp"              // for compile_string_to_view
+#include "kotekanLogging.hpp"   // for FATAL_ERROR
 
 using kotekan::bufferContainer;
 using kotekan::Config;

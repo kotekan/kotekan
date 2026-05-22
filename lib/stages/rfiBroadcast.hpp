@@ -6,12 +6,15 @@
 #ifndef RFI_BROADCAST
 #define RFI_BROADCAST
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
+#include <netinet/in.h>         // for sockaddr_in
+#include <stddef.h>             // for size_t
+#include <stdint.h>             // for uint16_t
+#include <string>               // for string, basic_string
 
-#include <arpa/inet.h>
-#include <string> // for string
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "buffer.hpp"           // for Buffer
 
 /*
  * @class rfiBroadcast

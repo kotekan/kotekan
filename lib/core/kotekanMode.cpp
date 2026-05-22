@@ -1,33 +1,34 @@
 #include "kotekanMode.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for StageFactory
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for StageInfo, GenericBuffer
-#include "bufferFactory.hpp"     // for bufferFactory
-#include "configTracker.hpp"     // for ConfigTracker
-#include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for datasetManager
-#include "kotekanLogging.hpp"    // for INFO_NON_OO, ERROR_NON_OO
-#include "kotekanTrackers.hpp"   // for KotekanTrackers
-#include "metadataFactory.hpp"   // for metadataFactory
-#include "prometheusMetrics.hpp" // for Metrics
-#include "restServer.hpp"        // for restServer, connectionInstance
-#include "version.h"             // for get_cmake_build_options, get_git_branch, get_git_commit...
+#include <arpa/inet.h>            // for inet_ntop
+#include <ifaddrs.h>              // for ifaddrs, freeifaddrs, getifaddrs
+#include <net/if.h>               // for IFF_LOOPBACK, IFF_UP
+#include <netinet/in.h>           // for INET_ADDRSTRLEN, sockaddr_in
+#include <stdint.h>               // for uint16_t
+#include <fmt/core.h>             // for format, format_string
+#include <sys/socket.h>           // for AF_INET, sockaddr
+#include <exception>              // for exception
+#include <functional>             // for bind, function, _1
+#include <string>                 // for basic_string, string, operator==, char_traits
+#include <utility>                // for pair
 
-#include "fmt.hpp"  // for compile_string_to_view, format, format_string
-#include "json.hpp" // for json, basic_json
-
-#include <arpa/inet.h>  // for inet_ntop
-#include <exception>    // for exception
-#include <functional>   // for bind, function, _1
-#include <ifaddrs.h>    // for getifaddrs, freeifaddrs, ifaddrs
-#include <net/if.h>     // for IFF_LOOPBACK, IFF_UP
-#include <netinet/in.h> // for sockaddr_in, AF_INET
-#include <stdint.h>     // for uint16_t
-#include <string>       // for string
-#include <utility>      // for pair
+#include "Config.hpp"             // for Config
+#include "Stage.hpp"              // for Stage
+#include "StageFactory.hpp"       // for StageFactory
+#include "Telescope.hpp"          // for Telescope
+#include "buffer.hpp"             // for StageInfo, GenericBuffer
+#include "bufferFactory.hpp"      // for bufferFactory
+#include "configTracker.hpp"      // for ConfigTracker
+#include "configUpdater.hpp"      // for configUpdater
+#include "datasetManager.hpp"     // for datasetManager
+#include "kotekanLogging.hpp"     // for INFO_NON_OO, ERROR_NON_OO
+#include "kotekanTrackers.hpp"    // for KotekanTrackers
+#include "metadataFactory.hpp"    // for metadataFactory
+#include "prometheusMetrics.hpp"  // for Metrics
+#include "restServer.hpp"         // for restServer, connectionInstance
+#include "version.h"              // for get_cmake_build_options, get_git_branch, get_git_commit...
+#include "fmt.hpp"                // for compile_string_to_view
+#include "json.hpp"               // for json, basic_json
 
 using namespace std::placeholders;
 

@@ -1,21 +1,19 @@
 #include "CHORDTelescope.hpp"
 
-#include "Telescope.hpp"      // for Telescope, freq_id_t, REGISTER_TELESCOPE, _factory_aliasTe...
-#include "kotekanLogging.hpp" // for WARN, INFO, DEBUG
-#include "restClient.hpp"     // for restClient
-#include "timeUtil.hpp" // for EOP, get_ERA_from_UT1, get_UT1_from_time, nanosec_i64_to_timespec
+#include <assert.h>            // for assert
+#include <bits/chrono.h>       // for duration_cast, duration, nanoseconds, system_clock
+#include <fmt/core.h>          // for format, format_string
+#include <algorithm>           // for max, min
+#include <stdexcept>           // for runtime_error
+#include <vector>              // for vector
+#include <cmath>               // for sin, cos, floor, ceil, M_PI, abs
 
-#include "fmt.hpp"  // for compile_string_to_view
-#include "json.hpp" // for basic_json, json, iter_impl, input_adapter
-
-#include <algorithm>  // for lower_bound, copy, sort, max
-#include <assert.h>   // for assert
-#include <chrono>     // for system_clock, duration_cast, nanoseconds
-#include <exception>  // for exception
-#include <functional> // for bind, _1, function
-#include <math.h>     // for sin, cos, M_PI
-#include <stdexcept>  // for runtime_error
-#include <vector>     // for vector
+#include "Telescope.hpp"       // for freq_id_t, Telescope, nyquist_zone_t, stream_t, REGISTER_T...
+#include "kotekanLogging.hpp"  // for FATAL_ERROR_NON_OO, WARN_NON_OO, INFO_NON_OO, DEBUG, FATAL...
+#include "restClient.hpp"      // for restClient
+#include "timeUtil.hpp"        // for EOP, nanosec_i64_to_timespec
+#include "fmt.hpp"             // for compile_string_to_view
+#include "json.hpp"            // for basic_json, operator==, json, input_adapter
 
 
 REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");

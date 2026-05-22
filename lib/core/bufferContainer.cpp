@@ -1,11 +1,10 @@
 #include "bufferContainer.hpp"
 
-#include "buffer.hpp" // for GenericBuffer, Buffer, is_frame_buffer
+#include <fmt/core.h>  // for format
+#include <stdexcept>   // for runtime_error
 
-#include "fmt.hpp"      // for format, fmt
-#include "fmt/format.h" // for compile_string_to_view
-
-#include <stdexcept> // for runtime_error
+#include "buffer.hpp"  // for GenericBuffer, Buffer, is_frame_buffer
+#include "fmt.hpp"     // for compile_string_to_view, fmt
 
 using std::map;
 using std::string;

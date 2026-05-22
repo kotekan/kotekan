@@ -1,15 +1,15 @@
 #include "recvSingleDishVDIF.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for INFO
+#include <stddef.h>             // for size_t
+#include <fmt/core.h>           // for format
+#include <functional>           // for bind, function
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <functional> // for bind, function
-#include <stddef.h>   // for size_t
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for INFO
+#include "fmt.hpp"              // for compile_string_to_view
 
 
 using kotekan::bufferContainer;

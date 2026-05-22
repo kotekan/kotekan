@@ -1,22 +1,22 @@
 #include "bufferStatus.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"            // for Buffer, GenericBuffer, is_frame_buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for INFO
-#include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
-#include "visUtil.hpp"           // for current_time
+#include <stdint.h>               // for uint32_t
+#include <unistd.h>               // for usleep
+#include <fmt/core.h>             // for format
+#include <algorithm>              // for copy, equal, max
+#include <functional>             // for bind, function
+#include <string>                 // for basic_string, allocator, string
+#include <utility>                // for pair
+#include <vector>                 // for vector
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <algorithm>  // for copy, equal, max
-#include <functional> // for bind, function
-#include <stdint.h>   // for uint32_t
-#include <string>     // for basic_string, allocator, string
-#include <unistd.h>   // for usleep
-#include <utility>    // for pair
-#include <vector>     // for vector
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"             // for Buffer, GenericBuffer, is_frame_buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "kotekanLogging.hpp"     // for INFO
+#include "prometheusMetrics.hpp"  // for Gauge, Metrics, MetricFamily
+#include "visUtil.hpp"            // for current_time
+#include "fmt.hpp"                // for compile_string_to_view
 
 using kotekan::bufferContainer;
 using kotekan::Config;

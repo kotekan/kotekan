@@ -1,18 +1,18 @@
 #include "configUpdater.hpp"
 
-#include "Config.hpp"         // for Config
-#include "Stage.hpp"          // for Stage
-#include "kotekanLogging.hpp" // for WARN_NON_OO, DEBUG_NON_OO, INFO_NON_OO, ERROR_NON_OO, FATA...
-#include "restServer.hpp"     // for connectionInstance, HTTP_RESPONSE, HTTP_RESPONSE::BAD_REQUEST
-#include "visUtil.hpp"        // for json_type_name
+#include <fmt/core.h>          // for format
+#include <algorithm>           // for find, count, max
+#include <exception>           // for exception
+#include <stdexcept>           // for runtime_error, out_of_range
+#include <utility>             // for pair
 
-#include "fmt.hpp"  // for format, fmt
-#include "json.hpp" // for json, basic_json<>::iterator, basic_json, iter_impl, basic...
-
-#include <algorithm> // for find, count
-#include <exception> // for exception
-#include <stdexcept> // for runtime_error
-#include <utility>   // for pair
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "kotekanLogging.hpp"  // for WARN_NON_OO, DEBUG_NON_OO, INFO_NON_OO, ERROR_NON_OO, FATA...
+#include "restServer.hpp"      // for HTTP_RESPONSE, connectionInstance, restServer
+#include "visUtil.hpp"         // for json_type_name
+#include "fmt.hpp"             // for compile_string_to_view, fmt
+#include "json.hpp"            // for basic_json, json, iter_impl, value_t
 
 
 namespace kotekan {

@@ -1,13 +1,14 @@
 #ifndef KOTEKAN_LOGGING_H
 #define KOTEKAN_LOGGING_H
 
+#include <errno.h>     // for errno
+#include <syslog.h>    // for LOG_DEBUG, LOG_ERR, LOG_INFO, LOG_WARNING
+#include <fmt/core.h>  // for basic_string_view, format_args, make_format_args
+#include <string>      // for string, basic_string
+#include <stdexcept>   // for runtime_error
+
 #include "errors.h" // for _global_log_level  // IWYU pragma: keep
-
-#include "fmt.hpp" // for fmt, basic_string_view, make_format_args, FMT_STRING
-
-#include <errno.h>  // for errno
-#include <string>   // for string
-#include <syslog.h> // for LOG_ERR, LOG_INFO, LOG_WARNING
+#include "fmt.hpp"     // for fmt, FMT_STRING
 
 class FatalError : public std::runtime_error {
 public:
@@ -17,6 +18,7 @@ public:
 // Boost messages (conditional on test compile/link)
 #if defined(BOOST_TEST_MODULE) || defined(BOOST_TEST_MAIN) || defined(BOOST_TEST_DYN_LINK)
 #include <boost/test/unit_test.hpp>
+
 #define KTK_BOOST_ERR(m, ...)                                                                      \
     do {                                                                                           \
         BOOST_THROW_EXCEPTION(std::runtime_error(FORMAT(m, ##__VA_ARGS__).c_str()));               \

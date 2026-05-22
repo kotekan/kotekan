@@ -1,23 +1,23 @@
 #include "networkInputPowerStream.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for ERROR
-#include "powerStreamUtil.hpp" // for IntensityHeader, IntensityPacketHeader
+#include <arpa/inet.h>          // for htonl, htons
+#include <errno.h>              // for errno
+#include <netinet/in.h>         // for sockaddr_in, INADDR_ANY, in_addr, IPPROTO_TCP, IPPROTO_UDP
+#include <stdlib.h>             // for free, malloc, calloc
+#include <string.h>             // for memcpy, memset
+#include <sys/socket.h>         // for bind, socket, AF_INET, PF_INET, accept, listen, recv, rec...
+#include <sys/types.h>          // for uint, ssize_t
+#include <fmt/core.h>           // for format
+#include <functional>           // for bind, function
+#include <string>               // for allocator, basic_string, operator==, char_traits, string
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <arpa/inet.h>  // for htonl, htons
-#include <errno.h>      // for errno
-#include <functional>   // for bind, function
-#include <netinet/in.h> // for sockaddr_in, INADDR_ANY, in_addr, IPPROTO_TCP, IPPROTO_UDP
-#include <stdlib.h>     // for free, malloc, calloc
-#include <string.h>     // for memcpy, memset
-#include <string>       // for allocator, basic_string, operator==, char_traits, string
-#include <sys/socket.h> // for bind, socket, AF_INET, PF_INET, accept, listen, recv, rec...
-#include <sys/types.h>  // for uint, ssize_t
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for ERROR
+#include "powerStreamUtil.hpp"  // for IntensityHeader, IntensityPacketHeader
+#include "fmt.hpp"              // for compile_string_to_view
 
 
 using kotekan::bufferContainer;

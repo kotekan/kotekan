@@ -1,14 +1,17 @@
 #include "Telescope.hpp"
 
-#include "configUpdater.hpp" // for configUpdater
-#include "restServer.hpp"    // for restServer, connectionInstance
-#include "timeUtil.hpp"
+#include <stdint.h>           // for int64_t, uint64_t
+#include <mutex>              // for unique_lock
+#include <shared_mutex>       // for shared_lock
+#include <stdexcept>          // for invalid_argument
+#include <algorithm>          // for copy, lower_bound, sort
+#include <functional>         // for bind, _1, function
+#include <limits>             // for numeric_limits
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <mutex>
-#include <shared_mutex>
-#include <stdexcept> // for invalid_argument
+#include "configUpdater.hpp"  // for configUpdater
+#include "restServer.hpp"     // for restServer, connectionInstance
+#include "timeUtil.hpp"       // for EOP, BareEOP, get_ERA_from_UT1, EOP_comp_time, eop_null
+#include "fmt.hpp"            // for compile_string_to_view
 
 using kotekan::connectionInstance;
 using kotekan::restServer;

@@ -1,25 +1,25 @@
 #include "valve.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN
-#include "metadata.hpp"          // for metadataObject
-#include "prometheusMetrics.hpp" // for Metrics, Counter
-#include "visUtil.hpp"           // for frameID, modulo
+#include <stdint.h>               // for uint8_t
+#include <fmt/core.h>             // for format
+#include <cstring>                // for memcpy
+#include <exception>              // for exception
+#include <functional>             // for bind, function
+#include <memory>                 // for shared_ptr, __shared_ptr_access
+#include <stdexcept>              // for runtime_error
+#include <string>                 // for allocator, basic_string, string
+#include <vector>                 // for vector
 
-#include "fmt.hpp" // for compile_string_to_view, format, fmt
-
-#include <cstring>    // for memcpy
-#include <exception>  // for exception
-#include <functional> // for bind, function
-#include <memory>     // for shared_ptr, __shared_ptr_access
-#include <stdexcept>  // for runtime_error
-#include <stdint.h>   // for uint8_t
-#include <string>     // for allocator, basic_string, string
-#include <vector>     // for vector
+#include "Config.hpp"             // for Config
+#include "Stage.hpp"              // for Stage
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "kotekanLogging.hpp"     // for FATAL_ERROR, WARN
+#include "metadata.hpp"           // for metadataObject
+#include "prometheusMetrics.hpp"  // for Metrics, Counter
+#include "visUtil.hpp"            // for frameID, modulo
+#include "fmt.hpp"                // for compile_string_to_view, fmt
 
 
 using kotekan::bufferContainer;

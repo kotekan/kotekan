@@ -1,16 +1,17 @@
 #include "prometheusMetrics.hpp"
 
-#include "kotekanLogging.hpp" // for ERROR_NON_OO
-#include "restServer.hpp"     // for restServer, connectionInstance
+#include <sys/time.h>          // for timeval, gettimeofday
+#include <fmt/core.h>          // for format
+#include <fmt/ostream.h>       // for print
+#include <cmath>               // for isinf, isnan
+#include <functional>          // for bind, _1, function
+#include <iterator>            // for begin, end
+#include <sstream>             // for basic_ostream, operator<<, basic_ostringstream
+#include <utility>             // for pair
 
-#include "fmt.hpp" // for compile_string_to_view, print, format, fmt
-
-#include <cmath>      // for isinf, isnan
-#include <functional> // for bind, _1, function
-#include <iterator>   // for begin, end
-#include <sstream>    // for basic_ostream, operator<<, basic_ostringstream
-#include <sys/time.h> // for timeval, gettimeofday
-#include <utility>    // for pair
+#include "kotekanLogging.hpp"  // for ERROR_NON_OO
+#include "restServer.hpp"      // for restServer, connectionInstance
+#include "fmt.hpp"             // for compile_string_to_view, fmt
 
 using std::string;
 

@@ -5,17 +5,17 @@
 #ifndef GATE_SPEC_HPP
 #define GATE_SPEC_HPP
 
-#include "factory.hpp"        // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY, Factory
-#include "kotekanLogging.hpp" // for logLevel, kotekanLogging
-#include "pulsarTiming.hpp"   // for SegmentedPolyco
+#include <time.h>              // for timespec
+#include <fmt/core.h>          // for format
+#include <functional>          // for function
+#include <memory>              // for unique_ptr
+#include <string>              // for string, basic_string
+#include <vector>              // for vector
 
-#include "json.hpp" // for json
-
-#include <functional> // for function
-#include <memory>     // for unique_ptr
-#include <string>     // for string
-#include <time.h>     // for timespec
-#include <vector>     // for vector
+#include "factory.hpp"         // for REGISTER_NAMED_TYPE_WITH_FACTORY, CREATE_FACTORY
+#include "kotekanLogging.hpp"  // for logLevel, kotekanLogging
+#include "pulsarTiming.hpp"    // for SegmentedPolyco
+#include "json.hpp"            // for json
 
 
 /**

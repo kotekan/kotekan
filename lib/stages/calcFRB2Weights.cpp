@@ -1,22 +1,30 @@
-#include "CHORDTelescope.hpp"
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "StageFactory.hpp"
-#include "UpchannelizationSchedule.hpp"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"
-#include "visUtil.hpp"
+#include <cassert>                       // for assert
+#include <algorithm>                     // for max
+#include <cmath>                         // for sin, cos, sqrt, M_PI
+#include <cstddef>                       // for ptrdiff_t, size_t
+#include <functional>                    // for function
+#include <memory>                        // for __shared_ptr_access, shared_ptr
+#include <set>                           // for set, operator!=, _Rb_tree_const_iterator
 
-#include <cassert>
-#include <cstdint>
+#include "Config.hpp"                    // for Config
+#include "Stage.hpp"                     // for Stage
+#include "StageFactory.hpp"              // for REGISTER_KOTEKAN_STAGE
+#include "UpchannelizationSchedule.hpp"  // for UpchannelizationSchedule
+#include "buffer.hpp"                    // for Buffer
+#include "bufferContainer.hpp"           // for bufferContainer
+#include "chordMetadata.hpp"             // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"            // for DEBUG, FATAL_ERROR
+#include "visUtil.hpp"                   // for current_time
+#include "DataType.hpp"                  // for float16_t
+#include "Telescope.hpp"                 // for Telescope, freq_id_t
+#include "fmt.hpp"                       // for compile_string_to_view
 #ifdef WITH_OMP
 #include <omp.h>
 #endif
-#include <string>
-#include <unistd.h>
-#include <vector>
+#include <unistd.h>                      // for sleep
+#include <fmt/core.h>                    // for format
+#include <string>                        // for allocator, basic_string, string
+#include <vector>                        // for vector
 
 class calcFRB2Weights : public kotekan::Stage {
     // Telescope setup

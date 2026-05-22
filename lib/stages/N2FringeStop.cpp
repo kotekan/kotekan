@@ -1,25 +1,27 @@
 #include "N2FringeStop.hpp"
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope, EOP
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for DEBUG
-#include "prometheusMetrics.hpp" // for Metrics
+#include <stdint.h>               // for int64_t
+#include <fmt/core.h>             // for format
+#include <complex>                // for complex, conj, operator*
+#include <functional>             // for bind, function
+#include <vector>                 // for vector
+#include <memory>                 // for shared_ptr, __shared_ptr_access
 
-#include <complex>    // for complex, conj, operator*
-#include <functional> // for bind, function
-#include <stdint.h>   // for int64_t
-#include <vector>     // for vector
+#include "CHORDTelescope.hpp"     // for CHORDTelescope
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "kotekanLogging.hpp"     // for DEBUG, FATAL_ERROR
+#include "prometheusMetrics.hpp"  // for Metrics
 // #include "visBuffer.hpp"         // for VisFrameView
-#include "N2FrameView.hpp" // for N2FrameView
-#include "Telescope.hpp"   // for Telescope
-#include "timeUtil.hpp"    // for get_UT1_from_ERA
-#include "visUtil.hpp"     // for frameID, modulo
-
-#include "fmt.hpp"      // for compile_string_to_view
-#include "gsl-lite.hpp" // for span
+#include "N2FrameView.hpp"        // for N2FrameView
+#include "Telescope.hpp"          // for Telescope
+#include "timeUtil.hpp"           // for EOP, get_UT1_from_ERA, eop_null
+#include "visUtil.hpp"            // for frameID, modulo
+#include "fmt.hpp"                // for compile_string_to_view
+#include "gsl-lite.hpp"           // for span
+#include "FrameDesc.hpp"          // for FrameDesc
 
 
 using kotekan::bufferContainer;

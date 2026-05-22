@@ -1,22 +1,22 @@
 #include "HFBRawReader.hpp"
 
-#include "Config.hpp"          // for Config
-#include "HFBFrameView.hpp"    // for HFBFrameView
-#include "HFBMetadata.hpp"     // for HFBMetadata
-#include "Stage.hpp"           // for Stage
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for datasetManager
-#include "datasetState.hpp"    // for beamState, subfreqState
-#include "kotekanLogging.hpp"  // for DEBUG, WARN
-#include "visUtil.hpp"         // for frameID
+#include <fmt/core.h>           // for format
+#include <algorithm>            // for max
+#include <stdexcept>            // for runtime_error
+#include <utility>              // for pair
 
-#include "fmt.hpp"  // for compile_string_to_view, format, fmt
-#include "json.hpp" // for json
-
-#include <algorithm> // for max
-#include <stdexcept> // for runtime_error
-#include <utility>   // for pair
+#include "Config.hpp"           // for Config
+#include "HFBFrameView.hpp"     // for HFBFrameView
+#include "HFBMetadata.hpp"      // for HFBMetadata
+#include "Stage.hpp"            // for Stage
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "datasetManager.hpp"   // for datasetManager
+#include "datasetState.hpp"     // for beamState, subfreqState
+#include "kotekanLogging.hpp"   // for DEBUG, WARN
+#include "visUtil.hpp"          // for frameID
+#include "fmt.hpp"              // for compile_string_to_view, fmt
+#include "json.hpp"             // for json
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -1,10 +1,12 @@
 #include "N2FrameDesc.hpp"
 
-#include "kotekanLogging.hpp"
+#include <fmt/core.h>          // for format, format_string
+#include <set>                 // for set
+#include <ostream>             // for basic_ostream, operator<<, basic_ios, ostream
+#include <stdexcept>           // for runtime_error
 
-#include "fmt.hpp"
-
-#include <set>
+#include "kotekanLogging.hpp"  // for ERROR_NON_OO
+#include "fmt.hpp"             // for compile_string_to_view
 
 namespace kotekan {
 

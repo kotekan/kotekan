@@ -1,18 +1,18 @@
 #include "simpleAutocorr.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for DEBUG
+#include <stdint.h>             // for uint32_t
+#include <stdlib.h>             // for calloc, free
+#include <string.h>             // for memset
+#include <sys/types.h>          // for uint
+#include <fmt/core.h>           // for format
+#include <functional>           // for bind, function
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <functional>  // for bind, function
-#include <stdint.h>    // for uint32_t
-#include <stdlib.h>    // for calloc, free
-#include <string.h>    // for memset
-#include <sys/types.h> // for uint
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for DEBUG
+#include "fmt.hpp"              // for compile_string_to_view
 
 
 using kotekan::bufferContainer;

@@ -1,17 +1,22 @@
 #include "givenDataGen.hpp"
 
-#include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
-#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
+#include <assert.h>             // for assert
+#include <stdint.h>             // for uint8_t
+#include <unistd.h>             // for size_t, sleep
+#include <fmt/core.h>           // for format
+#include <stddef.h>             // for ptrdiff_t
+#include <string>               // for basic_string, string
+#include <vector>               // for vector, allocator
+#include <cstdio>               // for snprintf
+#include <cstring>              // for memcpy
+#include <functional>           // for bind, function
+#include <memory>               // for shared_ptr, __shared_ptr_access
+#include <stdexcept>            // for invalid_argument, runtime_error
 
-#include <assert.h>  // for assert
-#include <stdint.h>  // for int8_t, uint32_t, uint8_t, int16_t, int32_t, uint64_t
-#include <string>    // for std::string
-#include <strings.h> // for bzero
-#include <unistd.h>  // for sleep
-#include <vector>    // for vector
+#include "DataType.hpp"         // for type_total_bytes, string_to_type, DataType
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM
 
 
 using kotekan::bufferContainer;

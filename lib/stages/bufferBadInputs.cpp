@@ -1,16 +1,22 @@
 #include "bufferBadInputs.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"         // for Buffer
-#include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
-#include "configUpdater.hpp"  // for configUpdater
-#include "kotekanLogging.hpp" // for DEBUG, ERROR
-#include "visUtil.hpp"        // for get_cylinder_to_beamformer_reorder_table
+#include <fmt/core.h>          // for format
+#include <stdint.h>            // for uint8_t
+#include <json.hpp>            // for json
+#include <exception>           // for exception
+#include <functional>          // for bind, function, _1
+#include <memory>              // for __shared_ptr_access, shared_ptr
+#include <array>               // for array
+#include <cstring>             // for memset, size_t
 
-#include <exception>  // for exception
-#include <functional> // for bind, function, _1
-#include <memory>     // for __shared_ptr_access, shared_ptr
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "configUpdater.hpp"   // for configUpdater
+#include "kotekanLogging.hpp"  // for DEBUG, ERROR
+#include "visUtil.hpp"         // for get_cylinder_to_beamformer_reorder_table
+#include "fmt.hpp"             // for compile_string_to_view
 
 using kotekan::bufferContainer;
 using kotekan::Config;
