@@ -136,13 +136,13 @@ private:
     /// Whether to begin streaming immediately on startup.
     bool _autostart;
 
-    // ADC statistics. The REST adcstat handler requests a dump and waits on
-    // @c adcstat_cv until the producer fills @c adc{rms,mean,railfrac} on the
-    // next frame and flips @c adcstat_ready (published under @c adcstat_mutex).
-    // @c dump_adcstat is atomic so the producer's hot-path check is a
-    // well-defined lock-free read rather than a (technically UB) plain-bool
-    // race against the REST writer; @c adcstat_mutex still guards the
-    // multi-field stats publish/consume.
+    /// ADC statistics. The REST adcstat handler requests a dump and waits on
+    /// @c adcstat_cv until the producer fills @c adc{rms,mean,railfrac} on the
+    /// next frame and flips @c adcstat_ready (published under @c adcstat_mutex).
+    /// @c dump_adcstat is atomic so the producer's hot-path check is a
+    /// well-defined lock-free read rather than a (technically UB) plain-bool
+    /// race against the REST writer; @c adcstat_mutex still guards the
+    /// multi-field stats publish/consume.
     std::mutex adcstat_mutex;
     std::condition_variable adcstat_cv;
     std::atomic<bool> dump_adcstat{false};
