@@ -49,7 +49,17 @@ testDataGenFloat::testDataGenFloat(Config& config, const std::string& unique_nam
     _gen_all_const_data = config.get_default<bool>(unique_name, "gen_all_const_data", false);
 
     _name = config.get_default<std::string>(unique_name, "name", "E");
-    const int type_size = sizeof(float);
+
+    _value_type = kotekan::string_to_type(
+        config.get_default<std::string>(unique_name, "value_type", "float32"));
+    if(!(_value_type == kotekan::float16 || _value_type == kotekan::float32 || _value_type == kotekan::float64)) {
+        FATAL_ERROR(
+            "value_type must be on of {:s}, {:s}, or {:s}, but got {:s}",
+            kotekan::type_to_string(kotekan::float16), kotekan::type_to_string(kotekan::float32),
+            kotekan::type_to_string(kotekan::float64), kotekan::type_to_string(_value_type));
+    }
+
+    const int type_size = kotekan::type_total_bytes(_value_type);
     _array_shape = config.get_default<std::vector<int>>(
         unique_name, "array_shape", std::vector<int>({int(buf->frame_size) / type_size}));
     {
@@ -83,7 +93,7 @@ void testDataGenFloat::main_thread() {
 
     int frame_id = 0;
     int frame_id_abs = 0;
-    float* frame = nullptr;
+    void* frame = nullptr;
     uint64_t seq_num = _samples_per_data_set * _first_frame_index;
     bool finished_seeding_consant = false;
     static struct timeval now;
@@ -94,7 +104,7 @@ void testDataGenFloat::main_thread() {
     std::string telescope_type = telescope.get_name();
 
     while (!stop_thread) {
-        frame = (float*)buf->wait_for_empty_frame(unique_name, frame_id);
+        frame = (void*)buf->wait_for_empty_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
 
@@ -112,7 +122,7 @@ void testDataGenFloat::main_thread() {
             chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d], _dim_scaling[d]);
         chordmeta->set_strides_simple();
 
-        chordmeta->type = kotekan::float32;
+        chordmeta->type = _value_type;
 
         // Set frequency channel metadata
 
@@ -154,18 +164,36 @@ void testDataGenFloat::main_thread() {
         // std::uniform_int_distribution<> dis(0, 255);
         if (type == "random")
             srand(seed);
-        for (uint j = 0; j < buf->frame_size / sizeof(float); ++j) {
+        const uint type_size = kotekan::type_total_bytes(_value_type);
+        for (uint j = 0; j < buf->frame_size / type_size; ++j) {
+            float fvalue;
             if (type == "const") {
                 if (finished_seeding_consant)
                     break;
-                frame[j] = value;
+                fvalue = value;
             } else if (type == "ramp") {
-                frame[j] = fmod(j * value, 256 * value);
+                fvalue = fmod(j * value, 256 * value);
             } else if (type == "random") {
                 // Generate a random float between _rand_min and _rand_max
                 static std::mt19937 eng(seed);
                 static std::uniform_real_distribution<float> dis(_rand_min, _rand_max);
-                frame[j] = dis(eng);
+                fvalue = dis(eng);
+            } else {
+                throw std::runtime_error("Unexpected type " + type);
+            }
+            switch (_value_type) {
+                case kotekan::float16:
+                    static_cast<float16_t*>(frame)[j] = static_cast<float16_t>(fvalue);
+                    break;
+                case kotekan::float32:
+                    static_cast<float*>(frame)[j] = static_cast<float>(fvalue);
+                    break;
+                case kotekan::float64:
+                    static_cast<double*>(frame)[j] = static_cast<double>(fvalue);
+                    break;
+                default:
+                    throw std::runtime_error("Unexpected kotekan type: "
+                                             + kotekan::type_to_string(_value_type));
             }
         }
         usleep(83000);
