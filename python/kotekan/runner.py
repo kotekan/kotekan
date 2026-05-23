@@ -1618,6 +1618,8 @@ default_config = """
 ---
 type: config
 log_level: INFO
+num_polarizations: 2
+num_dishes: 5
 num_elements: 10
 num_freq_in_frame: 1
 num_local_freq: 1
