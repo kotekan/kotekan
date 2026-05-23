@@ -90,8 +90,8 @@ protected:
 
     static GeoFrame grid_frame_from_config(const kotekan::Config& config, const std::string& path);
 
-    static void decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization, uint64_t& dish);
-    static station_id_t encode_station_id(uint64_t cylinder, uint64_t polarization, uint64_t dish);
+    void decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization, uint64_t& dish) const;
+    station_id_t encode_station_id(uint64_t cylinder, uint64_t polarization, uint64_t dish) const;
 
     /**
      * @brief Parse the reordering configuration section
@@ -104,6 +104,13 @@ protected:
     static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder_default(const kotekan::Config& config, const std::string& path, uint64_t num_elements);
 
     static std::vector<station_id_t> invert_reorder_table(const std::vector<uint32_t>& input_reorder);
+    
+    /// Number of elements (2048 for production CHIME)
+    const uint64_t _num_polarizations;
+    const uint64_t _num_dishes;
+    const uint64_t _num_elements;
+    const uint64_t _num_cylinders;
+    const uint64_t _num_dishes_per_cylinder;
 
     // The number of frequencies per stream
     uint32_t _num_freq_per_stream;
@@ -132,9 +139,6 @@ protected:
     bool gps_enabled = false;
     uint64_t time0_ns = 0;
     uint64_t dt_ns;
-    
-    /// Number of elements (2048 for production CHIME)
-    uint64_t _num_elements;
 
     /// Encodes CHIMECorrelator order
     std::vector<uint32_t> _input_reorder;
@@ -143,10 +147,15 @@ protected:
     /// Encodes inverse CHIMECorrelator order
     std::vector<station_id_t> _correlator_stations;
 
+    std::vector<vec2d_t> _feed_positions_2d;
+
     // A forwarding constructor, such that derived classes can skip the main
     // ICETelescope constructor but still construct the Telescope class
     template<typename... Args>
-    ICETelescope(Args&&... args) : Telescope(std::forward<Args>(args)...){};
+    ICETelescope(uint64_t num_polarizations, uint64_t num_dishes, uint64_t num_cylinders, Args&&... args) : Telescope(std::forward<Args>(args)...),
+        _num_polarizations(num_polarizations), _num_dishes(num_dishes),
+        _num_elements(num_polarizations * num_dishes), _num_cylinders(num_cylinders),
+        _num_dishes_per_cylinder(num_dishes / num_cylinders) {};
 
 private:
     

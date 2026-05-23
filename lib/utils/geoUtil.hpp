@@ -6,6 +6,7 @@
 #include <array>
 
 using vec3d_t = std::array<double, 3>;
+using vec2d_t = std::array<double, 2>;
 using mat3x3d_t = std::array<std::array<double, 3>, 3>;
 
 class GeoFrame : public kotekan::kotekanLogging {
