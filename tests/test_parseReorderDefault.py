@@ -22,6 +22,7 @@ global_params = {
     "num_elements": 2048,
     "num_dishes": 1024,
     "num_polarizations": 2,
+    "num_cylinders": 4,
     # KotekanStageTester adds a "main_pool" section
     # Buffers
     "reorder_buffer": {
