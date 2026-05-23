@@ -22,7 +22,12 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
               config.get_default<std::string>(path, "eop_updatable_config", ""),
               grid_frame_from_config(config, path),
               config.get_default<double>(path, "feed_sep_EW", 0.0),
-              config.get_default<double>(path, "feed_sep_NS", 0.0)) {
+              config.get_default<double>(path, "feed_sep_NS", 0.0)),
+    _num_polarizations(config.get<uint64_t>(path, "num_polarizations")),
+    _num_dishes(config.get<uint64_t>(path, "num_dishes")),
+    _num_elements(_num_dishes * _num_polarizations),
+    _num_cylinders(config.get_default<uint64_t>(path, "num_cylinders", 1)),
+    _num_dishes_per_cylinder(_num_dishes / _num_cylinders) {
     INFO("Building ICETelescope");
 
     // TODO: rename this parameter to `num_freq_per_stream` in the config
@@ -57,7 +62,9 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
         throw std::runtime_error("The system requires a GPS time, but none was found.");
     }
 
-    _num_elements = config.get<uint64_t>(path, "num_elements");
+    if (_num_dishes % _num_cylinders != 0)
+        FATAL_ERROR("num_cylinders {:d} does not divide num_dishes {:d}", _num_cylinders, _num_dishes);
+
     const auto input_tuple = ICETelescope::parse_reorder_default(config, path, _num_elements);
     _input_reorder = std::get<0>(input_tuple);
     _input_map = std::get<1>(input_tuple);
@@ -71,6 +78,11 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
     }
 
     _correlator_stations = invert_reorder_table(_input_reorder);
+
+    _feed_positions_2d = config.get_default<std::vector<vec2d_t>>(path, "feed_positions", {});
+
+    if (_feed_positions_2d.size() > 0 && _feed_positions_2d.size() != _num_dishes)
+        FATAL_ERROR("feed_positions has size {:d}, should be num_dishes {:d}", _feed_positions_2d.size(), _num_dishes);
 }
 
 
@@ -251,9 +263,9 @@ station_id_t ICETelescope::element_index_to_station_id(uint64_t el_idx, ElementO
     } else if (ord == ElementOrder::CHIMECylinder) {
         return el_idx;
     } else if (ord == ElementOrder::CHIMEBeamformer) {
-        const uint64_t polarization = el_idx / 1024;
-        const uint64_t cylinder = (el_idx % 1024) / 256;
-        const uint64_t dish = (el_idx % 1024) % 256;
+        const uint64_t polarization = el_idx / _num_dishes;
+        const uint64_t cylinder = (el_idx % _num_dishes) / _num_dishes_per_cylinder;
+        const uint64_t dish = (el_idx % _num_dishes) % _num_dishes_per_cylinder;
         return encode_station_id(cylinder, polarization, dish);
     }
 
@@ -269,9 +281,9 @@ uint64_t ICETelescope::station_id_to_element_index(station_id_t st_id, ElementOr
     } else if (ord == ElementOrder::CHIMECylinder) {
         return st_id;
     } else if (ord == ElementOrder::CHIMEBeamformer) {
-        uint64_t cylinder, polarization, dish;
-        decode_station_id(st_id, cylinder, polarization, dish);
-        return polarization * 1024 + cylinder * 256 + dish;;
+        uint64_t cylinder, polarization, dish_in_cyl;
+        decode_station_id(st_id, cylinder, polarization, dish_in_cyl);
+        return polarization * _num_dishes + cylinder * _num_dishes_per_cylinder + dish_in_cyl;
     }
 
     FATAL_ERROR("Cannot handle element order {}.", ord);
@@ -281,20 +293,31 @@ grid_idx_2d_t ICETelescope::station_id_to_grid_indices(station_id_t st_id) const
     if (st_id >= _num_elements) 
         FATAL_ERROR("Station ID {:d} >= num_elements {:d}", st_id, _num_elements);
     
-    uint64_t cylinder, polarization, dish;
-    decode_station_id(st_id, cylinder, polarization, dish);
+    uint64_t cylinder, polarization, dish_in_cyl;
+    decode_station_id(st_id, cylinder, polarization, dish_in_cyl);
 
-    return grid_idx_2d_t{static_cast<int32_t>(cylinder), static_cast<int32_t>(dish)};
+    return grid_idx_2d_t{static_cast<int32_t>(cylinder), static_cast<int32_t>(dish_in_cyl)};
 } 
 
 vec3d_t ICETelescope::station_id_to_feed_position_m(station_id_t st_id) const {
     if (st_id >= _num_elements) 
         FATAL_ERROR("Station ID {:d} >= num_elements {:d}", st_id, _num_elements);
 
-    uint64_t cylinder, polarization, dish;
-    decode_station_id(st_id, cylinder, polarization, dish);
+    uint64_t cylinder, polarization, dish_in_cyl;
+    decode_station_id(st_id, cylinder, polarization, dish_in_cyl);
 
-    return vec3d_t{cylinder * _feed_sep_x_m, dish * _feed_sep_y_m, 0.0};
+    if (_feed_positions_2d.size() == 0) {
+        // TODO: This puts 0 on the SW corner, not the center.
+        double x_idx = cylinder - 0.5*(_num_cylinders - 1);
+        double y_idx = dish_in_cyl - 0.5*(_num_dishes_per_cylinder - 1);
+        return vec3d_t{x_idx * _feed_sep_x_m, y_idx * _feed_sep_y_m, 0.0};
+    }
+    
+    uint64_t dish = dish_in_cyl + cylinder * _num_dishes_per_cylinder;
+
+    vec2d_t pos_2d = _feed_positions_2d.at(dish);
+
+    return vec3d_t{pos_2d[0], pos_2d[1], 0.0};
 }
 
 
@@ -319,14 +342,18 @@ stream_t ice_encode_stream_id(const ice_stream_id_t s_stream_id) {
 
     return {(uint64_t)stream_id};
 }
-void ICETelescope::decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization, uint64_t& dish) {
-    cylinder = st_id / 512;
-    polarization = (st_id % 512) / 256;
-    dish = (st_id % 512) % 256;
+void ICETelescope::decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization, uint64_t& dish_in_cyl) const {
+    const uint64_t num_elements_per_cylinder = _num_polarizations * _num_dishes_per_cylinder;
+
+    cylinder = st_id / num_elements_per_cylinder;
+    polarization = (st_id % num_elements_per_cylinder) / _num_dishes_per_cylinder;
+    dish_in_cyl = (st_id % num_elements_per_cylinder) % _num_dishes_per_cylinder;
 }
 
-station_id_t ICETelescope::encode_station_id(uint64_t cylinder, uint64_t polarization, uint64_t dish) {
-    return cylinder * 512 + polarization * 256 + dish;
+station_id_t ICETelescope::encode_station_id(uint64_t cylinder, uint64_t polarization, uint64_t dish_in_cyl) const {
+    const uint64_t num_elements_per_cylinder = _num_polarizations * _num_dishes_per_cylinder;
+    return cylinder * num_elements_per_cylinder
+        + polarization * _num_dishes_per_cylinder + dish_in_cyl;
 }
 
 std::tuple<uint32_t, uint32_t, std::string> ICETelescope::parse_reorder_single(nlohmann::json j) {
@@ -398,4 +425,3 @@ std::vector<station_id_t> ICETelescope::invert_reorder_table(const std::vector<u
 
     return correlator_stations;
 }
-

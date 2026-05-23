@@ -697,11 +697,6 @@ public:
      */
     size_t num_freq_per_stream() const override;
 
-    // A forwarding constructor, such that derived classes can skip the main
-    // CHORDTelescope constructor but still construct the Telescope class
-    template<typename... Args>
-    CHORDTelescope(Args&&... args) : Telescope(std::forward<Args>(args)...){};
-
     ~CHORDTelescope();
 
 protected:
