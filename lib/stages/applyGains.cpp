@@ -21,7 +21,7 @@
 
 #include <algorithm>                // for max, copy
 #include <assert.h>                 // for assert
-#include <bits/chrono.h>            // for operator""s
+#include <chrono>                   // for operator""s
 #include <cmath>                    // for pow, abs
 #include <complex>                  // for operator*, complex, operator+, abs, conj, operator==
 #include <cstring>                  // for memcpy
