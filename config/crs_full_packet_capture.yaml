@@ -1,3 +1,4 @@
+---
 ##########################################
 #
 # crs_packet_capture.yaml
@@ -9,7 +10,6 @@
 #
 ##########################################
 
----
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
@@ -40,11 +40,11 @@ network_input_buffers:
     network_input_buffer_1:
         kotekan_buffer: standard
 
-cpu_affinity: [2,3,8,9]
+cpu_affinity: [2, 3, 8, 9]
 dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [5,6,7] # [5,6,7]
+    lcore_cpu_map: [5, 6, 7] # [5,6,7]
     main_lcore_cpu: 4
     num_mbufs: 8192
     mbuf_cache_size: 256
@@ -70,7 +70,7 @@ dpdk:
     # One handler must be given per port
     handlers:
         - dpdk_handler: crs1BoardDistributor
-          worker_rings: [0,1]
+          worker_rings: [0, 1]
     # Exactly One worker must be given per worker ring
     workers:
         - dpdk_handler: crs1BoardCaptureWorker

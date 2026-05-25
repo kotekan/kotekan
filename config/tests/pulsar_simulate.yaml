@@ -1,9 +1,9 @@
+---
 ###
 # Simple Pulsar simulator: one GPU, dumping beamforming and post-processing buffers to /tmp
 #
 # This configuration can be used to generate the input files for test_psr_post_process.py
 ###
----
 type: config
 log_level: info
 
@@ -14,7 +14,7 @@ samples_per_data_set: 49152
 buffer_depth: 3
 num_gpus: 1
 
-cpu_affinity: [2,3,8,9]
+cpu_affinity: [2, 3, 8, 9]
 
 # Constants
 sizeof_float: 4
@@ -22,142 +22,143 @@ sizeof_short: 2
 
 ### Pool
 main_pool:
-  kotekan_metadata_pool: chimeMetadata
-  num_metadata_objects: 45 * buffer_depth
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 45 * buffer_depth
 
 ### Lost samples
 lost_samples_buffer:
-  kotekan_buffer: standard
-  num_frames: 2 * buffer_depth
-  frame_size: samples_per_data_set * num_local_freq
-  metadata_pool: main_pool
+    kotekan_buffer: standard
+    num_frames: 2 * buffer_depth
+    frame_size: samples_per_data_set * num_local_freq
+    metadata_pool: main_pool
 
 gen_ok:
-  type: const
-  value: 0
-  lost_zero:
-    kotekan_stage: testDataGen
-    out_buf: lost_samples_buffer
+    type: const
+    value: 0
+    lost_zero:
+        kotekan_stage: testDataGen
+        out_buf: lost_samples_buffer
 
 ### Gains
 
 gain_tracking_buffers:
-  num_frames: 5
-  frame_size: 2048 * 2 * num_beams * sizeof_float
-  metadata_pool: main_pool
-  gain_tracking_buffer_0:
-    kotekan_buffer: standard
+    num_frames: 5
+    frame_size: 2048 * 2 * num_beams * sizeof_float
+    metadata_pool: main_pool
+    gain_tracking_buffer_0:
+        kotekan_buffer: standard
 
 gain_frb_buffers:
-  num_frames: buffer_depth
-  frame_size: 2048 * 2 * sizeof_float
-  metadata_pool: main_pool
-  gain_frb_buffer_0:
-    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 2048 * 2 * sizeof_float
+    metadata_pool: main_pool
+    gain_frb_buffer_0:
+        kotekan_buffer: standard
 
 read_gains:
-  kotekan_stage: ReadGain
-  updatable_config:
-    gain_frb: /updatable_config/frb_gain
-    gain_psr: /updatable_config/tracking_gain
-  in_buf: gpu_input_buffer_0
-  gain_frb_buf: gain_frb_buffer_0
-  gain_tracking_buf: gain_tracking_buffer_0
+    kotekan_stage: ReadGain
+    updatable_config:
+        gain_frb: /updatable_config/frb_gain
+        gain_psr: /updatable_config/tracking_gain
+    in_buf: gpu_input_buffer_0
+    gain_frb_buf: gain_frb_buffer_0
+    gain_tracking_buf: gain_tracking_buffer_0
 
 ### Buffers
 
 gpu_input_buffers:
-  num_frames: buffer_depth
-  frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
-  metadata_pool: main_pool
-  gpu_input_buffer_0:
-    kotekan_buffer: standard
-    gpu_id: 0
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_elements * num_local_freq * num_data_sets
+    metadata_pool: main_pool
+    gpu_input_buffer_0:
+        kotekan_buffer: standard
+        gpu_id: 0
 
 gen_data:
-  type: random
-  value: 153
-  stream_id: 12432              # freq_id 777
-  test_data_gen_0:
-    kotekan_stage: testDataGen
-    out_buf: gpu_input_buffer_0
-  num_frames: 10
+    type: random
+    value: 153
+    stream_id: 12432            # freq_id 777
+    test_data_gen_0:
+        kotekan_stage: testDataGen
+        out_buf: gpu_input_buffer_0
+    num_frames: 10
 
 tracking_output_buffers:
-  num_frames: buffer_depth
-  frame_size: samples_per_data_set * num_beams * num_pol * sizeof_float * 2
-  metadata_pool: main_pool
-  beamform_tracking_output_buffer_0:
-    kotekan_buffer: standard
-    gpu_id: 0
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * num_beams * num_pol * sizeof_float * 2
+    metadata_pool: main_pool
+    beamform_tracking_output_buffer_0:
+        kotekan_buffer: standard
+        gpu_id: 0
 
 ### Pulsar pipeline
 gpu:
-  kernel_path: "../../build/lib/hsa/kernels/"
-  commands:
-  - name: hsaInputData
-  - name: hsaOutputDataZero
-  - name: hsaAsyncCopyGain
-  - name: hsaTrackingUpdatePhase
-  - name: hsaBarrier
-  - name: hsaBeamformReorder
-  - name: hsaTrackingBeamform
-  - name: hsaTrackingBeamformOutput
-  enable_delay: true
-  cpu_affinity: [2, 3, 8, 9]
-  delay_max_fraction: 2.0
-  block_size: 32
-  buffer_depth: 3
-  frame_arrival_period: samples_per_data_set / 390625
-  log_profiling: false
-  gpu_0:
-    kotekan_stage: hsaProcess
-    gpu_id: 0
-    updatable_config:
-      gain_tracking: /updatable_config/tracking_gain
-      tracking_pt: /updatable_config/tracking_pointing
-    bad_inputs: []
-    in_buffers:
-      network_buf: gpu_input_buffer_0
-      gain_tracking_buf: gain_tracking_buffer_0
-      gain_frb_buf: gain_frb_buffer_0
-      lost_samples_buf: lost_samples_buffer
-    out_buffers:
-      beamform_tracking_output_buf: beamform_tracking_output_buffer_0
+    kernel_path: "../../build/lib/hsa/kernels/"
+    commands:
+        - name: hsaInputData
+        - name: hsaOutputDataZero
+        - name: hsaAsyncCopyGain
+        - name: hsaTrackingUpdatePhase
+        - name: hsaBarrier
+        - name: hsaBeamformReorder
+        - name: hsaTrackingBeamform
+        - name: hsaTrackingBeamformOutput
+    enable_delay: true
+    cpu_affinity: [2, 3, 8, 9]
+    delay_max_fraction: 2.0
+    block_size: 32
+    buffer_depth: 3
+    frame_arrival_period: samples_per_data_set / 390625
+    log_profiling: false
+    gpu_0:
+        kotekan_stage: hsaProcess
+        gpu_id: 0
+        updatable_config:
+            gain_tracking: /updatable_config/tracking_gain
+            tracking_pt: /updatable_config/tracking_pointing
+        bad_inputs: []
+        in_buffers:
+            network_buf: gpu_input_buffer_0
+            gain_tracking_buf: gain_tracking_buffer_0
+            gain_frb_buf: gain_frb_buffer_0
+            lost_samples_buf: lost_samples_buffer
+        out_buffers:
+            beamform_tracking_output_buf: beamform_tracking_output_buffer_0
 
 pulsar:
-  timesamples_per_pulsar_packet: 625
-  udp_pulsar_packet_size: 5032
-  num_packet_per_stream: 80
-  num_stream: 10
-  cpu_affinity: [5, 11]
-  pulsar_output_buffer:
-    num_frames: buffer_depth + 4
-    frame_size: udp_pulsar_packet_size * num_stream * num_packet_per_stream
-    kotekan_buffer: standard
-  postprocess:
-    kotekan_stage: pulsarPostProcess
-    network_input_buffer_0: beamform_tracking_output_buffer_0
-    pulsar_out_buf: pulsar_output_buffer
+    timesamples_per_pulsar_packet: 625
+    udp_pulsar_packet_size: 5032
+    num_packet_per_stream: 80
+    num_stream: 10
+    cpu_affinity: [5, 11]
+    pulsar_output_buffer:
+        num_frames: buffer_depth + 4
+        frame_size: udp_pulsar_packet_size * num_stream * num_packet_per_stream
+        kotekan_buffer: standard
+    postprocess:
+        kotekan_stage: pulsarPostProcess
+        network_input_buffer_0: beamform_tracking_output_buffer_0
+        pulsar_out_buf: pulsar_output_buffer
 
 dump_pulsar_data:
-  base_dir: /tmp
-  file_ext: dump
-  dump_pulsar_gpu_beamform_0:
-    kotekan_stage: rawFileWrite
-    in_buf: beamform_tracking_output_buffer_0
-    file_name: psr_beamform_gpu
-  dump_pulsar_post_process:
-    kotekan_stage: rawFileWrite
-    in_buf: pulsar_output_buffer
-    file_name: psr_post_process
+    base_dir: /tmp
+    file_ext: dump
+    dump_pulsar_gpu_beamform_0:
+        kotekan_stage: rawFileWrite
+        in_buf: beamform_tracking_output_buffer_0
+        file_name: psr_beamform_gpu
+    dump_pulsar_post_process:
+        kotekan_stage: rawFileWrite
+        in_buf: pulsar_output_buffer
+        file_name: psr_post_process
 
 # Pulsar parameters
-feed_sep_NS : 0.3048
-feed_sep_EW : 22.0
+feed_sep_NS: 0.3048
+feed_sep_EW: 22.0
 num_beams: 10
 num_pol: 2
 
+# yamlfix:off
 reorder_map: [32,33,34,35,40,41,42,43,48,49,50,51,56,57,58,59,96,97,98,99,
               104,105,106,107,112,113,114,115,120,121,122,123,67,66,65,64,
               75,74,73,72,83,82,81,80,91,90,89,88,3,2,1,0,11,10,9,8,19,18,
@@ -191,74 +192,75 @@ reorder_map: [32,33,34,35,40,41,42,43,48,49,50,51,56,57,58,59,96,97,98,99,
               455,444,445,446,447,436,437,438,439,428,429,430,431,420,421,
               422,423,508,509,510,511,500,501,502,503,492,493,494,495,484,
               485,486,487]
+# yamlfix:on
 
 
 ### Updatable config (ReadGain wants both `tracking_gain_dir` and `frb_gain_dir` to exist)
 updatable_config:
-  tracking_gain:
-    kotekan_update_endpoint: json
-    tracking_gain_dir:
-      - /nonexistent
-      - /nonexistent
-      - /nonexistent
-      - /nonexistent
-      - /nonexistent
-      - /nonexistent
-      - /nonexistent
-      - /nonexistent
-      - /nonexistent
-      - /nonexistent
-  tracking_pointing:
-    0:
-      kotekan_update_endpoint: json
-      ra: 53.6197236741
-      dec: 54.6433973569
-      scaling: 48
-    1:
-      kotekan_update_endpoint: json
-      ra: 53.6197236741
-      dec: 54.6433973569
-      scaling: 48
-    2:
-      kotekan_update_endpoint: json
-      ra: 53.6197236741
-      dec: 54.6433973569
-      scaling: 48
-    3:
-      kotekan_update_endpoint: json
-      ra: 53.6197236741
-      dec: 54.6433973569
-      scaling: 48
-    4:
-      kotekan_update_endpoint: json
-      ra: 53.6197236741
-      dec: 54.6433973569
-      scaling: 48
-    5:
-      kotekan_update_endpoint: json
-      ra: 53.6197236741
-      dec: 54.6433973569
-      scaling: 48
-    6:
-      kotekan_update_endpoint: json
-      ra: 53.6197236741
-      dec: 54.6433973569
-      scaling: 48
-    7:
-      kotekan_update_endpoint: json
-      ra: 53.6197236741
-      dec: 54.6433973569
-      scaling: 48
-    8:
-      kotekan_update_endpoint: json
-      ra: 53.6197236741
-      dec: 54.6433973569
-      scaling: 48
-    9:
-      kotekan_update_endpoint: json
-      ra: 53.6197236741
-      dec: 54.6433973569
-      scaling: 48
-  frb_gain:
-    kotekan_update_endpoint: json
-    frb_gain_dir: /nonexistent
+    tracking_gain:
+        kotekan_update_endpoint: json
+        tracking_gain_dir:
+            - /nonexistent
+            - /nonexistent
+            - /nonexistent
+            - /nonexistent
+            - /nonexistent
+            - /nonexistent
+            - /nonexistent
+            - /nonexistent
+            - /nonexistent
+            - /nonexistent
+    tracking_pointing:
+        0:
+            kotekan_update_endpoint: json
+            ra: 53.6197236741
+            dec: 54.6433973569
+            scaling: 48
+        1:
+            kotekan_update_endpoint: json
+            ra: 53.6197236741
+            dec: 54.6433973569
+            scaling: 48
+        2:
+            kotekan_update_endpoint: json
+            ra: 53.6197236741
+            dec: 54.6433973569
+            scaling: 48
+        3:
+            kotekan_update_endpoint: json
+            ra: 53.6197236741
+            dec: 54.6433973569
+            scaling: 48
+        4:
+            kotekan_update_endpoint: json
+            ra: 53.6197236741
+            dec: 54.6433973569
+            scaling: 48
+        5:
+            kotekan_update_endpoint: json
+            ra: 53.6197236741
+            dec: 54.6433973569
+            scaling: 48
+        6:
+            kotekan_update_endpoint: json
+            ra: 53.6197236741
+            dec: 54.6433973569
+            scaling: 48
+        7:
+            kotekan_update_endpoint: json
+            ra: 53.6197236741
+            dec: 54.6433973569
+            scaling: 48
+        8:
+            kotekan_update_endpoint: json
+            ra: 53.6197236741
+            dec: 54.6433973569
+            scaling: 48
+        9:
+            kotekan_update_endpoint: json
+            ra: 53.6197236741
+            dec: 54.6433973569
+            scaling: 48
+    frb_gain:
+        kotekan_update_endpoint: json
+        frb_gain_dir: /nonexistent
