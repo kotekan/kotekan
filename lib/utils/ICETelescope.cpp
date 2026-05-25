@@ -328,6 +328,14 @@ double ICETelescope::get_feed_separation_x_m() const {
 double ICETelescope::get_feed_separation_y_m() const {
     return _feed_separation_y_m;
 }
+    
+uint64_t ICETelescope::get_grid_size_x() const {
+    return _num_cylinders;
+}
+    
+uint64_t ICETelescope::get_grid_size_y() const {
+    return _num_dishes_per_cylinder;
+}
 
 ice_stream_id_t ice_extract_stream_id(const stream_t encoded_stream_id) {
     ice_stream_id_t stream_id;

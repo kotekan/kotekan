@@ -817,6 +817,14 @@ double CHORDTelescope::get_feed_separation_y_m() const {
     return _dish_separation_grid_y_m;
 }
 
+uint64_t CHORDTelescope::get_grid_size_x() const {
+    return _geographic_params.num_dishes_x;
+}
+
+uint64_t CHORDTelescope::get_grid_size_y() const {
+    return _geographic_params.num_dishes_y;
+}
+
 void to_json(nlohmann::json& j, const dishInfo& d) {
     j = {};
     j.emplace("dish_idx", d.idx);
