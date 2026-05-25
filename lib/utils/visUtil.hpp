@@ -21,12 +21,12 @@
 #include "gsl-lite.hpp" // for span
 #include "json.hpp"     // for json
 
-#include <algorithm>     // for max
-#include <array>         // for array
-#include <bits/chrono.h> // for system_clock
-#include <complex>       // for complex, imag, real
-#include <cstdint>       // for uint32_t, int8_t, uint16_t, uint8_t, int64_t, uint64_t, int32_t
-#include <cstdlib>       // for size_t, div
+#include <algorithm> // for max
+#include <array>     // for array
+#include <chrono>    // for system_clock
+#include <complex>   // for complex, imag, real
+#include <cstdint>   // for uint32_t, int8_t, uint16_t, uint8_t, int64_t, uint64_t, int32_t
+#include <cstdlib>   // for size_t, div
 #ifdef WITH_CUDA
 #include <cuda_fp16.h> // for __half::operator float
 #endif
@@ -464,6 +464,25 @@ std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
 parse_reorder_default(kotekan::Config& config, const std::string base_path);
 
 /**
+ * @brief Fixed mapping from CHIME cylinder ordering to beamformer ordering.
+ * @return Array of indices mapping cylinder order to beamformer order.
+ *         The array is indexed by the station in beamformer order and returns
+ *         the station's index in cylinder order.
+ */
+constexpr std::array<size_t, 2048> get_cylinder_to_beamformer_reorder_table() {
+    std::array<size_t, 2048> mapping{};
+
+    for (size_t beamformer_idx = 0; beamformer_idx < 2048; ++beamformer_idx) {
+        const int polarization = beamformer_idx / 1024;
+        const int cylinder = (beamformer_idx % 1024) / 256;
+        const int dish = (beamformer_idx % 1024) % 256;
+        mapping[beamformer_idx] = cylinder * 512 + polarization * 256 + dish;
+    }
+
+    return mapping;
+}
+
+/**
  * @brief Return the next aligned location for a given type size
  * @param  offset Start offset.
  * @param  size   Item size.
@@ -814,10 +833,10 @@ public:
     /**
      * @brief Create a new modular number.
      **/
-    modulo(Tu n) : _n(n){};
+    modulo(Tu n) : _n(n) {};
 
     // Default constructor
-    modulo() : modulo(0){};
+    modulo() : modulo(0) {};
 
     /// Assignment of a number into the modular number.
     modulo<T>& operator=(const T& i) {

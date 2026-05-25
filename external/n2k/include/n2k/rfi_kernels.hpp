@@ -1,7 +1,7 @@
 #ifndef _N2K_RFI_KERNELS_HPP
 #define _N2K_RFI_KERNELS_HPP
 
-#include <gputils/Array.hpp>
+#include <ksgpu/Array.hpp>
 #include <iomanip>  // std::setw, std::left
 
 namespace n2k {
@@ -117,12 +117,12 @@ extern void launch_s0_kernel(
     cudaStream_t stream=0);
 
 
-// Version 3: gputils::Array<> interface.
-// Note that there is no 'out_fstride' arugment, since 'S0' is a gputils::Array, which contains strides.
+// Version 3: ksgpu::Array<> interface.
+// Note that there is no 'out_fstride' arugment, since 'S0' is a ksgpu::Array, which contains strides.
 
 extern void launch_s0_kernel(
-     gputils::Array<ulong> &S0,              // output array, shape (T/Nds, F, S)
-     const gputils::Array<ulong> &pl_mask,   // input array, shape (T/128, (F+3)/4, S/8), see above
+     ksgpu::Array<ulong> &S0,              // output array, shape (T/Nds, F, S)
+     const ksgpu::Array<ulong> &pl_mask,   // input array, shape (T/128, (F+3)/4, S/8), see above
      long Nds,                               // time downsampling factor
      cudaStream_t stream=0);
 
@@ -182,12 +182,12 @@ extern void launch_s12_kernel(
     cudaStream_t stream=0);
 
 
-// Version 3: gputils::Array<> interface.
-// Note that there is no 'out_fstride' arugment, since 'S12' is a gputils::Array, which contains strides.
+// Version 3: ksgpu::Array<> interface.
+// Note that there is no 'out_fstride' arugment, since 'S12' is a ksgpu::Array, which contains strides.
 
 extern void launch_s12_kernel(
-    gputils::Array<ulong> &S12,         // output array, shape (T/Nds, F, 2, S)
-    const gputils::Array<uint8_t> &E,   // input int4+4 array, shape (T, F, S)
+    ksgpu::Array<ulong> &S12,         // output array, shape (T/Nds, F, 2, S)
+    const ksgpu::Array<uint8_t> &E,   // input int4+4 array, shape (T, F, S)
     long Nds,                           // time downsampling factor
     bool offset_encoded,                // toggle between twos-complement/offset-encoded int4s
     cudaStream_t stream=0);
@@ -239,10 +239,10 @@ extern void launch_s012_time_downsample_kernel(
     cudaStream_t stream=0);
 
 
-// Version 3: gputils::Array<> interface.
+// Version 3: ksgpu::Array<> interface.
 extern void launch_s012_time_downsample_kernel(
-    gputils::Array<ulong> &Sout,        // output array, shape (T/Nds,3,F,S)
-    const gputils::Array<ulong> &Sin,   // input array, shape (T,3,F,S)
+    ksgpu::Array<ulong> &Sout,        // output array, shape (T/Nds,3,F,S)
+    const ksgpu::Array<ulong> &Sin,   // input array, shape (T,3,F,S)
     long Nds,                           // time downsampling factor
     cudaStream_t stream=0);
 
@@ -294,11 +294,11 @@ extern void launch_s012_station_downsample_kernel(
     long S,                  // number of stations
     cudaStream_t stream=0);
 
-// Version 3: gputils::Array<> interface.
+// Version 3: ksgpu::Array<> interface.
 extern void launch_s012_station_downsample_kernel(
-    gputils::Array<ulong> &Sout,              // output array, shape (T,F,3)
-    const gputils::Array<ulong> &Sin,         // input array, shape (T,F,3,S)
-    const gputils::Array<uint8_t> &bf_mask,   // bad feed mask, shape (S,), see above
+    ksgpu::Array<ulong> &Sout,              // output array, shape (T,F,3)
+    const ksgpu::Array<ulong> &Sin,         // input array, shape (T,F,3,S)
+    const ksgpu::Array<uint8_t> &bf_mask,   // bad feed mask, shape (S,), see above
     cudaStream_t stream=0);
 
 
@@ -417,15 +417,15 @@ struct SkKernel
 	cudaStream_t stream = 0,
 	bool check_params = true) const;
     
-    // gputils::Array<> interface to launch().
+    // ksgpu::Array<> interface to launch().
     // Launches asynchronously (i.e. does not synchronize stream or device after launching kernel.)
 
     void launch(
-        gputils::Array<float> &out_sk_feed_averaged,   // Shape (T,F,3)
-	gputils::Array<float> &out_sk_single_feed,     // Either empty array or shape (T,F,3,S)
-	gputils::Array<uint> &out_rfimask,             // Either empty array or shape (F,T*Nds/32), need not be contiguous
-	const gputils::Array<ulong> &in_S012,          // Shape (T,F,3,S)
-	const gputils::Array<uint8_t> &in_bf_mask,     // Length S (bad feed bask)
+        ksgpu::Array<float> &out_sk_feed_averaged,   // Shape (T,F,3)
+        ksgpu::Array<float> &out_sk_single_feed,     // Either empty array or shape (T,F,3,S)
+        ksgpu::Array<uint> &out_rfimask,             // Either empty array or shape (F,T*Nds/32), need not be contiguous
+        const ksgpu::Array<ulong> &in_S012,          // Shape (T,F,3,S)
+        const ksgpu::Array<uint8_t> &in_bf_mask,     // Length S (bad feed bask)
 	cudaStream_t stream = 0) const;
 
     // Used internally by launch() + constructor.
@@ -433,7 +433,7 @@ struct SkKernel
     static void check_params(const Params &params);
 
     // Interpolation table, copied to GPU memory by constructor.
-    gputils::Array<float> bsigma_coeffs;
+    ksgpu::Array<float> bsigma_coeffs;
     int device = -1;
 };
 

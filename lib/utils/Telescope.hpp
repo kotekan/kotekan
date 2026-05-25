@@ -253,11 +253,25 @@ public:
      *       FPGA sequence number before the given timestamp.
      *
      * @param  time  The Instrument time (a UNIX time unless a leap second has occured since
-     *instrument startup, or one will occur in the next 24 hours).
+     *          instrument startup, or one will occur in the next 24 hours).
      *
      * @return  The corresponding sequence number.
      **/
     virtual uint64_t to_seq(timespec time) const = 0;
+
+    /**
+     * @brief Convert an Instrument (~UNIX epoch) time into the nearest sequence number.
+     *
+     * @note When there is not an exact correspondence between the given time
+     *       and FPGA sequence numbers, this routine will return the latest valid
+     *       FPGA sequence number before the given timestamp.
+     *
+     * @param  time_ns  The Instrument time (a UNIX time unless a leap second has occured since
+     *              instrument startup, or one will occur in the next 24 hours) in nanoseconds.
+     *
+     * @return  The corresponding sequence number.
+     **/
+    virtual uint64_t to_seq(int64_t time_ns) const;
 
 
     /**

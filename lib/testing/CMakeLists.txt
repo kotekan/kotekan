@@ -18,20 +18,26 @@ add_library(
     gpuSimulateN2kCorr.cpp
     gpuSimulateN2kPLExpand.cpp
     gpuSimulateN2kPL1bitCorr.cpp
+    gpuSimulatePLMaskAccumulator.cpp
     gpuSimulateRFIS012.cpp
     gpuSimulateRFIS012bar.cpp
     gpuSimulateRFIS012tilde.cpp
     gpuSimulateRFISK.cpp
     inventBFMask.cpp
+    inventVoltage.cpp
+    inventVoltageCHIME.cpp
     inventPLMask.cpp
     networkOutputSim.cpp
     simVdifData.cpp
     testDataCheck.cpp
     testDataGenQuad.cpp
     testDataGenFloat.cpp
+    testLostCountsGen.cpp
     testLostSamplesToPLMask.cpp
     testN2kGen.cpp
     testRFIS012Gen.cpp
+    testRFImaskGen.cpp
+    testRFIFrameMaskGen.cpp
     TestDropFrames.cpp
     testCHORDTelescope.cpp
     testXpose.cpp

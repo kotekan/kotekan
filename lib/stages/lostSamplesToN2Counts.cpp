@@ -238,7 +238,8 @@ void lostSamplesToN2Counts::main_thread() {
                     // set the 0th value of each stride. If we wanted to set the
                     // entire block, just add an extra loop here
                     size_t idx = cidx_f + tau * num_n2k_freq * _counts_stride;
-                    n2k_count_frame[idx] = _sum;
+                    for (size_t ee = 0; ee < _counts_stride; ee++)
+                        n2k_count_frame[idx + ee] = _sum;
                 }
                 // Shift frequency offset
                 ridx_f += _rfi_f_stride;

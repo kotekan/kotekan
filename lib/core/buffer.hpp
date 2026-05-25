@@ -31,8 +31,6 @@
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
-
-#include <immintrin.h>
 #endif
 
 /// The system page size, this might become more dynamic someday
@@ -363,11 +361,12 @@ public:
      * @param mlock_frames Lock the frame pages with mlock
      * @param cpu_affinity The CPU affinity for the zeroing threads
      * @param zero_new_frames Manually zero the frames when they are allocated
+     * @param zero_value The byte value to use when zeroing frames (default 0x00)
      */
     Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
            const std::string& buffer_name, const std::string& buffer_type, int numa_node,
            bool use_hugepages, bool mlock_frames, const std::vector<int>& cpu_affinity,
-           bool zero_new_frames);
+           bool zero_new_frames, uint8_t zero_value = 0x00);
     ~Buffer() override;
 
     /**
@@ -532,7 +531,8 @@ public:
 
     /**
      * @brief Allocates a new frame description object holding a D dimensional
-     *        array of type T
+     *        array of type T, or checks the given values are consistent with
+     *        the existing frame descriptor, if it exists.
      * @param[in] extents Array extentds in the D dimensions
      * @param[in] dimnames Array axis labels in the D dimensions
      */
@@ -547,24 +547,29 @@ public:
         else {
             auto nd_desc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
             if (!nd_desc) {
-                ERROR("Frame desc mismatch: existing desc is not an NDArray");
-                return;
+                FATAL_ERROR("Frame desc mismatch: existing desc is not an NDArray");
             }
             if (D != nd_desc->get_rank())
-                ERROR("Rank mismatch: {:d} != {:d}", D, nd_desc->get_rank());
+                FATAL_ERROR("Rank mismatch: {:d} != {:d}", D, nd_desc->get_rank());
             if (kotekan::GetDataType_v<T> != nd_desc->get_value_datatype())
-                ERROR("Type mismatch: {:s} != {:s}",
-                      kotekan::type_to_string(kotekan::GetDataType_v<T>),
-                      kotekan::type_to_string(nd_desc->get_value_datatype()));
+                FATAL_ERROR("Type mismatch: {:s} != {:s}",
+                            kotekan::type_to_string(kotekan::GetDataType_v<T>),
+                            kotekan::type_to_string(nd_desc->get_value_datatype()));
             if (quantity_name != nd_desc->get_quantity_name())
-                ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
-                      nd_desc->get_quantity_name());
-            if (!std::equal(extents.begin(), extents.end(), nd_desc->get_extents().begin()))
-                ERROR("Extents do not match: [{:s}] != [{:s}]", fmt::join(extents, ", "),
-                      fmt::join(nd_desc->get_extents(), ", "));
+                FATAL_ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
+                            nd_desc->get_quantity_name());
+            if (!std::equal(extents.begin(), extents.end(), nd_desc->get_extents().begin())) {
+                // Building individual strings with move() avoids nasty constexpr/fmt::join
+                // compilation error.
+                auto ex1_j = fmt::join(extents, ", ");
+                auto ex2_j = fmt::join(nd_desc->get_extents(), ", ");
+                std::string ex1_str = fmt::format("{}", std::move(ex1_j));
+                std::string ex2_str = fmt::format("{}", std::move(ex2_j));
+                FATAL_ERROR("Extents do not match: [{:s}] != [{:s}]", ex1_str, ex2_str);
+            }
             if (!std::equal(dimnames.begin(), dimnames.end(), nd_desc->get_dimnames().begin()))
-                ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "),
-                      fmt::join(nd_desc->get_dimnames(), ", "));
+                FATAL_ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "),
+                            fmt::join(nd_desc->get_dimnames(), ", "));
         }
 
         if (frames_desc->get_byte_size() != frame_size) {
@@ -576,7 +581,8 @@ public:
 
     /**
      * @brief Allocates a new frame description object holding a D dimensional
-     *        array of type T
+     *        array of type T, or checks the given values are consistent with
+     *        the existing frame descriptor, if it exists.
      * @param[in] value_type the kotekan type enumerator of the values stored
      * @param[in] rank dimensionality of the data array
      * @param[in] extents Array extentds in the D dimensions
@@ -592,25 +598,25 @@ public:
         } else {
             auto nd_desc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
             if (!nd_desc) {
-                ERROR("Frame desc mismatch: existing desc is not an NDArray");
+                FATAL_ERROR("Frame desc mismatch: existing desc is not an NDArray");
                 return;
             }
             if (extents.size() != nd_desc->get_rank())
-                ERROR("Rank mismatch: {:d} != {:d}", extents.size(), nd_desc->get_rank());
+                FATAL_ERROR("Rank mismatch: {:d} != {:d}", extents.size(), nd_desc->get_rank());
             if (value_type != nd_desc->get_value_datatype())
-                ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(value_type),
-                      kotekan::type_to_string(nd_desc->get_value_datatype()));
+                FATAL_ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(value_type),
+                            kotekan::type_to_string(nd_desc->get_value_datatype()));
             if (quantity_name != nd_desc->get_quantity_name())
-                ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
-                      nd_desc->get_quantity_name());
+                FATAL_ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
+                            nd_desc->get_quantity_name());
             if (extents != nd_desc->get_extents())
-                ERROR("Extents do not match: [{:s}] != [{:s}]",
-                      fmt::format("{:s}", fmt::join(extents, ", ")),
-                      fmt::format("{:s}", fmt::join(nd_desc->get_extents(), ", ")));
+                FATAL_ERROR("Extents do not match: [{:s}] != [{:s}]",
+                            fmt::format("{:s}", fmt::join(extents, ", ")),
+                            fmt::format("{:s}", fmt::join(nd_desc->get_extents(), ", ")));
             if (dimnames != nd_desc->get_dimnames())
-                ERROR("Dimnames do not match: [{:s}] != [{:s}]",
-                      fmt::format("{:s}", fmt::join(dimnames, ", ")),
-                      fmt::format("{:s}", fmt::join(nd_desc->get_dimnames(), ", ")));
+                FATAL_ERROR("Dimnames do not match: [{:s}] != [{:s}]",
+                            fmt::format("{:s}", fmt::join(dimnames, ", ")),
+                            fmt::format("{:s}", fmt::join(nd_desc->get_dimnames(), ", ")));
         }
 
         if (frames_desc->get_byte_size() != frame_size) {
@@ -755,10 +761,11 @@ bool is_frame_buffer(GenericBuffer* buf);
  * @param use_huge_pages Use mmap to allocate huge pages for frames
  * @param memlock_frames Use mlock to lock frame pages
  * @param zero_new_frames If true, new frames are zeroed with memset
+ * @param zero_value The byte value to use when zeroing frames (default 0x00)
  * @return A pointer to the new memory, or @c NULL if allocation failed.
  */
 uint8_t* buffer_malloc(size_t len, int numa_node, bool use_huge_pages, bool memlock_frames,
-                       bool zero_new_frames);
+                       bool zero_new_frames, uint8_t zero_value = 0x00);
 
 /**
  * @brief Deallocate a frame of memory with the required free method.

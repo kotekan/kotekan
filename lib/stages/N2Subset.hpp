@@ -14,6 +14,7 @@
 #include "bufferContainer.hpp"
 
 #include <cstddef> // for size_t
+#include <cstdint> // for uint32_t
 #include <memory>  // for shared_ptr
 #include <string>  // for string
 #include <vector>  // for vector
@@ -70,6 +71,12 @@ private:
 
     /// Index mapping: for each output product index, the corresponding input product index
     std::vector<size_t> prod_index_map;
+
+    /// Number of elements in input buffer
+    uint32_t _in_num_elements;
+
+    /// Number of elements in output buffer (may be smaller for element subsetting)
+    uint32_t _out_num_elements;
 };
 
 

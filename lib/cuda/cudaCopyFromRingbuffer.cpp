@@ -79,7 +79,8 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
 cudaCopyFromRingbuffer::~cudaCopyFromRingbuffer() {
     if (out_buffer && out_buffer->frame_size) {
         uint flags;
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, out_buffer->frames[instance_num])) {
+        // only unregister if it's already been registered
+        if (cudaSuccess == cudaHostGetFlags(&flags, out_buffer->frames[instance_num])) {
             CHECK_CUDA_ERROR(cudaHostUnregister(out_buffer->frames[instance_num]));
         }
     }

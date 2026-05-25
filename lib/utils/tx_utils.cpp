@@ -1,5 +1,7 @@
 #include "tx_utils.hpp"
 
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
+
 #include <cstring>   // for strlen
 #include <stdexcept> // for runtime_error
 #include <stdlib.h>  // for atoi, malloc
@@ -134,36 +136,12 @@ void add_nsec(struct timespec& temp, long nsec) {
 }
 
 int get_vlan_from_ip(const char* ip_address) {
-    int len = 0;
-    int location = 0;
-    char* temp;
-    int vlan = 0;
-    int flag = 0;
-    for (unsigned int i = 0; i < std::strlen(ip_address); i++) {
-        if (ip_address[i] == '.' && flag == 0) {
-            location = i + 1;
-            flag = 1;
-        }
+    int a, b, c, d, n;
+    const int fields_parsed = sscanf(ip_address, "%d.%d.%d.%d%n", &a, &b, &c, &d, &n);
+    if (fields_parsed != 4 || (size_t)n != strlen(ip_address)) {
+        FATAL_ERROR_NON_OO("Could not parse {:s} as an IPv4 address", ip_address);
     }
-    flag = 0;
-    for (unsigned int i = location; i < std::strlen(ip_address); i++) {
-        if (ip_address[i] != '.' && flag == 0)
-            len++;
-        else
-            flag = 1;
-    }
-
-    temp = new char[len];
-    flag = 0;
-    for (unsigned int i = location; i < std::strlen(ip_address); i++) {
-        if (ip_address[i] != '.' && flag == 0)
-            temp[i - location] = ip_address[i];
-        else
-            flag = 1;
-    }
-
-    vlan = atoi(temp);
-    return vlan;
+    return b;
 }
 
 

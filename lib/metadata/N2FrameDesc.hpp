@@ -18,7 +18,7 @@ namespace kotekan {
  *
  * Use this enum to refer to the fields.
  **/
-enum class N2Field { vis, weight, flags, eval, evec, emethod, erms, gain };
+enum class N2Field { vis, weight, flags, eval, evec, emethod, erms, radiometer_chi2, gain, mask };
 
 /**
  * @brief Describes the byte range of a field within an N2 frame.
@@ -49,7 +49,7 @@ struct n2frame_layout_t {
  *
  * Use this enum to refer to the method used to compute Eigenvalues and Eigenvectors.
  **/
-enum class N2EigenMethod : int32_t { none, cheevr, iterative };
+enum class N2EigenMethod : int32_t { none, cheevr, iterative, failed_iterative };
 
 class N2FrameDesc : public FrameDesc {
 public:

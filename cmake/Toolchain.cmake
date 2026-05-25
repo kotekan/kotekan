@@ -67,8 +67,8 @@ if(HAVE_SUGGEST_OVERRIDE AND NOT ${IWYU})
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override>)
 endif()
 
-# Clang-only: explicitly allow VLAs in C++ without promoting them to errors
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+# Clang/icpx: explicitly allow VLAs in C++ without promoting them to errors
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|IntelLLVM")
     check_cxx_compiler_flag(-Wno-vla-cxx-extension HAVE_CLANG_NO_WVLA_CXX_EXTENSION)
     if(HAVE_CLANG_NO_WVLA_CXX_EXTENSION)
         add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-vla-cxx-extension>)
@@ -146,6 +146,59 @@ endif()
 # Do not test for unused values in Release builds
 if(CMAKE_BUILD_TYPE MATCHES Release)
     add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-Wno-unused-variable>)
+
+    # Link-time optimization (opt-in via -DUSE_LTO=ON). Uses ThinLTO on Clang/icpx (requires lld),
+    # -flto=auto on GCC. Note: check_cxx_compiler_flag caches results; delete the build dir when
+    # switching compilers.
+    if("${USE_LTO}" STREQUAL "ON" OR "${USE_LTO}" STREQUAL "AUTO")
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|IntelLLVM")
+            set(_lto_flag "-flto=thin")
+            set(_lto_label "ThinLTO")
+            add_link_options(-fuse-ld=lld -Wl,--allow-multiple-definition)
+            # lld doesn't search /usr/local/lib by default (GNU ld does).
+            link_directories(/usr/local/lib)
+            # Use the compiler-matched LLVM tools for ar/ranlib so the gold plugin version matches
+            # the bitcode produced by the compiler.
+            get_filename_component(_cxx_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+            find_program(
+                _llvm_ar
+                NAMES llvm-ar
+                HINTS "${_cxx_dir}" "${_cxx_dir}/compiler")
+            find_program(
+                _llvm_ranlib
+                NAMES llvm-ranlib
+                HINTS "${_cxx_dir}" "${_cxx_dir}/compiler")
+            if(_llvm_ar)
+                set(CMAKE_AR
+                    "${_llvm_ar}"
+                    CACHE FILEPATH "LTO-aware archiver" FORCE)
+            endif()
+            if(_llvm_ranlib)
+                set(CMAKE_RANLIB
+                    "${_llvm_ranlib}"
+                    CACHE FILEPATH "LTO-aware ranlib" FORCE)
+            endif()
+        elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            set(_lto_flag "-flto=auto")
+            set(_lto_label "LTO (GCC parallel mode)")
+        endif()
+        if(DEFINED _lto_flag)
+            set(CMAKE_REQUIRED_LINK_OPTIONS ${_lto_flag})
+            check_cxx_compiler_flag(${_lto_flag} HAVE_LTO)
+            unset(CMAKE_REQUIRED_LINK_OPTIONS)
+            if(HAVE_LTO)
+                add_compile_options(
+                    $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:${_lto_flag}>)
+                add_link_options(${_lto_flag})
+                kmsg_ok("${_lto_label} enabled")
+            else()
+                kmsg_warn("${_lto_label} not supported by this compiler")
+            endif()
+        endif()
+    endif()
+
+    # Hide all symbols by default; reduces binary size and improves optimization
+    add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-fvisibility=hidden>)
 endif()
 
 # General defines and tuning
@@ -174,6 +227,7 @@ set(_requested_omp "${USE_OMP}")
 if("${_requested_omp}" STREQUAL "AUTO" OR "${_requested_omp}" STREQUAL "ON")
     find_package(OpenMP QUIET)
     if(OpenMP_FOUND)
+        add_definitions(-DWITH_OMP)
         if(OpenMP_C_FLAGS)
             string(APPEND CMAKE_C_FLAGS " ${OpenMP_C_FLAGS}")
         endif()

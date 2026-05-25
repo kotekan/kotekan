@@ -10,16 +10,6 @@ using StaticArrays
 
 const Memory = IndexSpaces.Memory
 
-# const card = "A30"
-const card = "A40"
-
-if CUDA.functional()
-    println("[Choosing CUDA device...]")
-    CUDA.device!(0)
-    println(name(device()))
-    @assert name(device()) == "NVIDIA $card"
-end
-
 chimify(x::Int4x8) = swap_offset(x)
 unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
@@ -1913,7 +1903,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     !silent && println("CHORD FRB beamformer")
 
     if output_kernel
-        open("output-$card/frb_$(setup)_U$(U).jl", "w") do fh
+        open("output/frb_$(setup)_U$(U).jl", "w") do fh
             println(fh, "# Julia source code for CUDA frb beamformer")
             println(fh, "# This file has been generated automatically by `frb.jl`.")
             println(fh, "# Do not modify this file, your changes will be lost.")
@@ -1932,7 +1922,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     shmem_size = idiv(shmem_bytes, 4)
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm frb(
+    kernel = @cuda launch = false cap = compute_capability ptx = ptx_compat minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm frb(
         Int32(0),
         Int32(0),
         Int32(0),
@@ -2250,9 +2240,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 end
 
 function fix_ptx_kernel()
-    ptx = read("output-$card/frb_$(setup)_U$(U).ptx", String)
+    ptx = read("output/frb_$(setup)_U$(U).ptx", String)
     ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
-    open("output-$card/frb_$(setup)_U$(U).ptx", "w") do fh
+    open("output/frb_$(setup)_U$(U).ptx", "w") do fh
         println(fh, "// PTX kernel code for CUDA frb beamformer")
         println(fh, "// This file has been generated automatically by `frb.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
@@ -2260,17 +2250,24 @@ function fix_ptx_kernel()
         write(fh, ptx)
         return nothing
     end
-    sass = read("output-$card/frb_$(setup)_U$(U).sass", String)
-    open("output-$card/frb_$(setup)_U$(U).sass", "w") do fh
+    open("output/frb_$(setup)_U$(U).sass", "w") do fh
         println(fh, "// SASS kernel code for CUDA frb beamformer")
         println(fh, "// This file has been generated automatically by `frb.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
         println(fh)
-        write(fh, sass)
+        CUDA.code_sass(fh, frb, Tuple{Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32,
+                                      CuDeviceVector{Int16x2,1},
+                                      CuDeviceVector{Float16x2,1},
+                                      CuDeviceVector{Int4x8,1},
+                                      CuDeviceVector{Float16x2,1},
+                                      CuDeviceVector{Int32,1}};
+                       cap=compute_capability, ptx=ptx_compat,
+                       minthreads=(num_threads, num_warps),
+                       blocks_per_sm=num_blocks_per_sm)
         return nothing
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-    open("output-$card/frb_$(setup)_U$(U).yaml", "w") do fh
+    open("output/frb_$(setup)_U$(U).yaml", "w") do fh
         println(fh, "# Metadata code for CUDA frb beamformer")
         println(fh, "# This file has been generated automatically by `frb.jl`.")
         println(fh, "# Do not modify this file, your changes will be lost.")
@@ -2527,21 +2524,16 @@ function fix_ptx_kernel()
             ],
         ),
     )
-    write("output-$card/frb_$(setup)_U$(U).cxx", cxx)
+    write("output/frb_$(setup)_U$(U).cxx", cxx)
     return nothing
 end
 
 if CUDA.functional()
     # Output kernel
     main(; output_kernel=true)
-    open("output-$card/frb_$(setup)_U$(U).ptx", "w") do fh
+    open("output/frb_$(setup)_U$(U).ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true, silent=true)
-        end
-    end
-    open("output-$card/frb_$(setup)_U$(U).sass", "w") do fh
-        redirect_stdout(fh) do
-            @device_code_sass main(; compile_only=true, silent=true)
         end
     end
     fix_ptx_kernel()

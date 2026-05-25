@@ -7,15 +7,6 @@ using Mustache
 
 const Memory = IndexSpaces.Memory
 
-const card = "A40"
-
-if CUDA.functional()
-    println("[Choosing CUDA device...]")
-    CUDA.device!(0)
-    println(name(device()))
-    @assert name(device()) == "NVIDIA $card"
-end
-
 chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
 unchimify(x) = chimify(x)
 
@@ -386,7 +377,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     end
 
     if output_kernel
-        open("output-$card/xpose2048_$setup.jl", "w") do fh
+        open("output/xpose2048_$setup.jl", "w") do fh
             return println(fh, xpose2048_stmts)
         end
     end
@@ -402,7 +393,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     shmem_bytes = kernel_setup.shmem_bytes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm xpose2048_kernel(
+    kernel = @cuda launch = false cap = compute_capability ptx = ptx_compat minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm xpose2048_kernel(
         Int32(0),
         Int32(0),
         Int32(0),
@@ -466,14 +457,24 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
     @assert all(info_memory .== 0)
 
     if output_kernel
-        ptx = read("output-$card/xpose2048_$setup.ptx", String)
+        ptx = read("output/xpose2048_$setup.ptx", String)
         ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
         ptx = replace(ptx, r".extern .func julia_AssertionError_([^;]*);"s => s".func julia_AssertionError_\1.noreturn\n{\n\ttrap;\n}")
-        open("output-$card/xpose2048_$setup.ptx", "w") do fh
+        open("output/xpose2048_$setup.ptx", "w") do fh
             return write(fh, ptx)
         end
+        open("output/xpose2048_$setup.sass", "w") do fh
+            CUDA.code_sass(fh, xpose2048_kernel, Tuple{Int32, Int32, Int32, Int32,
+                                                       CuDeviceVector{Int4x8,1},
+                                                       CuDeviceVector{Int4x8,1},
+                                                       CuDeviceVector{Int32,1},
+                                                       CuDeviceVector{Int32,1}};
+                           cap=compute_capability, ptx=ptx_compat,
+                           minthreads=(num_threads, num_warps),
+                           blocks_per_sm=num_blocks_per_sm)
+        end
         kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-        open("output-$card/xpose2048_$setup.yaml", "w") do fh
+        open("output/xpose2048_$setup.yaml", "w") do fh
             return print(
                 fh,
                 """
@@ -645,7 +646,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                 ],
             ),
         )
-        write("output-$card/xpose2048_$setup.cxx", cxx)
+        write("output/xpose2048_$setup.cxx", cxx)
     end
 
     println("Done.")
@@ -654,14 +655,9 @@ end
 
 if CUDA.functional()
     # Output kernel
-    open("output-$card/xpose2048_$setup.ptx", "w") do fh
+    open("output/xpose2048_$setup.ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true)
-        end
-    end
-    open("output-$card/xpose2048_$setup.sass", "w") do fh
-        redirect_stdout(fh) do
-            @device_code_sass main(; compile_only=true)
         end
     end
     # This call needs to happen after generating PTX code since it

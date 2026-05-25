@@ -47,12 +47,13 @@
  * - Index maps: /index_map/freq (MHz + width per file frequency), /index_map/prod,
  *   /index_map/grid_x_idx, /index_map/grid_y_idx, /index_map/feed_pos_disp_m,
  *   /index_map/coelev_disp_deg, /index_map/type, /index_map/dish_positions_in_grid_coords.
- * - Per-(f, p, t)/(f, t) datasets: /vis, /eval, /evec, /erms, /gain, /frames_added;
- *   vis_weight, flags, frac_lost, and frac_rfi live at the root (CHORD) or under
+ * - Per-(f, p, t)/(f, t) datasets: /vis, /eval, /evec, /erms, /gain, /radiometer_chi2,
+ * /frames_added; vis_weight, flags, frac_lost, and frac_rfi live at the root (CHORD) or under
  *   /flags/{vis_weight, flags, frac_lost, frac_rfi} when file_mode == CHIME.
  * - Per-time metadata: /fpga_start_tick, /frame_length_fpga_ticks,
  *   /time_center_ut1_ns, /bin_ut1_ns, /bin_start_ERA_deg, /bin_end_ERA_deg,
- *   /bin_start_LAST, /bin_end_LAST.
+ *   /bin_start_ERAL, /bin_end_ERAL, /rfi_frame_excision_enabled, /rfi_frame_excision_num,
+ *   /rfi_frame_excision_threshold, /rfi_frame_excision_fraction.
  * - /config_json grows on flush with snapshots from configTracker.
  *
  * @par Chunking and compression
@@ -67,11 +68,6 @@
 class N2FileData {
 public:
     enum FileMode { CHORD, CHIME };
-    struct DigitalGains {
-        std::vector<std::uint16_t> gains_lin;
-        std::vector<std::uint16_t> gains_log;
-        std::string full_filepath;
-    };
 
     // Structural information and fixed sizes
     const size_t num_elements; // number of inputs / elements
@@ -92,35 +88,56 @@ public:
     const uint64_t abs_file_idx;    // absolute file index (abs_time_idx / num_file_t)
     const std::string base_dir;     // base output directory (without /.partial)
     const std::string
-        gains_base_directory; // Base directory for gains. If empty/absent, gains are not written.
+        baseband_gain_file;             // Path to gains HDF5 file. If empty, gains are not written.
+    const int baseband_gain_update_idx; // update_time index (-1 = latest)
     const std::string partial_filepath; // working on-disk location
     const N2Layout n2_layout;           // visibility (N2) layout
 
     double last_update_wall_s;               // last frame receipt
     std::unique_ptr<HighFive::File> h5_file; // Working on-disk HDF5 file handle
+    std::optional<size_t> gains_file_hash =
+        std::nullopt; // hash of gains file contents at copy time
 
 protected:
     // Datasets to be stored until ready to write
-    // f = freq, p = prod, e = eigen, i = input, t = time
-    std::vector<N2::cfloat> vis;   // (f, p, t)
-    std::vector<float> vis_weight; // (f, p, t)
-    std::vector<float> eval;       // (f, e, t)
-    std::vector<N2::cfloat> evec;  // (f, e, i, t)
-    std::vector<float> erms;       // (f, t)
-    std::vector<N2::cfloat> gain;  // (f, i, t)
-    std::vector<float> frac_lost;  // (f, t) ; uses n_valid_fpga_ticks
-    std::vector<float> frac_rfi;   // (f, t) ; uses n_rfi_fpga_ticks
-    std::vector<float> flags;      // (f, i, t)
+    // f = freq, p = prod, e = eigen, i = input, t = time, k = threshold, pp = pol_prod
+    std::vector<N2::cfloat> vis;               // (f, p, t)
+    std::vector<float> vis_weight;             // (f, p, t)
+    std::vector<float> eval;                   // (f, e, t)
+    std::vector<N2::cfloat> evec;              // (f, e, i, t)
+    std::vector<float> erms;                   // (f, t)
+    std::vector<N2::cfloat> gain;              // (f, i, t)
+    std::vector<uint64_t> valid_fpga_count;    // (f, t)
+    std::vector<uint64_t> rfi_fpga_count;      // (f, t)
+    std::vector<uint64_t> rfi_only_fpga_count; // (f, t)
+    std::vector<uint64_t> pl_fpga_count;       // (f, t)
+    std::vector<float> frac_lost;              // (f, t) ; uses n_valid_fpga_ticks
+    std::vector<float> frac_rfi;               // (f, t) ; uses n_rfi_fpga_ticks
+    std::vector<float> frac_rfi_only;          // (f, t) ; uses n_rfi_only_fpga_ticks
+    std::vector<float> frac_pl;                // (f, t) ; uses n_pl_fpga_ticks
+    std::vector<float> flags;                  // (f, i, t)
+    std::vector<float> radiometer_chi2;        // (f, t, pp)
 
     // t-dependent metadata
-    std::vector<uint64_t> fpga_start_tick;         // (t)
-    std::vector<uint64_t> frame_length_fpga_ticks; // (t)
-    std::vector<int64_t> time_center_ut1;          // (t)
-    std::vector<int64_t> bin_ut1;                  // (t)
-    std::vector<double> bin_start_ERA_deg;         // (t)
-    std::vector<double> bin_end_ERA_deg;           // (t)
-    std::vector<double> bin_start_LAST;            // (t)
-    std::vector<double> bin_end_LAST;              // (t)
+    std::vector<uint64_t> fpga_start_tick;           // (t)
+    std::vector<uint64_t> frame_length_fpga_ticks;   // (t)
+    std::vector<uint64_t> bin_abs_index;             // (t)
+    std::vector<int64_t> time_center_t_inst_ns;      // (t)
+    std::vector<int64_t> time_center_ut1_ns;         // (t)
+    std::vector<int64_t> bin_t_inst_ns;              // (t)
+    std::vector<int64_t> bin_ut1_ns;                 // (t)
+    std::vector<double> bin_delta_ut1_inst;          // (t)
+    std::vector<double> bin_era_deg;                 // (t)
+    std::vector<double> bin_xp_as;                   // (t)
+    std::vector<double> bin_yp_as;                   // (t)
+    std::vector<double> bin_start_ERA_deg;           // (t)
+    std::vector<double> bin_end_ERA_deg;             // (t)
+    std::vector<double> bin_start_ERAL_deg;          // (t)
+    std::vector<double> bin_end_ERAL_deg;            // (t)
+    std::vector<bool> rfi_frame_excision_enabled;    // (t)
+    std::vector<int32_t> rfi_frame_excision_num;     // (t)
+    std::vector<float> rfi_frame_excision_threshold; // (t, k)
+    std::vector<float> rfi_frame_excision_fraction;  // (t, k)
 
     // Tracking what (f, t) pairs have been added
     std::vector<uint8_t> added_ft; // size = num_file_f * num_file_t
@@ -139,13 +156,6 @@ private:
                                const HighFive::DataType& dtype,
                                HighFive::DataSetCreateProps props) const;
 
-    /// Load digital gains from files in given directory
-    ///
-    /// !TODO: switch to API when it exists.
-    /// Need to validate these gains are actualy what the F-engine is using, e.g. query fpga_master.
-    ///
-    std::optional<N2FileData::DigitalGains> _get_digital_gains() const;
-
     /// Open/create/init datasets in h5 file
     std::unique_ptr<HighFive::File> _open_or_create_file(const std::string& filepath,
                                                          const uint64_t num_file_t_,
@@ -159,7 +169,8 @@ public:
                const double open_wall_s_, const uint64_t abs_file_idx_, const size_t blocksize_f_,
                const size_t blocksize_p_, const size_t blocksize_t_, const std::string compression_,
                const size_t compression_level_, const bool use_bitshuffle_,
-               const std::string base_dir_, const std::string gains_base_directory_);
+               const std::string base_dir_, const std::string baseband_gain_file_,
+               const int baseband_gain_update_idx_ = -1);
 
     /**
      * @brief Add a frame of data at the computed time index.
@@ -256,8 +267,10 @@ public:
  * @par Configuration
  * @conf in_buf                   String. N2 buffer supplying frames (`buffer_type` must be "N2").
  * @conf base_dir                 String. Output directory (absolute or relative to the process
- *                                working directory where kotekan was invoked); `<base_dir>` and
- *                                `<base_dir>/.partial` are created.
+ *                                working directory where kotekan was invoked). An acquisition
+ *                                subdirectory `acq_YYYYMMDD_HHMMSS_NNNNNNNNN` is appended
+ *                                automatically at startup; `<base_dir>/<acq>/` and
+ *                                `<base_dir>/<acq>/.partial` are created.
  * @conf num_file_t               UInt. Number of time frames per file (`t_index = abs_time_idx %
  *num_file_t`).
  * @conf blocksize_f              UInt. Chunk cap for the frequency dimension (default: 16).
@@ -268,6 +281,16 @@ public:
  * @conf compression_level        UInt. Codec level (0 picks 4 for deflate, 9 for bitshuffle).
  * @conf use_bitshuffle           Bool. Enable bitshuffle with the selected backend codec (default:
  *                                false).
+ * @conf baseband_gain_file       String. Path to the digital gains HDF5 file. If empty (default),
+ *                                gains are not written. Mutually exclusive with
+ *                                `baseband_gain_url`.
+ * @conf baseband_gain_url        String. HTTP URL to fetch the digital gains HDF5 file from at
+ *                                startup. The file is downloaded once into
+ *                                `<base_dir>/.partial/baseband_gains.h5` and then used as if it
+ *                                had been provided via `baseband_gain_file`. Plain HTTP only; no
+ *                                HTTPS, no auth. Mutually exclusive with `baseband_gain_file`.
+ * @conf baseband_gain_update_idx Int. Index along the update_time axis to read from the gains
+ *                                file (-1 = latest, default: -1).
  * @conf late_frame_grace_seconds UInt. Grace period in seconds for late frames (default: 60).
  * @conf max_frames               Int. Stop writing after this many frames (-1 = unlimited).
  *
@@ -317,8 +340,13 @@ public:
 
 private:
     // Config settings (initialized from Config in constructor)
-    const std::string _base_dir;             /// Base directory to write files into
-    const std::string _gains_base_directory; /// Base directory for digital gains files
+    const std::string _base_dir; /// Base directory to write files into
+    /// Path to digital gains HDF5 file. Set either directly from config or, if
+    /// `baseband_gain_url` is configured, populated at startup after the URL is
+    /// downloaded into `<base_dir>/.partial/baseband_gains.h5`.
+    std::string _baseband_gain_file;
+    const std::string _baseband_gain_url; /// HTTP URL to fetch the gains file from (optional)
+    const int _baseband_gain_update_idx;  /// update_time index (-1 = latest)
     const std::uint64_t _num_file_t; /// Number of incoming time frames per file, as indexed by the
                                      /// absolute frame index
     const std::string _compression;

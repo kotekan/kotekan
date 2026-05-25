@@ -1,0 +1,197 @@
+---
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: INFO
+
+buffer_depth: 4
+cpu_affinity: [13, 14]  # [2,3,4,5,8,9,10,11]
+sizeof_float: 4
+frame_arrival_period: 2.56e-6 * samples_per_data_set
+sizeof_int: 4
+
+sub_integration_ntime: 16384
+samples_per_data_set: 16384
+rfi_downsampling_factor: 256
+num_times: samples_per_data_set
+num_polarizations: 2
+num_dishes: 1024
+num_elements: num_polarizations * num_dishes
+num_local_freq: 16
+num_ev: 0
+
+num_subintegrations_per_bin: 32
+
+#counts matrix size
+counts_blocksize: 8
+counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
+counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
+
+# vis matrix size
+vis_blocksize: 16
+vis_num_blocks_lin: num_elements / vis_blocksize
+vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
+
+frames_to_generate: buffer_depth  # must be at least n2_frames_to_write * num_subintegrations_per_bin
+repeat: 64
+corr_frames: repeat * frames_to_generate
+n2_samples_per_frame: samples_per_data_set / sub_integration_ntime
+n2_frames: num_local_freq * (corr_frames * samples_per_data_set) / (sub_integration_ntime * num_subintegrations_per_bin)
+
+
+GIGA: 1000000000
+start_time_s: 1760000000
+
+telescope:
+    name: CHORDTelescope
+    origin_itrs_lat_deg: 50.0
+    origin_itrs_lon_deg: -120.0
+    dish_coelev_deg: 90.0
+    grid_x_axis: [1.0, 0.0, 0.0]
+    grid_y_axis: [0.0, 1.0, 0.0]
+    dish_elev_axis: [1.0, 0.0, 0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
+    require_gps: false
+    eop_updatable_config: /earth_rotation_data
+    num_dishes_x: 22
+    num_dishes_y: 48
+    dish_inputs: []
+
+freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+gps_time:
+    frame0_nano: start_time_s * GIGA
+
+earth_rotation_data:
+    kotekan_update_endpoint: json
+    # yamlfix:off
+    earth_orientation_parameter_table: [
+      {
+        t_inst_ns: 1750000000000000000,
+        delta_UT1_inst: 0.5,
+        xp_as: 0.1,
+        yp_as: 0.2
+      }, {
+        t_inst_ns: 1770000000000000000,
+        delta_UT1_inst: -0.5,
+        xp_as: 0.3,
+        yp_as: 0.4
+      }]
+    # yamlfix:on
+
+
+# Pool
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 3 * buffer_depth
+
+n2_pool:
+    kotekan_metadata_pool: N2Metadata
+    num_metadata_objects: 16 * buffer_depth
+
+fake_correlation_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
+    metadata_pool: main_pool
+
+fake_counts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    metadata_pool: main_pool
+
+fake_rficounts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    metadata_pool: main_pool
+
+fake_plcounts_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    metadata_pool: main_pool
+
+fake_rfiframemask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    metadata_pool: main_pool
+
+n2_buffer:
+    kotekan_buffer: N2
+    n2_layout: "FullUpperTri"
+    num_frames: buffer_depth * num_local_freq
+    metadata_pool: n2_pool
+
+gen_fake_corr_counts:
+    kotekan_stage: testN2kGen
+    cpu_affinity: [3]
+    out_buf: fake_correlation_buffer
+    out_counts_buf: fake_counts_buffer
+    correlation_type: "f_times_ee"
+    counts_type: "random_scalar"
+    correlation_value: [1, -1]
+    counts_value: sub_integration_ntime
+    counts_min: 0
+    counts_max: sub_integration_ntime
+    mul_correlation_by_counts: true
+    num_frames: frames_to_generate
+    repeat_count: repeat
+
+gen_rfi_counts:
+    kotekan_stage: testLostCountsGen
+    cpu_affinity: [3]
+    in_buf: fake_counts_buffer
+    out_buf: fake_rficounts_buffer
+    name: RFImask_counts
+    type: random
+    num_frames: frames_to_generate
+    repeat_count: repeat
+    use_n2k_counts: true
+
+gen_pl_lost_counts:
+    kotekan_stage: testLostCountsGen
+    cpu_affinity: [3]
+    in_buf: fake_counts_buffer
+    out_buf: fake_plcounts_buffer
+    type: random
+    name: pl_lost_counts_scalar
+    num_frames: frames_to_generate
+    repeat_count: repeat
+    use_n2k_counts: true
+
+gen_fake_rfiframemask:
+    kotekan_stage: testRFIFrameMaskGen
+    cpu_affinity: [3]
+    out_buf: fake_rfiframemask_buffer
+    type: "const"
+    value: 1
+    num_frames: frames_to_generate
+    repeat_count: repeat
+
+N2_accumulate:
+    kotekan_stage: N2Accumulate
+    cpu_affinity: [8, 9, 10, 11]
+    in_buf: fake_correlation_buffer
+    in_counts_buf: fake_counts_buffer
+    in_rficounts_buf: fake_rficounts_buffer
+    in_plcounts_buf: fake_plcounts_buffer
+    in_rfiframemask_buf: fake_rfiframemask_buffer
+    out_buf: n2_buffer
+    num_freq_per_n2k_frame: num_local_freq
+    packet_loss_is_scalar: true
+    variance_mode: EvenOddPosDef
+    num_workers: 2
+    output_batch_size: 8
+    do_fringestop: true
+    profile_info: true
+    debug_accum_mode: false
+
+eat_n2:
+    kotekan_stage: dropAllFrames
+    cpu_affinity: [12]
+    in_buf: n2_buffer
+    max_frames: n2_frames

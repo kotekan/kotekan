@@ -1,32 +1,32 @@
 ---
 type: config
 log_level: DEBUG
-cpu_affinity: [0,1,2,3]
+cpu_affinity: [0, 1, 2, 3]
 
 trackers:
-  enable_crash_dump: true
-  dump_path: ./
+    enable_crash_dump: true
+    dump_path: ./
 
 cpu_monitor:
-  enabled: false
-  track_length: 2  # save last 2 mins cpu usage.
+    enabled: false
+    track_length: 2 # save last 2 mins cpu usage.
 
 main_pool:
-  kotekan_metadata_pool: chimeMetadata
-  num_metadata_objects: 30
+    kotekan_metadata_pool: chimeMetadata
+    num_metadata_objects: 30
 
 data_gen:
-  kotekan_stage: testDataGen
-  out_buf: example_buffer
-  type: const
-  value: 0x42
+    kotekan_stage: testDataGen
+    out_buf: example_buffer
+    type: const
+    value: 0x42
 
 example_buffer:
-  kotekan_buffer: standard
-  num_frames: 10
-  frame_size: 128
-  metadata_pool: main_pool
+    kotekan_buffer: standard
+    num_frames: 10
+    frame_size: 128
+    metadata_pool: main_pool
 
 screen_dump:
-  kotekan_stage: hexDump
-  in_buf: example_buffer
+    kotekan_stage: hexDump
+    in_buf: example_buffer

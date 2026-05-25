@@ -257,6 +257,7 @@ def git_pieces_from_vcs(tag_prefix, root, verbose, run_command=run_command):
             "--dirty",
             "--always",
             "--long",
+            "--abbrev=10",
             "--match",
             "%s*" % tag_prefix,
         ],

@@ -302,6 +302,8 @@ private:
  *                      primary beam at 300MHz in degrees. Defaults to 10.0.
  * @conf    n_rfi_ticks uint32, number of ticks to assign to rfi each frame.
  *                      Defaults to 0.
+ * @conf    n_rfi_only_ticks uint32, number of ticks to assign to rfi_only each frame.
+ *                      Defaults to 0.
  * @conf    n_lost_ticks    uint32, number of ticks to assign to packet loss each
  *                      frame. Defaults to 0.
  * @conf    seed        int, seed for random number generator. defaults to 12345.
@@ -327,6 +329,7 @@ private:
     double noise_var;
     double beam_fwhm_300MHz_deg;
     uint32_t n_rfi_ticks;
+    uint32_t n_rfi_only_ticks;
     uint32_t n_lost_ticks;
     std::mt19937 rng;
 };

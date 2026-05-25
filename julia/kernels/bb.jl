@@ -9,18 +9,6 @@ using Random
 
 const Memory = IndexSpaces.Memory
 
-# const card = "A30"
-const card = "A40"
-# const card = "GeForce_RTX_4090"
-# const card = "L40S"
-
-if CUDA.functional()
-    println("[Choosing CUDA device...]")
-    CUDA.device!(0)
-    println(name(device()))
-    @assert replace(name(device()), ' ' => '_') == "NVIDIA_$card"
-end
-
 chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
 unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
@@ -104,7 +92,7 @@ elseif setup ≡ :pathfinder || setup ≡ :smallfinder
 elseif setup ≡ :chime
 
     # CHIME
-    const B = 16
+    const B = 32                # 16
 
     const T1_stride = 128
     const T2_stride = 32
@@ -1039,7 +1027,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     end
 
     if output_kernel
-        open("output-$card/bb_$setup.jl", "w") do fh
+        open("output/bb_$setup.jl", "w") do fh
             println(fh, "# Julia source code for CUDA baseband beamformer")
             println(fh, "# This file has been generated automatically by `bb.jl`.")
             println(fh, "# Do not modify this file, your changes will be lost.")
@@ -1060,7 +1048,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     shmem_bytes = kernel_setup.shmem_bytes
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm bb(
+    kernel = @cuda launch = false cap = compute_capability ptx = ptx_compat minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm bb(
         Int32(0),
         Int32(0),
         CUDA.zeros(Int8x4, 0),
@@ -1077,9 +1065,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     end
 
     if output_kernel
-        ptx = read("output-$card/bb_$setup.ptx", String)
+        ptx = read("output/bb_$setup.ptx", String)
         ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
-        open("output-$card/bb_$setup.ptx", "w") do fh
+        open("output/bb_$setup.ptx", "w") do fh
             println(fh, "// PTX kernel code for CUDA baseband beamformer")
             println(fh, "// This file has been generated automatically by `bb.jl`.")
             println(fh, "// Do not modify this file, your changes will be lost.")
@@ -1087,17 +1075,25 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             write(fh, ptx)
             return nothing
         end
-        sass = read("output-$card/bb_$setup.sass", String)
-        open("output-$card/bb_$setup.sass", "w") do fh
+        open("output/bb_$setup.sass", "w") do fh
             println(fh, "// SASS kernel code for CUDA baseband beamformer")
             println(fh, "// This file has been generated automatically by `bb.jl`.")
             println(fh, "// Do not modify this file, your changes will be lost.")
             println(fh)
-            write(fh, sass)
+            CUDA.code_sass(fh, bb, Tuple{Int32, Int32,
+                                         CuDeviceVector{Int8x4,1},
+                                         CuDeviceVector{Int4x8,1},
+                                         CuDeviceVector{Int32,1},
+                                         CuDeviceVector{Int4x8,1},
+                                         CuDeviceVector{Int32,1},
+                                         CuDeviceVector{Int32,1}};
+                           cap=compute_capability, ptx=ptx_compat,
+                           minthreads=(num_threads, num_warps),
+                           blocks_per_sm=num_blocks_per_sm)
             return nothing
         end
         kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-        open("output-$card/bb_$setup.yaml", "w") do fh
+        open("output/bb_$setup.yaml", "w") do fh
             println(fh, "# Metadata for the CUDA baseband beamformer")
             println(fh, "# This file has been generated automatically by `bb.jl`.")
             println(fh, "# Do not modify this file, your changes will be lost.")
@@ -1312,7 +1308,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 ],
             ),
         )
-        write("output-$card/bb_$setup.cxx", cxx)
+        write("output/bb_$setup.cxx", cxx)
     end
 
     println("Allocating input data...")
@@ -1545,14 +1541,9 @@ end
 
 if CUDA.functional()
     # Output kernel
-    open("output-$card/bb_$setup.ptx", "w") do fh
+    open("output/bb_$setup.ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true)
-        end
-    end
-    open("output-$card/bb_$setup.sass", "w") do fh
-        redirect_stdout(fh) do
-            @device_code_sass main(; compile_only=true)
         end
     end
     # This call needs to happen after generating PTX code since it

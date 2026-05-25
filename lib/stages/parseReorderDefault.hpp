@@ -12,7 +12,8 @@
 
 /**
  * @class parseReorderDefault
- * @brief Parse the reordering configuration section
+ * @brief Parse the reordering configuration section and create a mapping
+ * yielding elements in output_order when indexed in input_order.
  *
  * @par Buffers
  * @buffer out_buf Buffer to with reorder table column
@@ -20,9 +21,10 @@
  *
  * @conf  name                  String. Name of the quantity being set.
  * @conf  input_reorder         Table. The input reorder table to parse.
- * @conf  invert_mapping        Bool. Default: true. Invert the input reorder
- *                              table, that is store the target indices instead
- *                              of the source indices consecutively.
+ * @conf  input_order           String. Default: correlator. One of correlator,
+ *                              cylinder, or beamformer.
+ * @conf  output_order          String. Default: cylinder. One of correlator,
+ *                              cylinder, or beamformer.
  * @conf  num_polarizations     Int. Number of polarizations. Used only to
  *                              compute number of elements.
  * @conf  num_dishes            Int. Number of dishes in telescope. Used only to
@@ -41,9 +43,17 @@ private:
     Buffer* const _out_buf;
     const std::string _name;
     const std::vector<uint32_t> _input_reorder;
-    const bool _invert_mapping;
+    const std::string _input_order;
+    const std::string _output_order;
     const int _num_polarizations;
     const int _num_dishes;
+    static const int _num_chime_cylinders = 4;
+
+    // the actual mappings (these are terribly inefficient)
+    enum station_id_t {};
+    int station_id_to_correlator_index(const station_id_t id) const;
+    int station_id_to_cylinder_index(const station_id_t id) const;
+    int station_id_to_beamformer_index(const station_id_t id) const;
 };
 
 #endif

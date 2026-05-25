@@ -90,6 +90,7 @@ void eigenVis::main_thread() {
     std::map<uint32_t, std::vector<cfloat>> last_evs;
     uint32_t freq_id;
 
+    // Force serial BLAS; Blaze's OpenMP path provides intra-op parallelism.
     openblas_set_num_threads(1);
 
     auto& eigenvalue_metric = Metrics::instance().add_gauge(

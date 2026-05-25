@@ -92,6 +92,10 @@ GeographicParams GeographicParams::from_config(const kotekan::Config& config,
         dish.R_topo_to_dish[2][i] = dish_z[i];
     }
 
+    // Whether to check for duplicate dish grid locations
+    dish.check_duplicate_dish_grid =
+        config.get_default<bool>(path, "check_duplicate_dish_grid", true);
+
     // Set all dish input data: num_dishes, dish_info_table, dish_position, ...
     dish.set_dish_info(config, path);
 
@@ -199,8 +203,7 @@ void GeographicParams::set_dish_info(const kotekan::Config& config, const std::s
         // Catch inconsistencies
         assert(dish_info.idx == dish);
         dish_index_t& dish_index = dish_grid.dish_index(dish_info.grid_x_idx, dish_info.grid_y_idx);
-        // Catch inconsistencies
-        if (dish_index != -1) {
+        if (check_duplicate_dish_grid && dish_index != -1) {
             FATAL_ERROR_NON_OO("dish {:s} has duplicate grid location ({:d},{:d})", dish_info.label,
                                dish_info.grid_x_idx, dish_info.grid_y_idx);
         }
@@ -726,8 +729,8 @@ std::array<double, 3> CHORDTelescope::vec_itrs_to_cirs(const std::array<double, 
     return v_cirs;
 }
 
-void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
-                                          std::vector<std::complex<double>>& phases) const {
+void CHORDTelescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
+                                               std::vector<std::complex<float>>& phases) const {
 
     // Get the pointing vector (phase center) for the telescope in dish coordinates. This is
     // constant in time.
@@ -762,7 +765,7 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const
                           + _geographic_params.dish_positions[i][1] * (n_grid[1] - n_grid0[1])
                           + _geographic_params.dish_positions[i][2] * (n_grid[2] - n_grid0[2]));
 
-        phases[i] = {cos(phase), sin(phase)};
+        phases[i] = {static_cast<float>(cos(phase)), static_cast<float>(sin(phase))};
     }
 }
 
@@ -877,20 +880,27 @@ size_t CHORDTelescope::num_science_freqs() const {
     return _freq_params.num_science_freqs();
 }
 
-// Stream logic has been moved to the packet capture code in dpdk
-// This stub remains to satisfy inheritance and will likely be removed
-// in the future, it will abort if called.
-freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
-    FATAL_ERROR("CHORDTelesope does not support to_freq_id(stream_t)");
-    return 0;
+freq_id_t CHORDTelescope::to_freq_id(stream_t stream_id, uint32_t index) const {
+    // The frequency ID is currently defined by the following formula:
+    // freq_id = min_science_freq_id() + index * 128  + stream_id
+    return min_science_freq_id() + index * 128 + stream_id.id;
 }
 
-// Stream logic has been moved to the packet capture code in dpdk
-// This stub remains to satisfy inheritance and will likely be removed
-// in the future, it will abort if called.
+// Currently hard coded in the F-engine packet format.
 size_t CHORDTelescope::num_freq_per_stream() const {
-    FATAL_ERROR("CHORDTelesope does not support num_freq_per_stream()");
-    return 0;
+    return 48;
+}
+
+double CHORDTelescope::get_ERAL_deg(EOP& eop) const {
+    double era = eop.ERA_deg;
+    double lon = get_origin_itrs_lon_deg();
+    double eral = era + lon; // Ignore TIO locator s', it is only ~12 micro arcseconds.
+
+    // Reset eral to [0, 360)
+    double n_off = std::floor(eral / 360.0);
+    eral -= n_off * 360;
+
+    return eral;
 }
 
 void to_json(nlohmann::json& j, const dishInfo& d) {

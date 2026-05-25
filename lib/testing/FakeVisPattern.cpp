@@ -133,6 +133,7 @@ void FillIJMissingVisPattern::fill(N2FrameView& frame) {
 
     frame._metadata->n_valid_fpga_ticks = frame._metadata->frame_length_fpga_ticks - 2;
     frame._metadata->n_rfi_fpga_ticks = 1;
+    frame._metadata->n_rfi_only_fpga_ticks = 1;
 }
 
 PhaseIJVisPattern::PhaseIJVisPattern(kotekan::Config& config, const std::string& path) :
@@ -479,6 +480,7 @@ PointSourceVisPattern::PointSourceVisPattern(kotekan::Config& config, const std:
     noise_var = config.get_default<double>(path, "noise_var", 0.01);
     beam_fwhm_300MHz_deg = config.get_default<double>(path, "beam_FWHM_300MHz_deg", 10.0);
     n_rfi_ticks = config.get_default<uint32_t>(path, "n_rfi_ticks", 0);
+    n_rfi_only_ticks = config.get_default<uint32_t>(path, "n_rfi_only_ticks", 0);
     n_lost_ticks = config.get_default<uint32_t>(path, "n_lost_ticks", 0);
     int seed = config.get_default<int>(path, "seed", 12345);
     spectral_index = config.get_default<double>(path, "spectral_index", 0.0);
@@ -489,7 +491,7 @@ PointSourceVisPattern::PointSourceVisPattern(kotekan::Config& config, const std:
 
 void PointSourceVisPattern::fill(VisFrameView& frame) {
 
-    frame.fpga_seq_total = frame.fpga_seq_length - n_rfi_ticks - n_lost_ticks;
+    frame.fpga_seq_total = frame.fpga_seq_length - n_rfi_only_ticks - n_lost_ticks;
     frame.rfi_total = n_rfi_ticks;
 
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
@@ -562,8 +564,10 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
 void PointSourceVisPattern::fill(N2FrameView& frame) {
 
     frame._metadata->n_valid_fpga_ticks =
-        frame._metadata->frame_length_fpga_ticks - n_rfi_ticks - n_lost_ticks;
+        frame._metadata->frame_length_fpga_ticks - n_rfi_only_ticks - n_lost_ticks;
     frame._metadata->n_rfi_fpga_ticks = n_rfi_ticks;
+    frame._metadata->n_rfi_only_fpga_ticks = n_rfi_only_ticks;
+    frame._metadata->n_pl_fpga_ticks = n_lost_ticks;
 
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
 
