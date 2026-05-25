@@ -6,13 +6,18 @@
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
 #include "metadata.hpp"          // for metadataObject
-#include "XEngineMetadata.hpp"
+#include "chordMetadata.hpp"
+#include "libpirate/XEngineMetadata.hpp"
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
 #include "json.hpp" // for json, basic_json, iter_impl
 
 #include <memory>        // for __shared_ptr_access, shared_ptr
 #include <arpa/inet.h>   // for htons, inet_addr
+#include <thread>
+#include <chrono>
+
+using namespace std::chrono_literals;
 
 using nlohmann::json;
 
@@ -142,11 +147,18 @@ frb_search_nodes: [
 
 pirateFrbSend::~pirateFrbSend() {}
 
+// See https://github.com/kmsmith137/pirate/blob/kms/notes/network_protocol.md
+// for the network protocol definition
 struct pirateNetworkHeader {
     uint32_t magic_number;
+    uint32_t flags;
     uint32_t config_length;
 };
 
+struct pirateMinichunkHeader {
+    uint32_t magic_number;
+    uint64_t fpga_seq;
+};
 
 void pirateFrbSend::main_thread() {
     int frame_id = 0;
@@ -210,19 +222,21 @@ void pirateFrbSend::main_thread() {
         uint8_t* offset_scale_frame = offset_scale_buf->wait_for_full_frame(unique_name, frame_id);
         if (offset_scale_frame == nullptr)
             break;
-        INFO("Got data for frame {:d}", frame_id);
 
+        std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(intensity_buf, frame_id);
+        int64_t fpga_seq = chordmeta->get_fpga_seq_num();
+        int time_downsampling_fpga = chordmeta->get_time_downsampling_fpga();
+        // NOT FOUND
+        //int frame_counter = chordmeta->get_frame_counter();
+        int frame_counter = -1;
 
-        //FrameDesc get_frame_descr
-        //std::shared_ptr<const kotekan::GenericNDArray>
-        INFO("getting ndarray");
+        INFO("Got data for frame {:d}: frame counter {:d}, FPGA seq {:d}",
+             frame_id, frame_counter, fpga_seq);
+
         auto intensity_nd = intensity_buf->get_ndarray_frame_desc();
-        INFO("printing intensity ndarray");
-        intensity_nd->output_framedesc(std::cout);
+        //intensity_nd->output_framedesc(std::cout);
         auto offset_scale_nd = offset_scale_buf->get_ndarray_frame_desc();
-        INFO("printing offset-scale ndarray");
-        offset_scale_nd->output_framedesc(std::cout);
-        INFO("printed");
+        //offset_scale_nd->output_framedesc(std::cout);
 
         assert((size_t)intensity_nd->get_extent(0) == frb_num_output_times / frb_chunk_size);
         assert((size_t)intensity_nd->get_extent(1) == n_beams);
@@ -239,9 +253,6 @@ void pirateFrbSend::main_thread() {
         uint32_t num_full_frames = intensity_buf->get_num_full_frames();
 
         // This logic is from sendBuffer, but with drop_frames assumed true.
-
-        INFO("Drop threshold: num_full_frames {:d}, num_frames {:d}, drop threshold {:f}",
-             num_full_frames, intensity_buf->num_frames, drop_threshold);
         if ((float)num_full_frames / (float)intensity_buf->num_frames > drop_threshold) {
             // If the number of full frames is high, then we drop some
             // frames, because we likely aren't sending fast enough to
@@ -256,7 +267,8 @@ void pirateFrbSend::main_thread() {
                     any_connected = true;
                     INFO("Sending frame {:d} to dest {:s}:{:d}",
                          frame_id, dest->server_ip, dest->server_port);
-                    if (!send_frame(frame_id, intensity_frame, offset_scale_frame, dest)) {
+                    if (!send_frame(frame_id, fpga_seq, time_downsampling_fpga,
+                                    intensity_frame, offset_scale_frame, dest)) {
                         INFO("Failed to send frame {:d} to dest {:s}:{:d}; closing connection",
                              frame_id, dest->server_ip, dest->server_port);
                         dest->close_connection();
@@ -289,6 +301,8 @@ void pirateFrbSend::main_thread() {
 }
 
 bool pirateFrbSend::send_frame(int frame_id,
+                               int64_t fpga_seq,
+                               int time_downsampling_fpga,
                                uint8_t* intensity_frame, uint8_t* offset_scale_frame,
                                std::shared_ptr<pirateDestination> dest) {
     int32_t n = 0;
@@ -386,8 +400,10 @@ bool pirateFrbSend::send_frame(int frame_id,
             INFO("Dest {:s}:{:d} gets beam id {:d}", dest->server_ip, dest->server_port, b);
             meta.beam_ids.push_back(b);
         }
-        for (float p : dest->beam_positions)
-            meta.beam_positions.push_back(p);
+        for (size_t i=0; i<dest->beam_positions.size()/2; i++) {
+            meta.beam_positions_x.push_back(dest->beam_positions[i*2+0]);
+            meta.beam_positions_y.push_back(dest->beam_positions[i*2+1]);
+        }
 
         meta.nbeams = dest->beam_ids.size();
         meta.beamset = dest->beamset;
@@ -401,7 +417,8 @@ bool pirateFrbSend::send_frame(int frame_id,
         INFO("Formatted X-engine metadata for Pirate: {:s}", config);
         
         struct pirateNetworkHeader header;
-        header.magic_number = 0xf4bf4b01;
+        header.magic_number = 0xf4bf4b02;
+        header.flags = 0;
         header.config_length = config.size() + 1;
         size_t header_len = sizeof(struct pirateNetworkHeader);
 
@@ -451,6 +468,25 @@ bool pirateFrbSend::send_frame(int frame_id,
     //}
 
     for (int chunk=0; chunk<(int)(frb_num_output_times / frb_chunk_size); chunk++) {
+        struct pirateMinichunkHeader chunk_header;
+
+        // Send mini-chunk header
+        size_t header_size = sizeof(chunk_header);
+        chunk_header.magic_number = 0xf4bf4b02;
+        chunk_header.fpga_seq = (uint64_t)(fpga_seq +
+                                           time_downsampling_fpga * chunk * frb_chunk_size);
+        uint8_t* header_ptr = (uint8_t*)(&chunk_header);
+
+        n_sent = 0;
+        while ((n = send(dest->socket_fd,
+                         header_ptr + n_sent,
+                         header_size - n_sent,
+                         MSG_NOSIGNAL))
+               > 0) {
+            n_sent += n;
+        }
+
+        // Next is the offset & scale array.
         // The data come in frb_chunk_size == 256 time sample chunks.
         // The offset-scale array shape is big_Times(== chunk), Beams, Freqs, 2
         // So we can just pull out our range of Beam indices for this dest x chunk.
@@ -486,6 +522,9 @@ bool pirateFrbSend::send_frame(int frame_id,
         INFO("Sent frame {:d} chunk {:d}: {:d} beams to {:s}:{:d}", frame_id, chunk, dest_nbeams, dest->server_ip, dest->server_port);
     }
 
+    INFO("Sleeping");
+    std::this_thread::sleep_for(10000ms);
+    
     return true;
 }
 

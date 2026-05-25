@@ -58,6 +58,8 @@ private:
     size_t frb_num_output_times;
 
     bool send_frame(int frame_id,
+                    int64_t fpga_seq,
+                    int time_downsampling_fpga,
                     uint8_t* intensity_frame,
                     uint8_t* offset_scale_frame,
                     std::shared_ptr<pirateDestination> dest);
