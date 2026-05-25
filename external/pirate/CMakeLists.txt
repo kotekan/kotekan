@@ -10,7 +10,8 @@ set(HFILES
 
 set(CFILES
     src_lib/XEngineMetadata.cpp
-    src_lib/YamlFile.cpp)
+    src_lib/YamlFile.cpp
+    src_lib/file_utils.cpp)
 
 add_library(pirate SHARED ${CFILES} ${HFILES})
 target_link_libraries(pirate ksgpu)
