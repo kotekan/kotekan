@@ -371,7 +371,7 @@ void frbNetworkSend::main_thread() {
                                   for (int f = 0; f < _nfreq_coarse; ++f) {
                                       const ptrdiff_t idx_out = b * _nfreq_coarse + f;
                                       const ptrdiff_t idx_in = frb_packet_num * _nbeams * _nfreq_coarse + idx_out;
-                                      assert(idx_out < _nbems * _nfreq_coarse);
+                                      assert(idx_out < _nbeams * _nfreq_coarse);
                                       assert(idx_in < num_frequencies * _total_nbeams);
 
                                       offset[idx_out] =
