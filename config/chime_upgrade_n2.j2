@@ -62,11 +62,18 @@ sizeof_short: 2
 
 use_hugepages: false
 
+# Single source of truth for the upstream FPGA controller's REST interface.
+# Referenced by /telescope/{gps,frequency_map}_host_info.
+fpga_controller:
+  host: 10.1.13.1
+  port: 54321
+
 # Telescope
 telescope:
   name: CHIMETelescope
   require_gps: true
   query_gps: true # GPS time is provided via coco
+  gps_host_info: /fpga_controller
   query_frequency_map: true # Frequency map is provided via coco
   require_frequency_map: true # Make sure we have the full frequency map
   allow_default_frequency_map: false # Don't fall back on default map

@@ -14,10 +14,17 @@ cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 samples_per_data_set: 49152
 num_pol: 2
 
+# Single source of truth for the upstream FPGA controller's REST interface.
+# Referenced by /telescope/{gps,frequency_map}_host_info.
+fpga_controller:
+    host: 10.1.13.1
+    port: 54321
+
 telescope:
     name: CHIMETelescope
     require_gps: true
     query_gps: true
+    gps_host_info: /fpga_controller
     require_frequency_map: true
     query_frequency_map: true
     allow_default_frequency_map: false

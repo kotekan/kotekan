@@ -70,6 +70,21 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: WARN
 
+# Referenced by /CHORDTelescope/gps_host_info, /config_tracker/fpga_host_info,
+# and per-stage baseband_gain_host_info (e.g. on hdf5N2Write).
+fpga_controller:
+    host: "chive"
+    port: 54321
+    config_endpoint: /config
+    timing_endpoint: /get-frame0-time
+    gains_endpoint: /get-current-gain-file
+
+config_tracker:
+    enabled: true
+    fpga_host_info: /fpga_controller
+    upstream_fetch_retries: 2
+    upstream_fetch_timeout_seconds: 10
+
 numa_node: 0
 
 num_gpus: 1
@@ -152,9 +167,7 @@ telescope:
 
     require_gps: False
     query_gps: False
-    gps_host: "chive"
-    gps_port: 54321
-    gps_endpoint: "/get-frame0-time"
+    gps_host_info: /fpga_controller
     auto_correct_gps_week_rollover: True
 
     eop_updatable_config: /earth_rotation_data
