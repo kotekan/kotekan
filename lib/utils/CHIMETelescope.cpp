@@ -19,12 +19,12 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
     ICETelescope(config.get<uint64_t>(path, "num_polarizations"),
             config.get<uint64_t>(path, "num_dishes"),
             config.get_default<uint64_t>(path, "num_cylinders", 4),
+            config.get_default<double>(path, "feed_sep_EW", 22.0),
+            config.get_default<double>(path, "feed_sep_NS", 0.3048),
             path, config.get<std::string>(path, "log_level"),
              config.get_default<bool>(path, "require_eop", false),
              config.get_default<std::string>(path, "eop_updatable_config", ""),
-             grid_frame_from_config(config, path),
-             config.get_default<double>(path, "feed_sep_EW", 22.0),
-             config.get_default<double>(path, "feed_sep_NS", 0.3048)) {
+             grid_frame_from_config(config, path)) {
     INFO("Building CHIMETelescope");
 
     // This is always 1 for CHIME

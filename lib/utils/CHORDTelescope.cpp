@@ -416,16 +416,16 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     Telescope(path, config.get<std::string>(path, "log_level"),
               config.get_default<bool>(path, "require_eop", false),
               config.get_default<std::string>(path, "eop_updatable_config", ""),
-              grid_frame_from_config(config, path),
-              config.get_default<double>(path, "dish_separation_x_m", 6.3),
-              config.get_default<double>(path, "dish_separation_y_m", 8.5)),
+              grid_frame_from_config(config, path)),
     // Frequency sampling parameters
     _freq_params(FreqParams::from_config(config, path)),
     // GPS time configuration parameters
     _gps_time_params(GPSTimeParams::from_config(config, path)),
-    // Instrument geographic coordinates
-    _geographic_params(GeographicParams::from_config(config, path, _feed_sep_x_m, _feed_sep_y_m)),
-    _dish_frame(dish_frame_from_config(config, path)) {
+    // Instrument geographic coordinates    
+    _dish_frame(dish_frame_from_config(config, path)),
+    _dish_separation_grid_x_m(config.get_default<double>(path, "dish_separation_x_m", 6.3)),
+    _dish_separation_grid_y_m(config.get_default<double>(path, "dish_separation_y_m", 8.5)),
+    _geographic_params(GeographicParams::from_config(config, path, _dish_separation_grid_x_m, _dish_separation_grid_y_m)) {
 
     DEBUG("Building CHORDTelescope");
 }
@@ -807,6 +807,14 @@ grid_idx_2d_t CHORDTelescope::station_id_to_grid_indices([[maybe_unused]] statio
 
 vec3d_t CHORDTelescope::station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const {
     FATAL_ERROR("station_id_to_feed_position_m not implemented.");
+}
+    
+double CHORDTelescope::get_feed_separation_x_m() const {
+    return _dish_separation_grid_x_m;
+}
+
+double CHORDTelescope::get_feed_separation_y_m() const {
+    return _dish_separation_grid_y_m;
 }
 
 void to_json(nlohmann::json& j, const dishInfo& d) {

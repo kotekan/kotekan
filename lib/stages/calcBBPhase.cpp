@@ -88,8 +88,8 @@ public:
         const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
 
         // Calculate dish positions
-        const float dish_separation_x = chord_telescope.get_feed_sep_x_m();
-        const float dish_separation_y = chord_telescope.get_feed_sep_y_m();
+        const float dish_separation_x = chord_telescope.get_feed_separation_x_m();
+        const float dish_separation_y = chord_telescope.get_feed_separation_y_m();
         const auto& dish_grid = chord_telescope.get_dish_grid();
         assert(std::ptrdiff_t(chord_telescope.get_num_dishes()) == num_dishes);
         std::vector<float> dish_loc_x(num_dishes, -1), dish_loc_y(num_dishes, -1),
