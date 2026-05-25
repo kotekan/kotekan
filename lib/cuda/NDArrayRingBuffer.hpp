@@ -180,7 +180,10 @@ private:
         for (std::size_t d = 0; d < D; ++d)
             size *= extents[d];
         const std::ptrdiff_t size_in_bytes = size * sizeof(T);
-        assert(ringbuffer->size == size_in_bytes);
+        if(ringbuffer->size != size_in_bytes) {
+          ERROR("Incorrect extents [{:s}] for ringbuffer {:s}", fmt::format("{:d}", fmt::join(extents, ", ")), this->signal_buffer_name);
+          assert(ringbuffer->size == size_in_bytes);
+        }
         void* const ptr =
             cuda_command.get_device().get_gpu_memory(buffer_name_device, size_in_bytes);
         return static_cast<T*>(ptr);
