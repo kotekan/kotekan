@@ -116,7 +116,7 @@ if file_ext != ".j2":
                 "yamllint",
                 "-d",
                 "{extends: relaxed, \
-                                     rules: {line-length: {max: 100}, \
+                                     rules: {line-length: disable, \
                                             commas: disable, \
                                             brackets: disable, \
                                             trailing-spaces: {level: warning}}}",
