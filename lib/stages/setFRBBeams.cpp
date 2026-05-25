@@ -28,10 +28,12 @@ public:
 
 protected:
     std::vector<FRBBeam> build_grid_beams() const;
+    std::vector<FRBBeam> build_chime_beams() const;
     std::vector<FRBBeam> build_seth_beams() const;
 
 private:
-    Buffer* out_buf;
+    Buffer* out_pos_buf;
+    Buffer* out_id_buf;
     const std::string mode;
     const std::vector<FRBBeam> beam_table;
     const uint32_t num_x;
@@ -58,8 +60,10 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
     y_max(config.get_default<double>(unique_name, "y_max", 0.0)) {
         
     // Get Buffer
-    out_buf = get_buffer("out_buf");
-    out_buf->register_consumer(unique_name);
+    out_pos_buf = get_buffer("out_pos_buf");
+    out_pos_buf->register_producer(unique_name);
+    out_id_buf = get_buffer("out_id_buf");
+    out_id_buf->register_producer(unique_name);
 
     // Check mode & assign num_beams
     if (mode == "manual") {
@@ -81,7 +85,8 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
     rest_server.register_get_callback(unique_name + "/beams",
                                       std::bind(&setFRBBeams::send_beams, this, _1));
 
-    out_buf->allocate_ndarray_frame_desc<double, 2>("FRBBeams", {static_cast<ptrdiff_t>(beams.size()), 3}, {"Beam", "B"});
+    out_pos_buf->allocate_ndarray_frame_desc<float, 2>("frb2_beam_positions", {static_cast<ptrdiff_t>(beams.size()), 2}, {"R", "X/Y"});
+    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>("frb2_beam_ids", {static_cast<ptrdiff_t>(beams.size())}, {"R"});
 }
 
 setFRBBeams::~setFRBBeams() {
@@ -105,11 +110,15 @@ std::vector<FRBBeam> setFRBBeams::build_grid_beams() const {
 
             double x = (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
             double y = (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
-            grid_beams.at(b) = {.idx=b, .x_dir_grid=x, .y_dir_grid=y};
+            grid_beams.at(b) = {.id=b, .x_dir_grid=x, .y_dir_grid=y};
         }
     }
 
     return grid_beams;
+}
+    
+std::vector<FRBBeam> setFRBBeams::build_chime_beams() const {
+    FATAL_ERROR("chime beams not implemented.");
 }
 
 std::vector<FRBBeam> setFRBBeams::build_seth_beams() const {
@@ -118,29 +127,43 @@ std::vector<FRBBeam> setFRBBeams::build_seth_beams() const {
 
 void setFRBBeams::main_thread() {
 
-    frameID frame_id(out_buf);
+    frameID pos_frame_id(out_pos_buf);
+    frameID id_frame_id(out_id_buf);
 
     while (!stop_thread) {
-        double *beam_buf = (double *)out_buf->wait_for_empty_frame(unique_name, frame_id);
-        if (beam_buf == nullptr)
+        float *beam_pos = (float *)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
+        if (beam_pos == nullptr)
+            break;
+        uint64_t *beam_id = (uint64_t *)out_pos_buf->wait_for_empty_frame(unique_name, id_frame_id);
+        if (beam_id == nullptr)
             break;
         
         for (size_t b = 0; b < beams.size(); b++) {
-            beam_buf[3*b+0] = static_cast<double>(beams.at(b).idx);
-            beam_buf[3*b+1] = beams.at(b).x_dir_grid;
-            beam_buf[3*b+2] = beams.at(b).y_dir_grid;
+            beam_id[b] = beams.at(b).id;
+            beam_pos[2*b+0] = beams.at(b).x_dir_grid;
+            beam_pos[2*b+1] = beams.at(b).y_dir_grid;
         }
 
-        out_buf->allocate_new_metadata_object(frame_id);
-        const std::shared_ptr<chordMetadata> meta = get_chord_metadata(out_buf, frame_id);
+        out_pos_buf->allocate_new_metadata_object(pos_frame_id);
+        const std::shared_ptr<chordMetadata> pos_meta = get_chord_metadata(out_pos_buf, pos_frame_id);
 
-        meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+        pos_meta->set_from_frame_desc(out_pos_buf->get_ndarray_frame_desc());
 
         // If this gets made time-dependent, set fpga_seq_num, and fpga_time_downsampling here.
 
-        meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
+        pos_meta->check_frame_desc(out_pos_buf->get_ndarray_frame_desc());
 
-        out_buf->mark_frame_full(unique_name, frame_id++);
+        out_id_buf->allocate_new_metadata_object(id_frame_id);
+        const std::shared_ptr<chordMetadata> id_meta = get_chord_metadata(out_id_buf, id_frame_id);
+
+        id_meta->set_from_frame_desc(out_id_buf->get_ndarray_frame_desc());
+
+        // If this gets made time-dependent, set fpga_seq_num, and fpga_time_downsampling here.
+
+        id_meta->check_frame_desc(out_id_buf->get_ndarray_frame_desc());
+
+        out_pos_buf->mark_frame_full(unique_name, pos_frame_id++);
+        out_id_buf->mark_frame_full(unique_name, id_frame_id++);
     } 
 }
     
