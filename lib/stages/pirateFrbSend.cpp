@@ -7,7 +7,7 @@
 #include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
 #include "metadata.hpp"          // for metadataObject
 #include "chordMetadata.hpp"
-#include "libpirate/XEngineMetadata.hpp"
+#include "pirate/XEngineMetadata.hpp"
 
 #include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
 #include "json.hpp" // for json, basic_json, iter_impl
@@ -405,7 +405,7 @@ bool pirateFrbSend::send_frame(int frame_id,
             meta.beam_positions_y.push_back(dest->beam_positions[i*2+1]);
         }
 
-        meta.nbeams = dest->beam_ids.size();
+        //meta.nbeams = dest->beam_ids.size();
         meta.beamset = dest->beamset;
 
         INFO("XEngineMetadata validate:");
