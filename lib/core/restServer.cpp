@@ -201,22 +201,17 @@ void restServer::start(const std::string& bind_address, u_short port) {
         }
         _port = ntohs(sin.sin_port);
     }
-    // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
-    INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", _bind_address, _port);
 
-    // Launch the event loop thread. By this point the socket is bound,
-    // _port is final, and ev_server has all its callbacks registered up
-    // to here (the /endpoints registration immediately below races with
-    // the event loop the same way it did before this refactor).
+    // Register endpoints before starting the loop thread: once dispatch
+    // runs, handle_request reads the callback map without a read lock.
+    using namespace std::placeholders;
+    register_get_callback("/endpoints", std::bind(&restServer::endpoint_list_callback, this, _1));
+
     main_thread = std::thread(&restServer::http_server_thread, this);
 
 #ifndef MAC_OSX
     pthread_setname_np(main_thread.native_handle(), "rest_server");
 #endif
-
-    // Framework level tracking of endpoints.
-    using namespace std::placeholders;
-    register_get_callback("/endpoints", std::bind(&restServer::endpoint_list_callback, this, _1));
 }
 
 void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
@@ -530,6 +525,11 @@ void restServer::http_server_thread() {
     interval.tv_sec = 0;
     interval.tv_usec = 100000;
     event_add(timer_event, &interval);
+
+    // Emit the "started" log from the first loop iteration (zero-delay
+    // timeout) so it signals a running loop, not just a bound socket.
+    struct timeval zero = {0, 0};
+    event_base_once(event_base, -1, EV_TIMEOUT, &restServer::log_started, this, &zero);
 
     // run event loop
     event_base_dispatch(event_base);
