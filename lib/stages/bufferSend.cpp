@@ -64,12 +64,12 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
 
     socket_fd = -1;
 
-    // The stage-local use_config_tracker overrides the global default; if it
-    // isn't set, fall back to /config_tracker/enabled (default true).
-    const bool ct_default = config.exists("/", "config_tracker")
-                                ? config.get_default<bool>("/config_tracker", "enabled", true)
-                                : true;
-    use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", ct_default);
+    // Default to the tracker's enabled state (set at startup, before stages).
+    // A stage may opt out, but cannot opt in when the tracker is off, so the
+    // configured value is ANDed with the tracker state.
+    const bool ct_enabled = ConfigTracker::instance().is_enabled();
+    use_config_tracker =
+        config.get_default<bool>(unique_name, "use_config_tracker", ct_enabled) && ct_enabled;
     config_tracker_combined_hash = "";
 }
 

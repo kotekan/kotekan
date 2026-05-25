@@ -97,22 +97,10 @@ void kotekanMode::initalize_stages() {
     buffers = buffer_factory.build_buffers();
     buffer_container.set_buffer_map(buffers);
 
-    // Create Stages
-    StageFactory stage_factory(config, buffer_container);
-    stages = stage_factory.build_stages();
-
-    // Update REST server
-    restServer::instance().set_server_affinity(config);
-
-    // Register pipeline status callbacks
-    restServer::instance().register_get_callback(
-        "/buffers", std::bind(&kotekanMode::buffer_data_callback, this, _1));
-
-    restServer::instance().register_get_callback(
-        "/pipeline_dot", std::bind(&kotekanMode::pipeline_dot_graph_callback, this, _1));
-
     // ConfigTracker setup. Disabled, unless a /config_tracker block exists.
     // This enables the tracker, unless explicitly disabled with `enabled: false`.
+    // Done before stages are built so stages can read the tracker's enabled
+    // state at construction; the tracker setup does not depend on any stage.
     bool ct_enabled = false;
     if (config.exists("/", "config_tracker")) {
         const nlohmann::json ct_node = config.get_value("/", "config_tracker");
@@ -122,6 +110,7 @@ void kotekanMode::initalize_stages() {
         }
         ct_enabled = config.get_default<bool>("/config_tracker", "enabled", true);
     }
+    ConfigTracker::instance().set_enabled(ct_enabled);
 
     if (ct_enabled) {
         // Register ConfigTracker endpoints and set the local startup config
@@ -142,6 +131,20 @@ void kotekanMode::initalize_stages() {
         // policy and (optionally) the FPGA controller snapshot.
         ConfigTracker::instance().applyConfig(config);
     }
+
+    // Create Stages
+    StageFactory stage_factory(config, buffer_container);
+    stages = stage_factory.build_stages();
+
+    // Update REST server
+    restServer::instance().set_server_affinity(config);
+
+    // Register pipeline status callbacks
+    restServer::instance().register_get_callback(
+        "/buffers", std::bind(&kotekanMode::buffer_data_callback, this, _1));
+
+    restServer::instance().register_get_callback(
+        "/pipeline_dot", std::bind(&kotekanMode::pipeline_dot_graph_callback, this, _1));
 }
 
 void kotekanMode::join() {

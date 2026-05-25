@@ -19,6 +19,7 @@
  *   -- instance
  *   -- n_configs
  *   -- getTrackerHash
+ *   -- set_enabled / is_enabled
  *   -- setLocalConfig
  *   -- insertUpstreamConfig
  *   -- fetchAndRegisterFpgaTracking
@@ -198,6 +199,26 @@ public:
     std::string getTrackerHash() const {
         std::lock_guard<std::mutex> lock(_lock);
         return _tracker_hash;
+    }
+
+    /**
+     * @brief Set whether config tracking is enabled for this instance.
+     *
+     * Set once at startup (see kotekanMode) from the /config_tracker block,
+     * before any stages are built; constant thereafter.
+     */
+    void set_enabled(bool enabled) {
+        _enabled = enabled;
+    }
+
+    /**
+     * @brief Whether config tracking is enabled for this instance.
+     *
+     * Stages read this to decide whether to participate in config tracking. They
+     * may opt out, but cannot opt in when the tracker was not enabled at startup.
+     */
+    bool is_enabled() const {
+        return _enabled;
     }
 
     /**
@@ -781,6 +802,10 @@ public:
 private:
     /// Constructor, we don't want anyone to call this
     ConfigTracker() = default;
+
+    /// Whether config tracking is enabled. Set once at startup (kotekanMode)
+    /// before stages are built, and constant thereafter (so no lock needed).
+    bool _enabled = false;
 
     /// This node's own startup config (set once via setLocalConfig).
     /// Hash is over the JSON only; identity comes from the JSON content, not

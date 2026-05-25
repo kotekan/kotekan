@@ -22,7 +22,7 @@
  * @conf  query_gps       bool.    Should the telescope object get the GPS from a remote source
  *                                 if not available, or false, will try to retrieve from config.
  * @conf  gps_host        string.  The GPS server IP address
- * @conf  gps_port        uint.    The port number on the GPS server
+ * @conf  gps_port        uint.    The port number on the GPS server. Default: 54321
  * @conf  gps_endpoint    string.  The endpoint with the GPS time
  **/
 class ICETelescope : public Telescope {

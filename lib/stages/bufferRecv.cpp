@@ -57,12 +57,12 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     transfer_time_seconds(Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
                                                         unique_name, {"source"})) {
 
-    // The stage-local use_config_tracker overrides the global default; if it
-    // isn't set, fall back to /config_tracker/enabled (default true).
-    const bool ct_default = config.exists("/", "config_tracker")
-                                ? config.get_default<bool>("/config_tracker", "enabled", true)
-                                : true;
-    use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", ct_default);
+    // Default to the tracker's enabled state (set at startup, before stages).
+    // A stage may opt out, but cannot opt in when the tracker is off, so the
+    // configured value is ANDed with the tracker state.
+    const bool ct_enabled = ConfigTracker::instance().is_enabled();
+    use_config_tracker =
+        config.get_default<bool>(unique_name, "use_config_tracker", ct_enabled) && ct_enabled;
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);

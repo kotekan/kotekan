@@ -36,8 +36,8 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
     std::string default_gps_endpoint = "/get-frame0-time";
     if (config.exists(path, "gps_host_info")) {
         const std::string ref = config.get<std::string>(path, "gps_host_info");
-        _gps_host = config.get<std::string>(ref, "host");
-        _gps_port = config.get<uint32_t>(ref, "port");
+        _gps_host = config.get_default<std::string>(ref, "host", "10.1.13.1");
+        _gps_port = config.get_default<uint32_t>(ref, "port", 54321);
         if (config.exists(ref, "timing_endpoint"))
             default_gps_endpoint = config.get<std::string>(ref, "timing_endpoint");
     } else if (_query_gps) {

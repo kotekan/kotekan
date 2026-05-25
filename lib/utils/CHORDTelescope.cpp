@@ -321,7 +321,7 @@ GPSTimeParams GPSTimeParams::from_config(const kotekan::Config& config, const st
     if (config.exists(path, "gps_host_info")) {
         const std::string ref = config.get<std::string>(path, "gps_host_info");
         gps.gps_host = config.get<std::string>(ref, "host");
-        gps.gps_port = config.get<uint32_t>(ref, "port");
+        gps.gps_port = config.get_default<uint32_t>(ref, "port", 54321);
         if (config.exists(ref, "timing_endpoint"))
             default_gps_endpoint = config.get<std::string>(ref, "timing_endpoint");
     } else if (gps.query_gps) {
