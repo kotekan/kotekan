@@ -5,6 +5,10 @@ target_include_directories(libexternal INTERFACE fmt)
 target_include_directories(libexternal INTERFACE gsl)
 target_include_directories(libexternal INTERFACE json)
 
+target_include_directories(libexternal INTERFACE pirate)
+add_subdirectory(pirate)
+target_link_libraries(libexternal INTERFACE pirate)
+
 add_subdirectory(MurmurHash3)
 target_link_libraries(libexternal INTERFACE MurmurHash3)
 
