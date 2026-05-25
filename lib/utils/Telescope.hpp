@@ -320,6 +320,16 @@ public:
     virtual vec3d_t station_id_to_feed_position_m(station_id_t st_id) const = 0;
 
     /**
+     * @brief   Return the feed separation in the Grid-X direction in meters.
+     **/
+    virtual double get_feed_separation_x_m() const = 0;
+
+    /**
+     * @brief   Return the feed separation in the Grid-Y direction in meters.
+     **/
+    virtual double get_feed_separation_y_m() const = 0;
+
+    /**
      * @brief   Return a copy of the current EOP table.
      **/
     std::vector<EOP> get_current_EOP_table() const;
@@ -386,16 +396,6 @@ public:
     double get_itrs_lat_deg() const;
 
     /**
-     * @brief   Return the feed separation in the Grid-X direction in meters.
-     **/
-    double get_feed_sep_x_m() const;
-
-    /**
-     * @brief   Return the feed separation in the Grid-Y direction in meters.
-     **/
-    double get_feed_sep_y_m() const;
-
-    /**
      * @brief   Return the Topo -> Grid frame rotation matrix.
      **/
     mat3x3d_t get_grid_orientation() const;
@@ -452,8 +452,7 @@ protected:
      *                      and the orientation of the feed grid axes.
      **/
     Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
-              const std::string& eop_updatable_config_path, const GeoFrame& frame,
-              double feed_sep_x_m, double feed_sep_y_m);
+              const std::string& eop_updatable_config_path, const GeoFrame& frame);
 
     /**
      * @brief Callback to update EOP data
@@ -486,9 +485,6 @@ protected:
      *  on the Earth.
      */
     const GeoFrame _frame;
-
-    const double _feed_sep_x_m; /// Feed separation in the Grid-X (east-ish) direction in meters.
-    const double _feed_sep_y_m; /// Feed separation in the Grid-Y (north-ish) direction in meters.
 
     /**
      * Whether to require an EOP table. If false and no (or an empty) EOP table

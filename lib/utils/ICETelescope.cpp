@@ -20,14 +20,15 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
     Telescope(path, config.get<std::string>(path, "log_level"),
               config.get_default<bool>(path, "require_eop", false),
               config.get_default<std::string>(path, "eop_updatable_config", ""),
-              grid_frame_from_config(config, path),
-              config.get_default<double>(path, "feed_sep_EW", 0.0),
-              config.get_default<double>(path, "feed_sep_NS", 0.0)),
+              grid_frame_from_config(config, path)),
     _num_polarizations(config.get<uint64_t>(path, "num_polarizations")),
     _num_dishes(config.get<uint64_t>(path, "num_dishes")),
     _num_elements(_num_dishes * _num_polarizations),
     _num_cylinders(config.get_default<uint64_t>(path, "num_cylinders", 1)),
-    _num_dishes_per_cylinder(_num_dishes / _num_cylinders) {
+    _num_dishes_per_cylinder(_num_dishes / _num_cylinders),
+    _feed_separation_x_m(config.get_default<double>(path, "feed_sep_EW", 0.0)),
+    _feed_separation_y_m(config.get_default<double>(path, "feed_sep_NS", 0.0)) {
+    
     INFO("Building ICETelescope");
 
     // TODO: rename this parameter to `num_freq_per_stream` in the config
@@ -310,7 +311,7 @@ vec3d_t ICETelescope::station_id_to_feed_position_m(station_id_t st_id) const {
         // TODO: This puts 0 on the SW corner, not the center.
         double x_idx = cylinder - 0.5*(_num_cylinders - 1);
         double y_idx = dish_in_cyl - 0.5*(_num_dishes_per_cylinder - 1);
-        return vec3d_t{x_idx * _feed_sep_x_m, y_idx * _feed_sep_y_m, 0.0};
+        return vec3d_t{x_idx * _feed_separation_x_m, y_idx * _feed_separation_y_m, 0.0};
     }
     
     uint64_t dish = dish_in_cyl + cylinder * _num_dishes_per_cylinder;
@@ -319,7 +320,14 @@ vec3d_t ICETelescope::station_id_to_feed_position_m(station_id_t st_id) const {
 
     return vec3d_t{pos_2d[0], pos_2d[1], 0.0};
 }
+    
+double ICETelescope::get_feed_separation_x_m() const {
+    return _feed_separation_x_m;
+}
 
+double ICETelescope::get_feed_separation_y_m() const {
+    return _feed_separation_y_m;
+}
 
 ice_stream_id_t ice_extract_stream_id(const stream_t encoded_stream_id) {
     ice_stream_id_t stream_id;

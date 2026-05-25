@@ -50,6 +50,8 @@ public:
     uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const override;
     grid_idx_2d_t station_id_to_grid_indices(station_id_t st_id) const override; 
     vec3d_t station_id_to_feed_position_m(station_id_t st_id) const override;
+    double get_feed_separation_x_m() const override;
+    double get_feed_separation_y_m() const override;
 
 protected:
     /**
@@ -112,6 +114,9 @@ protected:
     const uint64_t _num_cylinders;
     const uint64_t _num_dishes_per_cylinder;
 
+    const double _feed_separation_x_m;
+    const double _feed_separation_y_m;
+
     // The number of frequencies per stream
     uint32_t _num_freq_per_stream;
 
@@ -152,10 +157,12 @@ protected:
     // A forwarding constructor, such that derived classes can skip the main
     // ICETelescope constructor but still construct the Telescope class
     template<typename... Args>
-    ICETelescope(uint64_t num_polarizations, uint64_t num_dishes, uint64_t num_cylinders, Args&&... args) : Telescope(std::forward<Args>(args)...),
+    ICETelescope(uint64_t num_polarizations, uint64_t num_dishes, uint64_t num_cylinders, double feed_sep_x, double feed_sep_y,  Args&&... args) : Telescope(std::forward<Args>(args)...),
         _num_polarizations(num_polarizations), _num_dishes(num_dishes),
         _num_elements(num_polarizations * num_dishes), _num_cylinders(num_cylinders),
-        _num_dishes_per_cylinder(num_dishes / num_cylinders) {};
+        _num_dishes_per_cylinder(num_dishes / num_cylinders),
+        _feed_separation_x_m(feed_sep_x),
+        _feed_separation_y_m(feed_sep_y) {};
 
 private:
     

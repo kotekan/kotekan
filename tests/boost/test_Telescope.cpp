@@ -55,8 +55,7 @@ public:
                   GeoFrame(config.get<std::string>(path, "log_level"), "grid",
                            config.get_default<double>(path, "inst_lat", 0.0),
                            config.get_default<double>(path, "inst_long", 0.0), {0, 0, 0}, {1, 0, 0},
-                           {0, 1, 0}, {0, 0, 1}),
-                  20.0, 10.0) {}
+                           {0, 1, 0}, {0, 0, 1})) {}
 
     // These functions don't have to do anything, they're not being tested.
     freq_id_t to_freq_id([[maybe_unused]] stream_t stream,
@@ -104,6 +103,12 @@ public:
     }
     vec3d_t station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const override {
         return vec3d_t{0.0, 0.0, 0.0};
+    }
+    double get_feed_separation_x_m() const override {
+        return 20.0;
+    }
+    double get_feed_separation_y_m() const override {
+        return 10.0;
     }
 };
 

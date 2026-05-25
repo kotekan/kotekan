@@ -238,12 +238,12 @@ public:
             // with the feed grid array and are also orthogonal. This makes the
             // vectors very simple, with a single component in the x and y directions
             // respectively.
-            const float sigmax_x = telescope.get_feed_sep_x_m();
+            const float sigmax_x = telescope.get_feed_separation_x_m();
             const float sigmax_y = 0;
             const float sigmax_z = 0;
 
             const float sigmay_x = 0;
-            const float sigmay_y = telescope.get_feed_sep_y_m();
+            const float sigmay_y = telescope.get_feed_separation_y_m();
             const float sigmay_z = 0;
 
 #ifdef WITH_OMP

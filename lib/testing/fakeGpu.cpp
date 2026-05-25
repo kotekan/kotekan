@@ -181,8 +181,7 @@ FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& p
               config.get_default<bool>(path, "require_eop", false),
               config.get_default<std::string>(path, "eop_updatable_config", ""),
               GeoFrame(config.get<std::string>(path, "log_level"), "grid", 0.0, 0.0, {0, 0, 0},
-                       {1, 0, 0}, {0, 1, 0}, {0, 0, 1}),
-              10.0, 10.0) {
+                       {1, 0, 0}, {0, 1, 0}, {0, 0, 1})) {
     _num_local_freq = config.get_default<size_t>(path, "num_local_freq", 1);
 }
 
@@ -250,4 +249,12 @@ grid_idx_2d_t FakeTelescope::station_id_to_grid_indices([[maybe_unused]] station
 
 vec3d_t FakeTelescope::station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const {
     return vec3d_t{0.0, 0.0, 0.0};
+}
+
+double FakeTelescope::get_feed_separation_x_m() const {
+    return 10.0;
+}
+
+double FakeTelescope::get_feed_separation_y_m() const {
+    return 10.0;
 }
