@@ -147,6 +147,67 @@ void restServer::start(const std::string& bind_address, u_short port) {
     this->_bind_address = bind_address;
     this->_port = port;
 
+    // Initialize libevent and bind the socket synchronously, so that by
+    // the time start() returns, _port reflects the OS-assigned port
+    // (when the caller requested port 0) and callers reading port() see
+    // a final value. The background thread, started below, runs only
+    // the event loop.
+
+    if (evthread_use_pthreads()) {
+        ERROR_NON_OO("restServer: Cannot use pthreads with libevent!");
+        exit(1);
+    }
+
+    event_config* ev_config = event_config_new();
+    if (!ev_config) {
+        ERROR_NON_OO("Failed to create config for libevent");
+        exit(1);
+    }
+    if (event_config_avoid_method(ev_config, "select")) {
+        ERROR_NON_OO("Failed to exclude select from the libevent options");
+        exit(1);
+    }
+    event_base = event_base_new_with_config(ev_config);
+    event_config_free(ev_config);
+    if (!event_base) {
+        ERROR_NON_OO("restServer: Failed to create libevent base");
+        exit(1);
+    }
+
+    ev_server = evhttp_new(event_base);
+    if (ev_server == nullptr) {
+        ERROR_NON_OO("restServer: Failed to create libevent http server");
+        exit(1);
+    }
+    evhttp_set_allowed_methods(ev_server, EVHTTP_REQ_GET | EVHTTP_REQ_POST);
+    evhttp_set_gencb(ev_server, handle_request, (void*)this);
+
+    struct evhttp_bound_socket* ev_sock =
+        evhttp_bind_socket_with_handle(ev_server, _bind_address.c_str(), _port);
+    if (ev_sock == nullptr) {
+        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", _bind_address, _port);
+        exit(1);
+    }
+
+    // If port was set to 0, find the OS-assigned port now.
+    if (_port == 0) {
+        evutil_socket_t sock = evhttp_bound_socket_get_fd(ev_sock);
+        struct sockaddr_in sin;
+        socklen_t len = sizeof(sin);
+        if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
+            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", _bind_address,
+                         _port);
+            exit(1);
+        }
+        _port = ntohs(sin.sin_port);
+    }
+    // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
+    INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", _bind_address, _port);
+
+    // Launch the event loop thread. By this point the socket is bound,
+    // _port is final, and ev_server has all its callbacks registered up
+    // to here (the /endpoints registration immediately below races with
+    // the event loop the same way it did before this refactor).
     main_thread = std::thread(&restServer::http_server_thread, this);
 
 #ifndef MAC_OSX
@@ -156,14 +217,6 @@ void restServer::start(const std::string& bind_address, u_short port) {
     // Framework level tracking of endpoints.
     using namespace std::placeholders;
     register_get_callback("/endpoints", std::bind(&restServer::endpoint_list_callback, this, _1));
-
-    // Block until http_server_thread has bound the socket and (if `port`
-    // was 0) resolved the OS-assigned port. Callers reading `port()`
-    // immediately after this need a final value, not the initial 0.
-    std::unique_lock<std::mutex> lock(_bind_mutex);
-    while (!_bind_done) {
-        _bind_cv.wait(lock);
-    }
 }
 
 void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
@@ -466,74 +519,9 @@ void restServer::timer(evutil_socket_t fd, short event, void* arg) {
 
 void restServer::http_server_thread() {
 
-    // Allow for using extra threads (not currently needed)
-    if (evthread_use_pthreads()) {
-        ERROR_NON_OO("restServer: Cannot use pthreads with libevent!");
-        exit(1);
-    }
-
-    // Create the base event for handling requests,
-    // and exclude using `select` as a backend API
-    event_config* ev_config = event_config_new();
-    if (!ev_config) {
-        ERROR_NON_OO("Failed to create config for libevent");
-        exit(1);
-    }
-    int err = event_config_avoid_method(ev_config, "select");
-    if (err) {
-        ERROR_NON_OO("Failed to exclude select from the libevent options");
-        exit(1);
-    }
-    event_base = event_base_new_with_config(ev_config);
-    if (!event_base) {
-        ERROR_NON_OO("restServer: Failed to create libevent base");
-        // Use exit() not raise() since this happens early in startup before
-        // the signal handlers are all in place.
-        exit(1);
-    }
-
-    // Create the server
-    ev_server = evhttp_new(event_base);
-    if (ev_server == nullptr) {
-        ERROR_NON_OO("restServer: Failed to create libevent base");
-        exit(1);
-    }
-
-    // Currently allow only GET and POST requests
-    evhttp_set_allowed_methods(ev_server, EVHTTP_REQ_GET | EVHTTP_REQ_POST);
-
-    // Just setup one handler and implement the URL parsing internally
-    evhttp_set_gencb(ev_server, handle_request, (void*)this);
-
-    // Bind to the IP and port
-    struct evhttp_bound_socket* ev_sock =
-        evhttp_bind_socket_with_handle(ev_server, _bind_address.c_str(), _port);
-    if (ev_sock == nullptr) {
-        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", _bind_address, _port);
-        exit(1);
-    }
-
-    // if port was set to random, find port socket is listening on
-    if (_port == 0) {
-        evutil_socket_t sock = evhttp_bound_socket_get_fd(ev_sock);
-        struct sockaddr_in sin;
-        socklen_t len = sizeof(sin);
-        if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
-            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", _bind_address,
-                         _port);
-            exit(1);
-        }
-        _port = ntohs(sin.sin_port);
-    }
-    // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
-    INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", _bind_address, _port);
-
-    // Signal `start()` that the socket is bound and `_port` is final.
-    {
-        std::lock_guard<std::mutex> lock(_bind_mutex);
-        _bind_done = true;
-    }
-    _bind_cv.notify_all();
+    // Init and socket bind were done synchronously in start(); this
+    // thread only runs the event loop and tears down libevent state on
+    // exit.
 
     // Create a timer to check for the exit condition
     struct event* timer_event;
@@ -549,7 +537,6 @@ void restServer::http_server_thread() {
     event_free(timer_event);
     evhttp_free(ev_server);
     event_base_free(event_base);
-    event_config_free(ev_config);
 }
 
 void restServer::set_server_affinity(Config& config) {

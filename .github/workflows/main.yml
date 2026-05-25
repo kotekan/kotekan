@@ -69,10 +69,13 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=60
+              set -x
+              export PYTHONPATH=$GITHUB_WORKSPACE/python
+              export PYTEST_TIMEOUT=60
+              export PYTHONUNBUFFERED=1
+              export FAULTHANDLER_DUMP_INTERVAL=120
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
+              stdbuf -oL -eL pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" --timeout-method=thread --session-timeout=1800 -m serial
 
           # Test gcc build + parallel pytests
           - id: test_gcc_parallel_pytests
@@ -86,10 +89,13 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=60
+              set -x
+              export PYTHONPATH=$GITHUB_WORKSPACE/python
+              export PYTEST_TIMEOUT=60
+              export PYTHONUNBUFFERED=1
+              export FAULTHANDLER_DUMP_INTERVAL=120
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              stdbuf -oL -eL pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" --timeout-method=thread --session-timeout=1800 -x -m 'not serial'
 
           # Test gcc build + boost tests
           - id: test_gcc_boost
@@ -118,10 +124,13 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=60
+              set -x
+              export PYTHONPATH=$GITHUB_WORKSPACE/python
+              export PYTEST_TIMEOUT=60
+              export PYTHONUNBUFFERED=1
+              export FAULTHANDLER_DUMP_INTERVAL=120
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
+              stdbuf -oL -eL pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" --timeout-method=thread --session-timeout=1800 -m serial
 
           # Release gcc build + parallel pytests
           - id: release_gcc_parallel_pytests
@@ -135,10 +144,13 @@ jobs:
               -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=OFF
               -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
             post_build: |
-              PYTHONPATH=$GITHUB_WORKSPACE/python
-              PYTEST_TIMEOUT=60
+              set -x
+              export PYTHONPATH=$GITHUB_WORKSPACE/python
+              export PYTEST_TIMEOUT=60
+              export PYTHONUNBUFFERED=1
+              export FAULTHANDLER_DUMP_INTERVAL=120
               cd $GITHUB_WORKSPACE/tests
-              pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+              stdbuf -oL -eL pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" --timeout-method=thread --session-timeout=1800 -x -m 'not serial'
 
           # Test clang build
           - id: clang
