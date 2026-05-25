@@ -258,3 +258,10 @@ double FakeTelescope::get_feed_separation_x_m() const {
 double FakeTelescope::get_feed_separation_y_m() const {
     return 10.0;
 }
+
+uint64_t FakeTelescope::get_grid_size_x() const {
+    return 5;
+}
+uint64_t FakeTelescope::get_grid_size_y() const {
+    return 10;
+}

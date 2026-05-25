@@ -329,6 +329,9 @@ public:
      **/
     virtual double get_feed_separation_y_m() const = 0;
 
+    virtual uint64_t get_grid_size_x() const = 0;
+    virtual uint64_t get_grid_size_y() const = 0;
+
     /**
      * @brief   Return a copy of the current EOP table.
      **/

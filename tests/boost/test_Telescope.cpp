@@ -110,6 +110,12 @@ public:
     double get_feed_separation_y_m() const override {
         return 10.0;
     }
+    uint64_t get_grid_size_x() const override {
+        return 2;
+    }
+    uint64_t get_grid_size_y() const override {
+        return 16;
+    }
 };
 
 REGISTER_TELESCOPE(TestTelescope, "TestTelescope");

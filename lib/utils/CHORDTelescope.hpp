@@ -486,6 +486,8 @@ public:
     vec3d_t station_id_to_feed_position_m(station_id_t st_id) const override;
     double get_feed_separation_x_m() const override;
     double get_feed_separation_y_m() const override;
+    uint64_t get_grid_size_x() const override;
+    uint64_t get_grid_size_y() const override;
 
     /**
      * @brief   Queries the source of the GPS time0_ns value. Returns true on success, and updates
