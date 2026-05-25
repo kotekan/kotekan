@@ -14,6 +14,11 @@ on:
     - chord
     - develop
 
+# Cancel a superseded PR run on a new commit; let push runs finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   REGISTRY: ghcr.io
 
