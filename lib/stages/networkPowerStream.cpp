@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp" // for make_power_corr_desc
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for ERROR, INFO
@@ -18,6 +19,11 @@
 #include <sys/time.h>   // for timeval, gettimeofday
 #include <sys/types.h>  // for uint
 #include <unistd.h>     // for close
+
+#ifndef MSG_NOSIGNAL
+// macOS uses SO_NOSIGPIPE on the socket instead (set up below); make sendto() portable.
+#define MSG_NOSIGNAL 0
+#endif
 
 
 using kotekan::bufferContainer;
@@ -39,6 +45,15 @@ networkPowerStream::networkPowerStream(Config& config, const std::string& unique
             / config.get<int>(unique_name, "power_integration_length");
     freqs = config.get<int>(unique_name, "num_freq");
     elems = config.get<int>(unique_name, "num_elements");
+
+    // Per integration the upstream emits [freqs float32 bins, 1 uint32 count]
+    // per element; we expect ``times`` integrations packed into one frame.
+    // The descriptor folds the count word into the float32 array (see
+    // airspyFrameDesc.hpp). When set_frame_desc has already been called by
+    // the producer (simpleAutocorr / SimpleCrosscorr), this becomes a
+    // cross-check via FrameDesc::operator==; otherwise it just records
+    // the expected layout for any later consumer/producer.
+    in_buf->set_frame_desc(kotekan_airspy::make_power_corr_desc(elems * times, freqs));
 
     freq0 = config.get_default<float>(unique_name, "freq", 600.) * 1e6;
     sample_bw = config.get_default<float>(unique_name, "sample_bw", 200.) * 1e6;
@@ -117,7 +132,7 @@ void networkPowerStream::main_thread() {
                            freqs * sizeof(uint));
                     // Send data to remote server.
                     uint32_t bytes_sent =
-                        sendto(socket_fd, packet_buffer, packet_length, 0,
+                        sendto(socket_fd, packet_buffer, packet_length, MSG_NOSIGNAL,
                                (struct sockaddr*)&saddr_remote, sizeof(sockaddr_in));
                     if (bytes_sent != packet_length)
                         ERROR("SOMETHING WENT WRONG IN UDP TRANSMIT");
