@@ -20,6 +20,7 @@
 #include <stdio.h>                 // for fprintf, size_t, stderr
 #include <stdlib.h>                // for malloc, free
 #include <string.h>                // for memset
+#include <time.h>                  // for clock_gettime, timespec
 #include <sys/types.h>             // for uint
 #include <unistd.h>                // for sleep
 #include <vector>                  // for vector
@@ -64,7 +65,7 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
 
     num_mem_channels = config.get_default<uint32_t>(unique_name, "num_mem_channels", 4);
     init_mem_alloc = config.get_default<std::string>(unique_name, "init_mem_alloc", "256");
-    lcore_start_delay = config.get_default<uint32_t>(unique_name, "lcore_start_delay", 40);
+    max_link_start_delay = config.get_default<uint32_t>(unique_name, "max_link_start_delay", 40);
 
     // Setup the lcore mappings
     // Basically this is mapping the DPDK EAL framework way of assigning threads
@@ -353,6 +354,36 @@ void dpdkCore::dpdk_init(vector<int> lcore_cpu_map, uint32_t main_lcore_cpu) {
 
 void dpdkCore::main_thread() {
 
+    // Wait for every configured port's link to come up before launching the
+    // Rx lcores.  
+    constexpr uint32_t link_check_interval_ms = 100;
+    const uint32_t max_wait_ms = max_link_start_delay * 1000;
+    for (uint32_t port = 0; port < num_system_ports; ++port) {
+        if (handlers[port] == nullptr)
+            continue;
+        struct rte_eth_link link;
+        uint32_t waited_ms = 0;
+        memset(&link, 0, sizeof(link));
+        while (waited_ms < max_wait_ms) {
+            rte_eth_link_get_nowait(port, &link);
+            if (link.link_status == RTE_ETH_LINK_UP)
+                break;
+            usleep(link_check_interval_ms * 1000);
+            waited_ms += link_check_interval_ms;
+        }
+        if (link.link_status != RTE_ETH_LINK_UP) {
+            FATAL_ERROR("Port {:d} link did not come up within {:d} seconds",
+                         port, max_link_start_delay);
+        } else {
+            INFO("Port {:d} link up: {:d} Mbps {:s}-duplex (waited {:d} ms)", port,
+                 link.link_speed,
+                 link.link_duplex == RTE_ETH_LINK_FULL_DUPLEX ? "full" : "half", waited_ms);
+        }
+    }
+
+    // Sleep until we actually start getting packets
+    sleep(10);
+
     // Start the packet receiving lcores (basically pthreads)
     rte_eal_mp_remote_launch(dpdkCore::lcore_rx, (void*)this, SKIP_MAIN);
 
@@ -462,6 +493,14 @@ int dpdkCore::lcore_rx(void* args) {
         throw std::runtime_error("lcore mapping error");
     }
 
+    {
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        fprintf(stderr, "lcore_rx thread started: lcore %u, time %ld.%09ld\n", lcore,
+                (long)ts.tv_sec, (long)ts.tv_nsec);
+    }
+
+
     // If we have no map for this lcore, it must be a worker lcore.
     if (lcore >= core->lcore_port_list.size()) {
         uint32_t worker_id = lcore - core->lcore_port_list.size();
@@ -508,12 +547,18 @@ int dpdkCore::lcore_rx(void* args) {
         }
     }
 
-    // TODO Figure out why this sleep is needed.  It seems like when starting the E810
-    // ports, there is a delay between when they are started in DPDK and when they become
-    // ready.  There might be a function to check their readiness state we could query?
-    INFO_NON_OO("DPDK Sleeping for {} seconds before starting network handlers",
-                core->lcore_start_delay);
-    sleep(core->lcore_start_delay);
+    // Flush the Rx ring to remove any packets that were captured before the lcore
+    // started.
+    for (uint32_t i = 0; i < ports.size(); ++i) {
+        int32_t remaining = core->rx_ring_size * 128;
+        while (remaining > 0) {
+            const uint16_t num_rx = rte_eth_rx_burst(ports[i], 0, mbufs, burst_size);
+            for (uint16_t j = 0; j < num_rx; ++j)
+                rte_pktmbuf_free(mbufs[j]);
+            remaining -= num_rx;
+        }
+    }
+
     const uint32_t num_local_ports = ports.size();
 
     // Enforce that all handlers on this lcore are either all distributors or all
