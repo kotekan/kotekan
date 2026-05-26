@@ -445,6 +445,7 @@ BOOST_TEST_GLOBAL_FIXTURE(GlobalFixture_Locale);
 struct TelescopeFixture {
     TelescopeFixture() {
         nlohmann::json cfg;
+        cfg["num_polarizations"] = 2;
         add_test_telescope_config(cfg);
         kotekan::Config conf;
         conf.update_config(cfg);

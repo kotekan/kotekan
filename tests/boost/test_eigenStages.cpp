@@ -121,6 +121,7 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
     cfg["cpu_affinity"] = std::vector<int>{0};
     cfg["num_ev"] = p.num_ev;
     cfg["vis_layout"] = N2Layout::FullUpperTri;
+    cfg["num_polarizations"] = 2;
 
     cfg[fake_name]["freq_ids"] = std::vector<uint32_t>{0};
     cfg[fake_name]["num_elements"] = p.num_elements;
@@ -396,6 +397,7 @@ run_n2_pipeline_pair(const EigenStageTestParams& params_a,
     // Top-level cpu_affinity acts as a fallback for any stage that does not
     // override it (here, the FakeN2 producers).
     cfg["cpu_affinity"] = std::vector<int>{0};
+    cfg["num_polarizations"] = 2;
     for (const auto& s : sides) {
         cfg[s.fake_name]["kotekan_stage"] = "FakeN2";
         cfg[s.fake_name]["freq_ids"] = std::vector<uint32_t>{0};
