@@ -24,6 +24,7 @@ telescope:
     eop_updatable_config: /earth_rotation_data
     dish_grid_size_x: 22
     dish_grid_size_y: 24
+    num_polarizations: 2
     num_dishes: 64
     dish_inputs: []
 
