@@ -686,7 +686,7 @@ std::shared_ptr<XEngineMetadata> XEngineMetadata::make_random()
     using ksgpu::rand_int;
     using ksgpu::rand_uniform;
 
-    std::mt19937 &rng = ksgpu::default_rng;
+    std::mt19937 &rng = ksgpu::default_rng();
 
     auto ret = std::make_shared<XEngineMetadata>();
     ret->version = 2;
