@@ -1,6 +1,5 @@
 #include "HFBFrameView.hpp"
 
-#include <fmt/core.h>     // for format, format_string
 #include <gsl-lite.hpp>   // for span
 #include <algorithm>      // for copy
 #include <complex>   // for complex  // IWYU pragma: keep
@@ -16,7 +15,7 @@
 #include "FrameView.hpp"  // for bind_span, FrameView
 #include "buffer.hpp"     // for Buffer
 #include "visUtil.hpp"    // for struct_layout, struct_alignment
-#include "fmt.hpp"        // for compile_string_to_view, fmt
+#include "fmt.hpp"        // for format, compile_string_to_view, fmt, format_string
 
 HFBFrameView::HFBFrameView(Buffer* buf, int frame_id) :
     FrameView(buf, frame_id), _metadata(std::static_pointer_cast<HFBMetadata>(buf->metadata[id])),

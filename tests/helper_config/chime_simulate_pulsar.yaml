@@ -21,7 +21,7 @@ num_data_sets: 1
 buffer_depth: 3
 num_gpu_frames: 1
 num_gpus: 4
-cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11]
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 sizeof_float: 4
 num_frb_total_beams: 1024
 
@@ -37,19 +37,19 @@ pulsar_output_buffer:
     kotekan_buffer: standard
 
 simprocess:
-  kotekan_stage: pulsarSimProcess
-  pulsar_out_buf: pulsar_output_buffer
+    kotekan_stage: pulsarSimProcess
+    pulsar_out_buf: pulsar_output_buffer
 
 networkProcess:
-  kotekan_stage: pulsarNetworkProcess
-  pulsar_out_buf: pulsar_output_buffer
-  udp_pulsar_port_number: 1414
-  number_of_nodes: 256
-  number_of_subnets: 2
-  pulsar_node_ips:
-    - 10.15.50.10
-    - 10.16.50.11
-    - 10.15.50.12
-    - 10.16.50.13
-    - 10.15.50.14
-    - 10.16.50.15
+    kotekan_stage: pulsarNetworkProcess
+    pulsar_out_buf: pulsar_output_buffer
+    udp_pulsar_port_number: 1414
+    number_of_nodes: 256
+    number_of_subnets: 2
+    pulsar_node_ips:
+        - 10.15.50.10
+        - 10.16.50.11
+        - 10.15.50.12
+        - 10.16.50.13
+        - 10.15.50.14
+        - 10.16.50.15

@@ -10,9 +10,8 @@
 #include <sys/time.h>             // for CLOCK_MONOTONIC, CLOCK_REALTIME, timeval
 #include <time.h>                 // for timespec, clock_gettime
 #include <unistd.h>               // for close
-#include <fmt/core.h>             // for format, format_string
 #include <json.hpp>               // for json
-#include <algorithm>              // for max, max_element
+#include <algorithm>              // for max_element
 #include <cstring>                // for strerror, memset, size_t
 #include <map>                    // for map, operator!=, _Rb_tree_iterator
 #include <mutex>                  // for mutex, unique_lock
@@ -32,7 +31,7 @@
 #include "network_functions.hpp"  // for receive_ping, send_ping
 #include "restServer.hpp"         // for restServer, HTTP_RESPONSE, connectionInstance
 #include "tx_utils.hpp"           // for add_nsec, CLOCK_ABS_NANOSLEEP, get_vlan_from_ip, parse_...
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp"                // for compile_string_to_view, format, format_string
 
 
 using std::string;

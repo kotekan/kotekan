@@ -1,9 +1,8 @@
 #include "TransposeBasebandArray.hpp"
 
 #include <visUtil.hpp>          // for frameID, modulo
-#include <fmt/core.h>           // for format
 #include <xmmintrin.h>          // for _mm_sfence, _MM_HINT_T0, _mm_prefetch
-#include <cstring>              // for size_t, memcpy, memset
+#include <cstring>              // for memcpy, memset
 #include <stdexcept>            // for runtime_error
 #include <memory>               // for __shared_ptr_access, shared_ptr
 #include <vector>               // for vector
@@ -14,7 +13,7 @@
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
 #include "kotekanLogging.hpp"   // for INFO, DEBUG, ERROR
-#include "fmt.hpp"              // for compile_string_to_view, fmt
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
 #include "DataType.hpp"         // for DataType
 
 #ifdef __AVX512F__

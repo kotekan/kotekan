@@ -1,28 +1,28 @@
-#include "DataType.hpp"            // for int4x2_t, float16_t
-#include "NDArray.hpp"             // for NDArray
-#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
-#include "chordMetadata.hpp"       // for chordMetadata, get_chord_metadata, metadata_is_chord
-#include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "cudaQuantizeKernel4.hpp" // for gpu_quantize4
-#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "div.hpp"                 // for div_noremainder
-#include "gpuCommand.hpp"          // for gpuCommandType
-#include "metadata.hpp"            // for metadataObject
+#include <cuda_fp16.h>              // for __half
+#include <cuda_runtime_api.h>       // for cudaGetLastError
+#include <algorithm>                // for max
+#include <array>                    // for array
+#include <cassert>                  // for assert
+#include <cstddef>                  // for ptrdiff_t
+#include <cstdint>                  // for int64_t
+#include <stdexcept>                // for runtime_error
+#include <string>                   // for allocator, basic_string, string
+#include <tuple>                    // for tuple, make_tuple
+#include <vector>                   // for vector
 
-#include <algorithm>          // for max
-#include <array>              // for array
-#include <cassert>            // for assert
-#include <cmath>              //
-#include <cstddef>            // for size_t, ptrdiff_t
-#include <cstdint>            // for int64_t
-#include <cuda_fp16.h>        // for __half2, __half
-#include <cuda_runtime_api.h> // for cudaGetLastError, cudaMemcpy
-#include <memory>             // for shared_ptr, __shared_ptr_access
-#include <stdexcept>          // for runtime_error
-#include <string>             // for allocator, basic_string, string, operator+
-#include <tuple>              // for tuple, make_tuple
-#include <vector>             // for vector
+#include "DataType.hpp"             // for int4x2_t, float16_t
+#include "NDArray.hpp"              // for NDArray
+#include "NDArrayBuffer.hpp"        // for NDArrayBuffer
+#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
+#include "cudaQuantizeKernel4.hpp"  // for gpu_quantize4
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "div.hpp"                  // for div_noremainder
+#include "gpuCommand.hpp"           // for gpuCommandType
+#include "Config.hpp"               // for Config
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "driver_types.h"           // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
+#include "fmt.hpp"                  // for format
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -2,8 +2,7 @@
 
 #include <stdint.h>               // for uint32_t
 #include <string.h>               // for size_t
-#include <fmt/core.h>             // for format
-#include <algorithm>              // for copy, equal, max
+#include <algorithm>              // for equal
 #include <cmath>                  // for pow
 #include <functional>             // for bind, function
 #include <set>                    // for set
@@ -19,7 +18,7 @@
 #include "prometheusMetrics.hpp"  // for Gauge, Metrics, MetricFamily
 #include "visBuffer.hpp"          // for VisFrameView
 #include "visUtil.hpp"            // for frameID, rstack_ctype, modulo
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp"                // for compile_string_to_view, format
 #include "gsl-lite.hpp"           // for span
 
 using kotekan::bufferContainer;

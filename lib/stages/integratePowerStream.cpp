@@ -4,7 +4,6 @@
 #include <stdlib.h>             // for malloc, calloc
 #include <string.h>             // for memcpy, memset
 #include <sys/types.h>          // for uint
-#include <fmt/core.h>           // for format
 #include <functional>           // for bind, function
 #include <string>               // for allocator, basic_string, string
 
@@ -13,6 +12,7 @@
 #include "buffer.hpp"           // for Buffer
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "powerStreamUtil.hpp"  // for IntensityPacketHeader
+#include "fmt.hpp"              // for format
 
 
 using kotekan::bufferContainer;

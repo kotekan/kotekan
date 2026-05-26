@@ -9,15 +9,19 @@
 #define DPDK_BASE_HPP
 
 // DPDK!
+// The DPDK headers are C; keep them inside the extern "C" block and pin them so
+// IWYU never relocates a C++ header (e.g. <atomic>, fmt) in here, which would
+// break with "templates must have C++ linkage".
 extern "C" {
+// IWYU pragma: begin_keep
 #include <rte_ethdev.h>         // for rte_eth_conf
-#include <fmt/core.h>           // for format
 #include <rte_ring_core.h>      // for rte_ring
 // cinttypes needed by some CentOS systems.
 #include <cinttypes>            // for uint32_t, int32_t, uint8_t
-#include <atomic>               // for atomic
+// IWYU pragma: end_keep
 }
 
+#include <atomic>               // for atomic
 #include <string>               // for string, allocator, basic_string
 #include <vector>               // for vector
 
@@ -25,6 +29,7 @@ extern "C" {
 #include "Stage.hpp"            // for Stage
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "kotekanLogging.hpp"   // for kotekanLogging
+#include "fmt.hpp"              // for format
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port

@@ -1,6 +1,5 @@
 #include "Telescope.hpp"
 
-#include <stdint.h>           // for int64_t, uint64_t
 #include <mutex>              // for unique_lock
 #include <shared_mutex>       // for shared_lock
 #include <stdexcept>          // for invalid_argument

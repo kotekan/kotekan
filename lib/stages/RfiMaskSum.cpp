@@ -1,4 +1,3 @@
-#include <fmt/core.h>           // for format
 #include <stddef.h>             // for size_t
 #include <stdint.h>             // for int64_t, uint64_t, uint8_t, int32_t
 #include <functional>           // for bind, function, placeholders

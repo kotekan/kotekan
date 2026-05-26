@@ -127,11 +127,40 @@ pipelines. Commonly used config parameters include (under ``dataset_manager``):
   - REST: ``/dataset-manager/force-update`` forces re-registration with the broker.
   - Metrics: ``kotekan_datasetbroker_error_count`` (broker comms errors), plus per-stage dataset
     metrics (see writer/transform stages).
-- The Config Tracker is intended as a more lightweight replacement for the dataset manager. It stores 
-snapshots of both local and upstream config blocks, and optionally writes them to disk. You can use the
-  ``configTrackerWriter`` stage with:
+- The Config Tracker is intended as a more lightweight replacement for the dataset manager.
+  It stores snapshots of this node's own (local) config and configs from upstream peers, and
+  optionally a combined ``{"config": ..., "timing": ...}`` snapshot fetched from an upstream
+  FPGA controller. All entries propagate to downstream nodes over REST. Configured by an
+  optional top-level ``config_tracker`` block::
+
+    fpga_controller:
+        host: chive.site.chord-observatory.ca
+        port: 54321
+        config_endpoint: /config                  # consumed by ConfigTracker
+        timing_endpoint: /get-frame0-time         # consumed by Telescope + ConfigTracker
+        gains_endpoint: /get-current-gain-file    # consumed by hdf5N2Write
+
+    config_tracker:
+        enabled: true                          # default; false disables the tracker globally
+        fpga_host_info: /fpga_controller       # optional; names the controller block
+        upstream_fetch_retries: 2              # retries per HTTP request (FPGA + peer pulls)
+        upstream_fetch_timeout_seconds: 10     # per-attempt HTTP timeout (FPGA + peer pulls)
+
+  The ``fpga_host_info`` indirection lets a pipeline define the FPGA controller address and
+  endpoints once and have multiple consumers (the Config Tracker plus the Telescope's
+  ``gps_host_info`` and ``hdf5N2Write``'s ``baseband_gain_host_info``) point at it. The
+  Telescope picks up ``timing_endpoint`` from the same block as the default for its own
+  ``gps_endpoint``, and ``hdf5N2Write`` picks up ``gains_endpoint`` (default
+  ``/get-current-gain-file``) for the startup gains-file fetch, so paths aren't duplicated.
+  Stages that support the tracker (``bufferSend``/``bufferRecv``) read their per-stage
+  ``use_config_tracker`` first; if unset, they fall back to ``/config_tracker/enabled``.
+
+  You can use the ``configTrackerWriter`` stage with:
+
   - ``base_dir``: directory to write JSON snapshots (created if missing).
-  - Output naming follows the config tracker; files are rotated on hash change.
+  - Output naming: ``local.json`` for the local entry, ``<host>_<port>.json`` for every
+    upstream entry (including the FPGA controller snapshot).
+  - Files are rotated on tracker-hash change.
 
 
 Stages

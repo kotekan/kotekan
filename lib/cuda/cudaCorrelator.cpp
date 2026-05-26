@@ -1,30 +1,29 @@
 #include "cudaCorrelator.hpp"
 
-#include "DataType.hpp"            // for int4x2_swapped_withoffset_t, uint1x8_t
-#include "NDArray.hpp"             // for NDArray
-#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
-#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "div.hpp"                 // for div_noremainder, mod
-#include "gpuCommand.hpp"          // for gpuCommandType
-#include "kotekanLogging.hpp"      // for DEBUG
-#include "n2k/Correlator.hpp"      // for Correlator
+#include <chordMetadata.hpp>        // for chordMetadata
+#include <cuda_runtime_api.h>       // for cudaGetLastError
+#include <array>                    // for array
+#include <cassert>                  // for assert
+#include <cstddef>                  // for ptrdiff_t
+#include <cstdint>                  // for int32_t, int8_t, uint32_t
+#include <functional>               // for function
+#include <memory>                   // for shared_ptr, __shared_ptr_access
+#include <stdexcept>                // for runtime_error
+#include <string>                   // for allocator, basic_string, string
+#include <tuple>                    // for tuple, make_tuple
 
-#include <algorithm>          // for max
-#include <array>              // for array
-#include <cassert>            // for assert
-#include <chordMetadata.hpp>  // for chordMetadata
-#include <cstddef>            // for ptrdiff_t
-#include <cstdint>            // for int32_t, int8_t, uint32_t
-#include <cuda_runtime_api.h> // for cudaGetLastError
-#include <fmt.hpp>            // for compile_string_to_view
-#include <functional>         // for function
-#include <memory>             // for shared_ptr, __shared_ptr_access
-#include <stdexcept>          // for runtime_error
-#include <string>             // for allocator, basic_string, string
-#include <tuple>              // for tuple, make_tuple
+#include "DataType.hpp"             // for int4x2_swapped_withoffset_t, uint1x8_t
+#include "NDArray.hpp"              // for NDArray
+#include "NDArrayBuffer.hpp"        // for NDArrayBuffer
+#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include "cudaCommand.hpp"          // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "div.hpp"                  // for div_noremainder, mod
+#include "gpuCommand.hpp"           // for gpuCommandType
+#include "kotekanLogging.hpp"       // for DEBUG
+#include "n2k/Correlator.hpp"       // for Correlator
+#include "fmt.hpp"                  // for compile_string_to_view
 
 using kotekan::bufferContainer;
 using kotekan::Config;

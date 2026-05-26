@@ -1,8 +1,7 @@
 #include "ReceiveFlags.hpp"
 
-#include <fmt/core.h>             // for format
 #include <json.hpp>               // for basic_json, iter_impl, operator<, operator>=, json
-#include <algorithm>              // for copy, fill, max
+#include <algorithm>              // for copy, fill
 #include <exception>              // for exception
 #include <functional>             // for bind, function, _1
 #include <memory>                 // for operator==, shared_ptr, __shared_ptr_access

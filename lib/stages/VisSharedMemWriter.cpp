@@ -9,8 +9,7 @@
 #include <sys/types.h>            // for uint
 #include <time.h>                 // for clock_gettime, timespec, CLOCK_REALTIME
 #include <unistd.h>               // for access, close, ftruncate, F_OK
-#include <fmt/core.h>             // for format
-#include <algorithm>              // for copy, fill_n, equal, max
+#include <algorithm>              // for fill_n, equal
 #include <cstring>                // for strerror, memcpy, memset
 #include <functional>             // for bind, function
 #include <iterator>               // for reverse_iterator
@@ -30,7 +29,7 @@
 #include "prometheusMetrics.hpp"  // for Counter, Gauge, Metrics, MetricFamily
 #include "visBuffer.hpp"          // for VisFrameView, VisMetadata
 #include "visUtil.hpp"            // for time_ctype, frameID, modulo, operator<, current_time
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp"                // for compile_string_to_view, format
 
 using kotekan::bufferContainer;
 using kotekan::Config;

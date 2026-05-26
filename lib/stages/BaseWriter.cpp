@@ -2,8 +2,7 @@
 
 #include <time.h>                 // for time, time_t, timespec
 #include <assert.h>               // for assert
-#include <fmt/core.h>             // for format, format_string
-#include <algorithm>              // for copy, equal, max
+#include <algorithm>              // for equal
 #include <exception>              // for exception
 #include <functional>             // for bind, function
 #include <stdexcept>              // for runtime_error
@@ -23,7 +22,7 @@
 #include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
 #include "version.h"              // for get_git_commit_hash
 #include "visFile.hpp"            // for visFileBundle, _factory_aliasvisFile
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp"                // for compile_string_to_view, format, format_string
 
 
 using kotekan::bufferContainer;

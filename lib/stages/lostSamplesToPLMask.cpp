@@ -1,13 +1,12 @@
 #include "lostSamplesToPLMask.hpp"
 
 #include <assert.h>             // for assert
-#include <fmt/core.h>           // for format
-#include <stddef.h>             // for ptrdiff_t
-#include <algorithm>            // for copy, max
+#include <stddef.h>             // for size_t, ptrdiff_t
+#include <algorithm>            // for copy
 #include <functional>           // for bind, function
 #include <memory>               // for shared_ptr, __shared_ptr_access
 #include <vector>               // for vector
-#include <cstring>              // for size_t, memcpy
+#include <cstring>              // for memcpy
 
 #include "Config.hpp"           // for Config
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
@@ -17,7 +16,7 @@
 #include "json.hpp"             // for basic_json, json, iter_impl
 #include "DataType.hpp"         // for DataType, GetType_t
 #include "NDArray.hpp"          // for GenericNDArray
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"              // for compile_string_to_view, format
 #include "kotekanLogging.hpp"   // for FATAL_ERROR
 
 using kotekan::bufferContainer;

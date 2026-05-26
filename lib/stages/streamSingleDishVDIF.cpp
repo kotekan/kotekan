@@ -6,7 +6,6 @@
 #include <stdlib.h>             // for exit
 #include <string.h>             // for memset
 #include <sys/socket.h>         // for AF_INET, sendto, socket, SOCK_DGRAM
-#include <fmt/core.h>           // for format
 #include <functional>           // for bind, function
 
 #include "Config.hpp"           // for Config

@@ -1,10 +1,11 @@
 #include "timeUtil.hpp"
 
-#include <math.h>      // for round
-#include <assert.h>    // for assert
-#include <fmt/core.h>  // for format, format_string
-#include <json.hpp>    // for json, basic_json
-#include <ostream>     // for ostream, basic_ostream, basic_ios
+#include <math.h>    // for round
+#include <assert.h>  // for assert
+#include <json.hpp>  // for json, basic_json
+#include <ostream>   // for basic_ostream
+
+#include "fmt.hpp"   // for format, format_string
 
 const __int128 era_A = 77'905'727'326'400'000L;
 const __int128 era_B = 100'273'781'191'135'448L;

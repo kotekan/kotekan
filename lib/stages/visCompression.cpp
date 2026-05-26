@@ -2,8 +2,7 @@
 
 #include <pthread.h>              // for pthread_setaffinity_np
 #include <sched.h>                // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <fmt/core.h>             // for format
-#include <algorithm>              // for copy, max, fill, equal
+#include <algorithm>              // for fill, equal
 #include <complex>                // for complex, conj, norm
 #include <functional>             // for function, bind, placeholders
 #include <future>                 // for async, future
@@ -25,7 +24,7 @@
 #include "prometheusMetrics.hpp"  // for Gauge, Counter, Metrics, MetricFamily
 #include "visBuffer.hpp"          // for VisFrameView, VisField
 #include "visUtil.hpp"            // for modulo, current_time, rstack_ctype, frameID, prod_ctype
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp"                // for compile_string_to_view, format
 #include "gsl-lite.hpp"           // for span
 
 

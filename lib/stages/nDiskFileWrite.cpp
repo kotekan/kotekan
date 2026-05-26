@@ -8,8 +8,6 @@
 #include <stdlib.h>             // for exit
 #include <time.h>               // for gmtime, strftime, time, time_t
 #include <unistd.h>             // for close, syncfs, write, ssize_t
-#include <fmt/core.h>           // for format
-#include <algorithm>            // for max
 #include <functional>           // for bind, function
 #include <memory>               // for __shared_ptr_access, shared_ptr
 #include <thread>               // for thread
@@ -21,7 +19,7 @@
 #include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
 #include "kotekanLogging.hpp"   // for ERROR, INFO
 #include "util.h"               // for cp, make_raw_dirs
-#include "fmt.hpp"              // for compile_string_to_view, fmt
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
 
 
 using kotekan::bufferContainer;

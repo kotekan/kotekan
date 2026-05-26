@@ -1,4 +1,3 @@
-#include <fmt/core.h>           // for format, format_string
 #include <stddef.h>             // for size_t
 #include <stdint.h>             // for int64_t, uint8_t
 #include <json.hpp>             // for basic_json, json, iter_impl
@@ -24,7 +23,7 @@
 #include "div.hpp"              // for div_noremainder
 #include "kotekanLogging.hpp"   // for FATAL_ERROR, WARN, INFO, DEBUG
 #include "restServer.hpp"       // for restServer, connectionInstance
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"              // for compile_string_to_view, format, format_string
 #include "DataType.hpp"         // for DataType
 #include "Stage.hpp"            // for Stage
 #include "jsonMetadata.hpp"     // for MAX_NUM_RFI_THRESHOLDS

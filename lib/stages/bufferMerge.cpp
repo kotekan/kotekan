@@ -1,8 +1,6 @@
 #include "bufferMerge.hpp"
 
 #include <assert.h>             // for assert
-#include <fmt/core.h>           // for format
-#include <algorithm>            // for max
 #include <cstring>              // for memcpy
 #include <functional>           // for bind, function
 #include <stdexcept>            // for invalid_argument, runtime_error
@@ -14,7 +12,7 @@
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "kotekanLogging.hpp"   // for INFO, DEBUG2, FATAL_ERROR
 #include "visUtil.hpp"          // for frameID, current_time, double_to_ts, modulo
-#include "fmt.hpp"              // for compile_string_to_view, fmt
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
 #include "json.hpp"             // for json, basic_json, iter_impl
 
 using nlohmann::json;

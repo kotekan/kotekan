@@ -140,7 +140,7 @@ private:
     std::mutex next_frame_lock;
 
     /// Whether to use the config tracker
-    const bool use_config_tracker;
+    bool use_config_tracker;
 
     static void read_callback(evutil_socket_t fd, short what, void* arg);
     static void accept_connection(evutil_socket_t listener, short event, void* arg);

@@ -2,8 +2,7 @@
 
 #include <stdint.h>               // for uint32_t, uint64_t, int32_t
 #include <time.h>                 // for timespec
-#include <fmt/core.h>             // for format
-#include <algorithm>              // for copy, equal, max
+#include <algorithm>              // for equal
 #include <complex>                // for complex
 #include <functional>             // for bind, function
 #include <stdexcept>              // for runtime_error

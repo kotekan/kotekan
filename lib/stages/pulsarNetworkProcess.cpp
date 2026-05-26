@@ -6,7 +6,6 @@
 #include <stdlib.h>              // for free, malloc
 #include <sys/socket.h>          // for AF_INET, bind, sendto, setsockopt, socket, SOCK_DGRAM
 #include <time.h>                // for timespec, clock_gettime, CLOCK_MONOTONIC, CLOCK_REALTIME
-#include <fmt/core.h>            // for format
 #include <cstdio>                // for snprintf
 #include <cstring>               // for memset
 #include <functional>            // for bind, function

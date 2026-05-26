@@ -1,7 +1,6 @@
 #include "rfiVDIF.hpp"
 
 #include <string.h>             // for memset, memcpy, size_t
-#include <fmt/core.h>           // for format
 #include <functional>           // for bind, function
 
 #include "Config.hpp"           // for Config

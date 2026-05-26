@@ -1,7 +1,6 @@
 #include "N2FringeStop.hpp"
 
 #include <stdint.h>               // for int64_t
-#include <fmt/core.h>             // for format
 #include <complex>                // for complex, conj, operator*
 #include <functional>             // for bind, function
 #include <vector>                 // for vector

@@ -1,8 +1,6 @@
 #include "VisRawReader.hpp"
 
 #include <stddef.h>             // for size_t
-#include <fmt/core.h>           // for format
-#include <algorithm>            // for max
 #include <stdexcept>            // for runtime_error
 #include <utility>              // for pair, move
 
@@ -15,7 +13,7 @@
 #include "kotekanLogging.hpp"   // for DEBUG, WARN
 #include "visBuffer.hpp"        // for VisFrameView, VisMetadata
 #include "visUtil.hpp"          // for stack_ctype, input_ctype, prod_ctype, rstack_ctype, frameID
-#include "fmt.hpp"              // for compile_string_to_view, fmt
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
 #include "json.hpp"             // for iter_impl, json
 
 using kotekan::bufferContainer;

@@ -1,8 +1,7 @@
 #include "prodSubset.hpp"
 
 #include <stdint.h>             // for uint16_t, uint32_t
-#include <fmt/core.h>           // for format
-#include <algorithm>            // for max, copy, binary_search, sort
+#include <algorithm>            // for copy, binary_search, sort
 #include <complex>              // for complex
 #include <functional>           // for bind, function
 #include <future>               // for future, async
@@ -20,7 +19,7 @@
 #include "kotekanLogging.hpp"   // for FATAL_ERROR, WARN
 #include "visBuffer.hpp"        // for VisFrameView, VisField
 #include "visUtil.hpp"          // for prod_ctype, frameID, cmap, icmap, modulo
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"              // for compile_string_to_view, format
 #include "gsl-lite.hpp"         // for span
 
 

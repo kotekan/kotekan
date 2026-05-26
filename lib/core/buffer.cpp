@@ -1,7 +1,6 @@
 #include "buffer.hpp"
 
 #include <assert.h>            // for assert
-#include <bits/chrono.h>       // for duration, operator+, nanoseconds, seconds, system_clock
 #include <errno.h>             // for errno
 #include <pthread.h>           // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
 #include <sched.h>             // for CPU_SET, CPU_ZERO, cpu_set_t
@@ -9,6 +8,7 @@
 #include <string.h>            // for strerror, memset, memcpy
 #include <sys/mman.h>          // for mlock, mmap, munmap, MAP_FAILED
 #include <json.hpp>            // for basic_json, json
+#include <chrono>              // for duration, operator+, nanoseconds, seconds, system_clock
 #include <stdexcept>           // for runtime_error
 #include <utility>             // for pair
 
@@ -19,7 +19,7 @@
 #include "metadata.hpp"        // for metadataObject, metadataPool
 #include "nt_memset.h"         // for nt_memset
 #include "util.h"              // for e_time
-#include "fmt.hpp"             // for compile_string_to_view, fmt
+#include "fmt.hpp"             // for compile_string_to_view, format, fmt
 #ifndef MAC_OSX
 #include <linux/mman.h>        // for MAP_HUGE_2MB, MAP_PRIVATE
 #endif

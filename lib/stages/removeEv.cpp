@@ -1,6 +1,5 @@
 #include "removeEv.hpp"
 
-#include <fmt/core.h>           // for format
 #include <functional>           // for bind, function
 #include <set>                  // for set
 #include <utility>              // for pair
@@ -14,6 +13,7 @@
 #include "datasetState.hpp"     // for eigenvalueState
 #include "visBuffer.hpp"        // for VisField, VisFrameView
 #include "visUtil.hpp"          // for frameID, modulo
+#include "fmt.hpp"              // for format
 
 
 using kotekan::bufferContainer;

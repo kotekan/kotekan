@@ -2,7 +2,6 @@
 
 #include <assert.h>              // for assert
 #include <string.h>              // for memcpy
-#include <fmt/core.h>            // for format
 #include <algorithm>             // for max
 #include <cmath>                 // for round
 #include <functional>            // for bind, function

@@ -1,11 +1,12 @@
 #include "cudaSyncStream.hpp"
 
-#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h" // for cudaStreamWaitEvent
-#include "gpuCommand.hpp"     // for gpuCommandType
+#include <algorithm>           // for copy
+#include <stdexcept>           // for runtime_error
 
-#include <algorithm> // for copy
-#include <stdexcept> // for runtime_error
+#include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h"  // for cudaStreamWaitEvent
+#include "gpuCommand.hpp"      // for gpuCommandType
+#include "fmt.hpp"             // for format
 
 using kotekan::bufferContainer;
 using kotekan::Config;

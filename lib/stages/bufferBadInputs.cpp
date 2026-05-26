@@ -1,13 +1,12 @@
 #include "bufferBadInputs.hpp"
 
-#include <fmt/core.h>          // for format
 #include <stdint.h>            // for uint8_t
 #include <json.hpp>            // for json
 #include <exception>           // for exception
 #include <functional>          // for bind, function, _1
 #include <memory>              // for __shared_ptr_access, shared_ptr
 #include <array>               // for array
-#include <cstring>             // for memset, size_t
+#include <cstring>             // for memset
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE

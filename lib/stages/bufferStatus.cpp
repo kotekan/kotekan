@@ -2,8 +2,7 @@
 
 #include <stdint.h>               // for uint32_t
 #include <unistd.h>               // for usleep
-#include <fmt/core.h>             // for format
-#include <algorithm>              // for copy, equal, max
+#include <algorithm>              // for equal
 #include <functional>             // for bind, function
 #include <string>                 // for basic_string, allocator, string
 #include <utility>                // for pair

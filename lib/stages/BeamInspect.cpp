@@ -2,7 +2,6 @@
 
 #include <stddef.h>            // for size_t
 #include <stdint.h>            // for uint8_t
-#include <fmt/core.h>          // for format, format_string
 #include <memory>              // for shared_ptr
 #include <vector>              // for vector
 
@@ -11,7 +10,7 @@
 #include "buffer.hpp"          // for Buffer
 #include "kotekanLogging.hpp"  // for INFO
 #include "visUtil.hpp"         // for frameID, modulo
-#include "fmt.hpp"             // for compile_string_to_view
+#include "fmt.hpp"             // for compile_string_to_view, format, format_string
 
 using kotekan::bufferContainer;
 using kotekan::Config;

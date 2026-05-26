@@ -10,8 +10,7 @@
 #include <stddef.h>               // for ptrdiff_t
 #include <stdlib.h>               // for free, malloc
 #include <sys/socket.h>           // for setsockopt, AF_INET, SOL_SOCKET, accept, bind, listen
-#include <fmt/core.h>             // for format, format_string
-#include <algorithm>              // for copy, max, find, equal
+#include <algorithm>              // for find
 #include <cstring>                // for strerror
 #include <functional>             // for bind, ref, function, placeholders
 #include <memory>                 // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
@@ -32,7 +31,7 @@
 #include "restServer.hpp"         // for PORT_REST_SERVER, connectionInstance
 #include "util.h"                 // for string_tail
 #include "visUtil.hpp"            // for current_time, regex_split
-#include "fmt.hpp"                // for compile_string_to_view, fmt
+#include "fmt.hpp"                // for compile_string_to_view, format, format_string, fmt
 
 using namespace std::placeholders;
 using std::mutex;
@@ -52,11 +51,17 @@ REGISTER_KOTEKAN_STAGE(bufferRecv);
 bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
-    use_config_tracker(config.get_default<bool>(unique_name, "use_config_tracker", true)),
     dropped_frame_counter(
         Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)),
     transfer_time_seconds(Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
                                                         unique_name, {"source"})) {
+
+    // Default to the tracker's enabled state (set at startup, before stages).
+    // A stage may opt out, but cannot opt in when the tracker is off, so the
+    // configured value is ANDed with the tracker state.
+    const bool ct_enabled = ConfigTracker::instance().is_enabled();
+    use_config_tracker =
+        config.get_default<bool>(unique_name, "use_config_tracker", ct_enabled) && ct_enabled;
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);

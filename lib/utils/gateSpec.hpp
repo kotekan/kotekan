@@ -6,7 +6,6 @@
 #define GATE_SPEC_HPP
 
 #include <time.h>              // for timespec
-#include <fmt/core.h>          // for format
 #include <functional>          // for function
 #include <memory>              // for unique_ptr
 #include <string>              // for string, basic_string
@@ -16,6 +15,7 @@
 #include "kotekanLogging.hpp"  // for logLevel, kotekanLogging
 #include "pulsarTiming.hpp"    // for SegmentedPolyco
 #include "json.hpp"            // for json
+#include "fmt.hpp"             // for format
 
 
 /**

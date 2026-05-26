@@ -3,7 +3,6 @@
 #include <stdlib.h>             // for llabs
 #include <sys/time.h>           // for timeval
 #include <time.h>               // for timespec
-#include <fmt/core.h>           // for format
 #include <functional>           // for bind, function
 #include <memory>               // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
 #include <utility>              // for pair

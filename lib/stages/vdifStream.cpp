@@ -6,7 +6,6 @@
 #include <string.h>             // for memset, strerror
 #include <sys/socket.h>         // for AF_INET, sendto, socket, SOCK_DGRAM
 #include <unistd.h>             // for usleep, size_t
-#include <fmt/core.h>           // for format
 #include <functional>           // for bind, function
 #include <string>               // for allocator, basic_string, string
 

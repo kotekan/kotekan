@@ -1,14 +1,13 @@
 #ifndef KOTEKAN_LOGGING_H
 #define KOTEKAN_LOGGING_H
 
-#include <errno.h>     // for errno
-#include <syslog.h>    // for LOG_DEBUG, LOG_ERR, LOG_INFO, LOG_WARNING
-#include <fmt/core.h>  // for basic_string_view, format_args, make_format_args
-#include <string>      // for string, basic_string
-#include <stdexcept>   // for runtime_error
+#include <errno.h>    // for errno
+#include <syslog.h>   // for LOG_DEBUG, LOG_ERR, LOG_INFO, LOG_WARNING
+#include <string>     // for string, basic_string
+#include <stdexcept>  // for runtime_error
 
 #include "errors.h" // for _global_log_level  // IWYU pragma: keep
-#include "fmt.hpp"     // for fmt, FMT_STRING
+#include "fmt.hpp"    // for fmt, basic_string_view, FMT_STRING, format_args, make_format_args
 
 class FatalError : public std::runtime_error {
 public:

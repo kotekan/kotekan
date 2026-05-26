@@ -401,7 +401,7 @@ struct GPSTimeParams {
      *                                      or false, will try to retrieve from
      *                                      config.
      * @conf    gps_host            string. The GPS server IP address.
-     * @conf    gps_port            uint.   The port number on the GPS server.
+     * @conf    gps_port            uint.   The port number on the GPS server. Default: 54321
      * @conf    gps_endpoint        string. The enpoint with the GPS time.
      * @conf    auto_correct_gps_week_rollover  bool.   If true, correct GPS time0
      *                                      for the 1024 week GPS rollover using

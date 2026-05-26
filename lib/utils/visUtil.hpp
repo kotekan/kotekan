@@ -12,23 +12,23 @@
 #define VIS_UTIL_HPP
 
 
-#include <bits/chrono.h>  // for system_clock
-#include <fmt/core.h>     // for appender, format, format_string, formatter, format_context
-#include <algorithm>      // for max
+#include <algorithm>      // for copy, max
 #include <array>          // for array
+#include <chrono>         // for system_clock
 #include <complex>        // for complex, imag, real
 #include <cstdint>        // for uint32_t, int8_t, uint16_t, int64_t, uint64_t, uint8_t, int32_t
 #include <cstdlib>        // for size_t, div
+#include <iterator>       // for pair
 
 #include "Config.hpp"     // for Config
 #include "DataType.hpp"   // for KOTEKAN_FLOAT16, float16_t
 #include "Telescope.hpp"  // for stream_t
 #include "buffer.hpp"     // for Buffer
-#include "fmt.hpp"        // for formatter<>::format
+#include "fmt.hpp"        // for appender, format, format_string, formatter, format_context
 #include "gsl-lite.hpp"   // for span
 #include "json.hpp"       // for json, value_t
 #ifdef WITH_CUDA
-#include <cuda_fp16.h> // for __half::operator float
+#include <cuda_fp16.h>    // for __half::operator float
 #endif
 #include <math.h>         // for fmod, cosf, sinf, M_PI
 #include <sys/time.h>     // for timeval, gettimeofday, CLOCK_REALTIME
@@ -37,7 +37,6 @@
 #include <deque>          // for deque
 #include <functional>     // for function
 #include <iosfwd>         // for ostream
-#include <iterator>       // for pair
 #include <map>            // for map
 #include <memory>         // for allocator, unique_ptr
 #include <mutex>          // for recursive_mutex

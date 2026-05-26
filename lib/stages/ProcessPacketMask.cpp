@@ -2,10 +2,8 @@
 
 #include <visUtil.hpp>          // for frameID, modulo
 #include <assert.h>             // for assert
-#include <fmt/core.h>           // for format
 #include <cstring>              // for size_t, memset
 #include <stdexcept>            // for runtime_error
-#include <algorithm>            // for max
 #include <memory>               // for __shared_ptr_access, shared_ptr
 
 #include "Config.hpp"           // for Config
@@ -14,7 +12,7 @@
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
 #include "kotekanLogging.hpp"   // for INFO, DEBUG2
-#include "fmt.hpp"              // for compile_string_to_view, fmt
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
 #include "DataType.hpp"         // for DataType
 
 using kotekan::bufferContainer;

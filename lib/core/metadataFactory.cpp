@@ -1,7 +1,6 @@
 #include "metadataFactory.hpp"
 
 #include <stdint.h>              // for uint32_t
-#include <fmt/core.h>            // for format
 #include <json.hpp>              // for basic_json, iter_impl, json
 #include <stdexcept>             // for runtime_error
 
@@ -15,7 +14,7 @@
 #include "metadata.hpp"          // for metadataPool
 #include "oneHotMetadata.hpp"    // for oneHotMetadata
 #include "visBuffer.hpp"         // for VisMetadata
-#include "fmt.hpp"               // for compile_string_to_view, fmt
+#include "fmt.hpp"               // for compile_string_to_view, format, fmt
 
 using json = nlohmann::json;
 using std::map;

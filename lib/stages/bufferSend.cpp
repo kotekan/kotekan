@@ -1,28 +1,28 @@
 #include "bufferSend.hpp"
 
-#include <arpa/inet.h>            // for htons, inet_addr
-#include <bits/chrono.h>          // for seconds
-#include <strings.h>              // for bzero
-#include <sys/socket.h>           // for send, MSG_NOSIGNAL, AF_INET, connect, setsockopt, socket
-#include <sys/time.h>             // for timeval
-#include <unistd.h>               // for close, sleep
-#include <fmt/core.h>             // for format, format_string
-#include <cerrno>                 // for errno
-#include <cstring>                // for strerror, size_t
-#include <functional>             // for bind, ref, function
-#include <memory>                 // for __shared_ptr_access, shared_ptr
-#include <stdexcept>              // for runtime_error
-#include <thread>                 // for thread
+#include "Config.hpp"            // for Config
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "configTracker.hpp"     // for ConfigTracker
+#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
+#include "metadata.hpp"          // for metadataObject
+#include "prometheusMetrics.hpp" // for Counter, Metrics
 
-#include "Config.hpp"             // for Config
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "configTracker.hpp"      // for ConfigTracker
-#include "kotekanLogging.hpp"     // for DEBUG2, ERROR, INFO, DEBUG, WARN
-#include "metadata.hpp"           // for metadataObject
-#include "prometheusMetrics.hpp"  // for Counter, Metrics
-#include "fmt.hpp"                // for compile_string_to_view, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
+
+#include <arpa/inet.h>  // for htons, inet_addr
+#include <cerrno>       // for errno
+#include <chrono>       // for seconds
+#include <cstring>      // for strerror, size_t
+#include <functional>   // for bind, ref, function
+#include <memory>       // for __shared_ptr_access, shared_ptr
+#include <stdexcept>    // for runtime_error
+#include <strings.h>    // for bzero
+#include <sys/socket.h> // for send, MSG_NOSIGNAL, AF_INET, connect, setsockopt, socket
+#include <sys/time.h>   // for timeval
+#include <thread>       // for thread
+#include <unistd.h>     // for close, sleep
 
 // Some systems don't support MSG_NOSIGNAL and don't include it in socket.h
 #ifndef MSG_NOSIGNAL
@@ -64,7 +64,12 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
 
     socket_fd = -1;
 
-    use_config_tracker = config.get_default<bool>(unique_name, "use_config_tracker", true);
+    // Default to the tracker's enabled state (set at startup, before stages).
+    // A stage may opt out, but cannot opt in when the tracker is off, so the
+    // configured value is ANDed with the tracker state.
+    const bool ct_enabled = ConfigTracker::instance().is_enabled();
+    use_config_tracker =
+        config.get_default<bool>(unique_name, "use_config_tracker", ct_enabled) && ct_enabled;
     config_tracker_combined_hash = "";
 }
 
@@ -133,10 +138,8 @@ void bufferSend::main_thread() {
             }
 
 
-            // If the frame sent successfully,
-            if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
-                config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
-            }
+            // Record the tracker state we just signaled to the receiver.
+            config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
             DEBUG2("Sent header: {:d}", n_sent);
 
             // Send metadata

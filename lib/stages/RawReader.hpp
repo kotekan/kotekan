@@ -14,7 +14,6 @@
 #include <sys/stat.h>           // for stat
 #include <time.h>               // for nanosleep, timespec
 #include <unistd.h>             // for close, off_t
-#include <fmt/core.h>           // for format
 #include <algorithm>            // for min
 #include <cstring>              // for size_t, strerror, memcpy
 #include <fstream>              // for basic_ifstream, basic_ios, ios_base, basic_istream::read

@@ -1,7 +1,6 @@
 #include "N2Accumulate.hpp"
 
 #include <assert.h>               // for assert
-#include <fmt/core.h>             // for format
 #include <math.h>                 // for floor
 #include <algorithm>              // for fill
 #include <complex>                // for complex, operator*, conj, operator-, norm

@@ -1,3 +1,4 @@
+---
 ##########################################
 #
 # packet_capture.yaml
@@ -11,7 +12,6 @@
 #
 ##########################################
 
----
 type: config
 # Logging level can be one of:
 # OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
@@ -41,11 +41,11 @@ network_input_buffers:
     network_input_buffer_3:
         kotekan_buffer: standard
 
-cpu_affinity: [2,3,8,9]
+cpu_affinity: [2, 3, 8, 9]
 dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [0,1,6,7]
+    lcore_cpu_map: [0, 1, 6, 7]
     main_lcore_cpu: 2
     # Format is index = lcore, value = array of port IDs
     # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,

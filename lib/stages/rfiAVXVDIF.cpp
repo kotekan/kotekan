@@ -18,7 +18,6 @@
 #include <stdlib.h>             // for srand
 #include <string.h>             // for memset
 #include <time.h>               // for time
-#include <fmt/core.h>           // for format
 #include <functional>           // for bind, function
 #include <thread>               // for thread
 #include <vector>               // for vector

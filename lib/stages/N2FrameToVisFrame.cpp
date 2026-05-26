@@ -1,11 +1,10 @@
 #include "N2FrameToVisFrame.hpp"
 
-#include <fmt/core.h>           // for format
 #include <time.h>               // for timespec, time_t, size_t
 #include <gsl-lite.hpp>         // for span, span_iterator
 #include <cassert>              // for assert
 #include <complex>              // for complex, conj
-#include <algorithm>            // for max, transform
+#include <algorithm>            // for transform
 #include <functional>           // for bind, function
 #include <iterator>             // for back_insert_iterator, begin, end, back_inserter
 #include <memory>               // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast

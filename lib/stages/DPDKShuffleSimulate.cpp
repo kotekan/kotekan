@@ -3,7 +3,6 @@
 #include <assert.h>             // for assert
 #include <sys/time.h>           // for gettimeofday, timeval
 #include <unistd.h>             // for sleep, usleep, size_t
-#include <fmt/core.h>           // for format, format_string
 #include <memory>               // for __shared_ptr_access, shared_ptr
 
 #include "Config.hpp"           // for Config
@@ -14,7 +13,7 @@
 #include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
 #include "kotekanLogging.hpp"   // for DEBUG, INFO
 #include "visUtil.hpp"          // for frameID, modulo, current_time, ts_to_double
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"              // for compile_string_to_view, format, format_string
 
 using kotekan::bufferContainer;
 using kotekan::Config;

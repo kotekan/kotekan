@@ -3,7 +3,6 @@
 #include <gsl-lite.hpp>         // for span
 #include <map>                  // for map, operator==, _Rb_tree_iterator
 #include <utility>              // for pair
-#include <algorithm>            // for max
 #include <complex>              // for complex
 #include <functional>           // for bind, function
 #include <set>                  // for set

@@ -1,7 +1,6 @@
 #include "ExampleProducer.hpp"
 
 #include <stdint.h>            // for uint32_t, uint8_t
-#include <fmt/core.h>          // for format
 #include <functional>          // for bind, function
 
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE

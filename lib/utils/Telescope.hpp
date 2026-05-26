@@ -2,7 +2,6 @@
 #define TELESCOPE_HPP
 
 #include <time.h>              // for timespec, size_t
-#include <fmt/core.h>          // for format
 #include <json.hpp>            // for json
 #include <exception>           // for exception
 #include <memory>              // for unique_ptr
@@ -16,7 +15,7 @@
 #include "kotekanLogging.hpp"  // for ERROR, kotekanLogging
 #include "restServer.hpp"      // for connectionInstance
 #include "timeUtil.hpp"        // for EOP
-#include "fmt.hpp"             // for compile_string_to_view
+#include "fmt.hpp"             // for compile_string_to_view, format
 
 // Create the abstract factory for generating patterns
 class Telescope;

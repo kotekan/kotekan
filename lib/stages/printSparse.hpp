@@ -2,7 +2,6 @@
 #define PRINT_SPARSE_H
 
 #include <stdlib.h>             // for size_t
-#include <fmt/core.h>           // for format
 #include <cstdint>              // for uint32_t
 #include <functional>           // for bind
 #include <stdexcept>            // for invalid_argument

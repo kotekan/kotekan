@@ -8,7 +8,6 @@
 
 #include <assert.h>            // for assert
 #include <cxxabi.h>            // for __cxa_demangle, abi
-#include <fmt/core.h>          // for format, format_string
 #include <stdlib.h>            // for free
 #include <cmath>               // for isinf, isnan
 #include <complex>     // for complex  // IWYU pragma: keep
@@ -24,7 +23,7 @@
 #include <vector>              // for vector
 
 #include "kotekanLogging.hpp"  // for ERROR_NON_OO
-#include "fmt.hpp"             // for compile_string_to_view, fmt
+#include "fmt.hpp"             // for compile_string_to_view, fmt, format, format_string
 #include "json.hpp"            // for json
 
 

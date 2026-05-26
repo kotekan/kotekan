@@ -7,9 +7,8 @@
 #include <sys/time.h>           // for gettimeofday, timeval
 #include <sys/types.h>          // for uint
 #include <unistd.h>             // for usleep
-#include <fmt/core.h>           // for format
 #include <json.hpp>             // for json
-#include <algorithm>            // for copy, max
+#include <algorithm>            // for copy
 #include <cmath>                // for fmod
 #include <functional>           // for bind, function, _1, _2
 #include <random>               // for mt19937

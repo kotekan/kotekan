@@ -1,7 +1,6 @@
 #include "visBuffer.hpp"
 
 #include <assert.h>       // for assert
-#include <fmt/core.h>     // for format, format_string
 #include <gsl-lite.hpp>   // for span
 #include <json.hpp>       // for basic_json, json
 #include <algorithm>      // for copy
@@ -19,7 +18,7 @@
 #include "buffer.hpp"     // for Buffer
 #include "factory.hpp"    // for REGISTER_TYPE_WITH_FACTORY
 #include "metadata.hpp"   // for metadataObject, _factory_aliasmetadataObject
-#include "fmt.hpp"        // for compile_string_to_view, fmt
+#include "fmt.hpp"        // for format, compile_string_to_view, fmt, format_string
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
 

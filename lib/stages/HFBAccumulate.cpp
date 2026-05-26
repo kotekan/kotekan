@@ -1,8 +1,7 @@
 #include "HFBAccumulate.hpp"
 
 #include <time.h>              // for timespec
-#include <fmt/core.h>          // for format
-#include <algorithm>           // for fill, max, transform
+#include <algorithm>           // for fill, transform
 #include <cmath>               // for pow
 #include <cstring>             // for memcpy, size_t
 #include <functional>          // for bind, function

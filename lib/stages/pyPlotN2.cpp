@@ -5,7 +5,6 @@
 #include <string.h>             // for memcpy
 #include <sys/types.h>          // for uint
 #include <unistd.h>             // for usleep
-#include <fmt/core.h>           // for format
 #include <cstdio>               // for fwrite, fflush, popen, FILE
 #include <functional>           // for bind, function, _1
 #include <thread>               // for thread
@@ -16,6 +15,7 @@
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "restServer.hpp"       // for restServer, HTTP_RESPONSE, connectionInstance
 #include "json.hpp"             // for json_ref, json
+#include "fmt.hpp"              // for format
 
 
 using json = nlohmann::json;

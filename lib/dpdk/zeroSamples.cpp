@@ -2,8 +2,6 @@
 
 #include <assert.h>             // for assert
 #include <string.h>             // for memcpy, size_t
-#include <fmt/core.h>           // for format
-#include <algorithm>            // for max
 #include <functional>           // for bind, function
 #include <memory>               // for __shared_ptr_access, shared_ptr
 #include <vector>               // for vector
@@ -15,6 +13,7 @@
 #include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
 #include "nt_memset.h"          // for nt_memset
 #include "json.hpp"             // for basic_json, json, iter_impl
+#include "fmt.hpp"              // for format
 
 using kotekan::bufferContainer;
 using kotekan::Config;

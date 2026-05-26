@@ -1,18 +1,17 @@
 #include "CHORDTelescope.hpp"
 
 #include <assert.h>            // for assert
-#include <bits/chrono.h>       // for duration_cast, duration, nanoseconds, system_clock
-#include <fmt/core.h>          // for format, format_string
 #include <algorithm>           // for max, min
 #include <stdexcept>           // for runtime_error
 #include <vector>              // for vector
 #include <cmath>               // for sin, cos, floor, ceil, M_PI, abs
+#include <chrono>              // for duration_cast, duration, nanoseconds, system_clock
 
 #include "Telescope.hpp"       // for freq_id_t, Telescope, nyquist_zone_t, stream_t, REGISTER_T...
 #include "kotekanLogging.hpp"  // for FATAL_ERROR_NON_OO, WARN_NON_OO, INFO_NON_OO, DEBUG, FATAL...
 #include "restClient.hpp"      // for restClient
 #include "timeUtil.hpp"        // for EOP, nanosec_i64_to_timespec
-#include "fmt.hpp"             // for compile_string_to_view
+#include "fmt.hpp"             // for compile_string_to_view, format, format_string
 #include "json.hpp"            // for basic_json, operator==, json, input_adapter
 
 
@@ -312,9 +311,22 @@ GPSTimeParams GPSTimeParams::from_config(const kotekan::Config& config, const st
 
     gps.require_gps = config.get_default<bool>(path, "require_gps", false);
     gps.query_gps = config.get_default<bool>(path, "query_gps", false);
-    gps.gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
-    gps.gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
-    gps.gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
+    // gps_host_info names a sibling block (typically /fpga_controller)
+    // holding ``host``, ``port``, and optionally ``timing_endpoint`` (the
+    // default for gps_endpoint). Required when query_gps is true.
+    std::string default_gps_endpoint = "/get-frame0-time";
+    if (config.exists(path, "gps_host_info")) {
+        const std::string ref = config.get<std::string>(path, "gps_host_info");
+        gps.gps_host = config.get<std::string>(ref, "host");
+        gps.gps_port = config.get_default<uint32_t>(ref, "port", 54321);
+        if (config.exists(ref, "timing_endpoint"))
+            default_gps_endpoint = config.get<std::string>(ref, "timing_endpoint");
+    } else if (gps.query_gps) {
+        FATAL_ERROR_NON_OO("CHORDTelescope ({}): query_gps is true but gps_host_info is not set; "
+                           "point it at the FPGA controller block (e.g. /fpga_controller).",
+                           path);
+    }
+    gps.gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", default_gps_endpoint);
     gps.auto_correct_gps_week_rollover =
         config.get_default<bool>(path, "auto_correct_gps_week_rollover", false);
 

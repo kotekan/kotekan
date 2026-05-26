@@ -6,7 +6,6 @@
 #include <stdlib.h>             // for exit, free, malloc
 #include <string.h>             // for memcpy
 #include <unistd.h>             // for close, gethostname, sleep, write, ssize_t
-#include <fmt/core.h>           // for format
 #include <json.hpp>             // for json
 #include <functional>           // for bind, function, _1, _2
 
@@ -16,7 +15,7 @@
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "kotekanLogging.hpp"   // for ERROR, INFO
 #include "restServer.hpp"       // for HTTP_RESPONSE, connectionInstance, restServer
-#include "fmt.hpp"              // for compile_string_to_view, fmt
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
 
 
 #define MAX_NUM_PACKETS 100

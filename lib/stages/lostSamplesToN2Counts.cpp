@@ -1,11 +1,8 @@
 #include "lostSamplesToN2Counts.hpp"
 
-#include <sys/types.h>          // for size_t
-#include <fmt/core.h>           // for format
 #include <stdint.h>             // for uint8_t, int32_t
 #include <memory>               // for shared_ptr, __shared_ptr_access
 #include <string>               // for allocator, basic_string, string
-#include <algorithm>            // for max, copy
 #include <functional>           // for bind, function
 
 #include "Config.hpp"           // for Config
@@ -16,7 +13,7 @@
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
 #include "json.hpp"             // for basic_json, json, iter_impl
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"              // for compile_string_to_view, format
 #include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG
 
 using kotekan::bufferContainer;

@@ -1,7 +1,6 @@
 #include "bufferDelay.hpp"
 
 #include <stdint.h>            // for uint32_t, uint8_t
-#include <fmt/core.h>          // for format
 #include <cassert>             // for assert
 #include <cstring>             // for memcpy
 #include <functional>          // for bind, function
@@ -14,7 +13,7 @@
 #include "kotekanLogging.hpp"  // for DEBUG
 #include "metadata.hpp"        // for metadataObject
 #include "visUtil.hpp"         // for frameID, modulo
-#include "fmt.hpp"             // for compile_string_to_view, fmt
+#include "fmt.hpp"             // for compile_string_to_view, format, fmt
 #include "json.hpp"            // for json
 
 

@@ -6,14 +6,13 @@
 #include <string.h>              // for strerror
 #include <sys/stat.h>            // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
 #include <unistd.h>              // for pwrite, TEMP_FAILURE_RETRY, close, lseek, off_t, ssize_t
-#include <fmt/core.h>            // for format
 #include <cstdio>                // for remove, SEEK_END, size_t
 #include <memory>                // for __shared_ptr_access, shared_ptr
 #include <stdexcept>             // for runtime_error
 
 #include "BasebandMetadata.hpp"  // for BasebandMetadata
 #include "visFile.hpp"           // for create_lockfile
-#include "fmt.hpp"               // for compile_string_to_view, fmt
+#include "fmt.hpp"               // for compile_string_to_view, format, fmt
 
 
 BasebandFileRaw::BasebandFileRaw(const std::string& name, const uint32_t frame_size) :

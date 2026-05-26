@@ -6,7 +6,6 @@
 #include <strings.h>            // for bzero
 #include <sys/socket.h>         // for send, AF_INET, connect, socket, SOCK_STREAM
 #include <unistd.h>             // for gethostname, size_t, ssize_t
-#include <fmt/core.h>           // for format
 #include <functional>           // for bind, function
 
 #include "Config.hpp"           // for Config
@@ -14,7 +13,7 @@
 #include "buffer.hpp"           // for Buffer
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "kotekanLogging.hpp"   // for ERROR, INFO
-#include "fmt.hpp"              // for compile_string_to_view, fmt
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
 
 
 using kotekan::bufferContainer;

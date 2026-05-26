@@ -29,6 +29,8 @@
  * @conf    frequency_map_host   string. The frequency map server IP address.
  * @conf    frequency_map_port   uint.   The port number on the frequency map server.
  * @conf    frequency_map_endpoint string. The endpoint with the frequency map.
+ * @conf    gps_host             string. The GPS server IP address. Default: "10.1.13.1"
+ * @conf    gps_port             uint.   The port number on the GPS server. Default: 54321
  **/
 class CHIMETelescope : public ICETelescope {
 public:

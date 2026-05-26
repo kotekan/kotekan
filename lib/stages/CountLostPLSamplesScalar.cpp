@@ -1,5 +1,4 @@
 #include <assert.h>             // for assert
-#include <fmt/core.h>           // for format
 #include <bitset>               // for bitset
 #include <cstdint>              // for uint64_t, int64_t, int32_t
 #include <functional>           // for bind, function
@@ -16,7 +15,7 @@
 #include "div.hpp"              // for div_noremainder
 #include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG
 #include "metadata.hpp"         // for metadataObject
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"              // for compile_string_to_view, format
 #include "Stage.hpp"            // for Stage
 
 using kotekan::bufferContainer;

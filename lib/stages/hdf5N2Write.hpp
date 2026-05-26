@@ -1,30 +1,26 @@
 #ifndef KOTEKAN_STAGES_HDF5_N2_WRITE_HPP
 #define KOTEKAN_STAGES_HDF5_N2_WRITE_HPP
 
-#include "Config.hpp"
-#include "N2Metadata.hpp"
-#include "Stage.hpp"
-#include "Telescope.hpp"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "errors.h"
-#include "hdf5Files.hpp"
-#include "kotekanLogging.hpp"
-#include "prometheusMetrics.hpp"
+#include <N2FrameView.hpp>              // for N2FrameView
+#include <N2Util.hpp>                   // for cfloat
+#include <highfive/H5File.hpp>          // for File
+#include <H5public.h>                   // for hsize_t
+#include <stddef.h>                     // for size_t
+#include <highfive/H5DataType.hpp>      // for DataType
+#include <highfive/H5PropertyList.hpp>  // for DataSetCreateProps
+#include <map>                          // for map
+#include <memory>                       // for unique_ptr
+#include <optional>                     // for optional, nullopt
+#include <string>                       // for string, basic_string
+#include <vector>                       // for vector
+#include <cstdint>                      // for uint64_t, int64_t, int32_t, uint16_t, uint8_t
 
-#include "fmt.hpp"
-
-#include <N2FrameView.hpp>
-#include <N2Metadata.hpp>
-#include <N2Util.hpp>
-#include <cassert>
-#include <filesystem>
-#include <highfive/H5File.hpp>
-#include <map>
-#include <memory>
-#include <optional>
-#include <string>
-#include <vector>
+#include "Config.hpp"                   // for Config
+#include "Stage.hpp"                    // for Stage
+#include "buffer.hpp"                   // for Buffer
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "prometheusMetrics.hpp"        // for Gauge, MetricFamily, Counter
+#include "N2Layout.hpp"                 // for N2Layout
 
 /**
  * @class N2FileData
@@ -283,12 +279,15 @@ public:
  *                                false).
  * @conf baseband_gain_file       String. Path to the digital gains HDF5 file. If empty (default),
  *                                gains are not written. Mutually exclusive with
- *                                `baseband_gain_url`.
- * @conf baseband_gain_url        String. HTTP URL to fetch the digital gains HDF5 file from at
- *                                startup. The file is downloaded once into
+ *                                `baseband_gain_host_info`.
+ * @conf baseband_gain_host_info  String. Absolute config path (e.g. `/fpga_controller`) to a block
+ *                                that exposes `host`, `port`, and an optional `gains_endpoint`
+ *                                (default `/get-current-gain-file`). At startup the gains HDF5
+ *                                file is fetched once over plain HTTP from
+ *                                `http://<host>:<port><gains_endpoint>` into
  *                                `<base_dir>/.partial/baseband_gains.h5` and then used as if it
- *                                had been provided via `baseband_gain_file`. Plain HTTP only; no
- *                                HTTPS, no auth. Mutually exclusive with `baseband_gain_file`.
+ *                                had been provided via `baseband_gain_file`. Mutually exclusive
+ *                                with `baseband_gain_file`.
  * @conf baseband_gain_update_idx Int. Index along the update_time axis to read from the gains
  *                                file (-1 = latest, default: -1).
  * @conf late_frame_grace_seconds UInt. Grace period in seconds for late frames (default: 60).
@@ -342,11 +341,16 @@ private:
     // Config settings (initialized from Config in constructor)
     const std::string _base_dir; /// Base directory to write files into
     /// Path to digital gains HDF5 file. Set either directly from config or, if
-    /// `baseband_gain_url` is configured, populated at startup after the URL is
-    /// downloaded into `<base_dir>/.partial/baseband_gains.h5`.
+    /// `baseband_gain_host_info` is configured, populated at startup after the
+    /// file is fetched into `<base_dir>/.partial/baseband_gains.h5`.
     std::string _baseband_gain_file;
-    const std::string _baseband_gain_url; /// HTTP URL to fetch the gains file from (optional)
-    const int _baseband_gain_update_idx;  /// update_time index (-1 = latest)
+    /// Resolved host/port/path for the gains-file HTTP fetch. All empty / 0 when
+    /// `baseband_gain_host_info` was not set. Filled in by the constructor body
+    /// from the referenced fpga-controller block.
+    std::string _baseband_gain_host;
+    std::uint16_t _baseband_gain_port = 0;
+    std::string _baseband_gain_endpoint;
+    const int _baseband_gain_update_idx; /// update_time index (-1 = latest)
     const std::uint64_t _num_file_t; /// Number of incoming time frames per file, as indexed by the
                                      /// absolute frame index
     const std::string _compression;

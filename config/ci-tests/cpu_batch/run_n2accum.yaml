@@ -43,39 +43,40 @@ GIGA: 1000000000
 start_time_s: 1760000000
 
 telescope:
-  name: CHORDTelescope
-  origin_itrs_lat_deg: 50.0
-  origin_itrs_lon_deg: -120.0
-  dish_coelev_deg: 90.0
-  grid_x_axis: [1.0, 0.0, 0.0]
-  grid_y_axis: [0.0, 1.0, 0.0]
-  dish_elev_axis: [1.0, 0.0, 0.0]
-  dish_vert_axis: [0.0, 0.0, 1.0]
-  require_gps: False
-  eop_updatable_config: /earth_rotation_data
-  num_dishes_x: 22
-  num_dishes_y: 24
-  dish_inputs: []
+    name: CHORDTelescope
+    origin_itrs_lat_deg: 50.0
+    origin_itrs_lon_deg: -120.0
+    dish_coelev_deg: 90.0
+    grid_x_axis: [1.0, 0.0, 0.0]
+    grid_y_axis: [0.0, 1.0, 0.0]
+    dish_elev_axis: [1.0, 0.0, 0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
+    require_gps: false
+    eop_updatable_config: /earth_rotation_data
+    num_dishes_x: 22
+    num_dishes_y: 24
+    dish_inputs: []
 
 gps_time:
-  frame0_nano: start_time_s * GIGA
+    frame0_nano: start_time_s * GIGA
 
 earth_rotation_data:
-  kotekan_update_endpoint: json
-  earth_orientation_parameter_table: [
-    {
-      t_inst_ns: 1750000000000000000,
-      delta_UT1_inst: 0.5,
-      xp_as: 0.1,
-      yp_as: 0.2
-    }, {
-      t_inst_ns: 1770000000000000000,
-      delta_UT1_inst: -0.5,
-      xp_as: 0.3,
-      yp_as: 0.4
-    }]
+    kotekan_update_endpoint: json
+    # yamlfix:off
+    earth_orientation_parameter_table: [
+      {
+        t_inst_ns: 1750000000000000000,
+        delta_UT1_inst: 0.5,
+        xp_as: 0.1,
+        yp_as: 0.2
+      }, {
+        t_inst_ns: 1770000000000000000,
+        delta_UT1_inst: -0.5,
+        xp_as: 0.3,
+        yp_as: 0.4
+      }]
+    # yamlfix:on
 
-  
 
 # Pool
 main_pool:
@@ -134,7 +135,7 @@ gen_fake_rfi_RFImask:
     kotekan_stage: testDataGen
     out_buf: fake_rfimask_buffer
     name: "RFImask"
-    array_shape: [ 4, 16, 128 ]  # [samples_per_data_set / 1024, num_local_freq, 128]
+    array_shape: [4, 16, 128]    # [samples_per_data_set / 1024, num_local_freq, 128]
     dim_name: ["T8hi128", "F", "T8lo128"]
     num_frames: frames_to_generate
     meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
@@ -152,7 +153,7 @@ gen_pl_lost_counts:
     name: "pl_lost_counts_scalar"
     type: random
     num_frames: frames_to_generate
-    use_n2k_counts: True
+    use_n2k_counts: true
 
 gen_fake_corr_counts:
     kotekan_stage: testN2kGen
@@ -161,11 +162,11 @@ gen_fake_corr_counts:
     in_rfimask_buf: fake_rfimask_buffer
     correlation_type: "f_times_ee"
     counts_type: "random_scalar"
-    correlation_value: [ 1, -1 ]
+    correlation_value: [1, -1]
     counts_value: sub_integration_ntime
     counts_min: 0
     counts_max: sub_integration_ntime
-    mul_correlation_by_counts: True
+    mul_correlation_by_counts: true
     num_frames: frames_to_generate
     freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
@@ -183,7 +184,7 @@ N2_accumulate:
     in_rfiframemask_buf: fake_rfi_frame_mask_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
-    packet_loss_is_scalar: True
+    packet_loss_is_scalar: true
     variance_mode: EvenOddPosDef
 
 writers:

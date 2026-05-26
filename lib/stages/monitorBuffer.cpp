@@ -3,10 +3,8 @@
 #include <stdint.h>             // for uint32_t, uint64_t, uint8_t
 #include <time.h>               // for size_t, timespec
 #include <unistd.h>             // for usleep, sleep
-#include <fmt/core.h>           // for format, format_string
 #include <map>                  // for map, operator!=, _Rb_tree_iterator
 #include <utility>              // for pair
-#include <algorithm>            // for max
 
 #include "Config.hpp"           // for Config
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
@@ -15,7 +13,7 @@
 #include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG, INFO, WARN
 #include "util.h"               // for e_time
 #include "visUtil.hpp"          // for double_to_ts
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"              // for compile_string_to_view, format, format_string
 #include "errors.h"             // for exit_kotekan, ReturnCode
 
 using kotekan::bufferContainer;

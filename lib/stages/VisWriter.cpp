@@ -2,7 +2,6 @@
 #include "VisWriter.hpp"
 
 #include <sys/types.h>            // for uint
-#include <fmt/core.h>             // for format
 #include <future>                 // for async, future
 #include <map>                    // for map
 #include <memory>                 // for shared_ptr, __shared_ptr_access
@@ -26,7 +25,7 @@
 #include "version.h"              // for get_git_commit_hash
 #include "visBuffer.hpp"          // for VisFrameView
 #include "visUtil.hpp"            // for ts_to_double, freq_ctype, time_ctype
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp"                // for compile_string_to_view, format
 
 using kotekan::bufferContainer;
 using kotekan::Config;

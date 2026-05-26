@@ -3,8 +3,7 @@
 #include <assert.h>               // for assert
 #include <sys/time.h>             // for TIMEVAL_TO_TIMESPEC, timeval
 #include <time.h>                 // for size_t, timespec
-#include <fmt/core.h>             // for format, format_string
-#include <algorithm>              // for max, fill, copy, equal, transform
+#include <algorithm>              // for fill, equal, transform, copy
 #include <cmath>                  // for pow
 #include <complex>                // for conj, operator*, complex
 #include <cstring>                // for memcpy
@@ -33,7 +32,7 @@
 #include "version.h"              // for get_git_commit_hash
 #include "visBuffer.hpp"          // for VisFrameView
 #include "visUtil.hpp"            // for prod_ctype, frameID, input_ctype, modulo, freq_ctype
-#include "fmt.hpp"                // for compile_string_to_view, fmt
+#include "fmt.hpp"                // for compile_string_to_view, format, fmt, format_string
 #include "gsl-lite.hpp"           // for span
 #include "json.hpp"               // for basic_json, iter_impl, iteration_proxy_value, json
 

@@ -18,7 +18,6 @@
 #include <sys/types.h>                  // for uint
 #include <unistd.h>                     // for sleep
 #include <rte_ring.h>                   // for rte_ring_create, rte_ring_dequeue_burst
-#include <algorithm>                    // for max
 #include <cinttypes>                    // for uint32_t, uint16_t, int32_t, uint8_t
 #include <functional>                   // for bind, function
 #include <set>                          // for set
@@ -36,7 +35,7 @@
 #include "iceBoardShuffle.hpp"          // for iceBoardShuffle
 #include "iceBoardStandard.hpp"         // for iceBoardStandard
 #include "iceBoardVDIF.hpp"             // for iceBoardVDIF
-#include "fmt.hpp"                      // for compile_string_to_view, fmt
+#include "fmt.hpp"                      // for format, compile_string_to_view, fmt, format_string
 #include "json.hpp"                     // for basic_json, json, iter_impl
 
 using nlohmann::json;

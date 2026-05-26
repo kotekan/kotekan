@@ -1,7 +1,5 @@
 #include "HFBRawReader.hpp"
 
-#include <fmt/core.h>           // for format
-#include <algorithm>            // for max
 #include <stdexcept>            // for runtime_error
 #include <utility>              // for pair
 
@@ -15,7 +13,7 @@
 #include "datasetState.hpp"     // for beamState, subfreqState
 #include "kotekanLogging.hpp"   // for DEBUG, WARN
 #include "visUtil.hpp"          // for frameID
-#include "fmt.hpp"              // for compile_string_to_view, fmt
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
 #include "json.hpp"             // for json
 
 using kotekan::bufferContainer;

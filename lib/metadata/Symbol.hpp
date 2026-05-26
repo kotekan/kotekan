@@ -1,7 +1,6 @@
 #ifndef SYMBOL_HPP
 #define SYMBOL_HPP
 
-#include <fmt/core.h>     // for formatter
 #include <array>          // for array
 #include <cstring>        // for size_t
 #include <functional>     // for equal_to, less

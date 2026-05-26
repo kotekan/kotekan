@@ -1,10 +1,8 @@
 #include "PLMaskExpandedToCompact.hpp"
 
 #include <visUtil.hpp>          // for frameID, modulo
-#include <fmt/core.h>           // for format
-#include <stddef.h>             // for ptrdiff_t
+#include <stddef.h>             // for size_t, ptrdiff_t
 #include <cstdint>              // for uint64_t, uint32_t, uint8_t
-#include <cstring>              // for size_t
 #include <memory>               // for shared_ptr, __shared_ptr_access
 #include <vector>               // for vector
 

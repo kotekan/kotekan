@@ -7,7 +7,6 @@
 #include <string.h>             // for memcpy, memset
 #include <sys/socket.h>         // for bind, socket, AF_INET, PF_INET, accept, listen, recv, rec...
 #include <sys/types.h>          // for uint, ssize_t
-#include <fmt/core.h>           // for format
 #include <functional>           // for bind, function
 #include <string>               // for allocator, basic_string, operator==, char_traits, string
 

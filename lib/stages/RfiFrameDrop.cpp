@@ -2,9 +2,8 @@
 
 #include <assert.h>               // for assert
 #include <stdint.h>               // for int64_t, uint32_t, uint8_t
-#include <fmt/core.h>             // for format
 #include <json.hpp>               // for json, basic_json, iter_impl
-#include <algorithm>              // for copy, max, equal, fill
+#include <algorithm>              // for equal, copy
 #include <cmath>                  // for fabs, sqrt
 #include <cstring>                // for memcpy
 #include <functional>             // for function, bind, _1
@@ -27,7 +26,7 @@
 #include "kotekanLogging.hpp"     // for WARN, INFO, DEBUG, DEBUG2
 #include "prometheusMetrics.hpp"  // for Counter, Metrics, MetricFamily
 #include "visUtil.hpp"            // for frameID, modulo
-#include "fmt.hpp"                // for compile_string_to_view, fmt
+#include "fmt.hpp"                // for compile_string_to_view, format, fmt
 
 
 using kotekan::bufferContainer;

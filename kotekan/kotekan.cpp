@@ -7,7 +7,6 @@
 #include <sys/wait.h>              // for waitpid
 #include <syslog.h>                // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
 #include <unistd.h>                // for close, optarg, dup2, execvp, fork, pipe, sleep, STDOUT...
-#include <fmt/core.h>              // for format
 #include <algorithm>               // for max
 #include <array>                   // for array
 #include <csignal>                 // for signal, size_t, SIGINT, SIGTERM, sig_atomic_t
@@ -37,7 +36,7 @@
 #include "util.h"                  // for EVER
 #include "version.h"               // for get_kotekan_version, get_cmake_build_options, get_git_...
 #include "visUtil.hpp"             // for regex_split
-#include "fmt.hpp"                 // for compile_string_to_view, fmt
+#include "fmt.hpp"                 // for compile_string_to_view, format, fmt
 #include "json.hpp"                // for basic_json, input_adapter, json
 #ifdef WITH_HDF5
 #include "hdf5.h" // IWYU pragma: keep, export
@@ -115,7 +114,7 @@ if file_ext != ".j2":
                 "yamllint",
                 "-d",
                 "{extends: relaxed, \
-                                     rules: {line-length: {max: 100}, \
+                                     rules: {line-length: disable, \
                                             commas: disable, \
                                             brackets: disable, \
                                             trailing-spaces: {level: warning}}}",

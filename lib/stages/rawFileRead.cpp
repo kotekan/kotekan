@@ -6,7 +6,6 @@
 #include <string.h>             // for strerror
 #include <sys/stat.h>           // for stat
 #include <unistd.h>             // for gethostname, sleep
-#include <fmt/core.h>           // for format
 #include <cstdio>               // for fread, snprintf, fclose, fopen, fseek, ftell, rewind, FILE
 #include <functional>           // for bind, function
 #include <memory>               // for __shared_ptr_access, shared_ptr

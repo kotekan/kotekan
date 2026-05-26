@@ -1,8 +1,8 @@
 #include "Stack.hpp"
 
 #include <stdlib.h>     // for abs
-#include <fmt/core.h>   // for format
-#include <algorithm>    // for sort, transform, max
+#include <math.h>       // for abs
+#include <algorithm>    // for sort, transform
 #include <cstdint>      // for uint32_t, int8_t, int16_t
 #include <functional>   // for bind, _1
 #include <iterator>     // for back_insert_iterator, begin, end, back_inserter
@@ -15,7 +15,7 @@
 #include <vector>       // for vector
 
 #include "visUtil.hpp"  // for rstack_ctype, prod_ctype, input_ctype
-#include "fmt.hpp"      // for compile_string_to_view, fmt
+#include "fmt.hpp"      // for compile_string_to_view, format, fmt
 
 using namespace std::placeholders;
 

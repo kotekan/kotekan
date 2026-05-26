@@ -1,9 +1,8 @@
 #include "N2TimeDownsample.hpp"
 
 #include <stdint.h>               // for uint32_t, int64_t, uint64_t, int32_t
-#include <fmt/core.h>             // for format
 #include <time.h>                 // for timespec
-#include <algorithm>              // for copy, equal, max
+#include <algorithm>              // for equal
 #include <complex>                // for complex, operator*, conj
 #include <functional>             // for bind, function
 #include <stdexcept>              // for runtime_error

@@ -10,7 +10,6 @@
 
 #include <sched.h>             // for cpu_set_t
 #include <stdint.h>            // for uint8_t
-#include <fmt/core.h>          // for format, format_string
 #include <algorithm>           // for copy, equal
 #include <array>               // for array
 #include <condition_variable>  // for condition_variable_any
@@ -29,11 +28,9 @@
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, ERROR, kotekanLogging
 #include "metadata.hpp"        // for metadataObject, metadataPool
 #include "json.hpp"            // for json
-#include "fmt.hpp"             // for compile_string_to_view, join, join_view
+#include "fmt.hpp"             // for compile_string_to_view, join, format, format_string, join_...
 
 #ifdef MAC_OSX
-#include <immintrin.h>
-
 #include "osxBindCPU.hpp"
 #endif
 

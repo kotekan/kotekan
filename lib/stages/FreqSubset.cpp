@@ -1,7 +1,6 @@
 #include "FreqSubset.hpp"
 
-#include <fmt/core.h>           // for format
-#include <algorithm>            // for find, max
+#include <algorithm>            // for find
 #include <functional>           // for bind
 #include <future>               // for async, future
 #include <map>                  // for map, operator!=
@@ -19,7 +18,7 @@
 #include "kotekanLogging.hpp"   // for FATAL_ERROR
 #include "visBuffer.hpp"        // for VisFrameView
 #include "visUtil.hpp"          // for freq_ctype, frameID, modulo
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"              // for compile_string_to_view, format
 
 using kotekan::bufferContainer;
 using kotekan::Config;

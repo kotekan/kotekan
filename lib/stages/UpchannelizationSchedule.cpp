@@ -1,6 +1,5 @@
 #include "UpchannelizationSchedule.hpp"
 
-#include <fmt/core.h>     // for format
 #include <cstddef>        // for size_t
 #include <sstream>        // for basic_ostream, basic_ostringstream, operator<<, basic_ostream::...
 

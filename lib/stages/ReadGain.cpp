@@ -1,17 +1,16 @@
 #include "ReadGain.hpp"
 
-#include <bits/chrono.h>       // for seconds
 #include <stdio.h>             // for fclose, fopen, fread, snprintf, FILE
 #include <stdlib.h>            // for free, malloc
 #include <string.h>            // for memcpy
 #include <sys/types.h>         // for uint
-#include <fmt/core.h>          // for format
 #include <json.hpp>            // for json
+#include <chrono>              // for seconds
 #include <exception>           // for exception
 #include <functional>          // for bind, function, _1
 #include <memory>              // for __shared_ptr_access, shared_ptr
 #include <stdexcept>           // for runtime_error
-#include <algorithm>           // for copy, max, equal
+#include <algorithm>           // for equal
 
 #include "Config.hpp"          // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE

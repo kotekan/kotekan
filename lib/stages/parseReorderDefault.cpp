@@ -3,7 +3,6 @@
 #include <assert.h>             // for assert
 #include <stdint.h>             // for int32_t
 #include <unistd.h>             // for sleep
-#include <fmt/core.h>           // for format
 #include <algorithm>            // for find
 #include <string>               // for basic_string, allocator, operator!=, operator==, string
 #include <vector>               // for vector

@@ -1,7 +1,6 @@
 #include "configUpdater.hpp"
 
-#include <fmt/core.h>          // for format
-#include <algorithm>           // for find, count, max
+#include <algorithm>           // for find, count
 #include <exception>           // for exception
 #include <stdexcept>           // for runtime_error, out_of_range
 #include <utility>             // for pair
@@ -11,7 +10,7 @@
 #include "kotekanLogging.hpp"  // for WARN_NON_OO, DEBUG_NON_OO, INFO_NON_OO, ERROR_NON_OO, FATA...
 #include "restServer.hpp"      // for HTTP_RESPONSE, connectionInstance, restServer
 #include "visUtil.hpp"         // for json_type_name
-#include "fmt.hpp"             // for compile_string_to_view, fmt
+#include "fmt.hpp"             // for compile_string_to_view, format, fmt
 #include "json.hpp"            // for basic_json, json, iter_impl, value_t
 
 

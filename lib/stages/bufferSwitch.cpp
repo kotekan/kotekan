@@ -1,6 +1,5 @@
 #include "bufferSwitch.hpp"
 
-#include <fmt/core.h>           // for format
 #include <exception>            // for exception
 #include <functional>           // for bind, _1, function
 #include <stdexcept>            // for runtime_error
@@ -15,7 +14,7 @@
 #include "configUpdater.hpp"    // for configUpdater
 #include "kotekanLogging.hpp"   // for WARN
 #include "visUtil.hpp"          // for frameID
-#include "fmt.hpp"              // for compile_string_to_view, fmt
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
 #include "json.hpp"             // for basic_json, json, iter_impl
 
 using nlohmann::json;

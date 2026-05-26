@@ -2,7 +2,6 @@
 
 #include <stddef.h>             // for size_t
 #include <visUtil.hpp>          // for frameID, modulo
-#include <fmt/core.h>           // for format
 #include <stdexcept>            // for runtime_error
 
 #include "Config.hpp"           // for Config

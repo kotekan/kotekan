@@ -2,11 +2,9 @@
 
 #include <assert.h>             // for assert
 #include <stdint.h>             // for uint8_t
-#include <unistd.h>             // for size_t, sleep
-#include <fmt/core.h>           // for format
-#include <stddef.h>             // for ptrdiff_t
-#include <string>               // for basic_string, string
-#include <vector>               // for vector, allocator
+#include <unistd.h>             // for sleep
+#include <string>               // for allocator, basic_string, string
+#include <vector>               // for vector
 #include <cstdio>               // for snprintf
 #include <cstring>              // for memcpy
 #include <functional>           // for bind, function
@@ -17,6 +15,7 @@
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM
+#include "fmt.hpp"              // for format
 
 
 using kotekan::bufferContainer;

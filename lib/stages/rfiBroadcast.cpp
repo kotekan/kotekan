@@ -3,11 +3,10 @@
 #include <arpa/inet.h>          // for htons, inet_pton
 #include <netinet/in.h>         // for sockaddr_in, IPPROTO_UDP
 #include <sys/socket.h>         // for AF_INET, sendto, socket, SOCK_DGRAM
-#include <fmt/core.h>           // for format
 #include <sys/types.h>          // for ssize_t
 #include <algorithm>            // for fill, copy_n, nth_element, fill_n
 #include <cerrno>               // for errno
-#include <cstring>              // for size_t, strerror
+#include <cstring>              // for strerror
 #include <cmath>                // for abs
 #include <functional>           // for bind, function
 #include <memory>               // for shared_ptr, __shared_ptr_access

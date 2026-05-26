@@ -2,8 +2,6 @@
 
 #include <stddef.h>             // for size_t
 #include <stdint.h>             // for uint32_t
-#include <fmt/core.h>           // for format
-#include <algorithm>            // for max
 #include <functional>           // for bind, function
 #include <memory>               // for make_unique
 #include <tuple>                // for tie, tuple
@@ -18,7 +16,7 @@
 #include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO
 #include "visBuffer.hpp"        // for VisFrameView
 #include "visUtil.hpp"          // for freq_ctype
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"              // for compile_string_to_view, format
 
 
 using kotekan::bufferContainer;

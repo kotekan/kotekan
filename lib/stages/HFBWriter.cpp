@@ -2,7 +2,6 @@
 #include "HFBWriter.hpp"
 
 #include <sys/types.h>            // for uint
-#include <fmt/core.h>             // for format
 #include <cstdint>                // for uint32_t, uint64_t
 #include <future>                 // for async, future
 #include <map>                    // for map
@@ -26,7 +25,7 @@
 #include "restServer.hpp"         // for HTTP_RESPONSE, connectionInstance, restServer
 #include "version.h"              // for get_git_commit_hash
 #include "visUtil.hpp"            // for ts_to_double, freq_ctype, time_ctype
-#include "fmt.hpp"                // for compile_string_to_view
+#include "fmt.hpp"                // for compile_string_to_view, format
 
 using kotekan::bufferContainer;
 using kotekan::Config;

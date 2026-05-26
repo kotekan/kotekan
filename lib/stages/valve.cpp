@@ -1,7 +1,6 @@
 #include "valve.hpp"
 
 #include <stdint.h>               // for uint8_t
-#include <fmt/core.h>             // for format
 #include <cstring>                // for memcpy
 #include <exception>              // for exception
 #include <functional>             // for bind, function
@@ -19,7 +18,7 @@
 #include "metadata.hpp"           // for metadataObject
 #include "prometheusMetrics.hpp"  // for Metrics, Counter
 #include "visUtil.hpp"            // for frameID, modulo
-#include "fmt.hpp"                // for compile_string_to_view, fmt
+#include "fmt.hpp"                // for compile_string_to_view, format, fmt
 
 
 using kotekan::bufferContainer;

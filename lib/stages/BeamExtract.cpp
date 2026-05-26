@@ -1,7 +1,6 @@
 #include "BeamExtract.hpp"
 
 #include <time.h>              // for timespec
-#include <fmt/core.h>          // for format
 #include <functional>          // for bind, function
 #include <memory>              // for shared_ptr, __shared_ptr_access
 #include <stdexcept>           // for runtime_error

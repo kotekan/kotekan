@@ -1,6 +1,5 @@
 #include "FrameView.hpp"
 
-#include <fmt/core.h>    // for format
 #include <cstring>       // for memcpy
 #include <memory>        // for shared_ptr, __shared_ptr_access
 #include <stdexcept>     // for runtime_error
@@ -8,7 +7,7 @@
 #include <vector>        // for vector
 
 #include "metadata.hpp"  // for metadataObject
-#include "fmt.hpp"       // for compile_string_to_view, fmt
+#include "fmt.hpp"       // for compile_string_to_view, format, fmt
 
 FrameView::FrameView(Buffer* buf, int frame_id) :
     buffer(buf), id(frame_id), _frame(buffer->frames[id]) {}

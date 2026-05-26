@@ -1,7 +1,6 @@
 #include "visDebug.hpp"
 
-#include <fmt/core.h>             // for format
-#include <algorithm>              // for copy, equal, max
+#include <algorithm>              // for equal
 #include <cstdint>                // for uint64_t
 #include <functional>             // for bind, function
 #include <vector>                 // for vector

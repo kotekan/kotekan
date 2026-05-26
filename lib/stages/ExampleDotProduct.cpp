@@ -1,13 +1,12 @@
 #include "ExampleDotProduct.hpp"
 
 #include <stdint.h>            // for uint8_t, uint32_t
-#include <fmt/core.h>          // for format
 #include <stdexcept>           // for runtime_error
 
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "kotekanLogging.hpp"  // for INFO
 #include "visUtil.hpp"         // for frameID, modulo
-#include "fmt.hpp"             // for compile_string_to_view, fmt
+#include "fmt.hpp"             // for compile_string_to_view, format, fmt
 
 // Include the classes we will be using
 using kotekan::bufferContainer;

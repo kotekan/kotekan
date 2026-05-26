@@ -18,7 +18,6 @@
 #include <execinfo.h>  // for backtrace, backtrace_symbols
 #include <signal.h>    // for sighandler_t, signal, kill, SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGQUIT
 #include <unistd.h>    // for getpid, NULL, pid_t
-#include <fmt/core.h>  // for format, format_string
 #include <stdlib.h>    // for free
 #include <fstream>     // for basic_ostream, operator<<, basic_ostream::operator<<, basic_ofstream
 #include <iostream>    // for cerr
@@ -28,7 +27,7 @@
 #include <algorithm>   // for find
 #include <stdexcept>   // for runtime_error
 
-#include "fmt.hpp"     // for join, join_view
+#include "fmt.hpp"     // for format, join, format_string, join_view
 
 using namespace std;
 

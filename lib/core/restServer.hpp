@@ -1,20 +1,21 @@
 #ifndef REST_SERVER_HPP
 #define REST_SERVER_HPP
 
-#include "Config.hpp" // for Config
-
-#include "json.hpp" // for json
-
-#include <atomic>        // for atomic
-#include <event2/util.h> // for evutil_socket_t
+#include <event2/util.h>       // for evutil_socket_t
 #include <evhttp.h>      // for evhttp  // IWYU pragma: keep
-#include <functional>    // for function
-#include <map>           // for map
-#include <shared_mutex>  // for shared_timed_mutex
-#include <stdint.h>      // for uint8_t
-#include <string>        // for string, allocator
-#include <sys/types.h>   // for u_short
-#include <thread>        // for thread
+#include <stdint.h>            // for uint8_t
+#include <sys/types.h>         // for u_short
+#include <atomic>              // for atomic
+#include <functional>          // for function
+#include <map>                 // for map
+#include <shared_mutex>        // for shared_timed_mutex
+#include <string>              // for string, allocator, basic_string
+#include <thread>              // for thread
+
+#include "Config.hpp"          // for Config
+#include "kotekanLogging.hpp"  // for INFO_NON_OO
+#include "json.hpp"            // for json
+#include "fmt.hpp"             // for compile_string_to_view
 
 namespace kotekan {
 
@@ -294,6 +295,26 @@ private:
      * @param arg The bufferRecv object (just `this`, but this is a static function)
      */
     static void timer(evutil_socket_t fd, short event, void* arg);
+
+    /**
+     * @brief libevent callback that emits the "started server" log line.
+     *
+     * Scheduled with a zero-delay timeout so it runs on the first
+     * event-loop iteration; the line the python runner waits on then
+     * signals a running loop, not just a bound socket.
+     *
+     * @param fd Not used
+     * @param event Not used
+     * @param arg The restServer instance (`this` at registration)
+     */
+    static void log_started(evutil_socket_t fd, short event, void* arg) {
+        (void)fd;
+        (void)event;
+        restServer* server = (restServer*)arg;
+        // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
+        INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", server->_bind_address,
+                    server->_port);
+    }
 
     /**
      * @brief Internal callback function for the evhttp server.

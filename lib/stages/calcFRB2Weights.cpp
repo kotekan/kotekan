@@ -22,7 +22,6 @@
 #include <omp.h>
 #endif
 #include <unistd.h>                      // for sleep
-#include <fmt/core.h>                    // for format
 #include <string>                        // for allocator, basic_string, string
 #include <vector>                        // for vector
 

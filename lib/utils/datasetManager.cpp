@@ -1,9 +1,7 @@
 #include "datasetManager.hpp"
 
-#include <fmt/core.h>      // for format
 #include <fmt.hpp>         // for fmt
 #include <json.hpp>        // for json, operator!=, basic_json, input_adapter, operator==, iter_...
-#include <algorithm>       // for max
 #include <functional>      // for bind, function, _1
 #include <mutex>           // for mutex, lock_guard, lock, adopt_lock, unique_lock
 

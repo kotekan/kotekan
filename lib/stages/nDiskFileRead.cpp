@@ -4,8 +4,6 @@
 #include <pthread.h>            // for pthread_setaffinity_np
 #include <sched.h>              // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdio.h>              // for fclose, fopen, fread, fseek, ftell, rewind, size_t, snprintf
-#include <fmt/core.h>           // for format
-#include <algorithm>            // for max
 #include <functional>           // for bind, function
 
 #include "Config.hpp"           // for Config

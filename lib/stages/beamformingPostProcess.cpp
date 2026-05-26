@@ -5,7 +5,6 @@
 #include <stdlib.h>              // for free, malloc
 #include <string.h>              // for memcpy
 #include <sys/time.h>            // for timeval
-#include <fmt/core.h>            // for format
 #include <functional>            // for bind, function
 #include <memory>                // for __shared_ptr_access, shared_ptr
 #include <string>                // for allocator, basic_string, string
@@ -17,7 +16,7 @@
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"     // for get_chord_metadata, chordMetadata
 #include "vdif_functions.h"      // for VDIFHeader
-#include "fmt.hpp"               // for compile_string_to_view, fmt
+#include "fmt.hpp"               // for compile_string_to_view, format, fmt
 
 using kotekan::bufferContainer;
 using kotekan::Config;

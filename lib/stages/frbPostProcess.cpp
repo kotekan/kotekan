@@ -6,7 +6,6 @@
 #include <sys/types.h>            // for uint
 #include <time.h>                 // for timespec
 #include <xmmintrin.h>            // for _mm_max_ps, _mm_min_ps, _mm_store_ss, __m128, _mm_shuff...
-#include <fmt/core.h>             // for format
 #include <algorithm>              // for find, max, min
 #include <functional>             // for bind, function
 #include <memory>                 // for __shared_ptr_access, shared_ptr
@@ -20,7 +19,7 @@
 #include "chordMetadata.hpp"      // for get_chord_metadata, chordMetadata
 #include "kotekanLogging.hpp"     // for DEBUG, INFO
 #include "prometheusMetrics.hpp"  // for Metrics, Counter
-#include "fmt.hpp"                // for compile_string_to_view, fmt
+#include "fmt.hpp"                // for compile_string_to_view, format, fmt
 
 
 using kotekan::bufferContainer;

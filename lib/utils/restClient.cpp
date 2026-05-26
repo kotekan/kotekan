@@ -1,6 +1,5 @@
 #include "restClient.hpp"
 
-#include <bits/chrono.h>                // for operator+, seconds, system_clock
 #include <event2/buffer.h>              // for iovec, evbuffer_iovec, evbuffer, evbuffer_peek
 #include <event2/bufferevent.h>         // for bufferevent_read, bufferevent_free, bufferevent_s...
 #include <event2/bufferevent_struct.h>  // for bufferevent
@@ -14,6 +13,7 @@
 #include <stdlib.h>                     // for free, malloc
 #include <sys/time.h>                   // for timeval
 #include <json.hpp>                     // for json
+#include <chrono>                       // for operator+, seconds, system_clock
 #include <condition_variable>           // for condition_variable
 #include <cstring>                      // for memcpy
 

@@ -1,8 +1,7 @@
 #include <unistd.h>             // for sleep
-#include <fmt/core.h>           // for format
 #include <cassert>              // for assert
 #include <cstdint>              // for int8_t, int32_t
-#include <string>               // for allocator, basic_string, string
+#include <string>               // for basic_string, string
 #include <vector>               // for vector
 #include <algorithm>            // for clamp
 #include <array>                // for array
@@ -10,7 +9,7 @@
 #include <complex>              // for complex, imag, polar, real
 #include <cstddef>              // for ptrdiff_t
 #include <functional>           // for function
-#include <memory>               // for __shared_ptr_access, shared_ptr
+#include <memory>               // for allocator, __shared_ptr_access, shared_ptr
 
 #include "CHORDTelescope.hpp"   // for CHORDTelescope, dishInfo, dishGrid
 #include "Config.hpp"           // for Config
@@ -21,7 +20,7 @@
 #include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
 #include "kotekanLogging.hpp"   // for DEBUG
 #include "Telescope.hpp"        // for Telescope
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"              // for compile_string_to_view, format
 
 
 class calcBBPhase : public kotekan::Stage {

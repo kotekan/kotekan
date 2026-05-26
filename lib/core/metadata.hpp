@@ -22,7 +22,6 @@
 #define KOTEKAN_METADATA_HPP
 
 #include <stddef.h>            // for size_t
-#include <fmt/core.h>          // for format
 #include <memory>              // for shared_ptr, weak_ptr, enable_shared_from_this
 #include <mutex>               // for mutex
 #include <string>              // for string, basic_string
@@ -30,6 +29,7 @@
 #include "factory.hpp"         // for CREATE_FACTORY
 #include "kotekanLogging.hpp"  // for kotekanLogging
 #include "json.hpp"            // for json
+#include "fmt.hpp"             // for format
 
 class metadataPool;
 

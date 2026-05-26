@@ -1,12 +1,11 @@
 #include "Stage.hpp"
 
-#include <bits/chrono.h>        // for seconds
 #include <pthread.h>            // for pthread_setaffinity_np, pthread_setname_np
 #include <sched.h>              // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <sys/syscall.h>        // for SYS_gettid
 #include <unistd.h>             // for syscall
-#include <fmt/core.h>           // for format, format_string
-#include <algorithm>            // for max, find, copy
+#include <algorithm>            // for find, copy
+#include <chrono>               // for seconds
 #include <cstdlib>              // for abort
 #include <future>               // for async, future, future_status, launch
 #include <thread>               // for thread
@@ -16,7 +15,7 @@
 #include "buffer.hpp"           // for Buffer
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "util.h"               // for string_tail
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp"              // for compile_string_to_view, format, format_string
 
 namespace kotekan {
 

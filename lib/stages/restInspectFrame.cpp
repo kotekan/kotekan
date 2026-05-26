@@ -2,7 +2,6 @@
 
 #include <stdlib.h>             // for free, malloc, size_t
 #include <string.h>             // for memcpy
-#include <fmt/core.h>           // for format
 #include <functional>           // for bind, function, _1
 
 #include "Config.hpp"           // for Config

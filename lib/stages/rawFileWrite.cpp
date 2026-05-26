@@ -6,7 +6,6 @@
 #include <stdio.h>                  // for snprintf, size_t
 #include <stdlib.h>                 // for exit
 #include <unistd.h>                 // for write, close, gethostname, ssize_t
-#include <fmt/core.h>               // for format
 #include <atomic>                   // for __atomic_base, atomic
 #include <functional>               // for bind, function
 #include <memory>                   // for shared_ptr, __shared_ptr_access

@@ -1,7 +1,6 @@
 #include "visTransform.hpp"
 
-#include <fmt/core.h>           // for format
-#include <algorithm>            // for fill, max, copy, transform
+#include <algorithm>            // for fill, copy, transform
 #include <functional>           // for bind, function
 #include <iterator>             // for back_insert_iterator, begin, end, back_inserter
 #include <memory>               // for shared_ptr

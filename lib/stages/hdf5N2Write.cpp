@@ -1,57 +1,73 @@
 #include "hdf5N2Write.hpp"
 
-#include "H5Support.hpp"
-#include "Telescope.hpp"  // for Telescope
-#include "restClient.hpp" // for restClient
-#include "util.h"         // for mkdir_p
+#include <N2FrameView.hpp>                        // for N2FrameView
+#include <Stage.hpp>                              // for Stage
+#include <StageFactory.hpp>                       // for REGISTER_KOTEKAN_STAGE
+#include <configTracker.hpp>                      // for ConfigTracker
+#include <errno.h>                                // for errno
+#include <errors.h>                               // for exit_kotekan, ReturnCode
+#include <highfive/H5DataSet.hpp>                 // for DataSet, AnnotateTraits::createAttribute
+#include <highfive/H5DataSpace.hpp>               // for DataSpace, DataSpace::DataSpace, DataSp...
+#include <highfive/H5DataType.hpp>                // for create_datatype, DataType
+#include <highfive/H5Exception.hpp>               // for Exception
+#include <highfive/H5File.hpp>                    // for File, NodeTraits::getDataSet, File::File
+#include <highfive/H5Object.hpp>                  // for hsize_t, Object::getId, herr_t, H5Z_FLA...
+#include <highfive/H5PropertyList.hpp>            // for DataSetCreateProps, Chunking, Deflate
+#include <highfive/bits/H5PropertyList_misc.hpp>  // for PropertyList::_initializeIfNeeded, Prop...
+#include <prometheusMetrics.hpp>                  // for Gauge, Counter, Metrics, MetricFamily
+#include <waitingForMaxFrames.hpp>                // for waiting_for_max_frames
+#include <H5Opublic.h>                            // for H5Ocopy
+#include <fmt/ranges.h> // IWYU pragma: keep      // needed to fmt::format std::vector in log macros
+#include <gsl-lite.hpp>                           // for span
+#include <highfive/H5Group.hpp>                   // for Group
+#include <highfive/H5Selection.hpp>               // for Selection, SliceTraits::write, SliceTra...
+#include <highfive/bits/H5Attribute_misc.hpp>     // for Attribute::read, Attribute::write
+#include <highfive/bits/H5Selection_misc.hpp>     // for Selection::getSpace, Selection::getData...
+#include <algorithm>                              // for equal, min, copy, max
+#include <cassert>                                // for assert
+#include <cfloat>                                 // for DBL_MAX
+#include <chrono>                                 // for duration, duration_cast, operator-, sys...
+#include <complex>                                // for complex
+#include <cstdint>                                // for uint64_t, int64_t, int32_t, uint16_t
+#include <cstdio>                                 // for size_t, rename
+#include <cstdlib>                                // for llabs
+#include <cstring>                                // for strerror
+#include <ctime>                                  // for timespec, gmtime, gmtime_r, time_t, tm
+#include <filesystem>                             // for path, exists, directory_iterator, begin
+#include <fstream>                                // for basic_ostream, operator<<, basic_ios
+#include <iomanip>                                // for operator<<, put_time, setfill, setw
+#include <map>                                    // for map, _Rb_tree_iterator, operator!=
+#include <memory>                                 // for allocator, unique_ptr, make_unique, __s...
+#include <optional>                               // for optional, nullopt, operator!=
+#include <sstream>                                // for basic_ostringstream
+#include <stdexcept>                              // for runtime_error
+#include <string>                                 // for basic_string, operator+, char_traits
+#include <type_traits>                            // for false_type, true_type, void_t
+#include <utility>                                // for pair, move
+#include <vector>                                 // for vector, operator!=
+#include <array>                                  // for array, operator!=
+#include <atomic>                                 // for __atomic_base, atomic
+#include <cmath>                                  // for fabs
+#include <exception>                              // for exception
+#include <functional>                             // for function
+#include <iterator>                               // for istreambuf_iterator, operator!=
+#include <limits>                                 // for numeric_limits
+#include <system_error>                           // for error_code
 
-#include "json.hpp"
-
-#include <N2FrameView.hpp>
-#include <N2Metadata.hpp>
-#include <Stage.hpp>
-#include <StageFactory.hpp>
-#include <algorithm>
-#include <cassert>
-#include <cfloat>
-#include <chordMetadata.hpp>
-#include <chrono>
-#include <complex>
-#include <configTracker.hpp>
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
-#include <errno.h>
-#include <errors.h>
-#include <event2/http.h> // for evhttp_uri_parse
-#include <filesystem>
-#include <fmt/ranges.h>
-#include <fstream>
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5DataSpace.hpp>
-#include <highfive/H5DataType.hpp>
-#include <highfive/H5Exception.hpp>
-#include <highfive/H5File.hpp>
-#include <highfive/H5Object.hpp>       // for H5Z_FLAG_MANDATORY, hsize_t
-#include <highfive/H5PropertyList.hpp> // for PropertyType, RawPropertyList, Chunking
-#include <highfive/bits/H5PropertyList_misc.hpp>
-#include <highfive/bits/H5Slice_traits_misc.hpp>
-#include <iomanip>
-#include <map>
-#include <memory>
-#include <optional>
-#include <prometheusMetrics.hpp>
-#include <sstream>
-#include <stdexcept>
-#include <string>
-#include <sys/stat.h>
-#include <type_traits>
-#include <unistd.h>
-#include <utility>
-#include <vector>
-#include <waitingForMaxFrames.hpp> // for waiting_for_max_frames
+#include "H5Support.hpp"                          // for create_datatype
+#include "Telescope.hpp"                          // for Telescope, freq_id_t
+#include "restClient.hpp"                         // for restClient
+#include "util.h"                                 // for mkdir_p
+#include "json.hpp"                               // for basic_json, json, iter_impl
+#include "CHORDTelescope.hpp"                     // for CHORDTelescope, dishInputFields
+#include "N2FrameDesc.hpp"                        // for N2FrameDesc
+#include "N2Util.hpp"                             // for freq_ctype, frameID, modulo, cfloat
+#include "fmt.hpp"                                // for compile_string_to_view, format, format_...
+#include "hdf5Files.hpp"                          // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
+#include "jsonMetadata.hpp"                       // for MAX_NUM_RFI_THRESHOLDS
+#include "kotekanLogging.hpp"                     // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
+#include "timeUtil.hpp"                           // for EOP
+#include "visUtil.hpp"                            // for cfloat
 
 using namespace HighFive;
 
@@ -66,51 +82,19 @@ static std::optional<size_t> hash_file_contents(const std::string& path) {
     return std::hash<std::string>{}(contents);
 }
 
-/// Fetch `url` over plain HTTP via kotekan's built-in restClient and write the
-/// response body verbatim to `dest_path`. FATAL on any parse/fetch/write error.
-/// Intended for small files (bytes land in a std::string before hitting disk).
-static void download_url_to_file(const std::string& url, const std::string& dest_path) {
-    struct evhttp_uri* uri = evhttp_uri_parse(url.c_str());
-    if (!uri) {
-        FATAL_ERROR_NON_OO("hdf5N2Write: could not parse URL '{}'", url);
-        return;
-    }
-
-    const char* scheme = evhttp_uri_get_scheme(uri);
-    if (!scheme || std::string(scheme) != "http") {
-        evhttp_uri_free(uri);
-        FATAL_ERROR_NON_OO("hdf5N2Write: baseband_gain_url must use plain http:// (got '{}')", url);
-        return;
-    }
-
-    const char* host_c = evhttp_uri_get_host(uri);
-    if (!host_c || host_c[0] == '\0') {
-        evhttp_uri_free(uri);
-        FATAL_ERROR_NON_OO("hdf5N2Write: baseband_gain_url has no host: '{}'", url);
-        return;
-    }
-    const std::string host = host_c;
-
-    int port = evhttp_uri_get_port(uri);
-    if (port <= 0)
-        port = 80;
-
-    const char* path_c = evhttp_uri_get_path(uri);
-    std::string path = (path_c && path_c[0] != '\0') ? path_c : "/";
-    const char* query_c = evhttp_uri_get_query(uri);
-    if (query_c && query_c[0] != '\0') {
-        path += "?";
-        path += query_c;
-    }
-    evhttp_uri_free(uri);
-
-    INFO_NON_OO("hdf5N2Write: downloading digial gains file from fpga_master at http://{}:{}{}",
-                host, port, path);
-    // GET with empty JSON body
-    restClient::restReply reply = restClient::instance().make_request_blocking(
-        path, nlohmann::json::object(), host, static_cast<unsigned short>(port));
+/// Fetch `path` from `host:port` over plain HTTP via kotekan's built-in
+/// restClient and write the response body verbatim to `dest_path`. FATAL on any
+/// fetch/write error. Intended for small files (bytes land in a std::string
+/// before hitting disk).
+static void download_to_file(const std::string& host, std::uint16_t port, const std::string& path,
+                             const std::string& dest_path) {
+    INFO_NON_OO("hdf5N2Write: downloading digital gains file from http://{}:{}{}", host, port,
+                path);
+    restClient::restReply reply =
+        restClient::instance().make_request_blocking(path, nlohmann::json::object(), host, port);
     if (!reply.first) {
-        FATAL_ERROR_NON_OO("hdf5N2Write: failed to fetch gains file from '{}'", url);
+        FATAL_ERROR_NON_OO("hdf5N2Write: failed to fetch gains file from http://{}:{}{}", host,
+                           port, path);
         return;
     }
 
@@ -981,16 +965,20 @@ bool N2FileData::flush_to_disk() {
 
     std::string flags_group_prefix = file_mode == CHIME ? "/flags" : "";
 
-    // Add and write configs in configTracker
+    // Write configTracker snapshots to /config_json. Skip when empty
+    // (tracker disabled or not yet populated) so we don't append a
+    // zero-length slab.
     try {
         std::vector<std::string> json_objs = kotekan::ConfigTracker::instance().getAllJSONConfigs();
-        HighFive::DataSet json_dset = h5_file->getDataSet("/config_json");
-        auto space = json_dset.getSpace();
-        auto cur_dims = space.getDimensions();
-        std::size_t old_n = cur_dims.empty() ? 0 : cur_dims[0];
-        std::size_t extra_n = json_objs.size();
-        json_dset.resize({old_n + extra_n});
-        json_dset.select({old_n}, {extra_n}).write(json_objs);
+        if (!json_objs.empty()) {
+            HighFive::DataSet json_dset = h5_file->getDataSet("/config_json");
+            auto space = json_dset.getSpace();
+            auto cur_dims = space.getDimensions();
+            std::size_t old_n = cur_dims.empty() ? 0 : cur_dims[0];
+            std::size_t extra_n = json_objs.size();
+            json_dset.resize({old_n + extra_n});
+            json_dset.select({old_n}, {extra_n}).write(json_objs);
+        }
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to write config JSON to HDF5 file {}: {}", partial_filepath,
                            e.what());
@@ -1118,7 +1106,6 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
           }),
     _base_dir(get_acq_base_dir_path(config.get<std::string>(unique_name, "base_dir"))),
     _baseband_gain_file(config.get_default<std::string>(unique_name, "baseband_gain_file", "")),
-    _baseband_gain_url(config.get_default<std::string>(unique_name, "baseband_gain_url", "")),
     _baseband_gain_update_idx(config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)),
     _num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),
     _compression(config.get_default<std::string>(unique_name, "compression", "none")),
@@ -1154,13 +1141,44 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
 
     _buffer->register_consumer(unique_name);
 
-    // baseband_gain_file and baseband_gain_url are mutually exclusive. If the URL is
-    // set, the actual local path is filled in from main_thread() after the .partial
-    // directory exists.
-    if (!_baseband_gain_file.empty() && !_baseband_gain_url.empty()) {
-        FATAL_ERROR("baseband_gain_file and baseband_gain_url are mutually exclusive; set only "
-                    "one of them (file='{}', url='{}')",
-                    _baseband_gain_file, _baseband_gain_url);
+    // Resolve baseband_gain_host_info once: it names a config path (e.g.
+    // /fpga_controller) to a block exposing host, port, and an optional
+    // gains_endpoint. The actual fetch happens later in main_thread().
+    const std::string gain_host_ref =
+        config.get_default<std::string>(unique_name, "baseband_gain_host_info", "");
+    if (!gain_host_ref.empty()) {
+        _baseband_gain_host = config.get<std::string>(gain_host_ref, "host");
+        const int port_int = config.get<int>(gain_host_ref, "port");
+        if (port_int <= 0 || port_int > 65535) {
+            FATAL_ERROR("hdf5N2Write: invalid {}.port: {}", gain_host_ref, port_int);
+        }
+        _baseband_gain_port = static_cast<std::uint16_t>(port_int);
+        _baseband_gain_endpoint = config.get_default<std::string>(gain_host_ref, "gains_endpoint",
+                                                                  "/get-current-gain-file");
+    }
+
+    // baseband_gain_file and baseband_gain_host_info are mutually exclusive.
+    // If the host_info form is set, _baseband_gain_file gets filled in by
+    // main_thread() once .partial exists and the fetch completes.
+    if (!_baseband_gain_file.empty() && !gain_host_ref.empty()) {
+        FATAL_ERROR("baseband_gain_file and baseband_gain_host_info are mutually exclusive; set "
+                    "only one of them (file='{}', host_info='{}')",
+                    _baseband_gain_file, gain_host_ref);
+    }
+    if (_baseband_gain_file.empty() && gain_host_ref.empty()) {
+        WARN("hdf5N2Write: no digital gains configured (set 'baseband_gain_file: <path>' or "
+             "'baseband_gain_host_info: /<fpga_controller_block>'). Output files will be written "
+             "without a /digital_gains dataset, which downstream analysis usually needs to apply "
+             "per-input gains to the visibilities. Set this unless you truly intend to skip "
+             "gains.");
+    } else if (!_baseband_gain_file.empty() && !std::filesystem::exists(_baseband_gain_file)) {
+        // The host_info path resolves _baseband_gain_file later in main_thread;
+        // only warn here if a literal file path was given and isn't on disk yet.
+        // Per-file open will still FATAL if the file is missing when needed.
+        WARN("hdf5N2Write: baseband_gain_file '{}' does not exist at startup. "
+             "If it's still missing when the first output file is opened, kotekan will FATAL. "
+             "Check the path, or use baseband_gain_host_info to fetch it.",
+             _baseband_gain_file);
     }
 
     // Validate file window configuration
@@ -1196,6 +1214,15 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
                  "be partially filled.",
                  _max_frames, _num_file_t);
         ++waiting_for_max_frames;
+    }
+
+    // The /config_json dataset in each output file is populated from the
+    // ConfigTracker. If the tracker is disabled globally, output files will
+    // have an empty /config_json: note that, but keep running.
+    if (config.exists("/", "config_tracker")
+        && !config.get_default<bool>("/config_tracker", "enabled", true)) {
+        WARN("hdf5N2Write: /config_tracker.enabled is false; HDF5 files will be written without "
+             "any /config_json entries.");
     }
 }
 
@@ -1387,12 +1414,14 @@ void hdf5N2Write::main_thread() {
             FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", partial_dir.c_str(), msg);
         }
 
-        // If a URL was provided instead of a local path, fetch the gains file
-        // once into the partial dir and point _baseband_gain_file at the cached
-        // copy. From here on the existing local-file code path is used.
-        if (!_baseband_gain_url.empty()) {
+        // If baseband_gain_host_info was provided instead of a local path,
+        // fetch the gains file once into the partial dir and point
+        // _baseband_gain_file at the cached copy. From here on the existing
+        // local-file code path is used.
+        if (!_baseband_gain_host.empty()) {
             const std::string cached = partial_dir + "/baseband_gains.h5";
-            download_url_to_file(_baseband_gain_url, cached);
+            download_to_file(_baseband_gain_host, _baseband_gain_port, _baseband_gain_endpoint,
+                             cached);
             _baseband_gain_file = cached;
         }
     }

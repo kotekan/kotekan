@@ -7,7 +7,6 @@
 #include <string.h>            // for strerror
 #include <sys/stat.h>          // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
 #include <unistd.h>            // for close, pwrite, TEMP_FAILURE_RETRY
-#include <fmt/core.h>          // for format
 #include <algorithm>           // for copy, max
 #include <cstdio>              // for remove
 #include <fstream>             // for basic_ofstream, basic_ios, basic_ostream::write, ios, ofst...
@@ -20,7 +19,7 @@
 #include "HFBMetadata.hpp"     // for HFBMetadata
 #include "datasetManager.hpp"  // for datasetManager, dset_id_t
 #include "datasetState.hpp"    // for beamState, freqState, subfreqState
-#include "fmt.hpp"             // for compile_string_to_view, fmt
+#include "fmt.hpp"             // for format, compile_string_to_view, fmt
 #include "json.hpp"            // for basic_json, json
 
 
