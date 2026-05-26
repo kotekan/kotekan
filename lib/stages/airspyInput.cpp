@@ -55,6 +55,7 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
     _gain_if = config.get_default<int>(unique_name, "gain_if", 5);                 // 0-15
     _gain_mix = config.get_default<int>(unique_name, "gain_mix", 5);               // 0-15
     _biast_power = config.get_default<bool>(unique_name, "biast_power", false) ? 1 : 0;
+    _dither_disable = config.get_default<bool>(unique_name, "dither_disable", false) ? 1 : 0;
 
     _airspy_sn = config.get_default<long>(unique_name, "serial", 0);
     _airspy_fn = config.get_default<std::string>(unique_name, "airspy_file", "");
@@ -433,6 +434,32 @@ struct airspy_device* airspyInput::init_device() {
         ERROR("airspy_set_rf_bias() failed: {:s} ({:d})",
               airspy_error_name((enum airspy_error)result), result);
         return nullptr;
+    }
+
+    // R820T fractional-N PLL dither: reg 0x12 bit 4 (0 = dither on, 1 = off).
+    // Between airspy_open and airspy_start_rx the R820T is in standby, so the
+    // write only updates the firmware's register shadow; airspy_start_rx later
+    // bulk-writes that shadow before locking the PLL, so the lock happens with
+    // the chosen dither setting baked in. Disabling dither eliminates the
+    // per-restart inter-unit LO drift at fractional tunes (coherent mode) at
+    // the cost of deterministic fractional-N spurs.
+    {
+        uint8_t v;
+        result = airspy_r820t_read(dev, 0x12, &v);
+        if (result != AIRSPY_SUCCESS) {
+            ERROR("airspy_r820t_read(0x12) failed: {:s} ({:d})",
+                  airspy_error_name((enum airspy_error)result), result);
+            return nullptr;
+        }
+        v = _dither_disable ? (v | 0x10) : (v & ~0x10);
+        result = airspy_r820t_write(dev, 0x12, v);
+        if (result != AIRSPY_SUCCESS) {
+            ERROR("airspy_r820t_write(0x12) failed: {:s} ({:d})",
+                  airspy_error_name((enum airspy_error)result), result);
+            return nullptr;
+        }
+        INFO("R820T fractional-N PLL dither {:s}",
+             _dither_disable ? "disabled (coherent mode)" : "enabled (stock)");
     }
 
     result = airspy_board_id_read(dev, &board_id);

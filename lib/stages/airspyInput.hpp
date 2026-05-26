@@ -63,6 +63,12 @@
  * @conf   gain_mix     Int (default 5). Gain setting of the mixer amplifier, from 0-15.
  * @conf   gain_if      Int (default 5). Gain setting of the IF amplifier, from 0-15.
  * @conf   biast_power  Bool (default false). Enable 4.5V DC bias on the RF input.
+ * @conf   dither_disable Bool (default false). Disable the R820T tuner's fractional-N PLL
+ *                      dither (reg 0x12 bit 4) for coherent multi-unit operation: eliminates
+ *                      per-restart inter-unit LO drift at fractional tunes, at the cost of
+ *                      deterministic fractional-N spurs (common-mode in cross-products and
+ *                      absorbable into a per-unit complex g-cal). Leave at default (dither on)
+ *                      for single-dongle / autocorr work where the spurs are undesirable.
  * @conf   serial       Long (default 0). Specific airspy serial-number to open; 0 = any.
  * @conf   airspy_file  String (default ""). Read from this file instead of a real device; for
  *                      offline testing. Ignored if @c serial is set.
@@ -129,6 +135,8 @@ private:
     int _gain_if;
     /// 4.5V DC bias on the RF input (0/1).
     int _biast_power;
+    /// Disable R820T fractional-N PLL dither (0/1) for coherent multi-unit ops.
+    int _dither_disable;
     /// Optional specific device serial-number; 0 means open any.
     long _airspy_sn;
     /// Optional file path to read raw samples from instead of a device.
