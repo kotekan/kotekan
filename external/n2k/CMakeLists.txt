@@ -30,6 +30,7 @@ set(KERNELFILES
     kernel_128_64.cu
     kernel_128_128.cu
     kernel_128_256.cu
+    kernel_128_336.cu
     kernel_128_384.cu
     kernel_128_512.cu
     kernel_128_1024.cu

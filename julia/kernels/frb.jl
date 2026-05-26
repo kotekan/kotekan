@@ -97,6 +97,19 @@ elseif setup ≡ :pathfinder || setup ≡ :smallfinder
     const W = 6                 # number of warps
     const B = 4                 # number of blocks per SM (TODO: check!)
 
+elseif setup ≡ :charts
+
+    # CHARTS
+
+    const M = 8
+    const N = 8
+
+    const Touter = 32
+    const Tinner = 8
+
+    const W = 4                 # number of warps
+    const B = 4                 # number of blocks per SM (TODO: check!)
+
 else
     @assert false
 end
@@ -499,6 +512,52 @@ function copy_global_memory_to_Fsh1!(emitter)
         store!(emitter, :Fsh1_shared => layout_Fsh1_shared, :E)
 
     elseif setup === :pathfinder || setup === :smallfinder
+
+        # Eqn. (83)
+        @assert D == 64
+        @assert Touter % 8 == 0
+        @assert idiv(Touter, 8) % W == 0
+        # Eqn. (85)
+        layout_E_registers = Layout([
+            IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
+            Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+            Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
+            Dish(:dish, 4, 4) => Register(:dish, 4, 4),
+            Dish(:dish, 16, 4) => Thread(:thread, 1, 4),
+            Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
+            Polr(:polr, 1, P) => Thread(:thread, 4, 2),
+            Time(:time, 1, 4) => Thread(:thread, 8, 4),
+            Time(:time, 4, idiv(Touter, 8)) => Warp(:warp, 1, W),
+            Time(:time, idiv(Touter, 2), 2) => Register(:time, idiv(Touter, 2), 2),
+            Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
+        ])
+        load!(
+            emitter,
+            :E => layout_E_registers,
+            :E_memory => layout_E_memory;
+            align=16,
+            postprocess=addr -> :(
+                let
+                    offset =
+                        $(shrinkmul(idiv(D, 4) * P * Fbar_in, :Tbarmin, Tbar)) +
+                        $(shrinkmul(idiv(D, 4) * P, :Fbar_in_min, Fbar_in))
+                    length = $(shrink(idiv(D, 4) * P * Fbar_in * Tbar))
+                    mod($addr + offset, length)
+                end
+            ),
+        )
+        # Swap polr0, dish3
+        permute!(emitter, :E, :E, Polr(:polr, 1, P), Dish(:dish, 8, 2))
+        # E -> Fbar_in shuffle
+        # 1. swap polr0, cplx0
+        # 2. swap timehi, dish0
+        # 3. swap cplx0, dish1
+        permute!(emitter, :E, :E, Polr(:polr, 1, P), Cplx(:cplx, 1, C))
+        permute!(emitter, :E, :E, Time(:time, idiv(Touter, 2), 2), Dish(:dish, 1, 2))
+        permute!(emitter, :E, :E, Cplx(:cplx, 1, C), Dish(:dish, 2, 2))
+        store!(emitter, :Fsh1_shared => layout_Fsh1_shared, :E)
+
+    elseif setup === :charts
 
         # Eqn. (83)
         @assert D == 64
@@ -998,9 +1057,11 @@ function do_first_fft!(emitter)
     split!(emitter, [:Zre, :Zim], :Z, Register(:cplx, 1, 2))
     # TODO: Find a better set of conditions
     if trailing_zeros(Npad) == 5 || setup === :hirax
+        # CHORD? and Hirax
         apply!(emitter, :Vre, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zre, -$aΓ²im * $Zim)))
         apply!(emitter, :Vim, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zim, +$aΓ²im * $Zre)))
     elseif trailing_zeros(Npad) == 4
+        # Pathfinder?
         # We can't handle partial index ranges in symbols. If there is
         # a `dishM` spectator index then the whole `dishM` index range
         # needs to be present. This should be corrected in
@@ -1009,6 +1070,10 @@ function do_first_fft!(emitter)
         merge!(emitter, :aΓ²imM, [:aΓ²im, :aΓ²im], DishM(:dishM, 4, 2) => Register(:dishM, 4, 2))
         apply!(emitter, :Vre, [:Zre, :Zim, :aΓ²reM, :aΓ²imM], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zre, -$aΓ²im * $Zim)))
         apply!(emitter, :Vim, [:Zre, :Zim, :aΓ²reM, :aΓ²imM], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zim, +$aΓ²im * $Zre)))
+    elseif trailing_zeros(Npad) == 3
+        # CHARTS
+        apply!(emitter, :Vre, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zre, -$aΓ²im * $Zim)))
+        apply!(emitter, :Vim, [:Zre, :Zim, :aΓ²re, :aΓ²im], (Zre, Zim, aΓ²re, aΓ²im) -> :(muladd($aΓ²re, $Zim, +$aΓ²im * $Zre)))
     else
         @assert false
     end
@@ -1041,6 +1106,24 @@ function do_first_fft!(emitter)
                 Cplx(:cplx, 1, C) => Register(:cplx, 1, 2),
                 DishM(:dishM, 1, 2) => Thread(:thread, 1, 2),
                 DishNLo(:dishNLo, 2, 2) => Thread(:thread, 2, 2),
+                BeamQ(:beamQ, 1, 8) => Thread(:thread, 4, 8),
+                DishM(:dishM, Mt, Mw) => Warp(:warp, 1, Mw),
+                DishM(:dishM, Mt * Mw, Mr) => Register(:dishM, Mt * Mw, Mr),
+                Polr(:polr, 1, P) => Register(:polr, 1, P),
+                Freq(:freq, 1, Fbar_in) => Block(:block, 1, Fbar_in),
+                Time(:time, 1, Tw) => Warp(:warp, Mw, Tw),
+                Time(:time, Tw, idiv(Tinner, Tw)) => Register(:time, Tw, idiv(Tinner, Tw)),
+                Time(:time, Tinner, idiv(Touter, 2 * Tinner)) => Loop(:t_inner_lo, Tinner, idiv(Touter, 2 * Tinner)),
+                Time(:time, idiv(Touter, 2), 2) => Loop(:t_inner_hi, idiv(Touter, 2), 2),
+                Time(:time, Touter, fld(Tbar, Touter)) => Loop(:t_outer, Touter, fld(Tbar, Touter)),
+            ])
+        elseif trailing_zeros(Npad) == 3
+            # CHARTS
+            layout_V_registers = Layout([
+                FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
+                DishNLo(:dishNLo, 1, 2) => SIMD(:simd, 16, 2),
+                Cplx(:cplx, 1, C) => Register(:cplx, 1, 2),
+                DishM(:dishM, 1, 4) => Thread(:thread, 1, 4),
                 BeamQ(:beamQ, 1, 8) => Thread(:thread, 4, 8),
                 DishM(:dishM, Mt, Mw) => Warp(:warp, 1, Mw),
                 DishM(:dishM, Mt * Mw, Mr) => Register(:dishM, Mt * Mw, Mr),
