@@ -16,13 +16,13 @@ namespace ksgpu {
 
 
 // Helper for make_random_shape() and make_random_reshape_compatible_shapes().
-inline long make_random_axis(long maxaxis, long &maxsize)
+inline long make_random_axis(long maxaxis, long &maxsize, std::mt19937 &rng)
 {
     xassert(maxaxis > 0);
     xassert(maxsize > 0);
-    
+
     long n = std::min(maxaxis, maxsize);
-    double t = rand_uniform(1.0e-6, log(n+1.0) - 1.0e-6);
+    double t = rand_uniform(1.0e-6, log(n+1.0) - 1.0e-6, rng);
     long ret = long(exp(t));  // round down
     maxsize = maxsize / ret;  // round down
     return ret;
@@ -31,18 +31,20 @@ inline long make_random_axis(long maxaxis, long &maxsize)
 
 vector<long> make_random_shape(int ndim, long maxaxis, long maxsize)
 {
+    std::mt19937 &rng = default_rng();
+
     if (ndim == 0)
-        ndim = rand_int(1, ArrayMaxDim+1);
-    
+        ndim = rand_int(1, ArrayMaxDim+1, rng);
+
     xassert(ndim > 0);
     xassert(ndim <= ArrayMaxDim);
     xassert(maxsize > 0);
 
     vector<long> shape(ndim);
     for (int d = 0; d < ndim; d++)
-        shape[d] = make_random_axis(maxaxis, maxsize);  // modifies 'maxsize'
+        shape[d] = make_random_axis(maxaxis, maxsize, rng);  // modifies 'maxsize'
 
-    randomly_permute(shape);
+    randomly_permute(shape, rng);
     return shape;
 }
 
@@ -56,9 +58,11 @@ vector<long> make_random_strides(int ndim, const long *shape, int ncontig, long 
     xassert(ncontig <= ndim);
     xassert(nalign >= 1);
 
+    std::mt19937 &rng = default_rng();
+
     int nd_strided = ndim - ncontig;
-    vector<long> axis_ordering = rand_permutation(nd_strided);
-    
+    vector<long> axis_ordering = rand_permutation(nd_strided, rng);
+
     vector<long> strides(ndim);
     long min_stride = 1;
 
@@ -77,8 +81,8 @@ vector<long> make_random_strides(int ndim, const long *shape, int ncontig, long 
         // Assign stride (as multiple of nalign)
         long smin = (min_stride + nalign - 1) / nalign;
         long smax = std::max(smin+1, (2*min_stride)/nalign);
-        long s = (rand_uniform() < 0.33) ? smin : rand_int(smin,smax+1);
-        
+        long s = (rand_uniform(0.0, 1.0, rng) < 0.33) ? smin : rand_int(smin, smax+1, rng);
+
         strides[d] = s * nalign;
         min_stride += (shape[d]-1) * strides[d];
     }
@@ -149,19 +153,21 @@ struct RcAxis
 
 void make_random_reshape_compatible_shapes(vector<long> &dshape, vector<long> &sshape, vector<long> &sstrides)
 {
+    std::mt19937 &rng = default_rng();
+
     long maxaxis = 10;
     long maxsize = 100000;
 
     // Initialize all members of 'blocks' except 'bstrides'.
-    
+
     vector<RcBlock> blocks;
     uint ddims = 0;
     uint sdims = 0;
 
     while ((ddims < ArrayMaxDim) || (sdims < ArrayMaxDim)) {
         RcBlock block;
-        block.dflag = rand_int(0,2);
-        
+        block.dflag = rand_int(0, 2, rng);
+
         uint &fdims = block.dflag ? ddims : sdims;   // "factored" dims
         uint &udims = block.dflag ? sdims : ddims;   // "unfactored" dims
 
@@ -169,49 +175,49 @@ void make_random_reshape_compatible_shapes(vector<long> &dshape, vector<long> &s
             continue;  // corner case
         if (udims == ArrayMaxDim)
             break;
-        
+
         uint nb = 0;  // number of factored axes
         int nb_max = ArrayMaxDim - fdims;
 
-        if ((nb_max > 0) && (rand_uniform() < 0.95)) {
-            nb = rand_int(1, nb_max+1);
+        if ((nb_max > 0) && (rand_uniform(0.0, 1.0, rng) < 0.95)) {
+            nb = rand_int(1, nb_max+1, rng);
             block.bshape = make_random_shape(nb, maxaxis, maxsize);
             xassert(block.bshape.size() == nb);  // should never fail
         }
-        
+
         block.bsize = 1;
         for (uint i = 0; i < nb; i++)
             block.bsize *= block.bshape[i];
 
         xassert(block.bsize > 0);  // should never fail
         maxsize /= block.bsize;
-        
+
         blocks.push_back(block);
         fdims += nb;
         udims += 1;
 
-        if ((ddims > 0) && (sdims > 0) && (rand_uniform() < 0.2))
+        if ((ddims > 0) && (sdims > 0) && (rand_uniform(0.0, 1.0, rng) < 0.2))
             break;
     }
-    
+
     // Should never fail.
     xassert(ddims > 0);
     xassert(sdims > 0);
 
-    randomly_permute(blocks);
+    randomly_permute(blocks, rng);
 
     // Initialize 'bstride' members of 'blocks'.
-    
+
     int nblocks = blocks.size();
-    vector<long> block_sizes(nblocks);    
+    vector<long> block_sizes(nblocks);
     for (int i = 0; i < nblocks; i++)
         block_sizes[i] = blocks[i].bsize;
-    
+
     vector<long> block_strides = make_random_strides(block_sizes);
     for (int i = 0; i < nblocks; i++)
         blocks[i].bstride = block_strides[i];
 
-    randomly_permute(blocks);
+    randomly_permute(blocks, rng);
 
     // Now 'blocks' has been fully initialized.
     // Unpack 'blocks' into 'daxes', 'saxes'.

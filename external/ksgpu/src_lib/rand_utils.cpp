@@ -8,7 +8,53 @@ namespace ksgpu {
 #endif
 
 
-std::mt19937 default_rng(137);
+// _make_default_rng(): construct a freshly seeded mt19937 for this thread.
+//
+// We seed from a std::seed_seq of 8 random_device draws (256 bits) rather
+// than a single random_device() value (32 bits). With only 32 bits of seed
+// entropy, the birthday bound puts the expected first collision at ~2^16 =
+// 65k independently-seeded threads/processes -- low enough that long-running
+// multi-threaded test suites would occasionally produce two threads with
+// identical RNG state. 256 bits is comfortably above any realistic collision
+// risk while still costing only 8 reads from /dev/urandom per thread.
+//
+// Note: std::random_device is not required by the standard to be thread-safe.
+// Here we construct a fresh local instance per call, so there is no sharing
+// and any conforming libstdc++/libc++ implementation is safe.
+static std::mt19937 _make_default_rng()
+{
+    std::random_device rd;
+    std::seed_seq seq{rd(), rd(), rd(), rd(), rd(), rd(), rd(), rd()};
+    return std::mt19937(seq);
+}
+
+
+// default_rng(): per-thread default RNG, lazily constructed on first use.
+//
+// We use a function-local "thread_local" static so that:
+//   - Each thread has its own independent RNG (no mutex, no map, no
+//     contention; the only steady-state cost is a TLS load).
+//   - Construction happens on first reference within each thread
+//     ("construct on first use"), sidestepping static-init-order issues.
+//   - Cleanup is automatic when the thread exits (mt19937's destructor
+//     is trivial), so even programs that churn threads do not leak.
+std::mt19937 &default_rng()
+{
+    thread_local std::mt19937 rng = _make_default_rng();
+    return rng;
+}
+
+
+// seed_default_rng(): reseed the calling thread's default RNG.
+//
+// Only affects the calling thread; other threads keep whatever seed they
+// got from _make_default_rng() (or from a previous seed_default_rng() call
+// on their own thread). Test drivers can call this once on the main thread
+// at the top of main() to get reproducible randoms.
+void seed_default_rng(uint32_t seed)
+{
+    default_rng().seed(seed);
+}
 
 
 // -------------------------------------------------------------------------------------------------
@@ -16,11 +62,11 @@ std::mt19937 default_rng(137);
 
 // Version of randomize() for floating-point types T=float, T=double.
 template<typename T>
-inline void _randomize_f(T *buf, long nelts, std::mt19937 &rng = default_rng)
+inline void _randomize_f(T *buf, long nelts, std::mt19937 &rng)
 {
     static_assert(std::is_floating_point_v<T>);
 
-    auto dist = std::uniform_real_distribution<T>(-1.0, 1.0);    
+    auto dist = std::uniform_real_distribution<T>(-1.0, 1.0);
     for (long i = 0; i < nelts; i++)
         buf[i] = dist(rng);
 }
@@ -29,7 +75,7 @@ inline void _randomize_f(T *buf, long nelts, std::mt19937 &rng = default_rng)
 template<>
 inline void _randomize_f(__half *buf, long nelts, std::mt19937 &rng)
 {
-    auto dist = std::uniform_real_distribution<float>(-1.0f, 1.0f);    
+    auto dist = std::uniform_real_distribution<float>(-1.0f, 1.0f);
     for (long i = 0; i < nelts; i++)
         buf[i] = __float2half_rn(dist(rng));
 }
@@ -38,7 +84,7 @@ inline void _randomize_f(__half *buf, long nelts, std::mt19937 &rng)
 void _randomize(Dtype dtype, void *buf, long nelts, std::mt19937 &rng)
 {
     _check_dtype_valid(dtype, "randomize");
-    
+
     xassert(nelts >= 0);
     xassert((nelts == 0) || (buf != nullptr));
 
@@ -48,7 +94,7 @@ void _randomize(Dtype dtype, void *buf, long nelts, std::mt19937 &rng)
     if (dtype.flags & (df_int | df_uint)) {
         // Ignore details of dtype, and generate the correct number of random bits.
         // Note: this code is still correct if dtype is a complex type.
-        
+
         long nbits = nelts * dtype.nbits;
         long nbytes = (nbits + 7) >> 3;
         long nints = nbytes / sizeof(int);
@@ -57,10 +103,10 @@ void _randomize(Dtype dtype, void *buf, long nelts, std::mt19937 &rng)
             ((int *)buf)[i] = rng();
         for (long i = nints * sizeof(int); i < nbytes; i++)
             ((char *)buf)[i] = rng();
-        
+
         return;
     }
-    
+
     xassert(dtype.flags & df_float);
 
     bool is_complex = (dtype.flags & df_complex);
@@ -81,7 +127,7 @@ void _randomize(Dtype dtype, void *buf, long nelts, std::mt19937 &rng)
 // -------------------------------------------------------------------------------------------------
 
 
-vector<double> random_doubles_with_fixed_sum(int n, double sum)
+vector<double> random_doubles_with_fixed_sum(int n, double sum, std::mt19937 &rng)
 {
     if (n < 1)
         throw runtime_error("random_doubles_with_fixed_sum(): 'n' argument must be >= 1");
@@ -91,7 +137,7 @@ vector<double> random_doubles_with_fixed_sum(int n, double sum)
     vector<double> ret(n);
 
     for (int i = 0; i < n-1; i++) {
-        double t = rand_uniform();
+        double t = rand_uniform(0.0, 1.0, rng);
         double p = 1.0 / double(n-1-i);
         ret[i] = sum * (1 - pow(t,p));
         sum -= ret[i];
@@ -102,25 +148,25 @@ vector<double> random_doubles_with_fixed_sum(int n, double sum)
 }
 
 
-vector<long> random_integers_with_bounded_product(int n, long bound)
-{    
+vector<long> random_integers_with_bounded_product(int n, long bound, std::mt19937 &rng)
+{
     if (n < 1)
         throw runtime_error("random_integers_with_bounded_product(): 'n' argument must be >= 1");
     if (bound < 1)
         throw runtime_error("random_integers_with_bounded_product(): 'bound' argument must be >= 1");
 
-    double target_log = log(rand_uniform(1.01, bound+0.99));
-    vector<double> x = random_doubles_with_fixed_sum(n, target_log);
-    
-    vector<long> ret(n);    
+    double target_log = log(rand_uniform(1.01, bound+0.99, rng));
+    vector<double> x = random_doubles_with_fixed_sum(n, target_log, rng);
+
+    vector<long> ret(n);
     for (int i = 0; i < n; i++)
         ret[i] = long(exp(x[i]) + 0.5);
-    
-    int i0 = rand_int(0, n);
+
+    int i0 = rand_int(0, n, rng);
 
     for (int i1 = 0; i1 < n; i1++) {
         int i = (i0 + i1) % n;
-        
+
         long p = 1;
         for (int j = 0; j < n; j++)
             if (j != i)
@@ -147,15 +193,14 @@ vector<long> random_integers_with_bounded_product(int n, long bound)
 string make_random_hex_string(int len)
 {
     static const char hex_chars[] = "0123456789abcdef";
-    
-    random_device rd;
-    mt19937 gen(rd());
+
+    std::mt19937 &gen = default_rng();
     uniform_int_distribution<int> dist(0, 15);
-    
+
     string s;
     for (int i = 0; i < len; i++)
         s += hex_chars[dist(gen)];
-    
+
     return s;
 }
 
