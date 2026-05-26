@@ -6,18 +6,22 @@
 #ifndef N2_ACCUMULATE_HPP
 #define N2_ACCUMULATE_HPP
 
-#include "Config.hpp"            // for Config
-#include "N2Util.hpp"            // for frameID
-#include "Stage.hpp"             // for Stage
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for chordMetadata
-#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include <time.h>                 // for timespec
+#include <json.hpp>               // for json
+#include <cstdint>                // for int64_t, int32_t, uint64_t, uint32_t
+#include <string>                 // for string
+#include <vector>                 // for vector
+#include <complex>                // for complex
+#include <iosfwd>                 // for ostream
 
-#include <cstdint> // for int64_t, int32_t
-#include <string>  // for string
-#include <vector>  // for vector
+#include "Config.hpp"             // for Config
+#include "N2Util.hpp"             // for frameID
+#include "Stage.hpp"              // for Stage
+#include "Telescope.hpp"          // for Telescope
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "prometheusMetrics.hpp"  // for Counter, MetricFamily
+#include "timeUtil.hpp"           // for EOP
 
 using N2::frameID;
 

@@ -1,22 +1,21 @@
 #include "vdifStream.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for ERROR, INFO
-#include "util.h"              // for e_time
+#include <arpa/inet.h>          // for htons, inet_aton
+#include <errno.h>              // for errno
+#include <netinet/in.h>         // for sockaddr_in, IPPROTO_UDP
+#include <string.h>             // for memset, strerror
+#include <sys/socket.h>         // for AF_INET, sendto, socket, SOCK_DGRAM
+#include <unistd.h>             // for usleep, size_t
+#include <functional>           // for bind, function
+#include <string>               // for allocator, basic_string, string
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <arpa/inet.h>  // for inet_aton, htons
-#include <errno.h>      // for errno
-#include <functional>   // for bind, function
-#include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP
-#include <string.h>     // for memset, strerror
-#include <string>       // for allocator, basic_string, string
-#include <sys/socket.h> // for AF_INET, sendto, socket, SOCK_DGRAM
-#include <unistd.h>     // for usleep, size_t
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for ERROR, INFO
+#include "util.h"               // for e_time
+#include "fmt.hpp"              // for compile_string_to_view
 
 
 using kotekan::bufferContainer;

@@ -1,39 +1,40 @@
-#include <Config.hpp>            // for Config
-#include <DataType.hpp>          // for string_to_type, type_to_string, DataType
-#include <Stage.hpp>             // for Stage
-#include <StageFactory.hpp>      // for REGISTER_KOTEKAN_STAGE
-#include <Symbol.hpp>            // for Symbol
-#include <algorithm>             // for max
-#include <array>                 // for array
-#include <asdf/asdf.hxx>         // for asdf
-#include <asdf/config.hxx>       // for ASDF_CHECK_VERSION
-#include <asdf/datatype.hxx>     // for datatype_t
-#include <asdf/entry.hxx>        // for entry, group
-#include <asdf/memoized.hxx>     // for memoized
-#include <asdf/ndarray.hxx>      // for ndarray, block_t
-#include <asdfFiles.hpp>         // for beautify_buffer_name, chord_metadata_version
-#include <buffer.hpp>            // for Buffer
-#include <bufferContainer.hpp>   // for bufferContainer
-#include <cassert>               // for assert
-#include <chordMetadata.hpp>     // for chordMetadata, CHORD_META_MAX_FREQ, metadata_is_chord
-#include <cstddef>               // for ptrdiff_t, size_t
-#include <cstdint>               // for int64_t, uint32_t, uint8_t
-#include <cstring>               // for memcpy, strncpy
-#include <fmt.hpp>               // for compile_string_to_view
-#include <fstream>               // for basic_ostream, basic_ifstream, operator<<, ostringstream
-#include <functional>            // for function
-#include <iomanip>               // for operator<<, setfill, setw
-#include <kotekanLogging.hpp>    // for DEBUG, FATAL_ERROR, INFO
-#include <map>                   // for map
-#include <memory>                // for shared_ptr, __shared_ptr_access, allocator, make_shared
-#include <metadata.hpp>          // for metadataObject
-#include <optional>              // for optional
-#include <prometheusMetrics.hpp> // for Metrics, Gauge
-#include <sstream>               // for basic_ostringstream
-#include <string>                // for basic_string, char_traits, string, operator<<
-#include <unistd.h>              // for gethostname, sleep
-#include <vector>                // for vector
-#include <visUtil.hpp>           // for current_time
+#include <Config.hpp>             // for Config
+#include <DataType.hpp>           // for string_to_type, type_to_string, DataType
+#include <Stage.hpp>              // for Stage
+#include <StageFactory.hpp>       // for REGISTER_KOTEKAN_STAGE
+#include <Symbol.hpp>             // for Symbol
+#include <asdf/asdf.hxx>          // for asdf
+#include <asdf/config.hxx>        // for ASDF_CHECK_VERSION
+#include <asdf/datatype.hxx>      // for datatype_t
+#include <asdf/entry.hxx>         // for entry, group
+#include <asdf/memoized.hxx>      // for memoized
+#include <asdf/ndarray.hxx>       // for ndarray, block_t
+#include <asdfFiles.hpp>          // for beautify_buffer_name, chord_metadata_version
+#include <buffer.hpp>             // for Buffer
+#include <bufferContainer.hpp>    // for bufferContainer
+#include <chordMetadata.hpp>      // for chordMetadata, CHORD_META_MAX_FREQ, metadata_is_chord
+#include <kotekanLogging.hpp>     // for DEBUG, FATAL_ERROR, INFO
+#include <metadata.hpp>           // for metadataObject
+#include <prometheusMetrics.hpp>  // for Metrics, Gauge
+#include <unistd.h>               // for gethostname, sleep
+#include <visUtil.hpp>            // for current_time
+#include <array>                  // for array
+#include <cassert>                // for assert
+#include <cstddef>                // for ptrdiff_t, size_t
+#include <cstdint>                // for int64_t, uint32_t, uint8_t
+#include <cstring>                // for memcpy, strncpy
+#include <fstream>                // for basic_ostream, basic_ifstream, operator<<, ostringstream
+#include <functional>             // for function
+#include <iomanip>                // for operator<<, setfill, setw
+#include <map>                    // for map
+#include <memory>                 // for shared_ptr, __shared_ptr_access, allocator, make_shared
+#include <optional>               // for optional
+#include <sstream>                // for basic_ostringstream
+#include <string>                 // for basic_string, char_traits, string, operator<<
+#include <vector>                 // for vector
+
+#include "CHORDTelescope.hpp"     // for dish_index_t
+#include "fmt.hpp"                // for compile_string_to_view
 
 using namespace asdf;
 

@@ -1,11 +1,14 @@
-#include "DataType.hpp" // for operator<<
-#include "Symbol.hpp"   // for operator<<, Symbol
-
 #include <NDArray.hpp>
-#include <cassert>   // for assert
-#include <sstream>   // for basic_ostringstream
-#include <stdexcept> // for runtime_error
-#include <string>    // for operator<<, basic_string, string
+#include <sys/types.h>    // for ssize_t
+#include <cassert>        // for assert
+#include <sstream>        // for basic_ostringstream
+#include <stdexcept>      // for runtime_error
+#include <string>         // for operator<<, basic_string, string
+#include <cstring>        // for memcmp
+
+#include "DataType.hpp"   // for DataType, GetType_t, operator<<
+#include "Symbol.hpp"     // for Symbol, operator<<, operator!=, operator==
+#include "FrameDesc.hpp"  // for FrameDesc
 
 namespace kotekan {
 

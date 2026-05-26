@@ -1,28 +1,29 @@
 #include "RingMapMaker.hpp"
 
-#include "Hash.hpp"              // for operator!=, operator<, Hash
-#include "Stack.hpp"             // for chimeFeed
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"         // for Telescope
-#include "dataset.hpp"           // for dataset
-#include "datasetManager.hpp"    // for datasetManager, dset_id_t, state_id_t
-#include "kotekanLogging.hpp"    // for FATAL_ERROR, WARN, INFO
-#include "prometheusMetrics.hpp" // for Metrics
-#include "visBuffer.hpp"         // for VisFrameView, VisField
+#include <cblas.h>                // for cblas_cgemv, CBLAS_ORDER, CBLAS_TRANSPOSE
+#include <sys/types.h>            // for uint
+#include <json.hpp>               // for json, iter_impl
+#include <complex>                // for complex, operator*, conj, operator/, exp, operator-
+#include <cstdint>                // for uint8_t
+#include <functional>             // for bind, function, _1, _2
+#include <future>                 // for async, future
+#include <iterator>               // for begin, end, back_insert_iterator, back_inserter
+#include <numeric>                // for iota
+#include <optional>               // for optional
+#include <set>                    // for set
+#include <tuple>                  // for tuple, get, make_tuple, operator!=, operator<
+#include <algorithm>              // for fill, copy, transform, sort
 
-#include "gsl-lite.hpp" // for span_iterator, span, at
-
-#include <cblas.h>     // for cblas_cgemv, CBLAS_ORDER, CBLAS_TRANSPOSE
-#include <complex>     // for complex, operator*, conj, operator/, exp, operator-
-#include <cstdint>     // for uint8_t
-#include <functional>  // for bind, function, _1, _2
-#include <future>      // for async, future
-#include <iterator>    // for begin, end, back_insert_iterator, back_inserter
-#include <numeric>     // for iota
-#include <optional>    // for optional
-#include <set>         // for set
-#include <sys/types.h> // for uint
-#include <tuple>       // for tuple, get, make_tuple, operator!=, operator<
+#include "Hash.hpp"               // for operator!=, operator<, Hash
+#include "Stack.hpp"              // for chimeFeed
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"          // for Telescope
+#include "dataset.hpp"            // for dataset
+#include "datasetManager.hpp"     // for datasetManager, dset_id_t, state_id_t
+#include "kotekanLogging.hpp"     // for FATAL_ERROR, WARN, INFO
+#include "prometheusMetrics.hpp"  // for Metrics
+#include "visBuffer.hpp"          // for VisFrameView, VisField
+#include "gsl-lite.hpp"           // for span_iterator, span, at
 
 using namespace std::complex_literals;
 using namespace std::placeholders;

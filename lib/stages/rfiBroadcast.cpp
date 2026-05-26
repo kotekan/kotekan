@@ -1,20 +1,27 @@
 #include "rfiBroadcast.hpp"
 
-#include "Config.hpp"          // for Config
-#include "N2Util.hpp"          // for frameID
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"          // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for get_chord_metadata
-#include "kotekanLogging.hpp"  // for ERROR, DEBUG, INFO
-#include "rfi_functions.hpp"   // for RFIHeader, RFIPayload
+#include <arpa/inet.h>          // for htons, inet_pton
+#include <netinet/in.h>         // for sockaddr_in, IPPROTO_UDP
+#include <sys/socket.h>         // for AF_INET, sendto, socket, SOCK_DGRAM
+#include <sys/types.h>          // for ssize_t
+#include <algorithm>            // for fill, copy_n, nth_element, fill_n
+#include <cerrno>               // for errno
+#include <cstring>              // for strerror
+#include <cmath>                // for abs
+#include <functional>           // for bind, function
+#include <memory>               // for shared_ptr, __shared_ptr_access
+#include <vector>               // for vector
 
-#include <algorithm>
-#include <arpa/inet.h>  // for inet_pton
-#include <cerrno>       // to access errno
-#include <cstring>      // to access std::stderror
-#include <netinet/in.h> // for sockaddr_in
-#include <sys/socket.h> // for socket, sendto, sockaddr
+#include "Config.hpp"           // for Config
+#include "N2Util.hpp"           // for frameID, modulo
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG
+#include "rfi_functions.hpp"    // for RFIPayload, RFIHeader
+#include "NDArray.hpp"          // for GenericNDArray
+#include "fmt.hpp"              // for compile_string_to_view
 
 using kotekan::bufferContainer;
 using kotekan::Config;

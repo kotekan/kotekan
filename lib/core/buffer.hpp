@@ -8,26 +8,27 @@
 #ifndef KOTEKAN_BUFFER_HPP
 #define KOTEKAN_BUFFER_HPP
 
-#include "DataType.hpp"       // for DataType
-#include "FrameDesc.hpp"      // for FrameDesc
-#include "NDArray.hpp"        // for GenericNDArray, NDArray
-#include "Symbol.hpp"         // for Symbol
-#include "kotekanLogging.hpp" // for kotekanLogging
-#include "metadata.hpp"       // for metadataObject, metadataPool
+#include <sched.h>             // for cpu_set_t
+#include <stdint.h>            // for uint8_t
+#include <algorithm>           // for copy, equal
+#include <array>               // for array
+#include <condition_variable>  // for condition_variable_any
+#include <cstddef>             // for size_t, ptrdiff_t
+#include <map>                 // for map
+#include <memory>              // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
+#include <mutex>               // for recursive_mutex, lock_guard
+#include <string>              // for string, basic_string
+#include <vector>              // for vector, operator!=
+#include <utility>             // for move
 
-#include "json.hpp" // for json
-
-#include <algorithm>          // for equal
-#include <array>              // for array
-#include <condition_variable> // for condition_variable_any
-#include <cstddef>            // for size_t, ptrdiff_t
-#include <map>                // for map
-#include <memory>             // for shared_ptr, make_shared
-#include <mutex>              // for recursive_mutex
-#include <sched.h>            // for cpu_set_t
-#include <stdint.h>           // for uint8_t
-#include <string>             // for string, basic_string
-#include <vector>             // for vector
+#include "DataType.hpp"        // for type_to_string, DataType
+#include "FrameDesc.hpp"       // for FrameDesc
+#include "NDArray.hpp"         // for GenericNDArray, NDArray
+#include "Symbol.hpp"          // for Symbol, operator!=, operator==
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, ERROR, kotekanLogging
+#include "metadata.hpp"        // for metadataObject, metadataPool
+#include "json.hpp"            // for json
+#include "fmt.hpp"             // for compile_string_to_view, join, format, format_string, join_...
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"

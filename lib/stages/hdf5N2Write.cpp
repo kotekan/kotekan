@@ -1,56 +1,73 @@
 #include "hdf5N2Write.hpp"
 
-#include "H5Support.hpp"
-#include "Telescope.hpp"  // for Telescope
-#include "restClient.hpp" // for restClient
-#include "util.h"         // for mkdir_p
+#include <N2FrameView.hpp>                        // for N2FrameView
+#include <Stage.hpp>                              // for Stage
+#include <StageFactory.hpp>                       // for REGISTER_KOTEKAN_STAGE
+#include <configTracker.hpp>                      // for ConfigTracker
+#include <errno.h>                                // for errno
+#include <errors.h>                               // for exit_kotekan, ReturnCode
+#include <highfive/H5DataSet.hpp>                 // for DataSet, AnnotateTraits::createAttribute
+#include <highfive/H5DataSpace.hpp>               // for DataSpace, DataSpace::DataSpace, DataSp...
+#include <highfive/H5DataType.hpp>                // for create_datatype, DataType
+#include <highfive/H5Exception.hpp>               // for Exception
+#include <highfive/H5File.hpp>                    // for File, NodeTraits::getDataSet, File::File
+#include <highfive/H5Object.hpp>                  // for hsize_t, Object::getId, herr_t, H5Z_FLA...
+#include <highfive/H5PropertyList.hpp>            // for DataSetCreateProps, Chunking, Deflate
+#include <highfive/bits/H5PropertyList_misc.hpp>  // for PropertyList::_initializeIfNeeded, Prop...
+#include <prometheusMetrics.hpp>                  // for Gauge, Counter, Metrics, MetricFamily
+#include <waitingForMaxFrames.hpp>                // for waiting_for_max_frames
+#include <H5Opublic.h>                            // for H5Ocopy
+#include <fmt/ranges.h> // IWYU pragma: keep      // needed to fmt::format std::vector in log macros
+#include <gsl-lite.hpp>                           // for span
+#include <highfive/H5Group.hpp>                   // for Group
+#include <highfive/H5Selection.hpp>               // for Selection, SliceTraits::write, SliceTra...
+#include <highfive/bits/H5Attribute_misc.hpp>     // for Attribute::read, Attribute::write
+#include <highfive/bits/H5Selection_misc.hpp>     // for Selection::getSpace, Selection::getData...
+#include <algorithm>                              // for equal, min, copy, max
+#include <cassert>                                // for assert
+#include <cfloat>                                 // for DBL_MAX
+#include <chrono>                                 // for duration, duration_cast, operator-, sys...
+#include <complex>                                // for complex
+#include <cstdint>                                // for uint64_t, int64_t, int32_t, uint16_t
+#include <cstdio>                                 // for size_t, rename
+#include <cstdlib>                                // for llabs
+#include <cstring>                                // for strerror
+#include <ctime>                                  // for timespec, gmtime, gmtime_r, time_t, tm
+#include <filesystem>                             // for path, exists, directory_iterator, begin
+#include <fstream>                                // for basic_ostream, operator<<, basic_ios
+#include <iomanip>                                // for operator<<, put_time, setfill, setw
+#include <map>                                    // for map, _Rb_tree_iterator, operator!=
+#include <memory>                                 // for allocator, unique_ptr, make_unique, __s...
+#include <optional>                               // for optional, nullopt, operator!=
+#include <sstream>                                // for basic_ostringstream
+#include <stdexcept>                              // for runtime_error
+#include <string>                                 // for basic_string, operator+, char_traits
+#include <type_traits>                            // for false_type, true_type, void_t
+#include <utility>                                // for pair, move
+#include <vector>                                 // for vector, operator!=
+#include <array>                                  // for array, operator!=
+#include <atomic>                                 // for __atomic_base, atomic
+#include <cmath>                                  // for fabs
+#include <exception>                              // for exception
+#include <functional>                             // for function
+#include <iterator>                               // for istreambuf_iterator, operator!=
+#include <limits>                                 // for numeric_limits
+#include <system_error>                           // for error_code
 
-#include "json.hpp"
-
-#include <N2FrameView.hpp>
-#include <N2Metadata.hpp>
-#include <Stage.hpp>
-#include <StageFactory.hpp>
-#include <algorithm>
-#include <cassert>
-#include <cfloat>
-#include <chordMetadata.hpp>
-#include <chrono>
-#include <complex>
-#include <configTracker.hpp>
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
-#include <errno.h>
-#include <errors.h>
-#include <filesystem>
-#include <fmt/ranges.h>
-#include <fstream>
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5DataSpace.hpp>
-#include <highfive/H5DataType.hpp>
-#include <highfive/H5Exception.hpp>
-#include <highfive/H5File.hpp>
-#include <highfive/H5Object.hpp>       // for H5Z_FLAG_MANDATORY, hsize_t
-#include <highfive/H5PropertyList.hpp> // for PropertyType, RawPropertyList, Chunking
-#include <highfive/bits/H5PropertyList_misc.hpp>
-#include <highfive/bits/H5Slice_traits_misc.hpp>
-#include <iomanip>
-#include <map>
-#include <memory>
-#include <optional>
-#include <prometheusMetrics.hpp>
-#include <sstream>
-#include <stdexcept>
-#include <string>
-#include <sys/stat.h>
-#include <type_traits>
-#include <unistd.h>
-#include <utility>
-#include <vector>
-#include <waitingForMaxFrames.hpp> // for waiting_for_max_frames
+#include "H5Support.hpp"                          // for create_datatype
+#include "Telescope.hpp"                          // for Telescope, freq_id_t
+#include "restClient.hpp"                         // for restClient
+#include "util.h"                                 // for mkdir_p
+#include "json.hpp"                               // for basic_json, json, iter_impl
+#include "CHORDTelescope.hpp"                     // for CHORDTelescope, dishInputFields
+#include "N2FrameDesc.hpp"                        // for N2FrameDesc
+#include "N2Util.hpp"                             // for freq_ctype, frameID, modulo, cfloat
+#include "fmt.hpp"                                // for compile_string_to_view, format, format_...
+#include "hdf5Files.hpp"                          // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
+#include "jsonMetadata.hpp"                       // for MAX_NUM_RFI_THRESHOLDS
+#include "kotekanLogging.hpp"                     // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
+#include "timeUtil.hpp"                           // for EOP
+#include "visUtil.hpp"                            // for cfloat
 
 using namespace HighFive;
 

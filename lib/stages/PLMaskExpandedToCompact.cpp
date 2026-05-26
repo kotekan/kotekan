@@ -1,19 +1,19 @@
 #include "PLMaskExpandedToCompact.hpp"
 
-#include "Config.hpp"
-#include "StageFactory.hpp"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"
+#include <visUtil.hpp>          // for frameID, modulo
+#include <stddef.h>             // for size_t, ptrdiff_t
+#include <cstdint>              // for uint64_t, uint32_t, uint8_t
+#include <memory>               // for shared_ptr, __shared_ptr_access
+#include <vector>               // for vector
 
-#include "fmt.hpp"
-
-#include <cassert>
-#include <cstdint>
-#include <cstring>
-#include <stdexcept>
-#include <visUtil.hpp>
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO
+#include "fmt.hpp"              // for compile_string_to_view
+#include "DataType.hpp"         // for DataType
 
 using kotekan::bufferContainer;
 using kotekan::Config;

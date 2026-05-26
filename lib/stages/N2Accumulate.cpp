@@ -1,33 +1,41 @@
 #include "N2Accumulate.hpp"
 
-#include "Config.hpp"            // for Config
-#include "N2FrameView.hpp"       // for N2FrameView
-#include "N2Metadata.hpp"        // for N2Metadata, get_N2_metadata
-#include "N2Util.hpp"            // for frameID, modulo, cfloat, cmap
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, INFO
-#include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "timeUtil.hpp"          // for EOP
+#include <assert.h>               // for assert
+#include <math.h>                 // for floor
+#include <algorithm>              // for fill
+#include <complex>                // for complex, operator*, conj, operator-, norm
+#include <functional>             // for bind, function, placeholders
+#include <memory>                 // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
+#include <array>                  // for array
+#include <ostream>                // for ostream, basic_ostream
 
-#include "fmt.hpp"      // for compile_string_to_view
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>  // for fill, copy
-#include <assert.h>   // for assert
-#include <complex>    // for conj, norm, operator*, complex
-#include <cstdlib>    // for abort
-#include <functional> // for bind, function, placeholders
-#include <memory>     // for shared_ptr, __shared_ptr_access
+#include "Config.hpp"             // for Config
+#include "N2FrameView.hpp"        // for N2FrameView
+#include "N2Metadata.hpp"         // for N2Metadata, get_N2_metadata
+#include "N2Util.hpp"             // for frameID, modulo, operator+, cfloat, cmap
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"          // for Telescope, freq_id_t
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chordMetadata.hpp"      // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"     // for FATAL_ERROR, DEBUG, FATAL_ERROR_NON_OO, INFO
+#include "prometheusMetrics.hpp"  // for Metrics, Gauge
+#include "timeUtil.hpp"           // for EOP, get_UT1_from_ERA, get_ERA_from_UT1, get_UT1_from_time
+#include "fmt.hpp"                // for compile_string_to_view
+#include "gsl-lite.hpp"           // for span
+#include "CHORDTelescope.hpp"     // for CHORDTelescope
+#include "DataType.hpp"           // for DataType
+#include "FrameDesc.hpp"          // for FrameDesc
+#include "Hash.hpp"               // for operator!=
+#include "N2FrameDesc.hpp"        // for N2FrameDesc
+#include "N2Layout.hpp"           // for N2Layout
+#include "dataset.hpp"            // for dset_id_t
+#include "jsonMetadata.hpp"       // for MAX_NUM_RFI_THRESHOLDS
 #ifdef WITH_OMP
 #include <omp.h>
 #endif
-#include <sched.h>
-#include <time.h> // for size_t, timespec
-#include <vector> // for vector
+#include <time.h>                 // for timespec, size_t
+#include <vector>                 // for vector
 
 
 using namespace std::placeholders;

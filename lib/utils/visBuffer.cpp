@@ -1,24 +1,24 @@
 #include "visBuffer.hpp"
 
-#include "FrameView.hpp" // for bind_span, bind_scalar, FrameView
-#include "Telescope.hpp" // for freq_id_t
-#include "buffer.hpp"    // for Buffer
-#include "factory.hpp"   // for REGISTER_TYPE_WITH_FACTORY
-#include "metadata.hpp"  // for metadataObject, _factory_aliasmetadataObject
-
-#include "fmt.hpp" // for format, compile_string_to_view, fmt, format_string
-
-#include <algorithm> // for copy
-#include <assert.h>  // for assert
-#include <complex>   // for complex
-#include <cstddef>   // for offsetof
+#include <assert.h>       // for assert
+#include <gsl-lite.hpp>   // for span
+#include <json.hpp>       // for basic_json, json
+#include <algorithm>      // for copy
+#include <complex>        // for complex
 #include <cstdint>   // for uint64_t // IWYU pragma: keep
-#include <cstring>   // for memset
-#include <ctime>     // for gmtime
-#include <map>       // for map
-#include <set>       // for set
-#include <stdexcept> // for runtime_error
-#include <vector>    // for vector
+#include <cstring>        // for memset
+#include <ctime>          // for gmtime
+#include <map>            // for map
+#include <set>            // for set
+#include <stdexcept>      // for runtime_error
+#include <vector>         // for vector
+
+#include "FrameView.hpp"  // for bind_span, bind_scalar, FrameView
+#include "Telescope.hpp"  // for freq_id_t
+#include "buffer.hpp"     // for Buffer
+#include "factory.hpp"    // for REGISTER_TYPE_WITH_FACTORY
+#include "metadata.hpp"   // for metadataObject, _factory_aliasmetadataObject
+#include "fmt.hpp"        // for format, compile_string_to_view, fmt, format_string
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
 

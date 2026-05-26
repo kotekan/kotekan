@@ -1,24 +1,27 @@
 #include "airspyInput.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp" // for make_input_desc
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for ERROR, INFO, DEBUG, FATAL_ERROR
-#include "restServer.hpp"      // for connectionInstance, restServer
+#include <fcntl.h>              // for open, O_RDWR
+#include <stdint.h>             // for uint32_t, uint8_t
+#include <stdlib.h>             // for free, abs, malloc
+#include <string.h>             // for memcpy
+#include <unistd.h>             // for size_t, close, usleep
+#include <json.hpp>             // for basic_json, json
+#include <condition_variable>   // for condition_variable
+#include <functional>           // for bind, function, _1, _2
+#include <mutex>                // for mutex, unique_lock, lock_guard
+#include <algorithm>            // for min
+#include <cmath>                // for sqrt
+#include <memory>               // for shared_ptr
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <condition_variable> // for condition_variable
-#include <fcntl.h>            // for open, O_RDWR
-#include <functional>         // for bind, function
-#include <math.h>             // for sqrt
-#include <mutex>              // for unique_lock, lock_guard
-#include <stdint.h>           // for uint32_t, uint8_t
-#include <stdlib.h>           // for abs, malloc, free
-#include <string.h>           // for memcpy
-#include <unistd.h>           // for close, usleep
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"  // for make_input_desc
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for ERROR, INFO, DEBUG, FATAL_ERROR
+#include "restServer.hpp"       // for connectionInstance, HTTP_RESPONSE, restServer
+#include "fmt.hpp"              // for compile_string_to_view, format
+#include "NDArray.hpp"          // for GenericNDArray
 
 using kotekan::bufferContainer;
 using kotekan::Config;

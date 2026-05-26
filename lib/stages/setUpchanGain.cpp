@@ -1,17 +1,22 @@
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "StageFactory.hpp"
-#include "UpchannelizationSchedule.hpp"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"
+#include <unistd.h>                      // for sleep
+#include <cassert>                       // for assert
+#include <string>                        // for basic_string, string
+#include <vector>                        // for vector
+#include <cstddef>                       // for ptrdiff_t
+#include <functional>                    // for function
+#include <memory>                        // for allocator, __shared_ptr_access, shared_ptr
+#include <set>                           // for operator!=, set
 
-#include <cassert>
-#include <cstdint>
-#include <string>
-#include <unistd.h>
-#include <vector>
+#include "Config.hpp"                    // for Config
+#include "Stage.hpp"                     // for Stage
+#include "StageFactory.hpp"              // for REGISTER_KOTEKAN_STAGE
+#include "UpchannelizationSchedule.hpp"  // for UpchannelizationSchedule
+#include "buffer.hpp"                    // for Buffer
+#include "bufferContainer.hpp"           // for bufferContainer
+#include "chordMetadata.hpp"             // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"            // for DEBUG
+#include "DataType.hpp"                  // for float16_t
+#include "fmt.hpp"                       // for compile_string_to_view, format
 
 class setUpchanGain : public kotekan::Stage {
     const int upchan_factor = config.get<int>(unique_name, "upchan_factor");

@@ -1,30 +1,26 @@
 #ifndef KOTEKAN_STAGES_HDF5_N2_WRITE_HPP
 #define KOTEKAN_STAGES_HDF5_N2_WRITE_HPP
 
-#include "Config.hpp"
-#include "N2Metadata.hpp"
-#include "Stage.hpp"
-#include "Telescope.hpp"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "errors.h"
-#include "hdf5Files.hpp"
-#include "kotekanLogging.hpp"
-#include "prometheusMetrics.hpp"
+#include <N2FrameView.hpp>              // for N2FrameView
+#include <N2Util.hpp>                   // for cfloat
+#include <highfive/H5File.hpp>          // for File
+#include <H5public.h>                   // for hsize_t
+#include <stddef.h>                     // for size_t
+#include <highfive/H5DataType.hpp>      // for DataType
+#include <highfive/H5PropertyList.hpp>  // for DataSetCreateProps
+#include <map>                          // for map
+#include <memory>                       // for unique_ptr
+#include <optional>                     // for optional, nullopt
+#include <string>                       // for string, basic_string
+#include <vector>                       // for vector
+#include <cstdint>                      // for uint64_t, int64_t, int32_t, uint16_t, uint8_t
 
-#include "fmt.hpp"
-
-#include <N2FrameView.hpp>
-#include <N2Metadata.hpp>
-#include <N2Util.hpp>
-#include <cassert>
-#include <filesystem>
-#include <highfive/H5File.hpp>
-#include <map>
-#include <memory>
-#include <optional>
-#include <string>
-#include <vector>
+#include "Config.hpp"                   // for Config
+#include "Stage.hpp"                    // for Stage
+#include "buffer.hpp"                   // for Buffer
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "prometheusMetrics.hpp"        // for Gauge, MetricFamily, Counter
+#include "N2Layout.hpp"                 // for N2Layout
 
 /**
  * @class N2FileData
