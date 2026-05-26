@@ -28,6 +28,7 @@ using dish_index_t =
 enum class DishType : int32_t {
     Fake = -1,     // Not a real dish
     ArrayDish = 0, // A standard dish in the main array.
+    RFIDish = 1,   // A site for an RFI antenna
 };
 
 void to_json(nlohmann::json& j, const DishType& t);
@@ -715,6 +716,10 @@ protected:
 
     const GeoFrame _dish_frame;
 
+    const uint64_t _num_polarizations;
+    const uint64_t _num_dishes;
+    const uint64_t _dish_grid_size_x;
+    const uint64_t _dish_grid_size_y;
     const double _dish_separation_grid_x_m;
     const double _dish_separation_grid_y_m;
     /// Dish / array geometry and coordinate transforms.
