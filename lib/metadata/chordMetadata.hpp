@@ -32,7 +32,7 @@
 #pragma pack()
 
 // Maximum number of frequencies in metadata array
-const int CHORD_META_MAX_FREQ = 4096;
+const int CHORD_META_MAX_FREQ = 12288;
 
 // Maximum number of dimensions for arrays
 const int CHORD_META_MAX_DIM = 10;

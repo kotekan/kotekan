@@ -52,12 +52,14 @@ if(NOT ${IWYU})
         kotekan_cuda
         PRIVATE # Kernels
                 generated/cudaTranspose2048_chime.cpp
+                generated/cudaBasebandBeamformer_charts.cpp
                 generated/cudaBasebandBeamformer_chime.cpp
                 generated/cudaBasebandBeamformer_chord.cpp
                 generated/cudaBasebandBeamformer_hirax.cpp
                 generated/cudaBasebandBeamformer_pathfinder.cpp
                 generated/cudaCHIMEFRBBeamformer_chime_U16.cpp
                 generated/cudaCHIMEFRBBeamformer_chime_U128.cpp
+                generated/cudaFRBBeamformer_charts_U32.cpp
                 generated/cudaFRBBeamformer_chord_U1.cpp
                 generated/cudaFRBBeamformer_chord_U2.cpp
                 generated/cudaFRBBeamformer_chord_U4.cpp
@@ -81,6 +83,7 @@ if(NOT ${IWYU})
                 generated/cudaFRBBeamformer_pathfinder_U16.cpp
                 generated/cudaFRBBeamformer_pathfinder_U32.cpp
                 generated/cudaFRBBeamformer_pathfinder_U64.cpp
+                generated/cudaUpchannelizer_charts_U32.cpp
                 generated/cudaUpchannelizer_chime_U2.cpp
                 generated/cudaUpchannelizer_chime_U4.cpp
                 generated/cudaUpchannelizer_chime_U8.cpp
