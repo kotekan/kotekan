@@ -89,8 +89,16 @@ public:
         assert(W2_buffer);
         if (num_threads < 0)
             FATAL_ERROR("num_threads %d must be positive", num_threads);
-        frb2_beam_positions_buffer->register_producer(unique_name);
+        frb2_beam_positions_buffer->register_consumer(unique_name);
         W2_buffer->register_producer(unique_name);
+        
+        frb2_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
+            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"});
+        W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>("W2",
+                                                             {frb2_num_frequencies,
+                                                              frb2_num_beams_y * frb2_num_beams_x,
+                                                              frb1_num_beams_y, frb1_num_beams_x},
+                                                             {"Fbar", "R", "beamQ", "beamP"});
     }
 
     virtual ~calcFRB2Weights() {}
@@ -147,7 +155,7 @@ public:
         DEBUG("[{:s}/{:d}] Waiting for buffer...", frb2_beam_positions_buffer->buffer_name,
               frame_index);
         float* const frb2_beam_positions_frame = static_cast<float*>(static_cast<void*>(
-            frb2_beam_positions_buffer->wait_for_empty_frame(unique_name, frame_id)));
+            frb2_beam_positions_buffer->wait_for_full_frame(unique_name, frame_id)));
         if (!frb2_beam_positions_frame)
             return;
 
@@ -163,8 +171,7 @@ public:
         assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
 
         // Set metadata
-        frb2_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
-            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"});
+        /*
         frb2_beam_positions_buffer->allocate_new_metadata_object(frame_id);
         const auto& frb2_beam_positions_meta =
             get_chord_metadata(frb2_beam_positions_buffer->get_metadata(frame_id));
@@ -172,12 +179,8 @@ public:
             frb2_beam_positions_buffer->get_ndarray_frame_desc());
         frb2_beam_positions_meta->set_fpga_seq_num(0);           // ???
         frb2_beam_positions_meta->set_time_downsampling_fpga(1); // ???
+        */
 
-        W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>("W2",
-                                                             {frb2_num_frequencies,
-                                                              frb2_num_beams_y * frb2_num_beams_x,
-                                                              frb1_num_beams_y, frb1_num_beams_x},
-                                                             {"Fbar", "R", "beamQ", "beamP"});
         W2_buffer->allocate_new_metadata_object(frame_id);
         const auto& W2_meta = get_chord_metadata(W2_buffer->get_metadata(frame_id));
         W2_meta->set_from_frame_desc(W2_buffer->get_ndarray_frame_desc());
@@ -188,6 +191,7 @@ public:
         W2_meta->set_freq_upchan_index(freq_upchan_index);
 
         // Set frb2_beam_positions
+        /*
         {
             // Find centre
             const float i_x0 = (frb2_num_beams_x - 1) / 2.0f;
@@ -206,6 +210,7 @@ public:
                 }
             }
         }
+        */
 
         // Set W2
         {
@@ -303,9 +308,9 @@ public:
         }
 
         // Mark buffers as full
-        DEBUG("[{:s}/{:d}] Marking buffer as full...", frb2_beam_positions_buffer->buffer_name,
+        DEBUG("[{:s}/{:d}] Marking buffer as empty...", frb2_beam_positions_buffer->buffer_name,
               frame_index);
-        frb2_beam_positions_buffer->mark_frame_full(unique_name, frame_id);
+        frb2_beam_positions_buffer->mark_frame_empty(unique_name, frame_id);
 
         DEBUG("[{:s}/{:d}] Marking buffer as full...", W2_buffer->buffer_name, frame_index);
         W2_buffer->mark_frame_full(unique_name, frame_id);
