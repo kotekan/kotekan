@@ -199,9 +199,9 @@ public:
 
         // Set frb2_beam_positions
         {
-            // Find centre
-            const float i_x0 = (frb2_num_beams_x - 1) / 2.0f;
-            const float i_y0 = (frb2_num_beams_y - 1) / 2.0f;
+            // Find off-centre
+            const float i_x0 = frb2_num_beams_x / 2.0f - 1;
+            const float i_y0 = frb2_num_beams_y / 2.0f - 1;
             for (int i_y = 0; i_y < frb2_num_beams_y; ++i_y) {
                 for (int i_x = 0; i_x < frb2_num_beams_x; ++i_x) {
                     const int beam = i_x + frb2_num_beams_x * i_y;
