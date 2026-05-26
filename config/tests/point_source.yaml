@@ -29,8 +29,8 @@ telescope:
     dish_coelev_deg: 0.0
     require_gps: false
     eop_updatable_config: /earth_rotation_data
-    num_dishes_x: 8
-    num_dishes_y: 12
+    dish_grid_size_x: 8
+    dish_grid_size_y: 12
 
     dish_separation_x_m: 6.300156854906823
     dish_separation_y_m: 8.500057809796308

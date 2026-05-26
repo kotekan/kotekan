@@ -29,6 +29,7 @@ const std::string default_config_str = R"config_str({
 "type": "config",
 "log_level": "debug",
 "num_dishes": 2,
+"num_polarizations": 2,
 "telescope": {
     "name": "CHORDTelescope",
     "origin_itrs_lon_deg":  -119.621,
@@ -41,8 +42,8 @@ const std::string default_config_str = R"config_str({
     "require_gps":        false,
     "eop_updatable_config":   "/earth_rotation_data"
     },
-    "num_dishes_x" : 22,
-    "num_dishes_y" : 24,
+    "dish_grid_size_x" : 22,
+    "dish_grid_size_y" : 24,
     "dish_ew_separation_m": 6.3,
     "dish_ns_separation_m": 8.5,
     "dish_inputs" : [
@@ -358,8 +359,8 @@ BOOST_AUTO_TEST_CASE(_get_input_maps) {
 
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
-    json_config["num_dishes_x"] = 22;
-    json_config["num_dishes_y"] = 24;
+    json_config["dish_grid_size_x"] = 22;
+    json_config["dish_grid_size_y"] = 24;
     json_config["dish_separation_x_m"] = 1.0;
     json_config["dish_separation_y_m"] = 2.0;
     json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
@@ -398,8 +399,8 @@ BOOST_AUTO_TEST_CASE(_dish_grid_population) {
 
     json json_config = json::parse(default_config_str);
     json_config["num_dishes"] = 8;
-    json_config["num_dishes_x"] = 22;
-    json_config["num_dishes_y"] = 24;
+    json_config["dish_grid_size_x"] = 22;
+    json_config["dish_grid_size_y"] = 24;
     json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
     const CHORDTelescope& tel = get_telescope(json_config);
 
@@ -1068,8 +1069,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     json json_config = json::parse(default_config_str);
     json_config["num_elements"] = 8;
     json_config["num_dishes"] = 4;
-    json_config["num_dishes_x"] = 3;
-    json_config["num_dishes_y"] = 3;
+    json_config["dish_grid_size_x"] = 3;
+    json_config["dish_grid_size_y"] = 3;
     json_config["telescope"]["origin_itrs_lat_deg"] = tel_lat_deg;
     json_config["telescope"]["origin_itrs_lon_deg"] = 0.0;
     json_config["telescope"]["dish_separation_x_m"] = lambda;

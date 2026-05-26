@@ -254,6 +254,7 @@ struct GeographicParams {
      * @return  The built GeographicParams.
      **/
     static GeographicParams from_config(const kotekan::Config& config, const std::string& path,
+                                        uint64_t dish_grid_size_x, uint64_t dish_grid_size_y,
                                         double dish_separation_x_m, double dish_separation_y_m);
 
     /**
@@ -264,6 +265,7 @@ struct GeographicParams {
      * @param   path    This telescope's path in the config.
      **/
     void set_dish_info(const kotekan::Config& config, const std::string& path,
+                       uint64_t dish_grid_size_x, uint64_t dish_grid_size_y,
                        double dish_separation_x_m, double dish_separation_y_m);
 };
 

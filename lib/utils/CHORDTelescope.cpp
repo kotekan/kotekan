@@ -40,7 +40,10 @@ static constexpr double arcsec2rad = M_PI / (180.0 * 3600);
 // Dish parameters calculation/initialization
 
 GeographicParams GeographicParams::from_config(const kotekan::Config& config,
-                                               const std::string& path, double dish_separation_x_m,
+                                               const std::string& path,
+                                               uint64_t dish_grid_size_x,
+                                               uint64_t dish_grid_size_y,
+                                               double dish_separation_x_m,
                                                double dish_separation_y_m) {
     GeographicParams dish;
 
@@ -52,17 +55,18 @@ GeographicParams GeographicParams::from_config(const kotekan::Config& config,
         config.get_default<bool>(path, "check_duplicate_dish_grid", true);
 
     // Set all dish input data: num_dishes, dish_info_table, dish_position, ...
-    dish.set_dish_info(config, path, dish_separation_x_m, dish_separation_y_m);
+    dish.set_dish_info(config, path, dish_grid_size_x, dish_grid_size_y, dish_separation_x_m, dish_separation_y_m);
 
     return dish;
 }
 
 void GeographicParams::set_dish_info(const kotekan::Config& config, const std::string& path,
-                                     double dish_separation_x_m, double dish_separation_y_m) {
+                        uint64_t dish_grid_size_x, uint64_t dish_grid_size_y,
+                        double dish_separation_x_m, double dish_separation_y_m) {
     // Get the number of dishes, make sure its positive.
     num_dishes = config.get<size_t>(path, "num_dishes");
-    num_dishes_x = config.get<size_t>(path, "num_dishes_x");
-    num_dishes_y = config.get<size_t>(path, "num_dishes_y");
+    num_dishes_x = dish_grid_size_x;
+    num_dishes_y = dish_grid_size_y;
 
     if (num_dishes == 0) {
         FATAL_ERROR_NON_OO("CHORDTelescope num_dishes must be > 0");
@@ -429,7 +433,7 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     _dish_grid_size_y(config.get<uint64_t>(path, "dish_grid_size_y")),
     _dish_separation_grid_x_m(config.get_default<double>(path, "dish_separation_x_m", 6.3)),
     _dish_separation_grid_y_m(config.get_default<double>(path, "dish_separation_y_m", 8.5)),
-    _geographic_params(GeographicParams::from_config(config, path, _dish_separation_grid_x_m, _dish_separation_grid_y_m)) {
+    _geographic_params(GeographicParams::from_config(config, path, _dish_grid_size_x, _dish_grid_size_y, _dish_separation_grid_x_m, _dish_separation_grid_y_m)) {
 
     DEBUG("Building CHORDTelescope");
 }
