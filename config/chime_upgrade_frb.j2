@@ -1103,8 +1103,8 @@ FRB:
     frb2_num_beams_x: 4
     frb2_num_beams_y: 256
     frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
-    frb2_beam_separation_x: 0.010   # TODO
-    frb2_beam_separation_y: 0.001
+    frb2_beam_separation_x: 0.00698126029796155 # should be 0.4deg but sin(0.4deg) ~ 0.4/180*pi (small angle)
+    frb2_beam_separation_y: 1.73205080756888 / frb2_num_beams_y # sqrt(3)/256, from https://github.com/chime-frb-open-data/chime-frb-beam-model/blob/e65b070243056fe5d33a2b1f4ce52ce685b74fc5/cfbm/formed.py#L86 via Paul Scholz
 
     # Buffers
 
