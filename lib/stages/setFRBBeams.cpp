@@ -137,6 +137,9 @@ void setFRBBeams::main_thread() {
         uint64_t *beam_id = (uint64_t *)out_pos_buf->wait_for_empty_frame(unique_name, id_frame_id);
         if (beam_id == nullptr)
             break;
+
+        DEBUG("Writing {:d} beams to {:s} and {:s}", beams.size(),
+                out_pos_buf->buffer_name, out_id_buf->buffer_name);
         
         for (size_t b = 0; b < beams.size(); b++) {
             beam_id[b] = beams.at(b).id;
@@ -164,6 +167,8 @@ void setFRBBeams::main_thread() {
 
         out_pos_buf->mark_frame_full(unique_name, pos_frame_id++);
         out_id_buf->mark_frame_full(unique_name, id_frame_id++);
+
+        break;
     } 
 }
     
