@@ -423,6 +423,10 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     _gps_time_params(GPSTimeParams::from_config(config, path)),
     // Instrument geographic coordinates    
     _dish_frame(dish_frame_from_config(config, path)),
+    _num_polarizations(config.get<uint64_t>(path, "num_polarizations")),
+    _num_dishes(config.get<uint64_t>(path, "num_dishes")),
+    _dish_grid_size_x(config.get<uint64_t>(path, "dish_grid_size_x")),
+    _dish_grid_size_y(config.get<uint64_t>(path, "dish_grid_size_y")),
     _dish_separation_grid_x_m(config.get_default<double>(path, "dish_separation_x_m", 6.3)),
     _dish_separation_grid_y_m(config.get_default<double>(path, "dish_separation_y_m", 8.5)),
     _geographic_params(GeographicParams::from_config(config, path, _dish_separation_grid_x_m, _dish_separation_grid_y_m)) {
@@ -818,11 +822,11 @@ double CHORDTelescope::get_feed_separation_y_m() const {
 }
 
 uint64_t CHORDTelescope::get_grid_size_x() const {
-    return _geographic_params.num_dishes_x;
+    return _dish_grid_size_x;
 }
 
 uint64_t CHORDTelescope::get_grid_size_y() const {
-    return _geographic_params.num_dishes_y;
+    return _dish_grid_size_y;
 }
 
 void to_json(nlohmann::json& j, const dishInfo& d) {
