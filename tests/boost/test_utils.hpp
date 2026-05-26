@@ -269,6 +269,8 @@ struct CompareCTypes {
     telescope["num_dishes"] = 2;
     telescope["dish_separation_x_m"] = 6.3;
     telescope["dish_separation_y_m"] = 8.5;
+    telescope["dish_grid_size_x"] = 8;
+    telescope["dish_grid_size_y"] = 12;
     telescope["dish_inputs"] = nlohmann::json::array({{{"dish_idx", 0},
                                                        {"grid_x_idx", 0},
                                                        {"grid_y_idx", 0},
