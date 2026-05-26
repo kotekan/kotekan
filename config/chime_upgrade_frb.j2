@@ -1348,6 +1348,16 @@ FRB:
             base_dir: frb_beams
             in_buf: host_frb3_beams_offsetscale_buffer
             file_name: host_frb3_offsetscale_buffer
+        host_frb2_beam_positions_buffer:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_weights
+            in_buf: host_frb2_beam_positions_buffer
+            file_name: host_frb2_beam_positions_buffer
+        host_frb2_weights_buffer:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_weights
+            in_buf: host_frb2_weights_buffer
+            file_name: host_frb2_weights_buffer
 
 
 ################################################################################
