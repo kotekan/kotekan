@@ -20,8 +20,8 @@
 class setFRB1Phase : public kotekan::Stage {
     // Telescope layout
     const int num_components = config.get<int>(unique_name, "num_components");
-    const int num_dishes_x = config.get<int>(unique_name, "num_dishes_x");
-    const int num_dishes_y = config.get<int>(unique_name, "num_dishes_y");
+    const int num_dishes_x = Telescope::instance().get_grid_size_x();
+    const int num_dishes_y = Telescope::instance().get_grid_size_y();
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
 
     const std::vector<int> frequency_channels =

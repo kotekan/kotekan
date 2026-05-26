@@ -48,10 +48,10 @@ class calcFRB2Weights : public kotekan::Stage {
     // beamforming weights. For CHORD we have `frb1_swap_xy=false`,
     // and for CHIME we have `frb1_swap_xy=true`.
     const bool frb1_swap_xy = config.get_default<bool>(unique_name, "frb1_swap_xy", false);
-    const int num_dishes_x = frb1_swap_xy ? config.get<int>(unique_name, "num_dishes_y")
-                                          : config.get<int>(unique_name, "num_dishes_x");
-    const int num_dishes_y = frb1_swap_xy ? config.get<int>(unique_name, "num_dishes_x")
-                                          : config.get<int>(unique_name, "num_dishes_y");
+    const int num_dishes_x = frb1_swap_xy ? Telescope::instance().get_grid_size_y() 
+                                          : Telescope::instance().get_grid_size_x();
+    const int num_dishes_y = frb1_swap_xy ? Telescope::instance().get_grid_size_x()
+                                          : Telescope::instance().get_grid_size_y();
     const int frb1_num_beams_x = 2 * num_dishes_x;
     const int frb1_num_beams_y = 2 * num_dishes_y;
     const int frb1_num_beams = frb1_num_beams_x * frb1_num_beams_y;
