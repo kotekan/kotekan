@@ -1,19 +1,27 @@
-#include "Config.hpp"
-#include "DataType.hpp"
-#include "Stage.hpp"
-#include "StageFactory.hpp"
-#include "bufferContainer.hpp"
-#include "cudaQuantizeKernel8.hpp"
-#include "cudaUtils.hpp"
+#include <algorithm>                // for fill, fill_n
+#include <cassert>                  // for assert
+#include <cfloat>                   // for FLT_MAX
+#include <cmath>                    // for fabs, isfinite, isnan, fmax, fmin
+#include <cstdint>                  // for uint8_t
+#include <cstdlib>                  // for abort
+#include <string>                   // for allocator, string
+#include <vector>                   // for vector
+#include <functional>               // for function
 
-#include <algorithm>
-#include <cassert>
-#include <cfloat>
-#include <cmath>
-#include <cstdint>
-#include <cstdlib>
-#include <string>
-#include <vector>
+#include "Config.hpp"               // for Config
+#include "DataType.hpp"             // for float16_t
+#include "Stage.hpp"                // for Stage
+#include "StageFactory.hpp"         // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "cudaQuantizeKernel8.hpp"  // for cpu_quantize8, gpu_quantize8
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "cuda_fp16.h"              // for __half, __half::operator float
+#include "cuda_runtime.h"           // for cudaMalloc
+#include "cuda_runtime_api.h"       // for cudaMemcpy
+#include "driver_types.h"           // for cudaMemcpyKind
+#include "errors.h"                 // for TEST_PASSED
+#include "fmt.hpp"                  // for compile_string_to_view
+#include "kotekanLogging.hpp"       // for FATAL_ERROR, INFO
 
 class testQuantizeKernel8 : public kotekan::Stage {
 public:
@@ -92,7 +100,7 @@ public:
 
         // A function to check the result
         const auto check_result = [&]() {
-            using std::fabs, std::fmin, std::fmax, std::isfinite, std::isnan, std::sqrt;
+            using std::fabs, std::fmin, std::fmax, std::isfinite, std::isnan;
 
             for (int beam = 0; beam < nbeams; ++beam) {
                 for (int freq = 0; freq < nfreqs; ++freq) {

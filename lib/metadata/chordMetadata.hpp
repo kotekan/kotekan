@@ -1,44 +1,44 @@
 #ifndef CHORD_METADATA
 #define CHORD_METADATA
 
-#include "CHORDTelescope.hpp" // for dish_index_t
-#include "DataType.hpp"       // for type_to_string, type_total_bytes, DataType
-#include "NDArray.hpp"        // for GenericNDArray
-#include "Telescope.hpp"      // for Telescope, stream_t
-#include "buffer.hpp"         // for Buffer
+#include <string.h>            // for strnlen, strncpy
+#include <sys/time.h>          // for timeval
+#include <time.h>              // for timespec
+#include <cassert>             // for assert
+#include <cstddef>             // for size_t, ptrdiff_t
+#include <cstdint>             // for int32_t, uint32_t, int64_t, uint64_t
+#include <memory>              // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
+#include <mutex>               // for mutex, lock_guard
+#include <sstream>             // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
+#include <string>              // for basic_string, char_traits, operator==, string, operator<<
+#include <vector>              // for vector
+#include <array>               // for array
 
-#include <cassert>    // for assert
-#include <cstddef>    // for size_t, ptrdiff_t
-#include <cstdint>    // for int64_t, int32_t, uint32_t, uint64_t
-#include <memory>     // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
-#include <mutex>      // for mutex, lock_guard
-#include <sstream>    // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
-#include <string.h>   // for strnlen, strncpy
-#include <string>     // for basic_string, char_traits, operator==, string, operator<<
-#include <sys/time.h> // for timeval
-#include <time.h>     // for timespec
-#include <vector>     // for vector
+#include "CHORDTelescope.hpp"  // for dish_index_t
+#include "DataType.hpp"        // for type_to_string, type_total_bytes, DataType
+#include "NDArray.hpp"         // for GenericNDArray
+#include "Telescope.hpp"       // for Telescope, stream_t
+#include "buffer.hpp"          // for Buffer
 // TODO: CHIME and CHORD differ whether they use the datasetManager
-#include "dataset.hpp"        // for dset_id_t
-#include "kotekanLogging.hpp" // for WARN_NON_OO
-#include "metadata.hpp"       // for metadataObject, metadataPool
-
-#include "fmt/format.h"     // for compile_string_to_view
-#include "json.hpp"         // for basic_json, json
-#include "jsonMetadata.hpp" // for COARSE_FREQ, LOST_TIMESAMPLES, STREAM_ID, BEAM_COORD, DATA...
+#include "dataset.hpp"         // for dset_id_t
+#include "kotekanLogging.hpp"  // for WARN_NON_OO
+#include "metadata.hpp"        // for metadataObject, metadataPool
+#include "json.hpp"            // for basic_json, json
+#include "jsonMetadata.hpp"    // for COARSE_FREQ, LOST_TIMESAMPLES, STREAM_ID, BEAM_COORD, DATA...
+#include "fmt.hpp"             // for compile_string_to_view
 
 // One of the warning-silencing pragmas below only applied for gcc >= 8
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #pragma pack()
 
 // Maximum number of frequencies in metadata array
-const int CHORD_META_MAX_FREQ = 4096;
+const int CHORD_META_MAX_FREQ = 12288;
 
 // Maximum number of dimensions for arrays
 const int CHORD_META_MAX_DIM = 10;
 
 // Maximum length of dimension names for arrays
-const int CHORD_META_MAX_DIMNAME = 20;
+const int CHORD_META_MAX_DIMNAME = 24;
 
 // Maximum number of visibility matrix samples in a frame
 const int CHORD_META_MAX_VIS_SAMPLES = 64;
@@ -154,6 +154,10 @@ public:
             assert(this->dim[d] >= 0);
             np *= this->dim[d];
         }
+    }
+
+    bool has_name() const {
+        return (strnlen(this->name, CHORD_META_MAX_DIMNAME) > 0);
     }
 
     void set_name(const std::string& name) {
@@ -285,6 +289,22 @@ public:
         return metadata.at(jsonMetadata::COARSE_FREQ).template get<std::vector<int>>();
     }
 
+    // Stream IDs - the stream identifiers for packets received
+    void set_stream_ids(const std::vector<uint32_t>& stream_ids) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::STREAM_IDS] = stream_ids;
+    }
+
+    bool has_stream_ids() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::STREAM_IDS);
+    }
+
+    std::vector<uint32_t> get_stream_ids() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::STREAM_IDS).template get<std::vector<uint32_t>>();
+    }
+
     // TODO: remove this, it's not setting anything anymore (and assumes that
     // fpga_seq_num is set)
     void set_gps_time([[maybe_unused]] const timespec gps_time) {
@@ -400,6 +420,41 @@ public:
         std::lock_guard<std::mutex> lock(this->lock);
         return metadata.at(jsonMetadata::FREQ_UPCHAN_INDEX).template get<std::vector<int>>();
     }
+
+    // Whether second stage RFI excision (at the GPU frame level) is enabled
+    void set_rfi_frame_excision_enabled(const bool rfi_frame_excision_enabled) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        metadata[jsonMetadata::RFI_FRAME_EXCISION_ENABLED] = rfi_frame_excision_enabled;
+    }
+
+    bool has_rfi_frame_excision_enabled() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::RFI_FRAME_EXCISION_ENABLED);
+    }
+
+    bool get_rfi_frame_excision_enabled() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::RFI_FRAME_EXCISION_ENABLED).template get<bool>();
+    }
+
+    // Second stage RFI excision (whole GPU frames) thresholds
+    void set_rfi_frame_excision_thresholds(const std::vector<std::array<float, 2>> thresholds) {
+        std::lock_guard<std::mutex> lock(this->lock);
+        assert(thresholds.size() <= MAX_NUM_RFI_THRESHOLDS);
+        metadata[jsonMetadata::RFI_FRAME_EXCISION_THRESHOLDS] = thresholds;
+    }
+
+    bool has_rfi_frame_excision_thresholds() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.contains(jsonMetadata::RFI_FRAME_EXCISION_THRESHOLDS);
+    }
+
+    std::vector<std::array<float, 2>> get_rfi_frame_excision_thresholds() const {
+        std::lock_guard<std::mutex> lock(this->lock);
+        return metadata.at(jsonMetadata::RFI_FRAME_EXCISION_THRESHOLDS)
+            .template get<std::vector<std::array<float, 2>>>();
+    }
+
 
     // non-science metadata
 

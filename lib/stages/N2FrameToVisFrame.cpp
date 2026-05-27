@@ -1,17 +1,31 @@
 #include "N2FrameToVisFrame.hpp"
 
-#include "Config.hpp" // for Config
-#include "N2FrameView.hpp"
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "datasetState.hpp"
-#include "gateSpec.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include <time.h>               // for timespec, time_t, size_t
+#include <gsl-lite.hpp>         // for span, span_iterator
+#include <cassert>              // for assert
+#include <complex>              // for complex, conj
+#include <algorithm>            // for transform
+#include <functional>           // for bind, function
+#include <iterator>             // for back_insert_iterator, begin, end, back_inserter
+#include <memory>               // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
+#include <numeric>              // for iota
+#include <tuple>                // for get, tuple
 
-#include <cassert> // for assert
-#include <complex>
+#include "Config.hpp"           // for Config
+#include "N2FrameDesc.hpp"      // for N2FrameDesc
+#include "N2FrameView.hpp"      // for N2FrameView
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "datasetState.hpp"     // for eigenvalueState, freqState, gatingState, inputState, meta...
+#include "gateSpec.hpp"         // for gateSpec
+#include "visBuffer.hpp"        // for VisFrameView
+#include "visUtil.hpp"          // for prod_ctype, input_ctype, frameID, freq_ctype, modulo, par...
+#include "Hash.hpp"             // for operator!=, Hash
+#include "Telescope.hpp"        // for Telescope
+#include "fmt.hpp"              // for compile_string_to_view
+#include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG, logLevel
+#include "version.h"            // for get_git_commit_hash
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -30,12 +44,26 @@ n2FrameToVisFrame::n2FrameToVisFrame(Config& config, const std::string& unique_n
     vis_buf = get_buffer("vis_buf");
     vis_buf->register_producer(unique_name);
 
-    // cannot check on num_ev, num_elements, or num_prod which are used only to
-    // calculate the frame size in BufferFactory but not stored
-    if (n2_buf->frame_size != vis_buf->frame_size) {
-        FATAL_ERROR(
-            "Frame sizes between N2FrameView and VisFrameView must be identical, but got {} and {}",
-            n2_buf->frame_size, vis_buf->frame_size);
+    // N2FrameView and VisFrameView have different data fields, so extract the basic
+    // size parameters from the N2 buffer and compute the size of VisFrameView they correspond
+    // to.
+    // N2FrameDesc's are constructed on buffer creation (before stages) so this object will
+    // exist with the correct data.
+    const std::shared_ptr<const kotekan::N2FrameDesc> n2_frame_desc =
+        std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(n2_buf->get_frame_description());
+    if (!n2_frame_desc) {
+        FATAL_ERROR("n2_buf does not have N2 Frame Descriptor");
+    }
+    uint32_t n2_ne = n2_frame_desc->get_num_elements();
+    uint32_t n2_np = n2_frame_desc->get_num_products();
+    uint32_t n2_nev = n2_frame_desc->get_num_ev();
+    size_t n2_conv_frame_size = VisFrameView::calculate_frame_size(n2_ne, n2_np, n2_nev);
+
+    // Check the sizes are equivalent
+    if (n2_conv_frame_size != vis_buf->frame_size) {
+        FATAL_ERROR("Frame sizes between converted N2FrameView and VisFrameView must be identical, "
+                    "but got {} (converted) and {}",
+                    n2_conv_frame_size, vis_buf->frame_size);
     }
 
     fake_git_tag = config.get_default<std::string>(unique_name, "fake_git_tag", std::string());

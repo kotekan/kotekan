@@ -89,14 +89,12 @@ public:
      * @param kernel_names Vector list of kernel names in the kernel file
      * @param opts         List of options to pass to nvrtc
      **/
-    virtual void build(const std::string& kernel_filename,
-                       const std::vector<std::string>& kernel_names,
-                       const std::vector<std::string>& opts);
+    void build(const std::string& kernel_filename, const std::vector<std::string>& kernel_names,
+               const std::vector<std::string>& opts);
 
-    virtual void build_ptx(const std::string& kernel_filename,
-                           const std::vector<std::string>& kernel_names,
-                           const std::vector<std::string>& opts,
-                           const std::string& kernel_name_prefix = "");
+    void build_ptx(const std::string& kernel_filename, const std::vector<std::string>& kernel_names,
+                   const std::vector<std::string>& opts,
+                   const std::string& kernel_name_prefix = "");
 
     // Map containing the runtime kernels built with nvrtc from the kernel file (if needed)
     std::map<std::string, CUfunction> runtime_kernels;

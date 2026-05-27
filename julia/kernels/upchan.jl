@@ -72,9 +72,9 @@ end
 # Base.sinc isn't inlined, probably too complex
 @fastmath @inline sinc1(x) = iszero(x) ? one(x) : sinpi(x) / (pi * x)
 
-# sinc-Hanning weight function, eqn. (11), with `N = U+2`
+# sinc-Hanning weight function, eqn. (11), with `N = U+1`
 @fastmath @inline function Wkernel(s, M, U)
-    s′ = (2i32 * s - (M * U - 1i32)) / Float32(2 * (M * U + 1))  # normalized to (-1/2; +1/2)
+    s′ = (2i32 * s - (M * U - 1i32)) / Float32(2 * (M * U)) # normalized to (-1/2; +1/2)
     return cospi(s′)^2 * sinc1(M * s′)
 end
 
@@ -1827,13 +1827,19 @@ function fix_ptx_kernel()
         write(fh, ptx)
         return nothing
     end
-    sass = read("output/upchan_$(setup)_U$(U).sass", String)
     open("output/upchan_$(setup)_U$(U).sass", "w") do fh
         println(fh, "// SASS kernel code for the CUDA upchannelizer")
         println(fh, "// This file has been generated automatically by `upchan.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
         println(fh)
-        write(fh, sass)
+        CUDA.code_sass(fh, upchan, Tuple{Int32, Int32, Int32, Int32, Int32, Int32,
+                                         CuDeviceVector{Float16x2,1},
+                                         CuDeviceVector{Int4x8,1},
+                                         CuDeviceVector{Int4x8,1},
+                                         CuDeviceVector{Int32,1}};
+                       cap=compute_capability, ptx=ptx_compat,
+                       minthreads=(num_threads, num_warps),
+                       blocks_per_sm=num_blocks_per_sm)
         return nothing
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
@@ -2055,12 +2061,6 @@ if CUDA.functional()
     open("output/upchan_$(setup)_U$(U).ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true, silent=true)
-        end
-    end
-    println("Writing SASS code...")
-    open("output/upchan_$(setup)_U$(U).sass", "w") do fh
-        redirect_stdout(fh) do
-            @device_code_sass main(; compile_only=true, silent=true)
         end
     end
     fix_ptx_kernel()

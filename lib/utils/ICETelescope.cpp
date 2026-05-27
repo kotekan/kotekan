@@ -1,14 +1,13 @@
 #include "ICETelescope.hpp"
 
-#include "Telescope.hpp"      // for Telescope, stream_t, freq_id_t, REGISTER_TELESCOPE, _facto...
-#include "kotekanLogging.hpp" // for WARN, INFO, FATAL_ERROR
-#include "restClient.hpp"     // for restClient
+#include <cmath>               // for abs
+#include <stdexcept>           // for invalid_argument, runtime_error
 
-#include "fmt.hpp"  // for compile_string_to_view, format, format_string
-#include "json.hpp" // for basic_json, input_adapter, json
-
-#include <cmath>     // for abs
-#include <stdexcept> // for invalid_argument, runtime_error
+#include "Telescope.hpp"       // for Telescope, stream_t, freq_id_t, REGISTER_TELESCOPE, _facto...
+#include "kotekanLogging.hpp"  // for WARN, INFO, FATAL_ERROR, FATAL_ERROR_NON_OO
+#include "restClient.hpp"      // for restClient
+#include "fmt.hpp"             // for compile_string_to_view, format, format_string
+#include "json.hpp"            // for basic_json, input_adapter, json
 
 
 REGISTER_TELESCOPE(ICETelescope, "ICETelescope");
@@ -28,9 +27,22 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
 
     bool require_gps = config.get_default<bool>(path, "require_gps", false);
     _query_gps = config.get_default<bool>(path, "query_gps", false);
-    _gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
-    _gps_port = config.get_default<uint32_t>(path, "gps_host", 54321);
-    _gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
+    // gps_host_info names a sibling block (typically /fpga_controller)
+    // holding ``host``, ``port``, and optionally ``timing_endpoint`` (the
+    // default for gps_endpoint). Required when query_gps is true.
+    std::string default_gps_endpoint = "/get-frame0-time";
+    if (config.exists(path, "gps_host_info")) {
+        const std::string ref = config.get<std::string>(path, "gps_host_info");
+        _gps_host = config.get<std::string>(ref, "host");
+        _gps_port = config.get_default<uint32_t>(ref, "port", 54321);
+        if (config.exists(ref, "timing_endpoint"))
+            default_gps_endpoint = config.get<std::string>(ref, "timing_endpoint");
+    } else if (_query_gps) {
+        FATAL_ERROR_NON_OO("ICETelescope ({}): query_gps is true but gps_host_info is not set; "
+                           "point it at the FPGA controller block (e.g. /fpga_controller).",
+                           path);
+    }
+    _gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", default_gps_endpoint);
     if (_query_gps)
         set_gps(_gps_host, _gps_port, _gps_endpoint);
     if (!gps_enabled)

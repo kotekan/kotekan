@@ -73,8 +73,10 @@
  * @conf  num_ev_conv      UInt. Test only the top `num_ev_conv` eigenpairs for convergence.
  * @conf  krylov           UInt, default 2. Size of the Krylov basis to use.
  * @conf  subspace         UInt, default 3. Number of subspace iteration substeps.
- * @conf  num_blaze_workers UInt, default 0. If greater than 0 limit number of
- *                          blaze worker threads (kotekan wide)
+ * @conf  num_blaze_workers UInt, default 0. If greater than 0, set the number of
+ *                          Blaze SMP worker threads used by this stage's
+ *                          intra-op parallelization (per-stage with the OpenMP
+ *                          backend; should match the size of cpu_affinity).
  *
  * @par Metrics
  * @metric kotekan_eigenN2iter_comp_time_seconds
@@ -104,7 +106,7 @@ public:
 
 private:
     // Update the prometheus metrics
-    void update_metrics(int freq_id, u_int64_t elapsed_time, const eig_t<cfloat>& eigpair,
+    void update_metrics(int freq_id, double elapsed_time, const eig_t<cfloat>& eigpair,
                         const EigConvergenceStats& stats);
 
     // Calculate the mask to apply from the object parameters
@@ -124,7 +126,7 @@ private:
     const size_t _krylov;
     const size_t _subspace;
 
-    /// Blaze number of threads
+    /// Blaze SMP worker thread count for this stage
     uint32_t _num_blaze_workers;
 
     /// Parameters for masking the matrix

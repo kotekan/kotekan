@@ -9,19 +9,27 @@
 #define DPDK_BASE_HPP
 
 // DPDK!
+// The DPDK headers are C; keep them inside the extern "C" block and pin them so
+// IWYU never relocates a C++ header (e.g. <atomic>, fmt) in here, which would
+// break with "templates must have C++ linkage".
 extern "C" {
-#include <rte_ethdev.h> // for rte_eth_conf
+// IWYU pragma: begin_keep
+#include <rte_ethdev.h>         // for rte_eth_conf
+#include <rte_ring_core.h>      // for rte_ring
 // cinttypes needed by some CentOS systems.
-#include <cinttypes> // for uint32_t, int32_t, uint8_t
+#include <cinttypes>            // for uint32_t, int32_t, uint8_t
+// IWYU pragma: end_keep
 }
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for kotekanLogging
+#include <atomic>               // for atomic
+#include <string>               // for string, allocator, basic_string
+#include <vector>               // for vector
 
-#include <string> // for string, allocator, basic_string
-#include <vector> // for vector
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for kotekanLogging
+#include "fmt.hpp"              // for format
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port
@@ -66,6 +74,19 @@ public:
      *             which requires the system shutdown.
      */
     virtual int handle_packet(struct rte_mbuf* mbuf) = 0;
+
+    /**
+     * @brief Returns true if this handler is a distributor.
+     *
+     * Distributor handlers take ownership of the mbuf (either enqueuing it into
+     * a worker ring or freeing it on drop) and must NOT have rte_pktmbuf_free
+     * called on them by the caller after handle_packet returns.
+     *
+     * @return bool True if this handler is a distributor, false otherwise.
+     */
+    virtual bool is_distributor() const {
+        return false;
+    }
 
     /**
      * @brief Called every 1 second to update stats
@@ -141,6 +162,9 @@ protected:
  * @conf   num_mem_channels Int. Default 4     The number of system memory channels
  * @conf   init_mem_alloc   Int.  Default 256  The initial memory allocation in MB
  * @conf   pcie_block_list  Array of strings.  List of PCIe devices to block DPDK from using.
+ * @conf   lcore_start_delay Int. Default 40   Seconds to wait after port start before the
+ *                                             lcore RX loop begins. Required on E810 NICs
+ *                                             to allow ports to become ready.
  *
  * @author Andre Renard
  */
@@ -187,6 +211,8 @@ private:
      */
     void create_handlers(kotekan::bufferContainer& buffer_container);
 
+    void create_workers(kotekan::bufferContainer& buffer_container);
+
     /// The pool of DPDK mbufs, one per numa node
     std::vector<struct rte_mempool*> mbuf_pools;
 
@@ -211,14 +237,8 @@ private:
     /// The size of the Transmit ring
     uint32_t tx_ring_size;
 
-    /// Just a list of ports with the length stored with it.
-    struct portList {
-        uint32_t* ports;
-        uint32_t num_ports;
-    };
-
-    /// One of these port list structs exists per lcore
-    struct portList* lcore_port_list;
+    /// Map of ports to lcores (DPDK threads)
+    std::vector<std::vector<uint32_t>> lcore_port_list;
 
     /// Number of memory channels
     uint32_t num_mem_channels;
@@ -226,8 +246,20 @@ private:
     /// Initial memory allocation in MB
     std::string init_mem_alloc;
 
+    /// Seconds to wait after port start before the lcore RX loop begins
+    uint32_t lcore_start_delay;
+
     /// One of these exists per system port
     dpdkRXhandler** handlers;
+
+    /// Worker rings for passing packets between lcores
+    std::vector<rte_ring*> worker_rings;
+
+    /// Worker handlers for processing packets on worker rings
+    std::vector<dpdkRXhandler*> workers;
+
+    /// Active workers (exit when all have stopped)
+    std::atomic<int32_t> active_workers;
 };
 
 

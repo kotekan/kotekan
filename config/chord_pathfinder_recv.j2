@@ -1,0 +1,231 @@
+{#-
+  chord_pathfinder_recv.j2
+  Basic N2 receiver config.
+-#}
+
+
+# num_output_frames: fully accumulated N2 frames per frequency that should reach hdf5N2Write
+{% set num_output_frames = 100 %}
+
+# num_local_freq: number of contiguous frequency IDs to simulate on this GPU;
+#    must be divisible by 4 because pl_mask shapes use num_local_freq/4.
+{% set num_local_freq = 6550 %}
+
+
+# CHORD telescope sampling setup (matches CHORDTelescope defaults)
+{% set sampling_rate_MHz = 3.2e3 %}
+{% set fft_length = 16384 %}
+{% set nyquist_zone = 1 %}
+{% set df_MHz = (sampling_rate_MHz / fft_length) %}
+{% set freq0_MHz = 0 %}
+
+# Science band narrowed to just the simulated freq_ids above
+{% set science_min_freq_MHz = 300 %}
+{% set science_max_freq_MHz = 1500 %}
+
+# num_dishes: dishes/antennas to simulate.
+# With 2 polarizations, num_elements = 2 * num_dishes, which the n2k correlator requires to be a multiple of 128
+# (CorrelatorParams::ns_divisor). That means num_dishes must be a multiple of 64. This also satisfies the counts
+# block (num_elements/8 divisible by 8) and the packet-loss mask’s dish/8 grouping.
+{% set num_dishes = 64 %}
+
+# fpga time samples per generated frame (data_set), per frequency/polarization/dish;
+# effectively "fpga_ticks_per_full_frame". This is the frame length seen by testDataGen and the n2k correlator.
+# Must be divisible by sub_integration_ntime for the correlator output, by 1024 for the RFI mask downsample,
+# and by 128 for the packet-loss mask layout.
+{% set samples_per_data_set = 8192 %}
+
+# fpga samples collapsed by the GPU correlator into one n2k sub-integration/visibility sample.
+# Distinct from samples_per_data_set (the total frame length); samples_per_data_set / sub_integration_ntime is the number
+# of sub-integrations produced per frame. Choose any positive divisor of samples_per_data_set (does not need to be 1024).
+{% set sub_integration_ntime = 8192 %}
+
+# n2k sub-integrations contained in one generated frame (derived)
+# (= samples_per_data_set / sub_integration_ntime).
+{% set integrations_per_frame = samples_per_data_set // sub_integration_ntime %}
+
+# n2k sub-integrations to combine into each output N2 frame by N2Accumulate.
+# Choose a multiple of integrations_per_frame so n2k_frames_per_output is an integer and generators run long enough.
+# 238 ~= 10 seconds. 
+{% set num_subintegrations_per_bin = 238 %} 
+
+# correlation frames needed to form one output N2 frame
+{% set n2k_frames_per_output = num_subintegrations_per_bin // integrations_per_frame %}
+
+
+---
+type: config
+
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: WARN
+
+# Referenced by /CHORDTelescope/gps_host_info, /config_tracker/fpga_host_info,
+# and per-stage baseband_gain_host_info (e.g. on hdf5N2Write).
+fpga_controller:
+    host: "chive"
+    port: 54321
+    config_endpoint: /config
+    timing_endpoint: /get-frame0-time
+    gains_endpoint: /get-current-gain-file
+
+config_tracker:
+    enabled: true
+    fpga_host_info: /fpga_controller
+    upstream_fetch_retries: 2
+    upstream_fetch_timeout_seconds: 10
+
+numa_node: 0
+
+num_gpus: 0
+buffer_depth: 4
+
+cpu_affinity: [0,1,2,3]
+
+num_times: samples_per_data_set  # New N2K needs this.
+num_polarizations: 2
+num_dishes: {{ num_dishes }}
+num_elements: num_polarizations * {{ num_dishes }}
+num_local_freq: {{ num_local_freq }}
+num_ev_to_calculate: 2
+
+
+telescope:
+    name: CHORDTelescope
+    sampling_rate_MHz: {{ sampling_rate_MHz }}
+    fft_length: {{ fft_length }}
+    nyquist_zone: {{ nyquist_zone }}
+    min_science_freq_MHz: {{ science_min_freq_MHz }}
+    max_science_freq_MHz: {{ science_max_freq_MHz }}
+
+    origin_itrs_lat_deg: 49.32075144444
+    origin_itrs_lon_deg: -119.62081125
+
+    grid_x_axis: [ 0.999974342398359362,
+                -0.000037539331442772,
+                -0.007163318767675494]
+    grid_y_axis: [0.000065403387739210,
+                0.999992433220348809,
+                0.003889630373557614]
+
+    dish_elev_axis: [0.99999999838132391,
+                   -0.000056897733584327
+                   0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
+
+    dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
+    check_duplicate_dish_grid: false  # Pathfinder has duplicate grid locations
+
+    num_dishes_x: 8
+    num_dishes_y: 12
+    dish_separation_x_m: 6.300156854906823
+    dish_separation_y_m: 8.500057809796308
+    dish_inputs: [
+        {dish_idx: 0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p1},
+        {dish_idx: 1, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p2},
+        {dish_idx: 2, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p1},
+        {dish_idx: 3, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p2},
+        {dish_idx: 4, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p1},
+        {dish_idx: 5, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p2}
+    ]
+
+    require_gps: True
+    query_gps: True
+    gps_host_info: /fpga_controller
+    auto_correct_gps_week_rollover: True
+
+    eop_updatable_config: /earth_rotation_data
+
+earth_rotation_data:
+    kotekan_update_endpoint: json
+    earth_orientation_parameter_table: []
+
+# Pools
+n2_pool:
+    kotekan_metadata_pool: N2Metadata
+    num_metadata_objects: 16 * buffer_depth
+
+
+
+
+# Receive subset N2 buffer
+
+n2_recv_subset_buffer:
+    kotekan_buffer: N2
+    num_elements: 8
+    num_ev: num_ev_to_calculate
+    n2_layout: "FullUpperTri"
+    num_frames: buffer_depth * num_local_freq
+    metadata_pool: n2_pool
+
+# Receive full N2 Buffer
+
+n2_recv_full_buffer:
+    kotekan_buffer: N2
+    num_elements: 128
+    num_ev: 0
+    n2_layout: "FullUpperTri"
+    num_frames: buffer_depth * num_local_freq
+    metadata_pool: n2_pool
+
+
+
+## Receive data
+
+buffer_recv_subset_subset:
+    kotekan_stage: bufferRecv
+    buf: n2_recv_subset_buffer
+    listen_port: 11025
+
+buffer_recv_full_n2:
+    kotekan_stage: bufferRecv
+    buf: n2_recv_full_buffer
+    listen_port: 11027
+
+
+
+## Write out the visibilities using HDF5
+
+# Subset visibilities
+hdf5_N2_write_subset:
+    log_level: DEBUG
+    kotekan_stage: hdf5N2Write
+    cpu_affinity: [12]
+    in_buf: n2_recv_subset_buffer
+    base_dir: /mnt/cs00/data/kotekan_vis_files/subset/
+    baseband_gain_host_info: /fpga_controller
+    file_name: pipeline_test
+    prefix_hostname: false
+    use_bitshuffle: true
+    compression: "lz4"
+    compression_level: 3
+    zip_compression: 0
+    # Chunking: ensure positive chunk sizes
+    blocksize_f: 16
+    late_frame_grace_seconds: 30
+    num_ev: num_ev_to_calculate
+    n2_layout: "FullUpperTri"
+    num_file_t: 20
+
+
+# Full visibilities (all elements)
+hdf5_N2_write_full:
+    log_level: DEBUG
+    kotekan_stage: hdf5N2Write
+    cpu_affinity: [12]
+    in_buf: n2_recv_full_buffer
+    base_dir: /mnt/cs00/data/kotekan_vis_files/full/
+    baseband_gain_host_info: /fpga_controller
+    file_name: pipeline_test
+    prefix_hostname: false
+    use_bitshuffle: true
+    compression: "lz4"
+    compression_level: 3
+    zip_compression: 0
+    # Chunking: ensure positive chunk sizes
+    blocksize_f: 32
+    late_frame_grace_seconds: 30
+    num_ev: 0
+    n2_layout: "FullUpperTri"
+    num_file_t: 20

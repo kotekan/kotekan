@@ -1,15 +1,20 @@
 #ifndef N2_FRAME_DESC_HPP
 #define N2_FRAME_DESC_HPP
 
-#include "Config.hpp" // for kotekan::Config
-#include "FrameDesc.hpp"
-#include "N2Layout.hpp"
-#include "N2Util.hpp" // for N2::prod_ctype, N2::cfloat
+#include <stddef.h>       // for size_t
+#include <stdint.h>       // for uint32_t, int32_t, uint16_t
+#include <algorithm>      // for max
+#include <map>            // for map, operator!=, _Rb_tree_const_iterator
+#include <utility>        // for pair
+#include <vector>         // for vector
+#include <iosfwd>         // for ostream
+#include <string>         // for string
 
-#include <algorithm>
-#include <map>
-#include <utility>
-#include <vector>
+#include "Config.hpp"     // for Config
+#include "FrameDesc.hpp"  // for FrameDesc
+#include "N2Layout.hpp"   // for N2Layout
+#include "N2Util.hpp"     // for prod_ctype
+#include "Symbol.hpp"     // for Symbol
 
 namespace kotekan {
 
@@ -18,7 +23,7 @@ namespace kotekan {
  *
  * Use this enum to refer to the fields.
  **/
-enum class N2Field { vis, weight, flags, eval, evec, emethod, erms, gain };
+enum class N2Field { vis, weight, flags, eval, evec, emethod, erms, radiometer_chi2, gain, mask };
 
 /**
  * @brief Describes the byte range of a field within an N2 frame.
@@ -49,7 +54,7 @@ struct n2frame_layout_t {
  *
  * Use this enum to refer to the method used to compute Eigenvalues and Eigenvectors.
  **/
-enum class N2EigenMethod : int32_t { none, cheevr, iterative };
+enum class N2EigenMethod : int32_t { none, cheevr, iterative, failed_iterative };
 
 class N2FrameDesc : public FrameDesc {
 public:

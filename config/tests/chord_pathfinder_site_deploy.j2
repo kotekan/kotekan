@@ -1,0 +1,192 @@
+{#-
+  chord_pathfinder_site_deploy.j2
+  Full 2-numa X-engine pipeline.
+  This file includes:
+    - chord_pathfinder_dpdk.j2 to receive data from the F-engine
+    - chord_pathfinder_core.j2 including gpu kernels, CPU accumulation, and eigensolvers
+    - chord_pathfinder_send.j2 to send data to the recv node.
+-#}
+
+
+# num_output_frames: fully accumulated N2 frames per frequency that should reach hdf5N2Write
+{% set num_output_frames = 100 %}
+
+# num_local_freq: number of frequency IDs to simulate on this GPU;
+#    must be divisible by 4 because pl_mask shapes use num_local_freq/4.
+{% set num_local_freq = 384 %}
+
+
+# CHORD telescope sampling setup (matches CHORDTelescope defaults)
+{% set sampling_rate_MHz = 3.2e3 %}
+{% set fft_length = 16384 %}
+{% set nyquist_zone = 1 %}
+{% set df_MHz = (sampling_rate_MHz / fft_length) %}
+{% set freq0_MHz = 0 %}
+
+# Science band narrowed to just the simulated freq_ids above
+{% set science_min_freq_MHz = 300 %}
+{% set science_max_freq_MHz = 1500 %}
+
+# num_dishes: dishes/antennas to simulate.
+# With 2 polarizations, num_elements = 2 * num_dishes, which the n2k correlator requires to be a multiple of 128
+# (CorrelatorParams::ns_divisor). That means num_dishes must be a multiple of 64. This also satisfies the counts
+# block (num_elements/8 divisible by 8) and the packet-loss mask’s dish/8 grouping.
+{% set num_dishes = 64 %}
+
+# fpga time samples per generated frame (data_set), per frequency/polarization/dish;
+# effectively "fpga_ticks_per_full_frame". This is the frame length seen by testDataGen and the n2k correlator.
+# Must be divisible by sub_integration_ntime for the correlator output, by 1024 for the RFI mask downsample,
+# and by 128 for the packet-loss mask layout.
+{% set samples_per_data_set = 8192 %}
+
+# fpga samples collapsed by the GPU correlator into one n2k sub-integration/visibility sample.
+# Distinct from samples_per_data_set (the total frame length); samples_per_data_set / sub_integration_ntime is the number
+# of sub-integrations produced per frame. Choose any positive divisor of samples_per_data_set (does not need to be 1024).
+{% set sub_integration_ntime = 8192 %}
+
+# n2k sub-integrations contained in one generated frame (derived)
+# (= samples_per_data_set / sub_integration_ntime).
+{% set integrations_per_frame = samples_per_data_set // sub_integration_ntime %}
+
+# n2k sub-integrations to combine into each output N2 frame by N2Accumulate.
+# Choose a multiple of integrations_per_frame so n2k_frames_per_output is an integer and generators run long enough.
+# 238 ~= 10 seconds. 
+{% set num_subintegrations_per_bin = 238 %} 
+
+# correlation frames needed to form one output N2 frame
+{% set n2k_frames_per_output = num_subintegrations_per_bin // integrations_per_frame %}
+
+# RFI Detection Parameters
+{% set rfi_downsampling_factor = 256 %}
+{% set rfi_second_downsampling_factor = 32 %}
+{% set rfi_num_times = samples_per_data_set // rfi_downsampling_factor %}  {# = 32 #}
+{% set rfi_num_times_bar = rfi_num_times //  rfi_second_downsampling_factor %}  {# = 1 #}
+
+---
+type: config
+
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: WARN
+
+# Referenced by /CHORDTelescope/gps_host_info, /config_tracker/fpga_host_info,
+# and per-stage baseband_gain_host_info (e.g. on hdf5N2Write).
+fpga_controller:
+    host: "chive"
+    port: 54321
+    config_endpoint: /config
+    timing_endpoint: /get-frame0-time
+    gains_endpoint: /get-current-gain-file
+
+config_tracker:
+    enabled: true
+    fpga_host_info: /fpga_controller
+    upstream_fetch_retries: 2
+    upstream_fetch_timeout_seconds: 10
+
+numa_node: 0
+
+num_gpus: 1
+buffer_depth: 4
+num_gpu_frames: 4
+host_side_buffer_depth: buffer_depth * 6
+cpu_affinity: [0,1,8,11,12,13,14,15]
+frame_arrival_period: 5.12e-6 * {{ samples_per_data_set }}
+sizeof_gpu_int: 4 # bytes
+sizeof_int8: 1
+sizeof_int32: 4
+sizeof_uint64: 8
+sizeof_float32: 4
+
+sub_integration_ntime: {{ sub_integration_ntime }}
+samples_per_data_set: {{ samples_per_data_set }}
+rfi_downsampling_factor: {{ rfi_downsampling_factor }}
+rfi_second_downsampling_factor: {{ rfi_second_downsampling_factor }}
+rfi_num_times: {{ rfi_num_times }}
+rfi_num_times_bar: {{ rfi_num_times_bar }}
+rfi_sk_rfimask_sigmas: 5.0
+rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are good
+rfi_feed_averaged_min_good_frac: 0.25   # Wide open (0.25) so most averaged feeds are good
+rfi_mu_min: 2.0       # Should be small (2) to let in many samples.
+rfi_mu_max: 80.0      # Should be big (80) to let in many samples.
+num_times: samples_per_data_set  # New N2K needs this.
+num_polarizations: 2
+num_dishes: {{ num_dishes }}
+num_elements: num_polarizations * {{ num_dishes }}
+num_local_freq: {{ num_local_freq }}
+num_ev_to_calculate: 2
+
+# DPDK related parameters
+dpdk_output_frame_size: samples_per_data_set * num_local_freq * num_elements
+num_crs_boards: 16  # Number of F-engine boards sending data
+time_samples_per_packet: 16
+time_short: 16
+time_long: samples_per_data_set / time_short
+element_short: 8
+element_long: num_elements / element_short
+
+telescope:
+    name: CHORDTelescope
+    sampling_rate_MHz: {{ sampling_rate_MHz }}
+    fft_length: {{ fft_length }}
+    nyquist_zone: {{ nyquist_zone }}
+    min_science_freq_MHz: {{ science_min_freq_MHz }}
+    max_science_freq_MHz: {{ science_max_freq_MHz }}
+
+    origin_itrs_lat_deg: 49.32075144444
+    origin_itrs_lon_deg: -119.62081125
+
+    grid_x_axis: [ 0.999974342398359362,
+                -0.000037539331442772,
+                -0.007163318767675494]
+    grid_y_axis: [0.000065403387739210,
+                0.999992433220348809,
+                0.003889630373557614]
+
+    dish_elev_axis: [0.99999999838132391,
+                   -0.000056897733584327
+                   0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
+
+    dish_coelev_deg: -27.3  # Approx Tau A (Crab) pointing
+    check_duplicate_dish_grid: false  # Pathfinder has duplicate grid locations
+
+    num_dishes_x: 8
+    num_dishes_y: 12
+    dish_separation_x_m: 6.300156854906823
+    dish_separation_y_m: 8.500057809796308
+    dish_inputs: [
+        {dish_idx: 0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p1},
+        {dish_idx: 1, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p2},
+        {dish_idx: 2, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p1},
+        {dish_idx: 3, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p2},
+        {dish_idx: 4, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p1},
+        {dish_idx: 5, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p2}
+    ]
+
+    require_gps: False
+    query_gps: False
+    gps_host_info: /fpga_controller
+    auto_correct_gps_week_rollover: True
+
+    eop_updatable_config: /earth_rotation_data
+
+earth_rotation_data:
+    kotekan_update_endpoint: json
+    earth_orientation_parameter_table: []
+
+
+# Pools
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 15 * buffer_depth
+
+n2_pool:
+    kotekan_metadata_pool: N2Metadata
+    num_metadata_objects: 16 * buffer_depth
+
+# Pipeline
+{% include "chord_pathfinder_dpdk.j2" %}
+{% include "chord_pathfinder_core.j2" %}
+{% include "chord_pathfinder_send.j2" %}

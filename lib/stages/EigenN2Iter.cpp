@@ -53,7 +53,7 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     _krylov(config.get_default<size_t>(unique_name, "krylov", 2)),
     _subspace(config.get_default<size_t>(unique_name, "subspace", 3)),
 
-    // blaze parallelizations
+    // Blaze SMP thread count
     _num_blaze_workers(config.get_default<uint32_t>(unique_name, "num_blaze_workers", 0)),
 
     // Masking params
@@ -79,7 +79,7 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     out_buf->register_producer(unique_name);
 
     if (in_buf->buffer_type != "N2" || out_buf->buffer_type != "N2")
-        FATAL_ERROR("EigenN2Iter stage requires 'N2' buffers as input and output.");
+        FATAL_ERROR("EigenN2Iter stage requires an 'N2' buffer type for in_buf and out_buf.");
 
     // Validate that input and output buffers have N2 frame descriptors set
     auto in_desc =
@@ -105,16 +105,14 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
     if (failed_buf) {
         failed_buf->register_producer(unique_name);
         // this replicates some of the tests on in_buf to not rely on previous tests
-        if (in_buf->buffer_type != "N2" || failed_buf->buffer_type != "N2")
-            FATAL_ERROR("EigenN2Iter stage requires 'N2' buffers as input and failed.");
+        if (failed_buf->buffer_type != "N2")
+            FATAL_ERROR("EigenN2Iter stage requires 'N2' buffer type for failed_buf.");
 
         // Validate that input and failed buffers have N2 frame descriptors set
-        auto in_desc =
-            std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(in_buf->get_frame_description());
         auto failed_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(
             failed_buf->get_frame_description());
-        if (!in_desc || !failed_desc) {
-            FATAL_ERROR("EigenN2Iter: Input and failed buffers must have N2FrameDesc set");
+        if (!failed_desc) {
+            FATAL_ERROR("EigenN2Iter: failed_buf buffer must have N2FrameDesc set");
         }
         // Validate num_elements and layout match
         if (in_desc->get_num_elements() != failed_desc->get_num_elements()) {
@@ -156,7 +154,11 @@ void EigenN2Iter::main_thread() {
     uint32_t num_elements = 0;
     bool initialized = false;
 
-    // these are kotekan wide (process wide) settings
+    // Force serial BLAS so Blaze owns intra-op parallelism via its own OpenMP
+    // path (per-stage team, inherits this stage's cpu_affinity). With a
+    // multithreaded OpenBLAS we'd otherwise hit its process-global pool whose
+    // affinity is fixed at first-call time and bleeds between concurrent
+    // eigen stages.
     openblas_set_num_threads(1);
     if (_num_blaze_workers > 0)
         blaze::setNumThreads(_num_blaze_workers);
@@ -166,13 +168,14 @@ void EigenN2Iter::main_thread() {
         // Containers for results
         eig_t<cfloat> eigpair;
         EigConvergenceStats stats;
+        bool failed = false;
 
         // Get input visibilities. We assume the shape of these doesn't change.
-        INFO("EigenN2Iter waiting for input frame...");
+        DEBUG("EigenN2Iter waiting for input frame...");
         if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
             break;
         }
-        INFO("EigenN2Iter got input frame.");
+        DEBUG("EigenN2Iter got input frame.");
         N2FrameView input_frame(in_buf, input_frame_id);
 
         // Check that we have the full triangle
@@ -183,7 +186,7 @@ void EigenN2Iter::main_thread() {
         }
 
         // Start the calculation clock.
-        uint64_t start_time = current_time();
+        double start_time = current_time();
 
         // Initialise the mask
         if (!initialized) {
@@ -203,80 +206,84 @@ void EigenN2Iter::main_thread() {
         } catch (const std::runtime_error& e) {
             ERROR("Could not find eigenvalues after {:d} for frame fpga_seq {:d}: {:s}",
                   _max_iterations, input_frame.fpga_start_tick, e.what());
-
             num_failed_eigencalc.inc(1);
-
-            if (failed_buf != nullptr) {
-                if (failed_buf->wait_for_empty_frame(unique_name, failed_frame_id) == nullptr) {
-                    break;
-                }
-
-                in_buf->pass_metadata(input_frame_id, failed_buf, failed_frame_id);
-                N2FrameView failed_frame(failed_buf, failed_frame_id);
-                failed_frame.copy_data(input_frame, {N2Field::eval, N2Field::evec, N2Field::erms});
-
-                failed_buf->mark_frame_full(unique_name, failed_frame_id++);
-            }
-            in_buf->mark_frame_empty(unique_name, input_frame_id++);
-            continue;
+            failed = true;
         }
-        auto& evals = eigpair.first;
-        auto& evecs = eigpair.second;
 
-        // Stop the calculation clock. This doesn't include time to copy stuff into
-        // the buffers, but that has to wait for one to be available.
-        uint64_t elapsed_time = current_time() - start_time;
+        // Failed frames are routed to failed_buf when configured; otherwise they fall
+        // through to out_buf with zero-filled eigenpairs.
+        const bool route_to_failed = failed && failed_buf != nullptr;
+        Buffer* const dest_buf = route_to_failed ? failed_buf : out_buf;
+        frameID& dest_frame_id = route_to_failed ? failed_frame_id : output_frame_id;
 
-        // Report all eigenvalues to stdout.
-        std::string str_evals = "";
-        for (uint32_t i = 0; i < _num_eigenvectors; i++) {
-            str_evals = fmt::format("{} {}", str_evals, evals[i]);
-        }
-        DEBUG("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:d} s. Took {:d}/{:d} "
-              "iterations.",
-              str_evals, stats.rms, elapsed_time, stats.iterations, _max_iterations);
-
-        // Update Prometheus metrics
-        update_metrics(input_frame.freq_id, elapsed_time, eigpair, stats);
-
-        /* Write out new frame */
-        // Get output buffer for visibilities. Essentially identical to input buffers.
-        if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
+        if (dest_buf->wait_for_empty_frame(unique_name, dest_frame_id) == nullptr) {
             break;
         }
 
-        // Create view to output frame
-        in_buf->pass_metadata(input_frame_id, out_buf, output_frame_id);
+        in_buf->pass_metadata(input_frame_id, dest_buf, dest_frame_id);
 
-        // Note: num_ev is part of the N2FrameDesc (set by bufferFactory) and is validated
-        // in the constructor to match _num_eigenvectors.
+        N2FrameView dest_frame(dest_buf, dest_frame_id);
+        // Copy over data, but skip all ev members which we'll set explicitly below
+        dest_frame.copy_data(input_frame, {N2Field::eval, N2Field::evec, N2Field::erms});
 
-        N2FrameView output_frame(out_buf, output_frame_id);
-        // Copy over data, but skip all ev members which may not be defined
-        output_frame.copy_data(input_frame, {N2Field::eval, N2Field::evec, N2Field::erms});
-
-        // Copy in eigenvectors and eigenvalues.
-        for (uint32_t i = 0; i < _num_eigenvectors; i++) {
-            int indr = _num_eigenvectors - 1 - i;
-            output_frame.eval[i] = evals[indr];
-
-            for (uint32_t j = 0; j < num_elements; j++) {
-                output_frame.evec[i * num_elements + j] = evecs(j, indr);
+        if (failed) {
+            // HACK: negative RMS indicates a failed/non-converged calculation.
+            dest_frame.erms = -std::numeric_limits<float>::max();
+            dest_frame.emethod =
+                N2EigenMethod::failed_iterative; // Specific type indicates code failure
+            // failed_buf has num_ev == 0 (validated in the constructor) and so has no
+            // eval/evec storage; only zero them when falling through to out_buf.
+            if (!route_to_failed) {
+                for (uint32_t i = 0; i < _num_eigenvectors; i++) {
+                    dest_frame.eval[i] = 0.0f;
+                    for (uint32_t j = 0; j < num_elements; j++) {
+                        dest_frame.evec[i * num_elements + j] = {0.0f, 0.0f};
+                    }
+                }
             }
-        }
-        // HACK: return the convergence state in the RMS field (negative == not
-        // converged)
-        output_frame.erms = stats.converged ? stats.rms : -stats.eps_eval;
-        output_frame.emethod = N2EigenMethod::iterative;
+        } else {
+            // Stop the calculation clock. This doesn't include time to copy stuff into
+            // output buffers.
+            double elapsed_time = current_time() - start_time;
 
-        // Finish up interation.
+            auto& evals = eigpair.first;
+            auto& evecs = eigpair.second;
+
+            // Report eigenvalues to stdout.
+            std::string str_evals = "";
+            for (uint32_t i = 0; i < _num_eigenvectors; i++) {
+                str_evals = fmt::format("{} {}", str_evals, evals[i]);
+            }
+            DEBUG("Found eigenvalues: {:s}, with RMS residuals: {:e}, in {:.3f} s. Took {:d}/{:d} "
+                  "iterations.",
+                  str_evals, stats.rms, elapsed_time, stats.iterations, _max_iterations);
+
+            // Update Prometheus metrics
+            update_metrics(input_frame.freq_id, elapsed_time, eigpair, stats);
+
+            // Copy in eigenvectors and eigenvalues.
+            for (uint32_t i = 0; i < _num_eigenvectors; i++) {
+                int indr = _num_eigenvectors - 1 - i;
+                dest_frame.eval[i] = evals[indr];
+
+                for (uint32_t j = 0; j < num_elements; j++) {
+                    dest_frame.evec[i * num_elements + j] = evecs(j, indr);
+                }
+            }
+            // HACK: return the convergence state in the RMS field (negative == not
+            // converged)
+            dest_frame.erms = stats.converged ? stats.rms : -stats.eps_eval;
+            dest_frame.emethod = N2EigenMethod::iterative;
+        }
+
+        // Finish up iteration.
+        dest_buf->mark_frame_full(unique_name, dest_frame_id++);
         in_buf->mark_frame_empty(unique_name, input_frame_id++);
-        out_buf->mark_frame_full(unique_name, output_frame_id++);
     }
 }
 
 
-void EigenN2Iter::update_metrics(int freq_id, u_int64_t elapsed_time, const eig_t<cfloat>& eigpair,
+void EigenN2Iter::update_metrics(int freq_id, double elapsed_time, const eig_t<cfloat>& eigpair,
                                  const EigConvergenceStats& stats) {
     // Update average write time in prometheus
     auto& calc_time = calc_time_map[freq_id];

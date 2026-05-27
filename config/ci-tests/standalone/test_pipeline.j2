@@ -30,7 +30,7 @@
 # With 2 polarizations, num_elements = 2 * num_dishes, which the n2k correlator requires to be a multiple of 128
 # (CorrelatorParams::ns_divisor). That means num_dishes must be a multiple of 64. This also satisfies the counts
 # block (num_elements/8 divisible by 8) and the packet-loss mask’s dish/8 grouping.
-{% set num_dishes = 64 %}
+{% set num_dishes = 512 %}
 
 # fpga time samples per generated frame (data_set), per frequency/polarization/dish;
 # effectively "fpga_ticks_per_full_frame". This is the frame length seen by testDataGen and the n2k correlator.
@@ -49,10 +49,10 @@
 
 # n2k sub-integrations to combine into each output N2 frame by N2Accumulate.
 # Choose a multiple of integrations_per_frame so n2k_frames_per_output is an integer and generators run long enough.
-{% set num_n2k_samples_to_accumulate = 96 %}
+{% set num_subintegrations_per_bin = 96 %}
 
 # correlation frames needed to form one output N2 frame
-{% set n2k_frames_per_output = num_n2k_samples_to_accumulate // integrations_per_frame %}
+{% set n2k_frames_per_output = num_subintegrations_per_bin // integrations_per_frame %}
 
 # number of frames testDataGen should emit so the writer receives num_output_frames
 {% set frames_to_generate = n2k_frames_per_output * num_output_frames %}
@@ -79,7 +79,7 @@ freq_ids: {{ freq_ids_list | list }}
 num_gpus: 1
 buffer_depth: 4
 num_gpu_frames: 4
-cpu_affinity: [0,1]
+cpu_affinity: [0,1,2,3,4,5,6,7,8]
 frame_arrival_period: 5.12e-6 * {{ samples_per_data_set }}
 sizeof_gpu_int: 4 # bytes
 
@@ -92,7 +92,7 @@ num_polarizations: 2
 num_dishes: {{ num_dishes }}
 num_elements: num_polarizations * {{ num_dishes }}
 num_local_freq: {{ num_local_freq }}
-num_ev_to_calculate: 2
+num_ev_to_calculate: 4
 
 GIGA: 1000000000
 start_time_s: 1760000000 # ~ 2025-10-09
@@ -112,8 +112,8 @@ telescope:
   inst_dish_alt_axis: [1.0, 0.0, 0.0]
   inst_dish_vert_axis: [0.0, 0.0, 1.0]
   dish_inputs: []
-  num_dishes_x: 10
-  num_dishes_y: 10
+  num_dishes_x: 50
+  num_dishes_y: 50
   require_gps: False
   eop_updatable_config: /earth_rotation_data
 
@@ -428,7 +428,7 @@ n2_accumulate:
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
-    num_n2k_samples_to_accumulate: {{ num_n2k_samples_to_accumulate }}
+    num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
 
 
 # Add eigen calculation
@@ -443,10 +443,10 @@ eigencalc:
   out_buf: n2_eigen_buffer
 
   # Convergence config
-  tol_eval: 0.001
-  tol_evec: 0.01
-  max_iterations: 10
-  num_ev_conv: 2
+  tol_eval: 0.0001
+  tol_evec: 0.001
+  max_iterations: 20
+  num_ev_conv: num_ev_to_calculate
   krylov: 2
   subspace: 1
 
@@ -547,7 +547,8 @@ hdf5_N2_write_final:
     num_ev: num_ev_to_calculate
     vis_layout: "FullUpperTri"
     num_file_t: 10
-    gains_base_directory: "" # "/mnt/cs00/data/baseband_gains/"
+    baseband_gain_file: "" # e.g. "/path/to/digital_gains/00000000.h5", or set
+                           # baseband_gain_host_info: /<fpga_controller_block> instead
 
 # Autocorrelations-only subset
 hdf5_N2_write_autocorr:

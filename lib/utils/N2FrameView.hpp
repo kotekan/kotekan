@@ -7,27 +7,21 @@
 #ifndef N2BUFFER_HPP
 #define N2BUFFER_HPP
 
-#include "CHORDTelescope.hpp" // for CHORDTelescope
-#include "Config.hpp"         // for Config
-#include "FrameView.hpp"      // for FrameView
-#include "N2FrameDesc.hpp"    // for N2FrameDesc
-#include "N2Metadata.hpp"     // for N2Metadata
-#include "N2Util.hpp"         // for cfloat, get_num_prod
-#include "buffer.hpp"         // for Buffer
+#include <stddef.h>          // for size_t
+#include <stdint.h>          // for uint64_t, uint32_t, int32_t, uint8_t
+#include <memory>            // for shared_ptr
+#include <set>               // for set
+#include <array>             // for array
 
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm> // for max
-#include <exception> // for exception
-#include <map>       // for allocator, map
-#include <memory>    // for shared_ptr
-#include <set>       // for set
-#include <stddef.h>  // for size_t
-#include <stdexcept> // for runtime_error
-#include <stdint.h>  // for uint32_t, uint64_t
-#include <string>    // for basic_string, string
-#include <utility>   // for pair, make_pair
-#include <vector>    // for vector
+#include "FrameView.hpp"     // for FrameView
+#include "N2FrameDesc.hpp"   // for N2EigenMethod, N2Field, N2FrameDesc, n2frame_layout_t
+#include "N2Metadata.hpp"    // for N2Metadata
+#include "N2Util.hpp"        // for cfloat
+#include "buffer.hpp"        // for Buffer
+#include "gsl-lite.hpp"      // for span
+#include "N2Layout.hpp"      // for N2Layout
+#include "dataset.hpp"       // for dset_id_t
+#include "jsonMetadata.hpp"  // for MAX_NUM_RFI_THRESHOLDS
 
 using kotekan::N2EigenMethod;
 using kotekan::N2Field;
@@ -70,8 +64,8 @@ public:
     struct EOP& bin_eop;
     double& bin_start_ERA_deg;
     double& bin_end_ERA_deg;
-    double& bin_start_LAST;
-    double& bin_end_LAST;
+    double& bin_start_ERAL_deg;
+    double& bin_end_ERAL_deg;
 
     /// The sequence number of the first FPGA frame integrated into this
     /// visibility frame (time<0> in VisFrameView)
@@ -82,8 +76,22 @@ public:
     uint64_t& frame_length_fpga_ticks;
     /// The actual amount of data accumulated in FPGA ticks (fpga_seq_total)
     uint64_t& n_valid_fpga_ticks;
-    /// The number of lost samples due to RFI (rfi_total)
+    /// The number of lost samples due to RFI (rfi_total). Might contain Packet Loss as well.
     uint64_t& n_rfi_fpga_ticks;
+    /// The number of lost samples due to RFI only
+    uint64_t& n_rfi_only_fpga_ticks;
+    /// The number of lost samples due to Packet Loss (PL)
+    uint64_t& n_pl_fpga_ticks;
+
+    /// Whether second stage RFI excision was applied to this frame
+    bool& rfi_frame_excision_enabled;
+    /// The number of active RFI excision thresholds.
+    int32_t& rfi_frame_excision_num;
+    /// The SK thresholds (in sigma) for RFI excision
+    std::array<float, MAX_NUM_RFI_THRESHOLDS>& rfi_frame_excision_threshold;
+    /// The fraction of samples above threshold that trigger RFI excision.
+    std::array<float, MAX_NUM_RFI_THRESHOLDS>& rfi_frame_excision_fraction;
+
     /// CHIME dataset id tracking updateable config item changes
     dset_id_t& dataset_id;
 
@@ -101,8 +109,12 @@ public:
     N2EigenMethod& emethod;
     /// The RMS of residual visibilities
     float& erms;
+    /// Radiometer chi2 statistic for each polarization pair
+    const gsl_lite::span<float> radiometer_chi2;
     /// View of the applied gains
     const gsl_lite::span<N2::cfloat> gain;
+    /// View of per-element masks (uint8_t per element)
+    const gsl_lite::span<uint8_t> mask;
 
     /**
      * @brief Create view without modifying layout.

@@ -1,21 +1,19 @@
 #ifndef CHORD_TELESCOPE_HPP
 #define CHORD_TELESCOPE_HPP
 
+#include <stdint.h>       // for uint64_t, int64_t, uint32_t, int32_t
+#include <time.h>         // for size_t, timespec
+#include <array>          // for array
+#include <complex>        // for complex
+#include <string>         // for basic_string, string, allocator, operator==
+#include <utility>        // for move, forward
+#include <vector>         // for vector
+#include <stdexcept>      // for runtime_error
+
 #include "Config.hpp"     // for Config
-#include "Telescope.hpp"  // for freq_id_t, Telescope, stream_t
-#include "restServer.hpp" // for connectionInstance
+#include "Telescope.hpp"  // for freq_id_t, nyquist_zone_t, Telescope, stream_t
 #include "timeUtil.hpp"   // for EOP
-
-#include "json.hpp" // for json
-
-#include <array>    // for array
-#include <complex>  // for complex
-#include <mutex>    // for mutex
-#include <stdint.h> // for uint64_t, uint32_t, int64_t, uint8_t
-#include <string>   // for string, basic_string
-#include <time.h>   // for timespec
-#include <utility>  // for forward
-#include <vector>   // for vector
+#include "json.hpp"       // for json
 
 // Types for frequency and dish indexing
 // (Not necessarily logical IDs)
@@ -242,6 +240,9 @@ struct GeographicParams {
     /// Description of the grid of dishes
     dishGrid dish_grid;
 
+    /// Whether to fatal on duplicate dish grid locations (default: true).
+    bool check_duplicate_dish_grid = true;
+
     /**
      * @brief Build full dish parameters (including rotation matrices and positions)
      * from the config for this telescope.
@@ -264,6 +265,8 @@ struct GeographicParams {
      * @conf   num_dishes           size_t. Total number of dishes.
      * @conf   num_dishes_x         size_t. Number of dishes in the E/W (x) direction.
      * @conf   num_dishes_y         size_t. Number of dishes in the N/S (y) direction.
+     * @conf   check_duplicate_dish_grid  bool. Fatal on duplicate dish grid locations.
+     *                              Default: true.
      *
      * @param   config  The config.
      * @param   path    This telescope's path in the config.
@@ -398,7 +401,7 @@ struct GPSTimeParams {
      *                                      or false, will try to retrieve from
      *                                      config.
      * @conf    gps_host            string. The GPS server IP address.
-     * @conf    gps_port            uint.   The port number on the GPS server.
+     * @conf    gps_port            uint.   The port number on the GPS server. Default: 54321
      * @conf    gps_endpoint        string. The enpoint with the GPS time.
      * @conf    auto_correct_gps_week_rollover  bool.   If true, correct GPS time0
      *                                      for the 1024 week GPS rollover using
@@ -681,8 +684,8 @@ public:
      *                  least num_dishes. The phases will be written to the
      *                  first num_dishes elements of this vector.
      **/
-    void fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
-                              std::vector<std::complex<double>>& phases) const;
+    void fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
+                                   std::vector<std::complex<float>>& phases) const;
 
     /**
      * @brief   Fill a dishInputFields struct with dish information. Will possibly
@@ -751,18 +754,38 @@ public:
     size_t num_science_freqs() const;
 
     /**
-     * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
-     * dpdk. This stub remains to satisfy inheritance and will likely be removed in the future, it
-     * will abort if called.
+     * @brief Convert a stream and index within that stream to a global frequency ID.
      */
     freq_id_t to_freq_id(stream_t stream, uint32_t ind) const override;
 
     /**
-     * @brief CHORDTelescope does not implement this function, `stream_t` logic has been moved to
-     * dpdk. This stub remains to satisfy inheritance and will likely be removed in the future, it
-     * will abort if called.
+     * @brief Return the number of frequencies per F-engine stream.
      */
     size_t num_freq_per_stream() const override;
+
+    /**
+     * @brief   Compute the local ERA (eral in SOFA) at the telescope site.
+     *
+     *  The local ERA is:
+     *
+     *      ERAL = ERA + longitude(ITRS) + s',
+     *
+     *  where:
+     *      ERA is the Earth Rotation Angle (era00 in SOFA),
+     *      longitude(ITRS) is the geodetic longitude of the site in ITRS
+     *      s' is the TIO locator (sp00 in SOFA)
+     *
+     *  This is the equivalent to Local Apparent Sidereal Time (LAST) in the CIO-based
+     *  coordinate systems implemented by the IAU in 2000.
+     *
+     *  The s' is very small, it accrues at 47 microarcseconds per century, and is
+     *  ignored in this calculation.
+     *
+     * @param   eop  An EOP object for the time at which the ERAL is requested.
+     *
+     * @return The local ERA in degrees.
+     **/
+    double get_ERAL_deg(EOP& eop) const;
 
     // A forwarding constructor, such that derived classes can skip the main
     // CHORDTelescope constructor but still construct the Telescope class

@@ -1,56 +1,173 @@
 #include "hdf5N2Write.hpp"
 
-#include "H5Support.hpp"
-#include "Telescope.hpp" // for Telescope
-#include "util.h"        // for mkdir_p
+#include <N2FrameView.hpp>                        // for N2FrameView
+#include <Stage.hpp>                              // for Stage
+#include <StageFactory.hpp>                       // for REGISTER_KOTEKAN_STAGE
+#include <configTracker.hpp>                      // for ConfigTracker
+#include <errno.h>                                // for errno
+#include <errors.h>                               // for exit_kotekan, ReturnCode
+#include <highfive/H5DataSet.hpp>                 // for DataSet, AnnotateTraits::createAttribute
+#include <highfive/H5DataSpace.hpp>               // for DataSpace, DataSpace::DataSpace, DataSp...
+#include <highfive/H5DataType.hpp>                // for create_datatype, DataType
+#include <highfive/H5Exception.hpp>               // for Exception
+#include <highfive/H5File.hpp>                    // for File, NodeTraits::getDataSet, File::File
+#include <highfive/H5Object.hpp>                  // for hsize_t, Object::getId, herr_t, H5Z_FLA...
+#include <highfive/H5PropertyList.hpp>            // for DataSetCreateProps, Chunking, Deflate
+#include <highfive/bits/H5PropertyList_misc.hpp>  // for PropertyList::_initializeIfNeeded, Prop...
+#include <prometheusMetrics.hpp>                  // for Gauge, Counter, Metrics, MetricFamily
+#include <waitingForMaxFrames.hpp>                // for waiting_for_max_frames
+#include <H5Opublic.h>                            // for H5Ocopy
+#include <fmt/ranges.h> // IWYU pragma: keep      // needed to fmt::format std::vector in log macros
+#include <gsl-lite.hpp>                           // for span
+#include <highfive/H5Group.hpp>                   // for Group
+#include <highfive/H5Selection.hpp>               // for Selection, SliceTraits::write, SliceTra...
+#include <highfive/bits/H5Attribute_misc.hpp>     // for Attribute::read, Attribute::write
+#include <highfive/bits/H5Selection_misc.hpp>     // for Selection::getSpace, Selection::getData...
+#include <algorithm>                              // for equal, min, copy, max
+#include <cassert>                                // for assert
+#include <cfloat>                                 // for DBL_MAX
+#include <chrono>                                 // for duration, duration_cast, operator-, sys...
+#include <complex>                                // for complex
+#include <cstdint>                                // for uint64_t, int64_t, int32_t, uint16_t
+#include <cstdio>                                 // for size_t, rename
+#include <cstdlib>                                // for llabs
+#include <cstring>                                // for strerror
+#include <ctime>                                  // for timespec, gmtime, gmtime_r, time_t, tm
+#include <filesystem>                             // for path, exists, directory_iterator, begin
+#include <fstream>                                // for basic_ostream, operator<<, basic_ios
+#include <iomanip>                                // for operator<<, put_time, setfill, setw
+#include <map>                                    // for map, _Rb_tree_iterator, operator!=
+#include <memory>                                 // for allocator, unique_ptr, make_unique, __s...
+#include <optional>                               // for optional, nullopt, operator!=
+#include <sstream>                                // for basic_ostringstream
+#include <stdexcept>                              // for runtime_error
+#include <string>                                 // for basic_string, operator+, char_traits
+#include <type_traits>                            // for false_type, true_type, void_t
+#include <utility>                                // for pair, move
+#include <vector>                                 // for vector, operator!=
+#include <array>                                  // for array, operator!=
+#include <atomic>                                 // for __atomic_base, atomic
+#include <cmath>                                  // for fabs
+#include <exception>                              // for exception
+#include <functional>                             // for function
+#include <iterator>                               // for istreambuf_iterator, operator!=
+#include <limits>                                 // for numeric_limits
+#include <system_error>                           // for error_code
 
-#include "json.hpp"
-
-#include <N2FrameView.hpp>
-#include <N2Metadata.hpp>
-#include <Stage.hpp>
-#include <StageFactory.hpp>
-#include <algorithm>
-#include <cassert>
-#include <chordMetadata.hpp>
-#include <chrono>
-#include <complex>
-#include <configTracker.hpp>
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
-#include <errno.h>
-#include <errors.h>
-#include <filesystem>
-#include <fmt/ranges.h>
-#include <fstream>
-#include <highfive/H5DataSet.hpp>
-#include <highfive/H5DataSpace.hpp>
-#include <highfive/H5DataType.hpp>
-#include <highfive/H5Exception.hpp>
-#include <highfive/H5File.hpp>
-#include <highfive/H5Object.hpp>       // for H5Z_FLAG_MANDATORY, hsize_t
-#include <highfive/H5PropertyList.hpp> // for PropertyType, RawPropertyList, Chunking
-#include <highfive/bits/H5PropertyList_misc.hpp>
-#include <highfive/bits/H5Slice_traits_misc.hpp>
-#include <iomanip>
-#include <map>
-#include <memory>
-#include <optional>
-#include <prometheusMetrics.hpp>
-#include <sstream>
-#include <stdexcept>
-#include <string>
-#include <sys/stat.h>
-#include <type_traits>
-#include <unistd.h>
-#include <utility>
-#include <vector>
-#include <waitingForMaxFrames.hpp> // for waiting_for_max_frames
+#include "H5Support.hpp"                          // for create_datatype
+#include "Telescope.hpp"                          // for Telescope, freq_id_t
+#include "restClient.hpp"                         // for restClient
+#include "util.h"                                 // for mkdir_p
+#include "json.hpp"                               // for basic_json, json, iter_impl
+#include "CHORDTelescope.hpp"                     // for CHORDTelescope, dishInputFields
+#include "N2FrameDesc.hpp"                        // for N2FrameDesc
+#include "N2Util.hpp"                             // for freq_ctype, frameID, modulo, cfloat
+#include "fmt.hpp"                                // for compile_string_to_view, format, format_...
+#include "hdf5Files.hpp"                          // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
+#include "jsonMetadata.hpp"                       // for MAX_NUM_RFI_THRESHOLDS
+#include "kotekanLogging.hpp"                     // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
+#include "timeUtil.hpp"                           // for EOP
+#include "visUtil.hpp"                            // for cfloat
 
 using namespace HighFive;
+
+/// Compute a hash of a file's contents for change detection.
+static std::optional<size_t> hash_file_contents(const std::string& path) {
+    std::ifstream ifs(path, std::ios::binary);
+    if (!ifs)
+        return std::nullopt;
+    std::string contents((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+    if (ifs.bad()) // I/O error during read
+        return std::nullopt;
+    return std::hash<std::string>{}(contents);
+}
+
+/// Fetch `path` from `host:port` over plain HTTP via kotekan's built-in
+/// restClient and write the response body verbatim to `dest_path`. FATAL on any
+/// fetch/write error. Intended for small files (bytes land in a std::string
+/// before hitting disk).
+static void download_to_file(const std::string& host, std::uint16_t port, const std::string& path,
+                             const std::string& dest_path) {
+    INFO_NON_OO("hdf5N2Write: downloading digital gains file from http://{}:{}{}", host, port,
+                path);
+    restClient::restReply reply =
+        restClient::instance().make_request_blocking(path, nlohmann::json::object(), host, port);
+    if (!reply.first) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: failed to fetch gains file from http://{}:{}{}", host,
+                           port, path);
+        return;
+    }
+
+    std::ofstream ofs(dest_path, std::ios::binary | std::ios::trunc);
+    if (!ofs) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: could not open '{}' for writing downloaded gains file",
+                           dest_path);
+        return;
+    }
+    ofs.write(reply.second.data(), static_cast<std::streamsize>(reply.second.size()));
+    if (!ofs) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: failed to write {} bytes to '{}'", reply.second.size(),
+                           dest_path);
+        return;
+    }
+    ofs.close();
+    if (!ofs) {
+        FATAL_ERROR_NON_OO("hdf5N2Write: failed to finalize writing downloaded gains file to '{}'",
+                           dest_path);
+        return;
+    }
+
+    INFO_NON_OO("hdf5N2Write: wrote {} bytes to '{}'", reply.second.size(), dest_path);
+}
+
+namespace {
+/// Walk the config tree and collect (unique_name, base_dir) for every
+/// hdf5N2Write stage block. Mirrors StageFactory::build_from_tree's notion
+/// of unique_name: "/" + slash-joined keys.
+void collect_hdf5N2Write_base_dirs(const nlohmann::json& tree, const std::string& path,
+                                   std::vector<std::pair<std::string, std::string>>& out) {
+    for (auto it = tree.begin(); it != tree.end(); ++it) {
+        if (!it.value().is_object())
+            continue;
+        const std::string sub = path + "/" + it.key();
+        if (it.value().value("kotekan_stage", std::string{}) == "hdf5N2Write") {
+            const auto bd = it.value().find("base_dir");
+            if (bd != it.value().end() && bd->is_string())
+                out.emplace_back(sub, bd->get<std::string>());
+        }
+        collect_hdf5N2Write_base_dirs(it.value(), sub, out);
+    }
+}
+
+/// Canonicalize a path for collision comparison; falls back to the raw
+/// string if weakly_canonical fails (e.g. permission denied on a parent).
+std::string normalize_base_dir(const std::string& dir) {
+    std::error_code ec;
+    auto canonical = std::filesystem::weakly_canonical(dir, ec);
+    return ec ? dir : canonical.string();
+}
+} // namespace
+
+/// Generate an acquisition base directory path: base_dir/acq_YYYYMMDD_HHMMSS_NNNNNNNNN
+static std::string get_acq_base_dir_path(const std::string& base_dir) {
+    // Strip trailing slashes
+    std::string dir = base_dir;
+    while (dir.size() > 1 && dir.back() == '/')
+        dir.pop_back();
+
+    auto now = std::chrono::system_clock::now();
+    auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count()
+              % 1'000'000'000LL;
+
+    std::tm tm_buf{};
+    gmtime_r(&time_t_now, &tm_buf);
+
+    std::ostringstream oss;
+    oss << dir << "/acq_" << std::put_time(&tm_buf, "%Y%m%d_%H%M%S") << "_" << std::setfill('0')
+        << std::setw(9) << ns;
+    return oss.str();
+}
 
 // Monotonic time in seconds
 inline double mono_time_s() {
@@ -142,93 +259,6 @@ void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& 
     dataset.createAttribute("axis", dim_names);
 };
 
-std::optional<N2FileData::DigitalGains> N2FileData::_get_digital_gains() const {
-
-    // If no gains directory specified, skip digital gains
-    if (gains_base_directory.empty()) {
-        DEBUG_NON_OO("No gains_base_directory specified, skipping digital gains.");
-        return std::nullopt;
-    }
-
-    // Search for *most recent* time in directories names as "YYYYMMDDTHHMMSSZ_baseband" :
-    std::filesystem::path base_path(gains_base_directory);
-    // Get a list of directories in gains_base_directory
-    std::vector<std::filesystem::path> dir_list;
-    for (const auto& entry : std::filesystem::directory_iterator(base_path)) {
-        if (entry.is_directory()) {
-            dir_list.push_back(entry.path());
-        }
-    }
-    // Sort directories by name (timestamp)
-    std::sort(dir_list.begin(), dir_list.end());
-    // Assume the most recent directory was used
-    // (TODO: use API instead)
-    if (dir_list.empty()) {
-        FATAL_ERROR_NON_OO("No baseband gains directories found in {}, cannot read digital gains.",
-                           gains_base_directory);
-        return std::nullopt;
-    }
-    std::filesystem::path latest_dir = dir_list.back();
-
-    // Gains file should be named "gains.hdf5" in this directory
-    std::filesystem::path gains_path = latest_dir / "gains.hdf5";
-    if (!std::filesystem::exists(gains_path)) {
-        FATAL_ERROR_NON_OO("Digital gains file {} does not exist.", gains_path.string());
-        return std::nullopt;
-    }
-
-    // Open gains file
-    std::unique_ptr<HighFive::File> gains_file;
-    try {
-        gains_file =
-            std::make_unique<HighFive::File>(gains_path.string(), HighFive::File::ReadOnly);
-    } catch (const HighFive::Exception& e) {
-        FATAL_ERROR_NON_OO("Failed to open digital gains file {}: {}", gains_path.string(),
-                           e.what());
-        return std::nullopt;
-    }
-    // Verify two vectors named "gains_lin" and "gains_log" exist
-    if (!gains_file->exist("gains_lin") || !gains_file->exist("gains_log")) {
-        FATAL_ERROR_NON_OO(
-            "Digital gains file {} does not contain required datasets 'gains_lin' and "
-            "'gains_log'.",
-            gains_path.string());
-        return std::nullopt;
-    }
-    if (gains_file->getObjectType("gains_lin") != HighFive::ObjectType::Dataset
-        || gains_file->getObjectType("gains_log") != HighFive::ObjectType::Dataset) {
-        FATAL_ERROR_NON_OO(
-            "Digital gains file {} does not contain required datasets 'gains_lin' and "
-            "'gains_log' as datasets.",
-            gains_path.string());
-        return std::nullopt;
-    }
-    // Verify datasets are of type uint16_t
-    auto ds_lin_type = gains_file->getDataSet("gains_lin").getDataType();
-    auto ds_log_type = gains_file->getDataSet("gains_log").getDataType();
-    HighFive::AtomicType<std::uint16_t> expected_uint16_type;
-    if (ds_lin_type != expected_uint16_type || ds_log_type != expected_uint16_type) {
-        FATAL_ERROR_NON_OO("Digital gains datasets in file {} are not of type uint16_t!",
-                           gains_path.string());
-        return std::nullopt;
-    }
-    // Read datasets into vectors
-    std::vector<std::uint16_t> gains_lin;
-    std::vector<std::uint16_t> gains_log;
-    try {
-        auto ds_lin = gains_file->getDataSet("gains_lin");
-        ds_lin.read(gains_lin);
-        auto ds_log = gains_file->getDataSet("gains_log");
-        ds_log.read(gains_log);
-    } catch (const HighFive::Exception& e) {
-        FATAL_ERROR_NON_OO("Failed to read digital gains datasets from file {}: {}",
-                           gains_path.string(), e.what());
-        return std::nullopt;
-    }
-
-    return DigitalGains{gains_lin, gains_log, gains_path.string()};
-}
-
 std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::string& filepath,
                                                                  const uint64_t num_file_t_,
                                                                  const N2FrameView& fv,
@@ -307,7 +337,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         // _check_create_attribute(*file, "num_stacks", telescope.get_num_stacks());
         _check_create_attribute(*file, "nyquist_zone", telescope.nyquist_zone());
         _check_create_attribute(*file, "gps_time_enabled", telescope.gps_time_enabled());
-        _check_create_attribute(*file, "fpga_seq_length_nsec", telescope.seq_length_nsec());
+        _check_create_attribute(*file, "frame0_unix_ns", telescope.to_time_ns(0));
+        _check_create_attribute(*file, "fpga_seq_length_ns", telescope.seq_length_nsec());
         _check_create_attribute(*file, "origin_itrs_lon_deg", telescope.get_origin_itrs_lon_deg());
         _check_create_attribute(*file, "origin_itrs_lat_deg", telescope.get_origin_itrs_lat_deg());
         _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
@@ -348,12 +379,12 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
 
         // Store grid orientation (3x3 matrix) and dish orientation (3x3 matrix)
         {
-            std::vector<double> grid_orientation(9);
-            std::vector<double> dish_orientation(9);
+            std::array<double, 9> grid_orientation;
+            std::array<double, 9> dish_orientation;
             for (int i = 0; i < 3; i++) {
                 for (int j = 0; j < 3; j++) {
-                    grid_orientation[i * 3 + j] = telescope.get_grid_orientation_el(i, j);
-                    dish_orientation[i * 3 + j] = telescope.get_dish_orientation_el(i, j);
+                    grid_orientation[3 * i + j] = telescope.get_grid_orientation_el(i, j);
+                    dish_orientation[3 * i + j] = telescope.get_dish_orientation_el(i, j);
                 }
             }
             _check_create_attribute(*file, "grid_orientation", grid_orientation);
@@ -398,6 +429,12 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                 type_int[i] = static_cast<int32_t>(dish_inputs.type[i]);
             }
             dataset_type.write(type_int);
+
+            _check_create_dataset(*file, "/index_map/label", {dish_inputs.label.size()},
+                                  {"element"}, HighFive::create_datatype<std::string>(),
+                                  props_empty);
+            auto dataset_label = file->getDataSet("/index_map/label");
+            dataset_label.write(dish_inputs.label);
         }
 
         // Store full dish positions
@@ -472,14 +509,35 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(*file, "/gain", {num_file_f, fv.num_elements, num_file_t_},
                               {"frequency", "element", "time"}, HighFive::create_datatype<cfloat>(),
                               props_empty);
+        _check_create_dataset(*file, "/radiometer_chi2", {num_file_f, num_file_t_, 3},
+                              {"frequency", "time", "pol_product"},
+                              HighFive::create_datatype<float>(), props_empty);
 
         _check_create_dataset(
             *file, flags_group_prefix + "/flags", {num_file_f, fv.num_elements, num_file_t_},
             {"frequency", "element", "time"}, HighFive::create_datatype<float>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/valid_fpga_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/rfi_fpga_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/rfi_only_fpga_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/pl_fpga_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
         _check_create_dataset(*file, flags_group_prefix + "/frac_lost", {num_file_f, num_file_t_},
                               {"frequency", "time"}, HighFive::create_datatype<float>(),
                               props_empty);
         _check_create_dataset(*file, flags_group_prefix + "/frac_rfi", {num_file_f, num_file_t_},
+                              {"frequency", "time"}, HighFive::create_datatype<float>(),
+                              props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/frac_rfi_only",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<float>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/frac_pl", {num_file_f, num_file_t_},
                               {"frequency", "time"}, HighFive::create_datatype<float>(),
                               props_empty);
 
@@ -487,39 +545,83 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               HighFive::create_datatype<uint64_t>(), props_empty);
         _check_create_dataset(*file, "/frame_length_fpga_ticks", {num_file_t_}, {"time"},
                               HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, "/bin_abs_index", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
 
+        _check_create_dataset(*file, "/time_center_t_inst_ns", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<int64_t>(), props_empty);
         _check_create_dataset(*file, "/time_center_ut1_ns", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<int64_t>(), props_empty);
+        _check_create_dataset(*file, "/bin_t_inst_ns", {num_file_t_}, {"time"},
                               HighFive::create_datatype<int64_t>(), props_empty);
         _check_create_dataset(*file, "/bin_ut1_ns", {num_file_t_}, {"time"},
                               HighFive::create_datatype<int64_t>(), props_empty);
+        _check_create_dataset(*file, "/bin_delta_ut1_inst", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<double>(), props_empty);
+        _check_create_dataset(*file, "/bin_ERA_deg", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<double>(), props_empty);
+        _check_create_dataset(*file, "/bin_xp_as", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<double>(), props_empty);
+        _check_create_dataset(*file, "/bin_yp_as", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/bin_start_ERA_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/bin_end_ERA_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
-        _check_create_dataset(*file, "/bin_start_LAST", {num_file_t_}, {"time"},
+        _check_create_dataset(*file, "/bin_start_ERAL_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
-        _check_create_dataset(*file, "/bin_end_LAST", {num_file_t_}, {"time"},
+        _check_create_dataset(*file, "/bin_end_ERAL_deg", {num_file_t_}, {"time"},
                               HighFive::create_datatype<double>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_enabled", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<bool>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_num", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<int32_t>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_threshold",
+                              {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
+                              HighFive::create_datatype<float>(), props_empty);
+        _check_create_dataset(*file, "/rfi_frame_excision_fraction",
+                              {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
+                              HighFive::create_datatype<float>(), props_empty);
 
-        // Digital gains
-        if (!gains_base_directory.empty()) {
-            std::optional<DigitalGains> gains_data = _get_digital_gains();
-            if (!gains_data) {
-                FATAL_ERROR_NON_OO("Failed to read digital gains! Will try again on file close.");
+        // Digital gains: copy entire gains file verbatim into /digital_gains/ group
+        if (!baseband_gain_file.empty() && !file->exist("/digital_gains")) {
+            if (!std::filesystem::exists(baseband_gain_file)) {
+                FATAL_ERROR_NON_OO("Digital gains file {} does not exist.", baseband_gain_file);
             } else {
-                _check_create_attribute(*file, "digital_gains_source_file",
-                                        gains_data->full_filepath);
+                try {
+                    HighFive::File src(baseband_gain_file, HighFive::File::ReadOnly);
 
-                _check_create_dataset(*file, "/digital_gains/gains_lin",
-                                      {gains_data->gains_lin.size()}, {"input"},
-                                      HighFive::create_datatype<uint16_t>(), props_empty);
+                    // Copy entire gains file root group as /digital_gains
+                    herr_t err = H5Ocopy(src.getId(), ".", file->getId(), "digital_gains",
+                                         H5P_DEFAULT, H5P_DEFAULT);
+                    if (err < 0) {
+                        FATAL_ERROR_NON_OO("H5Ocopy failed copying gains file {} into output.",
+                                           baseband_gain_file);
+                    } else {
+                        // Add source file path and selected update index as attributes
+                        _check_create_attribute(*file, "digital_gains_source_file",
+                                                baseband_gain_file);
 
-                _check_create_dataset(*file, "/digital_gains/gains_log",
-                                      {gains_data->gains_log.size()}, {"input"},
-                                      HighFive::create_datatype<uint16_t>(), props_empty);
+                        auto dg_group = file->getGroup("/digital_gains");
+                        int selected_idx = baseband_gain_update_idx;
+                        if (selected_idx < 0 && dg_group.exist("gain_coeff")) {
+                            auto dims = dg_group.getDataSet("gain_coeff").getDimensions();
+                            if (!dims.empty() && dims[0] > 0)
+                                selected_idx = static_cast<int>(dims[0] - 1);
+                        }
+                        dg_group.createAttribute("selected_update_idx", selected_idx);
+
+                        INFO_NON_OO(
+                            "Copied digital gains from {} into output (selected_update_idx={}).",
+                            baseband_gain_file, selected_idx);
+                    }
+                } catch (const HighFive::Exception& e) {
+                    FATAL_ERROR_NON_OO("Failed to copy gains file {} into output: {}",
+                                       baseband_gain_file, e.what());
+                }
             }
-        } else {
-            DEBUG_NON_OO("No gains_base_directory specified, skipping digital gains.");
+        } else if (baseband_gain_file.empty()) {
+            DEBUG_NON_OO("No baseband_gain_file specified, skipping digital gains.");
         }
 
         return file;
@@ -538,20 +640,27 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
                        const size_t blocksize_f_, const size_t blocksize_p_,
                        const size_t blocksize_t_, const std::string compression_,
                        const size_t compression_level_, const bool use_bitshuffle_,
-                       const std::string base_dir_, const std::string gains_base_directory_) :
+                       const std::string base_dir_, const std::string baseband_gain_file_,
+                       const int baseband_gain_update_idx_) :
     num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev),
     num_file_f(Telescope::instance().cast<CHORDTelescope>().num_science_freqs()),
     num_file_t(num_file_t_), file_mode(file_mode_), blocksize_f(blocksize_f_),
     blocksize_p(blocksize_p_), blocksize_t(blocksize_t_), compression(compression_),
     compression_level(compression_level_), use_bitshuffle(use_bitshuffle_),
     open_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_), base_dir(std::move(base_dir_)),
-    gains_base_directory(std::move(gains_base_directory_)),
+    baseband_gain_file(std::move(baseband_gain_file_)),
+    baseband_gain_update_idx(baseband_gain_update_idx_),
     partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(abs_file_idx_) + ".h5"),
     n2_layout(fv.n2_layout), last_update_wall_s(open_wall_s_),
     h5_file(_open_or_create_file(partial_filepath, num_file_t_, fv, file_mode)) {
 
     if (!h5_file) {
         FATAL_ERROR_NON_OO("N2FileData: failed to open or create HDF5 file {}", partial_filepath);
+    }
+
+    // Record gains file hash for change detection at flush time
+    if (!baseband_gain_file.empty() && std::filesystem::exists(baseband_gain_file)) {
+        gains_file_hash = hash_file_contents(baseband_gain_file);
     }
 
     // resize arrays to hold data across (freq, time) blocks
@@ -561,19 +670,38 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     evec.assign(num_ev * num_elements * num_file_f * num_file_t, N2::cfloat{0.0f, 0.0f});
     erms.assign(num_file_f * num_file_t, 0.0f);
     gain.assign(num_elements * num_file_f * num_file_t, N2::cfloat{0.0f, 0.0f});
+    valid_fpga_count.assign(num_file_f * num_file_t, 0);
+    rfi_fpga_count.assign(num_file_f * num_file_t, 0);
+    rfi_only_fpga_count.assign(num_file_f * num_file_t, 0);
+    pl_fpga_count.assign(num_file_f * num_file_t, 0);
     frac_lost.assign(num_file_f * num_file_t, 1.0f); // match empty frames by default
     frac_rfi.assign(num_file_f * num_file_t, 0.0f);
+    frac_rfi_only.assign(num_file_f * num_file_t, 0.0f);
+    frac_pl.assign(num_file_f * num_file_t, 0.0f);
     flags.assign(num_elements * num_file_f * num_file_t, 0.0f);
+    radiometer_chi2.assign(num_file_f * num_file_t * 3, 0.0f);
 
     // Additional metadata
     fpga_start_tick.assign(num_file_t, 0);
     frame_length_fpga_ticks.assign(num_file_t, 0);
-    time_center_ut1.assign(num_file_t, 0.0);
-    bin_ut1.assign(num_file_t, 0);
+    bin_abs_index.assign(num_file_t, std::numeric_limits<uint64_t>::max());
+    time_center_t_inst_ns.assign(num_file_t, 0.0);
+    time_center_ut1_ns.assign(num_file_t, 0.0);
+    bin_t_inst_ns.assign(num_file_t, 0.0);
+    bin_ut1_ns.assign(num_file_t, 0.0);
+    bin_delta_ut1_inst.assign(num_file_t, -DBL_MAX);
+    bin_era_deg.assign(num_file_t, -DBL_MAX);
+    bin_xp_as.assign(num_file_t, -DBL_MAX);
+    bin_yp_as.assign(num_file_t, -DBL_MAX);
     bin_start_ERA_deg.assign(num_file_t, 0.0);
     bin_end_ERA_deg.assign(num_file_t, 0.0);
-    bin_start_LAST.assign(num_file_t, 0.0);
-    bin_end_LAST.assign(num_file_t, 0.0);
+    bin_start_ERAL_deg.assign(num_file_t, 0.0);
+    bin_end_ERAL_deg.assign(num_file_t, 0.0);
+    rfi_frame_excision_enabled.assign(num_file_t, false);
+    rfi_frame_excision_num.assign(num_file_t, 0);
+    rfi_frame_excision_threshold.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
+    rfi_frame_excision_fraction.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
+
 
     added_ft.assign(num_file_f * num_file_t, 0);
 }
@@ -590,53 +718,123 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
                            "Expected f_index < {}, t_index < {}, and freq_id >= {}",
                            f_index, t_index, num_file_f, num_file_t,
                            telescope.min_science_freq_id());
-        return AddFrameStatus::OutOfBounds;
     }
     size_t check_idx = idx_ft(f_index, t_index);
     if (added_ft[check_idx] != 0) {
         FATAL_ERROR_NON_OO("N2FileData: duplicate frame insertion at (f={}, t={})", f_index,
                            t_index);
-        return AddFrameStatus::Duplicate;
     }
 
     // Accept timing differences up to 2 ns (e.g. fuzz on EOP table updates)
     auto ns_close = [](int64_t a, int64_t b, int64_t tol_ns = 2) {
         return std::llabs(a - b) <= tol_ns;
     };
+    // Accept timing differences up to 2 ns (e.g. fuzz on EOP table updates)
+    auto sec_close = [](double a, double b, double tol_sec = 2e-9) {
+        return std::fabs(a - b) <= tol_sec;
+    };
+    // Accept timing differences up to 2 ns ~ 8.3e-12 deg (e.g. fuzz on EOP table updates)
+    auto deg_close = [](double a, double b, double tol_deg = 1e-11) {
+        return std::fabs(a - b) <= tol_deg;
+    };
+    // Accept polar motion drift equivalent to 2 ns of rotation.
+    auto arcsec_close = [](double a, double b, double tol_as = 3e-8) {
+        return std::fabs(a - b) <= tol_as;
+    };
 
     // Structural data consistency checks
-    if (n2_layout != fv.n2_layout || fv.eval.size() != fv.num_ev
-        || fv.evec.size() != fv.num_ev * fv.num_elements || fv.gain.size() != fv.num_elements
-        || fv.flags.size() != fv.num_elements || fv.num_elements != num_elements
-        || fv.num_prod != num_prod || fv.num_ev != num_ev || fv.frame_length_fpga_ticks == 0
-        || (fpga_start_tick[t_index] > 0 && fpga_start_tick[t_index] != fv.fpga_start_tick)
-        || (frame_length_fpga_ticks[t_index] > 0
-            && frame_length_fpga_ticks[t_index] != fv.frame_length_fpga_ticks)
-        || (time_center_ut1[t_index] > 0
-            && !ns_close(time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns))
-        || (bin_ut1[t_index] > 0 && !ns_close(bin_ut1[t_index], fv.bin_eop.t_ut1_ns))
-        || (bin_start_ERA_deg[t_index] < 0) || (bin_start_ERA_deg[t_index] > 360)
-        || (bin_end_ERA_deg[t_index] < 0) || (bin_end_ERA_deg[t_index] > 360)) {
-        // TODO: Don't check these yet, but do when we have LAST values
-        // || (bin_start_LAST[t_index] < 0) || (bin_start_LAST[t_index] > 360)
-        // || (bin_end_LAST[t_index] < 0) || (bin_end_LAST[t_index] > 360)
-        FATAL_ERROR_NON_OO(
-            "N2FileData: frame information mismatch or invalid at (f={}, t={}): "
-            "fv.vis.size()={}, fv.weight.size()={}, fv.eval.size()={}, fv.evec.size()={}, "
-            "fv.gain.size()={}, fv.flags.size()={}, fv.num_elements={}, fv.num_prod={}, "
-            "fv.num_ev={}, fpga_start_tick[t_index]={}, fv.fpga_start_tick={}, "
-            "fv.frame_length_fpga_ticks={}, frame_length_fpga_ticks[t_index]={}, "
-            "time_center_ut1[t_index]={}, fv.time_center_eop.t_ut1_ns={}, bin_ut1[t_index]={}, "
-            "fv.bin_eop.t_ut1_ns={}, bin_start_ERA_deg[t_index]={}, bin_end_ERA_deg[t_index]={}, "
-            "bin_start_LAST[t_index]={}, bin_end_LAST[t_index]={}",
-            f_index, t_index, fv.vis.size(), fv.weight.size(), fv.eval.size(), fv.evec.size(),
-            fv.gain.size(), fv.flags.size(), fv.num_elements, fv.num_prod, fv.num_ev,
-            fpga_start_tick[t_index], fv.fpga_start_tick, fv.frame_length_fpga_ticks,
-            frame_length_fpga_ticks[t_index], time_center_ut1[t_index], fv.time_center_eop.t_ut1_ns,
-            bin_ut1[t_index], fv.bin_eop.t_ut1_ns, bin_start_ERA_deg[t_index],
-            bin_end_ERA_deg[t_index], bin_start_LAST[t_index], bin_end_LAST[t_index]);
-        return AddFrameStatus::MetadataMismatch;
-    }
+    std::string structural_checks_failures = "";
+    auto add_failure = [&](std::string msg) { structural_checks_failures += "\n  - " + msg; };
+
+    if (n2_layout != fv.n2_layout)
+        add_failure(fmt::format("n2_layout: {} != {}", N2Layout_to_string(n2_layout),
+                                N2Layout_to_string(fv.n2_layout)));
+    if (fv.eval.size() != fv.num_ev)
+        add_failure(fmt::format("eval.size() != num_ev: {} != {}", fv.eval.size(), fv.num_ev));
+    if (fv.evec.size() != fv.num_ev * fv.num_elements)
+        add_failure(fmt::format("evec.size() != num_ev * num_elements: {} != {}", fv.evec.size(),
+                                fv.num_ev * fv.num_elements));
+    if (fv.gain.size() != fv.num_elements)
+        add_failure(
+            fmt::format("gain.size() != num_elements: {} != {}", fv.gain.size(), fv.num_elements));
+    if (fv.flags.size() != fv.num_elements)
+        add_failure(fmt::format("flags.size() != num_elements: {} != {}", fv.flags.size(),
+                                fv.num_elements));
+    if (fv.num_elements != num_elements)
+        add_failure(fmt::format("num_elements: {} != {}", fv.num_elements, num_elements));
+    if (fv.num_prod != num_prod)
+        add_failure(fmt::format("num_prod: {} != {}", fv.num_prod, num_prod));
+    if (fv.num_ev != num_ev)
+        add_failure(fmt::format("num_ev: {} != {}", fv.num_ev, num_ev));
+    if (fv.frame_length_fpga_ticks == 0)
+        add_failure(
+            fmt::format("frame_length_fpga_ticks must be > 0, got {}", fv.frame_length_fpga_ticks));
+    if (fpga_start_tick[t_index] > 0 && fpga_start_tick[t_index] != fv.fpga_start_tick)
+        add_failure(fmt::format("fpga_start_tick[t={}] mismatch: stored {} != incoming {}", t_index,
+                                fpga_start_tick[t_index], fv.fpga_start_tick));
+    if (frame_length_fpga_ticks[t_index] > 0
+        && frame_length_fpga_ticks[t_index] != fv.frame_length_fpga_ticks)
+        add_failure(fmt::format("frame_length_fpga_ticks[t={}] mismatch: stored {} != incoming {}",
+                                t_index, frame_length_fpga_ticks[t_index],
+                                fv.frame_length_fpga_ticks));
+    if (bin_abs_index[t_index] < std::numeric_limits<uint64_t>::max()
+        && bin_abs_index[t_index] != fv.abs_time_idx)
+        add_failure(fmt::format("bin_abs_index[t={}] mismatch: stored {} != incoming {}", t_index,
+                                bin_abs_index[t_index], fv.abs_time_idx));
+    if (fv.rfi_frame_excision_num < 0)
+        add_failure(fmt::format("rfi_frame_excision_num negative: {}", fv.rfi_frame_excision_num));
+    if (fv.rfi_frame_excision_num > MAX_NUM_RFI_THRESHOLDS)
+        add_failure(fmt::format("rfi_frame_excision_num exceeds MAX_NUM_RFI_THRESHOLDS: {} > {}",
+                                fv.rfi_frame_excision_num, MAX_NUM_RFI_THRESHOLDS));
+    if (time_center_t_inst_ns[t_index] > 0
+        && !ns_close(time_center_t_inst_ns[t_index], fv.time_center_eop.t_inst_ns))
+        add_failure(
+            fmt::format("time_center_t_inst_ns[t={}] mismatch: stored {} != incoming {} (ns)",
+                        t_index, time_center_t_inst_ns[t_index], fv.time_center_eop.t_inst_ns));
+    if (time_center_ut1_ns[t_index] > 0
+        && !ns_close(time_center_ut1_ns[t_index], fv.time_center_eop.t_ut1_ns))
+        add_failure(fmt::format("time_center_ut1_ns[t={}] mismatch: stored {} != incoming {} (ns)",
+                                t_index, time_center_ut1_ns[t_index], fv.time_center_eop.t_ut1_ns));
+    if (bin_t_inst_ns[t_index] > 0 && !ns_close(bin_t_inst_ns[t_index], fv.bin_eop.t_inst_ns))
+        add_failure(fmt::format("bin_t_inst_ns[t={}] mismatch: stored {} != incoming {} (ns)",
+                                t_index, bin_t_inst_ns[t_index], fv.bin_eop.t_inst_ns));
+    if (bin_ut1_ns[t_index] > 0 && !ns_close(bin_ut1_ns[t_index], fv.bin_eop.t_ut1_ns))
+        add_failure(fmt::format("bin_ut1_ns[t={}] mismatch: stored {} != incoming {} (ns)", t_index,
+                                bin_ut1_ns[t_index], fv.bin_eop.t_ut1_ns));
+    if (bin_delta_ut1_inst[t_index] != -DBL_MAX
+        && !sec_close(bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst))
+        add_failure(fmt::format("bin_delta_ut1_inst[t={}] mismatch: stored {} != incoming {} (deg)",
+                                t_index, bin_delta_ut1_inst[t_index], fv.bin_eop.delta_UT1_inst));
+    if (bin_era_deg[t_index] != -DBL_MAX && !deg_close(bin_era_deg[t_index], fv.bin_eop.ERA_deg))
+        add_failure(fmt::format("bin_era_deg[t={}] mismatch: stored {} != incoming {} (deg)",
+                                t_index, bin_era_deg[t_index], fv.bin_eop.ERA_deg));
+    if (fv.bin_eop.ERA_deg < 0)
+        add_failure(fmt::format("bin_eop.ERA_deg < 0: {}", fv.bin_eop.ERA_deg));
+    if (fv.bin_eop.ERA_deg >= 360)
+        add_failure(fmt::format("bin_eop.ERA_deg >= 360: {}", fv.bin_eop.ERA_deg));
+    if (bin_xp_as[t_index] != -DBL_MAX && !arcsec_close(bin_xp_as[t_index], fv.bin_eop.xp_as))
+        add_failure(fmt::format("bin_xp_as[t={}] mismatch: stored {} != incoming {} (arcsec)",
+                                t_index, bin_xp_as[t_index], fv.bin_eop.xp_as));
+    if (bin_yp_as[t_index] != -DBL_MAX && !arcsec_close(bin_yp_as[t_index], fv.bin_eop.yp_as))
+        add_failure(fmt::format("bin_yp_as[t={}] mismatch: stored {} != incoming {} (arcsec)",
+                                t_index, bin_yp_as[t_index], fv.bin_eop.yp_as));
+    if (fv.bin_start_ERA_deg < 0)
+        add_failure(fmt::format("bin_start_ERA_deg < 0: {}", fv.bin_start_ERA_deg));
+    if (fv.bin_start_ERA_deg >= 360)
+        add_failure(fmt::format("bin_start_ERA_deg >= 360: {}", fv.bin_start_ERA_deg));
+    if (fv.bin_end_ERA_deg < 0)
+        add_failure(fmt::format("bin_end_ERA_deg < 0: {}", fv.bin_end_ERA_deg));
+    if (fv.bin_end_ERA_deg > 360)
+        add_failure(fmt::format("bin_end_ERA_deg > 360: {}", fv.bin_end_ERA_deg));
+    // TODO: Don't check these yet, but do when we have ERAL values
+    // (bin_start_ERAL[t_index] < 0)
+    // (bin_start_ERAL[t_index] > 360)
+    // (bin_end_ERAL[t_index] < 0)
+    // (bin_end_ERAL[t_index] > 360)
+
+    if (!structural_checks_failures.empty())
+        FATAL_ERROR_NON_OO("N2FileData: frame information mismatch or invalid at (f={}, t={}):{}",
+                           f_index, t_index, structural_checks_failures);
 
 
     // Store vis + weight
@@ -657,23 +855,48 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
         gain[idx_fit(f_index, i, t_index)] = fv.gain[i];
         flags[idx_fit(f_index, i, t_index)] = fv.flags[i];
     }
+    for (size_t i = 0; i < 3; i++)
+        radiometer_chi2[3 * idx_ft(f_index, t_index) + i] = fv.radiometer_chi2[i];
     // Store fraction lost and RFI
     const uint64_t frame_len_ticks = fv.frame_length_fpga_ticks;
     const uint64_t n_valid = fv.n_valid_fpga_ticks;
     const uint64_t n_rfi = fv.n_rfi_fpga_ticks;
+    const uint64_t n_rfi_only = fv.n_rfi_only_fpga_ticks;
+    const uint64_t n_pl = fv.n_pl_fpga_ticks;
+    valid_fpga_count[idx_ft(f_index, t_index)] = n_valid;
+    rfi_fpga_count[idx_ft(f_index, t_index)] = n_rfi;
+    rfi_only_fpga_count[idx_ft(f_index, t_index)] = n_rfi_only;
+    pl_fpga_count[idx_ft(f_index, t_index)] = n_pl;
     frac_lost[idx_ft(f_index, t_index)] =
         (frame_len_ticks > 0) ? (1.0f - float(n_valid) / float(frame_len_ticks)) : 0.0f;
     frac_rfi[idx_ft(f_index, t_index)] =
         (frame_len_ticks > 0) ? (float(n_rfi) / float(frame_len_ticks)) : 0.0f;
+    frac_rfi_only[idx_ft(f_index, t_index)] =
+        (frame_len_ticks > 0) ? (float(n_rfi_only) / float(frame_len_ticks)) : 0.0f;
+    frac_pl[idx_ft(f_index, t_index)] =
+        (frame_len_ticks > 0) ? (float(n_pl) / float(frame_len_ticks)) : 0.0f;
     // Store per-time metadata
     fpga_start_tick[t_index] = fv.fpga_start_tick;
     frame_length_fpga_ticks[t_index] = fv.frame_length_fpga_ticks;
-    time_center_ut1[t_index] = fv.time_center_eop.t_ut1_ns;
-    bin_ut1[t_index] = fv.bin_eop.t_ut1_ns;
+    bin_abs_index[t_index] = fv.abs_time_idx;
+    time_center_t_inst_ns[t_index] = fv.time_center_eop.t_inst_ns;
+    time_center_ut1_ns[t_index] = fv.time_center_eop.t_ut1_ns;
+    bin_t_inst_ns[t_index] = fv.bin_eop.t_inst_ns;
+    bin_ut1_ns[t_index] = fv.bin_eop.t_ut1_ns;
+    bin_delta_ut1_inst[t_index] = fv.bin_eop.delta_UT1_inst;
+    bin_era_deg[t_index] = fv.bin_eop.ERA_deg;
+    bin_xp_as[t_index] = fv.bin_eop.xp_as;
+    bin_yp_as[t_index] = fv.bin_eop.yp_as;
     bin_start_ERA_deg[t_index] = fv.bin_start_ERA_deg;
     bin_end_ERA_deg[t_index] = fv.bin_end_ERA_deg;
-    bin_start_LAST[t_index] = fv.bin_start_LAST;
-    bin_end_LAST[t_index] = fv.bin_end_LAST;
+    bin_start_ERAL_deg[t_index] = fv.bin_start_ERAL_deg;
+    bin_end_ERAL_deg[t_index] = fv.bin_end_ERAL_deg;
+    rfi_frame_excision_enabled[t_index] = fv.rfi_frame_excision_enabled;
+    rfi_frame_excision_num[t_index] = fv.rfi_frame_excision_num;
+    std::copy(fv.rfi_frame_excision_threshold.begin(), fv.rfi_frame_excision_threshold.end(),
+              rfi_frame_excision_threshold.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
+    std::copy(fv.rfi_frame_excision_fraction.begin(), fv.rfi_frame_excision_fraction.end(),
+              rfi_frame_excision_fraction.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
 
     // Mark (f, t) as added
     size_t si = idx_ft(f_index, t_index);
@@ -742,16 +965,20 @@ bool N2FileData::flush_to_disk() {
 
     std::string flags_group_prefix = file_mode == CHIME ? "/flags" : "";
 
-    // Add and write configs in configTracker
+    // Write configTracker snapshots to /config_json. Skip when empty
+    // (tracker disabled or not yet populated) so we don't append a
+    // zero-length slab.
     try {
         std::vector<std::string> json_objs = kotekan::ConfigTracker::instance().getAllJSONConfigs();
-        HighFive::DataSet json_dset = h5_file->getDataSet("/config_json");
-        auto space = json_dset.getSpace();
-        auto cur_dims = space.getDimensions();
-        std::size_t old_n = cur_dims.empty() ? 0 : cur_dims[0];
-        std::size_t extra_n = json_objs.size();
-        json_dset.resize({old_n + extra_n});
-        json_dset.select({old_n}, {extra_n}).write(json_objs);
+        if (!json_objs.empty()) {
+            HighFive::DataSet json_dset = h5_file->getDataSet("/config_json");
+            auto space = json_dset.getSpace();
+            auto cur_dims = space.getDimensions();
+            std::size_t old_n = cur_dims.empty() ? 0 : cur_dims[0];
+            std::size_t extra_n = json_objs.size();
+            json_dset.resize({old_n + extra_n});
+            json_dset.select({old_n}, {extra_n}).write(json_objs);
+        }
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to write config JSON to HDF5 file {}: {}", partial_filepath,
                            e.what());
@@ -783,27 +1010,63 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/erms")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(erms.data());
+        h5_file->getDataSet(flags_group_prefix + "/valid_fpga_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(valid_fpga_count.data());
+        h5_file->getDataSet(flags_group_prefix + "/rfi_fpga_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(rfi_fpga_count.data());
+        h5_file->getDataSet(flags_group_prefix + "/rfi_only_fpga_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(rfi_only_fpga_count.data());
+        h5_file->getDataSet(flags_group_prefix + "/pl_fpga_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(pl_fpga_count.data());
         h5_file->getDataSet(flags_group_prefix + "/frac_lost")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(frac_lost.data());
         h5_file->getDataSet(flags_group_prefix + "/frac_rfi")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(frac_rfi.data());
+        h5_file->getDataSet(flags_group_prefix + "/frac_rfi_only")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(frac_rfi_only.data());
+        h5_file->getDataSet(flags_group_prefix + "/frac_pl")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(frac_pl.data());
         h5_file->getDataSet("/gain")
             .select({0, 0, 0}, {num_file_f, num_elements, num_file_t})
             .write_raw(gain.data());
         h5_file->getDataSet(flags_group_prefix + "/flags")
             .select({0, 0, 0}, {num_file_f, num_elements, num_file_t})
             .write_raw(flags.data());
+        h5_file->getDataSet("/radiometer_chi2")
+            .select({0, 0, 0}, {num_file_f, num_file_t, 3})
+            .write_raw(radiometer_chi2.data());
 
         h5_file->getDataSet("/fpga_start_tick").write(fpga_start_tick);
         h5_file->getDataSet("/frame_length_fpga_ticks").write(frame_length_fpga_ticks);
-        h5_file->getDataSet("/time_center_ut1_ns").write(time_center_ut1);
-        h5_file->getDataSet("/bin_ut1_ns").write(bin_ut1);
+        h5_file->getDataSet("/bin_abs_index").write(bin_abs_index);
+        h5_file->getDataSet("/time_center_t_inst_ns").write(time_center_t_inst_ns);
+        h5_file->getDataSet("/time_center_ut1_ns").write(time_center_ut1_ns);
+        h5_file->getDataSet("/bin_t_inst_ns").write(bin_t_inst_ns);
+        h5_file->getDataSet("/bin_ut1_ns").write(bin_ut1_ns);
+        h5_file->getDataSet("/bin_delta_ut1_inst").write(bin_delta_ut1_inst);
+        h5_file->getDataSet("/bin_ERA_deg").write(bin_era_deg);
+        h5_file->getDataSet("/bin_xp_as").write(bin_xp_as);
+        h5_file->getDataSet("/bin_yp_as").write(bin_yp_as);
         h5_file->getDataSet("/bin_start_ERA_deg").write(bin_start_ERA_deg);
         h5_file->getDataSet("/bin_end_ERA_deg").write(bin_end_ERA_deg);
-        h5_file->getDataSet("/bin_start_LAST").write(bin_start_LAST);
-        h5_file->getDataSet("/bin_end_LAST").write(bin_end_LAST);
+        h5_file->getDataSet("/bin_start_ERAL_deg").write(bin_start_ERAL_deg);
+        h5_file->getDataSet("/bin_end_ERAL_deg").write(bin_end_ERAL_deg);
+        h5_file->getDataSet("/rfi_frame_excision_enabled").write(rfi_frame_excision_enabled);
+        h5_file->getDataSet("/rfi_frame_excision_num").write(rfi_frame_excision_num);
+        h5_file->getDataSet("/rfi_frame_excision_threshold")
+            .select({0, 0}, {num_file_t, MAX_NUM_RFI_THRESHOLDS})
+            .write_raw(rfi_frame_excision_threshold.data());
+        h5_file->getDataSet("/rfi_frame_excision_fraction")
+            .select({0, 0}, {num_file_t, MAX_NUM_RFI_THRESHOLDS})
+            .write_raw(rfi_frame_excision_fraction.data());
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
         has_error = true;
@@ -812,44 +1075,16 @@ bool N2FileData::flush_to_disk() {
         has_error = true;
     }
 
-    // Check and write digital gains
-    if (!gains_base_directory.empty()) {
-        std::optional<DigitalGains> gains_data = _get_digital_gains();
-        if (!gains_data) {
-            FATAL_ERROR_NON_OO("Failed to read digital gains! Gains datasets not updated.");
+    // Verify digital gains file hasn't been modified since it was copied at file creation
+    if (!baseband_gain_file.empty() && gains_file_hash) {
+        std::optional<size_t> current_hash = hash_file_contents(baseband_gain_file);
+        if (current_hash && current_hash != gains_file_hash) {
+            FATAL_ERROR_NON_OO("Digital gains file {} has been modified since file creation!",
+                               baseband_gain_file);
             has_error = true;
-        } else {
-            if (gains_data->full_filepath
-                != h5_file->getAttribute("digital_gains_source_file").read<std::string>()) {
-                // Digital gains source file has changed since file creation
-                FATAL_ERROR_NON_OO("Digital gains source file has changed since file creation! "
-                                   "Not writing gains datasets.");
-                has_error = true;
-                // Add attribute to indicate conflict, don't write datasets
-                _check_create_attribute(*h5_file, "digital_gains_source_file_conflict",
-                                        gains_data->full_filepath);
-            } else {
-                // Write gains datasets
-                try {
-                    h5_file->getDataSet("/digital_gains/gains_lin")
-                        .select({0}, {gains_data->gains_lin.size()})
-                        .write(gains_data->gains_lin);
-                    h5_file->getDataSet("/digital_gains/gains_log")
-                        .select({0}, {gains_data->gains_log.size()})
-                        .write(gains_data->gains_log);
-                } catch (const HighFive::Exception& e) {
-                    FATAL_ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}",
-                                       partial_filepath, e.what());
-                    has_error = true;
-                } catch (const std::exception& e) {
-                    FATAL_ERROR_NON_OO("Failed to write digital gains to HDF5 file {}: {}",
-                                       partial_filepath, e.what());
-                    has_error = true;
-                }
-            }
+            _check_create_attribute(*h5_file, "digital_gains_source_file_modified",
+                                    std::string("true"));
         }
-    } else {
-        DEBUG_NON_OO("No gains_base_directory specified, skipping digital gains write.");
     }
 
     return !has_error;
@@ -869,8 +1104,9 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
           [](const kotekan::Stage& stage) {
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
-    _base_dir(config.get<std::string>(unique_name, "base_dir")),
-    _gains_base_directory(config.get_default<std::string>(unique_name, "gains_base_directory", "")),
+    _base_dir(get_acq_base_dir_path(config.get<std::string>(unique_name, "base_dir"))),
+    _baseband_gain_file(config.get_default<std::string>(unique_name, "baseband_gain_file", "")),
+    _baseband_gain_update_idx(config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)),
     _num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),
     _compression(config.get_default<std::string>(unique_name, "compression", "none")),
     _compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),
@@ -905,6 +1141,46 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
 
     _buffer->register_consumer(unique_name);
 
+    // Resolve baseband_gain_host_info once: it names a config path (e.g.
+    // /fpga_controller) to a block exposing host, port, and an optional
+    // gains_endpoint. The actual fetch happens later in main_thread().
+    const std::string gain_host_ref =
+        config.get_default<std::string>(unique_name, "baseband_gain_host_info", "");
+    if (!gain_host_ref.empty()) {
+        _baseband_gain_host = config.get<std::string>(gain_host_ref, "host");
+        const int port_int = config.get<int>(gain_host_ref, "port");
+        if (port_int <= 0 || port_int > 65535) {
+            FATAL_ERROR("hdf5N2Write: invalid {}.port: {}", gain_host_ref, port_int);
+        }
+        _baseband_gain_port = static_cast<std::uint16_t>(port_int);
+        _baseband_gain_endpoint = config.get_default<std::string>(gain_host_ref, "gains_endpoint",
+                                                                  "/get-current-gain-file");
+    }
+
+    // baseband_gain_file and baseband_gain_host_info are mutually exclusive.
+    // If the host_info form is set, _baseband_gain_file gets filled in by
+    // main_thread() once .partial exists and the fetch completes.
+    if (!_baseband_gain_file.empty() && !gain_host_ref.empty()) {
+        FATAL_ERROR("baseband_gain_file and baseband_gain_host_info are mutually exclusive; set "
+                    "only one of them (file='{}', host_info='{}')",
+                    _baseband_gain_file, gain_host_ref);
+    }
+    if (_baseband_gain_file.empty() && gain_host_ref.empty()) {
+        WARN("hdf5N2Write: no digital gains configured (set 'baseband_gain_file: <path>' or "
+             "'baseband_gain_host_info: /<fpga_controller_block>'). Output files will be written "
+             "without a /digital_gains dataset, which downstream analysis usually needs to apply "
+             "per-input gains to the visibilities. Set this unless you truly intend to skip "
+             "gains.");
+    } else if (!_baseband_gain_file.empty() && !std::filesystem::exists(_baseband_gain_file)) {
+        // The host_info path resolves _baseband_gain_file later in main_thread;
+        // only warn here if a literal file path was given and isn't on disk yet.
+        // Per-file open will still FATAL if the file is missing when needed.
+        WARN("hdf5N2Write: baseband_gain_file '{}' does not exist at startup. "
+             "If it's still missing when the first output file is opened, kotekan will FATAL. "
+             "Check the path, or use baseband_gain_host_info to fetch it.",
+             _baseband_gain_file);
+    }
+
     // Validate file window configuration
     if (_num_file_t == 0) {
         FATAL_ERROR("num_file_t must be > 0 for hdf5N2Write");
@@ -914,12 +1190,39 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
         FATAL_ERROR("Input buffer must be a N2-type buffer.");
     }
 
+    // Reject configs where two hdf5N2Write instances share an output directory.
+    {
+        std::vector<std::pair<std::string, std::string>> peers;
+        collect_hdf5N2Write_base_dirs(config.get_full_config_json(), "", peers);
+
+        const std::string my_dir = config.get<std::string>(unique_name, "base_dir");
+        const std::string my_norm = normalize_base_dir(my_dir);
+        for (const auto& [peer_name, peer_dir] : peers) {
+            if (peer_name == unique_name)
+                continue;
+            if (normalize_base_dir(peer_dir) == my_norm) {
+                FATAL_ERROR("hdf5N2Write[{}]: base_dir '{}' conflicts with stage '{}'. "
+                            "Each hdf5N2Write instance must use a unique base_dir.",
+                            unique_name, my_dir, peer_name);
+            }
+        }
+    }
+
     if (_max_frames >= 0) {
         if (_max_frames % _num_file_t != 0)
             WARN("max_frames ({}) is not a multiple of num_file_t ({}). An output file will only "
                  "be partially filled.",
                  _max_frames, _num_file_t);
         ++waiting_for_max_frames;
+    }
+
+    // The /config_json dataset in each output file is populated from the
+    // ConfigTracker. If the tracker is disabled globally, output files will
+    // have an empty /config_json: note that, but keep running.
+    if (config.exists("/", "config_tracker")
+        && !config.get_default<bool>("/config_tracker", "enabled", true)) {
+        WARN("hdf5N2Write: /config_tracker.enabled is false; HDF5 files will be written without "
+             "any /config_json entries.");
     }
 }
 
@@ -1098,7 +1401,8 @@ void hdf5N2Write::main_thread() {
     /// Keyed by absolute file id = absolute frame index / _num_file_t
     std::map<size_t, std::unique_ptr<N2FileData>> filedata;
 
-    // Create base_dir and partial dir if necessary (recursively)
+    // Create acquisition base_dir and partial dir if necessary (recursively)
+    INFO("Acquisition directory: {}", _base_dir);
     {
         if (mkdir_p(_base_dir.c_str(), 0777) != 0) {
             const char* const msg = strerror(errno);
@@ -1108,6 +1412,17 @@ void hdf5N2Write::main_thread() {
         if (mkdir_p(partial_dir.c_str(), 0777) != 0) {
             const char* const msg = strerror(errno);
             FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", partial_dir.c_str(), msg);
+        }
+
+        // If baseband_gain_host_info was provided instead of a local path,
+        // fetch the gains file once into the partial dir and point
+        // _baseband_gain_file at the cached copy. From here on the existing
+        // local-file code path is used.
+        if (!_baseband_gain_host.empty()) {
+            const std::string cached = partial_dir + "/baseband_gains.h5";
+            download_to_file(_baseband_gain_host, _baseband_gain_port, _baseband_gain_endpoint,
+                             cached);
+            _baseband_gain_file = cached;
         }
     }
 
@@ -1155,7 +1470,7 @@ void hdf5N2Write::main_thread() {
             auto N2FileData_obj = std::make_unique<N2FileData>(
                 N2FileData::CHORD, _num_file_t, fv, frame_recv_time, abs_file_idx, _blocksize_f,
                 _blocksize_p, _blocksize_t, _compression, _compression_level, _use_bitshuffle,
-                _base_dir, _gains_base_directory);
+                _base_dir, _baseband_gain_file, _baseband_gain_update_idx);
 
             filedata.emplace(abs_file_idx, std::move(N2FileData_obj));
             N2FileData_ptr = filedata.find(abs_file_idx)->second.get();

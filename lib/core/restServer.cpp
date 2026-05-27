@@ -1,33 +1,33 @@
 #include "restServer.hpp"
 
-#include "Config.hpp"         // for Config
-#include "kotekanLogging.hpp" // for ERROR_NON_OO, DEBUG_NON_OO, WARN_NON_OO, INFO_NON_OO
+#include <arpa/inet.h>              // for inet_pton, ntohs
+#include <assert.h>                 // for assert
+#include <event2/buffer.h>          // for evbuffer_add, evbuffer_peek, iovec, evbuffer_iovec
+#include <event2/event.h>           // for event_add, event_base_dispatch, event_base_free, even...
+#include <event2/http.h>            // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
+#include <event2/keyvalq_struct.h>  // for evkeyvalq, evkeyval
+#include <event2/thread.h>          // for evthread_use_pthreads
+#include <evhttp.h>                 // for evhttp_request
+#include <netdb.h>                  // for addrinfo, freeaddrinfo, gai_strerror, getaddrinfo
+#include <netinet/in.h>             // for sockaddr_in, IPPROTO_IPV6, IPV6_V6ONLY
+#include <pthread.h>                // for pthread_setaffinity_np, pthread_setname_np
+#include <sched.h>                  // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stdlib.h>                 // for exit, free, malloc
+#include <sys/socket.h>             // for setsockopt, bind, getsockname, shutdown, socket, AF_INET
+#include <sys/time.h>               // for timeval
+#include <unistd.h>                 // for close
+#include <json.hpp>                 // for json_ref, basic_json, input_adapter, iter_impl, json
+#include <cstring>                  // for memset
+#include <exception>                // for exception
+#include <mutex>                    // for unique_lock
+#include <stdexcept>                // for runtime_error
+#include <string>                   // for basic_string, string, allocator, operator!=, operator<
+#include <utility>                  // for pair
+#include <vector>                   // for vector
 
-#include "fmt.hpp" // for compile_string_to_view, format, fmt
-
-#include <arpa/inet.h>             // for inet_pton, ntohs
-#include <assert.h>                // for assert
-#include <cstring>                 // for memset
-#include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_iovec
-#include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
-#include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
-#include <event2/keyvalq_struct.h> // for evkeyvalq, evkeyval
-#include <event2/thread.h>         // for evthread_use_pthreads
-#include <evhttp.h>                // for evhttp_request
-#include <exception>               // for exception
-#include <mutex>                   // for unique_lock
-#include <netdb.h>                 // for addrinfo, freeaddrinfo, gai_strerror, getaddrinfo
-#include <netinet/in.h>            // for sockaddr_in, IPPROTO_IPV6, IPV6_V6ONLY
-#include <pthread.h>               // for pthread_setaffinity_np, pthread_setname_np
-#include <sched.h>                 // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdexcept>               // for runtime_error
-#include <stdlib.h>                // for exit, free, malloc
-#include <string>                  // for basic_string, string, allocator, operator!=, operator<
-#include <sys/socket.h>            // for setsockopt, bind, getsockname, shutdown, socket, AF_INET
-#include <sys/time.h>              // for timeval
-#include <unistd.h>                // for close
-#include <utility>                 // for pair
-#include <vector>                  // for vector
+#include "Config.hpp"               // for Config
+#include "kotekanLogging.hpp"       // for ERROR_NON_OO, FatalError, DEBUG_NON_OO, WARN_NON_OO
+#include "fmt.hpp"                  // for compile_string_to_view, format, fmt
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 #endif
@@ -147,15 +147,71 @@ void restServer::start(const std::string& bind_address, u_short port) {
     this->_bind_address = bind_address;
     this->_port = port;
 
+    // Initialize libevent and bind the socket synchronously, so that by
+    // the time start() returns, _port reflects the OS-assigned port
+    // (when the caller requested port 0) and callers reading port() see
+    // a final value. The background thread, started below, runs only
+    // the event loop.
+
+    if (evthread_use_pthreads()) {
+        ERROR_NON_OO("restServer: Cannot use pthreads with libevent!");
+        exit(1);
+    }
+
+    event_config* ev_config = event_config_new();
+    if (!ev_config) {
+        ERROR_NON_OO("Failed to create config for libevent");
+        exit(1);
+    }
+    if (event_config_avoid_method(ev_config, "select")) {
+        ERROR_NON_OO("Failed to exclude select from the libevent options");
+        exit(1);
+    }
+    event_base = event_base_new_with_config(ev_config);
+    event_config_free(ev_config);
+    if (!event_base) {
+        ERROR_NON_OO("restServer: Failed to create libevent base");
+        exit(1);
+    }
+
+    ev_server = evhttp_new(event_base);
+    if (ev_server == nullptr) {
+        ERROR_NON_OO("restServer: Failed to create libevent http server");
+        exit(1);
+    }
+    evhttp_set_allowed_methods(ev_server, EVHTTP_REQ_GET | EVHTTP_REQ_POST);
+    evhttp_set_gencb(ev_server, handle_request, (void*)this);
+
+    struct evhttp_bound_socket* ev_sock =
+        evhttp_bind_socket_with_handle(ev_server, _bind_address.c_str(), _port);
+    if (ev_sock == nullptr) {
+        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", _bind_address, _port);
+        exit(1);
+    }
+
+    // If port was set to 0, find the OS-assigned port now.
+    if (_port == 0) {
+        evutil_socket_t sock = evhttp_bound_socket_get_fd(ev_sock);
+        struct sockaddr_in sin;
+        socklen_t len = sizeof(sin);
+        if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
+            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", _bind_address,
+                         _port);
+            exit(1);
+        }
+        _port = ntohs(sin.sin_port);
+    }
+
+    // Register endpoints before starting the loop thread: once dispatch
+    // runs, handle_request reads the callback map without a read lock.
+    using namespace std::placeholders;
+    register_get_callback("/endpoints", std::bind(&restServer::endpoint_list_callback, this, _1));
+
     main_thread = std::thread(&restServer::http_server_thread, this);
 
 #ifndef MAC_OSX
     pthread_setname_np(main_thread.native_handle(), "rest_server");
 #endif
-
-    // Framework level tracking of endpoints.
-    using namespace std::placeholders;
-    register_get_callback("/endpoints", std::bind(&restServer::endpoint_list_callback, this, _1));
 }
 
 void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
@@ -458,67 +514,9 @@ void restServer::timer(evutil_socket_t fd, short event, void* arg) {
 
 void restServer::http_server_thread() {
 
-    // Allow for using extra threads (not currently needed)
-    if (evthread_use_pthreads()) {
-        ERROR_NON_OO("restServer: Cannot use pthreads with libevent!");
-        exit(1);
-    }
-
-    // Create the base event for handling requests,
-    // and exclude using `select` as a backend API
-    event_config* ev_config = event_config_new();
-    if (!ev_config) {
-        ERROR_NON_OO("Failed to create config for libevent");
-        exit(1);
-    }
-    int err = event_config_avoid_method(ev_config, "select");
-    if (err) {
-        ERROR_NON_OO("Failed to exclude select from the libevent options");
-        exit(1);
-    }
-    event_base = event_base_new_with_config(ev_config);
-    if (!event_base) {
-        ERROR_NON_OO("restServer: Failed to create libevent base");
-        // Use exit() not raise() since this happens early in startup before
-        // the signal handlers are all in place.
-        exit(1);
-    }
-
-    // Create the server
-    ev_server = evhttp_new(event_base);
-    if (ev_server == nullptr) {
-        ERROR_NON_OO("restServer: Failed to create libevent base");
-        exit(1);
-    }
-
-    // Currently allow only GET and POST requests
-    evhttp_set_allowed_methods(ev_server, EVHTTP_REQ_GET | EVHTTP_REQ_POST);
-
-    // Just setup one handler and implement the URL parsing internally
-    evhttp_set_gencb(ev_server, handle_request, (void*)this);
-
-    // Bind to the IP and port
-    struct evhttp_bound_socket* ev_sock =
-        evhttp_bind_socket_with_handle(ev_server, _bind_address.c_str(), _port);
-    if (ev_sock == nullptr) {
-        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", _bind_address, _port);
-        exit(1);
-    }
-
-    // if port was set to random, find port socket is listening on
-    if (_port == 0) {
-        evutil_socket_t sock = evhttp_bound_socket_get_fd(ev_sock);
-        struct sockaddr_in sin;
-        socklen_t len = sizeof(sin);
-        if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
-            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", _bind_address,
-                         _port);
-            exit(1);
-        }
-        _port = ntohs(sin.sin_port);
-    }
-    // This INFO line is parsed by the python runner to get the RESTserver port. Don't edit.
-    INFO_NON_OO("restServer: started server on address:port {:s}:{:d}", _bind_address, _port);
+    // Init and socket bind were done synchronously in start(); this
+    // thread only runs the event loop and tears down libevent state on
+    // exit.
 
     // Create a timer to check for the exit condition
     struct event* timer_event;
@@ -528,13 +526,17 @@ void restServer::http_server_thread() {
     interval.tv_usec = 100000;
     event_add(timer_event, &interval);
 
+    // Emit the "started" log from the first loop iteration (zero-delay
+    // timeout) so it signals a running loop, not just a bound socket.
+    struct timeval zero = {0, 0};
+    event_base_once(event_base, -1, EV_TIMEOUT, &restServer::log_started, this, &zero);
+
     // run event loop
     event_base_dispatch(event_base);
 
     event_free(timer_event);
     evhttp_free(ev_server);
     event_base_free(event_base);
-    event_config_free(ev_config);
 }
 
 void restServer::set_server_affinity(Config& config) {

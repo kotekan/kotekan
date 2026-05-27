@@ -1,33 +1,32 @@
 #include "buffer.hpp"
 
-#include <assert.h>      // for assert
-#include <bits/chrono.h> // for duration, operator+, nanoseconds, seconds, system_clock
-#include <errno.h>       // for errno
-#include <pthread.h>     // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
-#include <sched.h>       // for CPU_SET, CPU_ZERO, cpu_set_t
-#include <stdexcept>     // for runtime_error
-#include <stdlib.h>      // for free, malloc
-#include <string.h>      // for strerror, memset, memcpy
-#include <sys/mman.h>    // for mmap, munmap, MAP_FAILED
-#include <utility>       // for pair
+#include <assert.h>            // for assert
+#include <errno.h>             // for errno
+#include <pthread.h>           // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
+#include <sched.h>             // for CPU_SET, CPU_ZERO, cpu_set_t
+#include <stdlib.h>            // for free, malloc
+#include <string.h>            // for strerror, memset, memcpy
+#include <sys/mman.h>          // for mlock, mmap, munmap, MAP_FAILED
+#include <json.hpp>            // for basic_json, json
+#include <chrono>              // for duration, operator+, nanoseconds, seconds, system_clock
+#include <stdexcept>           // for runtime_error
+#include <utility>             // for pair
 
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
-#include "errors.h"           // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F
-#include "kotekanLogging.hpp" // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
-#include "metadata.hpp"       // for metadataObject, metadataPool
-#include "nt_memset.h"        // for nt_memset
-#include "util.h"             // for e_time
-
-#include "fmt.hpp"      // for format, fmt
-#include "fmt/format.h" // for compile_string_to_view
+#include "errors.h"            // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F
+#include "kotekanLogging.hpp"  // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
+#include "metadata.hpp"        // for metadataObject, metadataPool
+#include "nt_memset.h"         // for nt_memset
+#include "util.h"              // for e_time
+#include "fmt.hpp"             // for compile_string_to_view, format, fmt
 #ifndef MAC_OSX
-#include <linux/mman.h> // for MAP_HUGE_2MB, MAP_PRIVATE
+#include <linux/mman.h>        // for MAP_HUGE_2MB, MAP_PRIVATE
 #endif
-#include <time.h> // for timespec
+#include <time.h>              // for timespec
 #ifdef WITH_NUMA
-#include <numa.h>   // for bitmask, numa_alloc_onnode, numa_allocate_nodemask, numa_b...
-#include <numaif.h> // for mbind, MPOL_BIND, MPOL_MF_STRICT
+#include <numa.h>              // for bitmask, numa_allocate_nodemask, numa_bitmask_free, numa_b...
+#include <numaif.h>            // for set_mempolicy, MPOL_BIND, mbind, MPOL_DEFAULT, MPOL_MF_STRICT
 #endif
 
 // It is assumed this is a power of two in the code.
@@ -213,7 +212,7 @@ std::string GenericBuffer::get_dot_node_label() {
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                const std::string& _buffer_name, const std::string& _buffer_type, int _numa_node,
                bool _use_hugepages, bool _mlock_frames, const std::vector<int>& cpu_affinity,
-               bool zero_new_frames) :
+               bool zero_new_frames, uint8_t zero_value) :
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
     _zero_frames(false), frames(num_frames, nullptr), frames_desc(nullptr),
@@ -251,7 +250,7 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
     for (int i = 0; i < num_frames; ++i) {
         if (len) {
             frames[i] = buffer_malloc(aligned_frame_size, numa_node, use_hugepages, mlock_frames,
-                                      zero_new_frames);
+                                      zero_new_frames, zero_value);
             if (frames[i] == nullptr) {
                 throw std::runtime_error(
                     fmt::format(fmt("Failed to allocate Buffer memory: {} bytes: {} ({})"),
@@ -734,7 +733,7 @@ bool is_frame_buffer(GenericBuffer* buf) {
 }
 
 uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock_frames,
-                       bool zero_new_frames) {
+                       bool zero_new_frames, uint8_t zero_value) {
 
     uint8_t* frame = nullptr;
 
@@ -795,7 +794,7 @@ uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock
 #endif
     // Zero the new frame
     if (zero_new_frames)
-        memset(frame, 0x0, len);
+        memset(frame, zero_value, len);
 
     return frame;
 }

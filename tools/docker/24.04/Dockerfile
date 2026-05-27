@@ -70,6 +70,7 @@ RUN apt-get update && \
         libsystemd-dev \
         libxtensor-dev \
         libyaml-cpp-dev \
+        lld \
         make \
         pkg-config \
         python3 \
@@ -102,6 +103,7 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
         gmpy2 \
         h5py \
         hdf5plugin \
+        jinja2 \
         mpmath \
         msgpack \
         numpy \
@@ -114,6 +116,7 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
         pytest-timeout \
         pytest-xdist \
         requests \
+        ruamel.yaml \
         setuptools \
         sphinx==6.2.* \
         sphinx_rtd_theme==2.0.* \

@@ -1,10 +1,12 @@
 #include "UpchannelizationSchedule.hpp"
 
-#include "CHORDTelescope.hpp"
+#include "Telescope.hpp" // for Telescope, freq_id_t
 
-#include <cstddef>
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <cstddef> // for size_t
 #include <mutex>
-#include <sstream>
+#include <sstream> // for basic_ostream, basic_ostringstream, operator<<, basic_ostream::...
 
 std::vector<int> UpchannelizationSchedule::make_frequency_channels() const {
     const auto frequency_channels = config.get<std::vector<int>>(unique_name, "frequency_channels");
@@ -59,7 +61,7 @@ std::map<int, std::set<int>> UpchannelizationSchedule::make_upchan_channels_to_f
 }
 
 void UpchannelizationSchedule::output_statistics() const {
-    const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
+    const auto& telescope = Telescope::instance();
 
     INFO("Upchannelization schedule:");
 
@@ -78,8 +80,8 @@ void UpchannelizationSchedule::output_statistics() const {
     int total_output_channels = 0;
     INFO("There are {} local input frequency channels", frequency_channels.size());
     for (std::size_t index = 0; index < frequency_channels.size(); ++index) {
-        const int channel = frequency_channels.at(index);
-        const double frequency = chord_telescope.to_freq_MHz(channel);
+        const freq_id_t channel = frequency_channels.at(index);
+        const double frequency = telescope.to_freq_MHz(channel);
         const auto factors = get_upchan_factors(channel);
         std::ostringstream upchannelized;
         if (factors.empty()) {

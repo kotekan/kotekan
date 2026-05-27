@@ -1,18 +1,16 @@
 #include "timeUtil.hpp"
 
-#include <boost/multiprecision/cpp_int.hpp>          // for cpp_int_backend
-#include <boost/multiprecision/detail/no_et_ops.hpp> // for operator*, operator/, operator%
-#include <boost/multiprecision/fwd.hpp>              // for int128_t, expression_template_option
-#include <boost/multiprecision/number.hpp>           // for number
-#include <math.h>                                    // for round
-#include <utility>                                   // for move
+#include <math.h>    // for round
+#include <assert.h>  // for assert
+#include <json.hpp>  // for json, basic_json
+#include <ostream>   // for basic_ostream
 
-using boost::multiprecision::int128_t;
+#include "fmt.hpp"   // for format, format_string
 
-const int128_t era_A = 77'905'727'326'400'000L;
-const int128_t era_B = 100'273'781'191'135'448L;
-const int128_t day_ns = 86'400'000'000'000L;
-const int128_t e17 = 100'000'000'000'000'000L;
+const __int128 era_A = 77'905'727'326'400'000L;
+const __int128 era_B = 100'273'781'191'135'448L;
+const __int128 day_ns = 86'400'000'000'000L;
+const __int128 e17 = 100'000'000'000'000'000L;
 const int64_t GIGA = 1'000'000'000L;
 
 int64_t timespec_to_nanosec_i64(const timespec& t) {
@@ -148,19 +146,19 @@ double get_ERA_from_UT1(int64_t ut1, int64_t* n_rot) {
      */
 
     // Cast ut1 time (already with correct epoch) to an i128
-    int128_t t_ns = (int128_t)ut1;
+    __int128 t_ns = (__int128)ut1;
 
     // Denominator
-    int128_t denom = ((int128_t)e17) * day_ns;
+    __int128 denom = ((__int128)e17) * day_ns;
 
     // Numerator
-    int128_t tot_17ns = era_A * day_ns + era_B * t_ns;
+    __int128 tot_17ns = era_A * day_ns + era_B * t_ns;
 
     // Number of rotations since UT1 T0
     int64_t num_rot = (int64_t)(tot_17ns / denom);
 
     // Fraction of rotation, this is the ERA.
-    int128_t f_17ns = tot_17ns % denom;
+    __int128 f_17ns = tot_17ns % denom;
     double f = ((double)f_17ns) / ((double)denom);
 
     // Correct if time was negative
@@ -188,11 +186,11 @@ int64_t get_UT1_from_ERA(int64_t n_rot, double ERA_deg) {
      */
 
     // the amount of rotation since UT1 T0, multiplied by 1e17 * day_ns
-    int128_t rot_17ns = day_ns * (e17 * n_rot + ((int128_t)(1e17 * ERA_deg)) / 360);
+    __int128 rot_17ns = day_ns * (e17 * n_rot + ((__int128)(1e17 * ERA_deg)) / 360);
 
     // Calculate the UT1 time for the amount of rotation.
-    int128_t numer = rot_17ns - era_A * day_ns;
-    int128_t t_ns = numer / era_B;
+    __int128 numer = rot_17ns - era_A * day_ns;
+    __int128 t_ns = numer / era_B;
 
     // Compute the correction for integer rounding. Will be < 1 ns, but may
     // round to a full nanosecond.

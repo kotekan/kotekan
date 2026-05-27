@@ -17,51 +17,55 @@ sec_in_day: 86400
 nsec_in_day: sec_in_day * giga
 
 earth_rotation_data:
-  kotekan_update_endpoint: "json"
-  earth_orientation_parameter_table: [
-# (Un)comment out to use a particular EOP table.
-#      {
-#        t_inst_ns: 1578010000000000300,
-#        delta_UT1_inst: 0.5,
-#        xp_as: 0.1,
-#        yp_as: 0.2
-#      }, {
-#        t_inst_ns: 1578040000000000380,
-#        delta_UT1_inst: 0.801234,
-#        xp_as: 3.0,
-#        yp_as: 4.0,
-    ]
+    kotekan_update_endpoint: "json"
+    # yamlfix:off
+    earth_orientation_parameter_table: [
+  # (Un)comment out to use a particular EOP table.
+  #      {
+  #        t_inst_ns: 1578010000000000300,
+  #        delta_UT1_inst: 0.5,
+  #        xp_as: 0.1,
+  #        yp_as: 0.2
+  #      }, {
+  #        t_inst_ns: 1578040000000000380,
+  #        delta_UT1_inst: 0.801234,
+  #        xp_as: 3.0,
+  #        yp_as: 4.0,
+      ]
+    # yamlfix:on
 
 
 telescope:
-  name: CHORDTelescope
-  require_gps: false
-  origin_itrs_lon_deg: -119.62081125
-  origin_itrs_lat_deg: 49.3207514444444444
-  grid_x_axis: [1.0, 0.0, 0.0]
-  grid_y_axis: [0.0, 1.0, 0.0]
-  dish_elev_axis: [1.0, 0.0, 0.0]
-  dish_vert_axis: [0.0, 0.0, 1.0]
-  dish_coelev_deg: 0.0
+    name: CHORDTelescope
+    require_gps: false
+    origin_itrs_lon_deg: -119.62081125
+    origin_itrs_lat_deg: 49.3207514444444470
+    grid_x_axis: [1.0, 0.0, 0.0]
+    grid_y_axis: [0.0, 1.0, 0.0]
+    dish_elev_axis: [1.0, 0.0, 0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
+    dish_coelev_deg: 0.0
 
-  eop_updatable_config: "/earth_rotation_data"
-  require_eop: false
+    eop_updatable_config: "/earth_rotation_data"
+    require_eop: false
 
-  dish_separation_x_m: 6.3
-  dish_separation_y_m: 8.5
+    dish_separation_x_m: 6.3
+    dish_separation_y_m: 8.5
 
-  dish_inputs: [
-    {dish_idx: 0, grid_x_idx: 0, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A01},
-    {dish_idx: 1, grid_x_idx: 1, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A02},
-    {dish_idx: 4, grid_x_idx: 0, grid_y_idx: 1, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-B01},
-    {dish_idx: 5, grid_x_idx: 1, grid_y_idx: 1, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-B02},
-    {dish_idx: 2, grid_x_idx: 7, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A08},
-    {dish_idx: 6, grid_x_idx: 0, grid_y_idx: 7, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-H01},
-    {dish_idx: 7, grid_x_idx: 7, grid_y_idx: 7, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-H08},
-    {dish_idx: 3, grid_x_idx: 15, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A16},
-    {dish_idx: 8, grid_x_idx: 0, grid_y_idx: 15, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-P01},
-    {dish_idx: 9, grid_x_idx: 15, grid_y_idx: 15, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-P16}
-  ]
+    # yamlfix:off
+    dish_inputs: [
+      {dish_idx: 0, grid_x_idx: 0, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A01},
+      {dish_idx: 1, grid_x_idx: 1, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A02},
+      {dish_idx: 4, grid_x_idx: 0, grid_y_idx: 1, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-B01},
+      {dish_idx: 5, grid_x_idx: 1, grid_y_idx: 1, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-B02},
+      {dish_idx: 2, grid_x_idx: 7, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A08},
+      {dish_idx: 6, grid_x_idx: 0, grid_y_idx: 7, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-H01},
+      {dish_idx: 7, grid_x_idx: 7, grid_y_idx: 7, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-H08},
+      {dish_idx: 3, grid_x_idx: 15, grid_y_idx: 0, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-A16},
+      {dish_idx: 8, grid_x_idx: 0, grid_y_idx: 15, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-P01},
+      {dish_idx: 9, grid_x_idx: 15, grid_y_idx: 15, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: CHORD-P16}
+    ]
+    # yamlfix:on
 
 # (Un)comment out this block to test a particular GPS time
 # gps_time:
@@ -73,5 +77,5 @@ num_dishes_y: 16
 
 # Add a consumer stage that prints the output buffer to screen
 screen_dump:
-  kotekan_stage: TestCHORDTelescope
-  updatable_config: "/updates"
+    kotekan_stage: TestCHORDTelescope
+    updatable_config: "/updates"

@@ -1,0 +1,38 @@
+{#-
+  chord_pathfinder_send.j2
+  Send buffers to recv nodes.
+-#}
+
+# Buffer sends
+
+buffer_send_n2_subset:
+    kotekan_stage: bufferSend
+    buf: n2_eigen_buffer
+    server_ip: 10.222.0.51
+    server_port: 11025
+    retry_time: 10.0
+    drop_frames: true
+
+buffer_send_n2_full:
+    kotekan_stage: bufferSend
+    buf: n2_buffer
+    server_ip: 10.222.0.51
+    server_port: 11027
+    retry_time: 10.0
+    drop_frames: true
+
+buffer_send_n2_subset_1:
+    kotekan_stage: bufferSend
+    buf: n2_eigen_buffer_1
+    server_ip: 10.222.0.51
+    server_port: 11025
+    retry_time: 10.0
+    drop_frames: true
+
+buffer_send_n2_full_1:
+    kotekan_stage: bufferSend
+    buf: n2_buffer_1
+    server_ip: 10.222.0.51
+    server_port: 11027
+    retry_time: 10.0
+    drop_frames: true

@@ -48,6 +48,8 @@ FAILED_TESTS=()
 FAILED_TEST_EXIT_CODES=()
 FAILED_TEST_TIMES=()
 TIMED_OUT_TESTS=()
+TIMED_OUT_TEST_TIMES=()
+TIMED_OUT_TEST_EXIT_CODES=()
 
 # Run tests
 for config_file in "$TEST_CONFIG_DIR"/*.yaml; do
@@ -63,6 +65,8 @@ for config_file in "$TEST_CONFIG_DIR"/*.yaml; do
   if [ $EXIT_CODE -eq 124 ]; then
     echo "Test timed out for config: $config_file"
     TIMED_OUT_TESTS+=("$config_file")
+    TIMED_OUT_TEST_EXIT_CODES+=("$EXIT_CODE")
+    TIMED_OUT_TEST_TIMES+=("$elapsed")
   elif [ $EXIT_CODE -ne 0 ]; then
     echo "Test failed for config: $config_file with exit code $EXIT_CODE"
     FAILED_TESTS+=("$config_file")
@@ -106,8 +110,9 @@ fi
 
 if [ ${#TIMED_OUT_TESTS[@]} -gt 0 ]; then
   echo "Timed out tests:"
-  for test in "${TIMED_OUT_TESTS[@]}"; do
-    echo "  - $test"
+  for i in "${!TIMED_OUT_TESTS[@]}"; do
+    duration=$(format_duration "${TIMED_OUT_TEST_TIMES[$i]}")
+    echo "  - ${TIMED_OUT_TESTS[$i]} (exit code: ${TIMED_OUT_TEST_EXIT_CODES[$i]}, duration: $duration)"
   done
   echo ""
 fi

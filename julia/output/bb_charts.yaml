@@ -1,0 +1,69 @@
+# Metadata for the CUDA baseband beamformer
+# This file has been generated automatically by `bb.jl`.
+# Do not modify this file, your changes will be lost.
+
+--- !<tag:chord-observatory.ca/x-engine/kernel-description-1.0.0>
+kernel-description:
+  name: "bb"
+  description: "baseband beamformer"
+  design-parameters:
+    number-of-beams: 16
+    number-of-complex-components: 2
+    number-of-dishes: 64
+    number-of-frequencies: 336
+    number-of-polarizations: 2
+    number-of-timesamples: 16384
+    sampling-time-μsec: 3.3333333333333335
+    shift-parameter-σ: 2
+  compile-parameters:
+    minthreads: [32, 4]
+    blocks_per_sm: 8
+  call-parameters:
+    threads: [32, 4]
+    blocks: [336]
+    shmem_bytes: 9472
+  kernel-symbol: "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES4_S5_S5_"
+  kernel-arguments:
+    - name: "Tmin"
+      intent: in
+      type: Int32
+    - name: "Tmax"
+      intent: in
+      type: Int32
+    - name: "A"
+      intent: in
+      type: Int8
+      indices: [C, D, B, P, F]
+      shape: [2, 64, 16, 2, 336]
+      strides: [1, 2, 128, 2048, 4096]
+    - name: "E"
+      intent: in
+      type: Int4
+      indices: [C, D, P, F, T]
+      shape: [2, 64, 2, 336, 16384]
+      strides: [1, 2, 128, 256, 86016]
+    - name: "s"
+      intent: in
+      type: Int32
+      indices: [B, P, F]
+      shape: [16, 2, 336]
+      strides: [1, 16, 32]
+    - name: "J"
+      intent: out
+      type: Int4
+      indices: [C, T, P, F, B, Thi]
+      shape: [2, 4096, 2, 336, 16, 1]
+      strides: [1, 2, 8192, 16384, 5505024, 5505024]
+    - name: "info"
+      intent: out
+      type: Int32
+      indices: [thread, warp, block]
+      shapes: [32, 4, 336]
+      strides: [1, 32, 128]
+    - name: "log"
+      intent: inout
+      type: Int32
+      indices: [block]
+      shapes: [336]
+      strides: [1]
+...

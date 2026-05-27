@@ -1,10 +1,11 @@
 #include "N2FrameDesc.hpp"
 
-#include "kotekanLogging.hpp"
+#include <set>                 // for set
+#include <ostream>             // for basic_ostream, operator<<
+#include <stdexcept>           // for runtime_error
 
-#include "fmt.hpp"
-
-#include <set>
+#include "kotekanLogging.hpp"  // for ERROR_NON_OO
+#include "fmt.hpp"             // for format, compile_string_to_view, format_string
 
 namespace kotekan {
 
@@ -248,7 +249,9 @@ n2frame_layout_t N2FrameDesc::get_frame_layout(uint32_t num_elements_in, uint32_
     field_sizes.push_back({N2Field::evec, sizeof(N2::cfloat) * num_ev_in * num_elements_in});
     field_sizes.push_back({N2Field::emethod, sizeof(N2EigenMethod) * 1});
     field_sizes.push_back({N2Field::erms, sizeof(float) * 1});
+    field_sizes.push_back({N2Field::radiometer_chi2, sizeof(float) * 3}); // 3 pol pairs XX, XY, YY
     field_sizes.push_back({N2Field::gain, sizeof(N2::cfloat) * num_elements_in});
+    field_sizes.push_back({N2Field::mask, sizeof(uint8_t) * num_elements_in});
 
     n2frame_layout_t layout;
     size_t offset = 0;

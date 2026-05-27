@@ -3,6 +3,8 @@
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"            // for Symbol
+#include "Telescope.hpp"         // for Telescope
+#include "CHORDTelescope.hpp"    // for CHORDTelescope
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"     // for chordMetadata, metadata_is_chord, get_c...
@@ -29,6 +31,9 @@ class inventBFMask : public kotekan::Stage {
     const int num_dishes = config.get<int>(unique_name, "num_dishes");
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
     const int num_times = config.get<int>(unique_name, "num_times");
+    const std::string mode = config.get_default<std::string>(unique_name, "mode",
+            "all_good");
+    const std::vector<int> manual_bad_feeds = config.get_default<std::vector<int>>(unique_name, "manual_bad_feeds", {});
 
     Buffer* const buffer;
 
@@ -42,6 +47,10 @@ public:
         buffer(get_buffer("bf_mask")) {
         assert(buffer);
         buffer->register_producer(unique_name);
+
+        if ((mode != "all_good") && (mode != "all_bad") && (mode != "auto") && (mode != "manual")) {
+            FATAL_ERROR("Bad mode: {:s}", mode);
+        }
     }
 
     virtual ~inventBFMask() {}
@@ -73,13 +82,32 @@ public:
         meta->ndishes = -1;
         meta->dish_index = nullptr;
 
+        const Telescope& tel = Telescope::instance();
+
         // Fill buffer
         DEBUG("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
         for (int polr = 0; polr < num_polarizations; ++polr) {
             for (int dish = 0; dish < num_dishes; ++dish) {
                 const int idx = dish + num_dishes * polr;
                 assert(idx >= 0 && idx < std::ptrdiff_t(buffer->frame_size));
-                frame[idx] = 1; // dish is active
+                if (mode == "all_good")
+                    frame[idx] = 1; // dish is active
+                else if (mode == "all_bad")
+                    frame[idx] = 0; // dish is not active
+                else if (mode == "auto") {
+                    if (tel.cast<CHORDTelescope>().get_dish_at_idx(dish).type == DishType::ArrayDish)
+                        frame[idx] = 1;
+                    else
+                        frame[idx] = 0;
+                }
+                else 
+                    frame[idx] = 1;
+            }
+
+            if (mode == "manual") {
+                for (size_t j = 0; j < manual_bad_feeds.size(); j++) {
+                    frame[manual_bad_feeds.at(j)] = 0;
+                }
             }
         }
 

@@ -1,21 +1,18 @@
 #include "CHORDTelescope.hpp"
 
-#include "Telescope.hpp"      // for Telescope, freq_id_t, REGISTER_TELESCOPE, _factory_aliasTe...
-#include "kotekanLogging.hpp" // for WARN, INFO, DEBUG
-#include "restClient.hpp"     // for restClient
-#include "timeUtil.hpp" // for EOP, get_ERA_from_UT1, get_UT1_from_time, nanosec_i64_to_timespec
+#include <assert.h>            // for assert
+#include <algorithm>           // for max, min
+#include <stdexcept>           // for runtime_error
+#include <vector>              // for vector
+#include <cmath>               // for sin, cos, floor, ceil, M_PI, abs
+#include <chrono>              // for duration_cast, duration, nanoseconds, system_clock
 
-#include "fmt.hpp"  // for compile_string_to_view
-#include "json.hpp" // for basic_json, json, iter_impl, input_adapter
-
-#include <algorithm>  // for lower_bound, copy, sort, max
-#include <assert.h>   // for assert
-#include <chrono>     // for system_clock, duration_cast, nanoseconds
-#include <exception>  // for exception
-#include <functional> // for bind, _1, function
-#include <math.h>     // for sin, cos, M_PI
-#include <stdexcept>  // for runtime_error
-#include <vector>     // for vector
+#include "Telescope.hpp"       // for freq_id_t, Telescope, nyquist_zone_t, stream_t, REGISTER_T...
+#include "kotekanLogging.hpp"  // for FATAL_ERROR_NON_OO, WARN_NON_OO, INFO_NON_OO, DEBUG, FATAL...
+#include "restClient.hpp"      // for restClient
+#include "timeUtil.hpp"        // for EOP, nanosec_i64_to_timespec
+#include "fmt.hpp"             // for compile_string_to_view, format, format_string
+#include "json.hpp"            // for basic_json, operator==, json, input_adapter
 
 
 REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
@@ -91,6 +88,10 @@ GeographicParams GeographicParams::from_config(const kotekan::Config& config,
         dish.R_topo_to_dish[1][i] = dish_y[i];
         dish.R_topo_to_dish[2][i] = dish_z[i];
     }
+
+    // Whether to check for duplicate dish grid locations
+    dish.check_duplicate_dish_grid =
+        config.get_default<bool>(path, "check_duplicate_dish_grid", true);
 
     // Set all dish input data: num_dishes, dish_info_table, dish_position, ...
     dish.set_dish_info(config, path);
@@ -199,8 +200,7 @@ void GeographicParams::set_dish_info(const kotekan::Config& config, const std::s
         // Catch inconsistencies
         assert(dish_info.idx == dish);
         dish_index_t& dish_index = dish_grid.dish_index(dish_info.grid_x_idx, dish_info.grid_y_idx);
-        // Catch inconsistencies
-        if (dish_index != -1) {
+        if (check_duplicate_dish_grid && dish_index != -1) {
             FATAL_ERROR_NON_OO("dish {:s} has duplicate grid location ({:d},{:d})", dish_info.label,
                                dish_info.grid_x_idx, dish_info.grid_y_idx);
         }
@@ -311,9 +311,22 @@ GPSTimeParams GPSTimeParams::from_config(const kotekan::Config& config, const st
 
     gps.require_gps = config.get_default<bool>(path, "require_gps", false);
     gps.query_gps = config.get_default<bool>(path, "query_gps", false);
-    gps.gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
-    gps.gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
-    gps.gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
+    // gps_host_info names a sibling block (typically /fpga_controller)
+    // holding ``host``, ``port``, and optionally ``timing_endpoint`` (the
+    // default for gps_endpoint). Required when query_gps is true.
+    std::string default_gps_endpoint = "/get-frame0-time";
+    if (config.exists(path, "gps_host_info")) {
+        const std::string ref = config.get<std::string>(path, "gps_host_info");
+        gps.gps_host = config.get<std::string>(ref, "host");
+        gps.gps_port = config.get_default<uint32_t>(ref, "port", 54321);
+        if (config.exists(ref, "timing_endpoint"))
+            default_gps_endpoint = config.get<std::string>(ref, "timing_endpoint");
+    } else if (gps.query_gps) {
+        FATAL_ERROR_NON_OO("CHORDTelescope ({}): query_gps is true but gps_host_info is not set; "
+                           "point it at the FPGA controller block (e.g. /fpga_controller).",
+                           path);
+    }
+    gps.gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", default_gps_endpoint);
     gps.auto_correct_gps_week_rollover =
         config.get_default<bool>(path, "auto_correct_gps_week_rollover", false);
 
@@ -726,8 +739,8 @@ std::array<double, 3> CHORDTelescope::vec_itrs_to_cirs(const std::array<double, 
     return v_cirs;
 }
 
-void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
-                                          std::vector<std::complex<double>>& phases) const {
+void CHORDTelescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
+                                               std::vector<std::complex<float>>& phases) const {
 
     // Get the pointing vector (phase center) for the telescope in dish coordinates. This is
     // constant in time.
@@ -762,7 +775,7 @@ void CHORDTelescope::fringestop_phases_1d(double freq_MHz, const EOP& eop, const
                           + _geographic_params.dish_positions[i][1] * (n_grid[1] - n_grid0[1])
                           + _geographic_params.dish_positions[i][2] * (n_grid[2] - n_grid0[2]));
 
-        phases[i] = {cos(phase), sin(phase)};
+        phases[i] = {static_cast<float>(cos(phase)), static_cast<float>(sin(phase))};
     }
 }
 
@@ -877,20 +890,27 @@ size_t CHORDTelescope::num_science_freqs() const {
     return _freq_params.num_science_freqs();
 }
 
-// Stream logic has been moved to the packet capture code in dpdk
-// This stub remains to satisfy inheritance and will likely be removed
-// in the future, it will abort if called.
-freq_id_t CHORDTelescope::to_freq_id(stream_t, uint32_t) const {
-    FATAL_ERROR("CHORDTelesope does not support to_freq_id(stream_t)");
-    return 0;
+freq_id_t CHORDTelescope::to_freq_id(stream_t stream_id, uint32_t index) const {
+    // The frequency ID is currently defined by the following formula:
+    // freq_id = min_science_freq_id() + index * 128  + stream_id
+    return min_science_freq_id() + index * 128 + stream_id.id;
 }
 
-// Stream logic has been moved to the packet capture code in dpdk
-// This stub remains to satisfy inheritance and will likely be removed
-// in the future, it will abort if called.
+// Currently hard coded in the F-engine packet format.
 size_t CHORDTelescope::num_freq_per_stream() const {
-    FATAL_ERROR("CHORDTelesope does not support num_freq_per_stream()");
-    return 0;
+    return 48;
+}
+
+double CHORDTelescope::get_ERAL_deg(EOP& eop) const {
+    double era = eop.ERA_deg;
+    double lon = get_origin_itrs_lon_deg();
+    double eral = era + lon; // Ignore TIO locator s', it is only ~12 micro arcseconds.
+
+    // Reset eral to [0, 360)
+    double n_off = std::floor(eral / 360.0);
+    eral -= n_off * 360;
+
+    return eral;
 }
 
 void to_json(nlohmann::json& j, const dishInfo& d) {

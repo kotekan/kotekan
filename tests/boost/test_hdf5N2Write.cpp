@@ -71,8 +71,9 @@ using std::string;
 using HighFive::File;
 using kotekan::N2FrameDesc;
 
-// Absolute path to test gains directory (injected by CMake via TEST_DATA_DIR)
-static const std::string TEST_GAINS_DIR = std::string(TEST_DATA_DIR) + "/baseband_gains";
+// Absolute path to test gains file (injected by CMake via TEST_DATA_DIR)
+static const std::string TEST_GAINS_FILE =
+    std::string(TEST_DATA_DIR) + "/baseband_gains/test_gains.h5";
 
 static freq_id_t get_abs_freq_id(size_t f_index) {
     const auto& tel = Telescope::instance().cast<CHORDTelescope>();
@@ -88,9 +89,10 @@ static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_in
     auto meta = get_N2_metadata(buf, frame_id);
     BOOST_REQUIRE(meta);
     meta->freq_id = get_abs_freq_id(f_index);
-    // Keep LAST within the valid bounds enforced by add_frame bounds checks
-    meta->bin_start_LAST = 1.23 + double(t_index);
-    meta->bin_end_LAST = 4.56 + double(t_index);
+    // Keep ERAL within the valid bounds enforced by add_frame bounds checks
+    meta->bin_end_ERA_deg = 7.89 + double(t_index);
+    meta->bin_start_ERAL_deg = 1.23 + double(t_index);
+    meta->bin_end_ERAL_deg = 4.56 + double(t_index);
 }
 
 
@@ -99,7 +101,7 @@ class TestVisFileData : public N2FileData {
 public:
     TestVisFileData(const N2FrameView& fv, uint64_t num_file_t, double open_wall_s,
                     uint64_t abs_file_idx, std::string base_dir,
-                    std::string gains_base_dir = TEST_GAINS_DIR) :
+                    std::string gains_file = TEST_GAINS_FILE) :
         N2FileData(N2FileData::CHORD, num_file_t, fv, open_wall_s, abs_file_idx,
                    /*blocksize_f*/ 0,
                    /*blocksize_p*/ 0,
@@ -107,7 +109,7 @@ public:
                    /*compression*/ "none",
                    /*compression_level*/ 0,
                    /*use_bitshuffle*/ false, std::move(base_dir),
-                   /*gains_base_directory*/ std::move(gains_base_dir)) {}
+                   /*baseband_gain_file*/ std::move(gains_file)) {}
 
     N2::cfloat get_vis(size_t f, size_t p, size_t t) const {
         return vis[idx_fpt(f, p, t)];
@@ -143,10 +145,10 @@ public:
         return frame_length_fpga_ticks.at(t);
     }
     int64_t get_time_center_ut1(size_t t) const {
-        return time_center_ut1.at(t);
+        return time_center_ut1_ns.at(t);
     }
     int64_t get_bin_ut1(size_t t) const {
-        return bin_ut1.at(t);
+        return bin_ut1_ns.at(t);
     }
     size_t get_added_count() const {
         return added_count;
@@ -292,6 +294,8 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     meta->frame_length_fpga_ticks = 100;
     meta->n_valid_fpga_ticks = 80;
     meta->n_rfi_fpga_ticks = 5;
+    meta->n_rfi_only_fpga_ticks = 4;
+    meta->n_pl_fpga_ticks = 100 - (80 + 4);
     meta->abs_time_idx = 5;
     meta->time_center_eop.t_ut1_ns = 333;
     meta->bin_eop.t_ut1_ns = 444;
@@ -373,7 +377,9 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     meta1->frame_start_time_ns = 2000;
     meta1->frame_length_fpga_ticks = 100;
     meta1->n_valid_fpga_ticks = 80;
-    meta1->n_rfi_fpga_ticks = 30; // sum > frame_len -> should clamp to 20
+    meta1->n_rfi_fpga_ticks = 30;      // sum > frame_len -> should clamp to 20
+    meta1->n_rfi_only_fpga_ticks = 30; // sum > frame_len -> should clamp to 20
+    meta1->n_pl_fpga_ticks = 30;       // sum > frame_len -> should clamp to 20
     meta1->abs_time_idx = 10;
     meta1->time_center_eop.t_ut1_ns = 10'000;
     meta1->bin_eop.t_ut1_ns = 10'000;
@@ -383,6 +389,9 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     *meta2 = *meta1;
     meta2->n_valid_fpga_ticks = 150; // > frame len -> clamp to 100
     meta2->n_rfi_fpga_ticks = 50;    // will be ignored because slot already set; kept for symmetry
+    meta2->n_rfi_only_fpga_ticks =
+        50;                      // will be ignored because slot already set; kept for symmetry
+    meta2->n_pl_fpga_ticks = 50; // will be ignored because slot already set; kept for symmetry
     meta2->time_center_eop.t_ut1_ns = 11'000; // should not overwrite the first set value
     meta2->bin_eop.t_ut1_ns = 11'000;
     meta2->time_center_eop.ERA_deg = 12.34;
@@ -446,8 +455,56 @@ struct TelescopeFixture {
 
 BOOST_TEST_GLOBAL_FIXTURE(TelescopeFixture);
 
-// Test 1: Full-block flush with transpose validation
+// Test 1: Two hdf5N2Write stage blocks pointing at the same base_dir should
+// be rejected at construction. Placed before any test that calls
+// kotekan_test_logging::configure() — that helper installs a SIGTERM handler
+// that _Exits the process, which would prevent BOOST_CHECK_THROW from catching
+// the FATAL_ERROR.
+BOOST_AUTO_TEST_CASE(test_writer_base_dir_conflict_detection) {
+
+    const std::string base_dir = "test_hdf5N2Write_conflict";
+    const std::string unique_a = "/hdf5_vis_writer_conflict_a";
+    const std::string in_buf_name = "n2buf_conflict";
+    rm_tree_if_exists(base_dir);
+
+    auto conf = make_writer_config(unique_a, in_buf_name, base_dir, /*file_name*/ "vis",
+                                   /*prefix_hostname*/ false, /*num_file_t*/ 2,
+                                   /*blocksize_f*/ 0, /*blocksize_p*/ 0,
+                                   /*blocksize_t*/ 2, /*grace*/ 60,
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_FILE);
+
+    // Inject a peer hdf5N2Write stage block sharing the same base_dir.
+    {
+        auto cfg = conf.get_full_config_json();
+        nlohmann::json peer;
+        peer["kotekan_stage"] = "hdf5N2Write";
+        peer["base_dir"] = base_dir;
+        cfg["hdf5_vis_writer_conflict_b"] = peer;
+        conf.update_config(cfg);
+    }
+
+    // Minimal buffer setup (the stage's constructor needs in_buf to exist).
+    const size_t num_input = 2, num_ev = 1;
+    const size_t num_prod = N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri);
+    const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
+    auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_conflict", "N2Metadata");
+    Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
+               /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
+    buf.set_frame_desc(
+        std::make_shared<N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::FullUpperTri));
+    buf.register_producer("test-producer");
+    kotekan::bufferContainer bc;
+    bc.add_buffer(in_buf_name, &buf);
+
+    BOOST_CHECK_THROW(hdf5N2Write(conf, unique_a, bc), std::runtime_error);
+
+    rm_tree_if_exists(base_dir);
+}
+
+// Test 2: Full-block flush with transpose validation
 BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
+
+    kotekan_test_logging::configure();
 
     const std::string suffix = ".h5";
     const std::string unique_name = "/hdf5_vis_writer";
@@ -470,7 +527,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
                                    /*prefix_hostname*/ false, num_file_t,
                                    /*blocksize_f (0=all)*/ 0, /*blocksize_p*/ 0,
                                    /*blocksize_t*/ num_file_t, /*grace*/ 60,
-                                   /*seq_override*/ dt_ns, TEST_GAINS_DIR);
+                                   /*seq_override*/ dt_ns, TEST_GAINS_FILE);
     set_file_num_t(conf, unique_name, num_file_t);
 
     // Buffer + container
@@ -523,15 +580,10 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     buf.send_shutdown_signal();
     stage.join();
 
-    // Find exactly one dataset in base_dir
-    auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> datasets;
-    for (auto& e : entries) {
-        if (e.find(suffix) != std::string::npos)
-            datasets.push_back(e);
-    }
+    // Find exactly one dataset under base_dir's acquisition subdir
+    auto datasets = list_h5_datasets(base_dir);
     BOOST_REQUIRE_MESSAGE(datasets.size() == 1, "Expected 1 dataset, found " << datasets.size());
-    const std::string ds_path = join_path(base_dir, datasets[0]);
+    const std::string ds_path = datasets[0];
 
     {
         File f(ds_path, File::ReadOnly);
@@ -539,11 +591,10 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     }
 
     // Cleanup
-    rm_tree_if_exists(ds_path);
     rm_tree_if_exists(base_dir);
 }
 
-// Test 2: Partial flush triggered on exit (incomplete time block)
+// Test 3: Partial flush triggered on exit (incomplete time block)
 BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
 
     kotekan_test_logging::configure();
@@ -567,7 +618,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
                                    /*prefix_hostname*/ false, num_file_t,
                                    /*blocksize_f (0=all)*/ 0, /*blocksize_p*/ 0, /*blocksize_t*/ 1,
                                    /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_DIR);
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_FILE);
     set_file_num_t(conf, unique_name, num_file_t);
 
     // Buffer + container
@@ -606,14 +657,9 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     buf.send_shutdown_signal();
     stage.join();
 
-    auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> datasets;
-    for (auto& e : entries) {
-        if (e.find(suffix) != std::string::npos)
-            datasets.push_back(e);
-    }
+    auto datasets = list_h5_datasets(base_dir);
     BOOST_REQUIRE_MESSAGE(datasets.size() == 1, "Expected 1 dataset, found " << datasets.size());
-    const std::string ds_path = join_path(base_dir, datasets[0]);
+    const std::string ds_path = datasets[0];
 
     {
         File f(ds_path, File::ReadOnly);
@@ -632,11 +678,10 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     }
 
     // Cleanup
-    rm_tree_if_exists(ds_path);
     rm_tree_if_exists(base_dir);
 }
 
-// Test 3: Multi-file rollover when time crosses a file window
+// Test 4: Multi-file rollover when time crosses a file window
 BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
 
     kotekan_test_logging::configure();
@@ -654,7 +699,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     const uint64_t num_file_t = 2;
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_p*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_DIR);
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_FILE);
     set_file_num_t(conf, unique_name, num_file_t);
 
     const size_t frame_size = N2FrameDesc::calculate_frame_size(
@@ -707,24 +752,17 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
     buf.send_shutdown_signal();
     stage.join();
 
-    auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> datasets;
-    for (auto& e : entries) {
-        if (e.find(suffix) != std::string::npos)
-            datasets.push_back(e);
-    }
+    auto datasets = list_h5_datasets(base_dir);
     BOOST_REQUIRE_MESSAGE(datasets.size() == 2, "Expected 2 datasets, found " << datasets.size());
     // Validate each one opens and contents make sense
-    for (const auto& e : datasets) {
-        const std::string p = join_path(base_dir, e);
+    for (const auto& p : datasets) {
         File f(p, File::ReadOnly);
         validate_dataset_content(f, num_input, num_ev, nfreq, num_file_t);
-        rm_tree_if_exists(p);
     }
     rm_tree_if_exists(base_dir);
 }
 
-// Test 4: Adjacent file windows produce distinct dataset names
+// Test 5: Adjacent file windows produce distinct dataset names
 BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
 
     kotekan_test_logging::configure();
@@ -744,7 +782,7 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     const uint64_t num_file_t = 1; // one frame per file
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_p*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                   /*seq_override*/ dt_ns, TEST_GAINS_DIR);
+                                   /*seq_override*/ dt_ns, TEST_GAINS_FILE);
     set_file_num_t(conf, unique_name, num_file_t);
     const size_t frame_size = N2FrameDesc::calculate_frame_size(
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
@@ -791,20 +829,14 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
     buf.send_shutdown_signal();
     stage.join();
 
-    // Both datasets should exist in base_dir and have different names
-    std::vector<std::string> datasets;
-    for (auto& e : list_dir_entries(base_dir)) {
-        if (e.find(suffix) != std::string::npos)
-            datasets.push_back(join_path(base_dir, e));
-    }
+    // Both datasets should exist under base_dir/acq_*/ and have different names
+    auto datasets = list_h5_datasets(base_dir);
     BOOST_REQUIRE_MESSAGE(datasets.size() == 2, "Expected 2 datasets, found " << datasets.size());
     BOOST_CHECK(datasets[0] != datasets[1]);
-    for (auto& d : datasets)
-        rm_tree_if_exists(d);
     rm_tree_if_exists(base_dir);
 }
 
-// Test 5: Grace-based finalize of partial dataset (late_frame_grace_seconds=0)
+// Test 6: Grace-based finalize of partial dataset (late_frame_grace_seconds=0)
 BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
 
     kotekan_test_logging::configure();
@@ -822,7 +854,7 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const uint64_t num_file_t = 2;
     auto conf = make_writer_config(
         unique_name, in_buf_name, base_dir, file_name, false, num_file_t, 0 /*bs_f*/, 0 /*bs_p*/,
-        0 /*bs_t*/, 0 /*late_frame_grace_seconds*/, 1'000'000'000ULL, TEST_GAINS_DIR);
+        0 /*bs_t*/, 0 /*late_frame_grace_seconds*/, 1'000'000'000ULL, TEST_GAINS_FILE);
     set_file_num_t(conf, unique_name, num_file_t);
 
     const size_t frame_size = N2FrameDesc::calculate_frame_size(
@@ -874,19 +906,12 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     buf.send_shutdown_signal();
     stage.join();
 
-    auto entries = list_dir_entries(base_dir);
-    std::vector<std::string> datasets;
-    for (auto& e : entries) {
-        if (e.find(suffix) != std::string::npos)
-            datasets.push_back(e);
-    }
+    auto datasets = list_h5_datasets(base_dir);
     BOOST_REQUIRE_MESSAGE(datasets.size() >= 1, "Expected at least 1 finalized dataset");
-    for (auto& e : datasets)
-        rm_tree_if_exists(join_path(base_dir, e));
     rm_tree_if_exists(base_dir);
 }
 
-// Test 6: Late-frame drop when final already exists
+// Test 7: Late-frame drop when final already exists
 BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
 
     kotekan_test_logging::configure();
@@ -904,7 +929,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const uint64_t num_file_t = 1;
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_p*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_DIR);
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_FILE);
     set_file_num_t(conf, unique_name, num_file_t);
     set_stage_log_level(conf, unique_name, "ERROR");
     const size_t frame_size = N2FrameDesc::calculate_frame_size(
@@ -927,9 +952,12 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     const uint64_t frame_len_ns = frame_len_ticks * dt_ns;
     const uint64_t file_start_time_ns = base_time_ns; // aligned to 1-second file window
 
-    // Pre-create a final dataset path to force drop
-    const std::string ds_final = get_dataset_name(base_dir, 0, file_start_time_ns, suffix);
-    ensure_directory(base_dir);
+    // The writer creates an `acq_<timestamp>` subdir at startup; pre-create the
+    // final dataset there so the writer's drop-on-existing-final logic triggers.
+    const std::string acq_dir = wait_for_acq_dir(base_dir);
+    BOOST_REQUIRE_MESSAGE(!acq_dir.empty(),
+                          "Writer did not create an acq_* subdir under " << base_dir);
+    const std::string ds_final = get_dataset_name(acq_dir, 0, file_start_time_ns, suffix);
     {
         FILE* fp = std::fopen(ds_final.c_str(), "wb");
         BOOST_REQUIRE(fp != nullptr);
@@ -965,23 +993,16 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
     stage.join();
 
     // Expect exactly one new dataset in addition to the pre-existing marker
-    auto entries = list_dir_entries(base_dir);
-    size_t datasets = 0;
-    for (auto& e : entries) {
-        if (e.find(suffix) != std::string::npos)
-            datasets++;
-    }
-    BOOST_REQUIRE_MESSAGE(datasets == 2,
-                          "Expected 2 dataset entries (pre-existing + new), found " << datasets);
+    auto datasets = list_h5_datasets(base_dir);
+    BOOST_REQUIRE_MESSAGE(datasets.size() == 2,
+                          "Expected 2 dataset entries (pre-existing + new), found "
+                              << datasets.size());
 
     // Cleanup
-    for (auto& e : entries) {
-        rm_tree_if_exists(join_path(base_dir, e));
-    }
     rm_tree_if_exists(base_dir);
 }
 
-/// Test 7: Basic geometry write test
+/// Test 8: Basic geometry write test
 BOOST_AUTO_TEST_CASE(test_writer_geometry_basic) {
 
     kotekan_test_logging::configure();
@@ -1000,7 +1021,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_basic) {
 
     auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
                                    /*bs_f (0=all)*/ 0, /*bs_p*/ 0, /*bs_t*/ 1, /*grace*/ 60,
-                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_DIR);
+                                   /*seq_override*/ 1'000'000'000ULL, TEST_GAINS_FILE);
     set_file_num_t(conf, unique_name, num_file_t);
     const size_t frame_size = N2FrameDesc::calculate_frame_size(
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
@@ -1036,15 +1057,9 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_basic) {
     stage.join();
 
     // Dataset should still exist and be readable
-    auto entries = list_dir_entries(base_dir);
-    std::string ds_path;
-    for (auto& e : entries) {
-        if (e.find(suffix) != std::string::npos) {
-            ds_path = join_path(base_dir, e);
-            break;
-        }
-    }
-    BOOST_REQUIRE(!ds_path.empty());
+    auto datasets = list_h5_datasets(base_dir);
+    BOOST_REQUIRE(!datasets.empty());
+    const std::string ds_path = datasets[0];
     {
         File f(ds_path, File::ReadOnly);
         // Quick sanity: check arrays exist

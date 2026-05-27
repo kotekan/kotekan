@@ -11,6 +11,7 @@
     { include: [ "<bits/std_abs.h>", private, "<cmath>", public ] },
     { include: [ "<bits/getopt_core.h>", private, "<unistd.h>", public ] },
     { include: [ "<bits/types/sig_atomic_t.h>", private, "<csignal>", public ] },
+    { include: [ "<bits/chrono.h>", private, "<chrono>", public ] },
 
     # Use the main fmt header file only
     { include: [ "\"fmt/core.h\"", private, "\"fmt.hpp\"", public ] },
@@ -18,6 +19,18 @@
     # Some builds of fmt include headers with relative names
     { include: [ "\"core.h\"", private, "\"fmt.hpp\"", public ] },
     { include: [ "\"format.h\"", private, "\"fmt.hpp\"", public ] },
+    # fmt is pulled in via -isystem, so IWYU reports its internal headers with
+    # angle brackets. Redirect every fmt header that fmt.hpp provides to the
+    # wrapper, which defines the fmt() macro, FMT_HEADER_ONLY and pulls in the
+    # chrono/ostream/printf formatters. NOTE: fmt/ranges.h is intentionally NOT
+    # mapped -- fmt.hpp does not include it, so range users include it directly.
+    { include: [ "<fmt/core.h>", private, "\"fmt.hpp\"", public ] },
+    { include: [ "<fmt/base.h>", private, "\"fmt.hpp\"", public ] },
+    { include: [ "<fmt/format.h>", private, "\"fmt.hpp\"", public ] },
+    { include: [ "<fmt/format-inl.h>", private, "\"fmt.hpp\"", public ] },
+    { include: [ "<fmt/chrono.h>", private, "\"fmt.hpp\"", public ] },
+    { include: [ "<fmt/printf.h>", private, "\"fmt.hpp\"", public ] },
+    { include: [ "<fmt/ostream.h>", private, "\"fmt.hpp\"", public ] },
 
     # libevent
     { symbol: [ "evhttp_request", public, "<evhttp.h>", public ] },

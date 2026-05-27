@@ -6,35 +6,38 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
-#include "kotekanLogging.hpp" // for ERROR_NON_OO
-
-#include "fmt.hpp"  // for compile_string_to_view, fmt, format, format_string
-#include "json.hpp" // for json
-
-#include <assert.h>    // for assert
-#include <cmath>       // for isinf, isnan
+#include <assert.h>            // for assert
+#include <cxxabi.h>            // for __cxa_demangle, abi
+#include <stdlib.h>            // for free
+#include <cmath>               // for isinf, isnan
 #include <complex>     // for complex  // IWYU pragma: keep
-#include <cstdint>     // for int32_t
-#include <cxxabi.h>    // for __cxa_demangle, abi
-#include <exception>   // for exception
-#include <limits>      // for numeric_limits
-#include <list>        // for list
-#include <regex>       // for regex, regex_match, cmatch, sregex_token_iterator
-#include <stdexcept>   // for runtime_error
-#include <string>      // for basic_string, operator==, string, char_traits, allocator
-#include <type_traits> // for conditional, is_arithmetic, is_integral, is_unsigned, enab...
-#include <typeinfo>    // for type_info
-#include <vector>      // for vector
+#include <cstdint>             // for int32_t
+#include <exception>           // for exception
+#include <limits>              // for numeric_limits
+#include <list>                // for list
+#include <regex>               // for regex, regex_match, cmatch, sregex_token_iterator
+#include <stdexcept>           // for runtime_error
+#include <string>              // for basic_string, operator==, string, char_traits, allocator
+#include <type_traits>         // for is_arithmetic, is_integral, enable_if, is_same, conditional
+#include <typeinfo>            // for type_info
+#include <vector>              // for vector
+
+#include "kotekanLogging.hpp"  // for ERROR_NON_OO
+#include "fmt.hpp"             // for compile_string_to_view, fmt, format, format_string
+#include "json.hpp"            // for json
 
 
 namespace kotekan {
 
 // Define a "large" type for every arithmetic type
 template<typename Type>
-using LargeType = typename std::conditional<
-    std::is_integral<Type>::value,
-    typename std::conditional<std::is_unsigned<Type>::value, unsigned long long, long long>::type,
-    double>::type;
+using LargeType =
+    typename std::conditional<std::is_integral<Type>::value,
+                              // "long double" will have at least 64bits for the significant plus an
+                              // additional sign bit, enough to hold both int64_t and uint64_t
+                              // do not use "unsigned long long" to avoid unsigned(-1) ==
+                              // unsigned_max issues
+                              long double, double>::type;
 
 // Convert types, with checking for overflows
 template<typename Ret, typename Type>

@@ -1,3 +1,4 @@
+---
 #
 # Tests that the lostSamples --> N2 Counts pipeline for CHIME/HIRAX produces matching output
 # as n2k pipeline for CHORD.
@@ -123,9 +124,9 @@ gen_lost_samples:
     # num_polarizations: num_polarizations # set via global
     pl_mask_buf: dummy_pl_mask_buffer
     lost_samples_buffers:
-      - lost_samples_buffer_0
-      - lost_samples_buffer_1
-      - lost_samples_buffer_2
+        - lost_samples_buffer_0
+        - lost_samples_buffer_1
+        - lost_samples_buffer_2
 
 gen_rfimask:
     type: random1x8  # For the real test, this should be `random1x8`
@@ -133,7 +134,7 @@ gen_rfimask:
     kotekan_stage: testDataGen
     out_buf: host_rfi_RFImask_buffer
     name: "RFImask"
-    array_shape: [ 2, 12, 128 ]  # [samples_per_data_set/1024, num_local_freq, 128]
+    array_shape: [2, 12, 128]    # [samples_per_data_set/1024, num_local_freq, 128]
     dim_name: ["T8hi128", "F", "T8lo128"]
     num_frames: 2*buffer_depth
     meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
@@ -142,9 +143,9 @@ lostSamplesToN2Counts:
     kotekan_stage: lostSamplesToN2Counts
     rfi_mask_buf: host_rfi_RFImask_buffer
     lost_samples_buffers:
-      - lost_samples_buffer_0
-      - lost_samples_buffer_1
-      - lost_samples_buffer_2
+        - lost_samples_buffer_0
+        - lost_samples_buffer_1
+        - lost_samples_buffer_2
     n2k_counts_buf: host_ls_counts_buffer
     num_n2k_freq: num_local_freq
 
@@ -152,9 +153,9 @@ lostSamplesToPLMask:
     kotekan_stage: lostSamplesToPLMask
     pl_mask_buf: host_pl_mask_buffer
     lost_samples_buffers:
-      - lost_samples_buffer_0
-      - lost_samples_buffer_1
-      - lost_samples_buffer_2
+        - lost_samples_buffer_0
+        - lost_samples_buffer_1
+        - lost_samples_buffer_2
 
 # run_send_rfi_RFImask:
 #     gpu_0:
@@ -239,8 +240,8 @@ check_counts_data:
     first_buf: simulated_n2k_counts_buffer
     second_buf: host_ls_counts_buffer
     num_frames_to_test: 2*buffer_depth
-    trigger_exit_on_pass: False
-    check_metadata: True
+    trigger_exit_on_pass: false
+    check_metadata: true
 
 # dump to disk to inspect manually
 writers:

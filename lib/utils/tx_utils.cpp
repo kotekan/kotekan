@@ -1,10 +1,14 @@
 #include "tx_utils.hpp"
 
-#include <cstring>   // for strlen
-#include <stdexcept> // for runtime_error
-#include <stdlib.h>  // for atoi, malloc
-#include <time.h>    // for timespec
-#include <unistd.h>  // for gethostname
+#include <stdlib.h>            // for malloc, size_t
+#include <time.h>              // for timespec
+#include <unistd.h>            // for gethostname
+#include <stdio.h>             // for sscanf
+#include <cstring>             // for strlen
+#include <stdexcept>           // for runtime_error
+
+#include "kotekanLogging.hpp"  // for FATAL_ERROR_NON_OO
+#include "fmt.hpp"             // for compile_string_to_view
 
 void parse_chime_host_name(int& my_rack, int& my_node, int& my_nos, int& my_node_id) {
     int rack = 0, node = 0, nos = 0;
@@ -134,36 +138,12 @@ void add_nsec(struct timespec& temp, long nsec) {
 }
 
 int get_vlan_from_ip(const char* ip_address) {
-    int len = 0;
-    int location = 0;
-    char* temp;
-    int vlan = 0;
-    int flag = 0;
-    for (unsigned int i = 0; i < std::strlen(ip_address); i++) {
-        if (ip_address[i] == '.' && flag == 0) {
-            location = i + 1;
-            flag = 1;
-        }
+    int a, b, c, d, n;
+    const int fields_parsed = sscanf(ip_address, "%d.%d.%d.%d%n", &a, &b, &c, &d, &n);
+    if (fields_parsed != 4 || (size_t)n != strlen(ip_address)) {
+        FATAL_ERROR_NON_OO("Could not parse {:s} as an IPv4 address", ip_address);
     }
-    flag = 0;
-    for (unsigned int i = location; i < std::strlen(ip_address); i++) {
-        if (ip_address[i] != '.' && flag == 0)
-            len++;
-        else
-            flag = 1;
-    }
-
-    temp = new char[len];
-    flag = 0;
-    for (unsigned int i = location; i < std::strlen(ip_address); i++) {
-        if (ip_address[i] != '.' && flag == 0)
-            temp[i - location] = ip_address[i];
-        else
-            flag = 1;
-    }
-
-    vlan = atoi(temp);
-    return vlan;
+    return b;
 }
 
 

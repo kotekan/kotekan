@@ -40,6 +40,8 @@ add_library(
     bufferSend.cpp
     bufferRecv.cpp
     simpleAutocorr.cpp
+    SampleAutocorr.cpp
+    SimpleCrosscorr.cpp
     freqSplit.cpp
     FreqSubset.cpp
     prodSubset.cpp
@@ -85,6 +87,7 @@ add_library(
     compressLostSamples.cpp
     lostSamplesToPLMask.cpp
     lostSamplesToN2Counts.cpp
+    rfiBroadcast.cpp
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
@@ -97,6 +100,7 @@ add_library(
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
     hexDump.cpp
+    ProcessPacketMask.cpp
     printSparse.cpp
     ExampleProducer.cpp
     ExampleConsumer.cpp
@@ -104,8 +108,13 @@ add_library(
     N2Accumulate.cpp
     N2TimeDownsample.cpp
     N2FringeStop.cpp
+    TransposeBasebandArray.cpp
     dropAllFrames.cpp
     N2FrameToVisFrame.cpp
+    RfiMaskSum.cpp
+    RfiFrameMask.cpp
+    CountLostPLSamplesScalar.cpp
+    PLMaskExpandedToCompact.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
@@ -116,6 +125,10 @@ if(LIBAIRSPY_FOUND)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${LIBAIRSPY_INCLUDE_DIR})
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${LIBAIRSPY_LIBRARIES})
+    if(FFTW_FOUND)
+        target_sources(kotekan_stages PRIVATE AirspyAlign.cpp)
+        target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
+    endif()
 endif()
 
 if(FFTW_FOUND)

@@ -1,13 +1,16 @@
 #ifndef GIVEN_DATA_GEN_H
 #define GIVEN_DATA_GEN_H
 
-#include "Config.hpp" // for Config
-#include "Stage.hpp"  // for Stage
-#include "Symbol.hpp" // for Symbol
-#include "buffer.hpp" // for Buffer
+#include <vector>               // for vector
+#include <cstddef>              // for ptrdiff_t
+#include <string>               // for string
 
-#include <stdint.h> // for uint32_t
-#include <vector>   // for vector
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "Symbol.hpp"           // for Symbol
+#include "buffer.hpp"           // for Buffer
+#include "DataType.hpp"         // for DataType
+#include "bufferContainer.hpp"  // for bufferContainer
 
 /**
  * @class givenDataGen

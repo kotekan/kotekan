@@ -1,14 +1,16 @@
 #include "Telescope.hpp"
 
-#include "configUpdater.hpp" // for configUpdater
-#include "restServer.hpp"    // for restServer, connectionInstance
-#include "timeUtil.hpp"
+#include <mutex>              // for unique_lock
+#include <shared_mutex>       // for shared_lock
+#include <stdexcept>          // for invalid_argument
+#include <algorithm>          // for copy, lower_bound, sort
+#include <functional>         // for bind, _1, function
+#include <limits>             // for numeric_limits
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <mutex>
-#include <shared_mutex>
-#include <stdexcept> // for invalid_argument
+#include "configUpdater.hpp"  // for configUpdater
+#include "restServer.hpp"     // for restServer, connectionInstance
+#include "timeUtil.hpp"       // for EOP, BareEOP, get_ERA_from_UT1, EOP_comp_time, eop_null
+#include "fmt.hpp"            // for compile_string_to_view
 
 using kotekan::connectionInstance;
 using kotekan::restServer;
@@ -102,9 +104,13 @@ freq_id_t Telescope::to_freq_id(stream_t stream) const {
     return to_freq_id(stream, 0);
 }
 
+uint64_t Telescope::to_seq(int64_t time_ns) const {
+    return to_seq(nanosec_i64_to_timespec(time_ns));
+}
+
 timespec Telescope::seq_length() const {
     auto dt_ns = seq_length_nsec();
-    return {(time_t)(dt_ns / 1000000000), (long)(dt_ns % 1000000000)};
+    return {(time_t)(dt_ns / GIGA), (long)(dt_ns % GIGA)};
 }
 
 bool Telescope::receive_eop_updates(nlohmann::json& json) {

@@ -1,35 +1,35 @@
 #include "testDataGen.hpp"
 
-#include "CHORDTelescope.hpp"  // for CHORDTelescope
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "Symbol.hpp"          // for Symbol
-#include "Telescope.hpp"       // for Telescope, stream_t
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
-#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
-#include "kotekanTrackers.hpp" // for KotekanTrackers
-#include "oneHotMetadata.hpp"  // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
-#include "restServer.hpp"      // for HTTP_RESPONSE, restServer, connectionInstance
-#include "visUtil.hpp"         // for current_time, ts_to_double, StatTracker
+#include <assert.h>             // for assert
+#include <signal.h>             // for raise, SIGINT
+#include <stdint.h>             // for uint64_t, int8_t, uint32_t, int32_t, int64_t, uint8_t
+#include <strings.h>            // for bzero
+#include <sys/time.h>           // for gettimeofday, timeval
+#include <sys/types.h>          // for uint
+#include <unistd.h>             // for usleep
+#include <json.hpp>             // for json
+#include <algorithm>            // for copy
+#include <cmath>                // for fmod
+#include <functional>           // for bind, function, _1, _2
+#include <random>               // for mt19937
+#include <stdexcept>            // for invalid_argument, runtime_error
+#include <vector>               // for vector
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <algorithm>   // for max
-#include <assert.h>    // for assert
-#include <cmath>       // for fmod
-#include <functional>  // for bind, function, _1, _2
-#include <random>      // for mt19937
-#include <signal.h>    // for raise, SIGINT
-#include <stdexcept>   // for invalid_argument
-#include <stdint.h>    // for int8_t, uint32_t, uint8_t, int16_t, int32_t, uint64_t
-#include <strings.h>   // for bzero
-#include <sys/time.h>  // for gettimeofday, timeval
-#include <sys/types.h> // for uint
-#include <unistd.h>    // for usleep
-#include <vector>      // for vector
+#include "CHORDTelescope.hpp"   // for CHORDTelescope, dishGrid, dish_index_t
+#include "Config.hpp"           // for Config
+#include "DataType.hpp"         // for DataType, KOTEKAN_FLOAT16, float16_t
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "Symbol.hpp"           // for Symbol
+#include "Telescope.hpp"        // for Telescope, stream_t
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
+#include "kotekanLogging.hpp"   // for INFO, DEBUG, ERROR
+#include "kotekanTrackers.hpp"  // for KotekanTrackers
+#include "oneHotMetadata.hpp"   // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
+#include "restServer.hpp"       // for HTTP_RESPONSE, restServer, connectionInstance
+#include "visUtil.hpp"          // for current_time, ts_to_double, StatTracker
+#include "fmt.hpp"              // for compile_string_to_view
 
 
 using kotekan::bufferContainer;
@@ -52,9 +52,10 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     assert(type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
            || type == "const16" || type == "const32" || type == "constf16" || type == "random"
            || type == "random_signed" || type == "random_signed_offset" || type == "random1x8"
-           || type == "constu64" || type == "randomu64" || type == "random8" || type == "ramp"
-           || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
-           || type == "square" || type == "onehot");
+           || type == "random32" || type == "const64" || type == "random64" || type == "constu64"
+           || type == "randomu64" || type == "random8" || type == "ramp" || type == "tpluse"
+           || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square"
+           || type == "onehot");
     assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
     int type_size = 1; // default
     if (type == "const")
@@ -65,16 +66,16 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         type_size = 1;
     if (type == "const16")
         type_size = 2;
-    if (type == "const32")
+    if (type == "const32" || type == "random32")
         type_size = 4;
     if (type == "constf16")
         type_size = 2;
-    if (type == "constu64" || type == "randomu64")
+    if (type == "constu64" || type == "randomu64" || type == "const64" || type == "random64")
         type_size = 8;
     if (type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
-        || type == "const16" || type == "const32" || type == "random" || type == "random_signed"
-        || type == "random_signed_offset" || type == "random1x8" || type == "random8"
-        || type == "ramp" || type == "onehot") {
+        || type == "const16" || type == "const32" || type == "random" || type == "random32"
+        || type == "random_signed" || type == "random_signed_offset" || type == "random1x8"
+        || type == "random8" || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
         _value_array =
             config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
@@ -83,6 +84,10 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         _fvalue_array =
             config.get_default<std::vector<float>>(unique_name, "values", std::vector<float>());
     } else if (type == "constu64" || type == "randomu64") {
+        ulvalue = config.get_default<uint64_t>(unique_name, "value", 0);
+        _ulvalue_array = config.get_default<std::vector<uint64_t>>(unique_name, "values",
+                                                                   std::vector<uint64_t>());
+    } else if (type == "const64" || type == "random64") {
         lvalue = config.get_default<uint64_t>(unique_name, "value", 0);
         _lvalue_array = config.get_default<std::vector<uint64_t>>(unique_name, "values",
                                                                   std::vector<uint64_t>());
@@ -181,11 +186,12 @@ void testDataGen::rest_callback(connectionInstance& conn, nlohmann::json& reques
 void testDataGen::main_thread() {
 
     int frame_id = 0;
-    int frame_id_abs = 0;
+    uint32_t frame_id_abs = _first_frame_index;
     uint8_t* frame = nullptr;
     int8_t* frame8 = nullptr;
     int16_t* frame16 = nullptr;
     int32_t* frame32 = nullptr;
+    int64_t* frame64 = nullptr;
     uint64_t* frameu64 = nullptr;
     uint64_t seq_num = samples_per_data_set * _first_frame_index;
     bool finished_seeding_constant = false;
@@ -313,7 +319,7 @@ void testDataGen::main_thread() {
             frame16 = (int16_t*)frame;
             if (chordmeta)
                 chordmeta->type = kotekan::int16;
-        } else if (type == "const32") {
+        } else if (type == "const32" || type == "random32") {
             n_to_set /= sizeof(int32_t);
             frame32 = (int32_t*)frame;
             if (chordmeta)
@@ -330,6 +336,11 @@ void testDataGen::main_thread() {
             frameu64 = (uint64_t*)frame;
             if (chordmeta)
                 chordmeta->type = kotekan::uint64;
+        } else if (type == "const64" || type == "random64") {
+            n_to_set /= sizeof(int64_t);
+            frame64 = (int64_t*)frame;
+            if (chordmeta)
+                chordmeta->type = kotekan::int64;
         } else if (type == "random") {
             if (chordmeta)
                 chordmeta->type = kotekan::uint4x2;
@@ -412,8 +423,10 @@ void testDataGen::main_thread() {
                 || (type == "const1x8") || (type == "const16") || (type == "const32")))
             // Cycle through "values" array, if given
             value = _value_array[frame_id_abs % _value_array.size()];
-        if (_lvalue_array.size() && type == "constu64")
+        if (_lvalue_array.size() && type == "const64")
             lvalue = _lvalue_array[frame_id_abs % _lvalue_array.size()];
+        if (_lvalue_array.size() && type == "constu64")
+            ulvalue = _ulvalue_array[frame_id_abs % _ulvalue_array.size()];
         for (uint j = 0; j < n_to_set; ++j) {
             if (type == "const") {
                 if (finished_seeding_constant)
@@ -441,10 +454,14 @@ void testDataGen::main_thread() {
                     break;
                 framef16[j] = (float16_t)fvalue;
 #endif
+            } else if (type == "const64") {
+                if (finished_seeding_constant)
+                    break;
+                frame64[j] = lvalue;
             } else if (type == "constu64") {
                 if (finished_seeding_constant)
                     break;
-                frameu64[j] = lvalue;
+                frameu64[j] = ulvalue;
             } else if (type == "ramp") {
                 frame[j] = fmod(j * value, 256 * value);
                 //                frame[j] = j*value;
@@ -483,6 +500,16 @@ void testDataGen::main_thread() {
                     break;
                 uint8_t rand_val = rng() & 0xFFu;
                 frame[j] = rand_val;
+            } else if (type == "random32") {
+                if (_reuse_random && finished_seeding_constant)
+                    break;
+                frame32[j] = static_cast<int32_t>(rng());
+            } else if (type == "random64") {
+                if (_reuse_random && finished_seeding_constant)
+                    break;
+                uint64_t lo = static_cast<uint64_t>(rng());
+                uint64_t hi = static_cast<uint64_t>(rng());
+                frame64[j] = static_cast<int64_t>((hi << 32) | lo);
             } else if (type == "randomu64") {
                 if (_reuse_random && finished_seeding_constant)
                     break;
@@ -540,14 +567,14 @@ void testDataGen::main_thread() {
         buf->mark_frame_full(unique_name, frame_id);
 
         frame_id_abs += 1;
-        if (num_frames >= 0 && frame_id_abs >= num_frames) {
+        if (num_frames >= 0 && frame_id_abs >= num_frames + _first_frame_index) {
             INFO("Generated the requested number of frames ({:d}) - exiting", num_frames);
             if (_end_interrupt) {
                 raise(SIGINT);
             }
             break;
         };
-        frame_id = frame_id_abs % buf->num_frames;
+        frame_id = (frame_id_abs - _first_frame_index) % buf->num_frames;
 
         if (_pathfinder_test_mode) {
             // Test PF seq_num increment.

@@ -1,0 +1,139 @@
+---
+##########################################
+#
+# airspy_crosscorr.yaml
+#
+# A two-airspy cross-correlation config. Streams from two AirSpy dongles,
+# channelizes both, aligns them (via AirspyAlign's REST endpoint), and
+# cross-correlates the results. Output is streamed as a power-spectrum-like
+# packet (four channels per spectral bin: AA, BB, Re{AB*}, Im{AB*}) to a
+# local listener.
+#
+# Author: Keith Vanderlinde
+#
+##########################################
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+log_level: info
+
+instrument_name: airspy
+
+samples_per_data_set: 32768
+bytes_per_sample: 2
+buffer_depth: 10
+cpu_affinity: [4, 5, 6, 7]
+num_elements: 2
+one: 1
+two: 2
+sizeof_float: 4
+
+# No stage in the airspy pipeline reads, writes, or passes frame metadata,
+# so the buffers below declare `metadata_pool: none` and there is no
+# metadata-pool block at all (rather than the heavyweight, CHORD-specific
+# chordMetadata pool the forward-port inherited).
+
+input_bufA:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * bytes_per_sample
+
+input_bufB:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * bytes_per_sample
+
+sample_bw: 10. #MHz, must be float
+freq: 1422.    #MHz
+gain_lna: 4 #0-14
+gain_mix: 5 #0-15
+gain_if: 5  #0-15
+biast_power: false
+autostart: true
+
+# Two airspy producers. Edit the serials to match your hardware (see
+# `airspy_info` from libairspy-tools) or remove them to take whichever
+# devices the OS enumerates first.
+airspy_inputA:
+    kotekan_stage: airspyInput
+    out_buf: input_bufA
+#  serial: 0x03A464C834658167
+
+airspy_inputB:
+    kotekan_stage: airspyInput
+    out_buf: input_bufB
+#  serial: 0x440464C8394C614F
+
+# Estimate the sample-level lag between the two streams over a window of
+# samples. Lag is exposed via REST and can be applied back to airspyInput's
+# `add_lag` to compensate.
+lag_align:
+    kotekan_stage: AirspyAlign
+    in_bufA: input_bufA
+    in_bufB: input_bufB
+    lag_window: 1048576
+
+spectrum_length: 1024
+integration_length: 1024
+
+post_fengine_bufA:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * sizeof_float
+post_fengine_bufB:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * sizeof_float
+
+spectrum_output:
+    fengineA:
+        kotekan_stage: fftwEngine
+        input_type: real
+        in_buf: input_bufA
+        out_buf: post_fengine_bufA
+
+    fengineB:
+        kotekan_stage: fftwEngine
+        input_type: real
+        in_buf: input_bufB
+        out_buf: post_fengine_bufB
+
+correlation_output:
+  # Per-element layout: ``[freqs floats, 1 uint count]`` repeated once per
+  # visibility stream (AA, BB, Re{AB*}, Im{AB*}). That's the layout
+  # ``networkPowerStream`` expects when ``num_elements == 4``; the redundant
+  # per-element count (all four equal the same integration tick) costs an
+  # extra 12 B per integration in exchange for keeping the network stage
+  # general-purpose.
+    post_corr_buf:
+        kotekan_buffer: standard
+        metadata_pool: none
+        num_frames: buffer_depth
+        frame_size: ( spectrum_length + one ) * 4 * sizeof_float
+
+    xengine:
+        kotekan_stage: SimpleCrosscorr
+        in_bufA: post_fengine_bufA
+        in_bufB: post_fengine_bufB
+        out_buf: post_corr_buf
+
+    power_stream:
+        kotekan_stage: networkPowerStream
+        num_elements: 4
+        num_freq: spectrum_length
+        power_integration_length: integration_length
+    # Override the file-global ``samples_per_data_set`` so ``times`` lands
+    # at 1 -- ``SimpleCrosscorr`` writes one integration per frame, but
+    # without this override ``networkPowerStream`` would inherit the
+    # 32768-sample value (from the airspy input stage) and try to read
+    # ``32`` integrations out of each frame, walking past the end and
+    # segfaulting.
+        samples_per_data_set: integration_length
+        destination_port: 23401
+        destination_ip: "127.0.0.1"
+        destination_protocol: TCP
+        in_buf: post_corr_buf

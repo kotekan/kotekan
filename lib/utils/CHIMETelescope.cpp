@@ -1,17 +1,16 @@
 #include "CHIMETelescope.hpp"
 
-#include "ICETelescope.hpp"   // for ice_stream_id_t, ice_encode_stream_id, ice_extract_stream_id
-#include "Telescope.hpp"      // for stream_t, Telescope, REGISTER_TELESCOPE, _factory_aliasTel...
-#include "kotekanLogging.hpp" // for ERROR, WARN, DEBUG2, INFO
-#include "restClient.hpp"     // for restClient
+#include <exception>           // for exception
+#include <stdexcept>           // for runtime_error
+#include <utility>             // for pair
+#include <vector>              // for vector
 
-#include "fmt.hpp"  // for compile_string_to_view, format, format_string
-#include "json.hpp" // for json, json_ref, basic_json, input_adapter
-
-#include <exception> // for exception
-#include <stdexcept> // for runtime_error
-#include <utility>   // for pair
-#include <vector>    // for vector
+#include "ICETelescope.hpp"    // for ice_stream_id_t, ice_encode_stream_id, ice_extract_stream_id
+#include "Telescope.hpp"       // for stream_t, Telescope, REGISTER_TELESCOPE, _factory_aliasTel...
+#include "kotekanLogging.hpp"  // for ERROR, INFO, WARN, DEBUG2, FATAL_ERROR_NON_OO
+#include "restClient.hpp"      // for restClient
+#include "fmt.hpp"             // for compile_string_to_view, format, format_string
+#include "json.hpp"            // for json, json_ref, basic_json, input_adapter
 
 
 REGISTER_TELESCOPE(CHIMETelescope, "CHIMETelescope");
@@ -27,12 +26,25 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
 
     set_sampling_params(800.0, 2048, 2);
 
-    // Get the GPS time, either from the config or fpga_master
+    // Get the GPS time, either from the config or fpga_master. gps_host_info
+    // names a sibling block (typically /fpga_controller) holding ``host``,
+    // ``port``, and optionally ``timing_endpoint`` (the default for
+    // gps_endpoint). Required when query_gps is true.
     bool require_gps = config.get_default<bool>(path, "require_gps", true);
     _query_gps = config.get_default<bool>(path, "query_gps", false);
-    _gps_host = config.get_default<std::string>(path, "gps_host", "10.1.13.1");
-    _gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
-    _gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
+    std::string default_gps_endpoint = "/get-frame0-time";
+    if (config.exists(path, "gps_host_info")) {
+        const std::string ref = config.get<std::string>(path, "gps_host_info");
+        _gps_host = config.get_default<std::string>(ref, "host", "10.1.13.1");
+        _gps_port = config.get_default<uint32_t>(ref, "port", 54321);
+        if (config.exists(ref, "timing_endpoint"))
+            default_gps_endpoint = config.get<std::string>(ref, "timing_endpoint");
+    } else if (_query_gps) {
+        FATAL_ERROR_NON_OO("CHIMETelescope ({}): query_gps is true but gps_host_info is not set; "
+                           "point it at the FPGA controller block (e.g. /fpga_controller).",
+                           path);
+    }
+    _gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", default_gps_endpoint);
     if (_query_gps)
         set_gps(_gps_host, _gps_port, _gps_endpoint);
     if (!gps_enabled)

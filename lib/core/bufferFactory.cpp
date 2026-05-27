@@ -1,21 +1,21 @@
 #include "bufferFactory.hpp"
 
-#include "Config.hpp"         // for Config
-#include "FrameDesc.hpp"      // for FrameDesc
-#include "HFBFrameView.hpp"   // for HFBFrameView
-#include "N2FrameDesc.hpp"    // for N2FrameDesc
-#include "buffer.hpp"         // for GenericBuffer, Buffer
-#include "kotekanLogging.hpp" // for INFO_NON_OO
-#include "metadata.hpp"       // for metadataPool
-#include "ringbuffer.hpp"     // for RingBuffer
-#include "visBuffer.hpp"      // for VisFrameView
+#include <stddef.h>            // for size_t
+#include <json.hpp>            // for basic_json, iter_impl, json
+#include <cstdint>             // for int32_t, uint32_t, uint8_t
+#include <stdexcept>           // for runtime_error
+#include <vector>              // for vector
 
-#include "fmt.hpp" // for compile_string_to_view, format, fmt
-
-#include <cstdint>   // for int32_t, uint32_t
-#include <stddef.h>  // for size_t
-#include <stdexcept> // for runtime_error
-#include <vector>    // for vector
+#include "Config.hpp"          // for Config
+#include "FrameDesc.hpp"       // for FrameDesc
+#include "HFBFrameView.hpp"    // for HFBFrameView
+#include "N2FrameDesc.hpp"     // for N2FrameDesc
+#include "buffer.hpp"          // for GenericBuffer, Buffer
+#include "kotekanLogging.hpp"  // for INFO_NON_OO
+#include "metadata.hpp"        // for metadataPool
+#include "ringbuffer.hpp"      // for RingBuffer
+#include "visBuffer.hpp"       // for VisFrameView
+#include "fmt.hpp"             // for compile_string_to_view, format, fmt
 
 using json = nlohmann::json;
 using std::map;
@@ -102,13 +102,14 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         bool use_hugepages = config.get_default<bool>(location, "use_hugepages", false);
         bool mlock_frames = config.get_default<bool>(location, "mlock_frames", true);
         bool zero_new_frames = config.get_default<bool>(location, "zero_new_frames", true);
+        uint8_t zero_value = config.get_default<uint8_t>(location, "zero_value", 0x00);
         const std::vector<int> cpu_affinity =
             config.get_default<std::vector<int>>(location, "cpu_affinity", {});
         INFO_NON_OO("Creating {:s}Buffer named {:s} with {:d} frames, frame size of {:d} and "
                     "metadata pool {:s} on numa_node {:d}",
                     type_name, name, num_frames, frame_size, metadataPool_name, numa_node);
         buf = new Buffer(num_frames, frame_size, pool, name, type_name, numa_node, use_hugepages,
-                         mlock_frames, cpu_affinity, zero_new_frames);
+                         mlock_frames, cpu_affinity, zero_new_frames, zero_value);
 
         // Set frame descriptor if one was created
         if (frame_desc) {

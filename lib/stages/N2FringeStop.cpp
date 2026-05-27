@@ -1,25 +1,26 @@
 #include "N2FringeStop.hpp"
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope, EOP
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for DEBUG
-#include "prometheusMetrics.hpp" // for Metrics
+#include <stdint.h>               // for int64_t
+#include <complex>                // for complex, conj, operator*
+#include <functional>             // for bind, function
+#include <vector>                 // for vector
+#include <memory>                 // for shared_ptr, __shared_ptr_access
 
-#include <complex>    // for complex, conj, operator*
-#include <functional> // for bind, function
-#include <stdint.h>   // for int64_t
-#include <vector>     // for vector
+#include "CHORDTelescope.hpp"     // for CHORDTelescope
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "kotekanLogging.hpp"     // for DEBUG, FATAL_ERROR
+#include "prometheusMetrics.hpp"  // for Metrics
 // #include "visBuffer.hpp"         // for VisFrameView
-#include "N2FrameView.hpp" // for N2FrameView
-#include "Telescope.hpp"   // for Telescope
-#include "timeUtil.hpp"    // for get_UT1_from_ERA
-#include "visUtil.hpp"     // for frameID, modulo
-
-#include "fmt.hpp"      // for compile_string_to_view
-#include "gsl-lite.hpp" // for span
+#include "N2FrameView.hpp"        // for N2FrameView
+#include "Telescope.hpp"          // for Telescope
+#include "timeUtil.hpp"           // for EOP, get_UT1_from_ERA, eop_null
+#include "visUtil.hpp"            // for frameID, modulo
+#include "fmt.hpp"                // for compile_string_to_view
+#include "gsl-lite.hpp"           // for span
+#include "FrameDesc.hpp"          // for FrameDesc
 
 
 using kotekan::bufferContainer;
@@ -69,7 +70,7 @@ void N2FringeStop::main_thread() {
     const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
 
     int num_dishes = tel.get_num_dishes();
-    std::vector<std::complex<double>> fringe_phase(num_dishes, 1.0);
+    std::vector<std::complex<float>> fringe_phase(num_dishes, 1.0);
 
     int64_t ut1 = get_UT1_from_ERA(num_rot_target, era_target_deg);
 
@@ -108,13 +109,13 @@ void N2FringeStop::main_thread() {
         // Set the target EOP.
         output_frame.time_center_eop = eop_null; // TODO: update
         output_frame.bin_eop = eop_target;
-        output_frame.bin_start_ERA_deg = -1; // TODO: update
-        output_frame.bin_end_ERA_deg = -1;   // TODO: update
-        output_frame.bin_start_LAST = -1;    // TODO: update
-        output_frame.bin_end_LAST = -1;      // TODO: update
+        output_frame.bin_start_ERA_deg = -1;  // TODO: update
+        output_frame.bin_end_ERA_deg = -1;    // TODO: update
+        output_frame.bin_start_ERAL_deg = -1; // TODO: update
+        output_frame.bin_end_ERAL_deg = -1;   // TODO: update
 
         if (fringestop_mode > 0)
-            tel.fringestop_phases_1d(in_frame.freq_MHz, eop, eop_target, fringe_phase);
+            tel.fill_fringestop_phases_1d(in_frame.freq_MHz, eop, eop_target, fringe_phase);
 
         size_t idx = 0;
         for (size_t i = 0; i < num_elements; i++) {

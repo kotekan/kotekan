@@ -1,26 +1,28 @@
 #ifndef N2_METADATA
 #define N2_METADATA
 
-#include "Config.hpp"   // for Config
-#include "N2Layout.hpp" // for N2Layout
+#include "Config.hpp"          // for Config
 #include "N2Metadata.hpp"
-#include "buffer.hpp"         // for Buffer
-#include "dataset.hpp"        // for dset_id_t
-#include "kotekanLogging.hpp" // for WARN_NON_OO
-#include "metadata.hpp"       // for metadataObject, metadataPool
-#include "timeUtil.hpp"       // for EOP
-
-#include "fmt.hpp"  // for compile_string_to_view
-#include "json.hpp" // for json
+#include "buffer.hpp"          // for Buffer
+#include "dataset.hpp"         // for dset_id_t
+#include "kotekanLogging.hpp"  // for WARN_NON_OO
+#include "metadata.hpp"        // for metadataObject, metadataPool
+#include "timeUtil.hpp"        // for EOP, eop_null
+#include "fmt.hpp"             // for compile_string_to_view
+#include "json.hpp"            // for json
+#include "FrameDesc.hpp"       // for FrameDesc
+#include "Hash.hpp"            // for Hash
+#include "jsonMetadata.hpp"    // for MAX_NUM_RFI_THRESHOLDS
 
 using kotekan::Config;
 
-#include <assert.h> // for assert
-#include <memory>   // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
-#include <stddef.h> // for size_t
-#include <stdint.h> // for uint32_t, uint64_t
-#include <string>   // for operator==, char_traits, basic_string
-#include <vector>   // for vector
+#include <assert.h>            // for assert
+#include <stddef.h>            // for size_t
+#include <stdint.h>            // for uint64_t, int32_t, uint32_t
+#include <memory>              // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
+#include <string>              // for operator==, char_traits, basic_string
+#include <vector>              // for vector
+#include <array>               // for array
 
 // Struct containing metadata fields for an N2 frame
 struct N2MetadataFormat {
@@ -29,8 +31,8 @@ struct N2MetadataFormat {
     /// Physical frequency in Hz
     double freq_MHz = 0.0;
 
-    /// absolute time index of this frame in its stream. Begins at 0 at instument start
-    /// and counts monitonically afterwards.
+    /// absolute time index of this frame in its stream. Begins at 0 at some
+    /// epoch and counts monotonically upwards afterwards.
     uint64_t abs_time_idx = 0;
 
     /// Earth Orientation Parameters at the center of the integration/accumulation time
@@ -38,10 +40,10 @@ struct N2MetadataFormat {
     /// Earth Orientation Parameters within an integration/accumulation bin
     struct EOP bin_eop = eop_null;
     // bin start/end info for convenience
-    double bin_start_ERA_deg = 0.0; /// Earth Rotation Angle at start of bin
-    double bin_end_ERA_deg = 0.0;   /// Earth Rotation Angle at end of bin
-    double bin_start_LAST = 0.0;    /// local apparent sidereal time (nanoseconds) at start of bin
-    double bin_end_LAST = 0.0;      /// local apparent sidereal time (nanoseconds) at end of bin
+    double bin_start_ERA_deg = 0.0;  /// Earth Rotation Angle at start of bin
+    double bin_end_ERA_deg = 0.0;    /// Earth Rotation Angle at end of bin
+    double bin_start_ERAL_deg = 0.0; /// local apparent sidereal time (nanoseconds) at start of bin
+    double bin_end_ERAL_deg = 0.0;   /// local apparent sidereal time (nanoseconds) at end of bin
 
     /// The sequence number of the first FPGA frame integrated into this visibility frame
     uint64_t fpga_start_tick = 0;
@@ -56,6 +58,20 @@ struct N2MetadataFormat {
     /// as well as RFI. For renormalization this value should NOT be used, use
     /// lost samples (= @c frame_length_fpga_ticks - @c n_valid_fpga_ticks) instead.
     uint64_t n_rfi_fpga_ticks = 0;
+    /// Number of received (not lost) FPGA samples flagged as containing RFI. No
+    /// contamination with lost samples.
+    /// frame_length = n_valid + n_rfi_only + n_pl
+    uint64_t n_rfi_only_fpga_ticks = 0;
+    /// Number of FPGA samples lost to Packet Loss.
+    uint64_t n_pl_fpga_ticks = 0;
+    /// Whether second stage RFI excision was applied to this frame
+    bool rfi_frame_excision_enabled = false;
+    /// The number of active RFI excision thresholds.
+    int32_t rfi_frame_excision_num = 0;
+    /// The SK thresholds (in sigma) for RFI excision
+    std::array<float, MAX_NUM_RFI_THRESHOLDS> rfi_frame_excision_threshold = {0};
+    /// The fraction of samples above threshold that trigger RFI excision.
+    std::array<float, MAX_NUM_RFI_THRESHOLDS> rfi_frame_excision_fraction = {0};
     /// CHIME dataset id tracking updateable config item changes
     dset_id_t dataset_id = dset_id_t::null;
 };
