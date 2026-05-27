@@ -11,6 +11,7 @@
 #include <shared_mutex>        // for shared_timed_mutex
 #include <string>              // for string, allocator, basic_string
 #include <thread>              // for thread
+#include <vector>              // for vector (CORS allowlist)
 
 #include "Config.hpp"          // for Config
 #include "kotekanLogging.hpp"  // for INFO_NON_OO
@@ -257,6 +258,40 @@ public:
     void add_aliases_from_config(Config& config);
 
     /**
+     * @brief Configures CORS handling from the @c /rest_server config block.
+     *
+     * Two keys, both optional, CORS off entirely if neither is set:
+     *
+     *  - @c cors_allow_origins : a list of exact origin strings
+     *    (e.g. @c "http://cobalt.lwlab:8080"). When a request carries an
+     *    @c Origin header that matches one of these, that exact value is
+     *    reflected back in @c Access-Control-Allow-Origin (plus
+     *    @c Vary: Origin). Non-matching / origin-less requests get no CORS
+     *    headers, so the browser blocks the cross-origin read -- this is
+     *    the recommended, scoped setting.
+     *  - @c enable_cors : legacy boolean. When @c true (and no allowlist is
+     *    given) every reply gets @c Access-Control-Allow-Origin: * . Kept
+     *    for backward compatibility; prefer the allowlist.
+     *
+     * Off by default (secure). Only the browser viewer needs this; pure
+     * machine-to-machine REST use never does.
+     *
+     * @param config The config file to use
+     */
+    void set_cors_from_config(Config& config);
+
+    /// True if CORS is configured at all (allowlist non-empty or the legacy
+    /// boolean set). Used to decide whether to accept OPTIONS preflights.
+    inline bool cors_enabled() const {
+        return _enable_cors || !_cors_allow_origins.empty();
+    }
+
+    /// Resolve the @c Access-Control-Allow-Origin value to send for a
+    /// request whose @c Origin header is @p request_origin (may be null).
+    /// Returns the empty string when no CORS header should be emitted.
+    std::string cors_allow_origin_for(const char* request_origin) const;
+
+    /**
      * @brief Removes all aliases
      */
     void remove_all_aliases();
@@ -398,6 +433,14 @@ private:
 
     /// Flag set to true when exit condition is reached
     std::atomic<bool> stop_thread;
+
+    /// Cached value of /rest_server/enable_cors (legacy "*" mode); see
+    /// @c set_cors_from_config.
+    bool _enable_cors = false;
+
+    /// Cached /rest_server/cors_allow_origins allowlist. When non-empty,
+    /// CORS uses validated Origin reflection instead of "*".
+    std::vector<std::string> _cors_allow_origins;
 
     /// Allow connectionInstance to use internal helper functions
     friend class connectionInstance;

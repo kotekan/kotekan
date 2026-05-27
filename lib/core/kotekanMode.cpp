@@ -43,6 +43,7 @@ kotekanMode::kotekanMode(Config& config_) : config(config_) {
 #endif
 
     restServer::instance().add_aliases_from_config(config);
+    restServer::instance().set_cors_from_config(config);
 }
 
 kotekanMode::~kotekanMode() {

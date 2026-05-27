@@ -179,7 +179,11 @@ void restServer::start(const std::string& bind_address, u_short port) {
         ERROR_NON_OO("restServer: Failed to create libevent http server");
         exit(1);
     }
-    evhttp_set_allowed_methods(ev_server, EVHTTP_REQ_GET | EVHTTP_REQ_POST);
+    // Allow GET and POST; also OPTIONS when CORS is enabled, for browser preflights.
+    int allowed_methods = EVHTTP_REQ_GET | EVHTTP_REQ_POST;
+    if (cors_enabled())
+        allowed_methods |= EVHTTP_REQ_OPTIONS;
+    evhttp_set_allowed_methods(ev_server, allowed_methods);
     evhttp_set_gencb(ev_server, handle_request, (void*)this);
 
     struct evhttp_bound_socket* ev_sock =
@@ -233,6 +237,14 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
         map<string, string>& aliases = server->get_aliases();
         if (aliases.find(url) != aliases.end()) {
             url = aliases[url];
+        }
+
+        if (request->type == EVHTTP_REQ_OPTIONS) {
+            // CORS preflight. Always reply 200 with the configured CORS headers;
+            // routing happens on the subsequent GET/POST.
+            connectionInstance conn(request);
+            conn.send_empty_reply(HTTP_RESPONSE::OK);
+            return;
         }
 
         if (request->type == EVHTTP_REQ_GET) {
@@ -539,6 +551,62 @@ void restServer::http_server_thread() {
     event_base_free(event_base);
 }
 
+void restServer::set_cors_from_config(Config& config) {
+    _cors_allow_origins =
+        config.get_default<std::vector<std::string>>("/rest_server", "cors_allow_origins", {});
+    _enable_cors = config.get_default<bool>("/rest_server", "enable_cors", false);
+    if (!_cors_allow_origins.empty()) {
+        INFO_NON_OO("restServer: CORS enabled, scoped to {:d} allowlisted origin(s).",
+                    _cors_allow_origins.size());
+    } else if (_enable_cors) {
+        INFO_NON_OO("restServer: CORS enabled with wildcard origin (*). Consider "
+                    "setting /rest_server/cors_allow_origins to scope it.");
+    }
+}
+
+std::string restServer::cors_allow_origin_for(const char* request_origin) const {
+    if (!_cors_allow_origins.empty()) {
+        // Validated reflection: only echo back an Origin we were told to
+        // trust. Anything else gets no header and the browser blocks the
+        // cross-origin read.
+        if (request_origin == nullptr)
+            return "";
+        for (const auto& allowed : _cors_allow_origins) {
+            if (allowed == request_origin)
+                return allowed;
+        }
+        return "";
+    }
+    // Legacy wildcard mode.
+    if (_enable_cors)
+        return "*";
+    return "";
+}
+
+/// Add CORS headers to @p request when the request's Origin is permitted.
+/// Intentionally tolerant of duplicate-header errors so this is safe to call
+/// from any reply path.
+static void maybe_add_cors_headers(struct evhttp_request* request) {
+    auto& server = kotekan::restServer::instance();
+    if (!server.cors_enabled())
+        return;
+    const char* req_origin =
+        evhttp_find_header(evhttp_request_get_input_headers(request), "Origin");
+    const std::string allow_origin = server.cors_allow_origin_for(req_origin);
+    if (allow_origin.empty())
+        return;
+    auto* headers = evhttp_request_get_output_headers(request);
+    evhttp_add_header(headers, "Access-Control-Allow-Origin", allow_origin.c_str());
+    // When the allowed origin is request-specific (not "*"), caches must key
+    // on Origin or they'd serve one client's allow-header to another.
+    if (allow_origin != "*")
+        evhttp_add_header(headers, "Vary", "Origin");
+    evhttp_add_header(headers, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    evhttp_add_header(headers, "Access-Control-Allow-Headers",
+                      "x-prototype-version, x-requested-with, content-type");
+    evhttp_add_header(headers, "Access-Control-Max-Age", "2520");
+}
+
 void restServer::set_server_affinity(Config& config) {
     vector<int32_t> cpu_affinity = config.get<std::vector<int32_t>>("/rest_server", "cpu_affinity");
 
@@ -588,12 +656,13 @@ string connectionInstance::get_body() {
 }
 
 void connectionInstance::send_empty_reply(const HTTP_RESPONSE& status) {
+    maybe_add_cors_headers(request);
     evhttp_send_reply(request, static_cast<int>(status),
                       restServer::get_http_responce_code_text(status).c_str(), event_buffer);
 }
 
 void connectionInstance::send_text_reply(const string& reply_message) {
-
+    maybe_add_cors_headers(request);
     if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type", "text/plain")
         != 0) {
         throw std::runtime_error("Failed to add header to reply");
@@ -610,6 +679,7 @@ void connectionInstance::send_binary_reply(uint8_t* data, int len) {
     assert(data != nullptr);
     assert(len > 0);
 
+    maybe_add_cors_headers(request);
     if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type",
                           "Application/octet-stream")
         != 0) {
@@ -624,6 +694,7 @@ void connectionInstance::send_binary_reply(uint8_t* data, int len) {
 }
 
 void connectionInstance::send_error(const string& message, const HTTP_RESPONSE& status) {
+    maybe_add_cors_headers(request);
     if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type",
                           "Application/JSON")
         != 0) {
@@ -642,6 +713,7 @@ void connectionInstance::send_error(const string& message, const HTTP_RESPONSE& 
 void connectionInstance::send_json_reply(const json& json_reply) {
     string json_string = json_reply.dump(0);
 
+    maybe_add_cors_headers(request);
     if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type",
                           "Application/JSON")
         != 0) {
