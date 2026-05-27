@@ -62,7 +62,6 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
 
     _airspy_sn = config.get_default<long>(unique_name, "serial", 0);
     _airspy_fn = config.get_default<std::string>(unique_name, "airspy_file", "");
-    _autostart = config.get_default<bool>(unique_name, "autostart", true);
 }
 
 airspyInput::~airspyInput() {
@@ -104,28 +103,6 @@ void airspyInput::adcstat_callback(kotekan::connectionInstance& conn) {
     adcstat_ready = false;
     lock.unlock();
 
-    conn.send_json_reply(reply);
-}
-
-void airspyInput::restart_callback(kotekan::connectionInstance& conn) {
-    if (a_device != nullptr) {
-        airspy_stop_rx(a_device);
-        airspy_close(a_device);
-        a_device = nullptr;
-    }
-    a_device = init_device();
-    if (a_device == nullptr) {
-        FATAL_ERROR("Error in airspyInput. Cannot find device.");
-        return;
-    }
-    int err = airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
-    if (err != AIRSPY_SUCCESS) {
-        ERROR("airspy_start_rx() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)err),
-              err);
-    }
-
-    nlohmann::json reply;
-    reply["status"] = (err == AIRSPY_SUCCESS);
     conn.send_json_reply(reply);
 }
 
@@ -207,8 +184,6 @@ void airspyInput::main_thread() {
                                       std::bind(&airspyInput::adcstat_callback, this, _1));
     rest_server.register_get_callback(unique_name + "/get_config",
                                       std::bind(&airspyInput::get_config_callback, this, _1));
-    rest_server.register_get_callback(unique_name + "/restart",
-                                      std::bind(&airspyInput::restart_callback, this, _1));
 
     frame_id = 0;
     frame_loc = 0;
@@ -229,13 +204,11 @@ void airspyInput::main_thread() {
     if (a_device == nullptr)
         return;
 
-    if (_autostart) {
-        err = airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
-        if (err != AIRSPY_SUCCESS) {
-            FATAL_ERROR("airspy_start_rx() failed: {:s} ({:d})",
-                        airspy_error_name((enum airspy_error)err), err);
-            return;
-        }
+    err = airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
+    if (err != AIRSPY_SUCCESS) {
+        FATAL_ERROR("airspy_start_rx() failed: {:s} ({:d})",
+                    airspy_error_name((enum airspy_error)err), err);
+        return;
     }
 }
 
