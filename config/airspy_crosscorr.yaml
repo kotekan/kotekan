@@ -155,3 +155,11 @@ correlation_output:
         destination_ip: "127.0.0.1"
         destination_protocol: TCP
         in_buf: post_corr_buf
+
+    # See the autocorr config for the rationale behind ``${VIEWER_PYTHON:-python3}``.
+    # The crosscorr viewer also wants to know about the lag-align stage so it can
+    # surface its REST endpoint as a UI control.
+    spawn_pyviewer:
+        kotekan_stage: SpawnProcess
+        in_buf: post_corr_buf
+        exec: '${VIEWER_PYTHON:-python3} ../../python/scripts/js_viewer/livebeam_server.py --lag-align-stage lag_align'
