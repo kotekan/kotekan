@@ -17,6 +17,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
+#include <signal.h>
 #include <algorithm>   // for max
 #include <assert.h>    // for assert
 #include <cmath>       // for fmod
@@ -48,8 +49,6 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     buf->register_producer(unique_name);
     type = config.get_default<std::string>(unique_name, "type","const");
-    type = "const"; // HACK
-    INFO("type {s}", type);
     assert(type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
            || type == "const16" || type == "const32" || type == "constf16" || type == "random"
            || type == "random_signed" || type == "random_signed_offset" || type == "random1x8"
@@ -69,6 +68,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         type_size = 4;
     if (type == "constf16")
         type_size = 2;
+    if (type == "tpluseplusfprime" || type == "tpluseplusf")
+        type_size = 1; // This is wrong
     if (type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
         || type == "const16" || type == "const32" || type == "random" || type == "random_signed"
         || type == "random_signed_offset" || type == "random1x8" || type == "ramp"
@@ -85,14 +86,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     _seed = config.get_default<int>(unique_name, "seed", 0);
     _pathfinder_test_mode = config.get_default<bool>(unique_name, "pathfinder_test_mode", false);
     _name = config.get_default<std::string>(unique_name, "name", "E");
-    /*_array_shape = config.get_default<std::vector<int>>(
+    _array_shape = config.get_default<std::vector<int>>(
         unique_name, "array_shape", std::vector<int>({int(buf->frame_size) / type_size}));
-	*/
-    _array_shape = {512, 1, 2, 1024}; // HACK
-    INFO("{:d} {:d}", _array_shape.size(), _dim_name.size());
-    for (size_t i = 0; i < _array_shape.size(); i++) { 
-	    INFO("{:d}",_array_shape[i]); 
-    }
     {
         size_t sz = type_size;
         for (int s : _array_shape)
@@ -104,10 +99,7 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     }
     _dim_name = config.get_default<std::vector<std::string>>(unique_name, "dim_name",
                                                              std::vector<std::string>({"D"}));
-    INFO("{:d} {:d}", _array_shape.size(), _dim_name.size());
-    for (size_t i = 0; i < _array_shape.size(); i++) { 
-	    INFO("{:d}",_array_shape[i]); 
-    }
+
     if (_array_shape.size() != _dim_name.size()) {
         throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_name' config "
                                     "settings must be the same length!");
@@ -197,10 +189,10 @@ void testDataGen::main_thread() {
     double frame_length = samples_per_data_set * ts_to_double(telescope.seq_length()) / num_links;
 
     std::mt19937 rng(_seed);
-
-    INFO("test0");
+    INFO("hit main");
     while (!stop_thread) {
         double start_time = current_time();
+        INFO("test0 - current_time()"); // : {:.6f}, seq_num: {}", current_time(), seq_num);
 
         if (!can_i_go(frame_id_abs)) {
             usleep(1e5);
@@ -210,6 +202,7 @@ void testDataGen::main_thread() {
         frame = (uint8_t*)buf->wait_for_empty_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
+        INFO("test1");
 
         buf->allocate_new_metadata_object(frame_id);
         std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
@@ -232,6 +225,7 @@ void testDataGen::main_thread() {
         std::vector<int> freq_upchan_factor(coarse_freq.size());
         std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
         std::vector<int> time_downsampling_fpga(coarse_freq.size());
+        INFO("test2");
         for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             if (_manual_freq_ids.size() > 0)
                 coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
@@ -257,13 +251,15 @@ void testDataGen::main_thread() {
         unsigned char temp_output;
         int num_elements = buf->frame_size / samples_per_data_set / _num_freq_in_frame;
         uint n_to_set = buf->frame_size / sizeof(uint8_t);
-
+        
         if (type == "const") {
-            n_to_set /= sizeof(int8_t);
-            frame8 = (int8_t*)frame;
+            
             if (chordmeta)
-                chordmeta->type = kotekan::int4x2;
-	    DEBUG("int4x2");
+                chordmeta->type = kotekan::int8;
+            n_to_set /= sizeof(chordmeta->type);
+            frame8 = (int8_t*)frame;
+            INFO("test33");
+   
         } else if (type == "const_offset") {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
@@ -325,14 +321,25 @@ void testDataGen::main_thread() {
         // this needs the decoded type
         // could be moved into constructor, but need the bit of code above
         /* new style array description */
+        INFO("test333");
         const std::vector<ptrdiff_t> extents(_array_shape.begin(), _array_shape.end());
         const std::vector<kotekan::Symbol> dimnames(_dim_name.begin(), _dim_name.end());
+        
+        // Debug output before allocate_new_frame_desc
+        INFO("Debug: extents.size()={:d}, dimnames.size()={:d}, buf->frame_size={:d}",
+             extents.size(), dimnames.size(), buf->frame_size);
+        for (size_t i = 0; i < extents.size(); ++i) {
+            INFO("  extents[{:d}]={:d}", i, extents[i]);
+        }
+        for (size_t i = 0; i < dimnames.size(); ++i) {
+            INFO("{}",dimnames[i]);
+        }
 
+        
         buf->allocate_new_frame_desc(chordmeta->type, _name, extents, dimnames);
         /* test that things are consistent */
         chordmeta->check_frame_desc(buf->get_frame_desc());
-        INFO("test1");
-
+        INFO("test334");
         if (type == "onehot") {
             int val = value;
             if (_value_array.size())
@@ -349,9 +356,8 @@ void testDataGen::main_thread() {
                     istring += ", ";
                 istring += std::to_string(k);
                 indices.push_back(k);
-            }
-            frame[j] = val;
-	    INFO("test");
+            }             
+            INFO("test4");
             INFO("Set {:s}[{:d}] index [{:s}] (flat: {:d} = 0x{:x}) to 0x{:x} ({:d})",
                  buf->buffer_name, frame_id, istring, j, j, val, val);
             if (metadata_is_onehot(buf, frame_id)) {

@@ -300,7 +300,7 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
     double max_wait_time = 1.;
     double min_wait_time = _samples_per_data_set * fpga_period_s;
     bool advance_info = false;
-
+    int num_beams = 16;
     while (!stop_thread) {
         int64_t frame_fpga_seq = -1;
         manager_lock.lock();

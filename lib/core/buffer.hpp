@@ -567,9 +567,17 @@ public:
                                  const std::vector<std::ptrdiff_t>& extents,
                                  const std::vector<kotekan::Symbol>& dimnames) {
         buffer_lock lock(mutex);
-        if (!frames_desc)
+        INFO("existing frame_desc->get_rank()={}", frames_desc->get_rank());
+        INFO("allocate_new_frame_desc called: value_type={}, quantity_name={}, extents.size()={:d}, dimnames.size()={:d}",
+             kotekan::type_to_string(value_type), quantity_name, extents.size(), dimnames.size());
+        for (size_t i = 0; i < extents.size(); ++i) {
+            INFO("  extents[{:d}]={:d}", i, extents[i]);
+        }
+        if (!frames_desc) {
             frames_desc = kotekan::GenericNDArray::create(value_type, quantity_name, extents,
                                                           dimnames, nullptr);
+            INFO("Created new frame_desc, rank={:d}", frames_desc->get_rank());
+        }
         else {
             if (extents.size() != frames_desc->get_rank())
                 ERROR("Rank mismatch: {:d} != {:d}", extents.size(), frames_desc->get_rank());
