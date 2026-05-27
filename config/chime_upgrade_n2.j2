@@ -1026,7 +1026,8 @@ eigencalc:
     krylov: 2
     subspace: 1
     # Masking config from chime science run
-    bands_filled: [ [0, 30], [251, 262] ]
+    diagonal_bands_filled: [ [0, 30], [251, 262] ] # used by EigenN2Iter
+    bands_filled: [ [0, 30], [251, 262] ]          # used by EigenN2Vis
     exclude_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
                       370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
                       807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
