@@ -15,6 +15,7 @@ import {SpectrumView} from "./spectrum_view.js";
 
 import {ColorPanel}               from "./panels/color.js";
 import {FreqRangePanel}           from "./panels/freq_range.js";
+import {TuningPanel}              from "./panels/tuning.js";
 import {BufferControlPanel,
         WaterfallControlPanel}     from "./panels/buffer.js";
 import {StartStopPanel}           from "./panels/start_stop.js";
@@ -224,16 +225,31 @@ export class App {
             this.spectrum  = new SpectrumView ({app: this, target: "spectrum_holder"});
         }
 
+        // Initial band: the freq axis the server seeded via FREQLIST is the
+        // full range_mhz, so its span is the sample rate. Cache it as the
+        // samplerate fallback for retunes until get_config refines it below.
+        const init_range = ui.freq_range_mhz || [1416, 1426];
+        this._samplerate_hz = (init_range[1] - init_range[0]) * 1e6;
+
         // Display card: colormap controls + frequency window + waterfall
         // display length (all things that change what gets *shown*).
         this.panels.push(new ColorPanel({
             app: this, target: "display_card",
             color_range: ui.color_range || [-20, 20],
         }));
-        this.panels.push(new FreqRangePanel({
-            app: this, target: "display_card",
-            range: ui.freq_range_mhz || [1416, 1426],
-        }));
+        // Center-frequency (LO) control -- only when the airspy REST controls
+        // are available to retune; otherwise the band is fixed by the source.
+        if (opt.airspy_controls && this.kotekan.airspy_stages.length) {
+            this.tuning_panel = new TuningPanel({
+                app: this, target: "display_card",
+                initial_mhz: (init_range[0] + init_range[1]) / 2,
+            });
+            this.panels.push(this.tuning_panel);
+        }
+        this.freq_panel = new FreqRangePanel({
+            app: this, target: "display_card", range: init_range,
+        });
+        this.panels.push(this.freq_panel);
         this.panels.push(new WaterfallControlPanel({app: this, target: "display_card"}));
 
         // Buffer card: ring-buffer length + local save.
@@ -298,8 +314,63 @@ export class App {
             }));
         }
 
+        // Derive the freq axis from the airspy's *actual* LO + samplerate
+        // (get_config), overriding the server's FREQLIST -- which is built
+        // from networkPowerStream's static handshake ``freq``, not the live
+        // LO. This makes the axis correct even if the device was retuned.
+        if (opt.airspy_controls && this.kotekan.airspy_stages.length) {
+            const stage = this.kotekan.airspy_stages[0];
+            this.kotekan.stageGet(stage, "get_config")
+                .then(r => r.json())
+                .then(d => {
+                    if (d.samplerate) this._samplerate_hz = d.samplerate;
+                    if (d.freq) {
+                        this.apply_band({lo_hz: d.freq, sr_hz: this._samplerate_hz});
+                        if (this.tuning_panel) this.tuning_panel.set_value(d.freq / 1e6);
+                    }
+                })
+                .catch(e => console.warn("initial band query failed:", e));
+        }
+
         // Now that the full widget set exists, apply any saved layout the
         // user customised in a previous session.
         this.layout.restore_from_storage();
+    }
+
+    // Retune the airspy LO(s) to ``lo_mhz`` and re-derive the freq axis.
+    // For crosscorr both dongles must share an LO, so we set every stage.
+    retune(lo_mhz) {
+        // Unit wart in airspyInput's REST API: set_config expects ``freq`` in
+        // MHz (it multiplies by 1e6 internally), while get_config *returns*
+        // Hz. So we POST MHz here but read Hz back in the get_config paths.
+        // Sending Hz overflows the uint32 LO to 4294967295.
+        for (const stage of this.kotekan.airspy_stages) {
+            this.kotekan.stagePost(stage, "set_config", {freq: lo_mhz});
+        }
+        this.apply_band({lo_hz: lo_mhz * 1e6, sr_hz: this._samplerate_hz});
+    }
+
+    // Recompute the frequency axis (freq_list + displayed window) for an
+    // LO/samplerate band and push it to the views + freq-range slider. The
+    // bin layout matches networkPowerStream's convention: ``num_freqs`` bins
+    // spanning LO +/- samplerate/2, bin centres at LO - sr/2 + sr/nf*(i+0.5).
+    apply_band({lo_hz, sr_hz}) {
+        const nf = this.state.num_freqs;
+        const lo = lo_hz / 1e6, sr = sr_hz / 1e6;
+        const f0 = lo - sr / 2;
+        const freq_list = new Float32Array(nf);
+        for (let i = 0; i < nf; i++) freq_list[i] = f0 + sr * (i + 0.5) / nf;
+        this.state.freq_list = freq_list;
+
+        const range = [f0, lo + sr / 2];
+        // Reset the displayed window to a 10% inset of the new band (the old
+        // window is generally outside it after a band hop).
+        const margin = (range[1] - range[0]) * 0.10;
+        const disp = [range[0] + margin, range[1] - margin];
+        this.state.disp_freq = disp;
+
+        if (this.freq_panel) this.freq_panel.set_range(range, disp);
+        this.bus.emit("state:freq_list_changed", {freq_list});
+        this.bus.emit("state:redraw_requested");
     }
 }
