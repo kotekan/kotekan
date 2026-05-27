@@ -9,7 +9,6 @@
 //   GET  <lag_align>/cal_lag          -> {lag}
 //   GET  <lag_align>/get_correlation  -> {corr_pos[], corr_neg[], lag}
 //   POST <airspy>/set_config {add_lag} -> shift that input
-//   GET  <airspy>/restart             -> restart the input, then re-align
 //
 // Sign convention: lag > 0 means stream A is ahead, so we delay A
 // (airspy_stages[0]); lag < 0 means B is ahead, delay B (airspy_stages[1]).
@@ -42,10 +41,10 @@ export class LagAlignPanel {
         mkbtn("Calculate Lag", "ui-icon-calculator", () => this._calc_lag());
         mkbtn("Show Lag Corr (slow)", "ui-icon-image", () => this._show_corr());
         mkbtn("Apply Lag", "ui-icon-check", () => this._apply_lag());
-        mkbtn("Restart A & Align", "ui-icon-refresh",
-              () => this._restart_then_align(this._airspy[0]));
-        mkbtn("Restart B & Align", "ui-icon-refresh",
-              () => this._restart_then_align(this._airspy[1]));
+        // One-sample manual nudges. Nudging A delays A relative to B; nudging
+        // B delays B relative to A -- between them they cover both directions.
+        mkbtn("Nudge A +1", "ui-icon-plus", () => this._nudge(this._airspy[0]));
+        mkbtn("Nudge B +1", "ui-icon-plus", () => this._nudge(this._airspy[1]));
 
         // Status line: last computed lag.
         this._status = $("<div/>")
@@ -113,12 +112,12 @@ export class LagAlignPanel {
         this.rest.stagePost(stage, "set_config", {add_lag: Math.abs(this._lag)});
     }
 
-    _restart_then_align(stage) {
+    /// Fire-and-forget single-sample lag bump on @c stage. The last-calculated
+    /// lag in @c this._lag becomes stale after this -- hit "Calculate Lag" to
+    /// see the new residual.
+    _nudge(stage) {
         if (!stage) return;
-        this.rest.stageGet(stage, "restart")
-            .then(() => this.rest.stageGet(this._stage, "cal_lag"))
-            .then(r => r.json())
-            .then(d => { this._set_lag(d.lag); this._apply_lag(); })
-            .catch(e => console.warn("restart+align failed:", e));
+        this.rest.stagePost(stage, "set_config", {add_lag: 1})
+            .catch(e => console.warn("nudge failed:", e));
     }
 }
