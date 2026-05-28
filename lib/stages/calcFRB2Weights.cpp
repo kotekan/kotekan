@@ -171,15 +171,6 @@ public:
         assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
 
         // Set metadata
-        /*
-        frb2_beam_positions_buffer->allocate_new_metadata_object(frame_id);
-        const auto& frb2_beam_positions_meta =
-            get_chord_metadata(frb2_beam_positions_buffer->get_metadata(frame_id));
-        frb2_beam_positions_meta->set_from_frame_desc(
-            frb2_beam_positions_buffer->get_ndarray_frame_desc());
-        frb2_beam_positions_meta->set_fpga_seq_num(0);           // ???
-        frb2_beam_positions_meta->set_time_downsampling_fpga(1); // ???
-        */
 
         W2_buffer->allocate_new_metadata_object(frame_id);
         const auto& W2_meta = get_chord_metadata(W2_buffer->get_metadata(frame_id));
@@ -189,28 +180,6 @@ public:
         W2_meta->set_coarse_freq(coarse_freq);
         W2_meta->set_freq_upchan_factor(freq_upchan_factor);
         W2_meta->set_freq_upchan_index(freq_upchan_index);
-
-        // Set frb2_beam_positions
-        /*
-        {
-            // Find centre
-            const float i_x0 = (frb2_num_beams_x - 1) / 2.0f;
-            const float i_y0 = (frb2_num_beams_y - 1) / 2.0f;
-            for (int i_y = 0; i_y < frb2_num_beams_y; ++i_y) {
-                for (int i_x = 0; i_x < frb2_num_beams_x; ++i_x) {
-                    const int beam = i_x + frb2_num_beams_x * i_y;
-                    const int idx = 2 * beam;
-                    const float theta_x = frb2_beam_separation_x * (i_x - i_x0);
-                    const float theta_y = frb2_beam_separation_y * (i_y - i_y0);
-                    assert(idx >= 0
-                           && idx < std::ptrdiff_t(frb2_beam_positions_buffer->frame_size
-                                                   / sizeof *frb2_beam_positions_frame));
-                    frb2_beam_positions_frame[idx + 0] = theta_x;
-                    frb2_beam_positions_frame[idx + 1] = theta_y;
-                }
-            }
-        }
-        */
 
         // Set W2
         {
@@ -268,8 +237,8 @@ public:
 
                     for (int beamR = 0; beamR < frb2_num_beams; ++beamR) {
                         // Unit vector pointing to sky location in the GRID frame
-                        const float nx = sin(frb2_beam_positions_frame[2 * beamR + 0]);
-                        const float ny = sin(frb2_beam_positions_frame[2 * beamR + 1]);
+                        const float nx = frb2_beam_positions_frame[2 * beamR + 0];
+                        const float ny = frb2_beam_positions_frame[2 * beamR + 1];
                         const float nz = sqrt(1 - (nx * nx + ny * ny));
 
                         // Kendrick's FRB beamforming notes, equation 7:
