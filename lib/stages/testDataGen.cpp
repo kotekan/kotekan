@@ -215,8 +215,10 @@ void testDataGen::main_thread() {
 
         chordmeta->set_name(_name);
         chordmeta->dims = (int)_array_shape.size();
-        for (int d = 0; d < chordmeta->dims; ++d)
+        for (int d = 0; d < chordmeta->dims; ++d){
+            INFO("dim {:d} extent: {:d} name: {:s}", d, _array_shape[d], _dim_name[d]);
             chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
+        }
         chordmeta->set_strides_simple();
         // frame_desc is set only after "type" has been decoded below
 
@@ -334,12 +336,12 @@ void testDataGen::main_thread() {
         for (size_t i = 0; i < dimnames.size(); ++i) {
             INFO("{}",dimnames[i]);
         }
-
         
         buf->allocate_new_frame_desc(chordmeta->type, _name, extents, dimnames);
         /* test that things are consistent */
-        chordmeta->check_frame_desc(buf->get_frame_desc());
         INFO("test334");
+        chordmeta->check_frame_desc(buf->get_frame_desc());
+        INFO("test335");
         if (type == "onehot") {
             int val = value;
             if (_value_array.size())
