@@ -26,9 +26,9 @@ instrument_name: airspy
 # wildcard. The viewer is served on :8080; add whatever host you actually
 # browse to (localhost / hostname / IP).
 rest_server:
-  cors_allow_origins:
-    - "http://localhost:8080"
-    - "http://127.0.0.1:8080"
+    cors_allow_origins:
+        - "http://localhost:8080"
+        - "http://127.0.0.1:8080"
 
 samples_per_data_set: 32768
 bytes_per_sample: 2
@@ -60,7 +60,7 @@ sample_bw: 2.5 #MHz, must be float
 freq: 1422.    #MHz
 gain_lna: 14 #0-14
 gain_mix: 15 #0-15
-gain_if:  15 #0-15
+gain_if: 15  #0-15
 biast_power: false
 
 # Disable the R820T tuner's fractional-N PLL dither for coherent multi-unit
