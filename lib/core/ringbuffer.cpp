@@ -303,10 +303,14 @@ void RingBuffer::print_buffer_status() {
         lrint(1.0 * buffer_display_length
               * (emptying_samples + full_samples + filling_samples + empty_samples) / total_samples)
         - (emptying_count + full_count + filling_count);
-    const std::string emptying_symbol = "▼"; // Unicode was define in 1991
-    const std::string full_symbol = "█";
-    const std::string filling_symbol = "▲";
-    const std::string empty_symbol = "·";
+    // const std::string emptying_symbol = "▼";
+    // const std::string full_symbol = "█";
+    // const std::string filling_symbol = "▲";
+    // const std::string empty_symbol = "·";
+    const char emptying_symbol = "v";
+    const char full_symbol = "X";
+    const char filling_symbol = "^";
+    const char empty_symbol = ".";
     std::ostringstream buf;
     buf << "[";
     for (int n = 0; n < emptying_count; ++n)

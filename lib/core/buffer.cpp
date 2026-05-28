@@ -419,11 +419,14 @@ void Buffer::print_buffer_status() {
         for (const auto& c : consumers)
             consumer_snapshots.push_back({c.second.last_frame_acquired, c.second.is_done});
     }
-    // Unicode symbols (matching RingBuffer::print_buffer_status)
-    const std::string emptying_symbol = "▼";
-    const std::string full_symbol = "█";
-    const std::string filling_symbol = "▲";
-    const std::string empty_symbol = "·";
+    // const std::string emptying_symbol = "▼";
+    // const std::string full_symbol = "█";
+    // const std::string filling_symbol = "▲";
+    // const std::string empty_symbol = "·";
+    const char emptying_symbol = "v";
+    const char full_symbol = "X";
+    const char filling_symbol = "^";
+    const char empty_symbol = ".";
     std::ostringstream buf;
     buf << "[";
     for (int i = 0; i < num_frames; ++i) {
