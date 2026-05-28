@@ -17,6 +17,8 @@ using kotekan::Stage;
 using kotekan::restServer;
 using N2::frameID;
 
+constexpr double deg2rad = M_PI / 180.0;
+
 class setFRBBeams : public Stage {
 public:
     setFRBBeams(Config& config, const std::string& unique_name,
@@ -28,6 +30,7 @@ public:
 
 protected:
     std::vector<FRBBeam> build_grid_beams() const;
+    std::vector<FRBBeam> build_grid_deg_beams() const;
     std::vector<FRBBeam> build_chime_beams() const;
     std::vector<FRBBeam> build_seth_beams() const;
 
@@ -74,6 +77,10 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
         if (num_x == 0 || num_y == 0)
             FATAL_ERROR("grid mode, but num_x ({:d}) or num_y ({:d}) is 0", num_x, num_y);
         beams = build_grid_beams();
+    } else if (mode == "grid_degrees") {
+        if (num_x == 0 || num_y == 0)
+            FATAL_ERROR("grid_degrees mode, but num_x ({:d}) or num_y ({:d}) is 0", num_x, num_y);
+        beams = build_grid_deg_beams();
     } else if (mode == "seth") {
         beams = build_seth_beams();
     } else {
@@ -111,6 +118,23 @@ std::vector<FRBBeam> setFRBBeams::build_grid_beams() const {
             double x = (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
             double y = (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
             grid_beams.at(b) = {.id=b, .x_dir_grid=x, .y_dir_grid=y};
+        }
+    }
+
+    return grid_beams;
+}
+    
+std::vector<FRBBeam> setFRBBeams::build_grid_deg_beams() const {
+
+    std::vector<FRBBeam> grid_beams(num_x * num_y);
+
+    for (uint32_t by = 0; by < num_y; by++) {
+        for (uint32_t bx = 0; bx < num_x; bx++) {
+            const uint32_t b = bx + num_x * by;
+
+            double x = (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
+            double y = (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
+            grid_beams.at(b) = {.id=b, .x_dir_grid=sin(x * deg2rad), .y_dir_grid=sin(y * deg2rad)};
         }
     }
 
