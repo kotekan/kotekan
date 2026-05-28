@@ -45,6 +45,11 @@ class inventVoltage : public kotekan::Stage {
     const std::string input_kind = config.get<std::string>(unique_name, "input_kind");
     const bool reuse_frames = config.get_default<bool>(unique_name, "reuse_frames", false);
 
+    // Kotekan can take a long time to start up because e.g. beamforming matrices need to be
+    // calculated. We want to delay starting the benchmark timings until this startup has finished.
+    // The "startup buffers" are those that we wait for before starting to push data through the
+    // pipeline as fast as we can. We register ourselves as a consumer of these buffers and then
+    // wait for their first frame in our main thread.
     const std::vector<std::string> startup_buffer_names =
         config.get<std::vector<std::string>>(unique_name, "startup_buffer_names");
 
