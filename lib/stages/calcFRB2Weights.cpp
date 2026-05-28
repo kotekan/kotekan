@@ -1,33 +1,42 @@
-#include <cassert>                       // for assert
-#include <algorithm>                     // for max
-#include <cmath>                         // for sin, cos, sqrt, M_PI
-#include <cstddef>                       // for ptrdiff_t, size_t
-#include <functional>                    // for function
-#include <memory>                        // for __shared_ptr_access, shared_ptr
-#include <set>                           // for set, operator!=, _Rb_tree_const_iterator
+#include "Config.hpp"                   // for Config
+#include "DataType.hpp"                 // for float16_t
+#include "Stage.hpp"                    // for Stage
+#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"                // for Telescope, freq_id_t
+#include "UpchannelizationSchedule.hpp" // for UpchannelizationSchedule
+#include "buffer.hpp"                   // for Buffer
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "chordMetadata.hpp"            // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"           // for DEBUG, FATAL_ERROR
+#include "visUtil.hpp"                  // for current_time
 
-#include "Config.hpp"                    // for Config
-#include "Stage.hpp"                     // for Stage
-#include "StageFactory.hpp"              // for REGISTER_KOTEKAN_STAGE
-#include "UpchannelizationSchedule.hpp"  // for UpchannelizationSchedule
-#include "buffer.hpp"                    // for Buffer
-#include "bufferContainer.hpp"           // for bufferContainer
-#include "chordMetadata.hpp"             // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"            // for DEBUG, FATAL_ERROR
-#include "visUtil.hpp"                   // for current_time
-#include "DataType.hpp"                  // for float16_t
-#include "Telescope.hpp"                 // for Telescope, freq_id_t
-#include "fmt.hpp"                       // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm> // for max
+#include <atomic>
+#include <cassert> // for assert
+#include <cassert>
+#include <cmath>   // for sin, cos, sqrt, M_PI
+#include <cstddef> // for ptrdiff_t, size_t
+#include <cstdint>
+#include <cstdio>
+#include <functional> // for function
+#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <set>        // for set, operator!=, _Rb_tree_const_iterator
 #ifdef WITH_OMP
 #include <omp.h>
 #endif
-#include <unistd.h>                      // for sleep
-#include <string>                        // for allocator, basic_string, string
-#include <vector>                        // for vector
+#include <string>   // for allocator, basic_string, string
+#include <unistd.h> // for sleep
+#include <vector>   // for vector
 
 class calcFRB2Weights : public kotekan::Stage {
     // Telescope setup
     const int num_dishes = config.get<int>(unique_name, "num_dishes");
+
+    // Upchannelization setup
+    const std::string upchannelization_schedule_name =
+        config.get_default<std::string>(unique_name, "upchannelization_schedule_name", "");
 
     // FRB1 beamformer setup
 
@@ -107,7 +116,8 @@ public:
         const auto& telescope = Telescope::instance();
 
         // Upchannelization schedule
-        const auto& upchan_schedule = UpchannelizationSchedule::instance(config);
+        const auto& upchan_schedule =
+            UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
 
 #if 0 // not used
       // Calculate dish positions
@@ -265,6 +275,8 @@ public:
             const float sigmay_y = 8.5;
             const float sigmay_z = 0;
 
+            std::atomic<int> nfreqs_done = 0;
+
 #ifdef WITH_OMP
 #pragma omp parallel num_threads(num_threads)
 #endif
@@ -313,8 +325,13 @@ public:
                             }
                         }
                     }
+                    ++nfreqs_done;
+                    std::printf("\rcalcFRB2Weights: freqs: %d/%d...", int(nfreqs_done),
+                                frb2_num_frequencies);
+                    std::fflush(stdout);
                 }
             }
+            std::printf("\n");
 
             const double t1 = current_time();
             const double elapsed = t1 - t0;
