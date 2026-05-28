@@ -80,7 +80,7 @@ MAX_DRAIN_PER_TICK = 256
 # within M seconds, drop the connection. The dropped connection triggers
 # the JS client's auto-reconnect path.
 WS_PING_INTERVAL_S = 20
-WS_PING_TIMEOUT_S  = 10
+WS_PING_TIMEOUT_S = 10
 
 # Backpressure tuning. This is a *real-time* viewer, so we want frames to
 # drop quickly when the network can't keep up rather than queuing and
@@ -94,8 +94,8 @@ WS_PING_TIMEOUT_S  = 10
 #
 # A client whose buffer genuinely can't keep up sees frames dropped
 # server-side; the JS gap detector then paints the missed span grey.
-WS_BUFFER_FRAMES = 4               # frames of slack before backpressure
-WS_BUFFER_MIN_BYTES = 16 * 1024    # floor (also the autocorr value)
+WS_BUFFER_FRAMES = 4  # frames of slack before backpressure
+WS_BUFFER_MIN_BYTES = 16 * 1024  # floor (also the autocorr value)
 
 # Defense-in-depth: if a client stays paused (TCP buffer full, slow / hung
 # downstream) for this many seconds, abort the connection. AutoPing already
@@ -139,8 +139,13 @@ class KotekanPowerStream:
     SUBFRAME_HDR_FMT = "III"
     SUBFRAME_HDR_LEN = struct.calcsize(SUBFRAME_HDR_FMT)
 
-    def __init__(self, host="0.0.0.0", port=23401, on_frame=None,
-                 emit_interval_s=DEFAULT_VIEWER_INTEGRATION_MS / 1000.0):
+    def __init__(
+        self,
+        host="0.0.0.0",
+        port=23401,
+        on_frame=None,
+        emit_interval_s=DEFAULT_VIEWER_INTEGRATION_MS / 1000.0,
+    ):
         self.host = host
         self.port = port
         self.on_frame = on_frame  # callable, fired once per emitted (averaged) frame
@@ -165,16 +170,16 @@ class KotekanPowerStream:
 
         self.packed_header = self._recv_exact(self.HEADER_LEN, self.connection)
         (
-            self.frame_length,         # packet_length: bytes of float32 spectrum per subframe
-            self.subframe_hdr_len,     # bytes of subframe header (should == SUBFRAME_HDR_LEN)
-            self.frame_samples,        # samples_per_packet (== nfreq)
-            self.frame_dtype,          # sample_type tag
-            self.frame_raw_cad,        # raw_cadence (seconds per sample)
-            self.frame_nfreq,          # number of freq bins
-            self.frame_nvis,           # number of visibilities / elements per integration
-            self.frame_int_len,        # samples_summed per integration
-            self.frame_idx0,           # handshake_idx (zero offset for frame_idx)
-            self.frame_utc0,           # handshake_utc (zero offset for sample_time)
+            self.frame_length,  # packet_length: bytes of float32 spectrum per subframe
+            self.subframe_hdr_len,  # bytes of subframe header (should == SUBFRAME_HDR_LEN)
+            self.frame_samples,  # samples_per_packet (== nfreq)
+            self.frame_dtype,  # sample_type tag
+            self.frame_raw_cad,  # raw_cadence (seconds per sample)
+            self.frame_nfreq,  # number of freq bins
+            self.frame_nvis,  # number of visibilities / elements per integration
+            self.frame_int_len,  # samples_summed per integration
+            self.frame_idx0,  # handshake_idx (zero offset for frame_idx)
+            self.frame_utc0,  # handshake_utc (zero offset for sample_time)
         ) = struct.unpack(self.HEADER_FMT, self.packed_header)
 
         info_len = self.frame_nfreq * 4 * 2 + self.frame_nvis * 1
@@ -215,13 +220,16 @@ class KotekanPowerStream:
         log_.info(
             "Viewer integration: averaging N=%d kotekan integrations "
             "(kotekan period %.3f ms -> effective %.1f ms / frame)",
-            self.integrate_n, self.kotekan_period_s * 1e3,
+            self.integrate_n,
+            self.kotekan_period_s * 1e3,
             self.integrate_n * self.kotekan_period_s * 1e3,
         )
 
         log_.info(
             "Handshake: mode=%s nvis=%d nfreq=%d",
-            self.mode, self.frame_nvis, self.frame_nfreq,
+            self.mode,
+            self.frame_nvis,
+            self.frame_nfreq,
         )
 
         self.connection.settimeout(0.1)
@@ -256,12 +264,16 @@ class KotekanPowerStream:
         """Read ``frame_nvis`` subframes into :attr:`databuf`. May raise
         socket.timeout (no data right now) or on a closed connection."""
         for i in range(self.frame_nvis):
-            d = self._recv_exact(self.subframe_hdr_len + self.frame_length, self.connection)
+            d = self._recv_exact(
+                self.subframe_hdr_len + self.frame_length, self.connection
+            )
             self.frame_idx, elem_idx, self.samples_summed = struct.unpack(
                 self.SUBFRAME_HDR_FMT, d[: self.subframe_hdr_len]
             )
             if elem_idx != i:
-                log_.warning("Out-of-order subframe: expected elem %d, got %d", i, elem_idx)
+                log_.warning(
+                    "Out-of-order subframe: expected elem %d, got %d", i, elem_idx
+                )
                 self.databuf[i, :] = 0
                 break
             self.databuf[elem_idx, :] = np.frombuffer(
@@ -328,7 +340,7 @@ class KotekanPowerStream:
         if self._acc_n >= self.integrate_n:
             np.divide(self._acc, self._acc_n, out=self._acc)
             self.outbuf[:] = self._acc.astype(np.float32)
-            self._emit_idx = self.frame_idx   # newest integration in block
+            self._emit_idx = self.frame_idx  # newest integration in block
             self._acc.fill(0.0)
             self._acc_n = 0
             self._block_ready = True
@@ -435,7 +447,8 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
             # each pause edge so it always reflects the *current* pause's
             # age.
             self._stuck_watchdog = reactor.callLater(
-                WS_STUCK_PAUSED_S, self._on_stuck_paused)
+                WS_STUCK_PAUSED_S, self._on_stuck_paused
+            )
         self._paused = True
 
     def resumeProducing(self):
@@ -456,7 +469,9 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
         self._stuck_watchdog = None
 
     def _on_stuck_paused(self):
-        log_.warning("WS %s: stuck paused for %ds; aborting", self.peer, WS_STUCK_PAUSED_S)
+        log_.warning(
+            "WS %s: stuck paused for %ds; aborting", self.peer, WS_STUCK_PAUSED_S
+        )
         self._stuck_watchdog = None
         try:
             self.dropConnection(abort=True)
@@ -490,7 +505,8 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
         buf_bytes = max(WS_BUFFER_MIN_BYTES, WS_BUFFER_FRAMES * frame_bytes)
         try:
             self.transport.getHandle().setsockopt(
-                socket.SOL_SOCKET, socket.SO_SNDBUF, buf_bytes)
+                socket.SOL_SOCKET, socket.SO_SNDBUF, buf_bytes
+            )
         except (AttributeError, OSError) as e:
             log_.warning("WS %s: could not set SO_SNDBUF: %s", self.peer, e)
         self.transport.bufferSize = buf_bytes
@@ -502,8 +518,7 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
         # the JS side to consume.
         self.sendMessage(
             json.dumps(
-                {"nfreq": self.sendfreq,
-                 "viewer_config": self.factory.viewer_config}
+                {"nfreq": self.sendfreq, "viewer_config": self.factory.viewer_config}
             ).encode("utf-8"),
             isBinary=False,
         )
@@ -597,8 +612,7 @@ class LiveBeamWSFactory(WebSocketServerFactory):
         # reconnect (see app/socket.js) so transient network blips heal
         # themselves instead of leaving a frozen browser tab.
         self.setProtocolOptions(
-            autoPingInterval=WS_PING_INTERVAL_S,
-            autoPingTimeout=WS_PING_TIMEOUT_S,
+            autoPingInterval=WS_PING_INTERVAL_S, autoPingTimeout=WS_PING_TIMEOUT_S,
         )
 
     def register(self, client):
@@ -624,8 +638,11 @@ class LiveBeamWSFactory(WebSocketServerFactory):
             try:
                 c.send_power_frame()
             except Exception as e:
-                log_.warning("WS %s: send_power_frame raised %s; dropping client",
-                             getattr(c, "peer", "?"), e)
+                log_.warning(
+                    "WS %s: send_power_frame raised %s; dropping client",
+                    getattr(c, "peer", "?"),
+                    e,
+                )
                 try:
                     c.transport.loseConnection()
                 except Exception:
@@ -656,8 +673,12 @@ class NoCacheFile(static.File):
     render_HEAD = render_GET
 
     def createSimilarFile(self, path):
-        f = self.__class__(path, defaultType=self.defaultType,
-                           ignoredExts=self.ignoredExts, registry=self.registry)
+        f = self.__class__(
+            path,
+            defaultType=self.defaultType,
+            ignoredExts=self.ignoredExts,
+            registry=self.registry,
+        )
         f.processors = self.processors
         f.indexNames = self.indexNames[:]
         f.childNotFound = self.childNotFound
@@ -686,45 +707,87 @@ def main():
     ap = argparse.ArgumentParser(
         description="Bridge kotekan networkPowerStream to a browser viewer."
     )
-    ap.add_argument("--kotekan-host", default="0.0.0.0",
-                    help="TCP interface to bind for kotekan input (default 0.0.0.0)")
-    ap.add_argument("--kotekan-port", default=23401, type=int,
-                    help="TCP port for kotekan input (default 23401)")
-    ap.add_argument("--ws-port", default=8539, type=int,
-                    help="WebSocket port for browser clients (default 8539)")
-    ap.add_argument("--http-port", default=8080, type=int,
-                    help="HTTP port serving the static viewer (default 8080)")
-    ap.add_argument("-w", "--launch-browser", action="store_true",
-                    help="Open the viewer in a local browser on startup")
-    ap.add_argument("--viewer-integration-ms", type=float,
-                    default=DEFAULT_VIEWER_INTEGRATION_MS,
-                    help="Browser-facing integration window in ms. kotekan "
-                         "integrations arriving within this window are "
-                         "averaged into one emitted frame (default "
-                         f"{DEFAULT_VIEWER_INTEGRATION_MS}). Larger = less "
-                         "data / smoother; smaller = finer time resolution.")
+    ap.add_argument(
+        "--kotekan-host",
+        default="0.0.0.0",
+        help="TCP interface to bind for kotekan input (default 0.0.0.0)",
+    )
+    ap.add_argument(
+        "--kotekan-port",
+        default=23401,
+        type=int,
+        help="TCP port for kotekan input (default 23401)",
+    )
+    ap.add_argument(
+        "--ws-port",
+        default=8539,
+        type=int,
+        help="WebSocket port for browser clients (default 8539)",
+    )
+    ap.add_argument(
+        "--http-port",
+        default=8080,
+        type=int,
+        help="HTTP port serving the static viewer (default 8080)",
+    )
+    ap.add_argument(
+        "-w",
+        "--launch-browser",
+        action="store_true",
+        help="Open the viewer in a local browser on startup",
+    )
+    ap.add_argument(
+        "--viewer-integration-ms",
+        type=float,
+        default=DEFAULT_VIEWER_INTEGRATION_MS,
+        help="Browser-facing integration window in ms. kotekan "
+        "integrations arriving within this window are "
+        "averaged into one emitted frame (default "
+        f"{DEFAULT_VIEWER_INTEGRATION_MS}). Larger = less "
+        "data / smoother; smaller = finer time resolution.",
+    )
     ap.add_argument("-v", "--verbose", action="store_true")
 
     g = ap.add_argument_group("viewer modules")
-    g.add_argument("--kotekan-rest-port", default=12048, type=int,
-                   help="Port for kotekan's REST server (the browser fetches "
-                        "airspy gain/freq/adcstat via cross-origin requests)")
-    g.add_argument("--airspy-stages", nargs="*", default=None,
-                   help="kotekan stage names of the airspy producers; "
-                        "default ['airspy_input'] for autocorr, "
-                        "['airspy_inputA','airspy_inputB'] for crosscorr")
-    g.add_argument("--no-airspy-controls", action="store_true",
-                   help="Force-disable the airspy gain/freq panels even if "
-                        "airspy_stages is set")
-    g.add_argument("--lag-align-stage", default=None,
-                   help="kotekan stage name for AirspyAlign; enables the Lagcorr "
-                        "control when set (crosscorr only)")
-    g.add_argument("--ccera-pointing", action="store_true",
-                   help="Enable the CCERA telescope pointing panel "
-                        "(needs ccera_rest.py running on :3000)")
-    g.add_argument("--galaxy-view-url", default=None,
-                   help="Background image URL for the all-sky galaxy view. "
-                        "Pass a URL to enable; leave unset to disable.")
+    g.add_argument(
+        "--kotekan-rest-port",
+        default=12048,
+        type=int,
+        help="Port for kotekan's REST server (the browser fetches "
+        "airspy gain/freq/adcstat via cross-origin requests)",
+    )
+    g.add_argument(
+        "--airspy-stages",
+        nargs="*",
+        default=None,
+        help="kotekan stage names of the airspy producers; "
+        "default ['airspy_input'] for autocorr, "
+        "['airspy_inputA','airspy_inputB'] for crosscorr",
+    )
+    g.add_argument(
+        "--no-airspy-controls",
+        action="store_true",
+        help="Force-disable the airspy gain/freq panels even if "
+        "airspy_stages is set",
+    )
+    g.add_argument(
+        "--lag-align-stage",
+        default=None,
+        help="kotekan stage name for AirspyAlign; enables the Lagcorr "
+        "control when set (crosscorr only)",
+    )
+    g.add_argument(
+        "--ccera-pointing",
+        action="store_true",
+        help="Enable the CCERA telescope pointing panel "
+        "(needs ccera_rest.py running on :3000)",
+    )
+    g.add_argument(
+        "--galaxy-view-url",
+        default=None,
+        help="Background image URL for the all-sky galaxy view. "
+        "Pass a URL to enable; leave unset to disable.",
+    )
     args = ap.parse_args()
 
     logging.basicConfig(
@@ -735,13 +798,17 @@ def main():
 
     static_dir = os.path.dirname(os.path.abspath(__file__))
 
-    kotekan = KotekanPowerStream(host=args.kotekan_host, port=args.kotekan_port,
-                                 emit_interval_s=args.viewer_integration_ms / 1000.0)
+    kotekan = KotekanPowerStream(
+        host=args.kotekan_host,
+        port=args.kotekan_port,
+        emit_interval_s=args.viewer_integration_ms / 1000.0,
+    )
     kotekan.start()  # blocks on accept until kotekan connects
 
     if kotekan.mode == "unknown":
-        log_.warning("Unrecognised kotekan nvis=%d; proceeding anyway.",
-                     kotekan.frame_nvis)
+        log_.warning(
+            "Unrecognised kotekan nvis=%d; proceeding anyway.", kotekan.frame_nvis
+        )
 
     viewer_config = build_viewer_config(kotekan, args)
     log_.info("viewer_config: %s", json.dumps(viewer_config, indent=2))
@@ -765,6 +832,7 @@ def main():
 
     if args.launch_browser:
         import webbrowser
+
         webbrowser.open(f"http://localhost:{args.http_port}/")
 
     # Idempotent shutdown. When SpawnProcess wraps this script as a child of
@@ -773,14 +841,17 @@ def main():
     # its own shutdown -- so we'd get two stop attempts and the second one
     # raises ``ReactorNotRunning``.
     _stop_called = [False]
+
     def _safe_stop():
         if _stop_called[0]:
             return
         _stop_called[0] = True
         if reactor.running:
             reactor.stop()
+
     def _on_signal(sig, frame):
         reactor.callFromThread(_safe_stop)
+
     signal.signal(signal.SIGINT, _on_signal)
     signal.signal(signal.SIGTERM, _on_signal)
     reactor.run(installSignalHandlers=False)
