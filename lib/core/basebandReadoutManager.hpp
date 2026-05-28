@@ -31,9 +31,9 @@ namespace kotekan {
 struct basebandRequest {
     /// FRB internal unique event ID
     uint64_t event_id;
-    /// Starting FPGA frame of the dump
+    /// Starting FPGA frame of the dump (standard readout window)
     int64_t start_fpga;
-    /// Length of the dump in FPGA frames
+    /// Length of the dump in FPGA frames (standard readout window)
     int64_t length_fpga;
     /// destination directory (relative to ``base_dir`` from the configuration.)
     std::string file_path;
@@ -41,6 +41,24 @@ struct basebandRequest {
     std::string file_name;
     /// Time when the request was received
     std::chrono::system_clock::time_point received = std::chrono::system_clock::now();
+    
+    // Multibeam beamforming fields (NEW)
+    /// Number of beams to form
+    uint64_t num_beams = 0;
+    /// Detection beam index (0-4000) for calibrator lookup
+    uint64_t detection_beam = 0;
+    /// Starting FPGA frame for multibeam window (broader than standard dump)
+    int64_t start_fpga_midband = -1;
+    /// Length of multibeam dump in FPGA frames (typically longer for integration)
+    int64_t length_mb_fpga = 0;
+    /// Right ascension for each beam (length num_beams)
+    std::vector<double> mb_ra;
+    /// Declination for each beam (length num_beams)
+    std::vector<double> mb_dec;
+    /// Source names for each beam (length num_beams)
+    std::vector<std::string> mb_name;
+    /// Destination file for multibeam output (relative to ``file_path``)
+    std::string mb_file_name;
 };
 
 

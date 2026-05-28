@@ -124,14 +124,41 @@ baseband_output_buffers:
     kotekan_buffer: standard
     num_frames: 12
 
+baseband_mboutput_buffers:
+  # Multibeam beamformed output: frame_size = samples_per_data_set * num_freq_host_buf * num_beams
+  # Output shape: (samples_per_dataset, num_local_freq, num_beams) where each element is 1 byte (int4x2_t)
+  frame_size: 512 * 1 * 8  # 512 samples * 1 freq * 8 beams
+  metadata_pool: baseband_pool
+{%- for id in range(4) %}
+  baseband_mboutput_buffer_{{ id }}:
+    kotekan_buffer: standard
+    num_frames: 2 * 32 * 3 # baseband_buffer_depth
+{%- endfor %}
+  baseband_mboutput_buffer_merged:
+    kotekan_buffer: standard
+    num_frames: 12
+
 baseband:
-  max_dump_samples: 300000 # 768ms
+  max_dump_samples: 30000 # 768ms
+  samples_per_data_set: 512
   num_frames_buffer: baseband_buffer_depth - 10
+  
+  # Tracking beams global options
+  inst_lat: 49.32070922
+  inst_long: -119.62367743
+  {% include 'chime_feed_positions.yaml' %} # Put in feed positions from a separate config
+  num_pol: 2
+  num_beams: 8  # Number of beams to form during beamforming
+  datasets_per_scan: 6104  # Integration time (3125000/512, rounded) ~ 8 seconds of integration.
+  datasets_per_delay_update: 39063  # When to update phase delays (390625/10, rounded)
+
 {%- for id in range(4) %}
   baseband{{ id }}:
     kotekan_stage: basebandReadout
     in_buf: host_voltage_buffer_{{ id }}
     out_buf: baseband_output_buffer_{{ id }}
+    outmb_buf: baseband_mboutput_buffer_{{ id }}
+    gain_tracking_buffer: gain_tracking_buffer
 {%- endfor %}
 
 baseband_merge:

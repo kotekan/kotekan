@@ -204,6 +204,14 @@ private:
     static basebandSlice translate_trigger(int64_t fpga_time0, int64_t fpga_width, const double dm,
                                            const double dm_error, const uint32_t freq_id,
                                            const double ref_freq_hz = L1_REFERERENCE_FREQ);
+    
+    /// @brief  pick calibrators
+    /// @param num_beams 
+    /// @return a calibrator list of length `num_beams`, with three elements:
+    ///     - ra : double, right ascension in degrees
+    ///     - dec : double, declination in degrees
+    ///     - name : string, source name
+    std::tuple<std::vector<double>, std::vector<double>, std::vector<std::string>> lookup_cals(const uint64_t num_beams);
 
     void status_callback_single_event(connectionInstance& conn);
 

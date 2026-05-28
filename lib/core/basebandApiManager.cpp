@@ -196,13 +196,44 @@ basebandApiManager::translate_trigger(const int64_t fpga_time0, const int64_t fp
 }
 
 
+        // NEW: Look up calibrators for multibeam beamforming
+std::tuple<std::vector<double>, std::vector<double>, std::vector<std::string>> basebandApiManager::lookup_cals(const uint64_t num_beams) {
+        std::vector<double> cal_ra;
+        std::vector<double> cal_dec;
+        std::vector<std::string> cal_name;
+        if (num_beams > 0) {
+            // Hardcoded calibrator list
+            const std::vector<nlohmann::json> all_cals = {
+                nlohmann::json{{"ra", 0.0}, {"dec", 89.0}, {"name", "J0000+89"}},
+                nlohmann::json{{"ra", 1.0}, {"dec", 89.0}, {"name", "J0001+89"}},
+                nlohmann::json{{"ra", 2.0}, {"dec", 89.0}, {"name", "J0002+89"}},
+                nlohmann::json{{"ra", 3.0}, {"dec", 89.0}, {"name", "J0003+89"}},
+                nlohmann::json{{"ra", 90.0}, {"dec", 89.0}, {"name", "J0600+89"}},
+                nlohmann::json{{"ra", 91.0}, {"dec", 89.0}, {"name", "J0604+89"}},
+                nlohmann::json{{"ra", 92.0}, {"dec", 89.0}, {"name", "J0608+89"}},
+                nlohmann::json{{"ra", 93.0}, {"dec", 89.0}, {"name", "J0612+89"}},
+                nlohmann::json{{"ra", 180.0}, {"dec", 89.0}, {"name", "J1200+89"}},
+                nlohmann::json{{"ra", 181.0}, {"dec", 89.0}, {"name", "J1204+89"}},
+                nlohmann::json{{"ra", 182.0}, {"dec", 89.0}, {"name", "J1208+89"}},
+                nlohmann::json{{"ra", 183.0}, {"dec", 89.0}, {"name", "J1212+89"}},
+            };
+            for (size_t i = 0; i < num_beams && i < all_cals.size(); i++) {
+                cal_ra.push_back(all_cals[i]["ra"]);
+                cal_dec.push_back(all_cals[i]["dec"]);
+                cal_name.push_back(all_cals[i]["name"]);
+            }
+        }
+        return {cal_ra, cal_dec, cal_name};
+    }
+
 void basebandApiManager::handle_request_callback(connectionInstance& conn, json& request) {
     auto now = std::chrono::system_clock::now();
     auto& tel = Telescope::instance();
     try {
         uint64_t event_id = request["event_id"];
         int64_t start_unix_seconds = request["start_unix_seconds"];
-
+        uint64_t detection_beam = request["detection_beam"];
+        uint64_t num_beams = request["num_beams"];
         int64_t start_fpga;
         if (start_unix_seconds >= 0) {
             int64_t start_unix_nano = request["start_unix_nano"];
@@ -215,6 +246,10 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
         int64_t duration_nano = request["duration_nano"];
         int64_t duration_fpga = duration_nano / tel.seq_length_nsec();
 
+        int64_t duration_mb_nano = request["duration_mb_nano"];
+        int64_t duration_mb_fpga = duration_mb_nano / tel.seq_length_nsec();
+
+
         std::string file_path = request["file_path"];
         // Ensure there is no trailing slash
         while (file_path.back() == '/') {
@@ -224,24 +259,52 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
         const double dm_error = request["dm_error"];
 
         json response = json::object({});
+        basebandSlice mb_slice = translate_trigger(start_fpga, duration_mb_fpga, dm, dm_error, 512); // 512 is 600 MHz
+
         for (auto& element : readout_registry) {
             const uint32_t freq_id = element.first;
             auto& readout_entry = element.second;
 
-            const std::string readout_file_name =
+            std::string readout_file_name =
                 fmt::format(fmt("baseband_{:d}_{:d}.h5"), event_id, freq_id);
 
-            const auto readout_slice =
+            auto readout_slice =
                 translate_trigger(start_fpga, duration_fpga, dm, dm_error, freq_id);
-            readout_entry.add({event_id, readout_slice.start_fpga, readout_slice.length_fpga,
-                               file_path, readout_file_name, now});
+            // Grab calibrators
+            auto [mb_ra, mb_dec, mb_name] = lookup_cals(num_beams);
+            std::string file_name = fmt::format(fmt("baseband_{:d}_{:d}.h5"), event_id, freq_id); // mb_file_name;
+            std::string mb_file_name = fmt::format(fmt("baseband_mb_{:d}_{:d}.h5"), event_id, freq_id); // mb_file_name;
+ 
+            auto request_obj = basebandRequest{
+                event_id, // event_id
+                readout_slice.start_fpga,  // start_fpga: standard dump
+                readout_slice.length_fpga, // length_fpga: standard dump
+                file_path, //file_path: standard dump & mb dump
+                readout_file_name, // file_name: standard dump
+                now, // received: for debugging
+                num_beams, // num_beams for multibeam beamforming
+                detection_beam, // detection_beam for calibrator lookup
+                mb_slice.start_fpga - mb_slice.length_fpga / 2, // start_fpga_midband for multibeam beamforming
+                mb_slice.length_fpga, // length_mb_fpga for multibeam beamforming
+                mb_ra, // this should be mb_ra, 
+                mb_dec, // this should be mb_dec
+                mb_name, // this should be mb_name
+                mb_file_name, // mb_file_name;
+            };
+
+            readout_entry.add(request_obj);     
             response[std::to_string(freq_id)] = json{{"file_name", readout_file_name},
-                                                     {"start_fpga", readout_slice.start_fpga},
-                                                     {"length_fpga", readout_slice.length_fpga}};
-        }
+                                      {"start_fpga", readout_slice.start_fpga},
+                                      {"length_fpga", readout_slice.length_fpga},
+                                      {"mb_file_name", request_obj.file_name},
+                                      {"mb_file_name", mb_file_name},
+                                      {"start_mb_fpga", mb_slice.start_fpga - mb_slice.length_fpga / 2},
+                                      {"length_mb_fpga", mb_slice.length_fpga},
+                                      {"mb_file_name", request_obj.mb_file_name},
+                                    };
 
-        request_counter.inc();
-
+            request_counter.inc();
+            }
         conn.send_json_reply(response);
     } catch (const std::exception& ex) {
         INFO_NON_OO("Bad baseband request: {:s}", ex.what());

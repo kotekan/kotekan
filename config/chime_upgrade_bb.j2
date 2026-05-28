@@ -226,13 +226,16 @@ dpdk:
 #baseband:
 #  max_dump_samples: 30000 # 768ms
 #  num_frames_buffer: baseband_buffer_depth - 10
-#  num_frames_min: 64 # this number x samples_per_data_set x 2.56 us is the duration of the continuum integration
+#  num_beams: 8  # Number of beams to form during beamforming
+#  datasets_per_scan: 6104  # Number of datasets in broader MB window (3125000/512, rounded). 8 seconds of integration.
+#  datasets_per_delay_update: 39063  # When to update phase delays (390625/10, rounded)
 #{%- for id in range(16) %}
 #  baseband{{ id }}:
 #    kotekan_stage: basebandReadout
 #    in_buf: host_voltage_buffer_{{ id }}
 #    out_buf: baseband_output_buffer_{{ id }}
 #    outmb_buf: baseband_mboutput_buffer_{{ id }}
+#    gain_tracking_buffer: gain_tracking_buffer_{{ id }}
 #{%- endfor %}
 #
 #baseband_mbmerge:

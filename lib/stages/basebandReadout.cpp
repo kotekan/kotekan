@@ -47,11 +47,12 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&basebandReadout::main_thread, this)),
     _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
-    int_frames(config.get<int>(unique_name, "num_frames_min")),
     // TODO: rename this parameter to `num_freq_per_stream` in the config
     _num_freq_per_stream(config.get_default<uint32_t>(unique_name, "num_local_freq", 1)),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     _max_dump_samples(config.get_default<uint64_t>(unique_name, "max_dump_samples", 1 << 30)),
+    _num_beams(config.get_default<uint64_t>(unique_name, "num_beams", 0)),
+    _datasets_per_delay_update(config.get_default<int64_t>(unique_name, "datasets_per_delay_update", 0)),
     in_buf(get_buffer("in_buf")), next_frame(0), oldest_frame(-1), frame_locks(_num_frames_buffer),
     out_buf(get_buffer("out_buf")), out_frame_id(out_buf),
     outmb_buf(get_buffer("outmb_buf")), outmb_frame_id(outmb_buf),
@@ -81,6 +82,17 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     in_buf->register_consumer(unique_name);
 
     out_buf->register_producer(unique_name);
+    
+    // Try to get gain_tracking_buffer if doing multibeam beamforming
+    if (_num_beams > 0) {
+        try {
+            _gain_tracking_buffer = get_buffer("gain_tracking_buffer");
+            INFO("Loaded gain_tracking_buffer for multibeam beamforming with {} beams", _num_beams);
+        } catch (const std::exception& e) {
+            WARN("Could not load gain_tracking_buffer for multibeam beamforming: {}", e.what());
+            _gain_tracking_buffer = nullptr;
+        }
+    }
 
     // Ensure input buffer is long enough.
     if (in_buf->num_frames <= _num_frames_buffer) {
@@ -300,7 +312,10 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
     double max_wait_time = 1.;
     double min_wait_time = _samples_per_data_set * fpga_period_s;
     bool advance_info = false;
-    int num_beams = 16;
+    
+    // Use configurable num_beams for lock range planning
+    uint64_t num_beams = _num_beams > 0 ? _num_beams : 16;
+    
     while (!stop_thread) {
         int64_t frame_fpga_seq = -1;
         manager_lock.lock();
@@ -330,7 +345,7 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
 	int lock_start = std::max(oldest_frame, dump_start_frame - int_frames);
 	int lock_end = dump_end_frame + 2 * int_frames;
         lock_range(lock_start, lock_end);
-	DEBUG("Frames locked. Finding {:d} calibrators using start of lock_range = {:d} - {:d}", num_beams, lock_start, lock_end);
+	DEBUG("Frames locked. Finding {} calibrators using start of lock_range = {} - {}", num_beams, lock_start, lock_end);
 
         // Now that the relevant frames are locked, we can unlock the rest of the buffer so
         // it can continue to operate.
@@ -375,6 +390,59 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
     }
 }
 
+// Compute beamforming phases for multiple beams
+void basebandReadout::compute_beam_phases(Config& config, const std::string& unique_name, 
+                                          float* phases, time_t beamform_time,
+                                          uint64_t num_beams, const double* beam_ras,
+                                          const double* beam_decs) {
+    const uint _num_elements = config.get<int>(unique_name, "num_elements");
+    
+    const double inst_lat = config.get<double>(unique_name, "inst_lat");
+    const double inst_long = config.get<double>(unique_name, "inst_long");    
+    const std::vector<float>feed_positions = config.get<std::vector<float>>(unique_name, "feed_positions");
+    const double D2R = M_PI / 180.0;
+    const double TAU = 2.0 * M_PI;
+    const double one_over_c = 3.3356;
+    const double phi_0 = 280.46;
+    const double lst_rate = 360.0 / 86164.09054;
+    const double j2000_unix = 946728000;
+    
+    double precession_offset = (beamform_time - j2000_unix) * 0.012791 / (365.0 * 24.0 * 3600.0);
+    double lst = phi_0 + inst_long + lst_rate * (beamform_time - j2000_unix) - precession_offset;
+    lst = fmod(lst, 360.0);
+    
+    DEBUG("Computing phases for {} beams at time {}", num_beams, beamform_time);
+
+    for (uint64_t beam_idx = 0; beam_idx < num_beams; beam_idx++) {
+        // double ra = beam_ras[beam_idx] * D2R;
+        double dec = beam_decs[beam_idx] * D2R;
+        double hour_angle = (lst - beam_ras[beam_idx]) * D2R;
+        
+        double alt = sin(dec) * sin(inst_lat)
+                   + cos(dec) * cos(inst_lat) * cos(hour_angle);
+        alt = asin(alt);
+        
+        double az = (sin(dec) - sin(alt) * sin(inst_lat))
+                  / (cos(alt) * cos(inst_lat));
+        az = acos(az);
+        if (sin(hour_angle) >= 0) {
+            az = TAU - az;
+        }
+        
+        for (size_t elem_idx = 0; elem_idx < _num_elements; elem_idx++) {
+            double elem_x = feed_positions[2 * elem_idx];
+            double elem_y = feed_positions[2 * elem_idx + 1];
+            
+            double projection_angle = 90.0 * D2R - atan2(elem_y, elem_x);
+            double offset_distance = cos(alt) * sqrt(elem_x * elem_x + elem_y * elem_y);
+            double effective_angle = projection_angle - az;
+            
+            phases[beam_idx * _num_elements + elem_idx] =
+                TAU * cos(effective_angle) * offset_distance * one_over_c;
+        }
+    }
+}
+
 basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     DEBUG("Ready to copy samples into the baseband readout buffer and beamform into baseband_mb readout buffer");
     assert(data.dump_start_frame < data.dump_end_frame);
@@ -415,6 +483,16 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
 
     // Number of time samples per output frame
     const int out_frame_samples = out_buf->frame_size / _num_elements;
+    
+    // Number of time samples per multibeam output frame
+    // MB output has shape (samples_per_dataset, num_local_freq, num_beams)
+    // So frame_size = samples_per_dataset * num_local_freq * num_beams
+    // Thus: frame_samples = frame_size / (num_local_freq * num_beams)
+    const int outmb_frame_samples = (_num_beams > 0) ? 
+        (outmb_buf->frame_size / (_num_freq_per_stream * _num_beams)) : 0;
+    
+    DEBUG("Frame sizes: out_frame_samples={}, outmb_frame_samples={}, num_beams={}", 
+          out_frame_samples, outmb_frame_samples, _num_beams);
 
     // Current frame & metadata in the output buffer
     // Also create pointers to MB readout
@@ -489,6 +567,10 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
 		// Metadata for this frame, standard path
                 out_start = 0;
                 out_remaining = out_frame_samples;
+                
+                // Initialize multibeam output frame tracking
+                outmb_start = 0;
+                outmb_remaining = outmb_frame_samples;
 
                 out_buf->allocate_new_metadata_object(out_frame_id);
                 out_metadata = (BasebandMetadata*)(out_buf->get_metadata(out_frame_id).get());
@@ -539,9 +621,15 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                       copy_len * _num_elements);
                 memcpy(out_frame + (out_start * _num_elements),
                        in_buf_data + (in_start * _num_elements), copy_len * _num_elements);
-		// CL: no beamforming for now: just grab first N elements.
-                memcpy(outmb_frame + (out_start * NUM_BEAMS),
-                       in_buf_data + (in_start * NUM_BEAMS), copy_len * NUM_BEAMS);
+                
+                // TODO: Implement actual multibeam beamforming here
+                // For now, zero-fill the multibeam output buffer to maintain correct geometry
+                if (_num_beams > 0) {
+                    const int64_t outmb_copy_len = copy_len * _num_beams;
+                    memset(outmb_frame + (outmb_start * _num_beams), 0, outmb_copy_len);
+                    DEBUG("Multibeam placeholder fill (single-freq): {} bytes at offset {}", 
+                          outmb_copy_len, outmb_start * _num_beams);
+                }
             } else {
                 copy_len = std::min((int64_t)1, out_remaining);
                 DEBUG("Copy samples {}/{}-{} for in-frame frequency {} to {}/{} ({} bytes, "
@@ -553,10 +641,18 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
                        in_buf_data
                            + (in_start * _num_freq_per_stream + stream_freq_idx) * _num_elements,
                        copy_len * _num_elements);
-                memcpy(outmb_frame + (out_start * NUM_BEAMS),
-                       in_buf_data
-                           + (in_start * _num_freq_per_stream + stream_freq_idx) * NUM_BEAMS,
-                       copy_len * NUM_BEAMS);
+                
+                // TODO: Implement actual multibeam beamforming here
+                // For now, zero-fill the multibeam output buffer to maintain correct geometry
+                // Actual beamforming will: unpack 4-bit data, apply phases & gains, sum over elements, quantize
+                if (_num_beams > 0) {
+                    // Output geometry: (time_samples, num_local_freq, num_beams)
+                    // Each entry is 1 byte (int4x2_t packing real+imag)
+                    const int64_t outmb_copy_len = copy_len * _num_freq_per_stream * _num_beams;
+                    memset(outmb_frame + (outmb_start * _num_freq_per_stream * _num_beams), 0, outmb_copy_len);
+                    DEBUG("Multibeam placeholder fill: {} bytes at offset {}", 
+                          outmb_copy_len, outmb_start * _num_freq_per_stream * _num_beams);
+                }
             }
             in_start += copy_len;
             out_start += copy_len;

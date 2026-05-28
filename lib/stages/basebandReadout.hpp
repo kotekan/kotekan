@@ -84,6 +84,12 @@ private:
     int _samples_per_data_set;
     int64_t _max_dump_samples;
     std::vector<input_ctype> _inputs;
+    
+    // Multibeam beamforming parameters
+    uint64_t _num_beams = 0;  /// Number of beams to form (from config)
+    int64_t _datasets_per_scan;  /// Number of datasets in broader MB window (3125000/512 typically)
+    int64_t _datasets_per_delay_update;  /// When to update phase delays (390625/10 typically)
+    Buffer* _gain_tracking_buffer;  /// Reference to gain buffer for beamforming
 
     Buffer* in_buf;
     int next_frame, oldest_frame;
@@ -143,6 +149,8 @@ private:
      * @return `kotekan::basebandDumpData::Status::Ok` if the data was successfully copied, or one
      * of the other enum values if there was an error
      */
+    void compute_beam_phases(kotekan::Config&, const std::string&, float*, time_t, uint64_t, const double*, const double*);
+
     kotekan::basebandDumpData::Status extract_data(kotekan::basebandDumpData data);
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& readout_counter;
