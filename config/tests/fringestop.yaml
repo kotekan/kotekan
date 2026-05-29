@@ -1,4 +1,7 @@
 ---
+
+input_order: CHORDBeamformer
+
 fringestop_001:
     in_buf: fakevis_buf0
     kotekan_stage: N2TimeDownsample
@@ -98,31 +101,31 @@ dump_raw:
 
 dumpvis_fs001_buf:
     kotekan_buffer: N2
-    vis_layout: FullUpperTri
+    n2_layout: FullUpperTri
     metadata_pool: N2_pool
     num_frames: buffer_depth
 
 dumpvis_fs032_buf:
     kotekan_buffer: N2
-    vis_layout: FullUpperTri
+    n2_layout: FullUpperTri
     metadata_pool: N2_pool
     num_frames: buffer_depth
 
 dumpvis_nfs032_buf:
     kotekan_buffer: N2
-    vis_layout: FullUpperTri
+    n2_layout: FullUpperTri
     metadata_pool: N2_pool
     num_frames: buffer_depth
 
 dumpvis_fs128_buf:
     kotekan_buffer: N2
-    vis_layout: FullUpperTri
+    n2_layout: FullUpperTri
     metadata_pool: N2_pool
     num_frames: buffer_depth
 
 dumpvis_nfs128_buf:
     kotekan_buffer: N2
-    vis_layout: FullUpperTri
+    n2_layout: FullUpperTri
     metadata_pool: N2_pool
     num_frames: buffer_depth
 
@@ -169,7 +172,7 @@ fakevis0:
 
 fakevis_buf0:
     kotekan_buffer: N2
-    vis_layout: FullUpperTri
+    n2_layout: FullUpperTri
     metadata_pool: N2_pool
     num_frames: buffer_depth
 
@@ -181,6 +184,7 @@ log_level: debug
 num_data_sets: 1
 num_elements: 14
 num_dishes: 7
+num_polarizations: 2
 num_ev: 4
 num_freq_in_frame: 1
 num_local_freq: 1
@@ -194,6 +198,8 @@ telescope:
     grid_y_axis: [0.0, 1.0, 0.0]
     dish_elev_axis: [1.0, 0.0, 0.0]
     dish_vert_axis: [0.0, 0.0, 1.0]
+    dish_grid_size_x: 32
+    dish_grid_size_y: 32
     dish_coelev_deg: 0.0
     require_gps: false
     eop_updatable_config: /earth_rotation_data

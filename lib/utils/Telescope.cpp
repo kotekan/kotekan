@@ -432,6 +432,45 @@ vec3d_t Telescope::vec_cirs_to_itrs(const vec3d_t& v_cirs, const EOP& eop) const
     return v_itrs;
 }
 
+vec3d_t Telescope::vec_cirs_from_ra_dec(double ra_cirs_deg, double dec_cirs_deg) const {
+    // Taking the ra & dec to be in CIRS frame
+    double phi = deg2rad * ra_cirs_deg;
+    double theta = deg2rad * (90 - dec_cirs_deg);
+    
+    // unit vector pointing to ra/dec in spherical coordinates
+    // fixed to the Earth.  phi=0 ~ Greenwich
+    vec3d_t n_cirs = {cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta)};
+
+    return n_cirs;
+}
+
+void Telescope::vec_cirs_to_ra_dec(const vec3d_t& v_cirs, double& ra_cirs_deg, double& dec_cirs_deg) const {
+
+    ra_cirs_deg = atan2(v_cirs[1], v_cirs[0]) / deg2rad;
+    dec_cirs_deg = 90.0 - acos(v_cirs[2]) / deg2rad;
+}
+    
+vec3d_t Telescope::vec_grid_to_cirs(const vec3d_t& v_grid, const EOP& eop) const {
+    vec3d_t v_topo = vec_grid_to_topo(v_grid);
+    vec3d_t v_itrs = vec_topo_to_itrs(v_topo);
+    vec3d_t v_cirs = vec_itrs_to_cirs(v_itrs, eop);
+
+    return v_cirs;
+}
+
+vec3d_t Telescope::vec_cirs_to_grid(const vec3d_t& v_cirs, const EOP& eop) const {
+    vec3d_t v_itrs = vec_cirs_to_itrs(v_cirs, eop);
+    vec3d_t v_topo = vec_itrs_to_topo(v_itrs);
+    vec3d_t v_grid = vec_topo_to_grid(v_topo);
+
+    return v_grid;
+}
+    
+vec3d_t Telescope::vec_cirs_ra_dec_to_grid(double ra_cirs_deg, double dec_cirs_deg, const EOP& eop) const {
+    vec3d_t v_cirs = vec_cirs_from_ra_dec(ra_cirs_deg, dec_cirs_deg);
+    return vec_cirs_to_grid(v_cirs, eop);
+}
+
 grid_idx_2d_t Telescope::element_index_to_grid_indices(uint64_t el_idx, ElementOrder ord) const {
     station_id_t st_id = element_index_to_station_id(el_idx, ord);
     return station_id_to_grid_indices(st_id);
@@ -474,15 +513,11 @@ void Telescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const
 
     // Take the pointing vector for the telescope and find it in the CIRS frame at ERA0.
     // This is the point we are attempting to stop the fringes at.
-    vec3d_t n_topo0 = vec_grid_to_topo(n_grid0);
-    vec3d_t n_itrs0 = vec_topo_to_itrs(n_topo0);
-    vec3d_t n_cirs = vec_itrs_to_cirs(n_itrs0, eop0);
+    vec3d_t n_cirs = vec_grid_to_cirs(n_grid0, eop0);
 
     // Now, given this CIRS vector, find its components in the telescope
     // frame at the requested (current) ERA
-    vec3d_t n_itrs = vec_cirs_to_itrs(n_cirs, eop);
-    vec3d_t n_topo = vec_itrs_to_topo(n_itrs);
-    vec3d_t n_grid = vec_topo_to_grid(n_topo);
+    vec3d_t n_grid = vec_cirs_to_grid(n_cirs, eop);
 
     // n_grid is now (at ERA) the point on the sky which will be at the
     // phase center (n_grid0) at ERA0.

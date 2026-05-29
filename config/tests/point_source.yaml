@@ -13,6 +13,7 @@ giga: 1000000000
 start_time_s: 1764576000
 num_elements: 14
 num_dishes: 7
+num_polarizations: 2
 num_ev: 4
 sampling_rate_MHz: 3.2e3
 fft_length: 16384
@@ -69,7 +70,7 @@ gps_time:
 fakevis_buf:
     kotekan_buffer: N2
     num_ev: 0
-    vis_layout: FullUpperTri
+    n2_layout: FullUpperTri
     metadata_pool: N2_pool
     num_frames: buffer_depth
 

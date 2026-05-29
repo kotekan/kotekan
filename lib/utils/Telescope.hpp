@@ -449,6 +449,28 @@ public:
      **/
     vec3d_t vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const;
 
+    /**
+     * @brief   Return an observing vector (normalized vec3) in CIRS
+     *          coordinates, corresponding to the given CIRS RA and DEC.
+     * @param   ra  Target Right Ascension in CIRS frame.
+     * @param   dec Target Declination in CIRS frame.
+     * @param   eop EOP for the time of observation.
+     **/
+    vec3d_t vec_cirs_from_ra_dec(double ra_cirs_deg, double dec_cirs_deg) const;
+    void vec_cirs_to_ra_dec(const vec3d_t& v_cirs, double& ra_cirs_deg, double& dec_cirs_deg) const;
+    
+    vec3d_t vec_grid_to_cirs(const vec3d_t& v_grid, const EOP& eop) const;
+    vec3d_t vec_cirs_to_grid(const vec3d_t& v_cirs, const EOP& eop) const;
+    
+    /**
+     * @brief   Return an observing vector (normalized vec3) in GRID
+     *          coordinates, corresponding to the given CIRS RA and DEC.
+     * @param   ra  Target Right Ascension in CIRS frame.
+     * @param   dec Target Declination in CIRS frame.
+     * @param   eop EOP for the time of observation.
+     **/
+    vec3d_t vec_cirs_ra_dec_to_grid(double ra_cirs_deg, double dec_cirs_deg, const EOP& eop) const;
+
     grid_idx_2d_t element_index_to_grid_indices(uint64_t el_idx, ElementOrder ord) const;
     vec3d_t element_index_to_feed_position_m(uint64_t el_idx, ElementOrder ord) const;
 

@@ -508,26 +508,6 @@ double CHORDTelescope::get_dish_coelev_deg() const {
     return _geographic_params.dish_coelev_deg;
 }
 
-vec3d_t CHORDTelescope::get_sky_vec_in_grid_coords(double ra, double dec, const EOP& eop) const {
-
-    // Taking the ra & dec to be in CIRS frame
-
-    double phi = deg2rad * ra;
-    double theta = deg2rad * (90 - dec);
-
-    // unit vector pointing to ra/dec in spherical coordinates
-    // fixed to the Earth.  phi=0 ~ Greenwich
-    vec3d_t n_cirs = {cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta)};
-
-    DEBUG("n_cirs: {} {} {}", n_cirs[0], n_cirs[1], n_cirs[2]);
-
-    // Transform CIRS -> ITRS -> TOPO -> Telescope.
-    vec3d_t n_itrs = vec_cirs_to_itrs(n_cirs, eop);
-    vec3d_t n_topo = vec_itrs_to_topo(n_itrs);
-
-    return vec_topo_to_grid(n_topo);
-}
-
 vec3d_t CHORDTelescope::get_pointing_vec_in_dish_coords() const {
 
     // Dish coordinates are fixed with z "up" (co-elevation 0 degrees) and x
