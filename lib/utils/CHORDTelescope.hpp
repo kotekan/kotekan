@@ -66,14 +66,14 @@ struct dishInfo {
      * @brief   Default constructor for a Fake, un-indexed dishInfo.
      */
     dishInfo() :
-        idx(-1), grid_x_idx(-1), grid_y_idx(-1), feed_pos_disp_m({0.0, 0.0, 0.0}),
+        idx(-1), grid_x_idx(0), grid_y_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}),
         coelev_disp_deg(0.0), type(DishType::Fake), label("Fake") {}
 
     /**
      * @brief   Constructor for a Fake dishInfo with an index.
      */
     dishInfo(dish_index_t idx) :
-        idx(idx), grid_x_idx(-1), grid_y_idx(-1), feed_pos_disp_m({0.0, 0.0, 0.0}),
+        idx(idx), grid_x_idx(0), grid_y_idx(0), feed_pos_disp_m({0.0, 0.0, 0.0}),
         coelev_disp_deg(0.0), type(DishType::Fake), label("Fake") {}
 
     /**
@@ -545,15 +545,6 @@ public:
     const dishInfo& get_dish_at_idx(int64_t idx) const;
 
     const dishGrid& get_dish_grid() const;
-
-    /**
-     * @brief   Return an observing vector (normalized vec3) in grid
-     *          coordinates, corresponding to the given CIRS RA and DEC.
-     * @param   ra  Target Right Ascension in CIRS frame.
-     * @param   dec Target Declination in CIRS frame.
-     * @param   eop EOP for the time of observation.
-     **/
-    vec3d_t get_sky_vec_in_grid_coords(double ra, double dec, const EOP& eop) const;
 
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the
