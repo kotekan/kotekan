@@ -163,6 +163,7 @@ public:
 
         // Set bb_beam_positions
         {
+            //TODO: Move this to its own stage.
             // Find centre
             const float i_x0 = (bb_num_beams_x - 1) / 2.0f;
             const float i_y0 = (bb_num_beams_y - 1) / 2.0f;
