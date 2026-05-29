@@ -182,6 +182,7 @@ N2_accumulate:
     in_rfiframemask_buf: fake_rfiframemask_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
+    input_order: CHORDBeamformer
     packet_loss_is_scalar: true
     # variance_mode: CHIMEv1
     variance_mode: EvenOddPosDef

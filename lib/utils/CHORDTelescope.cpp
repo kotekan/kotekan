@@ -100,7 +100,7 @@ void GeographicParams::set_dish_info(const kotekan::Config& config, const std::s
             FATAL_ERROR_NON_OO("dish {:s} has dish_idx {:d}, which mush be < num_dishes ({:d})",
                                dish.label, dish.idx, num_dishes);
         }
-        if (dish.type != DishType::Fake) {
+        if (dish.type == DishType::ArrayDish) {
             if (dish.grid_x_idx < 0 || size_t(dish.grid_x_idx) >= num_dishes_x) {
                 FATAL_ERROR_NON_OO("dish {:s} has grid_x_idx {:d}, which must be in [0, {:d})",
                                    dish.label, dish.grid_x_idx, num_dishes_x);
@@ -137,7 +137,7 @@ void GeographicParams::set_dish_info(const kotekan::Config& config, const std::s
     dish_grid = dishGrid(num_dishes_x, num_dishes_y);
     for (dish_index_t dish = 0; dish < dish_index_t(num_dishes); ++dish) {
         const dishInfo& dish_info = dish_info_table.at(dish);
-        if (dish_info.type == DishType::Fake)
+        if (dish_info.type != DishType::ArrayDish)
             continue;
         // Catch inconsistencies
         assert(dish_info.idx == dish);
@@ -787,6 +787,9 @@ void to_json(nlohmann::json& j, const DishType& t) {
         case DishType::ArrayDish:
             j = "ArrayDish";
             break;
+        case DishType::RFIDish:
+            j = "RFIDish";
+            break;
         default:
             throw std::runtime_error(
                 fmt::format("to_json - unknown DishType, value: {:d}", static_cast<int32_t>(t)));
@@ -799,6 +802,8 @@ void from_json(const nlohmann::json& j, DishType& t) {
         t = DishType::Fake;
     else if (j == "ArrayDish")
         t = DishType::ArrayDish;
+    else if (j == "RFIDish")
+        t = DishType::RFIDish;
     else
         throw std::runtime_error(fmt::format("from_json - unknown DishType: {}", j.dump()));
 }
