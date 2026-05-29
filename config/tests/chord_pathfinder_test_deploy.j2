@@ -78,7 +78,7 @@ fpga_controller:
 
 config_tracker:
     enabled: true
-    fpga_host_info: /fpga_controller
+    # fpga_host_info: /fpga_controller  # test deploy runs offline, do not try to talk to the actual f-engine.
     upstream_fetch_retries: 2
     upstream_fetch_timeout_seconds: 10
 
@@ -157,12 +157,17 @@ telescope:
     dish_separation_x_m: 6.300156854906823
     dish_separation_y_m: 8.500057809796308
     dish_inputs: [
-        {dish_idx: 0, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p1},
-        {dish_idx: 1, grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01p2},
-        {dish_idx: 2, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p1},
-        {dish_idx: 3, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06p2},
-        {dish_idx: 4, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p1},
-        {dish_idx: 5, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07p2}
+        {dish_idx: 0,  grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01},
+        {dish_idx: 1,  grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06},
+        {dish_idx: 2,  grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07},
+        {dish_idx: 3,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI01},
+        {dish_idx: 4,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI02},
+        {dish_idx: 5,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI03},
+        {dish_idx: 6,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI04},
+        {dish_idx: 7,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI05},
+        {dish_idx: 8,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI06},
+        {dish_idx: 9,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI07},
+        {dish_idx: 10, grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI08},
     ]
 
     require_gps: False

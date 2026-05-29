@@ -181,6 +181,7 @@ N2_accumulate:
     in_plcounts_buf: fake_plcounts_buffer
     in_rfiframemask_buf: fake_rfiframemask_buffer
     out_buf: n2_buffer
+    input_order: CHORDBeamformer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: true
     variance_mode: EvenOddPosDef
