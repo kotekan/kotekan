@@ -467,7 +467,7 @@ public:
      * @param   phases  Vector of std::complex<double>, with size equal to feed_positions_m. The
      *                  phase for each position will be written to this vector.
      **/
-    void Telescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
+    void fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
                                               const std::vector<vec3d_t> feed_positions_m,
                                               std::vector<std::complex<float>>& phases) const;
 

@@ -1068,19 +1068,21 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     json_config["telescope"]["grid_x_axis"] = {1.0, 0.0, 0.0};
     json_config["telescope"]["grid_y_axis"] = {0.0, 1.0, 0.0};
 
-    std::vector<std::complex<float>> tel_phases(4, 0);
+    std::vector<std::complex<float>> tel_phases(8, 0);
 
     float test_phase_val = 2 * M_PI * w_e * t * cos(dec);
 
-    std::vector<float> test_phases({0.0, test_phase_val, 0.0, test_phase_val});
+    std::vector<float> test_phases({0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel = get_telescope(json_config);
 
-    tel.fill_fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
+    std::vector<vec3d_t> feed_pos_m = tel.get_feed_positions_m(8, ElementOrder::CHORDBeamformer);
 
-    for (int i = 0; i < 4; i++) {
-        check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases[i], 1.0e-8,
+    tel.fill_fringestop_phases_1d(freq_MHz, eop, eop0, feed_pos_m, tel_phases);
+
+    for (int i = 0; i < 8; i++) {
+        check_close_float(std::norm(tel_phases.at(i)), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
+        check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()), test_phases.at(i), 1.0e-8,
                           1.0e-5, "tel_phase1", "test_phase1");
     }
 
@@ -1092,14 +1094,15 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     json_config["telescope"]["dish_coelev_deg"] = target_dec_deg - tel_lat_deg;
 
     test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI / 180);
-    std::vector<double> test_phases2({0.0, test_phase_val, 0.0, test_phase_val});
+    std::vector<double> test_phases2({0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel2 = get_telescope(json_config);
-    tel2.fill_fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
+    feed_pos_m = tel2.get_feed_positions_m(8, ElementOrder::CHORDBeamformer);
+    tel2.fill_fringestop_phases_1d(freq_MHz, eop, eop0, feed_pos_m, tel_phases);
 
-    for (int i = 0; i < 4; i++) {
-        check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases2[i],
+    for (int i = 0; i < 8; i++) {
+        check_close_float(std::norm(tel_phases.at(i)), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
+        check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()), test_phases2.at(i),
                           1.0e-7, 1.0e-5, "tel_phase2", "test_phase2");
     }
 
@@ -1111,14 +1114,15 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     json_config["telescope"]["dish_coelev_deg"] = target_dec_deg - tel_lat_deg - deflection_deg;
 
     test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI / 180);
-    std::vector<double> test_phases3({0.0, test_phase_val, 0.0, test_phase_val});
+    std::vector<double> test_phases3({0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel3 = get_telescope(json_config);
-    tel3.fill_fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
+    feed_pos_m = tel3.get_feed_positions_m(8, ElementOrder::CHORDBeamformer);
+    tel3.fill_fringestop_phases_1d(freq_MHz, eop, eop0, feed_pos_m, tel_phases);
 
-    for (int i = 0; i < 4; i++) {
-        check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases3[i],
+    for (int i = 0; i < 8; i++) {
+        check_close_float(std::norm(tel_phases.at(i)), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
+        check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()), test_phases3.at(i),
                           1.0e-7, 1.0e-5, "tel_phase3", "test_phase3");
     }
 
@@ -1131,14 +1135,15 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     json_config["telescope"]["grid_y_axis"] = {-1.0, 0.0, 0.0};
 
     test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI / 180);
-    std::vector<double> test_phases4({0.0, 0.0, -test_phase_val, -test_phase_val});
+    std::vector<double> test_phases4({0.0, 0.0, -test_phase_val, -test_phase_val, 0.0, 0.0, -test_phase_val, -test_phase_val});
 
     const CHORDTelescope& tel4 = get_telescope(json_config);
-    tel4.fill_fringestop_phases_1d(freq_MHz, eop, eop0, tel_phases);
+    feed_pos_m = tel4.get_feed_positions_m(8, ElementOrder::CHORDBeamformer);
+    tel4.fill_fringestop_phases_1d(freq_MHz, eop, eop0, feed_pos_m, tel_phases);
 
-    for (int i = 0; i < 4; i++) {
-        check_close_float(std::norm(tel_phases[i]), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_float(atan2(tel_phases[i].imag(), tel_phases[i].real()), test_phases4[i],
+    for (int i = 0; i < 8; i++) {
+        check_close_float(std::norm(tel_phases.at(i)), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
+        check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()), test_phases4.at(i),
                           1.0e-7, 1.0e-5, "tel_phase4", "test_phase4");
     }
 }
