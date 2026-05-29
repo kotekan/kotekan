@@ -11,7 +11,6 @@
 #include <functional>           // for function
 #include <memory>               // for allocator, __shared_ptr_access, shared_ptr
 
-#include "CHORDTelescope.hpp"   // for CHORDTelescope, dishInfo, dishGrid
 #include "Config.hpp"           // for Config
 #include "Stage.hpp"            // for Stage
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
@@ -30,6 +29,8 @@ class calcBBPhase : public kotekan::Stage {
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
     const int num_frequencies = config.get<int>(unique_name, "num_frequencies");
     const int num_times = config.get<int>(unique_name, "num_times");
+    const ElementOrder input_order = config.get<ElementOrder>(unique_name, "input_order");
+    const int num_elements = num_dishes * num_polarizations;
 
     const std::vector<int> frequency_channels =
         config.get<std::vector<int>>(unique_name, "frequency_channels");
@@ -85,34 +86,17 @@ public:
             return;
 
         // Telescope
-        const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
+        const Telescope& telescope = Telescope::instance();
 
-        // Calculate dish positions
-        const float dish_separation_x = chord_telescope.get_feed_separation_x_m();
-        const float dish_separation_y = chord_telescope.get_feed_separation_y_m();
-        const auto& dish_grid = chord_telescope.get_dish_grid();
-        assert(std::ptrdiff_t(chord_telescope.get_num_dishes()) == num_dishes);
-        std::vector<float> dish_loc_x(num_dishes, -1), dish_loc_y(num_dishes, -1),
-            dish_loc_z(num_dishes, -1);
-        assert(std::ptrdiff_t(dish_grid.get_dish_indices().size()) >= num_dishes);
-        for (const auto dish_index : dish_grid.get_dish_indices()) {
-            if (dish_index >= 0) {
-                const dishInfo& dish_info = chord_telescope.get_dish_at_idx(dish_index);
-                assert(dish_loc_x.at(dish_info.idx) == -1);
-                dish_loc_x.at(dish_info.idx) =
-                    dish_info.grid_x_idx * dish_separation_x + dish_info.feed_pos_disp_m.at(0);
-                dish_loc_y.at(dish_info.idx) =
-                    dish_info.grid_y_idx * dish_separation_y + dish_info.feed_pos_disp_m.at(1);
-                dish_loc_z.at(dish_info.idx) = dish_info.feed_pos_disp_m.at(2);
-            }
-        }
-        assert(std::ptrdiff_t(dish_loc_x.size()) == num_dishes);
+        // Get dish positions
+        std::vector<vec3d_t> feed_pos_m = telescope.get_feed_positions_m(num_elements, input_order);
+        assert(std::ptrdiff_t(feed_pos_m.size()) == num_elements);
 
         // Get frequencies
         std::vector<float> frequencies(num_frequencies); // [Hz]
         for (int freq = 0; freq < num_frequencies; ++freq) {
             const int channel = frequency_channels.at(freq);
-            frequencies.at(freq) = chord_telescope.to_freq_MHz(channel) * 1.0e+6f;
+            frequencies.at(freq) = telescope.to_freq_MHz(channel) * 1.0e+6f;
         }
         const std::vector<int> freq_upchan_factor(frequency_channels.size(), 1);
         const std::vector<int> freq_upchan_index(frequency_channels.size(), 0);
@@ -213,15 +197,16 @@ public:
                             // We choose A independent of polarization
                             using std::clamp, std::lrint, std::polar, std::sqrt;
                             const auto pow2 = [](auto x) { return x * x; };
-                            const float dish_x = dish_loc_x.at(dish);
-                            const float dish_y = dish_loc_y.at(dish);
-                            const float dish_z = dish_loc_z.at(dish);
+                            const int element = dish + polr * num_polarizations;
+                            const float dish_x = feed_pos_m.at(element)[0];
+                            const float dish_y = feed_pos_m.at(element)[1];
+                            const float dish_z = feed_pos_m.at(element)[2];
                             const float theta_x = bb_beam_positions_frame[2 * beam + 0];
                             const float theta_y = bb_beam_positions_frame[2 * beam + 1];
                             const float theta_z = sqrt(1 - (pow2(theta_x) + pow2(theta_y)));
-                            const float deltat = sin(theta_x) * dish_x / c0
-                                                 + sin(theta_y) * dish_y / c0
-                                                 + sin(theta_z) * dish_z / c0;
+                            const float deltat = theta_x * dish_x / c0
+                                                 + theta_y * dish_y / c0
+                                                 + theta_z * dish_z / c0;
                             const float f = frequencies.at(freq);
                             const float phi = 2 * float(M_PI) * f * deltat;
                             const std::complex<float> A = polar(127.5f, phi);
