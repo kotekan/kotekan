@@ -350,6 +350,7 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
         }
 	int lock_start = std::max(oldest_frame, dump_start_frame - _datasets_per_scan);
 	int lock_end = dump_end_frame + 2 * _datasets_per_scan;
+    DEBUG("Ready to lock frames. Finding {} calibrators using start of lock_range = {} - {}", _num_beams, lock_start, lock_end);
         lock_range(lock_start, lock_end);
 	DEBUG("Frames locked. Finding {} calibrators using start of lock_range = {} - {}", _num_beams, lock_start, lock_end);
 

@@ -26,7 +26,8 @@ num_freq_host_buf: 1
 num_freq_gpu_buf: 16
 samples_per_data_set: 16384
 sample_period: 2.56e-6
-baseband_buffer_depth: 100 # 3*272 = ~33 seconds after accounting for active frames
+baseband_ring_buffer_depth: 100 # 3*272 = ~33 seconds after accounting for active frames
+baseband_intermediate_buffer_depth: 50
 host_buffer_depth: 12
 gpu_buffer_depth: 4
 num_gpus: 2
@@ -61,15 +62,15 @@ telescope:
 
 main_pool:
   kotekan_metadata_pool: chordMetadata
-  num_metadata_objects: 30 * host_buffer_depth + 5 * baseband_buffer_depth
+  num_metadata_objects: 30 * baseband_ring_buffer_depth + 5 * baseband_ring_buffer_depth
 
 # Baseband metadata pool
 baseband_pool:
   kotekan_metadata_pool: BasebandMetadata
-  num_metadata_objects: 30 * host_buffer_depth * 32
+  num_metadata_objects: 30 * baseband_intermediate_buffer_depth * 2
 
-host_voltage_buffers:
-  num_frames: baseband_buffer_depth
+host_voltage_buffers: # The main ring for baseband data.
+  num_frames: baseband_ring_buffer_depth
   frame_size: 512 * 2048 * num_freq_host_buf
   metadata_pool: main_pool
   numa_0:
@@ -109,19 +110,16 @@ gen_data:
 
 # Baseband capture and dump system
 baseband_output_buffers:
-  # 32 times smaller frames, 32 times the number of frames
-  frame_size: 1048576
+  frame_size: 1048576 #[T, F, E] = [ 512, 1, 2048 ] x 4+4 bits
   metadata_pool: baseband_pool
 {%- for id in range(4) %}
   baseband_output_buffer_{{ id }}:
     kotekan_buffer: standard
-    # times 3 to match the lenght of seconds of CHIME's output buffer
-    # accounting for the fact that CHIME upgrade's frames are 1/3 the size
-    num_frames: 2 * 32 * 3 # baseband_buffer_depth
+    num_frames: baseband_intermediate_buffer_depth
 {%- endfor %}
   baseband_output_buffer_merged:
     kotekan_buffer: standard
-    num_frames: 12
+    num_frames: 5 * baseband_intermediate_buffer_depth
 
 baseband_mboutput_buffers:
   # Multibeam beamformed output: frame_size = samples_per_data_set * num_freq_host_buf * num_beams
@@ -131,7 +129,7 @@ baseband_mboutput_buffers:
 {%- for id in range(4) %}
   baseband_mboutput_buffer_{{ id }}:
     kotekan_buffer: standard
-    num_frames: 2 * 32 * 3 # baseband_buffer_depth
+    num_frames: baseband_intermediate_buffer_depth
 {%- endfor %}
   baseband_mboutput_buffer_merged:
     kotekan_buffer: standard
@@ -141,8 +139,8 @@ baseband:
   # Buffering
   max_dump_samples: 30000 # 768ms
   samples_per_data_set: 512
-  num_frames_buffer: baseband_buffer_depth - 10
-  
+  num_frames_buffer: baseband_ring_buffer_depth
+
   # Beamforming
   inst_lat: 49.32070922
   inst_long: -119.62367743
@@ -161,6 +159,49 @@ baseband:
     # gain_tracking_buffer: TODO: implement reading gains out of a tiny gain buffer.
     num_freq_host_buf: 1
 {%- endfor %}
+
+# Ugh, gains???? What is going on? Why do gains need to know how many beams?
+
+# Make the buffers
+gain_tracking_buffers:
+  num_frames: 5
+  num_beams: num_beams
+  frame_size: 2048 * 2 * num_beams * sizeof_float
+  metadata_pool: main_pool
+  gain_tracking_buffer_0:
+    kotekan_buffer: standard
+  gain_tracking_buffer_1:
+    kotekan_buffer: standard
+  gain_tracking_buffer_2:
+    kotekan_buffer: standard
+  gain_tracking_buffer_3:
+    kotekan_buffer: standard
+
+# Fill em up with stuff. Ignore in_buf.
+read_gain:
+  updatable_config:
+    gain_frb: /updatable_config/frb_gain
+    gain_tracking: /updatable_config/tracking_gain
+  read_gain0:
+    kotekan_stage: ReadGain
+    in_buf: host_voltage_buffer_0
+    gain_frb_buf: gain_frb_buffer_0
+    gain_tracking_buf: gain_tracking_buffer_0
+  read_gain1:
+    kotekan_stage: ReadGain
+    in_buf: host_voltage_buffer_1
+    gain_frb_buf: gain_frb_buffer_1
+    gain_tracking_buf: gain_tracking_buffer_1
+  read_gain2:
+    kotekan_stage: ReadGain
+    in_buf: host_voltage_buffer_2
+    gain_frb_buf: gain_frb_buffer_2
+    gain_tracking_buf: gain_tracking_buffer_2
+  read_gain3:
+    kotekan_stage: ReadGain
+    in_buf: host_voltage_buffer_3
+    gain_frb_buf: gain_frb_buffer_3
+    gain_tracking_buf: gain_tracking_buffer_3
 
 baseband_merge:
   kotekan_stage: bufferMerge
