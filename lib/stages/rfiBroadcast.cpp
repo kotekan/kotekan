@@ -1,27 +1,24 @@
 #include "rfiBroadcast.hpp"
 
-#include <arpa/inet.h>          // for htons, inet_pton
-#include <netinet/in.h>         // for sockaddr_in, IPPROTO_UDP
-#include <sys/socket.h>         // for AF_INET, sendto, socket, SOCK_DGRAM
-#include <sys/types.h>          // for ssize_t
-#include <algorithm>            // for fill, copy_n, nth_element, fill_n
-#include <cerrno>               // for errno
-#include <cstring>              // for strerror
-#include <cmath>                // for abs
-#include <functional>           // for bind, function
-#include <memory>               // for shared_ptr, __shared_ptr_access
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "N2Util.hpp"          // for frameID, modulo
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG
+#include "rfi_functions.hpp"   // for RFIPayload, RFIHeader
 
-#include "Config.hpp"           // for Config
-#include "N2Util.hpp"           // for frameID, modulo
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG
-#include "rfi_functions.hpp"    // for RFIPayload, RFIHeader
-#include "NDArray.hpp"          // for GenericNDArray
-#include "fmt.hpp"              // for compile_string_to_view
+#include <algorithm>    // for fill, copy_n, nth_element, fill_n
+#include <arpa/inet.h>  // for htons, inet_pton
+#include <cerrno>       // for errno
+#include <cstring>      // for strerror
+#include <functional>   // for bind, function
+#include <memory>       // for shared_ptr, __shared_ptr_access
+#include <netinet/in.h> // for sockaddr_in, IPPROTO_UDP
+#include <sys/socket.h> // for AF_INET, sendto, socket, SOCK_DGRAM
+#include <sys/types.h>  // for ssize_t
+#include <vector>       // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -155,10 +152,10 @@ void rfiBroadcast::main_thread() {
     // Need an array to store the sum of skbar
     // over time samples, since we don't explicitly assume
     // that there is only one time sample per frame
-    std::vector<float> skbar_sum(num_local_freq * num_elements, 0.0f);
+    // std::vector<float> skbar_sum(num_local_freq * num_elements, 0.0f);
     // Also define an array for inplace reordering of
     // skbar_sum when computing the median
-    std::vector<float> _median_tmp(num_elements, 0.0f);
+    // std::vector<float> _median_tmp(num_elements, 0.0f);
 
     // Sort out the rfi mask buffer time stride
     auto rfi_frame_desc = rfi_mask_buf->get_ndarray_frame_desc();
@@ -268,7 +265,8 @@ void rfiBroadcast::main_thread() {
                 // Skip forward by 3 to grab just the SK value
                 _accum += sk_bar_frame[_elem_id + i];
             }
-            skbar_sum[j] = _accum;
+            // skbar_sum[j] = _accum;
+            payload.bad_feed_counts[j] = _accum;
         }
 
         // Release the frame since we've copied out to skbar_sum
@@ -276,37 +274,37 @@ void rfiBroadcast::main_thread() {
 
         // Jump to the start of each frequency block since we need to compute
         // the statistics for each frequency independently
-        for (size_t f = 0; f < _arr_size; f += num_elements) {
-            // Compute the median of skbar_sum. `median` modifies in-place
-            // so copy to a temp array
-            std::copy_n(skbar_sum.begin() + f, num_elements, _median_tmp.begin());
-            float med = median(_median_tmp);
+        // for (size_t f = 0; f < _arr_size; f += num_elements) {
+        //     // Compute the median of skbar_sum. `median` modifies in-place
+        //     // so copy to a temp array
+        //     std::copy_n(skbar_sum.begin() + f, num_elements, _median_tmp.begin());
+        //     float med = median(_median_tmp);
 
-            // For each element, compute |x - med(x)|
-            for (size_t i = 0; i < num_elements; ++i) {
-                // subtract the median in-place since this will be used twice
-                skbar_sum[f + i] = std::abs(skbar_sum[f + i] - med);
-                // copy into the temp array to compute the second median
-                _median_tmp[i] = skbar_sum[f + i];
-            }
-            // Compute the flagging threshold in terms of standard deviations for
-            // a normal distribution. med(|x - med(x)|) is the normalization factor
-            // for a median absolute deviations metric, but since we just care about
-            // the threshold, this is equivalent to normalizing and comparing against
-            // `num_sigma_deviations * MAD_TO_SIGMA`, avoiding the intermediate division
-            float mad_thresh = num_sigma_deviations * MAD_TO_SIGMA * median(_median_tmp);
+        //     // For each element, compute |x - med(x)|
+        //     for (size_t i = 0; i < num_elements; ++i) {
+        //         // subtract the median in-place since this will be used twice
+        //         skbar_sum[f + i] = std::abs(skbar_sum[f + i] - med);
+        //         // copy into the temp array to compute the second median
+        //         _median_tmp[i] = skbar_sum[f + i];
+        //     }
+        //     // Compute the flagging threshold in terms of standard deviations for
+        //     // a normal distribution. med(|x - med(x)|) is the normalization factor
+        //     // for a median absolute deviations metric, but since we just care about
+        //     // the threshold, this is equivalent to normalizing and comparing against
+        //     // `num_sigma_deviations * MAD_TO_SIGMA`, avoiding the intermediate division
+        //     float mad_thresh = num_sigma_deviations * MAD_TO_SIGMA * median(_median_tmp);
 
-            // Finally, increment the bad feed counter if a sample exceeds
-            // num_sigma_deviations standard deviations
-            for (size_t i = 0; i < num_elements; ++i) {
-                if (skbar_sum[f + i] > mad_thresh) {
-                    payload.bad_feed_counts[f + i]++;
-                }
-            }
-        }
+        //     // Finally, increment the bad feed counter if a sample exceeds
+        //     // num_sigma_deviations standard deviations
+        //     for (size_t i = 0; i < num_elements; ++i) {
+        //         if (skbar_sum[f + i] > mad_thresh) {
+        //             payload.bad_feed_counts[f + i]++;
+        //         }
+        //     }
+        // }
 
-        // Reset skbar_sum, since it's used in every iteration
-        std::fill_n(skbar_sum.begin(), _arr_size, 0.0f);
+        // // Reset skbar_sum, since it's used in every iteration
+        // std::fill_n(skbar_sum.begin(), _arr_size, 0.0f);
 
         // Increment and wrap to number of frames per packet
         _packet_num_frame_counter = (_packet_num_frame_counter + 1) % frames_per_packet;
@@ -319,6 +317,7 @@ void rfiBroadcast::main_thread() {
             // require that these values are evenly divisible
             float divisor = static_cast<float>(frames_per_packet) * samples_per_data_set;
             float second_divisor = divisor / rfi_downsampling_factor;
+            float third_divisor = second_divisor / rfi_second_downsampling_factor;
 
             // Normalize the average SK by the number of time samples, accounting
             // for the fact that the input was already downsampled. Also, convert
@@ -328,6 +327,9 @@ void rfiBroadcast::main_thread() {
                 // the RFI mask convention is actually 1 == good, so the
                 // fraction flagged is 1.0 - what we computed
                 payload.frac_flagged[f] = 1.0 - payload.frac_flagged[f] / divisor;
+            }
+            for (size_t i = 0; i < _arr_size; ++i) {
+                payload.bad_feed_counts[i] /= third_divisor;
             }
 
             // Get a vector containing a packet per frequency. Need to send
@@ -352,7 +354,7 @@ void rfiBroadcast::main_thread() {
             // Reset payload members used in accumulation to zero
             std::fill(payload.frac_flagged.begin(), payload.frac_flagged.end(), 0.0f);
             std::fill(payload.sktilde_avg.begin(), payload.sktilde_avg.end(), 0.0f);
-            std::fill(payload.bad_feed_counts.begin(), payload.bad_feed_counts.end(), 0u);
+            std::fill(payload.bad_feed_counts.begin(), payload.bad_feed_counts.end(), 0.0f);
         }
         // Increment frame counters
         sktilde_frame_id++;
