@@ -51,7 +51,7 @@ struct RFIPayload {
     /// Count of bad feeds per freq and element. Has length
     /// `num_local_freq` * `num_elements`. `feeds` and `elements` used
     /// interchangeably here (possibly not for the best...)
-    std::vector<uint8_t> bad_feed_counts;
+    std::vector<float> bad_feed_counts;
 
     // Constructor
     RFIPayload(size_t num_local_freq, size_t num_elements) :
@@ -66,7 +66,7 @@ struct RFIPayload {
         // Compute the total packet size
         uint32_t payload_length =
             (freq_ids.size() * sizeof(uint32_t) + frac_flagged.size() * sizeof(float)
-             + sktilde_avg.size() * sizeof(float) + bad_feed_counts.size() * sizeof(uint8_t))
+             + sktilde_avg.size() * sizeof(float) + bad_feed_counts.size() * sizeof(float))
             / header.num_local_freq;
 
         // uint32_t packet_length = sizeof(header) + payload_length;
@@ -95,7 +95,7 @@ struct RFIPayload {
             memcpy(p, &sktilde_avg[f], sizeof(float));
             p += sizeof(float);
             // copy the bad feed counter
-            size_t _sizeof_bad_feed = header.num_elements * sizeof(uint8_t);
+            size_t _sizeof_bad_feed = header.num_elements * sizeof(float);
             memcpy(p, &bad_feed_counts[f * _sizeof_bad_feed], _sizeof_bad_feed);
         }
 
