@@ -189,10 +189,8 @@ void testDataGen::main_thread() {
     double frame_length = samples_per_data_set * ts_to_double(telescope.seq_length()) / num_links;
 
     std::mt19937 rng(_seed);
-    INFO("hit main");
     while (!stop_thread) {
         double start_time = current_time();
-        INFO("test0 - current_time()"); // : {:.6f}, seq_num: {}", current_time(), seq_num);
 
         if (!can_i_go(frame_id_abs)) {
             usleep(1e5);
@@ -202,7 +200,6 @@ void testDataGen::main_thread() {
         frame = (uint8_t*)buf->wait_for_empty_frame(unique_name, frame_id);
         if (frame == nullptr)
             break;
-        INFO("test1");
 
         buf->allocate_new_metadata_object(frame_id);
         std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(buf, frame_id);
@@ -216,7 +213,6 @@ void testDataGen::main_thread() {
         chordmeta->set_name(_name);
         chordmeta->dims = (int)_array_shape.size();
         for (int d = 0; d < chordmeta->dims; ++d){
-            INFO("dim {:d} extent: {:d} name: {:s}", d, _array_shape[d], _dim_name[d]);
             chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d]);
         }
         chordmeta->set_strides_simple();
@@ -227,8 +223,7 @@ void testDataGen::main_thread() {
         std::vector<int> freq_upchan_factor(coarse_freq.size());
         std::vector<int64_t> half_fpga_sample0(coarse_freq.size());
         std::vector<int> time_downsampling_fpga(coarse_freq.size());
-        INFO("test2");
-        for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
+       for (int f = 0; f < static_cast<int>(coarse_freq.size()); f++) {
             if (_manual_freq_ids.size() > 0)
                 coarse_freq[f] = _manual_freq_ids[f % _manual_freq_ids.size()];
             else if (telescope_type == "CHORDTelescope")
@@ -260,7 +255,6 @@ void testDataGen::main_thread() {
                 chordmeta->type = kotekan::int8;
             n_to_set /= sizeof(chordmeta->type);
             frame8 = (int8_t*)frame;
-            INFO("test33");
    
         } else if (type == "const_offset") {
             n_to_set /= sizeof(int8_t);
@@ -323,25 +317,14 @@ void testDataGen::main_thread() {
         // this needs the decoded type
         // could be moved into constructor, but need the bit of code above
         /* new style array description */
-        INFO("test333");
         const std::vector<ptrdiff_t> extents(_array_shape.begin(), _array_shape.end());
         const std::vector<kotekan::Symbol> dimnames(_dim_name.begin(), _dim_name.end());
         
         // Debug output before allocate_new_frame_desc
-        INFO("Debug: extents.size()={:d}, dimnames.size()={:d}, buf->frame_size={:d}",
-             extents.size(), dimnames.size(), buf->frame_size);
-        for (size_t i = 0; i < extents.size(); ++i) {
-            INFO("  extents[{:d}]={:d}", i, extents[i]);
-        }
-        for (size_t i = 0; i < dimnames.size(); ++i) {
-            INFO("{}",dimnames[i]);
-        }
         
         buf->allocate_new_frame_desc(chordmeta->type, _name, extents, dimnames);
         /* test that things are consistent */
-        INFO("test334");
         chordmeta->check_frame_desc(buf->get_frame_desc());
-        INFO("test335");
         if (type == "onehot") {
             int val = value;
             if (_value_array.size())
@@ -466,7 +449,7 @@ void testDataGen::main_thread() {
                                          // - 1) to global frequency index (0...1023)
                 int elem_idx = j % num_elements;
                 frame[j] = 2 * (seq_num + time_idx) + 3 * stream_freq_idx + 5 * elem_idx;
-		INFO("2 * (seq_num={:d} + time_idx={:d}) + 3 * (stream_freq_idx = N/A) + 5 * (elem_idx = N/A)", seq_num, time_idx);
+		// INFO("{:d} = 2 * (seq_num={:d} + time_idx={:d}) + 3 * (stream_freq_idx = {:d}) + 5 * (elem_idx = {:d})", frame[j], seq_num, time_idx, stream_freq_idx, elem_idx);
             } else if (type == "square") {
                 unsigned char new_real;
                 unsigned char new_imaginary;

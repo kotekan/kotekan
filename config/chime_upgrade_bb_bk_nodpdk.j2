@@ -26,7 +26,7 @@ num_freq_host_buf: 1
 num_freq_gpu_buf: 16
 samples_per_data_set: 16384
 sample_period: 2.56e-6
-baseband_buffer_depth: 27 # 3*272 = ~33 seconds after accounting for active frames
+baseband_buffer_depth: 100 # 3*272 = ~33 seconds after accounting for active frames
 host_buffer_depth: 12
 gpu_buffer_depth: 4
 num_gpus: 2
@@ -98,20 +98,19 @@ gen_data:
      type: "tpluseplusfprime"
      name: "E"
      dim_name: ["T", "F", "D"]
-     array_shape: [512, 1, 2048] # [ samples_per_data_set, num_local_freq, num_polarizations, num_dishes ]
+     array_shape: [512, 1, 2048] # [ samples_per_data_set, num_freq_host_buf, num_polarizations, num_dishes ]
      num_frames: 64*buffer_depth
      value: 42
      values: [0,1,2,3,4]
      kotekan_stage: testDataGen
      out_buf: host_voltage_buffer_{{ id }}
-     num_local_freq: num_freq_host_buf
+     num_freq_host_buf: num_freq_host_buf
 {%- endfor %}
 
 # Baseband capture and dump system
 baseband_output_buffers:
   # 32 times smaller frames, 32 times the number of frames
   frame_size: 1048576
-  #512 * 1 * 2 * 1024
   metadata_pool: baseband_pool
 {%- for id in range(4) %}
   baseband_output_buffer_{{ id }}:
@@ -126,7 +125,7 @@ baseband_output_buffers:
 
 baseband_mboutput_buffers:
   # Multibeam beamformed output: frame_size = samples_per_data_set * num_freq_host_buf * num_beams
-  # Output shape: (samples_per_dataset, num_local_freq, num_beams) where each element is 1 byte (int4x2_t)
+  # Output shape: (samples_per_dataset, num_freq_host_buf, num_beams) where each element is 1 byte (int4x2_t)
   frame_size: 512 * 1 * 8  # 512 samples * 1 freq * 8 beams
   metadata_pool: baseband_pool
 {%- for id in range(4) %}
@@ -139,11 +138,12 @@ baseband_mboutput_buffers:
     num_frames: 12
 
 baseband:
+  # Buffering
   max_dump_samples: 30000 # 768ms
   samples_per_data_set: 512
   num_frames_buffer: baseband_buffer_depth - 10
   
-  # Tracking beams global options
+  # Beamforming
   inst_lat: 49.32070922
   inst_long: -119.62367743
   {% include 'chime_feed_positions.yaml' %} # Put in feed positions from a separate config
@@ -158,7 +158,8 @@ baseband:
     in_buf: host_voltage_buffer_{{ id }}
     out_buf: baseband_output_buffer_{{ id }}
     outmb_buf: baseband_mboutput_buffer_{{ id }}
-    gain_tracking_buffer: gain_tracking_buffer
+    # gain_tracking_buffer: TODO: implement reading gains out of a tiny gain buffer.
+    num_freq_host_buf: 1
 {%- endfor %}
 
 baseband_merge:
@@ -172,7 +173,7 @@ baseband_merge:
 
 # this will move to the baseband receiver eventually
 write_baseband:
-  root_path: baseband_raw
+  root_path: /home/calvin/baseband_raw
   dump_timeout: 1200 # 20 Minutes
   write_0:
     samples_per_data_set: 512 # samples_per_data_set / 32 (which causes a recursion if used)

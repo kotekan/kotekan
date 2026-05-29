@@ -14,7 +14,7 @@
 #include "bufferContainer.hpp"        // for bufferContainer
 #include "prometheusMetrics.hpp"      // for MetricFamily, Counter, Gauge
 #include "visUtil.hpp"                // for input_ctype, frameID
-
+#include "Telescope.hpp"              // for Telescope
 #include <cstddef> // for size_t
 #include <cstdint> // for uint32_t, int64_t, uint64_t
 #include <mutex>   // for mutex
@@ -51,7 +51,7 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  *                              3 x num_elements x this_number.
  * @conf  num_frames_buffer     Int. Number of buffer frames to simultaneously keep
  *                              full of data. Should be few less than in_buf length.
- * @conf  num_local_freq        UInt. Number of frequencies in each GPU frame.
+ * @conf  _num_freq_per_stream  UInt. Number of frequencies in each GPU frame.
  *
  * @par Metrics
  * @metric kotekan_baseband_readout_total
@@ -86,9 +86,9 @@ private:
     std::vector<input_ctype> _inputs;
     
     // Multibeam beamforming parameters
-    uint64_t _num_beams = 0;  /// Number of beams to form (from config)
-    int64_t _datasets_per_scan;  /// Number of datasets in broader MB window (3125000/512 typically)
-    int64_t _datasets_per_delay_update;  /// When to update phase delays (390625/10 typically)
+    uint32_t _num_beams;  /// Number of beams to form (from config)
+    int _datasets_per_scan;  /// Number of datasets in broader MB window (3125000/512 typically)
+    int _datasets_per_delay_update;  /// When to update phase delays (390625/10 typically)
     Buffer* _gain_tracking_buffer;  /// Reference to gain buffer for beamforming
 
     Buffer* in_buf;
@@ -103,6 +103,7 @@ private:
 
     Buffer* outmb_buf;
     frameID outmb_frame_id;
+    
 
     std::mutex manager_lock;
 
@@ -157,6 +158,8 @@ private:
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& readout_sent_frame_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& readout_dropped_frame_counter;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& readout_in_progress_metric;
+    const Telescope& tel = Telescope::instance();
+
 };
 
 #endif

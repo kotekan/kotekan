@@ -48,11 +48,12 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
     _num_frames_buffer(config.get<int>(unique_name, "num_frames_buffer")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
     // TODO: rename this parameter to `num_freq_per_stream` in the config
-    _num_freq_per_stream(config.get_default<uint32_t>(unique_name, "num_local_freq", 1)),
+    _num_freq_per_stream(config.get_default<uint32_t>(unique_name, "_num_freq_per_stream", 1)),
     _samples_per_data_set(config.get<int>(unique_name, "samples_per_data_set")),
     _max_dump_samples(config.get_default<uint64_t>(unique_name, "max_dump_samples", 1 << 30)),
-    _num_beams(config.get_default<uint64_t>(unique_name, "num_beams", 0)),
-    _datasets_per_delay_update(config.get_default<int64_t>(unique_name, "datasets_per_delay_update", 0)),
+    _num_beams(config.get_default<uint32_t>(unique_name, "num_beams", 1)),
+    _datasets_per_scan(config.get_default<int>(unique_name, "datasets_per_scan", 1)),
+    _datasets_per_delay_update(config.get_default<int>(unique_name, "datasets_per_delay_update", 0)),
     in_buf(get_buffer("in_buf")), next_frame(0), oldest_frame(-1), frame_locks(_num_frames_buffer),
     out_buf(get_buffer("out_buf")), out_frame_id(out_buf),
     outmb_buf(get_buffer("outmb_buf")), outmb_frame_id(outmb_buf),
@@ -64,7 +65,7 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
         "kotekan_baseband_readout_dropped_frames_total", unique_name, {"freq_id"})),
     readout_in_progress_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_baseband_readout_in_progress", unique_name, {"freq_id"})) {
-
+        
     // Get the correlator input meanings, unreordered.
     auto input_reorder = parse_reorder_default(config, unique_name);
     _inputs = std::get<1>(input_reorder);
@@ -74,14 +75,15 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
         _inputs[order_inds[i]] = inputs_copy[i];
     }
 
+
     // Memcopy byte alignments assume the following.
     if (_num_elements % 128) {
         throw std::runtime_error("num_elements must be multiple of 128");
     }
-
+    INFO("finished constructor, num_beams: {}", _num_beams);
     in_buf->register_consumer(unique_name);
-
     out_buf->register_producer(unique_name);
+    outmb_buf->register_producer(unique_name);
     
     // Try to get gain_tracking_buffer if doing multibeam beamforming
     if (_num_beams > 0) {
@@ -104,11 +106,11 @@ basebandReadout::basebandReadout(Config& config, const std::string& unique_name,
                  in_buf->num_frames, _num_frames_buffer);
         throw std::runtime_error(msg);
     }
+
+
 }
 
 void basebandReadout::main_thread() {
-
-    auto& tel = Telescope::instance();
     int frame_id = 0;
 
     std::unique_ptr<std::thread> lt;
@@ -124,13 +126,13 @@ void basebandReadout::main_thread() {
         if (!lt) {
             const auto fpga0_tv = tel.to_time(0);
             fpga0_ns = fpga0_tv.tv_sec * 1'000'000'000 + fpga0_tv.tv_nsec;
-
             int in_buf_frame = frame_id % in_buf->num_frames;
             for (uint32_t stream_freq_idx = 0; stream_freq_idx < _num_freq_per_stream;
                  ++stream_freq_idx) {
                 uint32_t freq_id =
                     get_chord_metadata(in_buf, in_buf_frame)->get_coarse_freq()[stream_freq_idx];
                 freq_ids[stream_freq_idx] = freq_id;
+                INFO("Configuring baseband readout for freq_id: {} (stream_freq_idx: {})", freq_id, stream_freq_idx);
 
                 DEBUG("Initialize baseband metrics for freq_id: {:d}/{:d}", freq_id,
                       stream_freq_idx);
@@ -188,9 +190,10 @@ void basebandReadout::readout_thread(const uint32_t freq_ids[],
                 auto [dump_status, request_mtx] = *next_request;
 
                 start_processing(dump_status, request_mtx);
-
+                
                 readout_in_progress_metric.labels({std::to_string(freq_id)}).set(1);
                 const basebandRequest request = dump_status.request;
+                INFO("Entering wait_for_data");
                 auto data =
                     wait_for_data(request.event_id, freq_id, stream_freq_idx, request.start_fpga,
                                   std::min((int64_t)request.length_fpga, _max_dump_samples));
@@ -211,9 +214,14 @@ void basebandReadout::start_processing(basebandDumpStatus& dump_status, std::mut
     // Reading the request parameters should be safe even without a
     // lock, as they are read-only once received.
     const basebandRequest request = dump_status.request;
-    INFO("Received baseband dump request for event {:d}: {:d} samples starting at count "
-         "{:d}. (next_frame: {:d})",
-         request.event_id, request.length_fpga, request.start_fpga, next_frame);
+    
+    timespec fpga_start_ts = tel.to_time(0);
+    INFO("start_processing: FPGA frame 0 corresponds to time {}.{} ({} ns)", fpga_start_ts.tv_sec, fpga_start_ts.tv_nsec, fpga_start_ts.tv_nsec);
+    timespec trigger_start_ts = tel.to_time(request.start_fpga);
+    double ftime0 = ts_to_double(trigger_start_ts);
+    INFO("Received baseband dump request for event {:d}: {:d} baseband samples starting at fpga_count "
+         "{:d} corresponding to unix time={:.9f}) (next_frame: {:d})",
+         request.event_id, request.length_fpga, request.start_fpga, ftime0, next_frame); // TODO: Rename request.start_fpga to request.dump_start_fpga
 
     {
         std::lock_guard<std::mutex> lock(request_mtx);
@@ -224,6 +232,7 @@ void basebandReadout::start_processing(basebandDumpStatus& dump_status, std::mut
         // actual sizes. This is done in `extract_data` as it verifies what
         // is available in the current buffers.
     }
+    INFO("Exiting start_processing");
 }
 
 void basebandReadout::end_processing(basebandDumpData::Status status, const uint32_t freq_id,
@@ -303,7 +312,6 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
 
     // This assumes that the frame's timestamps are in order, but not that they
     // are necessarily contiguous.
-    auto& tel = Telescope::instance();
     const double fpga_period_s = ts_to_double(tel.seq_length());
 
     int dump_start_frame = 0;
@@ -313,9 +321,6 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
     double min_wait_time = _samples_per_data_set * fpga_period_s;
     bool advance_info = false;
     
-    // Use configurable num_beams for lock range planning
-    uint64_t num_beams = _num_beams > 0 ? _num_beams : 16;
-    
     while (!stop_thread) {
         int64_t frame_fpga_seq = -1;
         manager_lock.lock();
@@ -323,6 +328,7 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
         dump_end_frame = dump_start_frame;
 
         for (int frame_index = dump_start_frame; frame_index < next_frame; frame_index++) {
+            INFO("wait_for_data: frame_index, dump_start_frame, dump_end_frame: {}, {}, {}", frame_index, dump_start_frame, dump_end_frame);
             int in_buf_frame = frame_index % in_buf->num_frames;
             auto metadata = get_chord_metadata(in_buf, in_buf_frame);
             frame_fpga_seq = metadata->get_fpga_seq_num();
@@ -342,10 +348,10 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
             }
             dump_end_frame = frame_index + 1;
         }
-	int lock_start = std::max(oldest_frame, dump_start_frame - int_frames);
-	int lock_end = dump_end_frame + 2 * int_frames;
+	int lock_start = std::max(oldest_frame, dump_start_frame - _datasets_per_scan);
+	int lock_end = dump_end_frame + 2 * _datasets_per_scan;
         lock_range(lock_start, lock_end);
-	DEBUG("Frames locked. Finding {} calibrators using start of lock_range = {} - {}", num_beams, lock_start, lock_end);
+	DEBUG("Frames locked. Finding {} calibrators using start of lock_range = {} - {}", _num_beams, lock_start, lock_end);
 
         // Now that the relevant frames are locked, we can unlock the rest of the buffer so
         // it can continue to operate.
@@ -447,7 +453,6 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     DEBUG("Ready to copy samples into the baseband readout buffer and beamform into baseband_mb readout buffer");
     assert(data.dump_start_frame < data.dump_end_frame);
 
-    auto& tel = Telescope::instance();
     const double fpga_period_s = ts_to_double(tel.seq_length());
 
     const uint64_t event_id = data.event_id;
@@ -491,9 +496,6 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     const int outmb_frame_samples = (_num_beams > 0) ? 
         (outmb_buf->frame_size / (_num_freq_per_stream * _num_beams)) : 0;
     
-    DEBUG("Frame sizes: out_frame_samples={}, outmb_frame_samples={}, num_beams={}", 
-          out_frame_samples, outmb_frame_samples, _num_beams);
-
     // Current frame & metadata in the output buffer
     // Also create pointers to MB readout
     uint8_t* out_frame = nullptr;
