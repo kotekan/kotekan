@@ -26,7 +26,6 @@ Here are some changes to various stages:
 - use a DIFFERENT chordMetadata object to hold metadata for the multibeams.  it should include all the information that's going into the basebandMetadata in the current implementation, the name of the gains file, and each pointing.
 - this is going to demand two pools of chordMetadata objects flowing into the basebandReadout stage.
 
-
 # clBeamformPhaseData
 - get_delays() function should be duplicated from here into basebandReadout.cpp. inst_lat, inst_long, fixed_time, and element_positions should be part of the basebandReadout.cpp config. and feed_positions (i.e. "element_positions" in the config) should be attributes of the CHIMETelescope object. the resulting function should have a call signature of get_delays(float* phases, time_t beamform_time, num_beams, float* ras, float* decs,). mark the version in clBeamformPhaseData.cpp as a duplicate of the one in Telescope.cpp.
 
@@ -34,10 +33,16 @@ Here are some changes to various stages:
 - basebandRequest should be modified to include uint64_t num_beams, 3 vectors of float64s of length num_beams: mb_ra and mb_dec and mb_name and std::string mb_file_name, mb_length_fpga.
 This needs to send along the detection beam index as a unsigned integer between 0000 and 4000. Calibrator names will be passed in as a lookup table given each detection beam row.
 
-## basebandApiManager
-- request should include a detection_beam field: a uint64_t between 0000 and 4000. add it; unpack it in handle_request_callback.
-- hack translate_trigger to get start_fpga_midband at 600.0 MHz (freq_id = 512).
-- write lookup_cals(start_fpga_midband, detbeam). For now hard code this list of 8 sources to ra=0,1,2,3,90,91,92,93,180,181,182,183, 270,271,272,273, which all have dec = 89.0. make up some corresponding J-names for those sources. choose the first num_beams sources and return their ra and dec. run this alongside translate_trigger to determine calibrators for every basebandReadoutManager
-- modify basebandSlice to also include num_beams RAs and num_beams Decs and num_beams source_names, e.g. the sources we will beamform to.
-- in addition to translate_trigger which gets a readout_slice, call lookup_cals and pack the answers into basebandSlice.
-- in handle_request_callback: report the source names, their ras, and their decs.
+## basebandApiManager 
+- request should include a detection_beam field: a uint64_t between 0000 and 4000. add it; unpack it in handle_request_callback. - DONE
+- hack translate_trigger to get start_fpga_midband at 600.0 MHz (freq_id = 512). - DONE
+- write lookup_cals(start_fpga_midband, detbeam). For now hard code this list of 8 sources to ra=0,1,2,3,90,91,92,93,180,181,182,183, 270,271,272,273, which all have dec = 89.0. make up some corresponding J-names for those sources. choose the first num_beams sources and return their ra and dec. run this alongside translate_trigger to determine calibrators for every basebandReadoutManager - DONE
+- modify basebandSlice to also include num_beams RAs and num_beams Decs and num_beams source_names, e.g. the sources we will beamform to. - DONE
+- in addition to translate_trigger which gets a readout_slice, call lookup_cals and pack the answers into basebandSlice. - DONE
+- in handle_request_callback: report the source names, their ras, and their decs. Grab gains. - DONE
+
+# Handling Gains - TODO
+- Instead of a dedicated readGains stage, gains should be loaded in at the time of lookup_cals: implement lookup_gains - TODO 
+- Steal functionality in readGain.cpp's read_gain_frb() for looking up the latest gains file in a given directory (specified in the 'baseband' section of the config), incorporate into basebandApiManager.
+- Read the gains once in upon creating the basebandRequest struct. Pass the vector of gains along with each basebandRequest for the correct freq_id.
+-

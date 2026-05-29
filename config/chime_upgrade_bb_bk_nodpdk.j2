@@ -157,7 +157,6 @@ baseband:
     out_buf: baseband_output_buffer_{{ id }}
     outmb_buf: baseband_mboutput_buffer_{{ id }}
     # gain_tracking_buffer: TODO: implement reading gains out of a tiny gain buffer.
-    num_freq_host_buf: 1
 {%- endfor %}
 
 # Ugh, gains???? What is going on? Why do gains need to know how many beams?
