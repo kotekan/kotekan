@@ -95,7 +95,7 @@ public:
         // Get frequencies
         std::vector<float> frequencies(num_frequencies); // [Hz]
         for (int freq = 0; freq < num_frequencies; ++freq) {
-            const int channel = frequency_channels.at(freq);
+            const freq_id_t channel = static_cast<freq_id_t>(frequency_channels.at(freq));
             frequencies.at(freq) = telescope.to_freq_MHz(channel) * 1.0e+6f;
         }
         const std::vector<int> freq_upchan_factor(frequency_channels.size(), 1);
