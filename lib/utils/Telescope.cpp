@@ -18,6 +18,7 @@ using kotekan::restServer;
 
 #define GIGA 1'000'000'000L
 
+static constexpr double C = 2.99792458e8;
 static constexpr double deg2rad = M_PI / 180.0;
 static constexpr double arcsec2rad = M_PI / (180.0 * 3600);
 
@@ -451,7 +452,7 @@ std::vector<grid_idx_2d_t> Telescope::get_grid_indices(uint64_t num_elements, El
 }
 
 std::vector<vec3d_t> Telescope::get_feed_positions_m(uint64_t num_elements, ElementOrder ord) const {
-    std::vector<grid_idx_2d_t> feed_positions_m(num_elements);
+    std::vector<vec3d_t> feed_positions_m(num_elements);
 
     for(uint64_t el_idx = 0; el_idx < num_elements; el_idx++) 
         feed_positions_m.at(el_idx) = element_index_to_feed_position_m(el_idx, ord);

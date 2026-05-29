@@ -33,7 +33,6 @@ REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
                //  * 86400   (UTC seconds per UTC day)
                //  = 315964800
 
-static constexpr double C = 2.99792458e8;
 static constexpr double deg2rad = M_PI / 180.0;
 
 

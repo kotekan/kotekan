@@ -179,6 +179,11 @@ def setup(request, accum_setup):
 
     request.param["rng"] = np.random.default_rng(seed=_TEST_SEED)
 
+    if request.param["tel"]["name"] == "CHIMETelescope":
+        accum_setup["input_order"] = "CHIMEBeamformer"
+    else:
+        accum_setup["input_order"] = "CHORDBeamformer"
+
     yield request.param
 
 
