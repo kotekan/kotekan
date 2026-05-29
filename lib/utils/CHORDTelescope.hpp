@@ -577,20 +577,6 @@ public:
     vec3d_t vec_dish_to_topo(const vec3d_t& v_dish) const;
 
     /**
-     * @brief   Compute the fringestopping phases for each dish.
-     *
-     * @param   freq_MHz Frequency to compute phases for.
-     * @param   eop     Current EOP.
-     * @param   eop0    EOP of phase reference time. if eop=eop0 all phases are
-     *                  1.0
-     * @param   phases  Vector of std::complex<double>, with size of at
-     *                  least num_dishes. The phases will be written to the
-     *                  first num_dishes elements of this vector.
-     **/
-    void fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
-                                   std::vector<std::complex<float>>& phases) const;
-
-    /**
      * @brief   Fill a dishInputFields struct with dish information. Will possibly
      *          reallocate the internal vectors in 'input'.
      *

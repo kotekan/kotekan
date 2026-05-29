@@ -550,41 +550,6 @@ vec3d_t CHORDTelescope::vec_dish_to_topo(const vec3d_t& v_dish) const {
     return _dish_frame.vec_frame_to_topo(v_dish);
 }
 
-void CHORDTelescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
-                                               std::vector<std::complex<float>>& phases) const {
-
-    // Get the phase center (pointing vector) of the telescope.  Depends on the dish coelevation
-    // angle, which is fixed during a run.
-    vec3d_t n_grid0 = get_phase_center_in_grid_frame();
-
-    // Take the pointing vector for the telescope and find it in the CIRS frame at ERA0.
-    // This is the point we are attempting to stop the fringes at.
-    vec3d_t n_topo0 = vec_grid_to_topo(n_grid0);
-    vec3d_t n_itrs0 = vec_topo_to_itrs(n_topo0);
-    vec3d_t n_cirs = vec_itrs_to_cirs(n_itrs0, eop0);
-
-    // Now, given this CIRS vector, find its components in the telescope
-    // frame at the requested (current) ERA
-    vec3d_t n_itrs = vec_cirs_to_itrs(n_cirs, eop);
-    vec3d_t n_topo = vec_itrs_to_topo(n_itrs);
-    vec3d_t n_grid = vec_topo_to_grid(n_topo);
-
-    // n_grid is now (at ERA) the point on the sky which will be at the
-    // phase center (n_grid0) at ERA0.
-
-    // wavenumber for this frequency
-    double k = 2 * M_PI * 1e6 * freq_MHz / C;
-
-    for (uint64_t i = 0; i < _geographic_params.dish_positions.size(); i++) {
-        double phase = -k
-                       * (_geographic_params.dish_positions[i][0] * (n_grid[0] - n_grid0[0])
-                          + _geographic_params.dish_positions[i][1] * (n_grid[1] - n_grid0[1])
-                          + _geographic_params.dish_positions[i][2] * (n_grid[2] - n_grid0[2]));
-
-        phases[i] = {static_cast<float>(cos(phase)), static_cast<float>(sin(phase))};
-    }
-}
-
 void CHORDTelescope::fill_input_maps(dishInputFields& input) const {
 
     auto& num_dishes = _geographic_params.num_dishes;
