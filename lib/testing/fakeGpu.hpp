@@ -123,6 +123,7 @@ public:
     double get_feed_separation_y_m() const override;
     uint64_t get_grid_size_x() const override;
     uint64_t get_grid_size_y() const override;
+    vec3d_t get_phase_center_in_grid_frame() const override;
 private:
     size_t _num_local_freq;
 };

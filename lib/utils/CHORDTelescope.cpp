@@ -35,7 +35,6 @@ REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
 
 static constexpr double C = 2.99792458e8;
 static constexpr double deg2rad = M_PI / 180.0;
-static constexpr double arcsec2rad = M_PI / (180.0 * 3600);
 
 
 // Dish parameters calculation/initialization
@@ -551,111 +550,16 @@ vec3d_t CHORDTelescope::vec_dish_to_topo(const vec3d_t& v_dish) const {
     return _dish_frame.vec_frame_to_topo(v_dish);
 }
 
-vec3d_t CHORDTelescope::vec_axes_rotation_R1(const vec3d_t& v, double theta) const {
-    // Return coordinates of vector v in frame rotated by theta about x-axis
-
-    double cos_th = cos(theta);
-    double sin_th = sin(theta);
-
-    vec3d_t v_rot = {v[0], cos_th * v[1] + sin_th * v[2], -sin_th * v[1] + cos_th * v[2]};
-
-    return v_rot;
-}
-
-vec3d_t CHORDTelescope::vec_axes_rotation_R2(const vec3d_t& v, double theta) const {
-    // Return coordinates of vector v in frame rotated by theta about y-axis
-
-    double cos_th = cos(theta);
-    double sin_th = sin(theta);
-
-    vec3d_t v_rot = {cos_th * v[0] - sin_th * v[2], v[1], sin_th * v[0] + cos_th * v[2]};
-
-    return v_rot;
-}
-
-vec3d_t CHORDTelescope::vec_axes_rotation_R3(const vec3d_t& v, double theta) const {
-    // Return coordinates of vector v in frame rotated by theta about z-axis
-
-    double cos_th = cos(theta);
-    double sin_th = sin(theta);
-
-    vec3d_t v_rot = {cos_th * v[0] + sin_th * v[1], -sin_th * v[0] + cos_th * v[1], v[2]};
-
-    return v_rot;
-}
-
-
-vec3d_t CHORDTelescope::vec_cirs_to_itrs(const vec3d_t& v_cirs, const EOP& eop) const {
-
-    // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the
-    // ITRS -> CIRS Transformation:
-    //
-    // [CIRS] = R(t) W(t) [ITRS]        Eq. 5.1
-    //
-    // W(t) = R3(s') R2(x') R1(y')      Eq. 5.3
-    // R(t) = R3(-ERA)                  Eq. 5.5
-    //
-    // We ignore the s' contribution here, it's magnitude is only
-    // microarcsecond.
-    //
-    // The inverse transformation reverses this, taking the negative of each
-    // argument.
-    double era = deg2rad * eop.ERA_deg;
-    double xp = arcsec2rad * eop.xp_as;
-    double yp = arcsec2rad * eop.yp_as;
-
-    // 5.5 inverse
-    vec3d_t v1 = vec_axes_rotation_R3(v_cirs, era);
-    // 5.3, second factor, inverse
-    vec3d_t v2 = vec_axes_rotation_R2(v1, -xp);
-    // 5.3, first factor, inverse
-    vec3d_t v_itrs = vec_axes_rotation_R1(v2, -yp);
-
-    return v_itrs;
-}
-
-vec3d_t CHORDTelescope::vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const {
-
-    // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the
-    // ITRS -> CIRS Transformation:
-    //
-    // [CIRS] = R(t) W(t) [ITRS]        Eq. 5.1
-    //
-    // W(t) = R3(s') R2(x') R1(y')      Eq. 5.3
-    // R(t) = R3(-ERA)                  Eq. 5.5
-    //
-    // We ignore the s' contribution here, it's magnitude is only
-    // microarcsecond.
-
-    double era = deg2rad * eop.ERA_deg;
-    double xp = arcsec2rad * eop.xp_as;
-    double yp = arcsec2rad * eop.yp_as;
-
-    // 5.3 (First factor in W)
-    vec3d_t v1 = vec_axes_rotation_R1(v_itrs, yp);
-    // 5.3 (Second factor in W)
-    vec3d_t v2 = vec_axes_rotation_R2(v1, xp);
-    // 5.5
-    vec3d_t v_cirs = vec_axes_rotation_R3(v2, -era);
-
-    return v_cirs;
-}
-
 void CHORDTelescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
                                                std::vector<std::complex<float>>& phases) const {
 
-    // Get the pointing vector (phase center) for the telescope in dish coordinates. This is
-    // constant in time.
-    vec3d_t n_dish0 = get_pointing_vec_in_dish_coords();
-
-    // Transform the pointing vector into topotric coordinates (from which we can
-    // transform to the sky), and grid coordinates (where the dish locations live).
-    // These are also constant in time.
-    vec3d_t n_topo0 = vec_dish_to_topo(n_dish0);
-    vec3d_t n_grid0 = vec_topo_to_grid(n_topo0);
+    // Get the phase center (pointing vector) of the telescope.  Depends on the dish coelevation
+    // angle, which is fixed during a run.
+    vec3d_t n_grid0 = get_phase_center_in_grid_frame();
 
     // Take the pointing vector for the telescope and find it in the CIRS frame at ERA0.
     // This is the point we are attempting to stop the fringes at.
+    vec3d_t n_topo0 = vec_grid_to_topo(n_grid0);
     vec3d_t n_itrs0 = vec_topo_to_itrs(n_topo0);
     vec3d_t n_cirs = vec_itrs_to_cirs(n_itrs0, eop0);
 
@@ -873,6 +777,20 @@ uint64_t CHORDTelescope::get_grid_size_x() const {
 
 uint64_t CHORDTelescope::get_grid_size_y() const {
     return _dish_grid_size_y;
+}
+    
+vec3d_t CHORDTelescope::get_phase_center_in_grid_frame() const {
+
+    // Get the pointing vector (phase center) for the telescope in dish coordinates. This is
+    // constant in time.
+    vec3d_t n_dish = get_pointing_vec_in_dish_coords();
+
+    // Transform the pointing vector into telelscope grid frame via the shared topocentric frame.
+    // These are also constant in time.
+    vec3d_t n_topo = vec_dish_to_topo(n_dish);
+    vec3d_t n_grid = vec_topo_to_grid(n_topo);
+
+    return n_grid;
 }
 
 void to_json(nlohmann::json& j, const dishInfo& d) {

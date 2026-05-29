@@ -3,6 +3,7 @@
 #include "CHORDTelescope.hpp"
 #include "Config.hpp"
 #include "Telescope.hpp"
+#include "geoUtil.hpp"
 #include "configUpdater.hpp"
 #include "errors.h" // _global_log_level
 #include "restServer.hpp"
@@ -152,15 +153,15 @@ void check_close_vec3d(const std::array<double, 3>& v1, const std::array<double,
 /*
  * @brief   helper to calculate cirs -> itrs conversion
  */
-std::array<double, 3> cirs_to_itrs(const CHORDTelescope& tel, std::array<double, 3> v,
+std::array<double, 3> cirs_to_itrs(std::array<double, 3> v,
                                    double ERA_deg, double xp_as, double yp_as) {
     double ERA = M_PI * ERA_deg / 180.0;
     double xp = M_PI * xp_as / (3600 * 180.0);
     double yp = M_PI * yp_as / (3600 * 180.0);
 
-    std::array<double, 3> Rv = tel.vec_axes_rotation_R3(v, ERA);
-    std::array<double, 3> W2Rv = tel.vec_axes_rotation_R2(Rv, -xp);
-    std::array<double, 3> WRv = tel.vec_axes_rotation_R1(W2Rv, -yp);
+    std::array<double, 3> Rv = vec3d_axes_rotation_R3(v, ERA);
+    std::array<double, 3> W2Rv = vec3d_axes_rotation_R2(Rv, -xp);
+    std::array<double, 3> WRv = vec3d_axes_rotation_R1(W2Rv, -yp);
 
     return WRv;
 }
@@ -168,15 +169,15 @@ std::array<double, 3> cirs_to_itrs(const CHORDTelescope& tel, std::array<double,
 /*
  * @brief   helper to calculate itrs -> cirs conversion
  */
-std::array<double, 3> itrs_to_cirs(const CHORDTelescope& tel, std::array<double, 3> v,
+std::array<double, 3> itrs_to_cirs(std::array<double, 3> v,
                                    double ERA_deg, double xp_as, double yp_as) {
     double ERA = M_PI * ERA_deg / 180.0;
     double xp = M_PI * xp_as / (3600 * 180.0);
     double yp = M_PI * yp_as / (3600 * 180.0);
 
-    std::array<double, 3> W1v = tel.vec_axes_rotation_R1(v, yp);
-    std::array<double, 3> Wv = tel.vec_axes_rotation_R2(W1v, xp);
-    std::array<double, 3> RWv = tel.vec_axes_rotation_R3(Wv, -ERA);
+    std::array<double, 3> W1v = vec3d_axes_rotation_R1(v, yp);
+    std::array<double, 3> Wv = vec3d_axes_rotation_R2(W1v, xp);
+    std::array<double, 3> RWv = vec3d_axes_rotation_R3(Wv, -ERA);
 
     return RWv;
 }
@@ -767,72 +768,57 @@ BOOST_AUTO_TEST_CASE(_vec_topo_to_itrs) {
 }
 
 /*
- * @brief   Test R1 rotation
+ * @brief   Test R1 rotation (from geoUtil)
  */
-BOOST_AUTO_TEST_CASE(_vec_axes_rotation_R1) {
+BOOST_AUTO_TEST_CASE(_vec3d_axes_rotation_R1) {
     // test vectors
     std::array<double, 3> p1({1.0, 0.0, 0.0});
     std::array<double, 3> p2({0.0, 1.0, 0.0});
     std::array<double, 3> p3({0.0, 0.0, 1.0});
     std::array<double, 3> m3({0.0, 0.0, -1.0});
 
-    //"easy" tests
-    // test lat 0 lon 0 -- itrs x
-    json json_config = json::parse(default_config_str);
-    const CHORDTelescope& tel = get_telescope(json_config);
-
-    check_close_vec3d(tel.vec_axes_rotation_R1(p1, 0.0), p1, 1.0e-14, 1.0e-14, "R(x) - x");
-    check_close_vec3d(tel.vec_axes_rotation_R1(p2, 0.0), p2, 1.0e-14, 1.0e-14, "R(y) - y");
-    check_close_vec3d(tel.vec_axes_rotation_R1(p3, 0.0), p3, 1.0e-14, 1.0e-14, "R(z) - z");
-    check_close_vec3d(tel.vec_axes_rotation_R1(p1, 0.5 * M_PI), p1, 1.0e-14, 1.0e-14, "R(x) - x");
-    check_close_vec3d(tel.vec_axes_rotation_R1(p2, 0.5 * M_PI), m3, 1.0e-14, 1.0e-14, "R(y) - -z");
-    check_close_vec3d(tel.vec_axes_rotation_R1(p3, 0.5 * M_PI), p2, 1.0e-14, 1.0e-14, "R(z) - y");
+    check_close_vec3d(vec3d_axes_rotation_R1(p1, 0.0), p1, 1.0e-14, 1.0e-14, "R(x) - x");
+    check_close_vec3d(vec3d_axes_rotation_R1(p2, 0.0), p2, 1.0e-14, 1.0e-14, "R(y) - y");
+    check_close_vec3d(vec3d_axes_rotation_R1(p3, 0.0), p3, 1.0e-14, 1.0e-14, "R(z) - z");
+    check_close_vec3d(vec3d_axes_rotation_R1(p1, 0.5 * M_PI), p1, 1.0e-14, 1.0e-14, "R(x) - x");
+    check_close_vec3d(vec3d_axes_rotation_R1(p2, 0.5 * M_PI), m3, 1.0e-14, 1.0e-14, "R(y) - -z");
+    check_close_vec3d(vec3d_axes_rotation_R1(p3, 0.5 * M_PI), p2, 1.0e-14, 1.0e-14, "R(z) - y");
 }
 
 /*
- * @brief   Test R2 rotation
+ * @brief   Test R2 rotation (from geoUtil)
  */
-BOOST_AUTO_TEST_CASE(_vec_axes_rotation_R2) {
+BOOST_AUTO_TEST_CASE(_vec3d_axes_rotation_R2) {
     // test vectors
     std::array<double, 3> p1({1.0, 0.0, 0.0});
     std::array<double, 3> p2({0.0, 1.0, 0.0});
     std::array<double, 3> p3({0.0, 0.0, 1.0});
     std::array<double, 3> m1({-1.0, 0.0, 0.0});
 
-    //"easy" tests
-    // test lat 0 lon 0 -- itrs x
-    json json_config = json::parse(default_config_str);
-    const CHORDTelescope& tel = get_telescope(json_config);
-
-    check_close_vec3d(tel.vec_axes_rotation_R2(p1, 0.0), p1, 1.0e-14, 1.0e-14, "R(x) - x");
-    check_close_vec3d(tel.vec_axes_rotation_R2(p2, 0.0), p2, 1.0e-14, 1.0e-14, "R(y) - y");
-    check_close_vec3d(tel.vec_axes_rotation_R2(p3, 0.0), p3, 1.0e-14, 1.0e-14, "R(z) - z");
-    check_close_vec3d(tel.vec_axes_rotation_R2(p1, 0.5 * M_PI), p3, 1.0e-14, 1.0e-14, "R(x) - x");
-    check_close_vec3d(tel.vec_axes_rotation_R2(p2, 0.5 * M_PI), p2, 1.0e-14, 1.0e-14, "R(y) - -z");
-    check_close_vec3d(tel.vec_axes_rotation_R2(p3, 0.5 * M_PI), m1, 1.0e-14, 1.0e-14, "R(z) - y");
+    check_close_vec3d(vec3d_axes_rotation_R2(p1, 0.0), p1, 1.0e-14, 1.0e-14, "R(x) - x");
+    check_close_vec3d(vec3d_axes_rotation_R2(p2, 0.0), p2, 1.0e-14, 1.0e-14, "R(y) - y");
+    check_close_vec3d(vec3d_axes_rotation_R2(p3, 0.0), p3, 1.0e-14, 1.0e-14, "R(z) - z");
+    check_close_vec3d(vec3d_axes_rotation_R2(p1, 0.5 * M_PI), p3, 1.0e-14, 1.0e-14, "R(x) - x");
+    check_close_vec3d(vec3d_axes_rotation_R2(p2, 0.5 * M_PI), p2, 1.0e-14, 1.0e-14, "R(y) - -z");
+    check_close_vec3d(vec3d_axes_rotation_R2(p3, 0.5 * M_PI), m1, 1.0e-14, 1.0e-14, "R(z) - y");
 }
 
 /*
- * @brief   Test R3 rotation
+ * @brief   Test R3 rotation (from geoUtil)
  */
-BOOST_AUTO_TEST_CASE(_vec_axes_rotation_R3) {
+BOOST_AUTO_TEST_CASE(_vec3d_axes_rotation_R3) {
     // test vectors
     std::array<double, 3> p1({1.0, 0.0, 0.0});
     std::array<double, 3> p2({0.0, 1.0, 0.0});
     std::array<double, 3> p3({0.0, 0.0, 1.0});
     std::array<double, 3> m2({0.0, -1.0, 0.0});
 
-    //"easy" tests
-    // test lat 0 lon 0 -- itrs x
-    json json_config = json::parse(default_config_str);
-    const CHORDTelescope& tel = get_telescope(json_config);
-
-    check_close_vec3d(tel.vec_axes_rotation_R3(p1, 0.0), p1, 1.0e-14, 1.0e-14, "R(x) - x");
-    check_close_vec3d(tel.vec_axes_rotation_R3(p2, 0.0), p2, 1.0e-14, 1.0e-14, "R(y) - y");
-    check_close_vec3d(tel.vec_axes_rotation_R3(p3, 0.0), p3, 1.0e-14, 1.0e-14, "R(z) - z");
-    check_close_vec3d(tel.vec_axes_rotation_R3(p1, 0.5 * M_PI), m2, 1.0e-14, 1.0e-14, "R(x) - x");
-    check_close_vec3d(tel.vec_axes_rotation_R3(p2, 0.5 * M_PI), p1, 1.0e-14, 1.0e-14, "R(y) - -z");
-    check_close_vec3d(tel.vec_axes_rotation_R3(p3, 0.5 * M_PI), p3, 1.0e-14, 1.0e-14, "R(z) - y");
+    check_close_vec3d(vec3d_axes_rotation_R3(p1, 0.0), p1, 1.0e-14, 1.0e-14, "R(x) - x");
+    check_close_vec3d(vec3d_axes_rotation_R3(p2, 0.0), p2, 1.0e-14, 1.0e-14, "R(y) - y");
+    check_close_vec3d(vec3d_axes_rotation_R3(p3, 0.0), p3, 1.0e-14, 1.0e-14, "R(z) - z");
+    check_close_vec3d(vec3d_axes_rotation_R3(p1, 0.5 * M_PI), m2, 1.0e-14, 1.0e-14, "R(x) - x");
+    check_close_vec3d(vec3d_axes_rotation_R3(p2, 0.5 * M_PI), p1, 1.0e-14, 1.0e-14, "R(y) - -z");
+    check_close_vec3d(vec3d_axes_rotation_R3(p3, 0.5 * M_PI), p3, 1.0e-14, 1.0e-14, "R(z) - y");
 }
 
 /*
@@ -858,13 +844,13 @@ BOOST_AUTO_TEST_CASE(_vec_cirs_to_itrs) {
                .yp_as = 0.0};
 
     check_close_vec3d(tel.vec_cirs_to_itrs(n1, eop),
-                      cirs_to_itrs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel0_x - test0_x");
     check_close_vec3d(tel.vec_cirs_to_itrs(n2, eop),
-                      cirs_to_itrs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel0_y - test0_y");
     check_close_vec3d(tel.vec_cirs_to_itrs(n3, eop),
-                      cirs_to_itrs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel0_z - test0_z");
 
     eop.ERA_deg = -279.6;
@@ -872,13 +858,13 @@ BOOST_AUTO_TEST_CASE(_vec_cirs_to_itrs) {
     eop.yp_as = 0.0;
 
     check_close_vec3d(tel.vec_cirs_to_itrs(n1, eop),
-                      cirs_to_itrs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel1_x - test1_x");
     check_close_vec3d(tel.vec_cirs_to_itrs(n2, eop),
-                      cirs_to_itrs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel1_y - test1_y");
     check_close_vec3d(tel.vec_cirs_to_itrs(n3, eop),
-                      cirs_to_itrs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel1_z - test1_z");
 
     eop.ERA_deg = 0.0;
@@ -886,13 +872,13 @@ BOOST_AUTO_TEST_CASE(_vec_cirs_to_itrs) {
     eop.yp_as = 0.0;
 
     check_close_vec3d(tel.vec_cirs_to_itrs(n1, eop),
-                      cirs_to_itrs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel2_x - test2_x");
     check_close_vec3d(tel.vec_cirs_to_itrs(n2, eop),
-                      cirs_to_itrs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel2_y - test2_y");
     check_close_vec3d(tel.vec_cirs_to_itrs(n3, eop),
-                      cirs_to_itrs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel2_z - test2_z");
 
     eop.ERA_deg = 0.0;
@@ -900,13 +886,13 @@ BOOST_AUTO_TEST_CASE(_vec_cirs_to_itrs) {
     eop.yp_as = -987.654;
 
     check_close_vec3d(tel.vec_cirs_to_itrs(n1, eop),
-                      cirs_to_itrs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel3_x - test3_x");
     check_close_vec3d(tel.vec_cirs_to_itrs(n2, eop),
-                      cirs_to_itrs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel3_y - test3_y");
     check_close_vec3d(tel.vec_cirs_to_itrs(n3, eop),
-                      cirs_to_itrs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel3_z - test3_z");
 
     eop.ERA_deg = 234.56;
@@ -914,13 +900,13 @@ BOOST_AUTO_TEST_CASE(_vec_cirs_to_itrs) {
     eop.yp_as = 3456.78;
 
     check_close_vec3d(tel.vec_cirs_to_itrs(n1, eop),
-                      cirs_to_itrs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel4_x - test4_x");
     check_close_vec3d(tel.vec_cirs_to_itrs(n2, eop),
-                      cirs_to_itrs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel4_y - test4_y");
     check_close_vec3d(tel.vec_cirs_to_itrs(n3, eop),
-                      cirs_to_itrs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      cirs_to_itrs(n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel4_z - test4_z");
 }
 
@@ -947,13 +933,13 @@ BOOST_AUTO_TEST_CASE(_vec_itrs_to_cirs) {
                .yp_as = 0.0};
 
     check_close_vec3d(tel.vec_itrs_to_cirs(n1, eop),
-                      itrs_to_cirs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel0_x - test0_x");
     check_close_vec3d(tel.vec_itrs_to_cirs(n2, eop),
-                      itrs_to_cirs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel0_y - test0_y");
     check_close_vec3d(tel.vec_itrs_to_cirs(n3, eop),
-                      itrs_to_cirs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel0_z - test0_z");
 
     eop.ERA_deg = -279.6;
@@ -961,13 +947,13 @@ BOOST_AUTO_TEST_CASE(_vec_itrs_to_cirs) {
     eop.yp_as = 0.0;
 
     check_close_vec3d(tel.vec_itrs_to_cirs(n1, eop),
-                      itrs_to_cirs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel1_x - test1_x");
     check_close_vec3d(tel.vec_itrs_to_cirs(n2, eop),
-                      itrs_to_cirs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel1_y - test1_y");
     check_close_vec3d(tel.vec_itrs_to_cirs(n3, eop),
-                      itrs_to_cirs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel1_z - test1_z");
 
     eop.ERA_deg = 0.0;
@@ -975,13 +961,13 @@ BOOST_AUTO_TEST_CASE(_vec_itrs_to_cirs) {
     eop.yp_as = 0.0;
 
     check_close_vec3d(tel.vec_itrs_to_cirs(n1, eop),
-                      itrs_to_cirs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel2_x - test2_x");
     check_close_vec3d(tel.vec_itrs_to_cirs(n2, eop),
-                      itrs_to_cirs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel2_y - test2_y");
     check_close_vec3d(tel.vec_itrs_to_cirs(n3, eop),
-                      itrs_to_cirs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel2_z - test2_z");
 
     eop.ERA_deg = 0.0;
@@ -989,13 +975,13 @@ BOOST_AUTO_TEST_CASE(_vec_itrs_to_cirs) {
     eop.yp_as = -987.654;
 
     check_close_vec3d(tel.vec_itrs_to_cirs(n1, eop),
-                      itrs_to_cirs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel3_x - test3_x");
     check_close_vec3d(tel.vec_itrs_to_cirs(n2, eop),
-                      itrs_to_cirs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel3_y - test3_y");
     check_close_vec3d(tel.vec_itrs_to_cirs(n3, eop),
-                      itrs_to_cirs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel3_z - test3_z");
 
     eop.ERA_deg = 234.56;
@@ -1003,13 +989,13 @@ BOOST_AUTO_TEST_CASE(_vec_itrs_to_cirs) {
     eop.yp_as = 3456.78;
 
     check_close_vec3d(tel.vec_itrs_to_cirs(n1, eop),
-                      itrs_to_cirs(tel, n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n1, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel4_x - test4_x");
     check_close_vec3d(tel.vec_itrs_to_cirs(n2, eop),
-                      itrs_to_cirs(tel, n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n2, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel4_y - test4_y");
     check_close_vec3d(tel.vec_itrs_to_cirs(n3, eop),
-                      itrs_to_cirs(tel, n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
+                      itrs_to_cirs(n3, eop.ERA_deg, eop.xp_as, eop.yp_as), 1.0e-14, 1.0e-14,
                       "tel4_z - test4_z");
 }
 

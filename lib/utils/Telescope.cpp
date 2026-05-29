@@ -18,6 +18,9 @@ using kotekan::restServer;
 
 #define GIGA 1'000'000'000L
 
+static constexpr double deg2rad = M_PI / 180.0;
+static constexpr double arcsec2rad = M_PI / (180.0 * 3600);
+
 static constexpr BareEOP dummy_bare_eop_first = {
     .t_inst_ns = 0, .delta_UT1_inst = 0.0, .xp_as = 0.0, .yp_as = 0.0};
 static constexpr BareEOP dummy_bare_eop_last = {.t_inst_ns = std::numeric_limits<int64_t>::max(),
@@ -397,6 +400,62 @@ vec3d_t Telescope::vec_grid_to_topo(const vec3d_t& v_grid) const {
 
 vec3d_t Telescope::vec_itrs_to_topo(const vec3d_t& v_itrs) const {
     return _frame.vec_itrs_to_topo(v_itrs);
+}
+
+vec3d_t Telescope::vec_cirs_to_itrs(const vec3d_t& v_cirs, const EOP& eop) const {
+
+    // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the
+    // ITRS -> CIRS Transformation:
+    //
+    // [CIRS] = R(t) W(t) [ITRS]        Eq. 5.1
+    //
+    // W(t) = R3(s') R2(x') R1(y')      Eq. 5.3
+    // R(t) = R3(-ERA)                  Eq. 5.5
+    //
+    // We ignore the s' contribution here, it's magnitude is only
+    // microarcsecond.
+    //
+    // The inverse transformation reverses this, taking the negative of each
+    // argument.
+    double era = deg2rad * eop.ERA_deg;
+    double xp = arcsec2rad * eop.xp_as;
+    double yp = arcsec2rad * eop.yp_as;
+
+    // 5.5 inverse
+    vec3d_t v1 = vec3d_axes_rotation_R3(v_cirs, era);
+    // 5.3, second factor, inverse
+    vec3d_t v2 = vec3d_axes_rotation_R2(v1, -xp);
+    // 5.3, first factor, inverse
+    vec3d_t v_itrs = vec3d_axes_rotation_R1(v2, -yp);
+
+    return v_itrs;
+}
+
+vec3d_t Telescope::vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const {
+
+    // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the
+    // ITRS -> CIRS Transformation:
+    //
+    // [CIRS] = R(t) W(t) [ITRS]        Eq. 5.1
+    //
+    // W(t) = R3(s') R2(x') R1(y')      Eq. 5.3
+    // R(t) = R3(-ERA)                  Eq. 5.5
+    //
+    // We ignore the s' contribution here, it's magnitude is only
+    // microarcsecond.
+
+    double era = deg2rad * eop.ERA_deg;
+    double xp = arcsec2rad * eop.xp_as;
+    double yp = arcsec2rad * eop.yp_as;
+
+    // 5.3 (First factor in W)
+    vec3d_t v1 = vec3d_axes_rotation_R1(v_itrs, yp);
+    // 5.3 (Second factor in W)
+    vec3d_t v2 = vec3d_axes_rotation_R2(v1, xp);
+    // 5.5
+    vec3d_t v_cirs = vec3d_axes_rotation_R3(v2, -era);
+
+    return v_cirs;
 }
 
 std::string ElementOrder_to_string(const ElementOrder& o) {

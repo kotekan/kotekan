@@ -332,6 +332,8 @@ public:
     virtual uint64_t get_grid_size_x() const = 0;
     virtual uint64_t get_grid_size_y() const = 0;
 
+    virtual vec3d_t get_phase_center_in_grid_frame() const = 0;
+
     /**
      * @brief   Return a copy of the current EOP table.
      **/
@@ -430,6 +432,22 @@ public:
      * @param   v_topo  Vector in topocentric coordinates.
      **/
     vec3d_t vec_topo_to_itrs(const vec3d_t& v_topo) const;
+
+    /**
+     * @brief   Transform the given vector from CIRS to ITRS coords.
+     *
+     * @param   v_topo  Vector in CIRS coordinates.
+     * @param   eop     EOP for time of transformation.
+     **/
+    vec3d_t vec_cirs_to_itrs(const vec3d_t& v_cirs, const EOP& eop) const;
+
+    /**
+     * @brief   Transform the given vector from ITRS to CIRS coords.
+     *
+     * @param   v_topo  Vector in ITRS coordinates.
+     * @param   eop     EOP for time of transformation.
+     **/
+    vec3d_t vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const;
 
 
 private:

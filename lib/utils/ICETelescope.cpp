@@ -336,6 +336,11 @@ uint64_t ICETelescope::get_grid_size_x() const {
 uint64_t ICETelescope::get_grid_size_y() const {
     return _num_dishes_per_cylinder;
 }
+    
+vec3d_t ICETelescope::get_phase_center_in_grid_frame() const {
+    //TODO: incorporate `roll` from ch_ephem?
+    return {0.0, 0.0, 1.0};
+}
 
 ice_stream_id_t ice_extract_stream_id(const stream_t encoded_stream_id) {
     ice_stream_id_t stream_id;

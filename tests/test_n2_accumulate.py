@@ -179,9 +179,6 @@ def setup(request, accum_setup):
 
     request.param["rng"] = np.random.default_rng(seed=_TEST_SEED)
 
-    if accum_setup["bin_in_ERA"] and request.param["tel"]["name"] != "CHORDTelescope":
-        request.param["fail"] = True
-
     yield request.param
 
 
@@ -830,8 +827,6 @@ def accum_list(setup, accum_setup):
             accum["bin_end_ERA_deg"] = tel.get_ERA_at_t_inst_ns(
                 t_end, setup["tel"], setup["set_eop"]
             )
-            # accum["bin_start_ERAL_deg"] = -1.0
-            # accum["bin_end_ERAL_deg"] = -1.0
             accum["bin_start_ERAL_deg"] = tel.get_local_ERA_at_t_inst_ns(
                 t_start, setup["tel"], setup["set_eop"]
             )

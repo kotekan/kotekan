@@ -116,6 +116,9 @@ public:
     uint64_t get_grid_size_y() const override {
         return 16;
     }
+    vec3d_t get_phase_center_in_grid_frame() const override {
+        return {0.0, 0.0, 1.0};
+    }
 };
 
 REGISTER_TELESCOPE(TestTelescope, "TestTelescope");
