@@ -39,6 +39,24 @@ host_n2k_counts_buffer:
     frame_size: sizeof_int32 * n2k_counts_triangle_size * num_frequencies * n2k_num_subintegrations
     metadata_pool: main_pool
 
+host_n2k_plcounts_buffer:
+    kotekan_buffer: standard
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
+    frame_size: sizeof_int32 * num_frequencies * n2k_num_subintegrations
+    metadata_pool: main_pool
+
+host_n2k_rficounts_buffer:
+    kotekan_buffer: standard
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
+    frame_size: sizeof_int32 * num_frequencies * n2k_num_subintegrations
+    metadata_pool: main_pool
+
+host_n2k_rfiframemask_buffer:
+    kotekan_buffer: standard
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
+    frame_size: sizeof_uint8 * num_frequencies * n2k_num_subintegrations
+    metadata_pool: main_pool
+
 host_n2_vis_buffer:
     kotekan_buffer: N2
     n2_layout: "FullUpperTri"
@@ -97,16 +115,68 @@ run_n2k_counts:
           gpu_mem: n2k_counts_buffer
           out_buf: host_n2k_counts_buffer
 
+run_n2k_set_plcounts:
+    kotekan_stage: testDataGen
+    type: const32               # int32
+    value: 0
+    name: pl_lost_counts_scalar
+    # array_shape: [n2k_num_subintegrations, num_frequencies]
+    array_shape: [1, 48]
+    dim_name: ["Tc", "F"]
+    meta_time_downsample_factor: n2k_sub_integration_ntime
+    samples_per_data_set: n2k_sub_integration_ntime
+    wait: false
+    out_buf: host_n2k_plcounts_buffer
+
+run_n2k_set_rficounts:
+    kotekan_stage: testDataGen
+    type: const32               # int32
+    value: 0
+    name: RFImask_counts
+    # array_shape: [n2k_num_subintegrations, num_frequencies]
+    array_shape: [1, 48]
+    dim_name: ["Tc", "F"]
+    meta_time_downsample_factor: n2k_sub_integration_ntime
+    samples_per_data_set: n2k_sub_integration_ntime
+    wait: false
+    out_buf: host_n2k_rficounts_buffer
+
+run_n2k_set_rfiframemask:
+    # kotekan_stage: testDataGen
+    # type: constu8               # uint8
+    # value: 0
+    # name: RFIFrameMask
+    # # array_shape: [n2k_num_subintegrations, num_frequencies]
+    # array_shape: [1, 48]
+    # dim_name: ["Tc", "F"]
+    # meta_time_downsample_factor: n2k_sub_integration_ntime
+    # samples_per_data_set: n2k_sub_integration_ntime
+    # wait: false
+    # out_buf: host_n2k_rfiframemask_buffer
+    kotekan_stage: testRFIFrameMaskGen
+    type: "const"
+    value: 1
+    samples_per_data_set: n2k_samples_per_data_set
+    sub_integration_ntime: n2k_sub_integration_ntime
+    num_frames: 999999999
+    num_local_freq: num_frequencies
+    out_buf: host_n2k_rfiframemask_buffer
+
 run_N2_accumulate:
     kotekan_stage: N2Accumulate
     samples_per_data_set: n2k_samples_per_data_set
     sub_integration_ntime: n2k_sub_integration_ntime
-    num_subintegrations_per_bin: 48 # 1 second
+    num_subintegrations_per_bin: 24   # 1 second
     num_elements: n2k_correlation_num_elements
-    num_workers: 4
     num_freq_per_n2k_frame: num_frequencies
     packet_loss_is_scalar: true
+    variance_mode: EvenOddPosDef
+    do_fringestop: True
+    debug_accum_mode: False
+    num_workers: 4
     in_buf: host_n2k_correlation_buffer
     in_counts_buf: host_n2k_counts_buffer
-    in_rfimask_buf: host_rfi_RFImask_buffer
+    in_plcounts_buf: host_n2k_plcounts_buffer
+    in_rficounts_buf: host_n2k_rficounts_buffer
+    in_rfiframemask_buf: host_n2k_rfiframemask_buffer
     out_buf: host_n2_vis_buffer
