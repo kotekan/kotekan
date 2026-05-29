@@ -176,3 +176,37 @@ vec3d_t mat3x3d_vecmul_transpose(const mat3x3d_t A, const vec3d_t& x) {
 
     return y;
 }
+
+vec3d_t vec3d_axes_rotation_R1(const vec3d_t& v, double theta) {
+    // Return coordinates of vector v in frame rotated by theta about x-axis
+
+    double cos_th = cos(theta);
+    double sin_th = sin(theta);
+
+    vec3d_t v_rot = {v[0], cos_th * v[1] + sin_th * v[2], -sin_th * v[1] + cos_th * v[2]};
+
+    return v_rot;
+}
+
+vec3d_t vec3d_axes_rotation_R2(const vec3d_t& v, double theta) {
+    // Return coordinates of vector v in frame rotated by theta about y-axis
+
+    double cos_th = cos(theta);
+    double sin_th = sin(theta);
+
+    vec3d_t v_rot = {cos_th * v[0] - sin_th * v[2], v[1], sin_th * v[0] + cos_th * v[2]};
+
+    return v_rot;
+}
+
+vec3d_t vec3d_axes_rotation_R3(const vec3d_t& v, double theta) {
+    // Return coordinates of vector v in frame rotated by theta about z-axis
+
+    double cos_th = cos(theta);
+    double sin_th = sin(theta);
+
+    vec3d_t v_rot = {cos_th * v[0] + sin_th * v[1], -sin_th * v[0] + cos_th * v[1], v[2]};
+
+    return v_rot;
+}
+

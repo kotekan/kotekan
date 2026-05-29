@@ -52,4 +52,31 @@ double vec3d_dot(const vec3d_t& a, const vec3d_t& b);
 vec3d_t mat3x3d_vecmul(const mat3x3d_t A, const vec3d_t& x);
 vec3d_t mat3x3d_vecmul_transpose(const mat3x3d_t A, const vec3d_t& x);
 
+/**
+ * @brief   Transform the given vector to a frame where the basis has
+ *          rotated about the x axis by an angle theta.
+ *
+ * @param   v       Input vector
+ * @param   theta   Angle basis is rotated by, in radians.
+ **/
+vec3d_t vec3d_axes_rotation_R1(const vec3d_t& v, double theta);
+
+/**
+ * @brief   Transform the given vector to a frame where the basis has
+ *          rotated about the y axis by an angle theta.
+ *
+ * @param   v       Input vector
+ * @param   theta   Angle basis is rotated by, in radians.
+ **/
+vec3d_t vec3d_axes_rotation_R2(const vec3d_t& v, double theta);
+
+/**
+ * @brief   Transform the given vector to a frame where the basis has
+ *          rotated about the z axis by an angle theta.
+ *
+ * @param   v       Input vector
+ * @param   theta   Angle basis is rotated by, in radians.
+ **/
+vec3d_t vec3d_axes_rotation_R3(const vec3d_t& v, double theta);
+
 #endif

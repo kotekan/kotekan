@@ -494,6 +494,8 @@ public:
 
     void decode_station_id(station_id_t st_id, uint64_t& dish, uint64_t& polarization) const;
     station_id_t encode_station_id(uint64_t dish, uint64_t polarization) const;
+    
+    vec3d_t get_phase_center_in_grid_frame() const override;
 
     /**
      * @brief   Queries the source of the GPS time0_ns value. Returns true on success, and updates
@@ -573,49 +575,6 @@ public:
      * @param   v_topo  Vector in dish coordinates.
      **/
     vec3d_t vec_dish_to_topo(const vec3d_t& v_dish) const;
-
-    /**
-     * @brief   Transform the given vector from CIRS to ITRS coords.
-     *
-     * @param   v_topo  Vector in CIRS coordinates.
-     * @param   eop     EOP for time of transformation.
-     **/
-    vec3d_t vec_cirs_to_itrs(const vec3d_t& v_cirs, const EOP& eop) const;
-
-    /**
-     * @brief   Transform the given vector from ITRS to CIRS coords.
-     *
-     * @param   v_topo  Vector in ITRS coordinates.
-     * @param   eop     EOP for time of transformation.
-     **/
-    vec3d_t vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const;
-
-    /**
-     * @brief   Transform the given vector to a frame where the basis has
-     *          rotated about the x axis by an angle theta.
-     *
-     * @param   v       Input vector
-     * @param   theta   Angle basis is rotated by, in radians.
-     **/
-    vec3d_t vec_axes_rotation_R1(const vec3d_t& v, double theta) const;
-
-    /**
-     * @brief   Transform the given vector to a frame where the basis has
-     *          rotated about the y axis by an angle theta.
-     *
-     * @param   v       Input vector
-     * @param   theta   Angle basis is rotated by, in radians.
-     **/
-    vec3d_t vec_axes_rotation_R2(const vec3d_t& v, double theta) const;
-
-    /**
-     * @brief   Transform the given vector to a frame where the basis has
-     *          rotated about the z axis by an angle theta.
-     *
-     * @param   v       Input vector
-     * @param   theta   Angle basis is rotated by, in radians.
-     **/
-    vec3d_t vec_axes_rotation_R3(const vec3d_t& v, double theta) const;
 
     /**
      * @brief   Compute the fringestopping phases for each dish.

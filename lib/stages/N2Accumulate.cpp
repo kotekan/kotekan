@@ -849,8 +849,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         int64_t ut1_end = get_UT1_from_ERA(nrot, ERA_deg_end);
         EOP eop_bin_start = _tel.get_EOP_at_UT1(ut1_start);
         EOP eop_bin_end = _tel.get_EOP_at_UT1(ut1_end);
-        ERAL_deg_start = _tel.cast<CHORDTelescope>().get_ERAL_deg(eop_bin_start);
-        ERAL_deg_end = _tel.cast<CHORDTelescope>().get_ERAL_deg(eop_bin_end);
+        ERAL_deg_start = _tel.get_ERAL_deg(eop_bin_start);
+        ERAL_deg_end = _tel.get_ERAL_deg(eop_bin_end);
     } else {
         // If not ERA, binning is simply the beginning of the first frame to end of the last.
         EOP eop_start = _tel.get_EOP_at_time(_tel.to_time(_accum_fpga_start_tick));

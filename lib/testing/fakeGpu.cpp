@@ -265,3 +265,6 @@ uint64_t FakeTelescope::get_grid_size_x() const {
 uint64_t FakeTelescope::get_grid_size_y() const {
     return 10;
 }
+vec3d_t FakeTelescope::get_phase_center_in_grid_frame() const {
+    return {0.0, 0.0, 1.0};
+}
