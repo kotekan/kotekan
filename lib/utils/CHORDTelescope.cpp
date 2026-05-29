@@ -6,6 +6,7 @@
 #include <vector>              // for vector
 #include <cmath>               // for sin, cos, floor, ceil, M_PI, abs
 #include <chrono>              // for duration_cast, duration, nanoseconds, system_clock
+#include <limits>              // for numeric_limits
 
 #include "Telescope.hpp"       // for freq_id_t, Telescope, nyquist_zone_t, stream_t, REGISTER_T...
 #include "geoUtil.hpp"         // for GeoFrame
@@ -429,6 +430,7 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     _dish_frame(dish_frame_from_config(config, path)),
     _num_polarizations(config.get<uint64_t>(path, "num_polarizations")),
     _num_dishes(config.get<uint64_t>(path, "num_dishes")),
+    _num_elements(_num_polarizations * _num_dishes),
     _dish_grid_size_x(config.get<uint64_t>(path, "dish_grid_size_x")),
     _dish_grid_size_y(config.get<uint64_t>(path, "dish_grid_size_y")),
     _dish_separation_grid_x_m(config.get_default<double>(path, "dish_separation_x_m", 6.3)),
@@ -792,8 +794,13 @@ size_t CHORDTelescope::num_freq_per_stream() const {
 }
     
 station_id_t CHORDTelescope::element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const {
+    if (el_idx >= _num_elements) 
+        FATAL_ERROR("Element idx {:d} >= num_elements {:d}", el_idx, _num_elements);
+
     if (ord == ElementOrder::CHORDEarly) {
-        return el_idx;
+        uint64_t dish = el_idx / _num_polarizations;
+        uint64_t pol = el_idx % _num_polarizations;
+        return encode_station_id(dish, pol);
     } else if (ord == ElementOrder::CHORDBeamformer) {
         return el_idx;
     }
@@ -801,20 +808,55 @@ station_id_t CHORDTelescope::element_index_to_station_id(uint64_t el_idx, Elemen
 }
 
 uint64_t CHORDTelescope::station_id_to_element_index(station_id_t st_id, ElementOrder ord) const {
+    if (st_id >= _num_elements) 
+        FATAL_ERROR("Element idx {:d} >= num_elements {:d}", st_id, _num_elements);
+
+    uint64_t el_idx = std::numeric_limits<uint64_t>::max();
+
     if (ord == ElementOrder::CHORDEarly) {
-        return st_id;
+        uint64_t pol;
+        uint64_t dish;
+        decode_station_id(st_id, dish, pol);
+        el_idx = pol + dish * _num_polarizations;
     } else if (ord == ElementOrder::CHORDBeamformer) {
-        return st_id;
+        el_idx = st_id;
     }
     FATAL_ERROR("Cannot handle element order {}.", ord);
+
+    if (el_idx >= _num_elements) 
+        FATAL_ERROR("station_id {:d} order {}: Element idx {:d} >= num_elements {:d}", st_id, ord, el_idx, _num_elements);
+
+    return el_idx;
 }
 
-grid_idx_2d_t CHORDTelescope::station_id_to_grid_indices([[maybe_unused]] station_id_t st_id) const {
-    FATAL_ERROR("station_id_to_grid_indices not implemented.");
+grid_idx_2d_t CHORDTelescope::station_id_to_grid_indices(station_id_t st_id) const {
+    uint64_t pol;
+    uint64_t dish;
+    decode_station_id(st_id, dish, pol);
+    if (dish >= _num_dishes)
+        FATAL_ERROR("station_id {:d}: dish {:d} >= num_dishes {:d}", st_id, dish, _num_dishes);
+    const dishInfo d = _geographic_params.dish_info_table.at(dish);
+    
+    return {d.grid_x_idx, d.grid_y_idx};
 } 
 
 vec3d_t CHORDTelescope::station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const {
-    FATAL_ERROR("station_id_to_feed_position_m not implemented.");
+    uint64_t pol;
+    uint64_t dish;
+    decode_station_id(st_id, dish, pol);
+    if (dish >= _num_dishes)
+        FATAL_ERROR("station_id {:d}: dish {:d} >= num_dishes {:d}", st_id, dish, _num_dishes);
+    
+    return _geographic_params.dish_positions.at(dish);
+}
+
+void CHORDTelescope::decode_station_id(station_id_t st_id, uint64_t& dish, uint64_t& polarization) const {
+    dish = st_id % _num_dishes;
+    polarization = st_id / _num_dishes;
+}
+
+station_id_t CHORDTelescope::encode_station_id(uint64_t dish, uint64_t polarization) const {
+    return dish + polarization * _num_dishes;
 }
     
 double CHORDTelescope::get_feed_separation_x_m() const {

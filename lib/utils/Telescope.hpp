@@ -30,7 +30,7 @@ using nyquist_zone_t = std::uint8_t;
 using freq_id_t = std::uint32_t; // logical ID, not necessarily an index
 #define FREQ_ID_NOT_SET UINT32_MAX
 using station_id_t = std::uint32_t;
-using grid_idx_2d_t = std::array<int32_t, 2>;
+using grid_idx_2d_t = std::array<int64_t, 2>;
 
 enum class ElementOrder : int32_t {
     CHIMECorrelator = 0,

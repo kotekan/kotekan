@@ -492,6 +492,9 @@ public:
     uint64_t get_grid_size_x() const override;
     uint64_t get_grid_size_y() const override;
 
+    void decode_station_id(station_id_t st_id, uint64_t& dish, uint64_t& polarization) const;
+    station_id_t encode_station_id(uint64_t dish, uint64_t polarization) const;
+
     /**
      * @brief   Queries the source of the GPS time0_ns value. Returns true on success, and updates
      *          the value of the given reference. This is a BLOCKING call, may take several seconds
@@ -720,6 +723,7 @@ protected:
 
     const uint64_t _num_polarizations;
     const uint64_t _num_dishes;
+    const uint64_t _num_elements;
     const uint64_t _dish_grid_size_x;
     const uint64_t _dish_grid_size_y;
     const double _dish_separation_grid_x_m;
