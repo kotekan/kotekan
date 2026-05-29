@@ -431,6 +431,74 @@ vec3d_t Telescope::vec_cirs_to_itrs(const vec3d_t& v_cirs, const EOP& eop) const
     return v_itrs;
 }
 
+grid_idx_2d_t Telescope::element_index_to_grid_indices(uint64_t el_idx, ElementOrder ord) const {
+    station_id_t st_id = element_index_to_station_id(el_idx, ord);
+    return station_id_to_grid_indices(st_id);
+}
+
+vec3d_t Telescope::element_index_to_feed_position_m(uint64_t el_idx, ElementOrder ord) const {
+    station_id_t st_id = element_index_to_station_id(el_idx, ord);
+    return station_id_to_feed_position_m(st_id);
+}
+
+std::vector<grid_idx_2d_t> Telescope::get_grid_indices(uint64_t num_elements, ElementOrder ord) const {
+    std::vector<grid_idx_2d_t> grid_indices(num_elements);
+
+    for(uint64_t el_idx = 0; el_idx < num_elements; el_idx++) 
+        grid_indices.at(el_idx) = element_index_to_grid_indices(el_idx, ord);
+
+    return grid_indices;
+}
+
+std::vector<vec3d_t> Telescope::get_feed_positions_m(uint64_t num_elements, ElementOrder ord) const {
+    std::vector<grid_idx_2d_t> feed_positions_m(num_elements);
+
+    for(uint64_t el_idx = 0; el_idx < num_elements; el_idx++) 
+        feed_positions_m.at(el_idx) = element_index_to_feed_position_m(el_idx, ord);
+
+    return feed_positions_m;
+}
+
+void Telescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
+                                          const std::vector<vec3d_t> feed_positions_m,
+                                          std::vector<std::complex<float>>& phases) const {
+
+    if (feed_positions_m.size() != phases.size()) 
+        FATAL_ERROR("fill_fringestop: feed_positions_m size {:d} != phases size {:d}",
+                     feed_positions_m.size(), phases.size());
+
+    // Get the phase center (pointing vector) of the telescope.  Depends on the dish coelevation
+    // angle, which is fixed during a run.
+    vec3d_t n_grid0 = get_phase_center_in_grid_frame();
+
+    // Take the pointing vector for the telescope and find it in the CIRS frame at ERA0.
+    // This is the point we are attempting to stop the fringes at.
+    vec3d_t n_topo0 = vec_grid_to_topo(n_grid0);
+    vec3d_t n_itrs0 = vec_topo_to_itrs(n_topo0);
+    vec3d_t n_cirs = vec_itrs_to_cirs(n_itrs0, eop0);
+
+    // Now, given this CIRS vector, find its components in the telescope
+    // frame at the requested (current) ERA
+    vec3d_t n_itrs = vec_cirs_to_itrs(n_cirs, eop);
+    vec3d_t n_topo = vec_itrs_to_topo(n_itrs);
+    vec3d_t n_grid = vec_topo_to_grid(n_topo);
+
+    // n_grid is now (at ERA) the point on the sky which will be at the
+    // phase center (n_grid0) at ERA0.
+
+    // wavenumber for this frequency
+    double k = 2 * M_PI * 1e6 * freq_MHz / C;
+
+    for (uint64_t i = 0; i < feed_positions_m.size(); i++) {
+        double phase = -k
+                       * (feed_positions_m[i][0] * (n_grid[0] - n_grid0[0])
+                          + feed_positions_m[i][1] * (n_grid[1] - n_grid0[1])
+                          + feed_positions_m[i][2] * (n_grid[2] - n_grid0[2]));
+
+        phases[i] = {static_cast<float>(cos(phase)), static_cast<float>(sin(phase))};
+    }
+}
+
 vec3d_t Telescope::vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const {
 
     // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the

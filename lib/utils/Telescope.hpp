@@ -449,6 +449,28 @@ public:
      **/
     vec3d_t vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const;
 
+    grid_idx_2d_t element_index_to_grid_indices(uint64_t el_idx, ElementOrder ord) const;
+    vec3d_t element_index_to_feed_position_m(uint64_t el_idx, ElementOrder ord) const;
+
+    std::vector<grid_idx_2d_t> get_grid_indices(uint64_t num_elements, ElementOrder ord) const;
+    std::vector<vec3d_t> get_feed_positions_m(uint64_t num_elements, ElementOrder ord) const;
+
+    /**
+     * @brief   Compute the fringestopping phases for the given feed locations.
+     *
+     * @param   freq_MHz Frequency to compute phases for.
+     * @param   eop     Current EOP.
+     * @param   eop0    EOP of phase reference time. if eop=eop0 all phases are
+     *                  1.0
+     * @param   feed_posisions_m    The 3D feed positions in the telescope grid frame in meters. The
+     *                  positions returned from `station_id_to_feed_position_m`.
+     * @param   phases  Vector of std::complex<double>, with size equal to feed_positions_m. The
+     *                  phase for each position will be written to this vector.
+     **/
+    void Telescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
+                                              const std::vector<vec3d_t> feed_positions_m,
+                                              std::vector<std::complex<float>>& phases) const;
+
 
 private:
     static std::unique_ptr<Telescope>& tel_instance();
