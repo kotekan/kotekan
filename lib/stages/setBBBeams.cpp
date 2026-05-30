@@ -1,5 +1,5 @@
 #include "Config.hpp"          // for Config
-#include "Beams.hpp"           // for FRBBeam
+#include "Beams.hpp"           // for FixedBBBeam, TrackingBBBeam
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -19,42 +19,44 @@ using N2::frameID;
 
 constexpr double deg2rad = M_PI / 180.0;
 
-class setFRBBeams : public Stage {
+class setBBBeams : public Stage {
 public:
-    setFRBBeams(Config& config, const std::string& unique_name,
+    setBBBeams(Config& config, const std::string& unique_name,
                    bufferContainer& buffer_container);
-    ~setFRBBeams();
+    ~setBBBeams();
     void main_thread() override;
 
     void send_beams(connectionInstance& conn) const;
 
 protected:
-    std::vector<FRBBeam> build_grid_beams() const;
-    std::vector<FRBBeam> build_grid_deg_beams() const;
-    std::vector<FRBBeam> build_chime_beams() const;
-    std::vector<FRBBeam> build_seth_beams() const;
+    std::vector<FixedBBBeam> build_grid_beams() const;
+    std::vector<FixedBBBeam> build_grid_deg_beams() const;
 
 private:
+    Buffer* in_buf;
     Buffer* out_pos_buf;
     Buffer* out_id_buf;
     const std::string mode;
-    const std::vector<FRBBeam> beam_table;
+    const std::vector<FixedBBBeam> fixed_beam_table;
+    const std::vector<TrackingBBBeam> tracking_beam_table;
     const uint32_t num_x;
     const uint32_t num_y;
     const double x_min;
     const double x_max;
     const double y_min;
     const double y_max;
-    std::vector<FRBBeam> beams;
+    std::vector<FixedBBBeam> fixed_beams;
+    std::vector<TrackingBBBeam> tracking_beams;
 };
 
-REGISTER_KOTEKAN_STAGE(setFRBBeams);
+REGISTER_KOTEKAN_STAGE(setBBBeams);
 
-setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
+setBBBeams::setBBBeams(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&setFRBBeams::main_thread, this)),
+    Stage(config, unique_name, buffer_container, std::bind(&setBBBeams::main_thread, this)),
     mode(config.get<std::string>(unique_name, "mode")),
-    beam_table(config.get_default<std::vector<FRBBeam>>(unique_name, "beams", {})),
+    fixed_beam_table(config.get_default<std::vector<FixedBBBeam>>(unique_name, "fixed_beams", {})),
+    tracking_beam_table(config.get_default<std::vector<TrackingBBBeam>>(unique_name, "tracking_beams", {})),
     num_x(config.get_default<uint32_t>(unique_name, "num_x", 0)),
     num_y(config.get_default<uint32_t>(unique_name, "num_y", 0)),
     x_min(config.get_default<double>(unique_name, "x_min", 0.0)),
@@ -63,6 +65,8 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
     y_max(config.get_default<double>(unique_name, "y_max", 0.0)) {
         
     // Get Buffer
+    in_buf = get_buffer("in_clock_buf");
+    in_buf->register_consumer(unique_name);
     out_pos_buf = get_buffer("out_pos_buf");
     out_pos_buf->register_producer(unique_name);
     out_id_buf = get_buffer("out_id_buf");
@@ -70,19 +74,18 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
 
     // Check mode & assign num_beams
     if (mode == "manual") {
-        if (beam_table.size() == 0)
-            FATAL_ERROR("manual mode, but `beams` is empty");
-        beams = beam_table;
+        if (fixed_beam_table.size() == 0 && tracking_beam_table.size() == 0)
+            FATAL_ERROR("manual mode, but `fixed_beams` and `tracking_beams` are empty");
+        fixed_beams = fixed_beam_table;
+        tracking_beams = tracking_beam_table;
     } else if (mode == "grid") {
         if (num_x == 0 || num_y == 0)
             FATAL_ERROR("grid mode, but num_x ({:d}) or num_y ({:d}) is 0", num_x, num_y);
-        beams = build_grid_beams();
+        fixed_beams = build_grid_beams();
     } else if (mode == "grid_degrees") {
         if (num_x == 0 || num_y == 0)
             FATAL_ERROR("grid_degrees mode, but num_x ({:d}) or num_y ({:d}) is 0", num_x, num_y);
-        beams = build_grid_deg_beams();
-    } else if (mode == "seth") {
-        beams = build_seth_beams();
+        fixed_beams = build_grid_deg_beams();
     } else {
         FATAL_ERROR("Unknown mode: {:s}", mode);
     }
@@ -90,26 +93,27 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
     using namespace std::placeholders;
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(unique_name + "/beams",
-                                      std::bind(&setFRBBeams::send_beams, this, _1));
+                                      std::bind(&setBBBeams::send_beams, this, _1));
 
-    out_pos_buf->allocate_ndarray_frame_desc<float, 2>("frb2_beam_positions", {static_cast<ptrdiff_t>(beams.size()), 2}, {"R", "X/Y"});
-    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>("frb2_beam_ids", {static_cast<ptrdiff_t>(beams.size())}, {"R"});
+    out_pos_buf->allocate_ndarray_frame_desc<float, 2>("bb_beam_positions", {static_cast<ptrdiff_t>(fixed_beams.size() + tracking_beams.size()), 2}, {"B", "X/Y"});
+    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>("bb_beam_ids", {static_cast<ptrdiff_t>(fixed_beams.size() + tracking_beams.size())}, {"R"});
 }
 
-setFRBBeams::~setFRBBeams() {
+setBBBeams::~setBBBeams() {
     restServer& rest_server = restServer::instance();
     rest_server.remove_get_callback(unique_name + "/beams");
 }
 
-void setFRBBeams::send_beams(connectionInstance& conn) const {
+void setBBBeams::send_beams(connectionInstance& conn) const {
     nlohmann::json reply = {};
-    reply.emplace("beams", beams);
+    reply.emplace("fixed_beams", fixed_beams);
+    reply.emplace("tracking_beams", tracking_beams);
     conn.send_json_reply(reply);
 }
     
-std::vector<FRBBeam> setFRBBeams::build_grid_beams() const {
+std::vector<FixedBBBeam> setBBBeams::build_grid_beams() const {
 
-    std::vector<FRBBeam> grid_beams(num_x * num_y);
+    std::vector<FixedBBBeam> grid_beams(num_x * num_y);
 
     for (uint32_t by = 0; by < num_y; by++) {
         for (uint32_t bx = 0; bx < num_x; bx++) {
@@ -124,9 +128,9 @@ std::vector<FRBBeam> setFRBBeams::build_grid_beams() const {
     return grid_beams;
 }
     
-std::vector<FRBBeam> setFRBBeams::build_grid_deg_beams() const {
+std::vector<FixedBBBeam> setBBBeams::build_grid_deg_beams() const {
 
-    std::vector<FRBBeam> grid_beams(num_x * num_y);
+    std::vector<FixedBBBeam> grid_beams(num_x * num_y);
 
     for (uint32_t by = 0; by < num_y; by++) {
         for (uint32_t bx = 0; bx < num_x; bx++) {
@@ -141,20 +145,18 @@ std::vector<FRBBeam> setFRBBeams::build_grid_deg_beams() const {
     return grid_beams;
 }
     
-std::vector<FRBBeam> setFRBBeams::build_chime_beams() const {
-    FATAL_ERROR("chime beams not implemented.");
-}
 
-std::vector<FRBBeam> setFRBBeams::build_seth_beams() const {
-    FATAL_ERROR("seth beams not implemented.");
-}
+void setBBBeams::main_thread() {
 
-void setFRBBeams::main_thread() {
 
+    frameID in_frame_id(in_buf);
     frameID pos_frame_id(out_pos_buf);
     frameID id_frame_id(out_id_buf);
 
     while (!stop_thread) {
+        uint8_t *in_ptr = (uint8_t *)in_buf->wait_for_full_frame(unique_name, in_frame_id);
+        if (in_ptr == nullptr)
+            break;
         float *beam_pos = (float *)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
         if (beam_pos == nullptr)
             break;
@@ -162,13 +164,13 @@ void setFRBBeams::main_thread() {
         if (beam_id == nullptr)
             break;
 
-        DEBUG("Writing {:d} beams to {:s} and {:s}", beams.size(),
+        DEBUG("Writing {:d} beams to {:s} and {:s}", fixed_beams.size() + tracking_beams.size(),
                 out_pos_buf->buffer_name, out_id_buf->buffer_name);
         
-        for (size_t b = 0; b < beams.size(); b++) {
-            beam_id[b] = beams.at(b).id;
-            beam_pos[2*b+0] = beams.at(b).x_dir_grid;
-            beam_pos[2*b+1] = beams.at(b).y_dir_grid;
+        for (size_t b = 0; b < fixed_beams.size(); b++) {
+            beam_id[b] = fixed_beams.at(b).id;
+            beam_pos[2*b+0] = fixed_beams.at(b).x_dir_grid;
+            beam_pos[2*b+1] = fixed_beams.at(b).y_dir_grid;
         }
 
         out_pos_buf->allocate_new_metadata_object(pos_frame_id);
@@ -189,6 +191,7 @@ void setFRBBeams::main_thread() {
 
         id_meta->check_frame_desc(out_id_buf->get_ndarray_frame_desc());
 
+        in_buf->mark_frame_empty(unique_name, in_frame_id++);
         out_pos_buf->mark_frame_full(unique_name, pos_frame_id++);
         out_id_buf->mark_frame_full(unique_name, id_frame_id++);
 

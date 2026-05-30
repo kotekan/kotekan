@@ -71,6 +71,7 @@ add_library(
     InputSubset.cpp
     setScatterIndices.cpp
     UpchannelizationSchedule.cpp
+    setBBBeams.cpp
     calcBBPhase.cpp
     setUpchanGain.cpp
     setFRB1Phase.cpp
