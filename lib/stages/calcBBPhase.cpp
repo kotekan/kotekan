@@ -36,11 +36,7 @@ class calcBBPhase : public kotekan::Stage {
         config.get<std::vector<int>>(unique_name, "frequency_channels");
 
     // Baseband beamformer setup
-    const int bb_num_beams_x = config.get<int>(unique_name, "bb_num_beams_x");
-    const int bb_num_beams_y = config.get<int>(unique_name, "bb_num_beams_y");
-    const int bb_num_beams = bb_num_beams_x * bb_num_beams_y;
-    const float bb_beam_separation_x = config.get<float>(unique_name, "bb_beam_separation_x");
-    const float bb_beam_separation_y = config.get<float>(unique_name, "bb_beam_separation_y");
+    const int bb_num_beams = config.get<int>(unique_name, "bb_num_beams");
     const int bb_scale = config.get<int>(unique_name, "bb_scale");
 
     const std::ptrdiff_t bb_beam_positions_frame_size [[maybe_unused]] =
@@ -70,9 +66,19 @@ public:
         assert(bb_beam_positions_buffer);
         assert(A_buffer);
         assert(s_buffer);
-        bb_beam_positions_buffer->register_producer(unique_name);
+        bb_beam_positions_buffer->register_consumer(unique_name);
         A_buffer->register_producer(unique_name);
         s_buffer->register_producer(unique_name);
+
+        bb_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
+            "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"});
+        
+        A_buffer->allocate_ndarray_frame_desc<std::int8_t, 5>(
+            "A", {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
+            {"F", "P", "B", "D", "C"});
+
+        s_buffer->allocate_ndarray_frame_desc<std::int32_t, 3>(
+            "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"});
     }
 
     virtual ~calcBBPhase() {}
@@ -105,7 +111,7 @@ public:
         DEBUG("[{:s}/{:d}] Waiting for buffer...", bb_beam_positions_buffer->buffer_name,
               frame_index);
         float* const bb_beam_positions_frame = static_cast<float*>(static_cast<void*>(
-            bb_beam_positions_buffer->wait_for_empty_frame(unique_name, frame_id)));
+            bb_beam_positions_buffer->wait_for_full_frame(unique_name, frame_id)));
         if (!bb_beam_positions_frame)
             return;
 
@@ -127,60 +133,30 @@ public:
         assert(std::ptrdiff_t(A_buffer->frame_size) == A_frame_size);
         assert(std::ptrdiff_t(s_buffer->frame_size) == s_frame_size);
 
-        // Set metadata
-        bb_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
-            "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"});
-        bb_beam_positions_buffer->allocate_new_metadata_object(frame_id);
-        const auto& bb_beam_positions_meta =
-            get_chord_metadata(bb_beam_positions_buffer->get_metadata(frame_id));
-        bb_beam_positions_meta->set_from_frame_desc(
-            bb_beam_positions_buffer->get_ndarray_frame_desc());
-        bb_beam_positions_meta->set_fpga_seq_num(frame_index * num_times);
-        bb_beam_positions_meta->set_time_downsampling_fpga(1);
 
-        A_buffer->allocate_ndarray_frame_desc<std::int8_t, 5>(
-            "A", {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
-            {"F", "P", "B", "D", "C"});
+        // Get timing info from beam positions buffer.
+        const auto& bb_beam_positions_meta = get_chord_metadata(bb_beam_positions_buffer->get_metadata(frame_id));
+        uint64_t seq_num = bb_beam_positions_meta->get_fpga_seq_num();
+        uint64_t time_downsampling = bb_beam_positions_meta->get_time_downsampling_fpga();
+
+        // Set metadata
         A_buffer->allocate_new_metadata_object(frame_id);
         const auto& A_meta = get_chord_metadata(A_buffer->get_metadata(frame_id));
         A_meta->set_from_frame_desc(A_buffer->get_ndarray_frame_desc());
-        A_meta->set_fpga_seq_num(frame_index * num_times);
-        A_meta->set_time_downsampling_fpga(1);
+        A_meta->set_fpga_seq_num(seq_num);
+        A_meta->set_time_downsampling_fpga(time_downsampling);
         A_meta->set_coarse_freq(frequency_channels);
         A_meta->set_freq_upchan_factor(freq_upchan_factor);
         A_meta->set_freq_upchan_index(freq_upchan_index);
 
-        s_buffer->allocate_ndarray_frame_desc<std::int32_t, 3>(
-            "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"});
         s_buffer->allocate_new_metadata_object(frame_id);
         const auto& s_meta = get_chord_metadata(s_buffer->get_metadata(frame_id));
         s_meta->set_from_frame_desc(s_buffer->get_ndarray_frame_desc());
-        s_meta->set_fpga_seq_num(frame_index * num_times);
-        s_meta->set_time_downsampling_fpga(1);
+        s_meta->set_fpga_seq_num(seq_num);
+        s_meta->set_time_downsampling_fpga(time_downsampling);
         s_meta->set_coarse_freq(frequency_channels);
         s_meta->set_freq_upchan_factor(freq_upchan_factor);
         s_meta->set_freq_upchan_index(freq_upchan_index);
-
-        // Set bb_beam_positions
-        {
-            //TODO: Move this to its own stage.
-            // Find centre
-            const float i_x0 = (bb_num_beams_x - 1) / 2.0f;
-            const float i_y0 = (bb_num_beams_y - 1) / 2.0f;
-            for (int i_y = 0; i_y < bb_num_beams_y; ++i_y) {
-                for (int i_x = 0; i_x < bb_num_beams_x; ++i_x) {
-                    const int beam = i_x + bb_num_beams_x * i_y;
-                    const int idx = 2 * beam;
-                    const float theta_x = bb_beam_separation_x * (i_x - i_x0);
-                    const float theta_y = bb_beam_separation_y * (i_y - i_y0);
-                    assert(idx >= 0
-                           && idx < std::ptrdiff_t(bb_beam_positions_buffer->frame_size
-                                                   / sizeof *bb_beam_positions_frame));
-                    bb_beam_positions_frame[idx + 0] = theta_x;
-                    bb_beam_positions_frame[idx + 1] = theta_y;
-                }
-            }
-        }
 
         // Set A
         {
@@ -242,9 +218,9 @@ public:
         }
 
         // Mark buffers as full
-        DEBUG("[{:s}/{:d}] Marking buffer as full...", bb_beam_positions_buffer->buffer_name,
+        DEBUG("[{:s}/{:d}] Marking buffer as empty...", bb_beam_positions_buffer->buffer_name,
               frame_index);
-        bb_beam_positions_buffer->mark_frame_full(unique_name, frame_id);
+        bb_beam_positions_buffer->mark_frame_empty(unique_name, frame_id);
 
         DEBUG("[{:s}/{:d}] Marking buffer as full...", A_buffer->buffer_name, frame_index);
         A_buffer->mark_frame_full(unique_name, frame_id);
