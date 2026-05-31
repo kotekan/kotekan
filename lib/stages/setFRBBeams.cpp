@@ -38,6 +38,7 @@ private:
     Buffer* out_pos_buf;
     Buffer* out_id_buf;
     const std::string mode;
+    const uint32_t num_beams;
     const std::vector<FRBBeam> beam_table;
     const uint32_t num_x;
     const uint32_t num_y;
@@ -54,6 +55,7 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&setFRBBeams::main_thread, this)),
     mode(config.get<std::string>(unique_name, "mode")),
+    num_beams(config.get<uint32_t>(unique_name, "num_beams")),
     beam_table(config.get_default<std::vector<FRBBeam>>(unique_name, "beams", {})),
     num_x(config.get_default<uint32_t>(unique_name, "num_x", 0)),
     num_y(config.get_default<uint32_t>(unique_name, "num_y", 0)),
@@ -87,13 +89,16 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
         FATAL_ERROR("Unknown mode: {:s}", mode);
     }
 
+    if (beams.size() != num_beams)
+        FATAL_ERROR("num_beams {:d} != number of constructed beams {:d}", num_beams, beams.size());
+
     using namespace std::placeholders;
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(unique_name + "/beams",
                                       std::bind(&setFRBBeams::send_beams, this, _1));
 
-    out_pos_buf->allocate_ndarray_frame_desc<float, 2>("frb2_beam_positions", {static_cast<ptrdiff_t>(beams.size()), 2}, {"R", "X/Y"});
-    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>("frb2_beam_ids", {static_cast<ptrdiff_t>(beams.size())}, {"R"});
+    out_pos_buf->allocate_ndarray_frame_desc<float, 2>("frb2_beam_positions", {static_cast<ptrdiff_t>(num_beams), 2}, {"R", "X/Y"});
+    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>("frb2_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"R"});
 }
 
 setFRBBeams::~setFRBBeams() {

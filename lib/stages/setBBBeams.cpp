@@ -36,7 +36,9 @@ private:
     Buffer* in_buf;
     Buffer* out_pos_buf;
     Buffer* out_id_buf;
-    const std::string mode;
+    const std::string fixed_mode;
+    const uint32_t num_beams;
+    const uint64_t seqs_per_frame;
     const std::vector<FixedBBBeam> fixed_beam_table;
     const std::vector<TrackingBBBeam> tracking_beam_table;
     const uint32_t num_x;
@@ -54,7 +56,9 @@ REGISTER_KOTEKAN_STAGE(setBBBeams);
 setBBBeams::setBBBeams(Config& config, const std::string& unique_name,
                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&setBBBeams::main_thread, this)),
-    mode(config.get<std::string>(unique_name, "mode")),
+    fixed_mode(config.get<std::string>(unique_name, "fixed_mode")),
+    num_beams(config.get<uint32_t>(unique_name, "num_beams")),
+    seqs_per_frame(config.get<uint64_t>(unique_name, "seqs_per_frame")),
     fixed_beam_table(config.get_default<std::vector<FixedBBBeam>>(unique_name, "fixed_beams", {})),
     tracking_beam_table(config.get_default<std::vector<TrackingBBBeam>>(unique_name, "tracking_beams", {})),
     num_x(config.get_default<uint32_t>(unique_name, "num_x", 0)),
@@ -73,30 +77,34 @@ setBBBeams::setBBBeams(Config& config, const std::string& unique_name,
     out_id_buf->register_producer(unique_name);
 
     // Check mode & assign num_beams
-    if (mode == "manual") {
+    if (fixed_mode == "manual") {
         if (fixed_beam_table.size() == 0 && tracking_beam_table.size() == 0)
             FATAL_ERROR("manual mode, but `fixed_beams` and `tracking_beams` are empty");
         fixed_beams = fixed_beam_table;
-        tracking_beams = tracking_beam_table;
-    } else if (mode == "grid") {
+    } else if (fixed_mode == "grid") {
         if (num_x == 0 || num_y == 0)
             FATAL_ERROR("grid mode, but num_x ({:d}) or num_y ({:d}) is 0", num_x, num_y);
         fixed_beams = build_grid_beams();
-    } else if (mode == "grid_degrees") {
+    } else if (fixed_mode == "grid_degrees") {
         if (num_x == 0 || num_y == 0)
             FATAL_ERROR("grid_degrees mode, but num_x ({:d}) or num_y ({:d}) is 0", num_x, num_y);
         fixed_beams = build_grid_deg_beams();
     } else {
-        FATAL_ERROR("Unknown mode: {:s}", mode);
+        FATAL_ERROR("Unknown fixed_mode: {:s}", fixed_mode);
     }
+    tracking_beams = tracking_beam_table;
+
+    if (fixed_beams.size() + tracking_beams.size() != num_beams)
+        FATAL_ERROR("Number of fixed {:d} + tracking {:d} beams != num_beams {:d}",
+                fixed_beams.size(), tracking_beams.size(), num_beams);
 
     using namespace std::placeholders;
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(unique_name + "/beams",
                                       std::bind(&setBBBeams::send_beams, this, _1));
 
-    out_pos_buf->allocate_ndarray_frame_desc<float, 2>("bb_beam_positions", {static_cast<ptrdiff_t>(fixed_beams.size() + tracking_beams.size()), 2}, {"B", "X/Y"});
-    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>("bb_beam_ids", {static_cast<ptrdiff_t>(fixed_beams.size() + tracking_beams.size())}, {"R"});
+    out_pos_buf->allocate_ndarray_frame_desc<float, 2>("bb_beam_positions", {static_cast<ptrdiff_t>(num_beams), 2}, {"B", "X/Y"});
+    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>("bb_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"R"});
 }
 
 setBBBeams::~setBBBeams() {
@@ -153,10 +161,35 @@ void setBBBeams::main_thread() {
     frameID pos_frame_id(out_pos_buf);
     frameID id_frame_id(out_id_buf);
 
+    if (stop_thread)
+        return;
+
+    // Grab the first frame of the input buffer just to set the clock.
+    // Grab no other frames.
+    uint8_t *in_ptr = (uint8_t *)in_buf->wait_for_full_frame(unique_name, in_frame_id);
+    if (in_ptr == nullptr)
+        return;
+
+    // Get the metadata
+    const std::shared_ptr<const chordMetadata> in_meta = get_chord_metadata(in_buf, in_frame_id);
+    if (!in_meta->has_fpga_seq_num())
+        FATAL_ERROR("in_buf {:s} has no fpga_seq_num, needed for setting clock.",
+                in_buf->buffer_name);
+
+    // Grab the seq num
+    uint64_t first_seq = in_meta->get_fpga_seq_num();
+
+    // We're done, release the frame.
+    in_buf->mark_frame_empty(unique_name, in_frame_id++);
+
+    // Set the seq_num of the first output to be on our output cadence and <= the seq_num
+    // of the first frame we saw. This means these beams will already be considered valid.
+    uint64_t seq0 = seqs_per_frame * (first_seq / seqs_per_frame);
+    uint64_t num_frames = 0;
+
     while (!stop_thread) {
-        uint8_t *in_ptr = (uint8_t *)in_buf->wait_for_full_frame(unique_name, in_frame_id);
-        if (in_ptr == nullptr)
-            break;
+
+        // Grab buffer frames
         float *beam_pos = (float *)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
         if (beam_pos == nullptr)
             break;
@@ -164,38 +197,68 @@ void setBBBeams::main_thread() {
         if (beam_id == nullptr)
             break;
 
+        // Compute the seq_num for this frame
+        uint64_t seq_num = seq0 + num_frames * seqs_per_frame;
+
+        // Get the EOP at this seq_num, needed for tracking beams.
+        const Telescope& tel = Telescope::instance();
+        const uint64_t t_inst_ns = tel.to_time_ns(seq_num);
+        const EOP eop = tel.get_EOP_at_time_ns(t_inst_ns);
+
         DEBUG("Writing {:d} beams to {:s} and {:s}", fixed_beams.size() + tracking_beams.size(),
                 out_pos_buf->buffer_name, out_id_buf->buffer_name);
-        
+       
+        // Write the fixed beams
         for (size_t b = 0; b < fixed_beams.size(); b++) {
             beam_id[b] = fixed_beams.at(b).id;
             beam_pos[2*b+0] = fixed_beams.at(b).x_dir_grid;
             beam_pos[2*b+1] = fixed_beams.at(b).y_dir_grid;
         }
 
+        // Write the tracking beams
+        const size_t b_off = fixed_beams.size();
+        for (size_t b = 0; b < tracking_beams.size(); b++) {
+            beam_id[b + b_off] = tracking_beams.at(b).id;
+
+            // Get the pointing vector in the grid frame for this beam from its RA and DEC.
+            vec3d_t n_grid = tel.vec_cirs_ra_dec_to_grid(tracking_beams.at(b).ra_cirs_deg,
+                                                         tracking_beams.at(b).dec_cirs_deg,
+                                                         eop);
+            // Set the beam position
+            beam_pos[2*(b+b_off)+0] = n_grid[0];
+            beam_pos[2*(b+b_off)+1] = n_grid[1];
+        }
+
+        // Set pos metadata
         out_pos_buf->allocate_new_metadata_object(pos_frame_id);
         const std::shared_ptr<chordMetadata> pos_meta = get_chord_metadata(out_pos_buf, pos_frame_id);
 
+        // Set ndarray sizes and timing
         pos_meta->set_from_frame_desc(out_pos_buf->get_ndarray_frame_desc());
+        pos_meta->set_fpga_seq_num(seq_num);
+        pos_meta->set_time_downsampling_fpga(seqs_per_frame);
 
-        // If this gets made time-dependent, set fpga_seq_num, and fpga_time_downsampling here.
-
+        // Check consistency just in case
         pos_meta->check_frame_desc(out_pos_buf->get_ndarray_frame_desc());
 
+        // Set id metadata
         out_id_buf->allocate_new_metadata_object(id_frame_id);
         const std::shared_ptr<chordMetadata> id_meta = get_chord_metadata(out_id_buf, id_frame_id);
 
+        // Check consistency just in case
         id_meta->set_from_frame_desc(out_id_buf->get_ndarray_frame_desc());
+        id_meta->set_fpga_seq_num(seq_num);
+        id_meta->set_time_downsampling_fpga(seqs_per_frame);
 
-        // If this gets made time-dependent, set fpga_seq_num, and fpga_time_downsampling here.
-
+        // Check consistency just in case
         id_meta->check_frame_desc(out_id_buf->get_ndarray_frame_desc());
 
-        in_buf->mark_frame_empty(unique_name, in_frame_id++);
+        // Increment frames so next loop gets a new seq_num
+        num_frames++;
+
+        // Release filled frames.
         out_pos_buf->mark_frame_full(unique_name, pos_frame_id++);
         out_id_buf->mark_frame_full(unique_name, id_frame_id++);
-
-        break;
     } 
 }
     
