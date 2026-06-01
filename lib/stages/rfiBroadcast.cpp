@@ -28,33 +28,6 @@ REGISTER_KOTEKAN_STAGE(rfiBroadcast);
 
 constexpr int BITS_PER_BYTE = 8;
 constexpr int RFI_BUF_S = 3;
-// Conversion between median absolute deviations and sigma for
-// a normal distribution
-constexpr float MAD_TO_SIGMA = 1.4826;
-
-namespace {
-/// Helper to compute array median. Modifies `arr` in-place.
-float median(std::vector<float>& arr) {
-    auto n = arr.size();
-    auto mid = n / 2;
-
-    if (mid == 0) {
-        return 0.0f;
-    }
-
-    std::nth_element(arr.begin(), arr.begin() + mid, arr.end());
-    auto upper = arr[n / 2];
-
-    // array length is odd - return the central value
-    if (n % 2 != 0)
-        return upper;
-
-    // array length is even
-    std::nth_element(arr.begin(), arr.begin() + mid - 1, arr.end());
-
-    return (upper + arr[n / 2 - 1]) / 2.0;
-}
-}
 
 rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
@@ -147,15 +120,10 @@ void rfiBroadcast::main_thread() {
     // Initialize the payload struct
     RFIPayload payload(num_local_freq, num_elements);
 
-    // Store information of the shape of the skbar array
-    const size_t _arr_size = num_local_freq * num_elements;
-    // Need an array to store the sum of skbar
-    // over time samples, since we don't explicitly assume
-    // that there is only one time sample per frame
-    // std::vector<float> skbar_sum(num_local_freq * num_elements, 0.0f);
-    // Also define an array for inplace reordering of
-    // skbar_sum when computing the median
-    // std::vector<float> _median_tmp(num_elements, 0.0f);
+    // Strides for SK tilde and SK bar
+    const size_t SE = num_elements * RFI_BUF_S;
+    const size_t FS = num_local_freq * RFI_BUF_S;
+    const size_t FSE = FS * num_elements;
 
     // Sort out the rfi mask buffer time stride
     auto rfi_frame_desc = rfi_mask_buf->get_ndarray_frame_desc();
@@ -168,7 +136,6 @@ void rfiBroadcast::main_thread() {
     RFIHeader header;
     header.set_version();
     // The payload size is set when calling `RFIPayload.serialize_per_freq`
-    header.sk_step = static_cast<uint32_t>(rfi_downsampling_factor);
     header.num_elements = static_cast<uint32_t>(num_elements);
     header.samples_per_data_set = static_cast<uint32_t>(samples_per_data_set);
     header.num_total_freq = static_cast<uint32_t>(num_global_freq);
@@ -231,80 +198,53 @@ void rfiBroadcast::main_thread() {
 
         // Wait for the sk_tilde frame
         DEBUG("Waiting on empty sk_tilde frame.");
-        uint8_t* sk_tilde_frame =
-            (uint8_t*)sk_tilde_buf->wait_for_full_frame(unique_name, sktilde_frame_id);
+        float* sk_tilde_frame = reinterpret_cast<float*>(
+            sk_tilde_buf->wait_for_full_frame(unique_name, sktilde_frame_id));
         if (sk_tilde_frame == nullptr)
             break;
 
-        // Sum SK tilde over time for each frequency (second dimension)
-        for (size_t f = 0; f < num_local_freq; ++f) {
-            float _accum = 0;
-            // Sum over time samples, which is the first dimension
-            for (size_t t = RFI_BUF_S * f; t < sk_tilde_buf->frame_size;
-                 t += RFI_BUF_S * num_local_freq) {
-                _accum += (float)sk_tilde_frame[t];
+        // Sum SK tilde over time (outer index)
+        float* dst_tilde = payload.sktilde_avg.data();
+
+        for (size_t t = 0; t < _downsampled_samples_per_data_set; ++t) {
+            // freq_0 for this time sample
+            const float* src = sk_tilde_frame + (t * FS);
+            // iterate frequencies. stride by RFI_BUF_S to get only
+            // the SK value, ignoring sigma and bias
+            for (size_t f = 0; f < num_local_freq; ++f) {
+                dst_tilde[f] += src[f * RFI_BUF_S];
             }
-            payload.sktilde_avg[f] = _accum;
         }
 
         sk_tilde_buf->mark_frame_empty(unique_name, sktilde_frame_id);
 
         DEBUG("Waiting on empty sk_bar frame.");
-        uint8_t* sk_bar_frame =
-            (uint8_t*)sk_bar_buf->wait_for_full_frame(unique_name, skbar_frame_id);
+        float* sk_bar_frame =
+            reinterpret_cast<float*>(sk_bar_buf->wait_for_full_frame(unique_name, skbar_frame_id));
         if (sk_bar_frame == nullptr)
             break;
 
         // Accumulate in time. Outer index is time samples
-        // Index each frequency and element
-        for (size_t j = 0; j < _arr_size; ++j) {
-            // sum over time
-            float _accum = 0;
-            size_t _elem_id = RFI_BUF_S * j;
-            for (size_t i = 0; i < sk_bar_buf->frame_size; i += RFI_BUF_S * _arr_size) {
-                // Skip forward by 3 to grab just the SK value
-                _accum += sk_bar_frame[_elem_id + i];
+        float* dst_bar = payload.skbar_avg.data();
+
+        for (size_t t = 0; t < _second_downsampled_samples_per_data_set; ++t) {
+            for (size_t f = 0; f < num_local_freq; ++f) {
+                // For this frequency and time sample, the first element stride
+                // is a full stride for each time sample (FSE) and a stride
+                // through all elements and values (SK, sigma, bias) to this
+                // frequency
+                const float* src = sk_bar_frame + (t * FSE) + (f * SE);
+                // target is the same stride through elements, but there's no
+                // `S` axis since we're just storing SK
+                float* dst_bar_t = dst_bar + f * num_elements;
+
+                for (size_t e = 0; e < num_elements; ++e) {
+                    dst_bar_t[e] += src[e];
+                }
             }
-            // skbar_sum[j] = _accum;
-            payload.bad_feed_counts[j] = _accum;
         }
 
-        // Release the frame since we've copied out to skbar_sum
         sk_bar_buf->mark_frame_empty(unique_name, skbar_frame_id);
-
-        // Jump to the start of each frequency block since we need to compute
-        // the statistics for each frequency independently
-        // for (size_t f = 0; f < _arr_size; f += num_elements) {
-        //     // Compute the median of skbar_sum. `median` modifies in-place
-        //     // so copy to a temp array
-        //     std::copy_n(skbar_sum.begin() + f, num_elements, _median_tmp.begin());
-        //     float med = median(_median_tmp);
-
-        //     // For each element, compute |x - med(x)|
-        //     for (size_t i = 0; i < num_elements; ++i) {
-        //         // subtract the median in-place since this will be used twice
-        //         skbar_sum[f + i] = std::abs(skbar_sum[f + i] - med);
-        //         // copy into the temp array to compute the second median
-        //         _median_tmp[i] = skbar_sum[f + i];
-        //     }
-        //     // Compute the flagging threshold in terms of standard deviations for
-        //     // a normal distribution. med(|x - med(x)|) is the normalization factor
-        //     // for a median absolute deviations metric, but since we just care about
-        //     // the threshold, this is equivalent to normalizing and comparing against
-        //     // `num_sigma_deviations * MAD_TO_SIGMA`, avoiding the intermediate division
-        //     float mad_thresh = num_sigma_deviations * MAD_TO_SIGMA * median(_median_tmp);
-
-        //     // Finally, increment the bad feed counter if a sample exceeds
-        //     // num_sigma_deviations standard deviations
-        //     for (size_t i = 0; i < num_elements; ++i) {
-        //         if (skbar_sum[f + i] > mad_thresh) {
-        //             payload.bad_feed_counts[f + i]++;
-        //         }
-        //     }
-        // }
-
-        // // Reset skbar_sum, since it's used in every iteration
-        // std::fill_n(skbar_sum.begin(), _arr_size, 0.0f);
 
         // Increment and wrap to number of frames per packet
         _packet_num_frame_counter = (_packet_num_frame_counter + 1) % frames_per_packet;
@@ -328,8 +268,8 @@ void rfiBroadcast::main_thread() {
                 // fraction flagged is 1.0 - what we computed
                 payload.frac_flagged[f] = 1.0 - payload.frac_flagged[f] / divisor;
             }
-            for (size_t i = 0; i < _arr_size; ++i) {
-                payload.bad_feed_counts[i] /= third_divisor;
+            for (size_t i = 0; i < num_local_freq * num_elements; ++i) {
+                payload.skbar_avg[i] /= third_divisor;
             }
 
             // Get a vector containing a packet per frequency. Need to send
@@ -354,7 +294,7 @@ void rfiBroadcast::main_thread() {
             // Reset payload members used in accumulation to zero
             std::fill(payload.frac_flagged.begin(), payload.frac_flagged.end(), 0.0f);
             std::fill(payload.sktilde_avg.begin(), payload.sktilde_avg.end(), 0.0f);
-            std::fill(payload.bad_feed_counts.begin(), payload.bad_feed_counts.end(), 0.0f);
+            std::fill(payload.skbar_avg.begin(), payload.skbar_avg.end(), 0.0f);
         }
         // Increment frame counters
         sktilde_frame_id++;
