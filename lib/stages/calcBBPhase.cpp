@@ -174,7 +174,7 @@ public:
                             // We choose A independent of polarization
                             using std::clamp, std::lrint, std::polar, std::sqrt;
                             const auto pow2 = [](auto x) { return x * x; };
-                            const int element = dish + polr * num_polarizations;
+                            const int element = dish + polr * num_dishes;
                             const float dish_x = feed_pos_m.at(element)[0];
                             const float dish_y = feed_pos_m.at(element)[1];
                             const float dish_z = feed_pos_m.at(element)[2];

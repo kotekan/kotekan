@@ -11,13 +11,13 @@ frb_num_beams_P: 2 * num_dishes_x
 frb_num_beams_Q: 2 * num_dishes_y
 frb1_input_scale: 1.0 / 16
 
-rad2deg: 57.29577951308232
+frb_rad2deg: 57.29577951308232
 
 frb2_num_beams_x: 16
 frb2_num_beams_y: 16
 frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
-frb2_beam_separation_x: 0.0020 * rad2deg
-frb2_beam_separation_y: 0.0015 * rad2deg
+frb2_beam_separation_x: 0.0020 * frb_rad2deg
+frb2_beam_separation_y: 0.0015 * frb_rad2deg
 
 host_frb2_beam_positions_buffer:
     kotekan_buffer: standard
@@ -357,6 +357,7 @@ run_set_frb_beams:
     out_pos_buf: host_frb2_beam_positions_buffer
     out_id_buf: host_frb2_beam_ids_buffer
     mode: grid_degrees
+    num_beams: frb2_num_beams
     num_x: frb2_num_beams_x
     num_y: frb2_num_beams_y
     x_min: -frb2_beam_separation_x * (frb2_num_beams_x - 1) / 2.0

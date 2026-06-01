@@ -156,40 +156,54 @@ std::vector<FixedBBBeam> setBBBeams::build_grid_deg_beams() const {
 
 void setBBBeams::main_thread() {
 
-
     frameID in_frame_id(in_buf);
     frameID pos_frame_id(out_pos_buf);
     frameID id_frame_id(out_id_buf);
 
-    if (stop_thread)
-        return;
-
-    // Grab the first frame of the input buffer just to set the clock.
-    // Grab no other frames.
-    uint8_t *in_ptr = (uint8_t *)in_buf->wait_for_full_frame(unique_name, in_frame_id);
-    if (in_ptr == nullptr)
-        return;
-
-    // Get the metadata
-    const std::shared_ptr<const chordMetadata> in_meta = get_chord_metadata(in_buf, in_frame_id);
-    if (!in_meta->has_fpga_seq_num())
-        FATAL_ERROR("in_buf {:s} has no fpga_seq_num, needed for setting clock.",
-                in_buf->buffer_name);
-
-    // Grab the seq num
-    uint64_t first_seq = in_meta->get_fpga_seq_num();
-
-    // We're done, release the frame.
-    in_buf->mark_frame_empty(unique_name, in_frame_id++);
-
-    // Set the seq_num of the first output to be on our output cadence and <= the seq_num
-    // of the first frame we saw. This means these beams will already be considered valid.
-    uint64_t seq0 = seqs_per_frame * (first_seq / seqs_per_frame);
-    uint64_t num_frames = 0;
+    uint64_t num_frames = 0; // Total number of frame output
+    uint64_t seq0 = 0; // seq number of 1st output frame
+    bool initialized = false;
 
     while (!stop_thread) {
 
-        // Grab buffer frames
+        // Grab the input buffer we're using for a clock.
+        uint8_t *in_ptr = (uint8_t *)in_buf->wait_for_full_frame(unique_name, in_frame_id);
+        if (in_ptr == nullptr)
+            break;
+
+        // Grab the metadata and unsure it has the fields we need.
+        const std::shared_ptr<const chordMetadata> in_meta = get_chord_metadata(in_buf, in_frame_id);
+        if (!in_meta->has_fpga_seq_num())
+            FATAL_ERROR("in_buf {:s} has no fpga_seq_num, needed for setting clock.",
+                    in_buf->buffer_name);
+
+        // Grab the seq num
+        uint64_t input_seq = in_meta->get_fpga_seq_num();
+        
+        // All we need, release the frame.
+        in_buf->mark_frame_empty(unique_name, in_frame_id++);
+
+        // First time setup
+        if (!initialized) {
+            // Set the seq_num of the first output to be on our output cadence and <= the seq_num
+            // of the first frame we saw. This means these beams will already be considered valid.
+            seq0 = seqs_per_frame * (input_seq / seqs_per_frame);
+            initialized = true;
+        }
+
+        // Compute the seq_num for this output frame
+        uint64_t seq_num = seq0 + num_frames * seqs_per_frame;
+
+        // The input buffer may be much faster than the beam pos & id buffers, so just spin here
+        // until we're close to an output time.
+        if (seq_num > input_seq)
+            continue;
+
+        // TODO: remove this (and update the cuda wrappers) to make the beam positions time dependent.  Have to keep this stage spinning on the input buffer to not stall the pipeline.
+        if (num_frames > 0)
+            continue;
+
+        // Grab output buffer frames
         float *beam_pos = (float *)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
         if (beam_pos == nullptr)
             break;
@@ -197,12 +211,9 @@ void setBBBeams::main_thread() {
         if (beam_id == nullptr)
             break;
 
-        // Compute the seq_num for this frame
-        uint64_t seq_num = seq0 + num_frames * seqs_per_frame;
-
-        // Get the EOP at this seq_num, needed for tracking beams.
+        // Get the EOP at the center of this frame, needed for tracking beams.
         const Telescope& tel = Telescope::instance();
-        const uint64_t t_inst_ns = tel.to_time_ns(seq_num);
+        const uint64_t t_inst_ns = tel.to_time_ns(seq_num + seqs_per_frame / 2);
         const EOP eop = tel.get_EOP_at_time_ns(t_inst_ns);
 
         DEBUG("Writing {:d} beams to {:s} and {:s}", fixed_beams.size() + tracking_beams.size(),
