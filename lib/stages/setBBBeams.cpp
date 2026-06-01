@@ -160,48 +160,37 @@ void setBBBeams::main_thread() {
     frameID pos_frame_id(out_pos_buf);
     frameID id_frame_id(out_id_buf);
 
+    if (stop_thread)
+        return;
+    
+    // Grab the input buffer we're using for a clock.
+    uint8_t *in_ptr = (uint8_t *)in_buf->wait_for_full_frame(unique_name, in_frame_id);
+    if (in_ptr == nullptr)
+        return;
+
+    // Grab the metadata and unsure it has the fields we need.
+    const std::shared_ptr<const chordMetadata> in_meta = get_chord_metadata(in_buf, in_frame_id);
+    if (!in_meta->has_fpga_seq_num())
+        FATAL_ERROR("in_buf {:s} has no fpga_seq_num, needed for setting clock.",
+                in_buf->buffer_name);
+
+    // Grab the seq num
+    uint64_t input_seq = in_meta->get_fpga_seq_num();
+    
+    // All we need, release the frame.
+    in_buf->mark_frame_empty(unique_name, in_frame_id++);
+    // And unregister from the buffer entirely (otherwise would have to mark all frame as they come in)
+    in_buf->unregister_consumer(unique_name);
+
+    // Set the seq_num of the first output to be on our output cadence and <= the seq_num
+    // of the first frame we saw. This means these beams will already be considered valid.
     uint64_t num_frames = 0; // Total number of frame output
-    uint64_t seq0 = 0; // seq number of 1st output frame
-    bool initialized = false;
+    uint64_t seq0 = seqs_per_frame * (input_seq / seqs_per_frame); // seq number of 1st output frame
 
     while (!stop_thread) {
-
-        // Grab the input buffer we're using for a clock.
-        uint8_t *in_ptr = (uint8_t *)in_buf->wait_for_full_frame(unique_name, in_frame_id);
-        if (in_ptr == nullptr)
-            break;
-
-        // Grab the metadata and unsure it has the fields we need.
-        const std::shared_ptr<const chordMetadata> in_meta = get_chord_metadata(in_buf, in_frame_id);
-        if (!in_meta->has_fpga_seq_num())
-            FATAL_ERROR("in_buf {:s} has no fpga_seq_num, needed for setting clock.",
-                    in_buf->buffer_name);
-
-        // Grab the seq num
-        uint64_t input_seq = in_meta->get_fpga_seq_num();
-        
-        // All we need, release the frame.
-        in_buf->mark_frame_empty(unique_name, in_frame_id++);
-
-        // First time setup
-        if (!initialized) {
-            // Set the seq_num of the first output to be on our output cadence and <= the seq_num
-            // of the first frame we saw. This means these beams will already be considered valid.
-            seq0 = seqs_per_frame * (input_seq / seqs_per_frame);
-            initialized = true;
-        }
-
-        // Compute the seq_num for this output frame
-        uint64_t seq_num = seq0 + num_frames * seqs_per_frame;
-
-        // The input buffer may be much faster than the beam pos & id buffers, so just spin here
-        // until we're close to an output time.
-        if (seq_num > input_seq)
-            continue;
-
         // TODO: remove this (and update the cuda wrappers) to make the beam positions time dependent.  Have to keep this stage spinning on the input buffer to not stall the pipeline.
         if (num_frames > 0)
-            continue;
+            break;
 
         // Grab output buffer frames
         float *beam_pos = (float *)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
@@ -210,6 +199,9 @@ void setBBBeams::main_thread() {
         uint64_t *beam_id = (uint64_t *)out_pos_buf->wait_for_empty_frame(unique_name, id_frame_id);
         if (beam_id == nullptr)
             break;
+
+        // Compute the seq_num for this output frame
+        uint64_t seq_num = seq0 + num_frames * seqs_per_frame;
 
         // Get the EOP at the center of this frame, needed for tracking beams.
         const Telescope& tel = Telescope::instance();
