@@ -684,6 +684,9 @@ grid_idx_2d_t CHORDTelescope::station_id_to_main_array_grid_indices(station_id_t
     if (dish >= _num_dishes)
         FATAL_ERROR("station_id {:d}: dish {:d} >= num_dishes {:d}", st_id, dish, _num_dishes);
     const dishInfo d = _geographic_params.dish_info_table.at(dish);
+
+    if (d.type != DishType::ArrayDish)
+        return {-1, -1};
     
     return {d.grid_x_idx, d.grid_y_idx};
 } 
