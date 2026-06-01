@@ -37,26 +37,32 @@ struct __attribute__((packed)) RFIHeader {
     }
 };
 
+using FreqIDType = uint32_t;
+using FracFlaggedType = float;
+using SkTildeType = float;
+using BadFeedType = float;
+
 /*
  * @struct RFIPayload
  * @brief A structure defining the payload included in each rfiBroadcast packet.
  */
 struct RFIPayload {
     /// List of local frequencies. Has length `num_local_freq`.
-    std::vector<uint32_t> freq_ids;
+    std::vector<FreqIDType> freq_ids;
     /// Fraction of flagged samples per freq. Has length `num_local_freq`.
-    std::vector<float> frac_flagged;
+    std::vector<FracFlaggedType> frac_flagged;
     /// Average SK per frequency. Has length `num_local_freq`.
-    std::vector<float> sktilde_avg;
+    std::vector<SkTildeType> sktilde_avg;
     /// Count of bad feeds per freq and element. Has length
     /// `num_local_freq` * `num_elements`. `feeds` and `elements` used
     /// interchangeably here (possibly not for the best...)
-    std::vector<float> bad_feed_counts;
+    std::vector<BadFeedType> bad_feed_counts;
 
     // Constructor
     RFIPayload(size_t num_local_freq, size_t num_elements) :
-        freq_ids(num_local_freq, 0), frac_flagged(num_local_freq, 0.0f),
-        sktilde_avg(num_local_freq, 0.0f), bad_feed_counts(num_local_freq * num_elements, 0u) {}
+        freq_ids(num_local_freq, FreqIDType{}), frac_flagged(num_local_freq, FracFlaggedType{}),
+        sktilde_avg(num_local_freq, SkTildeType{}),
+        bad_feed_counts(num_local_freq * num_elements, BadFeedType{}) {}
 
     /// Return a single packet per frequency, which is more trivial to
     /// receive and limits the UDP packet size
@@ -65,11 +71,10 @@ struct RFIPayload {
         RFIHeader new_header(header);
         // Compute the total packet size
         uint32_t payload_length =
-            (freq_ids.size() * sizeof(uint32_t) + frac_flagged.size() * sizeof(float)
-             + sktilde_avg.size() * sizeof(float) + bad_feed_counts.size() * sizeof(float))
+            (freq_ids.size() * sizeof(FreqIDType) + frac_flagged.size() * sizeof(FracFlaggedType)
+             + sktilde_avg.size() * sizeof(SkTildeType)
+             + bad_feed_counts.size() * sizeof(BadFeedType))
             / header.num_local_freq;
-
-        // uint32_t packet_length = sizeof(header) + payload_length;
 
         // Set extra header metadata
         new_header.num_local_freq = 1;
@@ -86,17 +91,17 @@ struct RFIPayload {
             memcpy(p, &new_header, sizeof(new_header));
             p += sizeof(new_header);
             // copy the current frequency index
-            memcpy(p, &freq_ids[f], sizeof(uint32_t));
-            p += sizeof(uint32_t);
+            memcpy(p, &freq_ids[f], sizeof(FreqIDType));
+            p += sizeof(FreqIDType);
             // copy the fraction of flagged samples
-            memcpy(p, &frac_flagged[f], sizeof(float));
-            p += sizeof(float);
+            memcpy(p, &frac_flagged[f], sizeof(FracFlaggedType));
+            p += sizeof(FracFlaggedType);
             // copy the average SK statistic
-            memcpy(p, &sktilde_avg[f], sizeof(float));
-            p += sizeof(float);
+            memcpy(p, &sktilde_avg[f], sizeof(SkTildeType));
+            p += sizeof(SkTildeType);
             // copy the bad feed counter
-            size_t _sizeof_bad_feed = header.num_elements * sizeof(float);
-            memcpy(p, &bad_feed_counts[f * _sizeof_bad_feed], _sizeof_bad_feed);
+            memcpy(p, bad_feed_counts.data() + f * header.num_elements,
+                   header.num_elements * sizeof(BadFeedType));
         }
 
         return packets;
