@@ -471,9 +471,9 @@ vec3d_t Telescope::vec_cirs_ra_dec_to_grid(double ra_cirs_deg, double dec_cirs_d
     return vec_cirs_to_grid(v_cirs, eop);
 }
 
-grid_idx_2d_t Telescope::element_index_to_grid_indices(uint64_t el_idx, ElementOrder ord) const {
+grid_idx_2d_t Telescope::element_index_to_main_array_grid_indices(uint64_t el_idx, ElementOrder ord) const {
     station_id_t st_id = element_index_to_station_id(el_idx, ord);
-    return station_id_to_grid_indices(st_id);
+    return station_id_to_main_array_grid_indices(st_id);
 }
 
 vec3d_t Telescope::element_index_to_feed_position_m(uint64_t el_idx, ElementOrder ord) const {
@@ -481,11 +481,11 @@ vec3d_t Telescope::element_index_to_feed_position_m(uint64_t el_idx, ElementOrde
     return station_id_to_feed_position_m(st_id);
 }
 
-std::vector<grid_idx_2d_t> Telescope::get_grid_indices(uint64_t num_elements, ElementOrder ord) const {
+std::vector<grid_idx_2d_t> Telescope::get_main_array_grid_indices(uint64_t num_elements, ElementOrder ord) const {
     std::vector<grid_idx_2d_t> grid_indices(num_elements);
 
     for(uint64_t el_idx = 0; el_idx < num_elements; el_idx++) 
-        grid_indices.at(el_idx) = element_index_to_grid_indices(el_idx, ord);
+        grid_indices.at(el_idx) = element_index_to_main_array_grid_indices(el_idx, ord);
 
     return grid_indices;
 }

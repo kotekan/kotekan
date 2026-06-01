@@ -316,7 +316,7 @@ public:
 
     virtual station_id_t element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const = 0;
     virtual uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const = 0;
-    virtual grid_idx_2d_t station_id_to_grid_indices(station_id_t st_id) const = 0;
+    virtual grid_idx_2d_t station_id_to_main_array_grid_indices(station_id_t st_id) const = 0;
     virtual vec3d_t station_id_to_feed_position_m(station_id_t st_id) const = 0;
 
     /**
@@ -471,10 +471,10 @@ public:
      **/
     vec3d_t vec_cirs_ra_dec_to_grid(double ra_cirs_deg, double dec_cirs_deg, const EOP& eop) const;
 
-    grid_idx_2d_t element_index_to_grid_indices(uint64_t el_idx, ElementOrder ord) const;
+    grid_idx_2d_t element_index_to_main_array_grid_indices(uint64_t el_idx, ElementOrder ord) const;
     vec3d_t element_index_to_feed_position_m(uint64_t el_idx, ElementOrder ord) const;
 
-    std::vector<grid_idx_2d_t> get_grid_indices(uint64_t num_elements, ElementOrder ord) const;
+    std::vector<grid_idx_2d_t> get_main_array_grid_indices(uint64_t num_elements, ElementOrder ord) const;
     std::vector<vec3d_t> get_feed_positions_m(uint64_t num_elements, ElementOrder ord) const;
 
     /**

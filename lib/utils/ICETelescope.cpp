@@ -290,7 +290,7 @@ uint64_t ICETelescope::station_id_to_element_index(station_id_t st_id, ElementOr
     FATAL_ERROR("Cannot handle element order {}.", ord);
 }
 
-grid_idx_2d_t ICETelescope::station_id_to_grid_indices(station_id_t st_id) const {
+grid_idx_2d_t ICETelescope::station_id_to_main_array_grid_indices(station_id_t st_id) const {
     if (st_id >= _num_elements) 
         FATAL_ERROR("Station ID {:d} >= num_elements {:d}", st_id, _num_elements);
     
