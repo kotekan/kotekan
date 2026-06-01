@@ -98,7 +98,7 @@ public:
     uint64_t station_id_to_element_index(station_id_t st_id, [[maybe_unused]] ElementOrder ord) const override {
         return st_id;
     }
-    grid_idx_2d_t station_id_to_grid_indices([[maybe_unused]] station_id_t st_id) const override {
+    grid_idx_2d_t station_id_to_main_array_grid_indices([[maybe_unused]] station_id_t st_id) const override {
         return grid_idx_2d_t{-1, -1};
     }
     vec3d_t station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const override {

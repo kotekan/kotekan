@@ -677,7 +677,7 @@ uint64_t CHORDTelescope::station_id_to_element_index(station_id_t st_id, Element
     return el_idx;
 }
 
-grid_idx_2d_t CHORDTelescope::station_id_to_grid_indices(station_id_t st_id) const {
+grid_idx_2d_t CHORDTelescope::station_id_to_main_array_grid_indices(station_id_t st_id) const {
     uint64_t pol;
     uint64_t dish;
     decode_station_id(st_id, dish, pol);

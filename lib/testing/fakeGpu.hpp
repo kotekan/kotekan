@@ -117,7 +117,7 @@ public:
     bool gps_time_enabled() const override;
     station_id_t element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const override;
     uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const override;
-    grid_idx_2d_t station_id_to_grid_indices(station_id_t st_id) const override; 
+    grid_idx_2d_t station_id_to_main_array_grid_indices(station_id_t st_id) const override; 
     vec3d_t station_id_to_feed_position_m(station_id_t st_id) const override;
     double get_feed_separation_x_m() const override;
     double get_feed_separation_y_m() const override;
