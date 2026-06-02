@@ -30,18 +30,34 @@ using nyquist_zone_t = std::uint8_t;
 using freq_id_t = std::uint32_t; // logical ID, not necessarily an index
 #define FREQ_ID_NOT_SET UINT32_MAX
 using station_id_t = std::uint32_t;
-using grid_idx_2d_t = std::array<int64_t, 2>;
+using grid_idx_2d_t = std::array<int64_t, 2>;  // signed, use -1 as a sentinel for an unfilled
+                                               // location.
 
+/**
+ * @brief Enum labelling the ordering of feed elements in memory.
+ */
 enum class ElementOrder : int32_t {
+    // Order as received by the CHIME X-engine. Slightly scrambled, defined via table.
     CHIMECorrelator = 0,
+    
+    // Arrays are [C][P][CF] where C counts cylinders west to east, P counts polarizations,
+    // CF counts feeds in a cylinder south to north.
     CHIMECylinder = 1,
-    CHIMEBeamformer = 2,
-    CHORDEarly = 3,
-    CHORDBeamformer = 4,
+
+    // Arrays are [P][D], P = polarizations, D = feed, ordered as in Cylinder
+    CHIMEBeamformer = 2,        
+
+    // Ordering for pre-pathfinder CHORD. Arrays are [D][P], D-ordering is defined via table.
+    CHORDEarly = 3,   
+    
+    // Ordering for production CHORD. Arrays are [P][D], D-ordering is defined via table
+    CHORDBeamformer = 4,  
 };
-std::string ElementOrder_to_string(const ElementOrder& o);
-ElementOrder ElementOrder_from_string(const std::string& s);
-std::ostream& operator<<(std::ostream& os, const ElementOrder& o);
+
+
+std::string ElementOrder_to_string(const ElementOrder& o);   /// Convert an ElementOrder to a string
+ElementOrder ElementOrder_from_string(const std::string& s); /// Convert a string to an ElementOrder
+std::ostream& operator<<(std::ostream& os, const ElementOrder& o); 
 std::string format_as(const ElementOrder& o);
 void to_json(nlohmann::json& j, const ElementOrder& o);
 void from_json(const nlohmann::json& j, ElementOrder& o);
@@ -62,11 +78,12 @@ struct stream_t {
  *
  * This serves as a generic Telescope base class. It cannot be instantiated,
  * only derived classes can.  It provides virtual hooks for routines to map
- * between sequence number and instrument time, and for returning sampling
+ * between sequence number and instrument time, for returning sampling
  * parameters (raw sample rate, frequency spacing, map from freq_id to physical
- * frequency, etc).  It also contains the Earth Orientation Parameter (EOP) table,
+ * frequency, etc), and for associating feed elements in memory with physical locations.
+ * It contains the Earth Orientation Parameter (EOP) table,
  * which holds data to compute UT1 time and CIRS coordinate transformations from
- * instrument time.
+ * instrument time. It facilitates transformations between feed baselines to CIRS coordinates and back.
  *
  * REST Endpoints
  *
@@ -314,6 +331,9 @@ public:
      **/
     virtual uint64_t seq_length_nsec() const = 0;
 
+    /**
+     *
+     **/
     virtual station_id_t element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const = 0;
     virtual uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const = 0;
     virtual grid_idx_2d_t station_id_to_main_array_grid_indices(station_id_t st_id) const = 0;

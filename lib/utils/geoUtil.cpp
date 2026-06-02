@@ -19,6 +19,9 @@ GeoFrame::GeoFrame(const std::string& log_level, const std::string& name, double
     set_log_level(log_level);
     set_log_prefix(fmt::format("GeoFrame[{:s}]", name));
 
+    // FATAL ERROR if frame is not orthonormal.
+    // TODO: Allow for non-orthornormal frames? Would have to compute R inverse
+    // instead of assuming R^-1 = R^T
     const double tol = 1.0e-14;
 
     if (std::abs(vec3d_dot(x_axis, x_axis) - 1.0) > tol) {
@@ -94,12 +97,14 @@ vec3d_t GeoFrame::vec_frame_to_topo(const vec3d_t& v_frame) const {
 }
 
 vec3d_t GeoFrame::vec_itrs_to_frame(const vec3d_t& v_itrs) const {
+    // itrs and frame are connected through topo
     vec3d_t v_topo = vec_itrs_to_topo(v_itrs);
     vec3d_t v_frame = vec_topo_to_frame(v_topo);
     return v_frame;
 }
 
 vec3d_t GeoFrame::vec_frame_to_itrs(const vec3d_t& v_frame) const {
+    // itrs and frame are connected through topo
     vec3d_t v_topo = vec_frame_to_topo(v_frame);
     vec3d_t v_itrs = vec_topo_to_itrs(v_topo);
     return v_itrs;
