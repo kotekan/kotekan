@@ -569,6 +569,10 @@ double CHORDTelescope::get_dish_orientation_el(int i, int j) const {
     return _dish_frame.get_R_topo_to_frame()[i][j];
 }
 
+mat3x3d_t CHORDTelescope::get_dish_orientation() const {
+    return _dish_frame.get_R_topo_to_frame();
+}
+
 vec3d_t CHORDTelescope::get_dish_position_in_grid_coords(int i) const {
     return _geographic_params.dish_positions[i];
 }

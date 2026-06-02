@@ -17,6 +17,7 @@
 
 #include "Config.hpp"                   // for Config
 #include "Stage.hpp"                    // for Stage
+#include "Telescope.hpp"                // for ElementOrder
 #include "buffer.hpp"                   // for Buffer
 #include "bufferContainer.hpp"          // for bufferContainer
 #include "prometheusMetrics.hpp"        // for Gauge, MetricFamily, Counter
@@ -66,11 +67,12 @@ public:
     enum FileMode { CHORD, CHIME };
 
     // Structural information and fixed sizes
-    const size_t num_elements; // number of inputs / elements
-    const size_t num_prod;     // number of products
-    const size_t num_ev;       // number of eigenvectors/values
-    const size_t num_file_f;   // number of frequencies
-    const size_t num_file_t;   // frames ("time" dimension)
+    const size_t num_elements;      // number of inputs / elements
+    const size_t num_prod;          // number of products
+    const size_t num_ev;            // number of eigenvectors/values
+    const ElementOrder input_order; // element ordering on input frameviews.
+    const size_t num_file_f;        // number of frequencies
+    const size_t num_file_t;        // frames ("time" dimension)
 
     // file bookkeeping owned by this object
     const FileMode file_mode;       // CHORD or CHIME (or other?)-type file
@@ -162,7 +164,7 @@ public:
     enum class AddFrameStatus { Success, OutOfBounds, Duplicate, MetadataMismatch };
 
     N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameView& fv,
-               const double open_wall_s_, const uint64_t abs_file_idx_, const size_t blocksize_f_,
+               const double open_wall_s_, const uint64_t abs_file_idx_, const ElementOrder input_order_, const size_t blocksize_f_,
                const size_t blocksize_p_, const size_t blocksize_t_, const std::string compression_,
                const size_t compression_level_, const bool use_bitshuffle_,
                const std::string base_dir_, const std::string baseband_gain_file_,
@@ -292,6 +294,7 @@ public:
  *                                file (-1 = latest, default: -1).
  * @conf late_frame_grace_seconds UInt. Grace period in seconds for late frames (default: 60).
  * @conf max_frames               Int. Stop writing after this many frames (-1 = unlimited).
+ * @conf input_order              ElementOrder. The element order of input buffer.
  *
  * @par Metrics
  * @metric kotekan_hdf5N2Write_write_time_seconds        Duration to write the last flush
@@ -362,6 +365,7 @@ private:
     const std::uint64_t
         _late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
     const int _max_frames;         /// Stop writing after this many frames (-1 = unlimited)
+    const ElementOrder _input_order; /// The element ordering in input buffers.
 
     Buffer* const _buffer;
 

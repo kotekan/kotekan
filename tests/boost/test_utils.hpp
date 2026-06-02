@@ -312,7 +312,7 @@ struct CompareCTypes {
 [[maybe_unused]] static kotekan::Config
 make_writer_config(const std::string& unique_name, const std::string& in_buf,
                    const std::string& base_dir, const std::string& file_name, bool prefix_hostname,
-                   uint64_t num_file_t, uint64_t blocksize_f = 0, uint64_t blocksize_p = 0,
+                   uint64_t num_file_t, ElementOrder input_order = ElementOrder::CHORDBeamformer, uint64_t blocksize_f = 0, uint64_t blocksize_p = 0,
                    uint64_t blocksize_t = 1, uint64_t late_frame_grace_seconds = 60,
                    uint64_t seq_length_nsec_override = 0,
                    const std::string& baseband_gain_file = "") {
@@ -328,6 +328,7 @@ make_writer_config(const std::string& unique_name, const std::string& in_buf,
     stage["base_dir"] = base_dir;
     stage["file_name"] = file_name;
     stage["prefix_hostname"] = prefix_hostname;
+    stage["input_order"] = input_order;
     stage["blocksize_f"] = blocksize_f;
     stage["blocksize_p"] = blocksize_p;
     stage["blocksize_t"] = blocksize_t;

@@ -522,6 +522,11 @@ public:
      * @param   j   First index, int, 0 <= j < 3, col
      **/
     double get_dish_orientation_el(int i, int j) const;
+    
+    /**
+     * @brief   Return the full Topo -> Dish frame rotation matrix.
+     **/
+    mat3x3d_t get_dish_orientation() const;
 
     /**
      * @brief   Return a dish location, in grid coordinates.
