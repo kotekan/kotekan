@@ -405,13 +405,35 @@ BOOST_AUTO_TEST_CASE(_dish_grid_population) {
     json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
     const CHORDTelescope& tel = get_telescope(json_config);
 
-    const dishGrid& grid = tel.get_dish_grid();
-    BOOST_CHECK_EQUAL(grid.dish_index(0, 0), 0);
-    BOOST_CHECK_EQUAL(grid.dish_index(1, 0), 2);
-    BOOST_CHECK_EQUAL(grid.dish_index(0, 1), 1);
-    BOOST_CHECK_EQUAL(grid.dish_index(21, 23), 5);
-    BOOST_CHECK_EQUAL(grid.dish_index(2, 0), -1);
-    BOOST_CHECK_EQUAL(grid.dish_index(0, 2), -1);
+    std::vector<grid_idx_2d_t> grid_indices = tel.get_main_array_grid_indices(16, ElementOrder::CHORDBeamformer);
+
+    for (int p = 0; p < 2; p++) {
+        grid_idx_2d_t g0 = grid_indices.at(0 + 8*p);
+        grid_idx_2d_t g1 = grid_indices.at(1 + 8*p);
+        grid_idx_2d_t g2 = grid_indices.at(2 + 8*p);
+        grid_idx_2d_t g3 = grid_indices.at(3 + 8*p);
+        grid_idx_2d_t g4 = grid_indices.at(4 + 8*p);
+        grid_idx_2d_t g5 = grid_indices.at(5 + 8*p);
+        grid_idx_2d_t g6 = grid_indices.at(6 + 8*p);
+        grid_idx_2d_t g7 = grid_indices.at(7 + 8*p);
+    
+        BOOST_CHECK_EQUAL(g0.at(0), d0.grid_x_idx);
+        BOOST_CHECK_EQUAL(g0.at(1), d0.grid_y_idx);
+        BOOST_CHECK_EQUAL(g1.at(0), d1.grid_x_idx);
+        BOOST_CHECK_EQUAL(g1.at(1), d1.grid_y_idx);
+        BOOST_CHECK_EQUAL(g2.at(0), d2.grid_x_idx);
+        BOOST_CHECK_EQUAL(g2.at(1), d2.grid_y_idx);
+        BOOST_CHECK_EQUAL(g3.at(0), -1);
+        BOOST_CHECK_EQUAL(g3.at(1), -1);
+        BOOST_CHECK_EQUAL(g4.at(0), -1);
+        BOOST_CHECK_EQUAL(g4.at(1), -1);
+        BOOST_CHECK_EQUAL(g5.at(0), d5.grid_x_idx);
+        BOOST_CHECK_EQUAL(g5.at(1), d5.grid_y_idx);
+        BOOST_CHECK_EQUAL(g6.at(0), -1);
+        BOOST_CHECK_EQUAL(g6.at(1), -1);
+        BOOST_CHECK_EQUAL(g7.at(0), -1);
+        BOOST_CHECK_EQUAL(g7.at(1), -1);
+    }
 }
 
 /*

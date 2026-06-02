@@ -130,24 +130,6 @@ void GeographicParams::set_dish_info(const kotekan::Config& config, const std::s
                                   dish_separation_y_m * d.grid_y_idx + d.feed_pos_disp_m.at(1),
                                   d.feed_pos_disp_m.at(2)});
     }
-
-    using std::max;
-
-    // Create and fill dish grid
-    dish_grid = dishGrid(num_dishes_x, num_dishes_y);
-    for (dish_index_t dish = 0; dish < dish_index_t(num_dishes); ++dish) {
-        const dishInfo& dish_info = dish_info_table.at(dish);
-        if (dish_info.type != DishType::ArrayDish)
-            continue;
-        // Catch inconsistencies
-        assert(dish_info.idx == dish);
-        dish_index_t& dish_index = dish_grid.dish_index(dish_info.grid_x_idx, dish_info.grid_y_idx);
-        if (check_duplicate_dish_grid && dish_index != -1) {
-            FATAL_ERROR_NON_OO("dish {:s} has duplicate grid location ({:d},{:d})", dish_info.label,
-                               dish_info.grid_x_idx, dish_info.grid_y_idx);
-        }
-        dish_index = dish;
-    }
 }
 
 
@@ -590,10 +572,6 @@ size_t CHORDTelescope::get_num_dishes_y() const {
 
 const dishInfo& CHORDTelescope::get_dish_at_idx(dish_index_t idx) const {
     return _geographic_params.dish_info_table.at(idx);
-}
-
-const dishGrid& CHORDTelescope::get_dish_grid() const {
-    return _geographic_params.dish_grid;
 }
 
 // Get the frequency in MHz corresponding to the given freq_id.

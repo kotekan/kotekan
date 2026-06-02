@@ -125,77 +125,6 @@ struct dishInputFields {
     std::vector<std::string> label;
 };
 
-/**
- * @class dishGrid
- * @brief 2D logical grid mapping dish indices to grid coordinates.
- *
- * This class represents a regular grid of dish positions with
- * dimensions @c _num_dishes_x by @c _num_dishes_y. The grid is stored
- * as a flat array where the x index is the fast index and the y index
- * is the slow index:
- *
- *   index = x + _num_dishes_x * y
- *
- * Each cell stores a @c dish_index_t giving the dish index at that
- * grid location, or @c -1 if the grid cell is unoccupied.
- *
- * The class provides bounds-checked access to entries via the
- * @c dish_index(grid_x_idx, grid_y_idx) accessors and throws
- * @c std::runtime_error on out-of-range indices or when constructed
- * with an array of the wrong size.
- */
-class dishGrid {
-    size_t _num_dishes_x, _num_dishes_y;
-    // dish index, or -1 if unoccupied.
-    // array layout has x as fast and y as slow index.
-    std::vector<dish_index_t> _dish_index;
-
-public:
-    dishGrid(const dishGrid&) = default;
-    dishGrid(dishGrid&&) = default;
-    dishGrid& operator=(const dishGrid&) = default;
-    dishGrid& operator=(dishGrid&&) = default;
-
-    dishGrid() : dishGrid(0, 0) {}
-
-    dishGrid(size_t num_dishes_x, size_t num_dishes_y) :
-        _num_dishes_x(num_dishes_x), _num_dishes_y(num_dishes_y),
-        _dish_index(_num_dishes_x * _num_dishes_y, -1) {}
-
-    dishGrid(size_t num_dishes_x, size_t num_dishes_y, std::vector<dish_index_t> dish_index) :
-        _num_dishes_x(num_dishes_x), _num_dishes_y(num_dishes_y),
-        _dish_index(std::move(dish_index)) {
-        if (_dish_index.size() != _num_dishes_x * _num_dishes_y)
-            throw std::runtime_error("wrong array size");
-    }
-
-    size_t get_num_dishes_x() const {
-        return _num_dishes_x;
-    }
-    size_t get_num_dishes_y() const {
-        return _num_dishes_y;
-    }
-
-    dish_index_t dish_index(dish_index_t grid_x_idx, dish_index_t grid_y_idx) const {
-        if (grid_x_idx < 0 || size_t(grid_x_idx) >= _num_dishes_x)
-            throw std::runtime_error("index error");
-        if (grid_y_idx < 0 || size_t(grid_y_idx) >= _num_dishes_y)
-            throw std::runtime_error("index error");
-        return _dish_index.at(grid_x_idx + _num_dishes_x * grid_y_idx);
-    }
-
-    dish_index_t& dish_index(dish_index_t grid_x_idx, dish_index_t grid_y_idx) {
-        if (grid_x_idx < 0 || size_t(grid_x_idx) >= _num_dishes_x)
-            throw std::runtime_error("index error");
-        if (grid_y_idx < 0 || size_t(grid_y_idx) >= _num_dishes_y)
-            throw std::runtime_error("index error");
-        return _dish_index.at(grid_x_idx + _num_dishes_x * grid_y_idx);
-    }
-
-    const std::vector<dish_index_t>& get_dish_indices() const {
-        return _dish_index;
-    }
-};
 
 /**
  * @brief Struct containing dish parameters.
@@ -218,9 +147,6 @@ struct GeographicParams {
 
     /// Full dish info table (Fake + real dishes), used to build dish_positions.
     std::vector<dishInfo> dish_info_table;
-
-    /// Description of the grid of dishes
-    dishGrid dish_grid;
 
     /// Whether to fatal on duplicate dish grid locations (default: true).
     bool check_duplicate_dish_grid = true;
@@ -548,8 +474,6 @@ public:
      * @brief get information about a specific dish.
      **/
     const dishInfo& get_dish_at_idx(int64_t idx) const;
-
-    const dishGrid& get_dish_grid() const;
 
     /**
      * @brief   Return the pointing vector (direction dish is pointing, the
