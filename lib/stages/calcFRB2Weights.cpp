@@ -51,6 +51,8 @@ class calcFRB2Weights : public kotekan::Stage {
     const int frb2_num_beams_x = config.get<int>(unique_name, "frb2_num_beams_x");
     const int frb2_num_beams_y = config.get<int>(unique_name, "frb2_num_beams_y");
     const int frb2_num_beams = frb2_num_beams_x * frb2_num_beams_y;
+    // beam separation in radians as angle off telescope zenith towards the x
+    // and y directions of the dish grid respectively
     const float frb2_beam_separation_x = config.get<float>(unique_name, "frb2_beam_separation_x");
     const float frb2_beam_separation_y = config.get<float>(unique_name, "frb2_beam_separation_y");
     const int frb2_num_frequencies = config.get<int>(unique_name, "frb2_num_frequencies");
@@ -206,13 +208,13 @@ public:
                 for (int i_x = 0; i_x < frb2_num_beams_x; ++i_x) {
                     const int beam = i_x + frb2_num_beams_x * i_y;
                     const int idx = 2 * beam;
-                    const float theta_x = frb2_beam_separation_x * (i_x - i_x0);
-                    const float theta_y = frb2_beam_separation_y * (i_y - i_y0);
+                    const float bp_x = frb2_beam_separation_x * (i_x - i_x0);
+                    const float bp_y = frb2_beam_separation_y * (i_y - i_y0);
                     assert(idx >= 0
                            && idx < std::ptrdiff_t(frb2_beam_positions_buffer->frame_size
                                                    / sizeof *frb2_beam_positions_frame));
-                    frb2_beam_positions_frame[idx + 0] = theta_x;
-                    frb2_beam_positions_frame[idx + 1] = theta_y;
+                    frb2_beam_positions_frame[idx + 0] = bp_x;
+                    frb2_beam_positions_frame[idx + 1] = bp_y;
                 }
             }
         }
