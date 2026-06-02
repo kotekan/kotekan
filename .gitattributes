@@ -1,2 +1,13 @@
 # Force all text files to use LF
  * text=auto eol=lf
+
+# Mark generated files as generated (to prevent showing in GitHub diffs).
+lib/cuda/generated/** linguist-generated=true
+julia/output/**       linguist-generated=true
+
+# Suppress textual diff for machine outputs locally AND on GitHub (still git-grep-able)
+*.ptx  -diff
+*.sass -diff
+lib/cuda/generated/*.jl -diff
+julia/output/*.jl       -diff
+julia/output/*.out      -diff
