@@ -152,7 +152,7 @@ class DumpCountsBuffer(runner.OutputBuffer):
                 "base_dir": output_dir,
                 "prefix_hostname": False,
                 "max_frames": "buffer_depth",
-                "input_order": "CHIMEBeamformer"
+                "input_order": "CHIMEBeamformer",
             }
         }
 

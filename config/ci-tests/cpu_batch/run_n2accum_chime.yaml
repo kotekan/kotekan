@@ -21,7 +21,7 @@ num_dishes: 64
 num_elements: num_polarizations * num_dishes
 num_local_freq: 16
 num_ev: 0
-  
+
 input_order: CHIMEBeamformer
 
 num_subintegrations_per_bin: 4
