@@ -79,9 +79,6 @@ public:
         meta->set_fpga_seq_num(frame_index * num_times);
         meta->set_time_downsampling_fpga(1);
 
-        meta->ndishes = -1;
-        meta->dish_index = nullptr;
-
         const Telescope& tel = Telescope::instance();
 
         // Fill buffer
