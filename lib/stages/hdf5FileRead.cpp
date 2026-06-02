@@ -30,7 +30,6 @@
 #include <string>                                 // for basic_string, char_traits, string, oper...
 #include <vector>                                 // for vector
 
-#include "CHORDTelescope.hpp"                     // for dish_index_t
 #include "fmt.hpp"                                // for compile_string_to_view
 
 using namespace hdf5;
@@ -181,26 +180,7 @@ public:
                         dataset.getAttribute("rfi_frame_excision_thresholds")
                             .read<std::vector<std::array<float, 2>>>());
 
-                if (dataset.hasAttribute("ndishes")) {
-                    meta->ndishes = dataset.getAttribute("ndishes").read<int>();
-
-                    meta->n_dish_locations_ns =
-                        dataset.getAttribute("n_dish_locations_ns").read<int>();
-                    meta->n_dish_locations_ew =
-                        dataset.getAttribute("n_dish_locations_ew").read<int>();
-
-                    const auto dish_index =
-                        dataset.getAttribute("dish_index").read<std::vector<int>>();
-                    assert(std::ptrdiff_t(dish_index.size())
-                           == meta->n_dish_locations_ns * meta->n_dish_locations_ew);
-                    meta->dish_index =
-                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
-                    std::copy(dish_index.begin(), dish_index.end(), meta->dish_index);
-
-                } else {
-                    meta->ndishes = -1;
-                    meta->dish_index = nullptr;
-                }
+                // TODO: Read telescope fields and WARN if they don't match?
 
                 {
                     /* new style array description */

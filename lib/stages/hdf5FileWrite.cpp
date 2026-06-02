@@ -300,21 +300,6 @@ public:
                 dataset.createAttribute("rfi_frame_excision_thresholds",
                                         meta->get_rfi_frame_excision_thresholds());
 
-            if (meta->ndishes >= 0) {
-                dataset.createAttribute("ndishes", meta->ndishes);
-                // const DataSpace space{std::size_t(meta->n_dish_locations_ns),
-                //                       std::size_t(meta->n_dish_locations_ew)};
-                // auto attr = dataset.createAttribute<int>("dish_index", space);
-                // attr.write(meta->dish_index);
-                dataset.createAttribute("n_dish_locations_ns", meta->n_dish_locations_ns);
-                dataset.createAttribute("n_dish_locations_ew", meta->n_dish_locations_ew);
-                dataset.createAttribute(
-                    "dish_index",
-                    std::vector<int>(meta->dish_index,
-                                     meta->dish_index
-                                         + meta->n_dish_locations_ns * meta->n_dish_locations_ew));
-            }
-            
             {
                 // Telescope data
                 dataset.createAttribute("num_polarizations", num_polarizations);

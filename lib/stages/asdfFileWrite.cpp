@@ -339,23 +339,6 @@ public:
                             std::make_shared<ASDF::string_entry>(meta->get_dimension_name(d)));
                     group->emplace("dim_names", dim_names);
 
-                    if (meta->ndishes >= 0)
-                        group->emplace("ndishes", std::make_shared<ASDF::int_entry>(meta->ndishes));
-
-                    if (meta->dish_index) {
-                        auto dish_index = std::make_shared<ASDF::ndarray>(
-                            std::vector<int>(meta->dish_index,
-                                             meta->dish_index
-                                                 + meta->n_dish_locations_ew
-                                                       * meta->n_dish_locations_ns),
-                            ASDF::block_format_t::inline_array, ASDF::compression_t::none, -1,
-                            std::vector<bool>(),
-                            std::vector<int64_t>{meta->n_dish_locations_ns,
-                                                 meta->n_dish_locations_ew});
-                        auto dish_index_entry = std::make_shared<ASDF::ndarray_entry>(dish_index);
-                        group->emplace("dish_index", dish_index_entry);
-                    }
-
                 } else if (metadata_is_N2(mc)) {
 
                     const std::shared_ptr<const N2Metadata> meta =
