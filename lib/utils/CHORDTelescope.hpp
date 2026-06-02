@@ -129,27 +129,18 @@ struct dishInputFields {
 /**
  * @brief Struct containing dish parameters.
  * @details This struct contains all the necessary parameters to describe the dish
- * positions and orientations in a CHORD-like telescope. Generally, this is constructed
+ * positions in a CHORD-like telescope. Generally, this is constructed
  * from configuration parameters using the from_config() static method.
  **/
-struct GeographicParams {
+struct DishParams {
     /// Dish pointing angle.  Measured in degrees from vertical.
     double dish_coelev_deg = 0.0;
-
-    /// Total number of dishes in the telescope, each provides 2 polarizations,
-    /// so num_elements = 2 * num_dishes.
-    size_t num_dishes = 0;
-    size_t num_dishes_x = 0;
-    size_t num_dishes_y = 0;
 
     /// Dish positions in dish coordinate system.
     std::vector<vec3d_t> dish_positions;
 
     /// Full dish info table (Fake + real dishes), used to build dish_positions.
     std::vector<dishInfo> dish_info_table;
-
-    /// Whether to fatal on duplicate dish grid locations (default: true).
-    bool check_duplicate_dish_grid = true;
 
     /**
      * @brief Build full dish parameters (including rotation matrices and positions)
@@ -177,10 +168,10 @@ struct GeographicParams {
      * @param   config  The config.
      * @param   path    This telescope's path in the config.
      *
-     * @return  The built GeographicParams.
+     * @return  The built DishParams.
      **/
-    static GeographicParams from_config(const kotekan::Config& config, const std::string& path,
-                                        uint64_t dish_grid_size_x, uint64_t dish_grid_size_y,
+    static DishParams from_config(const kotekan::Config& config, const std::string& path,
+                                        uint64_t num_dishes, uint64_t dish_grid_size_x, uint64_t dish_grid_size_y,
                                         double dish_separation_x_m, double dish_separation_y_m);
 
     /**
@@ -191,6 +182,7 @@ struct GeographicParams {
      * @param   path    This telescope's path in the config.
      **/
     void set_dish_info(const kotekan::Config& config, const std::string& path,
+                       uint64_t num_dishes,
                        uint64_t dish_grid_size_x, uint64_t dish_grid_size_y,
                        double dish_separation_x_m, double dish_separation_y_m);
 };
@@ -341,7 +333,7 @@ private:
  * Configuration is split across dedicated helper structs:
  * @see GPSTimeParams::from_config (GPS requirements and time source)
  * @see FreqParams::from_config (frequency sampling)
- * @see GeographicParams::from_config (dish and array geometry)
+ * @see DishParams::from_config (dish and array geometry)
  *
  * @conf    eop_updatable_config    string. ConfigUpdater path for dynamic EOP updates. For more
  *information see Telescope.hpp
@@ -358,6 +350,7 @@ private:
  * 2025/12/04: Factor telescope members into logical groups: frequency parameters,
  *              gps time parameters, geographic/dish parameters. JM (PR #1373)
  * 2026/01/28:  Remove EOP functionality and move to Telescope.
+ * 2026/06/01:  Move much geographic, coordinates, and vector logic into Telescope and GeoFrame. Add new functions for element ordering and dish position access. Clean up.
  */
 
 class CHORDTelescope : public Telescope {
@@ -464,11 +457,7 @@ public:
     /**
      * @brief   Return the number of dishes.
      **/
-    size_t get_num_dishes() const;
-
-    size_t get_num_dishes_x() const;
-    size_t get_num_dishes_y() const;
-
+    uint64_t get_num_dishes() const;
 
     /**
      * @brief get information about a specific dish.
@@ -594,7 +583,7 @@ protected:
     const double _dish_separation_grid_x_m;
     const double _dish_separation_grid_y_m;
     /// Dish / array geometry and coordinate transforms.
-    const GeographicParams _geographic_params;
+    const DishParams _dish_params;
 };
 
 #endif // CHORD_TELESCOPE_HPP

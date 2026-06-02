@@ -14,7 +14,6 @@
 #include <vector>              // for vector
 #include <array>               // for array
 
-#include "CHORDTelescope.hpp"  // for dish_index_t
 #include "DataType.hpp"        // for type_to_string, type_total_bytes, DataType
 #include "NDArray.hpp"         // for GenericNDArray
 #include "Telescope.hpp"       // for Telescope, stream_t
