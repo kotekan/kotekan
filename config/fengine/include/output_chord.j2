@@ -329,6 +329,10 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beam_positions_buffer
         file_name: bb_beam_positions
+    write_bb_beam_ids:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_bb_beam_ids_buffer
+        file_name: bb_beam_ids
     write_bb_phase:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_phase_buffer
@@ -421,6 +425,10 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb2_beam_positions_buffer
         file_name: frb2_beam_positions
+    write_frb2_beam_ids:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_frb2_beam_ids_buffer
+        file_name: frb2_beam_ids
     write_frb2_weights:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb2_weights_buffer

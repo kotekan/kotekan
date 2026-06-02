@@ -17,11 +17,12 @@
 num_dishes_x: 4
 num_dishes_y: 256
 num_dishes: 1024
+input_order: CHORDBeamformer  # TODO: Change to CHIMEBeamformer
 
 # Telescope
 
 telescope:
-    name: CHORDTelescope
+    name: CHORDTelescope  # TODO: Change to CHIMETelescope
     require_gps: false
     origin_itrs_lat_deg: +49.32070922 # centre of the array
     origin_itrs_lon_deg: -119.62367743
@@ -33,6 +34,8 @@ telescope:
 
     require_eop: false
 
+    dish_grid_size_x: num_dishes_x
+    dish_grid_size_y: num_dishes_y
     dish_separation_x_m: 20.0
     dish_separation_y_m: 0.390625
 

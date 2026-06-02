@@ -11,16 +11,24 @@ frb_num_beams_P: 2 * num_dishes_x
 frb_num_beams_Q: 2 * num_dishes_y
 frb1_input_scale: 1.0 / 16
 
+frb_rad2deg: 57.29577951308232
+
 frb2_num_beams_x: 8
 frb2_num_beams_y: 8
 frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
-frb2_beam_separation_x: 0.0020  # TODO FIX THESE
-frb2_beam_separation_y: 0.0015
+frb2_beam_separation_x: 0.0020 * frb_rad2deg  # TODO FIX THESE
+frb2_beam_separation_y: 0.0015 * frb_rad2deg
 
 host_frb2_beam_positions_buffer:
     kotekan_buffer: standard
     num_frames: 1
     frame_size: sizeof_float32 * 2 * frb2_num_beams
+    metadata_pool: main_pool
+
+host_frb2_beam_ids_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_uint64 * frb2_num_beams
     metadata_pool: main_pool
 
 frb_chunk_size: 256
@@ -115,6 +123,19 @@ run_frb1_U32:
           Fbar_out_max: upchan_U32_max_output_channel
 
 # FRB 2 and 3
+
+run_set_frb_beams:
+    kotekan_stage: setFRBBeams
+    out_pos_buf: host_frb2_beam_positions_buffer
+    out_id_buf: host_frb2_beam_ids_buffer
+    mode: grid_degrees
+    num_beams: frb2_num_beams
+    num_x: frb2_num_beams_x
+    num_y: frb2_num_beams_y
+    x_min: -frb2_beam_separation_x * (frb2_num_beams_x - 1) / 2.0
+    x_max: frb2_beam_separation_x * (frb2_num_beams_x - 1) / 2.0
+    y_min: -frb2_beam_separation_y * (frb2_num_beams_y - 1) / 2.0
+    y_max: frb2_beam_separation_y * (frb2_num_beams_y - 1) / 2.0
 
 run_calc_frb2_weights:
     kotekan_stage: calcFRB2Weights
