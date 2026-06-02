@@ -13,6 +13,8 @@ num_polarizations: 2
 num_elements: num_dishes * num_polarizations
 num_freq_bins: 3 # actual CHIME has 4, but then its 4 bins of 4 freqs each, which is a worse test case
 
+input_order: CHIMEBeamformer
+
 pl_mask_downsampling_factor: 2
 pl_mask_dishes_per_bin: 8
 pl_mask_hilo_split: 64

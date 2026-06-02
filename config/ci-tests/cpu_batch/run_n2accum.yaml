@@ -57,6 +57,8 @@ telescope:
     dish_grid_size_y: 24
     dish_inputs: []
 
+input_order: CHORDBeamformer
+
 gps_time:
     frame0_nano: start_time_s * GIGA
 
@@ -186,7 +188,6 @@ N2_accumulate:
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: true
     variance_mode: EvenOddPosDef
-    input_order: CHORDBeamformer
 
 writers:
     base_dir: fake_data

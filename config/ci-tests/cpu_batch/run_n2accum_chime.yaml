@@ -21,6 +21,8 @@ num_dishes: 64
 num_elements: num_polarizations * num_dishes
 num_local_freq: 16
 num_ev: 0
+  
+input_order: CHIMEBeamformer
 
 num_subintegrations_per_bin: 4
 
@@ -168,7 +170,6 @@ N2_accumulate:
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: true
-    input_order: CHIMEBeamformer
     variance_mode: CHIMEv1
     bin_in_ERA: false
     do_fringestop: false

@@ -47,6 +47,8 @@ telescope:
     ]
     # yamlfix:on
 
+input_order: CHORDBeamformer
+
 earth_rotation_data:
     kotekan_update_endpoint: json
     # yamlfix:off
