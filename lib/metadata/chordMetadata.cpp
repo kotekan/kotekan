@@ -12,8 +12,7 @@
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
 chordMetadata::chordMetadata() :
-    type(kotekan::unknown_type), dims(-1), offset(0), ndishes(-1), n_dish_locations_ew(-1),
-    n_dish_locations_ns(-1), dish_index(nullptr) {
+    type(kotekan::unknown_type), dims(-1), offset(0) {
     name[0] = '\0';
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
@@ -49,7 +48,6 @@ bool chordMetadata::operator==(const chordMetadata& other) const {
     if (offset != other.offset)
         return false;
 
-    // TODO: this misses dish_positions etc
     return metadata == other.metadata;
 }
 
