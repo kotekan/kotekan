@@ -582,7 +582,6 @@ cudaFRBBeamformer_pathfinder_U8::execute(cudaPipelineState& /*pipestate*/,
             I_buffer.set_metadata(Ebar_buffer.get_metadata());
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
-        assert(Ebar_meta->ndishes == cuda_number_of_dishes);
         assert(Telescope::instance().get_grid_size_x() <= cuda_dish_layout_M);
         assert(Telescope::instance().get_grid_size_y() <= cuda_dish_layout_N);
 
