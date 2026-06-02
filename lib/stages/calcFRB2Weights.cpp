@@ -163,7 +163,7 @@ public:
         // Wait for buffers
         DEBUG("[{:s}/{:d}] Waiting for buffer...", frb2_beam_positions_buffer->buffer_name,
               frame_index);
-        float* const frb2_beam_positions_frame = static_cast<float*>(static_cast<void*>(
+        float const * const frb2_beam_positions_frame = static_cast<float*>(static_cast<void*>(
             frb2_beam_positions_buffer->wait_for_full_frame(unique_name, frame_id)));
         if (!frb2_beam_positions_frame)
             return;
@@ -179,7 +179,9 @@ public:
                == frb2_beam_positions_frame_size);
         assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
 
-        // Set metadata
+        // Check metadata
+        frb2_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
+            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"});
 
         W2_buffer->allocate_new_metadata_object(frame_id);
         const auto& W2_meta = get_chord_metadata(W2_buffer->get_metadata(frame_id));
@@ -238,7 +240,7 @@ public:
             const int num_available_cpus = CPU_COUNT(&available_cpus);
 
 #ifdef WITH_OMP
-#pragma omp parallel num_threads(num_available_cpus)
+#pragma omp parallel num_threads(std::min(num_available_cpus, num_threads))
 #endif
             {
                 std::vector<float> Up(frb1_num_beams_P);
