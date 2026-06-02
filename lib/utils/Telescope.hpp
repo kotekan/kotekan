@@ -332,11 +332,43 @@ public:
     virtual uint64_t seq_length_nsec() const = 0;
 
     /**
+     * @brief Convert an element array index in a particular ordering into the corresponding station_id
      *
+     * @param el_idx    Index into the element axis of an array
+     * @param ord       The ordering of the array
+     *
+     * @return  Station ID for this index.
      **/
     virtual station_id_t element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const = 0;
+
+    /**
+     * @brief Convert a Station ID into an element array index in a particular ordering.
+     *
+     * @param st_id Station ID of an input element.
+     * @param ord   The ordering for the output index.
+     *
+     * @return  element array index for this Station ID.
+     **/
     virtual uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const = 0;
+
+    /**
+     * @brief Return the integral grid location for this station ID if it is an input in the 
+     * main array, otherwise return (-1, -1).
+     *
+     * @param st_id Station ID of an input element.
+     *
+     * @return  Grid coordinates (idx_x, idx_y) for this Station ID, or (-1, -1) if this station
+     * is not in the main array.
+     **/
     virtual grid_idx_2d_t station_id_to_main_array_grid_indices(station_id_t st_id) const = 0;
+
+    /**
+     * @brief Return the 3D position in the GRID frame of this station ID.
+     
+     * @param st_id Station ID of an input element.
+     *
+     * @return 3D coordinates in meters for this station ID in the GRID frame.
+     **/
     virtual vec3d_t station_id_to_feed_position_m(station_id_t st_id) const = 0;
 
     /**
@@ -349,9 +381,26 @@ public:
      **/
     virtual double get_feed_separation_y_m() const = 0;
 
+    /**
+     * @brief   Return the size of the main array grid in the X (~East) direction. e.g.
+     *          a 2 x 3-dish array would return 2 (assuming 2 dishes E/W and 3 dishes N/S).
+     *          grid_idx[0] must be less than this.
+     **/
     virtual uint64_t get_grid_size_x() const = 0;
+
+    /**
+     * @brief   Return the size of the main array grid in the Y (~North) direction. e.g.
+     *          a 2 x 3-dish array would return 3 (assuming 2 dishes E/W and 3 dishes N/S).
+     *          grid_idx[1] must be less than this.
+     **/
     virtual uint64_t get_grid_size_y() const = 0;
 
+    /**
+     * @brief   Return the outward-directed 3D pointing vector for the telescope phase center in the GRID
+     *          frame: n[3] = {nx, ny, nz},  |n| = 1.0.
+     * For CHIME this should be simply the zenith (n ~ {0, 0, 1}),
+     * for CHORD this is the boresight of the dishes, and depends on their co-elevation.
+     **/
     virtual vec3d_t get_phase_center_in_grid_frame() const = 0;
 
     /**
