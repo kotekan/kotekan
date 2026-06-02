@@ -51,10 +51,6 @@ class calcFRB2Weights : public kotekan::Stage {
     const int frb2_num_beams_x = config.get<int>(unique_name, "frb2_num_beams_x");
     const int frb2_num_beams_y = config.get<int>(unique_name, "frb2_num_beams_y");
     const int frb2_num_beams = frb2_num_beams_x * frb2_num_beams_y;
-    // beam separation in radians as angle off telescope zenith towards the x
-    // and y directions of the dish grid respectively
-    const float frb2_beam_separation_x = config.get<float>(unique_name, "frb2_beam_separation_x");
-    const float frb2_beam_separation_y = config.get<float>(unique_name, "frb2_beam_separation_y");
     const int frb2_num_frequencies = config.get<int>(unique_name, "frb2_num_frequencies");
 
     const std::ptrdiff_t frb2_beam_positions_frame_size [[maybe_unused]] =
@@ -78,7 +74,7 @@ public:
     {
         assert(frb2_beam_positions_buffer);
         assert(W2_buffer);
-        frb2_beam_positions_buffer->register_producer(unique_name);
+        frb2_beam_positions_buffer->register_consumer(unique_name);
         W2_buffer->register_producer(unique_name);
     }
 
@@ -158,8 +154,8 @@ public:
         // Wait for buffers
         DEBUG("[{:s}/{:d}] Waiting for buffer...", frb2_beam_positions_buffer->buffer_name,
               frame_index);
-        float* const frb2_beam_positions_frame = static_cast<float*>(static_cast<void*>(
-            frb2_beam_positions_buffer->wait_for_empty_frame(unique_name, frame_id)));
+        float const * const frb2_beam_positions_frame = static_cast<float*>(static_cast<void*>(
+            frb2_beam_positions_buffer->wait_for_full_frame(unique_name, frame_id)));
         if (!frb2_beam_positions_frame)
             return;
 
@@ -182,8 +178,6 @@ public:
             get_chord_metadata(frb2_beam_positions_buffer->get_metadata(frame_id));
         frb2_beam_positions_meta->set_from_frame_desc(
             frb2_beam_positions_buffer->get_ndarray_frame_desc());
-        frb2_beam_positions_meta->set_fpga_seq_num(0);           // ???
-        frb2_beam_positions_meta->set_time_downsampling_fpga(1); // ???
 
         W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>("W2",
                                                              {frb2_num_frequencies,
@@ -198,26 +192,6 @@ public:
         W2_meta->set_coarse_freq(coarse_freq);
         W2_meta->set_freq_upchan_factor(freq_upchan_factor);
         W2_meta->set_freq_upchan_index(freq_upchan_index);
-
-        // Set frb2_beam_positions
-        {
-            // Find off-centre
-            const float i_x0 = frb2_num_beams_x / 2.0f - 1;
-            const float i_y0 = frb2_num_beams_y / 2.0f - 1;
-            for (int i_y = 0; i_y < frb2_num_beams_y; ++i_y) {
-                for (int i_x = 0; i_x < frb2_num_beams_x; ++i_x) {
-                    const int beam = i_x + frb2_num_beams_x * i_y;
-                    const int idx = 2 * beam;
-                    const float bp_x = frb2_beam_separation_x * (i_x - i_x0);
-                    const float bp_y = frb2_beam_separation_y * (i_y - i_y0);
-                    assert(idx >= 0
-                           && idx < std::ptrdiff_t(frb2_beam_positions_buffer->frame_size
-                                                   / sizeof *frb2_beam_positions_frame));
-                    frb2_beam_positions_frame[idx + 0] = bp_x;
-                    frb2_beam_positions_frame[idx + 1] = bp_y;
-                }
-            }
-        }
 
         // Set W2
         {
@@ -329,7 +303,7 @@ public:
         // Mark buffers as full
         DEBUG("[{:s}/{:d}] Marking buffer as full...", frb2_beam_positions_buffer->buffer_name,
               frame_index);
-        frb2_beam_positions_buffer->mark_frame_full(unique_name, frame_id);
+        frb2_beam_positions_buffer->mark_frame_empty(unique_name, frame_id);
 
         DEBUG("[{:s}/{:d}] Marking buffer as full...", W2_buffer->buffer_name, frame_index);
         W2_buffer->mark_frame_full(unique_name, frame_id);
