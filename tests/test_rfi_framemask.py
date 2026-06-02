@@ -186,6 +186,7 @@ def rfiframemask_data(tmpdir_factory, setup, sktilde_data):
         ),
         dtype=np.uint8,
         max_frames=num_frames,
+        input_order="CHIMEBeamformer",
     )
 
     # The test stage!

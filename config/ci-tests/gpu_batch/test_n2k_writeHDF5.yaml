@@ -34,6 +34,9 @@ num_polarizations: 2
 num_dishes: 64
 num_elements: 128
 num_local_freq: 16
+
+input_order: CHIMEBeamformer
+
 # vis matrix size
 vis_blocks_tr_root: (num_elements + 1) / 16
 num_vis_blocks: vis_blocks_tr_root * (vis_blocks_tr_root + 1) / 2

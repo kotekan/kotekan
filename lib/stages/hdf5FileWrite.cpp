@@ -99,6 +99,11 @@ class hdf5FileWrite : public kotekan::Stage {
     const int64_t write_x_frames = config.get_default<int64_t>(unique_name, "write_x_frames", -1);
     const int64_t per_y_frames = config.get_default<int64_t>(unique_name, "per_y_frames", -1);
 
+    const uint64_t num_polarizations = config.get<uint64_t>(unique_name, "num_polarizations");
+    const uint64_t num_dishes = config.get<uint64_t>(unique_name, "num_dishes");
+    const uint64_t num_elements = num_polarizations * num_dishes;
+    const ElementOrder input_order = config.get<ElementOrder>(unique_name, "input_order");
+
     Buffer* const buffer;
 
     std::shared_ptr<File> the_single_file;
@@ -308,6 +313,20 @@ public:
                     std::vector<int>(meta->dish_index,
                                      meta->dish_index
                                          + meta->n_dish_locations_ns * meta->n_dish_locations_ew));
+            }
+            
+            {
+                // Telescope data
+                const Telescope &tel = Telescope::instance();
+                dataset.createAttribute("itrs_lat_deg", tel.get_itrs_lat_deg());
+                dataset.createAttribute("itrs_lon_deg", tel.get_itrs_lon_deg());
+                dataset.createAttribute("grid_orientation", tel.get_grid_orientation());
+                dataset.createAttribute("grid_size_x", tel.get_grid_size_x());
+                dataset.createAttribute("grid_size_y", tel.get_grid_size_y());
+                dataset.createAttribute("feed_separation_x_m", tel.get_feed_separation_x_m());
+                dataset.createAttribute("feed_separation_y_m", tel.get_feed_separation_y_m());
+                dataset.createAttribute("main_array_grid_indices", tel.get_main_array_grid_indices(num_elements, input_order));
+                dataset.createAttribute("feed_positions_m", tel.get_feed_positions_m(num_elements, input_order));
             }
 
             if (create_single_file) {

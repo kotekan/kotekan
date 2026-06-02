@@ -880,7 +880,7 @@ class DumpChordBuffer(OutputBuffer):
 
     name = None
 
-    def __init__(self, output_dir, shape, dtype, max_frames=-1):
+    def __init__(self, output_dir, shape, dtype, max_frames=-1, input_order="CHORDBeamformer"):
         self.name = f"dumpchord_buf{self._buf_ind}"
         stage_name = f"dump{self._buf_ind}"
 
@@ -908,6 +908,7 @@ class DumpChordBuffer(OutputBuffer):
                 "base_dir": output_dir,
                 "prefix_hostname": False,
                 "max_frames": max_frames,
+                "input_order": input_order,
             }
         }
 

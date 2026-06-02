@@ -39,6 +39,7 @@ global_params = {
         "max_frames": "1",
         "file_name": "reorder_buffer",
         "in_buf": "reorder_buffer",
+        "input_order": "CHIMEBeamformer",
     },
     "input_reorder": None,  # set by Python code
 }
