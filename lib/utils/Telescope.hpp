@@ -85,6 +85,81 @@ struct stream_t {
  * which holds data to compute UT1 time and CIRS coordinate transformations from
  * instrument time. It facilitates transformations between feed baselines to CIRS coordinates and back.
  *
+ * Coordinate frames used by the Telescope
+ * ---------------------------------------
+ *
+ * ## GRID ##
+ *  The GRID frame is an orthonormal Cartesian coordinate system whose:
+ *      - x-axis is parallel to fiducial East/West feed separation vector (pointing ~East).  
+ *      - y-axis is parallel to fiducial North/South feed separation vector (pointing ~North).  
+ *      - z-axis is normal to the fiducial feed plane (pointing ~Up).
+ *
+ *  The actual telescope feed grid on the ground is not perfectly square.  The GRID frame is an orthonormal
+ *  frame which fits the physical feed locations as well as possible, as determined by the telescope
+ *  developers.
+ *
+ *  Feed Positions are returned in the GRID frame.
+ *
+ *  The GRID origin is an optional `offset` from the TOPO origin
+ *
+ * ## TOPO ##
+ *  The Topocentric (TOPO) frame is an orthonormal Cartesian coordinate system located at a position on the
+ *  Earth.
+ *      - x-axis is parallel to local geodetic East (increasing longitude)
+ *      - y-axis is parallel to local geodecic North (increasing latitude)
+ *      - z-axis is parallel to local geodetic Up (increasing altitude)
+ *  The TOPO origin is at a given Latitude and Longitude in ITRS coordinates.
+ *
+ * ## ITRS ##
+ *  The International Terrestrial Reference System (ITRS) is the internationally agreed upon coordinate
+ *  system for the planet Earth. This is the coordinate system where geodetic latitude and longitude live.
+ *  The IAU and IERS define the transformations between ITRS and astronomical coordinates.
+ *  ITRS also has a Cartesian representation with:
+ *      - x-axis directed through latitude = 0 (the Equator), longitude = 0
+ *      - y-axis directed through latitude = 0 (the Equator), longitude = 90 degrees East
+ *      - z-axis directed through latitude = 90 (the North Pole)
+ *  The ITRS origin is located at Earth Barycenter.
+ *
+ * ## CIRS ##
+ *  The Celestial Intermediate Reference System (CIRS) is a set of celestial coordinates defined by the IAU
+ *  and IERS. This system is non-rotating with respect to the distant stars, and is aligned with the Earth's
+ *  instantaneous axis of rotation. It is an intermediate step between ITRS (Earth-based) and ICRS (the fixed
+ *  stars). In Kotekan we do not need realtime knowledge of the ICRS so we only go as far as the CIRS, which
+ *  encodes the full rotational state of the Earth but not the precession/nutation of its axis.
+ *
+ *  We track targets in the sky by following their fixed CIRS coordinates.
+ *
+ *  The ITRS <-> CIRS transformation is time dependent, and encoded by the time-dependent Earth Orientation
+ *  Parameters (EOP). 
+ *
+ * The Main Array Grid
+ * -------------------
+ *
+ *  Kotekan Telescopes are formed of a "main array" of feeds in a rectilinear grid on the Earth. This grid
+ *  must be planar (flat) to a good approximation, but otherwise may have arbitrary orientation on the ground.
+ *
+ *  We assume (for now) the grid is near-perfect rectilinear, with feeds evenly spaced along orthogonal axes
+ *  X and Y. X is the easterly-directed separation spacing, and Y is the northerly-directed spacing. Feeds
+ *  in this grid have a 2D `grid_index`: (`grid_idx_x`, `grid_idx_y`).  These count from 0 beginning in the
+ *  southwest corner of the main array, so any feed in the main array has NON-NEGATIVE grid indices.
+ *
+ *  Some feeds may not be in the main array (RFI Antennae, external telescopes, maser feeds, etc). These feeds
+ *  have `grid_index` = (-1, -1).
+ *
+ *  Feeds may not be exactly on station. Their 3D position returned by `get_feed_positions_m()` may include
+ *  per-feed displacements from the fiducial station position.  Non-main-array feeds may also have a feed
+ *  position. Feed positions are given in the GRID frame.
+ *
+ * ElementOrder
+ * ------------
+ *
+ *  Different telescopes (and different parts of the pipeline for the same telescope) may place their feeds
+ *  in memory via different arrangements. To return the feed position corresponding to a particular element
+ *  in a data array, you must provide the element index AND an ElementOrder variable specifying the ordering
+ *  of this array. Different orders may, for instance, transpose polarization and dish, or may simply permute
+ *  ordering of dishes within the dish axis.
+ *  
+ *
  * REST Endpoints
  *
  * @endpoint    /time0_ns   GET     Returns a JSON object with a single field
@@ -521,14 +596,34 @@ public:
     /**
      * @brief   Return an observing vector (normalized vec3) in CIRS
      *          coordinates, corresponding to the given CIRS RA and DEC.
-     * @param   ra  Target Right Ascension in CIRS frame.
-     * @param   dec Target Declination in CIRS frame.
-     * @param   eop EOP for the time of observation.
+     * @param   ra_cirs_deg  Target Right Ascension in CIRS frame in degrees
+     * @param   dec_cirs_deg Target Declination in CIRS frame in degrees
      **/
     vec3d_t vec_cirs_from_ra_dec(double ra_cirs_deg, double dec_cirs_deg) const;
+
+    /**
+     * @brief   Return the CIRS RA & DEC corresponding to the given observing vector
+     *          (normalized vec3) in CIRS coordinates.
+     * @param   v_cirs          Input vector in CIRS coordinates.
+     * @param   ra_cirs_deg     Reference to return target Right Ascension in CIRS frame in degrees
+     * @param   dec_cirs_deg    Reference to return target Declination in CIRS frame in degrees
+     **/
     void vec_cirs_to_ra_dec(const vec3d_t& v_cirs, double& ra_cirs_deg, double& dec_cirs_deg) const;
     
+    /**
+     * @brief   Transform the given vector from GRID to CIRS coords.
+     *
+     * @param   v_grid  Vector in GRID coordinates.
+     * @param   eop     EOP for time of transformation.
+     **/
     vec3d_t vec_grid_to_cirs(const vec3d_t& v_grid, const EOP& eop) const;
+
+    /**
+     * @brief   Transform the given vector from CIRS to GRID coords.
+     *
+     * @param   v_cirs  Vector in CIRS coordinates.
+     * @param   eop     EOP for time of transformation.
+     **/
     vec3d_t vec_cirs_to_grid(const vec3d_t& v_cirs, const EOP& eop) const;
     
     /**
