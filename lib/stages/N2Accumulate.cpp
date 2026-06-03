@@ -304,9 +304,8 @@ void N2Accumulate::main_thread() {
 
     // storage for each frequency's fringe phases, declared here so it is only
     // allocated once.
-    std::complex<float> sentinel_phase = std::complex<float>(2.0f, 2.0f); //  fringestop phases have |z| = 1.0
-    std::vector<std::vector<std::complex<float>>> fringe_phase_t0(_num_freq_per_n2k_frame, std::vector<std::complex<float>>(_num_elements, sentinel_phase));
-    std::vector<std::vector<std::complex<float>>> fringe_phase_t1(_num_freq_per_n2k_frame, std::vector<std::complex<float>>(_num_elements, sentinel_phase));
+    std::vector<std::vector<std::complex<float>>> fringe_phase_t0(_num_freq_per_n2k_frame, std::vector<std::complex<float>>(_num_elements, _sentinel_phase));
+    std::vector<std::vector<std::complex<float>>> fringe_phase_t1(_num_freq_per_n2k_frame, std::vector<std::complex<float>>(_num_elements, _sentinel_phase));
 
     // We start with START.
     AccumState state = AccumState::START;
