@@ -670,7 +670,7 @@ grid_idx_2d_t CHORDTelescope::station_id_to_main_array_grid_indices(station_id_t
     return {d.grid_x_idx, d.grid_y_idx};
 } 
 
-vec3d_t CHORDTelescope::station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const {
+vec3d_t CHORDTelescope::station_id_to_feed_position_m(station_id_t st_id) const {
     uint64_t pol;
     uint64_t dish;
     decode_station_id(st_id, dish, pol);

@@ -18,7 +18,7 @@ using kotekan::restServer;
 
 #define GIGA 1'000'000'000L
 
-static constexpr double C = 2.99792458e8;
+static constexpr double C = 2.99792458e8; // speed of light in m/s
 static constexpr double deg2rad = M_PI / 180.0;
 static constexpr double arcsec2rad = M_PI / (180.0 * 3600);
 

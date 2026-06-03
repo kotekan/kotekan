@@ -150,13 +150,13 @@ struct DishParams {
      * @conf   origin_itrs_lat_deg  double. Latitude of the telescope origin in ITRS coords.
      * @conf   dish_coelev_deg      double. Dish pointing co-elevation angle.
      * @conf   grid_x_axis          array<double,3>. Unit vector giving the grid x axis in
-     *                              topotric coords.
+     *                              topocentric (TOPO) coords.
      * @conf   grid_y_axis          array<double,3>. Unit vector giving the grid y axis in
-     *                              topotric coords.
+     *                              topocentric (TOPO) coords.
      * @conf   dish_elev_axis       array<double,3>. Unit vector giving the dish elevation axis in
-     *                              topotric coords.
+     *                              topocentric (TOPO) coords.
      * @conf   dish_vert_axis       array<double,3>. Unit vector giving the dish vertical axis in
-     *                              topotric coords.
+     *                              topocentric (TOPO) coords.
      * @conf   dish_inputs          array<dishInfo>. List of dish inputs, with all fields populated.
      *                              See struct dishInfo for field descriptions.
      * @conf   num_dishes           size_t. Total number of dishes.
@@ -472,9 +472,9 @@ public:
     vec3d_t get_pointing_vec_in_dish_coords() const;
 
     /**
-     * @brief   Transform the given vector from topotric to dish coords.
+     * @brief   Transform the given vector from topocentric (TOPO) to dish coords.
      *
-     * @param   v_topo  Vector in topotric coordinates.
+     * @param   v_topo  Vector in topocentric (TOPO) coordinates.
      **/
     vec3d_t vec_topo_to_dish(const vec3d_t& v_topo) const;
 

@@ -308,7 +308,6 @@ vec3d_t ICETelescope::station_id_to_feed_position_m(station_id_t st_id) const {
     decode_station_id(st_id, cylinder, polarization, dish_in_cyl);
 
     if (_feed_positions_2d.size() == 0) {
-        // TODO: This puts 0 on the SW corner, not the center.
         double x_idx = cylinder - 0.5*(_num_cylinders - 1);
         double y_idx = dish_in_cyl - 0.5*(_num_dishes_per_cylinder - 1);
         return vec3d_t{x_idx * _feed_separation_x_m, y_idx * _feed_separation_y_m, 0.0};
