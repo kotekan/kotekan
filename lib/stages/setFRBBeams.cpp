@@ -20,6 +20,58 @@ using N2::frameID;
 
 constexpr double deg2rad = M_PI / 180.0;
 
+
+/**
+ * @class setFRBBeams
+ * @brief Produce FRB beam positions and ids.
+ *
+ * This stage produces the FRB beam positions and IDs used downstream. Beams are fixed relative to the
+ * telescope, and scan with the Earth's rotation, so they only need to be produced once.
+ *
+ * Beam positions may be set in multiple ways depending on the `mode` parameter:
+ *   - `"manual"`: Read beams from the `beams` config parameter, which is a list of
+ *              FRBBeam objects.
+ *   - `"grid"`: A rectangular grid of beams on the sky, uniform in vector components nx & ny.
+ *              Requires `num_x`, `num_y`, `x_min`, `x_max`, `y_min`, `y_max` parameters.
+ *   - `"grid_degrees"`: As `grid`, but the grid is uniform in angle theta_x and theta_y from
+ *              telescope zenith. `x_min`, etc are interpreted as angles in degrees.
+ *              theta_x = arcsin(nx), theta_y = arcsin(ny).
+ *
+ * The output beam position buffer contains the nx and ny components of each beam pointing
+ * vector in the GRID frame (ie. direction cosines relative to the telescope). 
+ *
+ * In the GRID frame, a pointing vector n has components n = (nx, ny, nz). n is normalizaed (|n| = 1),
+ * and the components nx, ny, nz are dimensionless. An upward-looking beam position will have nz > 0,
+ * which can be computed from nz = sqrt(1 - nx^2 - ny^2).
+ *
+ * Beam IDs are u64 values used to identify beams in post.
+ *
+ * @par Buffers
+ * @buffer out_pos_buf      Output beam positions in the GRID frame.
+ *      @buffer_format      NDArray float32 [num_beams, 2]
+ *      @buffer_metadata    chordMetadata
+ * @buffer out_id_buf       Output beam IDs in the GRID frame.
+ *      @buffer_format      NDArray uint64 [num_beams]
+ *      @buffer_metadata    chordMetadata
+ *
+ * @conf mode       string. Mode to generate beams.
+ * @conf num_beams  uint32. Total number of beams being produced (fixed + tracking). Must be
+ *                          consistent with mode.
+ * @conf beams      List of FixedBBBeam.  For `fixed_mode` = "manual". Beams to produce.
+ * @conf num_x      uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in grid X
+ *                          direction (~East/West)
+ * @conf num_y      uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in grid Y 
+ *                          direction (~North/South)
+ * @conf x_min      double. For `fixed_mode` = "grid" or "grid_degrees". Minimum value of nx
+ *                          ("grid", dimensionless) or theta_x ("grid_degrees", degrees)
+ * @conf x_max      double. For `fixed_mode` = "grid" or "grid_degrees". Maximum value of nx
+ *                          ("grid", dimensionless) or theta_x ("grid_degrees", degrees)
+ * @conf y_min      double. For `fixed_mode` = "grid" or "grid_degrees". Minimum value of ny
+ *                          ("grid", dimensionless) or theta_y ("grid_degrees", degrees)
+ * @conf y_max      double. For `fixed_mode` = "grid" or "grid_degrees". Maximum value of ny
+ *                          ("grid", dimensionless) or theta_y ("grid_degrees", degrees)
+ *
+ */
 class setFRBBeams : public Stage {
 public:
     setFRBBeams(Config& config, const std::string& unique_name,
@@ -112,7 +164,10 @@ void setFRBBeams::send_beams(connectionInstance& conn) const {
     reply.emplace("beams", beams);
     conn.send_json_reply(reply);
 }
-    
+
+/**
+ * @brief Compute a grid of beams, uniform in nx & ny
+ **/
 std::vector<FRBBeam> setFRBBeams::build_grid_beams() const {
 
     std::vector<FRBBeam> grid_beams(num_x * num_y);
@@ -130,6 +185,9 @@ std::vector<FRBBeam> setFRBBeams::build_grid_beams() const {
     return grid_beams;
 }
     
+/**
+ * @brief Compute a grid of beams, uniform in theta_x & theta_y
+ **/
 std::vector<FRBBeam> setFRBBeams::build_grid_deg_beams() const {
 
     std::vector<FRBBeam> grid_beams(num_x * num_y);

@@ -21,6 +21,71 @@ using N2::frameID;
 
 constexpr double deg2rad = M_PI / 180.0;
 
+/**
+ * @class setBBBeams
+ * @brief Produce baseband beam positions and ids.
+ *
+ * This stage produces the baseband beam positions and IDs used downstream. Beams may be "fixed" or
+ * "tracking".  Fixed beams are fixed relative to the telescope, and scan with the Earth's
+ * rotation. Tracking beams track a point on the sky, and move relative to the telescope.
+ *
+ * Fixed beam positions may be set in multiple ways depending on the `fixed_mode` parameter:
+ *   - `"manual"`: Read beams from the `fixed_beams` config parameter, which is a list of
+ *              FixedBBBeam objects.
+ *   - `"grid"`: A rectangular grid of beams on the sky, uniform in vector components nx & ny.
+ *              Requires `num_x`, `num_y`, `x_min`, `x_max`, `y_min`, `y_max` parameters.
+ *   - `"grid_degrees"`: As `grid`, but the grid is uniform in angle theta_x and theta_y from
+ *              telescope zenith. `x_min`, etc are interpreted as angles in degrees.
+ *
+ * Tracking beams are only set via the `tracking_beams` config parameter, which takes a list of 
+ * `TrackingBBBeam` objects, each with the RA & DEC of the target location in CIRS.
+ *
+ * The output beam position buffer contains the nx and ny components of each beam pointing
+ * vector in the GRID frame (ie. direction cosines relative to the telescope). Tracking beams will
+ * have time dependent beam positions.
+ *
+ * Beam IDs are u64 values used to identify beams in post.
+ *
+ * NOTE: This stage is intended to be run continuously, so as to produce the time-dependent
+ * tracking beams. However, this will require modification of the calcBBPhases stage and the
+ * cudaBBBeamformer wrapper. It was written to demonstrate how beams should be produced and
+ * how to use the Telescope for Tracking beams.
+ *
+ * NOTE: This stage is likely a placeholder, or will require (possibly telescope-specific) upgrades
+ * to be used in production (e.g. updating beams via REST).
+ *
+ * @par Buffers
+ * @buffer in_clock_buf     Any time-dependent buffer with an `fpga_seq_num`. Used to synchronize
+ *                          output buffers. Only first frame is read. `host_voltage_buffer` recommended.
+ *      @buffer_format      Any
+ *      @buffer_metadata    chordMetadata
+ * @buffer out_pos_buf      Output beam positions in the GRID frame.
+ *      @buffer_format      NDArray float32 [num_beams, 2]
+ *      @buffer_metadata    chordMetadata
+ * @buffer out_id_buf       Output beam IDs in the GRID frame.
+ *      @buffer_format      NDArray uint64 [num_beams]
+ *      @buffer_metadata    chordMetadata
+ *
+ * @conf fixed_mode         string. Mode to generate fixed beams.
+ * @conf num_beams          uint32. Total number of beams to produce (fixed + tracking). Must be
+ *                          consistent with fixed + tracking.
+ * @conf seqs_per_frame     uint64. Number of fpga sequence number ticks between output frames.
+ * @conf fixed_beams        List of FixedBBBeam.  For `fixed_mode` = "manual". Beams to produce.
+ * @conf num_x              uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in 
+ *                          grid X direction (~East/West)
+ * @conf num_y              uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in 
+ *                          grid Y direction (~North/South)
+ * @conf x_min              double. For `fixed_mode` = "grid" or "grid_degrees". Minimum value of nx
+ *                          ("grid", dimensionless) or theta_x ("grid_degrees", degrees)
+ * @conf x_max              double. For `fixed_mode` = "grid" or "grid_degrees". Maximum value of nx
+ *                          ("grid", dimensionless) or theta_x ("grid_degrees", degrees)
+ * @conf y_min              double. For `fixed_mode` = "grid" or "grid_degrees". Minimum value of ny
+ *                          ("grid", dimensionless) or theta_y ("grid_degrees", degrees)
+ * @conf y_max              double. For `fixed_mode` = "grid" or "grid_degrees". Maximum value of ny
+ *                          ("grid", dimensionless) or theta_y ("grid_degrees", degrees)
+ * @conf tracking_beams     List of TrackingBBBeam.  The tracking beams to produce.
+ *
+ */
 class setBBBeams : public Stage {
 public:
     setBBBeams(Config& config, const std::string& unique_name,
@@ -170,7 +235,7 @@ void setBBBeams::main_thread() {
     if (in_ptr == nullptr)
         return;
 
-    // Grab the metadata and unsure it has the fields we need.
+    // Grab the metadata and ensure it has the fields we need.
     const std::shared_ptr<const chordMetadata> in_meta = get_chord_metadata(in_buf, in_frame_id);
     if (!in_meta->has_fpga_seq_num())
         FATAL_ERROR("in_buf {:s} has no fpga_seq_num, needed for setting clock.",
