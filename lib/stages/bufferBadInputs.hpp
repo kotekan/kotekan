@@ -64,7 +64,9 @@ private:
     // Need to use the frame_id outside of the main thread
     N2::frameID frame_id;
 
-    std::array<size_t, 2048> reorder;
+    // The table to reorder from beamformer to cylinder order.
+    // reorder[beamformer_idx] = cylinder_idx;
+    std::vector<size_t> reorder;
 };
 
 #endif

@@ -24,6 +24,7 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(bufferBadInputs);
 
+
 bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name,
                                  bufferContainer& buffer_container) :
     Stage(config_, unique_name, buffer_container, std::bind(&bufferBadInputs::main_thread, this)),
@@ -36,10 +37,14 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
     out_buf->register_producer(unique_name);
 
     // Construct the cylinder -> beamformer reorder table.
+    // reorder[beamformer_idx] = cylinder_idx;
+    reorder.reserve(num_elements);
+
     const Telescope& tel = Telescope::instance();
-    for(size_t beamformer_idx = 0; beamformer_idx < 2048; ++beamformer_idx) {
+
+    for(size_t beamformer_idx = 0; beamformer_idx < num_elements; ++beamformer_idx) {
         station_id_t st_id = tel.element_index_to_station_id(beamformer_idx, ElementOrder::CHIMEBeamformer);
-        reorder[beamformer_idx] = tel.station_id_to_element_index(st_id, ElementOrder::CHIMECylinder);
+        reorder.at(beamformer_idx) = tel.station_id_to_element_index(st_id, ElementOrder::CHIMECylinder);
     }
 }
 
