@@ -297,6 +297,7 @@ private:
     const Telescope& _tel;
     
     const std::vector<vec3d_t> _feed_positions_m; ///< The position of each element in the telescope grid frame
+    static constexpr std::complex<float> _sentinel_phase = std::complex<float>(2.0f, 2.0f); //  fringestop phases have |z| = 1.0
 
     // Reference to the prometheus metric that we will use for counting skipped
     // frames

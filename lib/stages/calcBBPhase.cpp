@@ -94,7 +94,7 @@ public:
         // Telescope
         const Telescope& telescope = Telescope::instance();
 
-        // Get dish positions
+        // Get dish positions (in the Telescope's GRID frame in meters).
         std::vector<vec3d_t> feed_pos_m = telescope.get_feed_positions_m(num_elements, input_order);
         assert(std::ptrdiff_t(feed_pos_m.size()) == num_elements);
 
@@ -175,15 +175,18 @@ public:
                             using std::clamp, std::lrint, std::polar, std::sqrt;
                             const auto pow2 = [](auto x) { return x * x; };
                             const int element = dish + polr * num_dishes;
+                            // Dish positions are cartesian components in GRID frame in meters.
                             const float dish_x = feed_pos_m.at(element)[0];
                             const float dish_y = feed_pos_m.at(element)[1];
                             const float dish_z = feed_pos_m.at(element)[2];
-                            const float theta_x = bb_beam_positions_frame[2 * beam + 0];
-                            const float theta_y = bb_beam_positions_frame[2 * beam + 1];
-                            const float theta_z = sqrt(1 - (pow2(theta_x) + pow2(theta_y)));
-                            const float deltat = theta_x * dish_x / c0
-                                                 + theta_y * dish_y / c0
-                                                 + theta_z * dish_z / c0;
+                            // Buffered beam positions are nx & ny cartesian components in GRID frame.
+                            // |n| = 1.0
+                            const float n_x = bb_beam_positions_frame[2 * beam + 0];
+                            const float n_y = bb_beam_positions_frame[2 * beam + 1];
+                            const float n_z = sqrt(1 - (pow2(n_x) + pow2(n_y)));
+                            const float deltat = n_x * dish_x / c0
+                                                 + n_y * dish_y / c0
+                                                 + n_z * dish_z / c0;
                             const float f = frequencies.at(freq);
                             const float phi = 2 * float(M_PI) * f * deltat;
                             const std::complex<float> A = polar(127.5f, phi);

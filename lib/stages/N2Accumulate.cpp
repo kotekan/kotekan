@@ -302,10 +302,11 @@ void N2Accumulate::main_thread() {
     // EOP at target fringestop time.
     EOP target_eop = eop_null;
 
-    // storage for a single frequency's fringe phases, declared here so it is only
+    // storage for each frequency's fringe phases, declared here so it is only
     // allocated once.
-    std::vector<std::complex<float>> fringe_phase_t0(_num_elements, 1.0f);
-    std::vector<std::complex<float>> fringe_phase_t1(_num_elements, 1.0f);
+    std::complex<float> sentinel_phase = std::complex<float>(2.0f, 2.0f); //  fringestop phases have |z| = 1.0
+    std::vector<std::vector<std::complex<float>>> fringe_phase_t0(_num_freq_per_n2k_frame, std::vector<std::complex<float>>(_num_elements, sentinel_phase));
+    std::vector<std::vector<std::complex<float>>> fringe_phase_t1(_num_freq_per_n2k_frame, std::vector<std::complex<float>>(_num_elements, sentinel_phase));
 
     // We start with START.
     AccumState state = AccumState::START;
@@ -542,7 +543,7 @@ void N2Accumulate::main_thread() {
                 accum_corr_and_var(_vis.data() + f * corr_stride_f,
                                    _var.data() + f * corr_stride_f / 2, corr_t0 + f * corr_stride_f,
                                    corr_t1 + f * corr_stride_f, freq_MHz, target_eop, eop_t0,
-                                   eop_t1, count_t0, count_t1, fringe_phase_t0, fringe_phase_t1);
+                                   eop_t1, count_t0, count_t1, fringe_phase_t0.at(f), fringe_phase_t1.at(f));
             }
 
             // We're adding frames in pairs, increment frame count by 2
@@ -742,6 +743,12 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
                                        fringe_phase_t1);
         _tel.fill_fringestop_phases_1d(freq_MHz, eop_t0, target_eop, _feed_positions_m,
                                        fringe_phase_t0);
+        for(int64_t e = 0; e < _num_elements; e++) {
+            if (fringe_phase_t1[e] == _sentinel_phase)
+                FATAL_ERROR("fringe_phase_t1[%d] was never_set", e);
+            if (fringe_phase_t0[e] == _sentinel_phase)
+                FATAL_ERROR("fringe_phase_t0[%d] was never_set", e);
+        }
     }
 
     uint64_t block_idx = 0;
