@@ -39,14 +39,14 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Check for file changes
-      uses: tj-actions/changed-files@v46
+      uses: tj-actions/changed-files@v47
       id: changed-files
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -116,10 +116,10 @@ jobs:
     needs: build-docker-2204
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -144,10 +144,10 @@ jobs:
     needs: build-docker-2204
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -177,17 +177,17 @@ jobs:
     needs: build-docker-2204
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Cache ccache files
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-base-build-2204-${{ github.sha }}
@@ -216,17 +216,17 @@ jobs:
     needs: build-docker-2204
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Cache ccache files
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-full-build-2204-${{ github.sha }}
@@ -238,7 +238,7 @@ jobs:
       if: ${{ !env.ACT }} # Don't free up if running locally
       run: |
           df -h
-          docker rmi $(docker image ls -aq)
+          docker rmi $(docker image ls -aq) || true
           df -h
           sudo apt-get clean
           sudo apt-get autoclean
@@ -294,17 +294,17 @@ jobs:
     needs: build-docker-2204
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Cache ccache files
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-opencl-2204-${{ github.sha }}
@@ -364,17 +364,17 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Cache ccache files
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-clang-build-2204-${{ github.sha }}
@@ -417,14 +417,14 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Check for file changes
-      uses: tj-actions/changed-files@v46
+      uses: tj-actions/changed-files@v47
       id: changed-files
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -494,17 +494,17 @@ jobs:
     needs: build-docker-1804
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Cache ccache files
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-base-build-1804-${{ github.sha }}
@@ -533,20 +533,20 @@ jobs:
     needs: build-docker-1804
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Free disk space
       if: ${{ !env.ACT }} # Don't free up if running locally
       run: |
           df -h
-          docker rmi $(docker image ls -aq)
+          docker rmi $(docker image ls -aq) || true
           df -h
           sudo apt-get clean
           sudo apt-get autoclean
           df -h
 
     - name: Cache ccache files
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-full-build-1804-${{ github.sha }}
@@ -555,7 +555,7 @@ jobs:
           ccache-base-build-1804
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -603,10 +603,10 @@ jobs:
     needs: build-docker-1804
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Cache ccache files
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-chime-build-1804-${{ github.sha }}
@@ -615,7 +615,7 @@ jobs:
           ccache-full-build-1804
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -647,10 +647,10 @@ jobs:
     needs: build-docker-1804
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Cache ccache files
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ccache-clang-build-1804-${{ github.sha }}
@@ -658,7 +658,7 @@ jobs:
           ccache-clang-build-1804
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
