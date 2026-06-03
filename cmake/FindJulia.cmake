@@ -26,6 +26,15 @@ endif()
 
 if(Julia_EXECUTABLE)
 
+    # If julia is managed by juliaup, disable its background version-db update. It holds the juliaup
+    # config lock while the queries below launch julia, which can make them return empty results
+    # (and it nags about newer julia versions). Quietly ignore failures (e.g. julia installed
+    # without juliaup).
+    execute_process(
+        COMMAND juliaup config versionsdbupdateinterval 0
+        OUTPUT_QUIET ERROR_QUIET
+        RESULT_VARIABLE _juliaup_config_result)
+
     # ##############################################################################################
     # Julia Version #
     # ##############################################################################################
@@ -107,8 +116,8 @@ if(Julia_EXECUTABLE)
         string(STRIP "${JULIA_LIBRARY}" JULIA_LIBRARY)
 
         if(WIN32)
-            get_filename_component(JULIA_LIBRARY_DIR ${JULIA_LIBRARY} DIRECTORY)
-            get_filename_component(JULIA_LIBRARY_DIR ${JULIA_LIBRARY_DIR} DIRECTORY)
+            get_filename_component(JULIA_LIBRARY_DIR "${JULIA_LIBRARY}" DIRECTORY)
+            get_filename_component(JULIA_LIBRARY_DIR "${JULIA_LIBRARY_DIR}" DIRECTORY)
             find_library(
                 win_JULIA_LIBRARY
                 NAMES libjulia.dll.a
@@ -127,7 +136,9 @@ if(Julia_EXECUTABLE)
             CMAKE_FIND_ROOT_PATH_BOTH)
     endif()
 
-    get_filename_component(JULIA_LIBRARY_DIR ${JULIA_LIBRARY} DIRECTORY)
+    # Quoted so that an empty JULIA_LIBRARY (failed query above) degrades to "Julia not found" via
+    # the REQUIRED_VARS check below rather than a fatal argument-count error here.
+    get_filename_component(JULIA_LIBRARY_DIR "${JULIA_LIBRARY}" DIRECTORY)
 
     message(STATUS "JULIA_LIBRARY_DIR:    ${JULIA_LIBRARY_DIR}")
     message(STATUS "JULIA_LIBRARY:        ${JULIA_LIBRARY}")
