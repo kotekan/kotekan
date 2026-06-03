@@ -35,7 +35,8 @@ add_library(
     N2FrameView.cpp
     timeUtil.cpp
     CHORDTelescope.cpp
-    geoUtil.cpp)
+    geoUtil.cpp
+    beamUtil.cpp)
 
 target_link_libraries(
     kotekan_utils

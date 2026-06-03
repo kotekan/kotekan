@@ -1,6 +1,6 @@
 #include "Config.hpp"          // for Config
-#include "Beams.hpp"           // for FixedBBBeam, TrackingBBBeam
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "beamUtil.hpp"        // for FixedBBBeam, TrackingBBBeam
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
@@ -15,6 +15,8 @@ using kotekan::Config;
 using kotekan::connectionInstance;
 using kotekan::Stage;
 using kotekan::restServer;
+using Beams::FixedBBBeam;
+using Beams::TrackingBBBeam;
 using N2::frameID;
 
 constexpr double deg2rad = M_PI / 180.0;
