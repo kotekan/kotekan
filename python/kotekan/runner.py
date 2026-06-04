@@ -874,13 +874,33 @@ class DumpChordBuffer(OutputBuffer):
     ----------
     output_dir : str
         Temp. directory to output to. Dumped files are not removed.
+    quantity_name : str, optional
+        Together with `dimnames`, declare the buffer as `kotekan_buffer:
+        ndarray`, attaching the frame descriptor at startup (the stage under
+        test then validates against it instead of allocating it). Must match
+        the descriptor the producing stage declares exactly.
+    dimnames : list of str, optional
+        Axis labels, one per entry of `shape`. See `quantity_name`.
+    value_type : str, optional
+        kotekan DataType name for the ndarray declaration. Defaults to the
+        numpy name of `dtype`, which is correct for plain types; packed
+        types (e.g. "uint1x8", "int4x2") must be given explicitly.
     """
 
     _buf_ind = 0
 
     name = None
 
-    def __init__(self, output_dir, shape, dtype, max_frames=-1):
+    def __init__(
+        self,
+        output_dir,
+        shape,
+        dtype,
+        max_frames=-1,
+        quantity_name=None,
+        dimnames=None,
+        value_type=None,
+    ):
         self.name = f"dumpchord_buf{self._buf_ind}"
         stage_name = f"dump{self._buf_ind}"
 
@@ -891,14 +911,31 @@ class DumpChordBuffer(OutputBuffer):
         self.max_frames = max_frames
         self.dtype = dtype
 
-        self.buffer_block = {
-            self.name: {
-                "kotekan_buffer": "standard",
-                "metadata_pool": "main_pool",
-                "num_frames": "buffer_depth",
-                "frame_size": self.num_entries * np.dtype(self.dtype).itemsize,
+        if quantity_name is not None:
+            if dimnames is None or len(dimnames) != len(shape):
+                raise ValueError(
+                    "dimnames must be given with quantity_name, one per axis"
+                )
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "ndarray",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "value_type": value_type or np.dtype(self.dtype).name,
+                    "quantity_name": quantity_name,
+                    "extents": [int(n) for n in shape],
+                    "dimnames": list(dimnames),
+                }
             }
-        }
+        else:
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "standard",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "frame_size": self.num_entries * np.dtype(self.dtype).itemsize,
+                }
+            }
 
         self.stage_block = {
             stage_name: {

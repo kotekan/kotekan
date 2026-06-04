@@ -160,6 +160,8 @@ def rfimasksum_data(tmpdir_factory, setup):
         ),
         dtype=np.int32,
         max_frames=num_frames,
+        quantity_name="RFImask_counts",
+        dimnames=["Tc", "F"],
     )
 
     test = runner.KotekanStageTester(

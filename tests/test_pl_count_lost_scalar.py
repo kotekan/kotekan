@@ -193,6 +193,8 @@ def pllostcounts_data(tmpdir_factory, setup, plmask_data):
         ),
         dtype=np.int32,
         max_frames=num_frames,
+        quantity_name="pl_lost_counts_scalar",
+        dimnames=["Tc", "F"],
     )
 
     # The test stage!

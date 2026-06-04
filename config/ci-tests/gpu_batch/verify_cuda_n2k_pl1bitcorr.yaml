@@ -42,27 +42,39 @@ main_pool:
 
 # Buffers
 host_pl_mask_exp_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set * num_local_freq * (num_elements / 8)) / 8
+    value_type: uint1x8
+    quantity_name: pl_mask_exp
+    extents: [samples_per_data_set / 64, num_local_freq, num_polarizations, (num_elements / 8) / 2, 8]
+    dimnames: ["Thi64", "F", "P", "D8", "Tlo64"]
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    quantity_name: RFImask
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
+    dimnames: ["T8hi128", "F", "T8lo128"]
     metadata_pool: main_pool
 
 host_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    value_type: int32
+    quantity_name: n2k_counts
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
+    dimnames: ["Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"]
     metadata_pool: main_pool
 
 simulated_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    value_type: int32
+    quantity_name: n2k_counts
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
+    dimnames: ["Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"]
     metadata_pool: main_pool
 
 # Ringbuffer signalling buffer

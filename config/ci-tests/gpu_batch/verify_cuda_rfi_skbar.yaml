@@ -47,45 +47,66 @@ main_pool:
 # Buffers
 
 host_bf_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: num_elements
+    value_type: int8
+    quantity_name: bf_mask
+    extents: [num_polarizations, num_dishes]
+    dimnames: ["P", "D"]
     metadata_pool: main_pool
 
 host_rfi_s012bar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    quantity_name: S012bar
+    extents: [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
+    dimnames: ["Trfibar", "F", "S", "P", "D"]
     metadata_pool: main_pool
 
 host_rfi_skbar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_float
+    value_type: float32
+    quantity_name: SKbar
+    extents: [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
+    dimnames: ["Trfibar", "F", "SK", "P", "D"]
     metadata_pool: main_pool
 
 host_rfi_skbartilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: rfi_num_times_bar * num_local_freq * 3 * sizeof_float
+    value_type: float32
+    quantity_name: SKbartilde
+    extents: [rfi_num_times_bar, num_local_freq, 3]
+    dimnames: ["Trfibar", "F", "SK"]
     metadata_pool: main_pool
 
 simulated_rfi_skbar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_float
+    value_type: float32
+    quantity_name: SKbar
+    extents: [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
+    dimnames: ["Trfibar", "F", "SK", "P", "D"]
     metadata_pool: main_pool
 
 simulated_rfi_skbartilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: rfi_num_times_bar * num_local_freq * 3 * sizeof_float
+    value_type: float32
+    quantity_name: SKbartilde
+    extents: [rfi_num_times_bar, num_local_freq, 3]
+    dimnames: ["Trfibar", "F", "SK"]
     metadata_pool: main_pool
 
 simulated_rfi_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_local_freq / 8
+    value_type: uint1x8
+    quantity_name: RFImask
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
+    dimnames: ["T8hi128", "F", "T8lo128"]
     metadata_pool: main_pool
 
 

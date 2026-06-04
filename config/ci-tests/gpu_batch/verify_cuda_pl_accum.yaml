@@ -35,15 +35,21 @@ main_pool:
     num_metadata_objects: 20 * buffer_depth
 
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
+    value_type: uint1x8
+    quantity_name: pl_mask
+    extents: [samples_per_data_set / 128, num_local_freq / 4, num_polarizations, num_dishes / 8, 8]
+    dimnames: ["T2hi64", "F4", "P", "D8", "T2lo64"]
     metadata_pool: main_pool
 
 host_pl_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * num_elements * sizeof_long
+    value_type: uint64
+    quantity_name: pl_counts
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, num_polarizations, num_dishes]
+    dimnames: ["Tc", "F", "P", "D"]
     metadata_pool: main_pool
 
 host_pl_lost_counts_buffer:
@@ -53,9 +59,12 @@ host_pl_lost_counts_buffer:
     metadata_pool: main_pool
 
 simulated_pl_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * num_elements * sizeof_long
+    value_type: uint64
+    quantity_name: pl_counts
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, num_polarizations, num_dishes]
+    dimnames: ["Tc", "F", "P", "D"]
     metadata_pool: main_pool
 
 
