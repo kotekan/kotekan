@@ -1,5 +1,8 @@
-#include "DataType.hpp" // for operator<<
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for operator<<, string_to_type
 #include "Symbol.hpp"   // for operator<<, Symbol
+
+#include "fmt.hpp" // for format, fmt
 
 #include <NDArray.hpp>
 #include <cassert>   // for assert
@@ -80,6 +83,55 @@ std::shared_ptr<GenericNDArray> GenericNDArray::create(const DataType value_data
     assert(extents.size() == dimnames.size() && "Sizes of extents and dimnames must aggree");
     return make_NDArray<DataType(end_type - 1), max_rank>(value_datatype, quantity_name, extents,
                                                           dimnames, data);
+}
+
+std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config,
+                                                            const std::string& location) {
+    const std::string type_name = config.get<std::string>(location, "value_type");
+    const DataType value_datatype = string_to_type(type_name);
+    if (value_datatype == unknown_type)
+        throw std::runtime_error(fmt::format(
+            fmt("GenericNDArray: unknown value_type '{:s}' in path {:s}"), type_name, location));
+
+    const Symbol quantity_name(config.get<std::string>(location, "quantity_name"));
+
+    // Extent entries may be arithmetic expressions referencing other
+    // (scoped) config values, so evaluate them individually.
+    const auto extents_json = config.get<std::vector<nlohmann::json>>(location, "extents");
+    std::vector<std::ptrdiff_t> extents;
+    extents.reserve(extents_json.size());
+    for (const auto& extent : extents_json)
+        extents.push_back(config.eval<std::ptrdiff_t>(location, extent));
+
+    const auto dimname_strings = config.get<std::vector<std::string>>(location, "dimnames");
+    std::vector<Symbol> dimnames;
+    dimnames.reserve(dimname_strings.size());
+    for (const auto& dimname : dimname_strings)
+        dimnames.emplace_back(dimname);
+
+    if (extents.size() != dimnames.size())
+        throw std::runtime_error(fmt::format(
+            fmt("GenericNDArray: extents size ({:d}) does not match dimnames size ({:d}) in "
+                "path {:s}"),
+            extents.size(), dimnames.size(), location));
+    if (extents.empty() || extents.size() > max_rank)
+        throw std::runtime_error(
+            fmt::format(fmt("GenericNDArray: rank {:d} is outside [1, {:d}] in path {:s}"),
+                        extents.size(), max_rank, location));
+    for (std::size_t d = 0; d < extents.size(); ++d)
+        if (extents[d] <= 0)
+            throw std::runtime_error(fmt::format(
+                fmt("GenericNDArray: extent {:d} of dimension '{:s}' is not positive in "
+                    "path {:s}"),
+                extents[d], std::string(dimnames[d]), location));
+    for (std::size_t d = 0; d < dimnames.size(); ++d)
+        for (std::size_t d1 = 0; d1 < d; ++d1)
+            if (dimnames[d] == dimnames[d1])
+                throw std::runtime_error(
+                    fmt::format(fmt("GenericNDArray: duplicate dimname '{:s}' in path {:s}"),
+                                std::string(dimnames[d]), location));
+
+    return create(value_datatype, quantity_name, extents, dimnames, nullptr);
 }
 
 bool GenericNDArray::operator==(const FrameDesc& other_desc) const {

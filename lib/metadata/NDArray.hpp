@@ -77,6 +77,8 @@ make_arrays_from_pairs(std::initializer_list<std::pair<T, U>> values) {
 // - new type `NDBuffer`?
 // - add functions to allocate/deallocate buffer?
 
+class Config;
+
 // A `GenericNDArray` is similar to a numpy array. Neither the type
 // nor the rank are known at compile time. This is convenient e.g.
 // when reading data from a file, but it prevents efficient operations
@@ -88,7 +90,19 @@ public:
                                                   const Symbol quantity_name,
                                                   const std::vector<std::ptrdiff_t>& extents,
                                                   const std::vector<Symbol>& dimnames, void* data);
-    static const size_t max_rank = 10;
+
+    /// create an NDArray frame descriptor from a config block: reads
+    /// `value_type`, `quantity_name`, `extents`, and `dimnames` at the given
+    /// config location. Extent entries may be arithmetic expressions
+    /// referencing other (scoped) config values. The data pointer is null;
+    /// the result describes shape only (e.g. for Buffer::set_frame_desc).
+    /// Throws std::runtime_error on invalid or inconsistent config values.
+    static std::shared_ptr<GenericNDArray> from_config(const Config& config,
+                                                       const std::string& location);
+    /// constexpr makes this an inline variable (C++17), so odr-uses (e.g.
+    /// passing it by reference to fmt::format) link without an out-of-line
+    /// definition.
+    static constexpr size_t max_rank = 10;
     virtual ~GenericNDArray() {}
     // The value (element) type
     virtual DataType get_value_datatype() const = 0;

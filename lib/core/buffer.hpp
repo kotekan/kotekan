@@ -25,6 +25,7 @@
 #include <memory>             // for shared_ptr, make_shared
 #include <mutex>              // for recursive_mutex
 #include <sched.h>            // for cpu_set_t
+#include <sstream>            // for basic_ostringstream
 #include <stdint.h>           // for uint8_t
 #include <string>             // for string, basic_string
 #include <vector>             // for vector
@@ -647,6 +648,9 @@ public:
 
     /**
      * @brief Sets the frame description
+     *
+     * The first call records the descriptor; subsequent calls must provide a
+     * descriptor that compares equal to the recorded one, any mismatch is fatal.
      */
     void set_frame_desc(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
         buffer_lock lock(mutex);
@@ -660,7 +664,11 @@ public:
             frames_desc = new_desc;
         } else {
             if (*frames_desc != *new_desc) {
-                ERROR("Frame description mismatch!");
+                std::ostringstream existing_desc, incoming_desc;
+                frames_desc->output_framedesc(existing_desc);
+                new_desc->output_framedesc(incoming_desc);
+                FATAL_ERROR("Buffer {:s} frame description mismatch!\nExisting:\n{:s}\nNew:\n{:s}",
+                            buffer_name, existing_desc.str(), incoming_desc.str());
             }
         }
     }

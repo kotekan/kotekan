@@ -4,6 +4,7 @@
 #include "FrameDesc.hpp"      // for FrameDesc
 #include "HFBFrameView.hpp"   // for HFBFrameView
 #include "N2FrameDesc.hpp"    // for N2FrameDesc
+#include "NDArray.hpp"        // for GenericNDArray
 #include "buffer.hpp"         // for GenericBuffer, Buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO
 #include "metadata.hpp"       // for metadataPool
@@ -81,8 +82,8 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         pool = metadataPools[metadataPool_name];
     }
 
-    // See also buffer::is_frame_buffer(), which looks for these three strings ("standard", "vis",
-    // "hfb")
+    // See also buffer::is_frame_buffer(), which looks for these frame-buffer type strings
+    // ("standard", "vis", "hfb", "N2", "ndarray")
     size_t frame_size = 0;
     std::shared_ptr<kotekan::FrameDesc> frame_desc = nullptr;
     if (type_name == "standard") {
@@ -91,6 +92,9 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         frame_size = VisFrameView::calculate_frame_size(config, location);
     } else if (type_name == "N2") {
         frame_desc = std::make_shared<N2FrameDesc>(config, location);
+        frame_size = frame_desc->get_byte_size();
+    } else if (type_name == "ndarray") {
+        frame_desc = GenericNDArray::from_config(config, location);
         frame_size = frame_desc->get_byte_size();
     } else if (type_name == "hfb") {
         frame_size = HFBFrameView::calculate_frame_size(config, location);

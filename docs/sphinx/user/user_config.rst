@@ -36,8 +36,8 @@ omit metadata entirely.
 
 Common keys (unless noted otherwise):
 
-- ``kotekan_buffer``: buffer type; supported values are ``standard``, ``vis``, ``N2``, ``hfb``, and
-  ``ring``.
+- ``kotekan_buffer``: buffer type; supported values are ``standard``, ``ndarray``, ``vis``, ``N2``,
+  ``hfb``, and ``ring``.
 - ``num_frames``: depth of frame-based buffers (everything except ``ring``). Pick a size that covers
   the latency of downstream stages.
 - ``metadata_pool``: optional for ``standard`` buffers; name of a :ref:`metadata pool
@@ -51,6 +51,13 @@ Common keys (unless noted otherwise):
 Type-specific notes:
 
 - ``standard`` – raw byte buffers. You must set ``frame_size`` in bytes.
+- ``ndarray`` – frames holding a single typed multi-dimensional array, described by ``value_type``
+  (a kotekan ``DataType`` name such as ``float32`` or ``int4x2``), ``quantity_name``, ``extents``
+  (a list of dimension sizes; entries may be arithmetic expressions referencing other config
+  values, e.g. ``samples_per_data_set / upchan_factor``), and ``dimnames`` (a list of axis labels,
+  one per extent). ``frame_size`` is derived from the descriptor, and the frame descriptor is
+  attached to the buffer at startup, so stages can validate against it (or read shapes from it)
+  from their constructors onward. Typically paired with a ``chordMetadata`` pool.
 - ``vis`` – visibility frames sized automatically from ``num_elements``, ``num_ev``, and optional
   ``num_prod`` (defaults to an upper-triangular visibility matrix). Numeric types are fixed
   (complex floats for visibilities/EVs, floats for weights/flags). The attached metadata type is
