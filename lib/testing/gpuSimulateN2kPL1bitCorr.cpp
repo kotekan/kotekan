@@ -87,6 +87,13 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     int ne = _num_elements / 8;
     int n_block_lin = ne / _blocksize;
     int n_blocks = (n_block_lin * (n_block_lin + 1)) / 2;
+    input_plmask_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType<kotekan::uint1x8>::type, 5>::describe(
+            "pl_mask_exp", {_samples_per_data_set / 64, nf, 2, ne / 2, 8},
+            {"Thi64", "F", "P", "D8", "Tlo64"}));
+    input_rfimask_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType<kotekan::uint1x8>::type, 3>::describe(
+            "RFImask", {_samples_per_data_set / 1024, nf, 128}, {"T8hi128", "F", "T8lo128"}));
     output_buf->require_frame_desc(
         kotekan::NDArray<kotekan::GetType<kotekan::int32>::type, 5>::describe(
             "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},

@@ -555,7 +555,11 @@ public:
                     const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
                     const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
                         buffer->get_frame_desc<kotekan::GenericNDArray>();
-                    assert(frame_desc);
+                    if (!frame_desc)
+                        FATAL_ERROR(
+                            "Buffer \"{:s}\" has no NDArray frame descriptor; hdf5FileWrite "
+                            "needs one to write CHORD-metadata frames",
+                            buffer->buffer_name);
                     write_chord(frame, meta, frame_desc, frame_counter);
                 } else if (metadata_is_N2(mc)) {
                     assert(metadata_is_N2(mc));

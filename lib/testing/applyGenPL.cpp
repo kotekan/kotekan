@@ -61,27 +61,13 @@ applyGenPL::applyGenPL(Config& config, const std::string& unique_name,
     output_buf = get_buffer("voltage_out_buf");
     output_buf->register_producer(unique_name);
 
-    size_t voltage_frame_size =
-        _samples_per_data_set * _num_local_freq * _num_elements * sizeof(char);
-    size_t pl_frame_size =
-        (_samples_per_data_set / 2) * (_num_local_freq / 4) * (_num_elements / 8) / 8;
-
-    if (input_buf->frame_size != voltage_frame_size) {
-        FATAL_ERROR("applyGenPL voltage_in_buf ({:s}) has frame size {:d}, expected {:d}.",
-                    input_buf->buffer_name, input_buf->frame_size, voltage_frame_size);
-        std::abort();
-    }
-    if (plmask_buf->frame_size != pl_frame_size) {
-        FATAL_ERROR("applyGenPL plmask_in_buf ({:s}) has frame size {:d}, expected {:d}.",
-                    plmask_buf->buffer_name, plmask_buf->frame_size, voltage_frame_size);
-        std::abort();
-    }
-    if (output_buf->frame_size != voltage_frame_size) {
-        FATAL_ERROR("applyGenPL voltage_out_buf ({:s}) has frame size {:d}, expected {:d}.",
-                    output_buf->buffer_name, output_buf->frame_size, voltage_frame_size);
-        std::abort();
-    }
-
+    input_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::int4x2_swapped_withoffset, "E",
+        {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"}));
+    plmask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::uint1x8, "pl_mask",
+        {_samples_per_data_set / 128, _num_local_freq / 4, 2, (_num_elements / 8) / 2, 8},
+        {"T2hi64", "F4", "P", "D8", "T2lo64"}));
     output_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int4x2_swapped_withoffset, "E",
         {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"}));

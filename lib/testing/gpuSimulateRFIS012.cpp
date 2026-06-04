@@ -48,10 +48,6 @@ gpuSimulateRFIS012::gpuSimulateRFIS012(Config& config, const std::string& unique
     out_rfis012_buf->register_producer(unique_name);
 
 
-    size_t voltage_size = _samples_per_data_set * _num_local_freq * _num_elements;
-    size_t plmask_size =
-        ((_samples_per_data_set / 2) * (_num_local_freq / 4) * (_num_elements / 8)) / 8;
-
     // Check input sizes and buffer compatibility
     if (_samples_per_data_set % _rfi_downsampling_factor != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of rfi_downsampling_factor");
@@ -61,19 +57,15 @@ gpuSimulateRFIS012::gpuSimulateRFIS012(Config& config, const std::string& unique
     if (_num_elements % 8 != 0) {
         FATAL_ERROR("num_elements (num_polarizations x num_dishes) must be a multiple of 8");
     }
-    assert(_samples_per_data_set % _rfi_downsampling_factor == 0);
 
-    if (in_voltage_buf->frame_size != voltage_size) {
-        FATAL_ERROR("in_voltage_buf ({:s}) has frame size: {:d}, expected: {:d}",
-                    in_voltage_buf->buffer_name, in_voltage_buf->frame_size, voltage_size);
-    }
-    assert(in_voltage_buf->frame_size == voltage_size);
-
-    if (in_plmask_buf->frame_size != plmask_size) {
-        FATAL_ERROR("in_plmask_buf ({:s}) has frame size: {:d}, expected: {:d}",
-                    in_plmask_buf->buffer_name, in_plmask_buf->frame_size, plmask_size);
-    }
-    assert(in_plmask_buf->frame_size == plmask_size);
+    in_voltage_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::int4x2_swapped_withoffset_t, 4>::describe(
+            "E", {_samples_per_data_set, _num_local_freq, _num_polarizations, _num_dishes},
+            {"T", "F", "P", "D"}));
+    in_plmask_buf->require_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 5>::describe(
+        "pl_mask",
+        {_samples_per_data_set / 128, _num_local_freq / 4, _num_polarizations, _num_dishes / 8, 8},
+        {"T2hi64", "F4", "P", "D8", "T2lo64"}));
 
     // Make frame desc for produced buffer
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;

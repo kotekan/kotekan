@@ -61,14 +61,11 @@ gpuSimulateRFIS012bar::gpuSimulateRFIS012bar(Config& config, const std::string& 
     assert((_samples_per_data_set / _rfi_downsampling_factor) % _rfi_second_downsampling_factor
            == 0);
 
-    size_t rfi_s012_size = (_samples_per_data_set / _rfi_downsampling_factor) * _num_local_freq * 3
-                           * _num_elements * sizeof(uint64_t);
-
-    if (in_buf->frame_size != rfi_s012_size) {
-        FATAL_ERROR("in_buf ({:s}) has frame size: {:d}, expected {:d}", in_buf->buffer_name,
-                    in_buf->frame_size, rfi_s012_size);
-    }
-    assert(in_buf->frame_size == rfi_s012_size);
+    in_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
+        "S012",
+        {_samples_per_data_set / _rfi_downsampling_factor, _num_local_freq, 3, _num_polarizations,
+         _num_dishes},
+        {"Trfi", "F", "S", "P", "D"}));
 
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor / _rfi_second_downsampling_factor;
     out_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(

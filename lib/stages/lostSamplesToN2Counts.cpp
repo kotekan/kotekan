@@ -89,11 +89,10 @@ lostSamplesToN2Counts::lostSamplesToN2Counts(Config& config, const std::string& 
             "Number of lost_samples buffers ({:d}) does not evenly divide total frequencies ({:d})",
             _nbufs, num_n2k_freq);
 
-    // Check rfi make frame size against expectation
-    size_t _expected_rfi_frame_size = num_n2k_freq * samples_per_data_set / BITS_PER_BYTE;
-    if (rfi_mask_buf->frame_size != _expected_rfi_frame_size)
-        FATAL_ERROR("Unexpected frame size for rfi_mask {:d} - expected {:d}",
-                    rfi_mask_buf->frame_size, _expected_rfi_frame_size);
+    // Check the rfi mask shape against expectation
+    rfi_mask_buf->require_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 3>::describe(
+        "RFImask", {std::ptrdiff_t(samples_per_data_set / 1024), std::ptrdiff_t(num_n2k_freq), 128},
+        {"T8hi128", "F", "T8lo128"}));
 
     // This is a bit of a misnomer - the lost_samples buffer does not _include_
     // multiple frequencies, but information may be shared by multiple frequencies
