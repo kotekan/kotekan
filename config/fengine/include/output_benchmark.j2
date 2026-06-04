@@ -25,7 +25,8 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_n2_vis_buffer
         file_name: n2_vis
-        #TODO create_single_file: false # not implemented
+        create_single_file: false # not implemented
+        max_frames: 10 * num_frequencies # each frame has 1006.63296 ms
     write_bb_beams:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beams_buffer
