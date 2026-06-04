@@ -87,15 +87,21 @@ num_times: 16384                # frame length is 16384 * 2.56 us = 41.94304 ms
 # Buffers
 
 host_bf_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    value_type: int8
+    quantity_name: bf_mask
+    extents: [num_polarizations, num_dishes]
+    dimnames: ["P", "D"]
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 64)
+    value_type: uint1x8
+    quantity_name: pl_mask
+    extents: [num_times / 2 / 64, num_frequencies / 4, num_polarizations, num_dishes / 8, 64 / 8]
+    dimnames: ["T2hi64", "F4", "P", "D8", "T2lo64"]
     metadata_pool: main_pool
 host_pl_mask_ringbuffer:
     kotekan_buffer: ring
@@ -103,9 +109,12 @@ host_pl_mask_ringbuffer:
     metadata_pool: main_pool
 
 host_pl_expanded_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)
+    value_type: uint1x8
+    quantity_name: pl_mask_exp
+    extents: [num_times / 64, num_frequencies, num_polarizations, num_dishes / 8, 64 / 8]
+    dimnames: ["Thi64", "F", "P", "D8", "Tlo64"]
     metadata_pool: main_pool
 host_pl_expanded_mask_ringbuffer:
     kotekan_buffer: ring
@@ -114,18 +123,24 @@ host_pl_expanded_mask_ringbuffer:
 
 host_voltage_buffers:
   num_frames: buffer_depth
-  frame_size: num_dishes * num_polarizations * num_times
+  value_type: int4x2_swapped_withoffset
+  quantity_name: E
+  extents: [1, num_times, num_polarizations * num_dishes]
+  dimnames: ["F", "T", "E"]
   metadata_pool: main_pool
   numa_0:
 {% for id in range(16) %}   # num_frequencies = 16
     host_voltage_buffer_{{ id }}:
-      kotekan_buffer: standard
+      kotekan_buffer: ndarray
 {% endfor %}
 
 host_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_dishes * num_polarizations * num_frequencies * num_times
+    value_type: int4x2_swapped_withoffset
+    quantity_name: E
+    extents: [num_times, num_frequencies, num_polarizations, num_dishes]
+    dimnames: ["T", "F", "P", "D"]
     metadata_pool: main_pool
 host_voltage_ringbuffer:
     kotekan_buffer: ring
