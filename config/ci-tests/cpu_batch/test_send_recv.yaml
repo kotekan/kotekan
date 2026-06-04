@@ -46,11 +46,17 @@ N2_pool:
 
 # Buffers
 send_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_frame_samples
+    value_type: int4x2
+    quantity_name: E
+    extents: [num_frame_samples]
+    dimnames: ["S"]
     metadata_pool: main_pool
 
+# The recv buffers stay `standard`: bufferRecv reconstructs the frame
+# descriptor at runtime from the received frames' metadata, so their shape
+# is not declared in config.
 recv_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -58,9 +64,12 @@ recv_buffer:
     metadata_pool: main_pool
 
 send_buffer_noCT:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_frame_samples
+    value_type: int4x2
+    quantity_name: E
+    extents: [num_frame_samples]
+    dimnames: ["S"]
     metadata_pool: main_pool
 
 recv_buffer_noCT:

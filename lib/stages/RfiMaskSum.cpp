@@ -101,9 +101,10 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    // Ensure outgoing buffer is of type N2
-    if (out_buf->buffer_type != "standard")
-        FATAL_ERROR("RfiMaskSum out_buf ({:s}) is not of type standard.", out_buf->buffer_name);
+    // Ensure outgoing buffer is a plain frame buffer
+    if (out_buf->buffer_type != "standard" && out_buf->buffer_type != "ndarray")
+        FATAL_ERROR("RfiMaskSum out_buf ({:s}) is not of type standard or ndarray.",
+                    out_buf->buffer_name);
 
     // Sanity checks on initialization
     {
