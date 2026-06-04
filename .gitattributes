@@ -4,6 +4,7 @@
 # Mark generated files as generated (excluded from language stats and
 # collapsed in GitHub diffs).
 lib/cuda/generated/**      linguist-generated=true
+lib/cuda/kernels/**        linguist-generated=true
 julia/output/**            linguist-generated=true
 julia/output-A40/**        linguist-generated=true
 python/kotekan/_version.py linguist-generated=true
@@ -26,5 +27,6 @@ docs/** linguist-documentation=true
 *.ptx  -diff
 *.sass -diff
 lib/cuda/generated/** -diff
+lib/cuda/kernels/**   -diff
 julia/output/**       -diff
 julia/output-A40/**   -diff
