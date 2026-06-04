@@ -57,7 +57,8 @@ Type-specific notes:
   values, e.g. ``samples_per_data_set / upchan_factor``), and ``dimnames`` (a list of axis labels,
   one per extent). ``frame_size`` is derived from the descriptor, and the frame descriptor is
   attached to the buffer at startup, so stages can validate against it (or read shapes from it)
-  from their constructors onward. Typically paired with a ``chordMetadata`` pool.
+  from their constructors onward. Typically paired with a ``chordMetadata`` pool. See
+  :ref:`dev_buffers` for the descriptor model and authoring guidance.
 - ``vis`` – visibility frames sized automatically from ``num_elements``, ``num_ev``, and optional
   ``num_prod`` (defaults to an upper-triangular visibility matrix). Numeric types are fixed
   (complex floats for visibilities/EVs, floats for weights/flags). The attached metadata type is
