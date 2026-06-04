@@ -222,7 +222,7 @@ void setFRBBeams::main_thread() {
         float *beam_pos = (float *)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
         if (beam_pos == nullptr)
             break;
-        uint64_t *beam_id = (uint64_t *)out_pos_buf->wait_for_empty_frame(unique_name, id_frame_id);
+        uint64_t *beam_id = (uint64_t *)out_id_buf->wait_for_empty_frame(unique_name, id_frame_id);
         if (beam_id == nullptr)
             break;
 

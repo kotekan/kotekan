@@ -171,7 +171,7 @@ setBBBeams::setBBBeams(Config& config, const std::string& unique_name,
                                       std::bind(&setBBBeams::send_beams, this, _1));
 
     out_pos_buf->allocate_ndarray_frame_desc<float, 2>("bb_beam_positions", {static_cast<ptrdiff_t>(num_beams), 2}, {"B", "X/Y"});
-    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>("bb_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"R"});
+    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>("bb_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"B"});
 }
 
 setBBBeams::~setBBBeams() {
@@ -263,7 +263,7 @@ void setBBBeams::main_thread() {
         float *beam_pos = (float *)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
         if (beam_pos == nullptr)
             break;
-        uint64_t *beam_id = (uint64_t *)out_pos_buf->wait_for_empty_frame(unique_name, id_frame_id);
+        uint64_t *beam_id = (uint64_t *)out_id_buf->wait_for_empty_frame(unique_name, id_frame_id);
         if (beam_id == nullptr)
             break;
 
