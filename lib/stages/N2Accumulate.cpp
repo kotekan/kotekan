@@ -30,6 +30,7 @@
 #include "N2FrameDesc.hpp"        // for N2FrameDesc
 #include "N2Layout.hpp"           // for N2Layout
 #include "dataset.hpp"            // for dset_id_t
+#include "div.hpp"                // for div_ceil, num_triangle_blocks
 #include "jsonMetadata.hpp"       // for MAX_NUM_RFI_THRESHOLDS
 #ifdef WITH_OMP
 #include <omp.h>
@@ -159,9 +160,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                   "_n_fpga_samples_per_n2k_correlation");
 
         // sizes for blocked input correlation matrix
-        _n2k_correlation_lin_blocks = _num_elements / _n2k_correlation_blocksize;
+        _n2k_correlation_lin_blocks = kotekan::div_ceil(_num_elements, _n2k_correlation_blocksize);
         _n2k_correlation_num_blocks =
-            (_n2k_correlation_lin_blocks * (_n2k_correlation_lin_blocks + 1)) / 2;
+            kotekan::num_triangle_blocks(_num_elements, _n2k_correlation_blocksize);
 
         // Total number of correlation values per time & frequency,
         // because of blocking this will include some redundant values.
@@ -169,8 +170,9 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
             _n2k_correlation_num_blocks * _n2k_correlation_blocksize * _n2k_correlation_blocksize;
 
         // sizes for blocked input counts matrix
-        _n2k_counts_lin_blocks = _num_elements / (8 * _n2k_counts_blocksize);
-        _n2k_counts_num_blocks = (_n2k_counts_lin_blocks * (_n2k_counts_lin_blocks + 1)) / 2;
+        _n2k_counts_lin_blocks = kotekan::div_ceil(_num_elements / 8, _n2k_counts_blocksize);
+        _n2k_counts_num_blocks =
+            kotekan::num_triangle_blocks(_num_elements / 8, _n2k_counts_blocksize);
 
         // Total number of counts values per time & frequency,
         // because of blocking this will include some redundant values.

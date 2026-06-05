@@ -5,6 +5,7 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
+#include "div.hpp"             // for div_ceil, num_triangle_blocks
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
 #include "metadata.hpp"        // for metadataObject
 
@@ -117,8 +118,8 @@ testLostCountsGen::testLostCountsGen(Config& config, const std::string& unique_n
     repeat_count(config.get_default<int64_t>(unique_name, "repeat_count", 0)),
     num_integrations(samples_per_data_set / sub_integration_ntime),
     num_entries(num_integrations * num_local_freq),
-    n2k_counts_lin_blocks(num_elements / (8 * n2k_counts_blocksize)),
-    n2k_counts_num_blocks((n2k_counts_lin_blocks * (n2k_counts_lin_blocks + 1)) / 2),
+    n2k_counts_lin_blocks(kotekan::div_ceil(num_elements / 8, n2k_counts_blocksize)),
+    n2k_counts_num_blocks(kotekan::num_triangle_blocks(num_elements / 8, n2k_counts_blocksize)),
     n2k_counts_num_prod(n2k_counts_num_blocks * n2k_counts_blocksize * n2k_counts_blocksize) {
 
     // Get buffers

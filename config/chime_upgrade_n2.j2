@@ -827,13 +827,13 @@ n2k_num_subintegrations: n2k_samples_per_data_set / n2k_sub_integration_ntime
 
 n2k_correlation_blocksize: 16
 n2k_correlation_num_elements: num_dishes * num_polarizations
-n2k_correlation_linear_num_blocks: (n2k_correlation_num_elements + 1) / n2k_correlation_blocksize
+n2k_correlation_linear_num_blocks: (n2k_correlation_num_elements + n2k_correlation_blocksize - 1) / n2k_correlation_blocksize
 n2k_correlation_triangle_num_blocks: n2k_correlation_linear_num_blocks * (n2k_correlation_linear_num_blocks + 1) / 2
 n2k_correlation_triangle_size: n2k_correlation_blocksize * n2k_correlation_blocksize * n2k_correlation_triangle_num_blocks
 
 n2k_counts_blocksize: 8
 n2k_counts_num_elements: num_dishes / 8 * num_polarizations
-n2k_counts_linear_num_blocks: (n2k_counts_num_elements + 1) / n2k_counts_blocksize
+n2k_counts_linear_num_blocks: (n2k_counts_num_elements + n2k_counts_blocksize - 1) / n2k_counts_blocksize
 n2k_counts_triangle_num_blocks: n2k_counts_linear_num_blocks * (n2k_counts_linear_num_blocks + 1) / 2
 n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_counts_triangle_num_blocks
 

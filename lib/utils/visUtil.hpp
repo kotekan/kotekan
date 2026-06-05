@@ -11,7 +11,6 @@
 #ifndef VIS_UTIL_HPP
 #define VIS_UTIL_HPP
 
-
 #include <algorithm>      // for copy, max
 #include <array>          // for array
 #include <chrono>         // for system_clock
@@ -24,6 +23,7 @@
 #include "DataType.hpp"   // for KOTEKAN_FLOAT16, float16_t
 #include "Telescope.hpp"  // for stream_t
 #include "buffer.hpp"     // for Buffer
+#include "div.hpp"        // for div_ceil, num_triangle_blocks
 #include "fmt.hpp"        // for appender, format, format_string, formatter, format_context
 #include "gsl-lite.hpp"   // for span
 #include "json.hpp"       // for json, value_t
@@ -262,7 +262,7 @@ inline prod_ctype icmap(uint32_t k, uint16_t n) {
  * @return       Index into blocked array.
  */
 inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
-    uint32_t num_blocks1 = ((N - 1) / block) + 1; // Blocks needed to tile 1D
+    uint32_t num_blocks1 = kotekan::div_ceil(N, block); // Blocks needed to tile 1D
     uint32_t b_ix = cmap(i / block, j / block, num_blocks1);
 
     return block * block * b_ix + (i % block) * block + (j % block);
@@ -408,9 +408,7 @@ inline double current_time() {
  * @return        The size of the packd GPU data.
  **/
 inline constexpr uint32_t gpu_N2_size(uint32_t N, uint32_t block) {
-    const auto num_blocks1 = ((N - 1) / block) + 1;               // Blocks per side
-    const auto num_blocks2 = num_blocks1 * (num_blocks1 + 1) / 2; // ... triangle
-    return (num_blocks2 * block * block);                         // Total size
+    return kotekan::num_triangle_blocks(N, block) * block * block;
 }
 
 

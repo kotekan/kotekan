@@ -88,8 +88,7 @@ visAccumulate::visAccumulate(Config& config, const std::string& unique_name,
     float low_sample_fraction = config.get_default<float>(unique_name, "low_sample_fraction", 0.01);
     minimum_samples = (size_t)(low_sample_fraction * num_gpu_frames * samples_per_data_set);
 
-    size_t nb = num_elements / block_size;
-    num_prod_gpu = num_freq_in_frame * nb * (nb + 1) * block_size * block_size / 2;
+    num_prod_gpu = num_freq_in_frame * gpu_N2_size(num_elements, block_size);
 
     // Get everything we need for registering dataset states
 

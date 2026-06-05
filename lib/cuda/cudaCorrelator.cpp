@@ -19,7 +19,7 @@
 #include "cudaCommand.hpp"          // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
 #include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
 #include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
-#include "div.hpp"                  // for div_noremainder, mod
+#include "div.hpp"                  // for div_noremainder, mod, num_triangle_blocks
 #include "gpuCommand.hpp"           // for gpuCommandType
 #include "kotekanLogging.hpp"       // for DEBUG
 #include "n2k/Correlator.hpp"       // for Correlator
@@ -29,6 +29,7 @@ using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::div_noremainder;
 using kotekan::mod;
+using kotekan::num_triangle_blocks;
 
 REGISTER_CUDA_COMMAND(cudaCorrelator);
 
@@ -57,8 +58,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
         // aka "nt_outer" in n2k.hpp
         const int num_subintegrations = div_noremainder(_num_times, _sub_integration_ntime);
         const int blocksize = 16;
-        const int linear_num_blocks = (_num_elements + 1) / blocksize;
-        const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
+        const int triangle_num_blocks = num_triangle_blocks(_num_elements, blocksize);
         const std::array<std::ptrdiff_t, 6> n2k_lengths{
             num_subintegrations, _num_local_freq, triangle_num_blocks, blocksize, blocksize, 2};
         const std::array<std::string, 6> n2k_dimnames{"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"};
