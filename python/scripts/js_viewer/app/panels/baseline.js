@@ -3,6 +3,10 @@
 // auto-cal routine that briefly retunes airspyInput to a calibration
 // frequency and captures a clean bandpass.
 
+// Mean of an array, with a 1.0 floor so an empty/NaN column can't poison the
+// baseline. Local to this file -- the only place a per-bin mean is taken.
+const _mean = (d) => _.reduce(d, (memo, num) => memo + num, 0) / d.length || 1;
+
 export class BaselinePanel {
     constructor({app, target, autocal_stage, line_mask_mhz, autocal_freqs_mhz}) {
         this.app = app;
