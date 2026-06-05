@@ -486,7 +486,6 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
     def onOpen(self):
         log_.info("WS open: %s", self.peer)
         self.factory.register(self)
-        self.recording_file = None
         self._paused = False
         self._stuck_watchdog = None
         # Tell the TCP transport to push us pause/resume callbacks when its
@@ -539,47 +538,18 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
 
         # Skip the frame entirely if the transport is back-pressured -- the
         # client's own time-gap detector will paint the missed span grey.
-        # Recordings still get every frame because they hit a local file
-        # rather than the network.
+        if self._paused:
+            return
         t = np.float64(kotekan.sample_time())
         spectrum = kotekan.outbuf.astype(np.float32, copy=False)
-        if not self._paused:
-            self.sendMessage(
-                np.int8(MSG_TIMESTEP).tobytes() + t.tobytes() + spectrum.tobytes(),
-                isBinary=True,
-            )
-        if self.recording_file:
-            self.recording_file.write(t.tobytes() + spectrum.tobytes())
+        self.sendMessage(
+            np.int8(MSG_TIMESTEP).tobytes() + t.tobytes() + spectrum.tobytes(),
+            isBinary=True,
+        )
 
     def onMessage(self, payload, isBinary):
-        if isBinary:
-            log_.info("Ignoring %d-byte binary message from client", len(payload))
-            return
-        try:
-            request = json.loads(payload.decode("utf-8"))
-        except Exception as e:
-            log_.warning("Bad JSON from client: %s", e)
-            return
-
-        if request.get("type") != "record":
-            log_.info("Unknown client request: %s", request)
-            return
-
-        if request.get("state"):
-            if self.recording_file:
-                self.recording_file.close()
-                self.recording_file = None
-                return
-            fn = request["file"]
-            kotekan = self.factory.kotekan
-            f = open(fn, "wb")
-            f.write(kotekan.packed_header)
-            f.write(kotekan.frame_freqs.tobytes())
-            f.write(kotekan.frame_elems.tobytes())
-            self.recording_file = f
-        elif self.recording_file:
-            self.recording_file.close()
-            self.recording_file = None
+        # The viewer is push-only; clients aren't expected to send anything.
+        log_.info("Ignoring unexpected %d-byte message from client", len(payload))
 
     def onClose(self, wasClean, code, reason):
         log_.info("WS closed: %s", reason)
@@ -591,9 +561,6 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
         except Exception:
             pass
         self.factory.unregister(self)
-        if self.recording_file:
-            self.recording_file.close()
-            self.recording_file = None
 
 
 class LiveBeamWSFactory(WebSocketServerFactory):

@@ -34,7 +34,6 @@ export class Socket {
     constructor({app, url}) {
         this.app = app;
         this.url = url;
-        this.isopen = false;
         this.ws = null;
 
         this._user_close = false;
@@ -57,13 +56,11 @@ export class Socket {
         this.ws = new WebSocket(this.url);
         this.ws.binaryType = "arraybuffer";
         this.ws.onopen = () => {
-            this.isopen = true;
             this._reconnect_delay = RECONNECT_MIN_MS;
             this.app.bus.emit("ws:open");
         };
         this.ws.onmessage = (e) => this._onmessage(e);
         this.ws.onclose = () => {
-            this.isopen = false;
             // user_initiated lets listeners (eg WaterfallView's gap detector)
             // distinguish "user paused" from "server / network dropped us".
             this.app.bus.emit("ws:close", {user_initiated: this._user_close});
@@ -93,10 +90,6 @@ export class Socket {
             this._reconnect_timer = null;
         }
         if (this.ws) this.ws.close();
-    }
-
-    send(payload) {
-        if (this.ws && this.isopen) this.ws.send(payload);
     }
 
     _onmessage(e) {
