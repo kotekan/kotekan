@@ -194,6 +194,11 @@ export class WaterfallView {
         // for the user's own pause.
         this._last_frame_time = null;
 
+        // Browser<->server clock offset, sampled on the first frame; frame
+        // staleness is measured against it so a constant clock skew doesn't
+        // drop every frame (or none). Reset per connection (see ws:close).
+        this._clock_offset_s = null;
+
         // Re-render whenever the card changes shape.
         new ResizeObserver(() => this._on_resize()).observe(this.jqcontainer[0]);
 
@@ -202,6 +207,7 @@ export class WaterfallView {
         this.bus.on("state:freq_list_changed",  () => this.draw());
         this.bus.on("state:buffer_length_changed", () => this._trim_buffers());
         this.bus.on("ws:close", (d) => {
+            this._clock_offset_s = null;
             if (d && d.user_initiated) this._last_frame_time = null;
         });
     }
@@ -244,19 +250,21 @@ export class WaterfallView {
         const s = this.state;
         if (s.mode !== "normal" && s.mode !== "skip") return;
 
-        // Drop frames whose timestamp is too far behind wall-clock. This is
-        // what catches the case where the browser fell behind processing
-        // (the server already paused, but a backlog drained into the page's
-        // WS buffer before kotekan died). We deliberately do NOT advance
-        // ``_last_frame_time`` here, so when fresh frames resume the gap
-        // detector below sees the full wall-clock lag and paints grey.
+        // Drop frames that fall too far behind live (e.g. the browser lagged
+        // and a backlog drained into the WS buffer). ``age`` is relative to the
+        // first-frame offset, so it tracks lag accrued since connect, not the
+        // absolute clock skew. We don't advance ``_last_frame_time``, so the
+        // gap detector below paints the skipped span grey when live resumes.
         const wall_now = Date.now() / 1000;
-        if (wall_now - timestamp > STALE_FRAME_AGE_S) {
+        if (this._clock_offset_s == null)
+            this._clock_offset_s = wall_now - timestamp;
+        const age = (wall_now - timestamp) - this._clock_offset_s;
+        if (age > STALE_FRAME_AGE_S) {
             this._stale_dropped = (this._stale_dropped || 0) + 1;
             // Throttle the console log to once per second so a long drain
             // doesn't spam.
             if (!this._stale_log_at || wall_now - this._stale_log_at > 1.0) {
-                console.warn(`Dropping stale frame (${(wall_now - timestamp).toFixed(1)}s behind wall-clock); ${this._stale_dropped} dropped so far`);
+                console.warn(`Dropping stale frame (${age.toFixed(1)}s behind live); ${this._stale_dropped} dropped so far`);
                 this._stale_log_at = wall_now;
             }
             return;
