@@ -42,8 +42,8 @@ N2FringeStop::N2FringeStop(Config& config, const std::string& unique_name,
     out_buf->register_producer(unique_name);
 
     // Validate that input and output buffers have compatible N2 frame descriptors
-    auto in_desc = in_buf->get_frame_description();
-    auto out_desc = out_buf->get_frame_description();
+    auto in_desc = in_buf->get_frame_desc();
+    auto out_desc = out_buf->get_frame_desc();
     if (!in_desc || !out_desc) {
         FATAL_ERROR("N2FringeStop: Input and output buffers must have frame descriptors set");
     }

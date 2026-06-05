@@ -1,5 +1,6 @@
 #include "CHORDTelescope.hpp"
 #include "Config.hpp"
+#include "NDArray.hpp" // for GenericNDArray, NDArray
 #include "Stage.hpp"
 #include "StageFactory.hpp"
 #include "buffer.hpp"
@@ -135,33 +136,33 @@ public:
         assert(std::ptrdiff_t(s_buffer->frame_size) == s_frame_size);
 
         // Set metadata
-        bb_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
-            "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"});
+        bb_beam_positions_buffer->set_frame_desc(kotekan::NDArray<float, 2>::describe(
+            "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"}));
         bb_beam_positions_buffer->allocate_new_metadata_object(frame_id);
         const auto& bb_beam_positions_meta =
             get_chord_metadata(bb_beam_positions_buffer->get_metadata(frame_id));
         bb_beam_positions_meta->set_from_frame_desc(
-            bb_beam_positions_buffer->get_ndarray_frame_desc());
+            bb_beam_positions_buffer->get_frame_desc<kotekan::GenericNDArray>());
         bb_beam_positions_meta->set_fpga_seq_num(frame_index * num_times);
         bb_beam_positions_meta->set_time_downsampling_fpga(1);
 
-        A_buffer->allocate_ndarray_frame_desc<std::int8_t, 5>(
+        A_buffer->set_frame_desc(kotekan::NDArray<std::int8_t, 5>::describe(
             "A", {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
-            {"F", "P", "B", "D", "C"});
+            {"F", "P", "B", "D", "C"}));
         A_buffer->allocate_new_metadata_object(frame_id);
         const auto& A_meta = get_chord_metadata(A_buffer->get_metadata(frame_id));
-        A_meta->set_from_frame_desc(A_buffer->get_ndarray_frame_desc());
+        A_meta->set_from_frame_desc(A_buffer->get_frame_desc<kotekan::GenericNDArray>());
         A_meta->set_fpga_seq_num(frame_index * num_times);
         A_meta->set_time_downsampling_fpga(1);
         A_meta->set_coarse_freq(frequency_channels);
         A_meta->set_freq_upchan_factor(freq_upchan_factor);
         A_meta->set_freq_upchan_index(freq_upchan_index);
 
-        s_buffer->allocate_ndarray_frame_desc<std::int32_t, 3>(
-            "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"});
+        s_buffer->set_frame_desc(kotekan::NDArray<std::int32_t, 3>::describe(
+            "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"}));
         s_buffer->allocate_new_metadata_object(frame_id);
         const auto& s_meta = get_chord_metadata(s_buffer->get_metadata(frame_id));
-        s_meta->set_from_frame_desc(s_buffer->get_ndarray_frame_desc());
+        s_meta->set_from_frame_desc(s_buffer->get_frame_desc<kotekan::GenericNDArray>());
         s_meta->set_fpga_seq_num(frame_index * num_times);
         s_meta->set_time_downsampling_fpga(1);
         s_meta->set_coarse_freq(frequency_channels);

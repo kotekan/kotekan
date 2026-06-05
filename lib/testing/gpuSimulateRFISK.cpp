@@ -1,6 +1,7 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType
 #include "N2Util.hpp"          // for frameID
+#include "NDArray.hpp"         // for GenericNDArray, NDArray
 #include "Stage.hpp"           // for Stage
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
@@ -229,23 +230,23 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
 
     // Make frame desc for produced buffers
     if (_bar_mode) {
-        out_rfi_sk_buf->allocate_ndarray_frame_desc<float, 5>(
+        out_rfi_sk_buf->set_frame_desc(kotekan::NDArray<float, 5>::describe(
             "SKbar", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
-            {"Trfibar", "F", "SK", "P", "D"});
-        out_rfi_sktilde_buf->allocate_ndarray_frame_desc<float, 3>(
-            "SKbartilde", {nt, _num_local_freq, 3}, {"Trfibar", "F", "SK"});
-        out_rfi_mask_buf->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 3>(
+            {"Trfibar", "F", "SK", "P", "D"}));
+        out_rfi_sktilde_buf->set_frame_desc(kotekan::NDArray<float, 3>::describe(
+            "SKbartilde", {nt, _num_local_freq, 3}, {"Trfibar", "F", "SK"}));
+        out_rfi_mask_buf->set_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 3>::describe(
             "RFImask", {_samples_per_data_set / 1024, _num_local_freq, 128},
-            {"T8hi128", "F", "T8lo128"});
+            {"T8hi128", "F", "T8lo128"}));
     } else {
-        out_rfi_sk_buf->allocate_ndarray_frame_desc<float, 5>(
+        out_rfi_sk_buf->set_frame_desc(kotekan::NDArray<float, 5>::describe(
             "SK", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
-            {"Trfi", "F", "SK", "P", "D"});
-        out_rfi_sktilde_buf->allocate_ndarray_frame_desc<float, 3>(
-            "SKtilde", {nt, _num_local_freq, 3}, {"Trfi", "F", "SK"});
-        out_rfi_mask_buf->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 3>(
+            {"Trfi", "F", "SK", "P", "D"}));
+        out_rfi_sktilde_buf->set_frame_desc(kotekan::NDArray<float, 3>::describe(
+            "SKtilde", {nt, _num_local_freq, 3}, {"Trfi", "F", "SK"}));
+        out_rfi_mask_buf->set_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 3>::describe(
             "RFImask", {_samples_per_data_set / 1024, _num_local_freq, 128},
-            {"T8hi128", "F", "T8lo128"});
+            {"T8hi128", "F", "T8lo128"}));
     }
 
     // Check the size of the interpolation tables
@@ -552,14 +553,18 @@ void gpuSimulateRFISK::main_thread() {
         meta_sktilde->deepCopy(meta_in);
         meta_rfi_mask->deepCopy(meta_in);
 
-        meta_sk->set_from_frame_desc(out_rfi_sk_buf->get_ndarray_frame_desc());
-        meta_sktilde->set_from_frame_desc(out_rfi_sktilde_buf->get_ndarray_frame_desc());
-        meta_rfi_mask->set_from_frame_desc(out_rfi_mask_buf->get_ndarray_frame_desc());
+        meta_sk->set_from_frame_desc(out_rfi_sk_buf->get_frame_desc<kotekan::GenericNDArray>());
+        meta_sktilde->set_from_frame_desc(
+            out_rfi_sktilde_buf->get_frame_desc<kotekan::GenericNDArray>());
+        meta_rfi_mask->set_from_frame_desc(
+            out_rfi_mask_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // test that things are consistent
-        meta_sk->check_frame_desc(out_rfi_sk_buf->get_ndarray_frame_desc());
-        meta_sktilde->check_frame_desc(out_rfi_sktilde_buf->get_ndarray_frame_desc());
-        meta_rfi_mask->check_frame_desc(out_rfi_mask_buf->get_ndarray_frame_desc());
+        meta_sk->check_frame_desc(out_rfi_sk_buf->get_frame_desc<kotekan::GenericNDArray>());
+        meta_sktilde->check_frame_desc(
+            out_rfi_sktilde_buf->get_frame_desc<kotekan::GenericNDArray>());
+        meta_rfi_mask->check_frame_desc(
+            out_rfi_mask_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set non-NDArray things.
         meta_rfi_mask->set_time_downsampling_fpga(1024 * meta_in->get_time_downsampling_fpga()

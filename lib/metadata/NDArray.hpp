@@ -85,11 +85,12 @@ class Config;
 // on array elements.
 class GenericNDArray : public FrameDesc {
 public:
-    // create an NDArray based on run-time type information
-    static std::shared_ptr<GenericNDArray> create(const DataType value_datatype,
-                                                  const Symbol quantity_name,
-                                                  const std::vector<std::ptrdiff_t>& extents,
-                                                  const std::vector<Symbol>& dimnames, void* data);
+    /// create a descriptor (an NDArray without data) based on run-time type
+    /// information, e.g. for Buffer::set_frame_desc / require_frame_desc
+    static std::shared_ptr<GenericNDArray> describe(const DataType value_datatype,
+                                                    const Symbol quantity_name,
+                                                    const std::vector<std::ptrdiff_t>& extents,
+                                                    const std::vector<Symbol>& dimnames);
 
     /// create an NDArray frame descriptor from a config block: reads
     /// `value_type`, `quantity_name`, `extents`, and `dimnames` at the given
@@ -136,6 +137,15 @@ public:
 
     // Output the array description (framedesc), useful for logging or debugging
     void output_framedesc(std::ostream& os) const override;
+
+    /// Describe the first structural difference (value type, quantity name,
+    /// rank, extents, dimnames) between this descriptor and `other`; returns
+    /// an empty string when they match. Strides and data are not compared.
+    std::string structure_mismatch(const GenericNDArray& other) const;
+
+    /// FrameDesc override: the structural difference when `other` is also an
+    /// NDArray, else the default both-descriptions dump.
+    std::string describe_mismatch(const FrameDesc& other) const override;
 
     // Compare two NDArrays, useful to compare metadata
     bool operator==(const FrameDesc& other) const override;
@@ -187,6 +197,14 @@ public:
     // Move constructors
     NDArray(NDArray&&) = default;
     NDArray& operator=(NDArray&&) = default;
+
+    /// Create a descriptor (an NDArray without data), e.g. for
+    /// Buffer::set_frame_desc / require_frame_desc
+    static std::shared_ptr<NDArray<T, D>> describe(const Symbol quantity_name,
+                                                   const std::array<std::ptrdiff_t, D>& extents,
+                                                   const std::array<Symbol, D>& dimnames) {
+        return std::make_shared<NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
+    }
 
     // Construct from extents and dimension names
     NDArray(const Symbol quantity_name, const std::vector<std::ptrdiff_t>& extents,

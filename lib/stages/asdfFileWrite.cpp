@@ -137,7 +137,7 @@ public:
             assert(metadata_is_chord(mc) || metadata_is_N2(mc));
             const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
             const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
-                buffer->get_ndarray_frame_desc();
+                buffer->get_frame_desc<kotekan::GenericNDArray>();
             assert(frame_desc);
 
             const double this_time = current_time();

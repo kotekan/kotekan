@@ -1,5 +1,6 @@
 #include "Config.hpp"          // for Config
 #include "N2Util.hpp"          // for frameID
+#include "NDArray.hpp"         // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"       // for Telescope
 #include "buffer.hpp"          // for Buffer
@@ -140,12 +141,12 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
         FATAL_ERROR("RfiMaskSum in_buf ({:s}) has frame size {:d}. Expected {:d}.",
                     in_buf->buffer_name, in_buf->frame_size, in_rfimask_frame_size);
 
-    in_buf->allocate_ndarray_frame_desc(
+    in_buf->set_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, "RFImask",
         {div_noremainder(_samples_per_data_set, 1024), _num_local_freq, 1024 / 8},
-        {"T8hi128", "F", "T8lo128"});
-    out_buf->allocate_ndarray_frame_desc(kotekan::int32, "RFImask_counts",
-                                         {_num_integrations, _num_local_freq}, {"Tc", "F"});
+        {"T8hi128", "F", "T8lo128"}));
+    out_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::int32, "RFImask_counts", {_num_integrations, _num_local_freq}, {"Tc", "F"}));
 }
 
 void RfiMaskSum::main_thread() {
@@ -185,11 +186,11 @@ void RfiMaskSum::main_thread() {
         const std::shared_ptr<chordMetadata> out_meta = get_chord_metadata(out_buf, out_frame_id);
 
         out_meta->deepCopy(in_meta);
-        out_meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+        out_meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
         out_meta->set_time_downsampling_fpga(
             div_noremainder(in_meta->get_time_downsampling_fpga(), 1024) * _sub_integration_ntime);
 
-        out_meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
+        out_meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Advance to the next frame
         in_buf->mark_frame_empty(unique_name, in_frame_id++);

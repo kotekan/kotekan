@@ -50,8 +50,7 @@ void GenericNDArray::output_framedesc(std::ostream& os) const {
 template<DataType my_datatype, size_t my_rank>
 static inline std::shared_ptr<GenericNDArray>
 make_NDArray(const DataType datatype, const Symbol quantity_name,
-             const std::vector<std::ptrdiff_t>& extents, const std::vector<Symbol>& dimnames,
-             void* data) {
+             const std::vector<std::ptrdiff_t>& extents, const std::vector<Symbol>& dimnames) {
     // recurse until datatype matches
     if constexpr (my_datatype == unknown_type) {
         assert(my_datatype != unknown_type);
@@ -64,25 +63,24 @@ make_NDArray(const DataType datatype, const Symbol quantity_name,
         } else if (int(extents.size()) == my_rank) {
             // both match
             return std::shared_ptr<GenericNDArray>(new NDArray<GetType_t<my_datatype>, my_rank>(
-                quantity_name, extents, dimnames, static_cast<GetType_t<my_datatype>*>(data)));
+                quantity_name, extents, dimnames, static_cast<GetType_t<my_datatype>*>(nullptr)));
         } else {
             return make_NDArray<my_datatype, my_rank - 1>(datatype, quantity_name, extents,
-                                                          dimnames, data);
+                                                          dimnames);
         }
     } else {
         return make_NDArray<DataType(my_datatype - 1), my_rank>(datatype, quantity_name, extents,
-                                                                dimnames, data);
+                                                                dimnames);
     }
 }
 
-std::shared_ptr<GenericNDArray> GenericNDArray::create(const DataType value_datatype,
-                                                       const Symbol quantity_name,
-                                                       const std::vector<std::ptrdiff_t>& extents,
-                                                       const std::vector<Symbol>& dimnames,
-                                                       void* data) {
+std::shared_ptr<GenericNDArray> GenericNDArray::describe(const DataType value_datatype,
+                                                         const Symbol quantity_name,
+                                                         const std::vector<std::ptrdiff_t>& extents,
+                                                         const std::vector<Symbol>& dimnames) {
     assert(extents.size() == dimnames.size() && "Sizes of extents and dimnames must aggree");
     return make_NDArray<DataType(end_type - 1), max_rank>(value_datatype, quantity_name, extents,
-                                                          dimnames, data);
+                                                          dimnames);
 }
 
 std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config,
@@ -131,7 +129,33 @@ std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config
                     fmt::format(fmt("GenericNDArray: duplicate dimname '{:s}' in path {:s}"),
                                 std::string(dimnames[d]), location));
 
-    return create(value_datatype, quantity_name, extents, dimnames, nullptr);
+    return describe(value_datatype, quantity_name, extents, dimnames);
+}
+
+std::string GenericNDArray::structure_mismatch(const GenericNDArray& other) const {
+    if (get_value_datatype() != other.get_value_datatype())
+        return fmt::format(fmt("value type mismatch: {:s} != {:s}"),
+                           type_to_string(get_value_datatype()),
+                           type_to_string(other.get_value_datatype()));
+    if (get_quantity_name() != other.get_quantity_name())
+        return fmt::format(fmt("quantity name mismatch: {:s} != {:s}"), get_quantity_name(),
+                           other.get_quantity_name());
+    if (get_rank() != other.get_rank())
+        return fmt::format(fmt("rank mismatch: {:d} != {:d}"), get_rank(), other.get_rank());
+    if (get_extents() != other.get_extents())
+        return fmt::format(fmt("extents do not match: {:s} != {:s}"), format_vector(get_extents()),
+                           format_vector(other.get_extents()));
+    if (get_dimnames() != other.get_dimnames())
+        return fmt::format(fmt("dimnames do not match: {:s} != {:s}"),
+                           format_vector(get_dimnames()), format_vector(other.get_dimnames()));
+    return std::string();
+}
+
+std::string GenericNDArray::describe_mismatch(const FrameDesc& other) const {
+    const GenericNDArray* nd = dynamic_cast<const GenericNDArray*>(&other);
+    if (!nd)
+        return FrameDesc::describe_mismatch(other);
+    return structure_mismatch(*nd);
 }
 
 bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
@@ -140,15 +164,7 @@ bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
         return false;
     const GenericNDArray& other = *other_ptr;
 
-    if (this->get_value_datatype() != other.get_value_datatype())
-        return false;
-    if (this->get_quantity_name() != other.get_quantity_name())
-        return false;
-    if (this->get_rank() != other.get_rank())
-        return false;
-    if (this->get_extents() != other.get_extents())
-        return false;
-    if (this->get_dimnames() != other.get_dimnames())
+    if (!structure_mismatch(other).empty())
         return false;
     if (this->get_strides() != other.get_strides())
         return false;

@@ -4,6 +4,8 @@
 #include "Symbol.hpp"
 
 #include <iostream>
+#include <sstream>
+#include <string>
 
 namespace kotekan {
 
@@ -16,6 +18,16 @@ public:
 
     // Output the frame description, useful for logging or debugging
     virtual void output_framedesc(std::ostream& os) const = 0;
+
+    /// Describe how this descriptor differs from `other`, for error messages.
+    /// The default prints both descriptions; subclasses may return a more
+    /// targeted description.
+    virtual std::string describe_mismatch(const FrameDesc& other) const {
+        std::ostringstream this_os, other_os;
+        output_framedesc(this_os);
+        other.output_framedesc(other_os);
+        return "existing:\n" + this_os.str() + "new:\n" + other_os.str();
+    }
 
     // Verify compatibility between descriptors
     virtual bool operator==(const FrameDesc& other) const = 0;

@@ -8,24 +8,18 @@
 #ifndef KOTEKAN_BUFFER_HPP
 #define KOTEKAN_BUFFER_HPP
 
-#include "DataType.hpp"       // for DataType
 #include "FrameDesc.hpp"      // for FrameDesc
-#include "NDArray.hpp"        // for GenericNDArray, NDArray
-#include "Symbol.hpp"         // for Symbol
 #include "kotekanLogging.hpp" // for kotekanLogging
 #include "metadata.hpp"       // for metadataObject, metadataPool
 
 #include "json.hpp" // for json
 
-#include <algorithm>          // for equal
-#include <array>              // for array
 #include <condition_variable> // for condition_variable_any
-#include <cstddef>            // for size_t, ptrdiff_t
+#include <cstddef>            // for size_t
 #include <map>                // for map
-#include <memory>             // for shared_ptr, make_shared
+#include <memory>             // for shared_ptr
 #include <mutex>              // for recursive_mutex
 #include <sched.h>            // for cpu_set_t
-#include <sstream>            // for basic_ostringstream
 #include <stdint.h>           // for uint8_t
 #include <string>             // for string, basic_string
 #include <vector>             // for vector
@@ -531,146 +525,41 @@ public:
     void safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_id);
 
     /**
-     * @brief Allocates a new frame description object holding a D dimensional
-     *        array of type T, or checks the given values are consistent with
-     *        the existing frame descriptor, if it exists.
-     * @param[in] extents Array extentds in the D dimensions
-     * @param[in] dimnames Array axis labels in the D dimensions
-     */
-    template<typename T, std::size_t D>
-    void allocate_ndarray_frame_desc(kotekan::Symbol quantity_name,
-                                     const std::array<std::ptrdiff_t, D>& extents,
-                                     const std::array<kotekan::Symbol, D>& dimnames) {
-        buffer_lock lock(mutex);
-        if (!frames_desc)
-            frames_desc =
-                std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
-        else {
-            auto nd_desc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
-            if (!nd_desc) {
-                FATAL_ERROR("Frame desc mismatch: existing desc is not an NDArray");
-            }
-            if (D != nd_desc->get_rank())
-                FATAL_ERROR("Rank mismatch: {:d} != {:d}", D, nd_desc->get_rank());
-            if (kotekan::GetDataType_v<T> != nd_desc->get_value_datatype())
-                FATAL_ERROR("Type mismatch: {:s} != {:s}",
-                            kotekan::type_to_string(kotekan::GetDataType_v<T>),
-                            kotekan::type_to_string(nd_desc->get_value_datatype()));
-            if (quantity_name != nd_desc->get_quantity_name())
-                FATAL_ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
-                            nd_desc->get_quantity_name());
-            if (!std::equal(extents.begin(), extents.end(), nd_desc->get_extents().begin())) {
-                // Building individual strings with move() avoids nasty constexpr/fmt::join
-                // compilation error.
-                auto ex1_j = fmt::join(extents, ", ");
-                auto ex2_j = fmt::join(nd_desc->get_extents(), ", ");
-                std::string ex1_str = fmt::format("{}", std::move(ex1_j));
-                std::string ex2_str = fmt::format("{}", std::move(ex2_j));
-                FATAL_ERROR("Extents do not match: [{:s}] != [{:s}]", ex1_str, ex2_str);
-            }
-            if (!std::equal(dimnames.begin(), dimnames.end(), nd_desc->get_dimnames().begin()))
-                FATAL_ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "),
-                            fmt::join(nd_desc->get_dimnames(), ", "));
-        }
-
-        if (frames_desc->get_byte_size() != frame_size) {
-            FATAL_ERROR("Buffer {:s} ndarray_frame_desc has size {:d}, does not match buffer "
-                        "frame_size {:d}",
-                        buffer_name, frames_desc->get_byte_size(), frame_size);
-        }
-    }
-
-    /**
-     * @brief Allocates a new frame description object holding a D dimensional
-     *        array of type T, or checks the given values are consistent with
-     *        the existing frame descriptor, if it exists.
-     * @param[in] value_type the kotekan type enumerator of the values stored
-     * @param[in] rank dimensionality of the data array
-     * @param[in] extents Array extentds in the D dimensions
-     * @param[in] dimnames Array axis labels in the D dimensions
-     */
-    void allocate_ndarray_frame_desc(kotekan::DataType value_type, kotekan::Symbol quantity_name,
-                                     const std::vector<std::ptrdiff_t>& extents,
-                                     const std::vector<kotekan::Symbol>& dimnames) {
-        buffer_lock lock(mutex);
-        if (!frames_desc) {
-            frames_desc = kotekan::GenericNDArray::create(value_type, quantity_name, extents,
-                                                          dimnames, nullptr);
-        } else {
-            auto nd_desc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
-            if (!nd_desc) {
-                FATAL_ERROR("Frame desc mismatch: existing desc is not an NDArray");
-                return;
-            }
-            if (extents.size() != nd_desc->get_rank())
-                FATAL_ERROR("Rank mismatch: {:d} != {:d}", extents.size(), nd_desc->get_rank());
-            if (value_type != nd_desc->get_value_datatype())
-                FATAL_ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(value_type),
-                            kotekan::type_to_string(nd_desc->get_value_datatype()));
-            if (quantity_name != nd_desc->get_quantity_name())
-                FATAL_ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
-                            nd_desc->get_quantity_name());
-            if (extents != nd_desc->get_extents())
-                FATAL_ERROR("Extents do not match: [{:s}] != [{:s}]",
-                            fmt::format("{:s}", fmt::join(extents, ", ")),
-                            fmt::format("{:s}", fmt::join(nd_desc->get_extents(), ", ")));
-            if (dimnames != nd_desc->get_dimnames())
-                FATAL_ERROR("Dimnames do not match: [{:s}] != [{:s}]",
-                            fmt::format("{:s}", fmt::join(dimnames, ", ")),
-                            fmt::format("{:s}", fmt::join(nd_desc->get_dimnames(), ", ")));
-        }
-
-        if (frames_desc->get_byte_size() != frame_size) {
-            FATAL_ERROR("Buffer {:s} ndarray_frame_desc has size {:d}, does not match buffer "
-                        "frame_size {:d}",
-                        buffer_name, frames_desc->get_byte_size(), frame_size);
-        }
-    }
-
-    /**
-     * @brief provides read access to the array description
-     * @return The NDArray data structure describing the array. If type of frames_desc is
-     * not GenericNDArray, this will return nullptr.
-     */
-    std::shared_ptr<const kotekan::GenericNDArray> get_ndarray_frame_desc() {
-        buffer_lock lock(mutex);
-        return std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
-    }
-
-    /**
-     * @brief provides read access to the frame description
-     * @return The data structure describing the frame
-     */
-    std::shared_ptr<const kotekan::FrameDesc> get_frame_description() {
-        buffer_lock lock(mutex);
-        return frames_desc;
-    }
-
-    /**
-     * @brief Sets the frame description
+     * @brief Sets (or checks) the frame description.
      *
      * The first call records the descriptor; subsequent calls must provide a
-     * descriptor that compares equal to the recorded one, any mismatch is fatal.
+     * descriptor that compares equal to the recorded one -- any mismatch is
+     * fatal, as is a descriptor whose byte size differs from the buffer's
+     * frame_size. Stages that discover shapes at runtime (file readers,
+     * network receivers, GPU copy-out) use this to attach what they found;
+     * later calls then act as checks.
      */
     void set_frame_desc(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
         buffer_lock lock(mutex);
 
         if (new_desc->get_byte_size() != frame_size) {
-            FATAL_ERROR("Frame description size ({:d}) is unexpected, buffer provides ({:d})",
-                        new_desc->get_byte_size(), frame_size);
+            FATAL_ERROR(
+                "Buffer {:s} frame description size ({:d}) does not match frame_size ({:d})",
+                buffer_name, new_desc->get_byte_size(), frame_size);
         }
 
         if (!frames_desc) {
-            frames_desc = new_desc;
-        } else {
-            if (*frames_desc != *new_desc) {
-                std::ostringstream existing_desc, incoming_desc;
-                frames_desc->output_framedesc(existing_desc);
-                new_desc->output_framedesc(incoming_desc);
-                FATAL_ERROR("Buffer {:s} frame description mismatch!\nExisting:\n{:s}\nNew:\n{:s}",
-                            buffer_name, existing_desc.str(), incoming_desc.str());
-            }
+            frames_desc = std::move(new_desc);
+        } else if (*frames_desc != *new_desc) {
+            FATAL_ERROR("Buffer {:s} frame description mismatch (existing vs new): {:s}",
+                        buffer_name, frames_desc->describe_mismatch(*new_desc));
         }
+    }
+
+    /**
+     * @brief provides read access to the frame description
+     * @return The data structure describing the frame, cast to T. Returns
+     *         nullptr if no descriptor is attached or it is not a T.
+     */
+    template<typename T = kotekan::FrameDesc>
+    std::shared_ptr<const T> get_frame_desc() {
+        buffer_lock lock(mutex);
+        return std::dynamic_pointer_cast<const T>(frames_desc);
     }
 
     /**

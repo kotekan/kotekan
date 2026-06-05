@@ -1,6 +1,7 @@
 #include "applyGenPL.hpp"
 
 #include "Config.hpp"          // for Config
+#include "NDArray.hpp"         // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -81,9 +82,9 @@ applyGenPL::applyGenPL(Config& config, const std::string& unique_name,
         std::abort();
     }
 
-    output_buf->allocate_ndarray_frame_desc(
+    output_buf->set_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int4x2_swapped_withoffset, "E",
-        {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"});
+        {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"}));
 }
 
 applyGenPL::~applyGenPL() {}

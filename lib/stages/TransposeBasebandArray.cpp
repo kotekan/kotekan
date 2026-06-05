@@ -1,6 +1,7 @@
 #include "TransposeBasebandArray.hpp"
 
 #include "Config.hpp"
+#include "NDArray.hpp" // for GenericNDArray
 #include "StageFactory.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
@@ -149,9 +150,9 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     // Set the output buffer frame ndarray shape
 
     // Confusingly the array name is "E" for electric field
-    out_buf->allocate_ndarray_frame_desc(
+    out_buf->set_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int4x2_swapped_withoffset, "E",
-        {timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS / 2}, {"T", "F", "P", "D"});
+        {timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS / 2}, {"T", "F", "P", "D"}));
 
     INFO("TransposeBasebandArray: Input shape: [{:d}][{:d}][{:d}][{:d}][{:d}]", time_long,
          NUM_LOCAL_FREQ, ELEMENT_LONG, TIME_SHORT, ELEMENT_SHORT);

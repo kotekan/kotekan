@@ -1,4 +1,5 @@
 #include "Config.hpp"
+#include "NDArray.hpp" // for GenericNDArray, NDArray
 #include "Stage.hpp"
 #include "StageFactory.hpp"
 #include "buffer.hpp"
@@ -59,12 +60,13 @@ public:
                == sizeof(std::int32_t) * num_polarizations * num_dishes);
 
         // Set metadata
-        scatter_indices_buffer->allocate_ndarray_frame_desc<std::int32_t, 2>(
-            "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"});
+        scatter_indices_buffer->set_frame_desc(kotekan::NDArray<std::int32_t, 2>::describe(
+            "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"}));
         scatter_indices_buffer->allocate_new_metadata_object(frame_id);
         const auto& scatter_indices_meta =
             get_chord_metadata(scatter_indices_buffer->get_metadata(frame_id));
-        scatter_indices_meta->set_from_frame_desc(scatter_indices_buffer->get_ndarray_frame_desc());
+        scatter_indices_meta->set_from_frame_desc(
+            scatter_indices_buffer->get_frame_desc<kotekan::GenericNDArray>());
         // scatter_indices_meta->set_fpga_seq_num(0);           // ???
         // scatter_indices_meta->set_time_downsampling_fpga(1); // ???
 

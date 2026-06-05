@@ -3,6 +3,7 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType
 #include "N2Util.hpp"          // for frameID
+#include "NDArray.hpp"         // for GenericNDArray, NDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -76,9 +77,9 @@ gpuSimulateRFIS012::gpuSimulateRFIS012(Config& config, const std::string& unique
 
     // Make frame desc for produced buffer
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
-    out_rfis012_buf->allocate_ndarray_frame_desc<uint64_t, 5>(
+    out_rfis012_buf->set_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
         "S012", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
-        {"Trfi", "F", "S", "P", "D"});
+        {"Trfi", "F", "S", "P", "D"}));
 }
 
 gpuSimulateRFIS012::~gpuSimulateRFIS012() {}
@@ -213,10 +214,10 @@ void gpuSimulateRFIS012::main_thread() {
         // Start with a copy
         meta_out->deepCopy(meta_in);
 
-        meta_out->set_from_frame_desc(out_rfis012_buf->get_ndarray_frame_desc());
+        meta_out->set_from_frame_desc(out_rfis012_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // test that things are consistent
-        meta_out->check_frame_desc(out_rfis012_buf->get_ndarray_frame_desc());
+        meta_out->check_frame_desc(out_rfis012_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set non-NDArray things.
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());

@@ -1,4 +1,5 @@
 #include "Config.hpp"
+#include "NDArray.hpp" // for GenericNDArray, NDArray
 #include "Stage.hpp"
 #include "StageFactory.hpp"
 #include "buffer.hpp"
@@ -71,14 +72,15 @@ public:
                       * num_dishes_y * num_dishes_x * num_components);
 
         // Set metadata
-        frb1_phase_buffer->allocate_ndarray_frame_desc<float16_t, 5>(
+        frb1_phase_buffer->set_frame_desc(kotekan::NDArray<float16_t, 5>::describe(
             "W",
             {upchan_max_num_channels * upchan_factor, num_polarizations, num_dishes_y, num_dishes_x,
              num_components},
-            {"F", "P", "dishN", "dishM", "C"});
+            {"F", "P", "dishN", "dishM", "C"}));
         frb1_phase_buffer->allocate_new_metadata_object(frame_id);
         const auto& frb1_phase_meta = get_chord_metadata(frb1_phase_buffer->get_metadata(frame_id));
-        frb1_phase_meta->set_from_frame_desc(frb1_phase_buffer->get_ndarray_frame_desc());
+        frb1_phase_meta->set_from_frame_desc(
+            frb1_phase_buffer->get_frame_desc<kotekan::GenericNDArray>());
         frb1_phase_meta->set_fpga_seq_num(0);           // ???
         frb1_phase_meta->set_time_downsampling_fpga(1); // ???
         std::vector<int> coarse_freq(upchan_num_channels * upchan_factor);

@@ -24,7 +24,7 @@ N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 
     FrameView(buf, frame_id),
     _metadata(std::static_pointer_cast<N2Metadata>(buf->metadata[frame_id])),
-    _desc(validate_desc_type(buf->get_frame_description())),
+    _desc(validate_desc_type(buf->get_frame_desc())),
 
     // Set the const refs to the structural metadata
     n2_layout(_desc->get_n2_layout()), num_elements(_desc->get_num_elements()),

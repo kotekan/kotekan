@@ -3,6 +3,7 @@
 #include "Config.hpp" // for Config
 #include "DataType.hpp"
 #include "N2Util.hpp"          // for frameID
+#include "NDArray.hpp"         // for GenericNDArray, NDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -117,11 +118,12 @@ lostSamplesToN2Counts::lostSamplesToN2Counts(Config& config, const std::string& 
     // Set the frame description
     // The buffer name and axis names are the same as those set in
     // cudaPL1butCorrelator
-    n2k_counts_buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::int32>, 5>(
-        "n2k_counts",
-        {static_cast<long>(_num_subintegrations), static_cast<long>(num_n2k_freq),
-         static_cast<long>(_counts_ntiles), COUNTS_BLOCK_SIZE, COUNTS_BLOCK_SIZE},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+    n2k_counts_buf->set_frame_desc(
+        kotekan::NDArray<kotekan::GetType_t<kotekan::int32>, 5>::describe(
+            "n2k_counts",
+            {static_cast<long>(_num_subintegrations), static_cast<long>(num_n2k_freq),
+             static_cast<long>(_counts_ntiles), COUNTS_BLOCK_SIZE, COUNTS_BLOCK_SIZE},
+            {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}));
 }
 
 lostSamplesToN2Counts::~lostSamplesToN2Counts() {}
@@ -253,7 +255,7 @@ void lostSamplesToN2Counts::main_thread() {
         // Update metadata from the frame description
         std::shared_ptr<chordMetadata> meta =
             get_chord_metadata(n2k_counts_buf, n2k_counts_buf_frame_id);
-        meta->set_from_frame_desc(n2k_counts_buf->get_ndarray_frame_desc());
+        meta->set_from_frame_desc(n2k_counts_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set additional metadata not handled by the helper, including
         // the name and FPGA time-sample downsampling
@@ -261,7 +263,7 @@ void lostSamplesToN2Counts::main_thread() {
         meta->set_time_downsampling_fpga(sub_integration_ntime);
 
         // Check that frame desc and metadata match
-        meta->check_frame_desc(n2k_counts_buf->get_ndarray_frame_desc());
+        meta->check_frame_desc(n2k_counts_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Release the current frames and increment to the next frame ID
         n2k_counts_buf->mark_frame_full(unique_name, n2k_counts_buf_frame_id);

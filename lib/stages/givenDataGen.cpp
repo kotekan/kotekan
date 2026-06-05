@@ -1,6 +1,7 @@
 #include "givenDataGen.hpp"
 
 #include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
+#include "NDArray.hpp"         // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
@@ -107,9 +108,10 @@ void givenDataGen::main_thread() {
         }
         chordmeta->set_strides_simple();
 
-        _out_buf->allocate_ndarray_frame_desc(chordmeta->type, _name, _array_shape, _dim_name);
+        _out_buf->set_frame_desc(
+            kotekan::GenericNDArray::describe(chordmeta->type, _name, _array_shape, _dim_name));
         /* test that things are consistent */
-        chordmeta->check_frame_desc(_out_buf->get_ndarray_frame_desc());
+        chordmeta->check_frame_desc(_out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         _out_buf->mark_frame_full(unique_name, frame_id);
 

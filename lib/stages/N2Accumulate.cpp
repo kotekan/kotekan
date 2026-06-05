@@ -4,6 +4,7 @@
 #include "N2FrameView.hpp"       // for N2FrameView
 #include "N2Metadata.hpp"        // for N2Metadata, get_N2_metadata
 #include "N2Util.hpp"            // for frameID, modulo, cfloat, cmap
+#include "NDArray.hpp"           // for GenericNDArray
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for Buffer
@@ -191,35 +192,35 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _accum_bin_idx = -1;
 
     // Ensure incoming buffer shapes and type are correct
-    in_buf->allocate_ndarray_frame_desc(kotekan::int32, "n2k_correlation",
-                                        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame,
-                                         _n2k_correlation_num_blocks, _n2k_correlation_blocksize,
-                                         _n2k_correlation_blocksize, 2},
-                                        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
+    in_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::int32, "n2k_correlation",
+        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame, _n2k_correlation_num_blocks,
+         _n2k_correlation_blocksize, _n2k_correlation_blocksize, 2},
+        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}));
 
-    in_counts_buf->allocate_ndarray_frame_desc(kotekan::int32, "n2k_counts",
-                                               {_n_integrations_per_n2k_frame,
-                                                _num_freq_per_n2k_frame, _n2k_counts_num_blocks,
-                                                _n2k_counts_blocksize, _n2k_counts_blocksize},
-                                               {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+    in_counts_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::int32, "n2k_counts",
+        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame, _n2k_counts_num_blocks,
+         _n2k_counts_blocksize, _n2k_counts_blocksize},
+        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}));
 
-    in_rficounts_buf->allocate_ndarray_frame_desc(
+    in_rficounts_buf->set_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "RFImask_counts", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
-        {"Tc", "F"});
+        {"Tc", "F"}));
 
-    in_plcounts_buf->allocate_ndarray_frame_desc(
+    in_plcounts_buf->set_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "pl_lost_counts_scalar",
-        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame}, {"Tc", "F"});
+        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame}, {"Tc", "F"}));
 
-    in_rfiframemask_buf->allocate_ndarray_frame_desc(
+    in_rfiframemask_buf->set_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint8, "RFIFrameMask", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
-        {"Tc", "F"});
+        {"Tc", "F"}));
 
 
     // Validate that the output buffer's frame descriptor (set by bufferFactory) matches
     // what this stage will produce
     {
-        auto out_frame_desc = out_buf->get_frame_description();
+        auto out_frame_desc = out_buf->get_frame_desc();
         if (!out_frame_desc) {
             FATAL_ERROR("N2Accumulate: Output buffer {:s} does not have a frame descriptor set",
                         out_buf->buffer_name);

@@ -1,6 +1,7 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType
 #include "N2Util.hpp"          // for frameID
+#include "NDArray.hpp"         // for GenericNDArray, NDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -130,14 +131,14 @@ gpuSimulatePLMaskAccumulator::gpuSimulatePLMaskAccumulator(Config& config,
     }
 
     // Make frame desc for produced buffer (this also checks the size)
-    in_buf->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 5>(
+    in_buf->set_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 5>::describe(
         "pl_mask",
         {div_noremainder(_samples_per_data_set, 128), div_noremainder(_num_local_freq, 4),
          _num_polarizations, div_noremainder(_num_dishes, 8), 64 / 8},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"});
-    out_buf->allocate_ndarray_frame_desc<uint64_t, 4>(
+        {"T2hi64", "F4", "P", "D8", "T2lo64"}));
+    out_buf->set_frame_desc(kotekan::NDArray<uint64_t, 4>::describe(
         "pl_counts", {_num_integrations, _num_local_freq, _num_polarizations, _num_dishes},
-        {"Tc", "F", "P", "D"});
+        {"Tc", "F", "P", "D"}));
 }
 
 gpuSimulatePLMaskAccumulator::~gpuSimulatePLMaskAccumulator() {}
@@ -244,7 +245,7 @@ void gpuSimulatePLMaskAccumulator::main_thread() {
         // Start with a copy
         meta_out->deepCopy(meta_in);
 
-        meta_out->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+        meta_out->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set non-NDArray things.
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
@@ -252,7 +253,7 @@ void gpuSimulatePLMaskAccumulator::main_thread() {
             div_noremainder(meta_in->get_time_downsampling_fpga(), 128) * _sub_integration_ntime);
 
         // test that things are consistent
-        meta_out->check_frame_desc(out_buf->get_ndarray_frame_desc());
+        meta_out->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         INFO("Simulating GPU RFI S012 done for {:s}[{:d}] result is in {:s}[{:d}]",
              in_buf->buffer_name, in_frame_id, out_buf->buffer_name, out_frame_id);

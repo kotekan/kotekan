@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType
+#include "NDArray.hpp"         // for GenericNDArray, NDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -86,9 +87,10 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     int ne = _num_elements / 8;
     int n_block_lin = ne / _blocksize;
     int n_blocks = (n_block_lin * (n_block_lin + 1)) / 2;
-    output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int32>::type, 5>(
-        "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+    output_buf->set_frame_desc(
+        kotekan::NDArray<kotekan::GetType<kotekan::int32>::type, 5>::describe(
+            "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
+            {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}));
 }
 
 gpuSimulateN2kPL1bitCorr::~gpuSimulateN2kPL1bitCorr() {}
@@ -253,7 +255,7 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         meta_out->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */
-        meta_out->check_frame_desc(output_buf->get_ndarray_frame_desc());
+        meta_out->check_frame_desc(output_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->set_time_downsampling_fpga(

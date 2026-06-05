@@ -1,6 +1,7 @@
 #include "rawFileWrite.hpp"
 
 #include "Config.hpp"              // for Config
+#include "NDArray.hpp"             // for GenericNDArray
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"     // for bufferContainer
@@ -75,7 +76,7 @@ void rawFileWrite::main_thread() {
             break;
 
         // Check for NDArray on first frame (after producer may have set the descriptor)
-        if (buf->get_ndarray_frame_desc()) {
+        if (buf->get_frame_desc<kotekan::GenericNDArray>()) {
             FATAL_ERROR(
                 "rawFileWrite does not support NDArray buffers. The NDArray frame descriptor "
                 "is set dynamically and will not be written to the file.");

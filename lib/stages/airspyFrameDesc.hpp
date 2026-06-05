@@ -12,7 +12,7 @@
  * @brief Frame-descriptor builders for the airspy autocorr / crosscorr pipelines.
  *
  * Uses the *buffer-level* FrameDesc mechanism (Buffer::set_frame_desc /
- * get_frame_description) -- independent of the metadata pool, which these
+ * get_frame_desc) -- independent of the metadata pool, which these
  * pipelines run with set to "none". The convention: every airspy
  * producer/consumer stage calls @c buf->set_frame_desc on each buffer it
  * touches via one of these helpers. The first call records the descriptor;
@@ -34,8 +34,8 @@ namespace kotekan_airspy {
 
 /// Raw airspy samples: int16 1-D buffer of length @p n_samples.
 inline std::shared_ptr<kotekan::GenericNDArray> make_input_desc(std::ptrdiff_t n_samples) {
-    return kotekan::GenericNDArray::create(kotekan::DataType::int16, "airspy_samples", {n_samples},
-                                           {"sample"}, nullptr);
+    return kotekan::GenericNDArray::describe(kotekan::DataType::int16, "airspy_samples",
+                                             {n_samples}, {"sample"});
 }
 
 /// fftwEngine output spectra: cfloat32 1-D buffer of length @p n_complex.
@@ -43,8 +43,8 @@ inline std::shared_ptr<kotekan::GenericNDArray> make_input_desc(std::ptrdiff_t n
 /// descriptor records total complex elements, the consumers' indexing
 /// arithmetic comes from their own config.
 inline std::shared_ptr<kotekan::GenericNDArray> make_fengine_desc(std::ptrdiff_t n_complex) {
-    return kotekan::GenericNDArray::create(kotekan::DataType::cfloat32, "fengine_spectra",
-                                           {n_complex}, {"bin"}, nullptr);
+    return kotekan::GenericNDArray::describe(kotekan::DataType::cfloat32, "fengine_spectra",
+                                             {n_complex}, {"bin"});
 }
 
 /// SimpleCrosscorr / simpleAutocorr -> networkPowerStream layout. Per
@@ -64,12 +64,11 @@ inline std::shared_ptr<kotekan::GenericNDArray> make_fengine_desc(std::ptrdiff_t
 inline std::shared_ptr<kotekan::GenericNDArray>
 make_power_corr_desc(std::ptrdiff_t num_elements, std::ptrdiff_t spectrum_length) {
     if (num_elements == 1) {
-        return kotekan::GenericNDArray::create(kotekan::DataType::float32, "power_corr",
-                                               {spectrum_length + 1}, {"bin"}, nullptr);
+        return kotekan::GenericNDArray::describe(kotekan::DataType::float32, "power_corr",
+                                                 {spectrum_length + 1}, {"bin"});
     }
-    return kotekan::GenericNDArray::create(kotekan::DataType::float32, "power_corr",
-                                           {num_elements, spectrum_length + 1}, {"elem", "bin"},
-                                           nullptr);
+    return kotekan::GenericNDArray::describe(kotekan::DataType::float32, "power_corr",
+                                             {num_elements, spectrum_length + 1}, {"elem", "bin"});
 }
 
 } // namespace kotekan_airspy

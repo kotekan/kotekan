@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "N2Util.hpp"          // for frameID
+#include "NDArray.hpp"         // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"          // for mark_frame_empty, register_consumer, wait_for_full_frame
 #include "bufferContainer.hpp" // for bufferContainer
@@ -154,7 +155,7 @@ void rfiBroadcast::main_thread() {
     std::vector<float> _median_tmp(num_elements, 0.0f);
 
     // Sort out the rfi mask buffer time stride
-    auto rfi_frame_desc = rfi_mask_buf->get_ndarray_frame_desc();
+    auto rfi_frame_desc = rfi_mask_buf->get_frame_desc<kotekan::GenericNDArray>();
     auto _rfi_frame_rank = rfi_frame_desc->get_rank();
     auto _rfi_frame_dims = rfi_frame_desc->get_extents();
     size_t _rfi_t_hi = _rfi_frame_dims[_rfi_frame_rank - 1];

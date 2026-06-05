@@ -6,6 +6,7 @@
 
 #include "cudaOutputData.hpp"
 
+#include "NDArray.hpp"        // for GenericNDArray
 #include "Symbol.hpp"         // for Symbol
 #include "chordMetadata.hpp"  // for chordMetadata
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
@@ -140,10 +141,11 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
 
                     // difficult to move to constructor since it depends on frame_desc in the
                     // signal_buffer which may not be set at contructor time
-                    output_buffer->allocate_ndarray_frame_desc(chord->type, chord->get_name(),
-                                                               dimensions, dimnames);
+                    output_buffer->set_frame_desc(kotekan::GenericNDArray::describe(
+                        chord->type, chord->get_name(), dimensions, dimnames));
                     /* test that things are consistent */
-                    chord->check_frame_desc(output_buffer->get_ndarray_frame_desc());
+                    chord->check_frame_desc(
+                        output_buffer->get_frame_desc<kotekan::GenericNDArray>());
                 }
             }
         }

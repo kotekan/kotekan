@@ -117,11 +117,11 @@ void bufferMerge::main_thread() {
                 in_buf->pass_metadata(in_frame_id, out_buf, out_frame_id);
 
                 // Link frame description
-                const auto in_frame_desc = in_buf->get_frame_description();
+                const auto in_frame_desc = in_buf->get_frame_desc();
                 if (in_frame_desc) {
                     out_buf->set_frame_desc(in_frame_desc);
                 } else {
-                    assert(!out_buf->get_frame_description());
+                    assert(!out_buf->get_frame_desc());
                 }
 
                 // Copy or swap the frame.

@@ -1,6 +1,7 @@
 #include "bufferRecv.hpp"
 
 #include "Config.hpp"            // for Config
+#include "NDArray.hpp"           // for GenericNDArray
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"            // for Symbol
 #include "buffer.hpp"            // for Buffer, buffer_free, buffer_malloc
@@ -563,10 +564,10 @@ void connInstance::internal_read_callback() {
                                         strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
                     }
 
-                    buf->allocate_ndarray_frame_desc(chord->type, chord->get_name(), dimensions,
-                                                     dimnames);
+                    buf->set_frame_desc(kotekan::GenericNDArray::describe(
+                        chord->type, chord->get_name(), dimensions, dimnames));
                     /* test that things are consistent */
-                    chord->check_frame_desc(buf->get_ndarray_frame_desc());
+                    chord->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
                 }
 
                 buf->mark_frame_full(producer_name, frame_id);

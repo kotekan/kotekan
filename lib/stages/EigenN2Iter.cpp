@@ -82,10 +82,8 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
         FATAL_ERROR("EigenN2Iter stage requires an 'N2' buffer type for in_buf and out_buf.");
 
     // Validate that input and output buffers have N2 frame descriptors set
-    auto in_desc =
-        std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(in_buf->get_frame_description());
-    auto out_desc =
-        std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(out_buf->get_frame_description());
+    auto in_desc = in_buf->get_frame_desc<kotekan::N2FrameDesc>();
+    auto out_desc = out_buf->get_frame_desc<kotekan::N2FrameDesc>();
     if (!in_desc || !out_desc) {
         FATAL_ERROR("EigenN2Iter: Input and output buffers must have N2FrameDesc set");
     }
@@ -109,8 +107,7 @@ EigenN2Iter::EigenN2Iter(Config& config, const std::string& unique_name,
             FATAL_ERROR("EigenN2Iter stage requires 'N2' buffer type for failed_buf.");
 
         // Validate that input and failed buffers have N2 frame descriptors set
-        auto failed_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(
-            failed_buf->get_frame_description());
+        auto failed_desc = failed_buf->get_frame_desc<kotekan::N2FrameDesc>();
         if (!failed_desc) {
             FATAL_ERROR("EigenN2Iter: failed_buf buffer must have N2FrameDesc set");
         }
