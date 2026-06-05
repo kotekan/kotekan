@@ -1,21 +1,21 @@
 #ifndef REST_SERVER_HPP
 #define REST_SERVER_HPP
 
-#include "Config.hpp"         // for Config
-#include "kotekanLogging.hpp" // for INFO_NON_OO
-
-#include "json.hpp" // for json
-
-#include <atomic>        // for atomic
-#include <event2/util.h> // for evutil_socket_t
+#include <event2/util.h>       // for evutil_socket_t
 #include <evhttp.h>      // for evhttp  // IWYU pragma: keep
-#include <functional>    // for function
-#include <map>           // for map
-#include <shared_mutex>  // for shared_timed_mutex
-#include <stdint.h>      // for uint8_t
-#include <string>        // for string, allocator
-#include <sys/types.h>   // for u_short
-#include <thread>        // for thread
+#include <stdint.h>            // for uint8_t
+#include <sys/types.h>         // for u_short
+#include <atomic>              // for atomic
+#include <functional>          // for function
+#include <map>                 // for map
+#include <shared_mutex>        // for shared_timed_mutex
+#include <string>              // for string, allocator, basic_string
+#include <thread>              // for thread
+
+#include "Config.hpp"          // for Config
+#include "kotekanLogging.hpp"  // for INFO_NON_OO
+#include "json.hpp"            // for json
+#include "fmt.hpp"             // for compile_string_to_view
 
 namespace kotekan {
 

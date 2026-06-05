@@ -302,11 +302,24 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_n2k_counts_buffer
         file_name: n2k_counts
+    write_n2k_plcounts:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_n2k_plcounts_buffer
+        file_name: n2k_plcounts
+    write_n2k_rficounts:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_n2k_rficounts_buffer
+        file_name: n2k_rficounts
+    write_n2k_rfiframemask:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_n2k_rfiframemask_buffer
+        file_name: n2k_rfiframemask
     write_n2_vis:
         kotekan_stage: hdf5FileWrite
         in_buf: host_n2_vis_buffer
         file_name: n2_vis
         create_single_file: false # not implemented
+        max_frames: 1
     # write_n2_vis:
     #     kotekan_stage: hdf5N2Write
     #     num_file_t: 4

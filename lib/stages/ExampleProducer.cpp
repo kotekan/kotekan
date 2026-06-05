@@ -1,13 +1,12 @@
 #include "ExampleProducer.hpp"
 
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
-#include "kotekanLogging.hpp" // for INFO
-#include "visUtil.hpp"        // for frameID, modulo
+#include <stdint.h>            // for uint32_t, uint8_t
+#include <functional>          // for bind, function
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <functional> // for bind, function
-#include <stdint.h>   // for uint32_t, uint8_t
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "kotekanLogging.hpp"  // for INFO
+#include "visUtil.hpp"         // for frameID, modulo
+#include "fmt.hpp"             // for compile_string_to_view
 
 // Include the classes we will be using
 using kotekan::bufferContainer;

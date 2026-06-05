@@ -1,19 +1,20 @@
 #include "fftwEngine.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp" // for make_fengine_desc
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "fftwPlannerLock.hpp" // for fftw_planner_mutex
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
+#include <stdint.h>             // for int16_t
+#include <string.h>             // for memcpy
+#include <functional>           // for bind, function
+#include <mutex>                // for mutex, lock_guard
+#include <memory>               // for shared_ptr
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <functional> // for bind
-#include <mutex>      // for lock_guard
-#include <stdint.h>   // for int16_t
-#include <string.h>   // for memcpy
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"  // for make_fengine_desc
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "fftwPlannerLock.hpp"  // for fftw_planner_mutex
+#include "kotekanLogging.hpp"   // for DEBUG, FATAL_ERROR
+#include "fmt.hpp"              // for compile_string_to_view
+#include "NDArray.hpp"          // for GenericNDArray
 
 using kotekan::bufferContainer;
 using kotekan::Config;

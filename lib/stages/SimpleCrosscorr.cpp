@@ -1,16 +1,19 @@
 #include "SimpleCrosscorr.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp" // for make_fengine_desc, make_power_corr_desc
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for DEBUG
+#include <stdint.h>             // for uint32_t
+#include <stdlib.h>             // for calloc, free
+#include <string.h>             // for memset
+#include <functional>           // for bind, function
+#include <memory>               // for shared_ptr
 
-#include <functional> // for bind
-#include <stdint.h>   // for uint32_t
-#include <stdlib.h>   // for calloc, free
-#include <string.h>   // for memset
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"  // for make_fengine_desc
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for DEBUG
+#include "NDArray.hpp"          // for GenericNDArray
+#include "fmt.hpp"              // for compile_string_to_view
 
 using kotekan::bufferContainer;
 using kotekan::Config;

@@ -1,14 +1,14 @@
 #ifndef GIVEN_DATA_GEN_H
 #define GIVEN_DATA_GEN_H
 
-#include "Config.hpp"  // for Config
-#include "Stage.hpp"   // for Stage
-#include "buffer.hpp"  // for Buffer
-#include "visUtil.hpp" // for input_ctype
+#include <stdint.h>             // for uint32_t
+#include <string>               // for string, basic_string
+#include <vector>               // for vector
 
-#include <stdint.h> // for uint32_t
-#include <string>   // for string
-#include <vector>   // for vector
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
 
 /**
  * @class parseReorderDefault

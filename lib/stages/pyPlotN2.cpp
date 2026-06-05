@@ -1,21 +1,21 @@
 #include "pyPlotN2.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "restServer.hpp"      // for restServer, HTTP_RESPONSE, connectionInstance
+#include <stdint.h>             // for uint32_t, uint8_t
+#include <stdlib.h>             // for free, malloc
+#include <string.h>             // for memcpy
+#include <sys/types.h>          // for uint
+#include <unistd.h>             // for usleep
+#include <cstdio>               // for fwrite, fflush, popen, FILE
+#include <functional>           // for bind, function, _1
+#include <thread>               // for thread
 
-#include "json.hpp" // for json_ref, json
-
-#include <cstdio>      // for fwrite, fflush, popen, FILE
-#include <functional>  // for bind, function, _1
-#include <stdint.h>    // for uint32_t, uint8_t
-#include <stdlib.h>    // for free, malloc
-#include <string.h>    // for memcpy
-#include <sys/types.h> // for uint
-#include <thread>      // for thread
-#include <unistd.h>    // for usleep
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "restServer.hpp"       // for restServer, HTTP_RESPONSE, connectionInstance
+#include "json.hpp"             // for json_ref, json
+#include "fmt.hpp"              // for format
 
 
 using json = nlohmann::json;

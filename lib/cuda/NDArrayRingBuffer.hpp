@@ -1,40 +1,40 @@
 #ifndef NDARRAYRINGBUFFER_HPP
 #define NDARRAYRINGBUFFER_HPP
 
-#include "DataType.hpp"            // for uint_from_element_bits, operator<<, GetType_t, isfinite
-#include "NDArray.hpp"             // for NDArray
-#include "Symbol.hpp"              // for Symbol, operator==, strings_to_symbols, operator<<
-#include "buffer.hpp"              // for GenericBuffer
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chordMetadata.hpp"       // for chordMetadata, get_chord_metadata
-#include "cudaCommand.hpp"         // for cudaCommand
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "div.hpp"                 // for mod, div_noremainder
-#include "kotekanLogging.hpp"      // for FATAL_ERROR, ERROR, kotekanLogging
-#include "metadata.hpp"            // for metadataObject
-#include "ringbuffer.hpp"          // for RingBuffer
+#include <cuda_runtime_api.h>       // for cudaMemcpy2D, cudaMemset2DAsync
+#include <driver_types.h>           // for CUstream_st, cudaMemcpyKind
+#include <algorithm>                // for find_if, fill_n
+#include <array>                    // for array
+#include <cassert>                  // for assert
+#include <cmath>                    // for isfinite
+#include <cstddef>                  // for ptrdiff_t, size_t
+#include <cstdint>                  // for uint8_t
+#include <cstring>                  // for memcmp, memcpy, memset
+#include <functional>               // for function
+#include <iomanip>                  // for setfill, operator<<, setw
+#include <iostream>                 // for basic_ostream, operator<<, ostream, ostringstream
+#include <memory>                   // for shared_ptr, __shared_ptr_access, allocator
+#include <optional>                 // for optional
+#include <sstream>                  // for basic_ostringstream
+#include <string>                   // for basic_string, char_traits, string, operator+, operator<<
+#include <type_traits>              // for is_floating_point_v, is_same_v
+#include <utility>                  // for pair
+#include <vector>                   // for vector
 
-#include <algorithm>          // for find_if, fill_n
-#include <array>              // for array
-#include <cassert>            // for assert
-#include <cmath>              // for isfinite
-#include <cstddef>            // for ptrdiff_t, size_t
-#include <cstdint>            // for uint8_t
-#include <cstring>            // for memcmp, memcpy, memset
-#include <cuda_runtime_api.h> // for cudaMemcpy2D, cudaMemset2DAsync
-#include <driver_types.h>     // for CUstream_st, cudaMemcpyKind
-#include <fmt.hpp>            // for compile_string_to_view
-#include <functional>         // for function
-#include <iomanip>            // for setfill, operator<<, setw
-#include <iostream>           // for basic_ostream, operator<<, ostream, cerr, dec, hex
-#include <memory>             // for shared_ptr, __shared_ptr_access, allocator
-#include <optional>           // for optional
-#include <sstream>            // for basic_ostringstream
-#include <string>             // for basic_string, char_traits, string, operator+, operator<<
-#include <type_traits>        // for is_floating_point_v, is_same_v
-#include <utility>            // for pair
-#include <vector>             // for vector
+#include "DataType.hpp"             // for uint_from_element_bits, operator<<, GetType_t, isfinite
+#include "NDArray.hpp"              // for NDArray
+#include "Symbol.hpp"               // for Symbol, operator==, strings_to_symbols, operator<<
+#include "buffer.hpp"               // for GenericBuffer
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "chordMetadata.hpp"        // for chordMetadata, get_chord_metadata
+#include "cudaCommand.hpp"          // for cudaCommand
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "div.hpp"                  // for mod, div_noremainder
+#include "kotekanLogging.hpp"       // for FATAL_ERROR, ERROR, kotekanLogging
+#include "metadata.hpp"             // for metadataObject
+#include "ringbuffer.hpp"           // for RingBuffer
+#include "fmt.hpp"                  // for compile_string_to_view, formatter
 
 using kotekan::div_noremainder;
 using kotekan::mod;

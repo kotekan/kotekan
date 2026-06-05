@@ -1,27 +1,25 @@
 
 #include "visFileRaw.hpp"
 
-#include "datasetManager.hpp" // for datasetManager, dset_id_t
-#include "datasetState.hpp"   // for stackState, eigenvalueState, freqState, gatingState, input...
-#include "visBuffer.hpp"      // for VisFrameView, VisMetadata
+#include <assert.h>            // for assert
+#include <errno.h>             // for errno
+#include <fcntl.h>             // for fallocate, sync_file_range, FALLOC_FL_KEEP_SIZE, SYNC_FILE...
+#include <string.h>            // for strerror
+#include <sys/stat.h>          // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
+#include <unistd.h>            // for close, pwrite, TEMP_FAILURE_RETRY
+#include <algorithm>           // for copy, max
+#include <cstdio>              // for remove
+#include <fstream>             // for basic_ofstream, basic_ios, basic_ostream::write, ios, ofst...
+#include <future>              // for async, future
+#include <memory>              // for __shared_ptr_access, shared_ptr
+#include <stdexcept>           // for runtime_error
+#include <utility>             // for pair
 
-#include "fmt.hpp"      // for format, fmt
-#include "fmt/format.h" // for compile_string_to_view
-#include "json.hpp"     // for basic_json, json
-
-#include <algorithm>  // for max
-#include <assert.h>   // for assert
-#include <cstdio>     // for remove
-#include <errno.h>    // for errno
-#include <fcntl.h>    // for fallocate, sync_file_range, FALLOC_FL_KEEP_SIZE, SYNC_FILE...
-#include <fstream>    // for basic_ofstream, basic_ios, basic_ostream::write, ios, ofst...
-#include <future>     // for async, future
-#include <memory>     // for __shared_ptr_access, shared_ptr
-#include <stdexcept>  // for runtime_error
-#include <string.h>   // for strerror
-#include <sys/stat.h> // for S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR
-#include <unistd.h>   // for close, pwrite, TEMP_FAILURE_RETRY
-#include <utility>    // for pair
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t
+#include "datasetState.hpp"    // for stackState, eigenvalueState, freqState, gatingState, input...
+#include "visBuffer.hpp"       // for VisFrameView, VisMetadata
+#include "fmt.hpp"             // for format, compile_string_to_view, fmt
+#include "json.hpp"            // for basic_json, json
 
 
 // Register the raw file writer

@@ -1,0 +1,761 @@
+##########################################
+#
+# chime_upgrade_n2
+#
+# Pipeline for running the n2k correlator, accumulate onto a visibility matrix
+# and compute eigen-decomposition.
+#
+# Currently only uses one NUMA domain, but it shouldn't be hard to extend to
+# the second NUMA domain.
+#
+# Author: Andre Renard, Roland Haas, Erik Schnetter
+#
+##########################################
+---
+########################
+#### Global options ####
+########################
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+
+{% set num_polarizations = 2 %}
+{% set num_dishes = 1024 %}
+{% set num_elements = num_polarizations * num_dishes %}
+num_polarizations: {{ num_polarizations }}
+num_dishes: {{ num_dishes }}
+num_elements: {{ num_elements }}
+num_tracking_beams: 12
+frb_upchan_factor: 16
+hfb_upchan_factor: 64
+
+num_components: 2 # Re/Im
+num_freq_host_buf: 1
+{% set num_freq_gpu_buf = 16 %}
+num_freq_gpu_buf: {{ num_freq_gpu_buf }}
+num_ev_to_calculate: 4            # from n2 test case
+samples_per_data_set: 16384
+sample_period_ns: 2560
+network_frame_arrival_period: 16384 * sample_period_ns / 1e9
+baseband_buffer_depth: 3
+# see where / if / how to use host_buffer_depth and gpu_buffer_depth
+# must be at least size of gpu_buffer_depth
+host_buffer_depth: 12
+# this must be 4 since cudaTranspose2048_chime.cpp hard-codes the outermost
+# size of the voltage ring-buffer as 4
+gpu_buffer_depth: 4
+num_gpus: 2
+cpu_affinity: [0, 10, 11, 12, 13] #, 14, 15, 16, 17, 18, 19]
+
+# Constants
+sizeof_float: 4
+sizeof_float32: 4
+sizeof_int8: 1
+sizeof_int: 4
+sizeof_int32: 4
+sizeof_uint64: 8
+sizeof_short: 2
+
+use_hugepages: false
+
+# Telescope
+telescope:
+  name: CHIMETelescope
+  require_gps: true
+  query_gps: true # GPS time is provided via coco
+  gps_host_info: /fpga_controller
+  query_frequency_map: true # Frequency map is provided via coco
+  require_frequency_map: true # Make sure we have the full frequency map
+  allow_default_frequency_map: false # Don't fall back on default map
+  eop_updatable_config: /earth_rotation_data
+
+earth_rotation_data:
+  kotekan_update_endpoint: json
+  earth_orientation_parameter_table:
+    - {t_inst_ns: 0, delta_UT1_inst: 0.0, xp_as: 0.0, yp_as: 0.0}
+
+# these are to trigger visibility dumps while starting kotekan early to avoid
+# packet sync hiccups
+updatable_config:
+  enable_vis_out:
+    kotekan_update_endpoint: "json"
+    enabled: false
+  enable_failed_out:
+    kotekan_update_endpoint: "json"
+    enabled: false
+  enable_sk_out:
+    kotekan_update_endpoint: "json"
+    enabled: false
+  frb_gain:
+    kotekan_update_endpoint: "json"
+    gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
+  tracking_gain:
+    0:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    1:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    2:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    3:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    4:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    5:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    6:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    7:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    8:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    9:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    10:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+    11:
+      kotekan_update_endpoint: json
+      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+
+dataset_manager:
+  use_dataset_broker: False
+
+main_pool:
+  kotekan_metadata_pool: chordMetadata
+  num_metadata_objects: 30 * host_buffer_depth + 5 * baseband_buffer_depth
+
+################################################################################
+# Packet intake
+
+# Buffers
+
+host_voltage_buffers:
+  num_frames: baseband_buffer_depth
+  frame_size: samples_per_data_set * num_elements * num_freq_host_buf
+  metadata_pool: main_pool
+  use_hugepages: true
+  numa_0:
+    numa_node: 0
+{%- for id in range(num_freq_gpu_buf) %}
+    host_voltage_buffer_{{ id }}:
+      kotekan_buffer: standard
+{%- endfor %}
+host_voltage_ringbuffer:
+  kotekan_buffer: ring
+  ring_buffer_size: gpu_buffer_depth * samples_per_data_set * num_elements * num_freq_gpu_buf
+  metadata_pool: main_pool
+
+{%- for id in range(num_freq_gpu_buf // 4) %}
+lost_samples_buffer_{{ id }}:
+  kotekan_buffer: standard
+  num_frames: 2 * host_buffer_depth
+  frame_size: samples_per_data_set
+  metadata_pool: main_pool
+{%- endfor %}
+
+# Stages
+
+# set to False on instead read data from disk
+{%- if True %}
+
+# This configuration assumes that the system ports are ordered in as 4x10G
+# links for each QSFP+, and that each QSFP+ port comes from exactly one iceBoard
+# and that each iceBoard is in a _different_ crate pair, but also in the same
+# location in terms of slot, crate (within the crate pair), and link (on the board).
+dpdk:
+  kotekan_stage: dpdkCore
+  # Format is index = lcore, value = cpu core
+  lcore_cpu_map: [4,5,6,7,36,37,38,39]
+  main_lcore_cpu: 3
+  status_cadence: 60
+  max_rx_pkt_len: 5000
+  num_mbufs: 4096
+  rx_ring_size: 2048
+  mbuf_cache_size: 500  
+  # Set to true when using a switch to replicate packets
+  using_switch: true
+  alignment: samples_per_data_set * 4
+  # List of PCIe devices we don't want to attach too
+  # Required to exclude the ConnectX 6 Lx output NICs.
+  # Excluded devices are listed by their PCIe address. 
+  pcie_block_list:
+    - 0d:00.0
+    - 0d:00.1
+    - 9f:00.0
+    - 9f:00.1
+  # Format is index = lcore, value = array of port IDs
+  # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
+  # and lcore 1 to service ports 2 and 3.
+  lcore_port_map:
+    - [0, 4]
+    - [8, 12]
+    - [1, 5]
+    - [9, 13]
+    - [2, 6]
+    - [10, 14]
+    - [3, 7]
+    - [11, 15]
+
+  # One handler must be given per port, mapping is in port order.
+  handlers:
+{%- for id in range(4) %}
+    - dpdk_handler: iceBoardShuffle
+      link_group: 0
+      link_group_subid: {{ id }}
+      out_bufs:
+        - host_voltage_buffer_0
+        - host_voltage_buffer_1
+        - host_voltage_buffer_2
+        - host_voltage_buffer_3
+      lost_samples_buf: lost_samples_buffer_0
+
+    - dpdk_handler: iceBoardShuffle
+      link_group: 1
+      link_group_subid: {{ id }}
+      out_bufs:
+        - host_voltage_buffer_4
+        - host_voltage_buffer_5
+        - host_voltage_buffer_6
+        - host_voltage_buffer_7
+      lost_samples_buf: lost_samples_buffer_1
+
+    - dpdk_handler: iceBoardShuffle
+      link_group: 2
+      link_group_subid: {{ id }}
+      out_bufs:
+        - host_voltage_buffer_8
+        - host_voltage_buffer_9
+        - host_voltage_buffer_10
+        - host_voltage_buffer_11
+      lost_samples_buf: lost_samples_buffer_2
+
+    - dpdk_handler: iceBoardShuffle
+      link_group: 3
+      link_group_subid: {{ id }}
+      out_bufs:
+        - host_voltage_buffer_12
+        - host_voltage_buffer_13
+        - host_voltage_buffer_14
+        - host_voltage_buffer_15
+      lost_samples_buf: lost_samples_buffer_3
+{%- endfor %}
+
+# Zero out lost samples recorded at the DPDK stage
+zero_samples:
+  duplicate_ls_buffer: False
+{%- for id in range(num_freq_gpu_buf) %}
+  zero_{{ id }}:
+    kotekan_stage: zeroSamples
+    lost_samples_buf: lost_samples_buffer_{{ id // 4 }}
+    out_buf: host_voltage_buffer_{{ id }}
+{%- endfor %}
+
+{%- else %}
+
+{%- for id in range(16) %}
+dbg_read_voltages_{{ id }}:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_{{ id }}
+    file_name: host_voltage_buffer_{{ id }}
+{%- endfor %}
+
+{%- for id in range(4) %}
+dbg_read_lostsamples_{{ id }}:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: lost_samples_buffer_{{ id }}
+    file_name: lost_samples_buffer_{{ id }}
+{%- endfor %}
+
+{%- endif %}
+
+################################################################################
+# n2k incoming packet processing
+
+# Buffers
+
+host_bf_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    metadata_pool: main_pool
+
+host_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: host_buffer_depth
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_freq_gpu_buf / 4) * (samples_per_data_set / 2 / 64)
+    metadata_pool: main_pool
+host_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: gpu_buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * (num_freq_gpu_buf / 4) * (samples_per_data_set / 2 / 64)
+    metadata_pool: main_pool
+
+host_pl_expanded_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: gpu_buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * num_freq_gpu_buf * (samples_per_data_set / 64)
+    metadata_pool: main_pool
+
+# Stages
+
+# glue code to handle lost frames formats
+lostSamplesToPLMask:
+    kotekan_stage: lostSamplesToPLMask
+    # num_dishes: num_dishes # set via a global
+    # num_polarizations: num_polarizations # set via a global
+    pl_mask_buf: host_pl_mask_buffer
+    lost_samples_buffers:
+{%- for id in range(num_freq_gpu_buf // 4) %}
+      - lost_samples_buffer_{{ id }}
+{%- endfor %}
+
+set_bf_mask:
+    # TODO: this will be handled by the bad-inputs stage eventually
+    kotekan_stage: givenDataGen
+    out_buf: host_bf_mask_buffer
+    datatype: int8
+    name: "bf_mask"
+    dim_name: ["P", "D"]
+    array_shape: [ {{ num_polarizations }}, {{ num_dishes }} ]
+    do_once: true
+    values:
+      # taken from chime_science_ran_gpu.yaml
+      {% set bad_feeds = [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
+                           370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
+                           807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
+                          1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
+                          1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
+                          1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034] %}
+     {% for el in range(num_elements) %}
+        - {% if el in bad_feeds -%} 0 {%- else -%} 1 {%- endif %}
+     {% endfor %}
+
+run_send_pl_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        in_buffers:
+            host_pl_mask_buffer: host_pl_mask_buffer
+        out_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_freq_gpu_buf / 4) * (samples_per_data_set / 2 / 64)
+          ring_buffer_size: gpu_buffer_depth * input_size
+          in_buf: host_pl_mask_buffer
+          signal_buf: host_pl_mask_ringbuffer
+          gpu_mem_output: pl_mask_buffer
+
+run_expand_pl_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        in_buffers:
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+        out_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskExpander
+          num_frequencies: num_freq_gpu_buf
+          # num_polarizations: num_polarizations # global exists
+          # num_dishes: num_dishes # global exists
+          pl_mask_name: pl_mask
+          pl_expanded_mask_name: pl_expanded_mask
+
+run_send_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        in_buffers:
+{%- for id in range(num_freq_gpu_buf) %}
+            host_voltage_buffer_{{ id }}: host_voltage_buffer_{{ id }}
+{%- endfor %}
+        out_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+        commands:
+        - name: cudaCopyNToRingbuffer
+          input_size: samples_per_data_set * num_elements * num_freq_host_buf
+          ring_buffer_size: gpu_buffer_depth * input_size
+          in_bufs: 
+{%- for id in range(num_freq_gpu_buf) %}
+            - host_voltage_buffer_{{ id }}
+{%- endfor %}
+          signal_buf: host_voltage_ringbuffer
+          gpu_mem_output: voltage_buffer
+
+################################################################################
+# transpose kernel to bring data into cylinder (cylinder, polarization, dish) order
+
+# this array of 2048 elements descibes to the xpose2048 kernel which adc input
+# (correlator index) should be put into which station index (cylinder order).
+# It is given as a list of desired adc inputs (correlator indices) ordered in
+# cylindar order (station index).
+# It can be obtained from the CHIME layout database by using the "cyl_ind"
+# column as the index and outputting the "corr_ind" column.
+set_scatter_indices:
+    kotekan_stage: parseReorderDefault
+    out_buf: host_scatter_indices_buffer
+    name: scatter_indices
+
+# Buffers
+
+host_scatter_indices_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_int32 * num_dishes * num_polarizations
+    metadata_pool: main_pool
+
+host_xposed_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: gpu_buffer_depth * num_dishes * num_polarizations * num_freq_gpu_buf * samples_per_data_set
+    metadata_pool: main_pool
+
+# Stages
+
+run_xpose2048:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        in_buffers:
+            host_scatter_indices_buffer: host_scatter_indices_buffer
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+        out_buffers:
+            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_scatter_indices_buffer
+          gpu_mem: scatter_indices_buffer
+        - name: cudaSyncInput
+        - name: cudaTranspose2048_chime
+          input_voltage_name: voltage
+          scatter_indices_name: scatter_indices
+          output_voltage_name: xposed_voltage
+
+################################################################################
+# RFI setup
+
+# from 2.56 us to 0.655 ms
+rfi_downsampling_factor: 256
+# from 0.655 ms ms to 41.94304 ms
+rfi_second_downsampling_factor: 64
+
+rfi_sk_rfimask_sigmas: 5.0
+rfi_single_feed_min_good_frac: 0.8
+rfi_feed_averaged_min_good_frac: 0.8
+rfi_mu_min: 2.0
+rfi_mu_max: 20.0
+
+# Buffers
+
+rfi_num_times: 64      # 0.655 ms cadence
+rfi_num_times_bar: 1   # 41.94304 ms cadence
+
+host_rfi_S012_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: gpu_buffer_depth
+    ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times
+    type: uint64
+    dimnames: ["Trfi", "F", "S", "P", "D"]
+    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+
+host_rfi_S012bar_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: gpu_buffer_depth
+    ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times_bar
+    type: uint64
+    dimnames: ["Trfibar", "F", "S", "P", "D"]
+    shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+
+host_rfi_S012tilde_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: gpu_buffer_depth
+    ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * 3 * num_freq_gpu_buf * rfi_num_times
+    type: uint64
+    dimnames: ["Trfi", "F", "S"]
+    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
+    metadata_pool: main_pool
+
+host_rfi_SKtilde_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: gpu_buffer_depth
+    ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
+    metadata_pool: main_pool
+
+host_rfi_RFImask_buffer:
+    kotekan_buffer: standard
+    num_frames: gpu_buffer_depth
+    frame_size: num_freq_gpu_buf * samples_per_data_set / 8
+    type: uint1x8
+    dimnames: ["T8hi128", "F", "T8lo128"]
+    shape: [samples_per_data_set / 8 / 128, num_freq_gpu_buf, 128]
+    metadata_pool: main_pool
+host_rfi_RFImask_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: gpu_buffer_depth
+    ring_buffer_size: gpu_buffer_depth * num_freq_gpu_buf * samples_per_data_set / 8
+    type: uint1x8
+    dimnames: ["T8hi128", "F", "T8lo128"]
+    shape: [gpu_buffer_depth * samples_per_data_set / 8 / 128, num_freq_gpu_buf, 128]
+    metadata_pool: main_pool
+
+host_rfi_SKbar_buffer:
+    kotekan_buffer: standard
+    num_frames: gpu_buffer_depth
+    frame_size: sizeof_float32 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times_bar
+    type: float32
+    dimnames: ["Trfi", "F", "S", "P", "D"]
+    shape: [rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+host_rfi_SKbar_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: gpu_buffer_depth
+    ring_buffer_size: gpu_buffer_depth * sizeof_float32 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times_bar
+    type: float32
+    dimnames: ["Trfi", "F", "S", "P", "D"]
+    shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+
+host_rfi_SKbartilde_buffer:
+    kotekan_buffer: standard
+    num_frames: gpu_buffer_depth
+    frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times_bar
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [rfi_num_times_bar, num_freq_gpu_buf, 3]
+    metadata_pool: main_pool
+host_rfi_SKbartilde_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: gpu_buffer_depth
+    ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times_bar
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3]
+    metadata_pool: main_pool
+
+# Stages
+
+run_rfi_S012:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        in_buffers:
+            # TODO: transpose pl_mask
+            host_pl_mask_ringbuffer: host_pl_mask_ringbuffer
+            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+        out_buffers:
+            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+        commands:
+        - name: cudaRFIS012
+          num_frequencies: num_freq_gpu_buf
+          pl_mask_name: pl_mask
+          voltage_name: xposed_voltage
+          rfi_S012_name: rfi_S012
+
+run_rfi_S012tilde:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        # maybe? Depends on the chunking of the previous stage
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+        out_buffers:
+            host_rfi_S012tilde_ringbuffer: host_rfi_S012tilde_ringbuffer
+        commands:
+        - name: cudaInputData
+          # TODO: Don't double-copy bf_mask
+          do_once: true
+          in_buf: host_bf_mask_buffer
+          gpu_mem: bf_mask_buffer
+        - name: cudaSyncInput
+        - name: cudaRFIS012tilde
+          num_frequencies: num_freq_gpu_buf
+          bf_mask_name: bf_mask
+          rfi_S012_name: rfi_S012
+          rfi_S012tilde_name: rfi_S012tilde
+
+run_rfi_S012bar:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        # maybe? Depends on the chunking of the previous stage
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        in_buffers:
+            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+        out_buffers:
+            host_rfi_S012bar_ringbuffer: host_rfi_S012bar_ringbuffer
+        commands:
+        - name: cudaRFIS012bar
+          num_frequencies: num_freq_gpu_buf
+          bf_mask_name: bf_mask
+          rfi_S012_name: rfi_S012
+          rfi_S012bar_name: rfi_S012bar
+
+run_rfi_SKtilde:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        # maybe? Depends on the chunking of the previous stage
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+            host_rfi_S012_ringbuffer: host_rfi_S012_ringbuffer
+        out_buffers:
+            host_rfi_SKtilde_ringbuffer: host_rfi_SKtilde_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+        commands:
+        - name: cudaInputData
+          # TODO: Don't double-copy bf_mask
+          do_once: true
+          in_buf: host_bf_mask_buffer
+          gpu_mem: bf_mask_buffer
+        - name: cudaSyncInput
+        - name: cudaRFISKtilde
+          num_frequencies: num_freq_gpu_buf
+          bf_mask_name: bf_mask
+          rfi_S012_name: rfi_S012
+          rfi_SKtilde_name: rfi_SKtilde
+          rfi_RFImask_name: rfi_RFImask
+
+run_rfi_SKbar:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        # maybe? Depends on the chunking of the previous stage
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+            host_rfi_S012bar_ringbuffer: host_rfi_S012bar_ringbuffer
+        out_buffers:
+            host_rfi_SKbar_ringbuffer: host_rfi_SKbar_ringbuffer
+            host_rfi_SKbartilde_ringbuffer: host_rfi_SKbartilde_ringbuffer
+        commands:
+        - name: cudaInputData
+          # TODO: Don't double-copy bf_mask
+          do_once: true
+          in_buf: host_bf_mask_buffer
+          gpu_mem: bf_mask_buffer
+        - name: cudaSyncInput
+        - name: cudaRFISKbar
+          num_frequencies: num_freq_gpu_buf
+          bf_mask_name: bf_mask
+          rfi_S012bar_name: rfi_S012bar
+          rfi_SKbar_name: rfi_SKbar
+          rfi_SKbartilde_name: rfi_SKbartilde
+
+# required to get the rfi mask off the GPU
+run_recv_rfi_RFImask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: gpu_buffer_depth
+        # maybe? Depends on the chunking of the previous stage
+        frame_arrival_period: network_frame_arrival_period
+        num_times: samples_per_data_set
+        in_buffers:
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+        out_buffers:
+            host_rfi_RFImask_buffer: host_rfi_RFImask_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_RFImask_ringbuffer
+          gpu_mem_input: rfi_RFImask_buffer
+          output_size: num_freq_gpu_buf * samples_per_data_set / 8
+          ring_buffer_size: gpu_buffer_depth * output_size
+          out_buf: host_rfi_RFImask_buffer
+
+################################################################################
+# read FRB and tracking gains
+
+gain_frb_buffer:
+  kotekan_buffer: standard
+  num_frames: 1
+  frame_size: num_elements * num_freq_gpu_buf * frb_upchan_factor * 2 * sizeof_float32
+  type: float32
+  dimnames: ["F", "U", "E", "ReIm"]
+  shape: [num_freq_gpu_buf, frb_upchan_factor, num_elements, 2]
+  metadata_pool: main_pool
+
+gain_hfb_buffer:
+  kotekan_buffer: standard
+  num_frames: 1
+  frame_size: num_elements * num_freq_gpu_buf * hfb_upchan_factor * 2 * sizeof_float32
+  type: float32
+  dimnames: ["F", "U", "E", "ReIm"]
+  shape: [num_freq_gpu_buf, hfb_upchan_factor, num_elements, 2]
+  metadata_pool: main_pool
+
+gain_tracking_buffer:
+  kotekan_buffer: standard
+  num_frames: 1
+  frame_size: num_freq_gpu_buf * num_elements * 2 * sizeof_float32 * num_tracking_beams
+  type: float32
+  dimnames: ["F", "R", "E", "ReIm"]
+  shape: [num_freq_gpu_buf, num_tracking_beams, num_elements, 2]
+  metadata_pool: main_pool  
+
+# Stages
+process_FRB_and_tracking_gains:
+  kotekan_stage: processGains
+  num_beams: num_tracking_beams
+  num_local_freq: num_freq_gpu_buf
+  in_buf: host_rfi_RFImask_buffer
+  gain_frb_buf: gain_frb_buffer
+  gain_tracking_buf: gain_tracking_buffer
+  updatable_config:
+    gain_frb: /updatable_config/frb_gain
+    gain_tracking: /updatable_config/tracking_gain
+
+process_HFB_gains:
+  kotekan_stage: processGains
+  num_beams: num_tracking_beams
+  num_local_freq: num_freq_gpu_buf
+  include_tracking: false
+  in_buf: host_rfi_RFImask_buffer
+  gain_frb_buf: gain_frb_buffer
+  gain_tracking_buf: gain_tracking_buffer
+  updatable_config:
+    gain_frb: /updatable_config/frb_gain
+    gain_tracking: /updatable_config/tracking_gain

@@ -1,9 +1,10 @@
 #include "UpchannelizationSchedule.hpp"
 
-#include "CHORDTelescope.hpp"
+#include <cstddef>        // for size_t
+#include <sstream>        // for basic_ostream, basic_ostringstream, operator<<, basic_ostream::...
 
-#include <cstddef>
-#include <sstream>
+#include "Telescope.hpp"  // for Telescope, freq_id_t
+#include "fmt.hpp"        // for compile_string_to_view
 
 std::vector<int> UpchannelizationSchedule::make_frequency_channels() const {
     const auto frequency_channels = config.get<std::vector<int>>(unique_name, "frequency_channels");

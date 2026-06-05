@@ -1,15 +1,14 @@
 #ifndef PROCESS_PACKET_MASK_HPP
 #define PROCESS_PACKET_MASK_HPP
 
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
+#include <cstdint>              // for uint32_t, uint64_t
+#include <string>               // for string
+#include <vector>               // for vector
 
-#include <array>
-#include <cstdint>
-#include <string>
-#include <vector>
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
 
 /**
  * @class ProcessPacketMask

@@ -1,19 +1,20 @@
 #include "simpleAutocorr.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp" // for make_fengine_desc, make_power_corr_desc
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for DEBUG
+#include <stdint.h>             // for uint32_t
+#include <stdlib.h>             // for calloc, free
+#include <string.h>             // for memset
+#include <sys/types.h>          // for uint
+#include <functional>           // for bind, function
+#include <memory>               // for shared_ptr
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <functional>  // for bind, function
-#include <stdint.h>    // for uint32_t
-#include <stdlib.h>    // for calloc, free
-#include <string.h>    // for memset
-#include <sys/types.h> // for uint
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"  // for make_fengine_desc
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for DEBUG
+#include "fmt.hpp"              // for compile_string_to_view
+#include "NDArray.hpp"          // for GenericNDArray
 
 
 using kotekan::bufferContainer;
@@ -51,7 +52,7 @@ simpleAutocorr::~simpleAutocorr() {
 
 void simpleAutocorr::main_thread() {
     float* in_local;
-    uint* out_local = nullptr;
+    float* out_local = nullptr;
 
     float re, im;
     frame_in = 0;
@@ -75,12 +76,15 @@ void simpleAutocorr::main_thread() {
 
             if (integration_ct >= integration_length) {
                 if (out_loc == 0)
-                    out_local = (uint*)buf_out->wait_for_empty_frame(unique_name, frame_out);
+                    out_local = (float*)buf_out->wait_for_empty_frame(unique_name, frame_out);
                 for (int i = 0; i < spectrum_length; i++)
                     out_local[out_loc++] = spectrum_out[i];
-                out_local[out_loc++] = integration_ct;
+                // Trailing slot is the integration count, packed as uint32 in the
+                // same word-width slot as the floats. Matches the layout that
+                // networkPowerStream pulls back out via ``((uint*)frame)[...]``.
+                ((uint32_t*)out_local)[out_loc++] = integration_ct;
 
-                if (out_loc * sizeof(uint) == (uint32_t)buf_out->frame_size) {
+                if (out_loc * sizeof(float) == (uint32_t)buf_out->frame_size) {
                     buf_out->mark_frame_full(unique_name, frame_out);
                     frame_out = (frame_out + 1) % buf_out->num_frames;
                     out_loc = 0;
