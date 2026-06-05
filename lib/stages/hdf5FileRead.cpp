@@ -211,7 +211,7 @@ public:
                     std::vector<ptrdiff_t> dimensions(dims.begin(), dims.end());
                     std::vector<kotekan::Symbol> dimnames(dim_names.begin(), dim_names.end());
 
-                    buffer->set_frame_desc(
+                    buffer->require_frame_desc(
                         kotekan::GenericNDArray::describe(value_type, name, dimensions, dimnames));
                     /* test that things are consistent */
                     meta->check_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());

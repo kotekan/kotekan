@@ -225,7 +225,7 @@ public:
                     break;
 
                 // Set metadata
-                buffer->set_frame_desc(kotekan::GenericNDArray::describe(
+                buffer->require_frame_desc(kotekan::GenericNDArray::describe(
                     type, kotekan::Symbol(name), new_dims, new_dim_names));
                 buffer->allocate_new_metadata_object(frame_id);
                 const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));

@@ -136,14 +136,17 @@ vis_pool:
 
 host_voltage_buffers:
   num_frames: baseband_buffer_depth
-  frame_size: samples_per_data_set * num_elements * num_freq_host_buf
+  value_type: int4x2_swapped_withoffset
+  quantity_name: E
+  extents: [1, samples_per_data_set * num_elements * num_freq_host_buf / 2048, 2048]
+  dimnames: [F, T, E]
   metadata_pool: main_pool
   use_hugepages: true
   numa_0:
     numa_node: 0
 {%- for id in range(num_freq_gpu_buf) %}
     host_voltage_buffer_{{ id }}:
-      kotekan_buffer: standard
+      kotekan_buffer: ndarray
 {%- endfor %}
 host_voltage_ringbuffer:
   kotekan_buffer: ring
@@ -152,9 +155,12 @@ host_voltage_ringbuffer:
 
 {%- for id in range(num_freq_gpu_buf // 4) %}
 lost_samples_buffer_{{ id }}:
-  kotekan_buffer: standard
+  kotekan_buffer: ndarray
   num_frames: 2 * host_buffer_depth
-  frame_size: samples_per_data_set
+  value_type: uint8
+  quantity_name: lost_samples
+  extents: [samples_per_data_set]
+  dimnames: [T]
   metadata_pool: main_pool
 {%- endfor %}
 

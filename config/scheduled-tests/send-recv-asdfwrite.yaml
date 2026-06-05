@@ -16,15 +16,21 @@ main_pool:
 
 # Buffers
 send_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_frame_samples
+    value_type: int4x2
+    quantity_name: E
+    extents: [num_frame_samples]
+    dimnames: ["S"]
     metadata_pool: main_pool
 
 recv_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_frame_samples
+    value_type: int4x2
+    quantity_name: E
+    extents: [num_frame_samples]
+    dimnames: ["S"]
     metadata_pool: main_pool
 
 
