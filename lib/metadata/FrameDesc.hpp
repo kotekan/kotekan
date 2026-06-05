@@ -13,10 +13,10 @@ class FrameDesc {
 public:
     virtual ~FrameDesc() = default;
 
-    // A stored name for the quantity represented by this frame description
+    /// A stored name for the quantity represented by this frame description
     virtual Symbol get_quantity_name() const = 0;
 
-    // Output the frame description, useful for logging or debugging
+    /// Output the frame description, useful for logging or debugging
     virtual void output_framedesc(std::ostream& os) const = 0;
 
     /// Describe how this descriptor differs from `other`, for error messages.
@@ -29,17 +29,17 @@ public:
         return "existing:\n" + this_os.str() + "new:\n" + other_os.str();
     }
 
-    // Verify compatibility between descriptors
+    /// Verify compatibility between descriptors
     virtual bool operator==(const FrameDesc& other) const = 0;
 
     virtual bool operator!=(const FrameDesc& other) const {
         return !(*this == other);
     }
 
-    // Get the size of the frame in bytes
+    /// Get the size of the frame in bytes
     virtual size_t get_byte_size() const = 0;
 
-    // Strict type checking helper
+    /// Strict type checking helper
     template<typename T>
     const T* as() const {
         return dynamic_cast<const T*>(this);

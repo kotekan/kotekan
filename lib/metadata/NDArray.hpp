@@ -79,10 +79,10 @@ make_arrays_from_pairs(std::initializer_list<std::pair<T, U>> values) {
 
 class Config;
 
-// A `GenericNDArray` is similar to a numpy array. Neither the type
-// nor the rank are known at compile time. This is convenient e.g.
-// when reading data from a file, but it prevents efficient operations
-// on array elements.
+/// A `GenericNDArray` is similar to a numpy array. Neither the type
+/// nor the rank are known at compile time. This is convenient e.g.
+/// when reading data from a file, but it prevents efficient operations
+/// on array elements.
 class GenericNDArray : public FrameDesc {
 public:
     /// create a descriptor (an NDArray without data) based on run-time type
@@ -105,37 +105,37 @@ public:
     /// definition.
     static constexpr size_t max_rank = 10;
     virtual ~GenericNDArray() {}
-    // The value (element) type
+    /// The value (element) type
     virtual DataType get_value_datatype() const = 0;
-    // The number of bytes for each value (element)
+    /// The number of bytes for each value (element)
     virtual std::size_t get_value_type_size() const = 0;
-    // The stored quantity_name
+    /// The stored quantity_name
     Symbol get_quantity_name() const override = 0;
-    // The rank (number of dimensions)
+    /// The rank (number of dimensions)
     virtual std::size_t get_rank() const = 0;
-    // Pointer to the array data
+    /// Pointer to the array data
     virtual const void* get_data() const = 0;
     virtual void* get_data() = 0;
-    // The array extents (array shape)
+    /// The array extents (array shape)
     virtual std::vector<std::ptrdiff_t> get_extents() const = 0;
     virtual std::ptrdiff_t get_extent(std::size_t d) const = 0;
-    // Is the array empty?
+    /// Is the array empty?
     virtual bool get_empty() const = 0;
-    // The array size. (This is the product of the extents.)
+    /// The array size. (This is the product of the extents.)
     virtual std::ptrdiff_t get_size() const = 0;
-    // The names of the array dimensions
+    /// The names of the array dimensions
     virtual std::vector<Symbol> get_dimnames() const = 0;
     virtual Symbol get_dimname(std::size_t d) const = 0;
-    // The array strides. Strides can have any value (including negative).
+    /// The array strides. Strides can have any value (including negative).
     virtual std::vector<std::ptrdiff_t> get_strides() const = 0;
     virtual std::ptrdiff_t get_stride(std::size_t d) const = 0;
 
-    // FrameDesc override
+    /// FrameDesc override
     size_t get_byte_size() const override {
         return get_size() * get_value_type_size();
     }
 
-    // Output the array description (framedesc), useful for logging or debugging
+    /// Output the array description (framedesc), useful for logging or debugging
     void output_framedesc(std::ostream& os) const override;
 
     /// Describe the first structural difference (value type, quantity name,
@@ -147,21 +147,21 @@ public:
     /// NDArray, else the default both-descriptions dump.
     std::string describe_mismatch(const FrameDesc& other) const override;
 
-    // Compare two NDArrays, useful to compare metadata
+    /// Compare two NDArrays, useful to compare metadata
     bool operator==(const FrameDesc& other) const override;
 };
 
-// A `NDArray<T,D>` is a `D`-dimensional array of type `T`. Different
-// from `GenericNDArray`, its elements can be accessed efficiently. If
-// you are writing C++ code that processes multi-dimensional arrays
-// then this class is a fine choice.
+/// A `NDArray<T,D>` is a `D`-dimensional array of type `T`. Different
+/// from `GenericNDArray`, its elements can be accessed efficiently. If
+/// you are writing C++ code that processes multi-dimensional arrays
+/// then this class is a fine choice.
 template<typename T, std::size_t D>
 class NDArray : public GenericNDArray {
 public:
-    // Value (element) type
+    /// Value (element) type
     using value_type = T;
     constexpr static DataType value_datatype = GetDataType_v<T>;
-    // Rank (number of dimensions)
+    /// Rank (number of dimensions)
     constexpr static std::size_t rank = D;
     constexpr static std::size_t value_type_size = sizeof(T);
 
@@ -187,14 +187,14 @@ private:
     std::array<Symbol, D> m_dimnames;
 
 public:
-    // No default constructor
+    /// No default constructor
     NDArray() = delete;
 
-    // No copy constructors
+    /// No copy constructors
     NDArray(const NDArray&) = delete;
     NDArray& operator=(const NDArray&) = delete;
 
-    // Move constructors
+    /// Move constructors
     NDArray(NDArray&&) = default;
     NDArray& operator=(NDArray&&) = default;
 
@@ -206,7 +206,7 @@ public:
         return std::make_shared<NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
     }
 
-    // Construct from extents and dimension names
+    /// Construct from extents and dimension names
     NDArray(const Symbol quantity_name, const std::vector<std::ptrdiff_t>& extents,
             const std::vector<Symbol>& dimnames, T* data) {
         assert(extents.size() == D && "extents size must match dimensionality D");
@@ -258,7 +258,7 @@ public:
     //     m_data = data;
     // }
 
-    // Get a pointer to the first element
+    /// Get a pointer to the first element
     const T* data() const {
         return m_data;
     }
@@ -266,12 +266,12 @@ public:
         return m_data;
     }
 
-    // The (physical) quantity_name
+    /// The (physical) quantity_name
     Symbol quantity_name() const {
         return m_quantity_name;
     }
 
-    // The array extents (array shape)
+    /// The array extents (array shape)
     std::array<std::ptrdiff_t, D> extents() const {
         return m_extents;
     }
@@ -280,17 +280,17 @@ public:
         return m_extents[d];
     }
 
-    // Is the array empty?
+    /// Is the array empty?
     bool empty() const {
         return size() == 0;
     }
 
-    // The array size. (This is the product of the extents.)
+    /// The array size. (This is the product of the extents.)
     std::ptrdiff_t size() const {
         return m_size;
     }
 
-    // The names of the array dimensions
+    /// The names of the array dimensions
     std::array<Symbol, D> dimnames() const {
         return m_dimnames;
     }
@@ -299,7 +299,7 @@ public:
         return m_dimnames[d];
     }
 
-    // The array strides. Strides can have any value (including negative).
+    /// The array strides. Strides can have any value (including negative).
     std::array<std::ptrdiff_t, D> strides() const {
         return m_strides;
     }
@@ -308,7 +308,7 @@ public:
         return m_strides[d];
     }
 
-    // Convert an array index to an offset, using the strides
+    /// Convert an array index to an offset, using the strides
     template<typename I = std::ptrdiff_t>
     std::ptrdiff_t index2offset(const std::array<I, D>& ind) const {
         for (std::size_t d = 0; d < D; ++d)
@@ -319,7 +319,7 @@ public:
         return off;
     }
 
-    // Access an array element by index
+    /// Access an array element by index
     template<typename I = std::ptrdiff_t>
     const T& operator()(const std::array<I, D>& ind) const {
         return m_data[index2offset(ind)];
@@ -337,7 +337,7 @@ public:
         return (*this)(std::array<std::ptrdiff_t, sizeof...(Inds)>{inds...});
     }
 
-    // A const iterator
+    /// A const iterator
     class ConstIterator {
         const NDArray<T, D>* m_parent;
         std::array<std::ptrdiff_t, D> m_indices;
