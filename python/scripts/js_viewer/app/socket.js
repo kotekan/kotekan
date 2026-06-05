@@ -114,8 +114,16 @@ export class Socket {
                              {client: CLIENT_PROTOCOL_VERSION, server: server_v});
                 }
             }
-            state.num_freqs = (cfg && cfg.nfreq) || msg.nfreq;
-            state.spectrum_baseline = new Array(state.num_freqs).fill(0);
+            // Reallocate the baseline only on an actual bin-count change. The
+            // server resends viewer_config on every reconnect, so resetting
+            // unconditionally would wipe a captured baseline on any WS blip
+            // (and, with subtraction on, divide by zeros -> +Inf).
+            const new_num_freqs = (cfg && cfg.nfreq) || msg.nfreq;
+            if (new_num_freqs !== state.num_freqs) {
+                state.num_freqs = new_num_freqs;
+                state.spectrum_baseline = new Array(state.num_freqs).fill(0);
+                state.baseline_enabled = false; // captured baseline no longer valid
+            }
             bus.emit("state:num_freqs_changed", {num_freqs: state.num_freqs});
             if (cfg) app.apply_viewer_config(cfg);
             bus.emit("state:redraw_requested");
