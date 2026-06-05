@@ -414,6 +414,11 @@ def build_viewer_config(kotekan, args):
                 float(kotekan.frame_freqs[0, 0] / 1e6),
                 float(kotekan.frame_freqs[-1, 1] / 1e6),
             ],
+            # Dataset-specific knobs the panels read instead of hardcoding:
+            # baseline-fit line mask, auto-cal [calibrate, observe] freqs, tuner span.
+            "line_mask_mhz": [1419.9, 1420.9],  # HI line, 1420.4 +/- 0.5
+            "autocal_freqs_mhz": [1416.0, 1421.0],
+            "tuning_range_mhz": [24.0, 1800.0],  # airspy R2 span
         },
         "optional_modules": {
             "airspy_controls": bool(airspy_stages) and not args.no_airspy_controls,

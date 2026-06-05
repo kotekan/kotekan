@@ -1,16 +1,20 @@
 // Baseline tools: take a snapshot of the mean spectrum as a baseline, fit
 // a polynomial through the off-line bins, subtract on display. Also the
-// "auto-cal at 1416 MHz" routine that retunes airspyInput briefly and
-// captures a clean bandpass.
+// auto-cal routine that briefly retunes airspyInput to a calibration
+// frequency and captures a clean bandpass.
 
 export class BaselinePanel {
-    constructor({app, target, autocal_stage}) {
+    constructor({app, target, autocal_stage, line_mask_mhz, autocal_freqs_mhz}) {
         this.app = app;
         this.state = app.state;
         this.bus = app.bus;
 
         this._target = target;
         this._autocal_stage = autocal_stage || null;
+        // From viewer_config (defaults: HI line / airspy): the [lo, hi] band the
+        // poly fit excludes, and the [calibrate, observe] auto-cal retune freqs.
+        this._line_mask = line_mask_mhz || [1419.9, 1420.9];
+        this._autocal_freqs = autocal_freqs_mhz || [1416, 1421];
 
         this._add_take_baseline();
         this._add_poly_fitter();
@@ -48,13 +52,13 @@ export class BaselinePanel {
                 // undefined-baseline subtraction.
                 const baseline = s.spectrum_baseline
                                  || new Array(s.num_freqs).fill(0);
-                // Sample the residual at every bin OUTSIDE the central HI line
-                // (1420.4 +/- 0.5 MHz), then fit a 4th-order polynomial.
+                // Sample the residual at every bin OUTSIDE the spectral-line
+                // mask, then fit a 4th-order polynomial.
                 const x = [], y = [];
                 for (let idx = 0; idx < s.num_freqs; idx++) {
                     const f = s.freq_list[idx];
                     const in_disp = f > s.disp_freq[0] && f < s.disp_freq[1];
-                    const off_line = f < 1420.4 - 0.5 || f > 1420.4 + 0.5;
+                    const off_line = f < self._line_mask[0] || f > self._line_mask[1];
                     if (in_disp && off_line) {
                         x.push(idx);
                         y.push(s.spectrum[idx] - baseline[idx]);
@@ -109,13 +113,13 @@ export class BaselinePanel {
         // text doesn't drift from the initial one. The previous code had two
         // copies and reset the button to a stale "Autocalibrate Bandpass" on
         // completion.
-        this._bandpass_button_label = "Take 1416MHz Bandpass";
+        this._bandpass_button_label = `Take ${this._autocal_freqs[0]}MHz Bandpass`;
         const wrapper = $("<div/>").uniqueId().appendTo($("#" + this._target))
             .css({position: "relative", display: "block", margin: "4px 8px"});
         const button = $("<button/>").appendTo(wrapper)
             .button({label: this._bandpass_button_label, icons: {primary: "ui-icon-play"}})
             .click(function() {
-                self.app.kotekan.stagePost(stage, "set_config", {freq: 1416})
+                self.app.kotekan.stagePost(stage, "set_config", {freq: self._autocal_freqs[0]})
                     .then(() => {
                         self.state.bandpass_data = [];
                         self.state.scroll_data = [];
@@ -164,7 +168,7 @@ export class BaselinePanel {
         const self = this;
         const s = this.state;
         s.spectrum_baseline = _.map(_.unzip(s.bandpass_data), _mean);
-        this.app.kotekan.stagePost(this._autocal_stage, "set_config", {freq: 1421})
+        this.app.kotekan.stagePost(this._autocal_stage, "set_config", {freq: this._autocal_freqs[1]})
             .then(() => {
                 self._reveal_checkbox();
                 if (self._bandpass_button) {
