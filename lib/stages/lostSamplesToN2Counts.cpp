@@ -118,7 +118,7 @@ lostSamplesToN2Counts::lostSamplesToN2Counts(Config& config, const std::string& 
     // Set the frame description
     // The buffer name and axis names are the same as those set in
     // cudaPL1butCorrelator
-    n2k_counts_buf->set_frame_desc(
+    n2k_counts_buf->require_frame_desc(
         kotekan::NDArray<kotekan::GetType_t<kotekan::int32>, 5>::describe(
             "n2k_counts",
             {static_cast<long>(_num_subintegrations), static_cast<long>(num_n2k_freq),

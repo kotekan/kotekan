@@ -71,7 +71,7 @@ gpuSimulateRFIS012bar::gpuSimulateRFIS012bar(Config& config, const std::string& 
     assert(in_buf->frame_size == rfi_s012_size);
 
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor / _rfi_second_downsampling_factor;
-    out_buf->set_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
+    out_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
         "S012bar", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
         {"Trfibar", "F", "S", "P", "D"}));
 }

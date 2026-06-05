@@ -192,27 +192,27 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _accum_bin_idx = -1;
 
     // Ensure incoming buffer shapes and type are correct
-    in_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "n2k_correlation",
         {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame, _n2k_correlation_num_blocks,
          _n2k_correlation_blocksize, _n2k_correlation_blocksize, 2},
         {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}));
 
-    in_counts_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    in_counts_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "n2k_counts",
         {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame, _n2k_counts_num_blocks,
          _n2k_counts_blocksize, _n2k_counts_blocksize},
         {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}));
 
-    in_rficounts_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    in_rficounts_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "RFImask_counts", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
         {"Tc", "F"}));
 
-    in_plcounts_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    in_plcounts_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "pl_lost_counts_scalar",
         {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame}, {"Tc", "F"}));
 
-    in_rfiframemask_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    in_rfiframemask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint8, "RFIFrameMask", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
         {"Tc", "F"}));
 

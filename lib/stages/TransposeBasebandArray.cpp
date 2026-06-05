@@ -150,7 +150,7 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     // Set the output buffer frame ndarray shape
 
     // Confusingly the array name is "E" for electric field
-    out_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int4x2_swapped_withoffset, "E",
         {timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS / 2}, {"T", "F", "P", "D"}));
 

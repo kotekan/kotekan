@@ -72,7 +72,7 @@ public:
             return;
 
         // Set metadata
-        buffer->set_frame_desc(kotekan::NDArray<std::int8_t, 2>::describe(
+        buffer->require_frame_desc(kotekan::NDArray<std::int8_t, 2>::describe(
             "bf_mask", {num_polarizations, num_dishes}, {"P", "D"}));
         buffer->allocate_new_metadata_object(frame_id);
         const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));

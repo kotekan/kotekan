@@ -82,7 +82,7 @@ applyGenPL::applyGenPL(Config& config, const std::string& unique_name,
         std::abort();
     }
 
-    output_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    output_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int4x2_swapped_withoffset, "E",
         {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"}));
 }

@@ -131,12 +131,12 @@ gpuSimulatePLMaskAccumulator::gpuSimulatePLMaskAccumulator(Config& config,
     }
 
     // Make frame desc for produced buffer (this also checks the size)
-    in_buf->set_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 5>::describe(
+    in_buf->require_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 5>::describe(
         "pl_mask",
         {div_noremainder(_samples_per_data_set, 128), div_noremainder(_num_local_freq, 4),
          _num_polarizations, div_noremainder(_num_dishes, 8), 64 / 8},
         {"T2hi64", "F4", "P", "D8", "T2lo64"}));
-    out_buf->set_frame_desc(kotekan::NDArray<uint64_t, 4>::describe(
+    out_buf->require_frame_desc(kotekan::NDArray<uint64_t, 4>::describe(
         "pl_counts", {_num_integrations, _num_local_freq, _num_polarizations, _num_dishes},
         {"Tc", "F", "P", "D"}));
 }

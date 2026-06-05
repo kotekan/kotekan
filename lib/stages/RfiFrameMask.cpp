@@ -199,9 +199,9 @@ RfiFrameMask::RfiFrameMask(Config& config, const std::string& unique_name,
 
     // Set up frame descriptors. This also checks their shape, type, and size is consistent with
     // other stages in the pipeline.
-    in_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::float32, "SKtilde", {_rfi_num_times, _num_local_freq, 3}, {"Trfi", "F", "SK"}));
-    out_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint8, "RFIFrameMask", {_num_integrations, _num_local_freq}, {"Tc", "F"}));
 
     // Initialize current RFI excision status, the "next" values are taken care of by the

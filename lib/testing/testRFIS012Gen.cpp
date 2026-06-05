@@ -165,11 +165,11 @@ testRFIS012Gen::testRFIS012Gen(Config& config, const std::string& unique_name,
 
     // allocate frame descriptor
     if (bar_mode) {
-        out_buf->set_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
+        out_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
             "S012bar", {num_rfi_samples, num_local_freq, 3, num_polarizations, num_dishes},
             {"Trfibar", "F", "S", "P", "D"}));
     } else {
-        out_buf->set_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
+        out_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
             "S012", {num_rfi_samples, num_local_freq, 3, num_polarizations, num_dishes},
             {"Trfi", "F", "S", "P", "D"}));
     }

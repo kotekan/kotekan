@@ -65,18 +65,19 @@ testLostSamplesToPLMask::testLostSamplesToPLMask(Config& config, const std::stri
         FATAL_ERROR("Unexpected frames sizes for pl_mask {:d} and lost_samples {:d}",
                     pl_mask_buf->frame_size, lost_samples_bufs.at(0)->frame_size);
 
-    pl_mask_buf->set_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::uint1x8>, 5>::describe(
-        "pl_mask",
-        {ptrdiff_t(lost_samples_bufs.at(0)->frame_size / PL_MASK_DOWNSAMPLING_FACTOR
-                   / PL_MASK_HILO_SPLIT),
-         ptrdiff_t(lost_samples_bufs.size()), num_polarizations,
-         num_dishes / PL_MASK_DISHES_PER_BIN,
-         PL_MASK_HILO_SPLIT / BITS_PER_BYTE /* because we count uint1x8, not uint1 */},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"}));
+    pl_mask_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType_t<kotekan::uint1x8>, 5>::describe(
+            "pl_mask",
+            {ptrdiff_t(lost_samples_bufs.at(0)->frame_size / PL_MASK_DOWNSAMPLING_FACTOR
+                       / PL_MASK_HILO_SPLIT),
+             ptrdiff_t(lost_samples_bufs.size()), num_polarizations,
+             num_dishes / PL_MASK_DISHES_PER_BIN,
+             PL_MASK_HILO_SPLIT / BITS_PER_BYTE /* because we count uint1x8, not uint1 */},
+            {"T2hi64", "F4", "P", "D8", "T2lo64"}));
 
     for (int fbin = 0; fbin < num_freq_bins; ++fbin) {
         auto lost_samples_buf = lost_samples_bufs.at(fbin);
-        lost_samples_buf->set_frame_desc(
+        lost_samples_buf->require_frame_desc(
             kotekan::NDArray<kotekan::GetType_t<kotekan::uint8>, 1>::describe(
                 "lost_samples", {ptrdiff_t(lost_samples_bufs.at(0)->frame_size)}, {"T"}));
     }

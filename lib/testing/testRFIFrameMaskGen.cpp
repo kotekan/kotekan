@@ -140,7 +140,7 @@ testRFIFrameMaskGen::testRFIFrameMaskGen(Config& config, const std::string& uniq
     }
 
     // allocate frame descriptors
-    out_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint8, name, {num_integrations, num_local_freq}, {"Tc", "F"}));
 }
 

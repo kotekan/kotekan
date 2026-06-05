@@ -827,7 +827,13 @@ class DumpVisBuffer(OutputBuffer):
 
 
 class ReadChordBuffer(InputBuffer):
-    """Write down a ChordBuffer and reads it with hdf5FileRead."""
+    """Write down a ChordBuffer and reads it with hdf5FileRead.
+
+    When the first buffer's metadata carries name/type/dim_names, the
+    kotekan buffer is declared as `kotekan_buffer: ndarray` so the frame
+    descriptor is attached at startup (and hdf5FileRead validates against
+    it); otherwise it falls back to a plain standard buffer.
+    """
 
     _buf_ind = 0
 
@@ -840,14 +846,28 @@ class ReadChordBuffer(InputBuffer):
         self.input_dir = input_dir
         self.buffer_list = buffer_list
 
-        self.buffer_block = {
-            self.name: {
-                "kotekan_buffer": "standard",
-                "metadata_pool": "main_pool",
-                "num_frames": "buffer_depth",
-                "frame_size": buffer_list[0].data.nbytes,
+        meta = buffer_list[0].metadata
+        if all(key in meta for key in ("name", "type", "dim_names")):
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "ndarray",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "value_type": str(meta["type"]),
+                    "quantity_name": str(meta["name"]),
+                    "extents": [int(n) for n in buffer_list[0].data.shape],
+                    "dimnames": [str(d) for d in meta["dim_names"]],
+                }
             }
-        }
+        else:
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "standard",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "frame_size": buffer_list[0].data.nbytes,
+                }
+            }
 
         stage_config = {
             "kotekan_stage": "hdf5FileRead",

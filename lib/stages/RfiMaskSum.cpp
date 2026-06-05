@@ -142,11 +142,11 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
         FATAL_ERROR("RfiMaskSum in_buf ({:s}) has frame size {:d}. Expected {:d}.",
                     in_buf->buffer_name, in_buf->frame_size, in_rfimask_frame_size);
 
-    in_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, "RFImask",
         {div_noremainder(_samples_per_data_set, 1024), _num_local_freq, 1024 / 8},
         {"T8hi128", "F", "T8lo128"}));
-    out_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "RFImask_counts", {_num_integrations, _num_local_freq}, {"Tc", "F"}));
 }
 

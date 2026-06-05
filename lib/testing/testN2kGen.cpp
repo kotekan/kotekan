@@ -147,11 +147,11 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
         count_blocksize * count_blocksize * count_num_blocks * num_local_freq * num_integrations;
 
     // allocate frame descriptors
-    corr_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    corr_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "n2k_correlation",
         {num_integrations, num_local_freq, corr_num_blocks, corr_blocksize, corr_blocksize, 2},
         {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}));
-    count_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    count_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "n2k_counts",
         {num_integrations, num_local_freq, count_num_blocks, count_blocksize, count_blocksize},
         {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}));

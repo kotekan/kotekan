@@ -77,7 +77,7 @@ gpuSimulateRFIS012::gpuSimulateRFIS012(Config& config, const std::string& unique
 
     // Make frame desc for produced buffer
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
-    out_rfis012_buf->set_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
+    out_rfis012_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
         "S012", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
         {"Trfi", "F", "S", "P", "D"}));
 }

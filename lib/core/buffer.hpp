@@ -525,6 +525,29 @@ public:
     void safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_id);
 
     /**
+     * @brief Requires that a frame descriptor is attached to this buffer;
+     *        fatal if not.
+     *
+     * The descriptor is normally attached by the bufferFactory from a
+     * described buffer type (e.g. `kotekan_buffer: ndarray`) in the config.
+     * If @p desc is given, the attached descriptor must also compare equal
+     * to it (see @c set_frame_desc()). Stages whose buffer shapes are
+     * statically known should pass a descriptor built by e.g.
+     * @c kotekan::NDArray<T,D>::describe() or
+     * @c kotekan::GenericNDArray::describe().
+     */
+    void require_frame_desc(std::shared_ptr<const kotekan::FrameDesc> desc = nullptr) {
+        buffer_lock lock(mutex);
+        if (!frames_desc)
+            FATAL_ERROR(
+                "Buffer {:s} has no frame descriptor to validate against; declare the buffer "
+                "with a described buffer type (e.g. `kotekan_buffer: ndarray`) in the config",
+                buffer_name);
+        if (desc)
+            set_frame_desc(std::move(desc));
+    }
+
+    /**
      * @brief Sets (or checks) the frame description.
      *
      * The first call records the descriptor; subsequent calls must provide a

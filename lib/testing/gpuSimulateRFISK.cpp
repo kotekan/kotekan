@@ -230,21 +230,21 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
 
     // Make frame desc for produced buffers
     if (_bar_mode) {
-        out_rfi_sk_buf->set_frame_desc(kotekan::NDArray<float, 5>::describe(
+        out_rfi_sk_buf->require_frame_desc(kotekan::NDArray<float, 5>::describe(
             "SKbar", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
             {"Trfibar", "F", "SK", "P", "D"}));
-        out_rfi_sktilde_buf->set_frame_desc(kotekan::NDArray<float, 3>::describe(
+        out_rfi_sktilde_buf->require_frame_desc(kotekan::NDArray<float, 3>::describe(
             "SKbartilde", {nt, _num_local_freq, 3}, {"Trfibar", "F", "SK"}));
-        out_rfi_mask_buf->set_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 3>::describe(
+        out_rfi_mask_buf->require_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 3>::describe(
             "RFImask", {_samples_per_data_set / 1024, _num_local_freq, 128},
             {"T8hi128", "F", "T8lo128"}));
     } else {
-        out_rfi_sk_buf->set_frame_desc(kotekan::NDArray<float, 5>::describe(
+        out_rfi_sk_buf->require_frame_desc(kotekan::NDArray<float, 5>::describe(
             "SK", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
             {"Trfi", "F", "SK", "P", "D"}));
-        out_rfi_sktilde_buf->set_frame_desc(kotekan::NDArray<float, 3>::describe(
+        out_rfi_sktilde_buf->require_frame_desc(kotekan::NDArray<float, 3>::describe(
             "SKtilde", {nt, _num_local_freq, 3}, {"Trfi", "F", "SK"}));
-        out_rfi_mask_buf->set_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 3>::describe(
+        out_rfi_mask_buf->require_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 3>::describe(
             "RFImask", {_samples_per_data_set / 1024, _num_local_freq, 128},
             {"T8hi128", "F", "T8lo128"}));
     }

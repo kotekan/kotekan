@@ -65,11 +65,11 @@ STAGE_CONSTRUCTOR(PLMaskExpandedToCompact) {
     }
 
     // Set up ndarray frame descriptor for the input and output
-    in_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, "pl_mask_exp",
         {(ptrdiff_t)(T / 64), (ptrdiff_t)F, 2, (ptrdiff_t)(E_div_8 / 2), 8},
         {"Thi64", "F", "P", "D8", "Tlo64"}));
-    out_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, "pl_mask",
         {(ptrdiff_t)(T / 128), (ptrdiff_t)F_compact, 2, (ptrdiff_t)(E_div_8 / 2), 8},
         {"T2hi64", "F4", "P", "D8", "T2lo64"}));

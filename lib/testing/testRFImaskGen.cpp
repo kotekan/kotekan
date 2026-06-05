@@ -131,7 +131,7 @@ testRFImaskGen::testRFImaskGen(Config& config, const std::string& unique_name,
     }
 
     // allocate frame descriptors
-    out_buf->set_frame_desc(kotekan::GenericNDArray::describe(
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, name, {samples_per_data_set / 1024, num_local_freq, 128},
         {"T8hi128", "F", "T8lo128"}));
 

@@ -109,7 +109,7 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
     // number of elements = number of dishes * polarizations
     int nt_inner = _sub_integration_ntime;
     int nt_outer = _samples_per_data_set / nt_inner;
-    output_buf->set_frame_desc(
+    output_buf->require_frame_desc(
         kotekan::NDArray<kotekan::GetType<kotekan::int32>::type, 6>::describe(
             "n2k_correlation",
             {nt_outer, _num_local_freq, (_num_elements / 16) * (_num_elements / 16 + 1) / 2, 16, 16,

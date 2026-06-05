@@ -65,7 +65,7 @@ public:
             buffer->register_producer(unique_name);
 
             // Set metadata
-            buffer->set_frame_desc(
+            buffer->require_frame_desc(
                 kotekan::NDArray<kotekan::int4x2_swapped_withoffset_t, 3>::describe(
                     "E", {1, num_times, num_polarizations * num_dishes}, {"F", "T", "E"}));
         }

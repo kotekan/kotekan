@@ -66,7 +66,7 @@ public:
                 return;
 
             // Set metadata
-            buffer->set_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 5>::describe(
+            buffer->require_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 5>::describe(
                 "pl_mask",
                 {div_noremainder(num_times, 2 * 64), div_noremainder(num_frequencies, 4),
                  num_polarizations, div_noremainder(num_dishes, 8), 64 / 8},

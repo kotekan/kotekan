@@ -87,7 +87,7 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     int ne = _num_elements / 8;
     int n_block_lin = ne / _blocksize;
     int n_blocks = (n_block_lin * (n_block_lin + 1)) / 2;
-    output_buf->set_frame_desc(
+    output_buf->require_frame_desc(
         kotekan::NDArray<kotekan::GetType<kotekan::int32>::type, 5>::describe(
             "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
             {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}));

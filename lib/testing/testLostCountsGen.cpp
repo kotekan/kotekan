@@ -159,13 +159,13 @@ testLostCountsGen::testLostCountsGen(Config& config, const std::string& unique_n
             FATAL_ERROR("num_elements {:d} is not a multiple of {:d}", num_elements,
                         8 * n2k_counts_blocksize);
 
-        in_buf->set_frame_desc(kotekan::NDArray<int32_t, 5>::describe(
+        in_buf->require_frame_desc(kotekan::NDArray<int32_t, 5>::describe(
             "n2k_counts",
             {num_integrations, num_local_freq, n2k_counts_num_blocks, n2k_counts_blocksize,
              n2k_counts_blocksize},
             {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}));
     }
-    out_buf->set_frame_desc(kotekan::NDArray<int32_t, 2>::describe(
+    out_buf->require_frame_desc(kotekan::NDArray<int32_t, 2>::describe(
         name, {num_integrations, num_local_freq}, {"Tc", "F"}));
 }
 
