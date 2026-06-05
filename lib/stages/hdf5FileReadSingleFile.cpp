@@ -99,8 +99,6 @@ public:
                 dataset.getAttribute("dish_locations_y").read<std::vector<int>>();
 
             auto coarse_freq = dataset.getAttribute("coarse_freq").read<std::vector<int>>();
-            // convert to CHIME frequency id counting f_MHz = 800 - i/1024 * (800 - 400)
-            for(auto & f : coarse_freq) f = 2047 - f;
             const auto freq_upchan_factor =
                 dataset.getAttribute("freq_upchan_factor").read<std::vector<int>>();
             const auto freq_upchan_index =
