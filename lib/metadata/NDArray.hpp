@@ -4,7 +4,6 @@
 #include <DataType.hpp>     // for DataType
 #include <FrameDesc.hpp>    // for FrameDesc
 #include <Symbol.hpp>       // for Symbol
-#include <algorithm>        // for fill_n
 #include <array>            // for array
 #include <cassert>          // for assert
 #include <cstddef>          // for ptrdiff_t, size_t
@@ -12,7 +11,8 @@
 #include <initializer_list> // for initializer_list
 #include <iostream>         // for ostream
 #include <iterator>         // for pair
-#include <memory>           // for shared_ptr
+#include <memory>           // for shared_ptr, make_shared
+#include <string>           // for string
 #include <utility>          // for pair
 #include <vector>           // for vector
 

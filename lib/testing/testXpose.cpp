@@ -1,21 +1,26 @@
 #include "testXpose.hpp"
 
 #include "Config.hpp"          // for Config
-#include "Metadata.hpp"        // for GenericNDArray
-#include "NDArray.hpp"         // for GenericNDArray
+#include "DataType.hpp"        // for DataType
+#include "NDArray.hpp"         // for GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
-#include "visUtil.hpp"         // for frameID
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for FATAL_ERROR
+#include "visUtil.hpp"         // for frameID, modulo
 
+#include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for basic_json, json, iter_impl
 
-#include <algorithm>  // for iota
+#include <algorithm>  // for copy, max
 #include <assert.h>   // for assert
-#include <cstdint>    // for int32_t
+#include <cstring>    // for memset
+#include <fmt/core.h> // for format
 #include <functional> // for bind, function
-#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <numeric>    // for iota
+#include <stdint.h>   // for uint8_t, int32_t
 #include <vector>     // for vector
 
 using kotekan::bufferContainer;

@@ -1,3 +1,5 @@
+#include "CHORDTelescope.hpp" // for dish_index_t
+
 #include <Config.hpp>            // for Config
 #include <DataType.hpp>          // for string_to_type, type_to_string, DataType
 #include <NDArray.hpp>           // for GenericNDArray
@@ -21,6 +23,7 @@
 #include <cstdint>               // for int64_t, uint32_t, uint8_t
 #include <cstring>               // for memcpy, strncpy
 #include <fmt.hpp>               // for compile_string_to_view
+#include <fmt/core.h>            // for format
 #include <fstream>               // for basic_ostream, basic_ifstream, operator<<, ostringstream
 #include <functional>            // for function
 #include <iomanip>               // for operator<<, setfill, setw

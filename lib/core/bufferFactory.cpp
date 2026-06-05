@@ -11,12 +11,14 @@
 #include "ringbuffer.hpp"     // for RingBuffer
 #include "visBuffer.hpp"      // for VisFrameView
 
-#include "fmt.hpp" // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, fmt
 
-#include <cstdint>   // for int32_t, uint32_t
-#include <stddef.h>  // for size_t
-#include <stdexcept> // for runtime_error
-#include <vector>    // for vector
+#include <cstdint>    // for int32_t, uint32_t, uint8_t
+#include <fmt/core.h> // for format
+#include <json.hpp>   // for basic_json, iter_impl, json
+#include <stddef.h>   // for size_t
+#include <stdexcept>  // for runtime_error
+#include <vector>     // for vector
 
 using json = nlohmann::json;
 using std::map;

@@ -1,8 +1,9 @@
 #include "Config.hpp"          // for Config
-#include "N2Util.hpp"          // for frameID
-#include "NDArray.hpp"         // for GenericNDArray
+#include "DataType.hpp"        // for DataType
+#include "N2Util.hpp"          // for frameID, modulo
+#include "NDArray.hpp"         // for GenericNDArray, Config
+#include "Stage.hpp"           // for Stage
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"       // for Telescope
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
@@ -11,9 +12,12 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <assert.h>   // for assert
+#include <fmt/core.h> // for format
 #include <functional> // for bind, function, placeholders
-#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <memory>     // for allocator, shared_ptr, __shared_ptr_access
+#include <stddef.h>   // for size_t
+#include <stdint.h>   // for int64_t, uint64_t, uint8_t, int32_t
+#include <string>     // for basic_string, operator!=, char_traits, string
 #include <vector>     // for vector
 
 

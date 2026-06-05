@@ -1,18 +1,20 @@
 #include "FakeN2.hpp"
 
-#include "CHORDTelescope.hpp"  // for CHORDTelescope, EOP
+#include "CHORDTelescope.hpp"  // for CHORDTelescope
 #include "Config.hpp"          // for Config
-#include "N2FrameDesc.hpp"     // for N2FrameDesc
-#include "N2FrameView.hpp"     // for N2FrameView
+#include "FrameDesc.hpp"       // for FrameDesc
+#include "N2FrameDesc.hpp"     // for N2FrameDesc, N2EigenMethod
+#include "N2FrameView.hpp"     // for N2FrameView, N2EigenMethod
 #include "N2Metadata.hpp"      // for N2Metadata, get_N2_metadata
-#include "N2Util.hpp"          // for get_num_prod
+#include "NDArray.hpp"         // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"       // for Telescope
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "errors.h"            // for ReturnCode, exit_kotekan
 #include "factory.hpp"         // for FACTORY
-#include "kotekanLogging.hpp"  // for DEBUG, INFO
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
+#include "timeUtil.hpp"        // for EOP
 
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
@@ -20,8 +22,9 @@
 #include <algorithm>  // for fill, max, shuffle
 #include <assert.h>   // for assert
 #include <complex>    // for complex
+#include <fmt/core.h> // for format
 #include <functional> // for bind, function, placeholders
-#include <memory>     // for allocator, shared_ptr, __shared_ptr_access, unique_ptr
+#include <memory>     // for shared_ptr, allocator, __shared_ptr_access, dynamic_point...
 #include <numeric>    // for iota
 #include <random>     // for random_device, uniform_real_distribution, mt19937
 #include <time.h>     // for nanosleep, timespec

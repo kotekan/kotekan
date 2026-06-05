@@ -1,20 +1,23 @@
 #include "ProcessPacketMask.hpp"
 
-#include "CHORDTelescope.hpp"
-#include "Config.hpp"
-#include "NDArray.hpp" // for GenericNDArray
-#include "StageFactory.hpp"
-#include "Telescope.hpp"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType
+#include "NDArray.hpp"         // for GenericNDArray, Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for INFO, DEBUG2
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for compile_string_to_view, fmt
 
-#include <cstring>
-#include <stdexcept>
-#include <visUtil.hpp>
+#include <algorithm>   // for max
+#include <assert.h>    // for assert
+#include <cstring>     // for size_t, memset
+#include <fmt/core.h>  // for format
+#include <memory>      // for shared_ptr, __shared_ptr_access
+#include <stdexcept>   // for runtime_error
+#include <visUtil.hpp> // for frameID, modulo
 
 using kotekan::bufferContainer;
 using kotekan::Config;

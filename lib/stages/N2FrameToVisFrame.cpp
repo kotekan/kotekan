@@ -1,18 +1,34 @@
 #include "N2FrameToVisFrame.hpp"
 
-#include "Config.hpp"      // for Config
-#include "N2FrameDesc.hpp" // for N2FrameDesc
-#include "N2FrameView.hpp"
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator!=, Hash
+#include "N2FrameDesc.hpp"     // for N2FrameDesc
+#include "N2FrameView.hpp"     // for N2FrameView
+#include "NDArray.hpp"         // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "datasetState.hpp"
-#include "gateSpec.hpp"
-#include "visBuffer.hpp"
-#include "visUtil.hpp"
+#include "datasetState.hpp"    // for eigenvalueState, freqState, gatingState, inputState, meta...
+#include "gateSpec.hpp"        // for gateSpec
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, logLevel
+#include "version.h"           // for get_git_commit_hash
+#include "visBuffer.hpp"       // for VisFrameView
+#include "visUtil.hpp"         // for prod_ctype, input_ctype, frameID, freq_ctype, modulo, par...
 
-#include <cassert> // for assert
-#include <complex>
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>    // for max, transform
+#include <cassert>      // for assert
+#include <complex>      // for complex, conj
+#include <fmt/core.h>   // for format
+#include <functional>   // for bind, function
+#include <gsl-lite.hpp> // for span, span_iterator
+#include <iterator>     // for back_insert_iterator, begin, end, back_inserter
+#include <memory>       // for shared_ptr, __shared_ptr_access, unique_ptr
+#include <numeric>      // for iota
+#include <time.h>       // for timespec, time_t, size_t
+#include <tuple>        // for get, tuple
 
 using kotekan::bufferContainer;
 using kotekan::Config;

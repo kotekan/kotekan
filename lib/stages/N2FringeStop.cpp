@@ -1,21 +1,25 @@
 #include "N2FringeStop.hpp"
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope, EOP
+#include "CHORDTelescope.hpp"    // for CHORDTelescope
 #include "Config.hpp"            // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for DEBUG
+#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Metrics
 
 #include <complex>    // for complex, conj, operator*
+#include <fmt/core.h> // for format
 #include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
 #include <stdint.h>   // for int64_t
 #include <vector>     // for vector
 // #include "visBuffer.hpp"         // for VisFrameView
+#include "FrameDesc.hpp"   // for FrameDesc
 #include "N2FrameView.hpp" // for N2FrameView
+#include "NDArray.hpp"     // for Config
 #include "Telescope.hpp"   // for Telescope
-#include "timeUtil.hpp"    // for get_UT1_from_ERA
+#include "timeUtil.hpp"    // for EOP, get_UT1_from_ERA, eop_null
 #include "visUtil.hpp"     // for frameID, modulo
 
 #include "fmt.hpp"      // for compile_string_to_view

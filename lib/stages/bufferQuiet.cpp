@@ -6,12 +6,18 @@
 #include "metadata.hpp"       // for metadataObject
 #include "visUtil.hpp"        // for frameID, modulo
 
-#include "fmt.hpp" // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, fmt
 
-#include <cstring>    // for memcpy
-#include <functional> // for bind, function
-#include <stdexcept>  // for runtime_error, invalid_argument
-#include <time.h>     // for clock_gettime
+#include <assert.h>      // for assert
+#include <bits/chrono.h> // for duration, time_point, time_point_cast, nanoseconds, operator+
+#include <cstring>       // for memcpy
+#include <fmt/core.h>    // for format, format_string
+#include <functional>    // for bind, function
+#include <memory>        // for shared_ptr, __shared_ptr_access
+#include <stdexcept>     // for runtime_error
+#include <stdint.h>      // for uint8_t
+#include <time.h>        // for time_t, timespec
+#include <vector>        // for vector
 
 
 using kotekan::bufferContainer;

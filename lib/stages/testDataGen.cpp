@@ -1,9 +1,9 @@
 #include "testDataGen.hpp"
 
-#include "CHORDTelescope.hpp"  // for CHORDTelescope
+#include "CHORDTelescope.hpp"  // for CHORDTelescope, dishGrid, dish_index_t
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
-#include "NDArray.hpp"         // for GenericNDArray
+#include "NDArray.hpp"         // for GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"          // for Symbol
 #include "Telescope.hpp"       // for Telescope, stream_t
@@ -18,14 +18,16 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <algorithm>   // for max
+#include <algorithm>   // for copy, max
 #include <assert.h>    // for assert
 #include <cmath>       // for fmod
+#include <fmt/core.h>  // for format
 #include <functional>  // for bind, function, _1, _2
+#include <json.hpp>    // for json
 #include <random>      // for mt19937
 #include <signal.h>    // for raise, SIGINT
-#include <stdexcept>   // for invalid_argument
-#include <stdint.h>    // for int8_t, uint32_t, uint8_t, int16_t, int32_t, uint64_t
+#include <stdexcept>   // for invalid_argument, runtime_error
+#include <stdint.h>    // for uint64_t, int8_t, uint32_t, int32_t, int64_t, uint8_t
 #include <strings.h>   // for bzero
 #include <sys/time.h>  // for gettimeofday, timeval
 #include <sys/types.h> // for uint

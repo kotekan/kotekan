@@ -1,18 +1,25 @@
 #include "N2Subset.hpp"
 
-#include "Config.hpp"          // for Config
-#include "N2FrameDesc.hpp"     // for N2FrameDesc
-#include "N2FrameView.hpp"     // for N2FrameView, N2Field
-#include "N2Util.hpp"          // for prod_ctype, frameID
+#include "FrameDesc.hpp"       // for FrameDesc
+#include "N2FrameDesc.hpp"     // for N2Field, N2FrameDesc
+#include "N2FrameView.hpp"     // for N2FrameView
+#include "N2Metadata.hpp"      // for N2Metadata
+#include "N2Util.hpp"          // for prod_ctype, frameID, modulo
+#include "NDArray.hpp"         // for Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
 
-#include "fmt.hpp" // for format
+#include "fmt.hpp" // for compile_string_to_view
 
-#include <map>     // for map
-#include <utility> // for pair
+#include <algorithm>    // for max
+#include <complex>      // for complex
+#include <functional>   // for bind, function
+#include <gsl-lite.hpp> // for span
+#include <map>          // for map, operator==, _Rb_tree_iterator
+#include <set>          // for set
+#include <utility>      // for pair
 
 
 using kotekan::bufferContainer;

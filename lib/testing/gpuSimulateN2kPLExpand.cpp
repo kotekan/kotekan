@@ -1,8 +1,8 @@
 #include "gpuSimulateN2kPLExpand.hpp"
 
 #include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for DataType, GetType
-#include "NDArray.hpp"         // for GenericNDArray, NDArray
+#include "DataType.hpp"        // for DataType, uint1x8_t, GetType
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -14,7 +14,8 @@
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <assert.h>   // for assert
-#include <cstdint>    // for uint64_t, int32_t, int64_t
+#include <cstdint>    // for uint64_t, int32_t
+#include <fmt/core.h> // for format
 #include <functional> // for bind, function
 #include <memory>     // for shared_ptr, __shared_ptr_access
 #include <vector>     // for vector

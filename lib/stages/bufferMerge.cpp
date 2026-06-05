@@ -7,13 +7,15 @@
 #include "kotekanLogging.hpp"  // for INFO, DEBUG2, FATAL_ERROR
 #include "visUtil.hpp"         // for frameID, current_time, double_to_ts, modulo
 
-#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "fmt.hpp"  // for compile_string_to_view, fmt
 #include "json.hpp" // for json, basic_json, iter_impl
 
 #include <algorithm>  // for max
 #include <assert.h>   // for assert
 #include <cstring>    // for memcpy
+#include <fmt/core.h> // for format
 #include <functional> // for bind, function
+#include <memory>     // for shared_ptr
 #include <stdexcept>  // for invalid_argument, runtime_error
 
 using nlohmann::json;

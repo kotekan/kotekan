@@ -1,3 +1,5 @@
+#include "CHORDTelescope.hpp" // for dish_index_t
+
 #include <Config.hpp>                            // for Config
 #include <DataType.hpp>                          // for string_to_type, DataType
 #include <NDArray.hpp>                           // for GenericNDArray
@@ -13,6 +15,7 @@
 #include <cstddef>                               // for ptrdiff_t
 #include <cstdint>                               // for int64_t, uint8_t
 #include <fmt.hpp>                               // for compile_string_to_view
+#include <fmt/core.h>                            // for format
 #include <functional>                            // for function
 #include <hdf5Files.hpp>                         // for chord_metadata_version
 #include <highfive/H5Attribute.hpp>              // for Attribute, Attribute::read
@@ -22,7 +25,7 @@
 #include <highfive/H5File.hpp>                   // for File, File::File, NodeTraits::getDataSet
 #include <highfive/bits/H5Slice_traits_misc.hpp> // for SliceTraits::read_raw
 #include <iomanip>                               // for operator<<, setfill, setw
-#include <kotekanLogging.hpp>                    // for DEBUG, FATAL_ERROR, INFO
+#include <kotekanLogging.hpp>                    // for DEBUG, FATAL_ERROR, ERROR
 #include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
 #include <metadata.hpp>                          // for metadataObject
 #include <prometheusMetrics.hpp>                 // for Metrics, Gauge

@@ -1,19 +1,25 @@
 #include "lostSamplesToN2Counts.hpp"
 
-#include "Config.hpp" // for Config
-#include "DataType.hpp"
-#include "N2Util.hpp"          // for frameID
-#include "NDArray.hpp"         // for GenericNDArray, NDArray
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for uint1x8_t, DataType, GetType_t
+#include "N2Util.hpp"          // for frameID, modulo
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG
 
+#include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for basic_json, json, iter_impl
 
-#include <memory>
-#include <string>
-#include <sys/types.h>
+#include <algorithm>  // for max, copy
+#include <cstddef>    // for size_t, ptrdiff_t
+#include <fmt/core.h> // for format
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdint.h>   // for uint8_t, int32_t
+#include <string>     // for allocator, basic_string, string
 
 using kotekan::bufferContainer;
 using kotekan::Config;

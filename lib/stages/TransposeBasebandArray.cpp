@@ -1,21 +1,26 @@
 #include "TransposeBasebandArray.hpp"
 
-#include "Config.hpp"
-#include "NDArray.hpp" // for GenericNDArray
-#include "StageFactory.hpp"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType
+#include "NDArray.hpp"         // for GenericNDArray, Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
 
-#include "fmt.hpp"
+#include "fmt.hpp" // for compile_string_to_view, fmt
 
-#include <cstring>
-#include <stdexcept>
-#include <visUtil.hpp>
+#include <cstring>     // for size_t, memcpy, memset
+#include <fmt/core.h>  // for format
+#include <memory>      // for shared_ptr, __shared_ptr_access
+#include <stdexcept>   // for runtime_error
+#include <vector>      // for vector
+#include <visUtil.hpp> // for frameID, modulo
+#include <xmmintrin.h> // for _mm_sfence, _MM_HINT_T0, _mm_prefetch
 
 #ifdef __AVX512F__
-#include <immintrin.h>
+#include <immintrin.h> // for __m512i, _mm512_stream_si512, _mm512_set1_epi8, _mm512_se...
 #endif
 
 using kotekan::bufferContainer;

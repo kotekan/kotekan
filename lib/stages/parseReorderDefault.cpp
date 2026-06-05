@@ -1,19 +1,27 @@
 #include "parseReorderDefault.hpp"
 
-#include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
-#include "NDArray.hpp"         // for GenericNDArray
+#include "DataType.hpp"        // for DataType
+#include "NDArray.hpp"         // for GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
-#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for FATAL_ERROR
+#include "visUtil.hpp"         // for get_cylinder_to_beamformer_reorder_table, parse_reorder_d...
 
-#include <algorithm> // for find
-#include <assert.h>  // for assert
-#include <stdint.h>  // for int8_t, uint32_t, uint8_t, int16_t, int32_t, uint64_t
-#include <string>    // for std::string
-#include <strings.h> // for bzero
-#include <unistd.h>  // for sleep
-#include <vector>    // for vector
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for find
+#include <array>      // for array
+#include <assert.h>   // for assert
+#include <fmt/core.h> // for format
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdexcept>  // for invalid_argument
+#include <stdint.h>   // for int32_t
+#include <string>     // for basic_string, allocator, operator!=, operator==, string
+#include <tuple>      // for get
+#include <unistd.h>   // for sleep
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

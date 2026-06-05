@@ -1,11 +1,19 @@
 #include "N2FrameView.hpp"
 
-#include "FrameView.hpp" // for bind_span, bind_scalar, FrameView
-#include "buffer.hpp"    // for Buffer
+#include "FrameDesc.hpp"      // for FrameDesc
+#include "FrameView.hpp"      // for bind_span, bind_scalar, FrameView
+#include "buffer.hpp"         // for Buffer
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
 
-#include <assert.h> // for assert
-#include <complex>  // for complex
-#include <cstring>  // for memset, size_t
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>    // for copy
+#include <assert.h>     // for assert
+#include <complex>      // for complex
+#include <cstring>      // for memset
+#include <gsl-lite.hpp> // for span
+#include <map>          // for map
+#include <vector>       // for vector
 
 namespace {
 

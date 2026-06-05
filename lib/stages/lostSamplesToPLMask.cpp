@@ -1,22 +1,24 @@
 #include "lostSamplesToPLMask.hpp"
 
 #include "Config.hpp"          // for Config
-#include "Metadata.hpp"        // for GenericNDArray
-#include "NDArray.hpp"         // for GenericNDArray, NDArray
+#include "DataType.hpp"        // for DataType, GetType_t, uint1x8_t
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
-#include "nt_memset.h"         // for nt_memset
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for FATAL_ERROR
 
+#include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for basic_json, json, iter_impl
 
-#include <algorithm>  // for max
+#include <algorithm>  // for copy, max
 #include <assert.h>   // for assert
+#include <cstring>    // for size_t, memcpy
+#include <fmt/core.h> // for format
 #include <functional> // for bind, function
-#include <memory>     // for __shared_ptr_access, shared_ptr
-#include <string.h>   // for strncpy, memcpy
-#include <string.h>   // for memcpy, size_t
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stddef.h>   // for ptrdiff_t
 #include <vector>     // for vector
 
 using kotekan::bufferContainer;

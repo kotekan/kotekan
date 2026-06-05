@@ -6,11 +6,12 @@
 #include "metadata.hpp"       // for metadataObject
 #include "visUtil.hpp"        // for frameID, modulo
 
-#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "fmt.hpp"  // for compile_string_to_view, fmt
 #include "json.hpp" // for json
 
 #include <cassert>    // for assert
 #include <cstring>    // for memcpy
+#include <fmt/core.h> // for format
 #include <functional> // for bind, function
 #include <memory>     // for shared_ptr, __shared_ptr_access
 #include <stdexcept>  // for runtime_error, invalid_argument

@@ -1,31 +1,27 @@
-#include "CHORDTelescope.hpp"    // for CHORDTelescope
-#include "Config.hpp"            // for Config
-#include "DataType.hpp"          // for string_to_type, DataType
-#include "NDArray.hpp"           // for GenericNDArray, NDArray
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Symbol.hpp"            // for Symbol
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for chordMetadata, metadata_is_chord, get_c...
-#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, INFO
-#include "metadata.hpp"          // for metadataObject
-#include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "visUtil.hpp"           // for current_time
+#include "CHORDTelescope.hpp"  // for CHORDTelescope, dishGrid, dish_index_t
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for int4x2_swapped_withoffset_t
+#include "NDArray.hpp"         // for NDArray, GenericNDArray
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
 
-#include <algorithm>  // for copy
-#include <array>      // for array
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for copy, max
 #include <cassert>    // for assert
 #include <cstddef>    // for ptrdiff_t
-#include <cstdint>    // for int64_t, uint8_t
-#include <cstring>    //
-#include <fmt.hpp>    // for compile_string_to_view
+#include <cstdint>    // for uint64_t, uint32_t
+#include <cstring>    // for memset
+#include <fmt/core.h> // for format
 #include <functional> // for function
-#include <iomanip>    // for operator<<, setfill, setw
 #include <memory>     // for allocator, shared_ptr, __shared_ptr_access
-#include <sstream>    // for basic_ostream, operator<<, basic_ostrin...
-#include <string>     // for basic_string, char_traits, string, oper...
-#include <unistd.h>   // for gethostname, sleep
+#include <sstream>    // for basic_ostream, basic_ostringstream, basic_ostream::operat...
+#include <string>     // for basic_string, char_traits, operator==, string
 #include <vector>     // for vector
 
 [[maybe_unused]] static std::uint32_t xorshift32(std::uint32_t state) {

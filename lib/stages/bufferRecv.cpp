@@ -1,7 +1,7 @@
 #include "bufferRecv.hpp"
 
 #include "Config.hpp"            // for Config
-#include "NDArray.hpp"           // for GenericNDArray
+#include "NDArray.hpp"           // for GenericNDArray, Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"            // for Symbol
 #include "buffer.hpp"            // for Buffer, buffer_free, buffer_malloc
@@ -14,7 +14,7 @@
 #include "util.h"                // for string_tail
 #include "visUtil.hpp"           // for current_time, regex_split
 
-#include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
+#include "fmt.hpp" // for compile_string_to_view, fmt
 
 #include <algorithm>       // for copy, max, find, equal
 #include <arpa/inet.h>     // for htons, inet_ntop, ntohs
@@ -22,6 +22,7 @@
 #include <cstring>         // for strerror
 #include <errno.h>         // for errno
 #include <event2/thread.h> // for evthread_use_pthreads
+#include <fmt/core.h>      // for format, format_string
 #include <functional>      // for bind, ref, function, placeholders
 #include <memory>          // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
 #include <netinet/in.h>    // for sockaddr_in, in_addr

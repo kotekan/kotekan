@@ -1,7 +1,8 @@
 #include "applyGenPL.hpp"
 
 #include "Config.hpp"          // for Config
-#include "NDArray.hpp"         // for GenericNDArray
+#include "DataType.hpp"        // for DataType
+#include "NDArray.hpp"         // for GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -9,9 +10,12 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <cstdint>    // for int32_t, uint64_t
-#include <cstdlib>    // for abort, size_t
+#include <cstdint>    // for uint8_t, int32_t, uint64_t
+#include <cstdlib>    // for abort
+#include <fmt/core.h> // for format
 #include <functional> // for bind, function
+#include <memory>     // for shared_ptr
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

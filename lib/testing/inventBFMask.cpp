@@ -1,31 +1,24 @@
-#include "CHORDTelescope.hpp"    // for CHORDTelescope
-#include "Config.hpp"            // for Config
-#include "DataType.hpp"          // for string_to_type, DataType
-#include "NDArray.hpp"           // for GenericNDArray, NDArray
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Symbol.hpp"            // for Symbol
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for chordMetadata, metadata_is_chord, get_c...
-#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, INFO
-#include "metadata.hpp"          // for metadataObject
-#include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "visUtil.hpp"           // for current_time
+#include "CHORDTelescope.hpp"  // for CHORDTelescope, DishType, dishInfo
+#include "Config.hpp"          // for Config
+#include "NDArray.hpp"         // for NDArray, GenericNDArray
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
 
-#include <algorithm>  // for copy
-#include <array>      // for array
+#include "fmt.hpp" // for compile_string_to_view
+
 #include <cassert>    // for assert
-#include <cstddef>    // for ptrdiff_t
-#include <cstdint>    // for int64_t, uint8_t
-#include <fmt.hpp>    // for compile_string_to_view
+#include <cstddef>    // for ptrdiff_t, size_t
+#include <cstdint>    // for int8_t
+#include <fmt/core.h> // for format
 #include <functional> // for function
-#include <iomanip>    // for operator<<, setfill, setw
 #include <memory>     // for allocator, shared_ptr, __shared_ptr_access
-#include <sstream>    // for basic_ostream, operator<<, basic_ostrin...
-#include <string>     // for basic_string, char_traits, string, oper...
-#include <unistd.h>   // for gethostname, sleep
+#include <string>     // for basic_string, operator!=, operator==, string
+#include <unistd.h>   // for sleep
 #include <vector>     // for vector
 
 class inventBFMask : public kotekan::Stage {

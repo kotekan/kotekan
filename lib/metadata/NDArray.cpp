@@ -1,14 +1,20 @@
-#include "Config.hpp"   // for Config
-#include "DataType.hpp" // for operator<<, string_to_type
-#include "Symbol.hpp"   // for operator<<, Symbol
+#include "Config.hpp"    // for Config
+#include "DataType.hpp"  // for DataType, type_to_string, GetType_t, operator<<, string_to_type
+#include "FrameDesc.hpp" // for FrameDesc
+#include "Symbol.hpp"    // for Symbol, operator<<, operator==, operator!=
 
-#include "fmt.hpp" // for format, fmt
+#include "fmt.hpp" // for compile_string_to_view, fmt
 
 #include <NDArray.hpp>
-#include <cassert>   // for assert
-#include <sstream>   // for basic_ostringstream
-#include <stdexcept> // for runtime_error
-#include <string>    // for operator<<, basic_string, string
+#include <algorithm>   // for equal, max
+#include <cassert>     // for assert
+#include <cstring>     // for memcmp
+#include <fmt/core.h>  // for format
+#include <json.hpp>    // for basic_json, json
+#include <sstream>     // for basic_ostringstream
+#include <stdexcept>   // for runtime_error
+#include <string>      // for basic_string, string, operator<<
+#include <sys/types.h> // for ssize_t
 
 namespace kotekan {
 

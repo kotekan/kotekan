@@ -9,19 +9,21 @@
 #define KOTEKAN_BUFFER_HPP
 
 #include "FrameDesc.hpp"      // for FrameDesc
-#include "kotekanLogging.hpp" // for kotekanLogging
+#include "kotekanLogging.hpp" // for FATAL_ERROR, kotekanLogging
 #include "metadata.hpp"       // for metadataObject, metadataPool
 
+#include "fmt.hpp"  // for compile_string_to_view
 #include "json.hpp" // for json
 
 #include <condition_variable> // for condition_variable_any
 #include <cstddef>            // for size_t
 #include <map>                // for map
-#include <memory>             // for shared_ptr
-#include <mutex>              // for recursive_mutex
+#include <memory>             // for shared_ptr, __shared_ptr_access
+#include <mutex>              // for recursive_mutex, lock_guard
 #include <sched.h>            // for cpu_set_t
 #include <stdint.h>           // for uint8_t
 #include <string>             // for string, basic_string
+#include <utility>            // for move
 #include <vector>             // for vector
 
 #ifdef MAC_OSX

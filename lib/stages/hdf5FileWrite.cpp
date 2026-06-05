@@ -1,4 +1,3 @@
-#include "CHORDTelescope.hpp"      // for EOP
 #include "Config.hpp"              // for Config
 #include "DataType.hpp"            // for DataType, type_to_string
 #include "N2FrameView.hpp"         // for N2FrameView
@@ -7,38 +6,48 @@
 #include "Stage.hpp"               // for Stage
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"              // for Symbol
-#include "Telescope.hpp"           //
+#include "Telescope.hpp"           // for Telescope
 #include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "chordMetadata.hpp"       // for chordMetadata, metadata_is_chord, get_c...
 #include "errors.h"                // for exit_kotekan, ReturnCode
 #include "hdf5Files.hpp"           // for chord2hdf5, BITSHUFFLE_BLOCKSIZE_AUTO
-#include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR, WARN, INFO
+#include "kotekanLogging.hpp"      // for FATAL_ERROR, DEBUG, WARN, INFO
 #include "metadata.hpp"            // for metadataObject
 #include "prometheusMetrics.hpp"   // for Metrics, Gauge
-#include "timeUtil.hpp"            //
+#include "timeUtil.hpp"            // for EOP
 #include "visUtil.hpp"             // for current_time
 #include "waitingForMaxFrames.hpp" // for waiting_for_max_frames
 
-#include <algorithm>             // for max, min
-#include <array>                 // for array
-#include <atomic>                // for __atomic_base, atomic
-#include <cassert>               // for assert
-#include <cstddef>               // for size_t, ptrdiff_t
-#include <cstdint>               // for uint8_t, int64_t, uint32_t
-#include <errno.h>               // for errno, EEXIST, EISDIR
-#include <fmt.hpp>               // for compile_string_to_view
-#include <functional>            // for function
-#include <gsl-lite.hpp>          // for span
-#include <highfive/highfive.hpp> //
-#include <iomanip>               // for operator<<, setfill, setw
-#include <memory>                // for allocator, shared_ptr, __shared_ptr_access
-#include <sstream>               // for basic_ostream, operator<<, basic_ostrin...
-#include <string.h>              // for strerror
-#include <string>                // for basic_string, char_traits, string, oper...
-#include <sys/stat.h>            // for mkdir
-#include <unistd.h>              // for gethostname
-#include <vector>                // for vector
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>                             // for max, min
+#include <array>                                 // for array
+#include <atomic>                                // for __atomic_base, atomic
+#include <cassert>                               // for assert
+#include <cstddef>                               // for size_t
+#include <cstdint>                               // for int64_t, uint8_t, uint32_t
+#include <errno.h>                               // for errno, EEXIST, EISDIR
+#include <fmt/core.h>                            // for format
+#include <functional>                            // for function
+#include <gsl-lite.hpp>                          // for span
+#include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::createAttribute
+#include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::DataSpace, DataSp...
+#include <highfive/H5DataType.hpp>               // for DataType
+#include <highfive/H5File.hpp>                   // for File, NodeTraits::createDataSet, File::...
+#include <highfive/H5Object.hpp>                 // for hsize_t, H5Z_FLAG_MANDATORY
+#include <highfive/H5PropertyList.hpp>           // for PropertyType, RawPropertyList, Chunking
+#include <highfive/H5Selection.hpp>              // for SliceTraits::write_raw, Selection, Slic...
+#include <highfive/bits/H5PropertyList_misc.hpp> // for PropertyList::_initializeIfNeeded, Prop...
+#include <highfive/bits/H5Selection_misc.hpp>    // for Selection::getSpace
+#include <iomanip>                               // for operator<<, setfill, setw
+#include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
+#include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
+#include <string.h>                              // for strerror
+#include <string>                                // for basic_string, char_traits, string, oper...
+#include <sys/stat.h>                            // for mkdir
+#include <unistd.h>                              // for gethostname
+#include <vector>                                // for vector
 
 
 using namespace hdf5;

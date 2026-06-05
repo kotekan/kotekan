@@ -1,23 +1,27 @@
 #include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for DataType, GetType
-#include "N2Util.hpp"          // for frameID
-#include "NDArray.hpp"         // for GenericNDArray, NDArray
+#include "DataType.hpp"        // for uint1x8_t
+#include "N2Util.hpp"          // for frameID, modulo
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "Stage.hpp"           // for Stage
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata, CHO...
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
+#include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, ERROR
 #include "metadata.hpp"        // for metadataObject
-#include "n2k_sk_globals.hpp"  // for n2k_globals
+#include "n2k_sk_globals.hpp"  // for bsigma_coeffs, bias_nx, bias_ny, sigma_nx, xmax, xmin
 
 #include "fmt.hpp" // for compile_string_to_view
 
+#include <algorithm>  // for clamp, max
+#include <array>      // for array
 #include <assert.h>   // for assert
-#include <cstdint>    // for uint64_t, int32_t, int64_t
+#include <cstdint>    // for uint64_t, int64_t, uint8_t, int8_t
+#include <fmt/core.h> // for format
 #include <functional> // for bind, function
-#include <memory>     // for shared_ptr, __shared_ptr_access
-#include <string>     // for string
+#include <math.h>     // for fabs, sqrt, log
+#include <memory>     // for shared_ptr, allocator, __shared_ptr_access
+#include <string>     // for basic_string, string
 #include <vector>     // for vector
 
 using kotekan::bufferContainer;

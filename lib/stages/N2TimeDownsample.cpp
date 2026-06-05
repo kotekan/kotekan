@@ -1,25 +1,30 @@
 #include "N2TimeDownsample.hpp"
 
-#include "CHORDTelescope.hpp"    // for EOP, CHORDTelescope, eop_null
+#include "CHORDTelescope.hpp"    // for CHORDTelescope
 #include "Config.hpp"            // for Config
+#include "FrameDesc.hpp"         // for FrameDesc
 #include "N2FrameView.hpp"       // for N2FrameView
-#include "N2Util.hpp"            // for cfloat, frameID
+#include "N2Util.hpp"            // for frameID, modulo
+#include "NDArray.hpp"           // for Config
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for DEBUG
+#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, ERROR
 #include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
-#include "timeUtil.hpp"          // for get_ERA_from_UT1, get_UT1_from_ERA
+#include "timeUtil.hpp"          // for EOP, get_ERA_from_UT1, get_UT1_from_ERA, eop_null
 
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
 #include <algorithm>  // for copy, equal, max
 #include <complex>    // for complex, operator*, conj
+#include <fmt/core.h> // for format
 #include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
 #include <stdexcept>  // for runtime_error
-#include <stdint.h>   // for uint32_t, int64_t, int32_t
+#include <stdint.h>   // for uint32_t, int64_t, uint64_t, int32_t
+#include <time.h>     // for timespec
 #include <vector>     // for vector
 
 #define GIGA 1'000'000'000L

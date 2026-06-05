@@ -1,12 +1,12 @@
 #include "rawFileWrite.hpp"
 
 #include "Config.hpp"              // for Config
-#include "NDArray.hpp"             // for GenericNDArray
+#include "NDArray.hpp"             // for GenericNDArray, Config
 #include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "errors.h"                // for ReturnCode, exit_kotekan
-#include "kotekanLogging.hpp"      // for ERROR, DEBUG, INFO
+#include "kotekanLogging.hpp"      // for ERROR, DEBUG, FATAL_ERROR, INFO
 #include "metadata.hpp"            // for metadataObject
 #include "prometheusMetrics.hpp"   // for Metrics, Gauge
 #include "visUtil.hpp"             // for current_time
@@ -17,6 +17,7 @@
 #include <atomic>     // for __atomic_base, atomic
 #include <errno.h>    // for errno
 #include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <fmt/core.h> // for format
 #include <functional> // for bind, function
 #include <memory>     // for shared_ptr, __shared_ptr_access
 #include <stdint.h>   // for uint32_t, int32_t, uint8_t
