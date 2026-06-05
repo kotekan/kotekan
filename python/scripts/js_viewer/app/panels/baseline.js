@@ -29,7 +29,7 @@ export class BaselinePanel {
             .button({label: "Take a Spectral Baseline", icons: {primary: "ui-icon-play"}})
             .click(function() {
                 // Mean of the current scroll_data, bin by bin.
-                self.state.spectrum_baseline = _.map(_.transpose(self.state.scroll_data), _mean);
+                self.state.spectrum_baseline = _.map(_.unzip(self.state.scroll_data), _mean);
                 self._reveal_checkbox();
             });
     }
@@ -163,7 +163,7 @@ export class BaselinePanel {
     _finish_bandpass() {
         const self = this;
         const s = this.state;
-        s.spectrum_baseline = _.map(_.transpose(s.bandpass_data), _mean);
+        s.spectrum_baseline = _.map(_.unzip(s.bandpass_data), _mean);
         this.app.kotekan.stagePost(this._autocal_stage, "set_config", {freq: 1421})
             .then(() => {
                 self._reveal_checkbox();
