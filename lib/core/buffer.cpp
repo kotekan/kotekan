@@ -1,32 +1,34 @@
 #include "buffer.hpp"
 
-#include <assert.h>            // for assert
-#include <errno.h>             // for errno
-#include <pthread.h>           // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
-#include <sched.h>             // for CPU_SET, CPU_ZERO, cpu_set_t
-#include <stdlib.h>            // for free, malloc
-#include <string.h>            // for strerror, memset, memcpy
-#include <sys/mman.h>          // for mlock, mmap, munmap, MAP_FAILED
-#include <json.hpp>            // for basic_json, json
-#include <chrono>              // for duration, operator+, nanoseconds, seconds, system_clock
-#include <stdexcept>           // for runtime_error
-#include <utility>             // for pair
+#include <assert.h>   // for assert
+#include <chrono>     // for duration, operator+, nanoseconds, seconds, system_clock
+#include <errno.h>    // for errno
+#include <json.hpp>   // for basic_json, json
+#include <pthread.h>  // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
+#include <sched.h>    // for CPU_SET, CPU_ZERO, cpu_set_t
+#include <sstream>    // for ostringstream
+#include <stdexcept>  // for runtime_error
+#include <stdlib.h>   // for free, malloc
+#include <string.h>   // for strerror, memset, memcpy
+#include <sys/mman.h> // for mlock, mmap, munmap, MAP_FAILED
+#include <utility>    // for pair
 
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
-#include "errors.h"            // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F
-#include "kotekanLogging.hpp"  // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
-#include "metadata.hpp"        // for metadataObject, metadataPool
-#include "nt_memset.h"         // for nt_memset
-#include "util.h"              // for e_time
-#include "fmt.hpp"             // for compile_string_to_view, format, fmt
+#include "errors.h"           // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F
+#include "kotekanLogging.hpp" // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
+#include "metadata.hpp"       // for metadataObject, metadataPool
+#include "nt_memset.h"        // for nt_memset
+#include "util.h"             // for e_time
+
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 #ifndef MAC_OSX
-#include <linux/mman.h>        // for MAP_HUGE_2MB, MAP_PRIVATE
+#include <linux/mman.h> // for MAP_HUGE_2MB, MAP_PRIVATE
 #endif
-#include <time.h>              // for timespec
+#include <time.h> // for timespec
 #ifdef WITH_NUMA
-#include <numa.h>              // for bitmask, numa_allocate_nodemask, numa_bitmask_free, numa_b...
-#include <numaif.h>            // for set_mempolicy, MPOL_BIND, mbind, MPOL_DEFAULT, MPOL_MF_STRICT
+#include <numa.h>   // for bitmask, numa_allocate_nodemask, numa_bitmask_free, numa_b...
+#include <numaif.h> // for set_mempolicy, MPOL_BIND, mbind, MPOL_DEFAULT, MPOL_MF_STRICT
 #endif
 
 // It is assumed this is a power of two in the code.
@@ -401,19 +403,55 @@ std::string Buffer::get_dot_node_label() {
 
 void Buffer::print_buffer_status() {
     std::vector<bool> local_is_full;
+    struct StageSnapshot {
+        int last_frame_acquired;
+        std::vector<bool> is_done;
+    };
+    std::vector<StageSnapshot> producer_snapshots;
+    std::vector<StageSnapshot> consumer_snapshots;
     {
         buffer_lock lock(mutex);
         local_is_full = is_full;
+        producer_snapshots.reserve(producers.size());
+        for (const auto& p : producers)
+            producer_snapshots.push_back({p.second.last_frame_acquired, p.second.is_done});
+        consumer_snapshots.reserve(consumers.size());
+        for (const auto& c : consumers)
+            consumer_snapshots.push_back({c.second.last_frame_acquired, c.second.is_done});
     }
-    char status_string[num_frames + 1];
+    // const std::string emptying_symbol = "▼";
+    // const std::string full_symbol = "█";
+    // const std::string filling_symbol = "▲";
+    // const std::string empty_symbol = "·";
+    const char emptying_symbol = 'v';
+    const char full_symbol = 'X';
+    const char filling_symbol = '^';
+    const char empty_symbol = '.';
+    std::ostringstream buf;
+    buf << "[";
     for (int i = 0; i < num_frames; ++i) {
-        if (local_is_full[i])
-            status_string[i] = 'X';
-        else
-            status_string[i] = '_';
+        if (local_is_full[i]) {
+            bool emptying = false;
+            for (const auto& c : consumer_snapshots) {
+                if (c.last_frame_acquired == i && !c.is_done[i]) {
+                    emptying = true;
+                    break;
+                }
+            }
+            buf << (emptying ? emptying_symbol : full_symbol);
+        } else {
+            bool filling = false;
+            for (const auto& p : producer_snapshots) {
+                if (p.last_frame_acquired == i && !p.is_done[i]) {
+                    filling = true;
+                    break;
+                }
+            }
+            buf << (filling ? filling_symbol : empty_symbol);
+        }
     }
-    status_string[num_frames] = '\0';
-    INFO("Buffer {:s}, status: {:s}", buffer_name, std::string(status_string));
+    buf << "]";
+    INFO_NON_OO("Buffer {:40s}, status: {:s}", buffer_name, buf.str());
 }
 
 void Buffer::print_full_status() {
