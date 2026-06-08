@@ -242,6 +242,7 @@ public:
             }
             (*(DataSetCreateProps*)&props).add(Chunking(chunk_dims));
 
+            #if 0
             // // Enable compression
             // constexpr int blosc_compression_level = 9;
             // const std::vector<unsigned int> blosc_flags{
@@ -259,6 +260,7 @@ public:
             };
             props.add(H5Pset_filter, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY, bitshuffle_flags.size(),
                       bitshuffle_flags.data());
+            #endif
 
             // Create dataset
             auto dataset = file.createDataSet(file_name, space, type, props);
