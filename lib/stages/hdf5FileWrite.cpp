@@ -100,6 +100,7 @@ class hdf5FileWrite : public kotekan::Stage {
     const int host_pool_size = config.get_default<int>(unique_name, "frequency_pool_size", 1);
 
     const int max_frames = config.get_default<int>(unique_name, "max_frames", -1);
+    const bool use_compression = config.get_default<bool>(unique_name, "use_compression", true);
     const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
     const bool create_single_file =
         config.get_default<bool>(unique_name, "create_single_file", false);
@@ -279,23 +280,25 @@ public:
             }
             (*(DataSetCreateProps*)&props).add(Chunking(chunk_dims));
 
-            // // Enable compression
-            // constexpr int blosc_compression_level = 9;
-            // const std::vector<unsigned int> blosc_flags{
-            //     blosc_compression_level,
-            //     BLOSC_SHUFFLE_BIT,
-            //     BLOSC_COMPRESS_ZSTD,
-            // };
-            // props.add(H5Pset_filter, H5Z_BLOSC, H5Z_FLAG_MANDATORY, blosc_flags.size(),
-            //           blosc_flags.data());
-            constexpr int bitshuffle_compression_level = 9;
-            const std::vector<unsigned int> bitshuffle_flags{
-                BITSHUFFLE_BLOCKSIZE_AUTO,
-                BITSHUFFLE_COMPRESS_ZSTD,
-                bitshuffle_compression_level,
-            };
-            props.add(H5Pset_filter, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY, bitshuffle_flags.size(),
-                      bitshuffle_flags.data());
+            if(use_compression) {
+                // // Enable compression
+                // constexpr int blosc_compression_level = 9;
+                // const std::vector<unsigned int> blosc_flags{
+                //     blosc_compression_level,
+                //     BLOSC_SHUFFLE_BIT,
+                //     BLOSC_COMPRESS_ZSTD,
+                // };
+                // props.add(H5Pset_filter, H5Z_BLOSC, H5Z_FLAG_MANDATORY, blosc_flags.size(),
+                //           blosc_flags.data());
+                constexpr int bitshuffle_compression_level = 9;
+                const std::vector<unsigned int> bitshuffle_flags{
+                    BITSHUFFLE_BLOCKSIZE_AUTO,
+                    BITSHUFFLE_COMPRESS_ZSTD,
+                    bitshuffle_compression_level,
+                };
+                props.add(H5Pset_filter, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY, bitshuffle_flags.size(),
+                          bitshuffle_flags.data());
+            }
 
             // Create dataset
             auto dataset = file.createDataSet(file_name, space, type, props);
