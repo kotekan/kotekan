@@ -569,7 +569,8 @@ set_scatter_indices:
     out_buf: host_scatter_indices_buffer
     # TODO: need to undo transpose to beamformer (from cylinder order) in
     # conversion to visFrame
-    input_order: correlator
+    # FEngine simulator produces beamformer order
+    input_order: beamformer #correlator
     output_order: beamformer
     name: scatter_indices
 
