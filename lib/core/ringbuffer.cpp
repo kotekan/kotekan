@@ -307,10 +307,10 @@ void RingBuffer::print_buffer_status() {
     // const std::string full_symbol = "█";
     // const std::string filling_symbol = "▲";
     // const std::string empty_symbol = "·";
-    const char emptying_symbol = "v";
-    const char full_symbol = "X";
-    const char filling_symbol = "^";
-    const char empty_symbol = ".";
+    const char emptying_symbol = 'v';
+    const char full_symbol = 'X';
+    const char filling_symbol = '^';
+    const char empty_symbol = '.';
     std::ostringstream buf;
     buf << "[";
     for (int n = 0; n < emptying_count; ++n)
