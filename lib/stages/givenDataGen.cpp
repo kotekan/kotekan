@@ -27,7 +27,7 @@ REGISTER_KOTEKAN_STAGE(givenDataGen);
 givenDataGen::givenDataGen(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&givenDataGen::main_thread, this)),
-    _out_buf(get_buffer("out_buf")), _values(config.get<std::vector<int>>(unique_name, "values")),
+    _out_buf(get_buffer("out_buf")), _values(config.get<std::vector<long double>>(unique_name, "values")),
     _name(config.get<kotekan::Symbol>(unique_name, "name")),
     _datatype(kotekan::string_to_type(config.get<std::string>(unique_name, "datatype"))),
     _array_shape(config.get<std::vector<ptrdiff_t>>(unique_name, "array_shape")),
@@ -76,12 +76,45 @@ void givenDataGen::main_thread() {
             break;
 
         const size_t type_size = kotekan::type_total_bytes(_datatype);
+        const bool is_float = kotekan::type_to_string(_datatype).find("float") != std::string::npos;
+        const bool is_int = kotekan::type_to_string(_datatype).find("int") != std::string::npos;
+        const bool is_complex = kotekan::type_to_string(_datatype)[0] == 'c';
+        assert(is_float + is_int == 1);
+        assert(!is_complex);
         for (size_t i = 0; i < _values.size(); ++i) {
-            // this really makes all kinds of asusmptions
-            // only works for integers
-            // only works on little endian machines
             assert((i + 1) * type_size <= _out_buf->frame_size && "Out of bounds access");
-            std::memcpy(frame + i * type_size, &_values.at(i), type_size);
+            if(is_float) {
+                switch(_datatype) {
+                  case kotekan::float16: {
+                    const float16_t hval = static_cast<float16_t>(static_cast<double>(_values[i]));
+                    static_assert(sizeof(hval) == kotekan::type_total_bytes(kotekan::float16));
+                    std::memcpy(frame + i * type_size, &hval, type_size);
+                  }
+                  break;
+                  case kotekan::float32: {
+                    const float fval = static_cast<float>(_values[i]);
+                    static_assert(sizeof(fval) == kotekan::type_total_bytes(kotekan::float32));
+                    std::memcpy(frame + i * type_size, &fval, type_size);
+                  }
+                  break;
+                  case kotekan::float64: {
+                    const double dval = static_cast<double>(_values[i]);
+                    static_assert(sizeof(dval) == kotekan::type_total_bytes(kotekan::float64));
+                    std::memcpy(frame + i * type_size, &dval, type_size);
+                  }
+                  break;
+                  default:
+                  assert(0 && "Unexpected data type");
+                  break;
+                }
+            } else if(is_int) {
+               // this really makes all kinds of asusmptions
+                // only works on little endian machines
+                const long long ival = static_cast<long long>(_values[i]);
+                std::memcpy(frame + i * type_size, &ival, type_size);
+            } else {
+              assert(0 && "Unexpected type");
+            }
         }
 
         _out_buf->allocate_new_metadata_object(frame_id);
