@@ -1370,8 +1370,8 @@ FRB:
         values:
 {%- for ns in range(frb2_num_beams_y) %}
 {%- for ew in range(frb2_num_beams_x) %}
-          - {{ achromatic_beam_angles_EW[ew] / 180 * m_pi }}
           - {{ achromatic_beam_angles_NS[ns] / 180 * m_pi }}
+          - {{ achromatic_beam_angles_EW[ew] / 180 * m_pi }}
 {%- endfor %}
 {%- endfor %}
         name: frb2_beam_positions
