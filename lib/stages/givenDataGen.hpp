@@ -18,7 +18,7 @@
  *         @buffer_format any format
  *         @buffer_metadata chordMetadata
  *
- * @conf  values                Vector of ints.
+ * @conf  values                Vector of values.
  * @conf  name                  String. Name of the quantity being set.
  * @conf  datatype              String. Kotekan datatype name.
  * @conf  array_shape           Vector of ints. Size of each dimension.
@@ -36,7 +36,7 @@ public:
 
 private:
     Buffer* const _out_buf;
-    const std::vector<int> _values;
+    const std::vector<long double> _values;
     const kotekan::Symbol _name;
     const kotekan::DataType _datatype;
     const std::vector<std::ptrdiff_t> _array_shape;
