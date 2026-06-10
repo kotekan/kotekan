@@ -43,7 +43,7 @@ const F̄ = F_per_U[U] * U
 
 const Tbar = T ÷ U
 # We use U = 128 for HFB beams; downsample to the max
-const Tds = U < 128 ? idiv(Tds_U1, U) : Tbar
+const Tds = U < 128 ? idiv(Tds_U1, U) : Tbar ÷ 4
 
 const Fbar_W = F̄
 const Fbar = U == 1 ? F : F̄
