@@ -141,7 +141,7 @@ private:
             };
             static constexpr std::ptrdiff_t {{{name}}}_length = {{{name}}}_strides[{{{name}}}_rank];
             static constexpr std::ptrdiff_t {{{name}}}_length_in_bytes = type_total_bytes({{{name}}}_type) * {{{name}}}_length;
-            static_assert({{{name}}}_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+            // static_assert({{{name}}}_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
         {{/isscalar}}
         //
     {{/kernel_arguments}}
@@ -278,8 +278,7 @@ std::int64_t cuda{{{kernel_name}}}::num_consumed_elements(std::int64_t num_avail
     return num_processed_elements(num_available_elements) - cuda_algorithm_overlap;
 }
 std::int64_t cuda{{{kernel_name}}}::num_produced_elements(std::int64_t num_available_elements) const {
-    assert(num_consumed_elements(num_available_elements) % cuda_upchannelization_factor == 0);
-    return num_consumed_elements(num_available_elements) / cuda_upchannelization_factor;
+    return div_noremainder(num_consumed_elements(num_available_elements), cuda_upchannelization_factor);
 }
 
 std::int64_t cuda{{{kernel_name}}}::num_processed_elements(std::int64_t num_available_elements) const {

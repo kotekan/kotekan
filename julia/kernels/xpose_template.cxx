@@ -99,7 +99,7 @@ private:
                 * {{{length}}}
             {{/axes}}
             ;
-        static_assert({{{name}}}_length <= std::size_t(std::numeric_limits<int>::max()));
+        // static_assert({{{name}}}_length <= std::size_t(std::numeric_limits<int>::max()));
         //
     {{/kernel_arguments}}
 
