@@ -6,8 +6,8 @@
 
 # from 3.333 μs to 853.333 μs
 rfi_downsampling_factor: 256
-# from 853.333 μs to 13.653333 ms
-rfi_second_downsampling_factor: 16
+# from 853.333 μs to 54.613 ms
+rfi_second_downsampling_factor: 64
 
 rfi_sk_rfimask_sigmas: 5.0
 rfi_single_feed_min_good_frac: 0.8
@@ -19,8 +19,8 @@ rfi_mu_max: 20.0
 
 # Buffers
 
-rfi_num_times: 16               # 853.333 μs cadence
-rfi_num_times_bar: 1            # 13.653333 ms cadence
+rfi_num_times: 64               # 853.333 μs cadence
+rfi_num_times_bar: 1            # 54.613 ms cadence
 
 host_rfi_S012_buffer:
     kotekan_buffer: standard
