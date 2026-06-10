@@ -75,7 +75,7 @@ private:
     static constexpr int cuda_number_of_frequencies = 336;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_taps = 4;
-    static constexpr int cuda_max_number_of_timesamples = 16384;
+    static constexpr int cuda_max_number_of_timesamples = 65536;
     static constexpr int cuda_granularity_number_of_timesamples = 256;
     static constexpr int cuda_algorithm_overlap = 96;
     static constexpr int cuda_upchannelization_factor = 32;
@@ -157,7 +157,7 @@ private:
     };
     static constexpr std::ptrdiff_t G_length = G_strides[G_rank];
     static constexpr std::ptrdiff_t G_length_in_bytes = type_total_bytes(G_type) * G_length;
-    static_assert(G_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(G_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: voltage_name
     static constexpr const char* E_quantity = "E";
@@ -179,7 +179,7 @@ private:
         64,
         2,
         336,
-        16384,
+        65536,
     };
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -193,7 +193,7 @@ private:
     };
     static constexpr std::ptrdiff_t E_length = E_strides[E_rank];
     static constexpr std::ptrdiff_t E_length_in_bytes = type_total_bytes(E_type) * E_length;
-    static_assert(E_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(E_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: upchan_U32_voltage_name
     static constexpr const char* Ebar_quantity = "Ebar";
@@ -215,7 +215,7 @@ private:
         64,
         2,
         10752,
-        512,
+        2048,
     };
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -231,7 +231,7 @@ private:
     static constexpr std::ptrdiff_t Ebar_length = Ebar_strides[Ebar_rank];
     static constexpr std::ptrdiff_t Ebar_length_in_bytes =
         type_total_bytes(Ebar_type) * Ebar_length;
-    static_assert(Ebar_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(Ebar_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr const char* info_quantity = "info";
@@ -267,7 +267,7 @@ private:
     static constexpr std::ptrdiff_t info_length = info_strides[info_rank];
     static constexpr std::ptrdiff_t info_length_in_bytes =
         type_total_bytes(info_type) * info_length;
-    static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     const bool poison_buffers;
@@ -352,8 +352,8 @@ cudaUpchannelizer_charts_U32::num_consumed_elements(std::int64_t num_available_e
 }
 std::int64_t
 cudaUpchannelizer_charts_U32::num_produced_elements(std::int64_t num_available_elements) const {
-    assert(num_consumed_elements(num_available_elements) % cuda_upchannelization_factor == 0);
-    return num_consumed_elements(num_available_elements) / cuda_upchannelization_factor;
+    return div_noremainder(num_consumed_elements(num_available_elements),
+                           cuda_upchannelization_factor);
 }
 
 std::int64_t

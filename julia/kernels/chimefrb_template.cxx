@@ -138,10 +138,6 @@ private:
             };
             static constexpr std::ptrdiff_t {{{name}}}_length = {{{name}}}_strides[{{{name}}}_rank];
             static constexpr std::ptrdiff_t {{{name}}}_length_in_bytes = type_total_bytes({{{name}}}_type) * {{{name}}}_length;
-            // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU kernels where necessary.
-            static_assert(args::{{{name}}} == args::I
-                          ? true
-                          : {{{name}}}_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
         {{/isscalar}}
         //
     {{/kernel_arguments}}

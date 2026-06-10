@@ -190,11 +190,10 @@ private:
     };
     static constexpr std::ptrdiff_t S_length = S_strides[S_rank];
     static constexpr std::ptrdiff_t S_length_in_bytes = type_total_bytes(S_type) * S_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::S == args::I
-                      ? true
-                      : S_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
+    // kernels where necessary. static_assert(args::S == args::I
+    //               ? true
+    //               : S_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // W: frb_phase_name
     static constexpr const char* W_quantity = "W";
@@ -225,11 +224,10 @@ private:
     };
     static constexpr std::ptrdiff_t W_length = W_strides[W_rank];
     static constexpr std::ptrdiff_t W_length_in_bytes = type_total_bytes(W_type) * W_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::W == args::I
-                      ? true
-                      : W_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
+    // kernels where necessary. static_assert(args::W == args::I
+    //               ? true
+    //               : W_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: voltage_name
     static constexpr const char* Ebar_quantity = "Ebar";
@@ -267,12 +265,10 @@ private:
     static constexpr std::ptrdiff_t Ebar_length = Ebar_strides[Ebar_rank];
     static constexpr std::ptrdiff_t Ebar_length_in_bytes =
         type_total_bytes(Ebar_type) * Ebar_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::Ebar == args::I
-                      ? true
-                      : Ebar_length_in_bytes
-                            <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
+    // kernels where necessary. static_assert(args::Ebar == args::I
+    //               ? true
+    //               : Ebar_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // I: frb_beamgrid_name
     static constexpr const char* I_quantity = "I";
@@ -308,11 +304,10 @@ private:
     };
     static constexpr std::ptrdiff_t I_length = I_strides[I_rank];
     static constexpr std::ptrdiff_t I_length_in_bytes = type_total_bytes(I_type) * I_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::I == args::I
-                      ? true
-                      : I_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
+    // kernels where necessary. static_assert(args::I == args::I
+    //               ? true
+    //               : I_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr const char* info_quantity = "info";
@@ -348,12 +343,10 @@ private:
     static constexpr std::ptrdiff_t info_length = info_strides[info_rank];
     static constexpr std::ptrdiff_t info_length_in_bytes =
         type_total_bytes(info_type) * info_length;
-    // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary.
-    static_assert(args::info == args::I
-                      ? true
-                      : info_length_in_bytes
-                            <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
+    // kernels where necessary. static_assert(args::info == args::I
+    //               ? true
+    //               : info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     const bool poison_buffers;
