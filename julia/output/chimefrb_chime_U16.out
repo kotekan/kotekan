@@ -1,13 +1,3 @@
-Precompiling packages...
-    CUDA_Runtime_jll Being precompiled by another process (pid: 136290, pidfile: /home/gryan/.julia/compiled/v1.12/CUDA_Runtime_jll/Hs50y_UeKVD.ji.pidfile)
-  10373.3 ms  ✓ CUDA_Runtime_jll
-    CUDA Being precompiled by another process (pid: 136290, pidfile: /home/gryan/.julia/compiled/v1.12/CUDA/oWw5k_UeKVD.ji.pidfile)
-  35769.2 ms  ✓ CUDA
-  2 dependencies successfully precompiled in 48 seconds. 90 already precompiled.
-Precompiling packages...
-    IndexSpaces Being precompiled by another process (pid: 136290, pidfile: /home/gryan/.julia/compiled/v1.12/IndexSpaces/n38FD_UeKVD.ji.pidfile)
-  10026.6 ms  ✓ IndexSpaces
-  1 dependency successfully precompiled in 11 seconds. 93 already precompiled.
 [Creating chimefrb kernel...]
 [Done creating chimefrb kernel]
 CHIME FRB beamformer
