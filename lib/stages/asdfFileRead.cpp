@@ -33,7 +33,6 @@
 #include <string>                 // for basic_string, char_traits, string, operator<<
 #include <vector>                 // for vector
 
-#include "CHORDTelescope.hpp"     // for dish_index_t
 #include "fmt.hpp"                // for compile_string_to_view
 
 using namespace asdf;
@@ -330,42 +329,6 @@ public:
                         group->at("time_downsampling_fpga")->get_maybe_int().value();
                     meta->set_time_downsampling_fpga(time_downsampling_fpga);
                     assert(meta->get_time_downsampling_fpga() > 0);
-                }
-            }
-
-            {
-                if (group->count("ndishes")) {
-                    DEBUG("[{:s}/{:d}] group0->at(\"ndishes\")", buffer->buffer_name,
-                          frame_counter);
-                    const auto ndishes = group->at("ndishes")->get_maybe_int().value();
-                    meta->ndishes = ndishes;
-                    assert(meta->ndishes >= 0);
-                } else {
-                    meta->ndishes = -1;
-                }
-            }
-
-            {
-                if (group->count("dish_index")) {
-                    DEBUG("[{:s}/{:d}] group0->at(\"dish_index\")", buffer->buffer_name,
-                          frame_counter);
-                    const auto dish_index = group->at("dish_index")->get_maybe_ndarray();
-                    assert(dish_index);
-                    const auto dimensions = dish_index->get_shape();
-                    assert(dimensions.size() == 2);
-                    meta->n_dish_locations_ns = dimensions.at(0);
-                    meta->n_dish_locations_ew = dimensions.at(1);
-                    assert(meta->n_dish_locations_ns >= 0);
-                    assert(meta->n_dish_locations_ew >= 0);
-                    meta->dish_index =
-                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
-                    const auto data = dish_index->get_data();
-                    const size_t bytes = sizeof(dish_index_t) * meta->n_dish_locations_ns
-                                         * meta->n_dish_locations_ew;
-                    assert(data->nbytes() == bytes);
-                    std::memcpy(meta->dish_index, data->ptr(), data->nbytes());
-                } else {
-                    meta->dish_index = nullptr;
                 }
             }
 

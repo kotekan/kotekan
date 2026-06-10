@@ -71,9 +71,11 @@ add_library(
     InputSubset.cpp
     setScatterIndices.cpp
     UpchannelizationSchedule.cpp
+    setBBBeams.cpp
     calcBBPhase.cpp
     setUpchanGain.cpp
     setFRB1Phase.cpp
+    setFRBBeams.cpp
     calcFRB2Weights.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
@@ -107,7 +109,6 @@ add_library(
     ExampleDotProduct.cpp
     N2Accumulate.cpp
     N2TimeDownsample.cpp
-    N2FringeStop.cpp
     TransposeBasebandArray.cpp
     dropAllFrames.cpp
     N2FrameToVisFrame.cpp

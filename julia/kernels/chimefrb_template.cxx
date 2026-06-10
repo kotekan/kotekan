@@ -9,6 +9,7 @@
 #include "DataType.hpp"
 #include "NDArrayBuffer.hpp"
 #include "NDArrayRingBuffer.hpp"
+#include "Telescope.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
@@ -366,10 +367,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/kernel_arguments}}
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
-        assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-        assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
-        assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
-        assert(Ebar_meta->dish_index);
+        assert(Telescope::instance().get_grid_size_x() <= cuda_dish_layout_M);
+        assert(Telescope::instance().get_grid_size_y() <= cuda_dish_layout_N);
 
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();

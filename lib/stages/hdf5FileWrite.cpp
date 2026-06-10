@@ -99,6 +99,11 @@ class hdf5FileWrite : public kotekan::Stage {
     const int64_t write_x_frames = config.get_default<int64_t>(unique_name, "write_x_frames", -1);
     const int64_t per_y_frames = config.get_default<int64_t>(unique_name, "per_y_frames", -1);
 
+    const uint64_t num_polarizations = config.get<uint64_t>(unique_name, "num_polarizations");
+    const uint64_t num_dishes = config.get<uint64_t>(unique_name, "num_dishes");
+    const uint64_t num_elements = num_polarizations * num_dishes;
+    const ElementOrder input_order = config.get<ElementOrder>(unique_name, "input_order");
+
     Buffer* const buffer;
 
     std::shared_ptr<File> the_single_file;
@@ -295,19 +300,21 @@ public:
                 dataset.createAttribute("rfi_frame_excision_thresholds",
                                         meta->get_rfi_frame_excision_thresholds());
 
-            if (meta->ndishes >= 0) {
-                dataset.createAttribute("ndishes", meta->ndishes);
-                // const DataSpace space{std::size_t(meta->n_dish_locations_ns),
-                //                       std::size_t(meta->n_dish_locations_ew)};
-                // auto attr = dataset.createAttribute<int>("dish_index", space);
-                // attr.write(meta->dish_index);
-                dataset.createAttribute("n_dish_locations_ns", meta->n_dish_locations_ns);
-                dataset.createAttribute("n_dish_locations_ew", meta->n_dish_locations_ew);
-                dataset.createAttribute(
-                    "dish_index",
-                    std::vector<int>(meta->dish_index,
-                                     meta->dish_index
-                                         + meta->n_dish_locations_ns * meta->n_dish_locations_ew));
+            {
+                // Telescope data
+                dataset.createAttribute("num_polarizations", num_polarizations);
+                dataset.createAttribute("num_dishes", num_dishes);
+                dataset.createAttribute("num_elements", num_elements);
+                dataset.createAttribute("input_order", ElementOrder_to_string(input_order));
+                dataset.createAttribute("itrs_lat_deg", telescope.get_itrs_lat_deg());
+                dataset.createAttribute("itrs_lon_deg", telescope.get_itrs_lon_deg());
+                dataset.createAttribute("grid_orientation", telescope.get_grid_orientation());
+                dataset.createAttribute("grid_size_x", telescope.get_grid_size_x());
+                dataset.createAttribute("grid_size_y", telescope.get_grid_size_y());
+                dataset.createAttribute("feed_separation_x_m", telescope.get_feed_separation_x_m());
+                dataset.createAttribute("feed_separation_y_m", telescope.get_feed_separation_y_m());
+                dataset.createAttribute("main_array_grid_indices", telescope.get_main_array_grid_indices(num_elements, input_order));
+                dataset.createAttribute("feed_positions_m", telescope.get_feed_positions_m(num_elements, input_order));
             }
 
             if (create_single_file) {
@@ -423,9 +430,12 @@ public:
         radiometer_chi2_dset.write_raw(frame.radiometer_chi2.data(), float_type);
 
         // Set metadata as file-level attributes
+        file.createAttribute("num_polarizations", num_polarizations);
+        file.createAttribute("num_dishes", num_dishes);
         file.createAttribute("num_elements", frame.num_elements);
         file.createAttribute("num_prod", frame.num_prod);
         file.createAttribute("num_ev", frame.num_ev);
+        file.createAttribute("input_order", ElementOrder_to_string(input_order));
         file.createAttribute("freq_id", frame.freq_id);
         file.createAttribute("freq_MHz", frame.freq_MHz);
         file.createAttribute("abs_time_idx", frame.abs_time_idx);
@@ -457,6 +467,20 @@ public:
         file.createAttribute("rfi_frame_excision_num", frame.rfi_frame_excision_num);
         file.createAttribute("rfi_frame_excision_threshold", frame.rfi_frame_excision_threshold);
         file.createAttribute("rfi_frame_excision_fraction", frame.rfi_frame_excision_fraction);
+
+        {
+            // Telescope data
+            const Telescope &tel = Telescope::instance();
+            file.createAttribute("itrs_lat_deg", tel.get_itrs_lat_deg());
+            file.createAttribute("itrs_lon_deg", tel.get_itrs_lon_deg());
+            file.createAttribute("grid_orientation", tel.get_grid_orientation());
+            file.createAttribute("grid_size_x", tel.get_grid_size_x());
+            file.createAttribute("grid_size_y", tel.get_grid_size_y());
+            file.createAttribute("feed_separation_x_m", tel.get_feed_separation_x_m());
+            file.createAttribute("feed_separation_y_m", tel.get_feed_separation_y_m());
+            file.createAttribute("main_array_grid_indices", tel.get_main_array_grid_indices(num_elements, input_order));
+            file.createAttribute("feed_positions_m", tel.get_feed_positions_m(num_elements, input_order));
+        }
     }
 
     /**

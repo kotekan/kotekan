@@ -112,8 +112,8 @@ telescope:
   inst_dish_alt_axis: [1.0, 0.0, 0.0]
   inst_dish_vert_axis: [0.0, 0.0, 1.0]
   dish_inputs: []
-  num_dishes_x: 50
-  num_dishes_y: 50
+  dish_grid_size_x: 50
+  dish_grid_size_y: 50
   require_gps: False
   eop_updatable_config: /earth_rotation_data
 
@@ -429,6 +429,7 @@ n2_accumulate:
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
+    input_order: CHORDBeamformer
 
 
 # Add eigen calculation

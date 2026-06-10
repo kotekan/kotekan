@@ -690,6 +690,7 @@ n2_accumulate:
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
+    input_order: CHORDEarly
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
     variance_mode: EvenOddPosDef
     output_batch_size: 12
@@ -706,6 +707,7 @@ n2_accumulate_1:
     out_buf: n2_buffer_1
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
+    input_order: CHORDEarly
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
     variance_mode: EvenOddPosDef
     bin_in_ERA: false

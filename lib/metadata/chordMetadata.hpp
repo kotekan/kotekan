@@ -14,7 +14,6 @@
 #include <vector>              // for vector
 #include <array>               // for array
 
-#include "CHORDTelescope.hpp"  // for dish_index_t
 #include "DataType.hpp"        // for type_to_string, type_total_bytes, DataType
 #include "NDArray.hpp"         // for GenericNDArray
 #include "Telescope.hpp"       // for Telescope, stream_t
@@ -99,18 +98,6 @@ public:
     size_t sample_bytes() const {
         // The number of bytes per sample is the number of bytes needed to store one array slice.
         return type_total_bytes(type) * stride[0];
-    }
-
-    // Dish layout
-    int ndishes;                                  // number of dishes
-    int n_dish_locations_ew, n_dish_locations_ns; // number of possible dish locations
-    dish_index_t* dish_index; // [non-owning pointer] dish index for a possible dish location, or -1
-    dish_index_t get_dish_index(int dish_loc_ew, int dish_loc_ns) const {
-        // The east-west dish index runs faster because this is the
-        // convenient way to specify dish indices in a YAML file
-        assert(dish_loc_ew >= 0 && dish_loc_ew < n_dish_locations_ew);
-        assert(dish_loc_ns >= 0 && dish_loc_ns < n_dish_locations_ns);
-        return dish_index[dish_loc_ew + n_dish_locations_ew * dish_loc_ns];
     }
 
     std::string get_dimension_name(size_t i) const {

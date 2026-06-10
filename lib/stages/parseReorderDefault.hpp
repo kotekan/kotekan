@@ -7,6 +7,7 @@
 
 #include "Config.hpp"           // for Config
 #include "Stage.hpp"            // for Stage
+#include "Telescope.hpp"        // for ElementOrder
 #include "buffer.hpp"           // for Buffer
 #include "bufferContainer.hpp"  // for bufferContainer
 
@@ -20,11 +21,8 @@
  *         @buffer_metadata chordMetadata
  *
  * @conf  name                  String. Name of the quantity being set.
- * @conf  input_reorder         Table. The input reorder table to parse.
- * @conf  input_order           String. Default: correlator. One of correlator,
- *                              cylinder, or beamformer.
- * @conf  output_order          String. Default: cylinder. One of correlator,
- *                              cylinder, or beamformer.
+ * @conf  input_order           ElementOrder. Default: CHIMECorrelator. Must be one of CHIMECorrelator, CHIMECylinder, CHIMEBeamformer.
+ * @conf  output_order          ElementOrder. Default: CHIMECylinder. Must be one of CHIMECorrelator, CHIMECylinder, CHIMEBeamformer.
  * @conf  num_polarizations     Int. Number of polarizations. Used only to
  *                              compute number of elements.
  * @conf  num_dishes            Int. Number of dishes in telescope. Used only to
@@ -40,20 +38,18 @@ public:
     void main_thread() override;
 
 private:
+
+    static ElementOrder parseOrderStr(const std::string &ord_str);
+
     Buffer* const _out_buf;
     const std::string _name;
-    const std::vector<uint32_t> _input_reorder;
-    const std::string _input_order;
-    const std::string _output_order;
+    const std::string _input_order_str;
+    const std::string _output_order_str;
+    const ElementOrder _input_order;
+    const ElementOrder _output_order;
     const int _num_polarizations;
     const int _num_dishes;
     static const int _num_chime_cylinders = 4;
-
-    // the actual mappings (these are terribly inefficient)
-    enum station_id_t {};
-    int station_id_to_correlator_index(const station_id_t id) const;
-    int station_id_to_cylinder_index(const station_id_t id) const;
-    int station_id_to_beamformer_index(const station_id_t id) const;
 };
 
 #endif

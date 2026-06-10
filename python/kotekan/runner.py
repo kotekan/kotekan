@@ -880,7 +880,9 @@ class DumpChordBuffer(OutputBuffer):
 
     name = None
 
-    def __init__(self, output_dir, shape, dtype, max_frames=-1):
+    def __init__(
+        self, output_dir, shape, dtype, max_frames=-1, input_order="CHORDBeamformer"
+    ):
         self.name = f"dumpchord_buf{self._buf_ind}"
         stage_name = f"dump{self._buf_ind}"
 
@@ -908,6 +910,7 @@ class DumpChordBuffer(OutputBuffer):
                 "base_dir": output_dir,
                 "prefix_hostname": False,
                 "max_frames": max_frames,
+                "input_order": input_order,
             }
         }
 
@@ -1002,14 +1005,15 @@ class DumpN2Buffer(OutputBuffer):
 
         # If num_freq is given, size the buffer to hold one full accumulation
         # cycle (one frame per frequency) so the producer never stalls.
-        num_frames = num_freq if num_freq is not None else "buffer_depth"
+
+        num_freq_in_buffer = num_freq if num_freq is not None else 1
 
         self.buffer_block = {
             self.name: {
                 "kotekan_buffer": "N2",
                 "n2_layout": "FullUpperTri",
                 "metadata_pool": "N2_pool",
-                "num_frames": num_frames,
+                "num_frames": "buffer_depth * {:d}".format(num_freq_in_buffer),
             }
         }
 
@@ -1617,6 +1621,8 @@ default_config = """
 ---
 type: config
 log_level: INFO
+num_polarizations: 2
+num_dishes: 5
 num_elements: 10
 num_freq_in_frame: 1
 num_local_freq: 1

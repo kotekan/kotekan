@@ -14,6 +14,7 @@
 
 #include "DataType.hpp"         // for DataType
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"        // for Telescope, ElementOrder
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
 #include "kotekanLogging.hpp"   // for FATAL_ERROR
@@ -36,39 +37,38 @@ parseReorderDefault::parseReorderDefault(Config& config, const std::string& uniq
     Stage(config, unique_name, buffer_container,
           std::bind(&parseReorderDefault::main_thread, this)),
     _out_buf(get_buffer("out_buf")), _name(config.get<std::string>(unique_name, "name")),
-    _input_reorder(std::get<0>(parse_reorder_default(config, unique_name))),
-    _input_order(
+    _input_order_str(
         config.get_default<std::string>(unique_name, "input_order", CHIME_ORDER_CORRELATOR)),
-    _output_order(
+    _output_order_str(
         config.get_default<std::string>(unique_name, "output_order", CHIME_ORDER_CYLINDER)),
+    _input_order(parseOrderStr(_input_order_str)),
+    _output_order(parseOrderStr(_output_order_str)),
     _num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     _num_dishes(config.get<int>(unique_name, "num_dishes")) {
     _out_buf->register_producer(unique_name);
 
-    if (_out_buf->frame_size != _input_reorder.size() * sizeof(_input_reorder[0])) {
-        throw std::invalid_argument("parseReorderDefault: incorrect frame size");
+    if (_input_order_str != CHIME_ORDER_CORRELATOR
+            && _input_order_str != CHIME_ORDER_CYLINDER
+            && _input_order_str != CHIME_ORDER_BEAMFORMER) {
+        FATAL_ERROR("Input element order {} is not a CHIME order.", _input_order);
     }
 
-    if (_input_order != CHIME_ORDER_CORRELATOR && _input_order != CHIME_ORDER_CYLINDER
-        && _input_order != CHIME_ORDER_BEAMFORMER) {
-        FATAL_ERROR("input_order must be one of {:s}, {:s}, or {:s}", CHIME_ORDER_CORRELATOR,
-                    CHIME_ORDER_CYLINDER, CHIME_ORDER_BEAMFORMER);
+    if (_output_order_str != CHIME_ORDER_CORRELATOR
+            && _output_order_str != CHIME_ORDER_CYLINDER
+            && _output_order_str != CHIME_ORDER_BEAMFORMER) {
+        FATAL_ERROR("Output element order {} is not a CHIME order.", _output_order);
     }
 
-    if (_output_order != CHIME_ORDER_CORRELATOR && _output_order != CHIME_ORDER_CYLINDER
-        && _output_order != CHIME_ORDER_BEAMFORMER) {
-        FATAL_ERROR("output_order must be one of {:s}, {:s}, or {:s}", CHIME_ORDER_CORRELATOR,
-                    CHIME_ORDER_CYLINDER, CHIME_ORDER_BEAMFORMER);
-    }
+    
 
 #if 0 // this is what it should be
-    if(_input_order == CHIME_ORDER_CORRELATOR) {
+    if(_input_order == ElementOrder::CHIMECorrelator) {
           _out_buf->allocate_ndarray_frame_desc(kotekan::int32, _name, {_num_polarizations*_num_dishes},
                                                 {"E"});
-    } else if(_input_order == CHIME_ORDER_CYLINDER) {
+    } else if(_input_order == ElementOrder::CHIMECylinder) {
           _out_buf->allocate_ndarray_frame_desc(kotekan::int32, _name, {_num_chime_cylinders, _num_polarizations, _num_dishes/_num_chime_cylinders},
                                                 {"C", "P", "D"});
-    } else if(_input_order == CHIME_ORDER_BEAMFORMER) {
+    } else if(_input_order == ElementOrder::CHIMEBeamformer) {
           _out_buf->allocate_ndarray_frame_desc(kotekan::int32, _name, {_num_polarizations, _num_dishes},
                                                 {"P", "D"});
     } else {
@@ -80,51 +80,23 @@ parseReorderDefault::parseReorderDefault(Config& config, const std::string& uniq
                                           {"P", "D"});
 #endif
 }
+    
+ElementOrder parseReorderDefault::parseOrderStr(const std::string &ord_str) {
+    if (ord_str == CHIME_ORDER_CORRELATOR)
+        return ElementOrder::CHIMECorrelator;
+    else if (ord_str == CHIME_ORDER_CYLINDER)
+        return ElementOrder::CHIMECylinder;
+    else if (ord_str == CHIME_ORDER_BEAMFORMER)
+        return ElementOrder::CHIMEBeamformer;
 
-int parseReorderDefault::station_id_to_correlator_index(const station_id_t id) const {
-    assert(id >= 0 && id <= _num_dishes * _num_polarizations);
-    return static_cast<int>(_input_reorder.at(id));
-}
-
-int parseReorderDefault::station_id_to_cylinder_index(const station_id_t id) const {
-    assert(id >= 0 && id <= _num_dishes * _num_polarizations);
-    return id;
-}
-
-int parseReorderDefault::station_id_to_beamformer_index(const station_id_t id) const {
-    assert(id >= 0 && id < _num_dishes * _num_polarizations);
-    // this table is indexed by the index of a station in beamformer order and
-    // returns that index of the station in cylinder order
-    constexpr auto cylinder_to_beamformer_table = get_cylinder_to_beamformer_reorder_table();
-    const int cylinder_idx = station_id_to_cylinder_index(id);
-    const auto cylinder_idx_it = std::find(cylinder_to_beamformer_table.cbegin(),
-                                           cylinder_to_beamformer_table.cend(), cylinder_idx);
-    assert(cylinder_idx_it != cylinder_to_beamformer_table.cend());
-    return static_cast<int>(cylinder_idx_it - cylinder_to_beamformer_table.cbegin());
+    FATAL_ERROR_NON_OO("parseReorderDefault: Order string {:s} was not {:s}, {:s}, or {:s}",
+            ord_str, CHIME_ORDER_CORRELATOR, CHIME_ORDER_CYLINDER, CHIME_ORDER_BEAMFORMER);
 }
 
 void parseReorderDefault::main_thread() {
     int abs_frame_id = 0;
 
-    int (parseReorderDefault::*station_id_to_input_index)(const station_id_t) const;
-    if (_input_order == CHIME_ORDER_CORRELATOR)
-        station_id_to_input_index = &parseReorderDefault::station_id_to_correlator_index;
-    else if (_input_order == CHIME_ORDER_CYLINDER)
-        station_id_to_input_index = &parseReorderDefault::station_id_to_cylinder_index;
-    else if (_input_order == CHIME_ORDER_BEAMFORMER)
-        station_id_to_input_index = &parseReorderDefault::station_id_to_beamformer_index;
-    else
-        FATAL_ERROR("Unexpected order {:s}", _input_order);
-
-    int (parseReorderDefault::*station_id_to_output_index)(const station_id_t) const;
-    if (_output_order == CHIME_ORDER_CORRELATOR)
-        station_id_to_output_index = &parseReorderDefault::station_id_to_correlator_index;
-    else if (_output_order == CHIME_ORDER_CYLINDER)
-        station_id_to_output_index = &parseReorderDefault::station_id_to_cylinder_index;
-    else if (_output_order == CHIME_ORDER_BEAMFORMER)
-        station_id_to_output_index = &parseReorderDefault::station_id_to_beamformer_index;
-    else
-        FATAL_ERROR("Unexpected order {:s}", _output_order);
+    const Telescope& tel = Telescope::instance();
 
     bool first_time = true;
     while (!stop_thread) {
@@ -140,11 +112,15 @@ void parseReorderDefault::main_thread() {
         if (frame == nullptr)
             break;
 
-        for (int idx = 0; idx < static_cast<int>(_input_reorder.size()); ++idx) {
+        // TODO: This is probably somewhat inefficient. Might be better to build
+        // a conversion table from the beginning.
+        // TODO: This assumes the station IDs are consecutive and begin at 0,
+        // which restricts this stage to CHIME orderings.
+        for (int st_idx = 0; st_idx < _num_polarizations * _num_dishes; ++st_idx) {
             // indexed by input_index, returns output_index
-            const station_id_t station_id = static_cast<station_id_t>(idx);
-            const int input_idx = (this->*station_id_to_input_index)(station_id);
-            const int output_idx = (this->*station_id_to_output_index)(station_id);
+            const station_id_t station_id = static_cast<station_id_t>(st_idx);
+            const int input_idx = tel.station_id_to_element_index(station_id, _input_order);
+            const int output_idx = tel.station_id_to_element_index(station_id, _output_order);
             frame[input_idx] = static_cast<int32_t>(output_idx);
         }
 

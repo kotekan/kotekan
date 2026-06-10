@@ -1,4 +1,3 @@
-#include "CHORDTelescope.hpp"    // for CHORDTelescope
 #include "Config.hpp"            // for Config
 #include "DataType.hpp"          // for string_to_type, DataType
 #include "Stage.hpp"             // for Stage
@@ -88,8 +87,6 @@ public:
     virtual ~inventVoltage() {}
 
     void main_thread() override {
-        const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
-
         [[maybe_unused]] std::uint32_t rng_state = 0x0ad42ea5; // must not be 0
 
         // Wait for startup to finish
@@ -167,30 +164,6 @@ public:
             meta->set_coarse_freq(coarse_freq);
             meta->set_freq_upchan_factor(freq_upchan_factor);
             meta->set_freq_upchan_index(freq_upchan_index);
-
-            // Set dish information
-            // (This is the outdated way; the modern way uses the telescope object)
-            const auto& dish_grid = chord_telescope.get_dish_grid();
-            const int num_dish_locations_ew = dish_grid.get_num_dishes_x();
-            const int num_dish_locations_ns = dish_grid.get_num_dishes_y();
-            const int num_dish_locations = num_dish_locations_ew * num_dish_locations_ns;
-            std::vector<int> dish_index(num_dish_locations, -1);
-            for (int dish_loc_ns = 0; dish_loc_ns < num_dish_locations_ns; ++dish_loc_ns) {
-                for (int dish_loc_ew = 0; dish_loc_ew < num_dish_locations_ew; ++dish_loc_ew) {
-                    const int dish_ind = dish_grid.dish_index(dish_loc_ew, dish_loc_ns);
-                    if (dish_ind >= 0) {
-                        assert(dish_index.at(dish_loc_ew + num_dish_locations_ew * dish_loc_ns)
-                               == -1);
-                        dish_index.at(dish_loc_ew + num_dish_locations_ew * dish_loc_ns) = dish_ind;
-                    }
-                }
-            }
-            meta->ndishes = num_dishes;
-            meta->n_dish_locations_ew = num_dish_locations_ew;
-            meta->n_dish_locations_ns = num_dish_locations_ns;
-            meta->dish_index =
-                new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
-            std::copy(dish_index.begin(), dish_index.end(), meta->dish_index);
 
             // Fill buffer
             DEBUG("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);

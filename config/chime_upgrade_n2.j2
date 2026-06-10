@@ -1000,6 +1000,7 @@ vis_accumulate:
     packet_loss_is_scalar: True
     cpu_affinity: [17, 18, 19]
     num_workers: 3
+    input_order: CHIMEBeamformer
     # round_to_even(10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
     # round_up_to_even(10s / ( 16384 * 2.56us ) * 1) = 240
     # num_subintegrations_per_bin_maybe_odd: 10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
@@ -1162,6 +1163,7 @@ dump_rfi_SKtilde:
    in_buf: host_rfi_SKtilde_buffer_post
    file_name: host_rfi_SKtilde_buffer
    create_single_file: true
+   input_order: CHIMEBeamformer
 {% endif %}
 
 # Information for input reordering, packed as

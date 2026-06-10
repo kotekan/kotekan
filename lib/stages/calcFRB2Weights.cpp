@@ -57,10 +57,10 @@ class calcFRB2Weights : public kotekan::Stage {
     // beamforming weights. For CHORD we have `frb1_swap_xy=false`,
     // and for CHIME we have `frb1_swap_xy=true`.
     const bool frb1_swap_xy = config.get_default<bool>(unique_name, "frb1_swap_xy", false);
-    const int num_dishes_x = frb1_swap_xy ? config.get<int>(unique_name, "num_dishes_y")
-                                          : config.get<int>(unique_name, "num_dishes_x");
-    const int num_dishes_y = frb1_swap_xy ? config.get<int>(unique_name, "num_dishes_x")
-                                          : config.get<int>(unique_name, "num_dishes_y");
+    const int num_dishes_x = frb1_swap_xy ? Telescope::instance().get_grid_size_y() 
+                                          : Telescope::instance().get_grid_size_x();
+    const int num_dishes_y = frb1_swap_xy ? Telescope::instance().get_grid_size_x()
+                                          : Telescope::instance().get_grid_size_y();
     const int frb1_num_beams_x = 2 * num_dishes_x;
     const int frb1_num_beams_y = 2 * num_dishes_y;
     const int frb1_num_beams = frb1_num_beams_x * frb1_num_beams_y;
@@ -98,8 +98,16 @@ public:
         assert(W2_buffer);
         if (num_threads < 0)
             FATAL_ERROR("num_threads %d must be positive", num_threads);
-        frb2_beam_positions_buffer->register_producer(unique_name);
+        frb2_beam_positions_buffer->register_consumer(unique_name);
         W2_buffer->register_producer(unique_name);
+        
+        frb2_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
+            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"});
+        W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>("W2",
+                                                             {frb2_num_frequencies,
+                                                              frb2_num_beams_y * frb2_num_beams_x,
+                                                              frb1_num_beams_y, frb1_num_beams_x},
+                                                             {"Fbar", "R", "beamQ", "beamP"});
     }
 
     virtual ~calcFRB2Weights() {}
@@ -113,34 +121,11 @@ public:
             return;
 
         // Telescope
-        const auto& telescope = Telescope::instance();
+        const Telescope& telescope = Telescope::instance();
 
         // Upchannelization schedule
         const auto& upchan_schedule =
             UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
-
-#if 0 // not used
-      // Calculate dish positions
-        const float dish_separation_x = chord_telescope.get_dish_separation_x_m();
-        const float dish_separation_y = chord_telescope.get_dish_separation_y_m();
-        const auto& dish_grid = chord_telescope.get_dish_grid();
-        assert(std::ptrdiff_t(chord_telescope.get_num_dishes()) == num_dishes);
-        std::vector<float> dish_loc_x(num_dishes, -1), dish_loc_y(num_dishes, -1),
-            dish_loc_z(num_dishes, -1);
-        assert(std::ptrdiff_t(dish_grid.get_dish_indices().size()) >= num_dishes);
-        for (const auto dish_index : dish_grid.get_dish_indices()) {
-            if (dish_index >= 0) {
-                const dishInfo& dish_info = chord_telescope.get_dish_at_idx(dish_index);
-                assert(dish_loc_x.at(dish_info.idx) == -1);
-                dish_loc_x.at(dish_info.idx) =
-                    dish_info.grid_x_idx * dish_separation_x + dish_info.feed_pos_disp_m.at(0);
-                dish_loc_y.at(dish_info.idx) =
-                    dish_info.grid_y_idx * dish_separation_y + dish_info.feed_pos_disp_m.at(1);
-                dish_loc_z.at(dish_info.idx) = dish_info.feed_pos_disp_m.at(2);
-            }
-        }
-        assert(std::ptrdiff_t(dish_loc_x.size()) == num_dishes);
-#endif
 
         // Calculate frequencies
         const auto& frequency_channels = upchan_schedule.get_frequency_channels();
@@ -180,7 +165,7 @@ public:
         DEBUG("[{:s}/{:d}] Waiting for buffer...", frb2_beam_positions_buffer->buffer_name,
               frame_index);
         float* const frb2_beam_positions_frame = static_cast<float*>(static_cast<void*>(
-            frb2_beam_positions_buffer->wait_for_empty_frame(unique_name, frame_id)));
+            frb2_beam_positions_buffer->wait_for_full_frame(unique_name, frame_id)));
         if (!frb2_beam_positions_frame)
             return;
 
@@ -196,21 +181,7 @@ public:
         assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
 
         // Set metadata
-        frb2_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
-            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"});
-        frb2_beam_positions_buffer->allocate_new_metadata_object(frame_id);
-        const auto& frb2_beam_positions_meta =
-            get_chord_metadata(frb2_beam_positions_buffer->get_metadata(frame_id));
-        frb2_beam_positions_meta->set_from_frame_desc(
-            frb2_beam_positions_buffer->get_ndarray_frame_desc());
-        frb2_beam_positions_meta->set_fpga_seq_num(0);           // ???
-        frb2_beam_positions_meta->set_time_downsampling_fpga(1); // ???
 
-        W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>("W2",
-                                                             {frb2_num_frequencies,
-                                                              frb2_num_beams_y * frb2_num_beams_x,
-                                                              frb1_num_beams_y, frb1_num_beams_x},
-                                                             {"Fbar", "R", "beamQ", "beamP"});
         W2_buffer->allocate_new_metadata_object(frame_id);
         const auto& W2_meta = get_chord_metadata(W2_buffer->get_metadata(frame_id));
         W2_meta->set_from_frame_desc(W2_buffer->get_ndarray_frame_desc());
@@ -219,26 +190,6 @@ public:
         W2_meta->set_coarse_freq(coarse_freq);
         W2_meta->set_freq_upchan_factor(freq_upchan_factor);
         W2_meta->set_freq_upchan_index(freq_upchan_index);
-
-        // Set frb2_beam_positions
-        {
-            // Find centre
-            const float i_x0 = (frb2_num_beams_x - 1) / 2.0f;
-            const float i_y0 = (frb2_num_beams_y - 1) / 2.0f;
-            for (int i_y = 0; i_y < frb2_num_beams_y; ++i_y) {
-                for (int i_x = 0; i_x < frb2_num_beams_x; ++i_x) {
-                    const int beam = i_x + frb2_num_beams_x * i_y;
-                    const int idx = 2 * beam;
-                    const float theta_x = frb2_beam_separation_x * (i_x - i_x0);
-                    const float theta_y = frb2_beam_separation_y * (i_y - i_y0);
-                    assert(idx >= 0
-                           && idx < std::ptrdiff_t(frb2_beam_positions_buffer->frame_size
-                                                   / sizeof *frb2_beam_positions_frame));
-                    frb2_beam_positions_frame[idx + 0] = theta_x;
-                    frb2_beam_positions_frame[idx + 1] = theta_y;
-                }
-            }
-        }
 
         // Set W2
         {
@@ -266,13 +217,17 @@ public:
             const std::ptrdiff_t str_beamR = str_beamQ * frb1_num_beams_y;
             const std::ptrdiff_t str_freq = str_beamR * frb2_num_beams;
 
-            // TODO: Take these from the telescope object
-            const float sigmax_x = 6.3;
+            // Vectors giving the feed separation in each axis direction in meters.
+            // These vectors are in the GRID frame, where 'x' and 'y' are aligned
+            // with the feed grid array and are also orthogonal. This makes the
+            // vectors very simple, with a single component in the x and y directions
+            // respectively.
+            const float sigmax_x = telescope.get_feed_separation_x_m();
             const float sigmax_y = 0;
             const float sigmax_z = 0;
 
             const float sigmay_x = 0;
-            const float sigmay_y = 8.5;
+            const float sigmay_y = telescope.get_feed_separation_y_m();
             const float sigmay_z = 0;
 
             std::atomic<int> nfreqs_done = 0;
@@ -293,9 +248,9 @@ public:
                     const float wavelength = c0 / afreq;
 
                     for (int beamR = 0; beamR < frb2_num_beams; ++beamR) {
-                        // Unit vector pointing to sky location
-                        const float nx = sin(frb2_beam_positions_frame[2 * beamR + 0]);
-                        const float ny = sin(frb2_beam_positions_frame[2 * beamR + 1]);
+                        // Unit vector pointing to sky location in the GRID frame
+                        const float nx = frb2_beam_positions_frame[2 * beamR + 0];
+                        const float ny = frb2_beam_positions_frame[2 * beamR + 1];
                         const float nz = sqrt(1 - (nx * nx + ny * ny));
 
                         // Kendrick's FRB beamforming notes, equation 7:
@@ -339,9 +294,9 @@ public:
         }
 
         // Mark buffers as full
-        DEBUG("[{:s}/{:d}] Marking buffer as full...", frb2_beam_positions_buffer->buffer_name,
+        DEBUG("[{:s}/{:d}] Marking buffer as empty...", frb2_beam_positions_buffer->buffer_name,
               frame_index);
-        frb2_beam_positions_buffer->mark_frame_full(unique_name, frame_id);
+        frb2_beam_positions_buffer->mark_frame_empty(unique_name, frame_id);
 
         DEBUG("[{:s}/{:d}] Marking buffer as full...", W2_buffer->buffer_name, frame_index);
         W2_buffer->mark_frame_full(unique_name, frame_id);

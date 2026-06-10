@@ -160,6 +160,7 @@ def rfimasksum_data(tmpdir_factory, setup):
         ),
         dtype=np.int32,
         max_frames=num_frames,
+        input_order="CHIMEBeamformer",
     )
 
     test = runner.KotekanStageTester(

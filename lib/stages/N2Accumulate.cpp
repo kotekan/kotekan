@@ -23,7 +23,6 @@
 #include "timeUtil.hpp"           // for EOP, get_UT1_from_ERA, get_ERA_from_UT1, get_UT1_from_time
 #include "fmt.hpp"                // for compile_string_to_view
 #include "gsl-lite.hpp"           // for span
-#include "CHORDTelescope.hpp"     // for CHORDTelescope
 #include "DataType.hpp"           // for DataType
 #include "FrameDesc.hpp"          // for FrameDesc
 #include "Hash.hpp"               // for operator!=
@@ -72,10 +71,12 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _num_elements(_num_polarizations * _num_dishes),
     _num_workers(config.get_default<int>(unique_name, "num_workers", 1)),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
+    _input_order(config.get<ElementOrder>(unique_name, "input_order")),
     _variance_mode(config.get<N2VarianceMode>(unique_name, "variance_mode")),
     _debug_accum_mode(config.get_default<bool>(unique_name, "debug_accum_mode", false)),
     _profile_info(config.get_default<bool>(unique_name, "profile_info", false)),
     _tel(Telescope::instance()),
+    _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _input_order)),
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
 
@@ -301,10 +302,10 @@ void N2Accumulate::main_thread() {
     // EOP at target fringestop time.
     EOP target_eop = eop_null;
 
-    // storage for a single frequency's fringe phases, declared here so it is only
+    // storage for each frequency's fringe phases, declared here so it is only
     // allocated once.
-    std::vector<std::complex<float>> fringe_phase_t0(_num_dishes, 1.0f);
-    std::vector<std::complex<float>> fringe_phase_t1(_num_dishes, 1.0f);
+    std::vector<std::vector<std::complex<float>>> fringe_phase_t0(_num_freq_per_n2k_frame, std::vector<std::complex<float>>(_num_elements, _sentinel_phase));
+    std::vector<std::vector<std::complex<float>>> fringe_phase_t1(_num_freq_per_n2k_frame, std::vector<std::complex<float>>(_num_elements, _sentinel_phase));
 
     // We start with START.
     AccumState state = AccumState::START;
@@ -541,7 +542,7 @@ void N2Accumulate::main_thread() {
                 accum_corr_and_var(_vis.data() + f * corr_stride_f,
                                    _var.data() + f * corr_stride_f / 2, corr_t0 + f * corr_stride_f,
                                    corr_t1 + f * corr_stride_f, freq_MHz, target_eop, eop_t0,
-                                   eop_t1, count_t0, count_t1, fringe_phase_t0, fringe_phase_t1);
+                                   eop_t1, count_t0, count_t1, fringe_phase_t0.at(f), fringe_phase_t1.at(f));
             }
 
             // We're adding frames in pairs, increment frame count by 2
@@ -737,22 +738,26 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
     if (_do_fringestop) {
         // Physical frequency for this f
         // Compute the fringestopping phases for this frequency
-        _tel.cast<CHORDTelescope>().fill_fringestop_phases_1d(freq_MHz, eop_t1, target_eop,
-                                                              fringe_phase_t1);
-        _tel.cast<CHORDTelescope>().fill_fringestop_phases_1d(freq_MHz, eop_t0, target_eop,
-                                                              fringe_phase_t0);
+        _tel.fill_fringestop_phases_1d(freq_MHz, eop_t1, target_eop, _feed_positions_m,
+                                       fringe_phase_t1);
+        _tel.fill_fringestop_phases_1d(freq_MHz, eop_t0, target_eop, _feed_positions_m,
+                                       fringe_phase_t0);
+        for(int64_t e = 0; e < _num_elements; e++) {
+            if (fringe_phase_t1[e] == _sentinel_phase)
+                FATAL_ERROR("fringe_phase_t1[%d] was never_set", e);
+            if (fringe_phase_t0[e] == _sentinel_phase)
+                FATAL_ERROR("fringe_phase_t0[%d] was never_set", e);
+        }
     }
 
     uint64_t block_idx = 0;
     for (int64_t ihi = 0; ihi < _n2k_correlation_lin_blocks; ihi++) {
         for (int64_t jhi = 0; jhi <= ihi; jhi++) {
-            // For this stage to run, _num_elements must be a multiple of 64.
-            // Since correlation blocksize is 16, there will always be a
-            // multiple of 4 correlation_linear_blocks.  So for num_polarization
-            // = 2, a block will not cross a polarization boundary, and we're
-            // guaranteed all elements in a block will share a polarization.
-            uint64_t di0 = _n2k_correlation_blocksize * ihi % _num_dishes;
-            uint64_t dj0 = _n2k_correlation_blocksize * jhi % _num_dishes;
+            // Element indices for the start of this block. Offsets into the fringe_phase vectors.
+            uint64_t i0 = _n2k_correlation_blocksize * ihi;
+            uint64_t j0 = _n2k_correlation_blocksize * jhi;
+
+            // Offsets into the corr and var arrays
             uint64_t offset_b = block_idx * corr_stride_b;
             uint64_t var_offset_b = block_idx * corr_stride_b / 2;
 
@@ -761,10 +766,10 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
             int32_t* vis_fb = vis_f + offset_b;
             float* var_fb = var_f + var_offset_b;
 
-            const std::complex<float>* phase_i = fringe_phase_t1.data() + di0;
-            const std::complex<float>* phase_j = fringe_phase_t1.data() + dj0;
-            const std::complex<float>* phase_even_i = fringe_phase_t0.data() + di0;
-            const std::complex<float>* phase_even_j = fringe_phase_t0.data() + dj0;
+            const std::complex<float>* phase_i = fringe_phase_t1.data() + i0;
+            const std::complex<float>* phase_j = fringe_phase_t1.data() + j0;
+            const std::complex<float>* phase_even_i = fringe_phase_t0.data() + i0;
+            const std::complex<float>* phase_even_j = fringe_phase_t0.data() + j0;
 
             const auto loop_over_block = [&](const auto calc_var_fb) {
                 for (int64_t ilo = 0; ilo < _n2k_correlation_blocksize; ilo++) {
@@ -849,14 +854,17 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         int64_t ut1_end = get_UT1_from_ERA(nrot, ERA_deg_end);
         EOP eop_bin_start = _tel.get_EOP_at_UT1(ut1_start);
         EOP eop_bin_end = _tel.get_EOP_at_UT1(ut1_end);
-        ERAL_deg_start = _tel.cast<CHORDTelescope>().get_ERAL_deg(eop_bin_start);
-        ERAL_deg_end = _tel.cast<CHORDTelescope>().get_ERAL_deg(eop_bin_end);
+        ERAL_deg_start = _tel.get_ERAL_deg(eop_bin_start);
+        ERAL_deg_end = _tel.get_ERAL_deg(eop_bin_end);
     } else {
-        ERA_deg_start = _tel.get_EOP_at_time(_tel.to_time(_accum_fpga_start_tick)).ERA_deg;
-        ERA_deg_end =
-            _tel.get_EOP_at_time(_tel.to_time(_accum_fpga_start_tick + ticks_in_accum)).ERA_deg;
-        ERAL_deg_start = -1; // TODO: update
-        ERAL_deg_end = -1;   // TODO: update
+        // If not ERA, binning is simply the beginning of the first frame to end of the last.
+        EOP eop_start = _tel.get_EOP_at_time(_tel.to_time(_accum_fpga_start_tick));
+        EOP eop_end = _tel.get_EOP_at_time(_tel.to_time(_accum_fpga_start_tick + ticks_in_accum));
+
+        ERA_deg_start = eop_start.ERA_deg;
+        ERA_deg_end = eop_end.ERA_deg;
+        ERAL_deg_start = _tel.get_ERAL_deg(eop_start);
+        ERAL_deg_end = _tel.get_ERAL_deg(eop_end);
     }
 
     int64_t accum_start_time_ns = _tel.to_time_ns(_accum_fpga_start_tick);
@@ -950,8 +958,8 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
 
         meta->bin_start_ERA_deg = ERA_deg_start;
         meta->bin_end_ERA_deg = ERA_deg_end;
-        meta->bin_start_ERAL_deg = ERAL_deg_start; // TODO: update
-        meta->bin_end_ERAL_deg = ERAL_deg_end;     // TODO: update
+        meta->bin_start_ERAL_deg = ERAL_deg_start;
+        meta->bin_end_ERAL_deg = ERAL_deg_end;
 
         meta->fpga_start_tick = _accum_fpga_start_tick;
         meta->frame_start_time_ns = accum_start_time_ns;

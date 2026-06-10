@@ -9,6 +9,7 @@
 #include "DataType.hpp"
 #include "NDArrayBuffer.hpp"
 #include "NDArrayRingBuffer.hpp"
+#include "Telescope.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
@@ -153,10 +154,6 @@ private:
     };
     static constexpr std::ptrdiff_t W_length = W_strides[W_rank];
     static constexpr std::ptrdiff_t W_length_in_bytes = type_total_bytes(W_type) * W_length;
-    // // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary. static_assert(args::W == args::I
-    //               ? true
-    //               : W_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: voltage_name
     static constexpr const char* Ebar_quantity = "Ebar";
@@ -194,10 +191,6 @@ private:
     static constexpr std::ptrdiff_t Ebar_length = Ebar_strides[Ebar_rank];
     static constexpr std::ptrdiff_t Ebar_length_in_bytes =
         type_total_bytes(Ebar_type) * Ebar_length;
-    // // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary. static_assert(args::Ebar == args::I
-    //               ? true
-    //               : Ebar_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // I: frb_beamgrid_name
     static constexpr const char* I_quantity = "I";
@@ -233,10 +226,6 @@ private:
     };
     static constexpr std::ptrdiff_t I_length = I_strides[I_rank];
     static constexpr std::ptrdiff_t I_length_in_bytes = type_total_bytes(I_type) * I_length;
-    // // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary. static_assert(args::I == args::I
-    //               ? true
-    //               : I_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr const char* info_quantity = "info";
@@ -272,10 +261,6 @@ private:
     static constexpr std::ptrdiff_t info_length = info_strides[info_rank];
     static constexpr std::ptrdiff_t info_length_in_bytes =
         type_total_bytes(info_type) * info_length;
-    // // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU
-    // kernels where necessary. static_assert(args::info == args::I
-    //               ? true
-    //               : info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     const bool poison_buffers;
@@ -465,10 +450,8 @@ cudaCHIMEFRBBeamformer_chime_U16::execute(cudaPipelineState& /*pipestate*/,
             I_buffer.set_metadata(Ebar_buffer.get_metadata());
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
-        assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-        assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
-        assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
-        assert(Ebar_meta->dish_index);
+        assert(Telescope::instance().get_grid_size_x() <= cuda_dish_layout_M);
+        assert(Telescope::instance().get_grid_size_y() <= cuda_dish_layout_N);
 
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();

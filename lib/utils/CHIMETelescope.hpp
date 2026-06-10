@@ -4,6 +4,7 @@
 #include "Config.hpp"       // for Config
 #include "ICETelescope.hpp" // for ICETelescope
 #include "Telescope.hpp"    // for freq_id_t, stream_t
+#include "geoUtil.hpp"      // for GeoFrame
 
 #include "json.hpp" // for json
 

@@ -30,8 +30,8 @@ chord_tel = {
     "sampling_rate_MHz": 3.2e3,
     "fft_length": 16384,
     "nyquist_zone": 1,
-    "num_dishes_x": 12,
-    "num_dishes_y": 6,
+    "dish_grid_size_x": 12,
+    "dish_grid_size_y": 6,
     "dish_inputs": [],
     "origin_itrs_lat_deg": 50.0,
     "origin_itrs_lon_deg": -120.0,
@@ -43,8 +43,8 @@ chime_tel = {
     "fft_length": 2048,
     "nyquist_zone": 2,
     "require_gps": False,
-    "origin_itrs_lat_deg": 50.0,
-    "origin_itrs_lon_deg": -120.0,
+    "inst_lat": 50.0,
+    "inst_long": -120.0,
 }
 
 NS_TOL = 5  # Allowing 5 ns of slop in eop
@@ -179,8 +179,10 @@ def setup(request, accum_setup):
 
     request.param["rng"] = np.random.default_rng(seed=_TEST_SEED)
 
-    if accum_setup["bin_in_ERA"] and request.param["tel"]["name"] != "CHORDTelescope":
-        request.param["fail"] = True
+    if request.param["tel"]["name"] == "CHIMETelescope":
+        accum_setup["input_order"] = "CHIMEBeamformer"
+    else:
+        accum_setup["input_order"] = "CHORDBeamformer"
 
     yield request.param
 
@@ -830,10 +832,12 @@ def accum_list(setup, accum_setup):
             accum["bin_end_ERA_deg"] = tel.get_ERA_at_t_inst_ns(
                 t_end, setup["tel"], setup["set_eop"]
             )
-            accum["bin_start_ERAL_deg"] = -1.0
-            accum["bin_end_ERAL_deg"] = -1.0
-            # accum['bin_start_ERAL_deg'] = tel.get_local_ERA_at_t_inst_ns(t_start, setup['tel'], setup['set_eop'])
-            # accum['bin_end_ERAL_deg'] = tel.get_local_ERA_at_t_inst_ns(t_end, setup['tel'], setup['set_eop'])
+            accum["bin_start_ERAL_deg"] = tel.get_local_ERA_at_t_inst_ns(
+                t_start, setup["tel"], setup["set_eop"]
+            )
+            accum["bin_end_ERAL_deg"] = tel.get_local_ERA_at_t_inst_ns(
+                t_end, setup["tel"], setup["set_eop"]
+            )
 
     return accums
 

@@ -315,42 +315,7 @@ public:
                     assert(success);
                 }
 
-                if (meta->ndishes >= 0) {
-                    const auto ndishes = group->CreateAttribute(
-                        "ndishes", std::vector<GUInt64>{},
-                        GDALExtendedDataType::Create(get_gdal_datatype(meta->ndishes)));
-                    const bool success = ndishes->Write(&meta->ndishes, sizeof meta->ndishes);
-                    assert(success);
-                }
-
                 std::shared_ptr<GDALDimension> dishM, dishN;
-                if (meta->dish_index) {
-                    // const auto dish_index = group->CreateAttribute(
-                    //     "dish_index",
-                    //     std::vector<GUInt64>{GUInt64(meta->n_dish_locations_ns),
-                    //                          GUInt64(meta->n_dish_locations_ew)},
-                    //     GDALExtendedDataType::Create(GDT_Int32));
-                    // dish_index->Write(meta->dish_index,
-                    //                   meta->n_dish_locations_ew * meta->n_dish_locations_ns);
-                    const auto datatype =
-                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->dish_index));
-                    dishM = group->CreateDimension("dishM", "", "", meta->n_dish_locations_ns);
-                    assert(dishM);
-                    dishN = group->CreateDimension("dishN", "", "", meta->n_dish_locations_ew);
-                    assert(dishN);
-                    const std::vector<std::shared_ptr<GDALDimension>> dimensions{dishM, dishN};
-                    assert(dimensions.at(0));
-                    assert(dimensions.at(1));
-                    const auto dish_index =
-                        group->CreateMDArray("dish_index", dimensions, datatype);
-                    assert(dish_index);
-                    const std::vector<GUInt64> arrayStart{0, 0};
-                    const std::vector<std::size_t> count{std::size_t(meta->n_dish_locations_ns),
-                                                         std::size_t(meta->n_dish_locations_ew)};
-                    const bool success = dish_index->Write(arrayStart.data(), count.data(), nullptr,
-                                                           nullptr, datatype, meta->dish_index);
-                    assert(success);
-                }
 
                 // Array rank
                 const int ndims = meta->dims;

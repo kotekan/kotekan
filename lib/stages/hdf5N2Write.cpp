@@ -63,6 +63,7 @@
 #include "N2FrameDesc.hpp"                        // for N2FrameDesc
 #include "N2Util.hpp"                             // for freq_ctype, frameID, modulo, cfloat
 #include "fmt.hpp"                                // for compile_string_to_view, format, format_...
+#include "geoUtil.hpp"                            // for mat3x3d_t
 #include "hdf5Files.hpp"                          // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
 #include "jsonMetadata.hpp"                       // for MAX_NUM_RFI_THRESHOLDS
 #include "kotekanLogging.hpp"                     // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
@@ -199,16 +200,9 @@ void N2FileData::_check_create_attribute(HighFive::File& file, const std::string
         }
         return;
     }
-
-    // Create attribute; container types need an explicit element datatype.
-    if constexpr (has_value_type<T>::value && !std::is_same_v<T, std::string>) {
-        auto attr = file.createAttribute(name, HighFive::DataSpace::From(value),
-                                         HighFive::create_datatype<typename T::value_type>());
-        attr.write(value);
-    } else {
-        auto attr = file.createAttribute<T>(name, HighFive::DataSpace::From(value));
-        attr.write(value);
-    }
+    
+    // Attribute doesn't exist. Create & write it, let HighFive infer the data space.
+    file.createAttribute(name, value);
 }
 
 void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& name,
@@ -330,6 +324,7 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "num_prod", fv.num_prod);
         _check_create_attribute(*file, "num_ev", fv.num_ev);
         _check_create_attribute(*file, "n2_layout", N2Layout_to_string(fv.n2_layout));
+        _check_create_attribute(*file, "input_order", ElementOrder_to_string(input_order));
 
         // Telescope info
         const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
@@ -339,8 +334,16 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "gps_time_enabled", telescope.gps_time_enabled());
         _check_create_attribute(*file, "frame0_unix_ns", telescope.to_time_ns(0));
         _check_create_attribute(*file, "fpga_seq_length_ns", telescope.seq_length_nsec());
-        _check_create_attribute(*file, "origin_itrs_lon_deg", telescope.get_origin_itrs_lon_deg());
-        _check_create_attribute(*file, "origin_itrs_lat_deg", telescope.get_origin_itrs_lat_deg());
+        _check_create_attribute(*file, "itrs_lon_deg", telescope.get_itrs_lon_deg());
+        _check_create_attribute(*file, "itrs_lat_deg", telescope.get_itrs_lat_deg());
+        _check_create_attribute(*file, "grid_orientation", telescope.get_grid_orientation());
+        _check_create_attribute(*file, "dish_orientation", telescope.get_dish_orientation());
+        _check_create_attribute(*file, "grid_size_x", telescope.get_grid_size_x());
+        _check_create_attribute(*file, "grid_size_y", telescope.get_grid_size_y());
+        _check_create_attribute(*file, "feed_separation_x_m", telescope.get_feed_separation_x_m());
+        _check_create_attribute(*file, "feed_separation_y_m", telescope.get_feed_separation_y_m());
+        _check_create_attribute(*file, "main_array_grid_indices", telescope.get_main_array_grid_indices(num_elements, input_order));
+        _check_create_attribute(*file, "feed_positions_m", telescope.get_feed_positions_m(num_elements, input_order));
         _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
         _check_create_attribute(*file, "num_dishes", telescope.get_num_dishes());
         _check_create_attribute(*file, "num_file_f",
@@ -375,20 +378,6 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                 _check_create_attribute(*file, "EOP_xp_as", eop_xp_as);
                 _check_create_attribute(*file, "EOP_yp_as", eop_yp_as);
             }
-        }
-
-        // Store grid orientation (3x3 matrix) and dish orientation (3x3 matrix)
-        {
-            std::array<double, 9> grid_orientation;
-            std::array<double, 9> dish_orientation;
-            for (int i = 0; i < 3; i++) {
-                for (int j = 0; j < 3; j++) {
-                    grid_orientation[3 * i + j] = telescope.get_grid_orientation_el(i, j);
-                    dish_orientation[3 * i + j] = telescope.get_dish_orientation_el(i, j);
-                }
-            }
-            _check_create_attribute(*file, "grid_orientation", grid_orientation);
-            _check_create_attribute(*file, "dish_orientation", dish_orientation);
         }
 
         // Store dish input info
@@ -636,13 +625,13 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
 }
 
 N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameView& fv,
-                       const double open_wall_s_, const uint64_t abs_file_idx_,
+                       const double open_wall_s_, const uint64_t abs_file_idx_, const ElementOrder input_order_,
                        const size_t blocksize_f_, const size_t blocksize_p_,
                        const size_t blocksize_t_, const std::string compression_,
                        const size_t compression_level_, const bool use_bitshuffle_,
                        const std::string base_dir_, const std::string baseband_gain_file_,
                        const int baseband_gain_update_idx_) :
-    num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev),
+    num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev), input_order(input_order_),
     num_file_f(Telescope::instance().cast<CHORDTelescope>().num_science_freqs()),
     num_file_t(num_file_t_), file_mode(file_mode_), blocksize_f(blocksize_f_),
     blocksize_p(blocksize_p_), blocksize_t(blocksize_t_), compression(compression_),
@@ -1117,6 +1106,7 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     _late_frame_grace_seconds(
         config.get_default<std::uint64_t>(unique_name, "late_frame_grace_seconds", 60)),
     _max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
+    _input_order(config.get<ElementOrder>(unique_name, "input_order")),
     _buffer(get_buffer("in_buf")),
     _write_time_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_write_time_seconds", unique_name)),
@@ -1468,7 +1458,7 @@ void hdf5N2Write::main_thread() {
         } else {
             // Create N2FileData for file (also looks for .partial)
             auto N2FileData_obj = std::make_unique<N2FileData>(
-                N2FileData::CHORD, _num_file_t, fv, frame_recv_time, abs_file_idx, _blocksize_f,
+                N2FileData::CHORD, _num_file_t, fv, frame_recv_time, abs_file_idx, _input_order, _blocksize_f,
                 _blocksize_p, _blocksize_t, _compression, _compression_level, _use_bitshuffle,
                 _base_dir, _baseband_gain_file, _baseband_gain_update_idx);
 

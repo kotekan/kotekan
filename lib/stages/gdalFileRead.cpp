@@ -28,7 +28,6 @@
 #include <string>                 // for basic_string, char_traits, string, operator<<, operator==
 #include <vector>                 // for vector
 
-#include "CHORDTelescope.hpp"     // for dish_index_t
 #include "fmt.hpp"                // for compile_string_to_view
 
 using namespace gdal;
@@ -233,48 +232,6 @@ public:
                     assert(time_downsampling_fpga_shape.empty());
                     meta->set_time_downsampling_fpga(time_downsampling_fpga->ReadAsInt());
                     assert(meta->get_time_downsampling_fpga() > 0);
-                }
-            }
-
-            {
-                const auto ndishes = group->GetAttribute("ndishes");
-                if (ndishes) {
-                    const auto ndishes_shape = ndishes->GetDimensionsSize();
-                    assert(ndishes_shape.empty());
-                    meta->ndishes = ndishes->ReadAsInt();
-                    assert(meta->ndishes >= 0);
-                    assert(meta->ndishes <= CHORD_META_MAX_FREQ);
-                } else {
-                    meta->ndishes = -1;
-                }
-            }
-
-            {
-                const auto dish_index = group->OpenMDArray("dish_index");
-                if (dish_index) {
-                    const auto dimensions = dish_index->GetDimensions();
-                    assert(dimensions.size() == 2);
-                    assert(dimensions.at(0)->GetName() == "dishM");
-                    assert(dimensions.at(1)->GetName() == "dishN");
-                    meta->n_dish_locations_ns = dimensions.at(0)->GetSize();
-                    meta->n_dish_locations_ew = dimensions.at(1)->GetSize();
-                    assert(meta->n_dish_locations_ns >= 0);
-                    assert(meta->n_dish_locations_ew >= 0);
-                    const std::vector<GUInt64> arrayStartIdx{0, 0};
-                    const std::vector<std::size_t> count{std::size_t(meta->n_dish_locations_ns),
-                                                         std::size_t(meta->n_dish_locations_ew)};
-                    const auto datatype =
-                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->dish_index));
-                    meta->dish_index =
-                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
-                    const auto success =
-                        dish_index->Read(arrayStartIdx.data(), count.data(), nullptr, nullptr,
-                                         datatype, meta->dish_index, meta->dish_index,
-                                         sizeof *meta->dish_index * meta->n_dish_locations_ns
-                                             * meta->n_dish_locations_ew);
-                    assert(success);
-                } else {
-                    meta->dish_index = nullptr;
                 }
             }
 

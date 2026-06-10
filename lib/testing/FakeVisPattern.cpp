@@ -5,7 +5,6 @@
 #include <math.h>  // for cos, sin, cosf, sinf, M_PI
 #include <time.h>  // for timespec
 // #include <lapacke.h> // for LAPACKE_cheevr, LAPACK_ROW_MAJOR
-#include "CHORDTelescope.hpp" // for CHORDTelescope, EOP
 #include "Config.hpp"         // for Config
 #include "Hash.hpp"           // for Hash
 #include "N2Metadata.hpp"     // for N2Metadata
@@ -494,16 +493,15 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
     frame.fpga_seq_total = frame.fpga_seq_length - n_rfi_only_ticks - n_lost_ticks;
     frame.rfi_total = n_rfi_ticks;
 
-    const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
+    const Telescope& tel = Telescope::instance();
 
-    uint32_t num_dishes = tel.get_num_dishes();
     uint32_t num_elements = frame.num_elements;
-
+    uint32_t num_dishes = num_elements / 2;
 
     timespec time = tel.to_time(std::get<0>(frame.time) + frame.fpga_seq_length / 2);
     struct EOP eop = tel.get_EOP_at_time(time);
 
-    std::array<double, 3> n = tel.get_sky_vec_in_grid_coords(ra, dec, eop);
+    vec3d_t n = tel.vec_cirs_ra_dec_to_grid(ra, dec, eop);
 
     double f = 1e6 * tel.to_freq_MHz(frame.freq_id);
     double lambda = C / f;
@@ -524,13 +522,11 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
     for (uint32_t el_i = 0; el_i < num_elements; el_i++) {
         for (uint32_t el_j = el_i; el_j < num_elements; el_j++) {
 
-            uint32_t dish_i = el_i % (num_dishes);
-            uint32_t dish_j = el_j % (num_dishes);
             uint32_t pol_i = el_i / num_dishes;
             uint32_t pol_j = el_j / num_dishes;
 
-            std::array<double, 3> pos_i = tel.get_dish_position_in_grid_coords(dish_i);
-            std::array<double, 3> pos_j = tel.get_dish_position_in_grid_coords(dish_j);
+            vec3d_t pos_i = tel.element_index_to_feed_position_m(el_i, ElementOrder::CHORDBeamformer);
+            vec3d_t pos_j = tel.element_index_to_feed_position_m(el_j, ElementOrder::CHORDBeamformer);
 
             double phase = 2 * M_PI
                            * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]
@@ -569,20 +565,17 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     frame._metadata->n_rfi_only_fpga_ticks = n_rfi_only_ticks;
     frame._metadata->n_pl_fpga_ticks = n_lost_ticks;
 
-    const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
+    const Telescope& tel = Telescope::instance();
 
-    uint32_t num_dishes = tel.get_num_dishes();
     uint32_t num_elements = frame.num_elements;
+    uint32_t num_dishes = num_elements / 2;
 
     timespec time = tel.to_time(frame.fpga_start_tick + frame.frame_length_fpga_ticks / 2);
 
     struct EOP eop = tel.get_EOP_at_time(time);
 
-    std::array<double, 3> n = tel.get_sky_vec_in_grid_coords(ra, dec, eop);
-
-    std::array<double, 3> n_point_dish = tel.get_pointing_vec_in_dish_coords();
-    std::array<double, 3> n_point_topo = tel.vec_dish_to_topocen(n_point_dish);
-    std::array<double, 3> n_point_grid = tel.vec_topocen_to_grid(n_point_topo);
+    vec3d_t n = tel.vec_cirs_ra_dec_to_grid(ra, dec, eop);
+    vec3d_t n_point_grid = tel.get_phase_center_in_grid_frame();
 
     double f = tel.to_freq_MHz(frame.freq_id);
     double lambda = C / (1e6 * f);
@@ -614,13 +607,11 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
     for (uint32_t el_i = 0; el_i < num_elements; el_i++) {
         for (uint32_t el_j = el_i; el_j < num_elements; el_j++) {
 
-            uint32_t dish_i = el_i % (num_dishes);
-            uint32_t dish_j = el_j % (num_dishes);
             uint32_t pol_i = el_i / num_dishes;
             uint32_t pol_j = el_j / num_dishes;
 
-            std::array<double, 3> pos_i = tel.get_dish_position_in_grid_coords(dish_i);
-            std::array<double, 3> pos_j = tel.get_dish_position_in_grid_coords(dish_j);
+            vec3d_t pos_i = tel.element_index_to_feed_position_m(el_i, ElementOrder::CHORDBeamformer);
+            vec3d_t pos_j = tel.element_index_to_feed_position_m(el_j, ElementOrder::CHORDBeamformer);
 
             double phase = 2 * M_PI
                            * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]

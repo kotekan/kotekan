@@ -12,6 +12,7 @@
 
 #include "Config.hpp"          // for Config
 #include "factory.hpp"         // for FACTORY, CREATE_FACTORY, REGISTER_NAMED_TYPE_WITH_FACTORY
+#include "geoUtil.hpp"         // for GeoFrame
 #include "kotekanLogging.hpp"  // for ERROR, kotekanLogging
 #include "restServer.hpp"      // for connectionInstance
 #include "timeUtil.hpp"        // for EOP
@@ -28,6 +29,38 @@ CREATE_FACTORY(Telescope, const kotekan::Config&, const std::string&);
 using nyquist_zone_t = std::uint8_t;
 using freq_id_t = std::uint32_t; // logical ID, not necessarily an index
 #define FREQ_ID_NOT_SET UINT32_MAX
+using station_id_t = std::uint32_t;
+using grid_idx_2d_t = std::array<int64_t, 2>;  // signed, use -1 as a sentinel for an unfilled
+                                               // location.
+
+/**
+ * @brief Enum labelling the ordering of feed elements in memory.
+ */
+enum class ElementOrder : int32_t {
+    // Order as received by the CHIME X-engine. Slightly scrambled, defined via table.
+    CHIMECorrelator = 0,
+    
+    // Arrays are [C][P][CF] where C counts cylinders west to east, P counts polarizations,
+    // CF counts feeds in a cylinder south to north.
+    CHIMECylinder = 1,
+
+    // Arrays are [P][D], P = polarizations, D = feed, ordered as in Cylinder
+    CHIMEBeamformer = 2,        
+
+    // Ordering for pre-pathfinder CHORD. Arrays are [D][P], D-ordering is defined via table.
+    CHORDEarly = 3,   
+    
+    // Ordering for production CHORD. Arrays are [P][D], D-ordering is defined via table
+    CHORDBeamformer = 4,  
+};
+
+
+std::string ElementOrder_to_string(const ElementOrder& o);   /// Convert an ElementOrder to a string
+ElementOrder ElementOrder_from_string(const std::string& s); /// Convert a string to an ElementOrder
+std::ostream& operator<<(std::ostream& os, const ElementOrder& o); 
+std::string format_as(const ElementOrder& o);
+void to_json(nlohmann::json& j, const ElementOrder& o);
+void from_json(const nlohmann::json& j, ElementOrder& o);
 
 
 /**
@@ -45,11 +78,87 @@ struct stream_t {
  *
  * This serves as a generic Telescope base class. It cannot be instantiated,
  * only derived classes can.  It provides virtual hooks for routines to map
- * between sequence number and instrument time, and for returning sampling
+ * between sequence number and instrument time, for returning sampling
  * parameters (raw sample rate, frequency spacing, map from freq_id to physical
- * frequency, etc).  It also contains the Earth Orientation Parameter (EOP) table,
+ * frequency, etc), and for associating feed elements in memory with physical locations.
+ * It contains the Earth Orientation Parameter (EOP) table,
  * which holds data to compute UT1 time and CIRS coordinate transformations from
- * instrument time.
+ * instrument time. It facilitates transformations between feed baselines to CIRS coordinates and back.
+ *
+ * Coordinate frames used by the Telescope
+ * ---------------------------------------
+ *
+ * ## GRID ##
+ *  The GRID frame is an orthonormal Cartesian coordinate system whose:
+ *      - x-axis is parallel to fiducial East/West feed separation vector (pointing ~East).  
+ *      - y-axis is parallel to fiducial North/South feed separation vector (pointing ~North).  
+ *      - z-axis is normal to the fiducial feed plane (pointing ~Up).
+ *
+ *  The actual telescope feed grid on the ground is not perfectly square.  The GRID frame is an orthonormal
+ *  frame which fits the physical feed locations as well as possible, as determined by the telescope
+ *  developers.
+ *
+ *  Feed Positions are returned in the GRID frame.
+ *
+ *  The GRID origin is an optional `offset` from the TOPO origin
+ *
+ * ## TOPO ##
+ *  The Topocentric (TOPO) frame is an orthonormal Cartesian coordinate system located at a position on the
+ *  Earth.
+ *      - x-axis is parallel to local geodetic East (increasing longitude)
+ *      - y-axis is parallel to local geodecic North (increasing latitude)
+ *      - z-axis is parallel to local geodetic Up (increasing altitude)
+ *  The TOPO origin is at a given Latitude and Longitude in ITRS coordinates.
+ *
+ * ## ITRS ##
+ *  The International Terrestrial Reference System (ITRS) is the internationally agreed upon coordinate
+ *  system for the planet Earth. This is the coordinate system where geodetic latitude and longitude live.
+ *  The IAU and IERS define the transformations between ITRS and astronomical coordinates.
+ *  ITRS also has a Cartesian representation with:
+ *      - x-axis directed through latitude = 0 (the Equator), longitude = 0
+ *      - y-axis directed through latitude = 0 (the Equator), longitude = 90 degrees East
+ *      - z-axis directed through latitude = 90 (the North Pole)
+ *  The ITRS origin is located at Earth Barycenter.
+ *
+ * ## CIRS ##
+ *  The Celestial Intermediate Reference System (CIRS) is a set of celestial coordinates defined by the IAU
+ *  and IERS. This system is non-rotating with respect to the distant stars, and is aligned with the Earth's
+ *  instantaneous axis of rotation. It is an intermediate step between ITRS (Earth-based) and ICRS (the fixed
+ *  stars). In Kotekan we do not need realtime knowledge of the ICRS so we only go as far as the CIRS, which
+ *  encodes the full rotational state of the Earth but not the precession/nutation of its axis.
+ *
+ *  We track targets in the sky by following their fixed CIRS coordinates.
+ *
+ *  The ITRS <-> CIRS transformation is time dependent, and encoded by the time-dependent Earth Orientation
+ *  Parameters (EOP). 
+ *
+ * The Main Array Grid
+ * -------------------
+ *
+ *  Kotekan Telescopes are formed of a "main array" of feeds in a rectilinear grid on the Earth. This grid
+ *  must be planar (flat) to a good approximation, but otherwise may have arbitrary orientation on the ground.
+ *
+ *  We assume (for now) the grid is near-perfect rectilinear, with feeds evenly spaced along orthogonal axes
+ *  X and Y. X is the easterly-directed separation spacing, and Y is the northerly-directed spacing. Feeds
+ *  in this grid have a 2D `grid_index`: (`grid_idx_x`, `grid_idx_y`).  These count from 0 beginning in the
+ *  southwest corner of the main array, so any feed in the main array has NON-NEGATIVE grid indices.
+ *
+ *  Some feeds may not be in the main array (RFI Antennae, external telescopes, maser feeds, etc). These feeds
+ *  have `grid_index` = (-1, -1).
+ *
+ *  Feeds may not be exactly on station. Their 3D position returned by `get_feed_positions_m()` may include
+ *  per-feed displacements from the fiducial station position.  Non-main-array feeds may also have a feed
+ *  position. Feed positions are given in the GRID frame.
+ *
+ * ElementOrder
+ * ------------
+ *
+ *  Different telescopes (and different parts of the pipeline for the same telescope) may place their feeds
+ *  in memory via different arrangements. To return the feed position corresponding to a particular element
+ *  in a data array, you must provide the element index AND an ElementOrder variable specifying the ordering
+ *  of this array. Different orders may, for instance, transpose polarization and dish, or may simply permute
+ *  ordering of dishes within the dish axis.
+ *  
  *
  * REST Endpoints
  *
@@ -298,6 +407,78 @@ public:
     virtual uint64_t seq_length_nsec() const = 0;
 
     /**
+     * @brief Convert an element array index in a particular ordering into the corresponding station_id
+     *
+     * @param el_idx    Index into the element axis of an array
+     * @param ord       The ordering of the array
+     *
+     * @return  Station ID for this index.
+     **/
+    virtual station_id_t element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const = 0;
+
+    /**
+     * @brief Convert a Station ID into an element array index in a particular ordering.
+     *
+     * @param st_id Station ID of an input element.
+     * @param ord   The ordering for the output index.
+     *
+     * @return  element array index for this Station ID.
+     **/
+    virtual uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const = 0;
+
+    /**
+     * @brief Return the integral grid location for this station ID if it is an input in the 
+     * main array, otherwise return (-1, -1).
+     *
+     * @param st_id Station ID of an input element.
+     *
+     * @return  Grid coordinates (idx_x, idx_y) for this Station ID, or (-1, -1) if this station
+     * is not in the main array.
+     **/
+    virtual grid_idx_2d_t station_id_to_main_array_grid_indices(station_id_t st_id) const = 0;
+
+    /**
+     * @brief Return the 3D position in the GRID frame of this station ID.
+     
+     * @param st_id Station ID of an input element.
+     *
+     * @return 3D coordinates in meters for this station ID in the GRID frame.
+     **/
+    virtual vec3d_t station_id_to_feed_position_m(station_id_t st_id) const = 0;
+
+    /**
+     * @brief   Return the feed separation in the Grid-X direction in meters.
+     **/
+    virtual double get_feed_separation_x_m() const = 0;
+
+    /**
+     * @brief   Return the feed separation in the Grid-Y direction in meters.
+     **/
+    virtual double get_feed_separation_y_m() const = 0;
+
+    /**
+     * @brief   Return the size of the main array grid in the X (~East) direction. e.g.
+     *          a 2 x 3-dish array would return 2 (assuming 2 dishes E/W and 3 dishes N/S).
+     *          grid_idx[0] must be less than this.
+     **/
+    virtual uint64_t get_grid_size_x() const = 0;
+
+    /**
+     * @brief   Return the size of the main array grid in the Y (~North) direction. e.g.
+     *          a 2 x 3-dish array would return 3 (assuming 2 dishes E/W and 3 dishes N/S).
+     *          grid_idx[1] must be less than this.
+     **/
+    virtual uint64_t get_grid_size_y() const = 0;
+
+    /**
+     * @brief   Return the outward-directed 3D pointing vector for the telescope phase center in the GRID
+     *          frame: n[3] = {nx, ny, nz},  |n| = 1.0.
+     * For CHIME this should be simply the zenith (n ~ {0, 0, 1}),
+     * for CHORD this is the boresight of the dishes, and depends on their co-elevation.
+     **/
+    virtual vec3d_t get_phase_center_in_grid_frame() const = 0;
+
+    /**
      * @brief   Return a copy of the current EOP table.
      **/
     std::vector<EOP> get_current_EOP_table() const;
@@ -329,6 +510,154 @@ public:
      **/
     EOP get_EOP_at_UT1(int64_t ut1) const;
 
+    /**
+     * @brief   Compute the local ERA (eral in SOFA) at the telescope site.
+     *
+     *  The local ERA is:
+     *
+     *      ERAL = ERA + longitude(ITRS) + s',
+     *
+     *  where:
+     *      ERA is the Earth Rotation Angle (era00 in SOFA),
+     *      longitude(ITRS) is the geodetic longitude of the site in ITRS
+     *      s' is the TIO locator (sp00 in SOFA)
+     *
+     *  This is the equivalent to Local Apparent Sidereal Time (LAST) in the CIO-based
+     *  coordinate systems implemented by the IAU in 2000.
+     *
+     *  The s' is very small, it accrues at 47 microarcseconds per century, and is
+     *  ignored in this calculation.
+     *
+     * @param   eop  An EOP object for the time at which the ERAL is requested.
+     *
+     * @return The local ERA in degrees.
+     **/
+    double get_ERAL_deg(EOP& eop) const;
+
+    /**
+     * @brief   Return the longitude of the instrument.
+     **/
+    double get_itrs_lon_deg() const;
+
+    /**
+     * @brief   Return the latitude of the instrument.
+     **/
+    double get_itrs_lat_deg() const;
+
+    /**
+     * @brief   Return the Topo -> Grid frame rotation matrix.
+     **/
+    mat3x3d_t get_grid_orientation() const;
+
+    /**
+     * @brief   Transform the given vector from topocentric to grid coords.
+     *
+     * @param   v_topo  Vector in topocentric coordinates.
+     **/
+    vec3d_t vec_topo_to_grid(const vec3d_t& v_topo) const;
+
+    /**
+     * @brief   Transform the given vector from grid to topocentric coords.
+     *
+     * @param   v_grid  Vector in grid coordinates.
+     **/
+    vec3d_t vec_grid_to_topo(const vec3d_t& v_grid) const;
+
+    /**
+     * @brief   Transform the given vector from ITRS to topocentric coords.
+     *
+     * @param   v_topo  Vector in ITRS coordinates.
+     **/
+    vec3d_t vec_itrs_to_topo(const vec3d_t& v_itrs) const;
+
+    /**
+     * @brief   Transform the given vector from topocentric to ITRS coords.
+     *
+     * @param   v_topo  Vector in topocentric coordinates.
+     **/
+    vec3d_t vec_topo_to_itrs(const vec3d_t& v_topo) const;
+
+    /**
+     * @brief   Transform the given vector from CIRS to ITRS coords.
+     *
+     * @param   v_topo  Vector in CIRS coordinates.
+     * @param   eop     EOP for time of transformation.
+     **/
+    vec3d_t vec_cirs_to_itrs(const vec3d_t& v_cirs, const EOP& eop) const;
+
+    /**
+     * @brief   Transform the given vector from ITRS to CIRS coords.
+     *
+     * @param   v_topo  Vector in ITRS coordinates.
+     * @param   eop     EOP for time of transformation.
+     **/
+    vec3d_t vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const;
+
+    /**
+     * @brief   Return an observing vector (normalized vec3) in CIRS
+     *          coordinates, corresponding to the given CIRS RA and DEC.
+     * @param   ra_cirs_deg  Target Right Ascension in CIRS frame in degrees
+     * @param   dec_cirs_deg Target Declination in CIRS frame in degrees
+     **/
+    vec3d_t vec_cirs_from_ra_dec(double ra_cirs_deg, double dec_cirs_deg) const;
+
+    /**
+     * @brief   Return the CIRS RA & DEC corresponding to the given observing vector
+     *          (normalized vec3) in CIRS coordinates.
+     * @param   v_cirs          Input vector in CIRS coordinates.
+     * @param   ra_cirs_deg     Reference to return target Right Ascension in CIRS frame in degrees
+     * @param   dec_cirs_deg    Reference to return target Declination in CIRS frame in degrees
+     **/
+    void vec_cirs_to_ra_dec(const vec3d_t& v_cirs, double& ra_cirs_deg, double& dec_cirs_deg) const;
+    
+    /**
+     * @brief   Transform the given vector from GRID to CIRS coords.
+     *
+     * @param   v_grid  Vector in GRID coordinates.
+     * @param   eop     EOP for time of transformation.
+     **/
+    vec3d_t vec_grid_to_cirs(const vec3d_t& v_grid, const EOP& eop) const;
+
+    /**
+     * @brief   Transform the given vector from CIRS to GRID coords.
+     *
+     * @param   v_cirs  Vector in CIRS coordinates.
+     * @param   eop     EOP for time of transformation.
+     **/
+    vec3d_t vec_cirs_to_grid(const vec3d_t& v_cirs, const EOP& eop) const;
+    
+    /**
+     * @brief   Return an observing vector (normalized vec3) in GRID
+     *          coordinates, corresponding to the given CIRS RA and DEC.
+     * @param   ra  Target Right Ascension in CIRS frame.
+     * @param   dec Target Declination in CIRS frame.
+     * @param   eop EOP for the time of observation.
+     **/
+    vec3d_t vec_cirs_ra_dec_to_grid(double ra_cirs_deg, double dec_cirs_deg, const EOP& eop) const;
+
+    grid_idx_2d_t element_index_to_main_array_grid_indices(uint64_t el_idx, ElementOrder ord) const;
+    vec3d_t element_index_to_feed_position_m(uint64_t el_idx, ElementOrder ord) const;
+
+    std::vector<grid_idx_2d_t> get_main_array_grid_indices(uint64_t num_elements, ElementOrder ord) const;
+    std::vector<vec3d_t> get_feed_positions_m(uint64_t num_elements, ElementOrder ord) const;
+
+    /**
+     * @brief   Compute the fringestopping phases for the given feed locations.
+     *
+     * @param   freq_MHz Frequency to compute phases for.
+     * @param   eop     Current EOP.
+     * @param   eop0    EOP of phase reference time. if eop=eop0 all phases are
+     *                  1.0
+     * @param   feed_posisions_m    The 3D feed positions in the telescope grid frame in meters. The
+     *                  positions returned from `station_id_to_feed_position_m`.
+     * @param   phases  Vector of std::complex<double>, with size equal to feed_positions_m. The
+     *                  phase for each position will be written to this vector.
+     **/
+    void fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
+                                              const std::vector<vec3d_t> feed_positions_m,
+                                              std::vector<std::complex<float>>& phases) const;
+
+
 private:
     static std::unique_ptr<Telescope>& tel_instance();
 
@@ -348,9 +677,11 @@ protected:
      * @param   eop_updatable_config_path   The value of "eop_updatable_config" in
      *          the telescope Config, pointing to the updatable field which
      *          contains "earth_orientation_parameter_table"
+     * @param   frame       Object containing the position of the telescope on the Earth
+     *                      and the orientation of the feed grid axes.
      **/
     Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
-              const std::string& eop_updatable_config_path);
+              const std::string& eop_updatable_config_path, const GeoFrame& frame);
 
     /**
      * @brief Callback to update EOP data
@@ -377,6 +708,12 @@ protected:
      * The telescope's name in the config
      */
     const std::string _unique_name;
+
+    /**
+     *  Stores information about the geographic position and orientation of the telescope
+     *  on the Earth.
+     */
+    const GeoFrame _frame;
 
     /**
      * Whether to require an EOP table. If false and no (or an empty) EOP table
