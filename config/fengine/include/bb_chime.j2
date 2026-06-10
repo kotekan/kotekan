@@ -62,7 +62,7 @@ run_set_bb_beams:
     out_pos_buf: host_bb_beam_positions_buffer
     out_id_buf: host_bb_beam_ids_buffer
     fixed_mode: grid_degrees
-    seqs_per_frame: 1
+    time_downsampling_fpga: 1
     num_x: bb_num_beams_x
     num_y: bb_num_beams_y
     x_min: -bb_beam_separation_x * (bb_num_beams_x - 1) / 2.0

@@ -69,7 +69,7 @@ constexpr double deg2rad = M_PI / 180.0;
  * @conf fixed_mode         string. Mode to generate fixed beams.
  * @conf num_beams          uint32. Total number of beams to produce (fixed + tracking). Must be
  *                          consistent with fixed + tracking.
- * @conf seqs_per_frame     uint64. Number of fpga sequence number ticks between output frames.
+ * @conf time_downsampling_fpga   uint64. Number of fpga sequence number ticks between output frames.
  * @conf fixed_beams        List of FixedBBBeam.  For `fixed_mode` = "manual". Beams to produce.
  * @conf num_x              uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in 
  *                          grid X direction (~East/West)
@@ -105,7 +105,7 @@ private:
     Buffer* out_id_buf;
     const std::string fixed_mode;
     const uint32_t num_beams;
-    const uint64_t seqs_per_frame;
+    const uint64_t time_downsampling_fpga;
     const std::vector<FixedBBBeam> fixed_beam_table;
     const std::vector<TrackingBBBeam> tracking_beam_table;
     const uint32_t num_x;
@@ -125,7 +125,7 @@ setBBBeams::setBBBeams(Config& config, const std::string& unique_name,
     Stage(config, unique_name, buffer_container, std::bind(&setBBBeams::main_thread, this)),
     fixed_mode(config.get<std::string>(unique_name, "fixed_mode")),
     num_beams(config.get<uint32_t>(unique_name, "num_beams")),
-    seqs_per_frame(config.get<uint64_t>(unique_name, "seqs_per_frame")),
+    time_downsampling_fpga(config.get<uint64_t>(unique_name, "time_downsampling_fpga")),
     fixed_beam_table(config.get_default<std::vector<FixedBBBeam>>(unique_name, "fixed_beams", {})),
     tracking_beam_table(config.get_default<std::vector<TrackingBBBeam>>(unique_name, "tracking_beams", {})),
     num_x(config.get_default<uint32_t>(unique_name, "num_x", 0)),
@@ -252,7 +252,7 @@ void setBBBeams::main_thread() {
     // Set the seq_num of the first output to be on our output cadence and <= the seq_num
     // of the first frame we saw. This means these beams will already be considered valid.
     uint64_t num_frames = 0; // Total number of frame output
-    uint64_t seq0 = seqs_per_frame * (input_seq / seqs_per_frame); // seq number of 1st output frame
+    uint64_t seq0 = time_downsampling_fpga * (input_seq / time_downsampling_fpga); // seq number of 1st output frame
 
     while (!stop_thread) {
         // TODO: remove this (and update the cuda wrappers) to make the beam positions time dependent.  Have to keep this stage spinning on the input buffer to not stall the pipeline.
@@ -268,11 +268,11 @@ void setBBBeams::main_thread() {
             break;
 
         // Compute the seq_num for this output frame
-        uint64_t seq_num = seq0 + num_frames * seqs_per_frame;
+        uint64_t seq_num = seq0 + num_frames * time_downsampling_fpga;
 
         // Get the EOP at the center of this frame, needed for tracking beams.
         const Telescope& tel = Telescope::instance();
-        const uint64_t t_inst_ns = tel.to_time_ns(seq_num + seqs_per_frame / 2);
+        const uint64_t t_inst_ns = tel.to_time_ns(seq_num + time_downsampling_fpga / 2);
         const EOP eop = tel.get_EOP_at_time_ns(t_inst_ns);
 
         DEBUG("Writing {:d} beams to {:s} and {:s}", fixed_beams.size() + tracking_beams.size(),
@@ -306,7 +306,7 @@ void setBBBeams::main_thread() {
         // Set ndarray sizes and timing
         pos_meta->set_from_frame_desc(out_pos_buf->get_ndarray_frame_desc());
         pos_meta->set_fpga_seq_num(seq_num);
-        pos_meta->set_time_downsampling_fpga(seqs_per_frame);
+        pos_meta->set_time_downsampling_fpga(time_downsampling_fpga);
 
         // Check consistency just in case
         pos_meta->check_frame_desc(out_pos_buf->get_ndarray_frame_desc());
@@ -318,7 +318,7 @@ void setBBBeams::main_thread() {
         // Check consistency just in case
         id_meta->set_from_frame_desc(out_id_buf->get_ndarray_frame_desc());
         id_meta->set_fpga_seq_num(seq_num);
-        id_meta->set_time_downsampling_fpga(seqs_per_frame);
+        id_meta->set_time_downsampling_fpga(time_downsampling_fpga);
 
         // Check consistency just in case
         id_meta->check_frame_desc(out_id_buf->get_ndarray_frame_desc());
