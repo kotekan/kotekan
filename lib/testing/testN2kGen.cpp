@@ -6,6 +6,7 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
+#include "div.hpp"             // for div_ceil, num_triangle_blocks
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
 #include "metadata.hpp"        // for metadataObject
 #include "visUtil.hpp"         // for frameID, modulo
@@ -26,6 +27,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::div_ceil;
+using kotekan::num_triangle_blocks;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(testN2kGen);
@@ -134,11 +137,11 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
 
     num_integrations = samples_per_data_set / sub_integration_ntime;
 
-    corr_lin_blocks = num_elements / corr_blocksize;
-    count_lin_blocks = (num_elements / 8) / count_blocksize;
+    corr_lin_blocks = div_ceil(num_elements, corr_blocksize);
+    count_lin_blocks = div_ceil(num_elements / 8, count_blocksize);
 
-    corr_num_blocks = (corr_lin_blocks * (corr_lin_blocks + 1)) / 2;
-    count_num_blocks = (count_lin_blocks * (count_lin_blocks + 1)) / 2;
+    corr_num_blocks = num_triangle_blocks(num_elements, corr_blocksize);
+    count_num_blocks = num_triangle_blocks(num_elements / 8, count_blocksize);
 
     corr_num_entries =
         2 * corr_blocksize * corr_blocksize * corr_num_blocks * num_local_freq * num_integrations;

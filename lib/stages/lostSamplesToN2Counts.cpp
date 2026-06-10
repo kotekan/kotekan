@@ -13,6 +13,7 @@
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
 #include "json.hpp"             // for basic_json, json, iter_impl
+#include "div.hpp"              // for num_triangle_blocks
 #include "fmt.hpp"              // for compile_string_to_view, format
 #include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG
 
@@ -104,8 +105,8 @@ lostSamplesToN2Counts::lostSamplesToN2Counts(Config& config, const std::string& 
     _num_subintegrations = samples_per_data_set / sub_integration_ntime;
     // Number of instrument elements and the corresponding stride
     // to take in the `counts` array
-    _counts_ntiles = (num_elements / (COUNTS_BLOCK_SIZE * COUNTS_ELEMENT_DOWNSAMPLE))
-                     * (1 + num_elements / (COUNTS_BLOCK_SIZE * COUNTS_ELEMENT_DOWNSAMPLE)) / 2;
+    _counts_ntiles =
+        kotekan::num_triangle_blocks(num_elements / COUNTS_ELEMENT_DOWNSAMPLE, COUNTS_BLOCK_SIZE);
     _counts_stride = _counts_ntiles * COUNTS_BLOCK_SIZE * COUNTS_BLOCK_SIZE;
 
     // Check counts frame size against expectations. counts has type int32
