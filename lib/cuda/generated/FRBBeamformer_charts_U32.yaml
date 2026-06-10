@@ -14,7 +14,7 @@ kernel-description:
     number-of-dishes: 64
     number-of-frequencies: 10752
     number-of-polarizations: 2
-    number-of-timesamples: 512
+    number-of-timesamples: 2048
     output-gain: 0.0125
     sampling-time-μsec: 3.3333333333333335
     upchannelization-factor: 32
@@ -67,7 +67,7 @@ kernel-description:
       intent: in
       type: Int4
       indices: [C, D, P, Fbar, Tbar]
-      shape: [2, 64, 2, 10752, 512]
+      shape: [2, 64, 2, 10752, 2048]
       strides: [1, 2, 128, 256, 2752512]
     - name: "I"
       intent: out

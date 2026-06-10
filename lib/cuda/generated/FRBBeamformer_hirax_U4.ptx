@@ -5024,7 +5024,11 @@ $L__BB0_12:                             // %pass269
 	exit;
 	// end inline asm
 $L__BB0_1:                              // %L9
+<<<<<<< HEAD
 	mov.u64 	%rd48, exception15469;
+=======
+	mov.u64 	%rd48, exception1;
+>>>>>>> chord
 	cvta.global.u64 	%rd49, %rd48;
 	{ // callseq 48, 0
 	.reg .b32 temp_param_reg;

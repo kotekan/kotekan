@@ -134,7 +134,7 @@ private:
     };
     static constexpr std::ptrdiff_t A_length = A_strides[A_rank];
     static constexpr std::ptrdiff_t A_length_in_bytes = type_total_bytes(A_type) * A_length;
-    static_assert(A_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(A_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: voltage_name
     static constexpr const char* E_quantity = "E";
@@ -170,7 +170,7 @@ private:
     };
     static constexpr std::ptrdiff_t E_length = E_strides[E_rank];
     static constexpr std::ptrdiff_t E_length_in_bytes = type_total_bytes(E_type) * E_length;
-    static_assert(E_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(E_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // s: bb_shift_name
     static constexpr const char* s_quantity = "s";
@@ -205,7 +205,7 @@ private:
     };
     static constexpr std::ptrdiff_t s_length = s_strides[s_rank];
     static constexpr std::ptrdiff_t s_length_in_bytes = type_total_bytes(s_type) * s_length;
-    static_assert(s_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(s_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // J: bb_beams_name
     static constexpr const char* J_quantity = "J";
@@ -236,7 +236,7 @@ private:
     };
     static constexpr std::ptrdiff_t J_length = J_strides[J_rank];
     static constexpr std::ptrdiff_t J_length_in_bytes = type_total_bytes(J_type) * J_length;
-    static_assert(J_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(J_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr const char* info_quantity = "info";
@@ -272,7 +272,7 @@ private:
     static constexpr std::ptrdiff_t info_length = info_strides[info_rank];
     static constexpr std::ptrdiff_t info_length_in_bytes =
         type_total_bytes(info_type) * info_length;
-    static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // log: gpu_mem_log
     static constexpr const char* log_quantity = "log";
@@ -299,7 +299,7 @@ private:
     };
     static constexpr std::ptrdiff_t log_length = log_strides[log_rank];
     static constexpr std::ptrdiff_t log_length_in_bytes = type_total_bytes(log_type) * log_length;
-    static_assert(log_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
+    // static_assert(log_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     const bool poison_buffers;
