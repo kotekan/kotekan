@@ -1,6 +1,8 @@
 #ifndef RFI_FUNCTIONS_H
 #define RFI_FUNCTIONS_H
 
+#include "Telescope.hpp" // for freq_id_t
+
 #include <stdint.h>
 #include <vector>
 
@@ -35,9 +37,8 @@ struct __attribute__((packed)) RFIHeader {
     }
 };
 
-using FreqIDType = uint32_t;
-using FracFlaggedType = float;
-using SkType = float;
+using frac_flagged_t = float;
+using spectral_kurtosis_t = float;
 
 /*
  * @struct RFIPayload
@@ -45,18 +46,19 @@ using SkType = float;
  */
 struct RFIPayload {
     /// List of local frequencies. Has length `num_local_freq`.
-    std::vector<FreqIDType> freq_ids;
+    std::vector<freq_id_t> freq_ids;
     /// Fraction of flagged samples per freq. Has length `num_local_freq`.
-    std::vector<FracFlaggedType> frac_flagged;
+    std::vector<frac_flagged_t> frac_flagged;
     /// Average SK per frequency. Has length `num_local_freq`.
-    std::vector<SkType> sktilde_avg;
+    std::vector<spectral_kurtosis_t> sktilde_avg;
     /// Average SK per frequency and input. Has length `num_local_freq` * `num_elements`.
-    std::vector<SkType> skbar_avg;
+    std::vector<spectral_kurtosis_t> skbar_avg;
 
     // Constructor
     RFIPayload(size_t num_local_freq, size_t num_elements) :
-        freq_ids(num_local_freq, FreqIDType{}), frac_flagged(num_local_freq, FracFlaggedType{}),
-        sktilde_avg(num_local_freq, SkType{}), skbar_avg(num_local_freq * num_elements, SkType{}) {}
+        freq_ids(num_local_freq, freq_id_t{}), frac_flagged(num_local_freq, frac_flagged_t{}),
+        sktilde_avg(num_local_freq, spectral_kurtosis_t{}),
+        skbar_avg(num_local_freq * num_elements, spectral_kurtosis_t{}) {}
 
     /// Return a single packet per frequency, which is more trivial to
     /// receive and limits the UDP packet size
@@ -65,8 +67,9 @@ struct RFIPayload {
         RFIHeader new_header(header);
         // Compute the total packet size
         uint32_t payload_length =
-            (freq_ids.size() * sizeof(FreqIDType) + frac_flagged.size() * sizeof(FracFlaggedType)
-             + sktilde_avg.size() * sizeof(SkType) + skbar_avg.size() * sizeof(SkType))
+            (freq_ids.size() * sizeof(freq_id_t) + frac_flagged.size() * sizeof(frac_flagged_t)
+             + sktilde_avg.size() * sizeof(spectral_kurtosis_t)
+             + skbar_avg.size() * sizeof(spectral_kurtosis_t))
             / header.num_local_freq;
 
         // Set extra header metadata
@@ -84,17 +87,17 @@ struct RFIPayload {
             memcpy(p, &new_header, sizeof(new_header));
             p += sizeof(new_header);
             // copy the current frequency index
-            memcpy(p, &freq_ids[f], sizeof(FreqIDType));
-            p += sizeof(FreqIDType);
+            memcpy(p, &freq_ids[f], sizeof(freq_id_t));
+            p += sizeof(freq_id_t);
             // copy the fraction of flagged samples
-            memcpy(p, &frac_flagged[f], sizeof(FracFlaggedType));
-            p += sizeof(FracFlaggedType);
+            memcpy(p, &frac_flagged[f], sizeof(frac_flagged_t));
+            p += sizeof(frac_flagged_t);
             // copy average SKtilde
-            memcpy(p, &sktilde_avg[f], sizeof(SkType));
-            p += sizeof(SkType);
+            memcpy(p, &sktilde_avg[f], sizeof(spectral_kurtosis_t));
+            p += sizeof(spectral_kurtosis_t);
             // copy average SKbar
             memcpy(p, skbar_avg.data() + f * header.num_elements,
-                   header.num_elements * sizeof(SkType));
+                   header.num_elements * sizeof(spectral_kurtosis_t));
         }
 
         return packets;
