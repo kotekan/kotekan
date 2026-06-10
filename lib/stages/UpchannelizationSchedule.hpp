@@ -64,10 +64,16 @@ class UpchannelizationSchedule : kotekan::kotekanLogging {
     bool invariant() const;
 
 public:
-    UpchannelizationSchedule(kotekan::Config& config);
+    UpchannelizationSchedule(const UpchannelizationSchedule&) = delete;
+    UpchannelizationSchedule(UpchannelizationSchedule&&) = delete;
+    UpchannelizationSchedule& operator=(const UpchannelizationSchedule&) = delete;
+    UpchannelizationSchedule& operator=(UpchannelizationSchedule&&) = delete;
+
+    UpchannelizationSchedule(kotekan::Config& config, const std::string& unique_name = "");
 
     // Get the singleton instance
-    static const UpchannelizationSchedule& instance(kotekan::Config& config);
+    static const UpchannelizationSchedule& instance(kotekan::Config& config,
+                                                    const std::string& unique_name = "");
 
     // The coarse frequency channels handled by this X-Engine
     // instance. This maps "channel index" to "channel".

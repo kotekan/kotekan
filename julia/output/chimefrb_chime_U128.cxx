@@ -77,13 +77,13 @@ private:
     static constexpr int cuda_dish_layout_M = 256;
     static constexpr int cuda_dish_layout_N = 4;
     static constexpr int cuda_upchannelization_factor = 128;
-    static constexpr int cuda_downsampling_factor = 512;
+    static constexpr int cuda_downsampling_factor = 128;
     static constexpr int cuda_number_of_complex_components = 2;
     static constexpr int cuda_number_of_dishes = 1024;
     static constexpr int cuda_number_of_frequencies = 2048;
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_timesamples = 512;
-    static constexpr int cuda_granularity_number_of_timesamples = 512;
+    static constexpr int cuda_granularity_number_of_timesamples = 128;
 
     // Kernel input and output sizes
     std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;

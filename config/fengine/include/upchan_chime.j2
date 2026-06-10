@@ -18,66 +18,13 @@ upchan_channel_ranges:
 
 # The GPU-local (not global) channel index range for each upchannelization factor
 
-# actual = 0, scaled = 0
-upchan_U128_max_num_channels: 0
-upchan_U128_min_channel: 0
-upchan_U128_max_channel: 0
-upchan_U128_min_output_channel: upchan_all_min_output_channel
-upchan_U128_max_output_channel: upchan_U128_min_output_channel + (upchan_U128_max_channel - upchan_U128_min_channel) * 128
-
-# actual = 0, scaled = 0
-upchan_U64_max_num_channels: 0
-upchan_U64_min_channel: 0
-upchan_U64_max_channel: 0
-upchan_U64_min_output_channel: upchan_U128_min_output_channel
-upchan_U64_max_output_channel: upchan_U64_min_output_channel + (upchan_U64_max_channel - upchan_U64_min_channel) * 64
-
-# actual = 0, scaled = 0
-upchan_U32_max_num_channels: 0
-upchan_U32_min_channel: 0
-upchan_U32_max_channel: 0
-upchan_U32_min_output_channel: upchan_U64_max_output_channel
-upchan_U32_max_output_channel: upchan_U32_min_output_channel + (upchan_U32_max_channel - upchan_U32_min_channel) * 32
-
-# TODO: use U128, then average (?) over frequencies in other kernels, produce 2 FRB outputs, the high-res F with low-res T
 # actual = 16, scaled = 256
 upchan_U16_max_num_channels: 16
 upchan_U16_min_channel: 0
 upchan_U16_max_channel: 16
-upchan_U16_min_output_channel: upchan_U32_max_output_channel
-upchan_U16_max_output_channel: upchan_U16_min_output_channel + (upchan_U16_max_channel - upchan_U16_min_channel) * 16
-
-# actual = 0, scaled = 0
-upchan_U8_max_num_channels: 0
-upchan_U8_min_channel: 16
-upchan_U8_max_channel: 16
-upchan_U8_min_output_channel: upchan_U16_max_output_channel
-upchan_U8_max_output_channel: upchan_U8_min_output_channel + (upchan_U8_max_channel - upchan_U8_min_channel) * 8
-
-# actual = 0, scaled = 0
-upchan_U4_max_num_channels: 0
-upchan_U4_min_channel: 16
-upchan_U4_max_channel: 16
-upchan_U4_min_output_channel: upchan_U8_max_output_channel
-upchan_U4_max_output_channel: upchan_U4_min_output_channel + (upchan_U4_max_channel - upchan_U4_min_channel) * 4
-
-# actual = 0, scaled = 0
-upchan_U2_max_num_channels: 0
-upchan_U2_min_channel: 16
-upchan_U2_max_channel: 16
-upchan_U2_min_output_channel: upchan_U4_max_output_channel
-upchan_U2_max_output_channel: upchan_U2_min_output_channel + (upchan_U2_max_channel - upchan_U2_min_channel) * 2
-
-# actual = 0, scaled = 0
-upchan_U1_max_num_channels: 0
-upchan_U1_min_channel: 16
-upchan_U1_max_channel: 16
-upchan_U1_min_output_channel: upchan_U2_min_output_channel
-upchan_U1_max_output_channel: upchan_U1_min_output_channel + (upchan_U1_max_channel - upchan_U1_min_channel) * 1
-
-upchan_all_max_num_output_channels: 256
-upchan_all_min_output_channel: 0
-upchan_all_max_output_channel: upchan_U1_max_output_channel
+upchan_U16_min_output_channel: 0
+upchan_U16_max_output_channel: (upchan_U16_max_channel - upchan_U16_min_channel) * 16
+upchan_U16_max_num_output_channels: upchan_U16_max_output_channel - upchan_U16_min_output_channel
 
 ################################################################################
 

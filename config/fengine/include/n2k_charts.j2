@@ -5,9 +5,9 @@
 ################################################################################
 
 # Correlator setup
-n2k_sub_integration_ntime: 4096
+n2k_sub_integration_ntime: 16384
 # n2k_samples_per_data_set = max(num_times, n2k_sub_integration_ntime)
-n2k_samples_per_data_set: 4096
+n2k_samples_per_data_set: 16384
 
 ################################################################################
 
@@ -152,7 +152,7 @@ run_N2_accumulate:
     kotekan_stage: N2Accumulate
     samples_per_data_set: n2k_samples_per_data_set
     sub_integration_ntime: n2k_sub_integration_ntime
-    num_subintegrations_per_bin: 24   # 1 second
+    num_subintegrations_per_bin: 20   # 1 second
     num_elements: n2k_correlation_num_elements
     num_freq_per_n2k_frame: num_frequencies
     packet_loss_is_scalar: true

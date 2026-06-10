@@ -1,41 +1,41 @@
-// 8-bit FRB beam quantizer for CHIME, using the float16 FRB beamformer and CHIME's
+// 8-bit FRB beam quantizer for CHIME, using the chromatic CHIME float32 FRB beamformer and CHIME's
 // sending-to-Bonsai network format
 
-#include <cuda_fp16.h>              // for __half
-#include <cuda_runtime_api.h>       // for cudaGetLastError
-#include <algorithm>                // for max
-#include <array>                    // for array
-#include <cassert>                  // for assert
-#include <cstddef>                  // for ptrdiff_t
-#include <cstdint>                  // for int64_t, uint8_t
-#include <stdexcept>                // for runtime_error
-#include <string>                   // for allocator, basic_string, string
-#include <tuple>                    // for tuple, make_tuple
-#include <vector>                   // for vector
+#include "DataType.hpp"            // for float16_t
+#include "NDArray.hpp"             // for NDArray
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
+#include "chordMetadata.hpp"       // for chordMetadata, get_chord_metadata, metadata_is_chord
+#include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaQuantizeKernel8Chime.hpp" // for gpu_quantize8
+#include "cudaUtils.hpp"                // for CHECK_CUDA_ERROR
+#include "div.hpp"                      // for div_noremainder
+#include "gpuCommand.hpp"               // for gpuCommandType
+#include "metadata.hpp"                 // for metadataObject
 
-#include "DataType.hpp"             // for float16_t
-#include "NDArray.hpp"              // for NDArray
-#include "NDArrayBuffer.hpp"        // for NDArrayBuffer
-#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
-#include "cudaQuantizeKernel8.hpp"  // for gpu_quantize8
-#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
-#include "div.hpp"                  // for div_noremainder
-#include "gpuCommand.hpp"           // for gpuCommandType
-#include "Config.hpp"               // for Config
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "driver_types.h"           // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
-#include "fmt.hpp"                  // for format
-#include "metadata.hpp"             // for metadataObject
+#include <algorithm>          // for max
+#include <array>              // for array
+#include <cassert>            // for assert
+#include <cmath>              //
+#include <cstddef>            // for size_t, ptrdiff_t
+#include <cstdint>            // for int64_t
+#include <cuda_fp16.h>        // for __half2, __half
+#include <cuda_runtime_api.h> // for cudaGetLastError, cudaMemcpy
+#include <memory>             // for shared_ptr, __shared_ptr_access
+#include <stdexcept>          // for runtime_error
+#include <string>             // for allocator, basic_string, string, operator+
+#include <tuple>              // for tuple, make_tuple
+#include <vector>             // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
 
-class cudaQuantize8 : public cudaCommand {
+class cudaQuantize8Chime : public cudaCommand {
 public:
-    cudaQuantize8(kotekan::Config& config, const std::string& unique_name,
-                  kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device, int inst);
-    ~cudaQuantize8();
+    cudaQuantize8Chime(kotekan::Config& config, const std::string& unique_name,
+                       kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                       int inst);
+    ~cudaQuantize8Chime();
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
 
@@ -72,15 +72,16 @@ private:
     static_assert(out_nfreqs_chunk * out_nfreqs_packet * out_nfreqs_outer == in_nfreqs);
     static_assert(out_nbeams_packet * out_nbeams_outer == in_nbeams);
 
-    const NDArrayBuffer<float16_t, 4> input_buffer;
+    const NDArrayBuffer<float, 4> input_buffer;
     NDArrayBuffer<std::uint8_t, 8> beam_buffer;
-    NDArrayBuffer<float16_t, 7> offsetscale_buffer;
+    NDArrayBuffer<float, 7> offsetscale_buffer;
 };
 
-REGISTER_CUDA_COMMAND(cudaQuantize8);
+REGISTER_CUDA_COMMAND(cudaQuantize8Chime);
 
-cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
-                             bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
+cudaQuantize8Chime::cudaQuantize8Chime(Config& config, const std::string& unique_name,
+                                       bufferContainer& host_buffers, cudaDeviceInterface& device,
+                                       int inst) :
     cudaCommand(config, unique_name, host_buffers, device, inst),
     //
     _num_beams(config.get<std::int64_t>(unique_name, "num_beams")),
@@ -95,8 +96,7 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
         const std::array<std::ptrdiff_t, 4> input_lengths{1, _num_beams, _num_frequencies,
                                                           _num_times};
         const std::array<std::string, 4> input_dimnames{"Ttildehi256", "R", "Fbar", "Ttildelo256"};
-        return NDArrayBuffer<float16_t, 4>(_gpu_mem_input, "I2", input_lengths, input_dimnames,
-                                           *this);
+        return NDArrayBuffer<float, 4>(_gpu_mem_input, "I2", input_lengths, input_dimnames, *this);
     }()),
     beam_buffer([&]() {
         const std::array<std::ptrdiff_t, 8> beam_lengths{1,
@@ -123,13 +123,13 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
                                                                 2};
         const std::array<std::string, 7> offsetscale_dimnames{
             "Ttilde256", "R8", "Fbar64", "Ttilde16_lo16", "Rlo8", "Fbar16_lo4", "offset/scale"};
-        return NDArrayBuffer<float16_t, 7>(_gpu_mem_beams_offsetscale, "I3_offsetscale",
-                                           offsetscale_lengths, offsetscale_dimnames, *this);
+        return NDArrayBuffer<float, 7>(_gpu_mem_beams_offsetscale, "I3_offsetscale",
+                                       offsetscale_lengths, offsetscale_dimnames, *this);
     }())
 //
 {
     set_command_type(gpuCommandType::KERNEL);
-    set_name("cudaQuantize8");
+    set_name("cudaQuantize8Chime");
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_beams, true, false, true));
@@ -143,9 +143,9 @@ cudaQuantize8::cudaQuantize8(Config& config, const std::string& unique_name,
     }
 }
 
-cudaQuantize8::~cudaQuantize8() {}
+cudaQuantize8Chime::~cudaQuantize8Chime() {}
 
-cudaEvent_t cudaQuantize8::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
+cudaEvent_t cudaQuantize8Chime::execute(cudaPipelineState&, const std::vector<cudaEvent_t>&) {
     pre_execute();
 
     record_start_event();
@@ -159,17 +159,17 @@ cudaEvent_t cudaQuantize8::execute(cudaPipelineState&, const std::vector<cudaEve
     offsetscale_buffer.set_metadata(input_meta);
 
     const auto& input_ndarray = input_buffer.get_ndarray();
-    const float16_t* const input = input_ndarray.data();
+    const float* const input = input_ndarray.data();
     assert(input_ndarray.extent(0) == 1);
 
     auto& offsetscale_ndarray = offsetscale_buffer.get_ndarray();
-    float16_t* const outputf = offsetscale_ndarray.data();
+    float* const outputf = offsetscale_ndarray.data();
 
     auto& beam_ndarray = beam_buffer.get_ndarray();
     std::uint8_t* const outputi = beam_ndarray.data();
 
     cudaStream_t stream = device.getStream(cuda_stream_id);
-    gpu_quantize8(input, outputf, outputi, stream);
+    gpu_quantize8chime(input, outputf, outputi, stream);
     CHECK_CUDA_ERROR(cudaGetLastError());
 
     return record_end_event();

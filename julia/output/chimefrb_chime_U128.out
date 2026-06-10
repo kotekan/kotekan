@@ -20,12 +20,12 @@ Setting up input data...
        Fbar:   2048   (number of frequencies)
        Tbar:   512   (maximum number of input time samples)
        Ttilde: 4   (maximum number of output time samples)
-       Tds:    512   (downsampling factor)
+       Tds:    128   (downsampling factor)
     Dynamic kernel parameters:
     Tbarmin:   0   (input time samples)
-    Tbarmax:   0
+    Tbarmax:   128
     Ttildemin: 0   (output time samples)
-    Ttildemax: 0
+    Ttildemax: 1
 Copying data from CPU to GPU...
 Running kernel...
 Copying data back from GPU to CPU...

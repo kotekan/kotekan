@@ -1,3 +1,5 @@
+// 4-bit FRB beam quantizer for CHORD
+
 #include <cuda_fp16.h>              // for __half
 #include <cuda_runtime_api.h>       // for cudaGetLastError
 #include <algorithm>                // for max
@@ -23,6 +25,7 @@
 #include "bufferContainer.hpp"      // for bufferContainer
 #include "driver_types.h"           // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
 #include "fmt.hpp"                  // for format
+#include "metadata.hpp"             // for metadataObject
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -69,8 +72,8 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
     _num_beams(config.get<std::int64_t>(unique_name, "num_beams")),
     _num_frequencies(config.get<std::int64_t>(unique_name, "num_frequencies")),
     _num_times(config.get<std::int64_t>(unique_name, "num_times")),
-    _num_chunks(
-        kotekan::div_noremainder(1LL * _num_beams * _num_frequencies * _num_times, CHUNK_SIZE)),
+    _num_chunks(1LL * _num_beams * _num_frequencies
+                * kotekan::div_noremainder(_num_times, CHUNK_SIZE)),
     //
     _stddev_cutoff(config.get<float>(unique_name, "stddev_cutoff")),
     //

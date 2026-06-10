@@ -1,46 +1,37 @@
-// Test 8-bit FRB beam quantizer for CHIME, using the float16 FRB beamformer and CHIME's
-// sending-to-Bonsai network format
+// Test 8-bit FRB beam quantizer for CHIME,
+// using the chromatic CHIME float32 FRB beamformer and CHIME's sending-to-Bonsai network format
 
-#include <algorithm>                // for fill, fill_n
-#include <cassert>                  // for assert
-#include <cfloat>                   // for FLT_MAX
-#include <cmath>                    // for fabs, isfinite, isnan, fmax, fmin
-#include <cstdint>                  // for uint8_t
-#include <cstdlib>                  // for abort
-#include <string>                   // for allocator, string
-#include <vector>                   // for vector
-#include <functional>               // for function
+#include "Config.hpp"
+#include "Stage.hpp"
+#include "StageFactory.hpp"
+#include "bufferContainer.hpp"
+#include "cudaQuantizeKernel8Chime.hpp"
+#include "cudaUtils.hpp"
 
-#include "Config.hpp"               // for Config
-#include "DataType.hpp"             // for float16_t
-#include "Stage.hpp"                // for Stage
-#include "StageFactory.hpp"         // for REGISTER_KOTEKAN_STAGE
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "cudaQuantizeKernel8.hpp"  // for cpu_quantize8, gpu_quantize8
-#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
-#include "cuda_fp16.h"              // for __half, __half::operator float
-#include "cuda_runtime.h"           // for cudaMalloc
-#include "cuda_runtime_api.h"       // for cudaMemcpy
-#include "driver_types.h"           // for cudaMemcpyKind
-#include "errors.h"                 // for TEST_PASSED
-#include "fmt.hpp"                  // for compile_string_to_view
-#include "kotekanLogging.hpp"       // for FATAL_ERROR, INFO
+#include <algorithm>
+#include <cassert>
+#include <cfloat>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <string>
+#include <vector>
 
-class testQuantizeKernel8 : public kotekan::Stage {
+class testQuantizeKernel8Chime : public kotekan::Stage {
 public:
-    testQuantizeKernel8(kotekan::Config& config, const std::string& unique_name,
-                        kotekan::bufferContainer& buffer_container) :
+    testQuantizeKernel8Chime(kotekan::Config& config, const std::string& unique_name,
+                             kotekan::bufferContainer& buffer_container) :
         Stage(config, unique_name, buffer_container, [](const kotekan::Stage& stage) {
             return const_cast<kotekan::Stage&>(stage).main_thread();
         }) {}
 
-    virtual ~testQuantizeKernel8() {}
+    virtual ~testQuantizeKernel8Chime() {}
 
     void main_thread() override {
-        const float16_t fpoison(0.0f / 0.0f);
+        const float fpoison(0.0f / 0.0f);
         const std::uint8_t ipoison(255);
 
-        const float epsilon = 1.0e-3; // We're using float16
+        const float epsilon = 1.0e-6; // We're using float
 
         // Input array layout
         const int in_ntimes = 256;
@@ -66,28 +57,27 @@ public:
         ////////////////////////////////////////////////////////////////////////////////
 
         // layout: input[beam, freq, time]
-        std::vector<float16_t> input(in_nbeams * in_nfreqs * in_ntimes);
-        const auto inputat = [&](int beam, int freq, int time) -> float16_t& {
+        std::vector<float> input(in_nbeams * in_nfreqs * in_ntimes);
+        const auto inputat = [&](int beam, int freq, int time) -> float& {
             assert(0 <= beam && beam < in_nbeams);
             assert(0 <= freq && freq < in_nfreqs);
             assert(0 <= time && time < in_ntimes);
             return input.at(time + in_ntimes * (freq + in_nfreqs * beam));
         };
-        std::fill(input.begin(), input.end(), 1);
+        std::fill(input.begin(), input.end(), 1.0f);
         for (int beam = 0; beam < in_nbeams; ++beam)
             for (int freq = 0; freq < in_nfreqs; ++freq)
                 for (int time = 0; time < in_ntimes; ++time)
                     inputat(beam, freq, time) = 0;
-        if (std::find(input.begin(), input.end(), float16_t(1)) != input.end())
+        if (std::find(input.begin(), input.end(), 1.0f) != input.end())
             FATAL_ERROR("input array indexing error");
 
         // layout: offsetscale[out_nbeams_outer, out_nfreqs_outer, out_ntimes_outer,
         //                     out_nbeams_packet, out_nfreqs_packet]
-        std::vector<float16_t> offsetscale(2 * out_nbeams_outer * out_nfreqs_outer
-                                           * out_ntimes_outer * out_nbeams_packet
-                                           * out_nfreqs_packet);
+        std::vector<float> offsetscale(2 * out_nbeams_outer * out_nfreqs_outer * out_ntimes_outer
+                                       * out_nbeams_packet * out_nfreqs_packet);
         const auto offsetscaleat = [&](int beam_outer, int freq_outer, int time_outer,
-                                       int beam_packet, int freq_packet, int offsca) -> float16_t& {
+                                       int beam_packet, int freq_packet, int offsca) -> float& {
             assert(0 <= beam_outer && beam_outer < out_nbeams_outer);
             assert(0 <= freq_outer && freq_outer < out_nfreqs_outer);
             assert(0 <= time_outer && time_outer < out_ntimes_outer);
@@ -105,7 +95,7 @@ public:
                                            + out_ntimes_outer
                                                  * (freq_outer + out_nfreqs_outer * beam_outer)))));
         };
-        std::fill(offsetscale.begin(), offsetscale.end(), 1);
+        std::fill(offsetscale.begin(), offsetscale.end(), 1.0f);
         for (int beam_outer = 0; beam_outer < out_nbeams_outer; ++beam_outer)
             for (int freq_outer = 0; freq_outer < out_nfreqs_outer; ++freq_outer)
                 for (int time_outer = 0; time_outer < out_ntimes_outer; ++time_outer)
@@ -116,7 +106,7 @@ public:
                             offsetscaleat(beam_outer, freq_outer, time_outer, beam_packet,
                                           freq_packet, 1) = 0;
                         }
-        if (std::find(offsetscale.begin(), offsetscale.end(), float16_t(1)) != offsetscale.end())
+        if (std::find(offsetscale.begin(), offsetscale.end(), 1.0f) != offsetscale.end())
             FATAL_ERROR("offsetscale array indexing error");
 
         // layout: beams[out_nbeams_outer, out_nfreqs_outer, out_ntimes_outer,
@@ -201,14 +191,14 @@ public:
             for (int freq = 0; freq < in_nfreqs; ++freq) {
                 for (int time = 0; time < in_ntimes; ++time) {
                     const float x = f(beam, freq, time);
-                    inputat(beam, freq, time) = float16_t(x);
+                    inputat(beam, freq, time) = x;
                 }
             }
         }
 
         // A function to check the result
         const auto check_result = [&]() {
-            using std::fabs, std::fmin, std::fmax, std::isfinite, std::isnan;
+            using std::fabs, std::fmin, std::fmax, std::isfinite, std::isnan, std::sqrt;
 
             // We love ourselves a good indentation
             for (int beam_outer = 0; beam_outer < out_nbeams_outer; ++beam_outer) {
@@ -247,12 +237,11 @@ public:
                                                                            : fmin(minval, x);
                                         maxval = isnan(maxval) || isnan(x) ? 0.0f / 0.0f
                                                                            : fmax(maxval, x);
-                                        // Allow the respective float16 calculations to overflow
-                                        may_overflow |= !isfinite(x) || fabs(x) >= 2048.0f;
+                                        // Allow the calculations to overflow
+                                        may_overflow |= !isfinite(x);
                                     }
                                 }
-                                may_overflow |= !isfinite(minval) || fabs(minval) >= 2048.0f
-                                                || !isfinite(maxval) || fabs(maxval) >= 2048.0f;
+                                may_overflow |= !isfinite(minval) || !isfinite(maxval);
                                 // Allow the scale to be inaccurate when all inputs are close
                                 // together
                                 const bool scale_may_collapse =
@@ -285,10 +274,17 @@ public:
                                 // all is fine as well
                                 if (may_overflow && scale == 0.0f && offset == 0.0f)
                                     offset_is_good = true;
-                                if (!offset_is_good)
-                                    FATAL_ERROR("Found inaccurate offset: beam {}, want {}, have "
-                                                "{}, scale_may_collapse={}",
-                                                beam, expected_offset, offset, scale_may_collapse);
+                                if (!offset_is_good) {
+                                    const int freq0 =
+                                        out_nfreqs_chunk
+                                        * (freq_packet + out_nfreqs_packet * freq_outer);
+                                    const int time0 = out_ntimes_chunk * time_outer;
+                                    FATAL_ERROR(
+                                        "Found inaccurate offset: beam {}, freq0 {}, time0 {}, "
+                                        "want {}, have {}, scale_may_collapse={}",
+                                        beam, freq0, time0, expected_offset, offset,
+                                        scale_may_collapse);
+                                }
 
                                 // Check absolute error of scale
                                 bool scale_is_good = fabs(scale - expected_scale) <= epsilon;
@@ -301,10 +297,17 @@ public:
                                 // offset=0), then all is fine as well
                                 if (may_overflow && scale == 0.0f && offset == 0.0f)
                                     scale_is_good = true;
-                                if (!scale_is_good)
-                                    FATAL_ERROR("Found inaccurate scale: beam{}, want {}, have {}, "
-                                                "scale_may_collapse={}",
-                                                beam, expected_scale, scale, scale_may_collapse);
+                                if (!scale_is_good) {
+                                    const int freq0 =
+                                        out_nfreqs_chunk
+                                        * (freq_packet + out_nfreqs_packet * freq_outer);
+                                    const int time0 = out_ntimes_chunk * time_outer;
+                                    FATAL_ERROR(
+                                        "Found inaccurate scale: beam {}, freq0 {}, time0 {}, "
+                                        "want {}, have {}, scale_may_collapse={}",
+                                        beam, freq0, time0, expected_scale, scale,
+                                        scale_may_collapse);
+                                }
 
                                 for (int freq_chunk = 0; freq_chunk < out_nfreqs_chunk;
                                      ++freq_chunk) {
@@ -367,7 +370,7 @@ public:
 
         // Quantize on the CPU
         INFO("Testing on CPU...");
-        cpu_quantize8(input.data(), offsetscale.data(), beams.data());
+        cpu_quantize8chime(input.data(), offsetscale.data(), beams.data());
 
         // Check CPU result
         check_result();
@@ -375,9 +378,9 @@ public:
         ////////////////////////////////////////////////////////////////////////////////
 
         // Allocate memory on the GPU
-        float16_t* gpu_input;
+        float* gpu_input;
         CHECK_CUDA_ERROR(cudaMalloc(&gpu_input, input.size() * sizeof *input.data()));
-        float16_t* gpu_offsetscale;
+        float* gpu_offsetscale;
         CHECK_CUDA_ERROR(
             cudaMalloc(&gpu_offsetscale, offsetscale.size() * sizeof *offsetscale.data()));
         std::uint8_t* gpu_beams;
@@ -398,7 +401,7 @@ public:
 
         // Quantize on the GPU
         INFO("Testing on GPU...");
-        gpu_quantize8(gpu_input, gpu_offsetscale, gpu_beams, nullptr);
+        gpu_quantize8chime(gpu_input, gpu_offsetscale, gpu_beams, nullptr);
 
         // Copy output from GPU
         CHECK_CUDA_ERROR(cudaMemcpy(offsetscale.data(), gpu_offsetscale,
@@ -415,4 +418,4 @@ public:
     }
 };
 
-REGISTER_KOTEKAN_STAGE(testQuantizeKernel8);
+REGISTER_KOTEKAN_STAGE(testQuantizeKernel8Chime);
