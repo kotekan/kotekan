@@ -19,18 +19,18 @@
 	.param .b64 vprintf_param_1
 )
 ;
-.func gpu_signal_exception
+.func gpu_report_exception
 (
-	.param .align 8 .b8 gpu_signal_exception_param_0[16]
+	.param .align 8 .b8 gpu_report_exception_param_0[16],
+	.param .b64 gpu_report_exception_param_1
 )
 .noreturn
 {
 	trap;
 }
-.func gpu_report_exception
+.func gpu_signal_exception
 (
-	.param .align 8 .b8 gpu_report_exception_param_0[16],
-	.param .b64 gpu_report_exception_param_1
+	.param .align 8 .b8 gpu_signal_exception_param_0[16]
 )
 .noreturn
 {
@@ -5783,11 +5783,7 @@ $L__BB0_12:                             // %pass269
 	exit;
 	// end inline asm
 $L__BB0_1:                              // %L9
-<<<<<<< HEAD
 	mov.u64 	%rd27, exception15552;
-=======
-	mov.u64 	%rd27, exception1;
->>>>>>> chord
 	cvta.global.u64 	%rd28, %rd27;
 	{ // callseq 62, 0
 	.reg .b32 temp_param_reg;
