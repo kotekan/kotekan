@@ -330,6 +330,9 @@ public:
  *
  * @note N2FileData documents the per-file layout, chunking, and compression details.
  * @note User-level documentation lives in docs/sphinx/user/processes/hdf5N2Write.rst.
+ * @note The on-disk file format is documented in detail in
+ *       docs/sphinx/user/file_formats/n2_vis_hdf5.rst. Any change to the datasets
+ *       or attributes written by this stage should be reflected there.
  **/
 class hdf5N2Write : public kotekan::Stage {
 
