@@ -56,6 +56,10 @@ using namespace gdal;
  * @metric kotekan_gdalfilewrite_write_time_seconds
  *         The write time to write out the last frame.
  *
+ * @note The on-disk file format is documented in
+ *       docs/sphinx/user/file_formats/asdf_zarr_frames.rst. Any change to the
+ *       arrays or attributes written by this stage should be reflected there.
+ *
  * @author Erik Schnetter
  **/
 class gdalFileWrite : public kotekan::Stage {

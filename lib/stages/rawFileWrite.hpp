@@ -28,6 +28,10 @@
  * @metric kotekan_rawfilewrite_write_time_seconds
  *         The write time to write out the last frame.
  *
+ * @note The on-disk file format is documented in
+ *       docs/sphinx/user/file_formats/raw_frames.rst. Any change to the byte
+ *       layout written by this stage should be reflected there.
+ *
  * @author Andre Renard
  **/
 class rawFileWrite : public kotekan::Stage {

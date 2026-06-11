@@ -16,3 +16,10 @@ pointing back to the format pages.
     :maxdepth: 1
 
     file_formats/n2_vis_hdf5
+    file_formats/hdf5_frames
+    file_formats/asdf_zarr_frames
+    file_formats/raw_frames
+    file_formats/chime_archive
+
+JSON configuration snapshots written by ``configTrackerWriter`` are covered
+with the Config Tracker in :ref:`user_config`.

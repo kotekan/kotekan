@@ -81,6 +81,10 @@ using namespace HighFive;
  * @metric kotekan_hdf5filewrite_write_time_seconds
  *         The write time to write out the last frame.
  *
+ * @note The on-disk file format is documented in
+ *       docs/sphinx/user/file_formats/hdf5_frames.rst. Any change to the
+ *       datasets or attributes written by this stage should be reflected there.
+ *
  * @author Erik Schnetter
  **/
 class hdf5FileWrite : public kotekan::Stage {
