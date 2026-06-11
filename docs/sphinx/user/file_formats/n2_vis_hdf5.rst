@@ -27,8 +27,7 @@ Overview
 
 The ``hdf5N2Write`` stage consumes single-frequency, fully accumulated
 N\ :sup:`2` visibility frames (one frame per frequency channel per
-accumulation bin, produced upstream by ``N2Accumulate``, possibly forwarded
-over the network by ``bufferSend`` / ``bufferRecv``) and repacks them into
+accumulation bin, produced upstream by ``N2Accumulate``) and repacks them into
 HDF5 files. Each file covers a fixed window of :math:`N_t` =
 ``num_file_t`` consecutive time bins across all :math:`N_f` science
 frequency channels of the configured telescope. Within a file, arrays are
@@ -45,7 +44,9 @@ index:
    t\text{-slot in file} = \texttt{bin_abs_index} \bmod N_t .
 
 The absolute bin index is assigned upstream by ``N2Accumulate`` and is
-monotonic and restart-safe. Depending on the accumulator configuration, bins
+monotonic and safe across x/recv pipeline restarts. The index will reset
+across f-engine restarts, however.
+Depending on the accumulator configuration, bins
 are aligned either to a fixed FPGA-tick grid or to a fixed
 Earth-Rotation-Angle (ERA) grid (``bin_in_ERA: true``, with
 ``num_bins_per_rotation`` bins per Earth rotation and bin 0 starting at
@@ -54,7 +55,7 @@ ERA = 0 just before 2000 Jan 1 noon).
 Directory layout and file naming
 ================================
 
-At startup the stage creates an *acquisition directory* under its
+At stage (receiver) startup, an *acquisition directory* is created under the
 ``base_dir``::
 
     <base_dir>/acq_YYYYMMDD_HHMMSS_NNNNNNNNN/
@@ -152,12 +153,11 @@ visibility matrix, including autocorrelations, row-major:
 :math:`V_{ab}`. The lower triangle is the complex conjugate.
 
 **Element ordering.**
-The mapping from element index to (dish, polarization) is given by the
-``input_order`` attribute (an ``ElementOrder`` value such as ``CHORDEarly``,
-where element :math:`2d` is polarization 1 and element :math:`2d+1` is
-polarization 2 of dish :math:`d`, or ``CHORDBeamformer``, where polarization
-is the slowest axis). Per-element grid positions are in the
-``main_array_grid_indices`` and ``feed_positions_m`` attributes.
+The mapping from element index to physical input (dish, polarization) is
+given by the ``input_order`` attribute; see :ref:`element_order` for the
+defined orderings. Per-element grid positions are in the
+``main_array_grid_indices`` and ``feed_positions_m`` attributes, in the
+same element order.
 
 **Time scales.**
 Two time scales appear throughout: *instrument time* (``*_t_inst_ns``, also
@@ -245,9 +245,8 @@ File identity and structure
        ``InputORMasked``, or ``GeneralSubset``.
    * - ``input_order``
      - string
-     - Element ordering of the data (``ElementOrder`` enum:
-       ``CHIMECorrelator``, ``CHIMECylinder``, ``CHIMEBeamformer``,
-       ``CHORDEarly``, ``CHORDBeamformer``).
+     - Element ordering of the data (an ``ElementOrder`` name; see
+       :ref:`element_order`).
    * - ``num_dishes``
      - uint64
      - Dish slots in the telescope description, :math:`N_d`.

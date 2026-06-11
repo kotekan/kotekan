@@ -88,7 +88,8 @@ Dataset attributes:
    * - ``num_polarizations``, ``num_dishes``, ``num_elements``
      - Telescope input counts (from the stage configuration).
    * - ``input_order``
-     - Element ordering of the data (``ElementOrder`` enum name).
+     - Element ordering of the data (an ``ElementOrder`` name; see
+       :ref:`element_order`).
    * - ``itrs_lat_deg``, ``itrs_lon_deg``
      - Telescope origin ITRS coordinates, degrees.
    * - ``grid_orientation``

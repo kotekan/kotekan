@@ -45,7 +45,7 @@ a *subset* tree (an 8-input subset with 2 eigenvalues/vectors).
 
 Both instances share all other parameters: :math:`N_t` = ``num_file_t`` =
 20 time bins per file, visibility layout ``FullUpperTri``, element ordering
-``CHORDEarly``, bitshuffle + LZ4 compression
+``CHORDEarly`` (see :ref:`element_order`), bitshuffle + LZ4 compression
 (``use_bitshuffle: true``, ``compression: "lz4"``), a 30 s
 ``late_frame_grace_seconds``, and digital gains fetched over HTTP from the
 FPGA controller (the ``/fpga_controller`` config block, via
