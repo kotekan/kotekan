@@ -6,9 +6,8 @@
 
 # cudaQuantize requires `frb_num_output_times` to be a multiple of 256
 frb_num_output_times: 256
-# TODO: remove
-frb_num_beams_P: 2 * num_dishes_x
-frb_num_beams_Q: 2 * num_dishes_y
+frb1_num_beams_P: 2 * num_dishes_x
+frb1_num_beams_Q: 2 * num_dishes_y
 frb1_input_scale: 1.0 / 32
 
 frb_rad2deg: 57.29577951308232  # 180/pi
@@ -92,12 +91,12 @@ host_frb2_weights_buffer:
 host_frb1_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+    frame_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
     metadata_pool: main_pool
 host_frb1_beams_ringbuffer:
     kotekan_buffer: ring
     num_frames: buffer_depth
-    ring_buffer_size: buffer_depth * sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+    ring_buffer_size: buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
     metadata_pool: main_pool
 
 host_frb2_beams_buffer:
@@ -393,9 +392,6 @@ run_frb23:
           frb1_max_num_frequencies: upchan_all_max_num_output_channels
           frb1_max_num_times: buffer_depth * frb_num_output_times
           frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
-          frb1_num_beams_P: frb_num_beams_P
-          frb1_num_beams_Q: frb_num_beams_Q
-          # frb2_num_beams: frb2_num_beams
           frb2_num_times: frb_num_output_times
           in_signal: host_frb1_beams_ringbuffer
           frb1_beams_name: frb1_beams
