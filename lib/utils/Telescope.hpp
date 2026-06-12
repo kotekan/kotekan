@@ -40,8 +40,8 @@ enum class ElementOrder : int32_t {
     // Order as received by the CHIME X-engine. Slightly scrambled, defined via table.
     CHIMECorrelator = 0,
     
-    // Arrays are [C][P][CF] where C counts cylinders west to east, P counts polarizations,
-    // CF counts feeds in a cylinder south to north.
+    // Arrays are [Cylinder][P][Feed] where Cylinder counts cylinders west to east, P counts polarizations,
+    // Feed counts feeds in a cylinder south to north.
     CHIMECylinder = 1,
 
     // Arrays are [P][D], P = polarizations, D = feed, ordered as in Cylinder
