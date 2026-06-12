@@ -1,51 +1,52 @@
-#include <errno.h>                                // for errno, EEXIST, EISDIR
-#include <gsl-lite.hpp>                           // for span
-#include <string.h>                               // for strerror
-#include <sys/stat.h>                             // for mkdir
-#include <unistd.h>                               // for gethostname
-#include <highfive/H5DataSet.hpp>                 // for DataSet, AnnotateTraits::createAttribute
-#include <highfive/H5DataSpace.hpp>               // for DataSpace, DataSpace::DataSpace, DataSp...
-#include <highfive/H5DataType.hpp>                // for DataType
-#include <highfive/H5File.hpp>                    // for File, NodeTraits::createDataSet, File::...
-#include <highfive/H5Object.hpp>                  // for hsize_t, H5Z_FLAG_MANDATORY
-#include <highfive/H5PropertyList.hpp>            // for PropertyType, RawPropertyList, Chunking
-#include <highfive/H5Selection.hpp>               // for SliceTraits::write_raw, Selection, Slic...
-#include <highfive/bits/H5PropertyList_misc.hpp>  // for PropertyList::_initializeIfNeeded, Prop...
-#include <highfive/bits/H5Selection_misc.hpp>     // for Selection::getSpace
-#include <algorithm>                              // for max, min
-#include <array>                                  // for array
-#include <atomic>                                 // for __atomic_base, atomic
-#include <cassert>                                // for assert
-#include <cstddef>                                // for size_t
-#include <cstdint>                                // for int64_t, uint8_t, uint32_t
-#include <functional>                             // for function
-#include <iomanip>                                // for operator<<, setfill, setw
-#include <memory>                                 // for allocator, shared_ptr, __shared_ptr_access
-#include <sstream>                                // for basic_ostream, operator<<, basic_ostrin...
-#include <string>                                 // for basic_string, char_traits, string, oper...
-#include <vector>                                 // for vector
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for DataType, type_to_string
+#include "N2FrameView.hpp"         // for N2FrameView
+#include "N2Metadata.hpp"          // for metadata_is_N2
+#include "NDArray.hpp"             // for GenericNDArray
+#include "Stage.hpp"               // for Stage
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
+#include "Symbol.hpp"              // for Symbol
+#include "Telescope.hpp"           // for Telescope
+#include "buffer.hpp"              // for Buffer
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata, metadata_is_chord, get_c...
+#include "errors.h"                // for exit_kotekan, ReturnCode
+#include "hdf5Files.hpp"           // for chord2hdf5, BITSHUFFLE_BLOCKSIZE_AUTO
+#include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR, WARN, INFO
+#include "metadata.hpp"            // for metadataObject
+#include "prometheusMetrics.hpp"   // for Metrics, Gauge
+#include "timeUtil.hpp"            // for EOP
+#include "visUtil.hpp"             // for current_time
+#include "waitingForMaxFrames.hpp" // for waiting_for_max_frames
 
-#include "Config.hpp"                             // for Config
-#include "DataType.hpp"                           // for DataType, type_to_string
-#include "N2FrameView.hpp"                        // for N2FrameView
-#include "N2Metadata.hpp"                         // for metadata_is_N2
-#include "NDArray.hpp"                            // for GenericNDArray
-#include "Stage.hpp"                              // for Stage
-#include "StageFactory.hpp"                       // for REGISTER_KOTEKAN_STAGE
-#include "Symbol.hpp"                             // for Symbol
-#include "Telescope.hpp"                          // for Telescope
-#include "buffer.hpp"                             // for Buffer
-#include "bufferContainer.hpp"                    // for bufferContainer
-#include "chordMetadata.hpp"                      // for chordMetadata, metadata_is_chord, get_c...
-#include "errors.h"                               // for exit_kotekan, ReturnCode
-#include "hdf5Files.hpp"                          // for chord2hdf5, BITSHUFFLE_BLOCKSIZE_AUTO
-#include "kotekanLogging.hpp"                     // for DEBUG, FATAL_ERROR, WARN, INFO
-#include "metadata.hpp"                           // for metadataObject
-#include "prometheusMetrics.hpp"                  // for Metrics, Gauge
-#include "timeUtil.hpp"                           // for EOP
-#include "visUtil.hpp"                            // for current_time
-#include "waitingForMaxFrames.hpp"                // for waiting_for_max_frames
-#include "fmt.hpp"                                // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>                             // for max, min
+#include <array>                                 // for array
+#include <atomic>                                // for __atomic_base, atomic
+#include <cassert>                               // for assert
+#include <cstddef>                               // for size_t
+#include <cstdint>                               // for int64_t, uint8_t, uint32_t
+#include <errno.h>                               // for errno, EEXIST, EISDIR
+#include <functional>                            // for function
+#include <gsl-lite.hpp>                          // for span
+#include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::createAttribute
+#include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::DataSpace, DataSp...
+#include <highfive/H5DataType.hpp>               // for DataType
+#include <highfive/H5File.hpp>                   // for File, NodeTraits::createDataSet, File::...
+#include <highfive/H5Object.hpp>                 // for hsize_t, H5Z_FLAG_MANDATORY
+#include <highfive/H5PropertyList.hpp>           // for PropertyType, RawPropertyList, Chunking
+#include <highfive/H5Selection.hpp>              // for SliceTraits::write_raw, Selection, Slic...
+#include <highfive/bits/H5PropertyList_misc.hpp> // for PropertyList::_initializeIfNeeded, Prop...
+#include <highfive/bits/H5Selection_misc.hpp>    // for Selection::getSpace
+#include <iomanip>                               // for operator<<, setfill, setw
+#include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
+#include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
+#include <string.h>                              // for strerror
+#include <string>                                // for basic_string, char_traits, string, oper...
+#include <sys/stat.h>                            // for mkdir
+#include <unistd.h>                              // for gethostname
+#include <vector>                                // for vector
 
 
 using namespace hdf5;
@@ -101,8 +102,6 @@ class hdf5FileWrite : public kotekan::Stage {
 
     const uint64_t num_polarizations = config.get<uint64_t>(unique_name, "num_polarizations");
     const uint64_t num_dishes = config.get<uint64_t>(unique_name, "num_dishes");
-    const uint64_t num_elements = num_polarizations * num_dishes;
-    const ElementOrder input_order = config.get<ElementOrder>(unique_name, "input_order");
 
     Buffer* const buffer;
 
@@ -175,6 +174,42 @@ public:
         // You may have to use `h5clear -s FILENAME.h5` to "tell" the file that the writer does not
         // exist any more.
         return std::make_unique<File>(full_path, File::Truncate | File::WriteSWMR, fprops, fapl);
+    }
+
+    /**
+     * @brief Write the telescope metadata
+     *
+     * @param node   The HDF5 object (file, group, dataset, etc.) where the metadata should be
+     *               attached
+     */
+    template<typename Node>
+    void write_telescope_metadata(Node& node) {
+        const auto& telescope = Telescope::instance();
+
+        node.createAttribute("telescope_name", telescope.get_name());
+        node.createAttribute("seq_length_nsec", telescope.seq_length_nsec());
+        node.createAttribute("gps_time_enabled", telescope.gps_time_enabled());
+        node.createAttribute("num_polarizations", num_polarizations);
+        node.createAttribute("num_dishes", num_dishes);
+        node.createAttribute("itrs_lat_deg", telescope.get_itrs_lat_deg());
+        node.createAttribute("itrs_lon_deg", telescope.get_itrs_lon_deg());
+        node.createAttribute("grid_orientation", telescope.get_grid_orientation());
+        node.createAttribute("grid_size_x", telescope.get_grid_size_x());
+        node.createAttribute("grid_size_y", telescope.get_grid_size_y());
+        node.createAttribute("feed_separation_x_m", telescope.get_feed_separation_x_m());
+        node.createAttribute("feed_separation_y_m", telescope.get_feed_separation_y_m());
+
+        // Flatten to proper HDF5 multi-dimensional arrays
+        const auto& dish_grid_indices =
+            telescope.get_main_array_grid_indices(num_dishes, ElementOrder::CHORDBeamformer);
+        node.createAttribute("dish_grid_indices", DataSpace({dish_grid_indices.size(), 2}),
+                             create_datatype<std::int64_t>())
+            .write_raw(reinterpret_cast<const std::int64_t*>(dish_grid_indices.data()));
+        const auto& feed_positions_m =
+            telescope.get_feed_positions_m(num_dishes, ElementOrder::CHORDBeamformer);
+        node.createAttribute("feed_positions_m", DataSpace({feed_positions_m.size(), 3}),
+                             create_datatype<double>())
+            .write_raw(reinterpret_cast<const double*>(feed_positions_m.data()));
     }
 
     /**
@@ -261,10 +296,6 @@ public:
 
             // Write metadata (attributes)
 
-            dataset.createAttribute("telescope_name", telescope.get_name());
-            dataset.createAttribute("seq_length_nsec", telescope.seq_length_nsec());
-            dataset.createAttribute("gps_time_enabled", telescope.gps_time_enabled());
-
             dataset.createAttribute("chord_metadata_version", chord_metadata_version);
             dataset.createAttribute("name", meta->get_name());
             dataset.createAttribute("type",
@@ -300,22 +331,7 @@ public:
                 dataset.createAttribute("rfi_frame_excision_thresholds",
                                         meta->get_rfi_frame_excision_thresholds());
 
-            {
-                // Telescope data
-                dataset.createAttribute("num_polarizations", num_polarizations);
-                dataset.createAttribute("num_dishes", num_dishes);
-                dataset.createAttribute("num_elements", num_elements);
-                dataset.createAttribute("input_order", ElementOrder_to_string(input_order));
-                dataset.createAttribute("itrs_lat_deg", telescope.get_itrs_lat_deg());
-                dataset.createAttribute("itrs_lon_deg", telescope.get_itrs_lon_deg());
-                dataset.createAttribute("grid_orientation", telescope.get_grid_orientation());
-                dataset.createAttribute("grid_size_x", telescope.get_grid_size_x());
-                dataset.createAttribute("grid_size_y", telescope.get_grid_size_y());
-                dataset.createAttribute("feed_separation_x_m", telescope.get_feed_separation_x_m());
-                dataset.createAttribute("feed_separation_y_m", telescope.get_feed_separation_y_m());
-                dataset.createAttribute("main_array_grid_indices", telescope.get_main_array_grid_indices(num_elements, input_order));
-                dataset.createAttribute("feed_positions_m", telescope.get_feed_positions_m(num_elements, input_order));
-            }
+            write_telescope_metadata(dataset);
 
             if (create_single_file) {
                 // Start SWMR mode
@@ -380,7 +396,6 @@ public:
         const std::vector<size_t> gain_dims({frame.num_elements, 2});
         const std::vector<size_t> radiometer_chi2_dims({3}); // 3 pol pairs XX, XY, YY
 
-
         // Create dataspaces
         const DataSpace vis_space(vis_dims);
         const DataSpace weight_space(weight_dims);
@@ -430,12 +445,9 @@ public:
         radiometer_chi2_dset.write_raw(frame.radiometer_chi2.data(), float_type);
 
         // Set metadata as file-level attributes
-        file.createAttribute("num_polarizations", num_polarizations);
-        file.createAttribute("num_dishes", num_dishes);
-        file.createAttribute("num_elements", frame.num_elements);
         file.createAttribute("num_prod", frame.num_prod);
         file.createAttribute("num_ev", frame.num_ev);
-        file.createAttribute("input_order", ElementOrder_to_string(input_order));
+        // file.createAttribute("input_order", ElementOrder_to_string(input_order));
         file.createAttribute("freq_id", frame.freq_id);
         file.createAttribute("freq_MHz", frame.freq_MHz);
         file.createAttribute("abs_time_idx", frame.abs_time_idx);
@@ -468,19 +480,7 @@ public:
         file.createAttribute("rfi_frame_excision_threshold", frame.rfi_frame_excision_threshold);
         file.createAttribute("rfi_frame_excision_fraction", frame.rfi_frame_excision_fraction);
 
-        {
-            // Telescope data
-            const Telescope &tel = Telescope::instance();
-            file.createAttribute("itrs_lat_deg", tel.get_itrs_lat_deg());
-            file.createAttribute("itrs_lon_deg", tel.get_itrs_lon_deg());
-            file.createAttribute("grid_orientation", tel.get_grid_orientation());
-            file.createAttribute("grid_size_x", tel.get_grid_size_x());
-            file.createAttribute("grid_size_y", tel.get_grid_size_y());
-            file.createAttribute("feed_separation_x_m", tel.get_feed_separation_x_m());
-            file.createAttribute("feed_separation_y_m", tel.get_feed_separation_y_m());
-            file.createAttribute("main_array_grid_indices", tel.get_main_array_grid_indices(num_elements, input_order));
-            file.createAttribute("feed_positions_m", tel.get_feed_positions_m(num_elements, input_order));
-        }
+        write_telescope_metadata(file);
     }
 
     /**
