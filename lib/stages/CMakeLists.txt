@@ -10,7 +10,8 @@ add_library(
     computeDualpolPower.cpp
     fullPacketDump.cpp
     pulsarPostProcess.cpp
-    processGains.cpp
+    loadFeedGains.cpp
+    processFeedGains.cpp
     nDiskFileWrite.cpp
     nDiskFileRead.cpp
     networkPowerStream.cpp
