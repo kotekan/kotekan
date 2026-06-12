@@ -367,8 +367,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/kernel_arguments}}
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
-        assert(Telescope::instance().get_grid_size_x() <= cuda_dish_layout_M);
-        assert(Telescope::instance().get_grid_size_y() <= cuda_dish_layout_N);
+        assert(Telescope::instance().get_grid_size_x() <= cuda_dish_layout_N);
+        assert(Telescope::instance().get_grid_size_y() <= cuda_dish_layout_M);
 
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();

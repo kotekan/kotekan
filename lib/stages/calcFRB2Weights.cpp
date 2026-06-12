@@ -40,12 +40,14 @@ class calcFRB2Weights : public kotekan::Stage {
 
     // FRB1 beamformer setup
 
-    // The directions we call "x" and "y" are really just describing
-    // the in-memory layout of the dishes (antennae) in the dish
-    // array. For CHORD, the physical x-direction (east-west) runs
-    // fastest, but for CHIME, the y-direction (north-south) runs
-    // fastest. This is necessary to get an efficient FRB1 beamformer
-    // given the different shapes of the dish (antenna) layouts.
+    // The directions "x" and "y" are the geographic direction
+    // east-west and north-south. The directions we call "M" and "N"
+    // are really just describing the in-memory layout of the dishes
+    // (antennae) in the dish array. For CHORD, the physical
+    // x-direction (east-west) runs fastest, but for CHIME, the
+    // y-direction (north-south) runs fastest. This is necessary to
+    // get an efficient FRB1 beamformer given the different shapes of
+    // the dish (antenna) layouts.
     //
     // Internally (in the FRB1 kernels) we call the dish (antenna)
     // directions M and N, where M runs fastest, and the respective
@@ -54,31 +56,29 @@ class calcFRB2Weights : public kotekan::Stage {
     // converse, M=P=y=north/south and N=Q=x=east/west.
     //
     // We need to take this into account when creating the FRB2
-    // beamforming weights. For CHORD we have `frb1_swap_xy=false`,
-    // and for CHIME we have `frb1_swap_xy=true`.
-    const bool frb1_swap_xy = config.get_default<bool>(unique_name, "frb1_swap_xy", false);
-    const int num_dishes_x = frb1_swap_xy ? Telescope::instance().get_grid_size_y() 
-                                          : Telescope::instance().get_grid_size_x();
-    const int num_dishes_y = frb1_swap_xy ? Telescope::instance().get_grid_size_x()
-                                          : Telescope::instance().get_grid_size_y();
-    const int frb1_num_beams_x = 2 * num_dishes_x;
-    const int frb1_num_beams_y = 2 * num_dishes_y;
-    const int frb1_num_beams = frb1_num_beams_x * frb1_num_beams_y;
+    // beamforming weights. For CHORD we have `frb1_swap_MN=false`,
+    // and for CHIME we have `frb1_swap_MN=true`.
+    const int num_dishes_x = Telescope::instance().get_grid_size_x();
+    const int num_dishes_y = Telescope::instance().get_grid_size_y();
+    const bool frb1_swap_MN = config.get_default<bool>(unique_name, "frb1_swap_MN", false);
+    const int num_dishes_M = frb1_swap_MN ? num_dishes_y : num_dishes_x;
+    const int num_dishes_N = frb1_swap_MN ? num_dishes_x : num_dishes_y;
+    const int frb1_num_beams_P = 2 * num_dishes_M;
+    const int frb1_num_beams_Q = 2 * num_dishes_N;
 
     // FRB2 beamformer setup
     const int frb2_num_beams_x = config.get<int>(unique_name, "frb2_num_beams_x");
     const int frb2_num_beams_y = config.get<int>(unique_name, "frb2_num_beams_y");
     const int frb2_num_beams = frb2_num_beams_x * frb2_num_beams_y;
-    const float frb2_beam_separation_x = config.get<float>(unique_name, "frb2_beam_separation_x");
-    const float frb2_beam_separation_y = config.get<float>(unique_name, "frb2_beam_separation_y");
     const int frb2_num_frequencies = config.get<int>(unique_name, "frb2_num_frequencies");
 
     const int num_threads = config.get_default<int>(unique_name, "num_threads", 1);
 
     const std::ptrdiff_t frb2_beam_positions_frame_size [[maybe_unused]] =
         sizeof(float) * 2 * frb2_num_beams;
-    const std::ptrdiff_t W2_frame_size [[maybe_unused]] =
-        sizeof(float16_t) * frb1_num_beams * frb2_num_beams * frb2_num_frequencies;
+    const std::ptrdiff_t W2_frame_size [[maybe_unused]] = sizeof(float16_t) * frb1_num_beams_P
+                                                          * frb1_num_beams_Q * frb2_num_beams
+                                                          * frb2_num_frequencies;
 
     Buffer* const frb2_beam_positions_buffer;
     Buffer* const W2_buffer;
@@ -100,14 +100,12 @@ public:
             FATAL_ERROR("num_threads %d must be positive", num_threads);
         frb2_beam_positions_buffer->register_consumer(unique_name);
         W2_buffer->register_producer(unique_name);
-        
+
         frb2_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
             "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"});
-        W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>("W2",
-                                                             {frb2_num_frequencies,
-                                                              frb2_num_beams_y * frb2_num_beams_x,
-                                                              frb1_num_beams_y, frb1_num_beams_x},
-                                                             {"Fbar", "R", "beamQ", "beamP"});
+        W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>(
+            "W2", {frb2_num_frequencies, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P},
+            {"Fbar", "R", "beamQ", "beamP"});
     }
 
     virtual ~calcFRB2Weights() {}
@@ -213,8 +211,8 @@ public:
             };
 
             const std::ptrdiff_t str_beamP = 1;
-            const std::ptrdiff_t str_beamQ = str_beamP * frb1_num_beams_x;
-            const std::ptrdiff_t str_beamR = str_beamQ * frb1_num_beams_y;
+            const std::ptrdiff_t str_beamQ = str_beamP * frb1_num_beams_P;
+            const std::ptrdiff_t str_beamR = str_beamQ * frb1_num_beams_Q;
             const std::ptrdiff_t str_freq = str_beamR * frb2_num_beams;
 
             // Vectors giving the feed separation in each axis direction in meters.
@@ -236,8 +234,8 @@ public:
 #pragma omp parallel num_threads(num_threads)
 #endif
             {
-                std::vector<float> Up(frb1_num_beams_x);
-                std::vector<float> Uq(frb1_num_beams_y);
+                std::vector<float> Up(frb1_num_beams_P);
+                std::vector<float> Uq(frb1_num_beams_Q);
 
 #ifdef WITH_OMP
 #pragma omp for
@@ -263,14 +261,16 @@ public:
                         const float theta_y = num_dishes_y
                                               * (nx * sigmay_x + ny * sigmay_y + nz * sigmay_z)
                                               / wavelength;
+                        const float theta_M = frb1_swap_MN ? theta_y : theta_x;
+                        const float theta_N = frb1_swap_MN ? theta_x : theta_y;
 
-                        for (int i = 0; i < frb1_num_beams_x; ++i)
-                            Up[i] = Ufunc(i, num_dishes_x, theta_x);
-                        for (int j = 0; j < frb1_num_beams_y; ++j)
-                            Uq[j] = Ufunc(j, num_dishes_y, theta_y);
+                        for (int i = 0; i < frb1_num_beams_P; ++i)
+                            Up[i] = Ufunc(i, num_dishes_M, theta_M);
+                        for (int j = 0; j < frb1_num_beams_Q; ++j)
+                            Uq[j] = Ufunc(j, num_dishes_N, theta_N);
 
-                        for (int beamQ = 0; beamQ < frb1_num_beams_y; ++beamQ) {
-                            for (int beamP = 0; beamP < frb1_num_beams_x; ++beamP) {
+                        for (int beamQ = 0; beamQ < frb1_num_beams_Q; ++beamQ) {
+                            for (int beamP = 0; beamP < frb1_num_beams_P; ++beamP) {
                                 const std::ptrdiff_t idx = str_beamP * beamP + str_beamQ * beamQ
                                                            + str_beamR * beamR + str_freq * freq;
                                 assert(idx >= 0

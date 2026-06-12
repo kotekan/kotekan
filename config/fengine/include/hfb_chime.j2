@@ -43,12 +43,12 @@ host_hfb2_weights_buffer:
 host_hfb1_beams_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
-    frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times
+    frame_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times
     metadata_pool: main_pool
 host_hfb1_beams_ringbuffer:
     kotekan_buffer: ring
     num_frames: buffer_depth
-    ring_buffer_size: buffer_depth * sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times
+    ring_buffer_size: buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times
     metadata_pool: main_pool
 
 host_hfb2_beams_buffer:
@@ -141,8 +141,6 @@ run_hfb23:
           frb1_max_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
           frb1_max_num_times: buffer_depth * hfb_num_output_times
           frb2_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
-          frb1_num_beams_P: frb_num_beams_P
-          frb1_num_beams_Q: frb_num_beams_Q
           frb2_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
           frb2_num_beams: hfb2_num_beams
           frb2_num_times: hfb_num_output_times
