@@ -24,10 +24,11 @@ log_level: info
 {% set num_polarizations = 2 %}
 {% set num_dishes = 1024 %}
 {% set num_elements = num_polarizations * num_dishes %}
+{% set num_tracking_beams = 12 %}
 num_polarizations: {{ num_polarizations }}
 num_dishes: {{ num_dishes }}
 num_elements: {{ num_elements }}
-num_tracking_beams: 12
+num_tracking_beams: {{ num_tracking_beams }}
 frb_upchan_factor: 16
 hfb_upchan_factor: 64
 
@@ -89,45 +90,59 @@ updatable_config:
     kotekan_update_endpoint: "json"
     enabled: false
   frb_gain:
-    kotekan_update_endpoint: "json"
-    gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
+    0:
+      kotekan_update_endpoint: "json"
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
   tracking_gain:
     0:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
     1:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
     2:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
     3:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
     4:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
     5:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
     6:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
     7:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
     8:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
     9:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
     10:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
     11:
       kotekan_update_endpoint: json
-      gain_dir: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_PSR
+  bad_inputs:
+      kotekan_update_endpoint: json
+      # These inputs are assumed to be in cylinder order
+      # yamlfix:off
+      bad_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
+                    370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
+                    807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
+                   1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
+                   1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
+                   1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034]
+      # yamlfix:on
+      start_time: 1535048997.
+      update_id: "initial_flags"
 
 dataset_manager:
   use_dataset_broker: False
@@ -308,6 +323,7 @@ host_pl_expanded_mask_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * num_freq_gpu_buf * (samples_per_data_set / 64)
     metadata_pool: main_pool
 
+
 # Stages
 
 # glue code to handle lost frames formats
@@ -322,25 +338,10 @@ lostSamplesToPLMask:
 {%- endfor %}
 
 set_bf_mask:
-    # TODO: this will be handled by the bad-inputs stage eventually
-    kotekan_stage: givenDataGen
+    kotekan_stage: bufferBadInputs
+    updatable_config:
+        bad_inputs: /updatable_config/bad_inputs
     out_buf: host_bf_mask_buffer
-    datatype: int8
-    name: "bf_mask"
-    dim_name: ["P", "D"]
-    array_shape: [ {{ num_polarizations }}, {{ num_dishes }} ]
-    do_once: true
-    values:
-      # taken from chime_science_ran_gpu.yaml
-      {% set bad_feeds = [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
-                           370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
-                           807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
-                          1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
-                          1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
-                          1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034] %}
-     {% for el in range(num_elements) %}
-        - {% if el in bad_feeds -%} 0 {%- else -%} 1 {%- endif %}
-     {% endfor %}
 
 run_send_pl_mask:
     gpu_0:
@@ -709,53 +710,133 @@ run_recv_rfi_RFImask:
 ################################################################################
 # read FRB and tracking gains
 
-gain_frb_buffer:
+gain_fan_beamformer_buffer:
+  kotekan_buffer: standard
+  num_frames: 2
+  frame_size: num_elements * num_freq_gpu_buf * 2 * sizeof_float32
+  type: float32
+  dimnames: ["F", "E", "ReIm"]
+  shape: [num_freq_gpu_buf, num_elements, 2]
+  metadata_pool: main_pool
+
+gain_tracking_buffers:
+  frame_size: num_elements * num_freq_gpu_buf * 2 * sizeof_float32
+  type: float32
+  dimnames: ["F", "E", "ReIm"]
+  shape: [num_freq_gpu_buf, num_elements, 2]
+  metadata_pool: main_pool
+{%- for id in range(num_tracking_beams) %}
+  gain_tracking_buffer_{{ id }}:
+    kotekan_buffer: standard
+    num_frames: 1
+{%- endfor %}
+
+gain_frb_upchan_buffer:
   kotekan_buffer: standard
   num_frames: 1
   frame_size: num_elements * num_freq_gpu_buf * frb_upchan_factor * 2 * sizeof_float32
   type: float32
-  dimnames: ["F", "U", "E", "ReIm"]
-  shape: [num_freq_gpu_buf, frb_upchan_factor, num_elements, 2]
+  dimnames: ["R", "F", "U", "E", "ReIm"]
+  shape: [1, num_freq_gpu_buf, frb_upchan_factor, num_elements, 2]
   metadata_pool: main_pool
 
-gain_hfb_buffer:
+gain_hfb_upchan_buffer:
   kotekan_buffer: standard
   num_frames: 1
   frame_size: num_elements * num_freq_gpu_buf * hfb_upchan_factor * 2 * sizeof_float32
   type: float32
-  dimnames: ["F", "U", "E", "ReIm"]
-  shape: [num_freq_gpu_buf, hfb_upchan_factor, num_elements, 2]
+  dimnames: ["R", "F", "U", "E", "ReIm"]
+  shape: [1, num_freq_gpu_buf, hfb_upchan_factor, num_elements, 2]
   metadata_pool: main_pool
 
-gain_tracking_buffer:
+gain_tracking_upchan_buffer:
   kotekan_buffer: standard
   num_frames: 1
-  frame_size: num_freq_gpu_buf * num_elements * 2 * sizeof_float32 * num_tracking_beams
+  frame_size: num_tracking_beams * num_elements * num_freq_gpu_buf * 2 * sizeof_float32
   type: float32
-  dimnames: ["F", "R", "E", "ReIm"]
-  shape: [num_freq_gpu_buf, num_tracking_beams, num_elements, 2]
-  metadata_pool: main_pool  
+  dimnames: ["R", "F", "U", "E", "ReIm"]
+  shape: [num_tracking_beams, num_freq_gpu_buf, 1, num_elements, 2]
+  metadata_pool: main_pool
 
 # Stages
-process_FRB_and_tracking_gains:
-  kotekan_stage: processGains
-  num_beams: num_tracking_beams
+load_FRB_gains:
+  kotekan_stage: loadFeedGains
+  beamformer_type: "frb"
+  filename_template: "quick_gains_%04d_reordered.bin"
   num_local_freq: num_freq_gpu_buf
+  gain_buffers:
+    - gain_fan_beamformer_buffer
   in_buf: host_rfi_RFImask_buffer
-  gain_frb_buf: gain_frb_buffer
-  gain_tracking_buf: gain_tracking_buffer
   updatable_config:
-    gain_frb: /updatable_config/frb_gain
-    gain_tracking: /updatable_config/tracking_gain
+    frb_gain: /updatable_config/frb_gain
+
+load_tracking_gains:
+  kotekan_stage: loadFeedGains
+  beamformer_type: "tracking"
+  filename_template: "quick_gains_%04d_reordered.bin"
+  num_local_freq: num_freq_gpu_buf
+  num_beams: num_tracking_beams
+  gain_buffers:
+{%- for id in range(num_tracking_beams) %}
+    - gain_tracking_buffer_{{ id }}
+{%- endfor %}
+  in_buf: host_rfi_RFImask_buffer
+  updatable_config:
+    tracking_gain: /updatable_config/tracking_gain
+
+process_FRB_gains:
+  kotekan_stage: processFeedGains
+  num_local_freq: num_freq_gpu_buf
+  upchan_factor: frb_upchan_factor
+  gain_buffers:
+    - gain_fan_beamformer_buffer
+  in_mask_buf: host_bf_mask_buffer
+  out_buf: gain_frb_upchan_buffer
 
 process_HFB_gains:
-  kotekan_stage: processGains
-  num_beams: num_tracking_beams
+  kotekan_stage: processFeedGains
   num_local_freq: num_freq_gpu_buf
-  include_tracking: false
-  in_buf: host_rfi_RFImask_buffer
-  gain_frb_buf: gain_frb_buffer
-  gain_tracking_buf: gain_tracking_buffer
-  updatable_config:
-    gain_frb: /updatable_config/frb_gain
-    gain_tracking: /updatable_config/tracking_gain
+  upchan_factor: hfb_upchan_factor
+  gain_buffers:
+    - gain_fan_beamformer_buffer
+  in_mask_buf: host_bf_mask_buffer
+  out_buf: gain_hfb_upchan_buffer
+
+process_tracking_gains:
+  kotekan_stage: processFeedGains
+  num_local_freq: num_freq_gpu_buf
+  num_beams: num_tracking_beams
+  upchan_factor: 1
+  gain_buffers:
+{%- for id in range(num_tracking_beams) %}
+    - gain_tracking_buffer_{{ id }}
+{%- endfor %}
+  in_mask_buf: host_bf_mask_buffer
+  out_buf: gain_tracking_upchan_buffer
+
+# uncomment to write gain files
+{%- if False %}
+dump_processed_frb_gains:
+  kotekan_stage: hdf5FileWrite
+  base_dir: processed_gains_dump
+  in_buf: gain_frb_upchan_buffer
+  file_name: upchannelized_gain_buffer_frb
+  create_single_file: true
+  input_order: CHIMEBeamformer
+
+dump_processed_hfb_gains:
+  kotekan_stage: hdf5FileWrite
+  base_dir: processed_gains_dump
+  in_buf: gain_hfb_upchan_buffer
+  file_name: upchannelized_gain_buffer_hfb
+  create_single_file: true
+  input_order: CHIMEBeamformer
+
+dump_processed_tracking_gains:
+  kotekan_stage: hdf5FileWrite
+  base_dir: processed_gains_dump
+  in_buf: gain_tracking_upchan_buffer
+  file_name: upchannelized_gain_buffer_tracking
+  create_single_file: true
+  input_order: CHIMEBeamformer
+{%- endif %}
