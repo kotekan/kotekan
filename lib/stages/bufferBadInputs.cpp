@@ -1,21 +1,19 @@
 #include "bufferBadInputs.hpp"
 
-#include <stdint.h>            // for uint8_t
-#include <json.hpp>            // for json
-#include <exception>           // for exception
-#include <functional>          // for bind, function, _1
-#include <memory>              // for __shared_ptr_access, shared_ptr
-#include <array>               // for array
-#include <cstring>             // for memset
+#include "Config.hpp"         // for Config
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"      // for Telescope, station_id_t
+#include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
+#include "configUpdater.hpp"  // for configUpdater
+#include "kotekanLogging.hpp" // for DEBUG, ERROR
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
-#include "configUpdater.hpp"   // for configUpdater
-#include "kotekanLogging.hpp"  // for DEBUG, ERROR
-#include "visUtil.hpp"         // for get_cylinder_to_beamformer_reorder_table
-#include "fmt.hpp"             // for compile_string_to_view
+#include <cstring>    // for memset
+#include <exception>  // for exception
+#include <functional> // for bind, function, _1
+#include <json.hpp>   // for json
+#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <stdint.h>   // for uint8_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -38,13 +36,15 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
 
     // Construct the cylinder -> beamformer reorder table.
     // reorder[beamformer_idx] = cylinder_idx;
-    reorder.reserve(num_elements);
+    reorder.resize(num_elements);
 
     const Telescope& tel = Telescope::instance();
 
-    for(size_t beamformer_idx = 0; beamformer_idx < num_elements; ++beamformer_idx) {
-        station_id_t st_id = tel.element_index_to_station_id(beamformer_idx, ElementOrder::CHIMEBeamformer);
-        reorder.at(beamformer_idx) = tel.station_id_to_element_index(st_id, ElementOrder::CHIMECylinder);
+    for (size_t beamformer_idx = 0; beamformer_idx < num_elements; ++beamformer_idx) {
+        station_id_t st_id =
+            tel.element_index_to_station_id(beamformer_idx, ElementOrder::CHIMEBeamformer);
+        reorder.at(beamformer_idx) =
+            tel.station_id_to_element_index(st_id, ElementOrder::CHIMECylinder);
     }
 }
 
