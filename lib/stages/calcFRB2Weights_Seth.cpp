@@ -19,6 +19,10 @@ class calcFRB2Weights_Seth : public kotekan::Stage {
     // Telescope setup
     const int num_dishes = config.get<int>(unique_name, "num_dishes");
 
+    // Upchannelization setup
+    const std::string upchannelization_schedule_name =
+        config.get_default<std::string>(unique_name, "upchannelization_schedule_name", "");
+
     // FRB1 beamformer setup
     const int num_dishes_x = config.get<int>(unique_name, "num_dishes_x");
     const int num_dishes_y = config.get<int>(unique_name, "num_dishes_y");
@@ -80,26 +84,35 @@ public:
         const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
 
         // Upchannelization schedule
-        const auto& upchan_schedule = UpchannelizationSchedule::instance(config);
+        const auto& upchan_schedule =
+            UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
 
         // Calculate dish positions
-        const float dish_separation_x = chord_telescope.get_dish_separation_x_m();
-        const float dish_separation_y = chord_telescope.get_dish_separation_y_m();
-        const auto& dish_grid = chord_telescope.get_dish_grid();
+        //const float dish_separation_x = chord_telescope.get_feed_separation_x_m();
+        //const float dish_separation_y = chord_telescope.get_feed_separation_y_m();
+
+        //const auto& dish_grid = chord_telescope.get_dish_grid();
         assert(std::ptrdiff_t(chord_telescope.get_num_dishes()) == num_dishes);
         std::vector<float> dish_loc_x(num_dishes, -1), dish_loc_y(num_dishes, -1),
             dish_loc_z(num_dishes, -1);
-        assert(std::ptrdiff_t(dish_grid.get_dish_indices().size()) >= num_dishes);
-        for (const auto dish_index : dish_grid.get_dish_indices()) {
-            if (dish_index >= 0) {
-                const dishInfo& dish_info = chord_telescope.get_dish_at_idx(dish_index);
-                assert(dish_loc_x.at(dish_info.idx) == -1);
-                dish_loc_x.at(dish_info.idx) =
-                    dish_info.grid_x_idx * dish_separation_x + dish_info.feed_pos_disp_m.at(0);
-                dish_loc_y.at(dish_info.idx) =
-                    dish_info.grid_y_idx * dish_separation_y + dish_info.feed_pos_disp_m.at(1);
-                dish_loc_z.at(dish_info.idx) = dish_info.feed_pos_disp_m.at(2);
-            }
+        //assert(std::ptrdiff_t(dish_grid.get_dish_indices().size()) >= num_dishes);
+        //for (const auto dish_index : dish_grid.get_dish_indices()) {
+        //    if (dish_index >= 0) {
+        //        const dishInfo& dish_info = chord_telescope.get_dish_at_idx(dish_index);
+        //        assert(dish_loc_x.at(dish_info.idx) == -1);
+        //        dish_loc_x.at(dish_info.idx) =
+        //            dish_info.grid_x_idx * dish_separation_x + dish_info.feed_pos_disp_m.at(0);
+        //        dish_loc_y.at(dish_info.idx) =
+        //            dish_info.grid_y_idx * dish_separation_y + dish_info.feed_pos_disp_m.at(1);
+        //        dish_loc_z.at(dish_info.idx) = dish_info.feed_pos_disp_m.at(2);
+        //    }
+        //}
+        for (uint64_t i=0; i<chord_telescope.get_num_dishes(); i++) {
+            //const dishInfo& dish_info = chord_telescope.get_dish_at_idx(i);
+            vec3d_t vec = chord_telescope.get_dish_position_in_grid_coords(i);
+            dish_loc_x[i] = vec[0];
+            dish_loc_y[i] = vec[1];
+            dish_loc_z[i] = vec[2];
         }
         assert(std::ptrdiff_t(dish_loc_x.size()) == num_dishes);
 
