@@ -226,12 +226,13 @@ public:
             if(telescope.get_name() == "CHIMETelescope") {
                 // taken from FEngine simulator chime.jl for now, not quite the
                 // real thing
-                sigmax_x = 20.0;
+                // here x,y are "fast" and "slow" axis
+                sigmax_x = 0.390625;
                 sigmax_y = 0;
                 sigmax_z = 0;
 
                 sigmay_x = 0;
-                sigmay_y = 0.390625;
+                sigmay_y = 20.0;
                 sigmay_z = 0;
             } else { // CHORD, one assumes
                 sigmax_x = 6.3;
