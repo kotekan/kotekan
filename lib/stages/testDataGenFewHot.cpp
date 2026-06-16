@@ -20,13 +20,13 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(testDataGenFewHot);
 
 #define NUM_ELEMNS 2048
-#define NUM_FREQ 1
+#define NUM_FREQ 256
 
 testDataGenFewHot::testDataGenFewHot(Config& config, const std::string& unique_name,
                                      bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&testDataGenFewHot::main_thread, this)),
     type(config.get<std::string>(unique_name, "type")),
-    freq_id(config.get<freq_id_t>(unique_name, "freq_id")),
+    freq_id(config.get<std::vector<freq_id_t>>(unique_name, "freq_id")),
     elemns(config.get<std::vector<int>>(unique_name, "elemns")),
     samples_per_dataset(config.get<ptrdiff_t>(unique_name, "samples_per_dataset")) {
 
@@ -46,8 +46,7 @@ testDataGenFewHot::testDataGenFewHot(Config& config, const std::string& unique_n
                     fmt::format("{:s}", fmt::join(elemns, ", ")), NUM_ELEMNS);
 
     assert(buf->frame_size
-           == samples_per_dataset
-                  * sizeof(kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type));
+           == 1024*256*NUM_ELEMNS * sizeof(kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type));
 
     //_manual_freq_ids = config.get_default<std::vector<uint32_t>>(unique_name, "manual_freq_ids",
     //                                                             std::vector<uint32_t>());
@@ -76,20 +75,22 @@ void testDataGenFewHot::main_thread() {
         gettimeofday(&now, nullptr);
         chordmeta->set_first_packet_recv_time(now);
 
-        chordmeta->set_name("E");
-        chordmeta->dims = 2;
-        chordmeta->set_array_dimension(0, samples_per_dataset, "T");
-        chordmeta->set_array_dimension(1, NUM_ELEMNS, "E");
+        chordmeta->set_name("Ebar");
+        chordmeta->dims = 4;
+        chordmeta->set_array_dimension(0, 1024, "Tbar");
+        chordmeta->set_array_dimension(1, 256, "Fbar");
+        chordmeta->set_array_dimension(2, 2, "P");
+        chordmeta->set_array_dimension(3, NUM_ELEMNS/2, "D");
         chordmeta->set_strides_simple();
         chordmeta->type = kotekan::int4x2_swapped_withoffset;
-        assert(NUM_FREQ <= CHORD_META_MAX_FREQ);
         std::vector<int> coarse_freq(NUM_FREQ);
         std::vector<int> freq_upchan_factor(coarse_freq.size());
         std::vector<int> freq_upchan_index(coarse_freq.size());
-        assert(NUM_FREQ == 1);
-        coarse_freq.at(0) = freq_id;
-        freq_upchan_factor.at(0) = 1;
-        freq_upchan_index.at(0) = 0;
+        for(int f = 0 ; f < 256 ; f++) {
+          coarse_freq.at(f) = freq_id.at(f/16);
+          freq_upchan_factor.at(f) = 16;
+          freq_upchan_index.at(f) = f % 16;
+        }
 
         chordmeta->set_coarse_freq(coarse_freq);
         chordmeta->set_freq_upchan_factor(freq_upchan_factor);
@@ -98,13 +99,13 @@ void testDataGenFewHot::main_thread() {
         chordmeta->set_frame_counter(seq_num);
 
         buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type,
-                                         2>("E", {samples_per_dataset, NUM_ELEMNS}, {"T", "E"});
+                                         4>("Ebar", {1024,256,2, NUM_ELEMNS/2}, {"Tbar", "Fbar", "P", "D"});
         /* test that things are consistent */
         chordmeta->check_frame_desc(buf->get_ndarray_frame_desc());
 
-        std::memset(frame, 0x88 /* 0 volts */, samples_per_dataset * NUM_ELEMNS);
+        std::memset(frame, 0x88 /* 0 volts */, 1024*256*NUM_ELEMNS);
 
-        for (int i = 0; i < samples_per_dataset; ++i) {
+        for (int i = 0; i < 1024*256; ++i) {
             for (const auto el : elemns) {
                 frame[i * NUM_ELEMNS + el] += 0x10;
             }
