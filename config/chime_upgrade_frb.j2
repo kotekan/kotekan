@@ -1113,8 +1113,9 @@ FRB:
     frb_num_beams_P: 2 * num_dishes_y
     frb_num_beams_Q: 2 * num_dishes_x
 
-    {%- set frb2_num_beams_x = 4 %}
-    {%- set frb2_num_beams_y = 256 %}
+    # x/y are "fast"/"slow" here
+    {%- set frb2_num_beams_x = 256 %}
+    {%- set frb2_num_beams_y = 4 %}
     {%- set frb2_num_beams = frb2_num_beams_x * frb2_num_beams_y %}
     frb2_num_beams_x: {{ frb2_num_beams_x }}
     frb2_num_beams_y: {{ frb2_num_beams_y }}
@@ -1206,7 +1207,33 @@ FRB:
         upchan_gain_buffer: host_upchan_U16_gain_buffer
 
     run_upchan_U16:
+        cpu_0:
+            kotekan_stage: testDataGenFewHot
+            type: fewhot
+            freq_id: {{ frequency_channels }}
+            elemns:
+#{# two elements in EW only
+                - 0
+                - 512
+#}#
+### all elements in EW, but delta in NS
+                - 0
+                - 256
+                - 512
+                - 768
+###
+#{# two bands EW spanning full NS
+{%- for el in range(0,256) %}
+                - {{ el }}
+{%- endfor %}
+{%- for el in range(256,256+256) %}
+                - {{ el }}
+{%- endfor %}
+#}#
+            samples_per_dataset: samples_per_data_set
+            out_buf: host_upchan_U16_voltage_buffer
         gpu_0:
+#{#
             kotekan_stage: cudaProcess
             gpu_id: 0
             buffer_depth: gpu_buffer_depth
@@ -1225,12 +1252,33 @@ FRB:
               gpu_mem: upchan_U16_gain_buffer
             - name: cudaSyncInput
             - name: cudaUpchannelizer_chime_U16
+              poison_buffers: yes
               voltage_name: xposed_voltage
               upchan_U16_gain_name: upchan_U16_gain
               upchan_U16_voltage_name: upchan_U16_voltage
               Fmin: upchan_U16_min_channel
               Fmax: upchan_U16_max_channel
+            - name: cudaSyncOutput
+#}#
+            kotekan_stage: cudaProcess
+            log_level: debug
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            frame_arrival_period: network_frame_arrival_period
+            num_times: 1024
+            in_buffers:
+                host_upchan_U16_voltage_buffer: host_upchan_U16_voltage_buffer
+            out_buffers:
+                host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
+            commands:
+            - name: cudaCopyToRingbuffer
+              input_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
+              ring_buffer_size: gpu_buffer_depth * input_size
+              in_buf: host_upchan_U16_voltage_buffer
+              signal_buf: host_upchan_U16_voltage_ringbuffer
+              gpu_mem_output: upchan_U16_voltage_buffer
 
+#{#
     run_recv_upchan_U16_voltage:
         gpu_0:
             kotekan_stage: cudaProcess
@@ -1250,17 +1298,19 @@ FRB:
               output_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
               ring_buffer_size: buffer_depth * output_size
               out_buf: host_upchan_U16_voltage_buffer
+#}#
 
     # FRB 1
 
     run_set_frb1_U16_phase:
         kotekan_stage: setFRB1Phase
+        # for beamformer: x -> faster axis (more dishes, contiguous in memory), y -> slower axis
         num_dishes_x: 256         # transposed dish layout, cannot use variables
         num_dishes_y: 4
         upchan_factor: factor_upchan_out
         # TODO: replace the stage with one that actually takes the gains into account
         # TODO: need to worry about over / underflow
-        frb1_input_scale: 1.0 / 64
+        frb1_input_scale: 1.0 / 32
         upchan_min_channel: upchan_U16_min_channel
         upchan_max_channel: upchan_U16_max_channel
         upchan_max_num_channels: upchan_U16_max_num_channels
@@ -1289,6 +1339,7 @@ FRB:
               voltage_name: upchan_U16_voltage
               frb_phase_name: frb1_U16_phase
               frb_beamgrid_name: frb1_beams
+            - name: cudaSyncOutput
 
     # FRB 2 and 3
 
@@ -1368,8 +1419,9 @@ FRB:
         {% set achromatic_beam_angles_EW = [ -0.4, 0.0, 0.4, 0.8 ] %}
         {% set m_pi = 3.14159265358979 %}
         values:
-{%- for ns in range(frb2_num_beams_y) %}
-{%- for ew in range(frb2_num_beams_x) %}
+{%- for ns in range(frb2_num_beams_x) %}
+{%- for ew in range(frb2_num_beams_y) %}
+          # fast axis first
           - {{ achromatic_beam_angles_NS[ns] / 180 * m_pi }}
           - {{ achromatic_beam_angles_EW[ew] / 180 * m_pi }}
 {%- endfor %}
@@ -1378,7 +1430,7 @@ FRB:
         datatype: float32
         array_shape: [ {{ frb2_num_beams }}, 2]
         dim_name: [ "R", "X/Y" ]
-        do_once: no
+        do_once: yes
 
     run_calc_frb2_weights:
 ###
@@ -1395,7 +1447,7 @@ FRB:
         do_once: yes
         out_buf: host_frb2_weights_buffer
         file_name: host_frb2_weights_buffer
-##}
+#}#
 
     run_frb23:
         gpu_0:
