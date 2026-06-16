@@ -22,14 +22,18 @@ from tornado.web import RequestHandler
 
 
 def update_pointing():
+    global altaz, timer
     try:
-        global altaz, timer
         altaz = cl.query_both_axes()
         print("[alt,az] = ", altaz)
-        timer = threading.Timer(10.0, update_pointing)
-        timer.start()
     except KeyboardInterrupt:
         return
+    except Exception as e:
+        # Log and still reschedule, so a transient telescope-server error
+        # doesn't permanently stop pointing (or crash the first call).
+        print("update_pointing: query failed:", e)
+    timer = threading.Timer(10.0, update_pointing)
+    timer.start()
 
 
 class get_pointing(RequestHandler):
@@ -44,7 +48,7 @@ class get_pointing(RequestHandler):
         aa = c.SkyCoord(
             alt=altaz[0] * u.deg,
             az=altaz[1] * u.deg,
-            obstime=datetime.datetime.now(),
+            obstime=datetime.datetime.now(datetime.timezone.utc),
             frame="altaz",
             location=l,
         )

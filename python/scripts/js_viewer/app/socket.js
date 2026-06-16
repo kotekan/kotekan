@@ -34,7 +34,6 @@ export class Socket {
     constructor({app, url}) {
         this.app = app;
         this.url = url;
-        this.isopen = false;
         this.ws = null;
 
         this._user_close = false;
@@ -57,13 +56,11 @@ export class Socket {
         this.ws = new WebSocket(this.url);
         this.ws.binaryType = "arraybuffer";
         this.ws.onopen = () => {
-            this.isopen = true;
             this._reconnect_delay = RECONNECT_MIN_MS;
             this.app.bus.emit("ws:open");
         };
         this.ws.onmessage = (e) => this._onmessage(e);
         this.ws.onclose = () => {
-            this.isopen = false;
             // user_initiated lets listeners (eg WaterfallView's gap detector)
             // distinguish "user paused" from "server / network dropped us".
             this.app.bus.emit("ws:close", {user_initiated: this._user_close});
@@ -95,10 +92,6 @@ export class Socket {
         if (this.ws) this.ws.close();
     }
 
-    send(payload) {
-        if (this.ws && this.isopen) this.ws.send(payload);
-    }
-
     _onmessage(e) {
         const {app} = this;
         const {state, bus} = app;
@@ -114,8 +107,16 @@ export class Socket {
                              {client: CLIENT_PROTOCOL_VERSION, server: server_v});
                 }
             }
-            state.num_freqs = (cfg && cfg.nfreq) || msg.nfreq;
-            state.spectrum_baseline = new Array(state.num_freqs).fill(0);
+            // Reallocate the baseline only on an actual bin-count change. The
+            // server resends viewer_config on every reconnect, so resetting
+            // unconditionally would wipe a captured baseline on any WS blip
+            // (and, with subtraction on, divide by zeros -> +Inf).
+            const new_num_freqs = (cfg && cfg.nfreq) || msg.nfreq;
+            if (new_num_freqs !== state.num_freqs) {
+                state.num_freqs = new_num_freqs;
+                state.spectrum_baseline = new Array(state.num_freqs).fill(0);
+                state.baseline_enabled = false; // captured baseline no longer valid
+            }
             bus.emit("state:num_freqs_changed", {num_freqs: state.num_freqs});
             if (cfg) app.apply_viewer_config(cfg);
             bus.emit("state:redraw_requested");

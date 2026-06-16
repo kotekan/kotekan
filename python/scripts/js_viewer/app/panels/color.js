@@ -71,10 +71,11 @@ export class ColorPanel {
             .appendTo($("#" + this._target));
 
         // Gradient bar: a div with a CSS linear-gradient background. Scales
-        // perfectly with the card -- no viewBox, no SVG, no Raphael.
+        // perfectly with the card -- no viewBox, no SVG, no Raphael. Seeded
+        // with viridis (imgPlotter's default); _change_palette overrides it.
         this._cb_bar = $("<div/>")
             .css({width: "100%", height: BAR_HEIGHT + "px",
-                  background: cb.cssGradString(cb.colormaps_current || _current_colors(cb))})
+                  background: cb.cssGradString(cb.colormaps.viridis)})
             .appendTo(wrapper);
 
         // Tag label strip below the bar. Labels distribute across the actual
@@ -165,11 +166,4 @@ export class ColorPanel {
         }
         this.bus.emit("state:redraw_requested");
     }
-}
-
-// imgPlotter doesn't expose the current colors list directly; fall back to
-// viridis on initial render. After the user changes palette, ``_change_palette``
-// always sets the gradient explicitly from ``cb.colormaps[name]``.
-function _current_colors(cb) {
-    return cb.colormaps.viridis;
 }

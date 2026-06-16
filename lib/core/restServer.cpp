@@ -179,11 +179,11 @@ void restServer::start(const std::string& bind_address, u_short port) {
         ERROR_NON_OO("restServer: Failed to create libevent http server");
         exit(1);
     }
-    // Allow GET and POST; also OPTIONS when CORS is enabled, for browser preflights.
-    int allowed_methods = EVHTTP_REQ_GET | EVHTTP_REQ_POST;
-    if (cors_enabled())
-        allowed_methods |= EVHTTP_REQ_OPTIONS;
-    evhttp_set_allowed_methods(ev_server, allowed_methods);
+    // Always allow OPTIONS (browser CORS preflights), not just when
+    // cors_enabled(): start() runs before the config is parsed, so the
+    // allowlist isn't known yet. A preflight with CORS off gets a 200 with no
+    // CORS headers, which the browser rejects anyway -- same net effect.
+    evhttp_set_allowed_methods(ev_server, EVHTTP_REQ_GET | EVHTTP_REQ_POST | EVHTTP_REQ_OPTIONS);
     evhttp_set_gencb(ev_server, handle_request, (void*)this);
 
     struct evhttp_bound_socket* ev_sock =

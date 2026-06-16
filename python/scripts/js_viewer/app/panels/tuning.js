@@ -8,8 +8,9 @@
 // App.apply_band; this panel is just the input + button.
 
 export class TuningPanel {
-    constructor({app, target, initial_mhz}) {
+    constructor({app, target, initial_mhz, tuning_range_mhz}) {
         this.app = app;
+        const [lo_mhz, hi_mhz] = tuning_range_mhz || [24, 1800]; // default: airspy R2 span
 
         const marg = 10;
         const wrapper = $("<div/>")
@@ -22,7 +23,7 @@ export class TuningPanel {
             .text("Center (LO) [MHz]:").appendTo(wrapper);
 
         this._input = $("<input type='number'/>")
-            .attr({min: 24, max: 1800, step: "any"})   // airspy R2 tuning span
+            .attr({min: lo_mhz, max: hi_mhz, step: "any"})
             .css({flex: "1 1 0", "min-width": "0", "font-size": "14pt"})
             .val(initial_mhz != null ? initial_mhz.toFixed(3) : "")
             .appendTo(wrapper);

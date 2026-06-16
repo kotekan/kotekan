@@ -243,6 +243,7 @@ export class App {
             this.tuning_panel = new TuningPanel({
                 app: this, target: "display_card",
                 initial_mhz: (init_range[0] + init_range[1]) / 2,
+                tuning_range_mhz: ui.tuning_range_mhz,
             });
             this.panels.push(this.tuning_panel);
         }
@@ -270,6 +271,8 @@ export class App {
             this.panels.push(new BaselinePanel({
                 app: this, target: "baseline_card",
                 autocal_stage: null,
+                line_mask_mhz: ui.line_mask_mhz,
+                autocal_freqs_mhz: ui.autocal_freqs_mhz,
             }));
         }
 

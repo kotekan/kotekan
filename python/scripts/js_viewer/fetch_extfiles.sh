@@ -17,7 +17,6 @@ wget -P extlibs http://d3js.org/d3.v3.min.js
 wget -P extlibs https://cdn.jsdelivr.net/npm/jquery-numeric@1.5.0/jquery.numeric.min.js
 wget -P extlibs https://cdn.jsdelivr.net/npm/tinycolor2@1.6.0/cjs/tinycolor.min.js
 wget -P extlibs https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.1/plotly-basic.min.js
-wget -P extlibs https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.1/plotly-cartesian.min.js
 wget -P extlibs https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.13.6/underscore-min.js
 wget -P extlibs https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css
 wget -P extlibs https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js

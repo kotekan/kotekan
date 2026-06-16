@@ -1,7 +1,7 @@
-// CCERA telescope pointing readouts. Polls ``ccera_rest.py``'s endpoints on
-// port 3000 every few seconds and updates an info panel. Emits
-// ``state:pointing_updated`` so other panels (e.g. the galaxy view) can
-// react.
+// CCERA telescope pointing readouts. Fetches the static site location once
+// and polls ``ccera_rest.py``'s pointing + state endpoints (port 3000) every
+// few seconds. Emits ``state:pointing_updated`` so other panels (e.g. the
+// galaxy view) can react.
 
 export class CCERAPointingPanel {
     constructor({app, target, host, port, pointing_interval_ms, state_interval_ms}) {
@@ -48,35 +48,42 @@ export class CCERAPointingPanel {
 
         const base = "http://" + this._host + ":" + this._port;
         const self = this;
+        // Site location is static -- fetch it once.
+        fetch(base + "/position")
+            .then(r => r.json())
+            .then(data => {
+                Object.assign(self.state.CCERA, {lat: data.lat, lon: data.lon, el: data.el});
+                lat.text("Lat: "  + data.lat.toFixed(2) + " deg");
+                lon.text("Lon: "  + data.lon.toFixed(2) + " deg");
+                el .text("Elev: " + data.el .toFixed(2) + " m");
+            })
+            .catch(e => console.warn("CCERA /position failed:", e));
+
         const update_pointing = function() {
-            fetch(base + "/position")
-                .then(r => r.json().then(data => {
-                    Object.assign(self.state.CCERA, {lat: data.lat, lon: data.lon, el: data.el});
-                    lat.text("Lat: "  + data.lat.toFixed(2) + " deg");
-                    lon.text("Lon: "  + data.lon.toFixed(2) + " deg");
-                    el .text("Elev: " + data.el .toFixed(2) + " m");
-                    fetch(base + "/pointing")
-                        .then(r => r.json().then(data => {
-                            Object.assign(self.state.CCERA, {
-                                alt: data.alt, az: data.az,
-                                ra: data.ra, dec: data.dec, gl: data.gl, gb: data.gb,
-                            });
-                            alt.text("Alt: "      + data.alt.toFixed(2) + " deg");
-                            az .text("Az: "       + data.az .toFixed(2) + " deg");
-                            ra .text("RA: "       + data.ra .toFixed(2) + " deg");
-                            dec.text("Dec: "      + data.dec.toFixed(2) + " deg");
-                            gl .text("Gal. Lon: " + data.gl .toFixed(2) + " deg");
-                            gb .text("Gal. Lat: " + data.gb .toFixed(2) + " deg");
-                            self.bus.emit("state:pointing_updated", {...self.state.CCERA});
-                        }));
-                }));
+            fetch(base + "/pointing")
+                .then(r => r.json())
+                .then(data => {
+                    Object.assign(self.state.CCERA, {
+                        alt: data.alt, az: data.az,
+                        ra: data.ra, dec: data.dec, gl: data.gl, gb: data.gb,
+                    });
+                    alt.text("Alt: "      + data.alt.toFixed(2) + " deg");
+                    az .text("Az: "       + data.az .toFixed(2) + " deg");
+                    ra .text("RA: "       + data.ra .toFixed(2) + " deg");
+                    dec.text("Dec: "      + data.dec.toFixed(2) + " deg");
+                    gl .text("Gal. Lon: " + data.gl .toFixed(2) + " deg");
+                    gb .text("Gal. Lat: " + data.gb .toFixed(2) + " deg");
+                    self.bus.emit("state:pointing_updated", {...self.state.CCERA});
+                })
+                .catch(e => console.warn("CCERA /pointing failed:", e));
         };
         update_pointing();
         setInterval(update_pointing, pointing_ms);
 
         const update_state = function() {
             fetch(base + "/state")
-                .then(r => r.json().then(data => {
+                .then(r => r.json())
+                .then(data => {
                     let text = data.state;
                     if (text.startsWith("on source")) {
                         text = "On Source\n" + text.split(",")[1].substring(1);
@@ -93,7 +100,8 @@ export class CCERAPointingPanel {
                     } else {
                         state_div.text(text);
                     }
-                }));
+                })
+                .catch(e => console.warn("CCERA /state failed:", e));
         };
         update_state();
         setInterval(update_state, state_ms);
