@@ -72,6 +72,20 @@ make_power_corr_desc(std::ptrdiff_t num_elements, std::ptrdiff_t spectrum_length
                                            nullptr);
 }
 
+/// GpsReplicaCorrelator output: one fixed-width record per tracked PRN per
+/// emitted integration. The record is @p record_floats float32 fields
+/// (see GpsReplicaCorrelator.hpp for the field order), and a frame holds
+/// @p num_prns of them, so the descriptor is a 2-D float32 array
+/// [num_prns, record_floats]. The PRN id is stored as a float field (PRNs
+/// 1..32 are exactly representable), keeping the record a homogeneous
+/// float32 block -- same single-dtype convention as make_power_corr_desc's
+/// trailing count word.
+inline std::shared_ptr<kotekan::GenericNDArray>
+make_gps_record_desc(std::ptrdiff_t num_prns, std::ptrdiff_t record_floats) {
+    return kotekan::GenericNDArray::create(kotekan::DataType::float32, "gps_records",
+                                           {num_prns, record_floats}, {"prn", "field"}, nullptr);
+}
+
 } // namespace kotekan_airspy
 
 #endif // AIRSPY_FRAME_DESC_HPP

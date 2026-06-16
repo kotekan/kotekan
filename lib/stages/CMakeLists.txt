@@ -43,6 +43,7 @@ add_library(
     simpleAutocorr.cpp
     SampleAutocorr.cpp
     SimpleCrosscorr.cpp
+    gpsCACode.cpp
     SpawnProcess.cpp
     freqSplit.cpp
     FreqSubset.cpp
@@ -135,7 +136,8 @@ if(LIBAIRSPY_FOUND)
 endif()
 
 if(FFTW_FOUND)
-    target_sources(kotekan_stages PRIVATE fftwEngine.cpp)
+    target_sources(kotekan_stages PRIVATE fftwEngine.cpp GpsReplicaCorrelator.cpp)
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
 endif()
 

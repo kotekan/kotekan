@@ -11,6 +11,11 @@ target_link_libraries(test_truncate PRIVATE kotekan_libs kotekan_utils)
 add_executable(test_synchronized_queue test_synchronized_queue.cpp)
 target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotekan_utils)
 
+# Pure C/A code generator: compile the source directly so the test pulls in no
+# FFTW / libairspy dependency from kotekan_stages.
+add_executable(test_gps_ca_code test_gps_ca_code.cpp ../../lib/stages/gpsCACode.cpp)
+target_include_directories(test_gps_ca_code PRIVATE ../../lib/stages)
+
 add_executable(test_stat_tracker test_stat_tracker.cpp)
 target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
