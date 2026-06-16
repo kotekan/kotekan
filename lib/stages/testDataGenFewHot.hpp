@@ -42,7 +42,7 @@ public:
 private:
     Buffer* buf;
     const std::string type;
-    const freq_id_t freq_id;
+    const std::vector<freq_id_t> freq_id;
     const std::vector<int> elemns;
     const ptrdiff_t samples_per_dataset;
 };
