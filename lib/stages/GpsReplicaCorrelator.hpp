@@ -69,9 +69,14 @@
  * @conf   incoherent_ms    Int (default 1). 1 ms blocks summed (incoherently)
  *                          per emitted record.
  * @conf   track_phase      Bool (default false). Retain the complex peak phase
- *                          (Stage 2). Amplitude path is identical either way;
- *                          this only governs whether the phase is meaningful
- *                          across nav-bit boundaries downstream.
+ *                          and run per-PRN phase tracking (Stage 2): nav-bit
+ *                          stripping + continuous carrier phase. The amplitude
+ *                          path is identical either way. Best used with
+ *                          @c incoherent_ms == 1 (1 ms coherent blocks).
+ * @conf   lock_snr         Double (default 15). SNR threshold (peak/mean of the
+ *                          correlation surface) above which a PRN is considered
+ *                          locked for phase tracking. Below it, nav_sign and
+ *                          phase_cont are reported as 0/unlocked.
  *
  * Depends on libfftw3.
  *
@@ -86,8 +91,13 @@ public:
     void main_thread() override;
 
     /// Number of float32 fields per per-PRN output record. Field order:
-    /// {prn, doppler_hz, code_phase_chips, peak_mag, peak_re, peak_im, snr}.
-    static constexpr int RECORD_FLOATS = 7;
+    /// {prn, doppler_hz, code_phase_chips, peak_amp, peak_re, peak_im, snr,
+    ///  nav_sign, phase_cont}. The last two are populated only under
+    /// @c track_phase: nav_sign is the cumulative +-1 applied to strip GPS
+    /// nav-bit pi flips (0 when unlocked); phase_cont is the unwrapped,
+    /// nav-bit-stripped carrier phase in radians (0 when unlocked). peak_re/im
+    /// are the raw (un-stripped) complex peak, also only set under track_phase.
+    static constexpr int RECORD_FLOATS = 9;
 
 private:
     /// Assemble exactly @c _Ns real samples into @c block (handles input
@@ -102,6 +112,13 @@ private:
     /// grid, accumulating |corr|^2 into @c accum for that PRN.
     void correlate_prn(int p);
 
+    /// Stage 2 per-block phase tracking for PRN index @p p: gate on lock,
+    /// strip nav-bit pi flips, and maintain the continuous carrier phase.
+    /// Writes @p nav_sign (cumulative +-1, 0 if unlocked) and @p phase_cont
+    /// (unwrapped nav-bit-stripped phase, rad).
+    void track_phase_update(int p, std::complex<float> raw, float snr, double doppler,
+                            double code_phase_chips, float& nav_sign, float& phase_cont);
+
     /// Input real samples (int16) and output records (float32).
     Buffer* in_buf;
     Buffer* out_buf;
@@ -115,6 +132,7 @@ private:
     double _doppler_min, _doppler_max, _doppler_step;
     int _incoherent_ms;
     bool _track_phase;
+    double _lock_snr;
     std::vector<int> _prns;
 
     // --- derived sizes ---
@@ -152,6 +170,15 @@ private:
     /// peak phase (meaningful when incoherent_ms == 1; see header note).
     std::vector<std::complex<float>> last_corr;
     int blocks_in_accum; ///< blocks summed into @c accum so far
+
+    // --- Stage 2 per-PRN phase-tracking state (one entry per PRN) ---
+    std::vector<uint8_t> trk_locked;            ///< currently phase-locked?
+    std::vector<float> trk_sign;                ///< cumulative nav-bit sign (+-1)
+    std::vector<std::complex<float>> trk_prev;  ///< previous sign-corrected peak
+    std::vector<double> trk_cont_phase;         ///< accumulated unwrapped phase, rad
+    std::vector<double> trk_prev_wrapped;       ///< previous corrected wrapped phase, rad
+    std::vector<double> trk_prev_doppler;       ///< previous block's Doppler, Hz
+    std::vector<double> trk_prev_code_phase;    ///< previous block's code phase, chips
 };
 
 #endif // GPS_REPLICA_CORRELATOR_HPP

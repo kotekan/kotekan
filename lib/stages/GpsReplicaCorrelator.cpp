@@ -46,12 +46,18 @@ GpsReplicaCorrelator::GpsReplicaCorrelator(Config& config, const std::string& un
     _doppler_step = config.get_default<double>(unique_name, "doppler_step", 500.0);
     _incoherent_ms = config.get_default<int>(unique_name, "incoherent_ms", 1);
     _track_phase = config.get_default<bool>(unique_name, "track_phase", false);
+    _lock_snr = config.get_default<double>(unique_name, "lock_snr", 15.0);
     _prns = config.get<std::vector<int>>(unique_name, "prns");
 
     if (_prns.empty())
         FATAL_ERROR("GpsReplicaCorrelator: 'prns' list is empty; nothing to correlate.");
     if (_incoherent_ms < 1)
         FATAL_ERROR("GpsReplicaCorrelator: incoherent_ms must be >= 1.");
+    if (_track_phase && _incoherent_ms != 1)
+        WARN("GpsReplicaCorrelator: track_phase with incoherent_ms={:d}: phase is taken from "
+             "the last block of each window and nav-bit tracking runs at that ({:d} ms) cadence; "
+             "use incoherent_ms=1 for clean 1 ms phase.",
+             _incoherent_ms, _incoherent_ms);
     if (_doppler_step <= 0 || _doppler_max < _doppler_min)
         FATAL_ERROR("GpsReplicaCorrelator: invalid Doppler grid.");
 
@@ -92,6 +98,15 @@ GpsReplicaCorrelator::GpsReplicaCorrelator(Config& config, const std::string& un
     accum.assign((size_t)n_prn * n_dop * _Ns, 0.0f);
     last_corr.assign((size_t)n_prn * n_dop * _Ns, std::complex<float>(0.0f, 0.0f));
     blocks_in_accum = 0;
+
+    // Stage 2 tracking state, one slot per PRN, all unlocked to start.
+    trk_locked.assign(n_prn, 0);
+    trk_sign.assign(n_prn, 1.0f);
+    trk_prev.assign(n_prn, std::complex<float>(0.0f, 0.0f));
+    trk_cont_phase.assign(n_prn, 0.0);
+    trk_prev_wrapped.assign(n_prn, 0.0);
+    trk_prev_doppler.assign(n_prn, 0.0);
+    trk_prev_code_phase.assign(n_prn, 0.0);
 
     // --- FFTW buffers and plans (planner call needs the global lock) ---
     auto alloc = [&]() { return (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * _Ns); };
@@ -229,6 +244,63 @@ void GpsReplicaCorrelator::correlate_prn(int p) {
     }
 }
 
+void GpsReplicaCorrelator::track_phase_update(int p, std::complex<float> raw, float snr,
+                                              double doppler, double code_phase_chips,
+                                              float& nav_sign, float& phase_cont) {
+    // Allowable block-to-block bin wander for the peak to count as the same
+    // signal: +-1.5 Doppler bins and a few chips of code phase (circular).
+    constexpr double CODE_TOL_CHIPS = 3.0;
+    const double dopp_tol = 1.5 * _doppler_step;
+
+    // Below the lock threshold the peak is just the noise maximum -- drop lock
+    // and report nothing meaningful.
+    if (snr < _lock_snr) {
+        trk_locked[p] = 0;
+        nav_sign = 0.0f;
+        phase_cont = 0.0f;
+        return;
+    }
+
+    double code_jump = std::fabs(code_phase_chips - trk_prev_code_phase[p]);
+    code_jump = std::min(code_jump, (double)gps::CA_CODE_LENGTH - code_jump); // circular
+    const bool consistent = trk_locked[p] && std::fabs(doppler - trk_prev_doppler[p]) <= dopp_tol
+                            && code_jump <= CODE_TOL_CHIPS;
+
+    if (!consistent) {
+        // (Re)acquire lock: start a fresh continuous-phase record at this block.
+        trk_sign[p] = 1.0f;
+        const std::complex<float> corr = raw; // sign = +1
+        const double w = std::atan2(corr.imag(), corr.real());
+        trk_cont_phase[p] = w;
+        trk_prev_wrapped[p] = w;
+        trk_prev[p] = corr;
+    } else {
+        // Nav-bit strip: a ~pi flip makes (sign*raw) anti-aligned with the
+        // previous corrected peak; toggle the cumulative sign to undo it.
+        std::complex<float> corr = trk_sign[p] * raw;
+        if (corr.real() * trk_prev[p].real() + corr.imag() * trk_prev[p].imag() < 0.0f) {
+            trk_sign[p] = -trk_sign[p];
+            corr = -corr;
+        }
+        // Unwrap the corrected phase onto the running continuous record.
+        const double w = std::atan2(corr.imag(), corr.real());
+        double dphi = w - trk_prev_wrapped[p];
+        while (dphi > M_PI)
+            dphi -= 2.0 * M_PI;
+        while (dphi < -M_PI)
+            dphi += 2.0 * M_PI;
+        trk_cont_phase[p] += dphi;
+        trk_prev_wrapped[p] = w;
+        trk_prev[p] = corr;
+    }
+
+    trk_locked[p] = 1;
+    trk_prev_doppler[p] = doppler;
+    trk_prev_code_phase[p] = code_phase_chips;
+    nav_sign = trk_sign[p];
+    phase_cont = (float)trk_cont_phase[p];
+}
+
 void GpsReplicaCorrelator::main_thread() {
     frame_in = 0;
     frame_out = 0;
@@ -279,6 +351,11 @@ void GpsReplicaCorrelator::main_thread() {
             const float snr = (mean > 0.0) ? (float)(peak / mean) : 0.0f;
             const float code_phase_chips = (float)best_k * (float)gps::CA_CODE_LENGTH / (float)_Ns;
 
+            float nav_sign = 0.0f, phase_cont = 0.0f;
+            if (_track_phase)
+                track_phase_update(p, cpx, snr, _doppler_grid[best_di], code_phase_chips, nav_sign,
+                                   phase_cont);
+
             float* rec = out_local + (size_t)p * RECORD_FLOATS;
             rec[0] = (float)_prns[p];
             rec[1] = (float)_doppler_grid[best_di];
@@ -287,9 +364,13 @@ void GpsReplicaCorrelator::main_thread() {
             rec[4] = _track_phase ? cpx.real() : 0.0f;
             rec[5] = _track_phase ? cpx.imag() : 0.0f;
             rec[6] = snr;
+            rec[7] = nav_sign;
+            rec[8] = phase_cont;
 
-            DEBUG("PRN {:2d}: doppler {:+.0f} Hz, code phase {:.1f} chips, amp {:.3g}, snr {:.1f}",
-                  _prns[p], _doppler_grid[best_di], code_phase_chips, peak_amp, snr);
+            DEBUG("PRN {:2d}: doppler {:+.0f} Hz, code phase {:.1f} chips, amp {:.3g}, snr {:.1f}, "
+                  "nav {:+.0f}, phase {:.2f} rad",
+                  _prns[p], _doppler_grid[best_di], code_phase_chips, peak_amp, snr, nav_sign,
+                  phase_cont);
         }
 
         out_buf->mark_frame_full(unique_name, frame_out);

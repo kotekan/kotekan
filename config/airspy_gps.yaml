@@ -77,10 +77,12 @@ airspy_input:
 
 # ---- GPS replica correlator ----
 # n_prn must match the length of the `prns` list below; the output frame holds
-# exactly n_prn records of record_floats float32 each
-# {prn, doppler_hz, code_phase_chips, peak_amp, peak_re, peak_im, snr}.
+# exactly n_prn records of record_floats float32 each:
+# {prn, doppler_hz, code_phase_chips, peak_amp, peak_re, peak_im, snr,
+#  nav_sign, phase_cont}. The last two (and peak_re/im) are populated only when
+# track_phase is true.
 n_prn: 6
-record_floats: 7
+record_floats: 9
 
 gps_record_buf:
     kotekan_buffer: standard
@@ -98,7 +100,8 @@ gps_correlator:
     doppler_max: 6000.0      # Hz
     doppler_step: 500.0      # Hz
     incoherent_ms: 1         # 1 ms blocks summed per emitted record
-    track_phase: false       # Stage 2: retain the complex peak phase
+    track_phase: false       # Stage 2: phase tracking + nav-bit stripping
+    lock_snr: 15.0           # SNR (peak/mean) to lock a PRN for phase tracking
     # Active PRNs to search. Feed known-overhead PRNs from an almanac to limit
     # the search, or list all 1..32 to brute-force.
     prns: [2, 5, 12, 15, 25, 29]

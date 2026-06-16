@@ -20,7 +20,10 @@ SAMPLE_RATE = 5.0e6
 NS = int(round(SAMPLE_RATE / 1000.0))  # 5000 samples per 1 ms code period
 F_OFFSET = 1.0e6
 CODE_LEN = 1023
-RECORD_FLOATS = 7
+RECORD_FLOATS = 9
+# record field order, matching GpsReplicaCorrelator.hpp RECORD_FLOATS
+FIELDS = ["prn", "doppler_hz", "code_phase_chips", "peak_amp", "peak_re", "peak_im",
+          "snr", "nav_sign", "phase_cont"]
 PRNS = [2, 5, 12]
 N_PRN = len(PRNS)
 DOPPLER_MIN, DOPPLER_MAX, DOPPLER_STEP = -1000.0, 1000.0, 500.0
@@ -80,29 +83,40 @@ def _write_int16_frame(path_dir, file_name, samples):
     return path
 
 
-def _read_records(path_dir, file_name):
-    path = os.path.join(str(path_dir), "%s_%07d.raw" % (file_name, 0))
+def _read_one(path):
     with open(path, "rb") as f:
         meta = struct.unpack("<I", f.read(4))[0]
         if meta:
             f.read(meta)
         raw = f.read(N_PRN * RECORD_FLOATS * 4)
-    flat = np.frombuffer(raw, dtype=np.float32, count=N_PRN * RECORD_FLOATS)
-    recs = flat.reshape(N_PRN, RECORD_FLOATS)
-    # field order: prn, doppler_hz, code_phase_chips, peak_amp, peak_re, peak_im, snr
+    recs = np.frombuffer(raw, dtype=np.float32, count=N_PRN * RECORD_FLOATS).reshape(
+        N_PRN, RECORD_FLOATS
+    )
     return {int(round(r[0])): r for r in recs}
 
 
-def _run(tmpdir, samples, track_phase=False, incoherent_ms=1):
+def _read_all(out_dir, file_name, n):
+    """Per-block records: list (len n) of {prn: record-row}."""
+    return [
+        _read_one(os.path.join(out_dir, "%s_%07d.raw" % (file_name, i))) for i in range(n)
+    ]
+
+
+def _run(tmpdir, samples, track_phase=False, incoherent_ms=1, lock_snr=15.0):
+    """Run the pipeline over `samples` (length a multiple of NS, one record
+    frame emitted per NS-sample block) and return the per-block record list."""
+    assert samples.size % NS == 0
+    n_blocks = samples.size // NS
     # Unique work dirs so a test may call _run more than once.
     work = tempfile.mkdtemp(dir=str(tmpdir))
     in_dir = os.path.join(work, "in")
     out_dir = os.path.join(work, "out")
     os.makedirs(in_dir)
     os.makedirs(out_dir)
+    # One input frame carrying all blocks; the correlator slices it to NS.
     _write_int16_frame(in_dir, "gpsin", samples)
 
-    in_frame_size = NS * 2  # int16 real
+    in_frame_size = samples.size * 2  # int16 real
     out_frame_size = N_PRN * RECORD_FLOATS * 4
 
     buffers = {
@@ -139,6 +153,7 @@ def _run(tmpdir, samples, track_phase=False, incoherent_ms=1):
             "doppler_step": DOPPLER_STEP,
             "incoherent_ms": incoherent_ms,
             "track_phase": track_phase,
+            "lock_snr": lock_snr,
             "prns": PRNS,
         },
         "write_out": {
@@ -149,12 +164,16 @@ def _run(tmpdir, samples, track_phase=False, incoherent_ms=1):
             "file_ext": "raw",
             "prefix_hostname": False,
             "num_frames_per_file": 1,
-            "exit_after_n_files": 1,
+            "exit_after_n_files": n_blocks,
         },
     }
-    config = {"buffer_depth": 4, "log_level": "info", "instrument_name": "test"}
+    config = {
+        "buffer_depth": max(4, n_blocks + 2),
+        "log_level": "info",
+        "instrument_name": "test",
+    }
     runner.KotekanRunner(buffers=buffers, stages=stages, config=config).run()
-    return _read_records(out_dir, "gps")
+    return _read_all(out_dir, "gps", n_blocks)
 
 
 def test_acquires_injected_prn(tmpdir):
@@ -162,7 +181,7 @@ def test_acquires_injected_prn(tmpdir):
     code phase are recovered, and the other searched PRNs stay at the noise
     floor (low SNR)."""
     delay = 600  # samples
-    recs = _run(tmpdir, make_signal(5, delay_samples=delay, doppler=0.0))
+    recs = _run(tmpdir, make_signal(5, delay_samples=delay, doppler=0.0))[0]
 
     snr = {p: recs[p][6] for p in PRNS}
     # The injected PRN dominates: high absolute SNR and well above the other
@@ -183,23 +202,80 @@ def test_acquires_injected_prn(tmpdir):
 
 @pytest.mark.parametrize("doppler", [-500.0, 500.0])
 def test_recovers_doppler(tmpdir, doppler):
-    recs = _run(tmpdir, make_signal(12, delay_samples=0, doppler=doppler))
+    recs = _run(tmpdir, make_signal(12, delay_samples=0, doppler=doppler))[0]
     assert recs[12][6] == max(recs[p][6] for p in PRNS)
     assert recs[12][1] == pytest.approx(doppler, abs=1e-6)
 
 
 def test_track_phase_records_complex_peak(tmpdir):
-    """With track_phase on, the complex peak carries a non-trivial phase that
-    matches the injected carrier phase; with it off, re/im are zeroed."""
+    """With track_phase on, the complex peak is populated; with it off, zeroed."""
     phase = 0.9
-    recs_on = _run(tmpdir, make_signal(5, doppler=0.0, phase=phase), track_phase=True)
-    r = recs_on[5]
+    r = _run(tmpdir, make_signal(5, doppler=0.0, phase=phase), track_phase=True)[0][5]
     assert (r[4] ** 2 + r[5] ** 2) > 0.0
-    got_phase = np.arctan2(r[5], r[4])
-    # absolute phase carries a fixed offset from the analytic/replica path; the
-    # measurement is relative, so only require a stable non-zero complex peak
-    # and that re/im are populated.
-    assert np.isfinite(got_phase)
+    assert np.isfinite(np.arctan2(r[5], r[4]))
 
-    recs_off = _run(tmpdir, make_signal(5, doppler=0.0, phase=phase), track_phase=False)
-    assert recs_off[5][4] == 0.0 and recs_off[5][5] == 0.0
+    off = _run(tmpdir, make_signal(5, doppler=0.0, phase=phase), track_phase=False)[0][5]
+    assert off[4] == 0.0 and off[5] == 0.0
+
+
+# --- multi-block phase / nav-bit tracking (Stage 2) ---
+
+def make_signal_multi(prn, n_blocks, doppler=0.0, phase0=0.0, amp=2000.0, flip_blocks=()):
+    """A contiguous stream of `n_blocks` 1 ms blocks: continuous carrier across
+    block boundaries, code repeating each block, and a nav-bit sign that toggles
+    at each block index in `flip_blocks` (model of the 50 bps nav data)."""
+    n = np.arange(n_blocks * NS)
+    carrier = np.cos(2 * np.pi * (F_OFFSET + doppler) * n / SAMPLE_RATE + phase0)
+    code = np.tile(code_resampled(prn, 0), n_blocks)
+    sign = np.empty(n_blocks, dtype=np.float32)
+    s, flips = 1.0, set(flip_blocks)
+    for b in range(n_blocks):
+        if b in flips:
+            s = -s
+        sign[b] = s
+    navsig = np.repeat(sign, NS)
+    return np.round(amp * navsig * code * carrier).astype(np.int16)
+
+
+def test_phase_continuous_across_navbit(tmpdir):
+    """Doppler 0 (constant true phase) with a nav-bit flip mid-record: nav_sign
+    toggles exactly at the flip and the nav-stripped continuous phase stays
+    flat (the raw peak would jump by pi)."""
+    n_blocks = 40
+    blocks = _run(tmpdir, make_signal_multi(5, n_blocks, doppler=0.0, phase0=0.5,
+                                            flip_blocks=(20,)), track_phase=True)
+    nav = np.array([blocks[i][5][7] for i in range(n_blocks)])
+    pc = np.array([blocks[i][5][8] for i in range(n_blocks)])
+
+    assert np.all(nav != 0.0)  # locked throughout (clean signal)
+    # exactly one nav-sign change, at the injected flip
+    changes = list(np.where(np.diff(np.sign(nav)) != 0)[0] + 1)
+    assert changes == [20], changes
+    # constant true phase -> stripped continuous phase is flat
+    assert pc.std() < 0.1, pc
+
+    # the RAW peak phase, by contrast, does jump ~pi at the flip
+    raw = np.array([np.arctan2(blocks[i][5][5], blocks[i][5][4]) for i in range(n_blocks)])
+    jump = abs(((raw[20] - raw[19] + np.pi) % (2 * np.pi)) - np.pi)
+    assert jump > 2.0, jump
+
+
+def test_phase_ramp_tracks_residual_doppler(tmpdir):
+    """A residual Doppler smaller than the grid step leaves a linear phase ramp;
+    nav-bit stripping keeps it linear through a mid-record bit flip."""
+    n_blocks = 40
+    resid = 200.0  # < half the 500 Hz step -> search picks bin 0
+    blocks = _run(tmpdir, make_signal_multi(12, n_blocks, doppler=resid, phase0=0.0,
+                                            flip_blocks=(20,)), track_phase=True)
+    assert blocks[0][12][1] == pytest.approx(0.0, abs=1e-6)  # Doppler bin 0
+    nav = np.array([blocks[i][12][7] for i in range(n_blocks)])
+    pc = np.array([blocks[i][12][8] for i in range(n_blocks)])
+    assert np.all(nav != 0.0)
+
+    x = np.arange(n_blocks)
+    coef = np.polyfit(x, pc, 1)
+    slope = coef[0]
+    expected = 2 * np.pi * resid / 1000.0  # rad per 1 ms block
+    assert abs(slope) == pytest.approx(expected, abs=0.05), (slope, expected)
+    # continuous: small residual from the linear fit, no pi steps
+    assert np.max(np.abs(pc - np.polyval(coef, x))) < 0.2
