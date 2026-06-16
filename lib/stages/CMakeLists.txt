@@ -62,6 +62,7 @@ add_library(
     restInspectFrame.cpp
     frbNetworkProcess.cpp
     pulsarNetworkProcess.cpp
+    pirateFrbSend.cpp
     bufferMerge.cpp
     bufferCopy.cpp
     bufferSwitch.cpp
@@ -77,6 +78,7 @@ add_library(
     setFRB1Phase.cpp
     setFRBBeams.cpp
     calcFRB2Weights.cpp
+    calcFRB2Weights_Seth.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
@@ -120,6 +122,7 @@ add_library(
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
 target_include_directories(kotekan_stages PRIVATE .)
+target_include_directories(kotekan_stages PRIVATE libpirate)
 
 if(LIBAIRSPY_FOUND)
     target_sources(kotekan_stages PRIVATE airspyInput.cpp)
