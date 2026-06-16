@@ -253,6 +253,9 @@ void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& 
     dataset.createAttribute("axis", dim_names);
 };
 
+// NOTE: The datasets and attributes created below define the on-disk file format,
+// which is documented in docs/sphinx/user/file_formats/n2_vis_hdf5.rst. If you add,
+// remove, or change any dataset or attribute, update that page to match.
 std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::string& filepath,
                                                                  const uint64_t num_file_t_,
                                                                  const N2FrameView& fv,

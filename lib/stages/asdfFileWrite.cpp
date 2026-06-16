@@ -66,6 +66,10 @@ using namespace asdf;
  * @metric kotekan_asdffilewrite_write_time_seconds
  *         The write time to write out the last frame.
  *
+ * @note The on-disk file format is documented in
+ *       docs/sphinx/user/file_formats/asdf_zarr_frames.rst. Any change to the
+ *       entries written by this stage should be reflected there.
+ *
  * @author Erik Schnetter
  **/
 class asdfFileWrite : public kotekan::Stage {
