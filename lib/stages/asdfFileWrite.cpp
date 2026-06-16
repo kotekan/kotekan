@@ -1,49 +1,48 @@
-#include <Config.hpp>       // for Config
-#include <DataType.hpp>     // for type_to_string, type_total_bytes
-#include <N2FrameView.hpp>  // for N2FrameView
-#include <N2Metadata.hpp>   // for N2Metadata, metadata_is_N2
-#include <NDArray.hpp>      // for GenericNDArray
-#include <Stage.hpp>        // for Stage
-#include <StageFactory.hpp> // for REGISTER_KOTEKAN_STAGE
-#include <Telescope.hpp>
-#include <algorithm>             // for max
-#include <array>                 // for array
-#include <asdf/asdf.hxx>         // for asdf
-#include <asdf/byteorder.hxx>    // for host_byteorder
-#include <asdf/config.hxx>       // for ASDF_CHECK_VERSION
-#include <asdf/datatype.hxx>     // for datatype_t, complex64_t, float32_t, scalar_type_id_t
-#include <asdf/entry.hxx>        // for int_entry, group, sequence, ndarray_entry, string_entry
-#include <asdf/io.hxx>           // for block_format_t, compression_t
-#include <asdf/memoized.hxx>     // for make_constant_memoized
-#include <asdf/ndarray.hxx>      // for ndarray, ptr_block_t, block_info_t, block_t
-#include <asdfFiles.hpp>         // for beautify_buffer_name, chord2asdf, chord_metadata_version
-#include <atomic>                // for __atomic_base, atomic
-#include <buffer.hpp>            // for Buffer
-#include <bufferContainer.hpp>   // for bufferContainer
-#include <cassert>               // for assert
-#include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, get_chord_metadata
-#include <cstddef>               // for ptrdiff_t, size_t
-#include <cstdint>               // for int64_t, uint8_t, uint32_t
-#include <cstring>               // for memcpy, strerror
-#include <errno.h>               // for errno, EEXIST, EISDIR
-#include <errors.h>              // for exit_kotekan, ReturnCode
-#include <fmt.hpp>               // for compile_string_to_view, join
-#include <functional>            // for function
-#include <gsl-lite.hpp>          // for span
-#include <iomanip>               // for operator<<, setfill, setw
-#include <kotekanLogging.hpp>    // for DEBUG, FATAL_ERROR, ERROR, INFO, WARN
-#include <memory>                // for shared_ptr, __shared_ptr_access, make_shared, allocator
-#include <metadata.hpp>          // for metadataObject
-#include <optional>              // for optional
-#include <prometheusMetrics.hpp> // for Metrics, Gauge
-#include <sstream>               // for basic_ostream, operator<<, basic_ostringstream, ostri...
-#include <string>                // for basic_string, char_traits, string, operator<<
-#include <sys/stat.h>            // for mkdir
-#include <timeUtil.hpp>
-#include <unistd.h>                // for ssize_t, gethostname
-#include <vector>                  // for vector
-#include <visUtil.hpp>             // for current_time
-#include <waitingForMaxFrames.hpp> // for waiting_for_max_frames
+#include <Config.hpp>               // for Config
+#include <DataType.hpp>             // for type_to_string, type_total_bytes
+#include <N2FrameView.hpp>          // for N2FrameView
+#include <N2Metadata.hpp>           // for N2Metadata, metadata_is_N2
+#include <NDArray.hpp>              // for GenericNDArray
+#include <Stage.hpp>                // for Stage
+#include <StageFactory.hpp>         // for REGISTER_KOTEKAN_STAGE
+#include <Telescope.hpp>            // for Telescope
+#include <asdf/asdf.hxx>            // for asdf
+#include <asdf/byteorder.hxx>       // for host_byteorder
+#include <asdf/config.hxx>          // for ASDF_CHECK_VERSION
+#include <asdf/datatype.hxx>        // for datatype_t, complex64_t, float32_t, scalar_type_id_t
+#include <asdf/entry.hxx>           // for int_entry, group, sequence, string_entry, ndarray_entry
+#include <asdf/io.hxx>              // for block_format_t, compression_t
+#include <asdf/memoized.hxx>        // for make_constant_memoized
+#include <asdf/ndarray.hxx>         // for ndarray, ptr_block_t, block_info_t, block_t
+#include <asdfFiles.hpp>            // for beautify_buffer_name, chord2asdf, chord_metadata_version
+#include <buffer.hpp>               // for Buffer
+#include <bufferContainer.hpp>      // for bufferContainer
+#include <chordMetadata.hpp>        // for chordMetadata, metadata_is_chord, get_chord_metadata
+#include <errno.h>                  // for errno, EEXIST, EISDIR
+#include <errors.h>                 // for exit_kotekan, ReturnCode
+#include <gsl-lite.hpp>             // for span
+#include <kotekanLogging.hpp>       // for DEBUG, FATAL_ERROR, ERROR, INFO, WARN
+#include <metadata.hpp>             // for metadataObject
+#include <prometheusMetrics.hpp>    // for Metrics, Gauge
+#include <sys/stat.h>               // for mkdir
+#include <unistd.h>                 // for ssize_t, gethostname
+#include <visUtil.hpp>              // for current_time
+#include <waitingForMaxFrames.hpp>  // for waiting_for_max_frames
+#include <array>                    // for array
+#include <atomic>                   // for __atomic_base, atomic
+#include <cassert>                  // for assert
+#include <cstddef>                  // for ptrdiff_t, size_t
+#include <cstdint>                  // for int64_t, uint8_t, uint32_t
+#include <cstring>                  // for memcpy, strerror
+#include <functional>               // for function
+#include <iomanip>                  // for operator<<, setfill, setw
+#include <memory>                   // for shared_ptr, make_shared, __shared_ptr_access, allocator
+#include <optional>                 // for optional
+#include <sstream>                  // for basic_ostream, operator<<, basic_ostringstream, ostri...
+#include <string>                   // for basic_string, char_traits, string, operator<<
+#include <vector>                   // for vector
+
+#include "fmt.hpp"                  // for compile_string_to_view, join
 
 using namespace asdf;
 
@@ -66,6 +65,10 @@ using namespace asdf;
  * @par Metrics
  * @metric kotekan_asdffilewrite_write_time_seconds
  *         The write time to write out the last frame.
+ *
+ * @note The on-disk file format is documented in
+ *       docs/sphinx/user/file_formats/asdf_zarr_frames.rst. Any change to the
+ *       entries written by this stage should be reflected there.
  *
  * @author Erik Schnetter
  **/
@@ -339,23 +342,6 @@ public:
                         dim_names->push_back(
                             std::make_shared<ASDF::string_entry>(meta->get_dimension_name(d)));
                     group->emplace("dim_names", dim_names);
-
-                    if (meta->ndishes >= 0)
-                        group->emplace("ndishes", std::make_shared<ASDF::int_entry>(meta->ndishes));
-
-                    if (meta->dish_index) {
-                        auto dish_index = std::make_shared<ASDF::ndarray>(
-                            std::vector<int>(meta->dish_index,
-                                             meta->dish_index
-                                                 + meta->n_dish_locations_ew
-                                                       * meta->n_dish_locations_ns),
-                            ASDF::block_format_t::inline_array, ASDF::compression_t::none, -1,
-                            std::vector<bool>(),
-                            std::vector<int64_t>{meta->n_dish_locations_ns,
-                                                 meta->n_dish_locations_ew});
-                        auto dish_index_entry = std::make_shared<ASDF::ndarray_entry>(dish_index);
-                        group->emplace("dish_index", dish_index_entry);
-                    }
 
                 } else if (metadata_is_N2(mc)) {
 

@@ -1,24 +1,27 @@
 #include "airspyInput.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp" // for make_input_desc
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for ERROR, INFO, DEBUG, FATAL_ERROR
-#include "restServer.hpp"      // for connectionInstance, restServer
+#include <fcntl.h>              // for open, O_RDWR
+#include <stdint.h>             // for uint32_t, uint8_t
+#include <stdlib.h>             // for free, abs, malloc
+#include <string.h>             // for memcpy
+#include <unistd.h>             // for size_t, close, usleep
+#include <json.hpp>             // for basic_json, json
+#include <condition_variable>   // for condition_variable
+#include <functional>           // for bind, function, _1, _2
+#include <mutex>                // for mutex, unique_lock, lock_guard
+#include <algorithm>            // for min
+#include <cmath>                // for sqrt
+#include <memory>               // for shared_ptr
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <condition_variable> // for condition_variable
-#include <fcntl.h>            // for open, O_RDWR
-#include <functional>         // for bind, function
-#include <math.h>             // for sqrt
-#include <mutex>              // for unique_lock, lock_guard
-#include <stdint.h>           // for uint32_t, uint8_t
-#include <stdlib.h>           // for abs, malloc, free
-#include <string.h>           // for memcpy
-#include <unistd.h>           // for close, usleep
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"  // for make_input_desc
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for ERROR, INFO, DEBUG, FATAL_ERROR
+#include "restServer.hpp"       // for connectionInstance, HTTP_RESPONSE, restServer
+#include "fmt.hpp"              // for compile_string_to_view, format
+#include "NDArray.hpp"          // for GenericNDArray
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -55,6 +58,7 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
     _gain_if = config.get_default<int>(unique_name, "gain_if", 5);                 // 0-15
     _gain_mix = config.get_default<int>(unique_name, "gain_mix", 5);               // 0-15
     _biast_power = config.get_default<bool>(unique_name, "biast_power", false) ? 1 : 0;
+    _dither_disable = config.get_default<bool>(unique_name, "dither_disable", false) ? 1 : 0;
 
     _airspy_sn = config.get_default<long>(unique_name, "serial", 0);
     _airspy_fn = config.get_default<std::string>(unique_name, "airspy_file", "");
@@ -219,17 +223,18 @@ void airspyInput::main_thread() {
         airspy_opened = true;
     }
 
+    // init_device() already FATAL_ERROR'd with the specific reason on any
+    // failure; just exit main_thread quietly here.
     a_device = init_device();
-    if (a_device == nullptr) {
-        FATAL_ERROR("Error in airspyInput. Cannot find device.");
+    if (a_device == nullptr)
         return;
-    }
 
     if (_autostart) {
         err = airspy_start_rx(a_device, airspy_callback, static_cast<void*>(this));
         if (err != AIRSPY_SUCCESS) {
-            ERROR("airspy_start_rx() failed: {:s} ({:d})",
-                  airspy_error_name((enum airspy_error)err), err);
+            FATAL_ERROR("airspy_start_rx() failed: {:s} ({:d})",
+                        airspy_error_name((enum airspy_error)err), err);
+            return;
         }
     }
 }
@@ -335,7 +340,7 @@ struct airspy_device* airspyInput::init_device() {
     } else if (!_airspy_fn.empty()) {
         int airspy_fd = open(_airspy_fn.c_str(), O_RDWR);
         if (airspy_fd == -1) {
-            ERROR("Error opening file: {:s}", _airspy_fn);
+            FATAL_ERROR("Error opening file: {:s}", _airspy_fn);
             return nullptr;
         }
         // libairspy accepts a file descriptor through the same _sn entrypoint.
@@ -345,8 +350,8 @@ struct airspy_device* airspyInput::init_device() {
         result = airspy_open(&dev);
     }
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_open() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)result),
-              result);
+        FATAL_ERROR("airspy_open() failed: {:s} ({:d})",
+                    airspy_error_name((enum airspy_error)result), result);
         return nullptr;
     }
 
@@ -354,16 +359,16 @@ struct airspy_device* airspyInput::init_device() {
         uint32_t supported_samplerate_count;
         result = airspy_get_samplerates(dev, &supported_samplerate_count, 0);
         if (result != AIRSPY_SUCCESS) {
-            ERROR("airspy_get_samplerates() failed: {:s} ({:d})",
-                  airspy_error_name((enum airspy_error)result), result);
+            FATAL_ERROR("airspy_get_samplerates() failed: {:s} ({:d})",
+                        airspy_error_name((enum airspy_error)result), result);
             return nullptr;
         }
         uint32_t* supported_samplerates =
             (uint32_t*)malloc(supported_samplerate_count * sizeof(uint32_t));
         result = airspy_get_samplerates(dev, supported_samplerates, supported_samplerate_count);
         if (result != AIRSPY_SUCCESS) {
-            ERROR("airspy_get_samplerates() failed: {:s} ({:d})",
-                  airspy_error_name((enum airspy_error)result), result);
+            FATAL_ERROR("airspy_get_samplerates() failed: {:s} ({:d})",
+                        airspy_error_name((enum airspy_error)result), result);
             free(supported_samplerates);
             return nullptr;
         }
@@ -375,70 +380,96 @@ struct airspy_device* airspyInput::init_device() {
         }
         free(supported_samplerates);
         if (samplerate_idx < 0) {
-            ERROR("Unsupported sample rate: {:d} Hz", _sample_rate);
+            FATAL_ERROR("Unsupported sample rate: {:d} Hz", _sample_rate);
             return nullptr;
         }
         INFO("Selected sample rate: {:d} Hz -> idx {:d}", _sample_rate, samplerate_idx);
         result = airspy_set_samplerate(dev, samplerate_idx);
         if (result != AIRSPY_SUCCESS) {
-            ERROR("airspy_set_samplerate() failed: {:s} ({:d})",
-                  airspy_error_name((enum airspy_error)result), result);
+            FATAL_ERROR("airspy_set_samplerate() failed: {:s} ({:d})",
+                        airspy_error_name((enum airspy_error)result), result);
             return nullptr;
         }
     }
 
     result = airspy_set_sample_type(dev, AIRSPY_SAMPLE_RAW);
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_set_sample_type() failed: {:s} ({:d})",
-              airspy_error_name((enum airspy_error)result), result);
+        FATAL_ERROR("airspy_set_sample_type() failed: {:s} ({:d})",
+                    airspy_error_name((enum airspy_error)result), result);
         return nullptr;
     }
 
     result = airspy_set_freq(dev, freq);
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_set_freq() failed: {:s} ({:d})", airspy_error_name((enum airspy_error)result),
-              result);
+        FATAL_ERROR("airspy_set_freq() failed: {:s} ({:d})",
+                    airspy_error_name((enum airspy_error)result), result);
         return nullptr;
     }
 
     result = airspy_set_vga_gain(dev, _gain_if);
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_set_vga_gain() failed: {:s} ({:d})",
-              airspy_error_name((enum airspy_error)result), result);
+        FATAL_ERROR("airspy_set_vga_gain() failed: {:s} ({:d})",
+                    airspy_error_name((enum airspy_error)result), result);
         return nullptr;
     }
 
     result = airspy_set_mixer_gain(dev, _gain_mix);
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_set_mixer_gain() failed: {:s} ({:d})",
-              airspy_error_name((enum airspy_error)result), result);
+        FATAL_ERROR("airspy_set_mixer_gain() failed: {:s} ({:d})",
+                    airspy_error_name((enum airspy_error)result), result);
         return nullptr;
     }
     result = airspy_set_mixer_agc(dev, 0); // disable mixer AGC
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_set_mixer_agc() failed: {:s} ({:d})",
-              airspy_error_name((enum airspy_error)result), result);
+        FATAL_ERROR("airspy_set_mixer_agc() failed: {:s} ({:d})",
+                    airspy_error_name((enum airspy_error)result), result);
         return nullptr;
     }
 
     result = airspy_set_lna_gain(dev, _gain_lna);
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_set_lna_gain() failed: {:s} ({:d})",
-              airspy_error_name((enum airspy_error)result), result);
+        FATAL_ERROR("airspy_set_lna_gain() failed: {:s} ({:d})",
+                    airspy_error_name((enum airspy_error)result), result);
         return nullptr;
     }
 
     result = airspy_set_rf_bias(dev, _biast_power);
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_set_rf_bias() failed: {:s} ({:d})",
-              airspy_error_name((enum airspy_error)result), result);
+        FATAL_ERROR("airspy_set_rf_bias() failed: {:s} ({:d})",
+                    airspy_error_name((enum airspy_error)result), result);
         return nullptr;
+    }
+
+    // R820T fractional-N PLL dither: reg 0x12 bit 4 (0 = dither on, 1 = off).
+    // Between airspy_open and airspy_start_rx the R820T is in standby, so the
+    // write only updates the firmware's register shadow; airspy_start_rx later
+    // bulk-writes that shadow before locking the PLL, so the lock happens with
+    // the chosen dither setting baked in. Disabling dither eliminates the
+    // per-restart inter-unit LO drift at fractional tunes (coherent mode) at
+    // the cost of deterministic fractional-N spurs.
+    {
+        uint8_t v;
+        result = airspy_r820t_read(dev, 0x12, &v);
+        if (result != AIRSPY_SUCCESS) {
+            FATAL_ERROR("airspy_r820t_read(0x12) failed: {:s} ({:d})",
+                        airspy_error_name((enum airspy_error)result), result);
+            return nullptr;
+        }
+        v = _dither_disable ? (v | 0x10) : (v & ~0x10);
+        result = airspy_r820t_write(dev, 0x12, v);
+        if (result != AIRSPY_SUCCESS) {
+            FATAL_ERROR("airspy_r820t_write(0x12) failed: {:s} ({:d})",
+                        airspy_error_name((enum airspy_error)result), result);
+            return nullptr;
+        }
+        INFO("R820T fractional-N PLL dither {:s}",
+             _dither_disable ? "disabled (coherent mode)" : "enabled (stock)");
     }
 
     result = airspy_board_id_read(dev, &board_id);
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_board_id_read() failed: {:s} ({:d})",
-              airspy_error_name((enum airspy_error)result), result);
+        FATAL_ERROR("airspy_board_id_read() failed: {:s} ({:d})",
+                    airspy_error_name((enum airspy_error)result), result);
         return nullptr;
     }
     INFO("Board ID Number: {:d} ({:s})", board_id,
@@ -447,8 +478,8 @@ struct airspy_device* airspyInput::init_device() {
     airspy_read_partid_serialno_t read_partid_serialno;
     result = airspy_board_partid_serialno_read(dev, &read_partid_serialno);
     if (result != AIRSPY_SUCCESS) {
-        ERROR("airspy_board_partid_serialno_read() failed: {:s} ({:d})",
-              airspy_error_name((enum airspy_error)result), result);
+        FATAL_ERROR("airspy_board_partid_serialno_read() failed: {:s} ({:d})",
+                    airspy_error_name((enum airspy_error)result), result);
         return nullptr;
     }
     INFO("Part ID Number: {:#08X} {:#08X}", read_partid_serialno.part_id[0],

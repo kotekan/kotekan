@@ -62,11 +62,18 @@ sizeof_short: 2
 
 use_hugepages: false
 
+# Single source of truth for the upstream FPGA controller's REST interface.
+# Referenced by /telescope/{gps,frequency_map}_host_info.
+fpga_controller:
+  host: 10.1.13.1
+  port: 54321
+
 # Telescope
 telescope:
   name: CHIMETelescope
   require_gps: true
   query_gps: true # GPS time is provided via coco
+  gps_host_info: /fpga_controller
   query_frequency_map: true # Frequency map is provided via coco
   require_frequency_map: true # Make sure we have the full frequency map
   allow_default_frequency_map: false # Don't fall back on default map
@@ -820,13 +827,13 @@ n2k_num_subintegrations: n2k_samples_per_data_set / n2k_sub_integration_ntime
 
 n2k_correlation_blocksize: 16
 n2k_correlation_num_elements: num_dishes * num_polarizations
-n2k_correlation_linear_num_blocks: (n2k_correlation_num_elements + 1) / n2k_correlation_blocksize
+n2k_correlation_linear_num_blocks: (n2k_correlation_num_elements + n2k_correlation_blocksize - 1) / n2k_correlation_blocksize
 n2k_correlation_triangle_num_blocks: n2k_correlation_linear_num_blocks * (n2k_correlation_linear_num_blocks + 1) / 2
 n2k_correlation_triangle_size: n2k_correlation_blocksize * n2k_correlation_blocksize * n2k_correlation_triangle_num_blocks
 
 n2k_counts_blocksize: 8
 n2k_counts_num_elements: num_dishes / 8 * num_polarizations
-n2k_counts_linear_num_blocks: (n2k_counts_num_elements + 1) / n2k_counts_blocksize
+n2k_counts_linear_num_blocks: (n2k_counts_num_elements + n2k_counts_blocksize - 1) / n2k_counts_blocksize
 n2k_counts_triangle_num_blocks: n2k_counts_linear_num_blocks * (n2k_counts_linear_num_blocks + 1) / 2
 n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_counts_triangle_num_blocks
 
@@ -993,6 +1000,7 @@ vis_accumulate:
     packet_loss_is_scalar: True
     cpu_affinity: [17, 18, 19]
     num_workers: 3
+    input_order: CHIMEBeamformer
     # round_to_even(10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
     # round_up_to_even(10s / ( 16384 * 2.56us ) * 1) = 240
     # num_subintegrations_per_bin_maybe_odd: 10e9 / ( n2k_samples_per_data_set * frame_arrival_period_ns ) * n2k_num_subintegrations)
@@ -1155,6 +1163,7 @@ dump_rfi_SKtilde:
    in_buf: host_rfi_SKtilde_buffer_post
    file_name: host_rfi_SKtilde_buffer
    create_single_file: true
+   input_order: CHIMEBeamformer
 {% endif %}
 
 # Information for input reordering, packed as

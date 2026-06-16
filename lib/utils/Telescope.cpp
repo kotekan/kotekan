@@ -1,19 +1,26 @@
 #include "Telescope.hpp"
 
-#include "configUpdater.hpp" // for configUpdater
-#include "restServer.hpp"    // for restServer, connectionInstance
-#include "timeUtil.hpp"
+#include <mutex>              // for unique_lock
+#include <shared_mutex>       // for shared_lock
+#include <stdexcept>          // for invalid_argument
+#include <algorithm>          // for copy, lower_bound, sort
+#include <functional>         // for bind, _1, function
+#include <limits>             // for numeric_limits
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <mutex>
-#include <shared_mutex>
-#include <stdexcept> // for invalid_argument
+#include "configUpdater.hpp"  // for configUpdater
+#include "geoUtil.hpp"        // for GeoFrame
+#include "restServer.hpp"     // for restServer, connectionInstance
+#include "timeUtil.hpp"       // for EOP, BareEOP, get_ERA_from_UT1, EOP_comp_time, eop_null
+#include "fmt.hpp"            // for compile_string_to_view
 
 using kotekan::connectionInstance;
 using kotekan::restServer;
 
 #define GIGA 1'000'000'000L
+
+static constexpr double C = 2.99792458e8; // speed of light in m/s
+static constexpr double deg2rad = M_PI / 180.0;
+static constexpr double arcsec2rad = M_PI / (180.0 * 3600);
 
 static constexpr BareEOP dummy_bare_eop_first = {
     .t_inst_ns = 0, .delta_UT1_inst = 0.0, .xp_as = 0.0, .yp_as = 0.0};
@@ -23,8 +30,10 @@ static constexpr BareEOP dummy_bare_eop_last = {.t_inst_ns = std::numeric_limits
                                                 .yp_as = 0.0};
 
 Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
-                     const std::string& eop_updatable_config_path) :
-    _unique_name(tel_path), _require_eop(require_eop) {
+                     const std::string& eop_updatable_config_path, const GeoFrame& frame) :
+    _unique_name(tel_path),
+    _frame(frame),
+    _require_eop(require_eop) {
     set_log_level(log_level);
     set_log_prefix("/telescope");
 
@@ -241,7 +250,7 @@ EOP Telescope::get_EOP_at_time_ns(int64_t t_target_ns) const {
             if (t_target_ns > eop_last->t_inst_ns) {
                 WARN(
                     "Requesting EOP later than in table. Requested time = {:d} s + {:d} ns. Latest "
-                    "UT1 = "
+                    "time = "
                     "{:d} s + {:d} ns.",
                     t_target_ns / GIGA, t_target_ns % GIGA, eop_last->t_inst_ns / GIGA,
                     eop_last->t_inst_ns % GIGA);
@@ -352,4 +361,252 @@ EOP Telescope::get_EOP_at_UT1(int64_t t_ut1_ns) const {
 
 
     return eop;
+}
+
+double Telescope::get_itrs_lon_deg() const {
+    return _frame.get_itrs_lon_deg();
+}
+
+double Telescope::get_itrs_lat_deg() const {
+    return _frame.get_itrs_lat_deg();
+}
+
+double Telescope::get_ERAL_deg(EOP& eop) const {
+    double era = eop.ERA_deg;
+    double lon = _frame.get_itrs_lon_deg();
+    double eral = era + lon; // Ignore TIO locator s', it is only ~12 micro arcseconds.
+
+    // Reset eral to [0, 360)
+    double n_off = std::floor(eral / 360.0);
+    eral -= n_off * 360;
+
+    return eral;
+}
+
+mat3x3d_t Telescope::get_grid_orientation() const {
+    return _frame.get_R_topo_to_frame();
+}
+
+vec3d_t Telescope::vec_topo_to_grid(const vec3d_t& v_topo) const {
+    return _frame.vec_topo_to_frame(v_topo);
+}
+
+vec3d_t Telescope::vec_topo_to_itrs(const vec3d_t& v_topo) const {
+    return _frame.vec_topo_to_itrs(v_topo);
+}
+
+vec3d_t Telescope::vec_grid_to_topo(const vec3d_t& v_grid) const {
+    return _frame.vec_frame_to_topo(v_grid);
+}
+
+vec3d_t Telescope::vec_itrs_to_topo(const vec3d_t& v_itrs) const {
+    return _frame.vec_itrs_to_topo(v_itrs);
+}
+
+vec3d_t Telescope::vec_cirs_to_itrs(const vec3d_t& v_cirs, const EOP& eop) const {
+
+    // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the
+    // ITRS -> CIRS Transformation:
+    //
+    // [CIRS] = R(t) W(t) [ITRS]        Eq. 5.1
+    //
+    // W(t) = R3(s') R2(x') R1(y')      Eq. 5.3
+    // R(t) = R3(-ERA)                  Eq. 5.5
+    //
+    // We ignore the s' contribution here, it's magnitude is only
+    // microarcsecond.
+    //
+    // The inverse transformation reverses this, taking the negative of each
+    // argument.
+    double era = deg2rad * eop.ERA_deg;
+    double xp = arcsec2rad * eop.xp_as;
+    double yp = arcsec2rad * eop.yp_as;
+
+    // 5.5 inverse
+    vec3d_t v1 = vec3d_axes_rotation_R3(v_cirs, era);
+    // 5.3, second factor, inverse
+    vec3d_t v2 = vec3d_axes_rotation_R2(v1, -xp);
+    // 5.3, first factor, inverse
+    vec3d_t v_itrs = vec3d_axes_rotation_R1(v2, -yp);
+
+    return v_itrs;
+}
+
+vec3d_t Telescope::vec_cirs_from_ra_dec(double ra_cirs_deg, double dec_cirs_deg) const {
+    // Taking the ra & dec to be in CIRS frame
+    double phi = deg2rad * ra_cirs_deg;
+    double theta = deg2rad * (90 - dec_cirs_deg);
+    
+    // unit vector pointing to ra/dec in spherical coordinates
+    // fixed to the Earth.  phi=0 ~ Greenwich
+    vec3d_t n_cirs = {cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta)};
+
+    return n_cirs;
+}
+
+void Telescope::vec_cirs_to_ra_dec(const vec3d_t& v_cirs, double& ra_cirs_deg, double& dec_cirs_deg) const {
+
+    ra_cirs_deg = atan2(v_cirs[1], v_cirs[0]) / deg2rad;
+    dec_cirs_deg = 90.0 - acos(v_cirs[2]) / deg2rad;
+}
+    
+vec3d_t Telescope::vec_grid_to_cirs(const vec3d_t& v_grid, const EOP& eop) const {
+    vec3d_t v_topo = vec_grid_to_topo(v_grid);
+    vec3d_t v_itrs = vec_topo_to_itrs(v_topo);
+    vec3d_t v_cirs = vec_itrs_to_cirs(v_itrs, eop);
+
+    return v_cirs;
+}
+
+vec3d_t Telescope::vec_cirs_to_grid(const vec3d_t& v_cirs, const EOP& eop) const {
+    vec3d_t v_itrs = vec_cirs_to_itrs(v_cirs, eop);
+    vec3d_t v_topo = vec_itrs_to_topo(v_itrs);
+    vec3d_t v_grid = vec_topo_to_grid(v_topo);
+
+    return v_grid;
+}
+    
+vec3d_t Telescope::vec_cirs_ra_dec_to_grid(double ra_cirs_deg, double dec_cirs_deg, const EOP& eop) const {
+    vec3d_t v_cirs = vec_cirs_from_ra_dec(ra_cirs_deg, dec_cirs_deg);
+    return vec_cirs_to_grid(v_cirs, eop);
+}
+
+grid_idx_2d_t Telescope::element_index_to_main_array_grid_indices(uint64_t el_idx, ElementOrder ord) const {
+    station_id_t st_id = element_index_to_station_id(el_idx, ord);
+    return station_id_to_main_array_grid_indices(st_id);
+}
+
+vec3d_t Telescope::element_index_to_feed_position_m(uint64_t el_idx, ElementOrder ord) const {
+    station_id_t st_id = element_index_to_station_id(el_idx, ord);
+    return station_id_to_feed_position_m(st_id);
+}
+
+std::vector<grid_idx_2d_t> Telescope::get_main_array_grid_indices(uint64_t num_elements, ElementOrder ord) const {
+    std::vector<grid_idx_2d_t> grid_indices(num_elements);
+
+    for(uint64_t el_idx = 0; el_idx < num_elements; el_idx++) 
+        grid_indices.at(el_idx) = element_index_to_main_array_grid_indices(el_idx, ord);
+
+    return grid_indices;
+}
+
+std::vector<vec3d_t> Telescope::get_feed_positions_m(uint64_t num_elements, ElementOrder ord) const {
+    std::vector<vec3d_t> feed_positions_m(num_elements);
+
+    for(uint64_t el_idx = 0; el_idx < num_elements; el_idx++) 
+        feed_positions_m.at(el_idx) = element_index_to_feed_position_m(el_idx, ord);
+
+    return feed_positions_m;
+}
+
+void Telescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
+                                          const std::vector<vec3d_t> feed_positions_m,
+                                          std::vector<std::complex<float>>& phases) const {
+
+    if (feed_positions_m.size() != phases.size()) 
+        FATAL_ERROR("fill_fringestop: feed_positions_m size {:d} != phases size {:d}",
+                     feed_positions_m.size(), phases.size());
+
+    // Get the phase center (pointing vector) of the telescope.  Depends on the dish coelevation
+    // angle, which is fixed during a run.
+    vec3d_t n_grid0 = get_phase_center_in_grid_frame();
+
+    // Take the pointing vector for the telescope and find it in the CIRS frame at ERA0.
+    // This is the point we are attempting to stop the fringes at.
+    vec3d_t n_cirs = vec_grid_to_cirs(n_grid0, eop0);
+
+    // Now, given this CIRS vector, find its components in the telescope
+    // frame at the requested (current) ERA
+    vec3d_t n_grid = vec_cirs_to_grid(n_cirs, eop);
+
+    // n_grid is now (at ERA) the point on the sky which will be at the
+    // phase center (n_grid0) at ERA0.
+
+    // wavenumber for this frequency
+    double k = 2 * M_PI * 1e6 * freq_MHz / C;
+
+    for (uint64_t i = 0; i < feed_positions_m.size(); i++) {
+        double phase = -k
+                       * (feed_positions_m[i][0] * (n_grid[0] - n_grid0[0])
+                          + feed_positions_m[i][1] * (n_grid[1] - n_grid0[1])
+                          + feed_positions_m[i][2] * (n_grid[2] - n_grid0[2]));
+
+        phases[i] = {static_cast<float>(cos(phase)), static_cast<float>(sin(phase))};
+    }
+}
+
+vec3d_t Telescope::vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const {
+
+    // IERS Conventions (2010) Chapter 5, Eq 5.1-5.3, and 5.5 give the
+    // ITRS -> CIRS Transformation:
+    //
+    // [CIRS] = R(t) W(t) [ITRS]        Eq. 5.1
+    //
+    // W(t) = R3(s') R2(x') R1(y')      Eq. 5.3
+    // R(t) = R3(-ERA)                  Eq. 5.5
+    //
+    // We ignore the s' contribution here, it's magnitude is only
+    // microarcsecond.
+
+    double era = deg2rad * eop.ERA_deg;
+    double xp = arcsec2rad * eop.xp_as;
+    double yp = arcsec2rad * eop.yp_as;
+
+    // 5.3 (First factor in W)
+    vec3d_t v1 = vec3d_axes_rotation_R1(v_itrs, yp);
+    // 5.3 (Second factor in W)
+    vec3d_t v2 = vec3d_axes_rotation_R2(v1, xp);
+    // 5.5
+    vec3d_t v_cirs = vec3d_axes_rotation_R3(v2, -era);
+
+    return v_cirs;
+}
+
+std::string ElementOrder_to_string(const ElementOrder& o) {
+    switch(o) {
+        case ElementOrder::CHIMECorrelator:
+            return "CHIMECorrelator";
+        case ElementOrder::CHIMECylinder:
+            return "CHIMECylinder";
+        case ElementOrder::CHIMEBeamformer:
+            return "CHIMEBeamformer";
+        case ElementOrder::CHORDEarly:
+            return "CHORDEarly";
+        case ElementOrder::CHORDBeamformer:
+            return "CHORDBeamformer";
+        default:
+            FATAL_ERROR_NON_OO("Unknown ElementOrder: {:d}", static_cast<int32_t>(o));
+    }
+}
+
+ElementOrder ElementOrder_from_string(const std::string& s) {
+    if (s == "CHIMECorrelator")
+        return ElementOrder::CHIMECorrelator;
+    else if (s == "CHIMECylinder")
+        return ElementOrder::CHIMECylinder;
+    else if (s == "CHIMEBeamformer")
+        return ElementOrder::CHIMEBeamformer;
+    else if (s == "CHORDEarly")
+        return ElementOrder::CHORDEarly;
+    else if (s == "CHORDBeamformer")
+        return ElementOrder::CHORDBeamformer;
+
+    FATAL_ERROR_NON_OO("Unknown ElementOrder: {:s}", s);
+}
+
+std::ostream& operator<<(std::ostream& os, const ElementOrder& o) {
+    os << ElementOrder_to_string(o);
+    return os;
+}
+
+std::string format_as(const ElementOrder& o) {
+    return ElementOrder_to_string(o);
+}
+
+void to_json(nlohmann::json& j, const ElementOrder& o) {
+    j = ElementOrder_to_string(o);
+}
+
+void from_json(const nlohmann::json& j, ElementOrder& o) {
+    o = ElementOrder_from_string(j);
 }

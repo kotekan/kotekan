@@ -1,16 +1,21 @@
 #include "bufferBadInputs.hpp"
 
-#include "Config.hpp"         // for Config
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"         // for Buffer
-#include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
-#include "configUpdater.hpp"  // for configUpdater
-#include "kotekanLogging.hpp" // for DEBUG, ERROR
-#include "visUtil.hpp"        // for get_cylinder_to_beamformer_reorder_table
+#include <stdint.h>            // for uint8_t
+#include <json.hpp>            // for json
+#include <exception>           // for exception
+#include <functional>          // for bind, function, _1
+#include <memory>              // for __shared_ptr_access, shared_ptr
+#include <array>               // for array
+#include <cstring>             // for memset
 
-#include <exception>  // for exception
-#include <functional> // for bind, function, _1
-#include <memory>     // for __shared_ptr_access, shared_ptr
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "configUpdater.hpp"   // for configUpdater
+#include "kotekanLogging.hpp"  // for DEBUG, ERROR
+#include "visUtil.hpp"         // for get_cylinder_to_beamformer_reorder_table
+#include "fmt.hpp"             // for compile_string_to_view
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -18,6 +23,7 @@ using kotekan::configUpdater;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(bufferBadInputs);
+
 
 bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name,
                                  bufferContainer& buffer_container) :
@@ -29,6 +35,17 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
 
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
+
+    // Construct the cylinder -> beamformer reorder table.
+    // reorder[beamformer_idx] = cylinder_idx;
+    reorder.reserve(num_elements);
+
+    const Telescope& tel = Telescope::instance();
+
+    for(size_t beamformer_idx = 0; beamformer_idx < num_elements; ++beamformer_idx) {
+        station_id_t st_id = tel.element_index_to_station_id(beamformer_idx, ElementOrder::CHIMEBeamformer);
+        reorder.at(beamformer_idx) = tel.station_id_to_element_index(st_id, ElementOrder::CHIMECylinder);
+    }
 }
 
 bufferBadInputs::~bufferBadInputs() {}
@@ -40,8 +57,6 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     uint8_t* host_mask = (uint8_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
     // Reset the mask (1 == good)
     std::memset(host_mask, 1U, num_elements);
-    // Get the reorder mapping
-    constexpr const auto reorder = get_cylinder_to_beamformer_reorder_table();
 
     bool all_good = true;
 

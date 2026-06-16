@@ -193,6 +193,7 @@ def pllostcounts_data(tmpdir_factory, setup, plmask_data):
         ),
         dtype=np.int32,
         max_frames=num_frames,
+        input_order="CHIMEBeamformer",
     )
 
     # The test stage!

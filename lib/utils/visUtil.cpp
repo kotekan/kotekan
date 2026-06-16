@@ -1,14 +1,16 @@
 #include "visUtil.hpp"
 
-#include "Config.hpp" // for Config
+#include <gsl-lite.hpp>  // for span
+#include <json.hpp>      // for json_ref, json, basic_json, iter_impl
+#include <cmath>         // for pow
+#include <cstring>       // for memset
+#include <exception>     // for exception
+#include <iterator>      // for back_insert_iterator, back_inserter
+#include <limits>        // for numeric_limits
+#include <regex>         // for sregex_token_iterator, regex
+#include <stdexcept>     // for runtime_error, invalid_argument
 
-#include <cmath>     // for pow
-#include <cstring>   // for memset
-#include <exception> // for exception
-#include <iterator>  // for back_insert_iterator, back_inserter
-#include <limits>    // for numeric_limits
-#include <regex>     // for sregex_token_iterator, regex
-#include <stdexcept> // for runtime_error, invalid_argument
+#include "Config.hpp"    // for Config
 
 using nlohmann::json;
 

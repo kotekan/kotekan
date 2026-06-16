@@ -53,6 +53,13 @@ gain_if: 5  #0-15
 biast_power: false
 autostart: true
 
+# Disable the R820T tuner's fractional-N PLL dither for coherent multi-unit
+# operation: kills the per-restart inter-unit LO drift at fractional tunes
+# (the whole point of running crosscorr). Costs deterministic fractional-N
+# spurs, which are common-mode across the two units and absorb into your
+# per-unit complex gain calibration.
+dither_disable: true
+
 # Two airspy producers. Edit the serials to match your hardware (see
 # `airspy_info` from libairspy-tools) or remove them to take whichever
 # devices the OS enumerates first.

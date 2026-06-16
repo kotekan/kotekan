@@ -9,6 +9,7 @@
 #include "DataType.hpp"
 #include "NDArrayBuffer.hpp"
 #include "NDArrayRingBuffer.hpp"
+#include "Telescope.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
@@ -138,10 +139,6 @@ private:
             };
             static constexpr std::ptrdiff_t {{{name}}}_length = {{{name}}}_strides[{{{name}}}_rank];
             static constexpr std::ptrdiff_t {{{name}}}_length_in_bytes = type_total_bytes({{{name}}}_type) * {{{name}}}_length;
-            // We allow the `I` buffer to be large. We have checked the sizes and 64-bit code in the GPU kernels where necessary.
-            static_assert(args::{{{name}}} == args::I
-                          ? true
-                          : {{{name}}}_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
         {{/isscalar}}
         //
     {{/kernel_arguments}}
@@ -370,10 +367,8 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/kernel_arguments}}
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
-        assert(Ebar_meta->ndishes == cuda_number_of_dishes);
-        assert(Ebar_meta->n_dish_locations_ew == cuda_dish_layout_N);
-        assert(Ebar_meta->n_dish_locations_ns == cuda_dish_layout_M);
-        assert(Ebar_meta->dish_index);
+        assert(Telescope::instance().get_grid_size_x() <= cuda_dish_layout_N);
+        assert(Telescope::instance().get_grid_size_y() <= cuda_dish_layout_M);
 
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();

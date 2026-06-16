@@ -7,21 +7,20 @@
 #ifndef AIRSPY_INPUT_HPP
 #define AIRSPY_INPUT_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "restServer.hpp"      // for connectionInstance
+#include <airspy.h>             // for airspy_transfer_t
+#include <pthread.h>            // for pthread_mutex_t
+#include <stdint.h>             // for uint32_t
+#include <atomic>               // for atomic
+#include <condition_variable>   // for condition_variable
+#include <mutex>                // for mutex
+#include <string>               // for string, basic_string
 
-#include "json.hpp" // for json
-
-#include <airspy.h>           // for airspy_transfer_t
-#include <atomic>             // for atomic
-#include <condition_variable> // for condition_variable
-#include <mutex>              // for mutex
-#include <pthread.h>          // for pthread_mutex_t
-#include <string>             // for string
-#include <sys/types.h>        // for uint
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "restServer.hpp"       // for connectionInstance
+#include "json.hpp"             // for json
 
 #define BYTES_PER_SAMPLE 2
 
@@ -63,6 +62,12 @@
  * @conf   gain_mix     Int (default 5). Gain setting of the mixer amplifier, from 0-15.
  * @conf   gain_if      Int (default 5). Gain setting of the IF amplifier, from 0-15.
  * @conf   biast_power  Bool (default false). Enable 4.5V DC bias on the RF input.
+ * @conf   dither_disable Bool (default false). Disable the R820T tuner's fractional-N PLL
+ *                      dither (reg 0x12 bit 4) for coherent multi-unit operation: eliminates
+ *                      per-restart inter-unit LO drift at fractional tunes, at the cost of
+ *                      deterministic fractional-N spurs (common-mode in cross-products and
+ *                      absorbable into a per-unit complex g-cal). Leave at default (dither on)
+ *                      for single-dongle / autocorr work where the spurs are undesirable.
  * @conf   serial       Long (default 0). Specific airspy serial-number to open; 0 = any.
  * @conf   airspy_file  String (default ""). Read from this file instead of a real device; for
  *                      offline testing. Ignored if @c serial is set.
@@ -129,6 +134,8 @@ private:
     int _gain_if;
     /// 4.5V DC bias on the RF input (0/1).
     int _biast_power;
+    /// Disable R820T fractional-N PLL dither (0/1) for coherent multi-unit ops.
+    int _dither_disable;
     /// Optional specific device serial-number; 0 means open any.
     long _airspy_sn;
     /// Optional file path to read raw samples from instead of a device.
@@ -136,13 +143,13 @@ private:
     /// Whether to begin streaming immediately on startup.
     bool _autostart;
 
-    // ADC statistics. The REST adcstat handler requests a dump and waits on
-    // @c adcstat_cv until the producer fills @c adc{rms,mean,railfrac} on the
-    // next frame and flips @c adcstat_ready (published under @c adcstat_mutex).
-    // @c dump_adcstat is atomic so the producer's hot-path check is a
-    // well-defined lock-free read rather than a (technically UB) plain-bool
-    // race against the REST writer; @c adcstat_mutex still guards the
-    // multi-field stats publish/consume.
+    /// ADC statistics. The REST adcstat handler requests a dump and waits on
+    /// @c adcstat_cv until the producer fills @c adc{rms,mean,railfrac} on the
+    /// next frame and flips @c adcstat_ready (published under @c adcstat_mutex).
+    /// @c dump_adcstat is atomic so the producer's hot-path check is a
+    /// well-defined lock-free read rather than a (technically UB) plain-bool
+    /// race against the REST writer; @c adcstat_mutex still guards the
+    /// multi-field stats publish/consume.
     std::mutex adcstat_mutex;
     std::condition_variable adcstat_cv;
     std::atomic<bool> dump_adcstat{false};

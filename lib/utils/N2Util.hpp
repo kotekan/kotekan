@@ -6,6 +6,7 @@
 #define N2_UTIL_HPP
 
 #include "buffer.hpp"
+#include "div.hpp" // for div_ceil
 #include "timeUtil.hpp"
 
 #include <cmath>
@@ -101,7 +102,7 @@ inline prod_ctype icmap(uint32_t k, uint16_t n) {
  * @return       Index into blocked array.
  */
 inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
-    uint32_t num_blocks1 = ((N - 1) / block) + 1; // Blocks needed to tile 1D
+    uint32_t num_blocks1 = kotekan::div_ceil(N, block); // Blocks needed to tile 1D
     uint32_t b_ix = cmap(i / block, j / block, num_blocks1);
 
     return block * block * b_ix + (i % block) * block + (j % block);

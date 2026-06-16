@@ -1,18 +1,21 @@
 #include "lostSamplesToN2Counts.hpp"
 
-#include "Config.hpp" // for Config
-#include "DataType.hpp"
-#include "N2Util.hpp"          // for frameID
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include <stdint.h>             // for uint8_t, int32_t
+#include <memory>               // for shared_ptr, __shared_ptr_access
+#include <string>               // for allocator, basic_string, string
+#include <functional>           // for bind, function
 
-#include "json.hpp" // for basic_json, json, iter_impl
-
-#include <memory>
-#include <string>
-#include <sys/types.h>
+#include "Config.hpp"           // for Config
+#include "DataType.hpp"         // for DataType, GetType_t
+#include "N2Util.hpp"           // for frameID, modulo
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
+#include "json.hpp"             // for basic_json, json, iter_impl
+#include "div.hpp"              // for num_triangle_blocks
+#include "fmt.hpp"              // for compile_string_to_view, format
+#include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -102,8 +105,8 @@ lostSamplesToN2Counts::lostSamplesToN2Counts(Config& config, const std::string& 
     _num_subintegrations = samples_per_data_set / sub_integration_ntime;
     // Number of instrument elements and the corresponding stride
     // to take in the `counts` array
-    _counts_ntiles = (num_elements / (COUNTS_BLOCK_SIZE * COUNTS_ELEMENT_DOWNSAMPLE))
-                     * (1 + num_elements / (COUNTS_BLOCK_SIZE * COUNTS_ELEMENT_DOWNSAMPLE)) / 2;
+    _counts_ntiles =
+        kotekan::num_triangle_blocks(num_elements / COUNTS_ELEMENT_DOWNSAMPLE, COUNTS_BLOCK_SIZE);
     _counts_stride = _counts_ntiles * COUNTS_BLOCK_SIZE * COUNTS_BLOCK_SIZE;
 
     // Check counts frame size against expectations. counts has type int32

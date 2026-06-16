@@ -39,7 +39,9 @@ const std::string default_tel_config_str = R"tel_config_str({
 "telescope": {
     "name": "TestTelescope",
     "require_eop": false,
-    "eop_updatable_config": ""
+    "eop_updatable_config": "",
+    "inst_lat": 50.123,
+    "inst_long": -120.456
     }
 })tel_config_str";
 
@@ -49,7 +51,11 @@ public:
     TestTelescope(const Config& config, const std::string& path) :
         Telescope(path, config.get<std::string>(path, "log_level"),
                   config.get<bool>(path, "require_eop"),
-                  config.get<std::string>(path, "eop_updatable_config")) {}
+                  config.get<std::string>(path, "eop_updatable_config"),
+                  GeoFrame(config.get<std::string>(path, "log_level"), "grid",
+                           config.get_default<double>(path, "inst_lat", 0.0),
+                           config.get_default<double>(path, "inst_long", 0.0), {0, 0, 0}, {1, 0, 0},
+                           {0, 1, 0}, {0, 0, 1})) {}
 
     // These functions don't have to do anything, they're not being tested.
     freq_id_t to_freq_id([[maybe_unused]] stream_t stream,
@@ -85,6 +91,33 @@ public:
     }
     uint64_t seq_length_nsec() const override {
         return 0;
+    }
+    station_id_t element_index_to_station_id(uint64_t el_idx, [[maybe_unused]] ElementOrder ord) const override {
+        return el_idx;
+    }
+    uint64_t station_id_to_element_index(station_id_t st_id, [[maybe_unused]] ElementOrder ord) const override {
+        return st_id;
+    }
+    grid_idx_2d_t station_id_to_main_array_grid_indices([[maybe_unused]] station_id_t st_id) const override {
+        return grid_idx_2d_t{-1, -1};
+    }
+    vec3d_t station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const override {
+        return vec3d_t{0.0, 0.0, 0.0};
+    }
+    double get_feed_separation_x_m() const override {
+        return 20.0;
+    }
+    double get_feed_separation_y_m() const override {
+        return 10.0;
+    }
+    uint64_t get_grid_size_x() const override {
+        return 2;
+    }
+    uint64_t get_grid_size_y() const override {
+        return 16;
+    }
+    vec3d_t get_phase_center_in_grid_frame() const override {
+        return {0.0, 0.0, 1.0};
     }
 };
 
@@ -217,6 +250,18 @@ BOOST_FIXTURE_TEST_CASE(_name_tel, TelescopeFixture) {
     const Telescope& tel = Telescope::instance();
 
     BOOST_CHECK_EQUAL(tel.get_name(), "TestTelescope");
+}
+
+/*
+ * @brief   Test position getters.
+ */
+BOOST_FIXTURE_TEST_CASE(_instrument_position, TelescopeFixture) {
+    BOOST_TEST_MESSAGE(fmt::format("Testing telescope position."));
+
+    const Telescope& tel = Telescope::instance();
+
+    BOOST_CHECK_EQUAL(tel.get_itrs_lat_deg(), 50.123);
+    BOOST_CHECK_EQUAL(tel.get_itrs_lon_deg(), -120.456);
 }
 
 BOOST_FIXTURE_TEST_CASE(_get_eop_table, TelescopeEOPFixture) {

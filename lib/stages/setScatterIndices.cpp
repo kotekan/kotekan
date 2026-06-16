@@ -1,16 +1,20 @@
-#include "Config.hpp"
-#include "Stage.hpp"
-#include "StageFactory.hpp"
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
-#include "chordMetadata.hpp"
-#include "kotekanLogging.hpp"
+#include <unistd.h>             // for sleep
+#include <cassert>              // for assert
+#include <cstdint>              // for int32_t
+#include <string>               // for basic_string, string
+#include <vector>               // for vector
+#include <cstddef>              // for ptrdiff_t
+#include <functional>           // for function
+#include <memory>               // for allocator, __shared_ptr_access, shared_ptr
 
-#include <cassert>
-#include <cstdint>
-#include <string>
-#include <unistd.h>
-#include <vector>
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
+#include "kotekanLogging.hpp"   // for DEBUG
+#include "fmt.hpp"              // for compile_string_to_view, format
 
 class setScatterIndices : public kotekan::Stage {
     // Telescope layout

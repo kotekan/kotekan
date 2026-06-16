@@ -1,38 +1,38 @@
-#include <Config.hpp>       // for Config
-#include <DataType.hpp>     // for type_total_bytes, type_to_string
-#include <Stage.hpp>        // for Stage
-#include <StageFactory.hpp> // for REGISTER_KOTEKAN_STAGE
-#include <Telescope.hpp>
-#include <array>                 // for array
-#include <atomic>                // for __atomic_base, atomic
-#include <buffer.hpp>            // for Buffer
-#include <bufferContainer.hpp>   // for bufferContainer
-#include <cassert>               // for assert
-#include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, get_chord_metadata
-#include <cpl_error.h>           // for CPLErr
-#include <cpl_port.h>            // for GUInt64, GPtrDiff_t
-#include <cstdint>               // for int64_t, uint32_t, uint8_t
-#include <cstring>               // for size_t, strerror
-#include <errno.h>               // for errno, EEXIST, EISDIR
-#include <errors.h>              // for exit_kotekan, ReturnCode
-#include <fmt.hpp>               // for compile_string_to_view
-#include <functional>            // for function
-#include <gdal.h>                // for GDALAllRegister, GDALGetDataTypeSizeBytes, GDT_Int32
-#include <gdalFiles.hpp>         // for get_gdal_datatype, convert_to_cstring_list, chord2gdal
-#include <gdal_priv.h>           // for GDALGroup, GDALExtendedDataType, GDALAttribute, GDALD...
-#include <iomanip>               // for operator<<, setfill, setw
-#include <kotekanLogging.hpp>    // for DEBUG, FATAL_ERROR, WARN, INFO
-#include <memory>                // for shared_ptr, __shared_ptr_access, allocator, unique_ptr
-#include <metadata.hpp>          // for metadataObject
-#include <prometheusMetrics.hpp> // for Metrics, Gauge
-#include <sstream>               // for basic_ostream, operator<<, basic_ostringstream, ostri...
-#include <string>                // for basic_string, char_traits, string, operator<<, operat...
-#include <sys/stat.h>            // for mkdir
-#include <timeUtil.hpp>
-#include <unistd.h>                // for gethostname
-#include <vector>                  // for vector
-#include <visUtil.hpp>             // for current_time
-#include <waitingForMaxFrames.hpp> // for waiting_for_max_frames
+#include <Config.hpp>               // for Config
+#include <DataType.hpp>             // for type_total_bytes, type_to_string
+#include <Stage.hpp>                // for Stage
+#include <StageFactory.hpp>         // for REGISTER_KOTEKAN_STAGE
+#include <Telescope.hpp>            // for Telescope
+#include <buffer.hpp>               // for Buffer
+#include <bufferContainer.hpp>      // for bufferContainer
+#include <chordMetadata.hpp>        // for chordMetadata, metadata_is_chord, get_chord_metadata
+#include <cpl_error.h>              // for CPLErr
+#include <cpl_port.h>               // for GUInt64, GPtrDiff_t
+#include <errno.h>                  // for errno, EEXIST, EISDIR
+#include <errors.h>                 // for exit_kotekan, ReturnCode
+#include <gdal.h>                   // for GDALAllRegister, GDALGetDataTypeSizeBytes, GDT_Int32
+#include <gdalFiles.hpp>            // for get_gdal_datatype, convert_to_cstring_list, chord2gdal
+#include <gdal_priv.h>              // for GDALGroup, GDALExtendedDataType, GDALAttribute, GDALD...
+#include <kotekanLogging.hpp>       // for DEBUG, FATAL_ERROR, WARN, INFO
+#include <metadata.hpp>             // for metadataObject
+#include <prometheusMetrics.hpp>    // for Metrics, Gauge
+#include <sys/stat.h>               // for mkdir
+#include <unistd.h>                 // for gethostname
+#include <visUtil.hpp>              // for current_time
+#include <waitingForMaxFrames.hpp>  // for waiting_for_max_frames
+#include <array>                    // for array
+#include <atomic>                   // for __atomic_base, atomic
+#include <cassert>                  // for assert
+#include <cstdint>                  // for int64_t, uint32_t, uint8_t
+#include <cstring>                  // for size_t, strerror
+#include <functional>               // for function
+#include <iomanip>                  // for operator<<, setfill, setw
+#include <memory>                   // for shared_ptr, __shared_ptr_access, allocator, unique_ptr
+#include <sstream>                  // for basic_ostream, operator<<, basic_ostringstream, ostri...
+#include <string>                   // for basic_string, char_traits, string, operator<<, operat...
+#include <vector>                   // for vector
+
+#include "fmt.hpp"                  // for compile_string_to_view
 
 using namespace gdal;
 
@@ -55,6 +55,10 @@ using namespace gdal;
  * @par Metrics
  * @metric kotekan_gdalfilewrite_write_time_seconds
  *         The write time to write out the last frame.
+ *
+ * @note The on-disk file format is documented in
+ *       docs/sphinx/user/file_formats/asdf_zarr_frames.rst. Any change to the
+ *       arrays or attributes written by this stage should be reflected there.
  *
  * @author Erik Schnetter
  **/
@@ -315,42 +319,7 @@ public:
                     assert(success);
                 }
 
-                if (meta->ndishes >= 0) {
-                    const auto ndishes = group->CreateAttribute(
-                        "ndishes", std::vector<GUInt64>{},
-                        GDALExtendedDataType::Create(get_gdal_datatype(meta->ndishes)));
-                    const bool success = ndishes->Write(&meta->ndishes, sizeof meta->ndishes);
-                    assert(success);
-                }
-
                 std::shared_ptr<GDALDimension> dishM, dishN;
-                if (meta->dish_index) {
-                    // const auto dish_index = group->CreateAttribute(
-                    //     "dish_index",
-                    //     std::vector<GUInt64>{GUInt64(meta->n_dish_locations_ns),
-                    //                          GUInt64(meta->n_dish_locations_ew)},
-                    //     GDALExtendedDataType::Create(GDT_Int32));
-                    // dish_index->Write(meta->dish_index,
-                    //                   meta->n_dish_locations_ew * meta->n_dish_locations_ns);
-                    const auto datatype =
-                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->dish_index));
-                    dishM = group->CreateDimension("dishM", "", "", meta->n_dish_locations_ns);
-                    assert(dishM);
-                    dishN = group->CreateDimension("dishN", "", "", meta->n_dish_locations_ew);
-                    assert(dishN);
-                    const std::vector<std::shared_ptr<GDALDimension>> dimensions{dishM, dishN};
-                    assert(dimensions.at(0));
-                    assert(dimensions.at(1));
-                    const auto dish_index =
-                        group->CreateMDArray("dish_index", dimensions, datatype);
-                    assert(dish_index);
-                    const std::vector<GUInt64> arrayStart{0, 0};
-                    const std::vector<std::size_t> count{std::size_t(meta->n_dish_locations_ns),
-                                                         std::size_t(meta->n_dish_locations_ew)};
-                    const bool success = dish_index->Write(arrayStart.data(), count.data(), nullptr,
-                                                           nullptr, datatype, meta->dish_index);
-                    assert(success);
-                }
 
                 // Array rank
                 const int ndims = meta->dims;

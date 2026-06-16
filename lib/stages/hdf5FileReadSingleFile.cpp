@@ -1,32 +1,36 @@
-#include "Config.hpp"            // for Config
-#include "DataType.hpp"          // for string_to_type, DataType
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Symbol.hpp"            // for Symbol
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for chordMetadata, metadata_is_chord, get_c...
-#include "hdf5Files.hpp"         // for chord_metadata_version
-#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, INFO
-#include "metadata.hpp"          // for metadataObject
-#include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "visUtil.hpp"           // for current_time
+#include <unistd.h>                            // for sleep
+#include <highfive/H5Attribute.hpp>            // for Attribute, Attribute::read
+#include <highfive/H5DataSet.hpp>              // for DataSet, AnnotateTraits::getAttribute, Dat...
+#include <highfive/H5DataSpace.hpp>            // for DataSpace, DataSpace::getDimensions
+#include <highfive/H5Exception.hpp>            // for FileException
+#include <highfive/H5File.hpp>                 // for File, File::File, NodeTraits::getDataSet
+#include <highfive/H5Selection.hpp>            // for Selection, SliceTraits::read_raw, SliceTra...
+#include <highfive/bits/H5Selection_misc.hpp>  // for Selection::getSpace
+#include <algorithm>                           // for minmax_element, copy, find
+#include <cassert>                             // for assert
+#include <cstddef>                             // for size_t, ptrdiff_t
+#include <cstdint>                             // for uint8_t
+#include <cstring>                             // for memchr, memcpy, memset
+#include <functional>                          // for function
+#include <memory>                              // for allocator, __shared_ptr_access, shared_ptr
+#include <sstream>                             // for basic_ostream, operator<<, basic_ostringst...
+#include <string>                              // for basic_string, string, char_traits, operator==
+#include <vector>                              // for vector
+#include <utility>                             // for pair
 
-#include <algorithm>             // for copy
-#include <array>                 // for array
-#include <cassert>               // for assert
-#include <cstddef>               // for ptrdiff_t
-#include <cstdint>               // for int64_t, uint8_t
-#include <cstring>               // for memcpy
-#include <fmt.hpp>               // for compile_string_to_view
-#include <functional>            // for function
-#include <highfive/highfive.hpp> //
-#include <iomanip>               // for operator<<, setfill, setw
-#include <memory>                // for allocator, shared_ptr, __shared_ptr_access
-#include <sstream>               // for basic_ostream, operator<<, basic_ostrin...
-#include <string>                // for basic_string, char_traits, string, oper...
-#include <unistd.h>              // for gethostname, sleep
-#include <vector>                // for vector
+#include "Config.hpp"                          // for Config
+#include "DataType.hpp"                        // for string_to_type, DataType
+#include "Stage.hpp"                           // for Stage
+#include "StageFactory.hpp"                    // for REGISTER_KOTEKAN_STAGE
+#include "Symbol.hpp"                          // for Symbol
+#include "buffer.hpp"                          // for Buffer
+#include "bufferContainer.hpp"                 // for bufferContainer
+#include "chordMetadata.hpp"                   // for chordMetadata, get_chord_metadata
+#include "hdf5Files.hpp"                       // for hdf5
+#include "kotekanLogging.hpp"                  // for DEBUG, INFO, FATAL_ERROR
+#include "prometheusMetrics.hpp"               // for Metrics, Gauge
+#include "visUtil.hpp"                         // for current_time
+#include "fmt.hpp"                             // for compile_string_to_view
 
 using namespace hdf5;
 using namespace HighFive;
@@ -89,15 +93,6 @@ public:
                 dataset.getAttribute("dim_names").read<std::vector<std::string>>();
             const auto dim_scaling = dataset.getAttribute("dim_scalings").read<std::vector<int>>();
 
-            const auto dish_spacing_x [[maybe_unused]] =
-                dataset.getAttribute("dish_spacing_x").read<double>();
-            const auto dish_spacing_y [[maybe_unused]] =
-                dataset.getAttribute("dish_spacing_y").read<double>();
-            const auto dish_locations_x =
-                dataset.getAttribute("dish_locations_x").read<std::vector<int>>();
-            const auto dish_locations_y =
-                dataset.getAttribute("dish_locations_y").read<std::vector<int>>();
-
             const auto coarse_freq = dataset.getAttribute("coarse_freq").read<std::vector<int>>();
             const auto freq_upchan_factor =
                 dataset.getAttribute("freq_upchan_factor").read<std::vector<int>>();
@@ -139,40 +134,6 @@ public:
                 new_dims.push_back(dims.at(2) * dims.at(3));
                 new_dim_names.push_back("E");
             }
-
-            // Convert dish representation
-            const auto minmaxlocx_iters =
-                std::minmax_element(dish_locations_x.begin(), dish_locations_x.end());
-            const auto minlocx = *minmaxlocx_iters.first;
-            const auto maxlocx = *minmaxlocx_iters.second;
-            const auto minmaxlocy_iters =
-                std::minmax_element(dish_locations_y.begin(), dish_locations_y.end());
-            const auto minlocy = *minmaxlocy_iters.first;
-            const auto maxlocy = *minmaxlocy_iters.second;
-            const int ndishes = std::ptrdiff_t(dish_locations_x.size());
-            // We arbitrarily map ew = x, ns = y. That's probably
-            // wrong for CHIME, or for CHORD, or both.
-            const int n_dish_locations_ew = maxlocx - minlocx + 1;
-            const int n_dish_locations_ns = maxlocy - minlocy + 1;
-            const int num_dish_locations = n_dish_locations_ew * n_dish_locations_ns;
-            assert(num_dish_locations >= ndishes);
-            std::vector<dish_index_t> dish_index(num_dish_locations, -1);
-            for (int n = 0; n < ndishes; ++n) {
-                const int ix = dish_locations_x.at(n) - minlocx;
-                const int iy = dish_locations_y.at(n) - minlocy;
-                // The east - west index runs fastest.
-                const int idx = ix + n_dish_locations_ew * iy;
-                assert(dish_index.at(idx) == -1);
-                dish_index.at(idx) = n;
-            }
-            int num_empty_dish_locations [[maybe_unused]] = 0;
-            for (int iy = 0; iy < n_dish_locations_ns; ++iy) {
-                for (int ix = 0; ix < n_dish_locations_ew; ++ix) {
-                    const int idx = ix + n_dish_locations_ew * iy;
-                    num_empty_dish_locations += dish_index.at(idx) < 0;
-                }
-            }
-            assert(num_empty_dish_locations == num_dish_locations - ndishes);
 
             // Find which frequencies to read
             assert(std::string(dim_names.at(1)) == "F");
@@ -229,15 +190,6 @@ public:
                 buffer->allocate_new_metadata_object(frame_id);
                 const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
                 meta->set_from_frame_desc(buffer->get_ndarray_frame_desc());
-
-                meta->ndishes = ndishes;
-                meta->n_dish_locations_ns = n_dish_locations_ns;
-                meta->n_dish_locations_ew = n_dish_locations_ew;
-                meta->dish_index =
-                    new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
-                assert(std::ptrdiff_t(dish_index.size())
-                       == meta->n_dish_locations_ns * meta->n_dish_locations_ew);
-                std::copy(dish_index.begin(), dish_index.end(), meta->dish_index);
 
                 meta->set_coarse_freq(frequency_channels);
                 meta->set_freq_upchan_factor(new_freq_upchan_factor);

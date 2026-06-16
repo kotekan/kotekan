@@ -1,18 +1,18 @@
 #include "chordMetadata.hpp"
 
-#include "Symbol.hpp"  // for Symbol
-#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
+#include <string.h>     // for strncmp, strnlen, memset, strncpy
+#include <json.hpp>     // for operator==, json
+#include <algorithm>    // for copy_n, copy, max
+#include <cstring>      // for memset
+#include <type_traits>  // for is_pod_v
 
-#include <algorithm>   // for copy_n, copy, max
-#include <cstring>     // for memset
-#include <string.h>    // for strncmp, strncpy, memset, strnlen
-#include <type_traits> // for is_pod_v
+#include "Symbol.hpp"   // for Symbol
+#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
 chordMetadata::chordMetadata() :
-    type(kotekan::unknown_type), dims(-1), offset(0), ndishes(-1), n_dish_locations_ew(-1),
-    n_dish_locations_ns(-1), dish_index(nullptr) {
+    type(kotekan::unknown_type), dims(-1), offset(0) {
     name[0] = '\0';
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
@@ -48,7 +48,6 @@ bool chordMetadata::operator==(const chordMetadata& other) const {
     if (offset != other.offset)
         return false;
 
-    // TODO: this misses dish_positions etc
     return metadata == other.metadata;
 }
 

@@ -11,41 +11,40 @@
 #ifndef VIS_UTIL_HPP
 #define VIS_UTIL_HPP
 
+#include <algorithm>      // for copy, max
+#include <array>          // for array
+#include <chrono>         // for system_clock
+#include <complex>        // for complex, imag, real
+#include <cstdint>        // for uint32_t, int8_t, uint16_t, int64_t, uint64_t, uint8_t, int32_t
+#include <cstdlib>        // for size_t, div
+#include <iterator>       // for pair
 
-#include "Config.hpp"    // for Config
-#include "DataType.hpp"  // for KOTEKAN_FLOAT16, float16_t
-#include "Telescope.hpp" // for stream_t
-#include "buffer.hpp"    // for Buffer
-
-#include "fmt.hpp"      // for appender, format, format_string, formatter, format_context
-#include "gsl-lite.hpp" // for span
-#include "json.hpp"     // for json
-
-#include <algorithm> // for max
-#include <array>     // for array
-#include <chrono>    // for system_clock
-#include <complex>   // for complex, imag, real
-#include <cstdint>   // for uint32_t, int8_t, uint16_t, uint8_t, int64_t, uint64_t, int32_t
-#include <cstdlib>   // for size_t, div
+#include "Config.hpp"     // for Config
+#include "DataType.hpp"   // for KOTEKAN_FLOAT16, float16_t
+#include "Telescope.hpp"  // for stream_t
+#include "buffer.hpp"     // for Buffer
+#include "div.hpp"        // for div_ceil, num_triangle_blocks
+#include "fmt.hpp"        // for appender, format, format_string, formatter, format_context
+#include "gsl-lite.hpp"   // for span
+#include "json.hpp"       // for json, value_t
 #ifdef WITH_CUDA
-#include <cuda_fp16.h> // for __half::operator float
+#include <cuda_fp16.h>    // for __half::operator float
 #endif
-#include <deque>       // for deque
-#include <functional>  // for function
-#include <iosfwd>      // for ostream
-#include <iterator>    // for pair
-#include <map>         // for map
-#include <math.h>      // for fmod, cosf, sinf, M_PI
-#include <memory>      // for unique_ptr
-#include <mutex>       // for recursive_mutex
-#include <string>      // for string, basic_string
-#include <sys/time.h>  // for timeval, gettimeofday, CLOCK_REALTIME
-#include <sys/types.h> // for suseconds_t
-#include <time.h>      // for timespec, clock_gettime, time_t
-#include <tuple>       // for tuple, tie
-#include <type_traits> // for enable_if_t, is_integral, make_unsigned
-#include <utility>     // for pair
-#include <vector>      // for vector
+#include <math.h>         // for fmod, cosf, sinf, M_PI
+#include <sys/time.h>     // for timeval, gettimeofday, CLOCK_REALTIME
+#include <sys/types.h>    // for suseconds_t
+#include <time.h>         // for timespec, clock_gettime, time_t
+#include <deque>          // for deque
+#include <functional>     // for function
+#include <iosfwd>         // for ostream
+#include <map>            // for map
+#include <memory>         // for allocator, unique_ptr
+#include <mutex>          // for recursive_mutex
+#include <string>         // for string, basic_string
+#include <tuple>          // for tuple, tie
+#include <type_traits>    // for enable_if_t, is_integral, make_unsigned
+#include <utility>        // for pair
+#include <vector>         // for vector
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
@@ -263,7 +262,7 @@ inline prod_ctype icmap(uint32_t k, uint16_t n) {
  * @return       Index into blocked array.
  */
 inline uint32_t prod_index(uint32_t i, uint32_t j, uint32_t block, uint32_t N) {
-    uint32_t num_blocks1 = ((N - 1) / block) + 1; // Blocks needed to tile 1D
+    uint32_t num_blocks1 = kotekan::div_ceil(N, block); // Blocks needed to tile 1D
     uint32_t b_ix = cmap(i / block, j / block, num_blocks1);
 
     return block * block * b_ix + (i % block) * block + (j % block);
@@ -409,9 +408,7 @@ inline double current_time() {
  * @return        The size of the packd GPU data.
  **/
 inline constexpr uint32_t gpu_N2_size(uint32_t N, uint32_t block) {
-    const auto num_blocks1 = ((N - 1) / block) + 1;               // Blocks per side
-    const auto num_blocks2 = num_blocks1 * (num_blocks1 + 1) / 2; // ... triangle
-    return (num_blocks2 * block * block);                         // Total size
+    return kotekan::num_triangle_blocks(N, block) * block * block;
 }
 
 
@@ -462,25 +459,6 @@ void map_vis_triangle(const std::vector<uint32_t>& inputmap, size_t block, size_
  */
 std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
 parse_reorder_default(kotekan::Config& config, const std::string base_path);
-
-/**
- * @brief Fixed mapping from CHIME cylinder ordering to beamformer ordering.
- * @return Array of indices mapping cylinder order to beamformer order.
- *         The array is indexed by the station in beamformer order and returns
- *         the station's index in cylinder order.
- */
-constexpr std::array<size_t, 2048> get_cylinder_to_beamformer_reorder_table() {
-    std::array<size_t, 2048> mapping{};
-
-    for (size_t beamformer_idx = 0; beamformer_idx < 2048; ++beamformer_idx) {
-        const int polarization = beamformer_idx / 1024;
-        const int cylinder = (beamformer_idx % 1024) / 256;
-        const int dish = (beamformer_idx % 1024) % 256;
-        mapping[beamformer_idx] = cylinder * 512 + polarization * 256 + dish;
-    }
-
-    return mapping;
-}
 
 /**
  * @brief Return the next aligned location for a given type size

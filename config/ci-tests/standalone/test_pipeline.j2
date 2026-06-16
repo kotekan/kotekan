@@ -112,8 +112,8 @@ telescope:
   inst_dish_alt_axis: [1.0, 0.0, 0.0]
   inst_dish_vert_axis: [0.0, 0.0, 1.0]
   dish_inputs: []
-  num_dishes_x: 50
-  num_dishes_y: 50
+  dish_grid_size_x: 50
+  dish_grid_size_y: 50
   require_gps: False
   eop_updatable_config: /earth_rotation_data
 
@@ -429,6 +429,7 @@ n2_accumulate:
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: True
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
+    input_order: CHORDBeamformer
 
 
 # Add eigen calculation
@@ -547,7 +548,8 @@ hdf5_N2_write_final:
     num_ev: num_ev_to_calculate
     vis_layout: "FullUpperTri"
     num_file_t: 10
-    baseband_gain_file: "" # e.g. "/path/to/digital_gains/00000000.h5"
+    baseband_gain_file: "" # e.g. "/path/to/digital_gains/00000000.h5", or set
+                           # baseband_gain_host_info: /<fpga_controller_block> instead
 
 # Autocorrelations-only subset
 hdf5_N2_write_autocorr:

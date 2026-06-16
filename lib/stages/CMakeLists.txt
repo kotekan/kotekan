@@ -10,7 +10,7 @@ add_library(
     computeDualpolPower.cpp
     fullPacketDump.cpp
     pulsarPostProcess.cpp
-    ReadGain.cpp
+    processGains.cpp
     nDiskFileWrite.cpp
     nDiskFileRead.cpp
     networkPowerStream.cpp
@@ -72,9 +72,11 @@ add_library(
     InputSubset.cpp
     setScatterIndices.cpp
     UpchannelizationSchedule.cpp
+    setBBBeams.cpp
     calcBBPhase.cpp
     setUpchanGain.cpp
     setFRB1Phase.cpp
+    setFRBBeams.cpp
     calcFRB2Weights.cpp
     calcFRB2Weights_Seth.cpp
     # RFI Pipeline Processes
@@ -109,7 +111,6 @@ add_library(
     ExampleDotProduct.cpp
     N2Accumulate.cpp
     N2TimeDownsample.cpp
-    N2FringeStop.cpp
     TransposeBasebandArray.cpp
     dropAllFrames.cpp
     N2FrameToVisFrame.cpp

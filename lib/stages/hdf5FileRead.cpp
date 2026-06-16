@@ -1,35 +1,36 @@
-#include <Config.hpp>                            // for Config
-#include <DataType.hpp>                          // for string_to_type, DataType
-#include <Stage.hpp>                             // for Stage
-#include <StageFactory.hpp>                      // for REGISTER_KOTEKAN_STAGE
-#include <Symbol.hpp>                            // for Symbol
-#include <algorithm>                             // for copy
-#include <array>                                 // for array
-#include <buffer.hpp>                            // for Buffer
-#include <bufferContainer.hpp>                   // for bufferContainer
-#include <cassert>                               // for assert
-#include <chordMetadata.hpp>                     // for chordMetadata, metadata_is_chord, get_c...
-#include <cstddef>                               // for ptrdiff_t
-#include <cstdint>                               // for int64_t, uint8_t
-#include <fmt.hpp>                               // for compile_string_to_view
-#include <functional>                            // for function
-#include <hdf5Files.hpp>                         // for chord_metadata_version
-#include <highfive/H5Attribute.hpp>              // for Attribute, Attribute::read
-#include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::getAttribute
-#include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::getDimensions
-#include <highfive/H5Exception.hpp>              // for FileException
-#include <highfive/H5File.hpp>                   // for File, File::File, NodeTraits::getDataSet
-#include <highfive/bits/H5Slice_traits_misc.hpp> // for SliceTraits::read_raw
-#include <iomanip>                               // for operator<<, setfill, setw
-#include <kotekanLogging.hpp>                    // for DEBUG, FATAL_ERROR, INFO
-#include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
-#include <metadata.hpp>                          // for metadataObject
-#include <prometheusMetrics.hpp>                 // for Metrics, Gauge
-#include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
-#include <string>                                // for basic_string, char_traits, string, oper...
-#include <unistd.h>                              // for gethostname, sleep
-#include <vector>                                // for vector
-#include <visUtil.hpp>                           // for current_time
+#include <Config.hpp>                             // for Config
+#include <DataType.hpp>                           // for string_to_type, DataType
+#include <Stage.hpp>                              // for Stage
+#include <StageFactory.hpp>                       // for REGISTER_KOTEKAN_STAGE
+#include <Symbol.hpp>                             // for Symbol
+#include <buffer.hpp>                             // for Buffer
+#include <bufferContainer.hpp>                    // for bufferContainer
+#include <chordMetadata.hpp>                      // for chordMetadata, metadata_is_chord, get_c...
+#include <hdf5Files.hpp>                          // for chord_metadata_version
+#include <highfive/H5Attribute.hpp>               // for Attribute, Attribute::read
+#include <highfive/H5DataSet.hpp>                 // for DataSet, AnnotateTraits::getAttribute
+#include <highfive/H5DataSpace.hpp>               // for DataSpace, DataSpace::getDimensions
+#include <highfive/H5Exception.hpp>               // for FileException
+#include <highfive/H5File.hpp>                    // for File, File::File, NodeTraits::getDataSet
+#include <highfive/bits/H5Slice_traits_misc.hpp>  // for SliceTraits::read_raw
+#include <kotekanLogging.hpp>                     // for DEBUG, FATAL_ERROR, ERROR
+#include <metadata.hpp>                           // for metadataObject
+#include <prometheusMetrics.hpp>                  // for Metrics, Gauge
+#include <unistd.h>                               // for gethostname, sleep
+#include <visUtil.hpp>                            // for current_time
+#include <algorithm>                              // for copy
+#include <array>                                  // for array
+#include <cassert>                                // for assert
+#include <cstddef>                                // for ptrdiff_t
+#include <cstdint>                                // for int64_t, uint8_t
+#include <functional>                             // for function
+#include <iomanip>                                // for operator<<, setfill, setw
+#include <memory>                                 // for allocator, shared_ptr, __shared_ptr_access
+#include <sstream>                                // for basic_ostream, operator<<, basic_ostrin...
+#include <string>                                 // for basic_string, char_traits, string, oper...
+#include <vector>                                 // for vector
+
+#include "fmt.hpp"                                // for compile_string_to_view
 
 using namespace hdf5;
 using namespace HighFive;
@@ -179,26 +180,7 @@ public:
                         dataset.getAttribute("rfi_frame_excision_thresholds")
                             .read<std::vector<std::array<float, 2>>>());
 
-                if (dataset.hasAttribute("ndishes")) {
-                    meta->ndishes = dataset.getAttribute("ndishes").read<int>();
-
-                    meta->n_dish_locations_ns =
-                        dataset.getAttribute("n_dish_locations_ns").read<int>();
-                    meta->n_dish_locations_ew =
-                        dataset.getAttribute("n_dish_locations_ew").read<int>();
-
-                    const auto dish_index =
-                        dataset.getAttribute("dish_index").read<std::vector<int>>();
-                    assert(std::ptrdiff_t(dish_index.size())
-                           == meta->n_dish_locations_ns * meta->n_dish_locations_ew);
-                    meta->dish_index =
-                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
-                    std::copy(dish_index.begin(), dish_index.end(), meta->dish_index);
-
-                } else {
-                    meta->ndishes = -1;
-                    meta->dish_index = nullptr;
-                }
+                // TODO: Read telescope fields and WARN if they don't match?
 
                 {
                     /* new style array description */

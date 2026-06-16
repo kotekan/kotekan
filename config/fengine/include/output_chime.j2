@@ -166,6 +166,22 @@ run_recv_upchan_U16_voltage:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_upchan_U16_voltage_buffer
 
+run_recv_upchan_hfb_U128_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_hfb_U128_voltage_ringbuffer: host_upchan_hfb_U128_voltage_ringbuffer
+        out_buffers:
+            host_upchan_hfb_U128_voltage_buffer: host_upchan_hfb_U128_voltage_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_upchan_hfb_U128_voltage_ringbuffer
+          gpu_mem_input: upchan_hfb_U128_voltage_buffer
+          output_size: num_dishes * num_polarizations * (upchan_hfb_upchan_U128_max_num_channels * 128) * (num_times / 128)
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_upchan_hfb_U128_voltage_buffer
+
 run_recv_frb1_beams:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -178,9 +194,25 @@ run_recv_frb1_beams:
         - name: cudaCopyFromRingbuffer
           host_signal: host_frb1_beams_ringbuffer
           gpu_mem_input: frb1_beams_buffer
-          output_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+          output_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_frb1_beams_buffer
+
+run_recv_hfb1_beams:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_hfb1_beams_ringbuffer: host_hfb1_beams_ringbuffer
+        out_buffers:
+            host_hfb1_beams_buffer: host_hfb1_beams_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_hfb1_beams_ringbuffer
+          gpu_mem_input: hfb1_beams_buffer
+          output_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_hfb1_beams_buffer
 
 # Output
 
@@ -248,11 +280,24 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_n2k_counts_buffer
         file_name: n2k_counts
+    write_n2k_plcounts:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_n2k_plcounts_buffer
+        file_name: n2k_plcounts
+    write_n2k_rficounts:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_n2k_rficounts_buffer
+        file_name: n2k_rficounts
+    write_n2k_rfiframemask:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_n2k_rfiframemask_buffer
+        file_name: n2k_rfiframemask
     write_n2_vis:
         kotekan_stage: hdf5FileWrite
         in_buf: host_n2_vis_buffer
         file_name: n2_vis
         create_single_file: false # not implemented
+        max_frames: 1 * num_frequencies
     # write_n2_vis:
     #     kotekan_stage: hdf5N2Write
     #     num_file_t: 4
@@ -261,6 +306,10 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beam_positions_buffer
         file_name: bb_beam_positions
+    write_bb_beam_ids:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_bb_beam_ids_buffer
+        file_name: bb_beam_ids
     write_bb_phase:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_phase_buffer
@@ -277,14 +326,26 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U16_gain_buffer
         file_name: upchan_U16_gain
+    write_upchan_HFB_U128_gain:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_upchan_hfb_U128_gain_buffer
+        file_name: upchan_hfb_U128_gain
     write_upchan_U16_voltage:
         kotekan_stage: hdf5FileWrite
         in_buf: host_upchan_U16_voltage_buffer
         file_name: upchan_U16_voltage
+    write_upchan_hfb_U128_voltage:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_upchan_hfb_U128_voltage_buffer
+        file_name: upchan_hfb_U128_voltage
     write_frb1_U16_phase:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb1_U16_phase_buffer
         file_name: frb1_U16_phase
+    write_frb2_beam_ids:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_frb2_beam_ids_buffer
+        file_name: frb2_beam_ids
     write_frb2_beam_positions:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb2_beam_positions_buffer
@@ -310,3 +371,31 @@ write_data:
         in_buf: host_frb3_beams_offsetscale_buffer
         file_name: frb3_beams_offsetscale
         max_frames: 4
+    write_hfb1_U128_phase:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_hfb1_U128_phase_buffer
+        file_name: hfb1_U128_phase
+    write_hfb2_beam_positions:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_hfb2_beam_positions_buffer
+        file_name: hfb2_beam_positions
+    write_hfb2_weights:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_hfb2_weights_buffer
+        file_name: hfb2_weights
+    write_hfb1_beams:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_hfb1_beams_buffer
+        file_name: hfb1_beams
+    write_hfb2_beams:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_hfb2_beams_buffer
+        file_name: hfb2_beams
+    # write_hfb3_beams:
+    #     kotekan_stage: hdf5FileWrite
+    #     in_buf: host_hfb3_beams_buffer
+    #     file_name: hfb3_beams
+    # write_hfb3_beams_offsetscale:
+    #     kotekan_stage: hdf5FileWrite
+    #     in_buf: host_hfb3_beams_offsetscale_buffer
+    #     file_name: hfb3_beams_offsetscale

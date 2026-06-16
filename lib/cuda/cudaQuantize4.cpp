@@ -1,28 +1,31 @@
-#include "DataType.hpp"            // for int4x2_t, float16_t
-#include "NDArray.hpp"             // for NDArray
-#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
-#include "chordMetadata.hpp"       // for chordMetadata, get_chord_metadata, metadata_is_chord
-#include "cudaCommand.hpp"         // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascud...
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "cudaQuantizeKernel4.hpp" // for gpu_quantize4
-#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "div.hpp"                 // for div_noremainder
-#include "gpuCommand.hpp"          // for gpuCommandType
-#include "metadata.hpp"            // for metadataObject
+// 4-bit FRB beam quantizer for CHORD
 
-#include <algorithm>          // for max
-#include <array>              // for array
-#include <cassert>            // for assert
-#include <cmath>              //
-#include <cstddef>            // for size_t, ptrdiff_t
-#include <cstdint>            // for int64_t
-#include <cuda_fp16.h>        // for __half2, __half
-#include <cuda_runtime_api.h> // for cudaGetLastError, cudaMemcpy
-#include <memory>             // for shared_ptr, __shared_ptr_access
-#include <stdexcept>          // for runtime_error
-#include <string>             // for allocator, basic_string, string, operator+
-#include <tuple>              // for tuple, make_tuple
-#include <vector>             // for vector
+#include <cuda_fp16.h>              // for __half
+#include <cuda_runtime_api.h>       // for cudaGetLastError
+#include <algorithm>                // for max
+#include <array>                    // for array
+#include <cassert>                  // for assert
+#include <cstddef>                  // for ptrdiff_t
+#include <cstdint>                  // for int64_t
+#include <stdexcept>                // for runtime_error
+#include <string>                   // for allocator, basic_string, string
+#include <tuple>                    // for tuple, make_tuple
+#include <vector>                   // for vector
+
+#include "DataType.hpp"             // for int4x2_t, float16_t
+#include "NDArray.hpp"              // for NDArray
+#include "NDArrayBuffer.hpp"        // for NDArrayBuffer
+#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
+#include "cudaQuantizeKernel4.hpp"  // for gpu_quantize4
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "div.hpp"                  // for div_noremainder
+#include "gpuCommand.hpp"           // for gpuCommandType
+#include "Config.hpp"               // for Config
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "driver_types.h"           // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
+#include "fmt.hpp"                  // for format
+#include "metadata.hpp"             // for metadataObject
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -69,8 +72,8 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
     _num_beams(config.get<std::int64_t>(unique_name, "num_beams")),
     _num_frequencies(config.get<std::int64_t>(unique_name, "num_frequencies")),
     _num_times(config.get<std::int64_t>(unique_name, "num_times")),
-    _num_chunks(
-        kotekan::div_noremainder(1LL * _num_beams * _num_frequencies * _num_times, CHUNK_SIZE)),
+    _num_chunks(1LL * _num_beams * _num_frequencies
+                * kotekan::div_noremainder(_num_times, CHUNK_SIZE)),
     //
     _stddev_cutoff(config.get<float>(unique_name, "stddev_cutoff")),
     //

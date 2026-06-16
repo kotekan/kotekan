@@ -53,9 +53,11 @@ telescope:
     dish_vert_axis: [0.0, 0.0, 1.0]
     require_gps: false
     eop_updatable_config: /earth_rotation_data
-    num_dishes_x: 22
-    num_dishes_y: 24
+    dish_grid_size_x: 22
+    dish_grid_size_y: 24
     dish_inputs: []
+
+input_order: CHORDBeamformer
 
 gps_time:
     frame0_nano: start_time_s * GIGA

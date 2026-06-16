@@ -157,7 +157,6 @@ private:
     };
     static constexpr std::ptrdiff_t G_length = G_strides[G_rank];
     static constexpr std::ptrdiff_t G_length_in_bytes = type_total_bytes(G_type) * G_length;
-    static_assert(G_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: voltage_name
     static constexpr const char* E_quantity = "E";
@@ -193,7 +192,6 @@ private:
     };
     static constexpr std::ptrdiff_t E_length = E_strides[E_rank];
     static constexpr std::ptrdiff_t E_length_in_bytes = type_total_bytes(E_type) * E_length;
-    static_assert(E_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // Ebar: upchan_U16_voltage_name
     static constexpr const char* Ebar_quantity = "Ebar";
@@ -231,7 +229,6 @@ private:
     static constexpr std::ptrdiff_t Ebar_length = Ebar_strides[Ebar_rank];
     static constexpr std::ptrdiff_t Ebar_length_in_bytes =
         type_total_bytes(Ebar_type) * Ebar_length;
-    static_assert(Ebar_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr const char* info_quantity = "info";
@@ -267,7 +264,6 @@ private:
     static constexpr std::ptrdiff_t info_length = info_strides[info_rank];
     static constexpr std::ptrdiff_t info_length_in_bytes =
         type_total_bytes(info_type) * info_length;
-    static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     const bool poison_buffers;
@@ -352,8 +348,8 @@ cudaUpchannelizer_hirax_U16::num_consumed_elements(std::int64_t num_available_el
 }
 std::int64_t
 cudaUpchannelizer_hirax_U16::num_produced_elements(std::int64_t num_available_elements) const {
-    assert(num_consumed_elements(num_available_elements) % cuda_upchannelization_factor == 0);
-    return num_consumed_elements(num_available_elements) / cuda_upchannelization_factor;
+    return div_noremainder(num_consumed_elements(num_available_elements),
+                           cuda_upchannelization_factor);
 }
 
 std::int64_t
@@ -520,7 +516,7 @@ cudaEvent_t cudaUpchannelizer_hirax_U16::execute(cudaPipelineState& /*pipestate*
     // Copy inputs to device memory
 
     if (poison_buffers) {
-        Ebar_buffer.set_to_poison(0x00, 0, Fmax - Fmin);
+        Ebar_buffer.set_to_poison(0x00, 0, cuda_upchannelization_factor * (Fmax - Fmin));
         info_buffer.set_to_poison(0xff);
 
         // Initialize host-side buffer arrays

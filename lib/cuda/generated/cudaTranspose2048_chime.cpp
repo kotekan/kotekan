@@ -146,7 +146,6 @@ private:
     };
     static constexpr std::ptrdiff_t Ein_length = Ein_strides[Ein_rank];
     static constexpr std::ptrdiff_t Ein_length_in_bytes = type_total_bytes(Ein_type) * Ein_length;
-    static_assert(Ein_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // E: output_voltage_name
     static constexpr const char* E_quantity = "E";
@@ -182,7 +181,6 @@ private:
     };
     static constexpr std::ptrdiff_t E_length = E_strides[E_rank];
     static constexpr std::ptrdiff_t E_length_in_bytes = type_total_bytes(E_type) * E_length;
-    static_assert(E_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // scatter_indices: scatter_indices_name
     static constexpr const char* scatter_indices_quantity = "scatter_indices";
@@ -216,8 +214,6 @@ private:
         scatter_indices_strides[scatter_indices_rank];
     static constexpr std::ptrdiff_t scatter_indices_length_in_bytes =
         type_total_bytes(scatter_indices_type) * scatter_indices_length;
-    static_assert(scatter_indices_length_in_bytes
-                  <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
     // info: gpu_mem_info
     static constexpr const char* info_quantity = "info";
@@ -253,7 +249,6 @@ private:
     static constexpr std::ptrdiff_t info_length = info_strides[info_rank];
     static constexpr std::ptrdiff_t info_length_in_bytes =
         type_total_bytes(info_type) * info_length;
-    static_assert(info_length_in_bytes <= std::ptrdiff_t(std::numeric_limits<int>::max()) + 1);
     //
 
     const bool poison_buffers;

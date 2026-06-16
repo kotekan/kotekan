@@ -1,25 +1,25 @@
 #include "N2FringeStop.hpp"
 
-#include "CHORDTelescope.hpp"    // for CHORDTelescope, EOP
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for DEBUG
-#include "prometheusMetrics.hpp" // for Metrics
+#include <stdint.h>               // for int64_t
+#include <complex>                // for complex, conj, operator*
+#include <functional>             // for bind, function
+#include <vector>                 // for vector
+#include <memory>                 // for shared_ptr, __shared_ptr_access
 
-#include <complex>    // for complex, conj, operator*
-#include <functional> // for bind, function
-#include <stdint.h>   // for int64_t
-#include <vector>     // for vector
-// #include "visBuffer.hpp"         // for VisFrameView
-#include "N2FrameView.hpp" // for N2FrameView
-#include "Telescope.hpp"   // for Telescope
-#include "timeUtil.hpp"    // for get_UT1_from_ERA
-#include "visUtil.hpp"     // for frameID, modulo
-
-#include "fmt.hpp"      // for compile_string_to_view
-#include "gsl-lite.hpp" // for span
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "kotekanLogging.hpp"     // for DEBUG, FATAL_ERROR
+#include "prometheusMetrics.hpp"  // for Metrics
+#include "N2FrameView.hpp"        // for N2FrameView
+#include "Telescope.hpp"          // for Telescope, ElementOrder
+#include "geoUtil.hpp"            // for vec3d_t
+#include "timeUtil.hpp"           // for EOP, get_UT1_from_ERA, eop_null
+#include "visUtil.hpp"            // for frameID, modulo
+#include "fmt.hpp"                // for compile_string_to_view
+#include "gsl-lite.hpp"           // for span
+#include "FrameDesc.hpp"          // for FrameDesc
 
 
 using kotekan::bufferContainer;
@@ -56,9 +56,12 @@ N2FringeStop::N2FringeStop(Config& config, const std::string& unique_name,
     era_target_deg = config.get_default<double>(unique_name, "era_target_deg", 0.0);
     xp_target_as = config.get_default<double>(unique_name, "xp_target_as", 0.0);
     yp_target_as = config.get_default<double>(unique_name, "yp_target_as", 0.0);
+    input_order = config.get_default<ElementOrder>(unique_name, "input_order", ElementOrder::CHORDBeamformer);
+    num_elements = config.get<size_t>(unique_name, "num_elements");
 
-    num_elements = 0;
     nprod = num_elements * (num_elements + 1) / 2;
+
+    feed_positions_m = Telescope::instance().get_feed_positions_m(num_elements, input_order);
 }
 
 void N2FringeStop::main_thread() {
@@ -66,10 +69,9 @@ void N2FringeStop::main_thread() {
     frameID frame_id(in_buf);
     frameID output_frame_id(out_buf);
 
-    const CHORDTelescope& tel = Telescope::instance().cast<CHORDTelescope>();
+    const Telescope& tel = Telescope::instance();
 
-    int num_dishes = tel.get_num_dishes();
-    std::vector<std::complex<float>> fringe_phase(num_dishes, 1.0);
+    std::vector<std::complex<float>> fringe_phase(num_elements, 1.0);
 
     int64_t ut1 = get_UT1_from_ERA(num_rot_target, era_target_deg);
 
@@ -88,10 +90,6 @@ void N2FringeStop::main_thread() {
         }
 
         N2FrameView in_frame(in_buf, frame_id);
-
-        DEBUG("Input frame - num_elements: {:d}", in_frame.num_elements);
-
-        size_t num_elements = in_frame.num_elements;
 
         DEBUG("ERA: {:f}; ERA_target: {:f}", in_frame.bin_eop.ERA_deg, era_target_deg);
 
@@ -114,18 +112,16 @@ void N2FringeStop::main_thread() {
         output_frame.bin_end_ERAL_deg = -1;   // TODO: update
 
         if (fringestop_mode > 0)
-            tel.fill_fringestop_phases_1d(in_frame.freq_MHz, eop, eop_target, fringe_phase);
+            tel.fill_fringestop_phases_1d(in_frame.freq_MHz, eop, eop_target, feed_positions_m, fringe_phase);
 
         size_t idx = 0;
         for (size_t i = 0; i < num_elements; i++) {
             for (size_t j = i; j < num_elements; j++) {
 
-                size_t d_i = i % num_dishes;
-                size_t d_j = j % num_dishes;
                 if (fringestop_mode == 2)
-                    output_frame.vis[idx] = fringe_phase[d_i] * std::conj(fringe_phase[d_j]);
+                    output_frame.vis[idx] = fringe_phase[i] * std::conj(fringe_phase[j]);
                 else
-                    output_frame.vis[idx] *= fringe_phase[d_i] * std::conj(fringe_phase[d_j]);
+                    output_frame.vis[idx] *= fringe_phase[i] * std::conj(fringe_phase[j]);
 
                 idx++;
             }

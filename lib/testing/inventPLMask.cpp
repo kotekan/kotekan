@@ -76,9 +76,6 @@ public:
             meta->set_fpga_seq_num(frame_index * num_times);
             meta->set_time_downsampling_fpga(2 * 64);
 
-            meta->ndishes = -1;
-            meta->dish_index = nullptr;
-
             // Fill buffer
             DEBUG("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
             const std::ptrdiff_t str4 = 1;

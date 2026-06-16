@@ -13,6 +13,7 @@ giga: 1000000000
 start_time_s: 1764576000
 num_elements: 14
 num_dishes: 7
+num_polarizations: 2
 num_ev: 4
 sampling_rate_MHz: 3.2e3
 fft_length: 16384
@@ -29,8 +30,8 @@ telescope:
     dish_coelev_deg: 0.0
     require_gps: false
     eop_updatable_config: /earth_rotation_data
-    num_dishes_x: 8
-    num_dishes_y: 12
+    dish_grid_size_x: 8
+    dish_grid_size_y: 12
 
     dish_separation_x_m: 6.300156854906823
     dish_separation_y_m: 8.500057809796308
@@ -45,6 +46,8 @@ telescope:
       {dish_idx: 6, grid_x_idx: 7,  grid_y_idx: 7,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: H08}
     ]
     # yamlfix:on
+
+input_order: CHORDBeamformer
 
 earth_rotation_data:
     kotekan_update_endpoint: json
@@ -69,7 +72,7 @@ gps_time:
 fakevis_buf:
     kotekan_buffer: N2
     num_ev: 0
-    vis_layout: FullUpperTri
+    n2_layout: FullUpperTri
     metadata_pool: N2_pool
     num_frames: buffer_depth
 

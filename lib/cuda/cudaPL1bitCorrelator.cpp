@@ -1,31 +1,32 @@
-#include "Config.hpp"              // for Config
-#include "DataType.hpp"            // for uint1x8_t
-#include "NDArray.hpp"             // for NDArray
-#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
-#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chordMetadata.hpp"       // for chordMetadata
-#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "cudaMemsetInt.hpp"       // for cudaMemsetInt
-#include "div.hpp"                 // for div_noremainder, round_down
-#include "gpuCommand.hpp"          // for gpuCommandType
-#include "kotekanLogging.hpp"      // for DEBUG, ERROR
-#include "n2k/pl_kernels.hpp"      // for launch_pl_1bit_correlator
+#include <driver_types.h>           // for cudaEvent_t, CUevent_st, CUstream_st
+#include <sys/types.h>              // for uint, ulong
+#include <array>                    // for array
+#include <cassert>                  // for assert
+#include <cstddef>                  // for ptrdiff_t
+#include <cstdint>                  // for int32_t
+#include <functional>               // for function
+#include <memory>                   // for allocator, shared_ptr, __shared_ptr_access
+#include <string>                   // for basic_string, string
+#include <vector>                   // for vector
 
-#include <array>          // for array
-#include <cassert>        // for assert
-#include <cstddef>        // for ptrdiff_t
-#include <cstdint>        // for int32_t
-#include <driver_types.h> // for cudaEvent_t, CUevent_st, CUstream_st
-#include <fmt.hpp>        // for compile_string_to_view
-#include <functional>     // for function
-#include <memory>         // for allocator, shared_ptr, __shared_ptr_access
-#include <string>         // for basic_string, string
-#include <sys/types.h>    // for uint, ulong
-#include <vector>         // for vector
+#include "Config.hpp"               // for Config
+#include "DataType.hpp"             // for uint1x8_t
+#include "NDArray.hpp"              // for NDArray
+#include "NDArrayBuffer.hpp"        // for NDArrayBuffer
+#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "chordMetadata.hpp"        // for chordMetadata
+#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
+#include "cudaMemsetInt.hpp"        // for cudaMemsetInt
+#include "div.hpp"                  // for div_noremainder, num_triangle_blocks, round_down
+#include "gpuCommand.hpp"           // for gpuCommandType
+#include "kotekanLogging.hpp"       // for DEBUG, ERROR
+#include "n2k/pl_kernels.hpp"       // for launch_pl_1bit_correlator
+#include "fmt.hpp"                  // for compile_string_to_view
 
 using kotekan::div_noremainder;
+using kotekan::num_triangle_blocks;
 using kotekan::round_down;
 
 namespace {} // namespace
@@ -139,8 +140,8 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
         // aka "nt_outer" in n2k.hpp
         const int num_subintegrations = div_noremainder(num_times, n2k_sub_integration_ntime);
         const int blocksize = 8;
-        const int linear_num_blocks = (num_polarizations * num_dishes / 8 + 1) / blocksize;
-        const int triangle_num_blocks = linear_num_blocks * (linear_num_blocks + 1) / 2;
+        const int triangle_num_blocks =
+            num_triangle_blocks(num_polarizations * num_dishes / 8, blocksize);
         const std::array<std::ptrdiff_t, 5> n2k_lengths{num_subintegrations, num_frequencies,
                                                         triangle_num_blocks, blocksize, blocksize};
         const std::array<std::string, 5> n2k_dimnames{"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"};

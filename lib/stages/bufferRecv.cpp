@@ -1,38 +1,37 @@
 #include "bufferRecv.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Symbol.hpp"            // for Symbol
-#include "buffer.hpp"            // for Buffer, buffer_free, buffer_malloc
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for chordMetadata
-#include "configTracker.hpp"     // for ConfigTracker
-#include "metadata.hpp"          // for metadataObject, metadataPool
-#include "prometheusMetrics.hpp" // for Gauge, Metrics, Counter, MetricFamily
-#include "restServer.hpp"        // for PORT_REST_SERVER, connectionInstance
-#include "util.h"                // for string_tail
-#include "visUtil.hpp"           // for current_time, regex_split
+#include <arpa/inet.h>            // for htons, inet_ntop, ntohs
+#include <assert.h>               // for assert
+#include <errno.h>                // for errno
+#include <event2/thread.h>        // for evthread_use_pthreads
+#include <netinet/in.h>           // for sockaddr_in, in_addr
+#include <pthread.h>              // for pthread_setaffinity_np, pthread_setname_np
+#include <sched.h>                // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <stddef.h>               // for ptrdiff_t
+#include <stdlib.h>               // for free, malloc
+#include <sys/socket.h>           // for setsockopt, AF_INET, SOL_SOCKET, accept, bind, listen
+#include <algorithm>              // for find
+#include <cstring>                // for strerror
+#include <functional>             // for bind, ref, function, placeholders
+#include <memory>                 // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
+#include <queue>                  // for queue
+#include <stdexcept>              // for runtime_error
+#include <string>                 // for basic_string, allocator, string, operator<, char_traits
+#include <utility>                // for pair
 
-#include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
-
-#include <algorithm>       // for copy, max, find, equal
-#include <arpa/inet.h>     // for htons, inet_ntop, ntohs
-#include <assert.h>        // for assert
-#include <cstring>         // for strerror
-#include <errno.h>         // for errno
-#include <event2/thread.h> // for evthread_use_pthreads
-#include <functional>      // for bind, ref, function, placeholders
-#include <memory>          // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
-#include <netinet/in.h>    // for sockaddr_in, in_addr
-#include <pthread.h>       // for pthread_setaffinity_np, pthread_setname_np
-#include <queue>           // for queue
-#include <sched.h>         // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stddef.h>        // for ptrdiff_t
-#include <stdexcept>       // for runtime_error
-#include <stdlib.h>        // for free, malloc
-#include <string>          // for basic_string, allocator, string, operator<, char_traits
-#include <sys/socket.h>    // for setsockopt, AF_INET, SOL_SOCKET, accept, bind, listen
-#include <utility>         // for pair
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "Symbol.hpp"             // for Symbol
+#include "buffer.hpp"             // for Buffer, buffer_free, buffer_malloc
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chordMetadata.hpp"      // for chordMetadata
+#include "configTracker.hpp"      // for ConfigTracker
+#include "metadata.hpp"           // for metadataObject, metadataPool
+#include "prometheusMetrics.hpp"  // for Gauge, Metrics, Counter, MetricFamily
+#include "restServer.hpp"         // for PORT_REST_SERVER, connectionInstance
+#include "util.h"                 // for string_tail
+#include "visUtil.hpp"            // for current_time, regex_split
+#include "fmt.hpp"                // for compile_string_to_view, format, format_string, fmt
 
 using namespace std::placeholders;
 using std::mutex;
@@ -52,11 +51,17 @@ REGISTER_KOTEKAN_STAGE(bufferRecv);
 bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferRecv::main_thread, this)),
-    use_config_tracker(config.get_default<bool>(unique_name, "use_config_tracker", true)),
     dropped_frame_counter(
         Metrics::instance().add_counter("kotekan_buffer_recv_dropped_frame_total", unique_name)),
     transfer_time_seconds(Metrics::instance().add_gauge("kotekan_buffer_recv_transfer_time_seconds",
                                                         unique_name, {"source"})) {
+
+    // Default to the tracker's enabled state (set at startup, before stages).
+    // A stage may opt out, but cannot opt in when the tracker is off, so the
+    // configured value is ANDed with the tracker state.
+    const bool ct_enabled = ConfigTracker::instance().is_enabled();
+    use_config_tracker =
+        config.get_default<bool>(unique_name, "use_config_tracker", ct_enabled) && ct_enabled;
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);

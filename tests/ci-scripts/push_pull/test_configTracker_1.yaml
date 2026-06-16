@@ -1,9 +1,6 @@
 ---
 # configTracker test 1
 
-# use the config tracker
-config_tracker: true
-
 type: config
 log_level: debug
 

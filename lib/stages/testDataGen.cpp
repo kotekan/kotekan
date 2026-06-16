@@ -1,35 +1,35 @@
 #include "testDataGen.hpp"
 
-#include "CHORDTelescope.hpp"  // for CHORDTelescope
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "Symbol.hpp"          // for Symbol
-#include "Telescope.hpp"       // for Telescope, stream_t
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
-#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
-#include "kotekanTrackers.hpp" // for KotekanTrackers
-#include "oneHotMetadata.hpp"  // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
-#include "restServer.hpp"      // for HTTP_RESPONSE, restServer, connectionInstance
-#include "visUtil.hpp"         // for current_time, ts_to_double, StatTracker
+#include <assert.h>             // for assert
+#include <signal.h>             // for raise, SIGINT
+#include <stdint.h>             // for uint64_t, int8_t, uint32_t, int32_t, int64_t, uint8_t
+#include <strings.h>            // for bzero
+#include <sys/time.h>           // for gettimeofday, timeval
+#include <sys/types.h>          // for uint
+#include <unistd.h>             // for usleep
+#include <json.hpp>             // for json
+#include <algorithm>            // for copy
+#include <cmath>                // for fmod
+#include <functional>           // for bind, function, _1, _2
+#include <random>               // for mt19937
+#include <stdexcept>            // for invalid_argument, runtime_error
+#include <vector>               // for vector
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <algorithm>   // for max
-#include <assert.h>    // for assert
-#include <cmath>       // for fmod
-#include <functional>  // for bind, function, _1, _2
-#include <random>      // for mt19937
-#include <signal.h>    // for raise, SIGINT
-#include <stdexcept>   // for invalid_argument
-#include <stdint.h>    // for int8_t, uint32_t, uint8_t, int16_t, int32_t, uint64_t
-#include <strings.h>   // for bzero
-#include <sys/time.h>  // for gettimeofday, timeval
-#include <sys/types.h> // for uint
-#include <unistd.h>    // for usleep
-#include <vector>      // for vector
+#include "CHORDTelescope.hpp"   // for CHORDTelescope
+#include "Config.hpp"           // for Config
+#include "DataType.hpp"         // for DataType, KOTEKAN_FLOAT16, float16_t
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "Symbol.hpp"           // for Symbol
+#include "Telescope.hpp"        // for Telescope, stream_t
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
+#include "kotekanLogging.hpp"   // for INFO, DEBUG, ERROR
+#include "kotekanTrackers.hpp"  // for KotekanTrackers
+#include "oneHotMetadata.hpp"   // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
+#include "restServer.hpp"       // for HTTP_RESPONSE, restServer, connectionInstance
+#include "visUtil.hpp"          // for current_time, ts_to_double, StatTracker
+#include "fmt.hpp"              // for compile_string_to_view
 
 
 using kotekan::bufferContainer;
@@ -49,20 +49,20 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     buf = get_buffer("out_buf");
     buf->register_producer(unique_name);
     type = config.get<std::string>(unique_name, "type");
-    assert(type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
-           || type == "const16" || type == "const32" || type == "constf16" || type == "random"
-           || type == "random_signed" || type == "random_signed_offset" || type == "random1x8"
-           || type == "random32" || type == "const64" || type == "random64" || type == "constu64"
-           || type == "randomu64" || type == "random8" || type == "ramp" || type == "tpluse"
-           || type == "tpluseplusf" || type == "tpluseplusfprime" || type == "square"
-           || type == "onehot");
+    assert(type == "const" || type == "const_offset" || type == "const8" || type == "constu8"
+           || type == "const1x8" || type == "const16" || type == "const32" || type == "constf16"
+           || type == "random" || type == "random_signed" || type == "random_signed_offset"
+           || type == "random1x8" || type == "random32" || type == "const64" || type == "random64"
+           || type == "constu64" || type == "randomu64" || type == "random8" || type == "ramp"
+           || type == "tpluse" || type == "tpluseplusf" || type == "tpluseplusfprime"
+           || type == "square" || type == "onehot");
     assert(!((type == "constf16") && (KOTEKAN_FLOAT16 == 0)));
     int type_size = 1; // default
     if (type == "const")
         type_size = 1;
     if (type == "const_offset")
         type_size = 1;
-    if (type == "const8" || type == "const1x8")
+    if (type == "const8" || type == "constu8" || type == "const1x8")
         type_size = 1;
     if (type == "const16")
         type_size = 2;
@@ -72,10 +72,10 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         type_size = 2;
     if (type == "constu64" || type == "randomu64" || type == "const64" || type == "random64")
         type_size = 8;
-    if (type == "const" || type == "const_offset" || type == "const8" || type == "const1x8"
-        || type == "const16" || type == "const32" || type == "random" || type == "random32"
-        || type == "random_signed" || type == "random_signed_offset" || type == "random1x8"
-        || type == "random8" || type == "ramp" || type == "onehot") {
+    if (type == "const" || type == "const_offset" || type == "const8" || type == "constu8"
+        || type == "const1x8" || type == "const16" || type == "const32" || type == "random"
+        || type == "random32" || type == "random_signed" || type == "random_signed_offset"
+        || type == "random1x8" || type == "random8" || type == "ramp" || type == "onehot") {
         value = config.get_default<int>(unique_name, "value", -1999);
         _value_array =
             config.get_default<std::vector<int>>(unique_name, "values", std::vector<int>());
@@ -118,7 +118,6 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
     num_frames = config.get_default<int>(unique_name, "num_frames", -1);
     num_links = config.get_default<uint32_t>(unique_name, "num_links", 1);
-    set_dish_index = config.get_default<bool>(unique_name, "set_dish_index", false);
     // TODO: rename this parameter to `num_freq_per_stream` in the config
     _num_freq_in_frame = config.get_default<size_t>(unique_name, "num_local_freq", 1);
     // Try to generate data based on `samples_per_dataset` cadence or else just generate it as
@@ -189,6 +188,7 @@ void testDataGen::main_thread() {
     uint32_t frame_id_abs = _first_frame_index;
     uint8_t* frame = nullptr;
     int8_t* frame8 = nullptr;
+    uint8_t* frameu8 = nullptr;
     int16_t* frame16 = nullptr;
     int32_t* frame32 = nullptr;
     int64_t* frame64 = nullptr;
@@ -238,35 +238,6 @@ void testDataGen::main_thread() {
         chordmeta->set_strides_simple();
         // frame_desc is set only after "type" has been decoded below
 
-        // Set dish information
-        // (This is the outdated way; the modern way uses the telescope object)
-        if (set_dish_index && !chordmeta->dish_index) {
-            const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
-            const auto& dish_grid = chord_telescope.get_dish_grid();
-            const int num_dish_locations_ew = dish_grid.get_num_dishes_x();
-            const int num_dish_locations_ns = dish_grid.get_num_dishes_y();
-            const int num_dish_locations = num_dish_locations_ew * num_dish_locations_ns;
-            std::vector<int> dish_index(num_dish_locations, -1);
-            int num_dishes = 0;
-            for (int dish_loc_ns = 0; dish_loc_ns < num_dish_locations_ns; ++dish_loc_ns) {
-                for (int dish_loc_ew = 0; dish_loc_ew < num_dish_locations_ew; ++dish_loc_ew) {
-                    const int dish_ind = dish_grid.dish_index(dish_loc_ew, dish_loc_ns);
-                    if (dish_ind >= 0) {
-                        ++num_dishes;
-                        assert(dish_index.at(dish_loc_ew + num_dish_locations_ew * dish_loc_ns)
-                               == -1);
-                        dish_index.at(dish_loc_ew + num_dish_locations_ew * dish_loc_ns) = dish_ind;
-                    }
-                }
-            }
-            chordmeta->ndishes = num_dishes;
-            chordmeta->n_dish_locations_ew = num_dish_locations_ew;
-            chordmeta->n_dish_locations_ns = num_dish_locations_ns;
-            chordmeta->dish_index =
-                new dish_index_t[chordmeta->n_dish_locations_ns * chordmeta->n_dish_locations_ew];
-            std::copy(dish_index.begin(), dish_index.end(), chordmeta->dish_index);
-        }
-
         // Set frequency channel metadata
 
         assert(_num_freq_in_frame <= CHORD_META_MAX_FREQ);
@@ -309,6 +280,11 @@ void testDataGen::main_thread() {
             frame8 = (int8_t*)frame;
             if (chordmeta)
                 chordmeta->type = kotekan::int8;
+        } else if (type == "constu8") {
+            n_to_set /= sizeof(uint8_t);
+            frameu8 = (uint8_t*)frame;
+            if (chordmeta)
+                chordmeta->type = kotekan::uint8;
         } else if (type == "const1x8") {
             n_to_set /= sizeof(int8_t);
             frame8 = (int8_t*)frame;
@@ -420,7 +396,8 @@ void testDataGen::main_thread() {
 
         if (_value_array.size()
             && ((type == "const") || (type == "const_offset") || (type == "const8")
-                || (type == "const1x8") || (type == "const16") || (type == "const32")))
+                || (type == "constu8") || (type == "const1x8") || (type == "const16")
+                || (type == "const32")))
             // Cycle through "values" array, if given
             value = _value_array[frame_id_abs % _value_array.size()];
         if (_lvalue_array.size() && type == "const64")
@@ -440,6 +417,10 @@ void testDataGen::main_thread() {
                 if (finished_seeding_constant)
                     break;
                 frame8[j] = value;
+            } else if (type == "constu8") {
+                if (finished_seeding_constant)
+                    break;
+                frameu8[j] = value;
             } else if (type == "const16") {
                 if (finished_seeding_constant)
                     break;

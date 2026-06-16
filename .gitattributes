@@ -1,2 +1,28 @@
 # Force all text files to use LF
  * text=auto eol=lf
+
+# Mark generated files as generated (excluded from language stats and
+# collapsed in GitHub diffs).
+lib/cuda/generated/**      linguist-generated=true
+julia/output/**            linguist-generated=true
+python/kotekan/_version.py linguist-generated=true
+
+# CUDA compiler outputs are generated wherever they live. Note: *.sass here is
+# CUDA SASS assembly, which linguist would otherwise count as the Sass CSS language.
+*.ptx  linguist-generated=true
+*.sass linguist-generated=true
+
+# Third-party code vendored into the repo: exclude from language stats.
+external/**          linguist-vendored=true
+python/versioneer.py linguist-vendored=true
+
+# Documentation: excluded from language stats (top-level docs/ is linguist's
+# default, but be explicit).
+docs/** linguist-documentation=true
+
+# Suppress textual diff for machine outputs in local git.
+# Still git-grep-able, or use git diff -a.
+*.ptx  -diff
+*.sass -diff
+lib/cuda/generated/** -diff
+julia/output/**       -diff

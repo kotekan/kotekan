@@ -1,21 +1,22 @@
 #include "pyPlotN2.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "restServer.hpp"      // for restServer, HTTP_RESPONSE, connectionInstance
+#include <stdint.h>             // for uint32_t, uint8_t
+#include <stdlib.h>             // for free, malloc
+#include <string.h>             // for memcpy
+#include <sys/types.h>          // for uint
+#include <unistd.h>             // for usleep
+#include <cstdio>               // for fwrite, fflush, popen, FILE
+#include <functional>           // for bind, function, _1
+#include <thread>               // for thread
 
-#include "json.hpp" // for json_ref, json
-
-#include <cstdio>      // for fwrite, fflush, popen, FILE
-#include <functional>  // for bind, function, _1
-#include <stdint.h>    // for uint32_t, uint8_t
-#include <stdlib.h>    // for free, malloc
-#include <string.h>    // for memcpy
-#include <sys/types.h> // for uint
-#include <thread>      // for thread
-#include <unistd.h>    // for usleep
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "div.hpp"              // for num_triangle_blocks
+#include "restServer.hpp"       // for restServer, HTTP_RESPONSE, connectionInstance
+#include "json.hpp"             // for json_ref, json
+#include "fmt.hpp"              // for format
 
 
 using json = nlohmann::json;
@@ -96,7 +97,7 @@ void pyPlotN2::make_plot(void) {
     { // N^2
         uint num_elements = config.get<uint>(unique_name, "num_elements");
         uint block_dim = 32;
-        uint num_blocks = (num_elements / block_dim) * (num_elements / block_dim + 1) / 2;
+        uint num_blocks = kotekan::num_triangle_blocks(num_elements, block_dim);
         uint block_size = block_dim * block_dim * 2; // real, complex
 
         usleep(10000);

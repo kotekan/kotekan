@@ -1,25 +1,24 @@
 #include "timeDownsample.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for DEBUG
-#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
-#include "visBuffer.hpp"         // for VisFrameView
-#include "visUtil.hpp"           // for frameID, modulo, operator-, ts_to_double
+#include <stdint.h>               // for uint32_t, uint64_t, int32_t
+#include <time.h>                 // for timespec
+#include <algorithm>              // for equal
+#include <complex>                // for complex
+#include <functional>             // for bind, function
+#include <stdexcept>              // for runtime_error
+#include <tuple>                  // for get
+#include <vector>                 // for vector
 
-#include "fmt.hpp"      // for compile_string_to_view
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>  // for copy, equal, max
-#include <complex>    // for complex
-#include <functional> // for bind, function
-#include <stdexcept>  // for runtime_error
-#include <stdint.h>   // for uint32_t, uint64_t, int32_t
-#include <time.h>     // for timespec
-#include <tuple>      // for get
-#include <vector>     // for vector
+#include "Config.hpp"             // for Config
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "kotekanLogging.hpp"     // for DEBUG
+#include "prometheusMetrics.hpp"  // for Counter, MetricFamily, Metrics
+#include "visBuffer.hpp"          // for VisFrameView
+#include "visUtil.hpp"            // for frameID, modulo, operator-, ts_to_double
+#include "fmt.hpp"                // for compile_string_to_view
+#include "gsl-lite.hpp"           // for span
 
 
 using kotekan::bufferContainer;

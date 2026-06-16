@@ -1,14 +1,14 @@
 
 #include "visFile.hpp"
 
-#include "fmt.hpp" // for format, fmt
+#include <libgen.h>    // for dirname, basename
+#include <sys/stat.h>  // for mkdir
+#include <unistd.h>    // for getpid
+#include <ctime>       // for gmtime, time_t
+#include <fstream>     // for basic_ofstream, basic_ostream, basic_ostream::operator<<, endl
+#include <iterator>    // for reverse_iterator
 
-#include <ctime>      // for gmtime, time_t
-#include <fstream>    // for basic_ostream::operator<<, ofstream, endl, basic_ostream, basic_os...
-#include <iterator>   // for reverse_iterator
-#include <libgen.h>   // for dirname, basename
-#include <sys/stat.h> // for mkdir
-#include <unistd.h>   // for getpid
+#include "fmt.hpp"     // for arg, compile_string_to_view, format, format_string, named_arg
 
 
 visFileBundle::~visFileBundle() {

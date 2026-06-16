@@ -62,6 +62,7 @@ public:
     void register_consumer(const std::string& name) override;
     void register_producer(const std::string& name) override;
 
+    void print_buffer_status() override;
     void print_full_status() override;
 
     /**

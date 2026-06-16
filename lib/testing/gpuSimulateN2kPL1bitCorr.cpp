@@ -6,7 +6,7 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata, CHO...
-#include "div.hpp"             // for div_noremainder
+#include "div.hpp"             // for div_ceil, div_noremainder, num_triangle_blocks
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, DEBUG
 #include "metadata.hpp"        // for metadataObject
 
@@ -22,7 +22,9 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::div_ceil;
 using kotekan::div_noremainder;
+using kotekan::num_triangle_blocks;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(gpuSimulateN2kPL1bitCorr);
@@ -67,9 +69,9 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
                     _samples_per_data_set);
         std::abort();
     }
-    if (_num_elements % _blocksize != 0) {
-        FATAL_ERROR("num_elements ({:d}) is not a multiple of _blocksize ({:d}).", _num_elements,
-                    _blocksize);
+    if (_num_elements % (8 * _blocksize) != 0) {
+        FATAL_ERROR("num_elements ({:d}) / 8 is not a multiple of _blocksize ({:d}).",
+                    _num_elements, _blocksize);
         std::abort();
     }
 
@@ -84,8 +86,7 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     int n_integrations = _samples_per_data_set / _sub_integration_ntime;
     int nf = _num_local_freq;
     int ne = _num_elements / 8;
-    int n_block_lin = ne / _blocksize;
-    int n_blocks = (n_block_lin * (n_block_lin + 1)) / 2;
+    int n_blocks = num_triangle_blocks(ne, _blocksize);
     output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int32>::type, 5>(
         "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
         {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
@@ -132,8 +133,8 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         int nf = _num_local_freq;
         int ne = _num_elements / 8;
 
-        int n_block_lin = ne / _blocksize;
-        int n_blocks = (n_block_lin * (n_block_lin + 1)) / 2;
+        int n_block_lin = div_ceil(ne, _blocksize);
+        int n_blocks = num_triangle_blocks(ne, _blocksize);
 
         // Strides into the (expanded) PL mask (as uint64_t's)
         int df_pl = ne;      // freq stride

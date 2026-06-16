@@ -1,22 +1,26 @@
 #include "AirspyAlign.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp" // for make_input_desc
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "fftwPlannerLock.hpp" // for fftw_planner_mutex
-#include "kotekanLogging.hpp"  // for DEBUG
+#include <fftw3.h>              // for fftwf_free, fftwf_malloc, fftwf_complex, fftwf_destroy_plan
+#include <stdint.h>             // for uint32_t
+#include <stdlib.h>             // for free, malloc
+#include <string.h>             // for memcpy, memset
+#include <json.hpp>             // for json, basic_json
+#include <algorithm>            // for min
+#include <condition_variable>   // for condition_variable
+#include <functional>           // for bind, function, _1
+#include <mutex>                // for mutex, lock_guard, unique_lock
+#include <cmath>                // for fabs, sqrt
+#include <memory>               // for shared_ptr
 
-#include <algorithm>          // for min
-#include <condition_variable> // for condition_variable
-#include <fftw3.h>            // for fftwf_*
-#include <functional>         // for bind, _1
-#include <math.h>             // for sqrt, fabs
-#include <mutex>              // for unique_lock, lock_guard
-#include <stdint.h>           // for uint32_t
-#include <stdlib.h>           // for malloc, free
-#include <string.h>           // for memcpy, memset
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"  // for make_input_desc
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "fftwPlannerLock.hpp"  // for fftw_planner_mutex
+#include "kotekanLogging.hpp"   // for DEBUG
+#include "NDArray.hpp"          // for GenericNDArray
+#include "fmt.hpp"              // for compile_string_to_view
 
 using kotekan::bufferContainer;
 using kotekan::Config;

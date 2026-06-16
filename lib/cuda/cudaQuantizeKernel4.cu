@@ -1,3 +1,5 @@
+// 4-bit FRB beam quantizer for CHORD
+
 #include "DataType.hpp"
 #include "cudaQuantizeKernel4.hpp"
 
@@ -40,12 +42,14 @@ __device__ static inline half2x4 load_half2x4(const __half2* __restrict__ const 
 // Round to nearest integer, avoiding all the implementation-defined cases
 static int sane_lrint(const float x) {
     using std::isnan, std::lrint;
-    if (x < INT_MIN)
-        return INT_MIN;
-    if (x > INT_MAX)
-        return INT_MAX;
+    // INT_MIN = -2^31 is exact in float; INT_MAX = 2^31 - 1 rounds up to 2^31
+    // when promoted, so the upper check uses `>=`.
     if (isnan(x))
         return 0; // we could mask to -8 instead
+    if (x < INT_MIN)
+        return INT_MIN;
+    if (x >= INT_MAX)
+        return INT_MAX;
     return int(lrint(x));
 }
 
@@ -74,10 +78,9 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restr
         sum2 += x * x;
     }
     // Calculate the mean and corrected standard deviation
-    using std::fmax, std::sqrt;
     const float mean = sum / chunk_size;
     const float stddev = sqrt(fmax(0.0f, sum2 / chunk_size - mean * mean));
-    // Calculate offset and scale. Ensure the scale is nonzero.
+    // Calculate offset and scale.
     // There are 15 possible int4 values since we don't use 0.
     // Values are reconstructed as `offset + scale * n`, with `int4 n`.
     constexpr int outi_min = -7;
@@ -105,8 +108,12 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restr
     }
 
     // Store offset and scale in the output array
-    outputf[0] = __float2half(offset);
-    outputf[1] = __float2half(scale);
+    outputf[0] = offseth;
+    outputf[1] = scaleh;
+
+    // Recalculate offset and scale from the stored half precision values
+    offset = __half2float(offseth);
+    scale = __half2float(scaleh);
 
     // We encode values as signed 4-bit integers. We combine two 4-bit integers into one byte. The
     // lower 4 bits hold the first value, the upper 4 bits hold the second value.
@@ -115,14 +122,14 @@ void cpu_quantize4_chunk(const __half* __restrict__ const input, __half* __restr
         const float x0 = __half2float(input[i + 0]);
         const float x1 = __half2float(input[i + 1]);
         // Scale
-        const float y0 = (x0 - offset) / scale;
-        const float y1 = (x1 - offset) / scale;
+        const float y0 = scale == 0 ? float(outi_min + outi_max) / 2.0f : (x0 - offset) / scale;
+        const float y1 = scale == 0 ? float(outi_min + outi_max) / 2.0f : (x1 - offset) / scale;
         // Round
         const int j0 = sane_lrint(y0);
         const int j1 = sane_lrint(y1);
         // Clamp; use -8 for nan
-        const int k0 = isnan(y0) ? -8 : max(outi_min, min(outi_max, j0));
-        const int k1 = isnan(y1) ? -8 : max(outi_min, min(outi_max, j1));
+        const int k0 = isnan(x0) ? -8 : max(outi_min, min(outi_max, j0));
+        const int k1 = isnan(x1) ? -8 : max(outi_min, min(outi_max, j1));
         // Combine
         const kotekan::int4x2_t k01(k0, k1);
         // Store
@@ -219,7 +226,7 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
         constexpr float outf_range = outf_max - outf_min;
         const float in_range = 2 * stddev * stddev_cutoff;
         const float offset = mean;
-        const float scale = fmax(0.0f, in_range / outf_range);
+        const float scale = in_range / outf_range;
 
         // Idea: Add 8 before converting to int, then the result will be positive and we don't need
         // to mask when combining. Mapping nans will also work naturally. Use a single xor to
@@ -237,13 +244,13 @@ gpu_quantize4_chunks(const __half* __restrict__ const input0, __half* __restrict
             // Offset or scale are non-finite
             offseth = __float2half_rn(0.0f);
             scaleh = __float2half_rn(0.0f);
-            inv_offseth = __float2half_rn(inv_offset);
-            inv_scaleh = __float2half_rn(inv_scale);
+            inv_offseth = __float2half_rn(0.0f);
+            inv_scaleh = __float2half_rn(0.0f);
         } else if (!isfinite(__half2float(inv_offseth)) || !isfinite(__half2float(inv_scaleh))) {
             // Offset and scale are fine, but the inverse scale is non-finite. This means the scale
             // is too close to zero.
             scaleh = __float2half_rn(0.0f);
-            inv_offseth = -offseth;
+            inv_offseth = __float2half_rn(0.0f);
             inv_scaleh = __float2half_rn(0.0f);
         }
 

@@ -132,6 +132,9 @@ target_link_libraries(test_NDArray libexternal kotekan_metadata)
 add_executable(test_Symbol test_Symbol.cpp)
 target_link_libraries(test_Symbol libexternal kotekan_metadata)
 
+add_executable(test_div test_div.cpp)
+target_link_libraries(test_div PRIVATE kotekan_utils)
+
 add_executable(test_timeUtil test_timeUtil.cpp)
 target_link_libraries(test_timeUtil PRIVATE kotekan_utils)
 target_compile_definitions(test_timeUtil PRIVATE TEST_SCRIPT_DIR="${PROJECT_BINARY_DIR}")

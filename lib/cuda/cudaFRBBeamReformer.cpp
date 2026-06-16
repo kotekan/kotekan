@@ -4,20 +4,33 @@
  *  - cudaFRBBeamReformer : public cudaCommand
  */
 
-#include "Config.hpp" // for Config
-#include "NDArrayBuffer.hpp"
-#include "NDArrayRingBuffer.hpp"
-#include "cudaCommand.hpp" // for cudaCommand, REGISTER_CUDA_COMMAND
-#include "div.hpp"
+#include <cublas_api.h>             // for cublasGetStatusString, CUBLAS_STATUS_SUCCESS, cublasH...
+#include <cublas_v2.h>              // for cublasCreate, cublasDestroy, cublasSetStream
+#include <driver_types.h>           // for cudaEvent_t, CUevent_st, CUstream_st
+#include <array>                    // for array
+#include <cassert>                  // for assert
+#include <cstdlib>                  // for abort
+#include <string>                   // for basic_string, allocator, operator==, string
+#include <vector>                   // for vector
+#include <cstddef>                  // for ptrdiff_t
+#include <functional>               // for function
+#include <memory>                   // for shared_ptr, __shared_ptr_access
 
-#include <array>
-#include <cassert>
-#include <cstdlib>
-#include <cublas_api.h>   // for cublasContext, cublasHandle_t
-#include <cublas_v2.h>    // for cublasCreate, cublasDestroy, cublasSetStream
-#include <driver_types.h> // for cudaEvent_t
-#include <string>
-#include <vector>
+#include "Config.hpp"               // for Config
+#include "NDArrayBuffer.hpp"        // for NDArrayBuffer, buffer_type_t
+#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, read_descriptor_t, extent_t
+#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "div.hpp"                  // for mod
+#include "DataType.hpp"             // for float16_t
+#include "NDArray.hpp"              // for NDArray
+#include "Symbol.hpp"               // for Symbol
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "chordMetadata.hpp"        // for chordMetadata
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
+#include "cuda_fp16.h"              // for __half
+#include "fmt.hpp"                  // for compile_string_to_view
+#include "gpuCommand.hpp"           // for gpuCommandType
+#include "kotekanLogging.hpp"       // for DEBUG, ERROR, FATAL_ERROR
 
 using kotekan::mod;
 

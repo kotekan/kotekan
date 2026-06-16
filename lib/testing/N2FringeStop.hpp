@@ -7,9 +7,11 @@
 #define N2_FRINGE_STOP_HPP
 
 #include "Config.hpp"
-#include "Stage.hpp" // for Stage
+#include "Stage.hpp"           // for Stage
+#include "Telescope.hpp"       // for ElementOrder
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
+#include "geoUtil.hpp"         // for vec3d_t
 
 #include <stddef.h> // for size_t
 #include <string>   // for string
@@ -68,6 +70,8 @@ private:
     double era_target_deg;
     double xp_target_as;
     double yp_target_as;
+    ElementOrder input_order;
+    std::vector<vec3d_t> feed_positions_m;
 
     // Buffers
     Buffer* in_buf;

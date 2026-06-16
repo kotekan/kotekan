@@ -6,6 +6,7 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
 #include "buffer.hpp"            // for allocate_new_metadata_object, mark_frame_empty, mark_fr...
 #include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
+#include "div.hpp"               // for div_ceil
 #include "kotekanLogging.hpp"    // for DEBUG
 #include "prometheusMetrics.hpp" // for Gauge, Metrics, MetricFamily
 #include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::erms, VisField::eval
@@ -248,7 +249,7 @@ DynamicHermitian<float> EigenVisIter::calculate_mask(uint32_t num_elements) cons
 
     // Zero out blocks on the diagonal if requested
     if (_block_fill_size > 0) {
-        unsigned int nb = num_elements / _block_fill_size;
+        unsigned int nb = kotekan::div_ceil(num_elements, _block_fill_size);
         for (unsigned int ii = 0; ii < nb; ii++) {
             unsigned int start = ii * _block_fill_size;
             unsigned int width = std::min(num_elements - start, _block_fill_size);

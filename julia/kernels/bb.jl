@@ -101,6 +101,18 @@ elseif setup ≡ :chime
     const Wd = 4
     const Wp = 1
 
+elseif setup ≡ :charts
+
+    # CHARTS
+    const B = 16
+
+    const T1_stride = 128
+    const T2_stride = 32
+
+    const Wb = idiv(B, 8)
+    const Wd = 1
+    const Wp = 2
+
 else
     @assert false
 end

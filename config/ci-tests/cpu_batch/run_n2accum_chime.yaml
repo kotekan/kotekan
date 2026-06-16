@@ -171,6 +171,7 @@ N2_accumulate:
     variance_mode: CHIMEv1
     bin_in_ERA: false
     do_fringestop: false
+    input_order: CHIMEBeamformer
 
 vis_convert:
     kotekan_stage: n2FrameToVisFrame
@@ -187,37 +188,44 @@ writers:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_corr
         in_buf: fake_correlation_buffer
+        input_order: CHIMEBeamformer
 
     write_fake_counts:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_counts
         in_buf: fake_counts_buffer
+        input_order: CHIMEBeamformer
 
     write_fake_rfimask:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_rfimask
         in_buf: fake_rfimask_buffer
+        input_order: CHIMEBeamformer
 
     write_fake_rficounts:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_rficounts
         in_buf: fake_rficounts_buffer
+        input_order: CHIMEBeamformer
 
     write_fake_plcounts:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_plcounts
         in_buf: fake_plcounts_buffer
+        input_order: CHIMEBeamformer
 
     write_fake_rfi_frame_mask:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_rfiframemask
         in_buf: fake_rfi_frame_mask_buffer
+        input_order: CHIMEBeamformer
 
     write_N2:
         kotekan_stage: hdf5FileWrite
         file_name: n2_vis_posdef
         in_buf: n2_buffer
         max_frames: num_local_freq * n2_frames_to_write # Will trigger exit after writing this many frames
+        input_order: CHIMEBeamformer
 
     write_vis:
         kotekan_stage: rawFileWrite

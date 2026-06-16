@@ -6,18 +6,22 @@
 #ifndef N2_ACCUMULATE_HPP
 #define N2_ACCUMULATE_HPP
 
-#include "Config.hpp"            // for Config
-#include "N2Util.hpp"            // for frameID
-#include "Stage.hpp"             // for Stage
-#include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for chordMetadata
-#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include <time.h>                 // for timespec
+#include <json.hpp>               // for json
+#include <cstdint>                // for int64_t, int32_t, uint64_t, uint32_t
+#include <string>                 // for string
+#include <vector>                 // for vector
+#include <complex>                // for complex
+#include <iosfwd>                 // for ostream
 
-#include <cstdint> // for int64_t, int32_t
-#include <string>  // for string
-#include <vector>  // for vector
+#include "Config.hpp"             // for Config
+#include "N2Util.hpp"             // for frameID
+#include "Stage.hpp"              // for Stage
+#include "Telescope.hpp"          // for Telescope
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "prometheusMetrics.hpp"  // for Counter, MetricFamily
+#include "timeUtil.hpp"           // for EOP
 
 using N2::frameID;
 
@@ -251,6 +255,7 @@ private:
     const int _num_workers; ///< number of OpenMP threads to use to process data
 
     const bool _do_fringestop; ///< Whether to fringestop
+    const ElementOrder _input_order; ///< Order label of the inputs
     const N2VarianceMode _variance_mode;
     const bool _debug_accum_mode;
     const bool _profile_info;
@@ -287,8 +292,12 @@ private:
     uint64_t _accum_fpga_start_tick;
     int64_t _accum_bin_idx;
 
+
     // The telescope
     const Telescope& _tel;
+    
+    const std::vector<vec3d_t> _feed_positions_m; ///< The position of each element in the telescope grid frame
+    static constexpr std::complex<float> _sentinel_phase = std::complex<float>(2.0f, 2.0f); //  fringestop phases have |z| = 1.0
 
     // Reference to the prometheus metric that we will use for counting skipped
     // frames
