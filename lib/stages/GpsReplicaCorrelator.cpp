@@ -9,6 +9,8 @@
 #include "gpsCACode.hpp"       // for generate_ca_code, CA_CODE_LENGTH
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, FATAL_ERROR
 
+#include "restServer.hpp" // for restServer, connectionInstance, HTTP_RESPONSE
+
 #include <algorithm> // for max
 #include <chrono>    // for system_clock (record UTC stamp)
 #include <cmath>     // for round, cos, sin, sqrt, M_PI
@@ -16,6 +18,7 @@
 #include <functional>// for bind
 #include <memory>    // for shared_ptr
 #include <mutex>     // for lock_guard
+#include <set>       // for set (mask lookup)
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -131,6 +134,15 @@ GpsReplicaCorrelator::GpsReplicaCorrelator(Config& config, const std::string& un
     trk_prev_doppler.assign(n_prn, 0.0);
     trk_prev_code_phase.assign(n_prn, 0.0);
     trk_doppler.assign(n_prn, 0.0);
+
+    // Go/no-go mask: default all on, or the configured active_prns subset.
+    const auto active_prns = config.get_default<std::vector<int>>(unique_name, "active_prns", {});
+    _active.assign(n_prn, 1);
+    if (!active_prns.empty()) {
+        const std::set<int> on(active_prns.begin(), active_prns.end());
+        for (int i = 0; i < n_prn; ++i)
+            _active[i] = on.count(_prns[i]) ? 1 : 0;
+    }
 
     // --- FFTW buffers and plans (planner call needs the global lock) ---
     auto alloc = [&]() { return (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * _Ns); };
@@ -341,12 +353,59 @@ void GpsReplicaCorrelator::track_phase_update(int p, std::complex<float> raw, fl
     doppler_out = (float)trk_doppler[p];
 }
 
+void GpsReplicaCorrelator::get_mask_callback(kotekan::connectionInstance& conn) {
+    nlohmann::json reply;
+    std::lock_guard<std::mutex> lk(_mask_mutex);
+    reply["prns"] = _prns;
+    std::vector<bool> act(_active.begin(), _active.end());
+    reply["active"] = act;
+    conn.send_json_reply(reply);
+}
+
+void GpsReplicaCorrelator::set_mask_callback(kotekan::connectionInstance& conn,
+                                             nlohmann::json& request) {
+    try {
+        std::lock_guard<std::mutex> lk(_mask_mutex);
+        if (request.count("active_prns")) {
+            // Whole-mask update: enable exactly the listed PRNs (an almanac job
+            // posts the currently-visible set), disable the rest.
+            const auto list = request["active_prns"].get<std::vector<int>>();
+            const std::set<int> on(list.begin(), list.end());
+            for (size_t i = 0; i < _prns.size(); ++i)
+                _active[i] = on.count(_prns[i]) ? 1 : 0;
+        } else if (request.count("prn")) {
+            // Single toggle.
+            const int prn = request["prn"];
+            const bool on = request.value("active", true);
+            for (size_t i = 0; i < _prns.size(); ++i)
+                if (_prns[i] == prn)
+                    _active[i] = on ? 1 : 0;
+        } else {
+            conn.send_error("expected 'active_prns' list or 'prn'+'active'",
+                            kotekan::HTTP_RESPONSE::BAD_REQUEST);
+            return;
+        }
+    } catch (const std::exception& e) {
+        conn.send_error(e.what(), kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    get_mask_callback(conn); // echo the resulting mask
+}
+
 void GpsReplicaCorrelator::main_thread() {
     frame_in = 0;
     frame_out = 0;
 
     const int n_prn = (int)_prns.size();
     const int n_dop = (int)_doppler_grid.size();
+
+    using namespace std::placeholders;
+    kotekan::restServer& rest_server = kotekan::restServer::instance();
+    rest_server.register_get_callback(unique_name + "/get_mask",
+                                      std::bind(&GpsReplicaCorrelator::get_mask_callback, this, _1));
+    rest_server.register_post_callback(
+        unique_name + "/set_mask",
+        std::bind(&GpsReplicaCorrelator::set_mask_callback, this, _1, _2));
 
     // Doppler bin window for PRN p: the full grid when unlocked, a few bins
     // around the tracked Doppler once locked. Tracking state only changes at
@@ -373,6 +432,7 @@ void GpsReplicaCorrelator::main_thread() {
     const long long fs_int = std::llround(_sample_rate);
     long long block_index = 0;
     long long last_block_start = 0;
+    std::vector<uint8_t> active(n_prn, 1); // per-block snapshot of the go/no-go mask
 
     while (!stop_thread) {
         if (!fill_block())
@@ -381,8 +441,15 @@ void GpsReplicaCorrelator::main_thread() {
         last_block_start = block_index * (long long)_Ns;
         block_index++;
 
+        {
+            std::lock_guard<std::mutex> lk(_mask_mutex);
+            active = _active;
+        }
+
         to_analytic();
         for (int p = 0; p < n_prn; ++p) {
+            if (!active[p])
+                continue; // masked off: skip correlation entirely
             int lo, hi;
             win(p, lo, hi);
             correlate_prn(p, lo, hi);
@@ -407,6 +474,19 @@ void GpsReplicaCorrelator::main_thread() {
                 .count();
 
         for (int p = 0; p < n_prn; ++p) {
+            float* rec = out_local + (size_t)p * RECORD_FLOATS;
+
+            // Masked-off PRN: emit a zeroed record (keeps the frame layout) and
+            // drop any stale lock so it re-acquires cleanly when re-enabled.
+            if (!active[p]) {
+                rec[0] = (float)_prns[p];
+                for (int f = 1; f < RECORD_UTC_SLOT; ++f)
+                    rec[f] = 0.0f;
+                *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = utc;
+                trk_locked[p] = 0;
+                continue;
+            }
+
             // Search only the bins this PRN actually correlated (full grid when
             // unlocked, narrow window when locked); the rest of accum is zero.
             int di_lo, di_hi;
@@ -464,7 +544,6 @@ void GpsReplicaCorrelator::main_thread() {
                 track_phase_update(p, cpx, snr, _doppler_grid[best_di], dop_refined,
                                    code_phase_chips, nav_sign, phase_cont, doppler_out);
 
-            float* rec = out_local + (size_t)p * RECORD_FLOATS;
             rec[0] = (float)_prns[p];
             rec[1] = doppler_out; // FLL-refined when locked, else parabola-refined
             rec[2] = code_phase_chips;

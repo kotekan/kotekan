@@ -1,0 +1,110 @@
+---
+##########################################
+#
+# airspy_gps_allsky.yaml
+#
+# Single-airspy GPS capture that searches ALL 32 PRNs, split across four
+# GpsReplicaCorrelator instances (8 PRNs each) so the per-PRN search runs on
+# four cores via kotekan's native stage-per-thread model -- no OpenMP, no stage
+# code changes. The four instances all consume the one airspy input buffer
+# (kotekan buffers allow multiple consumers; the only duplicated work is the
+# tiny per-block analytic conversion) and each writes its own record stream.
+#
+# This is the "sit for days and accumulate" config: it self-acquires whatever
+# transits (every PRN rises over a day), needs no live target list, and keeps
+# phase continuity unbroken (no restarts). Below-horizon PRNs can optionally be
+# gated live via each instance's REST /set_mask endpoint (an external almanac
+# job posts the visible set), but that's not required for GPS.
+#
+# Post-processing: python/scripts/gps_beamtrack.py globs all gps_*.raw in the
+# output dir, so the 4-way split is invisible downstream.
+#
+# Author: Keith Vanderlinde
+#
+##########################################
+type: config
+log_level: info
+instrument_name: airspy_gps
+
+rest_server:
+    cors_allow_origins:
+        - "http://localhost:8080"
+        - "http://127.0.0.1:8080"
+
+samples_per_data_set: 50000
+bytes_per_sample: 2
+buffer_depth: 10
+sizeof_float: 4
+
+# Front-end (see airspy_gps.yaml for the full frequency-mapping rationale):
+# LO on L1 -> carrier at band centre, Fs_real = 2*sample_bw = 5 MSPS.
+sample_bw: 2.5
+freq: 1575.42
+gain_lna: 14
+gain_mix: 15
+gain_if: 15
+biast_power: false
+
+# Producers/writers share these cores; each correlator is pinned to its own
+# core below so the four PRN searches run truly in parallel.
+cpu_affinity: [0, 1, 2, 3]
+
+input_buf:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * bytes_per_sample
+
+airspy_input:
+    kotekan_stage: airspyInput
+    out_buf: input_buf
+#  serial: 0x________________   # pin a specific dongle; omit for "first found"
+
+# --- correlator common settings (each instance overrides prns/out_buf/affinity) ---
+record_floats: 11
+n_prn: 8                       # PRNs per instance; out frame = n_prn*record_floats*4
+sample_rate: 5.0e6
+f_offset: 1.25e6
+doppler_min: -6000.0
+doppler_max: 6000.0
+doppler_step: 500.0
+incoherent_ms: 1
+track_phase: true
+lock_snr: 15.0
+
+rec_a: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+rec_b: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+rec_c: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+rec_d: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+
+gps_a:
+    kotekan_stage: GpsReplicaCorrelator
+    in_buf: input_buf
+    out_buf: rec_a
+    cpu_affinity: [4]
+    prns: [1, 2, 3, 4, 5, 6, 7, 8]
+gps_b:
+    kotekan_stage: GpsReplicaCorrelator
+    in_buf: input_buf
+    out_buf: rec_b
+    cpu_affinity: [5]
+    prns: [9, 10, 11, 12, 13, 14, 15, 16]
+gps_c:
+    kotekan_stage: GpsReplicaCorrelator
+    in_buf: input_buf
+    out_buf: rec_c
+    cpu_affinity: [6]
+    prns: [17, 18, 19, 20, 21, 22, 23, 24]
+gps_d:
+    kotekan_stage: GpsReplicaCorrelator
+    in_buf: input_buf
+    out_buf: rec_d
+    cpu_affinity: [7]
+    prns: [25, 26, 27, 28, 29, 30, 31, 32]
+
+# One writer per record stream; all into ./gps_records with distinct names so
+# gps_beamtrack.py picks them all up.
+write_a: { kotekan_stage: rawFileWrite, in_buf: rec_a, base_dir: "./gps_records", file_name: "gps_a", file_ext: "raw", prefix_hostname: false }
+write_b: { kotekan_stage: rawFileWrite, in_buf: rec_b, base_dir: "./gps_records", file_name: "gps_b", file_ext: "raw", prefix_hostname: false }
+write_c: { kotekan_stage: rawFileWrite, in_buf: rec_c, base_dir: "./gps_records", file_name: "gps_c", file_ext: "raw", prefix_hostname: false }
+write_d: { kotekan_stage: rawFileWrite, in_buf: rec_d, base_dir: "./gps_records", file_name: "gps_d", file_ext: "raw", prefix_hostname: false }

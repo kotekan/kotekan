@@ -11,9 +11,12 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
+#include "json.hpp"            // for json
 
 #include <complex>  // for complex
 #include <fftw3.h>  // for fftwf_complex, fftwf_plan
+#include <mutex>    // for mutex
 #include <stdint.h> // for int16_t
 #include <string>   // for string
 #include <vector>   // for vector
@@ -77,6 +80,18 @@
  *                          correlation surface) above which a PRN is considered
  *                          locked for phase tracking. Below it, nav_sign and
  *                          phase_cont are reported as 0/unlocked.
+ * @conf   active_prns      Array of Int (default = all of @c prns). Initial
+ *                          go/no-go mask: only these PRNs are correlated; the
+ *                          rest emit a zeroed record. Mutable at runtime via
+ *                          the REST endpoints below.
+ *
+ * @par REST endpoints (registered under @c <unique_name>/)
+ *  - GET  @c /get_mask  — returns @c {prns:[...], active:[bool,...]}.
+ *  - POST @c /set_mask  — body @c {"active_prns":[...]} sets the whole mask
+ *    (each configured PRN active iff in the list), or @c {"prn":N,"active":b}
+ *    toggles one. Masked-off PRNs are skipped (no correlation) and emit a
+ *    zeroed record, so the output frame size is unchanged. Lets an external
+ *    almanac job gate below-horizon satellites without restarting kotekan.
  *
  * Depends on libfftw3.
  *
@@ -89,6 +104,11 @@ public:
     ~GpsReplicaCorrelator() override;
 
     void main_thread() override;
+
+    /// REST: return the current per-PRN go/no-go mask.
+    void get_mask_callback(kotekan::connectionInstance& conn);
+    /// REST: set the per-PRN go/no-go mask (whole list or a single toggle).
+    void set_mask_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 
     /// Number of float32 *slots* per per-PRN output record. Field order:
     /// {prn, doppler_hz, code_phase_chips, peak_amp, peak_re, peak_im, snr,
@@ -144,6 +164,12 @@ private:
     bool _track_phase;
     double _lock_snr;
     std::vector<int> _prns;
+
+    /// Per-PRN go/no-go mask (1 = correlate), aligned with @c _prns. Read each
+    /// block by main_thread, written by the REST callbacks; guarded by
+    /// @c _mask_mutex.
+    std::vector<uint8_t> _active;
+    std::mutex _mask_mutex;
 
     // --- derived sizes ---
     int _Ns;                          ///< samples per 1 ms block = round(Fs/1000)

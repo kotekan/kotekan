@@ -106,7 +106,7 @@ def row_utc(row):
     return np.frombuffer(row[UTC_SLOT:UTC_SLOT + 2].astype("<f4").tobytes(), dtype="<f8")[0]
 
 
-def _run(tmpdir, samples, track_phase=False, incoherent_ms=1, lock_snr=15.0):
+def _run(tmpdir, samples, track_phase=False, incoherent_ms=1, lock_snr=15.0, active_prns=None):
     """Run the pipeline over `samples` (length a multiple of NS, one record
     frame emitted per NS-sample block) and return the per-block record list."""
     assert samples.size % NS == 0
@@ -159,6 +159,7 @@ def _run(tmpdir, samples, track_phase=False, incoherent_ms=1, lock_snr=15.0):
             "track_phase": track_phase,
             "lock_snr": lock_snr,
             "prns": PRNS,
+            **({"active_prns": active_prns} if active_prns is not None else {}),
         },
         "write_out": {
             "kotekan_stage": "rawFileWrite",
@@ -222,6 +223,16 @@ def test_record_has_utc_timestamp(tmpdir):
     utc = row_utc(rec[5])
     assert before - 5.0 <= utc <= after + 5.0, (utc, before, after)
     assert row_utc(rec[2]) == utc  # all PRNs in the block share the stamp
+
+
+def test_active_prns_mask_zeroes_record(tmpdir):
+    """A PRN excluded from the go/no-go mask emits a zeroed record (still in the
+    frame, labeled with its PRN) while active PRNs are unaffected. This is the
+    same _active path the REST /set_mask endpoint drives."""
+    recs = _run(tmpdir, make_signal(5, doppler=0.0), active_prns=[2, 5])[0]
+    assert recs[5][6] > 50.0  # PRN 5 active -> detected (high SNR)
+    assert recs[12][0] == 12  # masked slot still labeled with its PRN
+    assert recs[12][3] == 0.0 and recs[12][6] == 0.0  # amp / snr zeroed
 
 
 def test_parabolic_doppler_refines_offgrid(tmpdir):
