@@ -49,19 +49,21 @@ def test_read_records_multiframe(tmp_path):
     assert list(arr["utc"]) == [1.0, 2.0]
 
 
+# A GPS-like TLE (PRN 11). Orbit-value correctness isn't asserted -- only that
+# the skyfield pipeline runs and produces finite look angles for the matched PRN.
+SAMPLE_TLE = (
+    "GPS BIIR-3  (PRN 11)\n"
+    "1 25933U 99055A   20001.50000000  .00000000  00000-0  00000+0 0  9990\n"
+    "2 25933  51.8000  10.0000 0150000  60.0000 300.0000  2.00560000  10000\n"
+)
+
+
 def test_attach_altaz_with_local_tle(tmp_path):
     """If skyfield is available, alt/az is computed for PRNs present in the TLE
     set and NaN for those absent. Uses a local TLE file (no network)."""
     pytest.importorskip("skyfield")
-    # A real archived GPS TLE (PRN 11). Value correctness isn't asserted -- only
-    # that the pipeline runs and fills finite alt/az for the matched PRN.
-    tle = (
-        "GPS BIIR-3  (PRN 11)\n"
-        "1 25933U 99055A   20001.50000000  .00000000  00000-0  00000+0 0  9990\n"
-        "2 25933  51.8000  10.0000 0150000  60.0000 300.0000  2.00560000  10000\n"
-    )
     tle_path = str(tmp_path / "gps.tle")
-    open(tle_path, "w").write(tle)
+    open(tle_path, "w").write(SAMPLE_TLE)
 
     recs = np.array(
         [(11, 0, 0, 1, 0, 0, 30, 1, 0, 1.70e9), (7, 0, 0, 1, 0, 0, 30, 1, 0, 1.70e9)],
@@ -70,3 +72,20 @@ def test_attach_altaz_with_local_tle(tmp_path):
     alt, az = gb.attach_altaz(recs, lat=43.66, lon=-79.40, alt_m=100.0, tle_source=tle_path)
     assert np.isfinite(alt[0]) and -90.0 <= alt[0] <= 90.0
     assert np.isnan(alt[1])  # PRN 7 absent from the TLE set
+
+
+def test_visibility_altaz_over(tmp_path):
+    """gps_visibility.altaz_over returns finite look angles for a known PRN."""
+    pytest.importorskip("skyfield")
+    import gps_visibility as gv
+
+    tle_path = str(tmp_path / "gps.tle")
+    open(tle_path, "w").write(SAMPLE_TLE)
+
+    from datetime import datetime, timezone
+    sats = gb.load_gps_satellites(tle_path)
+    times = [datetime(2024, 1, 1, h, tzinfo=timezone.utc) for h in (0, 6, 12)]
+    aa = gv.altaz_over(sats, 43.66, -79.40, 100.0, times)
+    assert 11 in aa
+    alt, az = aa[11]
+    assert alt.shape == (3,) and np.all(np.isfinite(alt))

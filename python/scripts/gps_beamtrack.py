@@ -82,7 +82,7 @@ def read_records(paths, n_prn=None):
     return np.array(rows, dtype=dtype)
 
 
-def _load_gps_satellites(tle_source):
+def load_gps_satellites(tle_source):
     """Return {prn: EarthSatellite} from a Celestrak TLE file/URL. Names carry
     the PRN as '... (PRN NN)'."""
     import re
@@ -104,7 +104,7 @@ def attach_altaz(records, lat, lon, alt_m, tle_source=DEFAULT_TLE_URL):
 
     ts = load.timescale()
     observer = wgs84.latlon(lat, lon, elevation_m=alt_m)
-    by_prn = _load_gps_satellites(tle_source)
+    by_prn = load_gps_satellites(tle_source)
 
     alt = np.full(len(records), np.nan, dtype=float)
     az = np.full(len(records), np.nan, dtype=float)
