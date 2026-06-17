@@ -90,14 +90,18 @@ public:
 
     void main_thread() override;
 
-    /// Number of float32 fields per per-PRN output record. Field order:
+    /// Number of float32 *slots* per per-PRN output record. Field order:
     /// {prn, doppler_hz, code_phase_chips, peak_amp, peak_re, peak_im, snr,
-    ///  nav_sign, phase_cont}. The last two are populated only under
-    /// @c track_phase: nav_sign is the cumulative +-1 applied to strip GPS
-    /// nav-bit pi flips (0 when unlocked); phase_cont is the unwrapped,
-    /// nav-bit-stripped carrier phase in radians (0 when unlocked). peak_re/im
-    /// are the raw (un-stripped) complex peak, also only set under track_phase.
-    static constexpr int RECORD_FLOATS = 9;
+    ///  nav_sign, phase_cont} as float32, then a trailing float64 UTC timestamp
+    /// occupying the final two slots (slots 9-10; UNIX seconds don't fit a
+    /// float32, so it is type-punned across two slots -- same single-array
+    /// convention as the count word in make_power_corr_desc).
+    /// nav_sign / phase_cont / peak_re / peak_im are populated only under
+    /// @c track_phase. The UTC stamp is the wall-clock time at emit, shared by
+    /// all PRNs in a record block.
+    static constexpr int RECORD_FLOATS = 11;
+    /// Slot index of the trailing float64 UTC timestamp.
+    static constexpr int RECORD_UTC_SLOT = 9;
 
 private:
     /// Assemble exactly @c _Ns real samples into @c block (handles input

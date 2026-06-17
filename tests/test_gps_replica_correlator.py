@@ -20,10 +20,9 @@ SAMPLE_RATE = 5.0e6
 NS = int(round(SAMPLE_RATE / 1000.0))  # 5000 samples per 1 ms code period
 F_OFFSET = 1.0e6
 CODE_LEN = 1023
-RECORD_FLOATS = 9
-# record field order, matching GpsReplicaCorrelator.hpp RECORD_FLOATS
-FIELDS = ["prn", "doppler_hz", "code_phase_chips", "peak_amp", "peak_re", "peak_im",
-          "snr", "nav_sign", "phase_cont"]
+# 9 float32 fields + a trailing float64 UTC stamp in the last two slots.
+RECORD_FLOATS = 11
+UTC_SLOT = 9
 PRNS = [2, 5, 12]
 N_PRN = len(PRNS)
 DOPPLER_MIN, DOPPLER_MAX, DOPPLER_STEP = -1000.0, 1000.0, 500.0
@@ -100,6 +99,11 @@ def _read_all(out_dir, file_name, n):
     return [
         _read_one(os.path.join(out_dir, "%s_%07d.raw" % (file_name, i))) for i in range(n)
     ]
+
+
+def row_utc(row):
+    """Decode the trailing float64 UTC stamp from a record's last two slots."""
+    return np.frombuffer(row[UTC_SLOT:UTC_SLOT + 2].astype("<f4").tobytes(), dtype="<f8")[0]
 
 
 def _run(tmpdir, samples, track_phase=False, incoherent_ms=1, lock_snr=15.0):
@@ -206,6 +210,18 @@ def test_recovers_doppler(tmpdir, doppler):
     recs = _run(tmpdir, make_signal(12, delay_samples=0, doppler=doppler))[0]
     assert recs[12][6] == max(recs[p][6] for p in PRNS)
     assert recs[12][1] == pytest.approx(doppler, abs=2.0)
+
+
+def test_record_has_utc_timestamp(tmpdir):
+    """Each record carries a wall-clock UTC stamp (shared across PRNs in a
+    block) so the post-processor can attach alt/az."""
+    import time
+    before = time.time()
+    rec = _run(tmpdir, make_signal(5, doppler=0.0))[0]
+    after = time.time()
+    utc = row_utc(rec[5])
+    assert before - 5.0 <= utc <= after + 5.0, (utc, before, after)
+    assert row_utc(rec[2]) == utc  # all PRNs in the block share the stamp
 
 
 def test_parabolic_doppler_refines_offgrid(tmpdir):

@@ -77,12 +77,13 @@ airspy_input:
 
 # ---- GPS replica correlator ----
 # n_prn must match the length of the `prns` list below; the output frame holds
-# exactly n_prn records of record_floats float32 each:
+# exactly n_prn records of record_floats 4-byte slots each:
 # {prn, doppler_hz, code_phase_chips, peak_amp, peak_re, peak_im, snr,
-#  nav_sign, phase_cont}. The last two (and peak_re/im) are populated only when
+#  nav_sign, phase_cont} as float32, then a trailing float64 UTC timestamp in
+# the last two slots. nav_sign/phase_cont/peak_re/im are set only when
 # track_phase is true.
 n_prn: 6
-record_floats: 9
+record_floats: 11
 
 gps_record_buf:
     kotekan_buffer: standard

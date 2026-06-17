@@ -1,0 +1,5 @@
+# Python dependencies for the GPS beam-track post-processor (gps_beamtrack.py).
+# Kept separate from core kotekan: this is an optional offline analysis helper.
+#   pip install -r gps_requirements.txt
+numpy
+skyfield   # orbital propagation -> apparent alt/az; pulls GPS TLEs from Celestrak

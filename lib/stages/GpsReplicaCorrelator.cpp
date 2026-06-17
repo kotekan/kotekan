@@ -10,6 +10,7 @@
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, FATAL_ERROR
 
 #include <algorithm> // for max
+#include <chrono>    // for system_clock (record UTC stamp)
 #include <cmath>     // for round, cos, sin, sqrt, M_PI
 #include <complex>   // for complex
 #include <functional>// for bind
@@ -396,6 +397,15 @@ void GpsReplicaCorrelator::main_thread() {
         if (out_local == nullptr)
             break;
 
+        // Wall-clock UTC at emit, shared by all PRNs in this block. For a live
+        // airspy this is the capture time to within the (short) pipeline
+        // latency -- enough for the alt/az attachment, where the sky position
+        // moves ~degrees/minute. (Offline file replay would need a capture-time
+        // source instead.)
+        const double utc =
+            std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
+                .count();
+
         for (int p = 0; p < n_prn; ++p) {
             // Search only the bins this PRN actually correlated (full grid when
             // unlocked, narrow window when locked); the rest of accum is zero.
@@ -464,6 +474,7 @@ void GpsReplicaCorrelator::main_thread() {
             rec[6] = snr;
             rec[7] = nav_sign;
             rec[8] = phase_cont;
+            *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = utc; // trailing float64
 
             DEBUG("PRN {:2d}: doppler {:+.1f} Hz, code phase {:.2f} chips, amp {:.3g}, snr {:.1f}, "
                   "nav {:+.0f}, phase {:.2f} rad",
