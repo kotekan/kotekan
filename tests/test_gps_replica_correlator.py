@@ -191,7 +191,7 @@ def test_acquires_injected_prn(tmpdir):
     assert snr[5] > 3.0 * max(snr[p] for p in (2, 12)), snr
 
     r5 = recs[5]
-    assert r5[1] == pytest.approx(0.0, abs=1e-6)  # doppler bin
+    assert r5[1] == pytest.approx(0.0, abs=2.0)  # doppler (parabola-refined)
     # code phase: peak lag == injected delay; chips = lag * 1023 / NS.
     expected_chips = (delay * CODE_LEN / NS) % CODE_LEN
     got = r5[2]
@@ -202,9 +202,17 @@ def test_acquires_injected_prn(tmpdir):
 
 @pytest.mark.parametrize("doppler", [-500.0, 500.0])
 def test_recovers_doppler(tmpdir, doppler):
+    # Injected exactly on a grid bin: parabolic refinement leaves it there.
     recs = _run(tmpdir, make_signal(12, delay_samples=0, doppler=doppler))[0]
     assert recs[12][6] == max(recs[p][6] for p in PRNS)
-    assert recs[12][1] == pytest.approx(doppler, abs=1e-6)
+    assert recs[12][1] == pytest.approx(doppler, abs=2.0)
+
+
+def test_parabolic_doppler_refines_offgrid(tmpdir):
+    """A signal between grid bins is reported off-grid (parabolic interpolation),
+    pulled toward the true Doppler -- even in amplitude-only mode."""
+    r = _run(tmpdir, make_signal(5, doppler=200.0), track_phase=False)[0][5]
+    assert 50.0 < r[1] < 400.0, r[1]  # grid bin is 0; true is 200
 
 
 def test_track_phase_records_complex_peak(tmpdir):
@@ -260,6 +268,21 @@ def test_phase_continuous_across_navbit(tmpdir):
     assert jump > 2.0, jump
 
 
+def test_no_phase_chatter_at_ongrid_doppler(tmpdir):
+    """Regression: an on-grid, nonzero Doppler must not be read as a nav-bit
+    flip every block. The per-block wipe-off phase reset (2*pi*(f_off+fd)*Ns/Fs,
+    = pi/block for fd an odd multiple of the grid step) is corrected so the kept
+    peak phase is continuous across blocks."""
+    n_blocks = 40
+    blocks = _run(tmpdir, make_signal_multi(5, n_blocks, doppler=500.0, phase0=0.3),
+                  track_phase=True)
+    nav = np.array([blocks[i][5][7] for i in range(n_blocks)])
+    pc = np.array([blocks[i][5][8] for i in range(n_blocks)])
+    assert np.all(nav != 0.0)
+    assert np.sum(np.abs(np.diff(np.sign(nav))) > 0) == 0, nav  # no spurious flips
+    assert pc.std() < 0.1, pc  # phase flat once the wipe is continuous
+
+
 def test_phase_ramp_tracks_residual_doppler(tmpdir):
     """A residual Doppler smaller than the grid step leaves a linear phase ramp;
     nav-bit stripping keeps it linear through a mid-record bit flip."""
@@ -267,10 +290,14 @@ def test_phase_ramp_tracks_residual_doppler(tmpdir):
     resid = 200.0  # < half the 500 Hz step -> search picks bin 0
     blocks = _run(tmpdir, make_signal_multi(12, n_blocks, doppler=resid, phase0=0.0,
                                             flip_blocks=(20,)), track_phase=True)
-    assert blocks[0][12][1] == pytest.approx(0.0, abs=1e-6)  # Doppler bin 0
     nav = np.array([blocks[i][12][7] for i in range(n_blocks)])
     pc = np.array([blocks[i][12][8] for i in range(n_blocks)])
+    dop = np.array([blocks[i][12][1] for i in range(n_blocks)])
     assert np.all(nav != 0.0)
+
+    # The FLL converges the reported Doppler onto the true residual (the search
+    # only sees grid bin 0; the phase ramp supplies the rest).
+    assert dop[-10:].mean() == pytest.approx(resid, abs=25.0), dop[-10:]
 
     x = np.arange(n_blocks)
     coef = np.polyfit(x, pc, 1)

@@ -108,16 +108,22 @@ private:
     /// Analytic-convert the current real @c block into @c z (complex baseband).
     void to_analytic();
 
-    /// Correlate the analytic block against PRN index @p p over the Doppler
-    /// grid, accumulating |corr|^2 into @c accum for that PRN.
-    void correlate_prn(int p);
+    /// Correlate the analytic block against PRN index @p p over Doppler bins
+    /// [@p di_lo, @p di_hi] (inclusive), accumulating |corr|^2 into @c accum.
+    /// A locked PRN narrows this window to a few bins around its tracked
+    /// Doppler; an unlocked one sweeps the whole grid.
+    void correlate_prn(int p, int di_lo, int di_hi);
 
     /// Stage 2 per-block phase tracking for PRN index @p p: gate on lock,
-    /// strip nav-bit pi flips, and maintain the continuous carrier phase.
-    /// Writes @p nav_sign (cumulative +-1, 0 if unlocked) and @p phase_cont
-    /// (unwrapped nav-bit-stripped phase, rad).
-    void track_phase_update(int p, std::complex<float> raw, float snr, double doppler,
-                            double code_phase_chips, float& nav_sign, float& phase_cont);
+    /// strip nav-bit pi flips (de-rotated by the tracked carrier frequency),
+    /// run a frequency-locked loop, and maintain the continuous carrier phase.
+    /// @p doppler_bin is the grid bin used for wipe-off; @p doppler_seed is the
+    /// parabola-refined acquisition Doppler used to seed a fresh lock. Writes
+    /// @p nav_sign (cumulative +-1, 0 if unlocked), @p phase_cont (unwrapped
+    /// nav-stripped phase, rad), and @p doppler_out (FLL-refined Doppler, Hz).
+    void track_phase_update(int p, std::complex<float> raw, float snr, double doppler_bin,
+                            double doppler_seed, double code_phase_chips, float& nav_sign,
+                            float& phase_cont, float& doppler_out);
 
     /// Input real samples (int16) and output records (float32).
     Buffer* in_buf;
@@ -177,8 +183,9 @@ private:
     std::vector<std::complex<float>> trk_prev;  ///< previous sign-corrected peak
     std::vector<double> trk_cont_phase;         ///< accumulated unwrapped phase, rad
     std::vector<double> trk_prev_wrapped;       ///< previous corrected wrapped phase, rad
-    std::vector<double> trk_prev_doppler;       ///< previous block's Doppler, Hz
+    std::vector<double> trk_prev_doppler;       ///< previous block's Doppler grid bin, Hz
     std::vector<double> trk_prev_code_phase;    ///< previous block's code phase, chips
+    std::vector<double> trk_doppler;            ///< FLL absolute Doppler estimate, Hz
 };
 
 #endif // GPS_REPLICA_CORRELATOR_HPP
