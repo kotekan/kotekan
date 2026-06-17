@@ -74,6 +74,19 @@ def test_attach_altaz_with_local_tle(tmp_path):
     assert np.isnan(alt[1])  # PRN 7 absent from the TLE set
 
 
+def test_almanac_visible_prns_filter(tmp_path):
+    """gps_almanac_rest.visible_prns returns the PRNs above the mask. With a
+    mask below the horizon every present PRN is 'visible' -> deterministic."""
+    pytest.importorskip("skyfield")
+    import gps_almanac_rest as gar
+
+    tle_path = str(tmp_path / "gps.tle")
+    open(tle_path, "w").write(SAMPLE_TLE)
+    sats = gb.load_gps_satellites(tle_path)
+    assert gar.visible_prns(sats, 43.66, -79.40, 100.0, mask_deg=-90.0, look_ahead_s=0) == [11]
+    assert gar.visible_prns(sats, 43.66, -79.40, 100.0, mask_deg=91.0, look_ahead_s=0) == []
+
+
 def test_visibility_altaz_over(tmp_path):
     """gps_visibility.altaz_over returns finite look angles for a known PRN."""
     pytest.importorskip("skyfield")
