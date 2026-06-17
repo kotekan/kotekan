@@ -28,12 +28,36 @@ chimeMetadataDump::chimeMetadataDump(kotekan::Config& config, const std::string&
 
 chimeMetadataDump::~chimeMetadataDump() {}
 
+std::string chimeMetadataDump::hex_dump(const int rows, void* addr, int len) {
+    int i;
+    unsigned char* char_buf = (unsigned char*)addr;
+    std::string hex = "";
+
+    for (i = 0; i < len; i++) {
+        if ((i % rows) == 0) {
+            // Add a new line as needed.
+            if (i != 0)
+                hex += "\n";
+
+            hex += fmt::format("  0x{:04x} ", i);
+        }
+
+        // Print the hex value
+        hex += fmt::format(" {:02x}", char_buf[i]);
+    }
+    hex += "\n";
+
+    return hex;
+}
+
 void chimeMetadataDump::main_thread() {
 
     int frame_id = 0;
     uint8_t* frame = nullptr;
 
     auto& tel = Telescope::instance();
+
+    int num_frames = 0;
 
     while (!stop_thread) {
 
@@ -58,14 +82,22 @@ void chimeMetadataDump::main_thread() {
         struct tm* l_gps_time = gmtime(&temp_gps_time);
         strftime(gps_time_buf, sizeof(gps_time_buf), "%Y-%m-%d %H:%M:%S", l_gps_time);
 
-        INFO("Metadata for {:s}[{:d}]: FPGA Seq: {:d}, stream ID = (crate ID: {:d}, "
-             "slot ID: {:d}, link ID: {:d}, freq ID: {:d}), lost samples: {:d} freq_bin: {:d}, "
-             "freq: {:f} MHz , time stamp: {:d}.{:06d} ({:s}.{:06d}), "
-             "GPS time: {:d}.{:06d} ({:s}.{:09d})",
-             in_buf->buffer_name, frame_id, fpga_seq, stream_id.crate_id, stream_id.slot_id,
-             stream_id.link_id, stream_id.unused, lost_samples, tel.to_freq_id(encoded_stream_id),
-             tel.to_freq(encoded_stream_id), time_v.tv_sec, time_v.tv_usec, time_buf,
-             time_v.tv_usec, time_s.tv_sec, time_s.tv_nsec, gps_time_buf, time_s.tv_nsec);
+        if (num_frames++ < 16) {
+            std::string freq_list = "Frequency list: ";
+            for (uint32_t i = 0; i < tel.num_freq_per_stream(); ++i) {
+                freq_list += fmt::format("{:d} ({:5f} MHz), ", tel.to_freq_id(encoded_stream_id, i),
+                                         tel.to_freq(encoded_stream_id, i));
+            }
+
+            INFO("Metadata for {:s}[{:d}]: FPGA Seq: {:d}, stream ID = (crate ID: {:d}, "
+                 "slot ID: {:d}, link ID: {:d}, sub-stream ID: {:d}), lost samples: {:d}, "
+                 "time stamp: {:d}.{:06d} ({:s}.{:06d}), "
+                 "GPS time: {:d}.{:06d} ({:s}.{:09d}), {:s}\n{:s}",
+                 in_buf->buffer_name, frame_id, fpga_seq, stream_id.crate_id, stream_id.slot_id,
+                 stream_id.link_id, stream_id.unused, lost_samples, time_v.tv_sec, time_v.tv_usec,
+                 time_buf, time_v.tv_usec, time_s.tv_sec, time_s.tv_nsec, gps_time_buf,
+                 time_s.tv_nsec, freq_list, hex_dump(16, frame, 0x110));
+        }
 
         mark_frame_empty(in_buf, unique_name.c_str(), frame_id);
         frame_id = (frame_id + 1) % in_buf->num_frames;

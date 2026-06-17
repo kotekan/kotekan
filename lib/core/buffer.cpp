@@ -328,7 +328,9 @@ int private_mark_frame_empty(Buffer* buf, const int id) {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         // TODO: Move this to the config file (when buffers.c updated to C++11)
-        CPU_SET(5, &cpuset);
+        // Review note, this needs to be fixed in _this_ PR
+        CPU_SET(8, &cpuset);
+        CPU_SET(32, &cpuset);
 
         CHECK_ERROR_F(pthread_create(&zero_t, nullptr, &private_zero_frames, (void*)zero_args));
         CHECK_ERROR_F(pthread_setaffinity_np(zero_t, sizeof(cpu_set_t), &cpuset));

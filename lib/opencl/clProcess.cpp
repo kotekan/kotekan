@@ -20,7 +20,7 @@ clProcess::clProcess(Config& config_, const std::string& unique_name,
     gpuProcess(config_, unique_name, buffer_container) {
     device = new clDeviceInterface(config_, unique_name, gpu_id, _gpu_buffer_depth);
     dev = device;
-    device->prepareCommandQueue(true); // yes profiling
+    device->prepareCommandQueue(config_.get_default<bool>(unique_name, "profiling", true));
     init();
 }
 

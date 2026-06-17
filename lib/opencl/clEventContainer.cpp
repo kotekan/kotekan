@@ -17,6 +17,10 @@ void clEventContainer::unset() {
 }
 
 void clEventContainer::wait() {
+    if (signal == nullptr) {
+       FATAL_ERROR_NON_OO("Tried to wait on a null event");
+       return;
+    }
     if (clWaitForEvents(1, &signal) != CL_SUCCESS) {
         FATAL_ERROR_NON_OO("***** ERROR **** Unexpected event value **** ERROR **** ");
     }

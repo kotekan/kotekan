@@ -7,7 +7,7 @@
 
 
 
-//#define SDOT8
+#define SDOT8
 
 
 #if COARSE_BLOCK_SIZE > 8
@@ -26,12 +26,12 @@
 #define ygr get_group_id(1)
 #define zgr get_group_id(2)
 
-#define NUM_FREQS get_num_groups(0)
+#define NUM_FREQS get_num_groups(2)
 //get_num_groups(1)
-#define NUM_BLOCKS get_num_groups(2)
+#define NUM_BLOCKS get_num_groups(1)
 
-#define FREQ_ID xgr
-#define BLOCK_ID zgr
+#define FREQ_ID zgr
+#define BLOCK_ID ygr
 
 //the input is [Freqs, Time/8, Input, 8-times, 2-re-im]
 
@@ -108,10 +108,10 @@ void corr ( __global const uint *input,
                 corr_i[y][x] += dot4b(xr[x],yi[y]);
                 corr_i[y][x] -= dot4b(xi[x],yr[y]);
 #else
-                corr_r[y][x] =  __builtin_amdgcn_sdot8(xr[x],yr[y], corr_r[y][x]);
-                corr_r[y][x] =  __builtin_amdgcn_sdot8(xi[x],yi[y], corr_r[y][x]);
-                corr_i[y][x] =  __builtin_amdgcn_sdot8(xr[x],yi[y], corr_i[y][x]);
-                corr_i[y][x] = -__builtin_amdgcn_sdot8(xi[x],yr[y],-corr_i[y][x]);
+                corr_r[y][x] =  __builtin_amdgcn_sdot8(xr[x],yr[y], corr_r[y][x], false);
+                corr_r[y][x] =  __builtin_amdgcn_sdot8(xi[x],yi[y], corr_r[y][x], false);
+                corr_i[y][x] =  __builtin_amdgcn_sdot8(xr[x],yi[y], corr_i[y][x], false);
+                corr_i[y][x] = -__builtin_amdgcn_sdot8(xi[x],yr[y],-corr_i[y][x], false);
 #endif
             }
             //rotate data to the neighbour work items

@@ -176,6 +176,21 @@ public:
      **/
     std::vector<nlohmann::json> get_value(const std::string& name) const;
 
+    template<typename T>
+    std::vector<T> get_array(const std::string& base_path, const std::string& name) const {
+        nlohmann::json json_value = get_value(base_path, name);
+        std::vector<T> value;
+        try {
+            value = json_value.get<std::vector<T>>();
+        } catch (std::exception const& ex) {
+            throw std::runtime_error(fmt::format(
+                fmt("The value {:s} in path {:s} is not of type 'vector' or doesn't exist"), name,
+                base_path));
+        }
+
+        return value;
+    }
+
     /**
      * @brief Updates a config value at an existing config option
      *
@@ -197,6 +212,7 @@ public:
      */
     template<typename T>
     void update_value(const std::string& base_path, const std::string& name, const T& value);
+
 
 #ifdef WITH_SSL
     /**
@@ -409,7 +425,11 @@ Type Config::configEval<Type>::term() {
     while (current_token == "*" || current_token == "/") {
         if (current_token == "*") {
             next();
-            ret *= factor();
+            if constexpr (std::is_same_v<Type, bool>) {
+                ret &= factor();
+            } else {
+                ret *= factor();
+            }
         }
         if (current_token == "/") {
             // TODO Check for divide by zero.

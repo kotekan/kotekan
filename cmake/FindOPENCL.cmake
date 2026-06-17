@@ -25,7 +25,7 @@ find_path(
     NAMES OpenCL/cl.h CL/cl.h
     HINTS ${OPENCL_ROOT}/include $ENV{AMDAPPSDKROOT}/include $ENV{CUDA_PATH}/include
     PATHS /usr/include /usr/local/include /usr/local/cuda/include /opt/cuda/include
-          /opt/rocm/opencl/include ${CMAKE_INSTALL_PREFIX}/opencl/include
+          /opt/rocm/opencl/include /opt/rocm/include/ ${CMAKE_INSTALL_PREFIX}/opencl/include
     DOC "OpenCL header file path")
 mark_as_advanced(OPENCL_INCLUDE_DIRS)
 
@@ -36,7 +36,7 @@ if("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
         HINTS ${OPENCL_ROOT}/lib $ENV{AMDAPPSDKROOT}/lib $ENV{CUDA_PATH}/lib
         DOC "OpenCL dynamic library path"
         PATH_SUFFIXES x86_64 x64 x86_64/sdk
-        PATHS /usr/lib /usr/local/cuda/lib /opt/cuda/lib /opt/rocm/opencl/lib
+        PATHS /usr/lib /usr/local/cuda/lib /opt/cuda/lib /opt/rocm/opencl/lib /opt/rocm/lib/
               ${CMAKE_INSTALL_PREFIX}/opencl/lib)
 else()
     find_library(

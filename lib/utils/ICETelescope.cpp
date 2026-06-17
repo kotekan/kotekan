@@ -30,7 +30,7 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
     bool require_gps = config.get_default<bool>(path, "require_gps", false);
     _query_gps = config.get_default<bool>(path, "query_gps", false);
     _gps_host = config.get_default<std::string>(path, "gps_host", "127.0.0.1");
-    _gps_port = config.get_default<uint32_t>(path, "gps_host", 54321);
+    _gps_port = config.get_default<uint32_t>(path, "gps_port", 54321);
     _gps_endpoint = config.get_default<std::string>(path, "gps_endpoint", "/get-frame0-time");
     if (_query_gps)
         set_gps(_gps_host, _gps_port, _gps_endpoint);
