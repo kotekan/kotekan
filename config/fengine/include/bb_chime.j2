@@ -4,13 +4,11 @@
 
 ################################################################################
 
-bb_rad2deg: 57.29577951308232  # 180/pi
-
 bb_num_beams_x: 1
 bb_num_beams_y: 32              # 16
 bb_num_beams: bb_num_beams_x * bb_num_beams_y
-bb_beam_separation_x: 0.0100 * bb_rad2deg
-bb_beam_separation_y: 0.0075 * bb_rad2deg
+bb_beam_separation_x: 1.3       # 1.3 degrees
+bb_beam_separation_y: 90.0 / 32 # 90 degrees
 
 # The baseband beams are formed as "incoherent sum" over dishes dishes
 # (sqrt(num_dishes)), and are multiplied by 127 (the scaling of the

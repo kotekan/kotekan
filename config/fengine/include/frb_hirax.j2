@@ -10,25 +10,11 @@ frb1_num_beams_P: 2 * num_dishes_x
 frb1_num_beams_Q: 2 * num_dishes_y
 frb1_input_scale: 1.0 / 32
 
-frb_rad2deg: 57.29577951308232  # 180/pi
-
 frb2_num_beams_x: 32
 frb2_num_beams_y: 32
 frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
-frb2_beam_separation_x: 0.0020 * frb_rad2deg
-frb2_beam_separation_y: 0.0015 * frb_rad2deg
-
-host_frb2_beam_positions_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_float32 * 2 * frb2_num_beams
-    metadata_pool: main_pool
-
-host_frb2_beam_ids_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_uint64 * frb2_num_beams
-    metadata_pool: main_pool
+frb2_beam_separation_x: 5.0 / 32
+frb2_beam_separation_y: 5.0 / 32
 
 frb_chunk_size: 256
 
@@ -54,6 +40,18 @@ host_frb1_U32_phase_buffer:
     kotekan_buffer: standard
     num_frames: 1
     frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U32_max_num_channels * 32 * num_polarizations
+    metadata_pool: main_pool
+
+host_frb2_beam_positions_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_float32 * 2 * frb2_num_beams
+    metadata_pool: main_pool
+
+host_frb2_beam_ids_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_uint64 * frb2_num_beams
     metadata_pool: main_pool
 
 host_frb2_weights_buffer:
@@ -199,7 +197,7 @@ run_frb1_U32:
 
 # FRB 2 and 3
 
-run_set_frb_beams:
+run_set_frb2_beams:
     kotekan_stage: setFRBBeams
     out_pos_buf: host_frb2_beam_positions_buffer
     out_id_buf: host_frb2_beam_ids_buffer
