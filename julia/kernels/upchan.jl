@@ -104,7 +104,7 @@ elseif U == 4
 elseif U == 8
     const W = 8
     const B = 4
-elseif U >= 16
+elseif 16 <= U <= 128
     const W = 16
     const B = 2
 else
