@@ -9,6 +9,14 @@
 .address_size 64
 
 	// .globl	_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES2_S0_IS_Li1ELi1EES3_ // -- Begin function _Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES2_S0_IS_Li1ELi1EES3_
+.func gpu_signal_exception
+(
+	.param .align 8 .b8 gpu_signal_exception_param_0[16]
+)
+.noreturn
+{
+	trap;
+}
 .func gpu_report_exception
 (
 	.param .align 8 .b8 gpu_report_exception_param_0[16],
@@ -18,16 +26,8 @@
 {
 	trap;
 }
-.func gpu_signal_exception
-(
-	.param .align 8 .b8 gpu_signal_exception_param_0[16]
-)
-.noreturn
-{
-	trap;
-}
 .extern .shared .align 32 .b8 shmem[];
-.global .align 1 .b8 exception2073[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
+.global .align 1 .b8 exception2071[10] = {101, 120, 99, 101, 112, 116, 105, 111, 110, 0};
 .global .align 1 .b8 exception2075[6] = {101, 114, 114, 111, 114, 0};
                                         // @_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES2_S0_IS_Li1ELi1EES3_
 .visible .entry _Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES2_S0_IS_Li1ELi1EES3_(
@@ -1754,7 +1754,7 @@ $L__BB0_4:                              // %pass146
 	exit;
 	// end inline asm
 $L__BB0_1:                              // %L9
-	mov.u64 	%rd91, exception2073;
+	mov.u64 	%rd91, exception2071;
 	cvta.global.u64 	%rd92, %rd91;
 	{ // callseq 0, 0
 	.reg .b32 temp_param_reg;

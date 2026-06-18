@@ -424,15 +424,16 @@ cudaFRBBeamformer_hirax_U64::cudaFRBBeamformer_hirax_U64(Config& config,
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Only one of the instances of this pipeline stage need to build the kernel
-    if (instance_num == 0) {
+    // Build the PTX only once
+    static std::once_flag build_ptx_flag;
+    std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/FRBBeamformer_hirax_U64.ptx", {kernel_symbol}, opts,
                          "FRBBeamformer_hirax_U64_");
-    }
+    });
 }
 
 cudaFRBBeamformer_hirax_U64::~cudaFRBBeamformer_hirax_U64() {}
