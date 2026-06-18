@@ -112,7 +112,7 @@ class ChordBuffer(object):
 
 def get_metadata(name, type_name, dim_names):
     metadata = dict(
-        chord_metadata_version=np.array([1, 0], dtype=np.int32),
+        chord_metadata_version=np.array([2, 0], dtype=np.int32),
         name=name,
         type=type_name,
         dim_names=dim_names,
