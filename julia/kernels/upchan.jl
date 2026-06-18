@@ -104,16 +104,7 @@ elseif U == 4
 elseif U == 8
     const W = 8
     const B = 4
-elseif U == 16
-    const W = 16
-    const B = 2
-elseif U == 32
-    const W = 16
-    const B = 2
-elseif U == 64
-    const W = 16
-    const B = 2
-elseif U == 128
+elseif U >= 16
     const W = 16
     const B = 2
 else
@@ -997,9 +988,6 @@ function upchan!(emitter)
     merge!(emitter, :Γ³, [:Γ³re, :Γ³im], Cplx(:cplx, 1, C) => Register(:cplx, 1, C))
     # Why do we need this? `mma_row_col_m16n8k16_f16!` should skip this tag if not present.
     merge!(emitter, :Γ³, [:Γ³, :Γ³], Dish(:dish, 1, 2) => Register(:dish, 1, 2))
-    for bit in 5:Ubits
-        merge!(emitter, :Γ³, [:Γ³, :Γ³], make_register_pair(dish_polr[bit + 1]))
-    end
     if U ≥ 128
         merge!(emitter, :Γ³, [:Γ³, :Γ³], Time(:time, 1, 2) => Register(:time, 1, 2))
     end
