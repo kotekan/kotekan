@@ -1,36 +1,37 @@
-#include <Config.hpp>                             // for Config
-#include <DataType.hpp>                           // for string_to_type, DataType
-#include <Stage.hpp>                              // for Stage
-#include <StageFactory.hpp>                       // for REGISTER_KOTEKAN_STAGE
-#include <Symbol.hpp>                             // for Symbol
-#include <buffer.hpp>                             // for Buffer
-#include <bufferContainer.hpp>                    // for bufferContainer
-#include <chordMetadata.hpp>                      // for chordMetadata, metadata_is_chord, get_c...
-#include <hdf5Files.hpp>                          // for chord_metadata_version
-#include <highfive/H5Attribute.hpp>               // for Attribute, Attribute::read
-#include <highfive/H5DataSet.hpp>                 // for DataSet, AnnotateTraits::getAttribute
-#include <highfive/H5DataSpace.hpp>               // for DataSpace, DataSpace::getDimensions
-#include <highfive/H5Exception.hpp>               // for FileException
-#include <highfive/H5File.hpp>                    // for File, File::File, NodeTraits::getDataSet
-#include <highfive/bits/H5Slice_traits_misc.hpp>  // for SliceTraits::read_raw
-#include <kotekanLogging.hpp>                     // for DEBUG, FATAL_ERROR, ERROR
-#include <metadata.hpp>                           // for metadataObject
-#include <prometheusMetrics.hpp>                  // for Metrics, Gauge
-#include <unistd.h>                               // for gethostname, sleep
-#include <visUtil.hpp>                            // for current_time
-#include <algorithm>                              // for copy
-#include <array>                                  // for array
-#include <cassert>                                // for assert
-#include <cstddef>                                // for ptrdiff_t
-#include <cstdint>                                // for int64_t, uint8_t
-#include <functional>                             // for function
-#include <iomanip>                                // for operator<<, setfill, setw
-#include <memory>                                 // for allocator, shared_ptr, __shared_ptr_access
-#include <sstream>                                // for basic_ostream, operator<<, basic_ostrin...
-#include <string>                                 // for basic_string, char_traits, string, oper...
-#include <vector>                                 // for vector
+#include "fmt.hpp" // for compile_string_to_view
 
-#include "fmt.hpp"                                // for compile_string_to_view
+#include <Config.hpp>          // for Config
+#include <DataType.hpp>        // for string_to_type, DataType
+#include <Stage.hpp>           // for Stage
+#include <StageFactory.hpp>    // for REGISTER_KOTEKAN_STAGE
+#include <Symbol.hpp>          // for Symbol
+#include <algorithm>           // for copy
+#include <array>               // for array
+#include <buffer.hpp>          // for Buffer
+#include <bufferContainer.hpp> // for bufferContainer
+#include <cassert>             // for assert
+#include <chordMetadata.hpp>   // for chordMetadata, metadata_is_chord, get_c...
+#include <cstddef>             // for ptrdiff_t
+#include <cstdint>             // for int64_t, uint8_t
+#include <fmt/ranges.h>
+#include <functional>                            // for function
+#include <hdf5Files.hpp>                         // for chord_metadata_version
+#include <highfive/H5Attribute.hpp>              // for Attribute, Attribute::read
+#include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::getAttribute
+#include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::getDimensions
+#include <highfive/H5Exception.hpp>              // for FileException
+#include <highfive/H5File.hpp>                   // for File, File::File, NodeTraits::getDataSet
+#include <highfive/bits/H5Slice_traits_misc.hpp> // for SliceTraits::read_raw
+#include <iomanip>                               // for operator<<, setfill, setw
+#include <kotekanLogging.hpp>                    // for DEBUG, FATAL_ERROR, ERROR
+#include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
+#include <metadata.hpp>                          // for metadataObject
+#include <prometheusMetrics.hpp>                 // for Metrics, Gauge
+#include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
+#include <string>                                // for basic_string, char_traits, string, oper...
+#include <unistd.h>                              // for gethostname, sleep
+#include <vector>                                // for vector
+#include <visUtil.hpp>                           // for current_time
 
 using namespace hdf5;
 using namespace HighFive;
@@ -43,6 +44,9 @@ class hdf5FileRead : public kotekan::Stage {
     const int host_pool_rank = config.get_default<int>(unique_name, "frequency_pool_rank", 0);
     const int host_pool_size = config.get_default<int>(unique_name, "frequency_pool_size", 1);
     const bool do_once = config.get_default<bool>(unique_name, "do_once", false);
+
+    const uint64_t num_polarizations = config.get<uint64_t>(unique_name, "num_polarizations");
+    const uint64_t num_dishes = config.get<uint64_t>(unique_name, "num_dishes");
 
     Buffer* const buffer;
 
@@ -59,6 +63,103 @@ public:
     }
 
     virtual ~hdf5FileRead() {}
+
+    /**
+     * @brief Read and check the telescope metadata
+     *
+     * @param node   The HDF5 object (file, group, dataset, etc.) where the metadata should be
+     *               read from
+     */
+    template<typename Node>
+    void check_telescope_metadata(Node& node) {
+        const auto& telescope = Telescope::instance();
+
+        const auto check_string_attr = [&](const std::string& key,
+                                           const std::string& expected_value) {
+            if (node.hasAttribute(key)) {
+                const auto value = node.getAttribute(key).template read<std::string>();
+                if (value != expected_value)
+                    FATAL_ERROR("Attribute {:s} is \"{}\", expected \"{}\"", key, value,
+                                expected_value);
+            }
+        };
+
+        const auto check_float_attr = [&](const std::string& key, const double expected_value) {
+            if (node.hasAttribute(key)) {
+                const auto value = node.getAttribute(key).template read<double>();
+                if (value != expected_value)
+                    FATAL_ERROR("Attribute {:s} is {}, expected {}", key, value, expected_value);
+            }
+        };
+
+        const auto check_int_attr = [&](const std::string& key, const std::int64_t expected_value) {
+            if (node.hasAttribute(key)) {
+                const auto value = node.getAttribute(key).template read<std::int64_t>();
+                if (value != expected_value)
+                    FATAL_ERROR("Attribute {:s} is {}, expected {}", key, value, expected_value);
+            }
+        };
+
+        const auto check_uint_attr = [&](const std::string& key,
+                                         const std::uint64_t expected_value) {
+            if (node.hasAttribute(key)) {
+                const auto value = node.getAttribute(key).template read<std::uint64_t>();
+                if (value != expected_value)
+                    FATAL_ERROR("Attribute {:s} is {}, expected {}", key, value, expected_value);
+            }
+        };
+
+        const auto check_bool_attr = [&](const std::string& key, const bool expected_value) {
+            if (node.hasAttribute(key)) {
+                const auto value = node.getAttribute(key).template read<bool>();
+                if (value != expected_value)
+                    FATAL_ERROR("Attribute {:s} is {}, expected {}", key, value, expected_value);
+            }
+        };
+
+        check_string_attr("telescope_name", telescope.get_name());
+        check_uint_attr("seq_length_nsec", telescope.seq_length_nsec());
+        check_bool_attr("gps_time_enabled", telescope.gps_time_enabled());
+        check_int_attr("num_polarizations", num_polarizations);
+        check_int_attr("num_dishes", num_dishes);
+        check_float_attr("itrs_lat_deg", telescope.get_itrs_lat_deg());
+        check_float_attr("itrs_lon_deg", telescope.get_itrs_lon_deg());
+        // node.getAttribute("grid_orientation", telescope.get_grid_orientation());
+        check_uint_attr("grid_size_x", telescope.get_grid_size_x());
+        check_uint_attr("grid_size_y", telescope.get_grid_size_y());
+        check_float_attr("feed_separation_x_m", telescope.get_feed_separation_x_m());
+        check_float_attr("feed_separation_y_m", telescope.get_feed_separation_y_m());
+
+        if (node.hasAttribute("dish_grid_indices")) {
+            auto attr = node.getAttribute("dish_grid_indices");
+            auto space = attr.getSpace();
+            auto dims = space.getDimensions(); // {N, 2}
+            assert(dims.size() == 2);
+            assert(dims.at(1) == 2);
+            std::vector<std::array<std::int64_t, 2>> dish_grid_indices(dims.at(0));
+            attr.read_raw(reinterpret_cast<std::int64_t*>(dish_grid_indices.data()));
+            const auto& expected_dish_grid_indices =
+                telescope.get_main_array_grid_indices(num_dishes, ElementOrder::CHORDBeamformer);
+            if (dish_grid_indices != expected_dish_grid_indices)
+                FATAL_ERROR("Attribute dish_grid_indices is {}, expected {}", dish_grid_indices,
+                            expected_dish_grid_indices);
+        }
+
+        if (node.hasAttribute("feed_positions_m")) {
+            auto attr = node.getAttribute("feed_positions_m");
+            auto space = attr.getSpace();
+            auto dims = space.getDimensions(); // {N, 3}
+            assert(dims.size() == 3);
+            assert(dims.at(1) == 3);
+            std::vector<std::array<double, 3>> feed_positions_m(dims.at(0));
+            attr.read_raw(reinterpret_cast<double*>(feed_positions_m.data()));
+            const auto& expected_feed_positions_m =
+                telescope.get_feed_positions_m(num_dishes, ElementOrder::CHORDBeamformer);
+            if (feed_positions_m != expected_feed_positions_m)
+                FATAL_ERROR("Attribute feed_positions_m is {}, expected {}", feed_positions_m,
+                            expected_feed_positions_m);
+        }
+    }
 
     void main_thread() override {
         auto& read_time_metric = kotekan::prometheus::Metrics::instance().add_gauge(
@@ -180,7 +281,8 @@ public:
                         dataset.getAttribute("rfi_frame_excision_thresholds")
                             .read<std::vector<std::array<float, 2>>>());
 
-                // TODO: Read telescope fields and WARN if they don't match?
+                // Read telescope fields and abort if they don't match
+                check_telescope_metadata(dataset);
 
                 {
                     /* new style array description */

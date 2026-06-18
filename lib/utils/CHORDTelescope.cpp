@@ -1,20 +1,21 @@
 #include "CHORDTelescope.hpp"
 
-#include <assert.h>            // for assert
-#include <algorithm>           // for max, min
-#include <stdexcept>           // for runtime_error
-#include <vector>              // for vector
-#include <cmath>               // for sin, cos, floor, ceil, M_PI, abs
-#include <chrono>              // for duration_cast, duration, nanoseconds, system_clock
-#include <limits>              // for numeric_limits
+#include "Telescope.hpp"      // for freq_id_t, Telescope, nyquist_zone_t, stream_t, REGISTER_T...
+#include "geoUtil.hpp"        // for GeoFrame
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, WARN_NON_OO, INFO_NON_OO, DEBUG, FATAL...
+#include "restClient.hpp"     // for restClient
+#include "timeUtil.hpp"       // for EOP, nanosec_i64_to_timespec
 
-#include "Telescope.hpp"       // for freq_id_t, Telescope, nyquist_zone_t, stream_t, REGISTER_T...
-#include "geoUtil.hpp"         // for GeoFrame
-#include "kotekanLogging.hpp"  // for FATAL_ERROR_NON_OO, WARN_NON_OO, INFO_NON_OO, DEBUG, FATAL...
-#include "restClient.hpp"      // for restClient
-#include "timeUtil.hpp"        // for EOP, nanosec_i64_to_timespec
-#include "fmt.hpp"             // for compile_string_to_view, format, format_string
-#include "json.hpp"            // for basic_json, operator==, json, input_adapter
+#include "fmt.hpp"  // for compile_string_to_view, format, format_string
+#include "json.hpp" // for basic_json, operator==, json, input_adapter
+
+#include <algorithm> // for max, min
+#include <assert.h>  // for assert
+#include <chrono>    // for duration_cast, duration, nanoseconds, system_clock
+#include <cmath>     // for sin, cos, floor, ceil, M_PI, abs
+#include <limits>    // for numeric_limits
+#include <stdexcept> // for runtime_error
+#include <vector>    // for vector
 
 
 REGISTER_TELESCOPE(CHORDTelescope, "CHORDTelescope");
@@ -38,13 +39,10 @@ static constexpr double deg2rad = M_PI / 180.0;
 
 // Dish parameters calculation/initialization
 
-DishParams DishParams::from_config(const kotekan::Config& config,
-                                               const std::string& path,
-                                               uint64_t num_dishes,
-                                               uint64_t dish_grid_size_x,
-                                               uint64_t dish_grid_size_y,
-                                               double dish_separation_x_m,
-                                               double dish_separation_y_m) {
+DishParams DishParams::from_config(const kotekan::Config& config, const std::string& path,
+                                   uint64_t num_dishes, uint64_t dish_grid_size_x,
+                                   uint64_t dish_grid_size_y, double dish_separation_x_m,
+                                   double dish_separation_y_m) {
     DishParams dish_params;
 
     // Dish pointing co-elevation
@@ -80,7 +78,8 @@ DishParams DishParams::from_config(const kotekan::Config& config,
 
     std::vector<bool> occupied_loc(dish_grid_size_x * dish_grid_size_y, false);
 
-    // Load the dishes from the config into the table. Make sure dish indices are consistent and, optionally, the ArrayDish grid locations are unique.
+    // Load the dishes from the config into the table. Make sure dish indices are consistent and,
+    // optionally, the ArrayDish grid locations are unique.
     for (const dishInfo& dish : cfg_tab) {
         dish_index_t idx = dish.idx;
         if (idx < 0) {
@@ -105,7 +104,9 @@ DishParams DishParams::from_config(const kotekan::Config& config,
                 int64_t occ_idx = dish.grid_x_idx + dish.grid_y_idx * dish_grid_size_x;
 
                 if (occupied_loc.at(occ_idx))
-                    FATAL_ERROR_NON_OO("Array dish {:s} has grid_idx = ({:d}, {:d}) which is already occupied.", dish.label, dish.grid_x_idx, dish.grid_y_idx);
+                    FATAL_ERROR_NON_OO(
+                        "Array dish {:s} has grid_idx = ({:d}, {:d}) which is already occupied.",
+                        dish.label, dish.grid_x_idx, dish.grid_y_idx);
 
                 occupied_loc.at(occ_idx) = true;
             }
@@ -411,7 +412,7 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     _freq_params(FreqParams::from_config(config, path)),
     // GPS time configuration parameters
     _gps_time_params(GPSTimeParams::from_config(config, path)),
-    // Instrument geographic coordinates    
+    // Instrument geographic coordinates
     _dish_frame(dish_frame_from_config(config, path)),
     _num_polarizations(config.get<uint64_t>(path, "num_polarizations")),
     _num_dishes(config.get<uint64_t>(path, "num_dishes")),
@@ -420,7 +421,9 @@ CHORDTelescope::CHORDTelescope(const kotekan::Config& config, const std::string&
     _dish_grid_size_y(config.get<uint64_t>(path, "dish_grid_size_y")),
     _dish_separation_grid_x_m(config.get_default<double>(path, "dish_separation_x_m", 6.3)),
     _dish_separation_grid_y_m(config.get_default<double>(path, "dish_separation_y_m", 8.5)),
-    _dish_params(DishParams::from_config(config, path, _num_dishes, _dish_grid_size_x, _dish_grid_size_y, _dish_separation_grid_x_m, _dish_separation_grid_y_m)) {
+    _dish_params(DishParams::from_config(config, path, _num_dishes, _dish_grid_size_x,
+                                         _dish_grid_size_y, _dish_separation_grid_x_m,
+                                         _dish_separation_grid_y_m)) {
 
     DEBUG("Building CHORDTelescope");
 }
@@ -619,9 +622,13 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t stream_id, uint32_t index) const {
 size_t CHORDTelescope::num_freq_per_stream() const {
     return 48;
 }
-    
+
+ElementOrder CHORDTelescope::fiducial_element_order() const {
+    return ElementOrder::CHORDBeamformer;
+}
+
 station_id_t CHORDTelescope::element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const {
-    if (el_idx >= _num_elements) 
+    if (el_idx >= _num_elements)
         FATAL_ERROR("Element idx {:d} >= num_elements {:d}", el_idx, _num_elements);
 
     if (ord == ElementOrder::CHORDEarly) {
@@ -635,7 +642,7 @@ station_id_t CHORDTelescope::element_index_to_station_id(uint64_t el_idx, Elemen
 }
 
 uint64_t CHORDTelescope::station_id_to_element_index(station_id_t st_id, ElementOrder ord) const {
-    if (st_id >= _num_elements) 
+    if (st_id >= _num_elements)
         FATAL_ERROR("Element idx {:d} >= num_elements {:d}", st_id, _num_elements);
 
     uint64_t el_idx = std::numeric_limits<uint64_t>::max();
@@ -650,8 +657,9 @@ uint64_t CHORDTelescope::station_id_to_element_index(station_id_t st_id, Element
     }
     FATAL_ERROR("Cannot handle element order {}.", ord);
 
-    if (el_idx >= _num_elements) 
-        FATAL_ERROR("station_id {:d} order {}: Element idx {:d} >= num_elements {:d}", st_id, ord, el_idx, _num_elements);
+    if (el_idx >= _num_elements)
+        FATAL_ERROR("station_id {:d} order {}: Element idx {:d} >= num_elements {:d}", st_id, ord,
+                    el_idx, _num_elements);
 
     return el_idx;
 }
@@ -666,9 +674,9 @@ grid_idx_2d_t CHORDTelescope::station_id_to_main_array_grid_indices(station_id_t
 
     if (d.type != DishType::ArrayDish)
         return {-1, -1};
-    
+
     return {d.grid_x_idx, d.grid_y_idx};
-} 
+}
 
 vec3d_t CHORDTelescope::station_id_to_feed_position_m(station_id_t st_id) const {
     uint64_t pol;
@@ -676,11 +684,12 @@ vec3d_t CHORDTelescope::station_id_to_feed_position_m(station_id_t st_id) const 
     decode_station_id(st_id, dish, pol);
     if (dish >= _num_dishes)
         FATAL_ERROR("station_id {:d}: dish {:d} >= num_dishes {:d}", st_id, dish, _num_dishes);
-    
+
     return _dish_params.dish_positions.at(dish);
 }
 
-void CHORDTelescope::decode_station_id(station_id_t st_id, uint64_t& dish, uint64_t& polarization) const {
+void CHORDTelescope::decode_station_id(station_id_t st_id, uint64_t& dish,
+                                       uint64_t& polarization) const {
     dish = st_id % _num_dishes;
     polarization = st_id / _num_dishes;
 }
@@ -688,7 +697,7 @@ void CHORDTelescope::decode_station_id(station_id_t st_id, uint64_t& dish, uint6
 station_id_t CHORDTelescope::encode_station_id(uint64_t dish, uint64_t polarization) const {
     return dish + polarization * _num_dishes;
 }
-    
+
 double CHORDTelescope::get_feed_separation_x_m() const {
     return _dish_separation_grid_x_m;
 }
@@ -704,7 +713,7 @@ uint64_t CHORDTelescope::get_grid_size_x() const {
 uint64_t CHORDTelescope::get_grid_size_y() const {
     return _dish_grid_size_y;
 }
-    
+
 vec3d_t CHORDTelescope::get_phase_center_in_grid_frame() const {
 
     // Get the pointing vector (phase center) for the telescope in dish coordinates. This is

@@ -1,20 +1,21 @@
 #ifndef CHORD_TELESCOPE_HPP
 #define CHORD_TELESCOPE_HPP
 
-#include <stdint.h>       // for uint64_t, int64_t, uint32_t, int32_t
-#include <time.h>         // for size_t, timespec
-#include <array>          // for array
-#include <complex>        // for complex
-#include <string>         // for basic_string, string, allocator, operator==
-#include <utility>        // for move, forward
-#include <vector>         // for vector
-#include <stdexcept>      // for runtime_error
+#include "Config.hpp"    // for Config
+#include "Telescope.hpp" // for freq_id_t, nyquist_zone_t, Telescope, stream_t
+#include "geoUtil.hpp"   // for GeoFrame
+#include "timeUtil.hpp"  // for EOP
 
-#include "Config.hpp"     // for Config
-#include "Telescope.hpp"  // for freq_id_t, nyquist_zone_t, Telescope, stream_t
-#include "geoUtil.hpp"    // for GeoFrame
-#include "timeUtil.hpp"   // for EOP
-#include "json.hpp"       // for json
+#include "json.hpp" // for json
+
+#include <array>     // for array
+#include <complex>   // for complex
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint64_t, int64_t, uint32_t, int32_t
+#include <string>    // for basic_string, string, allocator, operator==
+#include <time.h>    // for size_t, timespec
+#include <utility>   // for move, forward
+#include <vector>    // for vector
 
 // Types for frequency and dish indexing
 // (Not necessarily logical IDs)
@@ -171,8 +172,9 @@ struct DishParams {
      * @return  The built DishParams.
      **/
     static DishParams from_config(const kotekan::Config& config, const std::string& path,
-                                        uint64_t num_dishes, uint64_t dish_grid_size_x, uint64_t dish_grid_size_y,
-                                        double dish_separation_x_m, double dish_separation_y_m);
+                                  uint64_t num_dishes, uint64_t dish_grid_size_x,
+                                  uint64_t dish_grid_size_y, double dish_separation_x_m,
+                                  double dish_separation_y_m);
 
     /**
      * @brief   Set dish information about dish inputs from the config.
@@ -181,8 +183,7 @@ struct DishParams {
      * @param   config  The config.
      * @param   path    This telescope's path in the config.
      **/
-    void set_dish_info(const kotekan::Config& config, const std::string& path,
-                       uint64_t num_dishes,
+    void set_dish_info(const kotekan::Config& config, const std::string& path, uint64_t num_dishes,
                        uint64_t dish_grid_size_x, uint64_t dish_grid_size_y,
                        double dish_separation_x_m, double dish_separation_y_m);
 };
@@ -350,7 +351,8 @@ private:
  * 2025/12/04: Factor telescope members into logical groups: frequency parameters,
  *              gps time parameters, geographic/dish parameters. JM (PR #1373)
  * 2026/01/28:  Remove EOP functionality and move to Telescope.
- * 2026/06/01:  Move much geographic, coordinates, and vector logic into Telescope and GeoFrame. Add new functions for element ordering and dish position access. Clean up.
+ * 2026/06/01:  Move much geographic, coordinates, and vector logic into Telescope and GeoFrame. Add
+ * new functions for element ordering and dish position access. Clean up.
  */
 
 class CHORDTelescope : public Telescope {
@@ -401,10 +403,11 @@ public:
      *          Uses the epoch of time0_ns.
      */
     int64_t to_time_ns(uint64_t seq) const override;
-    
+
+    ElementOrder fiducial_element_order() const override;
     station_id_t element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const override;
     uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const override;
-    grid_idx_2d_t station_id_to_main_array_grid_indices(station_id_t st_id) const override; 
+    grid_idx_2d_t station_id_to_main_array_grid_indices(station_id_t st_id) const override;
     vec3d_t station_id_to_feed_position_m(station_id_t st_id) const override;
     double get_feed_separation_x_m() const override;
     double get_feed_separation_y_m() const override;
@@ -413,7 +416,7 @@ public:
 
     void decode_station_id(station_id_t st_id, uint64_t& dish, uint64_t& polarization) const;
     station_id_t encode_station_id(uint64_t dish, uint64_t polarization) const;
-    
+
     vec3d_t get_phase_center_in_grid_frame() const override;
 
     /**
@@ -441,7 +444,7 @@ public:
      * @param   j   First index, int, 0 <= j < 3, col
      **/
     double get_dish_orientation_el(int i, int j) const;
-    
+
     /**
      * @brief   Return the full Topo -> Dish frame rotation matrix.
      **/

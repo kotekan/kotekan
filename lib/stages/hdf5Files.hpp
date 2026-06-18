@@ -12,7 +12,7 @@ namespace hdf5 {
 // The version number of the CHORD metadata format in HDF5 files.
 // This uses semver: A file with version X.Y can be read by software
 // that understands X.Z even when Y > Z.
-constexpr std::array<int, 2> chord_metadata_version{1, 0};
+constexpr std::array<int, 2> chord_metadata_version{2, 0};
 
 // Bitshuffle flags
 constexpr unsigned int H5Z_BLOSC = 32001;      // blosc filter id

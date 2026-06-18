@@ -235,15 +235,22 @@ bool FakeTelescope::gps_time_enabled() const {
     return true;
 }
 
-station_id_t FakeTelescope::element_index_to_station_id(uint64_t el_idx, [[maybe_unused]] ElementOrder ord) const {
+ElementOrder FakeTelescope::fiducial_element_order() const {
+    return ElementOrder::CHIMEBeamformer;
+}
+
+station_id_t FakeTelescope::element_index_to_station_id(uint64_t el_idx,
+                                                        [[maybe_unused]] ElementOrder ord) const {
     return el_idx;
 }
 
-uint64_t FakeTelescope::station_id_to_element_index(station_id_t st_id, [[maybe_unused]] ElementOrder ord) const {
+uint64_t FakeTelescope::station_id_to_element_index(station_id_t st_id,
+                                                    [[maybe_unused]] ElementOrder ord) const {
     return st_id;
 }
 
-grid_idx_2d_t FakeTelescope::station_id_to_main_array_grid_indices([[maybe_unused]] station_id_t st_id) const {
+grid_idx_2d_t
+FakeTelescope::station_id_to_main_array_grid_indices([[maybe_unused]] station_id_t st_id) const {
     return grid_idx_2d_t{-1, -1};
 }
 

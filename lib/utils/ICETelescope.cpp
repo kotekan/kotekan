@@ -1,15 +1,16 @@
 #include "ICETelescope.hpp"
 
-#include <cmath>               // for abs
-#include <stdexcept>           // for invalid_argument, runtime_error
+#include "Telescope.hpp"      // for Telescope, stream_t, freq_id_t, REGISTER_TELESCOPE, _facto...
+#include "geoUtil.hpp"        // for GeoFrame
+#include "kotekanLogging.hpp" // for WARN, INFO, FATAL_ERROR, FATAL_ERROR_NON_OO
+#include "restClient.hpp"     // for restClient
+#include "visUtil.hpp"        // for input_ctype
 
-#include "Telescope.hpp"       // for Telescope, stream_t, freq_id_t, REGISTER_TELESCOPE, _facto...
-#include "geoUtil.hpp"         // for GeoFrame
-#include "kotekanLogging.hpp"  // for WARN, INFO, FATAL_ERROR, FATAL_ERROR_NON_OO
-#include "restClient.hpp"      // for restClient
-#include "visUtil.hpp"         // for input_ctype
-#include "fmt.hpp"             // for compile_string_to_view, format, format_string
-#include "json.hpp"            // for basic_json, input_adapter, json
+#include "fmt.hpp"  // for compile_string_to_view, format, format_string
+#include "json.hpp" // for basic_json, input_adapter, json
+
+#include <cmath>     // for abs
+#include <stdexcept> // for invalid_argument, runtime_error
 
 
 REGISTER_TELESCOPE(ICETelescope, "ICETelescope");
@@ -28,7 +29,7 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
     _num_dishes_per_cylinder(_num_dishes / _num_cylinders),
     _feed_separation_x_m(config.get_default<double>(path, "feed_sep_EW", 0.0)),
     _feed_separation_y_m(config.get_default<double>(path, "feed_sep_NS", 0.0)) {
-    
+
     INFO("Building ICETelescope");
 
     // TODO: rename this parameter to `num_freq_per_stream` in the config
@@ -64,18 +65,19 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
     }
 
     if (_num_dishes % _num_cylinders != 0)
-        FATAL_ERROR("num_cylinders {:d} does not divide num_dishes {:d}", _num_cylinders, _num_dishes);
+        FATAL_ERROR("num_cylinders {:d} does not divide num_dishes {:d}", _num_cylinders,
+                    _num_dishes);
 
     const auto input_tuple = ICETelescope::parse_reorder_default(config, path, _num_elements);
     _input_reorder = std::get<0>(input_tuple);
     _input_map = std::get<1>(input_tuple);
     if (_input_reorder.size() != _num_elements) {
         FATAL_ERROR("input_reorder has size {:d}, should be num_elements = {:d}",
-                _input_reorder.size(), _num_elements);
+                    _input_reorder.size(), _num_elements);
     }
     if (_input_reorder.size() != _num_elements) {
         FATAL_ERROR("input_map (from input_reorder) has size {:d}, should be num_elements = {:d}",
-                _input_map.size(), _num_elements);
+                    _input_map.size(), _num_elements);
     }
 
     _correlator_stations = invert_reorder_table(_input_reorder);
@@ -83,7 +85,8 @@ ICETelescope::ICETelescope(const kotekan::Config& config, const std::string& pat
     _feed_positions_2d = config.get_default<std::vector<vec2d_t>>(path, "feed_positions", {});
 
     if (_feed_positions_2d.size() > 0 && _feed_positions_2d.size() != _num_dishes)
-        FATAL_ERROR("feed_positions has size {:d}, should be num_dishes {:d}", _feed_positions_2d.size(), _num_dishes);
+        FATAL_ERROR("feed_positions has size {:d}, should be num_dishes {:d}",
+                    _feed_positions_2d.size(), _num_dishes);
 }
 
 
@@ -255,8 +258,12 @@ GeoFrame ICETelescope::grid_frame_from_config(const kotekan::Config& config,
     return grid_frame;
 }
 
+ElementOrder ICETelescope::fiducial_element_order() const {
+    return ElementOrder::CHIMEBeamformer;
+}
+
 station_id_t ICETelescope::element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const {
-    if (el_idx >= _num_elements) 
+    if (el_idx >= _num_elements)
         FATAL_ERROR("Element idx {:d} >= num_elements {:d}", el_idx, _num_elements);
 
     if (ord == ElementOrder::CHIMECorrelator) {
@@ -274,7 +281,7 @@ station_id_t ICETelescope::element_index_to_station_id(uint64_t el_idx, ElementO
 }
 
 uint64_t ICETelescope::station_id_to_element_index(station_id_t st_id, ElementOrder ord) const {
-    if (st_id >= _num_elements) 
+    if (st_id >= _num_elements)
         FATAL_ERROR("Station ID {:d} >= num_elements {:d}", st_id, _num_elements);
 
     if (ord == ElementOrder::CHIMECorrelator) {
@@ -291,35 +298,35 @@ uint64_t ICETelescope::station_id_to_element_index(station_id_t st_id, ElementOr
 }
 
 grid_idx_2d_t ICETelescope::station_id_to_main_array_grid_indices(station_id_t st_id) const {
-    if (st_id >= _num_elements) 
+    if (st_id >= _num_elements)
         FATAL_ERROR("Station ID {:d} >= num_elements {:d}", st_id, _num_elements);
-    
+
     uint64_t cylinder, polarization, dish_in_cyl;
     decode_station_id(st_id, cylinder, polarization, dish_in_cyl);
 
     return grid_idx_2d_t{static_cast<int32_t>(cylinder), static_cast<int32_t>(dish_in_cyl)};
-} 
+}
 
 vec3d_t ICETelescope::station_id_to_feed_position_m(station_id_t st_id) const {
-    if (st_id >= _num_elements) 
+    if (st_id >= _num_elements)
         FATAL_ERROR("Station ID {:d} >= num_elements {:d}", st_id, _num_elements);
 
     uint64_t cylinder, polarization, dish_in_cyl;
     decode_station_id(st_id, cylinder, polarization, dish_in_cyl);
 
     if (_feed_positions_2d.size() == 0) {
-        double x_idx = cylinder - 0.5*(_num_cylinders - 1);
-        double y_idx = dish_in_cyl - 0.5*(_num_dishes_per_cylinder - 1);
+        double x_idx = cylinder - 0.5 * (_num_cylinders - 1);
+        double y_idx = dish_in_cyl - 0.5 * (_num_dishes_per_cylinder - 1);
         return vec3d_t{x_idx * _feed_separation_x_m, y_idx * _feed_separation_y_m, 0.0};
     }
-    
+
     uint64_t dish = dish_in_cyl + cylinder * _num_dishes_per_cylinder;
 
     vec2d_t pos_2d = _feed_positions_2d.at(dish);
 
     return vec3d_t{pos_2d[0], pos_2d[1], 0.0};
 }
-    
+
 double ICETelescope::get_feed_separation_x_m() const {
     return _feed_separation_x_m;
 }
@@ -327,17 +334,17 @@ double ICETelescope::get_feed_separation_x_m() const {
 double ICETelescope::get_feed_separation_y_m() const {
     return _feed_separation_y_m;
 }
-    
+
 uint64_t ICETelescope::get_grid_size_x() const {
     return _num_cylinders;
 }
-    
+
 uint64_t ICETelescope::get_grid_size_y() const {
     return _num_dishes_per_cylinder;
 }
-    
+
 vec3d_t ICETelescope::get_phase_center_in_grid_frame() const {
-    //TODO: incorporate `roll` from ch_ephem?
+    // TODO: incorporate `roll` from ch_ephem?
     return {0.0, 0.0, 1.0};
 }
 
@@ -362,7 +369,8 @@ stream_t ice_encode_stream_id(const ice_stream_id_t s_stream_id) {
 
     return {(uint64_t)stream_id};
 }
-void ICETelescope::decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization, uint64_t& dish_in_cyl) const {
+void ICETelescope::decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization,
+                                     uint64_t& dish_in_cyl) const {
     const uint64_t num_elements_per_cylinder = _num_polarizations * _num_dishes_per_cylinder;
 
     cylinder = st_id / num_elements_per_cylinder;
@@ -370,10 +378,11 @@ void ICETelescope::decode_station_id(station_id_t st_id, uint64_t& cylinder, uin
     dish_in_cyl = (st_id % num_elements_per_cylinder) % _num_dishes_per_cylinder;
 }
 
-station_id_t ICETelescope::encode_station_id(uint64_t cylinder, uint64_t polarization, uint64_t dish_in_cyl) const {
+station_id_t ICETelescope::encode_station_id(uint64_t cylinder, uint64_t polarization,
+                                             uint64_t dish_in_cyl) const {
     const uint64_t num_elements_per_cylinder = _num_polarizations * _num_dishes_per_cylinder;
-    return cylinder * num_elements_per_cylinder
-        + polarization * _num_dishes_per_cylinder + dish_in_cyl;
+    return cylinder * num_elements_per_cylinder + polarization * _num_dishes_per_cylinder
+           + dish_in_cyl;
 }
 
 std::tuple<uint32_t, uint32_t, std::string> ICETelescope::parse_reorder_single(nlohmann::json j) {
@@ -388,7 +397,8 @@ std::tuple<uint32_t, uint32_t, std::string> ICETelescope::parse_reorder_single(n
     return std::make_tuple(adc_id, chan_id, serial);
 }
 
-std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> ICETelescope::parse_reorder(nlohmann::json& j) {
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+ICETelescope::parse_reorder(nlohmann::json& j) {
 
     uint32_t adc_id, chan_id;
     std::string serial;
@@ -410,7 +420,8 @@ std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> ICETelescope::parse_
     return std::make_tuple(adc_ids, inputmap);
 }
 
-std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> ICETelescope::default_reorder(size_t num_elements) {
+std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+ICETelescope::default_reorder(size_t num_elements) {
 
     std::vector<uint32_t> adc_ids;
     std::vector<input_ctype> inputmap;
@@ -424,18 +435,20 @@ std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> ICETelescope::defaul
 }
 
 std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
-ICETelescope::parse_reorder_default(const kotekan::Config& config, const std::string& path, uint64_t num_elements) {
+ICETelescope::parse_reorder_default(const kotekan::Config& config, const std::string& path,
+                                    uint64_t num_elements) {
 
     try {
-        nlohmann::json reorder_config = config.get<std::vector<nlohmann::json>>(path, "input_reorder");
+        nlohmann::json reorder_config =
+            config.get<std::vector<nlohmann::json>>(path, "input_reorder");
 
         return parse_reorder(reorder_config);
     } catch (const std::exception& e) {
         return default_reorder(num_elements);
     }
 }
-std::vector<station_id_t> ICETelescope::invert_reorder_table(const std::vector<uint32_t>& input_reorder) 
-{
+std::vector<station_id_t>
+ICETelescope::invert_reorder_table(const std::vector<uint32_t>& input_reorder) {
     std::vector<station_id_t> correlator_stations(input_reorder.size());
 
     for (station_id_t st_id = 0; st_id < input_reorder.size(); st_id++) {
