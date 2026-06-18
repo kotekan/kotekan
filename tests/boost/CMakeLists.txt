@@ -28,6 +28,14 @@ target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages)
 add_executable(test_pfb_prototype test_pfb_prototype.cpp ../../lib/stages/pfbPrototype.cpp)
 target_include_directories(test_pfb_prototype PRIVATE ../../lib/stages)
 
+# Channelized despread: sim signal -> PFB analysis (reference DFT) -> per-channel
+# correlate-and-sum, checked against the full-band matched filter. No FFTW.
+add_executable(
+    test_gnss_channelized_despread test_gnss_channelized_despread.cpp
+    ../../lib/stages/gnssChannelizedDespread.cpp ../../lib/stages/gnssSimSignal.cpp
+    ../../lib/stages/pfbPrototype.cpp ../../lib/stages/gpsCACode.cpp)
+target_include_directories(test_gnss_channelized_despread PRIVATE ../../lib/stages)
+
 add_executable(test_stat_tracker test_stat_tracker.cpp)
 target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
