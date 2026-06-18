@@ -44,6 +44,7 @@ add_library(
     SampleAutocorr.cpp
     SimpleCrosscorr.cpp
     gpsCACode.cpp
+    gpsL2CCode.cpp
     SpawnProcess.cpp
     freqSplit.cpp
     FreqSubset.cpp
