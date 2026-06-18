@@ -23,6 +23,11 @@ target_include_directories(test_gps_l2c_code PRIVATE ../../lib/stages)
 add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnssBandPlan.cpp)
 target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages)
 
+# Pure PFB core (prototype design + polyphase fold): no FFTW; the test uses a
+# reference DFT to check channel isolation against a straight-FFT channelizer.
+add_executable(test_pfb_prototype test_pfb_prototype.cpp ../../lib/stages/pfbPrototype.cpp)
+target_include_directories(test_pfb_prototype PRIVATE ../../lib/stages)
+
 add_executable(test_stat_tracker test_stat_tracker.cpp)
 target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 

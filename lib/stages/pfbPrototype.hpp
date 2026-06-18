@@ -1,0 +1,64 @@
+/**
+ * @file
+ * @brief Polyphase filter bank (PFB) core: prototype filter design + the
+ *        polyphase fold that precedes the channelizing FFT.
+ *
+ * A straight-FFT channelizer (@ref fftwEngine) is a length-N DFT per block: its
+ * per-channel response is a Dirichlet/sinc kernel with ~-13 dB first sidelobes,
+ * ~3.9 dB scalloping loss, and heavy inter-channel leakage. A PFB instead runs
+ * the block through a polyphase decomposition of a length-(N*P) lowpass
+ * prototype before the same N-point DFT, giving near-brickwall channels: a flat
+ * passband and a deep stopband set by the prototype window. That isolation is
+ * what lets us recombine the handful of channels covering a GNSS carrier (see
+ * @ref gnssBandPlan.hpp) and despread per-channel without inter-channel
+ * contamination.
+ *
+ * This header is the pure, FFTW-free DSP: prototype design and the fold
+ * @f$ v[p] = \sum_q h[qN+p]\,x[mN-p-qN] @f$ whose N-point DFT yields the
+ * channels. The FFTW wrapper that turns @c v into channels lives in the
+ * channelizer stage. Kept separate so the tricky math is unit-tested against a
+ * reference DFT with no FFTW dependency.
+ */
+
+#ifndef PFB_PROTOTYPE_HPP
+#define PFB_PROTOTYPE_HPP
+
+#include <complex> // for complex
+#include <vector>  // for vector
+
+namespace dsp {
+
+/// Window applied to the prototype's windowed-sinc. Higher-suppression windows
+/// trade main-lobe width (channel transition sharpness) for stopband depth.
+enum class Window {
+    Rectangular, ///< none: -13 dB sidelobes (mainly for reference/tests)
+    Hann,        ///< -31 dB
+    Hamming,     ///< -42 dB (default)
+    Blackman,    ///< -58 dB
+    Kaiser,      ///< tunable via beta
+};
+
+/**
+ * Design a length-(num_chan*num_taps) lowpass prototype: a sinc with cutoff at
+ * the channel spacing (pi/num_chan) times the chosen window, normalized to unit
+ * sum so a DC input maps to unit gain in channel 0. `num_taps` (P) is the
+ * polyphase depth -- taps per channel; P=1 degenerates toward a plain FFT,
+ * P>=4 gives good isolation. `kaiser_beta` is used only for Window::Kaiser.
+ */
+std::vector<float> pfb_prototype(int num_chan, int num_taps, Window window = Window::Hamming,
+                                 double kaiser_beta = 8.0);
+
+/**
+ * Polyphase fold for one hop. `hist` is the delay line of the most recent
+ * num_chan*num_taps input samples, newest first (hist[0] = x[mN], hist[j] =
+ * x[mN-j]); `proto` is the prototype from @ref pfb_prototype. Writes the
+ * length-num_chan pre-FFT vector @c out, where
+ * @f$ out[p] = \sum_{q=0}^{P-1} proto[qN+p]\,hist[qN+p] @f$. The caller takes
+ * the forward (sign -1) N-point DFT of @c out to get the channels.
+ */
+void pfb_fold(const std::complex<float>* hist, const float* proto, int num_chan, int num_taps,
+              std::complex<float>* out);
+
+} // namespace dsp
+
+#endif // PFB_PROTOTYPE_HPP
