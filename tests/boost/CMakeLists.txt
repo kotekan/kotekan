@@ -19,6 +19,10 @@ target_include_directories(test_gps_ca_code PRIVATE ../../lib/stages)
 add_executable(test_gps_l2c_code test_gps_l2c_code.cpp ../../lib/stages/gpsL2CCode.cpp)
 target_include_directories(test_gps_l2c_code PRIVATE ../../lib/stages)
 
+# Pure band-plan logic: compile the source directly, no Telescope/FFTW needed.
+add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnssBandPlan.cpp)
+target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages)
+
 add_executable(test_stat_tracker test_stat_tracker.cpp)
 target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
