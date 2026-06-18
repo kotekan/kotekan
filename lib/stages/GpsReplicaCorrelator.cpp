@@ -95,6 +95,7 @@ GpsReplicaCorrelator::GpsReplicaCorrelator(Config& config, const std::string& un
     _sig = *sig;
 
     _sample_rate = config.get_default<double>(unique_name, "sample_rate", 5e6);
+    _capture_utc0 = config.get_default<double>(unique_name, "capture_utc0", 0.0);
     _f_offset = config.get_default<double>(unique_name, "f_offset", 1e6);
     _doppler_min = config.get_default<double>(unique_name, "doppler_min", -6000.0);
     _doppler_max = config.get_default<double>(unique_name, "doppler_max", 6000.0);
@@ -571,14 +572,16 @@ void GpsReplicaCorrelator::main_thread() {
         if (out_local == nullptr)
             break;
 
-        // Wall-clock UTC at emit, shared by all PRNs in this block. For a live
-        // airspy this is the capture time to within the (short) pipeline
-        // latency -- enough for the alt/az attachment, where the sky position
-        // moves ~degrees/minute. (Offline file replay would need a capture-time
-        // source instead.)
+        // Record timestamp (UTC seconds), shared by all PRNs in this block.
+        // When capture_utc0 is set we anchor to the sample stream
+        // (capture_utc0 + sample/Fs) -- correct for offline replay and the time
+        // base the L2C CL seed uses; otherwise fall back to the wall-clock at
+        // emit (fine for alt/az, where the sky moves ~degrees/minute).
         const double utc =
-            std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
-                .count();
+            (_capture_utc0 > 0.0)
+                ? _capture_utc0 + (double)last_block_start / _sample_rate
+                : std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
+                      .count();
 
         for (int p = 0; p < n_prn; ++p) {
             float* rec = out_local + (size_t)p * RECORD_FLOATS;

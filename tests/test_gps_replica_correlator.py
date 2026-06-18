@@ -106,7 +106,8 @@ def row_utc(row):
     return np.frombuffer(row[UTC_SLOT:UTC_SLOT + 2].astype("<f4").tobytes(), dtype="<f8")[0]
 
 
-def _run(tmpdir, samples, track_phase=False, incoherent_ms=1, lock_snr=15.0, active_prns=None):
+def _run(tmpdir, samples, track_phase=False, incoherent_ms=1, lock_snr=15.0, active_prns=None,
+         capture_utc0=0.0):
     """Run the pipeline over `samples` (length a multiple of NS, one record
     frame emitted per NS-sample block) and return the per-block record list."""
     assert samples.size % NS == 0
@@ -158,6 +159,7 @@ def _run(tmpdir, samples, track_phase=False, incoherent_ms=1, lock_snr=15.0, act
             "incoherent_ms": incoherent_ms,
             "track_phase": track_phase,
             "lock_snr": lock_snr,
+            "capture_utc0": capture_utc0,
             "prns": PRNS,
             **({"active_prns": active_prns} if active_prns is not None else {}),
         },
@@ -233,6 +235,20 @@ def test_active_prns_mask_zeroes_record(tmpdir):
     assert recs[5][6] > 50.0  # PRN 5 active -> detected (high SNR)
     assert recs[12][0] == 12  # masked slot still labeled with its PRN
     assert recs[12][3] == 0.0 and recs[12][6] == 0.0  # amp / snr zeroed
+
+
+def test_capture_utc0_sample_anchored(tmpdir):
+    """With capture_utc0 set, each block's record timestamp is the sample-anchored
+    capture time (capture_utc0 + sample/Fs), not the wall-clock at emit -- so an
+    offline replay carries the recording time, and it matches the CL seed's time
+    base."""
+    t0 = 1.70e9
+    n_blocks = 3
+    sig = np.concatenate([make_signal(5, doppler=0.0) for _ in range(n_blocks)])
+    blocks = _run(tmpdir, sig, capture_utc0=t0)
+    for m in range(n_blocks):
+        utc = row_utc(blocks[m][5])
+        assert utc == pytest.approx(t0 + m * NS / SAMPLE_RATE, abs=1e-4), (m, utc)
 
 
 def test_parabolic_doppler_refines_offgrid(tmpdir):

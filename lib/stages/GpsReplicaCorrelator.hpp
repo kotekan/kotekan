@@ -76,6 +76,13 @@
  *                          the seed must be accurate to that.
  * @conf   sample_rate      Double (default 5e6). Real sample rate Fs, in Hz;
  *                          must equal the true rate out of @c airspyInput.
+ * @conf   capture_utc0     Double (default 0 = disabled). UTC seconds of input
+ *                          sample 0. When set, each record's timestamp is the
+ *                          sample-anchored capture time @c capture_utc0 +
+ *                          sample/Fs (correct for offline replay and the time
+ *                          base the L2C CL seed is anchored to), instead of the
+ *                          wall-clock at emit. (A live airspy would instead tag
+ *                          capture time per frame -- a metadata follow-on.)
  * @conf   f_offset         Double (default 1e6). Known carrier offset of L1 in
  *                          the digitized stream, in Hz (see front-end note).
  * @conf   doppler_min      Double (default -6000). Doppler grid start, Hz.
@@ -178,6 +185,7 @@ private:
     // --- configuration ---
     gnss::SignalDescriptor _sig; ///< selected signal (code period, length, modulation, ...)
     double _sample_rate;
+    double _capture_utc0;        ///< UTC of sample 0 (0 = stamp wall-clock at emit instead)
     double _f_offset;
     double _doppler_min, _doppler_max, _doppler_step;
     int _incoherent_ms;
