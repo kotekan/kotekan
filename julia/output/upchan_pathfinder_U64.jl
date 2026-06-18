@@ -3,7 +3,7 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:1555 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/upchan.jl:1543 =#
         info = 1
         info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 384), 1), 384), 1), 1), 384), 512), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 16), 1), 16), 1), 1), 16), 32)) + 0) + 0x01] =
             info
@@ -197,54 +197,6 @@
         Γ³_cplx0_cplx_in1_dish1 = Γ³_cplx0_cplx_in1
         Γ³_cplx1_cplx_in1_dish0 = Γ³_cplx1_cplx_in1
         Γ³_cplx1_cplx_in1_dish1 = Γ³_cplx1_cplx_in1
-        Γ³_cplx0_cplx_in0_dish0 = Γ³_cplx0_cplx_in0_dish0
-        Γ³_cplx0_cplx_in0_dish32 = Γ³_cplx0_cplx_in0_dish0
-        Γ³_cplx1_cplx_in0_dish0 = Γ³_cplx1_cplx_in0_dish0
-        Γ³_cplx1_cplx_in0_dish32 = Γ³_cplx1_cplx_in0_dish0
-        Γ³_cplx0_cplx_in1_dish0 = Γ³_cplx0_cplx_in1_dish0
-        Γ³_cplx0_cplx_in1_dish32 = Γ³_cplx0_cplx_in1_dish0
-        Γ³_cplx1_cplx_in1_dish0 = Γ³_cplx1_cplx_in1_dish0
-        Γ³_cplx1_cplx_in1_dish32 = Γ³_cplx1_cplx_in1_dish0
-        Γ³_cplx0_cplx_in0_dish1 = Γ³_cplx0_cplx_in0_dish1
-        Γ³_cplx0_cplx_in0_dish33 = Γ³_cplx0_cplx_in0_dish1
-        Γ³_cplx1_cplx_in0_dish1 = Γ³_cplx1_cplx_in0_dish1
-        Γ³_cplx1_cplx_in0_dish33 = Γ³_cplx1_cplx_in0_dish1
-        Γ³_cplx0_cplx_in1_dish1 = Γ³_cplx0_cplx_in1_dish1
-        Γ³_cplx0_cplx_in1_dish33 = Γ³_cplx0_cplx_in1_dish1
-        Γ³_cplx1_cplx_in1_dish1 = Γ³_cplx1_cplx_in1_dish1
-        Γ³_cplx1_cplx_in1_dish33 = Γ³_cplx1_cplx_in1_dish1
-        Γ³_cplx0_cplx_in0_dish0_polr0 = Γ³_cplx0_cplx_in0_dish0
-        Γ³_cplx0_cplx_in0_dish0_polr1 = Γ³_cplx0_cplx_in0_dish0
-        Γ³_cplx1_cplx_in0_dish0_polr0 = Γ³_cplx1_cplx_in0_dish0
-        Γ³_cplx1_cplx_in0_dish0_polr1 = Γ³_cplx1_cplx_in0_dish0
-        Γ³_cplx0_cplx_in1_dish0_polr0 = Γ³_cplx0_cplx_in1_dish0
-        Γ³_cplx0_cplx_in1_dish0_polr1 = Γ³_cplx0_cplx_in1_dish0
-        Γ³_cplx1_cplx_in1_dish0_polr0 = Γ³_cplx1_cplx_in1_dish0
-        Γ³_cplx1_cplx_in1_dish0_polr1 = Γ³_cplx1_cplx_in1_dish0
-        Γ³_cplx0_cplx_in0_dish1_polr0 = Γ³_cplx0_cplx_in0_dish1
-        Γ³_cplx0_cplx_in0_dish1_polr1 = Γ³_cplx0_cplx_in0_dish1
-        Γ³_cplx1_cplx_in0_dish1_polr0 = Γ³_cplx1_cplx_in0_dish1
-        Γ³_cplx1_cplx_in0_dish1_polr1 = Γ³_cplx1_cplx_in0_dish1
-        Γ³_cplx0_cplx_in1_dish1_polr0 = Γ³_cplx0_cplx_in1_dish1
-        Γ³_cplx0_cplx_in1_dish1_polr1 = Γ³_cplx0_cplx_in1_dish1
-        Γ³_cplx1_cplx_in1_dish1_polr0 = Γ³_cplx1_cplx_in1_dish1
-        Γ³_cplx1_cplx_in1_dish1_polr1 = Γ³_cplx1_cplx_in1_dish1
-        Γ³_cplx0_cplx_in0_dish32_polr0 = Γ³_cplx0_cplx_in0_dish32
-        Γ³_cplx0_cplx_in0_dish32_polr1 = Γ³_cplx0_cplx_in0_dish32
-        Γ³_cplx1_cplx_in0_dish32_polr0 = Γ³_cplx1_cplx_in0_dish32
-        Γ³_cplx1_cplx_in0_dish32_polr1 = Γ³_cplx1_cplx_in0_dish32
-        Γ³_cplx0_cplx_in1_dish32_polr0 = Γ³_cplx0_cplx_in1_dish32
-        Γ³_cplx0_cplx_in1_dish32_polr1 = Γ³_cplx0_cplx_in1_dish32
-        Γ³_cplx1_cplx_in1_dish32_polr0 = Γ³_cplx1_cplx_in1_dish32
-        Γ³_cplx1_cplx_in1_dish32_polr1 = Γ³_cplx1_cplx_in1_dish32
-        Γ³_cplx0_cplx_in0_dish33_polr0 = Γ³_cplx0_cplx_in0_dish33
-        Γ³_cplx0_cplx_in0_dish33_polr1 = Γ³_cplx0_cplx_in0_dish33
-        Γ³_cplx1_cplx_in0_dish33_polr0 = Γ³_cplx1_cplx_in0_dish33
-        Γ³_cplx1_cplx_in0_dish33_polr1 = Γ³_cplx1_cplx_in0_dish33
-        Γ³_cplx0_cplx_in1_dish33_polr0 = Γ³_cplx0_cplx_in1_dish33
-        Γ³_cplx0_cplx_in1_dish33_polr1 = Γ³_cplx0_cplx_in1_dish33
-        Γ³_cplx1_cplx_in1_dish33_polr0 = Γ³_cplx1_cplx_in1_dish33
-        Γ³_cplx1_cplx_in1_dish33_polr1 = Γ³_cplx1_cplx_in1_dish33
         for t_outer in 0:256:32767
             Tmin + t_outer ≥ Tmax && break
             (E_dish0_time0, E_dish4_time0, E_dish8_time0, E_dish12_time0) = IndexSpaces.unsafe_load4(

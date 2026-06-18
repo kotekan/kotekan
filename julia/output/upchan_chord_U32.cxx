@@ -21,6 +21,7 @@
 #include <cstring>
 #include <fmt.hpp>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -327,15 +328,16 @@ cudaUpchannelizer_chord_U32::cudaUpchannelizer_chord_U32(Config& config,
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Only one of the instances of this pipeline stage needs to build the kernel
-    if (instance_num == 0) {
+    // Build the PTX only once
+    static std::once_flag build_ptx_flag;
+    std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/Upchannelizer_chord_U32.ptx", {kernel_symbol}, opts,
                          "Upchannelizer_chord_U32_");
-    }
+    });
 }
 
 cudaUpchannelizer_chord_U32::~cudaUpchannelizer_chord_U32() {}

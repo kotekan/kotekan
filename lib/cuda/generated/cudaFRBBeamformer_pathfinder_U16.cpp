@@ -424,15 +424,16 @@ cudaFRBBeamformer_pathfinder_U16::cudaFRBBeamformer_pathfinder_U16(Config& confi
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Only one of the instances of this pipeline stage need to build the kernel
-    if (instance_num == 0) {
+    // Build the PTX only once
+    static std::once_flag build_ptx_flag;
+    std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/FRBBeamformer_pathfinder_U16.ptx", {kernel_symbol},
                          opts, "FRBBeamformer_pathfinder_U16_");
-    }
+    });
 }
 
 cudaFRBBeamformer_pathfinder_U16::~cudaFRBBeamformer_pathfinder_U16() {}

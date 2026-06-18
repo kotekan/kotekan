@@ -23,6 +23,7 @@
 #include <cstring>
 #include <fmt.hpp>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -324,15 +325,16 @@ cudaCHIMEFRBBeamformer_chime_U128::cudaCHIMEFRBBeamformer_chime_U128(Config& con
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Only one of the instances of this pipeline stage need to build the kernel
-    if (instance_num == 0) {
+    // Build the PTX only once
+    static std::once_flag build_ptx_flag;
+    std::call_once(build_ptx_flag, [&]() {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
         };
         device.build_ptx("lib/cuda/generated/CHIMEFRBBeamformer_chime_U128.ptx", {kernel_symbol},
                          opts, "CHIMEFRBBeamformer_chime_U128_");
-    }
+    });
 }
 
 cudaCHIMEFRBBeamformer_chime_U128::~cudaCHIMEFRBBeamformer_chime_U128() {}
