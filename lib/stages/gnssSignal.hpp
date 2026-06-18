@@ -54,6 +54,9 @@ struct SignalDescriptor {
     bool time_multiplexed;   ///< component chip-interleaved with a sibling (L2C CM/CL)
     int tdm_phase;           ///< which combined-chip parity carries this code (0=even, 1=odd);
                              ///< only meaningful when time_multiplexed
+    bool time_assisted;      ///< period too long to search blind: correlate a short coherent
+                             ///< window at a time-predicted code phase (L2C CL) rather than a
+                             ///< full-period FFT search
     int prn_min, prn_max;    ///< valid PRN range
 };
 
@@ -67,7 +70,7 @@ inline constexpr SignalDescriptor GPS_L1CA = {
     "GPS_L1CA", 1575.42e6, 1.023e6, 1023, 1e-3,
     Modulation::BPSK, 0, 0,
     /*pilot=*/false, /*nav_symbol_s=*/20e-3, /*secondary_length=*/0,
-    /*time_multiplexed=*/false, /*tdm_phase=*/0, 1, 32,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
 };
 
 /// GPS L2C CM (1227.6 MHz) -- the *data* component: 10230 chips at 511.5 kcps
@@ -78,7 +81,7 @@ inline constexpr SignalDescriptor GPS_L2C_CM = {
     "GPS_L2C_CM", 1227.6e6, 511.5e3, 10230, 20e-3,
     Modulation::BPSK, 0, 0,
     /*pilot=*/false, /*nav_symbol_s=*/20e-3, /*secondary_length=*/0,
-    /*time_multiplexed=*/true, /*tdm_phase=*/0, 1, 32,  // CM on even combined chips
+    /*time_multiplexed=*/true, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,  // CM on even
 };
 
 /// GPS L2C CL (1227.6 MHz) -- the dataless *pilot*: 767250 chips at 511.5 kcps
@@ -90,7 +93,7 @@ inline constexpr SignalDescriptor GPS_L2C_CL = {
     "GPS_L2C_CL", 1227.6e6, 511.5e3, 767250, 1.5,
     Modulation::BPSK, 0, 0,
     /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/0,
-    /*time_multiplexed=*/true, /*tdm_phase=*/1, 1, 32,  // CL on odd combined chips
+    /*time_multiplexed=*/true, /*tdm_phase=*/1, /*time_assisted=*/true, 1, 32,  // CL on odd
 };
 
 /// Look up a descriptor by its @c name (config string). Returns nullptr if

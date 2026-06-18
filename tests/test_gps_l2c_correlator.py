@@ -71,23 +71,24 @@ def _read_records(out_dir, file_name):
     return {int(round(r[0])): r for r in recs}
 
 
-def _run(tmpdir, samples):
+def _run(tmpdir, samples, signal="GPS_L2C_CM", ns=NS, extra=None):
     in_dir = tmpdir.mkdir("in")
     out_dir = tmpdir.mkdir("out")
     _write_int16_frame(in_dir, "l2cin", samples)
+    l2c = {"kotekan_stage": "GpsReplicaCorrelator", "in_buf": "in_buf", "out_buf": "out_buf",
+           "signal": signal, "sample_rate": FS, "f_offset": F_OFFSET,
+           "doppler_min": -1000.0, "doppler_max": 1000.0, "doppler_step": 1000.0, "prns": PRNS}
+    l2c.update(extra or {})
     buffers = {
         "in_buf": {"kotekan_buffer": "standard", "metadata_pool": "none",
-                   "num_frames": "buffer_depth", "frame_size": NS * 2},
+                   "num_frames": "buffer_depth", "frame_size": ns * 2},
         "out_buf": {"kotekan_buffer": "standard", "metadata_pool": "none",
                     "num_frames": "buffer_depth", "frame_size": len(PRNS) * RECORD_FLOATS * 4},
     }
     stages = {
         "read_in": {"kotekan_stage": "rawFileRead", "buf": "in_buf", "base_dir": str(in_dir),
                     "file_name": "l2cin", "file_ext": "raw", "end_interrupt": True},
-        "l2c": {"kotekan_stage": "GpsReplicaCorrelator", "in_buf": "in_buf", "out_buf": "out_buf",
-                "signal": "GPS_L2C_CM", "sample_rate": FS, "f_offset": F_OFFSET,
-                "doppler_min": -1000.0, "doppler_max": 1000.0, "doppler_step": 1000.0,
-                "prns": PRNS},
+        "l2c": l2c,
         "write_out": {"kotekan_stage": "rawFileWrite", "in_buf": "out_buf", "base_dir": str(out_dir),
                       "file_name": "l2c", "file_ext": "raw", "prefix_hostname": False,
                       "num_frames_per_file": 1, "exit_after_n_files": 1},
@@ -103,3 +104,42 @@ def test_l2cm_despreads(tmpdir):
     assert snr7 > 50.0, (snr7, snr12)          # CM PRN 7 despreads strongly
     assert snr7 > 3.0 * snr12, (snr7, snr12)   # the other PRN stays at the floor
     assert abs(recs[7][1]) < 50.0               # recovered Doppler near 0 (parabola-refined)
+
+
+# ---- L2C CL pilot: time-assisted (known-phase windowed) despread ----
+CL_LEN = 767250
+COMB_RATE = 1.023e6                  # combined CM+CL chip rate
+CL_COHERENT_MS = 10.0
+CL_NS = int(round(FS * CL_COHERENT_MS * 1e-3))   # 25000 samples / window
+L2CL_INIT = {7: 0o652521276, 12: 0o117776450}
+
+
+def l2cl_code(prn, n_chips):
+    r = L2CL_INIT[prn]
+    out = np.empty(n_chips, dtype=np.float32)
+    for i in range(n_chips):
+        out[i] = 1.0 - 2.0 * (r & 1)
+        r = (r >> 1) ^ (0o445112474 * (r & 1))
+    return out
+
+
+def make_l2cl_signal(prn, phi_chips=0, doppler=0.0, amp=2000.0):
+    """One coherent window of CL on the odd combined chips, starting at CL
+    component chip `phi_chips` (the time-assist seed the correlator is given)."""
+    n = np.arange(CL_NS)
+    seed_comb = 2 * phi_chips + 1                         # CL is the odd parity
+    c = np.floor(seed_comb + n * COMB_RATE / FS).astype(np.int64)
+    n_comp = int(c.max() // 2) + 2
+    cl = l2cl_code(prn, n_comp)
+    chip = np.where(c % 2 == 1, cl[c // 2], 0.0).astype(np.float32)
+    carrier = np.cos(2 * np.pi * (F_OFFSET + doppler) * n / FS)
+    return np.round(amp * chip * carrier).astype(np.int16)
+
+
+def test_l2cl_time_assisted_despreads(tmpdir):
+    phi = 0
+    recs = _run(tmpdir, make_l2cl_signal(7, phi_chips=phi), signal="GPS_L2C_CL", ns=CL_NS,
+                extra={"coherent_ms": CL_COHERENT_MS, "code_phase_seed_chips": float(phi)})
+    snr7, snr12 = recs[7][6], recs[12][6]
+    assert snr7 > 50.0, (snr7, snr12)          # CL PRN 7 pilot despreads at the seeded phase
+    assert snr7 > 3.0 * snr12, (snr7, snr12)

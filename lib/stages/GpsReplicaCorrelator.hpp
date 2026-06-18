@@ -65,8 +65,15 @@
  * @conf   signal           String (default "GPS_L1CA"). Which GNSS signal to
  *                          correlate: GPS_L1CA, GPS_L2C_CM, or GPS_L2C_CL. Sets
  *                          the code period (-> block size Ns), code length, and
- *                          replica. Long-period pilots (L2C CL, 1.5 s) are
- *                          rejected here pending time-assisted acquisition.
+ *                          replica.
+ * @conf   coherent_ms      Double (default 10). Time-assisted signals only
+ *                          (L2C CL): the coherent-window block length, in ms
+ *                          (the long code is not searched as a full period).
+ * @conf   code_phase_seed_chips  Double (default 0). Time-assisted signals
+ *                          only: the predicted code phase at sample 0, in
+ *                          component chips (from GPS time + range). The FFT
+ *                          refines the residual within +-half the window, so
+ *                          the seed must be accurate to that.
  * @conf   sample_rate      Double (default 5e6). Real sample rate Fs, in Hz;
  *                          must equal the true rate out of @c airspyInput.
  * @conf   f_offset         Double (default 1e6). Known carrier offset of L1 in
@@ -138,6 +145,12 @@ private:
     /// Analytic-convert the current real @c block into @c z (complex baseband).
     void to_analytic();
 
+    /// Time-assisted mode only: rebuild the per-PRN code FFTs for the coherent
+    /// window starting at global sample @p block_start_sample, using each PRN's
+    /// cached long code at the time-predicted phase (seed + elapsed). The FFT
+    /// correlation then refines the residual phase within +-half the window.
+    void rebuild_replica_ffts(long long block_start_sample);
+
     /// Correlate the analytic block against PRN index @p p over Doppler bins
     /// [@p di_lo, @p di_hi] (inclusive), accumulating |corr|^2 into @c accum.
     /// A locked PRN narrows this window to a few bins around its tracked
@@ -179,8 +192,14 @@ private:
     std::mutex _mask_mutex;
 
     // --- derived sizes ---
-    int _Ns;                          ///< samples per 1 ms block = round(Fs/1000)
+    int _Ns;                          ///< samples per correlation block = round(Fs * block period)
     std::vector<double> _doppler_grid; ///< trial Doppler frequencies, Hz
+
+    // --- time-assisted (long-period pilot) mode ---
+    bool _time_assisted;               ///< windowed known-phase correlation (L2C CL)
+    double _comb_rate;                 ///< combined chip rate, Hz (component rate * comb_mult)
+    double _seed_comb;                 ///< predicted combined-chip phase at sample 0 (time assist)
+    std::vector<std::vector<int8_t>> full_code; ///< cached full long code per PRN
 
     // --- per-block assembly ---
     std::vector<float> block;  ///< current real block, length _Ns

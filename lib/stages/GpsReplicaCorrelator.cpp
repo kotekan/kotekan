@@ -116,15 +116,31 @@ GpsReplicaCorrelator::GpsReplicaCorrelator(Config& config, const std::string& un
     if (_doppler_step <= 0 || _doppler_max < _doppler_min)
         FATAL_ERROR("GpsReplicaCorrelator: invalid Doppler grid.");
 
-    // Block = one code period (the FFT parallel-code-phase search needs a full
-    // period). Long-period pilots (L2C CL = 1.5 s) are too long to search blind
-    // and need time-assisted acquisition (not yet implemented) -- guard them.
-    _Ns = (int)std::round(_sample_rate * _sig.code_period_s);
+    _time_assisted = _sig.time_assisted;
+    const int comb_mult = _sig.time_multiplexed ? 2 : 1;
+    _comb_rate = _sig.chip_rate_hz * comb_mult;
+
+    // Block size. Normally one full code period (the FFT parallel-code-phase
+    // search needs a period). A time-assisted long-period pilot (L2C CL, 1.5 s)
+    // instead uses a short coherent window: the code phase is predicted from
+    // time, so the per-block replica is that predicted slice of the code and the
+    // FFT only refines the residual within +-half the window.
+    double block_period;
+    if (_time_assisted) {
+        block_period = config.get_default<double>(unique_name, "coherent_ms", 10.0) * 1e-3;
+        const double seed_chips = config.get_default<double>(unique_name, "code_phase_seed_chips",
+                                                             0.0);
+        _seed_comb = seed_chips * comb_mult + _sig.tdm_phase; // component chip -> combined index
+    } else {
+        block_period = _sig.code_period_s;
+        _seed_comb = 0.0;
+    }
+    _Ns = (int)std::round(_sample_rate * block_period);
     constexpr int MAX_NS = 1 << 20; // ~1 M-point FFT cap
     if (_Ns < 8 || _Ns > MAX_NS)
-        FATAL_ERROR("GpsReplicaCorrelator: signal '{:s}' code period {:.4f} s at Fs {:.3f} MHz "
-                    "gives Ns={:d} (cap {:d}); long-period pilots need time-assisted acquisition.",
-                    _sig.name, _sig.code_period_s, _sample_rate / 1e6, _Ns, MAX_NS);
+        FATAL_ERROR("GpsReplicaCorrelator: signal '{:s}' block {:.4f} s at Fs {:.3f} MHz gives "
+                    "Ns={:d} (cap {:d}); reduce coherent_ms or sample_rate.",
+                    _sig.name, block_period, _sample_rate / 1e6, _Ns, MAX_NS);
 
     for (double f = _doppler_min; f <= _doppler_max + 1e-6; f += _doppler_step)
         _doppler_grid.push_back(f);
@@ -199,32 +215,39 @@ GpsReplicaCorrelator::GpsReplicaCorrelator(Config& config, const std::string& un
         p_fwd_data = fftwf_plan_dft_1d(_Ns, d, D, FFTW_FORWARD, FFTW_MEASURE);
         p_inv_corr = fftwf_plan_dft_1d(_Ns, D, corr, FFTW_BACKWARD, FFTW_MEASURE);
 
-        // Precompute conj(FFT(resampled code)) per PRN. Reuse z_time/a_freq as
-        // scratch (plans are already built; FFTW_MEASURE may have dirtied them).
         code_fft_conj.assign((size_t)n_prn * _Ns, std::complex<float>(0.0f, 0.0f));
-        std::complex<float>* zt = as_cpx(z_time);
-        std::complex<float>* af = as_cpx(a_freq);
-        // Combined-stream chip count over one code period: for a plain code this
-        // is code_length; for a time-multiplexed signal (L2C) the transmitted
-        // stream interleaves two components, so the combined rate -- and chip
-        // count -- is doubled, and this code occupies only its parity of slots.
-        const int comb_mult = _sig.time_multiplexed ? 2 : 1;
-        const long comb_chips = (long)_sig.code_length * comb_mult;
-        for (int p = 0; p < n_prn; ++p) {
-            const std::vector<int8_t> code = replica_code(_sig, _prns[p]); // ±1, length code_length
-            for (int n = 0; n < _Ns; ++n) {
-                const long c = (long)n * comb_chips / _Ns % comb_chips;
-                float chipval;
-                if (_sig.time_multiplexed)
-                    chipval = ((c & 1) == _sig.tdm_phase) ? (float)code[c >> 1] : 0.0f;
-                else
-                    chipval = (float)code[c];
-                zt[n] = std::complex<float>(chipval, 0.0f);
+
+        if (_time_assisted) {
+            // Block is a short window of a long code; the replica differs every
+            // block (a different slice of the code), so cache the full code per
+            // PRN and (re)build the windowed FFTs per block in main_thread.
+            full_code.resize(n_prn);
+            for (int p = 0; p < n_prn; ++p)
+                full_code[p] = replica_code(_sig, _prns[p]);
+        } else {
+            // Periodic code: one full-period replica FFT per PRN, precomputed
+            // once. Reuse z_time/a_freq as scratch. Combined-stream chip count
+            // over one period = code_length * comb_mult (a time-multiplexed
+            // signal interleaves two components; this code fills its parity).
+            std::complex<float>* zt = as_cpx(z_time);
+            std::complex<float>* af = as_cpx(a_freq);
+            const long comb_chips = (long)_sig.code_length * comb_mult;
+            for (int p = 0; p < n_prn; ++p) {
+                const std::vector<int8_t> code = replica_code(_sig, _prns[p]);
+                for (int n = 0; n < _Ns; ++n) {
+                    const long c = (long)n * comb_chips / _Ns % comb_chips;
+                    float chipval;
+                    if (_sig.time_multiplexed)
+                        chipval = ((c & 1) == _sig.tdm_phase) ? (float)code[c >> 1] : 0.0f;
+                    else
+                        chipval = (float)code[c];
+                    zt[n] = std::complex<float>(chipval, 0.0f);
+                }
+                fftwf_execute(p_fwd_analytic); // a_freq = FFT(resampled code)
+                std::complex<float>* dst = &code_fft_conj[(size_t)p * _Ns];
+                for (int k = 0; k < _Ns; ++k)
+                    dst[k] = std::conj(af[k]);
             }
-            fftwf_execute(p_fwd_analytic); // a_freq = FFT(resampled code)
-            std::complex<float>* dst = &code_fft_conj[(size_t)p * _Ns];
-            for (int k = 0; k < _Ns; ++k)
-                dst[k] = std::conj(af[k]);
         }
     }
 }
@@ -292,6 +315,35 @@ void GpsReplicaCorrelator::to_analytic() {
     const float norm = 1.0f / (float)_Ns;
     for (int n = 0; n < _Ns; ++n)
         zo[n] *= norm;
+}
+
+void GpsReplicaCorrelator::rebuild_replica_ffts(long long block_start_sample) {
+    // Predicted combined-chip phase at the block start: the time-assist seed
+    // plus the chips elapsed. The long code repeats every comb_period combined
+    // chips, so wrap there. Reuses z_time/a_freq as scratch (called before
+    // to_analytic, which then overwrites them with the data block).
+    std::complex<float>* zt = as_cpx(z_time);
+    std::complex<float>* af = as_cpx(a_freq);
+    const long comb_period = (long)_sig.code_length * 2;   // CL: CM+CL slots over 1.5 s
+    const double per_sample = _comb_rate / _sample_rate;   // combined chips per sample
+    const double base = _seed_comb + _comb_rate * (double)block_start_sample / _sample_rate;
+    const long base0 = (long)std::floor(base);
+    const int n_prn = (int)_prns.size();
+    for (int p = 0; p < n_prn; ++p) {
+        const std::vector<int8_t>& code = full_code[p]; // ±1, full long code
+        for (int n = 0; n < _Ns; ++n) {
+            long c = (base0 + (long)((double)n * per_sample)) % comb_period;
+            if (c < 0)
+                c += comb_period;
+            // this code occupies its tdm_phase parity of the combined chips
+            zt[n] = std::complex<float>(((c & 1) == _sig.tdm_phase) ? (float)code[c >> 1] : 0.0f,
+                                        0.0f);
+        }
+        fftwf_execute(p_fwd_analytic); // a_freq = FFT(windowed replica)
+        std::complex<float>* dst = &code_fft_conj[(size_t)p * _Ns];
+        for (int k = 0; k < _Ns; ++k)
+            dst[k] = std::conj(af[k]);
+    }
 }
 
 void GpsReplicaCorrelator::correlate_prn(int p, int di_lo, int di_hi) {
@@ -495,6 +547,11 @@ void GpsReplicaCorrelator::main_thread() {
             std::lock_guard<std::mutex> lk(_mask_mutex);
             active = _active;
         }
+
+        // Time-assisted: window the replica to this block's predicted code phase
+        // before correlating (must precede to_analytic, which reuses the scratch).
+        if (_time_assisted)
+            rebuild_replica_ffts(last_block_start);
 
         to_analytic();
         for (int p = 0; p < n_prn; ++p) {
