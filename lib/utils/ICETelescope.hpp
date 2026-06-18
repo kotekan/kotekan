@@ -45,10 +45,11 @@ public:
     int64_t to_time_ns(uint64_t seq) const override;
     uint64_t to_seq(timespec time) const override;
     uint64_t seq_length_nsec() const override;
-    
+
+    ElementOrder fiducial_element_order() const override;
     station_id_t element_index_to_station_id(uint64_t el_idx, ElementOrder ord) const override;
     uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const override;
-    grid_idx_2d_t station_id_to_main_array_grid_indices(station_id_t st_id) const override; 
+    grid_idx_2d_t station_id_to_main_array_grid_indices(station_id_t st_id) const override;
     vec3d_t station_id_to_feed_position_m(station_id_t st_id) const override;
     double get_feed_separation_x_m() const override;
     double get_feed_separation_y_m() const override;
@@ -95,7 +96,8 @@ protected:
 
     static GeoFrame grid_frame_from_config(const kotekan::Config& config, const std::string& path);
 
-    void decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization, uint64_t& dish) const;
+    void decode_station_id(station_id_t st_id, uint64_t& cylinder, uint64_t& polarization,
+                           uint64_t& dish) const;
     station_id_t encode_station_id(uint64_t cylinder, uint64_t polarization, uint64_t dish) const;
 
     /**
@@ -106,10 +108,13 @@ protected:
      * @return          Tuple containing a vector of the input reorder map, and a
      *                  vector of the input labels for the index map.
      */
-    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder_default(const kotekan::Config& config, const std::string& path, uint64_t num_elements);
+    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+    parse_reorder_default(const kotekan::Config& config, const std::string& path,
+                          uint64_t num_elements);
 
-    static std::vector<station_id_t> invert_reorder_table(const std::vector<uint32_t>& input_reorder);
-    
+    static std::vector<station_id_t>
+    invert_reorder_table(const std::vector<uint32_t>& input_reorder);
+
     /// Number of elements (2048 for production CHIME)
     const uint64_t _num_polarizations;
     const uint64_t _num_dishes;
@@ -160,18 +165,19 @@ protected:
     // A forwarding constructor, such that derived classes can skip the main
     // ICETelescope constructor but still construct the Telescope class
     template<typename... Args>
-    ICETelescope(uint64_t num_polarizations, uint64_t num_dishes, uint64_t num_cylinders, double feed_sep_x, double feed_sep_y,  Args&&... args) : Telescope(std::forward<Args>(args)...),
-        _num_polarizations(num_polarizations), _num_dishes(num_dishes),
-        _num_elements(num_polarizations * num_dishes), _num_cylinders(num_cylinders),
-        _num_dishes_per_cylinder(num_dishes / num_cylinders),
-        _feed_separation_x_m(feed_sep_x),
-        _feed_separation_y_m(feed_sep_y) {};
+    ICETelescope(uint64_t num_polarizations, uint64_t num_dishes, uint64_t num_cylinders,
+                 double feed_sep_x, double feed_sep_y, Args&&... args) :
+        Telescope(std::forward<Args>(args)...), _num_polarizations(num_polarizations),
+        _num_dishes(num_dishes), _num_elements(num_polarizations * num_dishes),
+        _num_cylinders(num_cylinders), _num_dishes_per_cylinder(num_dishes / num_cylinders),
+        _feed_separation_x_m(feed_sep_x), _feed_separation_y_m(feed_sep_y){};
 
 private:
-    
     static std::tuple<uint32_t, uint32_t, std::string> parse_reorder_single(nlohmann::json j);
-    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> parse_reorder(nlohmann::json& j);
-    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>> default_reorder(size_t num_elements);
+    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+    parse_reorder(nlohmann::json& j);
+    static std::tuple<std::vector<uint32_t>, std::vector<input_ctype>>
+    default_reorder(size_t num_elements);
 };
 
 

@@ -1,5 +1,7 @@
+#include "CHORDTelescope.hpp"      // for CHORDTelescope
 #include "Config.hpp"              // for Config
 #include "DataType.hpp"            // for DataType, type_to_string
+#include "ICETelescope.hpp"        // for ICETelescope
 #include "N2FrameView.hpp"         // for N2FrameView
 #include "N2Metadata.hpp"          // for metadata_is_N2
 #include "NDArray.hpp"             // for GenericNDArray
@@ -201,12 +203,12 @@ public:
 
         // Flatten to proper HDF5 multi-dimensional arrays
         const auto& dish_grid_indices =
-            telescope.get_main_array_grid_indices(num_dishes, ElementOrder::CHORDBeamformer);
+            telescope.get_main_array_grid_indices(num_dishes, telescope.fiducial_element_order());
         node.createAttribute("dish_grid_indices", DataSpace({dish_grid_indices.size(), 2}),
                              create_datatype<std::int64_t>())
             .write_raw(reinterpret_cast<const std::int64_t*>(dish_grid_indices.data()));
         const auto& feed_positions_m =
-            telescope.get_feed_positions_m(num_dishes, ElementOrder::CHORDBeamformer);
+            telescope.get_feed_positions_m(num_dishes, telescope.fiducial_element_order());
         node.createAttribute("feed_positions_m", DataSpace({feed_positions_m.size(), 3}),
                              create_datatype<double>())
             .write_raw(reinterpret_cast<const double*>(feed_positions_m.data()));
