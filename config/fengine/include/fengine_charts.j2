@@ -74,9 +74,9 @@ num_frequencies: 336            # 672 frequencies / 2 gpus
 # The frequency channels we keep.
 #     A channel's frequency is   freq = channel * adc_frequency / num_samples_per_frame
 #     Note that   channel = freq = 0   is the DC channel.
-# TODO FIX THESE NUMBERS THEY ARE FROM CHORD
-#     Channel 1536 has 300 MHz for CHORD, channel 7680 has 1500 MHz.
-#     There are 5.12 channels per MHz, with a channel width of 195312.5 Hz.
+#     Channel 1000 has 300 MHz for CHORD, channel 1672 has 501.6 MHz.
+
+#     There are 3.333 channels per MHz, with a channel width of 300 kHz.
 # (These particular channels were chosen with a fixed step size between these channel boundaries.)
 frequency_channels: [
     1000, 1002, 1004, 1006, 1008, 1010, 1012, 1014, 1016, 1018, 1020, 1022, 1024, 1026, 1028, 1030,

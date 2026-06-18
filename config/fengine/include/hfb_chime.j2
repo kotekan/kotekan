@@ -9,14 +9,8 @@ hfb_num_output_times: 1
 hfb2_num_beams_x: 4
 hfb2_num_beams_y: 256
 hfb2_num_beams: hfb2_num_beams_x * hfb2_num_beams_y
-hfb2_beam_separation_x: 0.010   # TODO
-hfb2_beam_separation_y: 0.001
-
-host_hfb2_beam_positions_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_float32 * 2 * hfb2_num_beams
-    metadata_pool: main_pool
+hfb2_beam_separation_x: 1.3 / 4
+hfb2_beam_separation_y: 90.0 / 256
 
 # hfb_chunk_size: 256
 
@@ -30,6 +24,18 @@ host_hfb1_U128_phase_buffer:
     kotekan_buffer: standard
     num_frames: 1
     frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_hfb_upchan_U128_max_num_channels * 128 * num_polarizations
+    metadata_pool: main_pool
+
+host_hfb2_beam_positions_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_float32 * 2 * hfb2_num_beams
+    metadata_pool: main_pool
+
+host_hfb2_beam_ids_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_uint64 * hfb2_num_beams
     metadata_pool: main_pool
 
 host_hfb2_weights_buffer:
@@ -108,6 +114,19 @@ run_hfb1_U128:
 
 # HFB 2 and 3
 
+run_set_hfb2_beams:
+    kotekan_stage: setFRBBeams
+    out_pos_buf: host_hfb2_beam_positions_buffer
+    out_id_buf: host_hfb2_beam_ids_buffer
+    mode: grid_degrees
+    num_beams: hfb2_num_beams
+    num_x: hfb2_num_beams_x
+    num_y: hfb2_num_beams_y
+    x_min: -hfb2_beam_separation_x * (hfb2_num_beams_x - 1) / 2.0
+    x_max: hfb2_beam_separation_x * (hfb2_num_beams_x - 1) / 2.0
+    y_min: -hfb2_beam_separation_y * (hfb2_num_beams_y - 1) / 2.0
+    y_max: hfb2_beam_separation_y * (hfb2_num_beams_y - 1) / 2.0
+
 run_calc_hfb2_weights:
     kotekan_stage: calcFRB2Weights
     upchannelization_schedule_name: /upchan_hfb
@@ -140,7 +159,6 @@ run_hfb23:
         - name: cudaFRBBeamReformer
           frb1_max_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
           frb1_max_num_times: buffer_depth * hfb_num_output_times
-          frb2_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
           frb2_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
           frb2_num_beams: hfb2_num_beams
           frb2_num_times: hfb_num_output_times
