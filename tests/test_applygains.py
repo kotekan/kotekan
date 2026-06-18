@@ -209,7 +209,7 @@ def test_eigen(apply_data):
 
     for input_frame, output_frame in zip(*apply_data):
 
-        assert input_frame.erms == output_frame.erms
+        assert (input_frame.erms == output_frame.erms).all()
         assert (input_frame.eval == output_frame.eval).all()
         assert (input_frame.evec == output_frame.evec).all()
 

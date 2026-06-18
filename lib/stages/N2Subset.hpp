@@ -6,17 +6,17 @@
 #ifndef N2_SUB_HPP
 #define N2_SUB_HPP
 
-#include "Config.hpp"
-#include "N2FrameDesc.hpp" // for N2FrameDesc
-#include "N2Util.hpp"      // for prod_ctype
-#include "Stage.hpp"       // for Stage
-#include "buffer.hpp"
-#include "bufferContainer.hpp"
+#include <cstddef>              // for size_t
+#include <cstdint>              // for uint32_t
+#include <memory>               // for shared_ptr
+#include <string>               // for string
+#include <vector>               // for vector
 
-#include <cstddef> // for size_t
-#include <memory>  // for shared_ptr
-#include <string>  // for string
-#include <vector>  // for vector
+#include "Config.hpp"           // for Config
+#include "N2FrameDesc.hpp"      // for N2FrameDesc
+#include "Stage.hpp"            // for Stage
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
 
 
 /**
@@ -70,6 +70,12 @@ private:
 
     /// Index mapping: for each output product index, the corresponding input product index
     std::vector<size_t> prod_index_map;
+
+    /// Number of elements in input buffer
+    uint32_t _in_num_elements;
+
+    /// Number of elements in output buffer (may be smaller for element subsetting)
+    uint32_t _out_num_elements;
 };
 
 

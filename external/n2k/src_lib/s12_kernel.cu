@@ -1,10 +1,12 @@
 #include "../include/n2k/rfi_kernels.hpp"
 #include "../include/n2k/internals/internals.hpp"
 
-#include <gputils/cuda_utils.hpp>
+#include <ksgpu/cuda_utils.hpp>
+
+#include <cassert>
 
 using namespace std;
-using namespace gputils;
+using namespace ksgpu;
 
 
 namespace n2k {
@@ -154,6 +156,8 @@ void launch_s12_kernel(ulong* S12, const uint8_t* E, long T, long Tmin, long Tsi
 	throw runtime_error("launch_s12_kernel: out_fstride must be >= 2*S");	
     if (out_fstride & 3)
 	throw runtime_error("launch_s12_kernel: out_fstride must be a multiple of 4");
+    if (Tsize > 0 && Tmin >= Tsize)
+        throw runtime_error("launch_s12_kernel: expected Tmin to be smaller than Tsize, but got " + std::to_string(Tmin) + ".");
     if ((T >= INT_MAX) || (Tmin >= INT_MAX) || (Tsize >= INT_MAX) || (F >= INT_MAX)
         || (S >= INT_MAX) || (Nds >= INT_MAX) || (out_fstride >= INT_MAX))
         throw runtime_error("launch_s12_kernel: 32-bit overflow");
@@ -164,7 +168,7 @@ void launch_s12_kernel(ulong* S12, const uint8_t* E, long T, long Tmin, long Tsi
 	throw runtime_error("launch_s12_kernel: T must be a multiple of Nds");	
 
     dim3 nblocks, nthreads;
-    gputils::assign_kernel_dims(nblocks, nthreads, S/4, F, Tds);
+    ksgpu::assign_kernel_dims(nblocks, nthreads, S/4, F, Tds);
     
     s12_kernel <<< nblocks, nthreads, 0, stream >>>
         (S12, (const uint *) E, Tds, Tmin, Tsize, F, S, Nds, out_fstride, offset_encoded);

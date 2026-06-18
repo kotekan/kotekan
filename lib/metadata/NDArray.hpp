@@ -200,6 +200,9 @@ public:
     NDArray(const Symbol quantity_name, const std::vector<std::ptrdiff_t>& extents,
             const std::vector<Symbol>& dimnames, const std::vector<std::ptrdiff_t>& dimscalings,
             T* data) {
+        assert(extents.size() == D && "extents size must match dimensionality D");
+        assert(dimnames.size() == D && "dimnamess size must match dimensionality D");
+        assert(dimscalings.size() == D && "dimscalings size must match dimensionality D");
         init(quantity_name, extents, dimnames, dimscalings, data);
     }
     NDArray(const Symbol quantity_name, const std::array<std::ptrdiff_t, D>& extents,

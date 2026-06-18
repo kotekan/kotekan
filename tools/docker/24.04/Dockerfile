@@ -70,6 +70,7 @@ RUN apt-get update && \
         libsystemd-dev \
         libxtensor-dev \
         libyaml-cpp-dev \
+        lld \
         make \
         pkg-config \
         python3 \
@@ -102,6 +103,7 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
         gmpy2 \
         h5py \
         hdf5plugin \
+        jinja2 \
         mpmath \
         msgpack \
         numpy \
@@ -114,6 +116,7 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
         pytest-timeout \
         pytest-xdist \
         requests \
+        ruamel.yaml \
         setuptools \
         sphinx==6.2.* \
         sphinx_rtd_theme==2.0.* \
@@ -177,12 +180,6 @@ RUN mkdir src && \
     true) && \
     rm -rf src
 
-# Install Julia 1.12.5 directly (no juliaup for no automatic update checks)
-RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.12/julia-1.12.5-linux-x86_64.tar.gz && \
-    tar -xzf julia-1.12.5-linux-x86_64.tar.gz -C /opt && \
-    ln -s /opt/julia-1.12.5/bin/julia /usr/local/bin/julia && \
-    rm julia-1.12.5-linux-x86_64.tar.gz
-
 # Set ccache to store things sensibly
 ENV CCACHE_NOHASHDIR=1
 ENV CCACHE_BASEDIR=/code/kotekan/
@@ -226,8 +223,20 @@ RUN mkdir src && \
     true) && \
     rm -rf src
 
+# Install mathdx for CHIME beamformer
+RUN mkdir src && \
+    ( \
+        cd src && \
+        wget https://developer.nvidia.com/downloads/compute/cuFFTDx/redist/cuFFTDx/cuda13/nvidia-mathdx-26.03.0-cuda13.tar.gz && \
+        tar -xzf nvidia-mathdx-26.03.0-cuda13.tar.gz && \
+        cd nvidia-mathdx-26.03.0-cuda13 && \
+        mv nvidia/mathdx/26.03/include /usr/local/include/mathdx && \
+        cp -a nvidia/mathdx/26.03/lib/* /usr/local/lib/ && \
+        cp -a nvidia/mathdx/26.03/src/* /usr/local/src/ && \
+    true) && \
+    rm -rf src
+
 ENV CUDADIR=/usr/local/cuda
 ENV PATH="${PATH:+${PATH}:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/cuda/bin"
 ENV LD_LIBRARY_PATH="${CUDADIR}/lib64:/usr/local/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 ENV CPLUS_INCLUDE_PATH="${CUDADIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
-

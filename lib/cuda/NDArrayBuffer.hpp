@@ -1,29 +1,29 @@
 #ifndef NDARRAYBUFFER_HPP
 #define NDARRAYBUFFER_HPP
 
-#include "DataType.hpp"            // for operator<<
-#include "NDArray.hpp"             // for NDArray
-#include "Symbol.hpp"              // for Symbol, strings_to_symbols, operator==
-#include "chordMetadata.hpp"       // for chordMetadata, get_chord_metadata
-#include "cudaCommand.hpp"         // for cudaCommand
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "kotekanLogging.hpp"      // for kotekanLogging, FATAL_ERROR
-#include "metadata.hpp"            // for metadataObject
+#include <cuda_runtime_api.h>       // for cudaMemsetAsync, cudaMemcpy
+#include <driver_types.h>           // for CUstream_st, cudaMemcpyKind, cudaStream_t
+#include <algorithm>                // for find_if, fill_n
+#include <array>                    // for array
+#include <cassert>                  // for assert
+#include <cstddef>                  // for ptrdiff_t, size_t
+#include <cstdint>                  // for uint8_t
+#include <cstring>                  // for memcmp, memset
+#include <memory>                   // for shared_ptr, __shared_ptr_access, allocator
+#include <sstream>                  // for basic_ostream, operator<<, ostream, basic_ostringstream
+#include <string>                   // for basic_string, string, char_traits, operator+, operator<<
+#include <vector>                   // for vector
 
-#include <algorithm>          // for find_if
-#include <array>              // for array
-#include <cassert>            // for assert
-#include <cstddef>            // for ptrdiff_t, size_t
-#include <cstdint>            // for uint8_t
-#include <cstring>            // for memcmp, memset
-#include <cuda_runtime_api.h> // for cudaMemsetAsync, cudaMemcpy
-#include <driver_types.h>     // for CUstream_st, cudaMemcpyKind, cudaStream_t
-#include <fmt.hpp>            // for compile_string_to_view
-#include <memory>             // for shared_ptr, __shared_ptr_access, allocator
-#include <sstream>            // for basic_ostream, operator<<, ostream, basic_ostringstream
-#include <string>             // for string, basic_string, char_traits, operator+, operator<<
-#include <vector>             // for vector
+#include "DataType.hpp"             // for operator<<
+#include "NDArray.hpp"              // for NDArray
+#include "Symbol.hpp"               // for Symbol, operator==, strings_to_symbols, operator<<
+#include "chordMetadata.hpp"        // for chordMetadata, get_chord_metadata
+#include "cudaCommand.hpp"          // for cudaCommand
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "kotekanLogging.hpp"       // for kotekanLogging, ERROR, FATAL_ERROR
+#include "metadata.hpp"             // for metadataObject
+#include "fmt.hpp"                  // for compile_string_to_view
 
 // This affects copying from host to device. A standard buffer is
 // copied the usual way. A `do_once` buffer is copied only once, in
@@ -247,7 +247,7 @@ public:
     }
 
     // Check an NDArray buffer for poison
-    void check_for_poison(const std::uint8_t poison_value) {
+    void check_for_poison(const std::uint8_t poison_value) const {
         T poison;
         // The cast suppresses a bogus -Wclass-memaccess on GCC.
         std::memset(static_cast<void*>(&poison), poison_value, sizeof poison);

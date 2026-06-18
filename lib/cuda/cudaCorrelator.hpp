@@ -43,7 +43,7 @@
  * @gpu_mem Output complex correlation values
  *   num_subintegrations := samples_per_data_set / sub_integration_ntime
  *   blocksize           := 16
- *   linear_num_blocks   := ceil(num_elements, / blocksize)
+ *   linear_num_blocks   := ceil(num_elements / blocksize)
  *   triangle_num_blocks := linear_num_blocks * (linear_num_blocks + 1) / 2
  *   @gpu_mem_buffer    @c standard
  *   @gpu_mem_quantity  @c n2k_correlation

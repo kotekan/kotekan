@@ -1,10 +1,12 @@
 #include "../include/n2k/rfi_kernels.hpp"
 #include "../include/n2k/internals/internals.hpp"
 
-#include <gputils/cuda_utils.hpp>
+#include <ksgpu/cuda_utils.hpp>
+
+#include <cassert>
 
 using namespace std;
-using namespace gputils;
+using namespace ksgpu;
 
 
 // This is a good place to describe the array layout for PL mask.
@@ -108,7 +110,7 @@ __device__ uint _cmask(int b)
 //   - Within the larger kernel, the warp mapping is:
 //       wz wy wx <-> (tds) (f/4) (s/128)
 
-__global__ void s0_kernel(ulong4_16a *s0, const uint *pl, int T, int Tmin, int Tsize, int F, int S, int Nds, int out_fstride4)
+__global__ void s0_kernel(ulong4_32a *s0, const uint *pl, int T, int Tmin, int Tsize, int F, int S, int Nds, int out_fstride4)
 {
     static constexpr uint ALL_LANES = 0xffffffffU;
 
@@ -171,7 +173,7 @@ __global__ void s0_kernel(ulong4_16a *s0, const uint *pl, int T, int Tmin, int T
     s0_accum <<= 1;
     s0_accum += __shfl_sync(ALL_LANES, s0_accum, threadIdx.x ^ 0x1);
 
-    ulong4_16a s0_x4;
+    ulong4_32a s0_x4;
     s0_x4.x = s0_accum;
     s0_x4.y = s0_accum;
     s0_x4.z = s0_accum;
@@ -221,6 +223,8 @@ void launch_s0_kernel(ulong* s0, const ulong* pl_mask, long T, long Tmin, long T
 
     if (!s0 || !pl_mask)
         throw runtime_error("launch_s0_kernel: null pointer was specified");
+    if ((reinterpret_cast<uintptr_t>(s0) % 32) != 0)
+        throw runtime_error("launch_s0_kernel: 's0' pointer must be 32-byte aligned");
     if (T <= 0)
 	throw runtime_error("launch_s0_kernel: number of time samples T must be > 0");
     if (Tmin < 0)
@@ -245,6 +249,8 @@ void launch_s0_kernel(ulong* s0, const ulong* pl_mask, long T, long Tmin, long T
 	throw runtime_error("launch_s0_kernel(): out_fstride must be >= S");	
     if (out_fstride & 3)
 	throw runtime_error("launch_s0_kernel(): out_fstride must be a multiple of 4");
+    if (Tsize > 0 && Tmin >= Tsize)
+        throw runtime_error("launch_s0_kernel(): expected Tmin to be smaller than Tsize, but got " + std::to_string(Tmin) + ".");
     if ((T >= INT_MAX) || (Tmin >= INT_MAX) || (Tsize >= INT_MAX) || (F >= INT_MAX)
         || (S >= INT_MAX) || (Nds >= INT_MAX) || (out_fstride >= INT_MAX))
         throw runtime_error("launch_s0_kernel(): 32-bit overflow");
@@ -255,10 +261,10 @@ void launch_s0_kernel(ulong* s0, const ulong* pl_mask, long T, long Tmin, long T
 	throw runtime_error("launch_s0_kernel: number of time samples T must be a multiple of downsampling factor 'Nds'");
 
     dim3 nblocks, nthreads;
-    gputils::assign_kernel_dims(nblocks, nthreads, S >> 2, (F+3) >> 2, Tds);
+    ksgpu::assign_kernel_dims(nblocks, nthreads, S >> 2, (F+3) >> 2, Tds);
 
     s0_kernel <<< nblocks, nthreads, 0, stream >>>
-        ((ulong4_16a *) s0, (const uint *) pl_mask, T, Tmin, Tsize, F, S, Nds, out_fstride >> 2);
+        ((ulong4_32a *) s0, (const uint *) pl_mask, T, Tmin, Tsize, F, S, Nds, out_fstride >> 2);
     
     CUDA_PEEK("s0_kernel launch");
 }

@@ -19,10 +19,12 @@ import tempfile
 import time
 import warnings
 import re
+import numpy as np
 
 from . import baseband_buffer
 from . import visbuffer
 from . import n2buffer
+from . import chordbuffer
 from . import frbbuffer
 from . import psrbuffer
 
@@ -91,6 +93,7 @@ class KotekanRunner(object):
         expect_failure=False,
         rest_port=0,
         gdb=False,
+        timeout=None,
     ):
 
         self._buffers = buffers if buffers is not None else {}
@@ -102,8 +105,49 @@ class KotekanRunner(object):
         self.rest_port = rest_port
         self._gdb = gdb
         self.return_code = 0
+        # Max seconds to wait for kotekan to exit on its own before we kill it.
+        # Defaults to a little under pytest's per-test timeout (PYTEST_TIMEOUT, if
+        # exported) so the runner fails with a clear message and cleans up the
+        # process itself, rather than relying on pytest-timeout (which is
+        # unreliable under xdist). Falls back to 120s outside CI.
+        if timeout is None:
+            _pytest_to = os.environ.get("PYTEST_TIMEOUT")
+            timeout = 0.8 * float(_pytest_to) if _pytest_to else 120.0
+        self._timeout = float(timeout)
+        # Handle to the launched kotekan process, so run() can always reap it.
+        self._process = None
+
+    @staticmethod
+    def _cleanup(p):
+        """Ensure a launched kotekan process is stopped and reaped.
+
+        Guards against orphaned kotekan processes (and the indefinite hangs and
+        resource leaks they cause, especially under pytest-xdist) on every exit
+        path from ``run()``.
+        """
+        # The gdb path uses subprocess.run(), which returns a CompletedProcess
+        # with no poll()/terminate(); there is nothing to clean up there.
+        if p is None or not hasattr(p, "poll"):
+            return
+        if p.poll() is None:
+            p.terminate()
+            try:
+                p.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                try:
+                    p.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
 
     def run(self):
+        """Run kotekan, always terminating the kotekan process afterwards."""
+        try:
+            self._run()
+        finally:
+            self._cleanup(self._process)
+
+    def _run(self):
         """Run kotekan.
 
         This configures kotekan by creating a temporary config file.
@@ -149,6 +193,7 @@ class KotekanRunner(object):
                 cmd = "%s -b %s -c %s" % (self.kotekan_binary(), rest_addr, fh.name)
                 print(cmd)
                 p = subprocess.Popen(cmd.split(), stdout=f_out, stderr=f_out)
+                self._process = p
 
             # Run any requested REST commands
             if self._rest_commands and not self._gdb:
@@ -161,13 +206,28 @@ class KotekanRunner(object):
                 while attempt < 100:
 
                     if attempt == 99:
-                        print("Could not find kotekan REST server address in logs")
-                        exit(1)
+                        self._cleanup(p)
+                        self.output = open(f_out.name, "r").read()
+                        print(self.output)
+                        raise RuntimeError(
+                            "Could not find kotekan REST server address in logs. "
+                            "Command: %s" % cmd
+                        )
 
                     attempt += 1
 
-                    # Wait a moment for rest servers to start up.
-                    time.sleep(wait)
+                    # If kotekan already exited, its REST server will never appear.
+                    if p.poll() is not None:
+                        self.output = open(f_out.name, "r").read()
+                        print(self.output)
+                        raise RuntimeError(
+                            "kotekan exited (code %s) before its REST server "
+                            "started. Command: %s" % (p.returncode, cmd)
+                        )
+
+                    # Wait a moment for rest servers to start up (capped so a
+                    # missing server can't make this loop run for many minutes).
+                    time.sleep(min(wait, 2.0))
 
                     # If kotekan's REST server was started with a random port (0), we have to find out
                     # what that is from the logs
@@ -218,7 +278,10 @@ class KotekanRunner(object):
                     except requests.RequestException:
                         # print kotekan output if sending REST command fails
                         # (kotekan might have crashed and we want to know)
-                        p.wait()
+                        try:
+                            p.wait(timeout=self._timeout)
+                        except subprocess.TimeoutExpired:
+                            self._cleanup(p)
                         self.output = open(f_out.name, "r")
 
                         # Print out the output from Kotekan for debugging
@@ -241,9 +304,20 @@ class KotekanRunner(object):
                 time.sleep(10)
                 print(open(f_out.name, "r").read())
 
-            # Wait for kotekan to finish and capture the output
+            # Wait for kotekan to finish and capture the output. Bound the wait so
+            # a kotekan that never exits fails the test quickly (and, under xdist,
+            # does not stall the whole run) instead of blocking here indefinitely.
             if not self._gdb:
-                p.wait()
+                try:
+                    p.wait(timeout=self._timeout)
+                except subprocess.TimeoutExpired:
+                    self._cleanup(p)
+                    self.output = open(f_out.name, "r").read()
+                    print(self.output)
+                    raise RuntimeError(
+                        "kotekan did not exit within %g seconds; terminated it. "
+                        "Command: %s" % (self._timeout, cmd)
+                    )
             self.output = open(f_out.name, "r").read()
 
             # Print out the output from Kotekan for debugging
@@ -393,14 +467,28 @@ class FakeN2KBuffers(InputBuffer):
 
     _buf_ind = 0
 
-    def __init__(self, samples_per_data_set, num_local_freq, n2k_kwargs, rfi_kwargs):
+    def __init__(
+        self,
+        samples_per_data_set,
+        num_local_freq,
+        sub_integration_ntime,
+        n2k_kwargs,
+        rficounts_kwargs,
+        plcounts_kwargs,
+        rfiframemask_kwargs,
+    ):
 
         self.name = "faken2k_corr_buf%i" % self._buf_ind
         self.counts_name = "faken2k_counts_buf%i" % self._buf_ind
-        self.rfi_name = "faken2k_rfi_buf%i" % self._buf_ind
+        self.rficounts_name = "faken2k_rficounts_buf%i" % self._buf_ind
+        self.plcounts_name = "faken2k_plcounts_buf%i" % self._buf_ind
+        self.rfiframemask_name = "faken2k_rfiframemask_buf%i" % self._buf_ind
 
         n2k_stage_name = "faken2k_gen_%i" % self._buf_ind
         rfi_stage_name = "faken2k_gen_rfi_%i" % self._buf_ind
+        rficount_stage_name = "faken2k_rficount_%i" % self._buf_ind
+        plcounts_stage_name = "faken2k_plcounts_%i" % self._buf_ind
+        rfiframemask_stage_name = "faken2k_gen_rfiframemask_%i" % self._buf_ind
 
         self.__class__._buf_ind += 1
 
@@ -431,11 +519,25 @@ class FakeN2KBuffers(InputBuffer):
                     " * count_num_blocks * count_blocksize * count_blocksize * sizeof_int"
                 ),
             },
-            self.rfi_name: {
+            self.rficounts_name: {
                 "kotekan_buffer": "standard",
                 "metadata_pool": "chord_pool",
                 "num_frames": "buffer_depth",
-                "frame_size": "(samples_per_data_set * num_local_freq) / 8",
+                "sizeof_int": 4,
+                "frame_size": "(samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int",
+            },
+            self.plcounts_name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "chord_pool",
+                "num_frames": "buffer_depth",
+                "sizeof_int": 4,
+                "frame_size": "(samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int",
+            },
+            self.rfiframemask_name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "chord_pool",
+                "num_frames": "buffer_depth",
+                "frame_size": "(samples_per_data_set / sub_integration_ntime) * num_local_freq",
             },
         }
 
@@ -443,35 +545,52 @@ class FakeN2KBuffers(InputBuffer):
             "kotekan_stage": "testN2kGen",
             "out_buf": self.name,
             "out_counts_buf": self.counts_name,
-            "in_rfimask_buf": self.rfi_name,
             "correlation_type": "const",
             "correlation_value": [1, -2],
             "counts_type": "const",
             "counts_value": "sub_integration_ntime",
             "mul_correlation_by_counts": True,
         }
-        rfi_gen_config = {
-            "kotekan_stage": "testDataGen",
-            "out_buf": self.rfi_name,
-            "type": "const1x8",
-            "value": 255,
-            "name": "RFImask",
-            "array_shape": [samples_per_data_set / 1024, num_local_freq, 128],
-            "dim_name": ["T8hi128", "F", "T8lo128"],
-            "meta_time_downsample_factor": 1024,
+        rficount_gen_config = {
+            "kotekan_stage": "testLostCountsGen",
+            "in_buf": self.counts_name,
+            "out_buf": self.rficounts_name,
+            "name": "RFImask_counts",
+            "type": "const",
+            "value": 0,
+            "use_n2k_counts": True,
+        }
+        plcounts_gen_config = {
+            "kotekan_stage": "testLostCountsGen",
+            "in_buf": self.counts_name,
+            "out_buf": self.plcounts_name,
+            "name": "pl_lost_counts_scalar",
+            "type": "const",
+            "value": 0,
+            "use_n2k_counts": True,
+        }
+        rfiframemask_gen_config = {
+            "kotekan_stage": "testRFIFrameMaskGen",
+            "out_buf": self.rfiframemask_name,
+            "type": "const",
+            "value": 1,
         }
 
         n2k_gen_config.update(n2k_kwargs)
-        rfi_gen_config.update(rfi_kwargs)
+        rficount_gen_config.update(rficounts_kwargs)
+        plcounts_gen_config.update(plcounts_kwargs)
+        rfiframemask_gen_config.update(rfiframemask_kwargs)
 
         self.stage_block = {
             n2k_stage_name: n2k_gen_config,
-            rfi_stage_name: rfi_gen_config,
+            rficount_stage_name: rficount_gen_config,
+            plcounts_stage_name: plcounts_gen_config,
+            rfiframemask_stage_name: rfiframemask_gen_config,
         }
         self.global_block = {
             "chord_pool": {
                 "kotekan_metadata_pool": "chordMetadata",
-                "num_metadata_objects": "3 * buffer_depth",
+                "num_metadata_objects": "6 * buffer_depth",
             }
         }
 
@@ -707,6 +826,108 @@ class DumpVisBuffer(OutputBuffer):
         )
 
 
+class ReadChordBuffer(InputBuffer):
+    """Write down a ChordBuffer and reads it with hdf5FileRead."""
+
+    _buf_ind = 0
+
+    def __init__(self, input_dir, buffer_list):
+
+        self.name = "hdf5fileread_buf%i" % self._buf_ind
+        stage_name = "hdf5fileread%i" % self._buf_ind
+        self.__class__._buf_ind += 1
+
+        self.input_dir = input_dir
+        self.buffer_list = buffer_list
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+                "num_frames": "buffer_depth",
+                "frame_size": buffer_list[0].data.nbytes,
+            }
+        }
+
+        stage_config = {
+            "kotekan_stage": "hdf5FileRead",
+            "out_buf": self.name,
+            "input_dir": input_dir,
+            "file_name": self.name,
+            "prefix_hostname": False,
+            "prefix_host_rank": False,
+        }
+
+        self.stage_block = {stage_name: stage_config}
+
+    def write(self):
+        """Write a list of ChordBuffer objects to disk."""
+        chordbuffer.ChordBuffer.to_files(
+            self.buffer_list, self.input_dir + "/" + self.name
+        )
+
+
+class DumpChordBuffer(OutputBuffer):
+    """Consume a Chord buffer and provide its content as `ChordBuffer` objects.
+
+    Parameters
+    ----------
+    output_dir : str
+        Temp. directory to output to. Dumped files are not removed.
+    """
+
+    _buf_ind = 0
+
+    name = None
+
+    def __init__(
+        self, output_dir, shape, dtype, max_frames=-1, input_order="CHORDBeamformer"
+    ):
+        self.name = f"dumpchord_buf{self._buf_ind}"
+        stage_name = f"dump{self._buf_ind}"
+
+        self.__class__._buf_ind += 1
+
+        self.output_dir = output_dir
+        self.num_entries = int(np.prod(shape))
+        self.max_frames = max_frames
+        self.dtype = dtype
+
+        self.buffer_block = {
+            self.name: {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "main_pool",
+                "num_frames": "buffer_depth",
+                "frame_size": self.num_entries * np.dtype(self.dtype).itemsize,
+            }
+        }
+
+        self.stage_block = {
+            stage_name: {
+                "kotekan_stage": "hdf5FileWrite",
+                "in_buf": self.name,
+                "file_name": self.name,
+                "base_dir": output_dir,
+                "prefix_hostname": False,
+                "max_frames": max_frames,
+                "input_order": input_order,
+            }
+        }
+
+    def load(self):
+        """Load the output data from the buffer.
+
+        Returns
+        -------
+        dumps : lost of buffers
+            Buffer output.
+        """
+
+        return chordbuffer.ChordBuffer.load_files(
+            f"{self.output_dir}/*{self.name}*.h5", self.name
+        )
+
+
 class ReadN2Buffer(InputBuffer):
     """Write down an N2Buffer and reads it with rawFileRead."""
 
@@ -761,7 +982,12 @@ class DumpN2Buffer(OutputBuffer):
     name = None
 
     def __init__(
-        self, output_dir, exit_after_n_files=0, num_elements=None, num_ev=None
+        self,
+        output_dir,
+        exit_after_n_files=0,
+        num_elements=None,
+        num_ev=None,
+        num_freq=None,
     ):
 
         self.name = "dumpn2_buf%i" % self._buf_ind
@@ -777,12 +1003,17 @@ class DumpN2Buffer(OutputBuffer):
             self.num_prod = None
         self.num_ev = num_ev
 
+        # If num_freq is given, size the buffer to hold one full accumulation
+        # cycle (one frame per frequency) so the producer never stalls.
+
+        num_freq_in_buffer = num_freq if num_freq is not None else 1
+
         self.buffer_block = {
             self.name: {
                 "kotekan_buffer": "N2",
                 "n2_layout": "FullUpperTri",
                 "metadata_pool": "N2_pool",
-                "num_frames": "buffer_depth",
+                "num_frames": "buffer_depth * {:d}".format(num_freq_in_buffer),
             }
         }
 
@@ -1311,12 +1542,12 @@ class KotekanStageTester(KotekanRunner):
         if global_config is None:
             global_config = {}
 
+        buffers_in_list = []
+
         if noise:
-            if buffers_in is None:
-                buffers_in = []
-            else:
+            if buffers_in is not None:
                 noise_config["in_buf"] = buffers_in.name
-                buffers_in = [buffers_in]
+                buffers_in_list = [buffers_in]
             noise_config["kotekan_stage"] = "visNoise"
             noise_config["out_buf"] = "noise_buf"
             if noise == "random":
@@ -1332,15 +1563,20 @@ class KotekanStageTester(KotekanRunner):
                 }
             }
         else:
-            if buffers_in is None:
-                buffers_in = []
+            if isinstance(buffers_in, dict):
+                buffers_in_list = []
+                for key, buf in buffers_in.items():
+                    config[key] = buf.name
+                    parallel_config[key] = buf.name
+                    buffers_in_list.append(buf)
             elif isinstance(buffers_in, (list, tuple)):
                 config["in_bufs"] = [buf.name for buf in buffers_in]
                 parallel_config["in_bufs"] = [buf.name for buf in buffers_in]
-            else:
+                buffers_in_list = buffers_in
+            elif buffers_in is not None:
                 config["in_buf"] = buffers_in.name
                 parallel_config["in_buf"] = buffers_in.name
-                buffers_in = [buffers_in]
+                buffers_in_list = [buffers_in]
 
         if buffers_out is None:
             buffers_out = []
@@ -1355,7 +1591,7 @@ class KotekanStageTester(KotekanRunner):
         stage_block = {(stage_type + "_test"): config}
         buffer_block = {}
 
-        for buf in itertools.chain(buffers_in, buffers_out):
+        for buf in itertools.chain(buffers_in_list, buffers_out):
             stage_block.update(buf.stage_block)
             buffer_block.update(buf.buffer_block)
             if hasattr(buf, "global_block"):
@@ -1385,6 +1621,8 @@ default_config = """
 ---
 type: config
 log_level: INFO
+num_polarizations: 2
+num_dishes: 5
 num_elements: 10
 num_freq_in_frame: 1
 num_local_freq: 1

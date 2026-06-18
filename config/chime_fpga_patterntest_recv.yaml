@@ -1,3 +1,4 @@
+---
 ##########################################
 #
 # chime_fpga_patterntest_recv.yaml
@@ -7,7 +8,6 @@
 # Author: Rick Nitsche
 #
 ##########################################
----
 type: config
 log_level: info
 num_elements: 2048
@@ -18,62 +18,62 @@ num_ev: 4
 cpu_affinity: [7, 11, 14, 15]
 
 dataset_manager:
-  use_dataset_broker: True
-  ds_broker_host: "10.1.50.11" # recv1
+    use_dataset_broker: true
+    ds_broker_host: "10.1.50.11" # recv1
 
 telescope:
-  name: CHIMETelescope
-  require_gps: false
+    name: CHIMETelescope
+    require_gps: false
 
 vis_pool:
-  kotekan_metadata_pool: VisMetadata
-  num_metadata_objects: 500 * buffer_depth
+    kotekan_metadata_pool: VisMetadata
+    num_metadata_objects: 500 * buffer_depth
 
 vis_buffer:
-  metadata_pool: vis_pool
-  num_frames: buffer_depth
-  visbuf_10s_all:
-    kotekan_buffer: vis
-  vis_test_dump:
-    kotekan_buffer: vis
+    metadata_pool: vis_pool
+    num_frames: buffer_depth
+    visbuf_10s_all:
+        kotekan_buffer: vis
+    vis_test_dump:
+        kotekan_buffer: vis
 
 # test stage
 pattern_test:
-  kotekan_stage: visTestPattern
-  in_buf: visbuf_10s_all
-  out_buf: vis_test_dump
-  report_freq: 1000
-  tolerance: 0.000001
-  write_dir: '/mnt/gong/pattern_tests'
-  endpoint_name: 'run_test'
-  log_level: debug2
+    kotekan_stage: visTestPattern
+    in_buf: visbuf_10s_all
+    out_buf: vis_test_dump
+    report_freq: 1000
+    tolerance: 0.000001
+    write_dir: '/mnt/gong/pattern_tests'
+    endpoint_name: 'run_test'
+    log_level: debug2
 
 test_writer:
-  kotekan_stage: rawFileWrite
-  in_buf: vis_test_dump
-  file_name: 'patterntest'
-  file_ext: 'dump'
-  base_dir: '/mnt/gong/pattern_tests'
+    kotekan_stage: rawFileWrite
+    in_buf: vis_test_dump
+    file_name: 'patterntest'
+    file_ext: 'dump'
+    base_dir: '/mnt/gong/pattern_tests'
 
 # Kotekan stages
 buffer_recv:
-  n2:
-    kotekan_stage: bufferRecv
-    buf: visbuf_10s_all
-    listen_port: 11024
-    cpu_affinity: [0, 8]
-    num_threads: 2
+    n2:
+        kotekan_stage: bufferRecv
+        buf: visbuf_10s_all
+        listen_port: 11024
+        cpu_affinity: [0, 8]
+        num_threads: 2
 
 vis_debug:
-  n2:
-    kotekan_stage: visDebug
-    in_buf: visbuf_10s_all
+    n2:
+        kotekan_stage: visDebug
+        in_buf: visbuf_10s_all
 
 count_check:
-  n2:
-    kotekan_stage: countCheck
-    in_buf: visbuf_10s_all
+    n2:
+        kotekan_stage: countCheck
+        in_buf: visbuf_10s_all
 
 buffer_status:
-  kotekan_stage: bufferStatus
-  print_status: false
+    kotekan_stage: bufferStatus
+    print_status: false

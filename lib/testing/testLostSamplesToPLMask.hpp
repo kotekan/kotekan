@@ -20,6 +20,8 @@
  * @buffer lost_samples_buf Array of flags which indicate if a sample in a given location is lost
  *     @buffer_format Array of flags uint8_t flags which are either 0 (unset) or 1 (set)
  *     @buffer_metadata chordMetadata
+ * @conf  num_polarizations         Number of polarizations present in data set.
+ * @conf  num_dishes                Number of dishes present in data set.
  *
  * @author Roland Haas
  */
@@ -36,6 +38,12 @@ public:
     void main_thread() override;
 
 private:
+    /// The number of polarizations in data set
+    const int num_polarizations;
+
+    /// The number of dishes in data set
+    const int num_dishes;
+
     /// The buffer with the package loss data
     Buffer* pl_mask_buf;
 

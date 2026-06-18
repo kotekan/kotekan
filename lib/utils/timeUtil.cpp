@@ -1,18 +1,16 @@
 #include "timeUtil.hpp"
 
-#include <boost/multiprecision/cpp_int.hpp>          // for cpp_int_backend
-#include <boost/multiprecision/detail/no_et_ops.hpp> // for operator*, operator/, operator%
-#include <boost/multiprecision/fwd.hpp>              // for int128_t, expression_template_option
-#include <boost/multiprecision/number.hpp>           // for number
-#include <math.h>                                    // for round
-#include <utility>                                   // for move
+#include <math.h>    // for round
+#include <assert.h>  // for assert
+#include <json.hpp>  // for json, basic_json
+#include <ostream>   // for basic_ostream
 
-using boost::multiprecision::int128_t;
+#include "fmt.hpp"   // for format, format_string
 
-const int128_t era_A = 77'905'727'326'400'000L;
-const int128_t era_B = 100'273'781'191'135'448L;
-const int128_t day_ns = 86'400'000'000'000L;
-const int128_t e17 = 100'000'000'000'000'000L;
+const __int128 era_A = 77'905'727'326'400'000L;
+const __int128 era_B = 100'273'781'191'135'448L;
+const __int128 day_ns = 86'400'000'000'000L;
+const __int128 e17 = 100'000'000'000'000'000L;
 const int64_t GIGA = 1'000'000'000L;
 
 int64_t timespec_to_nanosec_i64(const timespec& t) {
@@ -86,7 +84,7 @@ int64_t get_UT1_from_time(const timespec& t, double delta_UT1_inst) {
     return ut1_ns;
 }
 
-timespec get_time_from_UT1(int64_t t_ut1, double delta_UT1_inst) {
+timespec get_time_from_UT1(int64_t t_ut1_ns, double delta_UT1_inst) {
 
     int64_t t0_ut1_s_jd = 2'451'545L * 86400L;
 
@@ -104,12 +102,22 @@ timespec get_time_from_UT1(int64_t t_ut1, double delta_UT1_inst) {
 
     // Convert UT1 to SI seconds (subtract dUT1), and re-base to J2000
     // (by subtracting J2000 in jy)
-    int64_t t_J2000_ns = t_ut1 - dUT1_ns - J2000_ns_jd + GIGA * (t0_ut1_s_jd - J2000_s_jd);
+    int64_t t_J2000_ns = t_ut1_ns - dUT1_ns - J2000_ns_jd + GIGA * (t0_ut1_s_jd - J2000_s_jd);
 
     // Now re-base to the unix epoch for instrument time.
     int64_t t_ns = t_J2000_ns + J2000_ns_unix + GIGA * J2000_s_unix;
 
     return nanosec_i64_to_timespec(t_ns);
+}
+
+int64_t get_UT1_from_time_ns(int64_t t_ns, double delta_UT1_inst) {
+    timespec ts = nanosec_i64_to_timespec(t_ns);
+    return get_UT1_from_time(ts, delta_UT1_inst);
+}
+
+int64_t get_time_ns_from_UT1(int64_t t_ut1_ns, double delta_UT1_inst) {
+    timespec ts = get_time_from_UT1(t_ut1_ns, delta_UT1_inst);
+    return timespec_to_nanosec_i64(ts);
 }
 
 double get_ERA_from_UT1(int64_t ut1, int64_t* n_rot) {
@@ -138,19 +146,19 @@ double get_ERA_from_UT1(int64_t ut1, int64_t* n_rot) {
      */
 
     // Cast ut1 time (already with correct epoch) to an i128
-    int128_t t_ns = (int128_t)ut1;
+    __int128 t_ns = (__int128)ut1;
 
     // Denominator
-    int128_t denom = ((int128_t)e17) * day_ns;
+    __int128 denom = ((__int128)e17) * day_ns;
 
     // Numerator
-    int128_t tot_17ns = era_A * day_ns + era_B * t_ns;
+    __int128 tot_17ns = era_A * day_ns + era_B * t_ns;
 
     // Number of rotations since UT1 T0
     int64_t num_rot = (int64_t)(tot_17ns / denom);
 
     // Fraction of rotation, this is the ERA.
-    int128_t f_17ns = tot_17ns % denom;
+    __int128 f_17ns = tot_17ns % denom;
     double f = ((double)f_17ns) / ((double)denom);
 
     // Correct if time was negative
@@ -178,11 +186,11 @@ int64_t get_UT1_from_ERA(int64_t n_rot, double ERA_deg) {
      */
 
     // the amount of rotation since UT1 T0, multiplied by 1e17 * day_ns
-    int128_t rot_17ns = day_ns * (e17 * n_rot + ((int128_t)(1e17 * ERA_deg)) / 360);
+    __int128 rot_17ns = day_ns * (e17 * n_rot + ((__int128)(1e17 * ERA_deg)) / 360);
 
     // Calculate the UT1 time for the amount of rotation.
-    int128_t numer = rot_17ns - era_A * day_ns;
-    int128_t t_ns = numer / era_B;
+    __int128 numer = rot_17ns - era_A * day_ns;
+    __int128 t_ns = numer / era_B;
 
     // Compute the correction for integer rounding. Will be < 1 ns, but may
     // round to a full nanosecond.
@@ -200,8 +208,8 @@ double get_ERA_from_time(const timespec& time, double dUT) {
 void to_json(nlohmann::json& j, const EOP& m) {
     assert(j.empty());
 
-    j.emplace("t_inst", m.t_inst);                 // Instrument time, nanoseconds, UNIX epoch.
-    j.emplace("t_ut1", m.t_ut1);                   // UT1 time, nanoseconds, J2000(UT1) epoch.
+    j.emplace("t_inst_ns", m.t_inst_ns);           // Instrument time, nanoseconds, UNIX epoch.
+    j.emplace("t_ut1_ns", m.t_ut1_ns);             // UT1 time, nanoseconds, J2000(UT1) epoch.
     j.emplace("delta_UT1_inst", m.delta_UT1_inst); // Diff between UT1 and Instrument time, seconds
     j.emplace("ERA_deg", m.ERA_deg);               // Earth Rotation Angle, degrees
     j.emplace("xp_as", m.xp_as);                   // Polar Motion x', in arcseconds.
@@ -209,10 +217,57 @@ void to_json(nlohmann::json& j, const EOP& m) {
 }
 
 void from_json(const nlohmann::json& j, EOP& m) {
-    m.t_inst = j.at("t_inst");                 // Instrument time, nanoseconds, UNIX epoch.
-    m.t_ut1 = j.at("t_ut1");                   // UT1 time, nanoseconds, J2000(UT1) epoch.
+    m.t_inst_ns = j.at("t_inst_ns");           // Instrument time, nanoseconds, UNIX epoch.
+    m.t_ut1_ns = j.at("t_ut1_ns");             // UT1 time, nanoseconds, J2000(UT1) epoch.
     m.delta_UT1_inst = j.at("delta_UT1_inst"); // Diff between UT1 and Instrument time, seconds
     m.ERA_deg = j.at("ERA_deg");               // Earth Rotation Angle, degrees
     m.xp_as = j.at("xp_as");                   // Polar Motion x', in arcseconds.
     m.yp_as = j.at("yp_as");                   // Polar Motion y', in arcseconds.
+}
+
+std::string EOP::to_string() const {
+    return fmt::format(
+        "EOP{{t_inst_ns: {}, t_ut1_ns: {}, delta_UT1_inst: {}, ERA_deg: {}, xp_as: {}, yp_as: {}}}",
+        t_inst_ns, t_ut1_ns, delta_UT1_inst, ERA_deg, xp_as, yp_as);
+}
+
+
+std::ostream& operator<<(std::ostream& os, const EOP& eop) {
+    os << eop.to_string();
+
+    return os;
+}
+
+std::string format_as(const EOP& eop) {
+    return eop.to_string();
+}
+
+void to_json(nlohmann::json& j, const BareEOP& eop) {
+    j = {};
+    j.emplace("t_inst_ns", eop.t_inst_ns);
+    j.emplace("delta_UT1_inst", eop.delta_UT1_inst);
+    j.emplace("xp_as", eop.xp_as);
+    j.emplace("yp_as", eop.yp_as);
+}
+
+void from_json(const nlohmann::json& j, BareEOP& eop) {
+    eop.t_inst_ns = j.at("t_inst_ns");
+    eop.delta_UT1_inst = j.at("delta_UT1_inst");
+    eop.xp_as = j.at("xp_as");
+    eop.yp_as = j.at("yp_as");
+}
+
+std::string BareEOP::to_string() const {
+    return fmt::format("BareEOP{{t_inst_ns: {}, delta_UT1_inst: {}, xp_as: {}, yp_as: {}}}",
+                       t_inst_ns, delta_UT1_inst, xp_as, yp_as);
+}
+
+std::string format_as(const BareEOP& eop) {
+    return eop.to_string();
+}
+
+std::ostream& operator<<(std::ostream& os, const BareEOP& eop) {
+    os << eop.to_string();
+
+    return os;
 }

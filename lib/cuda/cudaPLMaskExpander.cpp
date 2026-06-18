@@ -11,15 +11,14 @@
 #include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
 #include "n2k/pl_kernels.hpp"      // for launch_pl_mask_expander
 
-#include <algorithm>      // for fill_n, min
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>      // for min
 #include <array>          // for array
-#include <cassert>        // for assert
 #include <cstddef>        // for ptrdiff_t
 #include <driver_types.h> // for cudaEvent_t, CUevent_st, CUstream_st
-#include <fmt.hpp>        // for compile_string_to_view
 #include <functional>     // for function
 #include <memory>         // for allocator, shared_ptr, __shared_ptr_access
-#include <stdint.h>       // for int64_t
 #include <string>         // for basic_string, string
 #include <sys/types.h>    // for ulong
 #include <vector>         // for vector
@@ -112,7 +111,7 @@ cudaPLMaskExpander::cudaPLMaskExpander(kotekan::Config& config, const std::strin
                                           div_noremainder(num_dishes, 8), 64 / 8},
             std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"}, {2 * 64, 4, 1, 8, 1},
             *this),
-    pl_expanded_mask(pl_expanded_mask_name, "pl_mask",
+    pl_expanded_mask(pl_expanded_mask_name, "pl_mask_exp",
                      std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 64),
                                                    num_frequencies, num_polarizations,
                                                    div_noremainder(num_dishes, 8), 64 / 8},
@@ -184,10 +183,12 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
     kotekan::uint1x8_t* const pl_mask_memory = pl_mask.get_ndarray().data();
     const kotekan::uint1x8_t* const pl_expanded_mask_memory = pl_expanded_mask.get_ndarray().data();
 
+    // Tmin_in wraps around into actual array index to avoid overflows
     const std::ptrdiff_t Tsize_in = pl_mask.get_ndarray().extent(0);
-    const std::ptrdiff_t Tmin_in = pl_mask.get_read_valid().begin();
+    const std::ptrdiff_t Tmin_in = pl_mask.get_read_valid().begin() % Tsize_in;
+    // Tmin_out wraps around into actual array index to avoid overflows
     const std::ptrdiff_t Tsize_out = pl_expanded_mask.get_ndarray().extent(0);
-    const std::ptrdiff_t Tmin_out = pl_expanded_mask.get_write_valid().begin();
+    const std::ptrdiff_t Tmin_out = pl_expanded_mask.get_write_valid().begin() % Tsize_out;
     const std::ptrdiff_t Tout = pl_expanded_mask.get_write_valid().size() * 64;
 
     n2k::launch_pl_mask_expander((ulong*)pl_expanded_mask_memory, (const ulong*)pl_mask_memory,

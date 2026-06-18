@@ -44,6 +44,10 @@
  * @buffer out_buf Output stream with the calculated eigen-pairs.
  *         @buffer_format N2Buffer structured
  *         @buffer_metadata N2Metadata
+ * @buffer failed_buf Output stream to which buffers for which eigenvalues
+ *         cannot be computed are sent. Leave empty to drop these frames.
+ *         @buffer_format N2Buffer structured
+ *         @buffer_metadata N2Metadata
  *
  * @conf  num_elements     Int. The number of elements (i.e. inputs) in the
  *                         correlator data.
@@ -69,6 +73,10 @@
  * @conf  num_ev_conv      UInt. Test only the top `num_ev_conv` eigenpairs for convergence.
  * @conf  krylov           UInt, default 2. Size of the Krylov basis to use.
  * @conf  subspace         UInt, default 3. Number of subspace iteration substeps.
+ * @conf  num_blaze_workers UInt, default 0. If greater than 0, set the number of
+ *                          Blaze SMP worker threads used by this stage's
+ *                          intra-op parallelization (per-stage with the OpenMP
+ *                          backend; should match the size of cpu_affinity).
  *
  * @par Metrics
  * @metric kotekan_eigenN2iter_comp_time_seconds
@@ -82,6 +90,9 @@
  *         Eigenvalue convergence parameter of the last sample.
  * @metric kotekan_eigenN2iter_eigenvector_convergence
  *         Eigenvector convergence parameter of the last sample.
+ * @metric kotekan_eigenN2iter_num_failed_eigencalc
+ *         The number of failed eigenvector decompositions.
+ *
  *
  * @author Richard Shaw, Kiyoshi Masui
  */
@@ -95,7 +106,7 @@ public:
 
 private:
     // Update the prometheus metrics
-    void update_metrics(int freq_id, u_int64_t elapsed_time, const eig_t<cfloat>& eigpair,
+    void update_metrics(int freq_id, double elapsed_time, const eig_t<cfloat>& eigpair,
                         const EigConvergenceStats& stats);
 
     // Calculate the mask to apply from the object parameters
@@ -103,6 +114,7 @@ private:
 
     Buffer* in_buf;
     Buffer* out_buf;
+    Buffer* failed_buf;
 
     const size_t _num_eigenvectors;
 
@@ -113,6 +125,9 @@ private:
     const size_t _max_iterations;
     const size_t _krylov;
     const size_t _subspace;
+
+    /// Blaze SMP worker thread count for this stage
+    uint32_t _num_blaze_workers;
 
     /// Parameters for masking the matrix
     std::vector<size_t> _exclude_inputs;
@@ -127,6 +142,7 @@ private:
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& iterations_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvalue_convergence_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& eigenvector_convergence_metric;
+    kotekan::prometheus::Counter& num_failed_eigencalc;
 };
 
 #endif

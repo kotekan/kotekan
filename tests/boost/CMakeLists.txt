@@ -132,6 +132,9 @@ target_link_libraries(test_NDArray libexternal kotekan_metadata)
 add_executable(test_Symbol test_Symbol.cpp)
 target_link_libraries(test_Symbol libexternal kotekan_metadata)
 
+add_executable(test_div test_div.cpp)
+target_link_libraries(test_div PRIVATE kotekan_utils)
+
 add_executable(test_timeUtil test_timeUtil.cpp)
 target_link_libraries(test_timeUtil PRIVATE kotekan_utils)
 target_compile_definitions(test_timeUtil PRIVATE TEST_SCRIPT_DIR="${PROJECT_BINARY_DIR}")
@@ -168,8 +171,12 @@ if(HDF5_FOUND AND HighFive_FOUND)
                                PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/testdata")
 endif()
 
+add_executable(test_Telescope test_Telescope.cpp)
+target_link_libraries(test_Telescope PRIVATE -Wl,--whole-archive kotekan_utils kotekan_testing
+                                             -Wl,--no-whole-archive)
+
 add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)
-target_link_libraries(test_CHORDTelescope kotekan_utils)
+target_link_libraries(test_CHORDTelescope PRIVATE kotekan_utils)
 
 # test_N2FrameDesc - unit tests for N2FrameDesc product list features
 add_executable(test_N2FrameDesc test_N2FrameDesc.cpp)

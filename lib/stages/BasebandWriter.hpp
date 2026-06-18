@@ -52,6 +52,9 @@
  * @metric kotekan_writer_bytes_total
  *         Number of bytes written to files since the start of this stage
  *
+ * @note The on-disk file format is summarized in
+ *       docs/sphinx/user/file_formats/chime_archive.rst. Any change to the
+ *       file layout written by this stage should be reflected there.
  */
 class BasebandWriter : public kotekan::Stage {
 public:

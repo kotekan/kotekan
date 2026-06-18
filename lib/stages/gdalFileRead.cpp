@@ -1,33 +1,34 @@
-#include <Config.hpp>            // for Config
-#include <DataType.hpp>          // for string_to_type, type_to_string, DataType
-#include <Stage.hpp>             // for Stage
-#include <StageFactory.hpp>      // for REGISTER_KOTEKAN_STAGE
-#include <array>                 // for array
-#include <buffer.hpp>            // for Buffer
-#include <bufferContainer.hpp>   // for bufferContainer
-#include <cassert>               // for assert
-#include <chordMetadata.hpp>     // for chordMetadata, metadata_is_chord, get_chord_metadata
-#include <cpl_error.h>           // for CPLErr
-#include <cpl_port.h>            // for GUInt64
-#include <cstddef>               // for ptrdiff_t, size_t
-#include <cstdint>               // for int64_t, uint8_t
-#include <cstring>               // for strncpy
-#include <fmt.hpp>               // for compile_string_to_view
-#include <functional>            // for function
-#include <gdal.h>                // for GDALOpenEx, GEDTC_STRING, GDALAllRegister, GDAL_OF_MULT...
-#include <gdalFiles.hpp>         // for get_gdal_datatype, chord_metadata_version
-#include <gdal_priv.h>           // for GDALAttribute, GDALGroup, GDALMDArray, GDALDataset, GDA...
-#include <iomanip>               // for operator<<, setfill, setw
-#include <kotekanLogging.hpp>    // for DEBUG, FATAL_ERROR, INFO
-#include <memory>                // for shared_ptr, __shared_ptr_access, allocator, unique_ptr
-#include <metadata.hpp>          // for metadataObject
-#include <mutex>                 // for call_once, once_flag
-#include <prometheusMetrics.hpp> // for Metrics, Gauge
-#include <sstream>               // for basic_ostream, operator<<, basic_ostringstream, basic_o...
-#include <string>                // for basic_string, char_traits, string, operator<<, operator==
-#include <unistd.h>              // for gethostname, sleep
-#include <vector>                // for vector
-#include <visUtil.hpp>           // for current_time
+#include <Config.hpp>             // for Config
+#include <DataType.hpp>           // for string_to_type, type_to_string, DataType
+#include <Stage.hpp>              // for Stage
+#include <StageFactory.hpp>       // for REGISTER_KOTEKAN_STAGE
+#include <buffer.hpp>             // for Buffer
+#include <bufferContainer.hpp>    // for bufferContainer
+#include <chordMetadata.hpp>      // for chordMetadata, metadata_is_chord, get_chord_metadata
+#include <cpl_error.h>            // for CPLErr
+#include <cpl_port.h>             // for GUInt64
+#include <gdal.h>                 // for GDALOpenEx, GEDTC_STRING, GDALAllRegister, GDAL_OF_MULT...
+#include <gdalFiles.hpp>          // for get_gdal_datatype, chord_metadata_version
+#include <gdal_priv.h>            // for GDALAttribute, GDALGroup, GDALMDArray, GDALDataset, GDA...
+#include <kotekanLogging.hpp>     // for DEBUG, FATAL_ERROR, INFO
+#include <metadata.hpp>           // for metadataObject
+#include <prometheusMetrics.hpp>  // for Metrics, Gauge
+#include <unistd.h>               // for gethostname, sleep
+#include <visUtil.hpp>            // for current_time
+#include <array>                  // for array
+#include <cassert>                // for assert
+#include <cstddef>                // for ptrdiff_t, size_t
+#include <cstdint>                // for int64_t, uint8_t
+#include <cstring>                // for strncpy
+#include <functional>             // for function
+#include <iomanip>                // for operator<<, setfill, setw
+#include <memory>                 // for shared_ptr, __shared_ptr_access, allocator, unique_ptr
+#include <mutex>                  // for call_once, once_flag
+#include <sstream>                // for basic_ostream, operator<<, basic_ostringstream, basic_o...
+#include <string>                 // for basic_string, char_traits, string, operator<<, operator==
+#include <vector>                 // for vector
+
+#include "fmt.hpp"                // for compile_string_to_view
 
 using namespace gdal;
 
@@ -231,48 +232,6 @@ public:
                     assert(time_downsampling_fpga_shape.empty());
                     meta->set_time_downsampling_fpga(time_downsampling_fpga->ReadAsInt());
                     assert(meta->get_time_downsampling_fpga() > 0);
-                }
-            }
-
-            {
-                const auto ndishes = group->GetAttribute("ndishes");
-                if (ndishes) {
-                    const auto ndishes_shape = ndishes->GetDimensionsSize();
-                    assert(ndishes_shape.empty());
-                    meta->ndishes = ndishes->ReadAsInt();
-                    assert(meta->ndishes >= 0);
-                    assert(meta->ndishes <= CHORD_META_MAX_FREQ);
-                } else {
-                    meta->ndishes = -1;
-                }
-            }
-
-            {
-                const auto dish_index = group->OpenMDArray("dish_index");
-                if (dish_index) {
-                    const auto dimensions = dish_index->GetDimensions();
-                    assert(dimensions.size() == 2);
-                    assert(dimensions.at(0)->GetName() == "dishM");
-                    assert(dimensions.at(1)->GetName() == "dishN");
-                    meta->n_dish_locations_ns = dimensions.at(0)->GetSize();
-                    meta->n_dish_locations_ew = dimensions.at(1)->GetSize();
-                    assert(meta->n_dish_locations_ns >= 0);
-                    assert(meta->n_dish_locations_ew >= 0);
-                    const std::vector<GUInt64> arrayStartIdx{0, 0};
-                    const std::vector<std::size_t> count{std::size_t(meta->n_dish_locations_ns),
-                                                         std::size_t(meta->n_dish_locations_ew)};
-                    const auto datatype =
-                        GDALExtendedDataType::Create(get_gdal_datatype(*meta->dish_index));
-                    meta->dish_index =
-                        new dish_index_t[meta->n_dish_locations_ns * meta->n_dish_locations_ew];
-                    const auto success =
-                        dish_index->Read(arrayStartIdx.data(), count.data(), nullptr, nullptr,
-                                         datatype, meta->dish_index, meta->dish_index,
-                                         sizeof *meta->dish_index * meta->n_dish_locations_ns
-                                             * meta->n_dish_locations_ew);
-                    assert(success);
-                } else {
-                    meta->dish_index = nullptr;
                 }
             }
 

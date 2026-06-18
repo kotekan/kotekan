@@ -1,18 +1,20 @@
 #include "simpleAutocorr.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for DEBUG
+#include <stdint.h>             // for uint32_t
+#include <stdlib.h>             // for calloc, free
+#include <string.h>             // for memset
+#include <sys/types.h>          // for uint
+#include <functional>           // for bind, function
+#include <memory>               // for shared_ptr
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <functional>  // for bind, function
-#include <stdint.h>    // for uint32_t
-#include <stdlib.h>    // for calloc, free
-#include <string.h>    // for memset
-#include <sys/types.h> // for uint
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"  // for make_fengine_desc
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for DEBUG
+#include "fmt.hpp"              // for compile_string_to_view
+#include "NDArray.hpp"          // for GenericNDArray
 
 
 using kotekan::bufferContainer;
@@ -33,6 +35,15 @@ simpleAutocorr::simpleAutocorr(Config& config, const std::string& unique_name,
     spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 1024);
     spectrum_out = (float*)calloc(spectrum_length, sizeof(float));
     integration_length = config.get_default<int>(unique_name, "integration_length", 1024);
+
+    // Input: cfloat32 1-D fengine spectra. Output (power_corr) descriptor
+    // is *not* set here: rawFileWrite refuses NDArray-tagged buffers (it
+    // can only round-trip raw bytes, not the layout metadata), and the
+    // test pipeline captures buf_out through rawFileWrite. networkPowerStream
+    // asserts the expected power_corr layout on its consumer side, so the
+    // contract is still documented in code.
+    buf_in->set_frame_desc(
+        kotekan_airspy::make_fengine_desc(buf_in->frame_size / (2 * sizeof(float))));
 }
 
 simpleAutocorr::~simpleAutocorr() {
@@ -41,7 +52,7 @@ simpleAutocorr::~simpleAutocorr() {
 
 void simpleAutocorr::main_thread() {
     float* in_local;
-    uint* out_local = nullptr;
+    float* out_local = nullptr;
 
     float re, im;
     frame_in = 0;
@@ -65,12 +76,15 @@ void simpleAutocorr::main_thread() {
 
             if (integration_ct >= integration_length) {
                 if (out_loc == 0)
-                    out_local = (uint*)buf_out->wait_for_empty_frame(unique_name, frame_out);
+                    out_local = (float*)buf_out->wait_for_empty_frame(unique_name, frame_out);
                 for (int i = 0; i < spectrum_length; i++)
                     out_local[out_loc++] = spectrum_out[i];
-                out_local[out_loc++] = integration_ct;
+                // Trailing slot is the integration count, packed as uint32 in the
+                // same word-width slot as the floats. Matches the layout that
+                // networkPowerStream pulls back out via ``((uint*)frame)[...]``.
+                ((uint32_t*)out_local)[out_loc++] = integration_ct;
 
-                if (out_loc * sizeof(uint) == (uint32_t)buf_out->frame_size) {
+                if (out_loc * sizeof(float) == (uint32_t)buf_out->frame_size) {
                     buf_out->mark_frame_full(unique_name, frame_out);
                     frame_out = (frame_out + 1) % buf_out->num_frames;
                     out_loc = 0;

@@ -12,6 +12,23 @@ from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
 import pytest
 import subprocess
 
+# Optional debugging aid for hangs (e.g. in CI). When FAULTHANDLER_DUMP_INTERVAL
+# is set (seconds), every process that imports this conftest -- the pytest-xdist
+# controller and each worker -- periodically dumps the stack of all of its
+# threads. A stalled run then shows *where* it is stuck (collection, a fixture,
+# the xdist controller waiting on a worker, a test, teardown, ...), even when the
+# hang is not inside a test. Inert (no overhead) when the variable is unset.
+import os
+import sys
+import faulthandler
+
+faulthandler.enable()
+_fh_interval = os.environ.get("FAULTHANDLER_DUMP_INTERVAL")
+if _fh_interval:
+    faulthandler.dump_traceback_later(
+        float(_fh_interval), repeat=True, file=sys.__stderr__
+    )
+
 
 def pytest_addoption(parser):
     parser.addoption(

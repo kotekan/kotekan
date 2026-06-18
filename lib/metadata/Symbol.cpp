@@ -1,5 +1,6 @@
 #include <Symbol.hpp>
-#include <stdexcept> // for invalid_argument
+#include <json.hpp>   // for json, basic_json
+#include <stdexcept>  // for invalid_argument
 
 namespace kotekan {
 
@@ -43,4 +44,11 @@ std::ostream& operator<<(std::ostream& os, Symbol sym) {
     return os << sym.get_c_string();
 }
 
+void to_json(nlohmann::json& j, const Symbol& s) {
+    j = s.get_string();
+}
+
+void from_json(const nlohmann::json& j, Symbol& s) {
+    s = j.get<std::string>();
+}
 } // namespace kotekan

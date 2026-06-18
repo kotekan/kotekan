@@ -1,20 +1,20 @@
 #include "bufferDelay.hpp"
 
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"         // for Buffer
-#include "kotekanLogging.hpp" // for DEBUG
-#include "metadata.hpp"       // for metadataObject
-#include "visUtil.hpp"        // for frameID, modulo
+#include <stdint.h>            // for uint32_t, uint8_t
+#include <cassert>             // for assert
+#include <cstring>             // for memcpy
+#include <functional>          // for bind, function
+#include <memory>              // for shared_ptr, __shared_ptr_access
+#include <stdexcept>           // for runtime_error, invalid_argument
+#include <vector>              // for vector
 
-#include "fmt.hpp"  // for compile_string_to_view, format, fmt
-#include "json.hpp" // for json
-
-#include <cstring>    // for memcpy
-#include <functional> // for bind, function
-#include <memory>     // for shared_ptr, __shared_ptr_access
-#include <stdexcept>  // for runtime_error, invalid_argument
-#include <stdint.h>   // for uint32_t, uint8_t
-#include <vector>     // for vector
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "kotekanLogging.hpp"  // for DEBUG
+#include "metadata.hpp"        // for metadataObject
+#include "visUtil.hpp"         // for frameID, modulo
+#include "fmt.hpp"             // for compile_string_to_view, format, fmt
+#include "json.hpp"            // for json
 
 
 using nlohmann::json;
@@ -93,6 +93,12 @@ void bufferDelay::main_thread() {
             } else {
                 in_buf->pass_metadata(in_frame_release_id, out_buf, out_frame_id);
                 in_buf->swap_frames(in_frame_release_id, out_buf, out_frame_id);
+            }
+            const auto in_frame_desc = in_buf->get_frame_description();
+            if (in_frame_desc) {
+                out_buf->set_frame_desc(in_frame_desc);
+            } else {
+                assert(!out_buf->get_frame_description());
             }
 
             DEBUG("Reached maximum no. of frames to hold. Releasing oldest frame... in_frame_id: "

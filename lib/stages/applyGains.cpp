@@ -1,43 +1,42 @@
 #include "applyGains.hpp"
 
-#include "Config.hpp"            // for Config
+#include <assert.h>                  // for assert
+#include <highfive/H5DataSet.hpp>    // for DataSet, DataSet::getDataType, DataSet::getMemSpace
+#include <highfive/H5File.hpp>       // for File, NodeTraits::getDataSet, File::File
+#include <highfive/H5Selection.hpp>  // for SliceTraits::read
+#include <pthread.h>                 // for pthread_setaffinity_np
+#include <sched.h>                   // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <sys/stat.h>                // for stat
+#include <json.hpp>                  // for json, operator<, basic_json, input_adapter
+#include <chrono>                    // for operator""s
+#include <cmath>                     // for pow, abs
+#include <complex>                   // for operator*, complex, operator+, abs, conj, operator==
+#include <cstring>                   // for memcpy
+#include <exception>                 // for exception
+#include <functional>                // for bind, function, _1
+#include <memory>                    // for shared_ptr, operator==, __shared_ptr_access
+#include <set>                       // for set
+#include <stdexcept>                 // for invalid_argument, runtime_error
+#include <thread>                    // for thread, sleep_for
+#include <tuple>                     // for tuple, get, tie
+
+#include "Config.hpp"                // for Config
 #include "H5Support.hpp"         // IWYU pragma: keep
-#include "Hash.hpp"              // for operator<, Hash
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for datasetManager, state_id_t, dset_id_t
-#include "datasetState.hpp"      // for gainState, freqState, inputState
-#include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, DEBUG, INFO, ERROR
-#include "modp_b64.hpp"          // for modp_b64_decode, MODP_B64_ERROR, modp_b64_decode_len
-#include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
-#include "restClient.hpp"        // for restClient
-#include "visBuffer.hpp"         // for VisFrameView, VisField
-#include "visUtil.hpp"           // for modulo, cfloat, double_to_ts, ts_to_double, frameID
-
-#include "fmt.hpp"      // for compile_string_to_view, format, fmt, format_string
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>                // for max, copy
-#include <assert.h>                 // for assert
-#include <bits/chrono.h>            // for operator""s
-#include <cmath>                    // for pow, abs
-#include <complex>                  // for operator*, complex, operator+, abs, conj, operator==
-#include <cstring>                  // for memcpy
-#include <exception>                // for exception
-#include <functional>               // for bind, function, _1
-#include <highfive/H5DataSet.hpp>   // for DataSet, DataSet::getDataType, DataSet::getMemSpace
-#include <highfive/H5File.hpp>      // for File, NodeTraits::getDataSet, File::File
-#include <highfive/H5Selection.hpp> // for SliceTraits::read
-#include <memory>                   // for shared_ptr, operator==, __shared_ptr_access
-#include <pthread.h>                // for pthread_setaffinity_np
-#include <sched.h>                  // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <set>                      // for set
-#include <stdexcept>                // for invalid_argument, runtime_error
-#include <sys/stat.h>               // for stat
-#include <thread>                   // for thread, sleep_for
-#include <tuple>                    // for tuple, get, tie
+#include "Hash.hpp"                  // for operator<, Hash
+#include "StageFactory.hpp"          // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"                // for Buffer
+#include "bufferContainer.hpp"       // for bufferContainer
+#include "configUpdater.hpp"         // for configUpdater
+#include "datasetManager.hpp"        // for datasetManager, state_id_t, dset_id_t
+#include "datasetState.hpp"          // for gainState, freqState, inputState
+#include "kotekanLogging.hpp"        // for WARN, FATAL_ERROR, DEBUG, INFO, ERROR
+#include "modp_b64.hpp"              // for modp_b64_decode, MODP_B64_ERROR, modp_b64_decode_len
+#include "prometheusMetrics.hpp"     // for Metrics, Counter, Gauge
+#include "restClient.hpp"            // for restClient
+#include "visBuffer.hpp"             // for VisFrameView, VisField
+#include "visUtil.hpp"               // for modulo, cfloat, double_to_ts, ts_to_double, frameID
+#include "fmt.hpp"                   // for compile_string_to_view, format, fmt, format_string
+#include "gsl-lite.hpp"              // for span
 
 
 using nlohmann::json;

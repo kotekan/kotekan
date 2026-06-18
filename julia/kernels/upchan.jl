@@ -10,9 +10,6 @@ using Mustache
 
 const Memory = IndexSpaces.Memory
 
-# const card = "A30"
-const card = "A40"
-
 chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
 unchimify(x) = chimify(x)
 
@@ -75,9 +72,9 @@ end
 # Base.sinc isn't inlined, probably too complex
 @fastmath @inline sinc1(x) = iszero(x) ? one(x) : sinpi(x) / (pi * x)
 
-# sinc-Hanning weight function, eqn. (11), with `N = U+2`
+# sinc-Hanning weight function, eqn. (11), with `N = U+1`
 @fastmath @inline function Wkernel(s, M, U)
-    s′ = (2i32 * s - (M * U - 1i32)) / Float32(2 * (M * U + 1))  # normalized to (-1/2; +1/2)
+    s′ = (2i32 * s - (M * U - 1i32)) / Float32(2 * (M * U)) # normalized to (-1/2; +1/2)
     return cospi(s′)^2 * sinc1(M * s′)
 end
 
@@ -107,16 +104,7 @@ elseif U == 4
 elseif U == 8
     const W = 8
     const B = 4
-elseif U == 16
-    const W = 16
-    const B = 2
-elseif U == 32
-    const W = 16
-    const B = 2
-elseif U == 64
-    const W = 16
-    const B = 2
-elseif U == 128
+elseif 16 <= U <= 128
     const W = 16
     const B = 2
 else
@@ -443,7 +431,7 @@ const layout_F_registers = Layout([
     #Unpacked Cplx(:cplx, 1, C) => Register(:cplx, 1, C),
     #Unpacked Dish(:dish, 1 << 0, 2) => Register(:dish, 1, 2),
     #Unpacked Time(:time, 1 << 3, 2) => SIMD(:simd, 16, 2),
-    # eqn. (105)
+    # eqn. (105), (107)
     [Time(:time, 1 << (Ubits - 1 - bit), 2) => simd_threads[bit + 1] for bit in 0:min(5, Ubits - 1)]...,
     [Time(:time, 1 << (Ubits - 1 - bit), 2) => Register(:time, 1 << (Ubits - 1 - bit), 2) for bit in 6:(Ubits - 1)]...,
     Time(:time, U, idiv(Touter, U)) => Loop(:t_inner, U, idiv(Touter, U)),
@@ -566,7 +554,7 @@ function upchan!(emitter)
     apply!(emitter, :F_ringbuf => layout_F_ringbuf_registers, :(zero(Int4x8)))
 
     # Load gains
-    load!(emitter, :Gains => layout_G_registers, :G_memory => layout_G_memory)
+    load!(emitter, :Gain => layout_G_registers, :G_memory => layout_G_memory)
 
     # Calculate weights
     # sinc-Hanning weight function, eqn. (11), with `N=U`
@@ -714,9 +702,30 @@ function upchan!(emitter)
                             @assert false
                         end
                     )
-                    @assert 0i32 ≤ timehi0 < $(Int32(2^m))
-                    @assert 0i32 ≤ timehi1 < $(Int32(2^m))
-                    @assert 0i32 ≤ freqlo < $(Int32(2^m))
+                    # Check indexing at build time
+                    $(begin
+                          if U == 2
+                              maxtimehi0 = 1i32 * 0i32
+                              maxtimehi1 = 1i32 * 1i32
+                              maxfreqlo = 1i32
+                          elseif U == 4
+                              maxtimehi0 = 2i32 * 0i32 + 1i32
+                              maxtimehi1 = 1i32 * 1i32 + 1i32
+                              maxfreqlo = 1i32 + 2i32
+                          elseif U ≥ 8
+                              maxtimehi0 = 4i32 * 0i32 + 2i32 + 1i32
+                              maxtimehi1 = 4i32 * 1i32 + 2i32 + 1i32
+                              maxfreqlo = 1i32 + 2i32 + 4i32
+                          else
+                              @assert false
+                          end
+                          @assert maxtimehi0 < 2^m
+                          @assert maxtimehi1 < 2^m
+                          @assert maxfreqlo < 2^m
+                          quote
+                          end
+                      end
+                    )
                     # Sparsity pattern, a Kronecker δ in the spectator indices
                     delta0 = dish == dish_in0
                     delta1 = dish == dish_in1
@@ -782,24 +791,42 @@ function upchan!(emitter)
                                     timelo0 = 2i32 * 0i32 + 1i32 * thread1
                                     timelo1 = 2i32 * 1i32 + 1i32 * thread1
                                 end
-                            elseif U == 64
+                            elseif U ≥ 64
+                                # For U > 64, time0 is a spectator index, and what we call here "time0" is really "time1"
                                 quote
                                     timelo0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
                                     timelo1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
-                                end
-                            elseif U == 128
-                                quote
-                                    timelo0 = 8i32 * 0i32 + 4i32 * thread1 + 2i32 * thread0
-                                    timelo1 = 8i32 * 1i32 + 4i32 * thread1 + 2i32 * thread0
                                 end
                             else
                                 @assert false
                             end
                         )
                         freqlo = 1i32 * thread2 + 2i32 * thread4 + 4i32 * thread3
-                        @assert 0i32 ≤ timelo0 < $(Int32(2^n))
-                        @assert 0i32 ≤ timelo1 < $(Int32(2^n))
-                        @assert 0i32 ≤ freqlo < $(Int32(2^m))
+                        # Check indexing at build time
+                        $(begin
+                              if U == 16
+                                  maxtimelo0 = 1i32 * 0i32
+                                  maxtimelo1 = 1i32 * 1i32
+                              elseif U == 32
+                                  maxtimelo0 = 2i32 * 0i32 + 1i32
+                                  maxtimelo1 = 2i32 * 1i32 + 1i32
+                              elseif U ≥ 64
+                                  maxtimelo0 = 4i32 * 0i32 + 2i32 + 1i32
+                                  maxtimelo1 = 4i32 * 1i32 + 2i32 + 1i32
+                              else
+                                  @assert false
+                              end
+                              maxfreqlo = 1i32 + 2i32 + 4i32
+                              if !(maxtimelo1 < 2^n)
+                                  @show U k m n maxtimelo0 maxtimelo1 maxfreqlo
+                              end
+                              @assert maxtimelo0 < 2^n
+                              @assert maxtimelo1 < 2^n
+                              @assert maxfreqlo < 2^m
+                              quote
+                              end
+                          end
+                          )
                         (Γ²0, Γ²1) = (
                             conj(cispi(2i32 * timelo0 * freqlo % $(Int32(2 * 2^(m + n))) / $(Float32(2^(m + n))))),
                             conj(cispi(2i32 * timelo1 * freqlo % $(Int32(2 * 2^(m + n))) / $(Float32(2^(m + n))))),
@@ -868,17 +895,11 @@ function upchan!(emitter)
                                 dish_in0 = 1i32 * thread0
                                 dish_in1 = 1i32 * thread0
                             end
-                        elseif U == 64
+                        elseif U ≥ 64
+                            # For U > 64, time0 is a spectator index, and what we call here "time0" is really "time1"
                             quote
                                 timelo0 = 4i32 * 0i32 + 2i32 * thread1 + 1i32 * thread0
                                 timelo1 = 4i32 * 1i32 + 2i32 * thread1 + 1i32 * thread0
-                                dish_in0 = 0i32
-                                dish_in1 = 0i32
-                            end
-                        elseif U == 128
-                            quote
-                                timelo0 = 8i32 * 0i32 + 4i32 * thread1 + 2i32 * thread0
-                                timelo1 = 8i32 * 1i32 + 4i32 * thread1 + 2i32 * thread0
                                 dish_in0 = 0i32
                                 dish_in1 = 0i32
                             end
@@ -911,9 +932,41 @@ function upchan!(emitter)
                             @assert false
                         end
                     )
-                    @assert 0i32 ≤ timelo0 < $(Int32(2^n))
-                    @assert 0i32 ≤ timelo1 < $(Int32(2^n))
-                    @assert 0i32 ≤ freqhi < $(Int32(2^n))
+                    # Check indexing at build time
+                    $(begin
+                          if U ≤ 8
+                              maxtimelo0 = 0i32
+                              maxtimelo1 = 0i32
+                          elseif U == 16
+                              maxtimelo0 = 1i32 * 0i32
+                              maxtimelo1 = 1i32 * 1i32
+                          elseif U == 32
+                              maxtimelo0 = 2i32 * 0i32 + 1i32
+                              maxtimelo1 = 2i32 * 1i32 + 1i32
+                          elseif U ≥ 64
+                              maxtimelo0 = 4i32 * 0i32 + 2i32 + 1i32
+                              maxtimelo1 = 4i32 * 1i32 + 2i32 + 1i32
+                          else
+                              @assert false
+                          end
+                          if U ≤ 8
+                              maxfreqhi = 0i32
+                          elseif U == 16
+                              maxfreqhi = 1i32
+                          elseif U == 32
+                              maxfreqhi = 1i32 + 2i32
+                          elseif U ≥ 64
+                              maxfreqhi = 1i32 + 2i32 + 4i32
+                          else
+                              @assert false
+                          end
+                          @assert maxtimelo0 < 2^n
+                          @assert maxtimelo1 < 2^n
+                          @assert maxfreqhi < 2^n
+                          quote
+                          end
+                      end
+                      )
                     # Sparsity pattern, a Kronecker δ in the spectator indices
                     delta0 = dish == dish_in0
                     delta1 = dish == dish_in1
@@ -935,9 +988,6 @@ function upchan!(emitter)
     merge!(emitter, :Γ³, [:Γ³re, :Γ³im], Cplx(:cplx, 1, C) => Register(:cplx, 1, C))
     # Why do we need this? `mma_row_col_m16n8k16_f16!` should skip this tag if not present.
     merge!(emitter, :Γ³, [:Γ³, :Γ³], Dish(:dish, 1, 2) => Register(:dish, 1, 2))
-    for bit in 5:Ubits
-        merge!(emitter, :Γ³, [:Γ³, :Γ³], make_register_pair(dish_polr[bit + 1]))
-    end
     if U ≥ 128
         merge!(emitter, :Γ³, [:Γ³, :Γ³], Time(:time, 1, 2) => Register(:time, 1, 2))
     end
@@ -1080,47 +1130,47 @@ function upchan!(emitter)
                     )
 
                     # Step 4: Compute E2 from E
-                    #TODO # m = M-1
-                    #TODO split!(emitter, [Symbol(:W_m, m) for m in 0:(M - 1)], :Wpfb, Register(:mtap, 1, M))
-                    #TODO apply!(emitter, :E2, [:E, Symbol(:W_m, M - 1)], (E, W) -> :($(isodd(M - 1) ? :(-$W) : :(+$W)) * $E))
-                    #TODO # m ∈ 0:M-2
-                    #TODO # NOTE: For some reason, this `unrolled_loop!`
-                    #TODO # construct calls `widen2!` on all mtaps, not just the
-                    #TODO # ones selected in the current unrolled loop
-                    #TODO # iteration. This makes `unrolled_loop!` unusable, and
-                    #TODO # we have to roll our own.
-                    #TODO # unrolled_loop!(emitter, MTap(:mtap, 1, M - 1) => UnrolledLoop(:mtap, 1, M - 1)) do emitter
-                    #TODO #     widen2!(
-                    #TODO #         emitter,
-                    #TODO #         :E_ringbuf,
-                    #TODO #         :F_ringbuf,
-                    #TODO #         SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
-                    #TODO #         SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
-                    #TODO #         newtype=FloatValue,
-                    #TODO #         swapped_withoffset=true,
-                    #TODO #     )
-                    #TODO #     delete!(emitter.environment[:E_ringbuf], MTap(:mtap, 1, M - 1))
-                    #TODO #     apply!(emitter, :E2, [:E2, :E_ringbuf, :W1], (E2, E, W1) -> :(muladd($W1, $E, $E2)))
-                    #TODO #     return nothing
-                    #TODO # end
-                    #TODO split!(emitter, [Symbol(:F_ringbuf_m, m) for m in 0:(M - 2)], :F_ringbuf, Register(:mtap, 1, M - 1))
-                    #TODO for m in 0:(M - 2)
-                    #TODO     widen2!(
-                    #TODO         emitter,
-                    #TODO         Symbol(:E_ringbuf_m, m),
-                    #TODO         Symbol(:F_ringbuf_m, m),
-                    #TODO         SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
-                    #TODO         SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
-                    #TODO         newtype=FloatValue,
-                    #TODO         newtype=FloatValue,
-                    #TODO     )
-                    #TODO     apply!(
-                    #TODO         emitter,
-                    #TODO         :E2,
-                    #TODO         [:E2, Symbol(:E_ringbuf_m, m), Symbol(:W_m, m)],
-                    #TODO         (E2, E, W) -> :(muladd($(isodd(m) ? :(-$W) : :(+$W)), $E, $E2)),
-                    #TODO     )
-                    #TODO end
+                    # # m = M-1
+                    # split!(emitter, [Symbol(:W_m, m) for m in 0:(M - 1)], :Wpfb, Register(:mtap, 1, M))
+                    # apply!(emitter, :E2, [:E, Symbol(:W_m, M - 1)], (E, W) -> :($(isodd(M - 1) ? :(-$W) : :(+$W)) * $E))
+                    # # m ∈ 0:M-2
+                    # # NOTE: For some reason, this `unrolled_loop!`
+                    # # construct calls `widen2!` on all mtaps, not just the
+                    # # ones selected in the current unrolled loop
+                    # # iteration. This makes `unrolled_loop!` unusable, and
+                    # # we have to roll our own.
+                    # # unrolled_loop!(emitter, MTap(:mtap, 1, M - 1) => UnrolledLoop(:mtap, 1, M - 1)) do emitter
+                    # #     widen2!(
+                    # #         emitter,
+                    # #         :E_ringbuf,
+                    # #         :F_ringbuf,
+                    # #         SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
+                    # #         SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
+                    # #         newtype=FloatValue,
+                    # #         swapped_withoffset=true,
+                    # #     )
+                    # #     delete!(emitter.environment[:E_ringbuf], MTap(:mtap, 1, M - 1))
+                    # #     apply!(emitter, :E2, [:E2, :E_ringbuf, :W1], (E2, E, W1) -> :(muladd($W1, $E, $E2)))
+                    # #     return nothing
+                    # # end
+                    # split!(emitter, [Symbol(:F_ringbuf_m, m) for m in 0:(M - 2)], :F_ringbuf, Register(:mtap, 1, M - 1))
+                    # for m in 0:(M - 2)
+                    #     widen2!(
+                    #         emitter,
+                    #         Symbol(:E_ringbuf_m, m),
+                    #         Symbol(:F_ringbuf_m, m),
+                    #         SIMD(:simd, 4, 2) => Register(:cplx, 1, C),
+                    #         SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
+                    #         newtype=FloatValue,
+                    #         newtype=FloatValue,
+                    #     )
+                    #     apply!(
+                    #         emitter,
+                    #         :E2,
+                    #         [:E2, Symbol(:E_ringbuf_m, m), Symbol(:W_m, m)],
+                    #         (E2, E, W) -> :(muladd($(isodd(m) ? :(-$W) : :(+$W)), $E, $E2)),
+                    #     )
+                    # end
                     apply!(emitter, :E2, [:E], (E,) -> :(zero($E)))
                     unrolled_loop!(emitter, MTap(:mtap, 1, M) => UnrolledLoop(:mtap, 1, M)) do emitter
                         select!(emitter, :W_mtap, :Wpfb, Register(:mtap, 1, M) => UnrolledLoop(:mtap, 1, M))
@@ -1364,7 +1414,7 @@ function upchan!(emitter)
 
                     # Step 7: Compute E5 by applying gains to E4
                     # TODO: Combine gains and last FFT step
-                    apply!(emitter, :E5, [:E4, :Gains], (E4, G) -> :($G * $E4))
+                    apply!(emitter, :E5, [:E4, :Gain], (E4, G) -> :($G * $E4))
 
                     # Step 8: Compute F̄_out by quantizing E5
                     apply!(emitter, :E5, [:E5], (E5,) -> :(clamp($E5, Float16x2(-7, -7), Float16x2(+7, +7))))
@@ -1504,7 +1554,7 @@ println("[Creating upchan kernel...]")
 const upchan_kernel = make_upchan_kernel()
 println("[Done creating upchan kernel]")
 
-open("output-$(card)/upchan_$(setup)_U$(U).jl", "w") do fh
+open("output/upchan_$(setup)_U$(U).jl", "w") do fh
     println(fh, "# Julia source code for the CUDA upchannelizer")
     println(fh, "# This file has been generated automatically by `upchan.jl`.")
     println(fh, "# Do not modify this file, your changes will be lost.")
@@ -1538,7 +1588,7 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
     shmem_size = idiv(shmem_bytes, 4)
     @assert num_warps * num_blocks_per_sm ≤ 32 # (???)
     @assert shmem_bytes ≤ 100 * 1024 # NVIDIA A10/A40 have 100 kB shared memory
-    kernel = @cuda launch = false minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm upchan(
+    kernel = @cuda launch = false cap = compute_capability ptx = ptx_compat minthreads = (num_threads, num_warps) blocks_per_sm = num_blocks_per_sm upchan(
         Int32(0),
         Int32(0),
         Int32(0),
@@ -1755,9 +1805,9 @@ function main(; compile_only::Bool=false, nruns::Int=0, run_selftest::Bool=false
 end
 
 function fix_ptx_kernel()
-    ptx = read("output-$(card)/upchan_$(setup)_U$(U).ptx", String)
+    ptx = read("output/upchan_$(setup)_U$(U).ptx", String)
     ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
-    open("output-$(card)/upchan_$(setup)_U$(U).ptx", "w") do fh
+    open("output/upchan_$(setup)_U$(U).ptx", "w") do fh
         println(fh, "// PTX kernel code for the CUDA upchannelizer")
         println(fh, "// This file has been generated automatically by `upchan.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
@@ -1765,17 +1815,23 @@ function fix_ptx_kernel()
         write(fh, ptx)
         return nothing
     end
-    sass = read("output-$(card)/upchan_$(setup)_U$(U).sass", String)
-    open("output-$(card)/upchan_$(setup)_U$(U).sass", "w") do fh
+    open("output/upchan_$(setup)_U$(U).sass", "w") do fh
         println(fh, "// SASS kernel code for the CUDA upchannelizer")
         println(fh, "// This file has been generated automatically by `upchan.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
         println(fh)
-        write(fh, sass)
+        CUDA.code_sass(fh, upchan, Tuple{Int32, Int32, Int32, Int32, Int32, Int32,
+                                         CuDeviceVector{Float16x2,1},
+                                         CuDeviceVector{Int4x8,1},
+                                         CuDeviceVector{Int4x8,1},
+                                         CuDeviceVector{Int32,1}};
+                       cap=compute_capability, ptx=ptx_compat,
+                       minthreads=(num_threads, num_warps),
+                       blocks_per_sm=num_blocks_per_sm)
         return nothing
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-    open("output-$(card)/upchan_$(setup)_U$(U).yaml", "w") do fh
+    open("output/upchan_$(setup)_U$(U).yaml", "w") do fh
         println(fh, "# Metadata for the CUDA upchannelizer")
         println(fh, "# This file has been generated automatically by `upchan.jl`.")
         println(fh, "# Do not modify this file, your changes will be lost.")
@@ -1983,22 +2039,16 @@ function fix_ptx_kernel()
             ],
         ),
     )
-    write("output-$(card)/upchan_$(setup)_U$(U).cxx", cxx)
+    write("output/upchan_$(setup)_U$(U).cxx", cxx)
     return nothing
 end
 
 if CUDA.functional()
     # Output kernel
     println("Writing PTX code...")
-    open("output-$(card)/upchan_$(setup)_U$(U).ptx", "w") do fh
+    open("output/upchan_$(setup)_U$(U).ptx", "w") do fh
         redirect_stdout(fh) do
             @device_code_ptx main(; compile_only=true, silent=true)
-        end
-    end
-    println("Writing SASS code...")
-    open("output-A40/upchan_$(setup)_U$(U).sass", "w") do fh
-        redirect_stdout(fh) do
-            @device_code_sass main(; compile_only=true, silent=true)
         end
     end
     fix_ptx_kernel()

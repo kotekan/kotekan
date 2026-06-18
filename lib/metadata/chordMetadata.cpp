@@ -5,14 +5,13 @@
 
 #include <algorithm>   // for copy_n, copy, max
 #include <cstring>     // for memset
-#include <string.h>    // for strncmp, strncpy, memset, strnlen
+#include <json.hpp>    // for operator==, json
+#include <string.h>    // for strncmp, strnlen, memset, strncpy
 #include <type_traits> // for is_pod_v
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, chordMetadata);
 
-chordMetadata::chordMetadata() :
-    type(kotekan::unknown_type), dims(-1), offset(0), ndishes(-1), n_dish_locations_ew(-1),
-    n_dish_locations_ns(-1), dish_index(nullptr) {
+chordMetadata::chordMetadata() : type(kotekan::unknown_type), dims(-1), offset(0) {
     name[0] = '\0';
     for (int d = 0; d < CHORD_META_MAX_DIM; ++d) {
         dim[d] = -1;
@@ -52,7 +51,6 @@ bool chordMetadata::operator==(const chordMetadata& other) const {
     if (offset != other.offset)
         return false;
 
-    // TODO: this misses dish_positions etc
     return metadata == other.metadata;
 }
 
@@ -112,18 +110,17 @@ void chordMetadata::check_frame_desc(
     }
 
     if (failed)
-        FATAL_ERROR("Incosistent array description between CHORDMetadata and FrameDesc");
+        FATAL_ERROR("Inconsistent array description between CHORDMetadata and FrameDesc");
 }
 
 void chordMetadata::set_from_frame_desc(
     const std::shared_ptr<const kotekan::GenericNDArray>& frame_desc) {
+    set_name(frame_desc->get_quantity_name());
     this->type = frame_desc->get_value_datatype();
     this->dims = frame_desc->get_rank();
     for (int d = this->dims - 1; d >= 0; --d) {
-        strncpy(this->dim_name[d], frame_desc->get_dimname(d).get_c_string(),
-                sizeof this->dim_name[d]);
-        this->dim_scaling[d] = frame_desc->get_dimscaling(d);
-        this->dim[d] = frame_desc->get_extent(d);
+        set_array_dimension(d, frame_desc->get_extent(d), frame_desc->get_dimname(d),
+                            frame_desc->get_dimscaling(d));
         this->stride[d] = frame_desc->get_stride(d);
     }
 }

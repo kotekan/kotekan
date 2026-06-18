@@ -1,0 +1,18 @@
+# -*-yaml-*-
+
+# CHIME generate initial conditions for benchmarks
+
+################################################################################
+
+# Stages
+
+generate_voltage_chime:
+    kotekan_stage: inventVoltageCHIME
+{% for id in range(16) %}   # num_frequencies = 16
+    voltage_{{ id }}: host_voltage_buffer_{{ id }}
+{% endfor %}
+    input_kind: random
+    reuse_frames: true          # otherwise we're too slow
+    startup_buffer_names: ["host_frb2_weights_buffer"]
+    out_frame_first: 30
+    out_frame_every: 10

@@ -1,11 +1,14 @@
-#include "DataType.hpp" // for operator<<
-#include "Symbol.hpp"   // for operator<<, Symbol
+#include "DataType.hpp"  // for DataType, GetType_t, operator<<
+#include "FrameDesc.hpp" // for FrameDesc
+#include "Symbol.hpp"    // for Symbol, operator<<, operator!=, operator==
 
 #include <NDArray.hpp>
-#include <cassert>   // for assert
-#include <sstream>   // for basic_ostringstream
-#include <stdexcept> // for runtime_error
-#include <string>    // for operator<<, basic_string, string
+#include <cassert>     // for assert
+#include <cstring>     // for memcmp
+#include <sstream>     // for basic_ostringstream
+#include <stdexcept>   // for runtime_error
+#include <string>      // for operator<<, basic_string, string
+#include <sys/types.h> // for ssize_t
 
 namespace kotekan {
 
@@ -79,7 +82,7 @@ GenericNDArray::create(const DataType value_datatype, const Symbol quantity_name
                        const std::vector<std::ptrdiff_t>& extents,
                        const std::vector<Symbol>& dimnames,
                        const std::vector<std::ptrdiff_t>& dimscalings, void* data) {
-    assert(extents.size() == dimnames.size());
+    assert(extents.size() == dimnames.size() && "Sizes of extents and dimnames must aggree");
     return make_NDArray<DataType(end_type - 1), max_rank>(value_datatype, quantity_name, extents,
                                                           dimnames, dimscalings, data);
 }
@@ -111,7 +114,7 @@ bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
         bool is_simple_stride = true;
         auto const& strides = this->get_strides();
         auto const& extents = this->get_extents();
-        for (ssize_t d = 0, simple_stride = 1; d < ssize_t(strides.size()); ++d) {
+        for (ssize_t d = ssize_t(strides.size()) - 1, simple_stride = 1; d >= 0; --d) {
             if (simple_stride != strides[d]) {
                 is_simple_stride = false;
                 break;
@@ -122,7 +125,7 @@ bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
             std::ostringstream buf;
             buf << "NDArray " << this->get_quantity_name()
                 << " does not have simple stride. Strides " << format_vector(strides)
-                << " are no simple for extents " << format_vector(extents)
+                << " are not simple for extents " << format_vector(extents)
                 << " and cannot be compared.";
             // cannot use ERROR since I don't derive from kotekan_loging
             throw std::runtime_error(buf.str());

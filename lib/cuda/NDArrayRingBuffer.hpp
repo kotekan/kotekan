@@ -1,40 +1,40 @@
 #ifndef NDARRAYRINGBUFFER_HPP
 #define NDARRAYRINGBUFFER_HPP
 
-#include "DataType.hpp"            // for uint_from_element_bits, operator<<, GetType_t, isfinite
-#include "NDArray.hpp"             // for NDArray
-#include "Symbol.hpp"              // for Symbol, operator==, strings_to_symbols, operator<<
-#include "buffer.hpp"              // for GenericBuffer
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chordMetadata.hpp"       // for chordMetadata, get_chord_metadata
-#include "cudaCommand.hpp"         // for cudaCommand
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "div.hpp"                 // for mod, div_noremainder
-#include "kotekanLogging.hpp"      // for FATAL_ERROR, ERROR, kotekanLogging
-#include "metadata.hpp"            // for metadataObject
-#include "ringbuffer.hpp"          // for RingBuffer
+#include <cuda_runtime_api.h>       // for cudaMemcpy2D, cudaMemset2DAsync
+#include <driver_types.h>           // for CUstream_st, cudaMemcpyKind
+#include <algorithm>                // for find_if, fill_n
+#include <array>                    // for array
+#include <cassert>                  // for assert
+#include <cmath>                    // for isfinite
+#include <cstddef>                  // for ptrdiff_t, size_t
+#include <cstdint>                  // for uint8_t
+#include <cstring>                  // for memcmp, memcpy, memset
+#include <functional>               // for function
+#include <iomanip>                  // for setfill, operator<<, setw
+#include <iostream>                 // for basic_ostream, operator<<, ostream, ostringstream
+#include <memory>                   // for shared_ptr, __shared_ptr_access, allocator
+#include <optional>                 // for optional
+#include <sstream>                  // for basic_ostringstream
+#include <string>                   // for basic_string, char_traits, string, operator+, operator<<
+#include <type_traits>              // for is_floating_point_v, is_same_v
+#include <utility>                  // for pair
+#include <vector>                   // for vector
 
-#include <algorithm>          // for find_if, fill_n
-#include <array>              // for array
-#include <cassert>            // for assert
-#include <cmath>              // for isfinite
-#include <cstddef>            // for ptrdiff_t, size_t
-#include <cstdint>            // for uint8_t
-#include <cstring>            // for memcmp, memcpy, memset
-#include <cuda_runtime_api.h> // for cudaMemcpy2D, cudaMemset2DAsync
-#include <driver_types.h>     // for CUstream_st, cudaMemcpyKind
-#include <fmt.hpp>            // for compile_string_to_view
-#include <functional>         // for function
-#include <iomanip>            // for setfill, operator<<, setw
-#include <iostream>           // for basic_ostream, operator<<, ostream, cerr, dec, hex
-#include <memory>             // for shared_ptr, __shared_ptr_access, allocator
-#include <optional>           // for optional
-#include <sstream>            // for basic_ostringstream
-#include <string>             // for basic_string, char_traits, string, operator+, operator<<
-#include <type_traits>        // for is_floating_point_v, is_same_v
-#include <utility>            // for pair
-#include <vector>             // for vector
+#include "DataType.hpp"             // for uint_from_element_bits, operator<<, GetType_t, isfinite
+#include "NDArray.hpp"              // for NDArray
+#include "Symbol.hpp"               // for Symbol, operator==, strings_to_symbols, operator<<
+#include "buffer.hpp"               // for GenericBuffer
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "chordMetadata.hpp"        // for chordMetadata, get_chord_metadata
+#include "cudaCommand.hpp"          // for cudaCommand
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "div.hpp"                  // for mod, div_noremainder
+#include "kotekanLogging.hpp"       // for FATAL_ERROR, ERROR, kotekanLogging
+#include "metadata.hpp"             // for metadataObject
+#include "ringbuffer.hpp"           // for RingBuffer
+#include "fmt.hpp"                  // for compile_string_to_view, formatter
 
 using kotekan::div_noremainder;
 using kotekan::mod;
@@ -49,6 +49,18 @@ using kotekan::mod;
 //     overlap = read - claimed
 struct read_descriptor_t {
     std::ptrdiff_t claimed, read;
+
+    friend std::ostream& operator<<(std::ostream& os, const read_descriptor_t& desc);
+};
+
+template<>
+struct fmt::formatter<read_descriptor_t> : fmt::formatter<std::string> {
+    template<typename T>
+    auto format(const read_descriptor_t& desc, T& ctx) const {
+        std::ostringstream os;
+        os << desc;
+        return fmt::formatter<std::string>::format(os.str(), ctx);
+    }
 };
 
 // The "valid" data in a ringbuffer, i.e. the data that can be either
@@ -76,6 +88,18 @@ public:
     }
     std::ptrdiff_t size() const noexcept {
         return end() - begin();
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const extent_t& ext);
+};
+
+template<>
+struct fmt::formatter<extent_t> : fmt::formatter<std::string> {
+    template<typename T>
+    auto format(const extent_t& ext, T& ctx) const {
+        std::ostringstream os;
+        os << ext;
+        return fmt::formatter<std::string>::format(os.str(), ctx);
     }
 };
 
@@ -542,9 +566,8 @@ public:
 
     // Check an NDArray ring buffer for poison
     void check_for_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
-                          const std::ptrdiff_t F_max) {
-        assert(get_write_valid().size() > 0);
-
+                          const std::ptrdiff_t F_max, const std::ptrdiff_t T_min,
+                          const std::ptrdiff_t T_max) const {
         T poison;
         // The cast suppresses a bogus -Wclass-memaccess on GCC.
         std::memset(static_cast<void*>(&poison), poison_value, sizeof poison);
@@ -567,9 +590,7 @@ public:
         assert(T_ringbuf > 0);
         const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
         assert(T_stride > 0);
-        const std::ptrdiff_t T_min = get_write_valid().begin();
         assert(T_min >= 0);
-        const std::ptrdiff_t T_max = get_write_valid().end();
         assert(T_max > T_min);
         const std::ptrdiff_t T_length = T_max - T_min;
         assert(T_length > 0);
@@ -641,7 +662,26 @@ public:
         assert(!found_error);
     }
 
-    void check_for_poison(const std::uint8_t poison_value) {
+    void check_input_for_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
+                                const std::ptrdiff_t F_max) const {
+        assert(get_read_valid().size() > 0);
+        const std::ptrdiff_t T_min = get_read_valid().begin();
+        const std::ptrdiff_t T_max = get_read_valid().end();
+        check_for_poison(poison_value, F_min, F_max, T_min, T_max);
+    }
+
+    void check_for_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
+                          const std::ptrdiff_t F_max) const {
+        assert(get_write_valid().size() > 0);
+        const std::ptrdiff_t T_min = get_write_valid().begin();
+        const std::ptrdiff_t T_max = get_write_valid().end();
+        check_for_poison(poison_value, F_min, F_max, T_min, T_max);
+    }
+
+    void check_input_for_poison(const std::uint8_t poison_value) const {
+        check_input_for_poison(poison_value, 0, get_ndarray().get_extent(1));
+    }
+    void check_for_poison(const std::uint8_t poison_value) const {
         check_for_poison(poison_value, 0, get_ndarray().get_extent(1));
     }
 

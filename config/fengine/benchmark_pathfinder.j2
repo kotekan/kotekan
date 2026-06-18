@@ -7,14 +7,11 @@
 ################################################################################
 
 ---
-log_level: warn
-
-fengine_num_frames: 1
-fengine_repeat_count: 100
-
-skip_julia: true
+log_level: info
 
 base_dir: data/fengine_benchmark_pathfinder # unused
+prefix_hostname: false
+prefix_host_rank: true
 
 {% include "include/defs.j2" %}
 {% include "include/fengine_pathfinder.j2" %}
@@ -25,8 +22,6 @@ base_dir: data/fengine_benchmark_pathfinder # unused
 {% include "include/upchan_pathfinder.j2" %}
 {% include "include/frb_pathfinder.j2" %}
 
-{% include "include/sources_pathfinder.j2" %}
-{% include "include/fengine_init.j2" %}
-
+{% include "include/invent_voltage.j2" %}
 {% include "include/output_benchmark.j2" %}
 ...

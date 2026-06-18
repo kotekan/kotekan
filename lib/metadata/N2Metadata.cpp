@@ -1,10 +1,10 @@
 #include "N2Metadata.hpp"
 
-#include "N2FrameDesc.hpp"
-#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
-#include "timeUtil.hpp" // for EOP()
+#include <json.hpp>         // for json
 
-#include <string.h> // for size_t, memset
+#include "N2FrameDesc.hpp"  // for N2FrameDesc
+#include "factory.hpp"      // for REGISTER_TYPE_WITH_FACTORY
+#include "timeUtil.hpp"     // for EOP
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, N2Metadata);
 N2Metadata::N2Metadata() = default;
@@ -30,6 +30,8 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
 
     n_valid_fpga_ticks = fmt->n_valid_fpga_ticks;
     n_rfi_fpga_ticks = fmt->n_rfi_fpga_ticks;
+    n_rfi_only_fpga_ticks = fmt->n_rfi_only_fpga_ticks;
+    n_pl_fpga_ticks = fmt->n_pl_fpga_ticks;
 
     abs_time_idx = fmt->abs_time_idx;
     freq_id = fmt->freq_id; // this is an int in chordMetadata, maybe change later
@@ -39,8 +41,13 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
     bin_eop = fmt->bin_eop;
     bin_start_ERA_deg = fmt->bin_start_ERA_deg;
     bin_end_ERA_deg = fmt->bin_end_ERA_deg;
-    bin_start_LAST = fmt->bin_start_LAST;
-    bin_end_LAST = fmt->bin_end_LAST;
+    bin_start_ERAL_deg = fmt->bin_start_ERAL_deg;
+    bin_end_ERAL_deg = fmt->bin_end_ERAL_deg;
+
+    rfi_frame_excision_enabled = fmt->rfi_frame_excision_enabled;
+    rfi_frame_excision_num = fmt->rfi_frame_excision_num;
+    rfi_frame_excision_threshold = fmt->rfi_frame_excision_threshold;
+    rfi_frame_excision_fraction = fmt->rfi_frame_excision_fraction;
 
     return sizeof(N2MetadataFormat);
 }
@@ -54,6 +61,8 @@ size_t N2Metadata::serialize(char* bytes) {
 
     fmt->n_valid_fpga_ticks = n_valid_fpga_ticks;
     fmt->n_rfi_fpga_ticks = n_rfi_fpga_ticks;
+    fmt->n_rfi_only_fpga_ticks = n_rfi_only_fpga_ticks;
+    fmt->n_pl_fpga_ticks = n_pl_fpga_ticks;
 
     fmt->abs_time_idx = abs_time_idx;
     fmt->freq_id = freq_id; // this is an int in chordMetadata, maybe change later
@@ -62,8 +71,13 @@ size_t N2Metadata::serialize(char* bytes) {
     fmt->bin_eop = bin_eop;
     fmt->bin_start_ERA_deg = bin_start_ERA_deg;
     fmt->bin_end_ERA_deg = bin_end_ERA_deg;
-    fmt->bin_start_LAST = bin_start_LAST;
-    fmt->bin_end_LAST = bin_end_LAST;
+    fmt->bin_start_ERAL_deg = bin_start_ERAL_deg;
+    fmt->bin_end_ERAL_deg = bin_end_ERAL_deg;
+
+    fmt->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
+    fmt->rfi_frame_excision_num = rfi_frame_excision_num;
+    fmt->rfi_frame_excision_threshold = rfi_frame_excision_threshold;
+    fmt->rfi_frame_excision_fraction = rfi_frame_excision_fraction;
 
     return sizeof(N2MetadataFormat);
 }
@@ -104,6 +118,8 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
 
     j.emplace("n_valid_fpga_ticks", m.n_valid_fpga_ticks);
     j.emplace("n_rfi_fpga_ticks", m.n_rfi_fpga_ticks);
+    j.emplace("n_rfi_only_fpga_ticks", m.n_rfi_only_fpga_ticks);
+    j.emplace("n_pl_fpga_ticks", m.n_pl_fpga_ticks);
 
     j.emplace("abs_time_idx", m.abs_time_idx);
     j.emplace("freq_id", m.freq_id); // this is an int in chordMetadata, maybe change later
@@ -113,8 +129,13 @@ void to_json(nlohmann::json& j, const N2Metadata& m) {
     j.emplace("bin_eop", m.bin_eop);
     j.emplace("bin_start_ERA_deg", m.bin_start_ERA_deg);
     j.emplace("bin_end_ERA_deg", m.bin_end_ERA_deg);
-    j.emplace("bin_start_LAST", m.bin_start_LAST);
-    j.emplace("bin_end_LAST", m.bin_end_LAST);
+    j.emplace("bin_start_ERAL_deg", m.bin_start_ERAL_deg);
+    j.emplace("bin_end_ERAL_deg", m.bin_end_ERAL_deg);
+
+    j.emplace("rfi_frame_excision_enabled", m.rfi_frame_excision_enabled);
+    j.emplace("rfi_frame_excision_num", m.rfi_frame_excision_num);
+    j.emplace("rfi_frame_excision_threshold", m.rfi_frame_excision_threshold);
+    j.emplace("rfi_frame_excision_fraction", m.rfi_frame_excision_fraction);
 }
 
 void from_json(const nlohmann::json& j, N2Metadata& m) {
@@ -124,6 +145,8 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
 
     m.n_valid_fpga_ticks = j.at("n_valid_fpga_ticks");
     m.n_rfi_fpga_ticks = j.at("n_rfi_fpga_ticks");
+    m.n_rfi_only_fpga_ticks = j.at("n_rfi_only_fpga_ticks");
+    m.n_pl_fpga_ticks = j.at("n_pl_fpga_ticks");
 
     m.abs_time_idx = j.at("abs_time_idx");
     m.freq_id = j.at("freq_id"); // this is an int in chordMetadata, maybe change later
@@ -133,6 +156,11 @@ void from_json(const nlohmann::json& j, N2Metadata& m) {
     m.bin_eop = j.at("bin_eop");
     m.bin_start_ERA_deg = j.at("bin_start_ERA_deg");
     m.bin_end_ERA_deg = j.at("bin_end_ERA_deg");
-    m.bin_start_LAST = j.at("bin_start_LAST");
-    m.bin_end_LAST = j.at("bin_end_LAST");
+    m.bin_start_ERAL_deg = j.at("bin_start_ERAL_deg");
+    m.bin_end_ERAL_deg = j.at("bin_end_ERAL_deg");
+
+    m.rfi_frame_excision_enabled = j.at("rfi_frame_excision_enabled");
+    m.rfi_frame_excision_num = j.at("rfi_frame_excision_num");
+    m.rfi_frame_excision_threshold = j.at("rfi_frame_excision_threshold");
+    m.rfi_frame_excision_fraction = j.at("rfi_frame_excision_fraction");
 }

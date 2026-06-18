@@ -1,22 +1,24 @@
 #ifndef SYMBOL_HPP
 #define SYMBOL_HPP
 
-#include "fmt.hpp" // for formatter
+#include <array>          // for array
+#include <cstring>        // for size_t
+#include <functional>     // for equal_to, less
+#include <iostream>       // for ostream
+#include <mutex>          // for mutex
+#include <string>         // for string, basic_string
+#include <unordered_set>  // for operator!=, _Node_iterator, _Node_iterator_base, unordered_set
+#include <string_view>    // for string_view, hash, basic_string_view
 
-#include <array>         // for array
-#include <cstring>       // for size_t
-#include <fmt/format.h>  // for formatter
-#include <functional>    // for equal_to, less
-#include <iostream>      // for ostream
-#include <mutex>         // for mutex
-#include <string>        // for string, basic_string
-#include <unordered_set> // for unordered_set
+#include "fmt.hpp"        // for formatter
+#include "json.hpp"       // for json
 
 
 namespace kotekan {
 
 template<typename T>
 struct owning_unordered_set;
+
 template<>
 struct owning_unordered_set<std::string_view> : public std::unordered_set<std::string_view> {
     ~owning_unordered_set() {
@@ -117,6 +119,10 @@ std::array<kotekan::Symbol, D> strings_to_symbols(const std::array<const char*, 
         symbols[d] = strings[d];
     return symbols;
 }
+
+// JSON <--> Symbol
+void to_json(nlohmann::json& j, const Symbol& s);
+void from_json(const nlohmann::json& j, Symbol& s);
 
 } // namespace kotekan
 

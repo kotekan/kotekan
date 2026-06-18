@@ -4,17 +4,11 @@
 
 ################################################################################
 
-bb_num_beams_ew: 12
-bb_num_beams_ns: 8
-bb_beam_separation_ew: 0.0075
-bb_beam_separation_ns: 0.0050
-bb_num_beams: bb_num_beams_ew * bb_num_beams_ns
-
-host_bb_beam_positions_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_float32 * 2 * bb_num_beams
-    metadata_pool: main_pool
+bb_num_beams_x: 12
+bb_num_beams_y: 8
+bb_num_beams: bb_num_beams_x * bb_num_beams_y
+bb_beam_separation_x: 5.0 / 8   # 5 degrees
+bb_beam_separation_y: 5.0 / 8   # 5 degrees
 
 # The baseband beams are formed as "incoherent sum" over dishes dishes
 # (sqrt(num_dishes)), and are multiplied by 127 (the scaling of the
@@ -25,6 +19,18 @@ bb_scale: 12
 ################################################################################
 
 # Buffers
+
+host_bb_beam_positions_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_float32 * 2 * bb_num_beams
+    metadata_pool: main_pool
+
+host_bb_beam_ids_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: sizeof_uint64 * bb_num_beams
+    metadata_pool: main_pool
 
 host_bb_phase_buffer:
     kotekan_buffer: standard
@@ -47,6 +53,28 @@ host_bb_beams_buffer:
 ################################################################################
 
 # Stages
+
+run_set_bb_beams:
+    kotekan_stage: setBBBeams
+    in_clock_buf: host_voltage_buffer
+    out_pos_buf: host_bb_beam_positions_buffer
+    out_id_buf: host_bb_beam_ids_buffer
+    fixed_mode: grid_degrees
+    time_downsampling_fpga: 1
+    num_x: bb_num_beams_x
+    num_y: bb_num_beams_y
+    x_min: -bb_beam_separation_x * (bb_num_beams_x - 1) / 2.0
+    x_max: bb_beam_separation_x * (bb_num_beams_x - 1) / 2.0
+    y_min: -bb_beam_separation_y * (bb_num_beams_y - 1) / 2.0
+    y_max: bb_beam_separation_y * (bb_num_beams_y - 1) / 2.0
+    tracking_beams: []
+    num_beams: bb_num_beams + 0
+
+run_calc_bb_phase:
+    kotekan_stage: calcBBPhase
+    bb_beam_positions: host_bb_beam_positions_buffer
+    bb_phase: host_bb_phase_buffer
+    bb_shift: host_bb_shift_buffer
 
 run_bb:
     gpu_0:

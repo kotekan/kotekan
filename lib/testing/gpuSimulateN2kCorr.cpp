@@ -6,6 +6,7 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata, CHO...
+#include "div.hpp"             // for div_ceil, num_triangle_blocks
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, DEBUG
 #include "metadata.hpp"        // for metadataObject
 
@@ -20,6 +21,8 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::div_ceil;
+using kotekan::num_triangle_blocks;
 using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(gpuSimulateN2kCorr);
@@ -81,8 +84,7 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
         sizeof(char) * _num_elements * _num_local_freq * _samples_per_data_set;
     size_t rfimask_frame_size = _num_local_freq * _samples_per_data_set / 8;
 
-    size_t num_blocks_lin = _num_elements / _corr_blocksize;
-    size_t num_blocks = (num_blocks_lin * (num_blocks_lin + 1)) / 2;
+    size_t num_blocks = num_triangle_blocks(_num_elements, _corr_blocksize);
     size_t num_correlations = _samples_per_data_set / _sub_integration_ntime;
 
     size_t corr_frame_size = 2 * sizeof(int) * _corr_blocksize * _corr_blocksize * num_blocks
@@ -114,7 +116,7 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
     int nt_outer = _samples_per_data_set / nt_inner;
     output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
         "n2k_correlation",
-        {nt_outer, _num_local_freq, (_num_elements / 16) * (_num_elements / 16 + 1) / 2, 16, 16, 2},
+        {nt_outer, _num_local_freq, num_triangle_blocks(_num_elements, _corr_blocksize), 16, 16, 2},
         {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}, {input_time_scaling, 1, 16, 1, 1, 1});
 }
 
@@ -146,8 +148,8 @@ void gpuSimulateN2kCorr::main_thread() {
         int nt_inner = _sub_integration_ntime;
         int nt_outer = _samples_per_data_set / nt_inner;
 
-        int num_blocks_lin = _num_elements / _corr_blocksize;
-        int num_blocks = (num_blocks_lin * (num_blocks_lin + 1)) / 2;
+        int num_blocks_lin = div_ceil(_num_elements, _corr_blocksize);
+        int num_blocks = num_triangle_blocks(_num_elements, _corr_blocksize);
 
         int fstride = _corr_blocksize * _corr_blocksize * num_blocks;
         int tstride = _num_local_freq * fstride;
@@ -159,8 +161,8 @@ void gpuSimulateN2kCorr::main_thread() {
         for (int tout = 0; tout < nt_outer; ++tout) {
             for (int f = 0; f < _num_local_freq; ++f) {
                 // loop through blocks
-                for (int jhi = 0; jhi < _num_elements / _corr_blocksize; jhi++) {
-                    for (int ihi = jhi; ihi < _num_elements / _corr_blocksize; ihi++) {
+                for (int jhi = 0; jhi < num_blocks_lin; jhi++) {
+                    for (int ihi = jhi; ihi < num_blocks_lin; ihi++) {
                         for (int jlo = 0; jlo < _corr_blocksize; jlo++) {
                             for (int ilo = 0; ilo < _corr_blocksize; ilo++) {
                                 int real = 0;
@@ -279,7 +281,7 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->set_array_dimension(
             0, nt_outer, "Tc", meta_in->get_time_downsampling_fpga() * _sub_integration_ntime);
         meta_out->set_array_dimension(1, _num_local_freq, "F", 1);
-        meta_out->set_array_dimension(2, (_num_elements / 16) * (_num_elements / 16 + 1) / 2,
+        meta_out->set_array_dimension(2, num_triangle_blocks(_num_elements, _corr_blocksize),
                                       "DPhi", 16);
         meta_out->set_array_dimension(3, 16, "DPlo1", 1);
         meta_out->set_array_dimension(4, 16, "DPlo2", 1);

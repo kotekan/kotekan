@@ -1,21 +1,21 @@
 #include "Stage.hpp"
 
-#include "Config.hpp"          // for Config
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "util.h"              // for string_tail
+#include <pthread.h>            // for pthread_setaffinity_np, pthread_setname_np
+#include <sched.h>              // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <sys/syscall.h>        // for SYS_gettid
+#include <unistd.h>             // for syscall
+#include <algorithm>            // for find, copy
+#include <chrono>               // for seconds
+#include <cstdlib>              // for abort
+#include <future>               // for async, future, future_status, launch
+#include <thread>               // for thread
+#include <exception>            // for exception
 
-#include "fmt.hpp" // for compile_string_to_view, format, format_string
-
-#include <algorithm>     // for max, find, copy
-#include <bits/chrono.h> // for seconds
-#include <cstdlib>       // for abort
-#include <future>        // for async, future, future_status, launch
-#include <pthread.h>     // for pthread_setaffinity_np, pthread_setname_np
-#include <sched.h>       // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <sys/syscall.h> // for SYS_gettid
-#include <thread>        // for thread
-#include <unistd.h>      // for syscall
+#include "Config.hpp"           // for Config
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "util.h"               // for string_tail
+#include "fmt.hpp"              // for compile_string_to_view, format, format_string
 
 namespace kotekan {
 

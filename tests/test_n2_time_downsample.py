@@ -11,6 +11,7 @@ from astropy.time import Time, TimeDelta
 import astropy.units as units
 
 from kotekan import runner
+from tolerance import FP32_RTOL
 
 T_rot_sec = 86400 / 1.001234567890123456  #  / 1.00273781191135448
 n_bins_per_rot = 20000  # 21600  # approx 4 seconds per bin
@@ -49,9 +50,11 @@ fake_params = {
 downsamp_params = {
     "num_bins_per_rotation": n_bins_per_rot,
     "max_age": 2 * T_rot_sec / n_bins_per_rot,
+    "input_order": "CHORDBeamformer",
 }
 
 global_params = {
+    "log_level": "WARN",
     "num_elements": 4,
     "num_dishes": 2,
     "num_ev": 4,
@@ -59,16 +62,16 @@ global_params = {
         "kotekan_update_endpoint": "json",
         "earth_orientation_parameter_table": [
             {
-                "time_inst_ns": t_start_inst_ns - 2000 * GIGA,
+                "t_inst_ns": t_start_inst_ns - 2000 * GIGA,
                 "delta_UT1_inst": dut1,
-                "x_pm": x_pm,
-                "y_pm": y_pm,
+                "xp_as": x_pm,
+                "yp_as": y_pm,
             },
             {
-                "time_inst_ns": t_end_inst_ns + 2000 * GIGA,
+                "t_inst_ns": t_end_inst_ns + 2000 * GIGA,
                 "delta_UT1_inst": dut1,
-                "x_pm": x_pm,
-                "y_pm": y_pm,
+                "xp_as": x_pm,
+                "yp_as": y_pm,
             },
         ],
     },
@@ -82,8 +85,8 @@ global_params = {
         "dish_elev_axis": [1, 0, 0],
         "dish_vert_axis": [0, 0, 1],
         "dish_coelev_deg": 0.0,
-        "num_dishes_x": 22,
-        "num_dishes_y": 24,
+        "dish_grid_size_x": 22,
+        "dish_grid_size_y": 24,
         "eop_updatable_config": "/earth_rotation_data",
         "dish_inputs": [],
     },
@@ -428,11 +431,11 @@ def test_time(n2_data):
 
 def test_eop(n2_data):
 
-    eop_t_inst = np.array([v.metadata.bin_eop.t_inst for v in n2_data])
-    eop_t_ut1 = np.array([v.metadata.bin_eop.t_ut1 for v in n2_data])
+    eop_t_inst_ns = np.array([v.metadata.bin_eop.t_inst_ns for v in n2_data])
+    eop_t_ut1_ns = np.array([v.metadata.bin_eop.t_ut1_ns for v in n2_data])
     eop_dut1 = np.array([v.metadata.bin_eop.delta_UT1_inst for v in n2_data])
-    eop_x_pm = np.array([v.metadata.bin_eop.xp_as for v in n2_data])
-    eop_y_pm = np.array([v.metadata.bin_eop.yp_as for v in n2_data])
+    eop_xp_as = np.array([v.metadata.bin_eop.xp_as for v in n2_data])
+    eop_yp_as = np.array([v.metadata.bin_eop.yp_as for v in n2_data])
     eop_era = np.array([v.metadata.bin_eop.ERA_deg for v in n2_data])
 
     out_frame_metas = calc_downsamp_frame_meta()
@@ -450,29 +453,29 @@ def test_eop(n2_data):
             f.write("     ERA_TEST:    {:.17f}\n".format(era_bin[i]))
             f.write("     DUT1_FRAME:  {:.17f}\n".format(eop_dut1[i]))
             f.write("     DUT1_TEST:   {:.17f}\n".format(dut1))
-            f.write("     XPM_FRAME:   {:.17f}\n".format(eop_x_pm[i]))
-            f.write("     XPM_TEST:    {:.17f}\n".format(x_pm))
-            f.write("     YPM_FRAME:   {:.17f}\n".format(eop_y_pm[i]))
-            f.write("     YPM_TEST:    {:.17f}\n".format(y_pm))
-            f.write("     T_DIFF_NS:   {:d}\n".format(eop_t_inst[i] - t_inst_bin[i]))
-            f.write("     UT1_DIFF_NS: {:d}\n".format(eop_t_ut1[i] - ut1_bin[i]))
+            f.write("     XPM_FRAME:   {:.17f}\n".format(eop_xp_as[i]))
+            f.write("     XPM_TEST:    {:.17f}\n".format(xp_as))
+            f.write("     YPM_FRAME:   {:.17f}\n".format(eop_yp_as[i]))
+            f.write("     YPM_TEST:    {:.17f}\n".format(yp_as))
+            f.write("     T_DIFF_NS:   {:d}\n".format(eop_t_inst_ns[i] - t_inst_bin[i]))
+            f.write("     UT1_DIFF_NS: {:d}\n".format(eop_t_ut1_ns[i] - ut1_bin[i]))
     """
 
     # check EOP
     assert np.all(np.isclose(eop_dut1, dut1, 1.0e-15, 0.0))
-    assert np.all(np.isclose(eop_x_pm, x_pm, 1.0e-15, 0.0))
-    assert np.all(np.isclose(eop_y_pm, y_pm, 1.0e-15, 0.0))
+    assert np.all(np.isclose(eop_xp_as, x_pm, 1.0e-15, 0.0))
+    assert np.all(np.isclose(eop_yp_as, y_pm, 1.0e-15, 0.0))
 
     # check times
-    assert np.all(np.fabs(eop_t_inst - t_inst_bin) <= eop_t_ns_tol)
-    assert np.all(np.fabs(eop_t_ut1 - ut1_bin) <= eop_ut1_ns_tol)
+    assert np.all(np.fabs(eop_t_inst_ns - t_inst_bin) <= eop_t_ns_tol)
+    assert np.all(np.fabs(eop_t_ut1_ns - ut1_bin) <= eop_ut1_ns_tol)
 
     # check ERA
     assert np.all(np.fabs(eop_era - era_bin) <= era_deg_tol)
 
     # check nanoseconds
-    # assert np.all(np.fabs(eop_t_inst[:, 1] - t_inst_bin[:, 1]) <= eop_t_ns_tol)
-    # assert np.all(np.fabs(eop_t_ut1[:, 1] - ut1_bin[:, 1]) <= eop_ut1_ns_tol)
+    # assert np.all(np.fabs(eop_t_inst_ns[:, 1] - t_inst_bin[:, 1]) <= eop_t_ns_tol)
+    # assert np.all(np.fabs(eop_t_ut1_ns[:, 1] - ut1_bin[:, 1]) <= eop_ut1_ns_tol)
 
 
 def test_contents(n2_data):
@@ -513,10 +516,10 @@ def test_contents(n2_data):
                 )
             )
         """
-        assert np.all(frame.vis == model_vis)
-        assert np.all(frame.evec == model_evec)
-        assert np.all(frame.eval == model_eval)
-        assert frame.erms == 1.0
+        assert np.allclose(frame.vis, model_vis, rtol=FP32_RTOL, atol=0)
+        assert np.allclose(frame.evec, model_evec, rtol=FP32_RTOL, atol=0)
+        assert np.allclose(frame.eval, model_eval, rtol=FP32_RTOL, atol=0)
+        assert np.isclose(frame.erms, 1.0, rtol=FP32_RTOL, atol=0)
 
     # weights get an extra factor of nsamp
     for i, frame in enumerate(n2_data):

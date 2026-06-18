@@ -30,6 +30,7 @@ set(KERNELFILES
     kernel_128_64.cu
     kernel_128_128.cu
     kernel_128_256.cu
+    kernel_128_336.cu
     kernel_128_384.cu
     kernel_128_512.cu
     kernel_128_1024.cu
@@ -77,7 +78,7 @@ endforeach()
 
 # Add library targets
 add_library(n2k SHARED ${CUFILES} ${HFILES})
-target_link_libraries(n2k gputils)
+target_link_libraries(n2k ksgpu)
 
 # Include directories
 target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")

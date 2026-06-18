@@ -93,6 +93,10 @@
  * @metric kotekan_writer_bad_dataset_frame_total
  *         The number of frames dropped as they belong to a bad dataset.
  *
+ * @note The on-disk output of the BaseWriter family is summarized in
+ *       docs/sphinx/user/file_formats/chime_archive.rst. Any change to the
+ *       acquisition/file layout should be reflected there.
+ *
  * @author Richard Shaw and James Willis
  **/
 class BaseWriter : public kotekan::Stage {

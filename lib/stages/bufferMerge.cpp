@@ -1,20 +1,19 @@
 #include "bufferMerge.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for INFO, DEBUG2, FATAL_ERROR
-#include "visUtil.hpp"         // for frameID, current_time, double_to_ts, modulo
+#include <assert.h>             // for assert
+#include <cstring>              // for memcpy
+#include <functional>           // for bind, function
+#include <stdexcept>            // for invalid_argument, runtime_error
+#include <memory>               // for shared_ptr
 
-#include "fmt.hpp"  // for compile_string_to_view, format, fmt
-#include "json.hpp" // for json, basic_json, iter_impl
-
-#include <algorithm>  // for max
-#include <assert.h>   // for assert
-#include <cstring>    // for memcpy
-#include <functional> // for bind, function
-#include <stdexcept>  // for invalid_argument, runtime_error
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for INFO, DEBUG2, FATAL_ERROR
+#include "visUtil.hpp"          // for frameID, current_time, double_to_ts, modulo
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
+#include "json.hpp"             // for json, basic_json, iter_impl
 
 using nlohmann::json;
 
@@ -115,6 +114,14 @@ void bufferMerge::main_thread() {
 
                 // Move the metadata over to the new frame
                 in_buf->pass_metadata(in_frame_id, out_buf, out_frame_id);
+
+                // Link frame description
+                const auto in_frame_desc = in_buf->get_frame_description();
+                if (in_frame_desc) {
+                    out_buf->set_frame_desc(in_frame_desc);
+                } else {
+                    assert(!out_buf->get_frame_description());
+                }
 
                 // Copy or swap the frame.
                 if (in_buf->get_num_consumers() > 1) {

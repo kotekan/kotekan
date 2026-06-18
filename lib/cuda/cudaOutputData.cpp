@@ -6,23 +6,21 @@
 
 #include "cudaOutputData.hpp"
 
-#include "Symbol.hpp"         // for Symbol
-#include "chordMetadata.hpp"  // for chordMetadata
-#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaHostRegister, cudaHostUnregister
-#include "gpuCommand.hpp"     // for gpuCommandType
-#include "kotekanLogging.hpp" // for DEBUG
-#include "metadata.hpp"       // for metadataObject
+#include <stddef.h>            // for ptrdiff_t, size_t
+#include <stdint.h>            // for uint8_t
+#include <string.h>            // for strnlen
+#include <sys/types.h>         // for uint, size_t
+#include <memory>              // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
+#include <tuple>               // for tuple, make_tuple
 
-#include "fmt.hpp" // for compile_string_to_view, format, format_string
-
-#include <algorithm>   // for max
-#include <memory>      // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
-#include <stddef.h>    // for ptrdiff_t
-#include <stdint.h>    // for uint8_t
-#include <string.h>    // for strnlen
-#include <sys/types.h> // for size_t, uint
-#include <tuple>       // for tuple, make_tuple
+#include "Symbol.hpp"          // for Symbol
+#include "chordMetadata.hpp"   // for chordMetadata
+#include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h"  // for cudaHostGetFlags, cudaHostRegister, cudaHostUnregister
+#include "gpuCommand.hpp"      // for gpuCommandType
+#include "kotekanLogging.hpp"  // for DEBUG
+#include "metadata.hpp"        // for metadataObject
+#include "fmt.hpp"             // for compile_string_to_view, format, format_string
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -69,9 +67,8 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
 cudaOutputData::~cudaOutputData() {
     if (output_buffer->frame_size) {
         uint flags;
-        // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue
-            == cudaHostGetFlags(&flags, output_buffer->frames[instance_num])) {
+        // only unregister if it's already been registered
+        if (cudaSuccess == cudaHostGetFlags(&flags, output_buffer->frames[instance_num])) {
             CHECK_CUDA_ERROR(cudaHostUnregister(output_buffer->frames[instance_num]));
         }
     }

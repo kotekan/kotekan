@@ -2,8 +2,7 @@
 
 #include "kotekanLogging.hpp" // for DEBUG2, logLevel, DEBUG_NON_OO
 
-#include "fmt.hpp"      // for format, format_string
-#include "fmt/format.h" // for compile_string_to_view, group_digits
+#include "fmt.hpp" // for compile_string_to_view, group_digits, format, format_string
 
 #include <algorithm>          // for min
 #include <cassert>            // for assert
@@ -260,8 +259,73 @@ void RingBuffer::finish_write(const std::string& name, [[maybe_unused]] const in
     }
 }
 
-void RingBuffer::print_full_status() {
+void RingBuffer::print_buffer_status() {
+    std::ptrdiff_t read_tail, read_head;
+    std::ptrdiff_t write_tail, write_head;
+    {
+        std::unique_lock<std::recursive_mutex> lock(mutex);
+        read_tail = last_read_tail;
+        read_head =
+            read_heads.empty()
+                ? last_read_tail
+                : std::max_element(read_heads.begin(), read_heads.end(),
+                                   [](const auto& a, const auto& b) { return a.second < b.second; })
+                      ->second;
+        write_tail = first_write_head;
+        write_head =
+            write_next.empty()
+                ? first_write_head
+                : std::max_element(write_next.begin(), write_next.end(),
+                                   [](const auto& a, const auto& b) { return a.second < b.second; })
+                      ->second;
+    }
+    assert(read_tail <= read_head);
+    assert(read_head <= write_tail);
+    assert(write_tail <= write_head);
+    assert(write_head <= read_tail + size);
+    const std::ptrdiff_t emptying_samples = read_head - read_tail;
+    const std::ptrdiff_t full_samples = write_tail - read_head;
+    const std::ptrdiff_t filling_samples = write_head - write_tail;
+    const std::ptrdiff_t empty_samples = read_tail + size - write_head;
+    const std::ptrdiff_t total_samples = size;
+    const int buffer_display_length = 40;
+    using std::lrint;
+    const int emptying_count =
+        lrint(1.0 * buffer_display_length * emptying_samples / total_samples);
+    const int full_count =
+        lrint(1.0 * buffer_display_length * (emptying_samples + full_samples) / total_samples)
+        - emptying_count;
+    const int filling_count =
+        lrint(1.0 * buffer_display_length * (emptying_samples + full_samples + filling_samples)
+              / total_samples)
+        - (emptying_count + full_count);
+    const int empty_count =
+        lrint(1.0 * buffer_display_length
+              * (emptying_samples + full_samples + filling_samples + empty_samples) / total_samples)
+        - (emptying_count + full_count + filling_count);
+    // const std::string emptying_symbol = "▼";
+    // const std::string full_symbol = "█";
+    // const std::string filling_symbol = "▲";
+    // const std::string empty_symbol = "·";
+    const char emptying_symbol = 'v';
+    const char full_symbol = 'X';
+    const char filling_symbol = '^';
+    const char empty_symbol = '.';
+    std::ostringstream buf;
+    buf << "[";
+    for (int n = 0; n < emptying_count; ++n)
+        buf << emptying_symbol;
+    for (int n = 0; n < full_count; ++n)
+        buf << full_symbol;
+    for (int n = 0; n < filling_count; ++n)
+        buf << filling_symbol;
+    for (int n = 0; n < empty_count; ++n)
+        buf << empty_symbol;
+    buf << "]";
+    INFO_NON_OO("Buffer {:40s}, status: {:s}", buffer_name, buf.str());
+}
 
+void RingBuffer::print_full_status() {
     // Don't compute a lot of strings if we aren't going to output the result
     if (get_log_level() < kotekan::logLevel::DEBUG2)
         return;
@@ -277,14 +341,14 @@ void RingBuffer::print_full_status() {
            (first_write_head - last_read_tail) / 1.0e+6);
     DEBUG2("{:<40} : {:13.6f} MB", "free space to write",
            (size - (first_write_head - last_read_tail)) / 1.0e+6);
-    DEBUG2("---- Producers ----");
+    DEBUG2("---- Producers ({:d}) ----", producers.size());
     for (auto& it : producers) {
         const auto& name = it.second.name;
         DEBUG2("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),
                write_heads[name] / 1.0e+6, write_next[name] / 1.0e+6,
                (write_next[name] - write_heads[name]) / 1.0e+6);
     }
-    DEBUG2("---- Consumers ----");
+    DEBUG2("---- Consumers ({:d}) ----", consumers.size());
     for (auto& it : consumers) {
         const auto& name = it.second.name;
         DEBUG2("{:<40} : {:13.6f} MB ... {:.6f} MB ({:.6f} MB)", name.c_str(),

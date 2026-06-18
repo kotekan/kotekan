@@ -29,15 +29,41 @@ n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_coun
 
 host_n2k_correlation_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
     frame_size: sizeof_int32 * num_components * n2k_correlation_triangle_size * num_frequencies * n2k_num_subintegrations
     metadata_pool: main_pool
 
 host_n2k_counts_buffer:
     kotekan_buffer: standard
-    num_frames: buffer_depth
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
     frame_size: sizeof_int32 * n2k_counts_triangle_size * num_frequencies * n2k_num_subintegrations
     metadata_pool: main_pool
+
+host_n2k_plcounts_buffer:
+    kotekan_buffer: standard
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
+    frame_size: sizeof_int32 * num_frequencies * n2k_num_subintegrations
+    metadata_pool: main_pool
+
+host_n2k_rficounts_buffer:
+    kotekan_buffer: standard
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
+    frame_size: sizeof_int32 * num_frequencies * n2k_num_subintegrations
+    metadata_pool: main_pool
+
+host_n2k_rfiframemask_buffer:
+    kotekan_buffer: standard
+    num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
+    frame_size: sizeof_uint8 * num_frequencies * n2k_num_subintegrations
+    metadata_pool: main_pool
+
+host_n2_vis_buffer:
+    kotekan_buffer: N2
+    n2_layout: "FullUpperTri"
+    num_elements: n2k_correlation_num_elements
+    num_frames: buffer_depth * num_frequencies
+    num_ev: 0
+    metadata_pool: n2_pool
 
 ################################################################################
 
@@ -88,3 +114,54 @@ run_n2k_counts:
         - name: cudaOutputData
           gpu_mem: n2k_counts_buffer
           out_buf: host_n2k_counts_buffer
+
+run_n2_counting:
+    num_local_freq: num_frequencies
+    samples_per_data_set: n2k_samples_per_data_set
+    sub_integration_ntime: n2k_sub_integration_ntime
+
+    count_rfi_mask:
+        kotekan_stage: RfiMaskSum
+        in_buf: host_rfi_RFImask_buffer
+        out_buf: host_n2k_rficounts_buffer
+
+    count_PL:
+        kotekan_stage: CountLostPLSamplesScalar
+        in_buf: host_pl_mask_buffer
+        out_buf: host_n2k_plcounts_buffer
+        packet_loss_is_scalar: true
+
+    compute_RFI_frame_mask:
+        kotekan_stage: RfiFrameMask
+        in_buf: host_rfi_SKtilde_buffer
+        out_buf: host_n2k_rfiframemask_buffer
+        enabled_updatable_config: /rfi_second_stage_enabled
+        thresholds_updatable_config: /rfi_second_stage_thresholds
+
+rfi_second_stage_enabled:
+    kotekan_update_endpoint: json
+    enabled: false
+    valid_at_time_ns: 0
+
+rfi_second_stage_thresholds:
+    kotekan_update_endpoint: json
+    thresholds: []
+    valid_at_time_ns: 0
+
+run_N2_accumulate:
+    kotekan_stage: N2Accumulate
+    samples_per_data_set: n2k_samples_per_data_set
+    sub_integration_ntime: n2k_sub_integration_ntime
+    num_subintegrations_per_bin: 24   # 1 second
+    num_elements: n2k_correlation_num_elements
+    num_freq_per_n2k_frame: num_frequencies
+    packet_loss_is_scalar: true
+    variance_mode: EvenOddPosDef
+    do_fringestop: True
+    num_workers: 4
+    in_buf: host_n2k_correlation_buffer
+    in_counts_buf: host_n2k_counts_buffer
+    in_plcounts_buf: host_n2k_plcounts_buffer
+    in_rficounts_buf: host_n2k_rficounts_buffer
+    in_rfiframemask_buf: host_n2k_rfiframemask_buffer
+    out_buf: host_n2_vis_buffer

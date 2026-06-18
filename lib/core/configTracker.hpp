@@ -2,56 +2,74 @@
  * @file
  * @brief Configuration tracker singleton and REST endpoints.
  *
- * Tracks the startup-time configuration JSON for participating kotekan instances,
- * exposes REST endpoints to query stored configs and their hashes, maintains a combined
- * tracker hash, and supports persistence and synchronization with upstream trackers.
+ * Tracks the startup-time configuration JSON for participating kotekan instances.
+ * The local config (this node's own startup config) is stored separately from
+ * configs received from upstream peers so the local hash never depends on the
+ * REST bind address (which a downstream peer may not see the same way).
+ * Downstream peers fetch and re-key the upstream's local config under whatever
+ * (host, port) they actually dialed, then propagate any further-upstream
+ * configs the peer was already tracking.
+ *
+ * An upstream FPGA controller, if present, is registered as a regular
+ * upstream entry: a single combined ``{"config": ..., "timing": ...}`` JSON,
+ * keyed by the controller's REST (host, port). Any change to either part
+ * after the initial fetch indicates a controller reset and is fatal.
  *
  * - kotekan::ConfigTracker
  *   -- instance
  *   -- n_configs
- *   -- check_num_configs_consistent
  *   -- getTrackerHash
- *   -- insertRawConfig
- *   -- hasConfig
- *   -- trackers_configs_callback
- *   -- trackers_hashes_callback
+ *   -- set_enabled / is_enabled
+ *   -- setLocalConfig
+ *   -- insertUpstreamConfig
+ *   -- fetchAndRegisterFpgaTracking
+ *   -- applyConfig
+ *   -- hasLocalConfig / hasUpstreamConfig
+ *   -- getLocalConfigInfo / getLocalConfigHash
+ *   -- trackers_local_callback
+ *   -- trackers_local_hash_callback
+ *   -- trackers_upstream_configs_callback / trackers_upstream_hashes_callback
  *   -- register_with_server
  *   -- getUpstreamConfigs
+ *   -- getAllJSONConfigs
  *   -- writeConfigsToDisk
  *   -- reset
  */
 #ifndef CONFIGTRACKER_H
 #define CONFIGTRACKER_H
 
-#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, ERROR_NON_OO, DEBUG_NON_OO, DEBUG2_NON_OO
-#include "prometheusMetrics.hpp" // for Counter, Gauge, MetricFamily, Metrics
-#include "restClient.hpp"        // for restClient
-#include "restServer.hpp"        // for connectionInstance, restServer
+#include <arpa/inet.h>            // for inet_pton, inet_ntop
+#include <errno.h>                // for errno
+#include <netdb.h>                // for gai_strerror, addrinfo, freeaddrinfo, getaddrinfo
+#include <netinet/in.h>           // for sockaddr_in, INET_ADDRSTRLEN
+#include <openssl/md5.h>          // for MD5, MD5_DIGEST_LENGTH
+#include <stdint.h>               // for uint16_t
+#include <string.h>               // for strerror
+#include <sys/socket.h>           // for AF_INET, SOCK_STREAM
+#include <sys/stat.h>             // for stat, S_ISDIR
+#include <chrono>                 // for duration, duration_cast, steady_clock
+#include <cstdio>                 // for remove, rename, size_t
+#include <exception>              // for exception
+#include <fstream>                // for basic_ostream, operator<<, basic_ofstream, stringstream
+#include <functional>             // for bind, _1, function
+#include <iomanip>                // for operator<<, setfill, setw
+#include <map>                    // for map, operator!=, _Rb_tree_iterator, _Rb_tree_const_iter...
+#include <mutex>                  // for mutex, lock_guard
+#include <optional>               // for optional
+#include <sstream>                // for basic_stringstream, basic_ostringstream
+#include <string>                 // for basic_string, allocator, string, char_traits, operator==
+#include <tuple>                  // for tuple, tie, operator<
+#include <utility>                // for pair
+#include <vector>                 // for vector
+#include <algorithm>              // for equal
 
-#include "fmt.hpp"  // for compile_string_to_view
-#include "json.hpp" // for iter_impl, json, json_ref, iteration_proxy_value, basic_json
-
-#include <arpa/inet.h>   // for inet_pton
-#include <chrono>        // for duration, duration_cast, system_clock
-#include <cstdio>        // for remove, rename, size_t
-#include <errno.h>       // for errno
-#include <exception>     // for exception
-#include <fstream>       // for basic_ofstream
-#include <functional>    // for bind, _1, function
-#include <iomanip>       // for operator<<, setfill, setw
-#include <map>           // for map, operator!=, _Rb_tree_iterator, _Rb_tree_const_iterator
-#include <mutex>         // for mutex, lock_guard
-#include <netinet/in.h>  // for sockaddr_in
-#include <openssl/md5.h> // for MD5, MD5_DIGEST_LENGTH
-#include <sstream>       // for basic_ostream, basic_stringstream, operator<<, basic_ostre...
-#include <stdint.h>      // for uint16_t
-#include <string.h>      // for strerror
-#include <string>        // for basic_string, allocator, char_traits, operator+, string
-#include <sys/socket.h>  // for AF_INET
-#include <sys/stat.h>    // for stat, S_ISDIR
-#include <tuple>         // for tie, operator<, tuple
-#include <utility>       // for pair
-#include <vector>        // for vector
+#include "Config.hpp"             // for Config
+#include "kotekanLogging.hpp"     // for FATAL_ERROR_NON_OO, DEBUG_NON_OO, INFO_NON_OO
+#include "prometheusMetrics.hpp"  // for Gauge, Counter, Metrics, MetricFamily
+#include "restClient.hpp"         // for restClient
+#include "restServer.hpp"         // for connectionInstance, restServer, HTTP_RESPONSE
+#include "fmt.hpp"                // for compile_string_to_view
+#include "json.hpp"               // for json, json_ref, iter_impl, iteration_proxy_value, basic...
 
 namespace kotekan {
 
@@ -99,11 +117,15 @@ private:
         }
     };
 
+public:
     /**
      * @brief Struct to hold information about a configuration.
      *
      * This struct is used to store the hash, software version information, and the
      * configuration JSON object.
+     *
+     * For non-kotekan upstream entries (e.g., an FPGA controller) the
+     * ``kotekan_*`` version fields are unused and stored as empty strings.
      */
     struct ConfigInfo {
         nlohmann::json
@@ -158,36 +180,14 @@ private:
         }
     };
 
-public:
     /**
-     * @brief Get the number of configurations stored in the tracker.
-     * @returns The number of configurations.
+     * @brief Get the total number of configurations stored in the tracker
+     * (local plus upstream).
      */
     std::size_t n_configs() const {
-        check_num_configs_consistent();
-
         std::lock_guard<std::mutex> lock(_lock);
-        return _configs.size();
-    }
-
-    /**
-     * @brief Check if the number of configs and hashes are consistent.
-     * (Mainly useful for debugging, should always be true. Exposed for boost tests.)
-     *
-     * This function checks if the number of configurations stored in _configs
-     * matches the number of hashes stored in _config_hashes.
-     *
-     * @returns True if the sizes are consistent, false otherwise.
-     */
-    void check_num_configs_consistent() const {
-        std::lock_guard<std::mutex> lock(_lock);
-        // _configs and _config_hashes should always have the same size
-
-        if (_configs.size() != _config_hashes.size()) {
-            FATAL_ERROR_NON_OO(
-                "ConfigTracker: _configs and _config_hashes have different sizes: {} vs {}",
-                _configs.size(), _config_hashes.size());
-        }
+        _check_upstream_consistent_locked();
+        return (_local_config.has_value() ? 1u : 0u) + _upstream_configs.size();
     }
 
     /**
@@ -202,333 +202,566 @@ public:
     }
 
     /**
-     * @brief Insert raw (unfiltered) JSON configuration into the tracker.
-     * Creates a ConfigInfo object from the parameters.
-     * This function will strip blocks with an kotekan_update_endpoint.
+     * @brief Set whether config tracking is enabled for this instance.
      *
-     * @param host The host where the kotekan instance with the configuration is running.
-     * @param port The port where the kotekan instance with the configuration is running.
-     * @param config_json The JSON configuration to insert.
-     * @param kotekan_version The version of Kotekan.
-     * @param kotekan_build_branch The build branch of Kotekan.
-     * @param kotekan_git_commit_hash The git commit hash of Kotekan.
-     * @param kotekan_cmake_options The CMake options used to build Kotekan.
+     * Set once at startup (see kotekanMode) from the /config_tracker block,
+     * before any stages are built; constant thereafter.
      */
-    void insertRawConfig(std::string host, uint16_t port, const nlohmann::json& config_json,
-                         const std::string& kotekan_version,
-                         const std::string& kotekan_build_branch,
-                         const std::string& kotekan_git_commit_hash,
-                         const std::string& kotekan_cmake_options) {
+    void set_enabled(bool enabled) {
+        _enabled = enabled;
+    }
 
-        // Strip blocks with an kotekan_update_endpoint before hashing
+    /**
+     * @brief Whether config tracking is enabled for this instance.
+     *
+     * Stages read this to decide whether to participate in config tracking. They
+     * may opt out, but cannot opt in when the tracker was not enabled at startup.
+     */
+    bool is_enabled() const {
+        return _enabled;
+    }
+
+    /**
+     * @brief Set this node's local configuration.
+     *
+     * The local hash is computed over the JSON only (no host:port prefix), so
+     * the local identity doesn't depend on which IP this node decides to
+     * publish itself under. Downstream peers re-key it under whatever (host,
+     * port) they actually dialed when they fetch it.
+     *
+     * Calling this with the same content as the existing local config is a
+     * no-op. Calling it with different content is a fatal error: the local
+     * config is set once at startup.
+     *
+     * Strips blocks containing a "kotekan_update_endpoint" before hashing.
+     */
+    void setLocalConfig(const nlohmann::json& config_json, const std::string& kotekan_version,
+                        const std::string& kotekan_build_branch,
+                        const std::string& kotekan_git_commit_hash,
+                        const std::string& kotekan_cmake_options) {
         nlohmann::json filtered_json = _strip_update_endpoints(config_json);
-        std::string json_hash = _jsonHash(filtered_json);
+        std::string json_hash = _jsonHashLocal(filtered_json);
 
-        ConfigInfo info =
-            ConfigInfo(filtered_json, json_hash, kotekan_version, kotekan_build_branch,
-                       kotekan_git_commit_hash, kotekan_cmake_options);
+        ConfigInfo info(filtered_json, json_hash, kotekan_version, kotekan_build_branch,
+                        kotekan_git_commit_hash, kotekan_cmake_options);
 
-        // Call _insertConfig with the constructed ConfigInfo
-        _insertConfig(host, port, info);
+        bool inserted = false;
+        bool hash_changed = false;
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+
+            if (_local_config.has_value()) {
+                if (!_config_info_matches(*_local_config, info)) {
+                    FATAL_ERROR_NON_OO(
+                        "ConfigTracker: setLocalConfig called with conflicting content "
+                        "(existing hash: {}, new hash: {})",
+                        _local_config->json_hash, info.json_hash);
+                }
+                return; // identical content; no-op
+            }
+
+            _local_config = info;
+            _local_config_present_metric().labels({json_hash}).set(1.0);
+            _refresh_count_metric_locked();
+            // Recompute the combined tracker hash in the same critical section
+            // as the map update so readers never observe new entries with a
+            // stale tracker hash.
+            hash_changed = _recomputeTrackerHashLocked();
+            inserted = true;
+        }
+
+        if (inserted) {
+            if (hash_changed) {
+                _hash_changes_total().inc();
+                _last_change_timestamp().set(_now_seconds());
+            }
+            DEBUG_NON_OO("ConfigTracker: set local config, hash: {}", json_hash);
+        }
     }
 
     /**
-     * @brief Check if a config exists in the _configs map.
+     * @brief Insert a config received from an upstream peer (or from any
+     * upstream JSON-emitting source like an FPGA controller) into the tracker.
      *
-     * @param hash The hash of the config.
-     * @returns True if the config exists, false otherwise.
+     * The upstream entry is keyed by (host, port). The hash bakes in the
+     * (host, port) so that two distinct origins with identical content still
+     * produce distinct hashes (preserving the 1:1 invariant with
+     * _upstream_config_hashes).
+     *
+     * @param host         The (ipv4) host of the upstream, as observed by
+     *                     this node (i.e., the address this node dialed).
+     * @param port         The REST port of the upstream.
+     * @param config_json  The JSON content to insert.
+     * @param kotekan_version       Kotekan version (empty for non-kotekan upstreams).
+     * @param kotekan_build_branch  Kotekan build branch (empty for non-kotekan upstreams).
+     * @param kotekan_git_commit_hash    Kotekan git commit hash (empty for non-kotekan upstreams).
+     * @param kotekan_cmake_options Kotekan CMake options (empty for non-kotekan upstreams).
      */
-    bool hasConfig(std::string host, uint16_t port) const {
+    void insertUpstreamConfig(std::string host, uint16_t port, const nlohmann::json& config_json,
+                              const std::string& kotekan_version,
+                              const std::string& kotekan_build_branch,
+                              const std::string& kotekan_git_commit_hash,
+                              const std::string& kotekan_cmake_options) {
+        nlohmann::json filtered_json = _strip_update_endpoints(config_json);
+        std::string json_hash = _jsonHashWithEndpoint(filtered_json, host, port);
+
+        ConfigInfo info(filtered_json, json_hash, kotekan_version, kotekan_build_branch,
+                        kotekan_git_commit_hash, kotekan_cmake_options);
+
+        _insertUpstream(host, port, info);
+    }
+
+    /**
+     * @brief Set the retry/timeout policy used by both
+     * @c fetchAndRegisterFpgaTracking (the one-time FPGA fetch at startup)
+     * and @c getUpstreamConfigs (peer fetches on every wire-update flag).
+     * Called from @c applyConfig at kotekan startup after reading the
+     * /config_tracker block. After retries are exhausted on any fetch, the
+     * call is fatal.
+     *
+     * @param retries          Number of retries for each upstream
+     *                         @c make_request_blocking call.
+     * @param timeout_seconds  HTTP timeout in seconds (-1 = restClient default).
+     */
+    void setUpstreamFetchPolicy(int retries, int timeout_seconds) {
         std::lock_guard<std::mutex> lock(_lock);
-        return _configs.count({host, port}) > 0;
+        _upstream_fetch_retries = retries;
+        _upstream_fetch_timeout_seconds = timeout_seconds;
     }
 
     /**
-     * @brief Check if a config exists using a hash string instead of host and port.
+     * @brief Fetch the upstream FPGA controller's config and timing JSON via
+     * REST and register them as a single upstream entry. Intended to be
+     * called once at kotekan startup (see kotekanMode).
+     *
+     * The hostname is resolved to a canonical IPv4 string up front; that
+     * IPv4 is used both as the @c host argument to @c restClient and as the
+     * storage key, so downstream peers fetching the entry transitively land
+     * on the same key. The returned config and timing payloads are wrapped
+     * into a single ``{"config": ..., "timing": ...}`` JSON and registered
+     * via @c insertUpstreamConfig with empty kotekan_* metadata, so the FPGA
+     * snapshot rides along with peer configs through the normal upstream
+     * propagation path.
+     *
+     * Failure to resolve the hostname, to issue either GET, or to parse
+     * either response is fatal: kotekan will not start without a confirmed
+     * FPGA controller snapshot when this is called.
+     *
+     * Uses the retry/timeout policy set via @c setUpstreamFetchPolicy.
+     *
+     * @param host             Hostname or IPv4 address of the FPGA
+     *                         controller's REST server.
+     * @param port             REST port.
+     * @param config_endpoint  Path to the controller's config JSON.
+     * @param timing_endpoint  Path to the controller's timing JSON.
      */
-    bool hasConfig(std::string hash) const {
+    void fetchAndRegisterFpgaTracking(const std::string& host, uint16_t port,
+                                      const std::string& config_endpoint,
+                                      const std::string& timing_endpoint) {
+        const std::string ip = _resolveToIPv4(host);
+        if (host != ip) {
+            INFO_NON_OO("ConfigTracker: resolved FPGA controller {}:{} to {}:{}", host, port, ip,
+                        port);
+        }
+
+        int retries;
+        int timeout_seconds;
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+            retries = _upstream_fetch_retries;
+            timeout_seconds = _upstream_fetch_timeout_seconds;
+        }
+
+        nlohmann::json cfg_json =
+            _fpga_get_or_fatal(ip, port, config_endpoint, "config", timeout_seconds, retries);
+        nlohmann::json tim_json =
+            _fpga_get_or_fatal(ip, port, timing_endpoint, "timing", timeout_seconds, retries);
+
+        // Combine config + timing into a single upstream entry. Storage and
+        // propagation are uniform with peer kotekan configs from here on.
+        nlohmann::json combined = {{"config", cfg_json}, {"timing", tim_json}};
+        insertUpstreamConfig(ip, port, combined, "", "", "", "");
+
+        INFO_NON_OO(
+            "ConfigTracker: registered FPGA controller config and timing from {}:{} (config {}, "
+            "timing {})",
+            ip, port, config_endpoint, timing_endpoint);
+    }
+
+    /**
+     * @brief Configure this tracker from the kotekan @c Config object.
+     *
+     * Reads the @c /config_tracker block and applies:
+     *  - upstream fetch retry/timeout policy via @c setUpstreamFetchPolicy
+     *    (defaults: 2 retries, 10s timeout);
+     *  - if @c /config_tracker/fpga_host_info is set, the FPGA controller's
+     *    config + timing snapshot via @c fetchAndRegisterFpgaTracking (FATAL
+     *    on any failure).
+     *
+     * The endpoint paths live on the controller block itself so the
+     * Telescope (which reads ``timing_endpoint`` from the same block via
+     * ``gps_host_info``) and the ConfigTracker share one source.
+     *
+     * Intended to be called once at kotekan startup after @c setLocalConfig.
+     */
+    void applyConfig(Config& config) {
+        const std::string ct_path = "/config_tracker";
+
+        const int upstream_retries = config.get_default<int>(ct_path, "upstream_fetch_retries", 2);
+        const int upstream_timeout =
+            config.get_default<int>(ct_path, "upstream_fetch_timeout_seconds", 10);
+        setUpstreamFetchPolicy(upstream_retries, upstream_timeout);
+
+        if (config.exists(ct_path, "fpga_host_info")) {
+            const std::string fpga_ref = config.get<std::string>(ct_path, "fpga_host_info");
+            const std::string host = config.get<std::string>(fpga_ref, "host");
+            const int port_int = config.get<int>(fpga_ref, "port");
+            if (port_int <= 0 || port_int > 65535) {
+                FATAL_ERROR_NON_OO("ConfigTracker: invalid {}.port: {}", fpga_ref, port_int);
+            }
+            const std::string config_endpoint =
+                config.get_default<std::string>(fpga_ref, "config_endpoint", "/config");
+            const std::string timing_endpoint =
+                config.get_default<std::string>(fpga_ref, "timing_endpoint", "/get-frame0-time");
+            fetchAndRegisterFpgaTracking(host, static_cast<uint16_t>(port_int), config_endpoint,
+                                         timing_endpoint);
+        }
+    }
+
+    /// True if a local config has been set.
+    bool hasLocalConfig() const {
         std::lock_guard<std::mutex> lock(_lock);
-        return _config_hashes.count(hash) > 0;
+        return _local_config.has_value();
     }
 
-    /**
-     * @brief A callback function for the REST server to use.
-     * This function returns a configuration corresponding to a given hash,
-     * or all configurations if no hash is provided.
-     *
-     * This function is never called directly.
-     *
-     * @param conn The connection instance to send results to.
-     */
-    void trackers_configs_callback(connectionInstance& conn) {
-        check_num_configs_consistent();
+    /// True if an upstream entry exists for the given (host, port).
+    bool hasUpstreamConfig(const std::string& host, uint16_t port) const {
+        std::lock_guard<std::mutex> lock(_lock);
+        return _upstream_configs.count({host, port}) > 0;
+    }
 
-        nlohmann::json return_json = {};
+    /// True if an upstream entry exists with the given hash.
+    bool hasUpstreamConfig(const std::string& hash) const {
+        std::lock_guard<std::mutex> lock(_lock);
+        return _upstream_config_hashes.count(hash) > 0;
+    }
+
+    /// Copy of the local ConfigInfo, or std::nullopt if not yet set.
+    std::optional<ConfigInfo> getLocalConfigInfo() const {
+        std::lock_guard<std::mutex> lock(_lock);
+        return _local_config;
+    }
+
+    /// Local config's hash, or "" if not yet set.
+    std::string getLocalConfigHash() const {
+        std::lock_guard<std::mutex> lock(_lock);
+        return _local_config.has_value() ? _local_config->json_hash : std::string{};
+    }
+
+    /// REST callback returning the local ConfigInfo as JSON, or 404.
+    void trackers_local_callback(connectionInstance& conn) {
+        std::lock_guard<std::mutex> lock(_lock);
+        if (!_local_config.has_value()) {
+            conn.send_error("local config not set", HTTP_RESPONSE::NOT_FOUND);
+            return;
+        }
+        conn.send_json_reply(_local_config->to_json());
+    }
+
+    /// REST callback returning {"hash": "..."} for the local config, or 404.
+    void trackers_local_hash_callback(connectionInstance& conn) {
+        std::lock_guard<std::mutex> lock(_lock);
+        if (!_local_config.has_value()) {
+            conn.send_error("local config not set", HTTP_RESPONSE::NOT_FOUND);
+            return;
+        }
+        nlohmann::json reply = {{"hash", _local_config->json_hash}};
+        conn.send_json_reply(reply);
+    }
+
+    /// REST callback returning upstream configs (optionally filtered by ?hash=).
+    void trackers_upstream_configs_callback(connectionInstance& conn) {
+        std::lock_guard<std::mutex> lock(_lock);
+        _check_upstream_consistent_locked();
+
+        nlohmann::json return_json = nlohmann::json::object();
 
         auto query_args = conn.get_query();
-        // If a hash is provided, only return the config with that hash
-        std::string hash = "";
-        if (query_args.find("hash") != query_args.end()) {
+        std::string hash;
+        if (query_args.find("hash") != query_args.end())
             hash = query_args["hash"];
-        }
 
-        std::lock_guard<std::mutex> lock(_lock);
-        for (const auto& config : _configs) {
-            if (!hash.empty() && config.second.json_hash != hash)
+        for (const auto& [host_port, info] : _upstream_configs) {
+            if (!hash.empty() && info.json_hash != hash)
                 continue;
-
-            // Serialize the ConfigInformation into JSON
-            const auto& host_port = config.first;
-            const auto& info = config.second;
-
-            // Concatenate host:port in a string
             std::string host_port_str = host_port.host + ":" + std::to_string(host_port.port);
-            return_json[host_port_str] = nlohmann::json::object();
-
-            // Add the config JSON and metadata to the return JSON
-            return_json[host_port_str]["config"] = info.config;
-            return_json[host_port_str]["json_hash"] = info.json_hash;
-            return_json[host_port_str]["kotekan_version"] = info.kotekan_version;
-            return_json[host_port_str]["kotekan_build_branch"] = info.kotekan_build_branch;
-            return_json[host_port_str]["kotekan_git_commit_hash"] = info.kotekan_git_commit_hash;
-            return_json[host_port_str]["kotekan_cmake_options"] = info.kotekan_cmake_options;
+            return_json[host_port_str] = info.to_json();
         }
-
         conn.send_json_reply(return_json);
     }
 
-    /**
-     * @brief A callback function for the REST server to use.
-     * This function returns a json object containing the hashes of all configurations.
-     *
-     * This function is never called directly.
-     *
-     * @param conn The connection instance to send results to.
-     */
-    void trackers_hashes_callback(connectionInstance& conn) {
-        check_num_configs_consistent();
-
-        nlohmann::json return_json = {};
+    /// REST callback returning upstream-config hash -> {host, port}.
+    void trackers_upstream_hashes_callback(connectionInstance& conn) {
         std::lock_guard<std::mutex> lock(_lock);
-        for (const auto& hash : _config_hashes) {
-            // Add the hash and its corresponding host:port to the return JSON
-            return_json[hash.first] = nlohmann::json::object();
-            return_json[hash.first]["host"] = hash.second.host;
-            return_json[hash.first]["port"] = hash.second.port;
+        _check_upstream_consistent_locked();
+
+        nlohmann::json return_json = nlohmann::json::object();
+        for (const auto& [hash, host_port] : _upstream_config_hashes) {
+            return_json[hash] = {{"host", host_port.host}, {"port", host_port.port}};
         }
         conn.send_json_reply(return_json);
     }
 
     /**
-     * @brief Registers this object with the REST server, creating the
-     *        /config_tracker_configs and config_tracker_hashes end points.
-     * If a hash is provided to /config_tracker_configs, it will return the config for that hash.
-     * @param rest_server The server to register with.
+     * @brief Register the tracker's REST endpoints with the given server.
+     *
+     * Endpoints:
+     *   GET /config_tracker_local            -> this node's local ConfigInfo
+     *   GET /config_tracker_local_hash       -> {"hash": "..."} for the local config
+     *   GET /config_tracker_upstream_configs -> upstream configs (or ?hash=)
+     *   GET /config_tracker_upstream_hashes  -> {hash: {host, port}} for upstream
      */
     void register_with_server(restServer* rest_server) {
         using namespace std::placeholders;
-        // register callback for /config_tracker_*, pass along hash if provided
         rest_server->register_get_callback(
-            "/config_tracker_configs",
-            std::bind(&ConfigTracker::trackers_configs_callback, this, _1));
+            "/config_tracker_local", std::bind(&ConfigTracker::trackers_local_callback, this, _1));
         rest_server->register_get_callback(
-            "/config_tracker_hashes",
-            std::bind(&ConfigTracker::trackers_hashes_callback, this, _1));
+            "/config_tracker_local_hash",
+            std::bind(&ConfigTracker::trackers_local_hash_callback, this, _1));
+        rest_server->register_get_callback(
+            "/config_tracker_upstream_configs",
+            std::bind(&ConfigTracker::trackers_upstream_configs_callback, this, _1));
+        rest_server->register_get_callback(
+            "/config_tracker_upstream_hashes",
+            std::bind(&ConfigTracker::trackers_upstream_hashes_callback, this, _1));
     }
 
     /**
-     * @brief Request and insert upstream configs into the tracker.
-     * This function will fetch hashes from an upstream REST server, then:
-     *   1) check if upstream configs are already present locally, if not, fetch them.
-     *   2) If the hash already exists, check to make sure the (hash, host:port) hasn't changed
-     * (otherwise fail).
+     * @brief Fetch and insert an upstream peer's tracker state.
+     *
+     * Two-step protocol against the peer at (host, port):
+     *   1. GET /config_tracker_local. The returned ConfigInfo is the peer's
+     *      own local config; this node keys it under (host, port) (the
+     *      address it actually dialed) and stores it as an upstream entry.
+     *   2. GET /config_tracker_upstream_hashes. For each hash not already
+     *      present locally, GET /config_tracker_upstream_configs?hash=<...>
+     *      and insert it (its host:port reflects what the peer observed,
+     *      which we trust transitively). FPGA snapshots are ordinary
+     *      upstream entries and ride along on this same path.
+     *
+     * Any network/parse failure (after the configured HTTP retries) or
+     * any content-validation failure is fatal. The flag used by buffer send/recv
+     * is sent once per sender-side hash change, so a silently-skipped update
+     * will leave downstream state permanently stale.
      */
     void getUpstreamConfigs(const std::string& host, uint16_t port) {
-
-        // Send a request to the upstream server to get all config hashes.
-        nlohmann::json request_json = {};
-        restClient::restReply reply = restClient::instance().make_request_blocking(
-            "/config_tracker_hashes", {}, host, port, 1, -1);
-        // reply is a pair with success boolean and the reply string
-        if (!reply.first) {
-            ERROR_NON_OO(
-                "ConfigTracker: Failed to get config hashes from upstream host: {}, port: {}", host,
-                port);
-            _record_upstream_fetch(host, port, false);
-            return;
+        // Snapshot the fetch policy under the lock; it is used for all
+        // fetches in this method.
+        int retries;
+        int timeout_seconds;
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+            retries = _upstream_fetch_retries;
+            timeout_seconds = _upstream_fetch_timeout_seconds;
         }
 
-        // Check if the response contains any hashes
-        if (reply.second.empty()) {
-            ERROR_NON_OO("ConfigTracker: No configs found at upstream host: {}, port: {}", host,
-                         port);
-            _record_upstream_fetch(host, port, false);
-            return;
-        }
-
-        // Convert the reply string to a JSON object
-        nlohmann::json response_json;
-        try {
-            response_json = nlohmann::json::parse(reply.second);
-        } catch (const nlohmann::json::parse_error& e) {
-            // Error, but not fatal if we can't parse the JSON
-            ERROR_NON_OO("ConfigTracker: Failed to parse JSON response from upstream host: {}, "
-                         "port: {}. Error: {}",
-                         host, port, e.what());
-            DEBUG2_NON_OO("Response was: {}", reply.second);
-            _record_upstream_fetch(host, port, false);
-            return;
-        }
-        _record_upstream_fetch(host, port, true);
-
-        // Iterate over the hashes and fetch each config
-        for (const auto& item : response_json.items()) {
-
-            const std::string& hash = item.key();
-            const nlohmann::json& host_port_json = item.value();
-            std::string upstream_host = host_port_json.value("host", host);
-            uint16_t upstream_port = host_port_json.value("port", port);
-
-            // Check if the config already exists in the tracker
-            if (hasConfig(hash)) {
-                std::lock_guard<std::mutex> lock(_lock);
-
-                // If it exists, make sure the host and port match
-                if (_config_hashes[hash].host == upstream_host
-                    && _config_hashes[hash].port == upstream_port) {
-                    // Config already exists with the same host and port, continue
-                    continue;
-                } else {
-                    FATAL_ERROR_NON_OO(
-                        "ConfigTracker: Hash conflict for {}, upstream host: {}, port: {}", hash,
-                        upstream_host, upstream_port);
-                }
-            }
-
-            // If it doesn't exist, fetch the config from the immediate upstream server.
-            // Use GET with query string to match the registered GET endpoint.
-            const std::string path_configs = std::string("/config_tracker_configs?hash=") + hash;
-            reply =
-                restClient::instance().make_request_blocking(path_configs, {}, host, port, 1, -1);
-            // Check if the request was successful
+        // Step 1: GET /config_tracker_local from the peer and key under the
+        // dialed (host, port) and store as an upstream entry.
+        {
+            restClient::restReply reply = restClient::instance().make_request_blocking(
+                "/config_tracker_local", {}, host, port, retries, timeout_seconds);
             if (!reply.first) {
-                ERROR_NON_OO("ConfigTracker: Failed to get config for hash: {} from upstream host: "
-                             "{}, port: {}",
-                             hash, upstream_host, upstream_port);
-                DEBUG2_NON_OO("Response was: {}", reply.second);
-                _record_upstream_fetch(upstream_host, upstream_port, false);
-                continue;
-            }
-            // Parse the response JSON
-            nlohmann::json config_response_json;
-            try {
-                config_response_json = nlohmann::json::parse(reply.second);
-            } catch (const nlohmann::json::parse_error& e) {
-                ERROR_NON_OO("ConfigTracker: Failed to parse JSON response for hash: {} from "
-                             "upstream host: {}, port: {}. Error: {}",
-                             hash, upstream_host, upstream_port, e.what());
-                _record_upstream_fetch(upstream_host, upstream_port, false);
-                continue;
+                _record_upstream_fetch(host, port, false);
+                FATAL_ERROR_NON_OO(
+                    "ConfigTracker: failed to GET /config_tracker_local from {}:{} after {} "
+                    "retries",
+                    host, port, retries);
             }
 
-            // Check if the response contains the config under the owner
-            // (upstream_host:upstream_port)
-            std::string host_port_str = upstream_host + ":" + std::to_string(upstream_port);
-            if (config_response_json.contains(host_port_str)) {
-                ConfigInfo info = ConfigInfo(config_response_json[host_port_str]);
-                // check that the new hash matches expectations.
-                if (_jsonHash(info.config) != hash || info.json_hash != hash)
-                    ERROR_NON_OO(
-                        "ConfigTracker: Returned hash or config is inconsistent with hash {}!",
-                        hash);
-                _insertConfig(upstream_host, upstream_port, info);
-                _record_upstream_fetch(upstream_host, upstream_port, true);
-            } else {
-                // If the config was not found, log a non-fatal error.
-                ERROR_NON_OO("ConfigTracker: Config not found for hash: {}", hash);
-                _record_upstream_fetch(upstream_host, upstream_port, false);
+            nlohmann::json local_json;
+            try {
+                local_json = nlohmann::json::parse(reply.second);
+            } catch (const nlohmann::json::parse_error& e) {
+                _record_upstream_fetch(host, port, false);
+                DEBUG_NON_OO("Response was: {}", reply.second);
+                FATAL_ERROR_NON_OO(
+                    "ConfigTracker: failed to parse /config_tracker_local response from {}:{}: {}",
+                    host, port, e.what());
+            }
+
+            ConfigInfo peer_local;
+            try {
+                peer_local = ConfigInfo(local_json);
+            } catch (const std::exception& e) {
+                _record_upstream_fetch(host, port, false);
+                FATAL_ERROR_NON_OO(
+                    "ConfigTracker: malformed /config_tracker_local payload from {}:{}: {}", host,
+                    port, e.what());
+            }
+
+            // Key under (host, port) and re-hash accordingly.
+            nlohmann::json filtered = _strip_update_endpoints(peer_local.config);
+            peer_local.config = filtered;
+            peer_local.json_hash = _jsonHashWithEndpoint(filtered, host, port);
+
+            _insertUpstream(host, port, peer_local);
+            _record_upstream_fetch(host, port, true);
+        }
+
+        // Step 2: GET /config_tracker_upstream_hashes; for each missing hash
+        // pull /config_tracker_upstream_configs?hash=<...> and insert.
+        // Entries (including FPGA snapshots) carry their own (host, port)
+        // identity from the peer, which is trusted transitively.
+        {
+            restClient::restReply reply = restClient::instance().make_request_blocking(
+                "/config_tracker_upstream_hashes", {}, host, port, retries, timeout_seconds);
+            if (!reply.first) {
+                _record_upstream_fetch(host, port, false);
+                FATAL_ERROR_NON_OO(
+                    "ConfigTracker: failed to GET /config_tracker_upstream_hashes from {}:{} after "
+                    "{} retries",
+                    host, port, retries);
+            }
+
+            nlohmann::json hashes_json;
+            try {
+                hashes_json = nlohmann::json::parse(reply.second);
+            } catch (const nlohmann::json::parse_error& e) {
+                _record_upstream_fetch(host, port, false);
+                DEBUG_NON_OO("Response was: {}", reply.second);
+                FATAL_ERROR_NON_OO("ConfigTracker: failed to parse /config_tracker_upstream_hashes "
+                                   "response from {}:{}: {}",
+                                   host, port, e.what());
+            }
+            _record_upstream_fetch(host, port, true);
+
+            for (const auto& item : hashes_json.items()) {
+                const std::string& hash = item.key();
+                const nlohmann::json& host_port_json = item.value();
+                std::string entry_host = host_port_json.value("host", host);
+                uint16_t entry_port = host_port_json.value("port", port);
+
+                {
+                    std::lock_guard<std::mutex> lock(_lock);
+                    auto it = _upstream_config_hashes.find(hash);
+                    if (it != _upstream_config_hashes.end()) {
+                        if (it->second.host == entry_host && it->second.port == entry_port)
+                            continue;
+                        FATAL_ERROR_NON_OO("ConfigTracker: upstream hash {} already known for "
+                                           "{}:{}, but peer {}:{} "
+                                           "reports it as {}:{}",
+                                           hash, it->second.host, it->second.port, host, port,
+                                           entry_host, entry_port);
+                    }
+                }
+
+                const std::string path =
+                    std::string("/config_tracker_upstream_configs?hash=") + hash;
+                restClient::restReply entry_reply = restClient::instance().make_request_blocking(
+                    path, {}, host, port, retries, timeout_seconds);
+                if (!entry_reply.first) {
+                    _record_upstream_fetch(entry_host, entry_port, false);
+                    FATAL_ERROR_NON_OO(
+                        "ConfigTracker: failed to GET /config_tracker_upstream_configs for hash {} "
+                        "from peer {}:{} after {} retries",
+                        hash, host, port, retries);
+                }
+
+                nlohmann::json response;
+                try {
+                    response = nlohmann::json::parse(entry_reply.second);
+                } catch (const nlohmann::json::parse_error& e) {
+                    _record_upstream_fetch(entry_host, entry_port, false);
+                    FATAL_ERROR_NON_OO(
+                        "ConfigTracker: failed to parse upstream-config response for hash {}: {}",
+                        hash, e.what());
+                }
+
+                const std::string host_port_str = entry_host + ":" + std::to_string(entry_port);
+                if (!response.contains(host_port_str)) {
+                    _record_upstream_fetch(entry_host, entry_port, false);
+                    FATAL_ERROR_NON_OO(
+                        "ConfigTracker: peer {}:{} did not return upstream entry for {} (hash {})",
+                        host, port, host_port_str, hash);
+                }
+
+                ConfigInfo info;
+                try {
+                    info = ConfigInfo(response[host_port_str]);
+                } catch (const std::exception& e) {
+                    _record_upstream_fetch(entry_host, entry_port, false);
+                    FATAL_ERROR_NON_OO(
+                        "ConfigTracker: malformed upstream-config payload for {} (hash {}): {}",
+                        host_port_str, hash, e.what());
+                }
+
+                if (_jsonHashWithEndpoint(info.config, entry_host, entry_port) != hash
+                    || info.json_hash != hash) {
+                    _record_upstream_fetch(entry_host, entry_port, false);
+                    FATAL_ERROR_NON_OO("ConfigTracker: upstream hash mismatch for {} (expected {})",
+                                       host_port_str, hash);
+                }
+
+                _insertUpstream(entry_host, entry_port, info);
+                _record_upstream_fetch(entry_host, entry_port, true);
             }
         }
-        // Sanity check to ensure that the number of configs is consistent
-        check_num_configs_consistent();
+
+        std::lock_guard<std::mutex> lock(_lock);
+        _check_upstream_consistent_locked();
     }
 
     /**
-     * @brief Get a vector of strings of all config json
+     * @brief Get a vector of strings of all config json (local + upstream).
      */
     std::vector<std::string> getAllJSONConfigs() const {
         std::vector<std::string> configs;
         std::lock_guard<std::mutex> lock(_lock);
-        for (const auto& [host_port, config_info] : _configs) {
+        if (_local_config.has_value()) {
+            configs.push_back(_local_config->to_json().dump(
+                4, ' ', false, nlohmann::json::error_handler_t::strict));
+        }
+        for (const auto& [_, info] : _upstream_configs) {
             configs.push_back(
-                config_info.to_json().dump(4, ' ', false, nlohmann::json::error_handler_t::strict));
+                info.to_json().dump(4, ' ', false, nlohmann::json::error_handler_t::strict));
         }
         return configs;
     }
 
     /**
-     * @brief Write all configuration data to disk with detailed error reporting.
+     * @brief Write all configuration data (local + upstream) to disk.
+     *
+     * Filenames:
+     *   local         -> "local.json"
+     *   upstream      -> "<host>_<port>.json"
      *
      * @param directory The directory to write files to
      * @return Number of configurations successfully written
      */
     size_t writeConfigsToDisk(const std::string& directory) const {
-        // Check if directory exists and is writable
         struct stat info;
         if (stat(directory.c_str(), &info) != 0) {
-            std::string err =
-                "Error stating directory: " + directory + ", error: " + strerror(errno);
-            FATAL_ERROR_NON_OO("ConfigTracker: {}", err);
+            FATAL_ERROR_NON_OO("ConfigTracker: error stating directory {}: {}", directory,
+                               strerror(errno));
         }
-
         if (!S_ISDIR(info.st_mode)) {
-            std::string err = "Path is not a directory: " + directory;
-            FATAL_ERROR_NON_OO("ConfigTracker: {}", err);
+            FATAL_ERROR_NON_OO("ConfigTracker: path is not a directory: {}", directory);
         }
 
         std::lock_guard<std::mutex> lock(_lock);
         size_t written = 0;
 
-        for (const auto& [host_port, config_info] : _configs) {
-            // Create filename - use underscore instead of colon for portability
+        if (_local_config.has_value()) {
+            _write_one_atomic(directory + "/local.json", *_local_config);
+            ++written;
+        }
+
+        for (const auto& [host_port, ci] : _upstream_configs) {
             std::ostringstream filename_stream;
             filename_stream << directory << "/" << host_port.host << "_" << host_port.port
                             << ".json";
-            std::string filename = filename_stream.str();
-
-            try {
-                // Write atomically by writing to temp file first
-                std::string temp_filename = filename + ".tmp";
-
-                {
-                    std::ofstream file(temp_filename);
-                    if (!file) {
-                        FATAL_ERROR_NON_OO("ConfigTracker: Cannot open file for writing");
-                    }
-
-                    // Write with pretty formatting
-                    file << config_info.to_json().dump(4, ' ', false,
-                                                       nlohmann::json::error_handler_t::strict);
-
-                    if (!file.good()) {
-                        FATAL_ERROR_NON_OO("ConfigTracker: Write failed");
-                    }
-                } // file closed
-
-                // Atomically rename temp file to final name
-                if (std::rename(temp_filename.c_str(), filename.c_str()) != 0) {
-                    FATAL_ERROR_NON_OO("ConfigTracker: Failed to rename temp file");
-                }
-
-                ++written;
-
-            } catch (const std::exception& e) {
-                std::string err = "Error writing " + filename + ": " + e.what();
-                FATAL_ERROR_NON_OO("{}", err);
-
-                // Clean up temp file if it exists
-                std::remove((filename + ".tmp").c_str());
-            }
+            _write_one_atomic(filename_stream.str(), ci);
+            ++written;
         }
 
         return written;
@@ -541,21 +774,26 @@ public:
      * primarily for tests or controlled re-initialization.
      */
     void reset() {
-        std::vector<std::tuple<std::string, uint16_t, std::string>> cleared_configs;
+        std::vector<std::tuple<std::string, uint16_t, std::string>> cleared_upstream;
+        std::string cleared_local_hash;
         {
             std::lock_guard<std::mutex> lock(_lock);
-            for (const auto& [host_port, info] : _configs) {
-                cleared_configs.emplace_back(host_port.host, host_port.port, info.json_hash);
-            }
-            _configs.clear();
-            _config_hashes.clear();
+            for (const auto& [hp, info] : _upstream_configs)
+                cleared_upstream.emplace_back(hp.host, hp.port, info.json_hash);
+            if (_local_config.has_value())
+                cleared_local_hash = _local_config->json_hash;
+
+            _upstream_configs.clear();
+            _upstream_config_hashes.clear();
+            _local_config.reset();
             _tracker_hash.clear();
             _configs_total_metric().set(0.0);
         }
 
-        for (const auto& [host, port, hash] : cleared_configs) {
+        for (const auto& [host, port, hash] : cleared_upstream)
             _config_present_metric().labels({host, std::to_string(port), hash}).set(0.0);
-        }
+        if (!cleared_local_hash.empty())
+            _local_config_present_metric().labels({cleared_local_hash}).set(0.0);
 
         _hash_changes_total().inc();
         _last_change_timestamp().set(_now_seconds());
@@ -565,185 +803,230 @@ private:
     /// Constructor, we don't want anyone to call this
     ConfigTracker() = default;
 
-    /// List of (host:port, config) pairs
-    std::map<HostPort, ConfigInfo> _configs;
+    /// Whether config tracking is enabled. Set once at startup (kotekanMode)
+    /// before stages are built, and constant thereafter (so no lock needed).
+    bool _enabled = false;
 
-    /// List of (hash, host:port) pairs (for looking up configs by hash)
-    std::map<std::string, HostPort> _config_hashes;
+    /// This node's own startup config (set once via setLocalConfig).
+    /// Hash is over the JSON only; identity comes from the JSON content, not
+    /// from any IP this node chose to publish.
+    std::optional<ConfigInfo> _local_config;
 
-    /// Combined hash of all configurations
+    /// Configs received from upstream peers (and from non-kotekan upstream
+    /// snapshots like the FPGA controller), keyed by the (host, port) this
+    /// node observed for the upstream. Hash includes (host, port).
+    std::map<HostPort, ConfigInfo> _upstream_configs;
+    std::map<std::string, HostPort> _upstream_config_hashes;
+
+    /// Combined hash of all configurations (local first if present, then
+    /// upstream hashes in sorted order).
     std::string _tracker_hash;
+
+    /// HTTP retry/timeout policy for all upstream fetches: the one-shot FPGA
+    /// controller fetch in @c fetchAndRegisterFpgaTracking and every peer
+    /// fetch in @c getUpstreamConfigs. Set once at startup via
+    /// @c setUpstreamFetchPolicy.
+    int _upstream_fetch_retries = 2;
+    int _upstream_fetch_timeout_seconds = 10;
 
     mutable std::mutex _lock;
 
     static constexpr const char* _metrics_stage_name = "config_tracker";
 
-    /**
-     * @brief Get the md5 hash of a (json) config.
-     *
-     * This function generates a hash for a given configuration JSON object.
-     * In the context of the configTracker, the JSON object must have any
-     * blocks containing a "kotekan_update_endpoint" stripped before hashing.
-     * (This function only checks for that, and errors, expecting a caller to
-     * supply a compliant config json.)
-     *
-     * @param filtered_json The configuration JSON object to hash.
-     * @returns The canonical hash as a string.
-     */
-    std::string _jsonHash(const nlohmann::json& filtered_json) const {
-        std::stringstream ss;
-
-        // nlohmann::json::dump() uses an alpha-ordered map for objects, so the
-        // config gets serialized in a consistent order.
-
-        // In order for this to hash configs correctly, this assumes any kotekan_update_endpoints
-        // are removed, and versioning information has been added.
+    /// MD5 of a JSON config alone (no host:port). Used for the local config.
+    std::string _jsonHashLocal(const nlohmann::json& filtered_json) const {
         if (_has_kotekan_update_endpoint(filtered_json)) {
             FATAL_ERROR_NON_OO(
-                "ConfigTracker: _jsonHash called with kotekan_update_endpoint present.");
+                "ConfigTracker: _jsonHashLocal called with kotekan_update_endpoint present.");
+        }
+        return _md5_hex(
+            filtered_json.dump(-1, '\0', false, nlohmann::json::error_handler_t::strict));
+    }
+
+    /**
+     * @brief MD5 of (host, port, JSON content) so two distinct origin
+     * endpoints with identical content hash to distinct values. Used for
+     * upstream entries (peer kotekan configs and FPGA snapshots alike).
+     * Caller must have stripped any kotekan_update_endpoint blocks.
+     */
+    std::string _jsonHashWithEndpoint(const nlohmann::json& filtered_json, const std::string& host,
+                                      uint16_t port) const {
+        if (_has_kotekan_update_endpoint(filtered_json)) {
+            FATAL_ERROR_NON_OO("ConfigTracker: _jsonHashWithEndpoint called with "
+                               "kotekan_update_endpoint present.");
+        }
+        std::stringstream ss;
+        ss << host << ":" << port << "|"
+           << filtered_json.dump(-1, '\0', false, nlohmann::json::error_handler_t::strict);
+        return _md5_hex(ss.str());
+    }
+
+    /**
+     * @brief Insert a ConfigInfo as an upstream entry under (host, port).
+     *
+     * - Validates host (IPv4 or "localhost") and port (non-zero).
+     * - Idempotent on identical content; FATAL on conflict.
+     * - Updates the upstream-presence metric and the total-configs gauge,
+     *   and refreshes the combined tracker hash on actual insertion.
+     */
+    void _insertUpstream(std::string host, uint16_t port, ConfigInfo info) {
+        if (_has_kotekan_update_endpoint(info.config)) {
+            FATAL_ERROR_NON_OO(
+                "ConfigTracker: upstream insert called with kotekan_update_endpoint present.");
         }
 
-        // Stick to a string dump for now
-        // TODO: a binary dump storing the full double precision bit pattern could be more
-        // consistent.
-        ss << filtered_json.dump(-1, '\0', false, nlohmann::json::error_handler_t::strict);
+        if (host == "localhost")
+            host = "127.0.0.1";
 
-        std::string serialized = ss.str();
-        unsigned char md5_result[MD5_DIGEST_LENGTH];
+        struct sockaddr_in sa4;
+        if (inet_pton(AF_INET, host.c_str(), &(sa4.sin_addr)) != 1) {
+            FATAL_ERROR_NON_OO(
+                "ConfigTracker: upstream insert called with invalid IPv4 address: {}", host);
+        }
+        if (port == 0) {
+            FATAL_ERROR_NON_OO("ConfigTracker: upstream insert called with invalid port: {}", port);
+        }
+
+        HostPort host_port{host, port};
+        bool inserted = false;
+        bool hash_changed = false;
+        {
+            std::lock_guard<std::mutex> lock(_lock);
+            auto it = _upstream_configs.find(host_port);
+            if (it != _upstream_configs.end()) {
+                if (!_config_info_matches(it->second, info)) {
+                    FATAL_ERROR_NON_OO(
+                        "ConfigTracker: conflicting upstream content present for host: {}, "
+                        "port: {}",
+                        host, port);
+                }
+                return; // identical content; no-op
+            }
+            _upstream_configs.emplace(host_port, info);
+            _upstream_config_hashes.emplace(info.json_hash, host_port);
+            _config_present_metric()
+                .labels({host_port.host, std::to_string(host_port.port), info.json_hash})
+                .set(1.0);
+            _refresh_count_metric_locked();
+            // Recompute the combined tracker hash in the same critical section
+            // as the map update so readers never observe new entries with a
+            // stale tracker hash.
+            hash_changed = _recomputeTrackerHashLocked();
+            inserted = true;
+        }
+
+        if (inserted) {
+            if (hash_changed) {
+                _hash_changes_total().inc();
+                _last_change_timestamp().set(_now_seconds());
+            }
+            DEBUG_NON_OO("ConfigTracker: inserted upstream for {}:{}, hash: {}", host, port,
+                         info.json_hash);
+        }
+    }
+
+    /**
+     * @brief Recompute and store the combined tracker hash from current map
+     * state. Caller must hold @c _lock.
+     *
+     * The hash composes the local hash (if present), then the sorted upstream
+     * hashes. The order is fixed so the combined hash is deterministic
+     * regardless of insertion order. Computing inside the existing critical
+     * section guarantees that any reader observing a new entry also observes
+     * the matching tracker hash.
+     *
+     * @return true if @c _tracker_hash actually changed value.
+     */
+    bool _recomputeTrackerHashLocked() {
+        std::stringstream ss;
+        if (_local_config.has_value())
+            ss << _local_config->json_hash;
+        for (const auto& [hash, _] : _upstream_config_hashes)
+            ss << hash;
+
+        const std::string new_hash = _md5_hex(ss.str());
+        bool changed = (_tracker_hash != new_hash);
+        _tracker_hash = new_hash;
+        DEBUG_NON_OO("ConfigTracker: combined tracker hash is now {}", _tracker_hash);
+        return changed;
+    }
+
+    /// Compare two ConfigInfos for full equality (hash + version metadata).
+    static bool _config_info_matches(const ConfigInfo& a, const ConfigInfo& b) {
+        return a.json_hash == b.json_hash && a.kotekan_version == b.kotekan_version
+               && a.kotekan_build_branch == b.kotekan_build_branch
+               && a.kotekan_git_commit_hash == b.kotekan_git_commit_hash
+               && a.kotekan_cmake_options == b.kotekan_cmake_options;
+    }
+
+    /**
+     * @brief Resolve a hostname-or-IPv4 string to its canonical IPv4
+     * representation. Fatal on resolution failure.
+     */
+    static std::string _resolveToIPv4(const std::string& host_or_ip) {
+        // If it already parses as IPv4, return as-is.
+        struct sockaddr_in sa4;
+        if (inet_pton(AF_INET, host_or_ip.c_str(), &(sa4.sin_addr)) == 1)
+            return host_or_ip;
+
+        struct addrinfo hints = {};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+
+        struct addrinfo* res = nullptr;
+        const int err = getaddrinfo(host_or_ip.c_str(), nullptr, &hints, &res);
+        if (err != 0 || res == nullptr) {
+            FATAL_ERROR_NON_OO("ConfigTracker: failed to resolve host '{}': {}", host_or_ip,
+                               gai_strerror(err));
+        }
+
+        char buf[INET_ADDRSTRLEN] = {0};
+        auto* sa = reinterpret_cast<struct sockaddr_in*>(res->ai_addr);
+        inet_ntop(AF_INET, &sa->sin_addr, buf, sizeof(buf));
+        freeaddrinfo(res);
+        return std::string(buf);
+    }
+
+    /**
+     * @brief GET a single FPGA controller endpoint and return the parsed JSON
+     * body. Fatal on HTTP failure (after retries) or parse failure.
+     */
+    static nlohmann::json _fpga_get_or_fatal(const std::string& ip, uint16_t port,
+                                             const std::string& endpoint, const char* what,
+                                             int request_timeout_seconds, int request_retries) {
+        auto reply = restClient::instance().make_request_blocking(
+            endpoint, {}, ip, port, request_retries, request_timeout_seconds);
+        if (!reply.first) {
+            FATAL_ERROR_NON_OO("ConfigTracker: failed to GET FPGA {} from {}:{}{} after {} retries "
+                               "(timeout {}s per attempt)",
+                               what, ip, port, endpoint, request_retries, request_timeout_seconds);
+        }
+        try {
+            return nlohmann::json::parse(reply.second);
+        } catch (const nlohmann::json::parse_error& e) {
+            FATAL_ERROR_NON_OO("ConfigTracker: failed to parse FPGA {} response from {}:{}{}: {}",
+                               what, ip, port, endpoint, e.what());
+        }
+        // Unreachable; FATAL_ERROR_NON_OO throws.
+        return nlohmann::json{};
+    }
+
+    /// MD5 of a string, returned as a 32-char lowercase hex string.
+    static std::string _md5_hex(const std::string& input) {
+        unsigned char digest[MD5_DIGEST_LENGTH];
 
         // The MD5 function is deprecated in openssl 3.0, but we want to
         // maintain compatibility.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-        MD5(reinterpret_cast<const unsigned char*>(serialized.c_str()), serialized.size(),
-            md5_result);
+        MD5(reinterpret_cast<const unsigned char*>(input.c_str()), input.size(), digest);
 #pragma GCC diagnostic pop
 
-        std::stringstream md5_ss;
-        md5_ss << std::hex << std::setw(2) << std::setfill('0');
+        std::stringstream ss;
+        ss << std::hex << std::setfill('0');
         for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
-            md5_ss << static_cast<int>(md5_result[i]);
-
-        return md5_ss.str();
-    }
-
-    /**
-     * @brief Insert configuration information into the tracker.
-     * Fatal kotekan error if a config with the same host and port already exists, are invalid, or
-     * the config includes a kotekan_update_endpoint.
-     *
-     * @param host The (ipv4) host where the kotekan instance with the configuration is running.
-     * @param port The port where the kotekan instance with the configuration is running.
-     * @param config_info The configuration information to insert.
-     */
-    void _insertConfig(std::string host, uint16_t port, ConfigInfo config_info) {
-
-        // Make sure the config_info doesn't have a "kotekan_update_endpoint" in its config
-        if (_has_kotekan_update_endpoint(config_info.config)) {
-            FATAL_ERROR_NON_OO(
-                "ConfigTracker: _insertConfig called with kotekan_update_endpoint present.");
-        }
-
-        // normalize localhost to 127.0.0.1
-        if (host == "localhost") {
-            host = "127.0.0.1";
-        }
-
-        // Validate the host is a valid IPv4 address
-        struct sockaddr_in sa4;
-        if (inet_pton(AF_INET, host.c_str(), &(sa4.sin_addr)) != 1) {
-            FATAL_ERROR_NON_OO("ConfigTracker: _insertConfig called with invalid IPv4 address: {}",
-                               host);
-        }
-
-        // Validate the port is in a valid range. port < 65535 by definition of uint16_t.
-        if (port == 0) {
-            FATAL_ERROR_NON_OO("ConfigTracker: _insertConfig called with invalid port: {}", port);
-        }
-
-        HostPort host_port{host, port};
-
-        // Store the config in the map with its hash
-        {
-            std::lock_guard<std::mutex> lock(_lock);
-
-            if (_configs.count(host_port)) {
-                // If a config already exists with the same host and port,
-                // make sure the hash and version metadata match.
-                if (_configs[host_port].json_hash != config_info.json_hash
-                    || _configs[host_port].kotekan_version != config_info.kotekan_version
-                    || _configs[host_port].kotekan_build_branch != config_info.kotekan_build_branch
-                    || _configs[host_port].kotekan_git_commit_hash
-                           != config_info.kotekan_git_commit_hash
-                    || _configs[host_port].kotekan_cmake_options
-                           != config_info.kotekan_cmake_options) {
-                    FATAL_ERROR_NON_OO("ConfigTracker: conflicting configuration data present for "
-                                       "host: {}, port: {}",
-                                       host, port);
-                }
-                // Don't add anything
-                return;
-            }
-
-            _configs.emplace(host_port, config_info);
-            _config_hashes.emplace(config_info.json_hash, host_port);
-            _refresh_metrics_locked();
-        }
-        // Sanity check to ensure that the number of configs is consistent
-        check_num_configs_consistent();
-
-        // Update the combined hash
-        _setTrackerHash();
-        {
-            // lock again to print debug info
-            std::lock_guard<std::mutex> lock(_lock);
-            DEBUG_NON_OO("ConfigTracker: inserted config for host: {}, port: {}, hash: {}", host,
-                         port, config_info.json_hash);
-            DEBUG_NON_OO("ConfigTracker: _tracker_hash: {}", _tracker_hash);
-        }
-    }
-
-    /**
-     * @brief Set a hash of the combined hash of all configurations stored in the tracker.
-     * i.e. a hash representing the current tracker state.
-     */
-    void _setTrackerHash() {
-        bool changed = false;
-        {
-            std::lock_guard<std::mutex> lock(_lock);
-            std::stringstream ss;
-            for (const auto& [hash, _] : _config_hashes) {
-                ss << hash;
-            }
-
-            const std::string concatenated = ss.str();
-
-            // Get hash of the concatenated hashes
-            unsigned char md5_result[MD5_DIGEST_LENGTH];
-
-            // The MD5 function is deprecated in openssl 3.0, but we want to
-            // maintain compatibility.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-            MD5(reinterpret_cast<const unsigned char*>(concatenated.c_str()), concatenated.size(),
-                md5_result);
-#pragma GCC diagnostic pop
-
-            // Convert the MD5 result to a hex string
-            std::stringstream md5_ss;
-            md5_ss << std::hex << std::setw(2) << std::setfill('0');
-            for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
-                md5_ss << static_cast<int>(md5_result[i]);
-
-            const std::string new_hash = md5_ss.str();
-            changed = (_tracker_hash != new_hash);
-            _tracker_hash = new_hash;
-            DEBUG_NON_OO("ConfigTracker: Combined hash set to: {}", _tracker_hash);
-        }
-        if (changed) {
-            _hash_changes_total().inc();
-            _last_change_timestamp().set(_now_seconds());
-        }
+            ss << std::setw(2) << static_cast<int>(digest[i]);
+        return ss.str();
     }
 
     nlohmann::json _strip_update_endpoints(const nlohmann::json& j) const {
@@ -783,13 +1066,43 @@ private:
         return false;
     }
 
-    void _refresh_metrics_locked() {
-        _configs_total_metric().set(static_cast<double>(_configs.size()));
-        for (const auto& [host_port, info] : _configs) {
-            _config_present_metric()
-                .labels({host_port.host, std::to_string(host_port.port), info.json_hash})
-                .set(1.0);
+    /// Atomically write a single ConfigInfo to disk by writing to a .tmp file
+    /// and renaming. Fatal on any I/O error.
+    void _write_one_atomic(const std::string& filename, const ConfigInfo& info) const {
+        const std::string temp_filename = filename + ".tmp";
+        try {
+            {
+                std::ofstream file(temp_filename);
+                if (!file)
+                    FATAL_ERROR_NON_OO("ConfigTracker: cannot open {} for writing", temp_filename);
+                file << info.to_json().dump(4, ' ', false, nlohmann::json::error_handler_t::strict);
+                if (!file.good())
+                    FATAL_ERROR_NON_OO("ConfigTracker: write failed for {}", temp_filename);
+            }
+            if (std::rename(temp_filename.c_str(), filename.c_str()) != 0) {
+                std::remove(temp_filename.c_str());
+                FATAL_ERROR_NON_OO("ConfigTracker: failed to rename {} -> {}", temp_filename,
+                                   filename);
+            }
+        } catch (const std::exception& e) {
+            std::remove(temp_filename.c_str());
+            FATAL_ERROR_NON_OO("ConfigTracker: error writing {}: {}", filename, e.what());
         }
+    }
+
+    /// Sanity check that _upstream_configs and _upstream_config_hashes have
+    /// the same size. Caller must hold _lock.
+    void _check_upstream_consistent_locked() const {
+        if (_upstream_configs.size() != _upstream_config_hashes.size()) {
+            FATAL_ERROR_NON_OO("ConfigTracker: upstream entries ({}) and hashes ({}) sizes differ",
+                               _upstream_configs.size(), _upstream_config_hashes.size());
+        }
+    }
+
+    /// Refresh the total-configs gauge. Caller must hold _lock.
+    void _refresh_count_metric_locked() {
+        _configs_total_metric().set(
+            static_cast<double>((_local_config.has_value() ? 1u : 0u) + _upstream_configs.size()));
     }
 
     void _record_upstream_fetch(const std::string& host, uint16_t port, bool success) {
@@ -815,6 +1128,13 @@ private:
             prometheus::Metrics::instance().add_gauge("kotekan_config_tracker_config_present",
                                                       _metrics_stage_name,
                                                       {"host", "port", "hash"});
+        return metric;
+    }
+
+    static prometheus::MetricFamily<prometheus::Gauge>& _local_config_present_metric() {
+        static prometheus::MetricFamily<prometheus::Gauge>& metric =
+            prometheus::Metrics::instance().add_gauge("kotekan_config_tracker_local_config_present",
+                                                      _metrics_stage_name, {"hash"});
         return metric;
     }
 

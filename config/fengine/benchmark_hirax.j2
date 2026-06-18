@@ -1,0 +1,27 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# Run a HIRAX benchmark
+#
+################################################################################
+
+---
+log_level: info
+
+base_dir: data/fengine_benchmark_hirax # unused
+prefix_hostname: false
+prefix_host_rank: true
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_hirax.j2" %}
+
+{% include "include/rfi_hirax.j2" %}
+{% include "include/n2k_hirax.j2" %}
+{% include "include/bb_hirax.j2" %}
+{% include "include/upchan_hirax.j2" %}
+{% include "include/frb_hirax.j2" %}
+
+{% include "include/invent_voltage.j2" %}
+{% include "include/output_benchmark.j2" %}
+...

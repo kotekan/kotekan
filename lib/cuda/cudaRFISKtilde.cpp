@@ -1,30 +1,30 @@
-#include "Config.hpp"              // for Config
-#include "DataType.hpp"            // for uint1x8_t
-#include "NDArray.hpp"             // for NDArray
-#include "NDArrayBuffer.hpp"       // for NDArrayBuffer, buffer_type_t
-#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chordMetadata.hpp"       // for chordMetadata
-#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "div.hpp"                 // for div_noremainder, round_down
-#include "gpuCommand.hpp"          // for gpuCommandType
-#include "kotekanLogging.hpp"      // for DEBUG
-#include "n2k/rfi_kernels.hpp"     // for SkKernel
+#include <cuda_runtime_api.h>       // for cudaStreamSynchronize
+#include <driver_types.h>           // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
+#include <sys/types.h>              // for uint, ulong
+#include <algorithm>                // for min
+#include <array>                    // for array
+#include <cstddef>                  // for ptrdiff_t
+#include <cstdint>                  // for int8_t, uint64_t, uint8_t
+#include <functional>               // for function
+#include <memory>                   // for allocator, shared_ptr, __shared_ptr_access
+#include <string>                   // for basic_string, string
+#include <vector>                   // for vector
 
-#include <algorithm>          // for min
-#include <array>              // for array
-#include <cstddef>            // for ptrdiff_t
-#include <cstdint>            // for int8_t, uint64_t, uint8_t, int64_t
-#include <cuda_runtime_api.h> // for cudaStreamSynchronize
-#include <driver_types.h>     // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
-#include <fmt.hpp>            // for compile_string_to_view
-#include <functional>         // for function
-#include <memory>             // for allocator, shared_ptr, __shared_ptr_access
-#include <string>             // for basic_string, string
-#include <sys/types.h>        // for uint, ulong
-#include <vector>             // for vector
+#include "Config.hpp"               // for Config
+#include "DataType.hpp"             // for uint1x8_t
+#include "NDArray.hpp"              // for NDArray
+#include "NDArrayBuffer.hpp"        // for NDArrayBuffer, buffer_type_t
+#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "chordMetadata.hpp"        // for chordMetadata
+#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "div.hpp"                  // for div_noremainder, round_down
+#include "gpuCommand.hpp"           // for gpuCommandType
+#include "kotekanLogging.hpp"       // for DEBUG
+#include "n2k/rfi_kernels.hpp"      // for SkKernel
+#include "fmt.hpp"                  // for compile_string_to_view
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -217,14 +217,18 @@ cudaEvent_t cudaRFISKtilde::execute(cudaPipelineState& /*pipestate*/,
     const long F = rfi_S012.get_ndarray().get_extent(1);
     const long S = rfi_S012.get_ndarray().get_extent(3)
                    * rfi_S012.get_ndarray().get_extent(4); // Number of stations (= 2 * dishes)
-    const long S012_Tmin = rfi_S012.get_read_valid().begin();
     const long S012_Tsize = rfi_S012.get_ndarray().get_extent(0);
-    const long sk_feed_averaged_Tmin = rfi_SKtilde.get_write_valid().begin();
+    // S012_Tmin wraps around into actual array index to avoid overflows
+    const long S012_Tmin = rfi_S012.get_read_valid().begin() % S012_Tsize;
+    // sk_feed_averaged_Tmin wraps around into actual array index to avoid overflows
     const long sk_feed_averaged_Tsize = rfi_SKtilde.get_ndarray().get_extent(0);
+    const long sk_feed_averaged_Tmin =
+        rfi_SKtilde.get_write_valid().begin() % sk_feed_averaged_Tsize;
     const long sk_single_feed_Tmin = 0;
     const long sk_single_feed_Tsize = 0;
-    const long rfimask_T512min = rfi_RFImask.get_write_valid().begin();
+    // rfimask_T512min wraps around into actual array index to avoid overflows
     const long rfimask_T512size = rfi_RFImask.get_ndarray().get_extent(0);
+    const long rfimask_T512min = rfi_RFImask.get_write_valid().begin() % rfimask_T512size;
     const cudaStream_t stream = device.getStream(cuda_stream_id);
     skKernel.launch(out_sk_feed_averaged, out_sk_single_feed, out_rfimask, in_S012, in_bf_mask, T,
                     F, S, S012_Tmin, S012_Tsize, sk_feed_averaged_Tmin, sk_feed_averaged_Tsize,

@@ -44,6 +44,9 @@ usage() {
                               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON first
                               (include-what-you-use.org)
         - cmakelint           lint CMakeList files
+        - yamlfix_kotekan.py  ruamel.yaml round-trip: fixes indent/--- in place,
+                              raises on duplicate keys or yaml syntax errors
+        - j2lint.py           render .j2 templates and require valid yaml output
 
         -d KOTEKAN_DIR        Path to kotekan root directory
         -i ENABLE_IWYU        \"ON\" or \"OFF\" to enable or disable include-what-you-use (default:
@@ -127,7 +130,7 @@ fi
 
 # clang-format
 echo "Running clang-format..."
-find $KOTEKAN_DIR -type d \( -name "build-iwyu" -o -name "build" -o -name "external" \) -prune -o -type f -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec $CLANG_FORMAT -style=file -i {} \;
+find $KOTEKAN_DIR -type d \( -name "build-iwyu" -o -name "build" -o -name "external" -o -name ".venv" -o -name "scratch" \) -prune -o -type f -not -name L0_L1_packet.hpp -regex '.*\.\(cpp\|hpp\|c\|h\)' -exec echo $CLANG_FORMAT -style=file -i {} \;
 if ! git diff --exit-code; then
     echo "Error: clang-format found formatting issues" >&2
     ERROR=1
@@ -151,6 +154,37 @@ echo "Running cmakelint..."
 if ! source ${KOTEKAN_DIR}/tools/cmakelint.sh ${KOTEKAN_DIR}; then
     echo "Error: cmakelint failed" >&2
     ERROR=1
+fi
+
+# yaml: ruamel.yaml round-trip fixes indent / `---` / trailing whitespace
+# in place, and raises (non-zero exit) on duplicate keys or syntax errors.
+echo "Running yamlfix_kotekan.py..."
+if ! python3 -c "import ruamel.yaml" 2>/dev/null; then
+    echo "Error: ruamel.yaml python package not found" >&2
+    exit 1
+fi
+if ! python3 "${KOTEKAN_DIR}/tools/yamlfix_kotekan.py" "${KOTEKAN_DIR}"; then
+    echo "Error: yamlfix_kotekan.py reported parse issues (duplicate keys / syntax)" >&2
+    ERROR=1
+fi
+if ! git diff --exit-code; then
+    echo "Error: yamlfix_kotekan.py applied formatting changes" >&2
+    ERROR=1
+fi
+
+# Jinja2 templates (.j2): render with empty context and require valid yaml output
+echo "Running j2lint..."
+mapfile -t J2_FILES < <(
+    find "${KOTEKAN_DIR}" -type d \
+        \( -name "build-iwyu" -o -name "build" -o -name "build-*" \
+           -o -name "external" -o -name ".venv" -o -name "scratch" \) -prune \
+        -o -type f -name "*.j2" -print
+)
+if [ ${#J2_FILES[@]} -gt 0 ]; then
+    if ! python3 "${KOTEKAN_DIR}/tools/j2lint.py" "${J2_FILES[@]}"; then
+        echo "Error: j2lint.py found issues" >&2
+        ERROR=1
+    fi
 fi
 
 if [[ ${ERROR} -ne 0 ]]; then

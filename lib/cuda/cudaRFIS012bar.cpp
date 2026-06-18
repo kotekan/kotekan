@@ -1,29 +1,29 @@
-#include "Config.hpp"              // for Config
-#include "NDArray.hpp"             // for NDArray
-#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chordMetadata.hpp"       // for chordMetadata
-#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "div.hpp"                 // for div_noremainder, round_down
-#include "gpuCommand.hpp"          // for gpuCommandType
-#include "kotekanLogging.hpp"      // for DEBUG
-#include "n2k/rfi_kernels.hpp"     // for launch_s012_time_downsample_kernel
+#include <cuda_runtime_api.h>       // for cudaStreamSynchronize
+#include <driver_types.h>           // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
+#include <sys/types.h>              // for ulong
+#include <algorithm>                // for min
+#include <array>                    // for array
+#include <cassert>                  // for assert
+#include <cstddef>                  // for ptrdiff_t
+#include <cstdint>                  // for uint64_t
+#include <functional>               // for function
+#include <memory>                   // for allocator, shared_ptr, __shared_ptr_access
+#include <string>                   // for basic_string, string
+#include <vector>                   // for vector
 
-#include <algorithm>          // for min
-#include <array>              // for array
-#include <cassert>            // for assert
-#include <cstddef>            // for ptrdiff_t, size_t
-#include <cstdint>            // for uint64_t
-#include <cuda_runtime_api.h> // for cudaStreamSynchronize
-#include <driver_types.h>     // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
-#include <fmt.hpp>            // for compile_string_to_view
-#include <functional>         // for function
-#include <memory>             // for allocator, shared_ptr, __shared_ptr_access
-#include <string>             // for basic_string, string
-#include <sys/types.h>        // for ulong
-#include <vector>             // for vector
+#include "Config.hpp"               // for Config
+#include "NDArray.hpp"              // for NDArray
+#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "chordMetadata.hpp"        // for chordMetadata
+#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "div.hpp"                  // for div_noremainder, round_down
+#include "gpuCommand.hpp"           // for gpuCommandType
+#include "kotekanLogging.hpp"       // for DEBUG, FATAL_ERROR
+#include "n2k/rfi_kernels.hpp"      // for launch_s012_time_downsample_kernel
+#include "fmt.hpp"                  // for compile_string_to_view
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -114,6 +114,14 @@ cudaRFIS012bar::cudaRFIS012bar(kotekan::Config& config, const std::string& uniqu
     rfi_S012bar.register_producer();
 
     set_command_type(gpuCommandType::KERNEL);
+
+    if (rfi_num_times != rfi_num_times_bar * rfi_second_downsampling_factor) {
+        FATAL_ERROR("rfi_num_times: {:d} must be equal to rfi_num_times_bar x  "
+                    "rfi_second_downsampling_factor ({:d} x {:d} = {:d})",
+                    rfi_num_times, rfi_num_times_bar, rfi_second_downsampling_factor,
+                    rfi_num_times_bar * rfi_second_downsampling_factor);
+    }
+    assert(rfi_num_times == rfi_num_times_bar * rfi_second_downsampling_factor);
 }
 
 cudaRFIS012bar::~cudaRFIS012bar() {}
@@ -175,22 +183,34 @@ cudaEvent_t cudaRFIS012bar::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Trfi = rfi_S012.get_read_valid().size();
     DEBUG("Trfi_size={:d} Trfi_min={:d} Trfi={:d}", Trfi_size, Trfi_min, Trfi);
 
+    if (Trfi_min + Trfi > Trfi_size) {
+        FATAL_ERROR("Chunk starting at Trfi_min={:d} of size Trfi={:d} runs past end of ringbuffer "
+                    "{:s} of size Trfisize={:d}",
+                    Trfi_min, Trfi, rfi_S012.get_buffer_name(), Trfi_size);
+    }
+    assert(Trfi_min + Trfi <= Trfi_size);
+
     const std::ptrdiff_t Trfibar_size = rfi_S012bar.get_ndarray().extent(0);
     // Trfibar_min wraps around into actual array index to avoid overflows
     const std::ptrdiff_t Trfibar_min = rfi_S012bar.get_write_valid().begin() % Trfibar_size;
     const std::ptrdiff_t Trfibar = rfi_S012bar.get_write_valid().size();
     DEBUG("Trfibar_size={:d} Trfibar_min={:d} Trfibar={:d}", Trfibar_size, Trfibar_min, Trfibar);
 
-    ulong* const Sout = rfi_S012bar_memory;
-    const ulong* const Sin = rfi_S012_memory;
+    // Time offsets to access S012 buffers
+    const std::ptrdiff_t Trfi_offset = Trfi_min * rfi_S012.get_ndarray().stride(0);
+    const std::ptrdiff_t Trfibar_offset =
+        Trfi_min / rfi_second_downsampling_factor * rfi_S012bar.get_ndarray().stride(0);
+
+    ulong* const Sout = rfi_S012bar_memory + Trfibar_offset;
+    const ulong* const Sin = rfi_S012_memory + Trfi_offset;
     const long T = Trfi;
     const long M = rfi_S012.get_ndarray().extent(1) * rfi_S012.get_ndarray().extent(2)
                    * rfi_S012.get_ndarray().extent(3) * rfi_S012.get_ndarray().extent(4);
     const long Nds = rfi_second_downsampling_factor;
     const cudaStream_t stream = device.getStream(cuda_stream_id);
 
-    n2k::launch_s012_time_downsample_kernel(Sout, Sin, T, M, Nds, Trfi_min, Trfi_size, Trfibar_min,
-                                            Trfibar_size, stream);
+    n2k::launch_s012_time_downsample_kernel(Sout, Sin, T, M, Nds, 0, Trfi_size, 0, Trfibar_size,
+                                            stream);
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif

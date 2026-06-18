@@ -4,6 +4,7 @@
 #include "Config.hpp"       // for Config
 #include "ICETelescope.hpp" // for ICETelescope
 #include "Telescope.hpp"    // for freq_id_t, stream_t
+#include "geoUtil.hpp"      // for GeoFrame
 
 #include "json.hpp" // for json
 
@@ -29,6 +30,8 @@
  * @conf    frequency_map_host   string. The frequency map server IP address.
  * @conf    frequency_map_port   uint.   The port number on the frequency map server.
  * @conf    frequency_map_endpoint string. The endpoint with the frequency map.
+ * @conf    gps_host             string. The GPS server IP address. Default: "10.1.13.1"
+ * @conf    gps_port             uint.   The port number on the GPS server. Default: 54321
  **/
 class CHIMETelescope : public ICETelescope {
 public:

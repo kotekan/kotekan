@@ -13,21 +13,21 @@
 
 #include "backtrace.hpp"
 
-#include "fmt.hpp"
+#include <cxxabi.h>    // for __cxa_demangle, abi
+#include <dlfcn.h>     // for dladdr, Dl_info
+#include <execinfo.h>  // for backtrace, backtrace_symbols
+#include <signal.h>    // for sighandler_t, signal, kill, SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGQUIT
+#include <unistd.h>    // for getpid, NULL, pid_t
+#include <stdlib.h>    // for free
+#include <fstream>     // for basic_ostream, operator<<, basic_ostream::operator<<, basic_ofstream
+#include <iostream>    // for cerr
+#include <sstream>     // for basic_stringstream
+#include <string>      // for char_traits, operator==, allocator, basic_string, operator<<, string
+#include <vector>      // for vector
+#include <algorithm>   // for find
+#include <stdexcept>   // for runtime_error
 
-#include <cstring>
-#include <cxxabi.h>
-#include <dlfcn.h>
-#include <execinfo.h>
-#include <fstream>
-#include <iostream>
-#include <ostream>
-#include <signal.h>
-#include <sstream>
-#include <string>
-#include <sys/types.h>
-#include <unistd.h>
-#include <vector>
+#include "fmt.hpp"     // for format, join, format_string, join_view
 
 using namespace std;
 

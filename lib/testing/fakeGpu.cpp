@@ -8,6 +8,7 @@
 #include "errors.h"           // for ReturnCode, exit_kotekan
 #include "factory.hpp"        // for FACTORY
 #include "fakeGpuPattern.hpp" // for FakeGpuPattern, _factory_aliasFakeGpuPattern
+#include "geoUtil.hpp"        // for GeoFrame
 #include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
 #include "visUtil.hpp"        // for frameID, gpu_N2_size, modulo, operator+
 
@@ -177,7 +178,10 @@ void FakeGpu::main_thread() {
 
 FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(path, config.get<std::string>(path, "log_level"),
-              config.get_default<std::string>(path, "eop_updatable_config", "")) {
+              config.get_default<bool>(path, "require_eop", false),
+              config.get_default<std::string>(path, "eop_updatable_config", ""),
+              GeoFrame(config.get<std::string>(path, "log_level"), "grid", 0.0, 0.0, {0, 0, 0},
+                       {1, 0, 0}, {0, 1, 0}, {0, 0, 1})) {
     _num_local_freq = config.get_default<size_t>(path, "num_local_freq", 1);
 }
 
@@ -229,4 +233,45 @@ size_t FakeTelescope::seq_length_nsec() const {
 
 bool FakeTelescope::gps_time_enabled() const {
     return true;
+}
+
+ElementOrder FakeTelescope::fiducial_element_order() const {
+    return ElementOrder::CHIMEBeamformer;
+}
+
+station_id_t FakeTelescope::element_index_to_station_id(uint64_t el_idx,
+                                                        [[maybe_unused]] ElementOrder ord) const {
+    return el_idx;
+}
+
+uint64_t FakeTelescope::station_id_to_element_index(station_id_t st_id,
+                                                    [[maybe_unused]] ElementOrder ord) const {
+    return st_id;
+}
+
+grid_idx_2d_t
+FakeTelescope::station_id_to_main_array_grid_indices([[maybe_unused]] station_id_t st_id) const {
+    return grid_idx_2d_t{-1, -1};
+}
+
+vec3d_t FakeTelescope::station_id_to_feed_position_m([[maybe_unused]] station_id_t st_id) const {
+    return vec3d_t{0.0, 0.0, 0.0};
+}
+
+double FakeTelescope::get_feed_separation_x_m() const {
+    return 10.0;
+}
+
+double FakeTelescope::get_feed_separation_y_m() const {
+    return 10.0;
+}
+
+uint64_t FakeTelescope::get_grid_size_x() const {
+    return 5;
+}
+uint64_t FakeTelescope::get_grid_size_y() const {
+    return 10;
+}
+vec3d_t FakeTelescope::get_phase_center_in_grid_frame() const {
+    return {0.0, 0.0, 1.0};
 }

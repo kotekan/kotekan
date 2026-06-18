@@ -1,0 +1,13 @@
+---
+# Run just the test
+
+type: config
+log_level: INFO
+
+cpu_affinity: [0]
+
+num_polarizations: 2
+num_dishes: 512
+
+test_quantize_kernel_4:
+    kotekan_stage: testQuantizeKernel4

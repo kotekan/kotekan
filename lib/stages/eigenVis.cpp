@@ -1,35 +1,32 @@
 #include "eigenVis.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for operator!=
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.hpp"            // for mark_frame_empty, allocate_new_metadata_object, mark_fr...
-#include "datasetState.hpp"      // for datasetState, eigenvalueState, state_uptr
-#include "kotekanLogging.hpp"    // for DEBUG, ERROR, INFO
-#include "prometheusMetrics.hpp" // for Metrics, Gauge, MetricFamily
-#include "visBuffer.hpp"         // for VisFrameView, VisField, VisField::erms, VisField::eval
-#include "visUtil.hpp"           // for cfloat, frameID, modulo, current_time, cmap, movingAverage
+#include <cblas.h>                // for openblas_set_num_threads
+#include <lapacke.h>              // for LAPACKE_cheevr, LAPACK_COL_MAJOR
+#include <time.h>                 // for size_t
+#include <lapack.h>               // for lapack_complex_float, lapack_int
+#include <algorithm>              // for equal, lower_bound, remove
+#include <cmath>                  // for pow, sqrt
+#include <complex>                // for complex, conj, operator*, norm
+#include <functional>             // for bind, function
+#include <map>                    // for map, operator==
+#include <memory>                 // for make_unique
+#include <numeric>                // for iota
+#include <stdexcept>              // for runtime_error
+#include <tuple>                  // for forward_as_tuple
+#include <utility>                // for move, pair, piecewise_construct
+#include <set>                    // for set
 
-#include "fmt.hpp"      // for format, fmt
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>  // for fill, max, lower_bound, remove
-#include <atomic>     // for atomic_bool
-#include <cblas.h>    // for openblas_set_num_threads
-#include <cmath>      // for pow, sqrt
-#include <complex>    // for operator*, norm, complex
-#include <cstdint>    // for uint32_t
-#include <exception>  // for exception
-#include <functional> // for _Bind_helper<>::type, bind, function
-#include <lapacke.h>  // for LAPACKE_cheevr, LAPACK_COL_MAJOR
-#include <map>        // for map, map<>::mapped_type, operator==, map<>::iterator
-#include <memory>     // for make_unique
-#include <numeric>    // for iota
-#include <regex>      // for match_results<>::_Base_type
-#include <stdexcept>  // for runtime_error
-#include <time.h>     // for size_t
-#include <tuple>      // for forward_as_tuple
-#include <utility>    // for move, pair, piecewise_construct
+#include "Config.hpp"             // for Config
+#include "Hash.hpp"               // for operator!=, Hash
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"             // for Buffer
+#include "datasetState.hpp"       // for eigenvalueState, state_uptr
+#include "kotekanLogging.hpp"     // for DEBUG, ERROR, INFO
+#include "prometheusMetrics.hpp"  // for Gauge, Metrics, MetricFamily
+#include "visBuffer.hpp"          // for VisFrameView, VisField
+#include "visUtil.hpp"            // for frameID, modulo, cfloat, current_time, cmap, movingAverage
+#include "fmt.hpp"                // for compile_string_to_view, format, format_string
+#include "gsl-lite.hpp"           // for span
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -90,6 +87,7 @@ void eigenVis::main_thread() {
     std::map<uint32_t, std::vector<cfloat>> last_evs;
     uint32_t freq_id;
 
+    // Force serial BLAS; Blaze's OpenMP path provides intra-op parallelism.
     openblas_set_num_threads(1);
 
     auto& eigenvalue_metric = Metrics::instance().add_gauge(

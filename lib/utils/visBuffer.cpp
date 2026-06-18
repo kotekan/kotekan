@@ -1,23 +1,24 @@
 #include "visBuffer.hpp"
 
-#include "FrameView.hpp" // for bind_span, bind_scalar, FrameView
-#include "Telescope.hpp" // for freq_id_t
-#include "buffer.hpp"    // for Buffer
-#include "factory.hpp"   // for REGISTER_TYPE_WITH_FACTORY
-#include "metadata.hpp"  // for metadataObject, _factory_aliasmetadataObject
-
-#include "fmt.hpp" // for format, compile_string_to_view, fmt, format_string
-
-#include <algorithm> // for copy
-#include <assert.h>  // for assert
-#include <complex>   // for complex
+#include <assert.h>       // for assert
+#include <gsl-lite.hpp>   // for span
+#include <json.hpp>       // for basic_json, json
+#include <algorithm>      // for copy
+#include <complex>        // for complex
 #include <cstdint>   // for uint64_t // IWYU pragma: keep
-#include <cstring>   // for memset
-#include <ctime>     // for gmtime
-#include <map>       // for map
-#include <set>       // for set
-#include <stdexcept> // for runtime_error
-#include <vector>    // for vector
+#include <cstring>        // for memset
+#include <ctime>          // for gmtime
+#include <map>            // for map
+#include <set>            // for set
+#include <stdexcept>      // for runtime_error
+#include <vector>         // for vector
+
+#include "FrameView.hpp"  // for bind_span, bind_scalar, FrameView
+#include "Telescope.hpp"  // for freq_id_t
+#include "buffer.hpp"     // for Buffer
+#include "factory.hpp"    // for REGISTER_TYPE_WITH_FACTORY
+#include "metadata.hpp"   // for metadataObject, _factory_aliasmetadataObject
+#include "fmt.hpp"        // for format, compile_string_to_view, fmt, format_string
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
 
@@ -37,7 +38,12 @@ struct VisMetadataFormat {
     uint32_t num_elements;
     uint32_t num_prod;
     uint32_t num_ev;
+    uint32_t pad; // automatically inserted by compiler
 };
+// there are only 84 bytes of member data, but the struct gets padded to 8 bytes
+// this means that adding a 4 byte member will not change the struct size
+static_assert(sizeof(VisMetadataFormat) == 88, "Unexpected change in sizeof(VisMetadataFormat), "
+                                               "this will break binary data send to receivers");
 
 size_t VisMetadata::get_serialized_size() {
     return sizeof(VisMetadataFormat);
@@ -57,6 +63,8 @@ size_t VisMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t le
     num_elements = fmt->num_elements;
     num_prod = fmt->num_prod;
     num_ev = fmt->num_ev;
+    // cannot check pad value here, since the input bytes may be from an old
+    // file on disk
     return sz;
 }
 
@@ -73,6 +81,7 @@ size_t VisMetadata::serialize(char* bytes) {
     fmt->num_elements = num_elements;
     fmt->num_prod = num_prod;
     fmt->num_ev = num_ev;
+    fmt->pad = 0xdeadbeef; // initialize padding
     return sz;
 }
 

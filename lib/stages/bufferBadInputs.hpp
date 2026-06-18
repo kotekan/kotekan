@@ -7,33 +7,37 @@
 #ifndef BUFFER_BAD_INPUT_DATA
 #define BUFFER_BAD_INPUT_DATA
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
+#include <stddef.h>             // for size_t
+#include <string>               // for string
+#include <vector>               // for vector
 
-#include "json.hpp" // for json
-
-#include <stdint.h> // for uint32_t
-#include <string>   // for string
-#include <vector>   // for vector
+#include "Config.hpp"           // for Config
+#include "N2Util.hpp"           // for frameID
+#include "Stage.hpp"            // for Stage
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "json.hpp"             // for json
 
 /**
  * @class bufferBadInputs
- * @brief Buffers updates to the bad input list.
+ * @brief CHIME-specific stage which buffers updates to the bad input list.
  *
- * This engine reorders, inverts and generates a mask of bad inputs then stores the mask in a buffer
+ * Copies a list of bad inputs into a mask buffer, which is 0 if
+ * an element is bad and 1 if it is good.
+ *
+ * This stage expects the input buffer to be recieved in CHIME cylinder order,
+ * and automatically remaps into beamformer order.
  *
  * @par Buffers
  * @buffer out_buf Kotekan buffer of bad inputs.
- *     @buffer_format Array of @c uint8_t
+ *     @buffer_shape [num_element]
+ *     @buffer_format uint8_t
  *
  * @conf   updatable_config/bad_inputs  String.  String pointing to the location of the
  *                                      config block containing the following properties:
  *                                      "bad_inputs"  An array of bad inputs in cylinder order.
  *
- * @author James Willis
- *
+ * @author James Willis & Liam Gray
  */
 
 class bufferBadInputs : public kotekan::Stage {
@@ -52,22 +56,17 @@ public:
 
 private:
     Buffer* out_buf;
-
-    /// Stage variables
-
-    /// List of current bad inputs in cylinder order
-    std::vector<int> bad_inputs_cylinder;
-
-    /// List of current bad inputs in correlator order.
-    std::vector<int> bad_inputs_correlator;
-
+    /// List of current bad inputs in received order, which
+    // is expected to be cylinder order
+    std::vector<int> bad_inputs;
     /// The size of the bad input mask.
-    uint32_t input_mask_len;
+    size_t num_elements;
+    // Need to use the frame_id outside of the main thread
+    N2::frameID frame_id;
 
-    /// The mapping from correlator to cylinder element indexing.
-    std::vector<uint32_t> input_remap;
-
-    uint32_t out_buffer_ID = 0;
+    // The table to reorder from beamformer to cylinder order.
+    // reorder[beamformer_idx] = cylinder_idx;
+    std::vector<size_t> reorder;
 };
 
 #endif

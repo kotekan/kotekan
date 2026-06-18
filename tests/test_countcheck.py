@@ -34,8 +34,8 @@ def make_chord_telescope_config(num_dishes=8):
         "require_gps": False,
         "eop_updatable_config": "/earth_rotation_data",
         "num_dishes": num_dishes,
-        "num_dishes_x": 4,
-        "num_dishes_y": 4,
+        "dish_grid_size_x": 4,
+        "dish_grid_size_y": 4,
         "dish_separation_x_m": 6.3,
         "dish_separation_y_m": 8.5,
         "dish_inputs": [
@@ -57,16 +57,16 @@ EARTH_ROTATION_DATA = {
     "kotekan_update_endpoint": "json",
     "earth_orientation_parameter_table": [
         {
-            "time_inst_ns": (T_START_S - 1000) * GIGA,
+            "t_inst_ns": (T_START_S - 1000) * GIGA,
             "delta_UT1_inst": 0.0,
-            "x_pm": 0.0,
-            "y_pm": 0.0,
+            "xp_as": 0.0,
+            "yp_as": 0.0,
         },
         {
-            "time_inst_ns": (T_START_S + 100000) * GIGA,
+            "t_inst_ns": (T_START_S + 100000) * GIGA,
             "delta_UT1_inst": 0.0,
-            "x_pm": 1.0,
-            "y_pm": 1.0,
+            "xp_as": 1.0,
+            "yp_as": 1.0,
         },
     ],
 }
@@ -373,16 +373,18 @@ def chord_output(tmpdir_factory):
         num_frames = 8
         restart_at = num_frames - 2 if simulate_restart else -1
 
+        # Start with a large fpga_seq so restart detection works
+        # (first_packet_recv_time is wall clock, so we need fpga_seq
+        # to contribute significantly to the computed start_time)
+        first_frame_index = 100000
+
         input_buffer = ChordMetadataBuffer(
             frame_size=1024,
             samples_per_data_set=CHORD_ROOT_PARAMS["samples_per_data_set"],
             num_frames=num_frames,
             wait=False,
-            # Start with a large fpga_seq so restart detection works
-            # (first_packet_recv_time is wall clock, so we need fpga_seq
-            # to contribute significantly to the computed start_time)
-            first_frame_index=100000,
-            simulate_fpga_restart_at_frame=restart_at,
+            first_frame_index=first_frame_index,
+            simulate_fpga_restart_at_frame=restart_at + first_frame_index,
             end_interrupt=True,
         )
 

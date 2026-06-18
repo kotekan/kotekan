@@ -1,5 +1,7 @@
 #include "clCorrelatorKernel.hpp"
 
+#include "div.hpp" // for div_ceil, num_triangle_blocks
+
 #include <string>
 using std::string;
 
@@ -103,6 +105,17 @@ cl_event clCorrelatorKernel::execute(cl_event pre_event) {
 
 void clCorrelatorKernel::defineOutputDataMap() {
     cl_int err;
+
+    // The config-provided num_blocks must match the block tiling of the matrix.
+    int largest_num_blocks_1D = kotekan::div_ceil(_num_elements, _block_size);
+    if (kotekan::num_triangle_blocks(_num_elements, _block_size) != _num_blocks) {
+        FATAL_ERROR("num_blocks ({:d}) does not match the {:d} blocks required to tile "
+                    "num_elements ({:d}) with block_size ({:d}).",
+                    _num_blocks, kotekan::num_triangle_blocks(_num_elements, _block_size),
+                    _num_elements, _block_size);
+        return;
+    }
+
     // Create lookup tables
 
     // upper triangular address mapping --converting 1d addresses to 2d addresses
@@ -112,7 +125,6 @@ void clCorrelatorKernel::defineOutputDataMap() {
     // TODO: p260 OpenCL in Action has a clever while loop that changes 1 D addresses to X & Y
     // indices for an upper triangle.
     // Time Test kernels using them compared to the lookup tables for NUM_ELEM = 256
-    int largest_num_blocks_1D = _num_elements / _block_size;
     int index_1D = 0;
     for (int j = 0; j < largest_num_blocks_1D; j++) {
         for (int i = j; i < largest_num_blocks_1D; i++) {

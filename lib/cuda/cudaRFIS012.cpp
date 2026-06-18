@@ -1,30 +1,30 @@
-#include "Config.hpp"              // for Config
-#include "DataType.hpp"            // for int4x2_swapped_withoffset_t, uint1x8_t
-#include "NDArray.hpp"             // for NDArray
-#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, read_descriptor_t, extent_t
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "chordMetadata.hpp"       // for chordMetadata
-#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "div.hpp"                 // for div_noremainder, round_down
-#include "gpuCommand.hpp"          // for gpuCommandType
-#include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
-#include "n2k/rfi_kernels.hpp"     // for launch_s0_kernel, launch_s12_kernel
+#include <cuda_runtime_api.h>       // for cudaStreamSynchronize
+#include <driver_types.h>           // for CUstream_st, cudaEvent_t, CUevent_st
+#include <sys/types.h>              // for ulong
+#include <algorithm>                // for min
+#include <array>                    // for array
+#include <cassert>                  // for assert
+#include <cstddef>                  // for ptrdiff_t
+#include <cstdint>                  // for uint64_t, uint8_t
+#include <functional>               // for function
+#include <memory>                   // for allocator, shared_ptr, __shared_ptr_access
+#include <string>                   // for basic_string, string
+#include <vector>                   // for vector
 
-#include <algorithm>          // for min
-#include <array>              // for array
-#include <cassert>            // for assert
-#include <cstddef>            // for ptrdiff_t, size_t
-#include <cstdint>            // for uint64_t, uint8_t
-#include <cuda_runtime_api.h> // for cudaStreamSynchronize
-#include <driver_types.h>     // for CUstream_st, cudaEvent_t, CUevent_st
-#include <fmt.hpp>            // for compile_string_to_view
-#include <functional>         // for function
-#include <memory>             // for allocator, shared_ptr, __shared_ptr_access
-#include <string>             // for basic_string, string
-#include <sys/types.h>        // for ulong
-#include <vector>             // for vector
+#include "Config.hpp"               // for Config
+#include "DataType.hpp"             // for int4x2_swapped_withoffset_t, uint1x8_t
+#include "NDArray.hpp"              // for NDArray
+#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, read_descriptor_t, extent_t
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "chordMetadata.hpp"        // for chordMetadata
+#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "div.hpp"                  // for div_noremainder, round_down
+#include "gpuCommand.hpp"           // for gpuCommandType
+#include "kotekanLogging.hpp"       // for DEBUG, FATAL_ERROR
+#include "n2k/rfi_kernels.hpp"      // for launch_s0_kernel, launch_s12_kernel
+#include "fmt.hpp"                  // for compile_string_to_view
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -126,6 +126,12 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
     if (rfi_downsampling_factor % 128 != 0)
         FATAL_ERROR("rfi_downsampling_factor % 128 != 0");
 
+    if (num_times != rfi_downsampling_factor * rfi_num_times)
+        FATAL_ERROR(
+            "num_times ({:d}) != rfi_downsampling_factor x rfi_num_times ({:d} x {:d} = {:d})",
+            num_times, rfi_downsampling_factor, rfi_num_times,
+            rfi_downsampling_factor * rfi_num_times);
+
     pl_mask.register_consumer();
     voltage.register_consumer();
     rfi_S012.register_producer();
@@ -210,20 +216,39 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Tmin = voltage.get_read_valid().begin() % Tsize;
     assert(Tmin % 128 == 0);
     const std::ptrdiff_t T = voltage.get_read_valid().size();
+    if (Tmin + T > Tsize) {
+        FATAL_ERROR("Chunk starting at Tmin={:d} of size T={:d} runs past end of ringbuffer {:s} "
+                    "of size Tsize={:d}",
+                    Tmin, T, voltage.get_buffer_name(), Tsize);
+    }
+    assert(Tmin + T <= Tsize);
+    const std::ptrdiff_t T_offset = Tmin * voltage.get_ndarray().stride(0);
 
-    const int F_stride = rfi_S012.get_ndarray().stride(1);
-    const int S_stride = rfi_S012.get_ndarray().stride(2);
+    const std::ptrdiff_t T_stride = rfi_S012.get_ndarray().stride(0);
+    const std::ptrdiff_t F_stride = rfi_S012.get_ndarray().stride(1);
+    const std::ptrdiff_t S_stride = rfi_S012.get_ndarray().stride(2);
     constexpr bool offset_encoded = true;
-    n2k::launch_s0_kernel((ulong*)rfi_S012_memory, (const ulong*)pl_mask_memory, T, Tmin, Tsize,
-                          num_frequencies, num_dishes * num_polarizations, rfi_downsampling_factor,
-                          F_stride, device.getStream(cuda_stream_id));
+
+    // Current offset into the rfi_S012 buffer
+    const std::ptrdiff_t Trfi_offset = Tmin / rfi_downsampling_factor * T_stride;
+
+    const auto& voltage_meta = voltage.get_metadata();
+    const auto& pl_mask_meta = pl_mask.get_metadata();
+    const std::ptrdiff_t Tpl_stride = pl_mask.get_ndarray().stride(0);
+    const std::ptrdiff_t Tpl_offset = Tmin * voltage_meta->get_time_downsampling_fpga()
+                                      / pl_mask_meta->get_time_downsampling_fpga() * Tpl_stride;
+
+    n2k::launch_s0_kernel((ulong*)rfi_S012_memory + Trfi_offset,
+                          (const ulong*)(pl_mask_memory + Tpl_offset), T, 0, Tsize, num_frequencies,
+                          num_dishes * num_polarizations, rfi_downsampling_factor, F_stride,
+                          device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
-    n2k::launch_s12_kernel((ulong*)(rfi_S012_memory + S_stride), (const uint8_t*)voltage_memory, T,
-                           Tmin, Tsize, num_frequencies, num_dishes * num_polarizations,
-                           rfi_downsampling_factor, F_stride, offset_encoded,
-                           device.getStream(cuda_stream_id));
+    n2k::launch_s12_kernel((ulong*)(rfi_S012_memory + S_stride + Trfi_offset),
+                           (const uint8_t*)(voltage_memory + T_offset), T, 0, Tsize,
+                           num_frequencies, num_dishes * num_polarizations, rfi_downsampling_factor,
+                           F_stride, offset_encoded, device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif

@@ -10,13 +10,14 @@ add_library(
     computeDualpolPower.cpp
     fullPacketDump.cpp
     pulsarPostProcess.cpp
-    ReadGain.cpp
+    processGains.cpp
     nDiskFileWrite.cpp
     nDiskFileRead.cpp
     networkPowerStream.cpp
     integratePowerStream.cpp
     monitorBuffer.cpp
     networkInputPowerStream.cpp
+    parseReorderDefault.cpp
     pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
@@ -28,6 +29,7 @@ add_library(
     $<$<BOOL:${GDAL_FOUND}>:gdalFiles.cpp>
     $<${HDF5_CONDITION}:hdf5N2Write.cpp>
     $<${HDF5_CONDITION}:hdf5FileRead.cpp>
+    $<${HDF5_CONDITION}:hdf5FileReadSingleFile.cpp>
     $<${HDF5_CONDITION}:hdf5FileWrite.cpp>
     $<${HDF5_CONDITION}:hdf5Files.cpp>
     vdifStream.cpp
@@ -38,6 +40,8 @@ add_library(
     bufferSend.cpp
     bufferRecv.cpp
     simpleAutocorr.cpp
+    SampleAutocorr.cpp
+    SimpleCrosscorr.cpp
     freqSplit.cpp
     FreqSubset.cpp
     prodSubset.cpp
@@ -62,9 +66,17 @@ add_library(
     bufferCopy.cpp
     bufferSwitch.cpp
     bufferDelay.cpp
+    bufferQuiet.cpp
     BufferSplit.cpp
     InputSubset.cpp
-    $<$<BOOL:${Julia_FOUND}>:FEngine.cpp>
+    setScatterIndices.cpp
+    UpchannelizationSchedule.cpp
+    setBBBeams.cpp
+    calcBBPhase.cpp
+    setUpchanGain.cpp
+    setFRB1Phase.cpp
+    setFRBBeams.cpp
+    calcFRB2Weights.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp
@@ -76,6 +88,8 @@ add_library(
     HFBAccumulate.cpp
     compressLostSamples.cpp
     lostSamplesToPLMask.cpp
+    lostSamplesToN2Counts.cpp
+    rfiBroadcast.cpp
     bufferBadInputs.cpp
     RfiFrameDrop.cpp
     VisSharedMemWriter.cpp
@@ -83,17 +97,25 @@ add_library(
     BeamExtract.cpp
     BeamInspect.cpp
     configTrackerWriter.cpp
+    givenDataGen.cpp
     testDataGen.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
     hexDump.cpp
+    ProcessPacketMask.cpp
     printSparse.cpp
     ExampleProducer.cpp
     ExampleConsumer.cpp
     ExampleDotProduct.cpp
     N2Accumulate.cpp
     N2TimeDownsample.cpp
-    N2FringeStop.cpp
+    TransposeBasebandArray.cpp
+    dropAllFrames.cpp
+    N2FrameToVisFrame.cpp
+    RfiMaskSum.cpp
+    RfiFrameMask.cpp
+    CountLostPLSamplesScalar.cpp
+    PLMaskExpandedToCompact.cpp
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
@@ -104,6 +126,10 @@ if(LIBAIRSPY_FOUND)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${LIBAIRSPY_INCLUDE_DIR})
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${LIBAIRSPY_LIBRARIES})
+    if(FFTW_FOUND)
+        target_sources(kotekan_stages PRIVATE AirspyAlign.cpp)
+        target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
+    endif()
 endif()
 
 if(FFTW_FOUND)

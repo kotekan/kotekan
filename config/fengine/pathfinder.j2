@@ -1,0 +1,29 @@
+# -*-yaml-*-
+
+################################################################################
+#
+# Run a CHORD pathfinder test
+#
+################################################################################
+
+---
+log_level: debug
+poison_buffers: true
+
+input_dir: data/fengine_pathfinder_init
+base_dir: data/fengine_pathfinder
+prefix_hostname: false
+prefix_host_rank: true
+
+{% include "include/defs.j2" %}
+{% include "include/fengine_pathfinder.j2" %}
+
+{% include "include/rfi_pathfinder.j2" %}
+{% include "include/n2k_pathfinder.j2" %}
+{% include "include/bb_pathfinder.j2" %}
+{% include "include/upchan_pathfinder.j2" %}
+{% include "include/frb_pathfinder.j2" %}
+
+{% include "include/input_pathfinder.j2" %}
+{% include "include/output_pathfinder.j2" %}
+...
