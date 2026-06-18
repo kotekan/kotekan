@@ -1,6 +1,7 @@
 #include "pfbPrototype.hpp"
 
-#include <cmath> // for sin, cos, M_PI, sqrt
+#include <cmath>     // for sin, cos, M_PI, sqrt
+#include <stdexcept> // for invalid_argument
 
 namespace dsp {
 
@@ -65,16 +66,18 @@ std::vector<float> pfb_prototype(int num_chan, int num_taps, Window window, doub
     return h;
 }
 
-void pfb_fold(const std::complex<float>* hist, const float* proto, int num_chan, int num_taps,
-              std::complex<float>* out) {
-    for (int p = 0; p < num_chan; ++p) {
-        std::complex<float> acc(0.0f, 0.0f);
-        for (int q = 0; q < num_taps; ++q) {
-            const int idx = q * num_chan + p;
-            acc += proto[idx] * hist[idx];
-        }
-        out[p] = acc;
-    }
+Window window_from_string(const std::string& name) {
+    if (name == "rect" || name == "rectangular")
+        return Window::Rectangular;
+    if (name == "hann")
+        return Window::Hann;
+    if (name == "hamming")
+        return Window::Hamming;
+    if (name == "blackman")
+        return Window::Blackman;
+    if (name == "kaiser")
+        return Window::Kaiser;
+    throw std::invalid_argument("pfb window '" + name + "' unknown");
 }
 
 } // namespace dsp

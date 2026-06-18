@@ -64,6 +64,31 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
         fft_plan =
             fftwf_plan_dft_1d(_spectrum_length, complex_samples, spectrum, -1, FFTW_ESTIMATE);
     }
+
+    // Optional polyphase filter bank: num_taps > 1 prepends a windowed-sinc
+    // prototype + fold before each FFT; num_taps == 1 leaves the straight FFT
+    // path untouched. fft_len is the transform size (2x in real mode).
+    _num_taps = config.get_default<int>(unique_name, "num_taps", 1);
+    if (_num_taps > 1) {
+        const int fft_len = _real_input ? _spectrum_length * 2 : _spectrum_length;
+        const std::string win =
+            config.get_default<std::string>(unique_name, "pfb_window", "hamming");
+        try {
+            _proto = dsp::pfb_prototype(fft_len, _num_taps, dsp::window_from_string(win));
+        } catch (const std::exception& e) {
+            FATAL_ERROR("fftwEngine: {:s}", e.what());
+            return;
+        }
+        if (_real_input) {
+            _hist_r.assign(fft_len * _num_taps, 0.0f);
+            _block_r.resize(fft_len);
+        } else {
+            _hist_c.assign(fft_len * _num_taps, std::complex<float>(0.0f, 0.0f));
+            _block_c.resize(fft_len);
+        }
+    } else {
+        _num_taps = 1;
+    }
 }
 
 fftwEngine::~fftwEngine() {
@@ -100,8 +125,15 @@ void fftwEngine::main_thread() {
             const int fft_len = _spectrum_length * 2;
             for (int j = 0; j < samples_per_input_frame; j += fft_len) {
                 DEBUG("Running real FFT, {:d}", in_local[j]);
-                for (int i = 0; i < fft_len; i++) {
-                    real_samples[i] = (float)in_local[i + j] / _spectrum_length;
+                if (_num_taps > 1) {
+                    for (int i = 0; i < fft_len; i++)
+                        _block_r[i] = (float)in_local[i + j] / _spectrum_length;
+                    dsp::pfb_push(_hist_r.data(), _block_r.data(), fft_len, _num_taps);
+                    dsp::pfb_fold(_hist_r.data(), _proto.data(), fft_len, _num_taps, real_samples);
+                } else {
+                    for (int i = 0; i < fft_len; i++) {
+                        real_samples[i] = (float)in_local[i + j] / _spectrum_length;
+                    }
                 }
                 fftwf_execute(fft_plan);
                 // r2c gives fft_len/2+1 = _spectrum_length+1 bins; we drop Nyquist.
@@ -112,9 +144,18 @@ void fftwEngine::main_thread() {
             // Complex IQ: each input sample is an int16 pair, so step by 2*_spectrum_length ints.
             for (int j = 0; j < samples_per_input_frame / 2; j += _spectrum_length) {
                 DEBUG("Running complex FFT, {:d}", in_local[2 * j]);
-                for (int i = 0; i < _spectrum_length; i++) {
-                    complex_samples[i][0] = in_local[2 * (i + j)];
-                    complex_samples[i][1] = in_local[2 * (i + j) + 1];
+                if (_num_taps > 1) {
+                    for (int i = 0; i < _spectrum_length; i++)
+                        _block_c[i] = std::complex<float>(in_local[2 * (i + j)],
+                                                          in_local[2 * (i + j) + 1]);
+                    dsp::pfb_push(_hist_c.data(), _block_c.data(), _spectrum_length, _num_taps);
+                    dsp::pfb_fold(_hist_c.data(), _proto.data(), _spectrum_length, _num_taps,
+                                  reinterpret_cast<std::complex<float>*>(complex_samples));
+                } else {
+                    for (int i = 0; i < _spectrum_length; i++) {
+                        complex_samples[i][0] = in_local[2 * (i + j)];
+                        complex_samples[i][1] = in_local[2 * (i + j) + 1];
+                    }
                 }
                 fftwf_execute(fft_plan);
                 // Shift DC into the centre.

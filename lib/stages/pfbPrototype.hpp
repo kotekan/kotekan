@@ -23,8 +23,10 @@
 #ifndef PFB_PROTOTYPE_HPP
 #define PFB_PROTOTYPE_HPP
 
-#include <complex> // for complex
-#include <vector>  // for vector
+#include <complex>  // for complex
+#include <cstring>  // for memmove
+#include <string>   // for string
+#include <vector>   // for vector
 
 namespace dsp {
 
@@ -48,16 +50,45 @@ enum class Window {
 std::vector<float> pfb_prototype(int num_chan, int num_taps, Window window = Window::Hamming,
                                  double kaiser_beta = 8.0);
 
+/// Map a config window name ("hamming", "hann", "blackman", "kaiser", "rect")
+/// to a @ref Window; throws std::invalid_argument on an unknown name.
+Window window_from_string(const std::string& name);
+
+/**
+ * Advance the polyphase delay line by one hop. `hist` is the length
+ * num_chan*num_taps line, newest first (hist[0] = newest); `block` is the next
+ * num_chan input samples in chronological order (block[num_chan-1] is newest).
+ * Older samples slide back num_chan slots; the block is inserted newest-first.
+ * Templated for real (float) or complex samples.
+ */
+template<typename T>
+inline void pfb_push(T* hist, const T* block, int num_chan, int num_taps) {
+    const int L = num_chan * num_taps;
+    std::memmove(hist + num_chan, hist, (L - num_chan) * sizeof(T));
+    for (int i = 0; i < num_chan; ++i)
+        hist[i] = block[num_chan - 1 - i]; // newest sample -> hist[0]
+}
+
 /**
  * Polyphase fold for one hop. `hist` is the delay line of the most recent
  * num_chan*num_taps input samples, newest first (hist[0] = x[mN], hist[j] =
  * x[mN-j]); `proto` is the prototype from @ref pfb_prototype. Writes the
  * length-num_chan pre-FFT vector @c out, where
  * @f$ out[p] = \sum_{q=0}^{P-1} proto[qN+p]\,hist[qN+p] @f$. The caller takes
- * the forward (sign -1) N-point DFT of @c out to get the channels.
+ * the forward (sign -1) N-point DFT of @c out to get the channels. Templated
+ * for real or complex samples.
  */
-void pfb_fold(const std::complex<float>* hist, const float* proto, int num_chan, int num_taps,
-              std::complex<float>* out);
+template<typename T>
+inline void pfb_fold(const T* hist, const float* proto, int num_chan, int num_taps, T* out) {
+    for (int p = 0; p < num_chan; ++p) {
+        T acc{};
+        for (int q = 0; q < num_taps; ++q) {
+            const int idx = q * num_chan + p;
+            acc += proto[idx] * hist[idx];
+        }
+        out[p] = acc;
+    }
+}
 
 } // namespace dsp
 

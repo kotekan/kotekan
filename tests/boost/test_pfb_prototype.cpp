@@ -61,6 +61,21 @@ double far_leakage(const std::vector<double>& mag, double f, int guard) {
 
 } // namespace
 
+BOOST_AUTO_TEST_CASE(pfb_push_orders_delay_line_newest_first) {
+    const int n = 4, p = 3; // L = 12
+    std::vector<cf> hist(n * p, cf(0.0f, 0.0f));
+    // Three hops of chronological blocks: 0..3, 4..7, 8..11.
+    for (int hop = 0; hop < 3; ++hop) {
+        std::vector<cf> block(n);
+        for (int i = 0; i < n; ++i)
+            block[i] = cf(static_cast<float>(hop * n + i), 0.0f);
+        dsp::pfb_push(hist.data(), block.data(), n, p);
+    }
+    // Newest sample (11) is at hist[0], counting down to oldest kept (0).
+    for (int j = 0; j < n * p; ++j)
+        BOOST_CHECK_CLOSE(hist[j].real(), static_cast<float>(11 - j), 1e-4);
+}
+
 BOOST_AUTO_TEST_CASE(prototype_has_unit_dc_gain) {
     auto h = pfb_prototype(N, P, Window::Hamming);
     double sum = 0.0;

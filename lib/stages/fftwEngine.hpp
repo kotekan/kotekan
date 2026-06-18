@@ -11,9 +11,12 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "pfbPrototype.hpp"    // for Window, pfb prototype/fold
 
+#include <complex> // for complex
 #include <fftw3.h> // for fftwf_complex, fftwf_plan, fftwf_plan_s
 #include <string>  // for string
+#include <vector>  // for vector
 
 /**
  * @class fftwEngine
@@ -45,8 +48,20 @@
  *     @buffer_format Array of @c fftwf_complex
  *     @buffer_metadata none
  *
+ * When @c num_taps > 1 the stage becomes a polyphase filter bank (PFB): each
+ * FFT is preceded by a length-(fft_len * num_taps) windowed-sinc prototype
+ * filter (see @ref pfbPrototype.hpp), folded across @c num_taps taps from a
+ * persistent delay line. This replaces the straight FFT's sinc-shaped channels
+ * (~-13 dB sidelobes, ~3.9 dB scalloping) with flat-passband, deep-stopband
+ * channels -- the isolation needed to recombine the channels covering a GNSS
+ * carrier. @c num_taps == 1 (the default) is the original straight FFT, bit for
+ * bit.
+ *
  * @conf   spectrum_length  Int (default 128). Number of complex bins per output spectrum.
  * @conf   input_type       String (default "complex"). One of "complex" or "real".
+ * @conf   num_taps         Int (default 1). Polyphase taps per channel; 1 = straight FFT.
+ * @conf   pfb_window       String (default "hamming"). Prototype window when num_taps > 1:
+ *                          "hann", "hamming", "blackman", "kaiser", or "rect".
  *
  * @author Keith Vanderlinde
  */
@@ -80,6 +95,18 @@ private:
     fftwf_complex* spectrum;
     /// FFTW plan for the configured mode.
     fftwf_plan fft_plan;
+
+    /// Polyphase taps per channel; 1 disables the PFB (straight FFT).
+    int _num_taps;
+    /// Prototype filter (length fft_len * _num_taps), empty when _num_taps == 1.
+    std::vector<float> _proto;
+    /// Persistent polyphase delay lines (length fft_len * _num_taps), newest
+    /// first. Only the one matching the input mode is allocated.
+    std::vector<std::complex<float>> _hist_c;
+    std::vector<float> _hist_r;
+    /// Scratch for one hop's chronological input block (length fft_len).
+    std::vector<std::complex<float>> _block_c;
+    std::vector<float> _block_r;
 };
 
 #endif
