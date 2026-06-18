@@ -24,6 +24,8 @@
 #ifndef GNSS_SIGNAL_HPP
 #define GNSS_SIGNAL_HPP
 
+#include <string> // for string (name lookup)
+
 namespace gnss {
 
 /// Modulation type of the spreading waveform.
@@ -50,6 +52,8 @@ struct SignalDescriptor {
     int secondary_length;    ///< overlay/secondary code length in primary periods; 0 if none
 
     bool time_multiplexed;   ///< component chip-interleaved with a sibling (L2C CM/CL)
+    int tdm_phase;           ///< which combined-chip parity carries this code (0=even, 1=odd);
+                             ///< only meaningful when time_multiplexed
     int prn_min, prn_max;    ///< valid PRN range
 };
 
@@ -59,22 +63,22 @@ struct SignalDescriptor {
 
 /// GPS L1 C/A (1575.42 MHz) -- the existing, validated signal. ReplicaSource:
 /// gpsCACode (full IS-GPS-200 G2 tap table).
-constexpr SignalDescriptor GPS_L1CA = {
+inline constexpr SignalDescriptor GPS_L1CA = {
     "GPS_L1CA", 1575.42e6, 1.023e6, 1023, 1e-3,
     Modulation::BPSK, 0, 0,
     /*pilot=*/false, /*nav_symbol_s=*/20e-3, /*secondary_length=*/0,
-    /*time_multiplexed=*/false, 1, 32,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, 1, 32,
 };
 
 /// GPS L2C CM (1227.6 MHz) -- the *data* component: 10230 chips at 511.5 kcps
 /// (20 ms), chip-interleaved with CL to a 1.023 Mcps stream; carries CNAV
 /// (25 bps + FEC -> 50 sps). ReplicaSource: gpsL2CCode (27-stage LFSR + CM
 /// initial-state table) -- TO POPULATE from IS-GPS-200.
-constexpr SignalDescriptor GPS_L2C_CM = {
+inline constexpr SignalDescriptor GPS_L2C_CM = {
     "GPS_L2C_CM", 1227.6e6, 511.5e3, 10230, 20e-3,
     Modulation::BPSK, 0, 0,
     /*pilot=*/false, /*nav_symbol_s=*/20e-3, /*secondary_length=*/0,
-    /*time_multiplexed=*/true, 1, 32,
+    /*time_multiplexed=*/true, /*tdm_phase=*/0, 1, 32,  // CM on even combined chips
 };
 
 /// GPS L2C CL (1227.6 MHz) -- the dataless *pilot*: 767250 chips at 511.5 kcps
@@ -82,12 +86,23 @@ constexpr SignalDescriptor GPS_L2C_CM = {
 /// gpsL2CCode (27-stage LFSR + CL initial-state table) -- TO POPULATE from
 /// IS-GPS-200. Acquisition is time-assisted (the 1.5 s period is too long to
 /// search blind).
-constexpr SignalDescriptor GPS_L2C_CL = {
+inline constexpr SignalDescriptor GPS_L2C_CL = {
     "GPS_L2C_CL", 1227.6e6, 511.5e3, 767250, 1.5,
     Modulation::BPSK, 0, 0,
     /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/0,
-    /*time_multiplexed=*/true, 1, 32,
+    /*time_multiplexed=*/true, /*tdm_phase=*/1, 1, 32,  // CL on odd combined chips
 };
+
+/// Look up a descriptor by its @c name (config string). Returns nullptr if
+/// unknown. The full transmitted L2C signal is CM and CL combined; the two
+/// descriptors let the correlator target either the data (CM) or the dataless
+/// pilot (CL) component.
+inline const SignalDescriptor* signal_by_name(const std::string& name) {
+    for (const SignalDescriptor* s : {&GPS_L1CA, &GPS_L2C_CM, &GPS_L2C_CL})
+        if (name == s->name)
+            return s;
+    return nullptr;
+}
 
 } // namespace gnss
 

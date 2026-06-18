@@ -95,6 +95,7 @@ gps_correlator:
     kotekan_stage: GpsReplicaCorrelator
     in_buf: input_buf
     out_buf: gps_record_buf
+    signal: GPS_L1CA         # GPS_L1CA | GPS_L2C_CM | GPS_L2C_CL (sets code period/length)
     sample_rate: 5.0e6       # Hz real RAW rate = 2 * sample_bw (NOT 2.5e6)
     f_offset: 1.25e6         # Hz; L1 at band centre = Fs_real/4 (see notes above)
     doppler_min: -6000.0     # Hz

@@ -6,7 +6,9 @@
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "fftwPlannerLock.hpp" // for fftw_planner_mutex
-#include "gpsCACode.hpp"       // for generate_ca_code, CA_CODE_LENGTH
+#include "gnssSignal.hpp"      // for SignalDescriptor, signal_by_name
+#include "gpsCACode.hpp"       // for generate_ca_code
+#include "gpsL2CCode.hpp"      // for generate_l2cm_code, generate_l2cl_code
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, FATAL_ERROR
 
 #include "restServer.hpp" // for restServer, connectionInstance, HTTP_RESPONSE
@@ -19,6 +21,9 @@
 #include <memory>    // for shared_ptr
 #include <mutex>     // for lock_guard
 #include <set>       // for set (mask lookup)
+#include <stdexcept> // for runtime_error
+#include <string>    // for string
+#include <vector>    // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -54,6 +59,22 @@ static constexpr int LOCK_DOPPLER_GUARD = 2;
 // FLL loop-filter gain (per block) for the tracked-Doppler estimate.
 static constexpr double FLL_ALPHA = 0.1;
 
+// Per-PRN spreading code (bipolar +-1) for the selected signal. Only called
+// with descriptors already validated by signal_by_name(); the throw is a
+// safety net for an unwired signal.
+static std::vector<int8_t> replica_code(const gnss::SignalDescriptor& sig, int prn) {
+    const std::string name = sig.name;
+    if (name == "GPS_L1CA") {
+        const auto a = gps::generate_ca_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "GPS_L2C_CM")
+        return gps::generate_l2cm_code(prn);
+    if (name == "GPS_L2C_CL")
+        return gps::generate_l2cl_code(prn);
+    throw std::runtime_error("GpsReplicaCorrelator: no replica generator for " + name);
+}
+
 GpsReplicaCorrelator::GpsReplicaCorrelator(Config& config, const std::string& unique_name,
                                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&GpsReplicaCorrelator::main_thread, this)),
@@ -64,6 +85,14 @@ GpsReplicaCorrelator::GpsReplicaCorrelator(Config& config, const std::string& un
     in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
+
+    const std::string signal = config.get_default<std::string>(unique_name, "signal", "GPS_L1CA");
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name(signal);
+    if (sig == nullptr)
+        FATAL_ERROR("GpsReplicaCorrelator: unknown signal '{:s}' (GPS_L1CA, GPS_L2C_CM, "
+                    "GPS_L2C_CL).",
+                    signal);
+    _sig = *sig;
 
     _sample_rate = config.get_default<double>(unique_name, "sample_rate", 5e6);
     _f_offset = config.get_default<double>(unique_name, "f_offset", 1e6);
@@ -87,7 +116,15 @@ GpsReplicaCorrelator::GpsReplicaCorrelator(Config& config, const std::string& un
     if (_doppler_step <= 0 || _doppler_max < _doppler_min)
         FATAL_ERROR("GpsReplicaCorrelator: invalid Doppler grid.");
 
-    _Ns = (int)std::round(_sample_rate / 1000.0); // samples per 1 ms code period
+    // Block = one code period (the FFT parallel-code-phase search needs a full
+    // period). Long-period pilots (L2C CL = 1.5 s) are too long to search blind
+    // and need time-assisted acquisition (not yet implemented) -- guard them.
+    _Ns = (int)std::round(_sample_rate * _sig.code_period_s);
+    constexpr int MAX_NS = 1 << 20; // ~1 M-point FFT cap
+    if (_Ns < 8 || _Ns > MAX_NS)
+        FATAL_ERROR("GpsReplicaCorrelator: signal '{:s}' code period {:.4f} s at Fs {:.3f} MHz "
+                    "gives Ns={:d} (cap {:d}); long-period pilots need time-assisted acquisition.",
+                    _sig.name, _sig.code_period_s, _sample_rate / 1e6, _Ns, MAX_NS);
 
     for (double f = _doppler_min; f <= _doppler_max + 1e-6; f += _doppler_step)
         _doppler_grid.push_back(f);
@@ -95,10 +132,12 @@ GpsReplicaCorrelator::GpsReplicaCorrelator(Config& config, const std::string& un
     const int n_prn = (int)_prns.size();
     const int n_dop = (int)_doppler_grid.size();
 
-    INFO("GpsReplicaCorrelator: Fs={:.3f} MHz, Ns={:d}, f_offset={:.3f} kHz, {:d} PRNs, {:d} "
-         "Doppler bins ({:.0f}..{:.0f} Hz step {:.0f}), incoherent_ms={:d}, track_phase={}",
-         _sample_rate / 1e6, _Ns, _f_offset / 1e3, n_prn, n_dop, _doppler_min, _doppler_max,
-         _doppler_step, _incoherent_ms, _track_phase);
+    INFO("GpsReplicaCorrelator: signal={:s} ({:.0f} chips, {:.3f} ms), Fs={:.3f} MHz, Ns={:d}, "
+         "f_offset={:.3f} kHz, {:d} PRNs, {:d} Doppler bins ({:.0f}..{:.0f} Hz step {:.0f}), "
+         "incoherent_ms={:d}, track_phase={}",
+         _sig.name, (double)_sig.code_length, _sig.code_period_s * 1e3, _sample_rate / 1e6, _Ns,
+         _f_offset / 1e3, n_prn, n_dop, _doppler_min, _doppler_max, _doppler_step, _incoherent_ms,
+         _track_phase);
 
     // The output frame must hold exactly one [n_prn, RECORD_FLOATS] record block.
     const size_t record_bytes = (size_t)n_prn * RECORD_FLOATS * sizeof(float);
@@ -165,13 +204,24 @@ GpsReplicaCorrelator::GpsReplicaCorrelator(Config& config, const std::string& un
         code_fft_conj.assign((size_t)n_prn * _Ns, std::complex<float>(0.0f, 0.0f));
         std::complex<float>* zt = as_cpx(z_time);
         std::complex<float>* af = as_cpx(a_freq);
+        // Combined-stream chip count over one code period: for a plain code this
+        // is code_length; for a time-multiplexed signal (L2C) the transmitted
+        // stream interleaves two components, so the combined rate -- and chip
+        // count -- is doubled, and this code occupies only its parity of slots.
+        const int comb_mult = _sig.time_multiplexed ? 2 : 1;
+        const long comb_chips = (long)_sig.code_length * comb_mult;
         for (int p = 0; p < n_prn; ++p) {
-            const auto code = gps::generate_ca_code(_prns[p]); // ±1, length 1023
+            const std::vector<int8_t> code = replica_code(_sig, _prns[p]); // ±1, length code_length
             for (int n = 0; n < _Ns; ++n) {
-                const int chip = (int)((long)n * gps::CA_CODE_LENGTH / _Ns) % gps::CA_CODE_LENGTH;
-                zt[n] = std::complex<float>((float)code[chip], 0.0f);
+                const long c = (long)n * comb_chips / _Ns % comb_chips;
+                float chipval;
+                if (_sig.time_multiplexed)
+                    chipval = ((c & 1) == _sig.tdm_phase) ? (float)code[c >> 1] : 0.0f;
+                else
+                    chipval = (float)code[c];
+                zt[n] = std::complex<float>(chipval, 0.0f);
             }
-            fftwf_execute(p_fwd_analytic); // a_freq = FFT(code)
+            fftwf_execute(p_fwd_analytic); // a_freq = FFT(resampled code)
             std::complex<float>* dst = &code_fft_conj[(size_t)p * _Ns];
             for (int k = 0; k < _Ns; ++k)
                 dst[k] = std::conj(af[k]);
@@ -309,7 +359,7 @@ void GpsReplicaCorrelator::track_phase_update(int p, std::complex<float> raw, fl
     }
 
     double code_jump = std::fabs(code_phase_chips - trk_prev_code_phase[p]);
-    code_jump = std::min(code_jump, (double)gps::CA_CODE_LENGTH - code_jump); // circular
+    code_jump = std::min(code_jump, (double)_sig.code_length - code_jump); // circular
     const bool consistent = trk_locked[p]
                             && std::fabs(doppler_bin - trk_prev_doppler[p]) <= dopp_tol
                             && code_jump <= CODE_TOL_CHIPS;
@@ -537,7 +587,7 @@ void GpsReplicaCorrelator::main_thread() {
             const double dk = parab_offset(accp[(size_t)best_di * _Ns + km1], peak,
                                            accp[(size_t)best_di * _Ns + kp1]);
             const float code_phase_chips =
-                (float)(((best_k + dk) * (double)gps::CA_CODE_LENGTH) / _Ns);
+                (float)(((best_k + dk) * (double)_sig.code_length) / _Ns);
 
             float nav_sign = 0.0f, phase_cont = 0.0f, doppler_out = (float)dop_refined;
             if (_track_phase)

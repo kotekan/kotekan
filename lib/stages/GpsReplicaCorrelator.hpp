@@ -11,6 +11,7 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "gnssSignal.hpp"      // for SignalDescriptor
 #include "restServer.hpp"      // for connectionInstance
 #include "json.hpp"            // for json
 
@@ -61,6 +62,11 @@
  *     @buffer_format float32 [num_prns, record_floats] per integration
  *     @buffer_metadata none
  *
+ * @conf   signal           String (default "GPS_L1CA"). Which GNSS signal to
+ *                          correlate: GPS_L1CA, GPS_L2C_CM, or GPS_L2C_CL. Sets
+ *                          the code period (-> block size Ns), code length, and
+ *                          replica. Long-period pilots (L2C CL, 1.5 s) are
+ *                          rejected here pending time-assisted acquisition.
  * @conf   sample_rate      Double (default 5e6). Real sample rate Fs, in Hz;
  *                          must equal the true rate out of @c airspyInput.
  * @conf   f_offset         Double (default 1e6). Known carrier offset of L1 in
@@ -157,6 +163,7 @@ private:
     int frame_out;
 
     // --- configuration ---
+    gnss::SignalDescriptor _sig; ///< selected signal (code period, length, modulation, ...)
     double _sample_rate;
     double _f_offset;
     double _doppler_min, _doppler_max, _doppler_step;
