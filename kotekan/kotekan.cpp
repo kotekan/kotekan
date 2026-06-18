@@ -433,7 +433,6 @@ int main(int argc, char** argv) {
 
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
-    std::signal(SIGUSR1, signal_handler);
 
     // Set HDF5_PLUGIN_PATH if a default was detected at configure time.
     if (ensure_hdf5_plugin()) {
@@ -711,14 +710,6 @@ int main(int argc, char** argv) {
                 delete kotekan_mode;
             }
             break;
-        }
-        if (sig_value == SIGUSR1) {
-            INFO_NON_OO("Get SIGUSR1, dumping buffer states...");
-            GenericBuffer::block_processing();
-            sleep(15); // wait for some time
-            kotekan_mode->dump_waiting_stages();
-            GenericBuffer::unblock_processing();
-            sig_value = 0;
         }
     }
 
