@@ -1,0 +1,150 @@
+---
+##########################################
+#
+# airspy_gps_channelized.yaml
+#
+# Single-airspy GPS capture through the CHANNELIZED (distributed-band) path:
+#
+#   airspyInput -> fftwEngine(PFB) -> [channels] -> 4x GnssChannelizedCorrelator
+#                                                 -> GnssRecordCollector -> writer
+#
+# The airspy band is split into a polyphase filter bank (fftwEngine with
+# num_taps>1); each GnssChannelizedCorrelator worker self-acquires its PRN
+# subset directly in the channelized domain (acquire-then-measure) using only
+# the channels covering L1, and reports the complex despread amplitude. The
+# collector merges the four per-worker record streams into one, so
+# gps_beamtrack.py reads it exactly as for the full-band allsky config.
+#
+# This mirrors airspy_gps_allsky.yaml but exercises the channelized pipeline
+# end to end on real hardware -- the local-hosting form of the distributed-band
+# system (one node owning all channels; Phase 3 adds cross-node transport).
+# Live below-horizon gating + PRN load-balancing is driven by
+# python/scripts/gps_broker.py via each worker's REST /set_mask.
+#
+# Author: Keith Vanderlinde
+#
+##########################################
+type: config
+log_level: info
+instrument_name: airspy_gps
+
+rest_server:
+    cors_allow_origins:
+        - "http://localhost:8080"
+        - "http://127.0.0.1:8080"
+
+# 49920 = 2*40*624: divisible by 2*spectrum_length so each input frame is a
+# whole number (624) of PFB hops.
+samples_per_data_set: 49920
+bytes_per_sample: 2
+buffer_depth: 10
+sizeof_float: 4
+
+# Front-end (see airspy_gps.yaml): LO on L1 -> carrier at band centre,
+# Fs_real = 2*sample_bw = 5 MSPS, f_offset = Fs_real/4.
+sample_bw: 2.5
+freq: 1575.42
+gain_lna: 14
+gain_mix: 15
+gain_if: 15
+biast_power: false
+
+cpu_affinity: [0, 1, 2, 3]
+
+input_buf:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * bytes_per_sample
+
+airspy_input:
+    kotekan_stage: airspyInput
+    out_buf: input_buf
+#  serial: 0x________________   # pin a specific dongle; omit for "first found"
+
+# --- PFB F-engine: 40 channels, 4-tap Hamming polyphase prototype ---
+spectrum_length: 40
+num_taps: 4
+
+chan_buf:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    # samples_per_data_set/2 complex bins * sizeof(cfloat32) = samples_per_data_set * 4
+    frame_size: samples_per_data_set * sizeof_float
+
+fengine:
+    kotekan_stage: fftwEngine
+    in_buf: input_buf
+    out_buf: chan_buf
+    cpu_affinity: [3]
+    input_type: complex
+    pfb_window: hamming
+    # spectrum_length / num_taps inherited from the top level
+
+# --- correlator workers (each self-acquires its PRN subset in-channel) ---
+record_floats: 11
+n_prn: 8                       # PRNs per worker; out frame = n_prn*record_floats*4
+sample_rate: 5.0e6
+f_offset: 1.25e6
+hops_per_record: 125           # one C/A period: round(1e-3*5e6)/40
+acquire: true
+acquire_snr: 12.0
+doppler_min: -6000.0
+doppler_max: 6000.0
+doppler_step: 500.0
+
+rec_a: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+rec_b: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+rec_c: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+rec_d: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+
+gps_a:
+    kotekan_stage: GnssChannelizedCorrelator
+    in_buf: chan_buf
+    out_buf: rec_a
+    cpu_affinity: [4]
+    signal: GPS_L1CA
+    prns: [1, 2, 3, 4, 5, 6, 7, 8]
+gps_b:
+    kotekan_stage: GnssChannelizedCorrelator
+    in_buf: chan_buf
+    out_buf: rec_b
+    cpu_affinity: [5]
+    signal: GPS_L1CA
+    prns: [9, 10, 11, 12, 13, 14, 15, 16]
+gps_c:
+    kotekan_stage: GnssChannelizedCorrelator
+    in_buf: chan_buf
+    out_buf: rec_c
+    cpu_affinity: [6]
+    signal: GPS_L1CA
+    prns: [17, 18, 19, 20, 21, 22, 23, 24]
+gps_d:
+    kotekan_stage: GnssChannelizedCorrelator
+    in_buf: chan_buf
+    out_buf: rec_d
+    cpu_affinity: [7]
+    signal: GPS_L1CA
+    prns: [25, 26, 27, 28, 29, 30, 31, 32]
+
+# --- collector: merge the four record streams into one (all 32 PRNs/window) ---
+merged_buf:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: 4 * n_prn * record_floats * sizeof_float
+
+collector:
+    kotekan_stage: GnssRecordCollector
+    in_bufs: [rec_a, rec_b, rec_c, rec_d]
+    out_buf: merged_buf
+    cpu_affinity: [2]
+
+write_records:
+    kotekan_stage: rawFileWrite
+    in_buf: merged_buf
+    base_dir: "./gps_records"
+    file_name: "gps"
+    file_ext: "raw"
+    prefix_hostname: false
