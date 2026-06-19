@@ -96,8 +96,9 @@ void processFeedGains::set_frame_desc(Buffer* buf) {
     buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::float32>, 5>(
         "processed_gain",
         {static_cast<ptrdiff_t>(num_beams), static_cast<ptrdiff_t>(num_local_freq),
-         static_cast<ptrdiff_t>(upchan_factor), static_cast<ptrdiff_t>(num_elements), (ptrdiff_t)2},
-        {"R", "F", "U", "E", "ReIm"});
+         static_cast<ptrdiff_t>(upchan_factor), static_cast<ptrdiff_t>(num_elements),
+         static_cast<ptrdiff_t>(2)},
+        {"R", "F", "U", "E", "ReIm"}, {1, 1, 1, 1, 1});
 }
 
 void processFeedGains::copy_upchannelize_f(const float* src_f, float* dst_f, size_t fid) {

@@ -88,8 +88,8 @@ loadFeedGains::loadFeedGains(Config& config, const std::string& unique_name,
         buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::float32>, 3>(
             "gain",
             {static_cast<ptrdiff_t>(num_local_freq), static_cast<ptrdiff_t>(num_elements),
-             (ptrdiff_t)2},
-            {"F", "E", "ReIm"});
+             static_cast<ptrdiff_t>(2)},
+            {"F", "E", "ReIm"}, {1, 1, 1});
     }
 
     // Set up callbacks for each beam_id
