@@ -85,6 +85,19 @@ earth_rotation_data:
     - {t_inst_ns: 0, delta_UT1_inst: 0.0, xp_as: 0.0, yp_as: 0.0}
 
 updatable_config:
+  # bad input mask, assumed to be in cylinder order
+  bad_inputs:
+      kotekan_update_endpoint: json
+      # yamlfix:off
+      bad_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
+                    370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
+                    807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
+                   1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
+                   1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
+                   1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034]
+      # yamlfix:on
+      start_time: 1535048997.
+      update_id: "initial_flags"
   # Updatable Config for second stage RFI excision.
   rfi_second_stage_enabled:
       kotekan_update_endpoint: json
@@ -357,26 +370,10 @@ lostSamplesToPLMask:
 {%- endfor %}
 
 set_bf_mask:
-    # TODO: this will be handled by the bad-inputs stage eventually
-    kotekan_stage: givenDataGen
+    kotekan_stage: bufferBadInputs
+    updatable_config:
+        bad_inputs: /updatable_config/bad_inputs
     out_buf: host_bf_mask_buffer
-    datatype: int8
-    name: "bf_mask"
-    dim_name: ["P", "D"]
-    dim_scalings: [1, 1]
-    array_shape: [ {{ num_polarizations }}, {{ num_dishes }} ]
-    do_once: true
-    values:
-      # taken from chime_science_ran_gpu.yaml
-      {% set bad_feeds = [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
-                           370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
-                           807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
-                          1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
-                          1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
-                          1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034] %}
-     {% for el in range(num_elements) %}
-        - {% if el in bad_feeds -%} 0 {%- else -%} 1 {%- endif %}
-     {% endfor %}
 
 run_send_pl_mask:
     gpu_0:
