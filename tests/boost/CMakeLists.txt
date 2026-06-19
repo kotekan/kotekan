@@ -23,6 +23,11 @@ target_include_directories(test_gps_l2c_code PRIVATE ../../lib/stages)
 add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnssBandPlan.cpp)
 target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages)
 
+# Broker assignment logic: pure, no FFTW.
+add_executable(test_gnss_broker test_gnss_broker.cpp ../../lib/stages/gnssBroker.cpp
+                                ../../lib/stages/gnssBandPlan.cpp)
+target_include_directories(test_gnss_broker PRIVATE ../../lib/stages)
+
 # Pure PFB core (prototype design + polyphase fold): no FFTW; the test uses a
 # reference DFT to check channel isolation against a straight-FFT channelizer.
 add_executable(test_pfb_prototype test_pfb_prototype.cpp ../../lib/stages/pfbPrototype.cpp)
