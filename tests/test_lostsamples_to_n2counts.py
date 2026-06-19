@@ -408,6 +408,7 @@ def test_accumulate(tmpdir_factory, nsamples, nfreq, sub_integration_ntime):
         8,
     ]
     _expected_dim_names = ["Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"]
+    _expected_dim_scalings = [sub_integration_ntime, 1, 64, 8, 8]
 
     # This is a generator, so use a loop even if returning a single dset
     for dset in accumulate(
@@ -418,6 +419,7 @@ def test_accumulate(tmpdir_factory, nsamples, nfreq, sub_integration_ntime):
         assert dset.attrs["type"] == "int32"
         assert dset.attrs["time_downsampling_fpga"] == sub_integration_ntime
         assert (dset.attrs["dim_names"] == _expected_dim_names).all()
+        assert (dset.attrs["dim_scalings"] == _expected_dim_scalings).all()
 
         # Check the payload
         arr = dset[:]

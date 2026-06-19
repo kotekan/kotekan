@@ -156,7 +156,7 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     count_buf->allocate_ndarray_frame_desc(
         kotekan::int32, "n2k_counts",
         {num_integrations, num_local_freq, count_num_blocks, count_blocksize, count_blocksize},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}, {sub_integration_ntime, 1, 8, 1, 1});
+        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}, {sub_integration_ntime, 1, 64, 8, 8});
 }
 
 std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID frame_id) {

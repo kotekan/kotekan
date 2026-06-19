@@ -94,7 +94,7 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     int n_blocks = num_triangle_blocks(ne, _blocksize);
     output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int32>::type, 5>(
         "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}, {input_plmask_time_scaling, 1, 8, 1, 1});
+        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}, {input_plmask_time_scaling, 1, 64, 8, 8});
 }
 
 gpuSimulateN2kPL1bitCorr::~gpuSimulateN2kPL1bitCorr() {}
@@ -255,9 +255,9 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
                                       div_noremainder(meta_in->get_time_downsampling_fpga(), 64)
                                           * _sub_integration_ntime);
         meta_out->set_array_dimension(1, nf, "F", 1);
-        meta_out->set_array_dimension(2, n_blocks, "D8Phi", 8);
-        meta_out->set_array_dimension(3, _blocksize, "D8Plo1", 1);
-        meta_out->set_array_dimension(4, _blocksize, "D8Plo2", 1);
+        meta_out->set_array_dimension(2, n_blocks, "D8Phi", 64);
+        meta_out->set_array_dimension(3, _blocksize, "D8Plo1", 8);
+        meta_out->set_array_dimension(4, _blocksize, "D8Plo2", 8);
         meta_out->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */

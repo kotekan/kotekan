@@ -215,7 +215,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
                                                 _num_freq_per_n2k_frame, _n2k_counts_num_blocks,
                                                 _n2k_counts_blocksize, _n2k_counts_blocksize},
                                                {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"},
-                                               {_n_fpga_samples_per_n2k_correlation, 1, 8, 1, 1});
+                                               {_n_fpga_samples_per_n2k_correlation, 1, 64, 8, 8});
 
     in_rficounts_buf->allocate_ndarray_frame_desc(
         kotekan::int32, "RFImask_counts", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},

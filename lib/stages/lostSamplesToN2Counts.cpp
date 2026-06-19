@@ -126,7 +126,7 @@ lostSamplesToN2Counts::lostSamplesToN2Counts(Config& config, const std::string& 
         {static_cast<long>(_num_subintegrations), static_cast<long>(num_n2k_freq),
          static_cast<long>(_counts_ntiles), COUNTS_BLOCK_SIZE, COUNTS_BLOCK_SIZE},
         {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"},
-        {static_cast<long>(sub_integration_ntime), 1, 8, 1, 1});
+        {static_cast<long>(sub_integration_ntime), 1, 64, 8, 8});
 }
 
 lostSamplesToN2Counts::~lostSamplesToN2Counts() {}
