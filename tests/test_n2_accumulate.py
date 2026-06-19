@@ -193,6 +193,7 @@ def make_zeroed_chord_buffer(
     typename,
     shape,
     dim_names,
+    dim_scalings,
     seq0,
     dseq,
     num_frames,
@@ -215,6 +216,8 @@ def make_zeroed_chord_buffer(
         Shape of data array
     dim_names : [String, ...]
         Names of each data axis
+    dim_scalings : [int, ...]
+        Dimension scales of each data axis
     seq0 : int
         FPGA sequence number for start of first buffer
     dseq : int
@@ -240,7 +243,7 @@ def make_zeroed_chord_buffer(
 
         data = np.zeros(shape, dtype=dtype)
 
-        meta = runner.chordbuffer.get_metadata(name, typename, dim_names)
+        meta = runner.chordbuffer.get_metadata(name, typename, dim_names, dim_scalings)
         meta["fpga_seq_num"] = seq
         if freq_ids is not None:
             meta["coarse_freq"] = freq_ids
@@ -559,7 +562,7 @@ def accum_data(
     accum_list,
 ):
     """
-    Run the N2Accumualte stage on the given input and yield the output buffers.
+    Run the N2Accumulate stage on the given input and yield the output buffers.
 
     Parameters
     ----------

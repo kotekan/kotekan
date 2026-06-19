@@ -124,11 +124,12 @@ def sktilde_data(setup):
 
         data = np.empty((rfi_num_times, config["num_local_freq"], 3), dtype=np.float32)
 
+        rfi_downsampling_factor = config["rfi_downsampling_factor"]
         meta = runner.chordbuffer.get_metadata(
-            "SKtilde", "float32", ("Trfi", "F", "SK")
+            "SKtilde", "float32", ("Trfi", "F", "SK"), (rfi_downsampling_factor, 1, 1)
         )
         meta["fpga_seq_num"] = seq_num
-        meta["time_downsampling_fpga"] = config["rfi_downsampling_factor"]
+        meta["time_downsampling_fpga"] = rfi_downsampling_factor
 
         trfi0 = idx * rfi_num_times
 
