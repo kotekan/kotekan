@@ -10,19 +10,23 @@ AcquisitionResult
 channelized_acquire(const std::vector<std::vector<std::complex<float>>>& data_ch,
                     const std::vector<std::vector<std::complex<float>>>& repl0_ch,
                     const std::vector<int>& covering, const std::vector<double>& doppler_grid,
-                    double sample_rate, double chip_rate, int num_chan, long code_length) {
+                    double sample_rate, double chip_rate, int num_chan, long code_length,
+                    const std::vector<int>& chan_freq) {
     const int N = num_chan;
     const int M = (int)data_ch[0].size();
     const int nc = (int)covering.size();
 
-    // Pre-tabulate the cross-channel fine-lag phase ramp e^{+i 2pi c s / N} for
-    // the covering channels and all sub-hop offsets s.
+    // Pre-tabulate the cross-channel fine-lag phase ramp e^{+i 2pi f_c s / N} for
+    // the covering channels and all sub-hop offsets s. f_c is the channel's
+    // frequency index (defaults to the channel index for the clean bank).
     std::vector<std::vector<cd>> ramp(nc, std::vector<cd>(N));
-    for (int ci = 0; ci < nc; ++ci)
+    for (int ci = 0; ci < nc; ++ci) {
+        const int fc = chan_freq.empty() ? covering[ci] : chan_freq[ci];
         for (int s = 0; s < N; ++s) {
-            const double a = 2.0 * M_PI * covering[ci] * s / N;
+            const double a = 2.0 * M_PI * fc * s / N;
             ramp[ci][s] = cd(std::cos(a), std::sin(a));
         }
+    }
 
     AcquisitionResult best{0.0, 0.0, 0, -1.0, 0.0};
     double surf_sum = 0.0;

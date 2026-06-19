@@ -83,7 +83,80 @@ std::vector<int> energy_covering(const std::vector<std::vector<cf>>& repl) {
     return cov;
 }
 
+// Analyze with fftwEngine's exact PFB convention: newest-first pfb_push,
+// pfb_fold, forward DFT, then fftshift. Warmed from the (periodic) tail so the
+// first hop is circular-correct, matching the core's circular correlation.
+std::vector<std::vector<cf>> analyze_fftwe(const std::vector<cf>& x, int Nc,
+                                           const std::vector<float>& proto) {
+    const int Ns = (int)x.size();
+    const int Mh = Ns / Nc;
+    std::vector<cf> hist((size_t)Nc * P, cf(0.0f, 0.0f)), block(Nc), v(Nc), spec(Nc);
+    std::vector<std::vector<cf>> ch(Nc, std::vector<cf>(Mh));
+    auto do_hop = [&](int m, bool store) {
+        for (int i = 0; i < Nc; ++i)
+            block[i] = x[(((long)m * Nc + i) % Ns + Ns) % Ns];
+        dsp::pfb_push(hist.data(), block.data(), Nc, P);
+        if (!store)
+            return;
+        dsp::pfb_fold(hist.data(), proto.data(), Nc, P, v.data());
+        for (int k = 0; k < Nc; ++k) {
+            cf X(0.0f, 0.0f);
+            for (int p = 0; p < Nc; ++p) {
+                const double a = -2.0 * M_PI * k * p / Nc;
+                X += v[p] * cf(std::cos(a), std::sin(a));
+            }
+            spec[k] = X;
+        }
+        for (int j = 0; j < Nc; ++j)
+            ch[j][m] = spec[(j + Nc / 2) % Nc]; // fftshift: DC at j = Nc/2
+    };
+    for (int w = 0; w < P - 1; ++w)
+        do_hop(Mh - (P - 1) + w, false); // warm history from the tail
+    for (int m = 0; m < Mh; ++m)
+        do_hop(m, true);
+    return ch;
+}
+
+std::vector<int> energy_covering_n(const std::vector<std::vector<cf>>& repl, int Nc) {
+    std::vector<double> e(Nc, 0.0);
+    double emax = 0.0;
+    for (int c = 0; c < Nc; ++c) {
+        for (const cf& v : repl[c])
+            e[c] += std::norm(v);
+        emax = std::max(emax, e[c]);
+    }
+    std::vector<int> cov;
+    for (int c = 0; c < Nc; ++c)
+        if (e[c] > 0.05 * emax)
+            cov.push_back(c);
+    return cov;
+}
+
 } // namespace
+
+BOOST_AUTO_TEST_CASE(recovers_with_fftwengine_convention) {
+    // Even Nc dividing one code period (4092 = 2^2*3*11*31): Nc=12, DC at bin 6.
+    constexpr int Nc = 12;
+    const auto proto = dsp::pfb_prototype(Nc, P, dsp::Window::Hamming);
+    const long true_tau = 20; // q=1, s=8 -> exercises fine lag
+    const double true_dop = 200.0;
+
+    auto data = analyze_fftwe(gen(5, true_tau * CHIP_RATE / FS, true_dop, cf(1.0f, 0.0f)), Nc, proto);
+    auto repl0 = analyze_fftwe(gen(5, 0.0, 0.0, cf(1.0f, 0.0f)), Nc, proto);
+    const auto cov = energy_covering_n(repl0, Nc);
+
+    // fftshifted bank: channel j <-> frequency (j - Nc/2).
+    std::vector<int> chan_freq;
+    for (int c : cov)
+        chan_freq.push_back(c - Nc / 2);
+
+    const std::vector<double> grid = {-400, -200, 0, 200, 400};
+    auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, Nc, CODE_LEN,
+                                       chan_freq);
+    BOOST_CHECK_EQUAL(r.doppler_hz, true_dop);
+    BOOST_CHECK_LE(std::abs(r.peak_tau_samples - true_tau), (long)SP);
+    BOOST_CHECK_GT(r.snr, 15.0);
+}
 
 BOOST_AUTO_TEST_CASE(recovers_code_phase_and_doppler) {
     const auto proto = dsp::pfb_prototype(N, P, dsp::Window::Hamming);

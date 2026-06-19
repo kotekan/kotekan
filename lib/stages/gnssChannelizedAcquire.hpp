@@ -57,12 +57,18 @@ struct AcquisitionResult {
  * @param chip_rate    Spreading code chip rate, Hz.
  * @param num_chan     N, the channel count (= decimation = hop size in samples).
  * @param code_length  Chips per code period (for wrapping the code phase).
+ * @param chan_freq   Optional integer frequency index of each covering channel,
+ *                    used in the cross-channel fine-lag ramp. Empty defaults to
+ *                    `covering` (channel c <-> +frequency c, the clean bank). A
+ *                    fftshifted bank (fftwEngine) passes c - N/2. The per-channel
+ *                    analysis phase cancels in P_c, so only this index matters.
  */
 AcquisitionResult
 channelized_acquire(const std::vector<std::vector<std::complex<float>>>& data_ch,
                     const std::vector<std::vector<std::complex<float>>>& repl0_ch,
                     const std::vector<int>& covering, const std::vector<double>& doppler_grid,
-                    double sample_rate, double chip_rate, int num_chan, long code_length);
+                    double sample_rate, double chip_rate, int num_chan, long code_length,
+                    const std::vector<int>& chan_freq = {});
 
 } // namespace gnss
 
