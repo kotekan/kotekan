@@ -116,7 +116,7 @@ end
 
 const Ttilde = 4 * 256
 
-const output_gain = 1 / (8 * Tds)
+const output_gain = 1 / (8 * Tds) #TODO   1 / (2 * Tds)
 
 # Derived compile-time parameters (section 4.4)
 const Mpad = nextpow(2, M)
@@ -2587,7 +2587,7 @@ function fix_ptx_kernel()
                         Dict("label" => "beamP", "length" => 2 * M, "dimscaling" => 1),
                         Dict("label" => "beamQ", "length" => 2 * N, "dimscaling" => 1),
                         Dict("label" => "Fbar", "length" => Fbar_out, "dimscaling" => 1),
-                        Dict("label" => "Ttilde", "length" => Ttilde, "dimscaling" => Tds),
+                        Dict("label" => "Ttilde", "length" => Ttilde, "dimscaling" => Tds_U1),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,

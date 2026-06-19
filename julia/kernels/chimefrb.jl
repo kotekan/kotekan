@@ -72,7 +72,7 @@ end
 # We use U = 128 for HFB beams; downsample to the max
 const Ttilde = U < 128 ? 4 * 256 : 4 * 1
 
-const output_gain = 1 / (8 * Tds)
+const output_gain = 1 / (8 * Tds) #TODO   1 / (2 * Tds)
 
 # Machine setup
 
@@ -1694,7 +1694,7 @@ function fix_ptx_kernel()
                         Dict("label" => "beamP", "length" => 2 * M, "dimscaling" => 1),
                         Dict("label" => "beamQ", "length" => 2 * N, "dimscaling" => 1),
                         Dict("label" => "Fbar", "length" => Fbar, "dimscaling" => 1),
-                        Dict("label" => "Ttilde", "length" => Ttilde, "dimscaling" => Tds),
+                        Dict("label" => "Ttilde", "length" => Ttilde, "dimscaling" => Tds_U1),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
