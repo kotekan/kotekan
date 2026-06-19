@@ -120,7 +120,10 @@ def plmask_data(setup):
         )
 
         meta = runner.chordbuffer.get_metadata(
-            "pl_mask", "uint1x8", ("T2hi64", "F4", "P", "D8", "T2lo64"), (128, 4, 1, 8, 16)
+            "pl_mask",
+            "uint1x8",
+            ("T2hi64", "F4", "P", "D8", "T2lo64"),
+            (128, 4, 1, 8, 16),
         )
         meta["fpga_seq_num"] = seq_num
         meta["time_downsampling_fpga"] = 128
