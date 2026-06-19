@@ -2,6 +2,7 @@
 
 #include "StageFactory.hpp"           // for REGISTER_KOTEKAN_STAGE
 #include "gnssBandPlan.hpp"           // for ChannelBand, covering_channels
+#include "gnssChannelizedAcquire.hpp" // for channelized_acquire
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
 #include "gpsCACode.hpp"              // for generate_ca_code
 #include "fftwPlannerLock.hpp"        // for fftw_planner_mutex
@@ -74,6 +75,16 @@ GnssChannelizedCorrelator::GnssChannelizedCorrelator(Config& config, const std::
     const int period_hops = (int)std::llround(_sig.code_period_s * _sample_rate) / _N;
     _hops_per_record = config.get_default<int>(unique_name, "hops_per_record", period_hops);
 
+    // Self-seeding acquisition.
+    _acquire = config.get_default<bool>(unique_name, "acquire", false);
+    _acquire_snr = config.get_default<double>(unique_name, "acquire_snr", 12.0);
+    const double dmin = config.get_default<double>(unique_name, "doppler_min", -6000.0);
+    const double dmax = config.get_default<double>(unique_name, "doppler_max", 6000.0);
+    const double dstep = config.get_default<double>(unique_name, "doppler_step", 500.0);
+    for (double f = dmin; f <= dmax + 1e-6; f += dstep)
+        _doppler_grid.push_back(f);
+    _locked.assign(n_prn, _acquire ? 0 : 1); // without acquire, configured seeds are "locked"
+
     // Cache the spreading code per PRN.
     _full_code.resize(n_prn);
     for (int p = 0; p < n_prn; ++p) {
@@ -115,7 +126,8 @@ int8_t GnssChannelizedCorrelator::code_chip(int p, double chip_phase) const {
     return _full_code[p][idx];
 }
 
-std::vector<int> GnssChannelizedCorrelator::covering_bins(int p) const {
+std::vector<int> GnssChannelizedCorrelator::covering_bins(int p, double doppler_hz) const {
+    (void)p; // covering set depends on the carrier + Doppler, not the PRN
     // Local fftshifted bin grid: bin j is centred at (j - N/2) * Fs/N relative
     // to band centre; the carrier sits at f_offset there.
     std::vector<gnss::ChannelBand> chans(_N);
@@ -125,14 +137,15 @@ std::vector<int> GnssChannelizedCorrelator::covering_bins(int p) const {
 
     gnss::SignalDescriptor local = _sig;
     local.carrier_hz = _f_offset;
-    const double max_dop = std::abs(_doppler[p]) + _doppler_margin_hz;
+    const double max_dop = std::abs(doppler_hz) + _doppler_margin_hz;
 
     const auto ids = gnss::covering_channels(chans, local, max_dop);
     return std::vector<int>(ids.begin(), ids.end());
 }
 
 std::vector<std::vector<std::complex<float>>>
-GnssChannelizedCorrelator::replica_channels(int p, long long window_start_sample) {
+GnssChannelizedCorrelator::replica_channels(int p, long long window_start_sample,
+                                            double code_phase_chips, double doppler_hz) {
     const int warm = _num_taps - 1; // hops to prime the (continuous) F-engine delay line
     const int total = _hops_per_record + warm;
     const long long start = window_start_sample - (long long)warm * _N;
@@ -143,7 +156,7 @@ GnssChannelizedCorrelator::replica_channels(int p, long long window_start_sample
         std::vector<std::complex<float>>(_hops_per_record));
 
     const double chip_per_sample = _sig.chip_rate_hz / _sample_rate;
-    const double wcarrier = 2.0 * M_PI * (_f_offset + _doppler[p]) / _sample_rate;
+    const double wcarrier = 2.0 * M_PI * (_f_offset + doppler_hz) / _sample_rate;
 
     for (int h = 0; h < total; ++h) {
         for (int i = 0; i < _N; ++i) {
@@ -152,7 +165,7 @@ GnssChannelizedCorrelator::replica_channels(int p, long long window_start_sample
                 block[i] = std::complex<float>(0.0f, 0.0f); // pre-stream: matches F-engine zero init
                 continue;
             }
-            const int8_t c = code_chip(p, _code_phase[p] + (double)n * chip_per_sample);
+            const int8_t c = code_chip(p, code_phase_chips + (double)n * chip_per_sample);
             const double ph = wcarrier * (double)n;
             block[i] = std::complex<float>(c * (float)std::cos(ph), c * (float)std::sin(ph));
         }
@@ -169,6 +182,24 @@ GnssChannelizedCorrelator::replica_channels(int p, long long window_start_sample
             chan[j][m] = spec[(j + _N / 2) % _N];
     }
     return chan;
+}
+
+gnss::DespreadResult
+GnssChannelizedCorrelator::despread_at(int p, long long window_start_sample, double code_phase_chips,
+                                       double doppler_hz, const std::vector<int>& bins,
+                                       const std::vector<std::complex<float>>& window) {
+    const auto repl = replica_channels(p, window_start_sample, code_phase_chips, doppler_hz);
+    std::vector<std::vector<std::complex<float>>> data_ch, repl_ch;
+    data_ch.reserve(bins.size());
+    repl_ch.reserve(bins.size());
+    for (int b : bins) {
+        std::vector<std::complex<float>> col(_hops_per_record);
+        for (int m = 0; m < _hops_per_record; ++m)
+            col[m] = window[(size_t)m * _N + b];
+        data_ch.push_back(std::move(col));
+        repl_ch.push_back(repl[b]);
+    }
+    return gnss::channelized_despread(data_ch, repl_ch);
 }
 
 void GnssChannelizedCorrelator::main_thread() {
@@ -231,20 +262,53 @@ void GnssChannelizedCorrelator::main_thread() {
                 if (!active[p])
                     continue;
 
-                const auto bins = covering_bins(p);
-                const auto repl = replica_channels(p, window_start);
-                std::vector<std::vector<std::complex<float>>> data_ch, repl_ch;
-                data_ch.reserve(bins.size());
-                repl_ch.reserve(bins.size());
-                for (int b : bins) {
-                    std::vector<std::complex<float>> col(_hops_per_record);
-                    for (int m = 0; m < _hops_per_record; ++m)
-                        col[m] = window[(size_t)m * _N + b];
-                    data_ch.push_back(std::move(col));
-                    repl_ch.push_back(repl[b]);
+                // Self-seed: acquire code phase + Doppler from the channels.
+                if (_acquire && !_locked[p]) {
+                    std::vector<std::vector<std::complex<float>>> dch(
+                        _N, std::vector<std::complex<float>>(_hops_per_record));
+                    for (int c = 0; c < _N; ++c)
+                        for (int m = 0; m < _hops_per_record; ++m)
+                            dch[c][m] = window[(size_t)m * _N + c];
+
+                    const double dmax = _doppler_grid.empty() ? 0.0 : _doppler_grid.back();
+                    const auto acov = covering_bins(p, std::abs(dmax));
+                    const auto repl0 = replica_channels(p, window_start, 0.0, 0.0);
+                    std::vector<int> cfreq;
+                    cfreq.reserve(acov.size());
+                    for (int b : acov)
+                        cfreq.push_back(b - _N / 2); // fftshifted bank: channel <-> freq (b - N/2)
+
+                    const auto a = gnss::channelized_acquire(
+                        dch, repl0, acov, _doppler_grid, _sample_rate, _sig.chip_rate_hz, _N,
+                        _sig.code_length, cfreq);
+                    if (a.snr >= _acquire_snr) {
+                        // Acquisition localizes to ~1 chip; refine the code phase
+                        // to sample resolution with exact despreads (the
+                        // acquisition->tracking handoff).
+                        const auto rbins = covering_bins(p, a.doppler_hz);
+                        const double cps = _sig.chip_rate_hz / _sample_rate;
+                        const int span = 2 * (int)std::lround(_sample_rate / _sig.chip_rate_hz);
+                        double best_cp = a.code_phase_chips, best_pw = -1.0;
+                        for (int off = -span; off <= span; ++off) {
+                            const double cp = a.code_phase_chips + off * cps;
+                            const double pw = std::norm(
+                                despread_at(p, window_start, cp, a.doppler_hz, rbins, window)
+                                    .amplitude);
+                            if (pw > best_pw) {
+                                best_pw = pw;
+                                best_cp = cp;
+                            }
+                        }
+                        _code_phase[p] =
+                            std::fmod(best_cp, (double)_sig.code_length) + (best_cp < 0 ? _sig.code_length : 0);
+                        _doppler[p] = a.doppler_hz;
+                        _locked[p] = 1;
+                    }
                 }
 
-                const auto res = gnss::channelized_despread(data_ch, repl_ch);
+                const auto bins = covering_bins(p, _doppler[p]);
+                const auto res = despread_at(p, window_start, _code_phase[p], _doppler[p], bins,
+                                             window);
                 rec[1] = (float)_doppler[p];
                 rec[2] = (float)_code_phase[p];
                 rec[3] = (float)std::abs(res.amplitude);

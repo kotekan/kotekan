@@ -144,6 +144,7 @@ if(FFTW_FOUND)
                 pfbPrototype.cpp
                 gnssBandPlan.cpp
                 gnssChannelizedDespread.cpp
+                gnssChannelizedAcquire.cpp
                 GnssChannelizedCorrelator.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})

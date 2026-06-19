@@ -11,6 +11,7 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "gnssChannelizedDespread.hpp" // for DespreadResult
 #include "gnssSignal.hpp"      // for SignalDescriptor
 #include "pfbPrototype.hpp"    // for Window
 #include "restServer.hpp"      // for connectionInstance
@@ -57,6 +58,11 @@
  * @conf prns              Array of Int. PRNs to measure.
  * @conf doppler_hz        Array of Double. Seeded Doppler per PRN (scalar broadcasts).
  * @conf code_phase_chips  Array of Double. Seeded code phase per PRN (scalar broadcasts).
+ * @conf acquire           Bool (default false). Self-seed unlocked PRNs from the channels.
+ * @conf acquire_snr       Double (default 12). Surface SNR to accept an acquisition.
+ * @conf doppler_min       Double (default -6000). Acquisition Doppler grid start, Hz.
+ * @conf doppler_max       Double (default 6000). Acquisition Doppler grid end, Hz.
+ * @conf doppler_step      Double (default 500). Acquisition Doppler grid step, Hz.
  * @conf doppler_margin_hz Double (default 5000). Extra band for covering-channel selection.
  * @conf hops_per_record   Int (default: one code period). Coherent window length, hops.
  * @conf active_prns       Array of Int (optional). Initial go/no-go mask (default all on).
@@ -81,11 +87,19 @@ private:
     /// Bipolar code chip for PRN @c p at fractional chip phase (wraps the period).
     int8_t code_chip(int p, double chip_phase) const;
     /// Generate + PFB-analyze the replica for PRN @c p over a window starting at
-    /// @c window_start_sample; returns [spectrum_length][hops] fftshifted channels.
-    std::vector<std::vector<std::complex<float>>> replica_channels(int p,
-                                                                   long long window_start_sample);
-    /// Channel indices whose passband covers the carrier for PRN @c p.
-    std::vector<int> covering_bins(int p) const;
+    /// @c window_start_sample at the given code phase + Doppler; returns
+    /// [spectrum_length][hops] fftshifted channels.
+    std::vector<std::vector<std::complex<float>>>
+    replica_channels(int p, long long window_start_sample, double code_phase_chips,
+                     double doppler_hz);
+    /// Channel indices whose passband covers the carrier for PRN @c p at the
+    /// given Doppler.
+    std::vector<int> covering_bins(int p, double doppler_hz) const;
+    /// Exact channelized despread of the current window for PRN @c p at the given
+    /// code phase + Doppler over @c bins.
+    gnss::DespreadResult despread_at(int p, long long window_start_sample, double code_phase_chips,
+                                     double doppler_hz, const std::vector<int>& bins,
+                                     const std::vector<std::complex<float>>& window);
 
     static constexpr int RECORD_FLOATS = 11;
     static constexpr int RECORD_UTC_SLOT = 9;
@@ -108,9 +122,16 @@ private:
     int _hops_per_record;
 
     std::vector<int> _prns;
-    std::vector<double> _doppler;     ///< seeded Doppler per PRN, Hz
-    std::vector<double> _code_phase;  ///< seeded code phase per PRN, chips
+    std::vector<double> _doppler;     ///< Doppler per PRN, Hz (seeded or acquired)
+    std::vector<double> _code_phase;  ///< code phase per PRN, chips (seeded or acquired)
     std::vector<std::vector<int8_t>> _full_code; ///< cached code period per PRN
+
+    // Self-seeding acquisition: when enabled, an unlocked PRN is acquired from
+    // the channels before measuring (see gnssChannelizedAcquire.hpp).
+    bool _acquire;
+    double _acquire_snr;              ///< surface SNR to accept an acquisition (lock)
+    std::vector<double> _doppler_grid; ///< acquisition Doppler trials, Hz
+    std::vector<uint8_t> _locked;     ///< per-PRN: seed valid (skip re-acquire)
 
     std::vector<uint8_t> _active; ///< go/no-go mask aligned with _prns
     std::mutex _mask_mutex;

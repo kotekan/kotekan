@@ -55,14 +55,16 @@ def ca_code(prn):
     return code
 
 
-def make_iq(prn, a_re, a_im, n_samp):
-    """Interleaved int16 IQ: amplitude * code(floor(n/SP) % 1023), no carrier."""
+def make_iq(prn, a_re, a_im, n_samp, cp_chips=0.0, fd=0.0):
+    """Interleaved int16 IQ: (a_re + i a_im) * code(floor(cp + n*chip/Fs)) * carrier(fd)."""
     n = np.arange(n_samp)
-    chip = (n // SP) % CODE_LEN
+    chip = np.floor(cp_chips + n * CHIP_RATE / SAMPLE_RATE).astype(np.int64) % CODE_LEN
     c = ca_code(prn)[chip]
+    carrier = np.exp(2j * np.pi * fd * n / SAMPLE_RATE)
+    s = (a_re + 1j * a_im) * c * carrier
     iq = np.empty(2 * n_samp, dtype=np.int16)
-    iq[0::2] = np.round(a_re * c).astype(np.int16)
-    iq[1::2] = np.round(a_im * c).astype(np.int16)
+    iq[0::2] = np.round(s.real).astype(np.int16)
+    iq[1::2] = np.round(s.imag).astype(np.int16)
     return iq
 
 
@@ -86,7 +88,7 @@ def _read_one(path):
     return {int(round(r[0])): r for r in recs}
 
 
-def _run(tmpdir, iq, n_records, active_prns=None):
+def _run(tmpdir, iq, n_records, active_prns=None, acquire=False):
     n_complex = iq.size // 2
     work = tempfile.mkdtemp(dir=str(tmpdir))
     in_dir = os.path.join(work, "in")
@@ -116,6 +118,8 @@ def _run(tmpdir, iq, n_records, active_prns=None):
                       "signal": "GPS_L1CA", "sample_rate": SAMPLE_RATE, "f_offset": 0.0,
                       "spectrum_length": N, "num_taps": NUM_TAPS, "pfb_window": "hamming",
                       "hops_per_record": HOPS, "prns": PRNS,
+                      **({"acquire": True, "acquire_snr": 8.0, "doppler_min": -600.0,
+                          "doppler_max": 600.0, "doppler_step": 200.0} if acquire else {}),
                       **({"active_prns": active_prns} if active_prns is not None else {})},
         "write_out": {"kotekan_stage": "rawFileWrite", "in_buf": "out_buf",
                       "base_dir": str(out_dir), "file_name": "rec", "file_ext": "raw",
@@ -142,6 +146,22 @@ def test_recovers_injected_amplitude(tmpdir):
     # Wrong PRNs see only the cross-correlation floor.
     for prn in (2, 12):
         assert rec[prn][3] < 0.15 * mag
+
+
+def test_acquire_self_seeds_then_measures(tmpdir):
+    a_re, a_im = 2000.0, 1000.0
+    delay = 50                                  # samples; cp = 12.5 chips (off hop)
+    cp = delay * CHIP_RATE / SAMPLE_RATE
+    fd = 200.0                                  # on the Doppler grid
+    iq = make_iq(5, a_re, a_im, 2 * HOPS * N, cp_chips=cp, fd=fd)
+    rec = _run(tmpdir, iq, n_records=2, acquire=True)[0]
+
+    r5 = rec[5]
+    assert abs(r5[1] - fd) <= 100.0             # Doppler acquired (grid step 200)
+    d = min((r5[2] - cp) % CODE_LEN, (cp - r5[2]) % CODE_LEN)
+    assert d < 1.0                              # code phase within a chip
+    mag = (a_re ** 2 + a_im ** 2) ** 0.5
+    assert r5[3] > 0.6 * mag                    # self-seed good enough to measure
 
 
 def test_active_prns_mask_zeroes_record(tmpdir):
