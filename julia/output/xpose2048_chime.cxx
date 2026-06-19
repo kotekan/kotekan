@@ -134,6 +134,12 @@ private:
         16,
         4,
     };
+    static constexpr std::array<std::ptrdiff_t, Ein_rank> Ein_dimscalings = {
+        1,
+        1,
+        1,
+        1,
+    };
     static constexpr auto Ein_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -170,6 +176,12 @@ private:
         16,
         65536,
     };
+    static constexpr std::array<std::ptrdiff_t, E_rank> E_dimscalings = {
+        1,
+        1,
+        1,
+        1,
+    };
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -199,6 +211,11 @@ private:
         1024,
         2,
     };
+    static constexpr std::array<std::ptrdiff_t, scatter_indices_rank> scatter_indices_dimscalings =
+        {
+            1,
+            1,
+        };
     static constexpr auto scatter_indices_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -234,6 +251,11 @@ private:
         32,
         16,
         128,
+    };
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_dimscalings = {
+        1,
+        1,
+        1,
     };
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -288,12 +310,15 @@ cudaTranspose2048_chime::cudaTranspose2048_chime(Config& config, const std::stri
     scatter_indices_name(config.get<std::string>(unique_name, "scatter_indices_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
-    Ein_buffer(Ein_name, Ein_quantity, reverse(Ein_lengths), reverse(Ein_labels), *this),
-    E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), *this),
+    Ein_buffer(Ein_name, Ein_quantity, reverse(Ein_lengths), reverse(Ein_labels),
+               reverse(Ein_dimscalings), *this),
+    E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), reverse(E_dimscalings),
+             *this),
     scatter_indices_buffer(scatter_indices_name, scatter_indices_quantity,
-                           reverse(scatter_indices_lengths), reverse(scatter_indices_labels), *this,
-                           buffer_type_t::do_once),
-    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
+                           reverse(scatter_indices_lengths), reverse(scatter_indices_labels),
+                           reverse(scatter_indices_dimscalings), *this, buffer_type_t::do_once),
+    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels),
+                reverse(info_dimscalings), *this),
     host_info_buffer(info_length),
 
     dummy() // avoid trailing comma

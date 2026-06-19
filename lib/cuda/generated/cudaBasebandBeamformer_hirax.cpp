@@ -123,6 +123,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, A_rank> A_lengths = {
         2, 256, 16, 2, 64,
     };
+    static constexpr std::array<std::ptrdiff_t, A_rank> A_dimscalings = {
+        1, 1, 1, 1, 1,
+    };
     static constexpr auto A_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -158,6 +161,12 @@ private:
         64,
         65536,
     };
+    static constexpr std::array<std::ptrdiff_t, E_rank> E_dimscalings = {
+        1,
+        1,
+        1,
+        1,
+    };
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -189,6 +198,11 @@ private:
         16,
         2,
         64,
+    };
+    static constexpr std::array<std::ptrdiff_t, s_rank> s_dimscalings = {
+        1,
+        1,
+        1,
     };
     static constexpr auto s_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -222,6 +236,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, J_rank> J_lengths = {
         16384, 2, 64, 16, 1,
     };
+    static constexpr std::array<std::ptrdiff_t, J_rank> J_dimscalings = {
+        1, 1, 1, 1, 1,
+    };
     static constexpr auto J_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -254,6 +271,11 @@ private:
         4,
         128,
     };
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_dimscalings = {
+        1,
+        1,
+        1,
+    };
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -282,6 +304,9 @@ private:
     };
     static constexpr std::array<std::ptrdiff_t, log_rank> log_lengths = {
         128,
+    };
+    static constexpr std::array<std::ptrdiff_t, log_rank> log_dimscalings = {
+        1,
     };
     static constexpr auto log_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -339,15 +364,18 @@ cudaBasebandBeamformer_hirax::cudaBasebandBeamformer_hirax(Config& config,
     J_name(config.get<std::string>(unique_name, "bb_beams_name")),
     info_name(unique_name + "/gpu_mem_info"), log_name(unique_name + "/gpu_mem_log"),
 
-    A_buffer(A_name, A_quantity, reverse(A_lengths), reverse(A_labels), *this,
-             buffer_type_t::do_once),
-    E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), *this),
-    s_buffer(s_name, s_quantity, reverse(s_lengths), reverse(s_labels), *this,
-             buffer_type_t::do_once),
-    J_buffer(J_name, J_quantity, reverse(J_lengths), reverse(J_labels), *this),
-    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
-    host_info_buffer(info_length),
-    log_buffer(log_name, log_quantity, reverse(log_lengths), reverse(log_labels), *this),
+    A_buffer(A_name, A_quantity, reverse(A_lengths), reverse(A_labels), reverse(A_dimscalings),
+             *this, buffer_type_t::do_once),
+    E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), reverse(E_dimscalings),
+             *this),
+    s_buffer(s_name, s_quantity, reverse(s_lengths), reverse(s_labels), reverse(s_dimscalings),
+             *this, buffer_type_t::do_once),
+    J_buffer(J_name, J_quantity, reverse(J_lengths), reverse(J_labels), reverse(J_dimscalings),
+             *this),
+    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels),
+                reverse(info_dimscalings), *this),
+    host_info_buffer(info_length), log_buffer(log_name, log_quantity, reverse(log_lengths),
+                                              reverse(log_labels), reverse(log_dimscalings), *this),
     host_log_buffer(log_length),
 
     dummy() // avoid trailing comma
