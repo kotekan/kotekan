@@ -358,7 +358,7 @@ def count_data(setup):
         "int32",
         shape,
         ("Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"),
-        (config["sub_integration_ntime"], 1, 8, 1, 1, 1),
+        (config["sub_integration_ntime"], 1, 64, 8, 8),
         config["first_frame_index"] * config["samples_per_data_set"],
         config["samples_per_data_set"],
         setup["num_frames"],
