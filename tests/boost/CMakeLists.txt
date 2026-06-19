@@ -36,6 +36,14 @@ add_executable(
     ../../lib/stages/pfbPrototype.cpp ../../lib/stages/gpsCACode.cpp)
 target_include_directories(test_gnss_channelized_despread PRIVATE ../../lib/stages)
 
+# Channelized acquisition: per-channel correlation + cross-channel fine-lag DFT,
+# checked against the injected code phase / Doppler. No FFTW.
+add_executable(
+    test_gnss_channelized_acquire test_gnss_channelized_acquire.cpp
+    ../../lib/stages/gnssChannelizedAcquire.cpp ../../lib/stages/pfbPrototype.cpp
+    ../../lib/stages/gpsCACode.cpp)
+target_include_directories(test_gnss_channelized_acquire PRIVATE ../../lib/stages)
+
 add_executable(test_stat_tracker test_stat_tracker.cpp)
 target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
