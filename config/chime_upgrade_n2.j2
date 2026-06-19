@@ -101,7 +101,7 @@ updatable_config:
   # Updatable Config for second stage RFI excision.
   rfi_second_stage_enabled:
       kotekan_update_endpoint: json
-      enabled: false
+      enabled: true
       valid_at_time_ns: 0
   
   rfi_second_stage_thresholds:
@@ -1030,7 +1030,7 @@ eigencalc:
     krylov: 2
     subspace: 1
     # Masking config from chime science run
-    bands_filled: [ [0, 30], [251, 262] ]
+    diagonal_bands_filled: [ [0, 30], [251, 262] ]
     exclude_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
                       370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
                       807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
@@ -1105,8 +1105,7 @@ write_failed_vis:
     file_length: 256
     in_buf: failed_vis_buffer_post
 
-# enable to dump sk statistics data
-{% if False %}
+# System to optionally dump sk statistics data
 host_rfi_SKtilde_buffer:
     kotekan_buffer: standard
     num_frames: host_buffer_depth
@@ -1156,13 +1155,13 @@ switch_sk_out:
     out_buf: host_rfi_SKtilde_buffer_post
     updatable_config: /updatable_config/enable_sk_out
 dump_rfi_SKtilde:
-   kotekan_stage: hdf5FileWrite
-   base_dir: rfi_sk_dump
-   in_buf: host_rfi_SKtilde_buffer_post
-   file_name: host_rfi_SKtilde_buffer
-   create_single_file: true
-   input_order: CHIMEBeamformer
-{% endif %}
+    kotekan_stage: hdf5FileWrite
+    log_level: warn
+    base_dir: rfi_sk_dump
+    in_buf: host_rfi_SKtilde_buffer_post
+    file_name: host_rfi_SKtilde_buffer
+    create_single_file: true
+    input_order: CHIMEBeamformer
 
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)
