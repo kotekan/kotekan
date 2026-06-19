@@ -299,7 +299,7 @@ private:
         1,
         1,
         1,
-        48,
+        384,
     };
     static constexpr auto I_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
