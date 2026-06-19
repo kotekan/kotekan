@@ -80,7 +80,7 @@ public:
 
             // Set metadata
             buffer->allocate_ndarray_frame_desc<kotekan::int4x2_swapped_withoffset_t, 3>(
-                "E", {1, num_times, num_polarizations * num_dishes}, {"F", "T", "E"});
+                "E", {1, num_times, num_polarizations * num_dishes}, {"F", "T", "E"}, {1, 1, 1});
         }
     }
 

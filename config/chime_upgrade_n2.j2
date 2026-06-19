@@ -363,6 +363,7 @@ set_bf_mask:
     datatype: int8
     name: "bf_mask"
     dim_name: ["P", "D"]
+    dim_scalings: [1, 1]
     array_shape: [ {{ num_polarizations }}, {{ num_dishes }} ]
     do_once: true
     values:

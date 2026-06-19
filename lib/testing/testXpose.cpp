@@ -55,7 +55,8 @@ testXpose::testXpose(Config& config, const std::string& unique_name,
                         * sizeof(uint8_t));
     out_xposed_buf->allocate_ndarray_frame_desc(
         kotekan::int4x2_swapped_withoffset, "E",
-        {num_times, num_xposed_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"});
+        {num_times, num_xposed_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"},
+        {1, 1, 1, 1});
 
     scatter_indices_buf = get_buffer("scatter_indices_buf");
     scatter_indices_buf->register_producer(unique_name);
@@ -65,8 +66,8 @@ testXpose::testXpose(Config& config, const std::string& unique_name,
                     num_polarizations * num_dishes * sizeof(int32_t));
     // TODO: this is not quite correct. Really if going to cylinder order
     // the array is {4,2,256} {"C", "P", "D"}
-    scatter_indices_buf->allocate_ndarray_frame_desc(kotekan::int32, "scatter_indices",
-                                                     {num_polarizations, num_dishes}, {"P", "D"});
+    scatter_indices_buf->allocate_ndarray_frame_desc(
+        kotekan::int32, "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"}, {1, 1});
 
     // Register as producer for all xpose2048 input buffers
     json bufs = config.get_value(unique_name, "out_bufs");
@@ -76,7 +77,8 @@ testXpose::testXpose(Config& config, const std::string& unique_name,
         buf->register_producer(unique_name);
         buf->allocate_ndarray_frame_desc(
             kotekan::int4x2_swapped_withoffset, "E",
-            {num_frequencies, num_times, num_polarizations * num_dishes}, {"F", "T", "E"});
+            {num_frequencies, num_times, num_polarizations * num_dishes}, {"F", "T", "E"},
+            {1, 1, 1});
         if (buf->frame_size
             != num_polarizations * num_dishes * num_times * num_frequencies * sizeof(uint8_t))
             FATAL_ERROR("Input samples bufferer {:s} has unexpected size {:d} instead of {:d}",

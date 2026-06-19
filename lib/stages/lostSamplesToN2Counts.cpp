@@ -1,21 +1,22 @@
 #include "lostSamplesToN2Counts.hpp"
 
-#include <stdint.h>             // for uint8_t, int32_t
-#include <memory>               // for shared_ptr, __shared_ptr_access
-#include <string>               // for allocator, basic_string, string
-#include <functional>           // for bind, function
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType, GetType_t
+#include "N2Util.hpp"          // for frameID, modulo
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "div.hpp"             // for num_triangle_blocks
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG
 
-#include "Config.hpp"           // for Config
-#include "DataType.hpp"         // for DataType, GetType_t
-#include "N2Util.hpp"           // for frameID, modulo
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "json.hpp"             // for basic_json, json, iter_impl
-#include "div.hpp"              // for num_triangle_blocks
-#include "fmt.hpp"              // for compile_string_to_view, format
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG
+#include "fmt.hpp"  // for compile_string_to_view, format
+#include "json.hpp" // for basic_json, json, iter_impl
+
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdint.h>   // for uint8_t, int32_t
+#include <string>     // for allocator, basic_string, string
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -124,7 +125,8 @@ lostSamplesToN2Counts::lostSamplesToN2Counts(Config& config, const std::string& 
         "n2k_counts",
         {static_cast<long>(_num_subintegrations), static_cast<long>(num_n2k_freq),
          static_cast<long>(_counts_ntiles), COUNTS_BLOCK_SIZE, COUNTS_BLOCK_SIZE},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"},
+        {static_cast<long>(sub_integration_ntime), 1, 8, 1, 1});
 }
 
 lostSamplesToN2Counts::~lostSamplesToN2Counts() {}

@@ -78,7 +78,7 @@ gpuSimulateRFIS012::gpuSimulateRFIS012(Config& config, const std::string& unique
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
     out_rfis012_buf->allocate_ndarray_frame_desc<uint64_t, 5>(
         "S012", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
-        {"Trfi", "F", "S", "P", "D"});
+        {"Trfi", "F", "S", "P", "D"}, {_rfi_downsampling_factor, 1, 1, 1, 1});
 }
 
 gpuSimulateRFIS012::~gpuSimulateRFIS012() {}

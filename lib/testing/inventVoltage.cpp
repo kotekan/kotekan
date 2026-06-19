@@ -81,7 +81,8 @@ public:
 
         // Set metadata
         buffer->allocate_ndarray_frame_desc<kotekan::int4x2_swapped_withoffset_t, 4>(
-            "E", {num_times, num_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"});
+            "E", {num_times, num_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"},
+            {1, 1, 1, 1});
     }
 
     virtual ~inventVoltage() {}

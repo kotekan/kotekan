@@ -1,22 +1,23 @@
-#include <assert.h>             // for assert
-#include <bitset>               // for bitset
-#include <cstdint>              // for uint64_t, int64_t, int32_t
-#include <functional>           // for bind, function
-#include <memory>               // for shared_ptr, allocator, __shared_ptr_access
-#include <string>               // for basic_string, string
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for uint1x8_t
+#include "N2Util.hpp"          // for frameID, modulo
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata
+#include "div.hpp"             // for div_noremainder
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG
+#include "metadata.hpp"        // for metadataObject
 
-#include "Config.hpp"           // for Config
-#include "DataType.hpp"         // for uint1x8_t
-#include "N2Util.hpp"           // for frameID, modulo
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, metadata_is_chord, get_chord_metadata
-#include "div.hpp"              // for div_noremainder
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG
-#include "metadata.hpp"         // for metadataObject
-#include "fmt.hpp"              // for compile_string_to_view, format
-#include "Stage.hpp"            // for Stage
+#include "fmt.hpp" // for compile_string_to_view, format
+
+#include <assert.h>   // for assert
+#include <bitset>     // for bitset
+#include <cstdint>    // for uint64_t, int64_t, int32_t
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, allocator, __shared_ptr_access
+#include <string>     // for basic_string, string
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -141,9 +142,10 @@ CountLostPLSamplesScalar::CountLostPLSamplesScalar(Config& config, const std::st
         "pl_mask",
         {div_noremainder(_samples_per_data_set, 128), (_num_local_freq + 3) / 4, _num_polarizations,
          div_noremainder(_num_dishes, 8), 64 / 8},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"});
-    out_buf->allocate_ndarray_frame_desc<int32_t, 2>(
-        "pl_lost_counts_scalar", {_num_integrations, _num_local_freq}, {"Tc", "F"});
+        {"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16});
+    out_buf->allocate_ndarray_frame_desc<int32_t, 2>("pl_lost_counts_scalar",
+                                                     {_num_integrations, _num_local_freq},
+                                                     {"Tc", "F"}, {_sub_integration_ntime, 1});
 }
 
 CountLostPLSamplesScalar::~CountLostPLSamplesScalar() {}

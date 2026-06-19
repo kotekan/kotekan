@@ -1,32 +1,33 @@
-#include <stddef.h>             // for size_t
-#include <stdint.h>             // for int64_t, uint8_t
-#include <json.hpp>             // for basic_json, json, iter_impl
-#include <functional>           // for bind, function, _1
-#include <memory>               // for allocator, shared_ptr, __shared_ptr_access
-#include <vector>               // for vector
-#include <algorithm>            // for copy, max, fill
-#include <array>                // for array
-#include <exception>            // for exception
-#include <initializer_list>     // for initializer_list
-#include <limits>               // for numeric_limits
-#include <mutex>                // for mutex, lock_guard
-#include <string>               // for basic_string, operator+, char_traits, string, operator!=
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType
+#include "N2Util.hpp"          // for frameID, modulo
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "configUpdater.hpp"   // for configUpdater
+#include "div.hpp"             // for div_noremainder
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN, INFO, DEBUG
+#include "restServer.hpp"      // for restServer, connectionInstance
 
-#include "Config.hpp"           // for Config
-#include "N2Util.hpp"           // for frameID, modulo
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"        // for Telescope
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "configUpdater.hpp"    // for configUpdater
-#include "div.hpp"              // for div_noremainder
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, WARN, INFO, DEBUG
-#include "restServer.hpp"       // for restServer, connectionInstance
-#include "fmt.hpp"              // for compile_string_to_view, format, format_string
-#include "DataType.hpp"         // for DataType
-#include "Stage.hpp"            // for Stage
-#include "jsonMetadata.hpp"     // for MAX_NUM_RFI_THRESHOLDS
+#include "fmt.hpp"          // for compile_string_to_view, format, format_string
+#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
+
+#include <algorithm>        // for copy, max, fill
+#include <array>            // for array
+#include <exception>        // for exception
+#include <functional>       // for bind, function, _1
+#include <initializer_list> // for initializer_list
+#include <json.hpp>         // for basic_json, json, iter_impl
+#include <limits>           // for numeric_limits
+#include <memory>           // for allocator, shared_ptr, __shared_ptr_access
+#include <mutex>            // for mutex, lock_guard
+#include <stddef.h>         // for size_t
+#include <stdint.h>         // for int64_t, uint8_t
+#include <string>           // for basic_string, operator+, char_traits, string, operator!=
+#include <vector>           // for vector
 
 
 using namespace std::placeholders;
@@ -209,9 +210,11 @@ RfiFrameMask::RfiFrameMask(Config& config, const std::string& unique_name,
     // Set up frame descriptors. This also checks their shape, type, and size is consistent with
     // other stages in the pipeline.
     in_buf->allocate_ndarray_frame_desc(kotekan::float32, "SKtilde",
-                                        {_rfi_num_times, _num_local_freq, 3}, {"Trfi", "F", "SK"});
+                                        {_rfi_num_times, _num_local_freq, 3}, {"Trfi", "F", "SK"},
+                                        {_rfi_downsampling_factor, 1, 1});
     out_buf->allocate_ndarray_frame_desc(kotekan::uint8, "RFIFrameMask",
-                                         {_num_integrations, _num_local_freq}, {"Tc", "F"});
+                                         {_num_integrations, _num_local_freq}, {"Tc", "F"},
+                                         {_sub_integration_ntime, 1});
 
     // Initialize current RFI excision status, the "next" values are taken care of by the
     // configUpdater)

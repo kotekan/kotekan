@@ -65,7 +65,7 @@ class testLostCountsGen : public Stage {
 public:
     testLostCountsGen(Config& config, const std::string& unique_name,
                       bufferContainer& buffer_container);
-    ~testLostCountsGen(){};
+    ~testLostCountsGen() {};
     void main_thread() override;
 
 private:
@@ -163,10 +163,10 @@ testLostCountsGen::testLostCountsGen(Config& config, const std::string& unique_n
             "n2k_counts",
             {num_integrations, num_local_freq, n2k_counts_num_blocks, n2k_counts_blocksize,
              n2k_counts_blocksize},
-            {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+            {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}, {sub_integration_ntime, 1, 8, 1, 1});
     }
     out_buf->allocate_ndarray_frame_desc<int32_t, 2>(name, {num_integrations, num_local_freq},
-                                                     {"Tc", "F"});
+                                                     {"Tc", "F"}, {sub_integration_ntime, 1});
 }
 
 std::shared_ptr<chordMetadata> testLostCountsGen::get_new_metadata(Buffer* buf, frameID frame_id) {

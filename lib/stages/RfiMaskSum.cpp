@@ -1,21 +1,22 @@
-#include <stddef.h>             // for size_t
-#include <stdint.h>             // for int64_t, uint64_t, uint8_t, int32_t
-#include <functional>           // for bind, function, placeholders
-#include <memory>               // for allocator, shared_ptr, __shared_ptr_access
-#include <vector>               // for vector
-#include <string>               // for basic_string, char_traits, operator!=, string
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType
+#include "N2Util.hpp"          // for frameID, modulo
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "div.hpp"             // for div_noremainder
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
 
-#include "Config.hpp"           // for Config
-#include "N2Util.hpp"           // for frameID, modulo
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "div.hpp"              // for div_noremainder
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG, INFO
-#include "fmt.hpp"              // for compile_string_to_view
-#include "DataType.hpp"         // for DataType
-#include "Stage.hpp"            // for Stage
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function, placeholders
+#include <memory>     // for allocator, shared_ptr, __shared_ptr_access
+#include <stddef.h>   // for size_t
+#include <stdint.h>   // for int64_t, uint64_t, uint8_t, int32_t
+#include <string>     // for basic_string, char_traits, operator!=, string
+#include <vector>     // for vector
 
 
 using namespace std::placeholders;
@@ -145,9 +146,10 @@ RfiMaskSum::RfiMaskSum(Config& config, const std::string& unique_name,
     in_buf->allocate_ndarray_frame_desc(
         kotekan::uint1x8, "RFImask",
         {div_noremainder(_samples_per_data_set, 1024), _num_local_freq, 1024 / 8},
-        {"T8hi128", "F", "T8lo128"});
+        {"T8hi128", "F", "T8lo128"}, {1024, 1, 8});
     out_buf->allocate_ndarray_frame_desc(kotekan::int32, "RFImask_counts",
-                                         {_num_integrations, _num_local_freq}, {"Tc", "F"});
+                                         {_num_integrations, _num_local_freq}, {"Tc", "F"},
+                                         {_sub_integration_ntime, 1});
 }
 
 void RfiMaskSum::main_thread() {

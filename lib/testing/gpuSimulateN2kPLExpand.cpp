@@ -47,7 +47,7 @@ gpuSimulateN2kPLExpand::gpuSimulateN2kPLExpand(Config& config, const std::string
     int ne = _num_elements / 8;
     output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::uint1x8>::type, 5>(
         "pl_mask_exp", {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"},
-        {64, 1, 1, 8, 1});
+        {64, 1, 1, 8, 8});
 }
 
 gpuSimulateN2kPLExpand::~gpuSimulateN2kPLExpand() {}

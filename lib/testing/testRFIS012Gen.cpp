@@ -70,7 +70,7 @@ class testRFIS012Gen : public kotekan::Stage {
 public:
     testRFIS012Gen(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
-    ~testRFIS012Gen(){};
+    ~testRFIS012Gen() {};
     void main_thread() override;
 
 private:
@@ -166,11 +166,11 @@ testRFIS012Gen::testRFIS012Gen(Config& config, const std::string& unique_name,
     if (bar_mode) {
         out_buf->allocate_ndarray_frame_desc<uint64_t, 5>(
             "S012bar", {num_rfi_samples, num_local_freq, 3, num_polarizations, num_dishes},
-            {"Trfibar", "F", "S", "P", "D"});
+            {"Trfibar", "F", "S", "P", "D"}, {downsampling_factor, 1, 1, 1, 1});
     } else {
         out_buf->allocate_ndarray_frame_desc<uint64_t, 5>(
             "S012", {num_rfi_samples, num_local_freq, 3, num_polarizations, num_dishes},
-            {"Trfi", "F", "S", "P", "D"});
+            {"Trfi", "F", "S", "P", "D"}, {downsampling_factor, 1, 1, 1, 1});
     }
 }
 

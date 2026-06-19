@@ -71,12 +71,12 @@ testLostSamplesToPLMask::testLostSamplesToPLMask(Config& config, const std::stri
          ptrdiff_t(lost_samples_bufs.size()), num_polarizations,
          num_dishes / PL_MASK_DISHES_PER_BIN,
          PL_MASK_HILO_SPLIT / BITS_PER_BYTE /* because we count uint1x8, not uint1 */},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"});
+        {"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16});
 
     for (int fbin = 0; fbin < num_freq_bins; ++fbin) {
         auto lost_samples_buf = lost_samples_bufs.at(fbin);
         lost_samples_buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::uint8>, 1>(
-            "lost_samples", {ptrdiff_t(lost_samples_bufs.at(0)->frame_size)}, {"T"});
+            "lost_samples", {ptrdiff_t(lost_samples_bufs.at(0)->frame_size)}, {"T"}, {1});
     }
 }
 

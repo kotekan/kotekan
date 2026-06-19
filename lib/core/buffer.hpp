@@ -573,7 +573,7 @@ public:
                 FATAL_ERROR("Extents do not match: [{:s}] != [{:s}]", ex1_str, ex2_str);
             }
             if (!std::equal(dimnames.begin(), dimnames.end(), nd_desc->get_dimnames().begin()))
-                FATA_LERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "),
+                FATAL_ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "),
                             fmt::join(nd_desc->get_dimnames(), ", "));
             if (!std::equal(dimscalings.begin(), dimscalings.end(),
                             nd_desc->get_dimscalings().begin()))
@@ -609,37 +609,34 @@ public:
                                                           dimnames, dimscalings, nullptr);
         } else {
             auto nd_desc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
-            if (!nd_desc) {
+            if (!nd_desc)
                 FATAL_ERROR("Frame desc mismatch: existing desc is not an NDArray");
-                return;
-            }
             if (extents.size() != nd_desc->get_rank())
-                FATAL_ERROR("Rank mismatch: {:d} != {:d}", extents.size(), nd_desc->get_rank());
+                FATAL_ERROR("Rank mismatch: {} != {}", extents.size(), nd_desc->get_rank());
             if (value_type != nd_desc->get_value_datatype())
-                FATAL_ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(value_type),
+                FATAL_ERROR("Type mismatch: {} != {}", kotekan::type_to_string(value_type),
                             kotekan::type_to_string(nd_desc->get_value_datatype()));
             if (quantity_name != nd_desc->get_quantity_name())
-                FATAL_ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
+                FATAL_ERROR("Quantity name mismatch: {} != {}", quantity_name,
                             nd_desc->get_quantity_name());
             if (extents != nd_desc->get_extents())
-                FATAL_ERROR("Extents do not match: [{:s}] != [{:s}]",
-                            fmt::format("{:s}", fmt::join(extents, ", ")),
-                            fmt::format("{:s}", fmt::join(nd_desc->get_extents(), ", ")));
+                FATAL_ERROR("Extents do not match: [{}] != [{}]",
+                            fmt::format("{}", fmt::join(extents, ", ")),
+                            fmt::format("{}", fmt::join(nd_desc->get_extents(), ", ")));
             if (dimnames != nd_desc->get_dimnames())
                 FATAL_ERROR("Dimnames do not match: [{:s}] != [{:s}]",
-                            fmt::format("{:s}", fmt::join(dimnames, ", ")),
-                            fmt::format("{:s}", fmt::join(nd_desc->get_dimnames(), ", ")));
+                            fmt::format("{}", fmt::join(dimnames, ", ")),
+                            fmt::format("{}", fmt::join(nd_desc->get_dimnames(), ", ")));
             if (dimscalings != nd_desc->get_dimscalings())
-                FATAL_ERROR("Dimscalings do not match: [{:s}] != [{:s}]",
-                            fmt::format("{:s}", fmt::join(dimscalings, ", ")),
-                            fmt::format("{:s}", fmt::join(nd_desc->get_dimscalings(), ", ")));
+                FATAL_ERROR("Dimscalings do not match: [{}] != [{}]",
+                            fmt::format("{}", fmt::join(dimscalings, ", ")),
+                            fmt::format("{}", fmt::join(nd_desc->get_dimscalings(), ", ")));
         }
 
-        if (frames_desc->get_byte_size() != frame_size) {
-            FATAL_ERROR("Buffer {:s} ndarray_frame_desc has size {:d}, does not match buffer "
-                        "frame_size {:d}",
-                        buffer_name, frames_desc->get_byte_size(), frame_size);
-        }
+        if (frames_desc->get_byte_size() != frame_size)
+            FATAL_ERROR(
+                "Buffer {} ndarray_frame_desc has size {}, does not match buffer frame_size {}",
+                buffer_name, frames_desc->get_byte_size(), frame_size);
     }
 
     /**

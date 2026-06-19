@@ -131,7 +131,7 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
                      std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 64),
                                                    num_frequencies, num_polarizations,
                                                    div_noremainder(num_dishes, 8), 64 / 8},
-                     std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 1},
+                     std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 8},
                      *this),
     rfi_RFImask(rfi_RFImask_name, "RFImask",
                 std::array<std::ptrdiff_t, 3>{buffer_depth * div_noremainder(num_times, 8 * 128),

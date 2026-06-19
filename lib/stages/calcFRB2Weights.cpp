@@ -102,10 +102,10 @@ public:
         W2_buffer->register_producer(unique_name);
 
         frb2_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
-            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"});
+            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}, {1, 1});
         W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>(
             "W2", {frb2_num_frequencies, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P},
-            {"Fbar", "R", "beamQ", "beamP"});
+            {"Fbar", "R", "beamQ", "beamP"}, {1, 1, 1, 1});
     }
 
     virtual ~calcFRB2Weights() {}

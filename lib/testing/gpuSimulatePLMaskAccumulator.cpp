@@ -134,10 +134,10 @@ gpuSimulatePLMaskAccumulator::gpuSimulatePLMaskAccumulator(Config& config,
         "pl_mask",
         {div_noremainder(_samples_per_data_set, 128), div_noremainder(_num_local_freq, 4),
          _num_polarizations, div_noremainder(_num_dishes, 8), 64 / 8},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"});
+        {"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16});
     out_buf->allocate_ndarray_frame_desc<uint64_t, 4>(
         "pl_counts", {_num_integrations, _num_local_freq, _num_polarizations, _num_dishes},
-        {"Tc", "F", "P", "D"});
+        {"Tc", "F", "P", "D"}, {_sub_integration_ntime, 1, 1, 1});
 }
 
 gpuSimulatePLMaskAccumulator::~gpuSimulatePLMaskAccumulator() {}

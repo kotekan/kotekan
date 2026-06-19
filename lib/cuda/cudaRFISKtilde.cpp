@@ -1,30 +1,31 @@
-#include <cuda_runtime_api.h>       // for cudaStreamSynchronize
-#include <driver_types.h>           // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
-#include <sys/types.h>              // for uint, ulong
-#include <algorithm>                // for min
-#include <array>                    // for array
-#include <cstddef>                  // for ptrdiff_t
-#include <cstdint>                  // for int8_t, uint64_t, uint8_t
-#include <functional>               // for function
-#include <memory>                   // for allocator, shared_ptr, __shared_ptr_access
-#include <string>                   // for basic_string, string
-#include <vector>                   // for vector
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for uint1x8_t
+#include "NDArray.hpp"             // for NDArray
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer, buffer_type_t
+#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "div.hpp"                 // for div_noremainder, round_down
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for DEBUG
+#include "n2k/rfi_kernels.hpp"     // for SkKernel
 
-#include "Config.hpp"               // for Config
-#include "DataType.hpp"             // for uint1x8_t
-#include "NDArray.hpp"              // for NDArray
-#include "NDArrayBuffer.hpp"        // for NDArrayBuffer, buffer_type_t
-#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "chordMetadata.hpp"        // for chordMetadata
-#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
-#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
-#include "div.hpp"                  // for div_noremainder, round_down
-#include "gpuCommand.hpp"           // for gpuCommandType
-#include "kotekanLogging.hpp"       // for DEBUG
-#include "n2k/rfi_kernels.hpp"      // for SkKernel
-#include "fmt.hpp"                  // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>          // for min
+#include <array>              // for array
+#include <cstddef>            // for ptrdiff_t
+#include <cstdint>            // for int8_t, uint64_t, uint8_t
+#include <cuda_runtime_api.h> // for cudaStreamSynchronize
+#include <driver_types.h>     // for cudaEvent_t, CUstream_st, CUevent_st, cudaStream_t
+#include <functional>         // for function
+#include <memory>             // for allocator, shared_ptr, __shared_ptr_access
+#include <string>             // for basic_string, string
+#include <sys/types.h>        // for uint, ulong
+#include <vector>             // for vector
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -111,18 +112,22 @@ cudaRFISKtilde::cudaRFISKtilde(kotekan::Config& config, const std::string& uniqu
     rfi_RFImask_name(config.get<std::string>(unique_name, "rfi_RFImask_name")),
     // Buffers
     bf_mask(bf_mask_name, "bf_mask", std::array<std::ptrdiff_t, 2>{num_polarizations, num_dishes},
-            std::array<std::string, 2>{"P", "D"}, *this, buffer_type_t::do_once),
+            std::array<std::string, 2>{"P", "D"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this,
+            buffer_type_t::do_once),
     rfi_S012(rfi_S012_name, "S012",
              std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
                                            num_polarizations, num_dishes},
-             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"}, *this),
+             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"},
+             std::array<std::ptrdiff_t, 5>{rfi_downsampling_factor, 1, 1, 1, 1}, *this),
     rfi_SKtilde(rfi_SKtilde_name, "SKtilde",
                 std::array<std::ptrdiff_t, 3>{buffer_depth * rfi_num_times, num_frequencies, 3},
-                std::array<std::string, 3>{"Trfi", "F", "SK"}, *this),
+                std::array<std::string, 3>{"Trfi", "F", "SK"},
+                std::array<std::ptrdiff_t, 3>{rfi_downsampling_factor, 1, 1}, *this),
     rfi_RFImask(rfi_RFImask_name, "RFImask",
                 std::array<std::ptrdiff_t, 3>{div_noremainder(buffer_depth * num_times, 8 * 128),
                                               num_frequencies, 128},
-                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, *this),
+                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"},
+                std::array<std::ptrdiff_t, 3>{1024, 1, 8}, *this),
     // Kernels
     skKernel(n2k::SkKernel::Params{
         config.get<double>(unique_name, "rfi_sk_rfimask_sigmas"),

@@ -70,8 +70,8 @@ gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::stri
 
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
     int64_t nf = _num_local_freq;
-    out_rfi_s012tilde_buf->allocate_ndarray_frame_desc<uint64_t, 3>("S012tilde", {nt, nf, 3},
-                                                                    {"Trfi", "F", "S"});
+    out_rfi_s012tilde_buf->allocate_ndarray_frame_desc<uint64_t, 3>(
+        "S012tilde", {nt, nf, 3}, {"Trfi", "F", "S"}, {_rfi_downsampling_factor, 1, 1});
 }
 
 gpuSimulateRFIS012tilde::~gpuSimulateRFIS012tilde() {}

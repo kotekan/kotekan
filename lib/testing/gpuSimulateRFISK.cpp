@@ -231,21 +231,23 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
     if (_bar_mode) {
         out_rfi_sk_buf->allocate_ndarray_frame_desc<float, 5>(
             "SKbar", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
-            {"Trfibar", "F", "SK", "P", "D"});
+            {"Trfibar", "F", "SK", "P", "D"}, {_rfi_downsampling_factor, 1, 1, 1, 1});
         out_rfi_sktilde_buf->allocate_ndarray_frame_desc<float, 3>(
-            "SKbartilde", {nt, _num_local_freq, 3}, {"Trfibar", "F", "SK"});
+            "SKbartilde", {nt, _num_local_freq, 3}, {"Trfibar", "F", "SK"},
+            {_rfi_downsampling_factor, 1, 1});
         out_rfi_mask_buf->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 3>(
             "RFImask", {_samples_per_data_set / 1024, _num_local_freq, 128},
-            {"T8hi128", "F", "T8lo128"});
+            {"T8hi128", "F", "T8lo128"}, {1024, 1, 8});
     } else {
         out_rfi_sk_buf->allocate_ndarray_frame_desc<float, 5>(
             "SK", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
-            {"Trfi", "F", "SK", "P", "D"});
+            {"Trfi", "F", "SK", "P", "D"}, {_rfi_downsampling_factor, 1, 1, 1, 1});
         out_rfi_sktilde_buf->allocate_ndarray_frame_desc<float, 3>(
-            "SKtilde", {nt, _num_local_freq, 3}, {"Trfi", "F", "SK"});
+            "SKtilde", {nt, _num_local_freq, 3}, {"Trfi", "F", "SK"},
+            {_rfi_downsampling_factor, 1, 1});
         out_rfi_mask_buf->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 3>(
             "RFImask", {_samples_per_data_set / 1024, _num_local_freq, 128},
-            {"T8hi128", "F", "T8lo128"});
+            {"T8hi128", "F", "T8lo128"}, {1024, 1, 8});
     }
 
     // Check the size of the interpolation tables

@@ -69,7 +69,7 @@ public:
                 "pl_mask",
                 {div_noremainder(num_times, 2 * 64), div_noremainder(num_frequencies, 4),
                  num_polarizations, div_noremainder(num_dishes, 8), 64 / 8},
-                {"T2hi64", "F4", "P", "D8", "T2lo64"});
+                {"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16});
             buffer->allocate_new_metadata_object(frame_id);
             const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
             meta->set_from_frame_desc(buffer->get_ndarray_frame_desc());

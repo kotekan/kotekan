@@ -86,13 +86,13 @@ processGains::processGains(Config& config, const std::string& unique_name,
         "gain_frb",
         {static_cast<ptrdiff_t>(_num_local_freq), static_cast<ptrdiff_t>(_upchan_factor),
          static_cast<ptrdiff_t>(_num_elements), (ptrdiff_t)2},
-        {"F", "U", "E", "ReIm"});
+        {"F", "U", "E", "ReIm"}, {1, 1, 1, 1});
 
     gain_tracking_buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::float32>, 4>(
         "gain_tracking",
         {static_cast<ptrdiff_t>(_num_local_freq), static_cast<ptrdiff_t>(_num_beams),
          static_cast<ptrdiff_t>(_num_elements), (ptrdiff_t)2},
-        {"F", "R", "E", "ReIm"});
+        {"F", "R", "E", "ReIm"}, {1, 1, 1, 1});
 
     // Allocate permanent buffers to hold the loaded gains in memory. These will only
     // be updated whenever the gains are updated, and get repeatedly copied

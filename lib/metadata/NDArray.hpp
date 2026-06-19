@@ -18,61 +18,6 @@
 
 namespace kotekan {
 
-namespace {
-
-// template<typename T, std::size_t D, typename U>
-// std::array<T, D> convert_array(const std::array<U, D>& values) {
-//     std::array<T, D> result;
-//     for (std::size_t d = 0; d < D; ++d)
-//         result[d] = values[d];
-//     return result;
-// }
-
-// // Helper function to create a `std::array` from an initializer list.
-// // The initializer list must have the correct size.
-// template<std::size_t D, typename T>
-// std::array<T, D> make_array(std::initializer_list<T> values) {
-//     assert(values.size() == D);
-//     std::array<T, D> result;
-//     for (std::size_t d = 0; d < D; ++d)
-//         result[d] = values.begin()[d];
-//     return result;
-// }
-//
-// // Helper function to create a pair of `std::array`s from an
-// // initializer list of pairs. (This transposes the input.) The
-// // initializer list must have the correct size.
-// template<std::size_t D, typename T, typename U>
-// std::pair<std::array<T, D>, std::array<U, D>>
-// make_arrays_from_pairs(std::initializer_list<std::pair<T, U>> values) {
-//     assert(values.size() == D);
-//     std::pair<std::array<T, D>, std::array<U, D>> result;
-//     for (std::size_t d = 0; d < D; ++d)
-//         result.first[d] = values.begin()[d].first;
-//     for (std::size_t d = 0; d < D; ++d)
-//         result.second[d] = values.begin()[d].second;
-//     return result;
-// }
-//
-// // Helper function to create a 3-tuple of `std::array`s from an
-// // initializer list of tuples. (This transposes the input.) The
-// // initializer list must have the correct size.
-// template<std::size_t D, typename T, typename U, typename V>
-// std::tuple<std::array<T, D>, std::array<U, D>, std::array<V, D>>
-// make_arrays_from_3tuples(std::initializer_list<std::tuple<T, U, V>> values) {
-//     assert(values.size() == D);
-//     std::tuple<std::array<T, D>, std::array<U, D>, std::array<V, D>> result;
-//     for (std::size_t d = 0; d < D; ++d)
-//         std::get<0>(result)[d] = std::get<0>(values.begin()[d]);
-//     for (std::size_t d = 0; d < D; ++d)
-//         std::get<1>(result)[d] = std::get<1>(values.begin()[d]);
-//     for (std::size_t d = 0; d < D; ++d)
-//         std::get<2>(result)[d] = std::get<2>(values.begin()[d]);
-//     return result;
-// }
-
-} // namespace
-
 // MISSING:
 // - get/set chordDatatype
 // - attach to buffer (set buffer name)
@@ -218,37 +163,6 @@ public:
         m_data = new T[m_size];
         m_cleanup = [&]() { delete[] m_data; };
     }
-
-    // template<typename I = std::ptrdiff_t>
-    // NDArray(const Symbol quantity_name, const std::array<I, D>& extents,
-    //         const std::array<Symbol, D>& dimnames, const std::array<std::ptrdiff_t, D>&
-    //         dimscalings, T* data) :
-    //     NDArray(quantity_name, std::array<std::ptrdiff_t, D>(extents), dimnames, dimscalings,
-    //             data) {}
-    // template<typename I = std::ptrdiff_t>
-    // NDArray(const Symbol quantity_name, const std::array<I, D>& extents,
-    //         const std::array<Symbol, D>& dimnames,
-    //         const std::array<std::ptrdiff_t, D>& dimscalings) :
-    //     NDArray(quantity_name, convert_array<std::ptrdiff_t, D>(extents), dimnames, dimscalings)
-    //     {}
-
-    // template<typename I = std::ptrdiff_t>
-    // NDArray(const Symbol quantity_name, std::initializer_list<I> extents,
-    //         std::initializer_list<Symbol> dimnames,
-    //         const std::initializer_list<std::ptrdiff_t>& dimscalings) :
-    //     NDArray(quantity_name, make_array<D>(extents), make_array<D>(dimnames),
-    //             make_array<D>(dimscalings)) {}
-    // template<typename I1 = std::ptrdiff_t, typename I2 = std::ptrdiff_t>
-    // NDArray(const Symbol quantity_name,
-    //         const std::tuple<std::array<Symbol, D>, std::array<I1, D>, std::array<I2, D>>&
-    //             dimnames_scalings_extents) :
-    //     NDArray(quantity_name, std::get<2>(dimnames_scalings_extents),
-    //             std::get<0>(dimnames_scalings_extents), std::get<1>(dimnames_scalings_extents))
-    //             {}
-    // template<typename I1 = std::ptrdiff_t, typename I2 = std::ptrdiff_t>
-    // NDArray(const Symbol quantity_name,
-    //         std::initializer_list<std::tuple<Symbol, I1, I2>> dimnames_scalings_extents) :
-    //     NDArray(quantity_name, make_arrays_from_3tuples<D>(dimnames_scalings_extents)) {}
 
     virtual ~NDArray() {
         if (m_cleanup)

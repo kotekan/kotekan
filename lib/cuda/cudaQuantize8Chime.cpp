@@ -40,6 +40,7 @@ public:
                         const std::vector<cudaEvent_t>& pre_events) override;
 
 private:
+    const int _frb_downsampling_factor;
     const int _num_beams;
     const int _num_frequencies;
     const int _num_times;
@@ -84,6 +85,7 @@ cudaQuantize8Chime::cudaQuantize8Chime(Config& config, const std::string& unique
                                        int inst) :
     cudaCommand(config, unique_name, host_buffers, device, inst),
     //
+    _frb_downsampling_factor(config.get<int>(unique_name, "frb_downsampling_factor")),
     _num_beams(config.get<std::int64_t>(unique_name, "num_beams")),
     _num_frequencies(config.get<std::int64_t>(unique_name, "num_frequencies")),
     _num_times(config.get<std::int64_t>(unique_name, "num_times")),
@@ -96,7 +98,10 @@ cudaQuantize8Chime::cudaQuantize8Chime(Config& config, const std::string& unique
         const std::array<std::ptrdiff_t, 4> input_lengths{1, _num_beams, _num_frequencies,
                                                           _num_times};
         const std::array<std::string, 4> input_dimnames{"Ttildehi256", "R", "Fbar", "Ttildelo256"};
-        return NDArrayBuffer<float, 4>(_gpu_mem_input, "I2", input_lengths, input_dimnames, *this);
+        const std::array<std::ptrdiff_t, 4> input_dimscalings{_frb_downsampling_factor * 256, 1, 1,
+                                                              _frb_downsampling_factor};
+        return NDArrayBuffer<float, 4>(_gpu_mem_input, "I2", input_lengths, input_dimnames,
+                                       input_dimscalings, *this);
     }()),
     beam_buffer([&]() {
         const std::array<std::ptrdiff_t, 8> beam_lengths{1,
@@ -110,8 +115,11 @@ cudaQuantize8Chime::cudaQuantize8Chime(Config& config, const std::string& unique
         const std::array<std::string, 8> beam_dimnames{"Ttilde256",     "R8",        "Fbar64",
                                                        "Ttilde16_lo16", "Rlo8",      "Fbar16_lo4",
                                                        "Fbarlo16",      "Ttildelo16"};
+        const std::array<std::ptrdiff_t, 8> beam_dimscalings{
+            _frb_downsampling_factor * 256, 8, 64, _frb_downsampling_factor * 16, 1, 16, 1,
+            _frb_downsampling_factor};
         return NDArrayBuffer<std::uint8_t, 8>(_gpu_mem_beams, "I3", beam_lengths, beam_dimnames,
-                                              *this);
+                                              beam_dimscalings, *this);
     }()),
     offsetscale_buffer([&]() {
         const std::array<std::ptrdiff_t, 7> offsetscale_lengths{1,
@@ -123,8 +131,11 @@ cudaQuantize8Chime::cudaQuantize8Chime(Config& config, const std::string& unique
                                                                 2};
         const std::array<std::string, 7> offsetscale_dimnames{
             "Ttilde256", "R8", "Fbar64", "Ttilde16_lo16", "Rlo8", "Fbar16_lo4", "offset/scale"};
+        const std::array<std::ptrdiff_t, 7> offsetscale_dimscalings{
+            _frb_downsampling_factor * 256, 8, 64, _frb_downsampling_factor * 16, 1, 16, 1};
         return NDArrayBuffer<float, 7>(_gpu_mem_beams_offsetscale, "I3_offsetscale",
-                                       offsetscale_lengths, offsetscale_dimnames, *this);
+                                       offsetscale_lengths, offsetscale_dimnames,
+                                       offsetscale_dimscalings, *this);
     }())
 //
 {

@@ -313,11 +313,11 @@ void FramePrefetchService::prefetcher_loop() {
                 // Set the array shape
                 metadata->dims = 5;
                 // TODO Get these values via config
-                metadata->set_array_dimension(0, 512, "Thi16");
-                metadata->set_array_dimension(1, 384, "F");
-                metadata->set_array_dimension(2, 16, "Ehi8");
-                metadata->set_array_dimension(3, 16, "Tlo16");
-                metadata->set_array_dimension(4, 8, "Elo8");
+                metadata->set_array_dimension(0, 512, "Thi16", 16);
+                metadata->set_array_dimension(1, 384, "F", 1);
+                metadata->set_array_dimension(2, 16, "Ehi8", 8);
+                metadata->set_array_dimension(3, 16, "Tlo16", 1);
+                metadata->set_array_dimension(4, 8, "Elo8", 1);
             }
 
             // The receipt bitmap metadata is always set.  One bitmap per worker.

@@ -83,7 +83,8 @@ applyGenPL::applyGenPL(Config& config, const std::string& unique_name,
 
     output_buf->allocate_ndarray_frame_desc(
         kotekan::int4x2_swapped_withoffset, "E",
-        {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"});
+        {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"},
+        {1, 1, 1, 1});
 }
 
 applyGenPL::~applyGenPL() {}
