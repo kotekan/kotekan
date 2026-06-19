@@ -1,22 +1,23 @@
 // Copyright (c) 2025 Kotekan Project
 #include "cudaCopyNToRingbuffer.hpp"
 
-#include <stdint.h>            // for int64_t, uint8_t
-#include <sys/types.h>         // for uint
-#include <cassert>             // for assert
-#include <memory>              // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
-#include <optional>            // for optional
-#include <stdexcept>           // for runtime_error
-#include <tuple>               // for tuple, make_tuple
-#include <vector>              // for vector
+#include "DataType.hpp"       // for DataType
+#include "chordMetadata.hpp"  // for chordMetadata
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaHostUnregister
+#include "gpuCommand.hpp"     // for gpuCommandType
+#include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
 
-#include "DataType.hpp"        // for DataType
-#include "chordMetadata.hpp"   // for chordMetadata
-#include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h"  // for cudaHostGetFlags, cudaHostUnregister
-#include "gpuCommand.hpp"      // for gpuCommandType
-#include "kotekanLogging.hpp"  // for DEBUG, ERROR, INFO
-#include "fmt.hpp"             // for compile_string_to_view, join
+#include "fmt.hpp" // for compile_string_to_view, join
+
+#include <cassert>     // for assert
+#include <memory>      // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
+#include <optional>    // for optional
+#include <stdexcept>   // for runtime_error
+#include <stdint.h>    // for int64_t, uint8_t
+#include <sys/types.h> // for uint
+#include <tuple>       // for tuple, make_tuple
+#include <vector>      // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -155,14 +156,20 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
 
         // Set the shape of the array
         assert(meta_in0->dims == 3);
-        assert(meta_in0->dim[0] == 1);     // F
-        assert(meta_in0->dim[1] == 16384); // T
+        assert(meta_in0->get_dimension_name(0) == "F");
+        assert(meta_in0->dim[0] == 1);
+        assert(meta_in0->dim_scaling[0] == 1);
+        assert(meta_in0->get_dimension_name(1) == "T");
+        assert(meta_in0->dim[1] == 16384);
+        assert(meta_in0->dim_scaling[1] == 1);
+        assert(meta_in0->get_dimension_name(2) == "E");
+        // assert(meta_in0->dim[2] == ...);
+        assert(meta_in0->dim_scaling[2] == 1);
         meta_ring->dims = 4;
         meta_ring->set_array_dimension(0, _gpu_buffer_depth, "Thi16384", 16384);
         meta_ring->set_array_dimension(1, in_buffers.size(), "F", 1);
-        assert(meta_in0->dim[0] == 16384);
-        meta_ring->set_array_dimension(2, meta_in0->dim[0], "Tlo16384", 1);
-        meta_ring->set_array_dimension(3, meta_in0->dim[1], "E", 1);
+        meta_ring->set_array_dimension(2, meta_in0->dim[1], "Tlo16384", 1);
+        meta_ring->set_array_dimension(3, meta_in0->dim[2], "E", 1);
         meta_ring->set_strides_simple();
 
         // Set the data type
