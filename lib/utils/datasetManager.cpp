@@ -69,7 +69,9 @@ datasetManager& datasetManager::instance(kotekan::Config& config) {
 datasetManager::~datasetManager() {
     _stop_request_threads = true;
 
-    kotekan::restServer::instance().remove_get_callback(DS_FORCE_UPDATE_ENDPOINT_NAME);
+    // Guard against static destruction order: restServer may already be destroyed.
+    if (kotekan::restServer::is_alive())
+        kotekan::restServer::instance().remove_get_callback(DS_FORCE_UPDATE_ENDPOINT_NAME);
 
     // wait for the detached threads
     std::unique_lock<std::mutex> lk(_lock_stop_request_threads);
