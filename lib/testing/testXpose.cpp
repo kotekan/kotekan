@@ -1,7 +1,7 @@
 #include "testXpose.hpp"
 
 #include "Config.hpp"          // for Config
-#include "Metadata.hpp"        // for GenericNDArray
+#include "NDMetadata.hpp"      // for GenericNDArray
 #include "NDArray.hpp"         // for GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer

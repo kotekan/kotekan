@@ -1,6 +1,6 @@
 #define BOOST_TEST_MODULE "test_Metadata"
 
-#include <Metadata.hpp>
+#include <NDMetadata.hpp>
 #include <algorithm>
 #include <boost/test/included/unit_test.hpp>
 #include <cassert>
