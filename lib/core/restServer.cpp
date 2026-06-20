@@ -39,6 +39,16 @@ using std::map;
 using std::string;
 using std::vector;
 
+// Static flag with trivial type — zero-initialized before any dynamic initialization
+// and never destroyed, so it remains valid even after restServer's destructor runs.
+// This lets other singletons (e.g., datasetManager) safely check whether restServer
+// is still alive during their own static destruction.
+static std::atomic<bool> _restServer_alive{false};
+
+bool restServer::is_alive() {
+    return _restServer_alive.load(std::memory_order_acquire);
+}
+
 restServer& restServer::instance() {
     static restServer server_instance;
     return server_instance;
@@ -48,9 +58,11 @@ restServer::restServer() : main_thread() {
     stop_thread = false;
     _bind_address = "";
     _port = 0;
+    _restServer_alive.store(true, std::memory_order_release);
 }
 
 restServer::~restServer() {
+    _restServer_alive.store(false, std::memory_order_release);
     stop_thread = true;
     try {
         main_thread.join();
