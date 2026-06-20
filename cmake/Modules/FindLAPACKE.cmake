@@ -80,7 +80,7 @@ find_path(
 set(PATH_SUFFIXES_LIST lib64 lib lib/lapack)
 find_library(
     LAPACKE_LIB
-    NAMES lapacke
+    NAMES lapacke openblas
     PATHS ${LAPACKE_SEARCH_PATHS}
     PATH_SUFFIXES ${PATH_SUFFIXES_LIST})
 find_library(

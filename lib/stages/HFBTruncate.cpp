@@ -54,11 +54,12 @@ HFBTruncate::HFBTruncate(Config& config, const std::string& unique_name,
 void HFBTruncate::main_thread() {
 
     frameID frame_id(in_buf), output_frame_id(out_buf);
-    const float err_init = 0.5 * err_sq_lim;
-
     float err, tr_hfb;
+#if defined(__x86_64__) || defined(__i386__)
+    const float err_init = 0.5 * err_sq_lim;
     const __m256 err_init_vec = _mm256_set1_ps(err_init);
     __m256 err_vec, wgt_vec;
+#endif
     int32_t i_vec;
     float* err_all;
 
@@ -71,8 +72,7 @@ void HFBTruncate::main_thread() {
     uint32_t data_size = frame.num_beams * frame.num_subfreq;
 
     // reserve enough memory for all err to be computed per frame
-    // 32byte-aligned memory allocation (_m256_store_ps() asks for it)
-    err_all = (float*)_mm_malloc(sizeof(float) * data_size, 32);
+    err_all = (float*)std::malloc(sizeof(float) * data_size);
     std::memset(err_all, 0, sizeof(float) * data_size);
 
     while (!stop_thread) {
@@ -90,15 +90,18 @@ void HFBTruncate::main_thread() {
         // Copy frame into output buffer
         auto output_frame = HFBFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
 
-        // truncate absorber data and weights (8 at a time)
-        for (i_vec = 0; i_vec < int32_t(data_size) - 7; i_vec += 8) {
+        // truncate absorber data and weights (8 at a time on x86)
+        i_vec = 0;
+#if defined(__x86_64__) || defined(__i386__)
+        for (; i_vec < int32_t(data_size) - 7; i_vec += 8) {
             wgt_vec = _mm256_loadu_ps(&output_frame.weight[i_vec]);
             err_vec = _mm256_div_ps(err_init_vec, wgt_vec);
             err_vec = _mm256_sqrt_ps(err_vec);
-            _mm256_store_ps(err_all + i_vec, err_vec);
+            _mm256_storeu_ps(err_all + i_vec, err_vec);
         }
-        // use std::sqrt for the last few (less than 8)
-        for (i_vec = (data_size < 8) ? 0 : i_vec - 8; i_vec < int32_t(data_size); i_vec++)
+#endif
+        // scalar path for remaining elements (or all elements on non-x86)
+        for (; i_vec < int32_t(data_size); i_vec++)
             err_all[i_vec] = std::sqrt(0.5 / output_frame.weight[i_vec] * err_sq_lim);
 
 #pragma omp parallel for private(err, tr_hfb)
@@ -130,5 +133,5 @@ void HFBTruncate::main_thread() {
         // move to next frame
         in_buf->mark_frame_empty(unique_name, frame_id++);
     }
-    _mm_free(err_all);
+    std::free(err_all);
 }
