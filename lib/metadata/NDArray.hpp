@@ -114,16 +114,6 @@ public:
     /// config-declared descriptor with the one a stage supplies.
     static std::shared_ptr<GenericNDArray> reconcile(const GenericNDArray& a,
                                                      const GenericNDArray& b);
-
-    /// Deprecated alias for describe(); the data pointer is ignored. Retained so
-    /// not-yet-migrated callers compile while the codebase moves to describe();
-    /// removed once every caller is migrated.
-    static std::shared_ptr<GenericNDArray> create(const DataType value_datatype,
-                                                  const Symbol quantity_name,
-                                                  const std::vector<std::ptrdiff_t>& extents,
-                                                  const std::vector<Symbol>& dimnames, void* /*data*/) {
-        return describe(value_datatype, quantity_name, extents, dimnames);
-    }
     /// constexpr makes this an inline variable (C++17), so odr-uses (e.g.
     /// passing it by reference to fmt::format) link without an out-of-line
     /// definition.
