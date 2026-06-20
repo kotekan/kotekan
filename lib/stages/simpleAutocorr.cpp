@@ -42,7 +42,7 @@ simpleAutocorr::simpleAutocorr(Config& config, const std::string& unique_name,
     // test pipeline captures buf_out through rawFileWrite. networkPowerStream
     // asserts the expected power_corr layout on its consumer side, so the
     // contract is still documented in code.
-    buf_in->set_frame_desc(
+    buf_in->ensure_frame_desc(
         kotekan_airspy::make_fengine_desc(buf_in->frame_size / (2 * sizeof(float))));
 }
 

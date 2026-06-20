@@ -74,12 +74,10 @@ host_rfi_S012tilde_ringbuffer:
     metadata_pool: main_pool
 
 host_rfi_SKtilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: sizeof_float32 * 3 * num_frequencies * rfi_num_times
-    type: float32
-    dimnames: ["Trfi", "F", "S"]
-    shape: [rfi_num_times, num_frequencies, 3]
+    value_type: float32
+    extents: [rfi_num_times, num_frequencies, 3]
     metadata_pool: main_pool
 host_rfi_SKtilde_ringbuffer:
     kotekan_buffer: ring
@@ -91,12 +89,10 @@ host_rfi_SKtilde_ringbuffer:
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
-    frame_size: num_frequencies * num_times / 8
-    type: uint1x8
-    dimnames: ["T8hi128", "F", "T8lo128"]
-    shape: [num_times / 8 / 128, num_frequencies, 128]
+    value_type: uint1x8
+    extents: [num_times / 8 / 128, num_frequencies, 128]
     metadata_pool: main_pool
 host_rfi_RFImask_ringbuffer:
     kotekan_buffer: ring

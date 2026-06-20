@@ -38,21 +38,24 @@ main_pool:
 # Buffers
 
 host_rfi_s012_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_s012bar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 simulated_rfi_s012bar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 

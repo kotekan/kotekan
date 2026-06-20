@@ -36,33 +36,38 @@ main_pool:
 
 # Buffers
 raw_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_elements
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_elements
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: ((samples_per_data_set / 2) * (num_local_freq / 4) * (num_elements / 8)) / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 128, num_local_freq / 4, num_polarizations, num_dishes / 8, 8]
     metadata_pool: main_pool
 
 host_rfi_s012_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 simulated_rfi_s012_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 

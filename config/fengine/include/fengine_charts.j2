@@ -113,15 +113,17 @@ num_times: 16384                 # frame length is 16384 * 3.333 us = 54.613 ms
 # Buffers
 
 host_bf_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 64)
+    value_type: uint1x8
+    extents: [num_times / 2 / 64, num_frequencies / 4, num_polarizations, num_dishes / 8, 64 / 8]
     metadata_pool: main_pool
 host_pl_mask_ringbuffer:
     kotekan_buffer: ring

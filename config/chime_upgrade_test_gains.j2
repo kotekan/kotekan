@@ -303,9 +303,10 @@ dbg_read_lostsamples_{{ id }}:
 # Buffers
 
 host_bf_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
