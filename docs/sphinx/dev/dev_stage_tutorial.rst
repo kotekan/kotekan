@@ -91,6 +91,10 @@ Now, let us create the header file.
 
 To let the compiler know about the stage, add it to lib/stages/CMakeLists.txt.
 
+If the buffer carries a frame descriptor (an ``ndarray`` buffer), the stage
+can validate its expected shape against it in the constructor; see
+:ref:`dev_buffers`.
+
 
 Writing a Producer/Consumer Stage
 ---------------------------------
