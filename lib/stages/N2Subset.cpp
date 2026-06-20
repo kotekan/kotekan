@@ -48,7 +48,7 @@ N2Subset::N2Subset(Config& config, const std::string& unique_name,
     }
 
     // Get and validate frame descriptors
-    auto in_frame_desc = in_buf->get_frame_description();
+    auto in_frame_desc = in_buf->get_frame_desc();
     if (!in_frame_desc) {
         FATAL_ERROR("N2Subset: in_buf does not have a frame descriptor set");
     }
@@ -57,7 +57,7 @@ N2Subset::N2Subset(Config& config, const std::string& unique_name,
         FATAL_ERROR("N2Subset: in_buf does not have an N2FrameDesc");
     }
 
-    auto out_frame_desc = out_buf->get_frame_description();
+    auto out_frame_desc = out_buf->get_frame_desc();
     if (!out_frame_desc) {
         FATAL_ERROR("N2Subset: out_buf does not have a frame descriptor set");
     }

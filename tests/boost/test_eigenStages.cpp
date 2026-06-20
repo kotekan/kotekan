@@ -183,8 +183,8 @@ static EigenResults run_pipeline(const EigenStageTestParams& p, const string& st
 
     // Set frame descriptors for N2 buffers (required by stages)
     if (n2_desc) {
-        in_buf.set_frame_desc(n2_desc);
-        out_buf.set_frame_desc(n2_desc);
+        in_buf.ensure_frame_desc(n2_desc);
+        out_buf.ensure_frame_desc(n2_desc);
     }
 
     kotekan::bufferContainer bc;
@@ -446,8 +446,8 @@ run_n2_pipeline_pair(const EigenStageTestParams& params_a,
         s.out_buf = std::make_unique<Buffer>(
             s.params.total_frames, frame_size, pool, s.out_buf_name, "N2", 0,
             false, false, std::vector<int>{}, true);
-        s.in_buf->set_frame_desc(n2_desc);
-        s.out_buf->set_frame_desc(n2_desc);
+        s.in_buf->ensure_frame_desc(n2_desc);
+        s.out_buf->ensure_frame_desc(n2_desc);
         bc.add_buffer(s.in_buf_name, s.in_buf.get());
         bc.add_buffer(s.out_buf_name, s.out_buf.get());
         // Hold the output frames so we can inspect them after the stage exits.

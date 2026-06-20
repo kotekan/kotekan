@@ -45,10 +45,13 @@ class FakeRFIBuffer(runner.InputBuffer):
 
         self.buffer_block = {
             self.name: {
-                "kotekan_buffer": "standard",
+                "kotekan_buffer": "ndarray",
                 "metadata_pool": "main_pool",
                 "num_frames": "buffer_depth",
-                "frame_size": "(samples_per_data_set * num_local_freq) / 8",
+                "value_type": "uint1x8",
+                "quantity_name": "RFImask",
+                "extents": [samples_per_data_set // 1024, num_local_freq, 128],
+                "dimnames": ["T8hi128", "F", "T8lo128"],
             }
         }
 
@@ -57,7 +60,7 @@ class FakeRFIBuffer(runner.InputBuffer):
             "out_buf": self.name,
             "type": "const1x8",
             "value": 85,  # alternating 10101010...
-            "name": stage_name,
+            "name": "RFImask",
             "array_shape": [samples_per_data_set // 1024, num_local_freq, 128],
             "dim_name": ["T8hi128", "F", "T8lo128"],
         }
@@ -137,10 +140,19 @@ class DumpCountsBuffer(runner.OutputBuffer):
 
         self.buffer_block = {
             self.name: {
-                "kotekan_buffer": "standard",
+                "kotekan_buffer": "ndarray",
                 "metadata_pool": "main_pool",
                 "num_frames": "buffer_depth",
-                "frame_size": "sizeof_int * num_local_freq * counts_ntiles * 8 * 8 * samples_per_data_set / sub_integration_ntime",
+                "value_type": "int32",
+                "quantity_name": "n2k_counts",
+                "extents": [
+                    "samples_per_data_set / sub_integration_ntime",
+                    "num_local_freq",
+                    "counts_ntiles",
+                    8,
+                    8,
+                ],
+                "dimnames": ["Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"],
             }
         }
 
