@@ -1,5 +1,6 @@
 #include <Config.hpp>             // for Config
 #include <DataType.hpp>           // for string_to_type, type_to_string, DataType
+#include <NDArray.hpp>            // for GenericNDArray
 #include <Stage.hpp>              // for Stage
 #include <StageFactory.hpp>       // for REGISTER_KOTEKAN_STAGE
 #include <Symbol.hpp>             // for Symbol
@@ -224,9 +225,10 @@ public:
                         const std::string dim_name = dim_names->at(d)->get_maybe_string().value();
                         dimnames.push_back(dim_name);
                     }
-                    buffer->allocate_ndarray_frame_desc(value_type, name, dimensions, dimnames);
+                    buffer->require_frame_desc(
+                        kotekan::GenericNDArray::describe(value_type, name, dimensions, dimnames));
                     /* test that things are consistent */
-                    meta->check_frame_desc(buffer->get_ndarray_frame_desc());
+                    meta->check_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
                 }
 
 
