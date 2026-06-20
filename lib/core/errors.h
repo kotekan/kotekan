@@ -58,6 +58,7 @@ extern int __enable_syslog;
 
 // to store error messages before exiting with error code
 extern char __err_msg[1024];
+#define MAX_LOG_MSG_LEN 1024
 extern const int __max_log_msg_len;
 
 void internal_logging_f(int log, const char* format, ...);

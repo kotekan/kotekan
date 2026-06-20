@@ -1,7 +1,9 @@
 #include "TransposeBasebandArray.hpp"
 
 #include <visUtil.hpp>          // for frameID, modulo
+#if defined(__x86_64__) || defined(__i386__)
 #include <xmmintrin.h>          // for _mm_sfence, _MM_HINT_T0, _mm_prefetch
+#endif
 #include <cstring>              // for memcpy, memset
 #include <stdexcept>            // for runtime_error
 #include <memory>               // for __shared_ptr_access, shared_ptr

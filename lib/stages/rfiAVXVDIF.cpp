@@ -12,7 +12,9 @@
 #include "util.h"               // for e_time
 #endif
 
+#if defined(__x86_64__) || defined(__i386__)
 #include <immintrin.h>          // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_mul...
+#endif
 #include <pthread.h>            // for pthread_setaffinity_np
 #include <sched.h>              // for cpu_set_t, CPU_SET, CPU_ZERO
 #include <stdlib.h>             // for srand
@@ -23,8 +25,6 @@
 #include <vector>               // for vector
 
 #ifdef MAC_OSX
-#include <immintrin.h>          // for __m256i, _mm256_loadu_si256, _mm256_add_epi32, _mm256_mul...
-
 #include "osxBindCPU.hpp"
 #endif
 

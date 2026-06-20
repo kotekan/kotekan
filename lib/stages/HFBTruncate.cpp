@@ -15,8 +15,10 @@
 #include <cstdint>     // for int32_t, uint32_t
 #include <cstring>     // for memset, size_t
 #include <functional>  // for bind, function
+#if defined(__x86_64__) || defined(__i386__)
 #include <immintrin.h> // for __m256, _mm256_div_ps, _mm256_loadu_ps, _mm256_set1_ps
 #include <mm_malloc.h> // for _mm_free, _mm_malloc
+#endif
 
 
 using kotekan::bufferContainer;

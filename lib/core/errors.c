@@ -20,7 +20,7 @@ void internal_logging_f(int log, const char* format, ...) {
     if (__enable_syslog == 1) {
         (void)vsyslog(log, format, args);
     } else {
-        char log_buf[__max_log_msg_len];
+        char log_buf[MAX_LOG_MSG_LEN];
         (void)vsnprintf(log_buf, __max_log_msg_len, format, args);
         fprintf(stderr, "%s: %s\n", get_log_level_string(log), log_buf);
     }

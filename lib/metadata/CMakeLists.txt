@@ -10,7 +10,7 @@ add_library(
     N2Layout.cpp
     N2FrameDesc.cpp
     DataType.cpp
-    Metadata.cpp
+    NDMetadata.cpp
     NDArray.cpp
     Symbol.cpp)
 
