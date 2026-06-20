@@ -1221,7 +1221,7 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
 
 hdf5N2Write::~hdf5N2Write() {}
 
-std::uint64_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
+size_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
     // Get the absolute file index based on the absolute frame index and
     // configured number of time frames per file.
 

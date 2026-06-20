@@ -584,7 +584,7 @@ double gpuSimulateRFISK::get_bias(double x, double y) {
     // index of bin in bias table containing x, unless x is near the end
     // of the bin. Leaves at least 1 free bin to the left and at least two
     // free bins to the right.
-    uint64_t bin_idx = std::clamp(static_cast<uint64_t>((x - _xmin) / dx), 1ul, _bias_nx - 3);
+    uint64_t bin_idx = std::clamp(static_cast<uint64_t>((x - _xmin) / dx), uint64_t{1}, _bias_nx - 3);
     // Index of first bin (or first table point) in the reconstruction.
     // Probably one to the left of where the sample point is.
     uint64_t i0 = bin_idx - 1;
@@ -615,7 +615,7 @@ double gpuSimulateRFISK::get_sigma(double x, uint64_t s0) {
     // index of bin in sigma table containing x, unless x is near the end
     // of the bin. Leaves at least 1 free bin to the left and at least two
     // free bins to the right.
-    uint64_t bin_idx = std::clamp(static_cast<uint64_t>((x - _xmin) / dx), 1ul, _sigma_nx - 3);
+    uint64_t bin_idx = std::clamp(static_cast<uint64_t>((x - _xmin) / dx), uint64_t{1}, _sigma_nx - 3);
     // Index of first bin (or first table point) in the reconstruction.
     // Probably one to the left of where the sample point is.
     uint64_t i0 = bin_idx - 1;

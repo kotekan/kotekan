@@ -227,7 +227,7 @@ uint64_t FakeTelescope::to_seq(timespec time) const {
     return ns / seq_length_nsec();
 }
 
-size_t FakeTelescope::seq_length_nsec() const {
+uint64_t FakeTelescope::seq_length_nsec() const {
     return 2560;
 }
 
