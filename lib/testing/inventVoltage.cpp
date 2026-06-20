@@ -1,5 +1,6 @@
 #include "Config.hpp"            // for Config
 #include "DataType.hpp"          // for string_to_type, DataType
+#include "NDArray.hpp"           // for NDArray, GenericNDArray
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"            // for Symbol
@@ -80,8 +81,10 @@ public:
         buffer->register_producer(unique_name);
 
         // Set metadata
-        buffer->allocate_ndarray_frame_desc<kotekan::int4x2_swapped_withoffset_t, 4>(
-            "E", {num_times, num_frequencies, num_polarizations, num_dishes}, {"T", "F", "P", "D"});
+        buffer->require_frame_desc(
+            kotekan::NDArray<kotekan::int4x2_swapped_withoffset_t, 4>::describe(
+                "E", {num_times, num_frequencies, num_polarizations, num_dishes},
+                {"T", "F", "P", "D"}));
     }
 
     virtual ~inventVoltage() {}
@@ -154,7 +157,7 @@ public:
             buffer->allocate_new_metadata_object(frame_id);
             const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
             meta->set_fpga_seq_num(frame_index * num_times);
-            meta->set_from_frame_desc(buffer->get_ndarray_frame_desc());
+            meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
             meta->set_time_downsampling_fpga(1);
 
             // Set frequency information

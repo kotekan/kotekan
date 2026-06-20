@@ -1,5 +1,6 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType
+#include "NDArray.hpp"         // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -130,9 +131,9 @@ testRFImaskGen::testRFImaskGen(Config& config, const std::string& unique_name,
     }
 
     // allocate frame descriptors
-    out_buf->allocate_ndarray_frame_desc(kotekan::uint1x8, name,
-                                         {samples_per_data_set / 1024, num_local_freq, 128},
-                                         {"T8hi128", "F", "T8lo128"});
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::uint1x8, name, {samples_per_data_set / 1024, num_local_freq, 128},
+        {"T8hi128", "F", "T8lo128"}));
 
     if (out_buf->frame_size != out_buf->frames_desc->get_byte_size())
         FATAL_ERROR("out_but {:s} has frame size {:d}, expected {:d}.", out_buf->buffer_name,
@@ -159,7 +160,7 @@ std::shared_ptr<chordMetadata> testRFImaskGen::get_new_metadata(Buffer* buf, fra
 }
 
 void testRFImaskGen::set_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num) {
-    meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+    meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
     meta->set_fpga_seq_num(seq_num);
     meta->set_time_downsampling_fpga(1024);
@@ -226,7 +227,7 @@ void testRFImaskGen::main_thread() {
         set_metadata(meta, seq_num);
 
         // check frame descriptors match metadata
-        meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
+        meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // If we're not repeating, or we're in the first num_frames, generate data
         if (repeat_count <= 0 || (num_frames > 0 && num_frames_generated < num_frames)) {

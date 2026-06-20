@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -87,9 +88,17 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     int nf = _num_local_freq;
     int ne = _num_elements / 8;
     int n_blocks = num_triangle_blocks(ne, _blocksize);
-    output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int32>::type, 5>(
-        "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+    input_plmask_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType<kotekan::uint1x8>::type, 5>::describe(
+            "pl_mask_exp", {_samples_per_data_set / 64, nf, 2, ne / 2, 8},
+            {"Thi64", "F", "P", "D8", "Tlo64"}));
+    input_rfimask_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType<kotekan::uint1x8>::type, 3>::describe(
+            "RFImask", {_samples_per_data_set / 1024, nf, 128}, {"T8hi128", "F", "T8lo128"}));
+    output_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType<kotekan::int32>::type, 5>::describe(
+            "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
+            {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}));
 }
 
 gpuSimulateN2kPL1bitCorr::~gpuSimulateN2kPL1bitCorr() {}
@@ -254,7 +263,7 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
         meta_out->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */
-        meta_out->check_frame_desc(output_buf->get_ndarray_frame_desc());
+        meta_out->check_frame_desc(output_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->set_time_downsampling_fpga(

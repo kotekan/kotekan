@@ -25,12 +25,10 @@ rfi_num_times: 32               # 1.31072 ms cadence
 rfi_num_times_bar: 1            # 41.94304 ms cadence
 
 host_rfi_S012_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times
-    type: uint64
-    dimnames: ["Trfi", "F", "S", "P", "D"]
-    shape: [rfi_num_times, num_frequencies, 3, num_polarizations, num_dishes]
+    value_type: uint64
+    extents: [rfi_num_times, num_frequencies, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 host_rfi_S012_ringbuffer:
     kotekan_buffer: ring
@@ -42,12 +40,10 @@ host_rfi_S012_ringbuffer:
     metadata_pool: main_pool
 
 host_rfi_S012bar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: sizeof_uint64 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar
-    type: uint64
-    dimnames: ["Trfibar", "F", "S", "P", "D"]
-    shape: [rfi_num_times_bar, num_frequencies, 3, num_polarizations, num_dishes]
+    value_type: uint64
+    extents: [rfi_num_times_bar, num_frequencies, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 host_rfi_S012bar_ringbuffer:
     kotekan_buffer: ring
@@ -59,12 +55,10 @@ host_rfi_S012bar_ringbuffer:
     metadata_pool: main_pool
 
 host_rfi_S012tilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: sizeof_uint64 * 3 * num_frequencies * rfi_num_times
-    type: uint64
-    dimnames: ["Trfi", "F", "S"]
-    shape: [rfi_num_times, num_frequencies, 3]
+    value_type: uint64
+    extents: [rfi_num_times, num_frequencies, 3]
     metadata_pool: main_pool
 host_rfi_S012tilde_ringbuffer:
     kotekan_buffer: ring
@@ -76,12 +70,10 @@ host_rfi_S012tilde_ringbuffer:
     metadata_pool: main_pool
 
 host_rfi_SKtilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: sizeof_float32 * 3 * num_frequencies * rfi_num_times
-    type: float32
-    dimnames: ["Trfi", "F", "S"]
-    shape: [rfi_num_times, num_frequencies, 3]
+    value_type: float32
+    extents: [rfi_num_times, num_frequencies, 3]
     metadata_pool: main_pool
 host_rfi_SKtilde_ringbuffer:
     kotekan_buffer: ring
@@ -93,12 +85,10 @@ host_rfi_SKtilde_ringbuffer:
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_frequencies * num_times / 8
-    type: uint1x8
-    dimnames: ["T8hi128", "F", "T8lo128"]
-    shape: [num_times / 8 / 128, num_frequencies, 128]
+    value_type: uint1x8
+    extents: [num_times / 8 / 128, num_frequencies, 128]
     metadata_pool: main_pool
 host_rfi_RFImask_ringbuffer:
     kotekan_buffer: ring
@@ -110,12 +100,10 @@ host_rfi_RFImask_ringbuffer:
     metadata_pool: main_pool
 
 host_rfi_SKbar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: sizeof_float32 * num_dishes * num_polarizations * 3 * num_frequencies * rfi_num_times_bar
-    type: float32
-    dimnames: ["Trfi", "F", "S", "P", "D"]
-    shape: [rfi_num_times_bar, num_frequencies, 3, num_polarizaions, num_dishes]
+    value_type: float32
+    extents: [rfi_num_times_bar, num_frequencies, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 host_rfi_SKbar_ringbuffer:
     kotekan_buffer: ring
@@ -127,12 +115,10 @@ host_rfi_SKbar_ringbuffer:
     metadata_pool: main_pool
 
 host_rfi_SKbartilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: sizeof_float32 * 3 * num_frequencies * rfi_num_times_bar
-    type: float32
-    dimnames: ["Trfi", "F", "S"]
-    shape: [rfi_num_times_bar, num_frequencies, 3]
+    value_type: float32
+    extents: [rfi_num_times_bar, num_frequencies, 3]
     metadata_pool: main_pool
 host_rfi_SKbartilde_ringbuffer:
     kotekan_buffer: ring

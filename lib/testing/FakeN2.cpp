@@ -55,7 +55,7 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     out_buf->register_producer(unique_name);
 
     // Get N2 parameters from the buffer's frame descriptor (set by bufferFactory)
-    auto frame_desc = out_buf->get_frame_description();
+    auto frame_desc = out_buf->get_frame_desc();
     if (!frame_desc) {
         FATAL_ERROR("Buffer {:s} does not have a frame descriptor set", out_buf->buffer_name);
     }
@@ -322,8 +322,8 @@ ReplaceN2::ReplaceN2(Config& config, const std::string& unique_name,
     out_buf->register_producer(unique_name);
 
     // Validate that input and output buffers have compatible N2 frame descriptors
-    auto in_desc = in_buf->get_frame_description();
-    auto out_desc = out_buf->get_frame_description();
+    auto in_desc = in_buf->get_frame_desc();
+    auto out_desc = out_buf->get_frame_desc();
     if (!in_desc || !out_desc) {
         FATAL_ERROR("ReplaceN2: Input and output buffers must have frame descriptors set");
     }
