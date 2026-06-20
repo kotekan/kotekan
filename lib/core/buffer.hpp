@@ -633,39 +633,6 @@ public:
     }
 
     /**
-     * @brief Legacy frame descriptor API (deprecated).
-     *
-     * These forward to @c ensure_frame_desc()/@c get_frame_desc<T>() and exist
-     * only so not-yet-migrated stages keep compiling while the codebase moves to
-     * the FrameDesc API. They are removed once every caller is migrated.
-     */
-    void set_frame_desc(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
-        ensure_frame_desc(std::move(new_desc));
-    }
-
-    template<typename T, std::size_t D>
-    void allocate_ndarray_frame_desc(kotekan::Symbol quantity_name,
-                                     const std::array<std::ptrdiff_t, D>& extents,
-                                     const std::array<kotekan::Symbol, D>& dimnames) {
-        ensure_frame_desc(kotekan::NDArray<T, D>::describe(quantity_name, extents, dimnames));
-    }
-
-    void allocate_ndarray_frame_desc(kotekan::DataType value_type, kotekan::Symbol quantity_name,
-                                     const std::vector<std::ptrdiff_t>& extents,
-                                     const std::vector<kotekan::Symbol>& dimnames) {
-        ensure_frame_desc(
-            kotekan::GenericNDArray::describe(value_type, quantity_name, extents, dimnames));
-    }
-
-    std::shared_ptr<const kotekan::GenericNDArray> get_ndarray_frame_desc() {
-        return get_frame_desc<kotekan::GenericNDArray>();
-    }
-
-    std::shared_ptr<const kotekan::FrameDesc> get_frame_description() {
-        return get_frame_desc<kotekan::FrameDesc>();
-    }
-
-    /**
      * @brief provides read access to the frame description
      * @return The data structure describing the frame, cast to T. Returns
      *         nullptr if no descriptor is attached or it is not a T.
