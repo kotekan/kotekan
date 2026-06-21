@@ -231,16 +231,7 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     // Validate that the output buffer's frame descriptor (set by bufferFactory) matches
     // what this stage will produce
     {
-        auto out_frame_desc = out_buf->get_frame_desc();
-        if (!out_frame_desc) {
-            FATAL_ERROR("N2Accumulate: Output buffer {:s} does not have a frame descriptor set",
-                        out_buf->buffer_name);
-        }
-        auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(out_frame_desc);
-        if (!n2_desc) {
-            FATAL_ERROR("N2Accumulate: Output buffer {:s} does not have an N2FrameDesc",
-                        out_buf->buffer_name);
-        }
+        auto n2_desc = out_buf->require_frame_desc<kotekan::N2FrameDesc>();
         // Validate the descriptor matches what we expect to produce
         if (n2_desc->get_num_elements() != (uint32_t)_num_elements) {
             FATAL_ERROR(

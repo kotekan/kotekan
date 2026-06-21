@@ -534,10 +534,18 @@ public:
      * @brief Requires that a frame descriptor is attached to this buffer
      *        (fatal if not), then ensures it conforms to @p desc.
      *
-     * Stages should use this method to rigidly enforce that a frame descriptor
-     * is attached to the buffer and conforms to their requirements. This fatals
-     * if no descriptor has been attached -- i.e. the buffer was not declared with
-     * a described type.
+     * Stages should use this method to rigidly enforce that a frame
+     * descriptor is (already) attached to the buffer and conforms to their
+     * requirements. This fatals if no descriptor has been attached -- i.e. the
+     * buffer was not declared with a described type.
+     * 
+     * Called with no argument it performs only the existence check: the idiom
+     * for a stage that then reads the descriptor with @c get_frame_desc<T>() or
+     * @c require_frame_desc<T>() and hand-validates the specific fields it
+     * depends on. Pass @p desc to additionally cross-check a full expected
+     * descriptor, in which case this method reconciles frame descriptors as in
+     * @c ensure_frame_desc; any unset (empty) fields are filled in from the
+     * other side, and values on both sides must agree; any conflict is fatal.
      *
      * See also @c ensure_frame_desc(). The difference is that `require` fatals on a
      * missing or incompatible descriptor, whereas `ensure` attaches @p desc when
@@ -641,6 +649,41 @@ public:
     std::shared_ptr<const T> get_frame_desc() {
         buffer_lock lock(mutex);
         return std::dynamic_pointer_cast<const T>(frames_desc);
+    }
+
+    /**
+     * @brief Like @c get_frame_desc<T>(), but fatal if the buffer has no
+     *        descriptor attached or the attached descriptor is not a @c T.
+     *
+     * Use this when a stage depends on the buffer having been declared (in the
+     * config) with a described type it can read: it guarantees a non-null,
+     * correctly typed descriptor, so the caller can then hand-validate whatever
+     * specific fields it requires. Prefer it over @c get_frame_desc<T>() at
+     * sites that immediately dereference the result, to avoid a null-pointer
+     * crash when the buffer was left undeclared or declared with another type.
+     *
+     * This is the mirror of @c get_frame_desc<T>() (which returns nullptr
+     * instead of fataling) and of the non-typed @c require_frame_desc() (which
+     * only checks that a descriptor exists). It does not reconcile against an
+     * expected descriptor -- the buffer factory already validated byte size and
+     * structure against the config when it attached the descriptor.
+     *
+     * Thread-safe.
+     *
+     * @return The frame descriptor cast to @c T (never nullptr).
+     */
+    template<typename T>
+    std::shared_ptr<const T> require_frame_desc() {
+        buffer_lock lock(mutex);
+        if (!frames_desc)
+            FATAL_ERROR("Buffer {:s} has no frame descriptor; declare the buffer with a "
+                        "described buffer type (e.g. `kotekan_buffer: ndarray`) in the config",
+                        buffer_name);
+        auto typed = std::dynamic_pointer_cast<const T>(frames_desc);
+        if (!typed)
+            FATAL_ERROR("Buffer {:s} frame descriptor is not of the type required by a consumer",
+                        buffer_name);
+        return typed;
     }
 
     /**

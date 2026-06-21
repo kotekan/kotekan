@@ -55,14 +55,7 @@ FakeN2::FakeN2(Config& config, const std::string& unique_name, bufferContainer& 
     out_buf->register_producer(unique_name);
 
     // Get N2 parameters from the buffer's frame descriptor (set by bufferFactory)
-    auto frame_desc = out_buf->get_frame_desc();
-    if (!frame_desc) {
-        FATAL_ERROR("Buffer {:s} does not have a frame descriptor set", out_buf->buffer_name);
-    }
-    auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(frame_desc);
-    if (!n2_desc) {
-        FATAL_ERROR("Buffer {:s} does not have an N2FrameDesc", out_buf->buffer_name);
-    }
+    auto n2_desc = out_buf->require_frame_desc<kotekan::N2FrameDesc>();
     num_elements = n2_desc->get_num_elements();
     num_eigenvectors = n2_desc->get_num_ev();
     n2_layout = n2_desc->get_n2_layout();
