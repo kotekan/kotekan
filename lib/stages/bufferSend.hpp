@@ -122,6 +122,10 @@ private:
     /// Flag to indicate if config tracker header data should be sent
     bool use_config_tracker;
 
+    /// Flag to indicate the buffer's frame descriptor should be transmitted
+    /// (once per connection). Must match use_frame_desc on the receiver.
+    bool use_frame_desc;
+
     /// Serialized list of current config tracker hashes
     std::string config_tracker_combined_hash;
 
@@ -137,6 +141,9 @@ private:
 
     /// Set to true if this is the first transmission
     std::atomic<bool> first_transmission_sent;
+
+    /// Set once the frame descriptor has been sent on the current connection
+    std::atomic<bool> desc_sent;
 
     /// Internal server address struct
     struct sockaddr_in server_addr;

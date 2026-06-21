@@ -74,6 +74,62 @@ Symbol N2FrameDesc::get_quantity_name() const {
     return Symbol("N2");
 }
 
+FrameDesc::WireType N2FrameDesc::wire_type() const {
+    return FrameDesc::WireType::n2;
+}
+
+size_t N2FrameDesc::serialized_payload_size() const {
+    // num_elements, num_ev, num_products, n2_layout, product_list count
+    size_t n = 5 * sizeof(uint32_t);
+    if (layout_requires_product_list(n2_layout))
+        n += product_list.size() * 2 * sizeof(uint16_t);
+    return n;
+}
+
+void N2FrameDesc::serialize_payload(char* out) const {
+    out = wire::put_u32(out, num_elements);
+    out = wire::put_u32(out, num_ev);
+    out = wire::put_u32(out, num_products);
+    out = wire::put_u32(out, static_cast<uint32_t>(n2_layout));
+    // Subset layouts cannot be regenerated from num_elements alone, so send the
+    // explicit product list; other layouts the receiver regenerates (count 0).
+    if (layout_requires_product_list(n2_layout)) {
+        out = wire::put_u32(out, static_cast<uint32_t>(product_list.size()));
+        for (const auto& prod : product_list) {
+            out = wire::put_u16(out, prod.input_a);
+            out = wire::put_u16(out, prod.input_b);
+        }
+    } else {
+        out = wire::put_u32(out, 0);
+    }
+}
+
+std::shared_ptr<const FrameDesc> N2FrameDesc::deserialize_payload(const char* bytes, size_t size) {
+    wire::Reader r(bytes, size);
+    const uint32_t num_elements = r.get_u32();
+    const uint32_t num_ev = r.get_u32();
+    const uint32_t num_products = r.get_u32();
+    const N2Layout n2_layout = static_cast<N2Layout>(r.get_u32());
+
+    const uint32_t num_products_listed = r.get_u32();
+    if (r.remaining() < static_cast<size_t>(num_products_listed) * 2 * sizeof(uint16_t))
+        throw std::runtime_error("N2FrameDesc::deserialize: product_list count exceeds payload");
+    std::vector<N2::prod_ctype> product_list;
+    product_list.reserve(num_products_listed);
+    for (uint32_t i = 0; i < num_products_listed; ++i) {
+        N2::prod_ctype prod;
+        prod.input_a = r.get_u16();
+        prod.input_b = r.get_u16();
+        product_list.push_back(prod);
+    }
+    r.require_empty();
+
+    // The N2FrameDesc constructor validates layout/product_list consistency and
+    // throws on an unknown layout, so malformed input is rejected here.
+    return std::make_shared<N2FrameDesc>(num_elements, num_ev, num_products, n2_layout,
+                                         std::move(product_list));
+}
+
 bool N2FrameDesc::layout_requires_product_list(N2Layout layout) {
     switch (layout) {
         case N2Layout::FullUpperTri:

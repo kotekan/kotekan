@@ -80,6 +80,13 @@ public:
     bool operator==(const FrameDesc& other) const override;
     size_t get_byte_size() const override;
 
+    // FrameDesc wire-serialization overrides (see FrameDesc::serialize)
+    WireType wire_type() const override;
+    size_t serialized_payload_size() const override;
+    void serialize_payload(char* out) const override;
+    /// Reconstruct an N2FrameDesc from a payload written by serialize_payload().
+    static std::shared_ptr<const FrameDesc> deserialize_payload(const char* bytes, size_t size);
+
     // Accessors
     uint32_t get_num_elements() const {
         return num_elements;

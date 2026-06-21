@@ -48,6 +48,74 @@ void GenericNDArray::output_framedesc(std::ostream& os) const {
        << "    strides:         " << format_vector(get_strides()) << "\n";
 }
 
+FrameDesc::WireType GenericNDArray::wire_type() const {
+    return FrameDesc::WireType::generic_ndarray;
+}
+
+size_t GenericNDArray::serialized_payload_size() const {
+    size_t n = wire::str_size(type_to_string(get_value_datatype()));
+    n += sizeof(uint32_t);             // rank
+    n += get_rank() * sizeof(int64_t); // extents
+    n += wire::str_size(std::string(get_quantity_name()));
+    n += sizeof(uint32_t);             // dimnames count
+    for (const auto& dimname : get_dimnames())
+        n += wire::str_size(std::string(dimname));
+    return n;
+}
+
+void GenericNDArray::serialize_payload(char* out) const {
+    out = wire::put_str(out, type_to_string(get_value_datatype()));
+    const auto extents = get_extents();
+    out = wire::put_u32(out, static_cast<uint32_t>(extents.size()));
+    for (const auto extent : extents)
+        out = wire::put_i64(out, static_cast<int64_t>(extent));
+    out = wire::put_str(out, std::string(get_quantity_name()));
+    const auto dimnames = get_dimnames();
+    out = wire::put_u32(out, static_cast<uint32_t>(dimnames.size()));
+    for (const auto& dimname : dimnames)
+        out = wire::put_str(out, std::string(dimname));
+}
+
+std::shared_ptr<const FrameDesc> GenericNDArray::deserialize_payload(const char* bytes,
+                                                                     size_t size) {
+    wire::Reader r(bytes, size);
+    const std::string type_name = r.get_str();
+    const DataType value_datatype = string_to_type(type_name);
+    if (value_datatype == unknown_type)
+        throw std::runtime_error(
+            fmt::format(fmt("GenericNDArray::deserialize: unknown value_type '{:s}'"), type_name));
+
+    const uint32_t rank = r.get_u32();
+    if (rank < 1 || rank > max_rank)
+        throw std::runtime_error(fmt::format(
+            fmt("GenericNDArray::deserialize: rank {:d} is outside [1, {:d}]"), rank, max_rank));
+
+    std::vector<std::ptrdiff_t> extents;
+    extents.reserve(rank);
+    for (uint32_t d = 0; d < rank; ++d) {
+        const std::ptrdiff_t extent = static_cast<std::ptrdiff_t>(r.get_i64());
+        if (extent <= 0)
+            throw std::runtime_error("GenericNDArray::deserialize: non-positive extent");
+        extents.push_back(extent);
+    }
+
+    const Symbol quantity_name(r.get_str());
+
+    const uint32_t num_dimnames = r.get_u32();
+    if (num_dimnames != rank)
+        throw std::runtime_error(
+            fmt::format(fmt("GenericNDArray::deserialize: dimnames count {:d} does not match rank "
+                            "{:d}"),
+                        num_dimnames, rank));
+    std::vector<Symbol> dimnames;
+    dimnames.reserve(num_dimnames);
+    for (uint32_t d = 0; d < num_dimnames; ++d)
+        dimnames.emplace_back(r.get_str());
+
+    r.require_empty();
+    return describe(value_datatype, quantity_name, extents, dimnames);
+}
+
 // this templated function implemets a reurives 2D loop calling itself until
 // my_rank == rank and my_datatype == datatype, then it creates a NDArray of that
 // rank and type. This resolves the runtime values into compile time constants.

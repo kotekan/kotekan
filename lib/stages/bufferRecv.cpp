@@ -63,6 +63,7 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     const bool ct_enabled = ConfigTracker::instance().is_enabled();
     use_config_tracker =
         config.get_default<bool>(unique_name, "use_config_tracker", ct_enabled) && ct_enabled;
+    use_frame_desc = config.get_default<bool>(unique_name, "use_frame_desc", false);
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
@@ -200,7 +201,8 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
 
     connInstance* instance =
         new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
-                         ip_str, port, read_timeout, use_config_tracker, conn_upstream_rest_port);
+                         ip_str, port, read_timeout, use_config_tracker, use_frame_desc,
+                         conn_upstream_rest_port);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -366,10 +368,11 @@ std::string bufferRecv::dot_string(const std::string& prefix) const {
 
 connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                            const std::string& client_ip, int port, struct timeval read_timeout,
-                           bool use_config_tracker, uint16_t upstream_rest_port) :
+                           bool use_config_tracker, bool use_frame_desc,
+                           uint16_t upstream_rest_port) :
     producer_name(producer_name), buf(buf), buffer_recv(buffer_recv), client_ip(client_ip),
     port(port), read_timeout(read_timeout), use_config_tracker(use_config_tracker),
-    upstream_rest_port(upstream_rest_port) {
+    use_frame_desc(use_frame_desc), upstream_rest_port(upstream_rest_port) {
 
     frame_space = buffer_malloc(buf->aligned_frame_size, buf->numa_node, buf->use_hugepages,
                                 buf->mlock_frames, false);
@@ -484,10 +487,71 @@ void connInstance::internal_read_callback() {
                         ConfigTracker::instance().getUpstreamConfigs(client_ip, upstream_rest_port);
                     }
 
-                    state = connState::metadata;
+                    state = use_frame_desc ? connState::frame_desc_size : connState::metadata;
                     bytes_read = 0;
                 }
 
+            } break;
+            case connState::frame_desc_size: {
+                // Independent of the config tracker; only read when use_frame_desc
+                // is set on both ends. The size rides every frame (0 = no
+                // descriptor on this frame), the payload only on the first.
+                n = read(fd, ((int8_t*)&frame_desc_size) + bytes_read,
+                         sizeof(frame_desc_size) - bytes_read);
+                if (n <= 0) {
+                    handle_error("reading frame_desc size", errno, n);
+                    return;
+                }
+                bytes_read += n;
+                if (bytes_read >= sizeof(frame_desc_size)) {
+                    assert(bytes_read == sizeof(frame_desc_size));
+                    // A serialized descriptor is small; reject absurd sizes from a
+                    // mismatched/hostile peer before allocating and reading.
+                    constexpr uint32_t MAX_FRAME_DESC_SIZE = 1u << 20; // 1 MiB
+                    if (frame_desc_size > MAX_FRAME_DESC_SIZE) {
+                        ERROR("Received frame_desc size ({:d}) exceeds maximum ({:d}) from {:s}",
+                              frame_desc_size, MAX_FRAME_DESC_SIZE, client_ip);
+                        decrement_ref_count();
+                        close_instance();
+                        return;
+                    }
+                    bytes_read = 0;
+                    if (frame_desc_size == 0) {
+                        state = connState::metadata;
+                    } else {
+                        frame_desc_space.resize(frame_desc_size);
+                        state = connState::frame_desc;
+                    }
+                }
+            } break;
+            case connState::frame_desc: {
+                n = read(fd, frame_desc_space.data() + bytes_read, frame_desc_size - bytes_read);
+                if (n <= 0) {
+                    handle_error("reading frame_desc", errno, n);
+                    return;
+                }
+                bytes_read += n;
+                if (bytes_read >= frame_desc_size) {
+                    assert(bytes_read == frame_desc_size);
+                    // Validate on read -- before the frame/drop decision -- so a
+                    // dropped frame still validates the descriptor. Malformed bytes
+                    // close the connection; a real config-vs-received mismatch is
+                    // fatal in ensure_frame_desc, the intended contract check.
+                    std::shared_ptr<const kotekan::FrameDesc> recv_desc;
+                    try {
+                        recv_desc = kotekan::FrameDesc::deserialize(frame_desc_space.data(),
+                                                                    frame_desc_size);
+                    } catch (const std::exception& e) {
+                        ERROR("Failed to deserialize frame descriptor from {:s}: {:s}", client_ip,
+                              e.what());
+                        decrement_ref_count();
+                        close_instance();
+                        return;
+                    }
+                    buf->ensure_frame_desc(recv_desc);
+                    state = connState::metadata;
+                    bytes_read = 0;
+                }
             } break;
             case connState::metadata:
                 n = read(fd, (void*)(metadata_space + bytes_read),
@@ -550,31 +614,6 @@ void connInstance::internal_read_callback() {
                 std::shared_ptr<metadataObject> metadata = buf->get_metadata(frame_id);
                 if (metadata)
                     metadata->set_from_bytes((char*)metadata_space, buf_frame_header.metadata_size);
-
-                // TODO: instead of reconstructing the descriptor from chordMetadata
-                // here, the sender should transmit the buffer's frame descriptor over
-                // the wire and the receiver should validate its config-declared
-                // descriptor against it.
-                auto chord = std::dynamic_pointer_cast<chordMetadata>(metadata);
-                if (chord) {
-                    /* new style array description */
-                    std::vector<ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
-                    std::vector<kotekan::Symbol> dimnames(chord->dims);
-                    for (size_t d = 0; d < dimnames.size(); ++d) {
-                        dimnames.at(d) =
-                            std::string(chord->dim_name[d],
-                                        strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
-                    }
-
-                    // The frame descriptor is discovered from the received frame,
-                    // so ensure_frame_desc: attach it when the receive buffer is
-                    // undeclared (e.g. `standard`), or validate the received shape
-                    // against the buffer's declared descriptor when it has one.
-                    buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
-                        chord->type, chord->get_name(), dimensions, dimnames));
-                    /* test that things are consistent */
-                    chord->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
-                }
 
                 buf->mark_frame_full(producer_name, frame_id);
 

@@ -142,6 +142,9 @@ private:
     /// Whether to use the config tracker
     bool use_config_tracker;
 
+    /// Expect a serialized frame descriptor on the wire (matched with the sender)
+    bool use_frame_desc;
+
     static void read_callback(evutil_socket_t fd, short what, void* arg);
     static void accept_connection(evutil_socket_t listener, short event, void* arg);
 
@@ -212,7 +215,7 @@ private:
 /**
  * @brief List of valid states for a connection to be in.
  */
-enum class connState { header, metadata, frame, finished };
+enum class connState { header, frame_desc_size, frame_desc, metadata, frame, finished };
 
 /**
  * @brief Args passed to the accept new connection call back function
@@ -249,7 +252,7 @@ public:
     /// Constructor
     connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                  const std::string& client_ip, int port, struct timeval read_timeout,
-                 bool use_config_tracker, uint16_t upstream_rest_port);
+                 bool use_config_tracker, bool use_frame_desc, uint16_t upstream_rest_port);
 
     /// Destructor
     ~connInstance();
@@ -315,6 +318,15 @@ public:
 
     /// Whether to use the config tracker
     const bool use_config_tracker;
+
+    /// Whether to expect a serialized frame descriptor on the wire
+    const bool use_frame_desc;
+
+    /// Size in bytes of the frame descriptor on the current frame (0 if none)
+    uint32_t frame_desc_size = 0;
+
+    /// Scratch buffer for the received serialized frame descriptor
+    std::vector<char> frame_desc_space;
 
     /// Upstream REST port for this connection (may override stage default)
     uint16_t upstream_rest_port;

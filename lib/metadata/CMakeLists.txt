@@ -12,6 +12,7 @@ add_library(
     DataType.cpp
     Metadata.cpp
     NDArray.cpp
+    FrameDesc.cpp
     Symbol.cpp)
 
 target_link_libraries(kotekan_metadata PRIVATE kotekan_utils)
