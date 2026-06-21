@@ -69,7 +69,7 @@ Type-specific parameters are required unless marked *optional*:
        - ``quantity_name`` -- label for the stored quantity
        - ``dimnames`` -- list of axis labels, one per extent
 
-       Omitted labels are supplied by the producing stage (see below).
+       Omitted labels may be supplied by a producing stage (see below).
        ``frame_size`` is derived from the descriptor.
      - ``GenericNDArray``, built from the config block and attached at
        startup
@@ -84,8 +84,9 @@ Type-specific parameters are required unless marked *optional*:
        startup
    * - ``standard``
      - - ``frame_size`` -- frame size in bytes, set explicitly
-     - none declared; stages may attach one at runtime via
-       ``ensure_frame_desc`` / ``require_frame_desc``
+     - none declared; a stage may attach one at runtime via
+       ``ensure_frame_desc`` (``require_frame_desc`` would be fatal, as a
+       ``standard`` buffer has no declared descriptor)
    * - ``vis``
      - - ``num_elements`` -- number of correlator inputs
        - ``num_ev`` -- number of eigenvectors
@@ -128,8 +129,14 @@ therefore declare only the structure, leaving labels for the producing
 stage to supply; when both producer and consumer expect a label it must agree.
 
 The model is: **buffers carry their own description; stages validate
-against it** (and optionally complete any labels the config omitted to minimize
-repetition).
+against it.** The buffer factory guarantees the baseline at startup -- a
+declared descriptor's byte size matches ``frame_size`` and its structure
+matches the config -- so a stage never re-checks the whole shape for that
+reason. Beyond that baseline, validation lives in the stage: there is no
+shared field-validation helper, because the checks stages need (e.g. dimension
+type, buffer size divisibility, etc) are too varied to fold into one. A stage
+should read a descriptor and check any specific properties it depends on,
+completing any labels the config omitted to minimize repetition.
 
 Rationale
 ---------
@@ -149,24 +156,49 @@ Rationale
 Authoring guidance
 ------------------
 
-- Write ``extents`` as expressions over the genuinely tunable config scalars
-  (``samples_per_data_set``, ``num_dishes``, ...). Fixed algorithm geometry
-  (tile and block sizes, packing factors) has a single correct value:
-  prefer defining it in one place in the code rather than presenting it in
-  config as a tunable.
-- Stages with fixed shape requirements (GPU kernels and their CPU
-  counterparts) should validate exactly, via
-  ``Buffer::require_frame_desc(NDArray<T, D>::describe(...))`` -- a missing
-  or mismatched descriptor is fatal. Stages that adapt to their input should
-  check only the properties they require (value type, a particular axis,
-  divisibility) and size their work from the descriptor.
-- Stages that read data produced elsewhere (file readers, network receivers)
-  validate the shape they discover against the buffer's declared descriptor
-  with ``Buffer::require_frame_desc`` -- memory is allocated from the config
-  before any data arrives. ``Buffer::ensure_frame_desc`` is the right call for
-  shapes derived in code at runtime (e.g. GPU pipeline copy-out) where the
-  buffer may or may not be declared: it attaches the descriptor when the buffer
-  has none, otherwise reconciles -- validating the structure and completing any
-  unset labels. The two differ only in the undeclared case: ``require_frame_desc``
-  is fatal when no descriptor is present (config must declare it), whereas
-  ``ensure_frame_desc`` attaches one.
+Write ``extents`` as expressions over the genuinely tunable config scalars
+(``samples_per_data_set``, ``num_dishes``, ...). Fixed algorithm geometry
+(tile and block sizes, packing factors) has a single correct value: prefer
+defining it once in code rather than presenting it in config as a tunable.
+
+Choosing how a stage validates a descriptor (from the weakest assertion to the
+strongest):
+
+- **Existence only** -- ``Buffer::require_frame_desc()`` (no argument): assert
+  the buffer was declared with a descriptor, fatal otherwise. Use it for a stage
+  that adapts to whatever shape the config declares, or that depends on only a
+  subset of the descriptor; follow it with a typed read and hand-check what you
+  actually use.
+- **Typed read** -- ``Buffer::require_frame_desc<T>()``: returns the descriptor
+  as ``T``, fatal if absent or of the wrong type. It is the safe form of
+  ``get_frame_desc<T>()`` (which returns ``nullptr``); use it wherever you would
+  immediately dereference the result. This is the idiom for ``N2`` buffers --
+  read the ``N2FrameDesc`` and check ``get_num_elements()``, ``get_n2_layout()``,
+  ... against what the stage expects.
+- **Full cross-check** -- ``Buffer::require_frame_desc(NDArray<T, D>::describe(...))``:
+  declare and validate the entire expected ``value_type`` and ``extents``. Use it
+  when the stage computes that exact shape from its own config parameters (GPU
+  kernels and their CPU counterparts), so a disagreement between the stage's
+  parameters and the buffer's declaration is caught at startup.
+- **Runtime origination** -- ``Buffer::ensure_frame_desc(describe(...))``:
+  attach-or-reconcile, for buffers whose shape is known only at runtime. It
+  attaches the descriptor when the buffer has none, otherwise reconciles
+  (validating the structure and completing unset labels). It differs from
+  ``require_frame_desc`` only in the undeclared case: ``require`` is fatal,
+  ``ensure`` attaches.
+
+Whatever the form, prefer a clear ``FATAL_ERROR`` naming the stage and buffer
+and printing expected-vs-actual; that is more useful than any generic check.
+
+Avoid:
+
+- re-typing a shape in a stage when the config already declares it and nothing
+  in the stage depends on the exact extents -- use the existence-only
+  ``require_frame_desc()`` and let the buffer's producer (or another consumer)
+  validate the shape;
+- a literal ``frame_size`` next to an ``ndarray`` or ``N2`` structure -- the
+  size is derived from the descriptor;
+- ``ensure_frame_desc`` as a way to tolerate a buffer that should have been
+  declared -- that is what ``require``'s fatal is for;
+- repeating ``dimnames`` / ``quantity_name`` in config when the producing stage
+  already supplies them.
