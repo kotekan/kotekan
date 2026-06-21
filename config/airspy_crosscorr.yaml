@@ -45,16 +45,18 @@ sizeof_float: 4
 # chordMetadata pool the forward-port inherited).
 
 input_bufA:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
+    value_type: int16
+    extents: [samples_per_data_set]
     metadata_pool: none
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * bytes_per_sample
 
 input_bufB:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
+    value_type: int16
+    extents: [samples_per_data_set]
     metadata_pool: none
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * bytes_per_sample
 
 sample_bw: 2.5 #MHz, must be float
 freq: 1422.    #MHz
@@ -100,15 +102,17 @@ spectrum_length: 1024
 integration_length: 1024
 
 post_fengine_bufA:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
+    value_type: cfloat32
+    extents: [samples_per_data_set * sizeof_float / 8]
     metadata_pool: none
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * sizeof_float
 post_fengine_bufB:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
+    value_type: cfloat32
+    extents: [samples_per_data_set * sizeof_float / 8]
     metadata_pool: none
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * sizeof_float
 
 spectrum_output:
     fengineA:

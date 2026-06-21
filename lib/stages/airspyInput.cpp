@@ -47,10 +47,12 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
         return;
     }
 
-    // Buffer carries int16 1-D samples. ensure_frame_desc validates byte size
-    // against buf->frame_size and either records the descriptor or compares
-    // against an earlier assertion -- see airspyFrameDesc.hpp.
-    buf->ensure_frame_desc(kotekan_airspy::make_input_desc(buf->frame_size / BYTES_PER_SAMPLE));
+    // Buffer carries int16 1-D samples; its descriptor is declared in config
+    // (kotekan_buffer: ndarray) and attached by the buffer factory at startup,
+    // which already checks the descriptor's byte size against frame_size.
+    // require_frame_desc just confirms config declared it. The even-sample-count
+    // constraint above is enforced separately: the descriptor cannot express it.
+    buf->require_frame_desc();
 
     freq = config.get_default<float>(unique_name, "freq", 1420) * 1e6;             // MHz
     _sample_rate = config.get_default<float>(unique_name, "sample_bw", 2.5) * 1e6; // MSPS

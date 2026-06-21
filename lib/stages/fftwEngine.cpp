@@ -32,11 +32,11 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    // Output is cfloat32 1-D regardless of input_type (we accept either
-    // int16 reals or cint16 IQ pairs upstream, so in_buf's descriptor is
-    // intentionally left for the upstream producer to assert).
-    out_buf->ensure_frame_desc(
-        kotekan_airspy::make_fengine_desc(out_buf->frame_size / sizeof(fftwf_complex)));
+    // Output is cfloat32 1-D regardless of input_type (we accept either int16
+    // reals or cint16 IQ pairs upstream, so in_buf's descriptor is intentionally
+    // left for the upstream producer to assert). out_buf's descriptor is declared
+    // in config (kotekan_buffer: ndarray); require_frame_desc confirms it.
+    out_buf->require_frame_desc();
 
     _spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 128);
 
