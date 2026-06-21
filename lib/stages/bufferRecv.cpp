@@ -551,6 +551,10 @@ void connInstance::internal_read_callback() {
                 if (metadata)
                     metadata->set_from_bytes((char*)metadata_space, buf_frame_header.metadata_size);
 
+                // TODO: instead of reconstructing the descriptor from chordMetadata
+                // here, the sender should transmit the buffer's frame descriptor over
+                // the wire and the receiver should validate its config-declared
+                // descriptor against it.
                 auto chord = std::dynamic_pointer_cast<chordMetadata>(metadata);
                 if (chord) {
                     /* new style array description */
