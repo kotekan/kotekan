@@ -33,6 +33,11 @@ std::string format_vector(const std::vector<T>& vec) {
     return buf.str();
 }
 
+// An unset (empty) Symbol has no string; serialize it as a zero-length string.
+std::string symbol_str(const Symbol& s) {
+    return s.valid() ? s.get_string() : std::string();
+}
+
 } // namespace
 
 void GenericNDArray::output_framedesc(std::ostream& os) const {
@@ -56,10 +61,10 @@ size_t GenericNDArray::serialized_payload_size() const {
     size_t n = wire::str_size(type_to_string(get_value_datatype()));
     n += sizeof(uint32_t);             // rank
     n += get_rank() * sizeof(int64_t); // extents
-    n += wire::str_size(std::string(get_quantity_name()));
+    n += wire::str_size(symbol_str(get_quantity_name()));
     n += sizeof(uint32_t);             // dimnames count
     for (const auto& dimname : get_dimnames())
-        n += wire::str_size(std::string(dimname));
+        n += wire::str_size(symbol_str(dimname));
     return n;
 }
 
@@ -69,11 +74,11 @@ void GenericNDArray::serialize_payload(char* out) const {
     out = wire::put_u32(out, static_cast<uint32_t>(extents.size()));
     for (const auto extent : extents)
         out = wire::put_i64(out, static_cast<int64_t>(extent));
-    out = wire::put_str(out, std::string(get_quantity_name()));
+    out = wire::put_str(out, symbol_str(get_quantity_name()));
     const auto dimnames = get_dimnames();
     out = wire::put_u32(out, static_cast<uint32_t>(dimnames.size()));
     for (const auto& dimname : dimnames)
-        out = wire::put_str(out, std::string(dimname));
+        out = wire::put_str(out, symbol_str(dimname));
 }
 
 std::shared_ptr<const FrameDesc> GenericNDArray::deserialize_payload(const char* bytes,
