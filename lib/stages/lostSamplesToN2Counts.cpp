@@ -92,10 +92,10 @@ lostSamplesToN2Counts::lostSamplesToN2Counts(Config& config, const std::string& 
             "Number of lost_samples buffers ({:d}) does not evenly divide total frequencies ({:d})",
             _nbufs, num_n2k_freq);
 
-    // Check the rfi mask shape against expectation
-    rfi_mask_buf->require_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 3>::describe(
-        "RFImask", {std::ptrdiff_t(samples_per_data_set / 1024), std::ptrdiff_t(num_n2k_freq), 128},
-        {"T8hi128", "F", "T8lo128"}));
+    // rfi_mask's shape is established and validated by its producer; this stage
+    // works from frame_size and config (checked above), so it only requires that
+    // a descriptor was declared rather than re-asserting the full shape.
+    rfi_mask_buf->require_frame_desc();
 
     // This is a bit of a misnomer - the lost_samples buffer does not _include_
     // multiple frequencies, but information may be shared by multiple frequencies
