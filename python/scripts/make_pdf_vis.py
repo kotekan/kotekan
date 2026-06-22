@@ -1,4 +1,4 @@
-#!/opt/anaconda/bin/python
+#!/usr/bin/env python3
 
 # Imports
 
