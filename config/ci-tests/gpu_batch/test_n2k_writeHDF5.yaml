@@ -86,6 +86,7 @@ gen_data_voltage:
     name: "E"
     array_shape: [2048, 16, 2, 64]
     dim_name: ["T", "F", "P", "D"]
+    dim_scaling: [1, 1, 1, 1]
     num_frames: buffer_depth  # Must be at least what write_n2k_correlation expects
 
 gen_data_rfi_RFImask:
@@ -96,6 +97,7 @@ gen_data_rfi_RFImask:
     name: "RFImask"
     array_shape: [2, 16, 128]
     dim_name: ["T8hi128", "F", "T8lo128"]
+    dim_scaling: [1024, 1, 8]
     num_frames: buffer_depth
     meta_time_downsample_factor: 1024
 

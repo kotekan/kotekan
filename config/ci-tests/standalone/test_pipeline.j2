@@ -281,6 +281,7 @@ gen_data_voltage:
     name: "E"
     array_shape: [ {{ samples_per_data_set }}, {{ num_local_freq }}, 2, {{ num_dishes }} ]
     dim_name: ["T", "F", "P", "D" ]
+    dim_scaling: [1, 1, 1, 1]
     num_frames: {{ frames_to_generate }}
     manual_freq_ids: {{ freq_ids_list | list }}
 
@@ -292,6 +293,7 @@ gen_data_rfi_RFImask:
     name: "RFImask"
     array_shape: [ {{ samples_per_data_set // 1024 }}, {{ num_local_freq }}, 128 ]
     dim_name: ["T8hi128", "F", "T8lo128"]
+    dim_scaling: [1024, 1, 8]
     num_frames: {{ frames_to_generate }}
     meta_time_downsample_factor: 1024
     manual_freq_ids: {{ freq_ids_list | list }}
@@ -304,6 +306,7 @@ gen_pl_mask:
     name: "pl_mask"
     array_shape: [ {{ samples_per_data_set // 128 }}, {{ num_local_freq // 4 }}, 2, {{ num_dishes // 8 }}, 8 ]
     dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
+    dim_scaling: [128, 4, 1, 8, 16]
     num_frames: {{ frames_to_generate }}
     meta_time_downsample_factor: 128  # The number of time samples represented by each coarse time index.
     manual_freq_ids: {{ freq_ids_list | list }}

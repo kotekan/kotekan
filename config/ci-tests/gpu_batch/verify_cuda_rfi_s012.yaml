@@ -89,6 +89,7 @@ gen_data_voltage:
     name: "E"
     array_shape: [1024, 8, 2, 64]
     dim_name: ["T", "F", "P", "D"]
+    dim_scaling: [1, 1, 1, 1]
     num_frames: 2*buffer_depth  # Must be at least what check_data expects
 
 gen_pl_mask:
@@ -98,6 +99,7 @@ gen_pl_mask:
     name: "pl_mask"
     array_shape: [8, 2, 2, 8, 8]    # = num_times/128, num_freq/4, 2, num_dishes/8, 8
     dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+    dim_scaling: [128, 4, 1, 8, 16]
     num_frames: 2*buffer_depth  # Must be at least what check_data expects
     meta_time_downsample_factor: 128  # The number of time samples represented by each coarse time index.
 
