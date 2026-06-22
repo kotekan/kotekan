@@ -82,19 +82,12 @@ gpuSimulateN2kPL1bitCorr::gpuSimulateN2kPL1bitCorr(Config& config, const std::st
     output_buf = get_buffer("out_buf");
     output_buf->register_producer(unique_name);
 
-    // TODO: Check input_plmask; does it have the right time scaling?
-    const auto input_plmask_frame_desc = input_plmask_buf->get_ndarray_frame_desc();
-    assert(std::string(input_plmask_frame_desc->get_dimname(0)) == "T");
-    const auto input_plmask_time_scaling = input_plmask_frame_desc->get_dimscaling(0);
-
-    /* new style array description */
-    int n_integrations = _samples_per_data_set / _sub_integration_ntime;
-    int nf = _num_local_freq;
-    int ne = _num_elements / 8;
-    int n_blocks = num_triangle_blocks(ne, _blocksize);
-    output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int32>::type, 5>(
-        "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}, {input_plmask_time_scaling, 1, 64, 8, 8});
+    // NOTE: The output frame description is allocated in `main_thread` rather
+    // than here, because it depends on the input plmask buffer's frame
+    // description. That description is set by the producing stage's
+    // constructor, and stage construction order is not guaranteed (stages are
+    // built in alphabetical order of their names), so it may not yet be
+    // available at this point.
 }
 
 gpuSimulateN2kPL1bitCorr::~gpuSimulateN2kPL1bitCorr() {}
@@ -104,6 +97,24 @@ void gpuSimulateN2kPL1bitCorr::main_thread() {
     int input_pl_frame_id = 0;
     int input_rfi_frame_id = 0;
     int output_frame_id = 0;
+
+    // Allocate the output frame description. This must happen here rather than
+    // in the constructor: it reads the input plmask buffer's frame description,
+    // which is only set once the producing stage's constructor has run. By the
+    // time any `main_thread` runs, all stage constructors have completed.
+    {
+        const auto input_plmask_frame_desc = input_plmask_buf->get_ndarray_frame_desc();
+        const auto input_plmask_time_scaling = input_plmask_frame_desc->get_dimscaling(0);
+
+        /* new style array description */
+        int n_integrations = _samples_per_data_set / _sub_integration_ntime;
+        int nf = _num_local_freq;
+        int ne = _num_elements / 8;
+        int n_blocks = num_triangle_blocks(ne, _blocksize);
+        output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int32>::type, 5>(
+            "n2k_counts", {n_integrations, nf, n_blocks, _blocksize, _blocksize},
+            {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}, {input_plmask_time_scaling, 1, 64, 8, 8});
+    }
 
     while (!stop_thread) {
         uint64_t* pl_mask =
