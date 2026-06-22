@@ -94,6 +94,7 @@ gen_fake_pl_mask:
     name: "pl_mask"
     array_shape: [ 64, 4, 2, 8, 8 ]  # = num_times/128, num_freq/4, 2, num_dishes/8, 8
     dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
+    dim_scaling: [128, 4, 1, 8, 16]
     num_frames: -1
     meta_time_downsample_factor: 128 
 
