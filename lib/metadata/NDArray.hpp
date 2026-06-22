@@ -94,24 +94,18 @@ public:
                                                     const std::vector<std::ptrdiff_t>& extents,
                                                     const std::vector<Symbol>& dimnames);
 
-    /// create an NDArray frame descriptor from a config block. Reads the
-    /// structural `value_type` and `extents` (required) and the semantic labels
-    /// `quantity_name` and `dimnames` (optional -- left unset when omitted, for
-    /// the producing stage to fill in). Extent entries may be arithmetic
-    /// expressions referencing other (scoped) config values. The data pointer is
-    /// null; the result describes shape only (e.g. for Buffer::ensure_frame_desc).
-    /// Throws std::runtime_error on invalid or inconsistent config values.
+    /// Build a frame descriptor from a config block. `value_type` and `extents`
+    /// are required; the optional labels `quantity_name` and `dimnames` are left
+    /// unset when omitted. Extents may be arithmetic expressions over other
+    /// config values. Throws on invalid or inconsistent config.
     static std::shared_ptr<GenericNDArray> from_config(const Config& config,
                                                        const std::string& location);
 
-    /// Combine two descriptors of the same buffer. The structural fields
-    /// (value_type, extents) must match. For the label fields (quantity_name,
-    /// dimnames), an unset (empty) label on `a` is filled from `b`, and labels
-    /// set on both sides must agree. Returns the completed descriptor when `a`
-    /// gained labels from `b`, or nullptr when nothing changed (so the caller can
-    /// keep its existing descriptor). Throws std::runtime_error on any structural
-    /// or label conflict. Used by Buffer::ensure_frame_desc to merge a
-    /// config-declared descriptor with the one a stage supplies.
+    /// Merge two descriptors for the same buffer. The structural fields
+    /// (value_type, extents) must match; an unset label (quantity_name,
+    /// dimnames) on `a` is filled from `b`, and labels set on both sides must
+    /// agree. Returns the merged descriptor if `a` gained labels, or nullptr if
+    /// nothing changed. Throws on any structural or label conflict.
     static std::shared_ptr<GenericNDArray> reconcile(const GenericNDArray& a,
                                                      const GenericNDArray& b);
     /// constexpr makes this an inline variable (C++17), so odr-uses (e.g.
