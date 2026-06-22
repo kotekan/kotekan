@@ -115,8 +115,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
     }
     _dim_scaling = config.get_default<std::vector<std::ptrdiff_t>>(unique_name, "dim_scaling",
                                                                    std::vector<std::ptrdiff_t>({1}));
-    if (_array_shape.size() != _dim_name.size()) {
-        throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_name' config "
+    if (_array_shape.size() != _dim_scaling.size()) {
+        throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_scaling' config "
                                     "settings must be the same length!");
     }
 
