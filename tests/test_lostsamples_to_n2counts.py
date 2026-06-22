@@ -60,6 +60,7 @@ class FakeRFIBuffer(runner.InputBuffer):
             "name": stage_name,
             "array_shape": [samples_per_data_set // 1024, num_local_freq, 128],
             "dim_name": ["T8hi128", "F", "T8lo128"],
+            "dim_scaling": [1024, 1, 8],
         }
 
         stage_config.update(**kwargs)
