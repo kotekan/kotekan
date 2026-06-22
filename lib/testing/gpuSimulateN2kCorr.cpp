@@ -106,18 +106,12 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
         std::abort();
     }
 
-    const auto input_frame_desc = input_buf->get_ndarray_frame_desc();
-    assert(std::string(input_frame_desc->get_dimname(0)) == "T");
-    const auto input_time_scaling = input_frame_desc->get_dimscaling(0);
-
     /* new style array description */
-    // number of elements = number of dishes * polarizations
-    int nt_inner = _sub_integration_ntime;
-    int nt_outer = _samples_per_data_set / nt_inner;
+    int nt_outer = _samples_per_data_set / _sub_integration_ntime;
     output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
         "n2k_correlation",
         {nt_outer, _num_local_freq, num_triangle_blocks(_num_elements, _corr_blocksize), 16, 16, 2},
-        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}, {input_time_scaling, 1, 16, 1, 1, 1});
+        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}, {_sub_integration_ntime, 1, 16, 1, 1, 1});
 }
 
 gpuSimulateN2kCorr::~gpuSimulateN2kCorr() {}

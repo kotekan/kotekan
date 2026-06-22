@@ -79,7 +79,7 @@ gen_rfi_s012:
     name: "S012"
     array_shape: [4, 4, 3, 2, 64]
     dim_name: ["Trfi", "F", "S", "P", "D"]
-    dim_scaling: [rfi_downsampling_factor, 1, 1, 1, 1]
+    dim_scaling: [256, 1, 1, 1, 1] # rfi_downsampling_factor=256
     num_frames: 2*buffer_depth  # Must be at least what check_data expects
     meta_time_downsample_factor: rfi_downsampling_factor
 
