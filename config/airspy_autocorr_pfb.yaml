@@ -1,36 +1,31 @@
 ---
 ##########################################
 #
-# airspy_autocorr.yaml
+# airspy_autocorr_pfb.yaml
 #
-# A quick-and-dirty config to demonstrate the use of the AirSpy
-# producer. It gathers data around 1420MHz, channelizes and
-# autocorrelates it, then streams to a local listener.
+# Same as airspy_autocorr.yaml (AirSpy -> F-engine -> autocorr -> viewer), but
+# the F-engine runs as a 4-tap POLYPHASE FILTER BANK instead of a straight FFT
+# (fftwEngine num_taps>1). The PFB gives flat-passband, deep-stopband channels
+# in place of the straight FFT's sinc-shaped bins (~-13 dB sidelobes, ~3.9 dB
+# scalloping) -- the spectrum should show sharper channel isolation, especially
+# around any narrowband features. num_taps: 1 here would reproduce the straight
+# FFT bit for bit.
 #
 # Author: Keith Vanderlinde
 #
 ##########################################
 type: config
-# Logging level can be one of:
-# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
-# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 
 instrument_name: airspy
 
-# The chord-branch framework builds a default ICETelescope at startup, whose
-# constructor requires num_polarizations/num_dishes even though the airspy
-# autocorr pipeline never uses the telescope. Provide a trivial 1x1 stub.
+# chord-branch framework builds a default ICETelescope needing these even though
+# the airspy pipeline never uses it; trivial 1x1 stub.
 telescope:
     name: ICETelescope
     num_polarizations: 1
     num_dishes: 1
 
-# Permit cross-origin REST access so the browser-based viewer can call
-# airspyInput's set_config / get_config / adcstat endpoints.
-# Scoped to the viewer's own origin(s) via an allowlist (validated Origin
-# reflection) rather than a wildcard. The viewer is served on :8080; add
-# whatever host you actually browse to (localhost / hostname / IP).
 rest_server:
     cors_allow_origins:
         - "http://localhost:8080"
@@ -44,11 +39,6 @@ num_elements: 1
 one: 1
 two: 2
 sizeof_float: 4
-
-# No stage in the airspy pipeline reads, writes, or passes frame metadata,
-# so the buffers below declare `metadata_pool: none` and there is no
-# metadata-pool block at all (rather than the heavyweight, CHORD-specific
-# chordMetadata pool the forward-port inherited).
 
 input_buf:
     kotekan_buffer: standard
@@ -67,7 +57,6 @@ airspy_input:
     biast_power: false
     serial: 0x744C60C821311C4F  # CHORD-feed dongle
 
-
 spectrum_output:
     integration_length: 64
     power_integration_length: 64
@@ -81,8 +70,11 @@ spectrum_output:
 
     fengine:
         kotekan_stage: fftwEngine
-        # airspyInput now produces real (RAW) int16 samples; use the real-input FFT.
+        # airspyInput produces real (RAW) int16 samples; use the real-input FFT.
         input_type: real
+        # 4-tap polyphase filter bank instead of a straight FFT.
+        num_taps: 4
+        pfb_window: hamming
         in_buf: input_buf
         out_buf: post_fengine_buf
 
@@ -106,12 +98,7 @@ spectrum_output:
         destination_protocol: TCP
         in_buf: post_corr_buf
 
-    # SpawnProcess invokes the exec line through /bin/sh -c, so $VIEWER_PYTHON
-    # expands to whichever python (with twisted+autobahn installed) the user
-    # picks. Set it to the venv that has the viewer requirements, e.g.
-    #   VIEWER_PYTHON=~/venv-kotekan/bin/python ./kotekan -c config/airspy_autocorr.yaml
     spawn_pyviewer:
         kotekan_stage: SpawnProcess
         in_buf: post_corr_buf
         exec: '${VIEWER_PYTHON:-python3} ../../python/scripts/js_viewer/livebeam_server.py'
-
