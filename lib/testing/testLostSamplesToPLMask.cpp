@@ -183,8 +183,8 @@ void testLostSamplesToPLMask::main_thread() {
             lost_samples_meta->set_time_downsampling_fpga(1);
 
             lost_samples_meta->set_coarse_freq(
-                std::vector<int>(&coarse_freq[fbin * PL_MASK_FREQS_PER_BIN],
-                                 &coarse_freq[(fbin + 1) * PL_MASK_FREQS_PER_BIN]));
+                std::vector<int>(coarse_freq.data() + fbin * PL_MASK_FREQS_PER_BIN,
+                                 coarse_freq.data() + (fbin + 1) * PL_MASK_FREQS_PER_BIN));
 
             lost_samples_meta->check_frame_desc(lost_samples_buf->get_ndarray_frame_desc());
 
