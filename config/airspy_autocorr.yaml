@@ -18,6 +18,16 @@ log_level: info
 
 instrument_name: airspy
 
+# Permit cross-origin REST access so the browser-based viewer can call
+# airspyInput's set_config / get_config / adcstat endpoints.
+# Scoped to the viewer's own origin(s) via an allowlist (validated Origin
+# reflection) rather than a wildcard. The viewer is served on :8080; add
+# whatever host you actually browse to (localhost / hostname / IP).
+rest_server:
+    cors_allow_origins:
+        - "http://localhost:8080"
+        - "http://127.0.0.1:8080"
+
 samples_per_data_set: 32768
 bytes_per_sample: 2
 buffer_depth: 10
@@ -47,7 +57,6 @@ airspy_input:
     gain_mix: 10 #0-15
     gain_if: 10  #0-15
     biast_power: false
-    autostart: true
 #    serial: 0x03A464C834658167  # uncomment & edit to pick a specific dongle
 
 
@@ -88,4 +97,13 @@ spectrum_output:
         destination_ip: "127.0.0.1"
         destination_protocol: TCP
         in_buf: post_corr_buf
+
+    # SpawnProcess invokes the exec line through /bin/sh -c, so $VIEWER_PYTHON
+    # expands to whichever python (with twisted+autobahn installed) the user
+    # picks. Set it to the venv that has the viewer requirements, e.g.
+    #   VIEWER_PYTHON=~/venv-kotekan/bin/python ./kotekan -c config/airspy_autocorr.yaml
+    spawn_pyviewer:
+        kotekan_stage: SpawnProcess
+        in_buf: post_corr_buf
+        exec: '${VIEWER_PYTHON:-python3} ../../python/scripts/js_viewer/livebeam_server.py'
 

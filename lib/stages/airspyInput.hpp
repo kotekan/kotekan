@@ -51,7 +51,6 @@
  * @par REST endpoints (registered under @c <unique_name>/)
  *  - GET  @c /get_config  — returns current gain/freq/samplerate as JSON.
  *  - GET  @c /adcstat     — triggers a one-shot ADC stats sample (mean, RMS, rail fraction).
- *  - GET  @c /restart     — stops, re-opens, and re-starts the airspy device.
  *  - POST @c /set_config  — updates @c freq, @c gain_lna, @c gain_mix, @c gain_if, or @c add_lag.
  *
  * @conf   freq         Float (default 1420.0). LO tuning frequency, in MHz.
@@ -71,8 +70,6 @@
  * @conf   serial       Long (default 0). Specific airspy serial-number to open; 0 = any.
  * @conf   airspy_file  String (default ""). Read from this file instead of a real device; for
  *                      offline testing. Ignored if @c serial is set.
- * @conf   autostart    Bool (default true). Start streaming immediately. If false, the device
- *                      is initialised but waits for a REST @c /restart to begin RX.
  *
  * @warning If incoming USB transfers ever overlap, sample ordering becomes undefined.
  *
@@ -100,7 +97,6 @@ public:
     void get_config_callback(kotekan::connectionInstance& conn);
     void set_config_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
     void adcstat_callback(kotekan::connectionInstance& conn);
-    void restart_callback(kotekan::connectionInstance& conn);
 
 private:
     /// Kotekan buffer object which will be fed.
@@ -140,8 +136,6 @@ private:
     long _airspy_sn;
     /// Optional file path to read raw samples from instead of a device.
     std::string _airspy_fn;
-    /// Whether to begin streaming immediately on startup.
-    bool _autostart;
 
     /// ADC statistics. The REST adcstat handler requests a dump and waits on
     /// @c adcstat_cv until the producer fills @c adc{rms,mean,railfrac} on the

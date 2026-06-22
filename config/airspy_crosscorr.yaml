@@ -19,6 +19,17 @@ log_level: info
 
 instrument_name: airspy
 
+# Permit cross-origin REST access so the browser-based viewer can call
+# airspyInput / lag-align set_config / get_config / adcstat /
+# cal_lag / get_correlation endpoints. Scoped to the viewer's own
+# origin(s) via an allowlist (validated Origin reflection) rather than a
+# wildcard. The viewer is served on :8080; add whatever host you actually
+# browse to (localhost / hostname / IP).
+rest_server:
+    cors_allow_origins:
+        - "http://localhost:8080"
+        - "http://127.0.0.1:8080"
+
 samples_per_data_set: 32768
 bytes_per_sample: 2
 buffer_depth: 10
@@ -45,13 +56,12 @@ input_bufB:
     num_frames: buffer_depth
     frame_size: samples_per_data_set * bytes_per_sample
 
-sample_bw: 10. #MHz, must be float
+sample_bw: 2.5 #MHz, must be float
 freq: 1422.    #MHz
-gain_lna: 4 #0-14
-gain_mix: 5 #0-15
-gain_if: 5  #0-15
+gain_lna: 14 #0-14
+gain_mix: 15 #0-15
+gain_if: 15  #0-15
 biast_power: false
-autostart: true
 
 # Disable the R820T tuner's fractional-N PLL dither for coherent multi-unit
 # operation: kills the per-restart inter-unit LO drift at fractional tunes
@@ -60,18 +70,22 @@ autostart: true
 # per-unit complex gain calibration.
 dither_disable: true
 
-# Two airspy producers. Edit the serials to match your hardware (see
-# `airspy_info` from libairspy-tools) or remove them to take whichever
-# devices the OS enumerates first.
+# Two airspy producers, pinned by serial so each stage opens its specific
+# dongle and the A/B assignment is stable across runs (without this, both
+# stages do a no-serial `airspy_open()` and whichever USB enumerates first
+# wins -- which can swap between launches). Use `airspy_info` from
+# libairspy-tools, or read the "Serial Number:" line from each stage's
+# startup log, to find each unit's serial. Comment a serial line out to
+# fall back to "whichever the OS enumerates first" for that stage.
 airspy_inputA:
     kotekan_stage: airspyInput
     out_buf: input_bufA
-#  serial: 0x03A464C834658167
+    serial: 0x50A464C82E975E47
 
 airspy_inputB:
     kotekan_stage: airspyInput
     out_buf: input_bufB
-#  serial: 0x440464C8394C614F
+#  serial: 0x________________   # paste from inputB's "Serial Number:" log line
 
 # Estimate the sample-level lag between the two streams over a window of
 # samples. Lag is exposed via REST and can be applied back to airspyInput's
@@ -144,3 +158,11 @@ correlation_output:
         destination_ip: "127.0.0.1"
         destination_protocol: TCP
         in_buf: post_corr_buf
+
+    # See the autocorr config for the rationale behind ``${VIEWER_PYTHON:-python3}``.
+    # The crosscorr viewer also wants to know about the lag-align stage so it can
+    # surface its REST endpoint as a UI control.
+    spawn_pyviewer:
+        kotekan_stage: SpawnProcess
+        in_buf: post_corr_buf
+        exec: '${VIEWER_PYTHON:-python3} ../../python/scripts/js_viewer/livebeam_server.py --lag-align-stage lag_align'
