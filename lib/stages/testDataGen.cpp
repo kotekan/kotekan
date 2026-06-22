@@ -1,35 +1,36 @@
 #include "testDataGen.hpp"
 
-#include <assert.h>             // for assert
-#include <signal.h>             // for raise, SIGINT
-#include <stdint.h>             // for uint64_t, int8_t, uint32_t, int32_t, int64_t, uint8_t
-#include <strings.h>            // for bzero
-#include <sys/time.h>           // for gettimeofday, timeval
-#include <sys/types.h>          // for uint
-#include <unistd.h>             // for usleep
-#include <json.hpp>             // for json
-#include <algorithm>            // for copy
-#include <cmath>                // for fmod
-#include <functional>           // for bind, function, _1, _2
-#include <random>               // for mt19937
-#include <stdexcept>            // for invalid_argument, runtime_error
-#include <vector>               // for vector
+#include "CHORDTelescope.hpp"  // for CHORDTelescope
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Symbol.hpp"          // for Symbol
+#include "Telescope.hpp"       // for Telescope, stream_t
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
+#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
+#include "kotekanTrackers.hpp" // for KotekanTrackers
+#include "oneHotMetadata.hpp"  // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
+#include "restServer.hpp"      // for HTTP_RESPONSE, restServer, connectionInstance
+#include "visUtil.hpp"         // for current_time, ts_to_double, StatTracker
 
-#include "CHORDTelescope.hpp"   // for CHORDTelescope
-#include "Config.hpp"           // for Config
-#include "DataType.hpp"         // for DataType, KOTEKAN_FLOAT16, float16_t
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "Symbol.hpp"           // for Symbol
-#include "Telescope.hpp"        // for Telescope, stream_t
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
-#include "kotekanLogging.hpp"   // for INFO, DEBUG, ERROR
-#include "kotekanTrackers.hpp"  // for KotekanTrackers
-#include "oneHotMetadata.hpp"   // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
-#include "restServer.hpp"       // for HTTP_RESPONSE, restServer, connectionInstance
-#include "visUtil.hpp"          // for current_time, ts_to_double, StatTracker
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>   // for copy
+#include <assert.h>    // for assert
+#include <cmath>       // for fmod
+#include <functional>  // for bind, function, _1, _2
+#include <json.hpp>    // for json
+#include <random>      // for mt19937
+#include <signal.h>    // for raise, SIGINT
+#include <stdexcept>   // for invalid_argument, runtime_error
+#include <stdint.h>    // for uint64_t, int8_t, uint32_t, int32_t, int64_t, uint8_t
+#include <strings.h>   // for bzero
+#include <sys/time.h>  // for gettimeofday, timeval
+#include <sys/types.h> // for uint
+#include <unistd.h>    // for usleep
+#include <vector>      // for vector
 
 
 using kotekan::bufferContainer;
@@ -113,8 +114,8 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_name' config "
                                     "settings must be the same length!");
     }
-    _dim_scaling = config.get_default<std::vector<std::ptrdiff_t>>(unique_name, "dim_scaling",
-                                                                   std::vector<std::ptrdiff_t>({1}));
+    _dim_scaling = config.get_default<std::vector<std::ptrdiff_t>>(
+        unique_name, "dim_scaling", std::vector<std::ptrdiff_t>({1}));
     if (_array_shape.size() != _dim_scaling.size()) {
         throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_scaling' config "
                                     "settings must be the same length!");
@@ -240,7 +241,7 @@ void testDataGen::main_thread() {
         chordmeta->set_name(_name);
         chordmeta->dims = (int)_array_shape.size();
         for (int d = 0; d < chordmeta->dims; ++d)
-            chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d], 1);
+            chordmeta->set_array_dimension(d, _array_shape[d], _dim_name[d], _dim_scaling[d]);
         chordmeta->set_strides_simple();
         // frame_desc is set only after "type" has been decoded below
 
