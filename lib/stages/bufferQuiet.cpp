@@ -135,11 +135,11 @@ void bufferQuiet::main_thread() {
                 // this just copies the shared pointer, and is only valid since
                 // a frame description must never change
             }
-            const auto in_frame_desc = in_buf->get_frame_description();
+            const auto in_frame_desc = in_buf->get_frame_desc();
             if (in_frame_desc) {
-                out_buf->set_frame_desc(in_frame_desc);
+                out_buf->require_frame_desc(in_frame_desc);
             } else {
-                assert(!out_buf->get_frame_description());
+                assert(!out_buf->get_frame_desc());
             }
 
             DEBUG("Releasing frame... in_frame_id: {:d}, in_frame_hold_ctr: {:d}, "

@@ -1,5 +1,6 @@
 #include "Config.hpp"            // for Config
 #include "DataType.hpp"          // for string_to_type, DataType
+#include "NDArray.hpp"           // for NDArray, GenericNDArray
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"            // for Symbol
@@ -31,9 +32,9 @@ class inventBFMask : public kotekan::Stage {
     const int num_dishes = config.get<int>(unique_name, "num_dishes");
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
     const int num_times = config.get<int>(unique_name, "num_times");
-    const std::string mode = config.get_default<std::string>(unique_name, "mode",
-            "all_good");
-    const std::vector<int> manual_bad_feeds = config.get_default<std::vector<int>>(unique_name, "manual_bad_feeds", {});
+    const std::string mode = config.get_default<std::string>(unique_name, "mode", "all_good");
+    const std::vector<int> manual_bad_feeds =
+        config.get_default<std::vector<int>>(unique_name, "manual_bad_feeds", {});
 
     Buffer* const buffer;
 
@@ -71,11 +72,11 @@ public:
             return;
 
         // Set metadata
-        buffer->allocate_ndarray_frame_desc<std::int8_t, 2>(
-            "bf_mask", {num_polarizations, num_dishes}, {"P", "D"});
+        buffer->require_frame_desc(kotekan::NDArray<std::int8_t, 2>::describe(
+            "bf_mask", {num_polarizations, num_dishes}, {"P", "D"}));
         buffer->allocate_new_metadata_object(frame_id);
         const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
-        meta->set_from_frame_desc(buffer->get_ndarray_frame_desc());
+        meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
         meta->set_fpga_seq_num(frame_index * num_times);
         meta->set_time_downsampling_fpga(1);
 
@@ -92,12 +93,12 @@ public:
                 else if (mode == "all_bad")
                     frame[idx] = 0; // dish is not active
                 else if (mode == "auto") {
-                    if (tel.cast<CHORDTelescope>().get_dish_at_idx(dish).type == DishType::ArrayDish)
+                    if (tel.cast<CHORDTelescope>().get_dish_at_idx(dish).type
+                        == DishType::ArrayDish)
                         frame[idx] = 1;
                     else
                         frame[idx] = 0;
-                }
-                else 
+                } else
                     frame[idx] = 1;
             }
 

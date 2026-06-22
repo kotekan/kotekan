@@ -74,7 +74,7 @@ private:
 
     /// Create a frame desc for the output buffer. Default creates a frame desc
     /// containing [beam, freq, subfreq, element, ReIm] axes.
-    virtual void set_frame_desc(Buffer* buf);
+    virtual void ensure_frame_desc(Buffer* buf);
 
     std::vector<Buffer*> gain_buffers;
     Buffer* in_mask_buf;

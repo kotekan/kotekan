@@ -1,5 +1,6 @@
 #include "Config.hpp"            // for Config
 #include "DataType.hpp"          // for string_to_type, DataType
+#include "NDArray.hpp"           // for NDArray, GenericNDArray
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"            // for Symbol
@@ -65,14 +66,14 @@ public:
                 return;
 
             // Set metadata
-            buffer->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 5>(
+            buffer->require_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 5>::describe(
                 "pl_mask",
                 {div_noremainder(num_times, 2 * 64), div_noremainder(num_frequencies, 4),
                  num_polarizations, div_noremainder(num_dishes, 8), 64 / 8},
-                {"T2hi64", "F4", "P", "D8", "T2lo64"});
+                {"T2hi64", "F4", "P", "D8", "T2lo64"}));
             buffer->allocate_new_metadata_object(frame_id);
             const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
-            meta->set_from_frame_desc(buffer->get_ndarray_frame_desc());
+            meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
             meta->set_fpga_seq_num(frame_index * num_times);
             meta->set_time_downsampling_fpga(2 * 64);
 

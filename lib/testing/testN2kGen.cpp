@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType
+#include "NDArray.hpp"         // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -149,14 +150,14 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
         count_blocksize * count_blocksize * count_num_blocks * num_local_freq * num_integrations;
 
     // allocate frame descriptors
-    corr_buf->allocate_ndarray_frame_desc(
+    corr_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "n2k_correlation",
         {num_integrations, num_local_freq, corr_num_blocks, corr_blocksize, corr_blocksize, 2},
-        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
-    count_buf->allocate_ndarray_frame_desc(
+        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}));
+    count_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "n2k_counts",
         {num_integrations, num_local_freq, count_num_blocks, count_blocksize, count_blocksize},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}));
 }
 
 std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID frame_id) {
@@ -289,14 +290,14 @@ void testN2kGen::main_thread() {
             get_new_metadata(count_buf, count_frame_id);
 
         // fill metadata
-        corr_meta->set_from_frame_desc(corr_buf->get_ndarray_frame_desc());
-        count_meta->set_from_frame_desc(count_buf->get_ndarray_frame_desc());
+        corr_meta->set_from_frame_desc(corr_buf->get_frame_desc<kotekan::GenericNDArray>());
+        count_meta->set_from_frame_desc(count_buf->get_frame_desc<kotekan::GenericNDArray>());
         set_shared_metadata(corr_meta, seq_num);
         set_shared_metadata(count_meta, seq_num);
 
         // check frame descriptors match metadata
-        corr_meta->check_frame_desc(corr_buf->get_ndarray_frame_desc());
-        count_meta->check_frame_desc(count_buf->get_ndarray_frame_desc());
+        corr_meta->check_frame_desc(corr_buf->get_frame_desc<kotekan::GenericNDArray>());
+        count_meta->check_frame_desc(count_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // If we're not repeating, or we're in the first num_frames, generate data
         if (repeat_count <= 0 || (num_frames > 0 && num_frames_generated < num_frames)) {

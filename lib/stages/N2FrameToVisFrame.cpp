@@ -50,10 +50,7 @@ n2FrameToVisFrame::n2FrameToVisFrame(Config& config, const std::string& unique_n
     // N2FrameDesc's are constructed on buffer creation (before stages) so this object will
     // exist with the correct data.
     const std::shared_ptr<const kotekan::N2FrameDesc> n2_frame_desc =
-        std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(n2_buf->get_frame_description());
-    if (!n2_frame_desc) {
-        FATAL_ERROR("n2_buf does not have N2 Frame Descriptor");
-    }
+        n2_buf->require_frame_desc<kotekan::N2FrameDesc>();
     uint32_t n2_ne = n2_frame_desc->get_num_elements();
     uint32_t n2_np = n2_frame_desc->get_num_products();
     uint32_t n2_nev = n2_frame_desc->get_num_ev();

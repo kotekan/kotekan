@@ -28,33 +28,38 @@ n2k_counts_triangle_num_blocks: n2k_counts_linear_num_blocks * (n2k_counts_linea
 n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_counts_triangle_num_blocks
 
 host_n2k_correlation_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
-    frame_size: sizeof_int32 * num_components * n2k_correlation_triangle_size * num_frequencies * n2k_num_subintegrations
+    value_type: int32
+    extents: [n2k_num_subintegrations, num_frequencies, n2k_correlation_triangle_num_blocks, n2k_correlation_blocksize, n2k_correlation_blocksize, 2]
     metadata_pool: main_pool
 
 host_n2k_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
-    frame_size: sizeof_int32 * n2k_counts_triangle_size * num_frequencies * n2k_num_subintegrations
+    value_type: int32
+    extents: [n2k_num_subintegrations, num_frequencies, n2k_counts_triangle_num_blocks, n2k_counts_blocksize, n2k_counts_blocksize]
     metadata_pool: main_pool
 
 host_n2k_plcounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
-    frame_size: sizeof_int32 * num_frequencies * n2k_num_subintegrations
+    value_type: int32
+    extents: [n2k_num_subintegrations, num_frequencies]
     metadata_pool: main_pool
 
 host_n2k_rficounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
-    frame_size: sizeof_int32 * num_frequencies * n2k_num_subintegrations
+    value_type: int32
+    extents: [n2k_num_subintegrations, num_frequencies]
     metadata_pool: main_pool
 
 host_n2k_rfiframemask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
-    frame_size: sizeof_uint8 * num_frequencies * n2k_num_subintegrations
+    value_type: uint8
+    extents: [n2k_num_subintegrations, num_frequencies]
     metadata_pool: main_pool
 
 host_n2_vis_buffer:

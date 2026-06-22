@@ -25,63 +25,73 @@ frb_chunk_size: 256
 # Phases
 
 host_frb1_U1_phase_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U1_max_num_channels * 1 * num_polarizations
+    value_type: float16
+    extents: [upchan_U1_max_num_channels * 1, num_polarizations, num_dishes_y, num_dishes_x, num_components]
     metadata_pool: main_pool
 
 host_frb1_U2_phase_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U2_max_num_channels * 2 * num_polarizations
+    value_type: float16
+    extents: [upchan_U2_max_num_channels * 2, num_polarizations, num_dishes_y, num_dishes_x, num_components]
     metadata_pool: main_pool
 
 host_frb1_U4_phase_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U4_max_num_channels * 4 * num_polarizations
+    value_type: float16
+    extents: [upchan_U4_max_num_channels * 4, num_polarizations, num_dishes_y, num_dishes_x, num_components]
     metadata_pool: main_pool
 
 host_frb1_U8_phase_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U8_max_num_channels * 8 * num_polarizations
+    value_type: float16
+    extents: [upchan_U8_max_num_channels * 8, num_polarizations, num_dishes_y, num_dishes_x, num_components]
     metadata_pool: main_pool
 
 host_frb1_U16_phase_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U16_max_num_channels * 16 * num_polarizations
+    value_type: float16
+    extents: [upchan_U16_max_num_channels * 16, num_polarizations, num_dishes_y, num_dishes_x, num_components]
     metadata_pool: main_pool
 
 host_frb1_U32_phase_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U32_max_num_channels * 32 * num_polarizations
+    value_type: float16
+    extents: [upchan_U32_max_num_channels * 32, num_polarizations, num_dishes_y, num_dishes_x, num_components]
     metadata_pool: main_pool
 
 host_frb1_U64_phase_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U64_max_num_channels * 64 * num_polarizations
+    value_type: float16
+    extents: [upchan_U64_max_num_channels * 64, num_polarizations, num_dishes_y, num_dishes_x, num_components]
     metadata_pool: main_pool
 
 host_frb2_beam_positions_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float32 * 2 * frb2_num_beams
+    value_type: float32
+    extents: [frb2_num_beams, 2]
     metadata_pool: main_pool
 
 host_frb2_beam_ids_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_uint64 * frb2_num_beams
+    value_type: uint64
+    extents: [frb2_num_beams]
     metadata_pool: main_pool
 
 host_frb2_weights_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * (2 * num_dishes_y) * (2 * num_dishes_x) * (frb2_num_beams_x * frb2_num_beams_y) * (upchan_all_max_output_channel - upchan_all_min_output_channel)
+    value_type: float16
+    extents: [upchan_all_max_output_channel - upchan_all_min_output_channel, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P]
     metadata_pool: main_pool
 
 # Beams

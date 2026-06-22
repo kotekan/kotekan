@@ -20,6 +20,7 @@
 #include <utility>                // for pair
 
 #include "Config.hpp"             // for Config
+#include "NDArray.hpp"            // for GenericNDArray, Config
 #include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"             // for Symbol
 #include "buffer.hpp"             // for Buffer, buffer_free, buffer_malloc
@@ -550,7 +551,10 @@ void connInstance::internal_read_callback() {
                 if (metadata)
                     metadata->set_from_bytes((char*)metadata_space, buf_frame_header.metadata_size);
 
-                // TODO: actuall transfer the NDArray information
+                // TODO: instead of reconstructing the descriptor from chordMetadata
+                // here, the sender should transmit the buffer's frame descriptor over
+                // the wire and the receiver should validate its config-declared
+                // descriptor against it.
                 auto chord = std::dynamic_pointer_cast<chordMetadata>(metadata);
                 if (chord) {
                     /* new style array description */
@@ -562,10 +566,14 @@ void connInstance::internal_read_callback() {
                                         strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
                     }
 
-                    buf->allocate_ndarray_frame_desc(chord->type, chord->get_name(), dimensions,
-                                                     dimnames);
+                    // The frame descriptor is discovered from the received frame,
+                    // so ensure_frame_desc: attach it when the receive buffer is
+                    // undeclared (e.g. `standard`), or validate the received shape
+                    // against the buffer's declared descriptor when it has one.
+                    buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                        chord->type, chord->get_name(), dimensions, dimnames));
                     /* test that things are consistent */
-                    chord->check_frame_desc(buf->get_ndarray_frame_desc());
+                    chord->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
                 }
 
                 buf->mark_frame_full(producer_name, frame_id);

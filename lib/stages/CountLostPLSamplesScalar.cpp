@@ -8,6 +8,7 @@
 #include "Config.hpp"           // for Config
 #include "DataType.hpp"         // for uint1x8_t
 #include "N2Util.hpp"           // for frameID, modulo
+#include "NDArray.hpp"          // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"           // for Buffer
 #include "bufferContainer.hpp"  // for bufferContainer
@@ -136,14 +137,12 @@ CountLostPLSamplesScalar::CountLostPLSamplesScalar(Config& config, const std::st
                     "scalar in elements.");
     }
 
-    // Make frame desc for produced buffer (this also checks the size)
-    in_buf->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 5>(
-        "pl_mask",
-        {div_noremainder(_samples_per_data_set, 128), (_num_local_freq + 3) / 4, _num_polarizations,
-         div_noremainder(_num_dishes, 8), 64 / 8},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"});
-    out_buf->allocate_ndarray_frame_desc<int32_t, 2>(
-        "pl_lost_counts_scalar", {_num_integrations, _num_local_freq}, {"Tc", "F"});
+    // in_buf (pl_mask) and out_buf (pl_lost_counts_scalar) shapes are validated
+    // by the pl_mask producer and the N2Accumulate consumer respectively; this
+    // stage reads/writes them as flat arrays (indices computed from config, not
+    // the declared extents), so it only requires that descriptors were declared.
+    in_buf->require_frame_desc();
+    out_buf->require_frame_desc();
 }
 
 CountLostPLSamplesScalar::~CountLostPLSamplesScalar() {}
@@ -276,14 +275,14 @@ void CountLostPLSamplesScalar::main_thread() {
         meta_out->deepCopy(meta_in);
 
         // Set NDArray fields
-        meta_out->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+        meta_out->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set non-NDArray things.
         meta_out->set_time_downsampling_fpga(
             div_noremainder(meta_in->get_time_downsampling_fpga(), 128) * _sub_integration_ntime);
 
         // test that things are consistent
-        meta_out->check_frame_desc(out_buf->get_ndarray_frame_desc());
+        meta_out->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         in_buf->mark_frame_empty(unique_name, in_frame_id++);
         out_buf->mark_frame_full(unique_name, out_frame_id++);

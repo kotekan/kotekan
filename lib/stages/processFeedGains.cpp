@@ -80,8 +80,13 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
                     out_buf_size, out_buf->frame_size);
     }
 
-    // set the output buffer frame description
-    set_frame_desc(out_buf);
+    // Set (originate) the output buffer frame description. out_buf is declared
+    // `standard` here: this gains subsystem (chime_upgrade_test_gains, DPDK-only)
+    // hasn't been migrated to ndarray, so the stage attaches the descriptor itself
+    // via ensure_frame_desc. This works equally if out_buf is later declared
+    // ndarray, in which case ensure_frame_desc validates against the config
+    // descriptor instead of attaching one.
+    ensure_frame_desc(out_buf);
 
     // Allocate permanent buffers to hold the loaded gains in memory. These will only
     // be updated whenever the gains are updated, and get repeatedly copied
@@ -92,12 +97,12 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
 
 processFeedGains::~processFeedGains() {}
 
-void processFeedGains::set_frame_desc(Buffer* buf) {
-    buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::float32>, 5>(
+void processFeedGains::ensure_frame_desc(Buffer* buf) {
+    buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float32>, 5>::describe(
         "processed_gain",
         {static_cast<ptrdiff_t>(num_beams), static_cast<ptrdiff_t>(num_local_freq),
          static_cast<ptrdiff_t>(upchan_factor), static_cast<ptrdiff_t>(num_elements), (ptrdiff_t)2},
-        {"R", "F", "U", "E", "ReIm"});
+        {"R", "F", "U", "E", "ReIm"}));
 }
 
 void processFeedGains::copy_upchannelize_f(const float* src_f, float* dst_f, size_t fid) {
@@ -188,10 +193,10 @@ void processFeedGains::main_thread() {
         // Set metadata from the frame desc, and other metadata
         out_buf->allocate_new_metadata_object(out_buf_frame_id);
         auto meta = get_chord_metadata(out_buf, out_buf_frame_id);
-        meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+        meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
         meta->set_name("processed_gain");
         // Verify that frame desc and metadata match
-        meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
+        meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // copy from permanent buffer to output buffer
         // NB: this needs to happen every time, since the mask and gain buffers

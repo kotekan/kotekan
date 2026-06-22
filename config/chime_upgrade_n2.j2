@@ -149,14 +149,16 @@ vis_pool:
 
 host_voltage_buffers:
   num_frames: baseband_buffer_depth
-  frame_size: samples_per_data_set * num_elements * num_freq_host_buf
+  value_type: int4x2_swapped_withoffset
+  extents: [1, samples_per_data_set * num_elements * num_freq_host_buf / 2048, 2048]
+  dimnames: [F, T, E]
   metadata_pool: main_pool
   use_hugepages: true
   numa_0:
     numa_node: 0
 {%- for id in range(num_freq_gpu_buf) %}
     host_voltage_buffer_{{ id }}:
-      kotekan_buffer: standard
+      kotekan_buffer: ndarray
 {%- endfor %}
 host_voltage_ringbuffer:
   kotekan_buffer: ring
@@ -165,9 +167,10 @@ host_voltage_ringbuffer:
 
 {%- for id in range(num_freq_gpu_buf // 4) %}
 lost_samples_buffer_{{ id }}:
-  kotekan_buffer: standard
+  kotekan_buffer: ndarray
   num_frames: 2 * host_buffer_depth
-  frame_size: samples_per_data_set
+  value_type: uint8
+  extents: [samples_per_data_set]
   metadata_pool: main_pool
 {%- endfor %}
 
@@ -336,15 +339,18 @@ baseband_merge:
 # Buffers
 
 host_bf_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_buffer_depth
-    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_freq_gpu_buf / 4) * (samples_per_data_set / 2 / 64)
+    value_type: uint1x8
+    # produced by lostSamplesToPLMask (also asserted by CountLostPLSamplesScalar consumer)
+    extents: [samples_per_data_set / 2 / 64, num_freq_gpu_buf / 4, num_polarizations, num_dishes / 8, 64 / 8]
     metadata_pool: main_pool
 host_pl_mask_ringbuffer:
     kotekan_buffer: ring
@@ -453,10 +459,12 @@ set_scatter_indices:
 
 # Buffers
 
+# Produced by parseReorderDefault (set_scatter_indices): int32 "scatter_indices".
 host_scatter_indices_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int32 * num_dishes * num_polarizations
+    value_type: int32
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_xposed_voltage_ringbuffer:
@@ -538,12 +546,12 @@ host_rfi_S012tilde_ringbuffer:
     metadata_pool: main_pool
 
 host_rfi_SKtilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: gpu_buffer_depth
-    frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
-    type: float32
-    dimnames: ["Trfi", "F", "S"]
-    shape: [rfi_num_times, num_freq_gpu_buf, 3]
+    value_type: float32
+    # GPU producer cudaRFISKtilde rfi_SKtilde (leading extent = per-frame rfi_num_times);
+    # also validated by RfiFrameMask in_buf as {Trfi, F, SK}.
+    extents: [rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
 host_rfi_SKtilde_ringbuffer:
     kotekan_buffer: ring
@@ -555,12 +563,12 @@ host_rfi_SKtilde_ringbuffer:
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: gpu_buffer_depth
-    frame_size: num_freq_gpu_buf * samples_per_data_set / 8
-    type: uint1x8
-    dimnames: ["T8hi128", "F", "T8lo128"]
-    shape: [samples_per_data_set / 8 / 128, num_freq_gpu_buf, 128]
+    value_type: uint1x8
+    # GPU producer cudaRFISKtilde rfi_RFImask (leading = per-frame samples/(8*128));
+    # also validated by RfiMaskSum/lostSamplesToN2Counts/cudaCorrelator as RFImask.
+    extents: [samples_per_data_set / 8 / 128, num_freq_gpu_buf, 128]
     metadata_pool: main_pool
 host_rfi_RFImask_ringbuffer:
     kotekan_buffer: ring
@@ -572,12 +580,11 @@ host_rfi_RFImask_ringbuffer:
     metadata_pool: main_pool
 
 host_rfi_SKbar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: gpu_buffer_depth
-    frame_size: sizeof_float32 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times_bar
-    type: float32
-    dimnames: ["Trfi", "F", "S", "P", "D"]
-    shape: [rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizaions, num_dishes]
+    value_type: float32
+    # GPU producer cudaRFISKbar rfi_SKbar (leading = per-frame rfi_num_times_bar).
+    extents: [rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 host_rfi_SKbar_ringbuffer:
     kotekan_buffer: ring
@@ -589,12 +596,11 @@ host_rfi_SKbar_ringbuffer:
     metadata_pool: main_pool
 
 host_rfi_SKbartilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: gpu_buffer_depth
-    frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times_bar
-    type: float32
-    dimnames: ["Trfi", "F", "S"]
-    shape: [rfi_num_times_bar, num_freq_gpu_buf, 3]
+    value_type: float32
+    # GPU producer cudaRFISKbar rfi_SKbartilde (leading = per-frame rfi_num_times_bar).
+    extents: [rfi_num_times_bar, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
 host_rfi_SKbartilde_ringbuffer:
     kotekan_buffer: ring
@@ -607,9 +613,11 @@ host_rfi_SKbartilde_ringbuffer:
 
 # The mask for second stage RFI excision.
 host_rfi_RFIframemask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: gpu_buffer_depth
-    frame_size: (samples_per_data_set / n2k_sub_integration_ntime) * num_local_freq
+    value_type: uint8
+    # produced by RfiFrameMask (out_buf): {num_integrations, num_local_freq}
+    extents: [samples_per_data_set / n2k_sub_integration_ntime, num_local_freq]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
@@ -836,28 +844,41 @@ n2k_counts_triangle_num_blocks: n2k_counts_linear_num_blocks * (n2k_counts_linea
 n2k_counts_triangle_size: n2k_counts_blocksize * n2k_counts_blocksize * n2k_counts_triangle_num_blocks
 
 host_n2k_correlation_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: gpu_buffer_depth
     use_hugepages: true
-    frame_size: sizeof_int32 * num_components * n2k_correlation_triangle_size * num_freq_gpu_buf * n2k_num_subintegrations
+    value_type: int32
+    # produced by cudaCorrelator (n2k_correlation): NDArrayBuffer<int32,6>
+    # cudaCorrelator uses (num_elements+1)/16 = (2048+1)/16 = 128 blocks, same as
+    # CPU num_elements/16 = 128 (num_elements=2048 is a multiple of 16; no triangle divergence).
+    extents: [n2k_num_subintegrations, num_freq_gpu_buf, n2k_correlation_triangle_num_blocks, n2k_correlation_blocksize, n2k_correlation_blocksize, num_components]
     metadata_pool: main_pool
 
 host_n2k_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: gpu_buffer_depth
-    frame_size: sizeof_int32 * n2k_counts_triangle_size * num_freq_gpu_buf * n2k_num_subintegrations
+    value_type: int32
+    # produced by lostSamplesToN2Counts (n2k_counts): NDArrayBuffer<int32,5>
+    # ntiles = (num_elements/64)*(1+num_elements/64)/2 = 32*33/2 = 528, matches
+    # config n2k_counts_triangle_num_blocks (= (n2k_counts_num_elements+1)/8 triangle) since
+    # num_elements=2048 makes both = 528 (no divergence).
+    extents: [n2k_num_subintegrations, num_freq_gpu_buf, n2k_counts_triangle_num_blocks, n2k_counts_blocksize, n2k_counts_blocksize]
     metadata_pool: main_pool
 
 host_n2k_RFIcounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: gpu_buffer_depth
-    frame_size: sizeof_int32 * num_freq_gpu_buf * n2k_num_subintegrations
+    value_type: int32
+    # produced by RfiMaskSum (out_buf): {num_integrations, num_local_freq}
+    extents: [samples_per_data_set / n2k_sub_integration_ntime, num_freq_gpu_buf]
     metadata_pool: main_pool
 
 host_n2k_PLcounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: gpu_buffer_depth
-    frame_size: sizeof_int32 * num_freq_gpu_buf * n2k_num_subintegrations
+    value_type: int32
+    # produced by CountLostPLSamplesScalar (out_buf): {num_integrations, num_local_freq}
+    extents: [samples_per_data_set / n2k_sub_integration_ntime, num_freq_gpu_buf]
     metadata_pool: main_pool
 
 # Stages

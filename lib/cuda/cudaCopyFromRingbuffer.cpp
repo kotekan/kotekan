@@ -10,6 +10,7 @@
 #include <stdexcept>           // for runtime_error
 #include <tuple>               // for tuple, make_tuple
 
+#include "NDArray.hpp"         // for GenericNDArray
 #include "Symbol.hpp"          // for Symbol
 #include "chordMetadata.hpp"   // for chordMetadata
 #include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
@@ -175,10 +176,10 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
             dimnames.push_back(
                 std::string(out_meta->dim_name[d],
                             strnlen(out_meta->dim_name[d], sizeof(out_meta->dim_name[d]))));
-        out_buffer->allocate_ndarray_frame_desc(out_meta->type, out_meta->get_name(), extents,
-                                                dimnames);
+        out_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
+            out_meta->type, out_meta->get_name(), extents, dimnames));
         /* test that things are consistent */
-        out_meta->check_frame_desc(out_buffer->get_ndarray_frame_desc());
+        out_meta->check_frame_desc(out_buffer->get_frame_desc<kotekan::GenericNDArray>());
 
     } else {
         int out_id = gpu_frame_id % _gpu_buffer_depth;
