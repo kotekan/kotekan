@@ -1240,26 +1240,23 @@ FRB:
     frb_num_output_times: 256
     frb_chunk_size: 256
 
+    # The GPU-local (not global) channel index range for each upchannelization factor
+
+    # actual = 16, scaled = 256
     factor_upchan_out: 16
     upchan_U16_max_num_channels: 16 # probably should be {{ num_freq_gpu_buf }}
     upchan_U16_min_channel: 0
     upchan_U16_max_channel: 16 # probably should be {{ num_freq_gpu_buf }}
-    # TODO: not sure why not this, given that FEngine simulator uses one of its upchan sizes
-    # # for now, since only U16 is used
-    # upchan_all_min_output_channel: upchan_U16_min_channel
-    # upchan_all_max_output_channel: upchan_U16_max_channel
-    # the way it's used below this must actually be the upchannelized number of frequencies
-    upchan_all_min_output_channel: upchan_U16_min_channel * factor_upchan_out
-    upchan_all_max_output_channel: upchan_U16_max_channel * factor_upchan_out
-    upchan_all_max_num_output_channels: 256 # why 256? 16 inputs x 16 upchan_factor ?
+    upchan_U16_min_output_channel: 0
+    upchan_U16_max_output_channel: (upchan_U16_max_channel - upchan_U16_min_channel) * 16
+    upchan_U16_max_num_output_channels: upchan_U16_max_output_channel - upchan_U16_min_output_channel
 
     # TODO: remove
-    frb_num_beams_P: 2 * num_dishes_y
-    frb_num_beams_Q: 2 * num_dishes_x
+    frb1_num_beams_P: 2 * num_dishes_y
+    frb1_num_beams_Q: 2 * num_dishes_x
 
-    # x/y are "fast"/"slow" here
-    {%- set frb2_num_beams_x = 256 %}
-    {%- set frb2_num_beams_y = 4 %}
+    {%- set frb2_num_beams_x = 4 %}
+    {%- set frb2_num_beams_y = 256 %}
     {%- set frb2_num_beams = frb2_num_beams_x * frb2_num_beams_y %}
     frb2_num_beams_x: {{ frb2_num_beams_x }}
     frb2_num_beams_y: {{ frb2_num_beams_y }}
@@ -1307,7 +1304,7 @@ FRB:
     host_frb2_weights_buffer:
         kotekan_buffer: standard
         num_frames: 1
-        frame_size: sizeof_float16 * (2 * num_dishes_y) * (2 * num_dishes_x) * (frb2_num_beams_x * frb2_num_beams_y) * (upchan_all_max_output_channel - upchan_all_min_output_channel)
+        frame_size: sizeof_float16 * (2 * num_dishes_y) * (2 * num_dishes_x) * (frb2_num_beams_x * frb2_num_beams_y) * upchan_U16_max_num_output_channels
         metadata_pool: main_pool
 
     # (Intermediate) Beams
@@ -1315,30 +1312,31 @@ FRB:
     host_frb1_beams_buffer:
         kotekan_buffer: standard
         num_frames: host_buffer_depth
-        frame_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+        frame_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
         metadata_pool: main_pool
     host_frb1_beams_ringbuffer:
         kotekan_buffer: ring
-        ring_buffer_size: gpu_buffer_depth * sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+        num_frames: gpu_buffer_depth
+        ring_buffer_size: gpu_buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
         metadata_pool: main_pool
 
     host_frb2_beams_buffer:
         kotekan_buffer: standard
         num_frames: host_buffer_depth
-        frame_size: sizeof_float16 * frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times
+        frame_size: sizeof_float16 * frb2_num_beams * upchan_U16_max_num_output_channels * frb_num_output_times
         metadata_pool: main_pool
 
     host_frb3_beams_buffer:
         kotekan_buffer: standard
         num_frames: host_buffer_depth
-        frame_size: sizeof_uint8 * frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times
+        frame_size: sizeof_uint8 * frb2_num_beams * upchan_U16_max_num_output_channels * frb_num_output_times
         metadata_pool: main_pool
 
     host_frb3_beams_offsetscale_buffer:
         kotekan_buffer: standard
         num_frames: host_buffer_depth
         # the output is quantized in chunks of `frb_chunk_size`
-        frame_size: sizeof_float16 * 2 * frb2_num_beams * (upchan_all_max_output_channel - upchan_all_min_output_channel) * frb_num_output_times / frb_chunk_size
+        frame_size: sizeof_float16 * 2 * frb2_num_beams * upchan_U16_max_num_output_channels * frb_num_output_times / frb_chunk_size
         metadata_pool: main_pool
 
     # Stages
@@ -1448,13 +1446,11 @@ FRB:
 
     run_set_frb1_U16_phase:
         kotekan_stage: setFRB1Phase
-        # for beamformer: x -> faster axis (more dishes, contiguous in memory), y -> slower axis
-        num_dishes_x: 256         # transposed dish layout, cannot use variables
-        num_dishes_y: 4
         upchan_factor: factor_upchan_out
         # TODO: replace the stage with one that actually takes the gains into account
         # TODO: need to worry about over / underflow
         frb1_input_scale: 1.0 / 32
+        frb1_swap_MN: true
         upchan_min_channel: upchan_U16_min_channel
         upchan_max_channel: upchan_U16_max_channel
         upchan_max_num_channels: upchan_U16_max_num_channels
@@ -1483,7 +1479,6 @@ FRB:
               voltage_name: upchan_U16_voltage
               frb_phase_name: frb1_U16_phase
               frb_beamgrid_name: frb1_beams
-            - name: cudaSyncOutput
 
     # FRB 2 and 3
 
@@ -1563,11 +1558,10 @@ FRB:
         {% set achromatic_beam_angles_EW = [ -0.4, 0.0, 0.4, 0.8 ] %}
         {% set m_pi = 3.14159265358979 %}
         values:
-{%- for ns in range(frb2_num_beams_x) %}
-{%- for ew in range(frb2_num_beams_y) %}
-          # fast axis first
-          - {{ achromatic_beam_angles_NS[ns] / 180 * m_pi }}
+{%- for ns in range(frb2_num_beams_y) %}
+{%- for ew in range(frb2_num_beams_x) %}
           - {{ achromatic_beam_angles_EW[ew] / 180 * m_pi }}
+          - {{ achromatic_beam_angles_NS[ns] / 180 * m_pi }}
 {%- endfor %}
 {%- endfor %}
         name: frb2_beam_positions
@@ -1580,10 +1574,11 @@ FRB:
 ###
         kotekan_stage: calcFRB2Weights
         cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
-        frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
+        frb2_num_frequencies: upchan_U16_max_num_output_channels
         frb2_beam_positions: host_frb2_beam_positions_buffer
-        frb1_swap_xy: true # yes, this is used by FRB 2
+        frb1_swap_MN: true # yes, this is used by FRB 2
         frb2_weights: host_frb2_weights_buffer
+        num_threads: 32
 ###
 #{#
         kotekan_stage: hdf5FileRead
@@ -1614,12 +1609,13 @@ FRB:
               do_once: true
               in_buf: host_frb2_weights_buffer
               gpu_mem: frb2_weights_buffer
+            - name: cudaSyncInput
             - name: cudaFRBBeamReformer
-              frb1_max_num_frequencies: upchan_all_max_num_output_channels
+              frb1_max_num_frequencies: upchan_U16_max_num_output_channels
               frb1_max_num_times: buffer_depth * frb_num_output_times
-              frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
-              frb1_num_beams_P: frb_num_beams_P
-              frb1_num_beams_Q: frb_num_beams_Q
+              frb2_num_frequencies: upchan_U16_max_num_output_channels
+              #frb1_num_beams_P: frb1_num_beams_P
+              #frb1_num_beams_Q: frb1_num_beams_Q
               # frb2_num_beams: frb2_num_beams
               frb2_num_times: frb_num_output_times
               in_signal: host_frb1_beams_ringbuffer
@@ -1629,7 +1625,7 @@ FRB:
             - name: cudaQuantize8 # TODOL use "CHIME" variant
               # the output is quantized in chunks of `frb_chunk_size`
               num_beams: frb2_num_beams
-              num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
+              num_frequencies: upchan_U16_max_num_output_channels
               num_times: frb_num_output_times
               gpu_mem_input: frb2_beams
               gpu_mem_output: frb3_beams
@@ -1639,7 +1635,7 @@ FRB:
               # TODO: Don't do this in production
               host_signal: host_frb1_beams_ringbuffer
               gpu_mem_input: frb1_beams_buffer
-              output_size: sizeof_float16 * frb_num_beams_P * frb_num_beams_Q * upchan_all_max_num_output_channels * frb_num_output_times
+              output_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
               ring_buffer_size: gpu_buffer_depth * output_size
               out_buf: host_frb1_beams_buffer
             - name: cudaOutputData
