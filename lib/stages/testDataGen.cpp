@@ -113,6 +113,12 @@ testDataGen::testDataGen(Config& config, const std::string& unique_name,
         throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_name' config "
                                     "settings must be the same length!");
     }
+    _dim_scaling = config.get_default<std::vector<std::ptrdiff_t>>(unique_name, "dim_scaling",
+                                                                   std::vector<std::ptrdiff_t>({1}));
+    if (_array_shape.size() != _dim_name.size()) {
+        throw std::invalid_argument("testDataGen: 'array_shape' and 'dim_name' config "
+                                    "settings must be the same length!");
+    }
 
     samples_per_data_set = config.get_default<int>(unique_name, "samples_per_data_set", 32768);
     stream_id.id = config.get_default<uint64_t>(unique_name, "stream_id", 0);
@@ -357,7 +363,7 @@ void testDataGen::main_thread() {
         /* new style array description */
         const std::vector<std::ptrdiff_t> extents(_array_shape.begin(), _array_shape.end());
         const std::vector<kotekan::Symbol> dimnames(_dim_name.begin(), _dim_name.end());
-        const std::vector<std::ptrdiff_t> dimscalings(dimnames.size(), 1);
+        const std::vector<std::ptrdiff_t> dimscalings(_dim_scaling.begin(), _dim_scaling.end());
 
         buf->allocate_ndarray_frame_desc(chordmeta->type, _name, extents, dimnames, dimscalings);
         /* test that things are consistent */
