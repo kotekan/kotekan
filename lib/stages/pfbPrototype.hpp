@@ -42,10 +42,12 @@ enum class Window {
 
 /**
  * Design a length-(num_chan*num_taps) lowpass prototype: a sinc with cutoff at
- * the channel spacing (pi/num_chan) times the chosen window, normalized to unit
- * sum so a DC input maps to unit gain in channel 0. `num_taps` (P) is the
- * polyphase depth -- taps per channel; P=1 degenerates toward a plain FFT,
- * P>=4 gives good isolation. `kaiser_beta` is used only for Window::Kaiser.
+ * the channel spacing (pi/num_chan) times the chosen window, normalized so the
+ * taps sum to num_chan -- i.e. each polyphase branch has unit gain, so the
+ * channelizer's passband gain (and output power) matches a straight FFT
+ * regardless of num_taps. `num_taps` (P) is the polyphase depth -- taps per
+ * channel; P=1 degenerates toward a plain FFT, P>=4 gives good isolation.
+ * `kaiser_beta` is used only for Window::Kaiser.
  */
 std::vector<float> pfb_prototype(int num_chan, int num_taps, Window window = Window::Hamming,
                                  double kaiser_beta = 8.0);

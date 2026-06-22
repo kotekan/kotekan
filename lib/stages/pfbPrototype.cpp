@@ -59,10 +59,15 @@ std::vector<float> pfb_prototype(int num_chan, int num_taps, Window window, doub
         h[r] = static_cast<float>(v);
         sum += v;
     }
-    // Normalize to unit DC gain (sum of taps == 1).
-    const double inv = (sum != 0.0) ? 1.0 / sum : 1.0;
+    // Normalize so the sum of taps == num_chan, i.e. each polyphase branch has
+    // unit gain. This matches a straight FFT (a rectangular window with every
+    // sample weighted 1), so the channelizer's passband gain -- and the output
+    // power level -- is the same whether num_taps is 1 (straight FFT) or >1
+    // (PFB). Normalizing to unit *total* sum instead would suppress the output
+    // by a factor of num_chan in amplitude (num_chan^2 in power).
+    const double scale = (sum != 0.0) ? num_chan / sum : 1.0;
     for (int r = 0; r < L; ++r)
-        h[r] = static_cast<float>(h[r] * inv);
+        h[r] = static_cast<float>(h[r] * scale);
     return h;
 }
 

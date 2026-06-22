@@ -37,14 +37,16 @@ std::vector<double> channel_response(const std::vector<float>& proto, int num_ta
             const double ph = -2.0 * M_PI * k * p / N;
             x += v[p] * cf(std::cos(ph), std::sin(ph));
         }
-        mag[k] = std::abs(x);
+        mag[k] = std::abs(x) / N; // per-branch normalize -> physical channel gain
     }
     return mag;
 }
 
-// The straight-FFT channelizer = a length-N rectangular prototype (P=1).
+// The straight-FFT channelizer = a length-N rectangular window (P=1), each
+// sample weighted 1 (sum == N, the same per-branch-unit-gain convention as the
+// PFB prototype).
 std::vector<float> straight_fft_prototype() {
-    return std::vector<float>(N, 1.0f / N);
+    return std::vector<float>(N, 1.0f);
 }
 
 // Largest channel magnitude at least `guard` bins from the tone (the leakage).
@@ -76,12 +78,14 @@ BOOST_AUTO_TEST_CASE(pfb_push_orders_delay_line_newest_first) {
         BOOST_CHECK_CLOSE(hist[j].real(), static_cast<float>(11 - j), 1e-4);
 }
 
-BOOST_AUTO_TEST_CASE(prototype_has_unit_dc_gain) {
+BOOST_AUTO_TEST_CASE(prototype_taps_sum_to_num_chan) {
+    // Per-branch unit gain -> total sum == num_chan, so the channelizer matches
+    // a straight FFT's passband gain (and output power level).
     auto h = pfb_prototype(N, P, Window::Hamming);
     double sum = 0.0;
     for (float v : h)
         sum += v;
-    BOOST_CHECK_CLOSE(sum, 1.0, 1e-3);
+    BOOST_CHECK_CLOSE(sum, (double)N, 1e-3);
 }
 
 BOOST_AUTO_TEST_CASE(prototype_is_symmetric_linear_phase) {
