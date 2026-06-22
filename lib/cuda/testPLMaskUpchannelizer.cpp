@@ -74,9 +74,8 @@ public:
                                         cudaMemcpyHostToDevice));
             CHECK_CUDA_ERROR(cudaMemset(d_out, 0, out_count * sizeof(uint64_t)));
 
-            cudaPLMaskUpchannelizer::launch_upchannelize_pl_mask(
-                d_out, d_in, num_spectators, num_times_64, size_in, pos_in, size_out, pos_out, U,
-                /*stream=*/0);
+            launch_upchannelize_pl_mask(d_out, d_in, num_spectators, num_times_64, size_in, pos_in,
+                                        size_out, pos_out, U, /*stream=*/0);
             CHECK_CUDA_ERROR(cudaDeviceSynchronize());
 
             std::vector<uint64_t> out_gpu(out_count, 0);
@@ -87,9 +86,8 @@ public:
 
             // CPU reference.
             std::vector<uint64_t> out_cpu(out_count, 0);
-            cudaPLMaskUpchannelizer::cpu_upchannelize_pl_mask(out_cpu.data(), h_in.data(),
-                                                              num_spectators, num_times_64, size_in,
-                                                              pos_in, size_out, pos_out, U);
+            cpu_upchannelize_pl_mask(out_cpu.data(), h_in.data(), num_spectators, num_times_64,
+                                     size_in, pos_in, size_out, pos_out, U);
 
             // Compare exactly the physical output rows that were written.
             const ptrdiff_t out_mask = size_out - 1;

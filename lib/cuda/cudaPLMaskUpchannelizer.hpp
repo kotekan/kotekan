@@ -14,7 +14,8 @@
 #include <cstdint>
 #include <cuda_runtime.h>
 
-namespace cudaPLMaskUpchannelizer {
+// These are free functions (not in a namespace) so the `cudaPLMaskUpchannelizer` cudaCommand class
+// can use that name; this mirrors the gpu_/cpu_ pairing in cudaQuantizeKernel8.hpp.
 
 // Upchannelize the expanded PL mask by a factor `U`.
 //
@@ -52,7 +53,5 @@ void cpu_upchannelize_pl_mask(std::uint64_t* pl_mask_exp_U, const std::uint64_t*
                               std::ptrdiff_t ringbuf_size_in_64, std::ptrdiff_t ringbuf_pos_in_64,
                               std::ptrdiff_t ringbuf_size_out_64, std::ptrdiff_t ringbuf_pos_out_64,
                               int U);
-
-} // namespace cudaPLMaskUpchannelizer
 
 #endif // CUDA_PL_MASK_UPCHANNELIZER_HPP

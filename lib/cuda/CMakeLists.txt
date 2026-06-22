@@ -32,6 +32,7 @@ add_library(
     chordMVPSetup.cpp
     cudaPLMaskAccumulator.cpp
     cudaPLMaskExpander.cpp
+    cudaPLMaskUpchannelizer.cpp
     cudaPLMaskUpchannelizer.cu
     testPLMaskUpchannelizer.cpp
     cudaPL1bitCorrelator.cpp

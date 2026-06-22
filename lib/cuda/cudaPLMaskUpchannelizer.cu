@@ -9,10 +9,14 @@
 #include <cstdint>
 #include <cuda_runtime.h>
 
-namespace cudaPLMaskUpchannelizer {
+// Free functions (no namespace) so the cudaPLMaskUpchannelizer cudaCommand class can use that name;
+// mirrors the gpu_/cpu_ pairing in cudaQuantizeKernel8.cu.
 
 ////////////////////////////////////////////////////////////////////////////////
 // Helpers
+
+// Internal to this translation unit.
+namespace {
 
 // AND-reduce each contiguous group of `U` bits within a 64-bit word.
 //
@@ -21,12 +25,14 @@ namespace cudaPLMaskUpchannelizer {
 // [g*U, g*U+U)) sits at bit position `g*U`. `U` must be a power of two; only the
 // `U < 64` case is used (see the kernel).
 template<int U>
-__device__ static inline std::uint64_t and_downsample_word(std::uint64_t w) {
+__device__ inline std::uint64_t and_downsample_word(std::uint64_t w) {
 #pragma unroll
     for (int sh = 1; sh < U; sh <<= 1)
         w &= w >> sh;
     return w;
 }
+
+} // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 // Kernel
@@ -275,5 +281,3 @@ void cpu_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
         }
     }
 }
-
-} // namespace cudaPLMaskUpchannelizer
