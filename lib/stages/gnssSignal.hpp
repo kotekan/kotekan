@@ -96,12 +96,33 @@ inline constexpr SignalDescriptor GPS_L2C_CL = {
     /*time_multiplexed=*/true, /*tdm_phase=*/1, /*time_assisted=*/true, 1, 32,  // CL on odd
 };
 
+/// GPS L5 in-phase (1176.45 MHz) -- the *data* component (CNAV): 10230 chips at
+/// 10.23 Mcps (1 ms), with a 10-chip Neuman-Hofman overlay (NH10, 10 ms).
+/// ReplicaSource: gpsL5Code (XA x per-PRN-shifted XB).
+inline constexpr SignalDescriptor GPS_L5_I = {
+    "GPS_L5_I", 1176.45e6, 10.23e6, 10230, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/false, /*nav_symbol_s=*/20e-3, /*secondary_length=*/10,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
+};
+
+/// GPS L5 quadrature (1176.45 MHz) -- the dataless *pilot*: same 1 ms primary
+/// code (different XB advance) with a 20-chip Neuman-Hofman overlay (NH20,
+/// 20 ms). Best L5 target for peeling (fully known modulation).
+inline constexpr SignalDescriptor GPS_L5_Q = {
+    "GPS_L5_Q", 1176.45e6, 10.23e6, 10230, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/20,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
-/// pilot (CL) component.
+/// pilot (CL) component. Likewise L5 splits into I5 (data) and Q5 (pilot).
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
-    for (const SignalDescriptor* s : {&GPS_L1CA, &GPS_L2C_CM, &GPS_L2C_CL})
+    for (const SignalDescriptor* s :
+         {&GPS_L1CA, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q})
         if (name == s->name)
             return s;
     return nullptr;

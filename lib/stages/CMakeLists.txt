@@ -45,6 +45,7 @@ add_library(
     SimpleCrosscorr.cpp
     gpsCACode.cpp
     gpsL2CCode.cpp
+    gpsL5Code.cpp
     GnssRecordCollector.cpp
     SpawnProcess.cpp
     freqSplit.cpp
