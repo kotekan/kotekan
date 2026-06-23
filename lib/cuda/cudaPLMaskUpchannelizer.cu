@@ -37,11 +37,22 @@ __device__ inline std::uint64_t and_downsample_word(std::uint64_t w) {
 ////////////////////////////////////////////////////////////////////////////////
 // Kernel
 
-// Upchannelize the expanded PL mask by a factor `U`.
+// Upchannelize the expanded PL mask by a factor `U`, over a frequency sub-range.
 //
-// Array layouts:
-//     uint64 pl_mask_exp  [ringbuf_size_in_64] [num_spectators]   (input)
-//     uint64 pl_mask_exp_U[ringbuf_size_out_64][num_spectators]   (output)
+// Array layouts (each `uint64` packs 64 consecutive time bits; rows are frequency-major):
+//     uint64 pl_mask_exp  [ringbuf_size_in_64] [num_frequencies_in] [num_elements]   (input)
+//     uint64 pl_mask_exp_U[ringbuf_size_out_64][num_frequencies_out][num_elements]   (output)
+// This kernel reads input frequency channels [Fmin, Fmax) and writes the output channels
+// [0, Fmax-Fmin); the output buffer may over-allocate the frequency axis (num_frequencies_out >=
+// Fmax-Fmin), so the unwritten output channels are left untouched. Since rows are frequency-major,
+// the read/written regions are *contiguous* inner sub-ranges, so the kernel needs only an input base
+// offset and the two per-row strides:
+//     n_inner   = (Fmax - Fmin)     * num_elements   (inner positions processed)
+//     in_stride = num_frequencies_in  * num_elements (input per-time_64-row stride)
+//     in_base   = Fmin              * num_elements   (input inner offset)
+//     out_stride= num_frequencies_out * num_elements (output per-time_64-row stride)
+// `s` runs over [0, n_inner): input word `pl_mask_exp[row*in_stride + in_base + s]`, output word
+// `pl_mask_exp_U[row*out_stride + s]`.
 //
 // Each array is addressed bit-wise along time. The time index is split into two
 // parts: the low six bits (time % 64) live within the `uint64` array elements,
@@ -65,15 +76,17 @@ __device__ inline std::uint64_t and_downsample_word(std::uint64_t w) {
 // Reading the (M-1)*U future bits past the consumed range is safe -- those
 // elements are guaranteed readable (they wrap within the input ring).
 //
-// Parallelization: each thread handles one spectator `s` (the inner, fast index,
-// so consecutive threads touch consecutive addresses -> fully coalesced) and a
-// contiguous run of `N` output words. Producing N words at once amortizes the
-// (M-1)*U stencil overhang: it is re-read once per N-word run rather than once
-// per output word, driving the read amplification to ~1.
+// Parallelization: each thread handles one inner position `s` (the fast index, so consecutive
+// threads touch consecutive addresses -> fully coalesced) and a contiguous run of `N` output
+// words. Producing N words at once amortizes the (M-1)*U stencil overhang: it is re-read once
+// per N-word run rather than once per output word, driving the read amplification to ~1.
 template<int M, int U, int N>
 __global__ void upchannelize_pl_mask(std::uint64_t* __restrict__ const pl_mask_exp_U,
                                      const std::uint64_t* __restrict__ const pl_mask_exp,
-                                     const std::ptrdiff_t num_spectators,
+                                     const std::ptrdiff_t n_inner,
+                                     const std::ptrdiff_t in_stride,
+                                     const std::ptrdiff_t in_base,
+                                     const std::ptrdiff_t out_stride,
                                      const std::ptrdiff_t num_times_64,
                                      const std::ptrdiff_t ringbuf_size_in_64,
                                      const std::ptrdiff_t ringbuf_pos_in_64,
@@ -83,9 +96,9 @@ __global__ void upchannelize_pl_mask(std::uint64_t* __restrict__ const pl_mask_e
     static_assert(U >= 2 && (U & (U - 1)) == 0, "U must be a power of two >= 2");
     static_assert(N >= 1, "N (output words per thread) must be positive");
 
-    // Spectator handled by this thread (inner/fast index -> coalesced accesses).
+    // Inner position handled by this thread (fast index -> coalesced accesses).
     const std::ptrdiff_t s = std::ptrdiff_t(blockIdx.x) * blockDim.x + threadIdx.x;
-    if (s >= num_spectators)
+    if (s >= n_inner)
         return;
 
     // Independent input/output ring geometries (sizes are powers of two).
@@ -122,7 +135,7 @@ __global__ void upchannelize_pl_mask(std::uint64_t* __restrict__ const pl_mask_e
             out_word |= outbit << out_bit;
             if (++out_bit == 64) {
                 const std::ptrdiff_t phys = (ringbuf_pos_out_64 + T0 + out_row) & out_mask;
-                pl_mask_exp_U[phys * num_spectators + s] = out_word;
+                pl_mask_exp_U[phys * out_stride + s] = out_word;
                 out_word = 0;
                 out_bit = 0;
                 ++out_row;
@@ -138,7 +151,7 @@ __global__ void upchannelize_pl_mask(std::uint64_t* __restrict__ const pl_mask_e
         std::ptrdiff_t r = r_lo;
         while (n < n_abits) {
             const std::ptrdiff_t phys = (ringbuf_pos_in_64 + r) & in_mask;
-            const std::uint64_t w = and_downsample_word<U>(pl_mask_exp[phys * num_spectators + s]);
+            const std::uint64_t w = and_downsample_word<U>(pl_mask_exp[phys * in_stride + in_base + s]);
             const int take = groups_per_word < n_abits - n ? groups_per_word : n_abits - n;
             for (int g = 0; g < take; ++g)
                 push_abit((w >> (g * U)) & std::uint64_t(1));
@@ -154,7 +167,7 @@ __global__ void upchannelize_pl_mask(std::uint64_t* __restrict__ const pl_mask_e
 #pragma unroll
             for (int j = 0; j < words_per_group; ++j) {
                 const std::ptrdiff_t phys = (ringbuf_pos_in_64 + r) & in_mask;
-                acc &= pl_mask_exp[phys * num_spectators + s];
+                acc &= pl_mask_exp[phys * in_stride + in_base + s];
                 ++r;
             }
             push_abit(acc == ~std::uint64_t(0) ? std::uint64_t(1) : std::uint64_t(0));
@@ -167,8 +180,10 @@ __global__ void upchannelize_pl_mask(std::uint64_t* __restrict__ const pl_mask_e
 
 void launch_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
                                  const std::uint64_t* const pl_mask_exp,
-                                 const std::ptrdiff_t num_spectators,
-                                 const std::ptrdiff_t num_times_64,
+                                 const std::ptrdiff_t num_elements,
+                                 const std::ptrdiff_t num_frequencies_in,
+                                 const std::ptrdiff_t num_frequencies_out, const int Fmin,
+                                 const int Fmax, const std::ptrdiff_t num_times_64,
                                  const std::ptrdiff_t ringbuf_size_in_64,
                                  const std::ptrdiff_t ringbuf_pos_in_64,
                                  const std::ptrdiff_t ringbuf_size_out_64,
@@ -176,7 +191,9 @@ void launch_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
                                  const cudaStream_t stream) {
     assert(pl_mask_exp_U);
     assert(pl_mask_exp);
-    assert(num_spectators > 0);
+    assert(num_elements > 0);
+    assert(0 <= Fmin && Fmin <= Fmax && Fmax <= num_frequencies_in);
+    assert(Fmax - Fmin <= num_frequencies_out); // written channels must fit the output buffer
     assert(num_times_64 > 0 && num_times_64 % U == 0);
     // Both ring buffer sizes must be powers of two.
     assert(ringbuf_size_in_64 > 0 && (ringbuf_size_in_64 & (ringbuf_size_in_64 - 1)) == 0);
@@ -189,17 +206,25 @@ void launch_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
     constexpr int N = 256;
     constexpr int threads_x = 256;
 
+    // Read input channels [Fmin, Fmax) (contiguous inner sub-range, frequency-major rows); write the
+    // output channels [0, Fmax-Fmin). The output buffer may over-allocate frequencies, so its row
+    // stride uses num_frequencies_out (>= Fmax-Fmin), not n_inner.
+    const std::ptrdiff_t n_inner = std::ptrdiff_t(Fmax - Fmin) * num_elements;
+    const std::ptrdiff_t in_stride = num_frequencies_in * num_elements;
+    const std::ptrdiff_t in_base = std::ptrdiff_t(Fmin) * num_elements;
+    const std::ptrdiff_t out_stride = num_frequencies_out * num_elements;
+
     const std::ptrdiff_t num_out_words = num_times_64 / U;
-    if (num_out_words <= 0)
+    if (num_out_words <= 0 || n_inner <= 0)
         return;
 
     const dim3 nthreads(threads_x, 1, 1);
-    const dim3 nblocks((num_spectators + threads_x - 1) / threads_x, (num_out_words + N - 1) / N, 1);
+    const dim3 nblocks((n_inner + threads_x - 1) / threads_x, (num_out_words + N - 1) / N, 1);
 
 #define LAUNCH_UPCHAN_PL_MASK(UU)                                                                  \
     upchannelize_pl_mask<M, (UU), N><<<nblocks, nthreads, 0, stream>>>(                            \
-        pl_mask_exp_U, pl_mask_exp, num_spectators, num_times_64, ringbuf_size_in_64,              \
-        ringbuf_pos_in_64, ringbuf_size_out_64, ringbuf_pos_out_64)
+        pl_mask_exp_U, pl_mask_exp, n_inner, in_stride, in_base, out_stride, num_times_64,         \
+        ringbuf_size_in_64, ringbuf_pos_in_64, ringbuf_size_out_64, ringbuf_pos_out_64)
 
     switch (U) {
         case 2:
@@ -235,13 +260,19 @@ void launch_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
 
 void cpu_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
                               const std::uint64_t* const pl_mask_exp,
-                              const std::ptrdiff_t num_spectators, const std::ptrdiff_t num_times_64,
+                              const std::ptrdiff_t num_elements,
+                              const std::ptrdiff_t num_frequencies_in,
+                              const std::ptrdiff_t num_frequencies_out, const int Fmin,
+                              const int Fmax, const std::ptrdiff_t num_times_64,
                               const std::ptrdiff_t ringbuf_size_in_64,
                               const std::ptrdiff_t ringbuf_pos_in_64,
                               const std::ptrdiff_t ringbuf_size_out_64,
                               const std::ptrdiff_t ringbuf_pos_out_64, const int U) {
     assert(pl_mask_exp_U);
     assert(pl_mask_exp);
+    assert(num_elements > 0);
+    assert(0 <= Fmin && Fmin <= Fmax && Fmax <= num_frequencies_in);
+    assert(Fmax - Fmin <= num_frequencies_out);
     // Both ring buffer sizes must be powers of two; num_times_64 must be a multiple of U (matches
     // the GPU kernel contract).
     assert(ringbuf_size_in_64 > 0 && (ringbuf_size_in_64 & (ringbuf_size_in_64 - 1)) == 0);
@@ -252,21 +283,29 @@ void cpu_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
 
     constexpr int M = 4; // PFB taps
 
+    // Read input channels [Fmin, Fmax) (contiguous inner sub-range); write output channels
+    // [0, Fmax-Fmin). The output buffer may over-allocate frequencies, so its row stride uses
+    // num_frequencies_out. See the kernel for the layout.
+    const std::ptrdiff_t n_inner = std::ptrdiff_t(Fmax - Fmin) * num_elements;
+    const std::ptrdiff_t in_stride = num_frequencies_in * num_elements;
+    const std::ptrdiff_t in_base = std::ptrdiff_t(Fmin) * num_elements;
+    const std::ptrdiff_t out_stride = num_frequencies_out * num_elements;
+
     const std::ptrdiff_t num_out_words = num_times_64 / U;  // output uint64 rows produced
     const std::ptrdiff_t in_mask = ringbuf_size_in_64 - 1;  // power-of-two wrap masks
     const std::ptrdiff_t out_mask = ringbuf_size_out_64 - 1;
 
-    // Read input bit `t` (logical time) for spectator `s`, with ring wrap.
+    // Read input bit `t` (logical time) for inner position `s`, with ring wrap.
     const auto in_bit = [&](const std::ptrdiff_t t, const std::ptrdiff_t s) -> std::uint64_t {
         const std::ptrdiff_t r = t >> 6; // logical input row = t / 64
         const int b = int(t & 63);       // bit within the word = t % 64
         const std::ptrdiff_t phys = (ringbuf_pos_in_64 + r) & in_mask;
-        return (pl_mask_exp[phys * num_spectators + s] >> b) & std::uint64_t(1);
+        return (pl_mask_exp[phys * in_stride + in_base + s] >> b) & std::uint64_t(1);
     };
 
     for (std::ptrdiff_t o = 0; o < num_out_words; ++o) {
         const std::ptrdiff_t phys_out = (ringbuf_pos_out_64 + o) & out_mask;
-        for (std::ptrdiff_t s = 0; s < num_spectators; ++s) {
+        for (std::ptrdiff_t s = 0; s < n_inner; ++s) {
             std::uint64_t out_word = 0;
             for (int j = 0; j < 64; ++j) {
                 const std::ptrdiff_t tbar = o * 64 + j;
@@ -277,7 +316,7 @@ void cpu_upchannelize_pl_mask(std::uint64_t* const pl_mask_exp_U,
                     bit &= in_bit(t, s);
                 out_word |= bit << j;
             }
-            pl_mask_exp_U[phys_out * num_spectators + s] = out_word;
+            pl_mask_exp_U[phys_out * out_stride + s] = out_word;
         }
     }
 }

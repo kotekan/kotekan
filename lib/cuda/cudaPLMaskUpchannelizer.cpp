@@ -35,7 +35,8 @@ using kotekan::round_down;
  * Propagates the (already expanded) PL mask onto the upchannelized time grid. An upchannelized
  * sample depends on `M*U` consecutive input samples (M = PFB taps = 4, U = upchannelization
  * factor), so an output sample is valid only if all of them are valid -- a logical AND that also
- * downsamples the time axis by `U`. The frequency layout is unchanged.
+ * downsamples the time axis by `U`. Only input frequency channels [Fmin, Fmax) are processed; the
+ * result is written to the output's channels [0, Fmax-Fmin).
  *
  * @par GPU Memory
  * @gpu_mem Input expanded PL mask
@@ -52,16 +53,20 @@ using kotekan::round_down;
  *   @gpu_mem_type      @c uint1x8
  *   @gpu_mem_dim_name  [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
  *   @gpu_mem_shape     [@c buffer_depth * num_times / (64 * upchannelization_factor)]
- *                      [@c num_frequencies][@c num_polarizations][@c num_dishes / 8][@c 64 / 8]
+ *                      [@c num_frequencies_out][@c num_polarizations][@c num_dishes / 8][@c 64 / 8]
  *   @gpu_mem_metadata  @c chordMetadata
- * @conf  buffer_depth                       Int.  The number of GPU frames used for pipelining.
- * @conf  num_times                          Int.  Number of time samples per frame (input cadence).
- * @conf  num_frequencies                    Int.  Number of frequencies handled by this node.
- * @conf  num_polarizations                  Int.  Number of polarizations (2).
- * @conf  num_dishes                         Int.  Number of dishes.
- * @conf  upchannelization_factor            Int.  Time downsampling factor U (power of two).
- * @conf  pl_expanded_mask_name              String.  Base name for the input pl_mask buffers.
- * @conf  pl_upchannelized_expanded_mask_name  String.  Base name for the output pl_mask buffers.
+ * @conf  buffer_depth                         Int.  The number of GPU frames used for pipelining.
+ * @conf  num_times                            Int.  Number of time samples per frame (input cadence).
+ * @conf  num_frequencies                      Int.  Number of (input) frequencies on this node.
+ * @conf  num_frequencies_out                  Int.  Output frequency count (total available; the
+ *                                                   buffer may over-allocate, only Fmax-Fmin used).
+ * @conf  num_polarizations                    Int.  Number of polarizations (2).
+ * @conf  num_dishes                           Int.  Number of dishes.
+ * @conf  upchannelization_factor              Int.  Time downsampling factor U (power of two).
+ * @conf  Fmin                                 Int.  First input coarse channel to process.
+ * @conf  Fmax                                 Int.  One past the last input coarse channel.
+ * @conf  expanded_pl_mask_name                String.  Base name for the input pl_mask buffers.
+ * @conf  upchannelized_expanded_pl_mask_name  String.  Base name for the output pl_mask buffers.
  */
 class cudaPLMaskUpchannelizer : public cudaCommand {
 public:
@@ -82,15 +87,20 @@ private:
     // Parameters
     const int buffer_depth;
     const int num_times;
-    const int num_frequencies;
+    const int num_frequencies;     // input frequency count
+    const int num_frequencies_out; // output frequency count (total available; over-allocated)
     const int num_polarizations;
     const int num_dishes;
     const int upchannelization_factor;
+    // Input coarse-channel range [Fmin, Fmax) to process; the output is written densely to channels
+    // [0, Fmax-Fmin).
+    const int Fmin;
+    const int Fmax;
     const bool poison_buffers;
 
     // Kotekan buffer names
-    const std::string pl_expanded_mask_name;
-    const std::string pl_upchannelized_expanded_mask_name;
+    const std::string expanded_pl_mask_name;
+    const std::string upchannelized_expanded_pl_mask_name;
 
     // Buffers
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_expanded_mask;
@@ -110,28 +120,40 @@ cudaPLMaskUpchannelizer::cudaPLMaskUpchannelizer(kotekan::Config& config,
     buffer_depth(config.get<int>(unique_name, "buffer_depth")),
     num_times(config.get<int>(unique_name, "num_times")),
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
+    num_frequencies_out(config.get<int>(unique_name, "num_frequencies_out")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     upchannelization_factor(config.get<int>(unique_name, "upchannelization_factor")),
+    Fmin(config.get<int>(unique_name, "Fmin")),
+    Fmax(config.get<int>(unique_name, "Fmax")),
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
-    pl_expanded_mask_name(config.get<std::string>(unique_name, "pl_expanded_mask_name")),
-    pl_upchannelized_expanded_mask_name(
-        config.get<std::string>(unique_name, "pl_upchannelized_expanded_mask_name")),
-    // Buffers
-    pl_expanded_mask(pl_expanded_mask_name, "pl_mask_exp",
+    expanded_pl_mask_name(config.get<std::string>(unique_name, "expanded_pl_mask_name")),
+    upchannelized_expanded_pl_mask_name(
+        config.get<std::string>(unique_name, "upchannelized_expanded_pl_mask_name")),
+    // Buffers. The output keeps the same elements; its frequency dimension is the (possibly
+    // over-allocated) num_frequencies_out, of which only [0, Fmax-Fmin) is written.
+    pl_expanded_mask(expanded_pl_mask_name, "pl_mask_exp",
                      std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 64),
                                                    num_frequencies, num_polarizations,
                                                    div_noremainder(num_dishes, 8), 64 / 8},
                      std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, *this),
     pl_upchannelized_expanded_mask(
-        pl_upchannelized_expanded_mask_name, "pl_mask_exp",
+        upchannelized_expanded_pl_mask_name, "pl_mask_exp",
         std::array<std::ptrdiff_t, 5>{
             buffer_depth * div_noremainder(num_times, 64 * upchannelization_factor),
-            num_frequencies, num_polarizations, div_noremainder(num_dishes, 8), 64 / 8},
+            num_frequencies_out, num_polarizations, div_noremainder(num_dishes, 8), 64 / 8},
         std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, *this)
 //
 {
+    if (!(0 <= Fmin && Fmin <= Fmax && Fmax <= num_frequencies))
+        FATAL_ERROR("Invalid channel range: require 0 <= Fmin ({:d}) <= Fmax ({:d}) <= "
+                    "num_frequencies ({:d})",
+                    Fmin, Fmax, num_frequencies);
+    if (Fmax - Fmin > num_frequencies_out)
+        FATAL_ERROR("Output buffer too small: Fmax-Fmin ({:d}) > num_frequencies_out ({:d})",
+                    Fmax - Fmin, num_frequencies_out);
+
     // The kernel wraps ring indices with a power-of-two bitmask, so both ring sizes (the slowest,
     // "Thi64" dimension) must be powers of two.
     const std::ptrdiff_t in_size = pl_expanded_mask.get_ndarray().extent(0);
@@ -214,15 +236,16 @@ cudaEvent_t cudaPLMaskUpchannelizer::execute(cudaPipelineState& /*pipestate*/,
     // Number of input rows to consume (excludes the look-ahead); the kernel produces
     // num_times_64 / U output rows.
     const std::ptrdiff_t num_times_64 = pl_expanded_mask.get_read_claimed().size();
-    // Inner (fast) dimension as `uint64` elements: F * P * (D/8). Each such element packs the 64
-    // "Tlo64" time bits.
-    const std::ptrdiff_t num_spectators =
-        std::ptrdiff_t(num_frequencies) * num_polarizations * div_noremainder(num_dishes, 8);
+    // Inner (fast) dimension as `uint64` elements: P * (D/8). Each such element packs the 64 "Tlo64"
+    // time bits; the frequency axis (read range [Fmin, Fmax)) is handled separately.
+    const std::ptrdiff_t num_elements =
+        std::ptrdiff_t(num_polarizations) * div_noremainder(num_dishes, 8);
 
     launch_upchannelize_pl_mask(
         reinterpret_cast<std::uint64_t*>(out_memory),
-        reinterpret_cast<const std::uint64_t*>(in_memory), num_spectators, num_times_64, size_in,
-        pos_in, size_out, pos_out, upchannelization_factor, device.getStream(cuda_stream_id));
+        reinterpret_cast<const std::uint64_t*>(in_memory), num_elements, num_frequencies,
+        num_frequencies_out, Fmin, Fmax, num_times_64, size_in, pos_in, size_out, pos_out,
+        upchannelization_factor, device.getStream(cuda_stream_id));
 
     return record_end_event();
 }

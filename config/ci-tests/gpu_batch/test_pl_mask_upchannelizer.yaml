@@ -14,3 +14,5 @@ num_dishes: 512
 
 test_pl_mask_upchannelizer:
     kotekan_stage: testPLMaskUpchannelizer
+    # The CPU reference is intentionally slow; give the sweep room to finish in debug builds.
+    join_timeout: 240
