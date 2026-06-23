@@ -88,6 +88,18 @@ host_upchan_U32_gain_buffer:
     frame_size: sizeof_float16 * upchan_U32_max_num_channels * 32
     metadata_pool: main_pool
 
+# Packet loss masks
+
+host_upchan_U32_expanded_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U32_max_num_channels * (num_times / 64 / 32)
+    metadata_pool: main_pool
+host_upchan_U32_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U32_max_num_channels * (num_times / 64 / 32)
+    metadata_pool: main_pool
+
 # Voltages
 
 host_upchan_U32_voltage_buffer:
@@ -113,6 +125,23 @@ run_set_upchan_U32_gain:
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     ]
     upchan_gain_buffer: host_upchan_U32_gain_buffer
+
+run_upchan_pl_U32:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        out_buffers:
+            host_upchan_U32_expanded_pl_mask_ringbuffer: host_upchan_U32_expanded_pl_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskUpchannelizer
+          expanded_pl_mask_name: pl_expanded_mask
+          upchannelized_expanded_pl_mask_name: upchan_U32_expanded_pl_mask
+          upchannelization_factor: 32
+          num_frequencies_out: upchan_U32_max_num_channels
+          Fmin: upchan_U32_min_channel
+          Fmax: upchan_U32_max_channel
 
 run_upchan_U32:
     gpu_0:
