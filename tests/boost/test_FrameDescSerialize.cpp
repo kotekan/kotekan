@@ -4,6 +4,7 @@
 #include "FrameDesc.hpp"   // for FrameDesc, wire::put_*
 #include "N2FrameDesc.hpp" // for N2FrameDesc
 #include "N2Layout.hpp"    // for N2Layout
+#include "N2Util.hpp"      // for N2::prod_ctype
 #include "NDArray.hpp"     // for GenericNDArray
 #include "Symbol.hpp"      // for Symbol
 
@@ -80,5 +81,49 @@ BOOST_AUTO_TEST_CASE(deserialize_rejects_bad_value_type) {
     p = wire::put_str(p, ""); // quantity_name
     p = wire::put_u32(p, 1);  // dimnames count
     p = wire::put_str(p, ""); // dimname
+    BOOST_CHECK_THROW(FrameDesc::deserialize(bytes.data(), p - bytes.data()), std::exception);
+}
+
+BOOST_AUTO_TEST_CASE(deserialize_rejects_duplicate_dimnames) {
+    // Hand-build an ndarray payload whose two axis labels collide.
+    std::vector<char> bytes(96);
+    char* p = bytes.data();
+    const uint32_t tag = static_cast<uint32_t>(FrameDesc::WireType::generic_ndarray);
+    std::memcpy(p, &tag, sizeof(tag));
+    p += sizeof(tag);
+    p = wire::put_str(p, "float32");
+    p = wire::put_u32(p, 2);   // rank
+    p = wire::put_i64(p, 4);   // extent 0
+    p = wire::put_i64(p, 8);   // extent 1
+    p = wire::put_str(p, "");  // quantity_name
+    p = wire::put_u32(p, 2);   // dimnames count
+    p = wire::put_str(p, "F"); // dimname 0
+    p = wire::put_str(p, "F"); // dimname 1 (duplicate)
+    BOOST_CHECK_THROW(FrameDesc::deserialize(bytes.data(), p - bytes.data()), std::exception);
+}
+
+BOOST_AUTO_TEST_CASE(n2_round_trip_general_subset) {
+    // GeneralSubset carries an explicit product_list over the wire.
+    std::vector<N2::prod_ctype> products = {{0, 1}, {0, 2}, {3, 5}};
+    N2FrameDesc desc(8, 2, static_cast<uint32_t>(products.size()), N2Layout::GeneralSubset,
+                     products);
+    auto back = round_trip(desc);
+    BOOST_REQUIRE(back);
+    BOOST_CHECK(*back == desc);
+}
+
+BOOST_AUTO_TEST_CASE(deserialize_rejects_inconsistent_n2_num_products) {
+    // FullUpperTri with num_elements=4 implies 10 products; a wire num_products that
+    // disagrees must be rejected rather than stored verbatim into the descriptor.
+    std::vector<char> bytes(64);
+    char* p = bytes.data();
+    const uint32_t tag = static_cast<uint32_t>(FrameDesc::WireType::n2);
+    std::memcpy(p, &tag, sizeof(tag));
+    p += sizeof(tag);
+    p = wire::put_u32(p, 4);  // num_elements
+    p = wire::put_u32(p, 0);  // num_ev
+    p = wire::put_u32(p, 99); // num_products (wrong; should be 10)
+    p = wire::put_str(p, "FullUpperTri");
+    p = wire::put_u32(p, 0); // product_list count
     BOOST_CHECK_THROW(FrameDesc::deserialize(bytes.data(), p - bytes.data()), std::exception);
 }

@@ -38,6 +38,37 @@ std::string symbol_str(const Symbol& s) {
     return s.valid() ? s.get_string() : std::string();
 }
 
+// Validate the structural fields and labels of an NDArray descriptor, throwing
+// std::runtime_error (with `context` in the message) on any problem. Shared by
+// from_config and the wire deserializer so both reject bad input identically.
+void validate_ndarray_fields(DataType value_datatype, const std::string& value_type_name,
+                             const std::vector<std::ptrdiff_t>& extents,
+                             const std::vector<Symbol>& dimnames, const std::string& context) {
+    if (value_datatype == unknown_type)
+        throw std::runtime_error(fmt::format(
+            fmt("GenericNDArray ({:s}): unknown value_type '{:s}'"), context, value_type_name));
+    if (extents.empty() || extents.size() > GenericNDArray::max_rank)
+        throw std::runtime_error(
+            fmt::format(fmt("GenericNDArray ({:s}): rank {:d} is outside [1, {:d}]"), context,
+                        extents.size(), GenericNDArray::max_rank));
+    for (std::size_t d = 0; d < extents.size(); ++d)
+        if (extents[d] <= 0)
+            throw std::runtime_error(fmt::format(
+                fmt("GenericNDArray ({:s}): extent {:d} of dimension {:d} is not positive"),
+                context, extents[d], d));
+    if (dimnames.size() != extents.size())
+        throw std::runtime_error(
+            fmt::format(fmt("GenericNDArray ({:s}): dimnames count {:d} does not match rank {:d}"),
+                        context, dimnames.size(), extents.size()));
+    // Only set (non-empty) labels can collide; unset labels are filled in later.
+    for (std::size_t d = 0; d < dimnames.size(); ++d)
+        for (std::size_t d1 = 0; d1 < d; ++d1)
+            if (dimnames[d].valid() && dimnames[d] == dimnames[d1])
+                throw std::runtime_error(
+                    fmt::format(fmt("GenericNDArray ({:s}): duplicate dimname '{:s}'"), context,
+                                symbol_str(dimnames[d])));
+}
+
 } // namespace
 
 void GenericNDArray::output_framedesc(std::ostream& os) const {
@@ -86,38 +117,33 @@ std::shared_ptr<const FrameDesc> GenericNDArray::deserialize_payload(const char*
     wire::Reader r(bytes, size);
     const std::string type_name = r.get_str();
     const DataType value_datatype = string_to_type(type_name);
-    if (value_datatype == unknown_type)
-        throw std::runtime_error(
-            fmt::format(fmt("GenericNDArray::deserialize: unknown value_type '{:s}'"), type_name));
 
+    // Bound rank and the dimname count before reserving so a corrupt length cannot
+    // drive a large allocation; validate_ndarray_fields() does the full validation.
     const uint32_t rank = r.get_u32();
-    if (rank < 1 || rank > max_rank)
+    if (rank > max_rank)
         throw std::runtime_error(fmt::format(
-            fmt("GenericNDArray::deserialize: rank {:d} is outside [1, {:d}]"), rank, max_rank));
-
+            fmt("GenericNDArray::deserialize: rank {:d} exceeds maximum {:d}"), rank, max_rank));
     std::vector<std::ptrdiff_t> extents;
     extents.reserve(rank);
-    for (uint32_t d = 0; d < rank; ++d) {
-        const std::ptrdiff_t extent = static_cast<std::ptrdiff_t>(r.get_i64());
-        if (extent <= 0)
-            throw std::runtime_error("GenericNDArray::deserialize: non-positive extent");
-        extents.push_back(extent);
-    }
+    for (uint32_t d = 0; d < rank; ++d)
+        extents.push_back(static_cast<std::ptrdiff_t>(r.get_i64()));
 
     const Symbol quantity_name(r.get_str());
 
     const uint32_t num_dimnames = r.get_u32();
-    if (num_dimnames != rank)
-        throw std::runtime_error(
-            fmt::format(fmt("GenericNDArray::deserialize: dimnames count {:d} does not match rank "
-                            "{:d}"),
-                        num_dimnames, rank));
+    if (num_dimnames > max_rank)
+        throw std::runtime_error(fmt::format(
+            fmt("GenericNDArray::deserialize: dimnames count {:d} exceeds maximum {:d}"),
+            num_dimnames, max_rank));
     std::vector<Symbol> dimnames;
     dimnames.reserve(num_dimnames);
     for (uint32_t d = 0; d < num_dimnames; ++d)
         dimnames.emplace_back(r.get_str());
 
     r.require_empty();
+    validate_ndarray_fields(value_datatype, type_name, extents, dimnames,
+                            "received frame descriptor");
     return describe(value_datatype, quantity_name, extents, dimnames);
 }
 
@@ -164,9 +190,6 @@ std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config
                                                             const std::string& location) {
     const std::string type_name = config.get<std::string>(location, "value_type");
     const DataType value_datatype = string_to_type(type_name);
-    if (value_datatype == unknown_type)
-        throw std::runtime_error(fmt::format(
-            fmt("GenericNDArray: unknown value_type '{:s}' in path {:s}"), type_name, location));
 
     // `quantity_name` and `dimnames` are semantic labels: they are OPTIONAL in
     // config. When omitted, the descriptor is left with unset (empty) labels and
@@ -184,16 +207,6 @@ std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config
     for (const auto& extent : extents_json)
         extents.push_back(config.eval<std::ptrdiff_t>(location, extent));
 
-    if (extents.empty() || extents.size() > max_rank)
-        throw std::runtime_error(
-            fmt::format(fmt("GenericNDArray: rank {:d} is outside [1, {:d}] in path {:s}"),
-                        extents.size(), max_rank, location));
-    for (std::size_t d = 0; d < extents.size(); ++d)
-        if (extents[d] <= 0)
-            throw std::runtime_error(fmt::format(
-                fmt("GenericNDArray: extent {:d} of dimension {:d} is not positive in path {:s}"),
-                extents[d], d, location));
-
     const auto dimname_strings =
         config.get_default<std::vector<std::string>>(location, "dimnames", {});
     std::vector<Symbol> dimnames;
@@ -201,22 +214,12 @@ std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config
         // Labels omitted: leave one unset (empty) label per axis for a stage to fill.
         dimnames.assign(extents.size(), Symbol(""));
     } else {
-        if (dimname_strings.size() != extents.size())
-            throw std::runtime_error(fmt::format(
-                fmt("GenericNDArray: extents size ({:d}) does not match dimnames size ({:d}) in "
-                    "path {:s}"),
-                extents.size(), dimname_strings.size(), location));
         dimnames.reserve(dimname_strings.size());
         for (const auto& dimname : dimname_strings)
             dimnames.emplace_back(dimname);
-        for (std::size_t d = 0; d < dimnames.size(); ++d)
-            for (std::size_t d1 = 0; d1 < d; ++d1)
-                if (dimnames[d] == dimnames[d1])
-                    throw std::runtime_error(fmt::format(
-                        fmt("GenericNDArray: duplicate dimname '{:s}' in path {:s}"),
-                        std::string(dimnames[d]), location));
     }
 
+    validate_ndarray_fields(value_datatype, type_name, extents, dimnames, location);
     return describe(value_datatype, quantity_name, extents, dimnames);
 }
 

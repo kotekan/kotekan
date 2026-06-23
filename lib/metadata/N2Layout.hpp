@@ -23,4 +23,9 @@ inline std::string N2Layout_to_string(N2Layout l) {
     return j.get<std::string>();
 }
 
+inline N2Layout string_to_N2Layout(const std::string& s) {
+    nlohmann::json j = s;
+    return j.get<N2Layout>();
+}
+
 #endif // N2LAYOUT_HPP
