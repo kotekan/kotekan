@@ -94,11 +94,11 @@ void bufferDelay::main_thread() {
                 in_buf->pass_metadata(in_frame_release_id, out_buf, out_frame_id);
                 in_buf->swap_frames(in_frame_release_id, out_buf, out_frame_id);
             }
-            const auto in_frame_desc = in_buf->get_frame_description();
+            const auto in_frame_desc = in_buf->get_frame_desc();
             if (in_frame_desc) {
-                out_buf->set_frame_desc(in_frame_desc);
+                out_buf->require_frame_desc(in_frame_desc);
             } else {
-                assert(!out_buf->get_frame_description());
+                assert(!out_buf->get_frame_desc());
             }
 
             DEBUG("Reached maximum no. of frames to hold. Releasing oldest frame... in_frame_id: "

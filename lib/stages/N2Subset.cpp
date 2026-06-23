@@ -48,23 +48,8 @@ N2Subset::N2Subset(Config& config, const std::string& unique_name,
     }
 
     // Get and validate frame descriptors
-    auto in_frame_desc = in_buf->get_frame_description();
-    if (!in_frame_desc) {
-        FATAL_ERROR("N2Subset: in_buf does not have a frame descriptor set");
-    }
-    in_desc = std::dynamic_pointer_cast<const N2FrameDesc>(in_frame_desc);
-    if (!in_desc) {
-        FATAL_ERROR("N2Subset: in_buf does not have an N2FrameDesc");
-    }
-
-    auto out_frame_desc = out_buf->get_frame_description();
-    if (!out_frame_desc) {
-        FATAL_ERROR("N2Subset: out_buf does not have a frame descriptor set");
-    }
-    out_desc = std::dynamic_pointer_cast<const N2FrameDesc>(out_frame_desc);
-    if (!out_desc) {
-        FATAL_ERROR("N2Subset: out_buf does not have an N2FrameDesc");
-    }
+    in_desc = in_buf->require_frame_desc<N2FrameDesc>();
+    out_desc = out_buf->require_frame_desc<N2FrameDesc>();
 
     // Store num_elements from descriptors
     _in_num_elements = in_desc->get_num_elements();

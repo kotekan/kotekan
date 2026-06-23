@@ -65,14 +65,15 @@ lostSamplesToPLMask::lostSamplesToPLMask(Config& config, const std::string& uniq
         FATAL_ERROR("Unexpected frames sizes for pl_mask {:d} and lost_samples {:d}",
                     pl_mask_buf->frame_size, lost_samples_bufs.at(0)->frame_size);
 
-    pl_mask_buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::uint1x8>, 5>(
-        "pl_mask",
-        {ptrdiff_t(lost_samples_bufs.at(0)->frame_size / PL_MASK_DOWNSAMPLING_FACTOR
-                   / PL_MASK_HILO_SPLIT),
-         ptrdiff_t(lost_samples_bufs.size()), num_polarizations,
-         num_dishes / PL_MASK_DISHES_PER_BIN,
-         PL_MASK_HILO_SPLIT / BITS_PER_BYTE /* because we count uint1x8, not uint1 */},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"});
+    pl_mask_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType_t<kotekan::uint1x8>, 5>::describe(
+            "pl_mask",
+            {ptrdiff_t(lost_samples_bufs.at(0)->frame_size / PL_MASK_DOWNSAMPLING_FACTOR
+                       / PL_MASK_HILO_SPLIT),
+             ptrdiff_t(lost_samples_bufs.size()), num_polarizations,
+             num_dishes / PL_MASK_DISHES_PER_BIN,
+             PL_MASK_HILO_SPLIT / BITS_PER_BYTE /* because we count uint1x8, not uint1 */},
+            {"T2hi64", "F4", "P", "D8", "T2lo64"}));
 }
 
 lostSamplesToPLMask::~lostSamplesToPLMask() {}
@@ -100,10 +101,10 @@ void lostSamplesToPLMask::main_thread() {
             // constant for all iterations but only set by the producer before
             // it marks the frame as full, so cannot be checked before the first
             // wait_for_full_frame()
-            auto const expected_lost_samples_frame_desc = kotekan::GenericNDArray::create(
-                kotekan::DataType::uint8, "lost_samples", {ptrdiff_t(lost_samples_buf->frame_size)},
-                {"T"}, nullptr);
-            assert(*lost_samples_buf->get_ndarray_frame_desc()
+            auto const expected_lost_samples_frame_desc =
+                kotekan::GenericNDArray::describe(kotekan::DataType::uint8, "lost_samples",
+                                                  {ptrdiff_t(lost_samples_buf->frame_size)}, {"T"});
+            assert(*lost_samples_buf->get_frame_desc<kotekan::GenericNDArray>()
                    == *expected_lost_samples_frame_desc);
 
             // pl_mask buffer_format [time / 2 % 64][dish / 8][polr][freq / 4][time / 2 / 64]
@@ -146,7 +147,8 @@ void lostSamplesToPLMask::main_thread() {
                 pl_mask_meta->deepCopy(lost_samples_meta);
 
                 // update array description
-                pl_mask_meta->set_from_frame_desc(pl_mask_buf->get_ndarray_frame_desc());
+                pl_mask_meta->set_from_frame_desc(
+                    pl_mask_buf->get_frame_desc<kotekan::GenericNDArray>());
 
                 // update metadata
                 pl_mask_meta->set_time_downsampling_fpga(pl_mask_meta->get_time_downsampling_fpga()
@@ -185,7 +187,7 @@ void lostSamplesToPLMask::main_thread() {
         lost_samples_buf_frame_id =
             (lost_samples_buf_frame_id + 1) % lost_samples_bufs.at(0)->num_frames;
 
-        pl_mask_meta->check_frame_desc(pl_mask_buf->get_ndarray_frame_desc());
+        pl_mask_meta->check_frame_desc(pl_mask_buf->get_frame_desc<kotekan::GenericNDArray>());
         pl_mask_buf->mark_frame_full(unique_name, pl_mask_buf_frame_id);
         pl_mask_buf_frame_id = (pl_mask_buf_frame_id + 1) % pl_mask_buf->num_frames;
     }

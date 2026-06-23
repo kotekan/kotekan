@@ -16,6 +16,7 @@
 #include "chordMetadata.hpp"             // for chordMetadata, get_chord_metadata
 #include "kotekanLogging.hpp"            // for DEBUG
 #include "DataType.hpp"                  // for float16_t
+#include "NDArray.hpp"
 #include "fmt.hpp"                       // for compile_string_to_view, format
 
 class setUpchanGain : public kotekan::Stage {
@@ -71,12 +72,13 @@ public:
             return;
 
         // Set metadata
-        upchan_gain_buffer->allocate_ndarray_frame_desc<float16_t, 1>(
-            "G", {upchan_max_num_channels * upchan_factor}, {"Fbar"});
+        upchan_gain_buffer->require_frame_desc(kotekan::NDArray<float16_t, 1>::describe(
+            "G", {upchan_max_num_channels * upchan_factor}, {"Fbar"}));
         upchan_gain_buffer->allocate_new_metadata_object(frame_id);
         const auto& upchan_gain_meta =
             get_chord_metadata(upchan_gain_buffer->get_metadata(frame_id));
-        upchan_gain_meta->set_from_frame_desc(upchan_gain_buffer->get_ndarray_frame_desc());
+        upchan_gain_meta->set_from_frame_desc(
+            upchan_gain_buffer->get_frame_desc<kotekan::GenericNDArray>());
         upchan_gain_meta->set_fpga_seq_num(0);           // ???
         upchan_gain_meta->set_time_downsampling_fpga(1); // ???
         const auto& upchan_channels_set = upchan_schedule.get_upchan_channels(upchan_factor);

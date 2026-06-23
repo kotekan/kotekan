@@ -114,39 +114,45 @@ upchan_all_max_output_channel: upchan_U1_max_output_channel
 # Gains
 
 host_upchan_U2_gain_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * upchan_U2_max_num_channels * 2
+    value_type: float16
+    extents: [upchan_U2_max_num_channels * 2]
     metadata_pool: main_pool
 
 host_upchan_U4_gain_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * upchan_U4_max_num_channels * 4
+    value_type: float16
+    extents: [upchan_U4_max_num_channels * 4]
     metadata_pool: main_pool
 
 host_upchan_U8_gain_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * upchan_U8_max_num_channels * 8
+    value_type: float16
+    extents: [upchan_U8_max_num_channels * 8]
     metadata_pool: main_pool
 
 host_upchan_U16_gain_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * upchan_U16_max_num_channels * 16
+    value_type: float16
+    extents: [upchan_U16_max_num_channels * 16]
     metadata_pool: main_pool
 
 host_upchan_U32_gain_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * upchan_U32_max_num_channels * 32
+    value_type: float16
+    extents: [upchan_U32_max_num_channels * 32]
     metadata_pool: main_pool
 
 host_upchan_U64_gain_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * upchan_U64_max_num_channels * 64
+    value_type: float16
+    extents: [upchan_U64_max_num_channels * 64]
     metadata_pool: main_pool
 
 # Packet loss masks

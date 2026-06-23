@@ -32,7 +32,7 @@ SampleAutocorr::SampleAutocorr(Config& config, const std::string& unique_name,
     buf_in->register_consumer(unique_name);
 
     // Input: cfloat32 1-D fengine spectra (consumer-only; no out_buf).
-    buf_in->set_frame_desc(
+    buf_in->ensure_frame_desc(
         kotekan_airspy::make_fengine_desc(buf_in->frame_size / (2 * sizeof(float))));
 
     _spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 1024);

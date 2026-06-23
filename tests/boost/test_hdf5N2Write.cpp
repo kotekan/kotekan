@@ -282,7 +282,7 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
     auto pool = metadataPool::create(1, sizeof(N2Metadata), "test_pool", "N2Metadata");
     Buffer buf(1, frame_size, pool, "n2buf", "N2", 1, false, false, std::vector<int>{}, true);
-    buf.set_frame_desc(std::make_shared<kotekan::N2FrameDesc>(num_input, num_ev, num_prod,
+    buf.ensure_frame_desc(std::make_shared<kotekan::N2FrameDesc>(num_input, num_ev, num_prod,
                                                               N2Layout::FullUpperTri));
 
     buf.allocate_new_metadata_object(0);
@@ -360,7 +360,7 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     const size_t frame_size = N2FrameDesc::calculate_frame_size(num_input, num_ev, num_prod);
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_guard", "N2Metadata");
     Buffer buf(2, frame_size, pool, "n2buf_guard", "N2", 1, false, false, std::vector<int>{}, true);
-    buf.set_frame_desc(std::make_shared<kotekan::N2FrameDesc>(num_input, num_ev, num_prod,
+    buf.ensure_frame_desc(std::make_shared<kotekan::N2FrameDesc>(num_input, num_ev, num_prod,
                                                               N2Layout::FullUpperTri));
 
     // Prepare frame view and two metadata instances for the same (f,t)
@@ -493,7 +493,7 @@ BOOST_AUTO_TEST_CASE(test_writer_base_dir_conflict_detection) {
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_conflict", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
                /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
-    buf.set_frame_desc(
+    buf.ensure_frame_desc(
         std::make_shared<N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
@@ -540,7 +540,7 @@ BOOST_AUTO_TEST_CASE(test_writer_full_block_transpose) {
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_full", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
                /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
-    buf.set_frame_desc(
+    buf.ensure_frame_desc(
         std::make_shared<N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
@@ -631,7 +631,7 @@ BOOST_AUTO_TEST_CASE(test_writer_partial_flush_on_exit) {
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_partial", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", /*numa*/ 0, /*huge*/ false,
                /*mlock*/ false, /*producers*/ std::vector<int>{}, /*zero_new_frames*/ true);
-    buf.set_frame_desc(
+    buf.ensure_frame_desc(
         std::make_shared<N2FrameDesc>(num_input, num_ev, num_prod, N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
     kotekan::bufferContainer bc;
@@ -712,7 +712,7 @@ BOOST_AUTO_TEST_CASE(test_writer_multi_file_rollover) {
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_roll", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
-    buf.set_frame_desc(std::make_shared<N2FrameDesc>(
+    buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri),
         N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
@@ -795,7 +795,7 @@ BOOST_AUTO_TEST_CASE(test_writer_distinct_window_names) {
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_subsec", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
-    buf.set_frame_desc(std::make_shared<N2FrameDesc>(
+    buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri),
         N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
@@ -869,7 +869,7 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
     auto pool = metadataPool::create(8, sizeof(N2Metadata), "pool_timeout", "N2Metadata");
     Buffer buf(8, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
-    buf.set_frame_desc(std::make_shared<N2FrameDesc>(
+    buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri),
         N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
@@ -945,7 +945,7 @@ BOOST_AUTO_TEST_CASE(test_writer_drop_if_final_exists) {
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_drop", "N2Metadata");
     Buffer buf(2, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
-    buf.set_frame_desc(std::make_shared<N2FrameDesc>(
+    buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri),
         N2Layout::FullUpperTri));
     buf.register_producer("test-producer");
@@ -1037,7 +1037,7 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_basic) {
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri));
     auto pool = metadataPool::create(4, sizeof(N2Metadata), "pool_geom", "N2Metadata");
     Buffer buf(4, frame_size, pool, in_buf_name, "N2", 0, false, false, std::vector<int>{}, true);
-    buf.set_frame_desc(std::make_shared<N2FrameDesc>(
+    buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(
         num_input, num_ev, N2FrameDesc::get_num_prod(num_input, N2Layout::FullUpperTri),
         N2Layout::FullUpperTri));
     buf.register_producer("test-producer");

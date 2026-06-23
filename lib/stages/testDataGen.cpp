@@ -18,6 +18,7 @@
 #include "CHORDTelescope.hpp"   // for CHORDTelescope
 #include "Config.hpp"           // for Config
 #include "DataType.hpp"         // for DataType, KOTEKAN_FLOAT16, float16_t
+#include "NDArray.hpp"          // for GenericNDArray, Config
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"           // for Symbol
 #include "Telescope.hpp"        // for Telescope, stream_t
@@ -358,9 +359,10 @@ void testDataGen::main_thread() {
         const std::vector<ptrdiff_t> extents(_array_shape.begin(), _array_shape.end());
         const std::vector<kotekan::Symbol> dimnames(_dim_name.begin(), _dim_name.end());
 
-        buf->allocate_ndarray_frame_desc(chordmeta->type, _name, extents, dimnames);
+        buf->ensure_frame_desc(
+            kotekan::GenericNDArray::describe(chordmeta->type, _name, extents, dimnames));
         /* test that things are consistent */
-        chordmeta->check_frame_desc(buf->get_ndarray_frame_desc());
+        chordmeta->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
 
         if (type == "onehot") {
             int val = value;

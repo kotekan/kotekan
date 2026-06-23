@@ -15,6 +15,7 @@
 #include "kotekanLogging.hpp"   // for INFO, DEBUG, ERROR
 #include "fmt.hpp"              // for compile_string_to_view, format, fmt
 #include "DataType.hpp"         // for DataType
+#include "NDArray.hpp"
 
 #ifdef __AVX512F__
 #include <immintrin.h>          // for __m512i, _mm512_stream_si512, _mm512_set1_epi8, _mm512_se...
@@ -152,9 +153,9 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     // Set the output buffer frame ndarray shape
 
     // Confusingly the array name is "E" for electric field
-    out_buf->allocate_ndarray_frame_desc(
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int4x2_swapped_withoffset, "E",
-        {timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS / 2}, {"T", "F", "P", "D"});
+        {timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS / 2}, {"T", "F", "P", "D"}));
 
     INFO("TransposeBasebandArray: Input shape: [{:d}][{:d}][{:d}][{:d}][{:d}]", time_long,
          NUM_LOCAL_FREQ, ELEMENT_LONG, TIME_SHORT, ELEMENT_SHORT);

@@ -1,5 +1,6 @@
 #include "Config.hpp"                   // for Config
 #include "DataType.hpp"                 // for float16_t
+#include "NDArray.hpp"                  // for GenericNDArray
 #include "Stage.hpp"                    // for Stage
 #include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"                // for Telescope, freq_id_t
@@ -101,11 +102,11 @@ public:
         frb2_beam_positions_buffer->register_consumer(unique_name);
         W2_buffer->register_producer(unique_name);
 
-        frb2_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
-            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"});
-        W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>(
+        frb2_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
+            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}));
+        W2_buffer->require_frame_desc(kotekan::NDArray<float16_t, 4>::describe(
             "W2", {frb2_num_frequencies, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P},
-            {"Fbar", "R", "beamQ", "beamP"});
+            {"Fbar", "R", "beamQ", "beamP"}));
     }
 
     virtual ~calcFRB2Weights() {}
@@ -179,10 +180,9 @@ public:
         assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
 
         // Set metadata
-
         W2_buffer->allocate_new_metadata_object(frame_id);
         const auto& W2_meta = get_chord_metadata(W2_buffer->get_metadata(frame_id));
-        W2_meta->set_from_frame_desc(W2_buffer->get_ndarray_frame_desc());
+        W2_meta->set_from_frame_desc(W2_buffer->get_frame_desc<kotekan::GenericNDArray>());
         W2_meta->set_fpga_seq_num(0);           // ???
         W2_meta->set_time_downsampling_fpga(1); // ???
         W2_meta->set_coarse_freq(coarse_freq);

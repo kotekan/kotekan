@@ -25,6 +25,7 @@
 #include "restServer.hpp"       // for restServer, connectionInstance
 #include "fmt.hpp"              // for compile_string_to_view, format, format_string
 #include "DataType.hpp"         // for DataType
+#include "NDArray.hpp"          // for GenericNDArray, Config
 #include "Stage.hpp"            // for Stage
 #include "jsonMetadata.hpp"     // for MAX_NUM_RFI_THRESHOLDS
 
@@ -174,9 +175,11 @@ RfiFrameMask::RfiFrameMask(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    // Ensure outgoing buffer is standard type
-    if (out_buf->buffer_type != "standard")
-        FATAL_ERROR("RfiFrameMask out_buf ({:s}) is not of type standard.", out_buf->buffer_name);
+    // The output buffer must carry an NDArray frame descriptor (declared with
+    // `kotekan_buffer: ndarray` in the config); require_frame_desc below validates
+    // its shape/type.
+    if (out_buf->buffer_type != "ndarray")
+        FATAL_ERROR("RfiFrameMask out_buf ({:s}) is not of type ndarray.", out_buf->buffer_name);
 
     // Sanity checks on initialization
     {
@@ -208,10 +211,10 @@ RfiFrameMask::RfiFrameMask(Config& config, const std::string& unique_name,
 
     // Set up frame descriptors. This also checks their shape, type, and size is consistent with
     // other stages in the pipeline.
-    in_buf->allocate_ndarray_frame_desc(kotekan::float32, "SKtilde",
-                                        {_rfi_num_times, _num_local_freq, 3}, {"Trfi", "F", "SK"});
-    out_buf->allocate_ndarray_frame_desc(kotekan::uint8, "RFIFrameMask",
-                                         {_num_integrations, _num_local_freq}, {"Tc", "F"});
+    in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::float32, "SKtilde", {_rfi_num_times, _num_local_freq, 3}, {"Trfi", "F", "SK"}));
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::uint8, "RFIFrameMask", {_num_integrations, _num_local_freq}, {"Tc", "F"}));
 
     // Initialize current RFI excision status, the "next" values are taken care of by the
     // configUpdater)
@@ -335,7 +338,7 @@ void RfiFrameMask::main_thread() {
         // Start with a copy
         out_meta->deepCopy(in_meta);
         // Set the array shape stuff from the frame descriptor.
-        out_meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+        out_meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set other metadata we changed or added.
         out_meta->set_time_downsampling_fpga(
@@ -350,7 +353,7 @@ void RfiFrameMask::main_thread() {
         out_meta->set_rfi_frame_excision_thresholds(meta_thresholds);
 
         // Check we're consistent with the frame desc, just in case!
-        out_meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
+        out_meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Advance to the next frame
         in_buf->mark_frame_empty(unique_name, in_frame_id++);

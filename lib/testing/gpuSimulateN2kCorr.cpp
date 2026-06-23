@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -79,41 +80,24 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
     output_buf = get_buffer("corr_out_buf");
     output_buf->register_producer(unique_name);
 
-    // Check buffer frame sizes
-    size_t input_voltage_frame_size =
-        sizeof(char) * _num_elements * _num_local_freq * _samples_per_data_set;
-    size_t rfimask_frame_size = _num_local_freq * _samples_per_data_set / 8;
-
-    size_t num_blocks = num_triangle_blocks(_num_elements, _corr_blocksize);
-    size_t num_correlations = _samples_per_data_set / _sub_integration_ntime;
-
-    size_t corr_frame_size = 2 * sizeof(int) * _corr_blocksize * _corr_blocksize * num_blocks
-                             * _num_local_freq * num_correlations;
-
-    if (input_buf->frame_size != input_voltage_frame_size) {
-        FATAL_ERROR("network_in_buf ({:s}) has frame size {:d}, expected {:d}",
-                    input_buf->buffer_name, input_buf->frame_size, input_voltage_frame_size);
-        std::abort();
-    }
-    if (rfimask_buf->frame_size != rfimask_frame_size) {
-        FATAL_ERROR("rfimask_in_buf ({:s}) has frame size {:d}, expected {:d}",
-                    rfimask_buf->buffer_name, rfimask_buf->frame_size, rfimask_frame_size);
-        std::abort();
-    }
-    if (output_buf->frame_size != corr_frame_size) {
-        FATAL_ERROR("corr_out_buf ({:s}) has frame size {:d}, expected {:d}",
-                    output_buf->buffer_name, output_buf->frame_size, corr_frame_size);
-        std::abort();
-    }
-
     /* new style array description */
     // number of elements = number of dishes * polarizations
     int nt_inner = _sub_integration_ntime;
     int nt_outer = _samples_per_data_set / nt_inner;
-    output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int32>::type, 6>(
-        "n2k_correlation",
-        {nt_outer, _num_local_freq, num_triangle_blocks(_num_elements, _corr_blocksize), 16, 16, 2},
-        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
+    input_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::int4x2_swapped_withoffset_t, 4>::describe(
+            "E", {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2},
+            {"T", "F", "P", "D"}));
+    rfimask_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType<kotekan::uint1x8>::type, 3>::describe(
+            "RFImask", {_samples_per_data_set / 1024, _num_local_freq, 128},
+            {"T8hi128", "F", "T8lo128"}));
+    output_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType<kotekan::int32>::type, 6>::describe(
+            "n2k_correlation",
+            {nt_outer, _num_local_freq, num_triangle_blocks(_num_elements, _corr_blocksize), 16, 16,
+             2},
+            {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}));
 }
 
 gpuSimulateN2kCorr::~gpuSimulateN2kCorr() {}
@@ -285,7 +269,7 @@ void gpuSimulateN2kCorr::main_thread() {
 
         // frame_desc set in constructor
         /* test that things are consistent */
-        meta_out->check_frame_desc(output_buf->get_ndarray_frame_desc());
+        meta_out->check_frame_desc(output_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
         meta_out->set_time_downsampling_fpga(meta_in->get_time_downsampling_fpga()

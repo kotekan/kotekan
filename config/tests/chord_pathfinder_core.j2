@@ -11,73 +11,83 @@
 #########
 
 host_rfi_RFImask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     numa_node: 1
     metadata_pool: main_pool
 
 host_rfi_sktilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    value_type: float32
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
     metadata_pool: main_pool
 
 host_rfi_sktilde_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    value_type: float32
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
     metadata_pool: main_pool
     numa_node: 1
 
 host_rfi_RFImask_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 host_rfi_RFImask_counts_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
     numa_node: 1
 
 host_pl_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 host_pl_counts_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
     numa_node: 1
 
 host_rfi_RFIframemask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    value_type: uint8
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
 
 host_rfi_RFIframemask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    value_type: uint8
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
@@ -87,15 +97,17 @@ vis_blocksize: 16
 vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 host_correlation_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * vis_num_blocks * 2 * sizeof_gpu_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
 
 host_correlation_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * vis_num_blocks * 2 * sizeof_gpu_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
     numa_node: 1
 
@@ -104,15 +116,17 @@ counts_blocksize: 8
 counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
 counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
 host_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_gpu_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
     metadata_pool: main_pool
 
 host_counts_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_gpu_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
     metadata_pool: main_pool
     numa_node: 1
 

@@ -83,9 +83,10 @@ upchan_all_max_output_channel: upchan_U1_max_output_channel
 # Gains
 
 host_upchan_U32_gain_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * upchan_U32_max_num_channels * 32
+    value_type: float16
+    extents: [upchan_U32_max_num_channels * 32]
     metadata_pool: main_pool
 
 # Packet loss masks

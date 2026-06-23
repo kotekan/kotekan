@@ -170,8 +170,8 @@ setBBBeams::setBBBeams(Config& config, const std::string& unique_name,
     rest_server.register_get_callback(unique_name + "/beams",
                                       std::bind(&setBBBeams::send_beams, this, _1));
 
-    out_pos_buf->allocate_ndarray_frame_desc<float, 2>("bb_beam_positions", {static_cast<ptrdiff_t>(num_beams), 2}, {"B", "X/Y"});
-    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>("bb_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"B"});
+    out_pos_buf->require_frame_desc(kotekan::NDArray<float, 2>::describe("bb_beam_positions", {static_cast<ptrdiff_t>(num_beams), 2}, {"B", "X/Y"}));
+    out_id_buf->require_frame_desc(kotekan::NDArray<uint64_t, 1>::describe("bb_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"B"}));
 }
 
 setBBBeams::~setBBBeams() {
@@ -304,24 +304,24 @@ void setBBBeams::main_thread() {
         const std::shared_ptr<chordMetadata> pos_meta = get_chord_metadata(out_pos_buf, pos_frame_id);
 
         // Set ndarray sizes and timing
-        pos_meta->set_from_frame_desc(out_pos_buf->get_ndarray_frame_desc());
+        pos_meta->set_from_frame_desc(out_pos_buf->get_frame_desc<kotekan::GenericNDArray>());
         pos_meta->set_fpga_seq_num(seq_num);
         pos_meta->set_time_downsampling_fpga(time_downsampling_fpga);
 
         // Check consistency just in case
-        pos_meta->check_frame_desc(out_pos_buf->get_ndarray_frame_desc());
+        pos_meta->check_frame_desc(out_pos_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set id metadata
         out_id_buf->allocate_new_metadata_object(id_frame_id);
         const std::shared_ptr<chordMetadata> id_meta = get_chord_metadata(out_id_buf, id_frame_id);
 
         // Check consistency just in case
-        id_meta->set_from_frame_desc(out_id_buf->get_ndarray_frame_desc());
+        id_meta->set_from_frame_desc(out_id_buf->get_frame_desc<kotekan::GenericNDArray>());
         id_meta->set_fpga_seq_num(seq_num);
         id_meta->set_time_downsampling_fpga(time_downsampling_fpga);
 
         // Check consistency just in case
-        id_meta->check_frame_desc(out_id_buf->get_ndarray_frame_desc());
+        id_meta->check_frame_desc(out_id_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Increment frames so next loop gets a new seq_num
         num_frames++;
