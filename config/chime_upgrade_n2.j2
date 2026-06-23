@@ -151,7 +151,7 @@ host_voltage_buffers:
   num_frames: baseband_buffer_depth
   value_type: int4x2_swapped_withoffset
   extents: [1, samples_per_data_set * num_elements * num_freq_host_buf / 2048, 2048]
-  dimnames: [F, T, E]
+  dimnames: ["F", "T", "E"]
   metadata_pool: main_pool
   use_hugepages: true
   numa_0:
@@ -524,7 +524,7 @@ host_rfi_S012_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times
     type: uint64
     dimnames: ["Trfi", "F", "S", "P", "D"]
-    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
+    extents: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_S012bar_ringbuffer:
@@ -533,7 +533,7 @@ host_rfi_S012bar_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times_bar
     type: uint64
     dimnames: ["Trfibar", "F", "S", "P", "D"]
-    shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
+    extents: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_S012tilde_ringbuffer:
@@ -542,7 +542,7 @@ host_rfi_S012tilde_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * 3 * num_freq_gpu_buf * rfi_num_times
     type: uint64
     dimnames: ["Trfi", "F", "S"]
-    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
+    extents: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
 
 host_rfi_SKtilde_buffer:
@@ -559,7 +559,7 @@ host_rfi_SKtilde_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
     type: float32
     dimnames: ["Trfi", "F", "S"]
-    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
+    extents: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer:
@@ -576,7 +576,7 @@ host_rfi_RFImask_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * num_freq_gpu_buf * samples_per_data_set / 8
     type: uint1x8
     dimnames: ["T8hi128", "F", "T8lo128"]
-    shape: [gpu_buffer_depth * samples_per_data_set / 8 / 128, num_freq_gpu_buf, 128]
+    extents: [gpu_buffer_depth * samples_per_data_set / 8 / 128, num_freq_gpu_buf, 128]
     metadata_pool: main_pool
 
 host_rfi_SKbar_buffer:
@@ -592,7 +592,7 @@ host_rfi_SKbar_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_float32 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times_bar
     type: float32
     dimnames: ["Trfi", "F", "S", "P", "D"]
-    shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizaions, num_dishes]
+    extents: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizaions, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_SKbartilde_buffer:
@@ -608,7 +608,7 @@ host_rfi_SKbartilde_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times_bar
     type: float32
     dimnames: ["Trfi", "F", "S"]
-    shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3]
+    extents: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
 
 # The mask for second stage RFI excision.
@@ -1127,30 +1127,15 @@ write_failed_vis:
     in_buf: failed_vis_buffer_post
 
 # System to optionally dump sk statistics data
-host_rfi_SKtilde_buffer:
-    kotekan_buffer: standard
-    num_frames: host_buffer_depth
-    frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
-    type: float32
-    dimnames: ["Trfi", "F", "S"]
-    shape: [rfi_num_times, num_freq_gpu_buf, 3]
-    metadata_pool: main_pool
 host_rfi_SKtilde_buffer_post:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_buffer_depth
     frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
-    type: float32
+    value_type: float32
     dimnames: ["Trfi", "F", "S"]
-    shape: [rfi_num_times, num_freq_gpu_buf, 3]
+    extents: [rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
-host_rfi_SKtilde_ringbuffer:
-    kotekan_buffer: ring
-    num_frames: gpu_buffer_depth
-    ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
-    type: float32
-    dimnames: ["Trfi", "F", "S"]
-    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
-    metadata_pool: main_pool
+
 run_recv_rfi_SKtilde:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -1169,12 +1154,14 @@ run_recv_rfi_SKtilde:
           output_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
           ring_buffer_size: gpu_buffer_depth * output_size
           out_buf: host_rfi_SKtilde_buffer
+
 switch_sk_out:
     kotekan_stage: bufferSwitch
     in_bufs:
       - enabled: host_rfi_SKtilde_buffer
     out_buf: host_rfi_SKtilde_buffer_post
     updatable_config: /updatable_config/enable_sk_out
+
 dump_rfi_SKtilde:
     kotekan_stage: hdf5FileWrite
     log_level: warn
