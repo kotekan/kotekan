@@ -3,7 +3,7 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1335 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1337 =#
         info = 1
         info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 1), 1), 8), 32)) + 0) + 0x01] =
             info
@@ -276,12 +276,12 @@
             Γ3_dish5_1 = cispi(((q * n_dish5_1) % (512i32)) * Float32(2 / 512))
             (
                 +(Γ3_dish5_0.re),
-                +(Γ3_dish5_0.im),
                 -(Γ3_dish5_0.im),
+                +(Γ3_dish5_0.im),
                 +(Γ3_dish5_0.re),
                 +(Γ3_dish5_1.re),
-                +(Γ3_dish5_1.im),
                 -(Γ3_dish5_1.im),
+                +(Γ3_dish5_1.im),
                 +(Γ3_dish5_1.re),
             )
         end
@@ -474,12 +474,12 @@
             Γ5_dish2_1 = cispi(((q * n_dish2_1) % (512i32)) * Float32(2 / 512))
             (
                 +(Γ5_dish2_0.re),
-                +(Γ5_dish2_0.im),
                 -(Γ5_dish2_0.im),
+                +(Γ5_dish2_0.im),
                 +(Γ5_dish2_0.re),
                 +(Γ5_dish2_1.re),
-                +(Γ5_dish2_1.im),
                 -(Γ5_dish2_1.im),
+                +(Γ5_dish2_1.im),
                 +(Γ5_dish2_1.re),
             )
         end
@@ -1577,23 +1577,39 @@
                 Y_beamQ0_im_polr1 = X_dish0_im_polr1 + +X_dish1_im_polr1 + +X_dish2_im_polr1 + +X_dish3_im_polr1
                 Y_beamQ1_re_polr0 = muladd(
                     +Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_re_polr0,
-                    muladd(-Float16x2(0.70703125f0, 0.70703125f0), X_dish3_im_polr0, X_dish0_re_polr0 + -X_dish2_im_polr0),
+                    X_dish1_re_polr0 - X_dish1_im_polr0,
+                    muladd(
+                        -Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr0 + X_dish3_im_polr0,
+                        X_dish0_re_polr0 + -X_dish2_im_polr0,
+                    ),
                 )
                 Y_beamQ1_re_polr1 = muladd(
                     +Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_re_polr1,
-                    muladd(-Float16x2(0.70703125f0, 0.70703125f0), X_dish3_im_polr1, X_dish0_re_polr1 + -X_dish2_im_polr1),
+                    X_dish1_re_polr1 - X_dish1_im_polr1,
+                    muladd(
+                        -Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr1 + X_dish3_im_polr1,
+                        X_dish0_re_polr1 + -X_dish2_im_polr1,
+                    ),
                 )
                 Y_beamQ1_im_polr0 = muladd(
                     +Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_im_polr0,
-                    muladd(+Float16x2(0.70703125f0, 0.70703125f0), X_dish3_re_polr0, X_dish0_im_polr0 + +X_dish2_re_polr0),
+                    X_dish1_re_polr0 + X_dish1_im_polr0,
+                    muladd(
+                        +Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr0 - X_dish3_im_polr0,
+                        X_dish0_im_polr0 + +X_dish2_re_polr0,
+                    ),
                 )
                 Y_beamQ1_im_polr1 = muladd(
                     +Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_im_polr1,
-                    muladd(+Float16x2(0.70703125f0, 0.70703125f0), X_dish3_re_polr1, X_dish0_im_polr1 + +X_dish2_re_polr1),
+                    X_dish1_re_polr1 + X_dish1_im_polr1,
+                    muladd(
+                        +Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr1 - X_dish3_im_polr1,
+                        X_dish0_im_polr1 + +X_dish2_re_polr1,
+                    ),
                 )
                 Y_beamQ2_re_polr0 = X_dish0_re_polr0 + -X_dish1_im_polr0 + -X_dish2_re_polr0 + +X_dish3_im_polr0
                 Y_beamQ2_re_polr1 = X_dish0_re_polr1 + -X_dish1_im_polr1 + -X_dish2_re_polr1 + +X_dish3_im_polr1
@@ -1601,23 +1617,39 @@
                 Y_beamQ2_im_polr1 = X_dish0_im_polr1 + +X_dish1_re_polr1 + -X_dish2_im_polr1 + -X_dish3_re_polr1
                 Y_beamQ3_re_polr0 = muladd(
                     -Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_im_polr0,
-                    muladd(+Float16x2(0.70703125f0, 0.70703125f0), X_dish3_re_polr0, X_dish0_re_polr0 + +X_dish2_im_polr0),
+                    X_dish1_re_polr0 + X_dish1_im_polr0,
+                    muladd(
+                        +Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr0 - X_dish3_im_polr0,
+                        X_dish0_re_polr0 + +X_dish2_im_polr0,
+                    ),
                 )
                 Y_beamQ3_re_polr1 = muladd(
                     -Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_im_polr1,
-                    muladd(+Float16x2(0.70703125f0, 0.70703125f0), X_dish3_re_polr1, X_dish0_re_polr1 + +X_dish2_im_polr1),
+                    X_dish1_re_polr1 + X_dish1_im_polr1,
+                    muladd(
+                        +Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr1 - X_dish3_im_polr1,
+                        X_dish0_re_polr1 + +X_dish2_im_polr1,
+                    ),
                 )
                 Y_beamQ3_im_polr0 = muladd(
                     +Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_re_polr0,
-                    muladd(+Float16x2(0.70703125f0, 0.70703125f0), X_dish3_im_polr0, X_dish0_im_polr0 + -X_dish2_re_polr0),
+                    X_dish1_re_polr0 - X_dish1_im_polr0,
+                    muladd(
+                        +Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr0 + X_dish3_im_polr0,
+                        X_dish0_im_polr0 + -X_dish2_re_polr0,
+                    ),
                 )
                 Y_beamQ3_im_polr1 = muladd(
                     +Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_re_polr1,
-                    muladd(+Float16x2(0.70703125f0, 0.70703125f0), X_dish3_im_polr1, X_dish0_im_polr1 + -X_dish2_re_polr1),
+                    X_dish1_re_polr1 - X_dish1_im_polr1,
+                    muladd(
+                        +Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr1 + X_dish3_im_polr1,
+                        X_dish0_im_polr1 + -X_dish2_re_polr1,
+                    ),
                 )
                 Y_beamQ4_re_polr0 = X_dish0_re_polr0 + -X_dish1_re_polr0 + +X_dish2_re_polr0 + -X_dish3_re_polr0
                 Y_beamQ4_re_polr1 = X_dish0_re_polr1 + -X_dish1_re_polr1 + +X_dish2_re_polr1 + -X_dish3_re_polr1
@@ -1625,23 +1657,39 @@
                 Y_beamQ4_im_polr1 = X_dish0_im_polr1 + -X_dish1_im_polr1 + +X_dish2_im_polr1 + -X_dish3_im_polr1
                 Y_beamQ5_re_polr0 = muladd(
                     -Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_re_polr0,
-                    muladd(+Float16x2(0.70703125f0, 0.70703125f0), X_dish3_im_polr0, X_dish0_re_polr0 + -X_dish2_im_polr0),
+                    X_dish1_re_polr0 - X_dish1_im_polr0,
+                    muladd(
+                        +Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr0 + X_dish3_im_polr0,
+                        X_dish0_re_polr0 + -X_dish2_im_polr0,
+                    ),
                 )
                 Y_beamQ5_re_polr1 = muladd(
                     -Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_re_polr1,
-                    muladd(+Float16x2(0.70703125f0, 0.70703125f0), X_dish3_im_polr1, X_dish0_re_polr1 + -X_dish2_im_polr1),
+                    X_dish1_re_polr1 - X_dish1_im_polr1,
+                    muladd(
+                        +Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr1 + X_dish3_im_polr1,
+                        X_dish0_re_polr1 + -X_dish2_im_polr1,
+                    ),
                 )
                 Y_beamQ5_im_polr0 = muladd(
                     -Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_im_polr0,
-                    muladd(-Float16x2(0.70703125f0, 0.70703125f0), X_dish3_re_polr0, X_dish0_im_polr0 + +X_dish2_re_polr0),
+                    X_dish1_re_polr0 + X_dish1_im_polr0,
+                    muladd(
+                        -Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr0 - X_dish3_im_polr0,
+                        X_dish0_im_polr0 + +X_dish2_re_polr0,
+                    ),
                 )
                 Y_beamQ5_im_polr1 = muladd(
                     -Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_im_polr1,
-                    muladd(-Float16x2(0.70703125f0, 0.70703125f0), X_dish3_re_polr1, X_dish0_im_polr1 + +X_dish2_re_polr1),
+                    X_dish1_re_polr1 + X_dish1_im_polr1,
+                    muladd(
+                        -Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr1 - X_dish3_im_polr1,
+                        X_dish0_im_polr1 + +X_dish2_re_polr1,
+                    ),
                 )
                 Y_beamQ6_re_polr0 = X_dish0_re_polr0 + +X_dish1_im_polr0 + -X_dish2_re_polr0 + -X_dish3_im_polr0
                 Y_beamQ6_re_polr1 = X_dish0_re_polr1 + +X_dish1_im_polr1 + -X_dish2_re_polr1 + -X_dish3_im_polr1
@@ -1649,23 +1697,39 @@
                 Y_beamQ6_im_polr1 = X_dish0_im_polr1 + -X_dish1_re_polr1 + -X_dish2_im_polr1 + +X_dish3_re_polr1
                 Y_beamQ7_re_polr0 = muladd(
                     +Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_im_polr0,
-                    muladd(-Float16x2(0.70703125f0, 0.70703125f0), X_dish3_re_polr0, X_dish0_re_polr0 + +X_dish2_im_polr0),
+                    X_dish1_re_polr0 + X_dish1_im_polr0,
+                    muladd(
+                        -Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr0 - X_dish3_im_polr0,
+                        X_dish0_re_polr0 + +X_dish2_im_polr0,
+                    ),
                 )
                 Y_beamQ7_re_polr1 = muladd(
                     +Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_im_polr1,
-                    muladd(-Float16x2(0.70703125f0, 0.70703125f0), X_dish3_re_polr1, X_dish0_re_polr1 + +X_dish2_im_polr1),
+                    X_dish1_re_polr1 + X_dish1_im_polr1,
+                    muladd(
+                        -Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr1 - X_dish3_im_polr1,
+                        X_dish0_re_polr1 + +X_dish2_im_polr1,
+                    ),
                 )
                 Y_beamQ7_im_polr0 = muladd(
                     -Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_re_polr0,
-                    muladd(-Float16x2(0.70703125f0, 0.70703125f0), X_dish3_im_polr0, X_dish0_im_polr0 + -X_dish2_re_polr0),
+                    X_dish1_re_polr0 - X_dish1_im_polr0,
+                    muladd(
+                        -Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr0 + X_dish3_im_polr0,
+                        X_dish0_im_polr0 + -X_dish2_re_polr0,
+                    ),
                 )
                 Y_beamQ7_im_polr1 = muladd(
                     -Float16x2(0.70703125f0, 0.70703125f0),
-                    X_dish1_re_polr1,
-                    muladd(-Float16x2(0.70703125f0, 0.70703125f0), X_dish3_im_polr1, X_dish0_im_polr1 + -X_dish2_re_polr1),
+                    X_dish1_re_polr1 - X_dish1_im_polr1,
+                    muladd(
+                        -Float16x2(0.70703125f0, 0.70703125f0),
+                        X_dish3_re_polr1 + X_dish3_im_polr1,
+                        X_dish0_im_polr1 + -X_dish2_re_polr1,
+                    ),
                 )
                 Y_re_beamQ0_polr0 = Y_beamQ0_re_polr0
                 Y_re_beamQ1_polr0 = Y_beamQ1_re_polr0
