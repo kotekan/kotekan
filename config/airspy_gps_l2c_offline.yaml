@@ -1,0 +1,84 @@
+---
+# Offline GPS L2C (CM) processing of an airspy_rx capture taken at L2 (1227.6 MHz).
+# Validates that a satellite found on L1 is also broadcasting L2C, from the same
+# platform. The descriptor-driven GpsReplicaCorrelator handles L2C natively
+# (signal: GPS_L2C_CM); only the config changes vs the L1 offline run.
+#
+#   airspy_rx -s <serial> -t 3 -a 1 -f 1227.6 -l 14 -m 15 -v 15 -n 25000000 -r cap.bin
+#   python: nyquist-flip alt samples, prepend 4-byte 0 header -> /tmp/gpsin
+#   kotekan -c airspy_gps_l2c_offline.yaml -b 0.0.0.0:12060
+#
+# *** IMPORTANT, L2C is heavier than L1 C/A: ***
+#  - The CM code is 20 ms (10230 chips @ 511.5 kcps), so Ns = round(Fs*0.020) =
+#    100000 samples/block (vs 5000 for L1's 1 ms). The 20 ms coherent integration
+#    needs a FINE Doppler grid -- doppler_step <= ~50 Hz (a 500 Hz step washes the
+#    peak out over 20 ms). CM also carries only HALF the L2C power (CL is the
+#    dataless other half), so it is weaker than L1.
+#  - The correlator allocates accum = n_prn * n_doppler * Ns * 4 bytes. With
+#    Ns=100000 that is ~0.4 MB per (PRN, Doppler bin) -- keep n_prn * n_doppler
+#    modest (a few thousand max) or it blows up memory.
+#  => WORKFLOW: run an L1 wide search first to find which PRNs are up and their
+#     Doppler; then set `prns` below to those PRNs and centre a NARROW Doppler
+#     window on (L1_doppler * 1227.6/1575.42 = 0.779 * L1_doppler). The defaults
+#     here are a placeholder few PRNs over a moderate window.
+type: config
+log_level: info
+instrument_name: airspy_gps
+
+telescope:                 # chord/macos framework builds a default ICETelescope
+    name: ICETelescope
+    num_polarizations: 1
+    num_dishes: 1
+
+samples_per_data_set: 25000000   # 5 s at 5 MSPS, one frame
+bytes_per_sample: 2
+buffer_depth: 4
+sizeof_float: 4
+cpu_affinity: [0, 1, 2, 3]
+
+in_buf:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * bytes_per_sample
+
+read_in:
+    kotekan_stage: rawFileRead
+    buf: in_buf
+    base_dir: "/tmp/gpsin"
+    file_name: "gpsin"
+    file_ext: "raw"
+    end_interrupt: false
+
+n_prn: 4                   # keep small: accum ~ n_prn * n_doppler * 0.4 MB
+record_floats: 11
+gps_record_buf:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: n_prn * record_floats * sizeof_float
+
+gps_correlator:
+    kotekan_stage: GpsReplicaCorrelator
+    in_buf: in_buf
+    out_buf: gps_record_buf
+    cpu_affinity: [4]
+    signal: GPS_L2C_CM     # 1227.6 MHz, 20 ms code; Ns auto = round(Fs*0.020)
+    sample_rate: 5.0e6
+    f_offset: 1.25e6       # same front-end model as L1 (LO on carrier, Fs_real/4)
+    doppler_min: -2500.0   # narrow + fine: centre on 0.779*L1_doppler once known
+    doppler_max: 2500.0
+    doppler_step: 50.0     # <= ~50 Hz required for the 20 ms coherent integration
+    incoherent_ms: 10      # for L2C this counts 20 ms periods -> 10 = 200 ms
+    track_phase: false
+    prns: [10, 12, 24, 32] # placeholder -> set to the PRNs your L1 search locked
+
+write_out:
+    kotekan_stage: rawFileWrite
+    in_buf: gps_record_buf
+    base_dir: "/tmp/gpsout"
+    file_name: "l2c"
+    file_ext: "raw"
+    prefix_hostname: false
+    num_frames_per_file: 1
+    exit_after_n_files: 5
