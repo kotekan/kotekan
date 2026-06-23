@@ -39,7 +39,8 @@ public:
         std::mt19937_64 rng(0x9e3779b97f4a7c15ULL);
 
         // Inner (fast) element count per frequency, a power of two (= num_polarizations * num_dishes/8).
-        const ptrdiff_t num_elements = 16;
+        // Kept small here (real configs are larger) so the naive CPU oracle stays cheap.
+        const ptrdiff_t num_elements = 4;
 
         // Run one test case: invent input [size_in][num_frequencies][num_elements], run GPU + CPU,
         // compare the written output rows. The kernel reads input channels [Fmin, Fmax) and writes
@@ -116,21 +117,21 @@ public:
             }
         };
 
-        // Test cases: every U; a few frequency sub-ranges (full, offset interior, single channel,
-        // non-power-of-2 nfreq); an offset geometry and one that forces an output-ring wrap; a couple
-        // of bit densities. (Correctness over the full cross-product is covered by an off-line host
-        // test against the same CPU reference; this matrix is kept small so the deliberately-slow CPU
-        // oracle finishes within the stage join timeout in debug builds.)
+        // Test cases: every U; a couple of frequency sub-ranges (full, and an offset/over-allocated
+        // one); an offset geometry and one that forces an output-ring wrap; two bit densities.
+        // Data dimensions are deliberately small so the naive CPU oracle stays cheap; this preserves
+        // full logical coverage (the exhaustive cross-product is covered by an off-line host test
+        // against the same CPU reference).
         const int factors[] = {2, 4, 8, 16, 32, 64, 128};
         // {num_frequencies_in, Fmin, Fmax, num_frequencies_out}
         const ptrdiff_t ranges[][4] = {
-            {16, 0, 16, 16}, // full range, output not over-allocated
-            {17, 3, 11, 32}, // offset interior; output over-allocated (writes 8 of 32 channels)
+            {8, 0, 8, 8},   // full range, output not over-allocated
+            {9, 2, 6, 16},  // offset interior, non-power-of-2 nfreq_in; over-allocated (writes 4 of 16)
         };
         // {size_in, pos_in, size_out, pos_out}
         const ptrdiff_t geoms[][4] = {
-            {256, 5, 256, 37},    // independent positions
-            {256, 251, 256, 250}, // positions near the end -> wrap
+            {128, 5, 128, 37},    // independent positions
+            {128, 125, 128, 124}, // positions near the end -> wrap
         };
         const double densities[] = {0.5, 1.0};
 
