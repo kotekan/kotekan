@@ -98,10 +98,10 @@ void testDataGenFewHot::main_thread() {
 
         chordmeta->set_frame_counter(seq_num);
 
-        buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type,
-                                         4>("Ebar", {1024,256,2, NUM_ELEMNS/2}, {"Tbar", "Fbar", "P", "D"});
+        buf->ensure_frame_desc(kotekan::GenericNDArray::describe(kotekan::int4x2_swapped_withoffset,
+                                         "Ebar", std::vector<ptrdiff_t>{1024,256,2, NUM_ELEMNS/2}, std::vector<kotekan::Symbol>{"Tbar", "Fbar", "P", "D"}));
         /* test that things are consistent */
-        chordmeta->check_frame_desc(buf->get_ndarray_frame_desc());
+        chordmeta->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
 
         std::memset(frame, 0x88 /* 0 volts */, 1024*256*NUM_ELEMNS);
 
