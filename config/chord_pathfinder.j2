@@ -197,20 +197,23 @@ n2_pool:
     num_metadata_objects: 16 * buffer_depth
 
 # Bad feed mask - marks which feeds to exclude from RFI calculations
-# Shape: [P, D] = [2, num_dishes] - all ones means all feeds are good
+# Produced by inventBFMask: int8 "bf_mask" [P, D] = [num_polarizations, num_dishes].
+# All ones (0xFF) means all feeds are good.
 host_bf_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
     zero_new_frames: true
     zero_value: 0xFF
     numa_node: 0
 
 host_bf_mask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
     zero_new_frames: true
     zero_value: 0xFF
@@ -222,8 +225,9 @@ network_input_buffers:
     frame_size: dpdk_output_frame_size
     metadata_pool: main_pool
     use_hugepages: true
-    
-    # The workers share an output buffer
+
+    # The workers share an output buffer.
+    # Fed by dpdkCore (crs16BoardCaptureWorker handler) -> leave standard.
     network_input_buffer_0:
         zero_new_frames: true
         numa_node: 0
@@ -234,13 +238,32 @@ network_input_buffers:
         numa_node: 1
         zero_value: 0x88
         kotekan_buffer: standard
-    # Main voltage buffer after transpose
-    host_voltage_buffer_0:
-        kotekan_buffer: standard
-        numa_node: 0
-    host_voltage_buffer_1:
-        kotekan_buffer: standard
-        numa_node: 1
+
+# Main voltage buffer after transpose.
+# Produced by TransposeBasebandArray: int4x2_swapped_withoffset "E"
+# [timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS/2] = [samples_per_data_set, 384, 2, 64].
+# The stage uses compile-time macros NUM_LOCAL_FREQ=384, NUM_ELEMENTS=128 (it fatally checks the
+# config num_local_freq/num_elements equal them); this config sets num_local_freq=384,
+# num_elements=128, so the static extents below are valid. These live outside the
+# network_input_buffers group: that group's frame_size is for the dpdk buffers, while
+# ndarray buffers derive their size from the descriptor.
+host_voltage_buffer_0:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
+    metadata_pool: main_pool
+    use_hugepages: true
+    numa_node: 0
+
+host_voltage_buffer_1:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
+    metadata_pool: main_pool
+    use_hugepages: true
+    numa_node: 1
 
 
 packet_receipt_bitmap_buffers:
@@ -264,125 +287,157 @@ packet_receipt_bitmap_buffers:
         kotekan_buffer: standard
         numa_node: 1
 
-# These are the dummy RFI masks produced by DPDK
+# These are the dummy RFI masks produced by ProcessPacketMask (rfi_mask_buf).
+# uint1x8 "RFImask" [samples_per_data_set/1024, num_local_freq, 128] {T8hi128, F, T8lo128}.
 host_rfi_RFImask_dummy_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
 
 host_rfi_RFImask_dummy_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     numa_node: 1
     metadata_pool: main_pool
 
-# Note this is the expanded version of the pl_mask, produced by DPDK. It will be compressed to
-# the normal PL mask before being sent to the GPU.
+# Note this is the expanded version of the pl_mask, produced by ProcessPacketMask (pl_mask_buf).
+# It will be compressed to the normal PL mask before being sent to the GPU.
+# uint1x8 "pl_mask_exp" [samples_per_data_set/64, num_local_freq, 2, num_elements/8/2, 8]
+# {Thi64, F, P, D8, Tlo64}.
 host_pl_mask_exp_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 64, num_local_freq, 2, num_elements / 8 / 2, 8]
     metadata_pool: main_pool
 
 host_pl_mask_exp_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 64, num_local_freq, 2, num_elements / 8 / 2, 8]
     metadata_pool: main_pool
     numa_node: 1
 
 # This is the PL mask, sent to GPU and used for n2k_counts and the RFI SK system.
+# Produced by PLMaskExpandedToCompact (out_buf): uint1x8 "pl_mask"
+# [samples_per_data_set/128, (num_local_freq+3)/4, 2, (num_elements/8)/2, 8]
+# {T2hi64, F4, P, D8, T2lo64}. num_local_freq=384 -> (384+3)/4 = 96 = num_local_freq/4.
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, 2, (num_elements / 8) / 2, 8]
     metadata_pool: main_pool
 
 host_pl_mask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, 2, (num_elements / 8) / 2, 8]
     metadata_pool: main_pool
     numa_node: 1
 
 # This contains the SK statistics averaged over elements.
+# GPU output (cudaCopyFromRingbuffer of cudaRFISKtilde rfi_SKtilde) and consumed by RfiFrameMask:
+# float32 "SKtilde" [samples_per_data_set/rfi_downsampling_factor, num_local_freq, 3] {Trfi, F, SK}.
 host_rfi_sktilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    value_type: float32
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
     metadata_pool: main_pool
 
 host_rfi_sktilde_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    value_type: float32
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
     metadata_pool: main_pool
     numa_node: 1
 
 # This is the RFI Mask recieved from the GPU, that was applied to produce n2k_correlation & n2k_counts.
 # It may contain either the dummy DPDK-generated mask or the real mask computed by SKtilde.
+# GPU output (cudaCopyFromRingbuffer of rfi_RFImask) and consumed by RfiMaskSum:
+# uint1x8 "RFImask" [samples_per_data_set/1024, num_local_freq, 128] {T8hi128, F, T8lo128}.
 host_rfi_RFImask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     numa_node: 1
     metadata_pool: main_pool
 
+# Produced by RfiMaskSum (out_buf): int32 "RFImask_counts"
+# [samples_per_data_set/sub_integration_ntime, num_local_freq] {Tc, F}.
 host_rfi_RFImask_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 host_rfi_RFImask_counts_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
     numa_node: 1
 
+# Produced by CountLostPLSamplesScalar (out_buf): int32 "pl_lost_counts_scalar"
+# [samples_per_data_set/sub_integration_ntime, num_local_freq] {Tc, F}.
 host_pl_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 host_pl_counts_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
     numa_node: 1
 
 # The mask for second stage RFI excision.
+# Produced by RfiFrameMask (out_buf): uint8 "RFIFrameMask"
+# [samples_per_data_set/sub_integration_ntime, num_local_freq] {Tc, F}.
 host_rfi_RFIframemask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    value_type: uint8
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
 
 host_rfi_RFIframemask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    value_type: uint8
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
@@ -391,16 +446,23 @@ host_rfi_RFIframemask_buffer_1:
 vis_blocksize: 16
 vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
+# GPU output (cudaOutputData of cudaCorrelator n2k_correlation): int32 "n2k_correlation"
+# [samples_per_data_set/sub_integration_ntime, num_local_freq, vis_num_blocks, 16, 16, 2]
+# {Tc, F, DPhi, DPlo1, DPlo2, C}. Block-count note: cudaCorrelator uses (num_elements+1)/16
+# while the CPU side uses num_elements/16; at num_elements=128 both equal 8, so vis_num_blocks=36
+# matches the kernel's triangle_num_blocks.
 host_correlation_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * vis_num_blocks * 2 * sizeof_gpu_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
 
 host_correlation_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * vis_num_blocks * 2 * sizeof_gpu_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
     numa_node: 1
 
@@ -408,16 +470,23 @@ host_correlation_buffer_1:
 counts_blocksize: 8
 counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
 counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
+# GPU output (cudaOutputData of cudaPL1bitCorrelator n2k_counts): int32 "n2k_counts"
+# [samples_per_data_set/sub_integration_ntime, num_local_freq, counts_num_blocks, 8, 8]
+# {Tc, F, D8Phi, D8Plo1, D8Plo2}. Block-count note: cudaPL1bitCorrelator uses
+# (num_elements/8+1)/8 while the CPU side uses (num_elements/8)/8; at num_elements=128 both equal 2,
+# so counts_num_blocks=3 matches the kernel's triangle_num_blocks.
 host_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_gpu_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
     metadata_pool: main_pool
 
 host_counts_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_gpu_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
     metadata_pool: main_pool
     numa_node: 1
 

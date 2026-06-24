@@ -1,5 +1,6 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -164,13 +165,13 @@ testRFIS012Gen::testRFIS012Gen(Config& config, const std::string& unique_name,
 
     // allocate frame descriptor
     if (bar_mode) {
-        out_buf->allocate_ndarray_frame_desc<uint64_t, 5>(
+        out_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
             "S012bar", {num_rfi_samples, num_local_freq, 3, num_polarizations, num_dishes},
-            {"Trfibar", "F", "S", "P", "D"}, {downsampling_factor, 1, 1, 1, 1});
+            {"Trfibar", "F", "S", "P", "D"}, {downsampling_factor, 1, 1, 1, 1}));
     } else {
-        out_buf->allocate_ndarray_frame_desc<uint64_t, 5>(
+        out_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
             "S012", {num_rfi_samples, num_local_freq, 3, num_polarizations, num_dishes},
-            {"Trfi", "F", "S", "P", "D"}, {downsampling_factor, 1, 1, 1, 1});
+            {"Trfi", "F", "S", "P", "D"}, {downsampling_factor, 1, 1, 1, 1}));
     }
 }
 
@@ -195,7 +196,7 @@ std::shared_ptr<chordMetadata> testRFIS012Gen::get_new_metadata(frameID frame_id
 }
 
 void testRFIS012Gen::set_metadata(const std::shared_ptr<chordMetadata>& meta, uint64_t seq_num) {
-    meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+    meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
     meta->set_fpga_seq_num(seq_num);
     meta->set_time_downsampling_fpga(downsampling_factor);
@@ -242,7 +243,7 @@ void testRFIS012Gen::main_thread() {
         set_metadata(meta, seq_num);
 
         // check frame descriptors match metadata
-        meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
+        meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Access Strides into s012
         int64_t ds = num_elements;

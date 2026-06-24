@@ -1,21 +1,23 @@
 #include "bufferFactory.hpp"
 
-#include <stddef.h>            // for size_t
-#include <json.hpp>            // for basic_json, iter_impl, json
-#include <cstdint>             // for int32_t, uint32_t, uint8_t
-#include <stdexcept>           // for runtime_error
-#include <vector>              // for vector
+#include "Config.hpp"         // for Config
+#include "FrameDesc.hpp"      // for FrameDesc
+#include "HFBFrameView.hpp"   // for HFBFrameView
+#include "N2FrameDesc.hpp"    // for N2FrameDesc
+#include "NDArray.hpp"        // for GenericNDArray
+#include "buffer.hpp"         // for GenericBuffer, Buffer
+#include "kotekanLogging.hpp" // for INFO_NON_OO
+#include "metadata.hpp"       // for metadataPool
+#include "ringbuffer.hpp"     // for RingBuffer
+#include "visBuffer.hpp"      // for VisFrameView
 
-#include "Config.hpp"          // for Config
-#include "FrameDesc.hpp"       // for FrameDesc
-#include "HFBFrameView.hpp"    // for HFBFrameView
-#include "N2FrameDesc.hpp"     // for N2FrameDesc
-#include "buffer.hpp"          // for GenericBuffer, Buffer
-#include "kotekanLogging.hpp"  // for INFO_NON_OO
-#include "metadata.hpp"        // for metadataPool
-#include "ringbuffer.hpp"      // for RingBuffer
-#include "visBuffer.hpp"       // for VisFrameView
-#include "fmt.hpp"             // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <cstdint>   // for int32_t, uint32_t, uint8_t
+#include <json.hpp>  // for basic_json, iter_impl, json
+#include <stddef.h>  // for size_t
+#include <stdexcept> // for runtime_error
+#include <vector>    // for vector
 
 using json = nlohmann::json;
 using std::map;
@@ -49,10 +51,8 @@ void bufferFactory::build_from_tree(map<string, GenericBuffer*>& buffers, const 
         string buffer_type = it.value().value("kotekan_buffer", "none");
         if (buffer_type != "none") {
             string name = it.key();
-            if (buffers.count(name) != 0) {
-                throw std::runtime_error(
-                    fmt::format(fmt("The buffer named {:s} has already been defined!"), name));
-            }
+            if (buffers.count(name) != 0)
+                FATAL_ERROR_NON_OO("The buffer named {:s} has already been defined!", name);
             buffers[name] =
                 new_buffer(buffer_type, name, fmt::format(fmt("{:s}/{:s}"), path, it.key()));
             continue;
@@ -74,15 +74,15 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
     std::shared_ptr<metadataPool> pool;
     if (metadataPool_name != "none") {
         if (metadataPools.count(metadataPool_name) != 1) {
-            throw std::runtime_error(fmt::format(
-                fmt("The buffer {:s} is requesting metadata pool named {:s} but no pool exists."),
-                name, metadataPool_name));
+            FATAL_ERROR_NON_OO(
+                "The buffer {:s} is requesting metadata pool named {:s} but no pool exists.", name,
+                metadataPool_name);
         }
         pool = metadataPools[metadataPool_name];
     }
 
-    // See also buffer::is_frame_buffer(), which looks for these three strings ("standard", "vis",
-    // "hfb")
+    // See also buffer::is_frame_buffer(), which looks for these frame-buffer type strings
+    // ("standard", "vis", "hfb", "N2", "ndarray")
     size_t frame_size = 0;
     std::shared_ptr<kotekan::FrameDesc> frame_desc = nullptr;
     if (type_name == "standard") {
@@ -91,6 +91,9 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
         frame_size = VisFrameView::calculate_frame_size(config, location);
     } else if (type_name == "N2") {
         frame_desc = std::make_shared<N2FrameDesc>(config, location);
+        frame_size = frame_desc->get_byte_size();
+    } else if (type_name == "ndarray") {
+        frame_desc = GenericNDArray::from_config(config, location);
         frame_size = frame_desc->get_byte_size();
     } else if (type_name == "hfb") {
         frame_size = HFBFrameView::calculate_frame_size(config, location);
@@ -113,7 +116,7 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
 
         // Set frame descriptor if one was created
         if (frame_desc) {
-            static_cast<Buffer*>(buf)->set_frame_desc(frame_desc);
+            static_cast<Buffer*>(buf)->ensure_frame_desc(frame_desc);
         }
 
     } else if (type_name == "ring") {
@@ -125,8 +128,7 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
 
     } else {
         // Unknown buffer type
-        throw std::runtime_error(
-            fmt::format(fmt("No buffer type named {:s} or buffer size is 0"), type_name));
+        FATAL_ERROR_NON_OO("No buffer type named {:s} or buffer size is 0", type_name);
     }
 
     buf->set_log_level(s_log_level);

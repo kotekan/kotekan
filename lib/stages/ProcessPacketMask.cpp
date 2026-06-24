@@ -1,7 +1,8 @@
 #include "ProcessPacketMask.hpp"
 
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for DataType
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for DataType
+#include "NDArray.hpp"
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -131,10 +132,10 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
             pl_mask_buf->frame_size, expected_pl_mask_size, T / 64, num_frequency, E / 8));
     }
 
-    pl_mask_buf->allocate_ndarray_frame_desc(
+    pl_mask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, "pl_mask_exp",
         {time_long * time_short / 64, num_frequency, 2, element_long * element_short / 8 / 2, 8},
-        {"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 8});
+        {"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 8}));
 
     // Validate rfi_mask buffer size
     // rfi_mask shape: uint8_t [T/1024][F][128] where T = time_long * time_short
@@ -146,9 +147,9 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
                         rfi_mask_buf->frame_size, expected_rfi_mask_size, T / 1024, num_frequency));
     }
 
-    rfi_mask_buf->allocate_ndarray_frame_desc(kotekan::uint1x8, "RFImask",
-                                              {time_long * time_short / 1024, num_frequency, 128},
-                                              {"T8hi128", "F", "T8lo128"}, {1024, 1, 8});
+    rfi_mask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::uint1x8, "RFImask", {time_long * time_short / 1024, num_frequency, 128},
+        {"T8hi128", "F", "T8lo128"}, {1024, 1, 8}));
 
     INFO("ProcessPacketMask: Initialized with {:d} receipt bitmap buffers",
          receipt_bitmap_bufs.size());

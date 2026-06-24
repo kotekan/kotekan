@@ -106,7 +106,7 @@ BOOST_AUTO_TEST_CASE(test_fulluppertri_to_autocorrelations) {
     size_t in_frame_size = N2FrameDesc::calculate_frame_size(num_elements, num_ev, in_num_prod);
     Buffer in_buf(num_frames, in_frame_size, pool, in_buf_name, "N2", 0, false, false,
                   std::vector<int>{}, true);
-    in_buf.set_frame_desc(
+    in_buf.ensure_frame_desc(
         std::make_shared<N2FrameDesc>(num_elements, num_ev, in_num_prod, N2Layout::FullUpperTri));
     in_buf.register_producer("test_producer");
 
@@ -115,7 +115,7 @@ BOOST_AUTO_TEST_CASE(test_fulluppertri_to_autocorrelations) {
     size_t out_frame_size = N2FrameDesc::calculate_frame_size(num_elements, num_ev, out_num_prod);
     Buffer out_buf(num_frames, out_frame_size, pool, out_buf_name, "N2", 0, false, false,
                    std::vector<int>{}, true);
-    out_buf.set_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_ev, out_num_prod,
+    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_ev, out_num_prod,
                                                          N2Layout::Autocorrelations));
 
     // Create buffer container
@@ -206,7 +206,7 @@ BOOST_AUTO_TEST_CASE(test_fulluppertri_to_general_subset) {
     size_t in_frame_size = N2FrameDesc::calculate_frame_size(num_elements, num_ev, in_num_prod);
     Buffer in_buf(num_frames, in_frame_size, pool, in_buf_name, "N2", 0, false, false,
                   std::vector<int>{}, true);
-    in_buf.set_frame_desc(
+    in_buf.ensure_frame_desc(
         std::make_shared<N2FrameDesc>(num_elements, num_ev, in_num_prod, N2Layout::FullUpperTri));
     in_buf.register_producer("test_producer");
 
@@ -215,7 +215,7 @@ BOOST_AUTO_TEST_CASE(test_fulluppertri_to_general_subset) {
         N2FrameDesc::calculate_frame_size(num_elements, num_ev, product_list.size());
     Buffer out_buf(num_frames, out_frame_size, pool, out_buf_name, "N2", 0, false, false,
                    std::vector<int>{}, true);
-    out_buf.set_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_ev, product_list.size(),
+    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_ev, product_list.size(),
                                                          N2Layout::GeneralSubset, product_list));
 
     // Create buffer container
@@ -287,13 +287,13 @@ BOOST_AUTO_TEST_CASE(test_autocorrelations_to_autocorrelations) {
 
     Buffer in_buf(num_frames, frame_size, pool, in_buf_name, "N2", 0, false, false,
                   std::vector<int>{}, true);
-    in_buf.set_frame_desc(
+    in_buf.ensure_frame_desc(
         std::make_shared<N2FrameDesc>(num_elements, num_ev, num_prod, N2Layout::Autocorrelations));
     in_buf.register_producer("test_producer");
 
     Buffer out_buf(num_frames, frame_size, pool, out_buf_name, "N2", 0, false, false,
                    std::vector<int>{}, true);
-    out_buf.set_frame_desc(
+    out_buf.ensure_frame_desc(
         std::make_shared<N2FrameDesc>(num_elements, num_ev, num_prod, N2Layout::Autocorrelations));
 
     // Create buffer container
@@ -368,7 +368,7 @@ BOOST_AUTO_TEST_CASE(test_have_inputs_subset) {
     size_t in_frame_size = N2FrameDesc::calculate_frame_size(num_elements, num_ev, in_num_prod);
     Buffer in_buf(num_frames, in_frame_size, pool, in_buf_name, "N2", 0, false, false,
                   std::vector<int>{}, true);
-    in_buf.set_frame_desc(
+    in_buf.ensure_frame_desc(
         std::make_shared<N2FrameDesc>(num_elements, num_ev, in_num_prod, N2Layout::FullUpperTri));
     in_buf.register_producer("test_producer");
 
@@ -377,7 +377,7 @@ BOOST_AUTO_TEST_CASE(test_have_inputs_subset) {
         N2FrameDesc::calculate_frame_size(num_elements, num_ev, product_list.size());
     Buffer out_buf(num_frames, out_frame_size, pool, out_buf_name, "N2", 0, false, false,
                    std::vector<int>{}, true);
-    out_buf.set_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_ev, product_list.size(),
+    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_ev, product_list.size(),
                                                          N2Layout::InputORMasked, product_list));
 
     // Create buffer container
@@ -450,7 +450,7 @@ BOOST_AUTO_TEST_CASE(test_only_inputs_subset) {
     size_t in_frame_size = N2FrameDesc::calculate_frame_size(num_elements, num_ev, in_num_prod);
     Buffer in_buf(num_frames, in_frame_size, pool, in_buf_name, "N2", 0, false, false,
                   std::vector<int>{}, true);
-    in_buf.set_frame_desc(
+    in_buf.ensure_frame_desc(
         std::make_shared<N2FrameDesc>(num_elements, num_ev, in_num_prod, N2Layout::FullUpperTri));
     in_buf.register_producer("test_producer");
 
@@ -459,7 +459,7 @@ BOOST_AUTO_TEST_CASE(test_only_inputs_subset) {
         N2FrameDesc::calculate_frame_size(num_elements, num_ev, product_list.size());
     Buffer out_buf(num_frames, out_frame_size, pool, out_buf_name, "N2", 0, false, false,
                    std::vector<int>{}, true);
-    out_buf.set_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_ev, product_list.size(),
+    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_ev, product_list.size(),
                                                          N2Layout::InputANDMasked, product_list));
 
     // Create buffer container

@@ -2,6 +2,7 @@
 
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -45,9 +46,14 @@ gpuSimulateN2kPLExpand::gpuSimulateN2kPLExpand(Config& config, const std::string
     int nt = _samples_per_data_set / 64;
     int nf = _num_local_freq;
     int ne = _num_elements / 8;
-    output_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::uint1x8>::type, 5>(
-        "pl_mask_exp", {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"},
-        {64, 1, 1, 8, 8});
+    input_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType<kotekan::uint1x8>::type, 5>::describe(
+            "pl_mask", {nt / 2, (nf + 3) / 4, 2, ne / 2, 8}, {"T2hi64", "F4", "P", "D8", "T2lo64"},
+            {128, 4, 1, 8, 16}));
+    output_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType<kotekan::uint1x8>::type, 5>::describe(
+            "pl_mask_exp", {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"},
+            {64, 1, 1, 8, 8}));
 }
 
 gpuSimulateN2kPLExpand::~gpuSimulateN2kPLExpand() {}
@@ -173,7 +179,7 @@ void gpuSimulateN2kPLExpand::main_thread() {
         meta_out->deepCopy(meta_in);
 
         // frame_desc set in constructor
-        meta_out->set_from_frame_desc(output_buf->get_ndarray_frame_desc());
+        meta_out->set_from_frame_desc(output_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Update changes
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
@@ -199,7 +205,7 @@ void gpuSimulateN2kPLExpand::main_thread() {
         assert(meta_out->get_nfreq() <= CHORD_META_MAX_FREQ);
 
         /* test that things are consistent */
-        meta_out->check_frame_desc(output_buf->get_ndarray_frame_desc());
+        meta_out->check_frame_desc(output_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         input_buf->mark_frame_empty(unique_name, input_frame_id);
         output_buf->mark_frame_full(unique_name, output_frame_id);

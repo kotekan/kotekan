@@ -1,10 +1,16 @@
 #include "givenDataGen.hpp"
 
 #include "DataType.hpp"        // for type_total_bytes, string_to_type, DataType
+#include "DataType.hpp"        // for type_total_bytes, string_to_type, DataType
+#include "NDArray.hpp"         // for GenericNDArray, Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "bufferContainer.hpp" // for bufferContainer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM
 
+#include "fmt.hpp" // for format
 #include "fmt.hpp" // for format
 
 #include <assert.h>   // for assert
@@ -118,10 +124,10 @@ void givenDataGen::main_thread() {
         }
         chordmeta->set_strides_simple();
 
-        _out_buf->allocate_ndarray_frame_desc(chordmeta->type, _name, _array_shape, _dim_name,
-                                              _dim_scalings);
+        _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+            chordmeta->type, _name, _array_shape, _dim_name, _dim_scalings));
         /* test that things are consistent */
-        chordmeta->check_frame_desc(_out_buf->get_ndarray_frame_desc());
+        chordmeta->check_frame_desc(_out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         _out_buf->mark_frame_full(unique_name, frame_id);
 

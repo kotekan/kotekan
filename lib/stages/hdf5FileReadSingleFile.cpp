@@ -1,5 +1,6 @@
 #include "Config.hpp"            // for Config
 #include "DataType.hpp"          // for string_to_type, DataType
+#include "NDArray.hpp"           // for GenericNDArray
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"            // for Symbol
@@ -198,11 +199,11 @@ public:
                     break;
 
                 // Set metadata
-                buffer->allocate_ndarray_frame_desc(type, kotekan::Symbol(name), new_dims,
-                                                    new_dim_names, new_dim_scalings);
+                buffer->require_frame_desc(kotekan::GenericNDArray::describe(
+                    type, kotekan::Symbol(name), new_dims, new_dim_names, new_dim_scalings));
                 buffer->allocate_new_metadata_object(frame_id);
                 const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
-                meta->set_from_frame_desc(buffer->get_ndarray_frame_desc());
+                meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
 
                 meta->set_coarse_freq(frequency_channels);
                 meta->set_freq_upchan_factor(new_freq_upchan_factor);

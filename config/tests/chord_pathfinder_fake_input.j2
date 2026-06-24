@@ -6,65 +6,79 @@
 # Buffers
 
 # Main voltage buffer
+# testDataGen (gen_fake_voltage, type random_signed_offset -> int4x2_swapped_withoffset,
+# array_shape [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]).
 host_voltage_buffer_0:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_elements
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]
     metadata_pool: main_pool
     numa_node: 0
 host_voltage_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_elements
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]
     metadata_pool: main_pool
     numa_node: 1
 
 
+# Produced by testRFImaskGen (gen_dummy_rfi_mask, name "RFImask", type const -> uint1x8;
+# shape [samples_per_data_set / 1024, num_local_freq, 128] is fixed in testRFImaskGen.cpp:133).
 host_rfi_RFImask_dummy_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
 
 host_rfi_RFImask_dummy_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     numa_node: 1
     metadata_pool: main_pool
 
+# testDataGen (gen_fake_pl_mask, type random1x8 -> uint1x8, name "pl_mask").
+# extents = [samples_per_data_set/128, (num_local_freq+3)/4, num_polarizations, num_dishes/8, 8]
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, num_polarizations, num_dishes / 8, 8]
     metadata_pool: main_pool
 
 host_pl_mask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, num_polarizations, num_dishes / 8, 8]
     metadata_pool: main_pool
     numa_node: 1
 
 # Bad feed mask - marks which feeds to exclude from RFI calculations
 # Shape: [P, D] = [2, num_dishes] - all ones means all feeds are good
 host_bf_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
     zero_new_frames: true
     zero_value: 0xFF
     numa_node: 0
 
 host_bf_mask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
     zero_new_frames: true
     zero_value: 0xFF

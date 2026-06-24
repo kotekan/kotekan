@@ -26,9 +26,12 @@ global_params = {
     # KotekanStageTester adds a "main_pool" section
     # Buffers
     "reorder_buffer": {
-        "kotekan_buffer": "standard",
+        "kotekan_buffer": "ndarray",
         "num_frames": 1,
-        "frame_size": 2048 * 4,
+        "value_type": "int32",
+        "quantity_name": "scatter_indices",
+        "extents": ["num_polarizations", "num_dishes"],
+        "dimnames": ["P", "D"],
         "metadata_pool": "main_pool",
     },
     # dump to disk to inspect manually

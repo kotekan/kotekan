@@ -121,7 +121,7 @@ private:
             };
             static constexpr std::array<std::ptrdiff_t, {{{name}}}_rank> {{{name}}}_dimscalings = {
                 {{#axes}}
-                    1,
+                    {{{dimscaling}}},
                 {{/axes}}
             };
             static constexpr auto {{{name}}}_calc_stride = [](int dim) {

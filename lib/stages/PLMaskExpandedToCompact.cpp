@@ -1,7 +1,10 @@
 #include "PLMaskExpandedToCompact.hpp"
 
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for DataType
+#include "Config.hpp"   // for Config
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for DataType
+#include "DataType.hpp" // for DataType
+#include "NDArray.hpp"
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -65,14 +68,14 @@ STAGE_CONSTRUCTOR(PLMaskExpandedToCompact) {
     }
 
     // Set up ndarray frame descriptor for the input and output
-    in_buf->allocate_ndarray_frame_desc(
+    in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, "pl_mask_exp",
         {(ptrdiff_t)(T / 64), (ptrdiff_t)F, 2, (ptrdiff_t)(E_div_8 / 2), 8},
-        {"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 8});
-    out_buf->allocate_ndarray_frame_desc(
+        {"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 8}));
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, "pl_mask",
         {(ptrdiff_t)(T / 128), (ptrdiff_t)F_compact, 2, (ptrdiff_t)(E_div_8 / 2), 8},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16});
+        {"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16}));
 
     INFO("PLMaskExpandedToCompact: Expanded [T/64={:d}][F={:d}][E/8={:d}] -> "
          "Compact [T/128={:d}][F4={:d}][E/8={:d}]",
@@ -175,7 +178,7 @@ void PLMaskExpandedToCompact::main_thread() {
         out_meta->deepCopy(in_meta);
 
         // Set NDArray meta from the frame descriptor
-        out_meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+        out_meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Other updates from in_meta
         // Compact mask covers 128 baseband samples per uint64 (vs 64 for expanded)

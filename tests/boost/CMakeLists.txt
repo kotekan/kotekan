@@ -182,6 +182,19 @@ target_link_libraries(test_CHORDTelescope PRIVATE kotekan_utils)
 add_executable(test_N2FrameDesc test_N2FrameDesc.cpp)
 target_link_libraries(test_N2FrameDesc PRIVATE kotekan_metadata kotekan_utils libexternal)
 
+# test_NDArrayBufferConfig - config-driven NDArray frame descriptors and the `ndarray` buffer type
+# in bufferFactory
+add_executable(test_NDArrayBufferConfig test_NDArrayBufferConfig.cpp)
+target_link_libraries(
+    test_NDArrayBufferConfig
+    PRIVATE libexternal
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,--whole-archive
+            kotekan_metadata
+            -Wl,--no-whole-archive)
+
 # test_N2Subset - tests for N2Subset stage
 add_executable(test_N2Subset test_N2Subset.cpp)
 target_link_libraries(

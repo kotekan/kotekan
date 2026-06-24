@@ -88,30 +88,13 @@ public:
                                      T>::type* = nullptr>
     T get(const std::string& base_path, const std::string& name) const {
         nlohmann::json json_value = get_value(base_path, name);
-        T value;
         try {
-            // If the expected type is a number and the value
-            // isn't already a number then try using the configEval parser
-            if (std::is_arithmetic<T>::value && !json_value.is_number()) {
-                try {
-                    Config::configEval<T> eval(*this, base_path, name);
-                    value = eval.compute_result();
-                } catch (std::exception const& ex) {
-                    throw std::runtime_error(
-                        fmt::format(fmt("Failed to evaluate: '{:s}' with message: '{:s}' for name "
-                                        "{:s} in path {:s}"),
-                                    json_value.get<std::string>(), ex.what(), name, base_path));
-                }
-            } else {
-                value = checked_conversion<T>(json_value.get<LargeType<T>>());
-            }
+            return eval<T>(base_path, json_value);
         } catch (std::exception const& ex) {
             throw std::runtime_error(fmt::format(
                 fmt("The value {:s} in path {:s} is not of type '{:s}' or doesn't exist: {:s}"),
                 name, base_path, demangle<T>(), ex.what()));
         }
-
-        return value;
     }
 
     /**
@@ -135,6 +118,36 @@ public:
         }
 
         return value;
+    }
+
+    /**
+     * @brief Evaluate a JSON value (a number, or an arithmetic expression
+     *        string) in the config scope given by @c base_path.
+     *
+     * Like @c get() for arithmetic types, but operates on a value that is
+     * not directly addressable by a config path -- e.g. the elements of an
+     * array value, inside which @c get() cannot evaluate expressions.
+     * Variables in the expression are resolved with the usual config
+     * scoping rules, relative to @c base_path.
+     *
+     * @param base_path Config scope used to resolve variables in the expression.
+     * @param value     The JSON value to evaluate (a number or an expression string).
+     * @return  The evaluated value.
+     */
+    template<class T,
+             typename std::enable_if<std::is_arithmetic<T>::value && !std::is_same<bool, T>::value,
+                                     T>::type* = nullptr>
+    T eval(const std::string& base_path, const nlohmann::json& value) const {
+        if (value.is_number())
+            return checked_conversion<T>(value.get<LargeType<T>>());
+        try {
+            Config::configEval<T> evaluator(*this, base_path, value);
+            return evaluator.compute_result();
+        } catch (std::exception const& ex) {
+            throw std::runtime_error(
+                fmt::format(fmt("Failed to evaluate: '{:s}' with message: '{:s}' in path {:s}"),
+                            value.dump(), ex.what(), base_path));
+        }
     }
 
     /**
@@ -292,7 +305,8 @@ private:
     class configEval {
 
     public:
-        configEval(const Config& _config, const std::string& base_path, const std::string& name);
+        configEval(const Config& _config, const std::string& base_path,
+                   const nlohmann::json& value);
 
         ~configEval();
 
@@ -342,17 +356,15 @@ T Config::get_default(const std::string& base_path, const std::string& name,
 
 template<class Type>
 Config::configEval<Type>::configEval(const Config& _config, const std::string& base_path,
-                                     const std::string& name) :
+                                     const nlohmann::json& value) :
     config(_config), unique_name(base_path) {
 
-    nlohmann::json value = config.get_value(base_path, name);
-
-    if (!(value.is_string() || value.is_number())) {
-        throw std::runtime_error(fmt::format(
-            fmt("The value {:s} in path {:s} isn't a number or string to eval or does not exist."),
-            name, base_path));
+    if (!value.is_string()) {
+        throw std::runtime_error(
+            fmt::format(fmt("The value '{:s}' in path {:s} isn't a string to evaluate."),
+                        value.dump(), base_path));
     }
-    const std::string& expression = value.get<std::string>();
+    const std::string expression = value.get<std::string>();
 
     static const std::regex re(
         R"((-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][+\-]?[0-9]+)?|\+|\*|\-|\/|\)|\(|[a-zA-Z][a-zA-Z0-9_]*))",

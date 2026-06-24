@@ -71,15 +71,15 @@ public:
         A_buffer->register_producer(unique_name);
         s_buffer->register_producer(unique_name);
 
-        bb_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
-            "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"}, {1, 1});
+        bb_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
+            "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"}, {1, 1}));
 
-        A_buffer->allocate_ndarray_frame_desc<std::int8_t, 5>(
+        A_buffer->require_frame_desc(kotekan::NDArray<std::int8_t, 5>::describe(
             "A", {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
-            {"F", "P", "B", "D", "C"}, {1, 1, 1, 1, 1});
+            {"F", "P", "B", "D", "C"}, {1, 1, 1, 1, 1}));
 
-        s_buffer->allocate_ndarray_frame_desc<std::int32_t, 3>(
-            "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"}, {1, 1, 1});
+        s_buffer->require_frame_desc(kotekan::NDArray<std::int32_t, 3>::describe(
+            "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"}, {1, 1, 1}));
     }
 
     virtual ~calcBBPhase() {}
@@ -144,7 +144,7 @@ public:
         // Set metadata
         A_buffer->allocate_new_metadata_object(frame_id);
         const auto& A_meta = get_chord_metadata(A_buffer->get_metadata(frame_id));
-        A_meta->set_from_frame_desc(A_buffer->get_ndarray_frame_desc());
+        A_meta->set_from_frame_desc(A_buffer->get_frame_desc<kotekan::GenericNDArray>());
         A_meta->set_fpga_seq_num(seq_num);
         A_meta->set_time_downsampling_fpga(time_downsampling);
         A_meta->set_coarse_freq(frequency_channels);
@@ -153,7 +153,7 @@ public:
 
         s_buffer->allocate_new_metadata_object(frame_id);
         const auto& s_meta = get_chord_metadata(s_buffer->get_metadata(frame_id));
-        s_meta->set_from_frame_desc(s_buffer->get_ndarray_frame_desc());
+        s_meta->set_from_frame_desc(s_buffer->get_frame_desc<kotekan::GenericNDArray>());
         s_meta->set_fpga_seq_num(seq_num);
         s_meta->set_time_downsampling_fpga(time_downsampling);
         s_meta->set_coarse_freq(frequency_channels);

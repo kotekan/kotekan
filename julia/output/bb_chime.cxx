@@ -237,7 +237,7 @@ private:
         16384, 2, 16, 32, 1,
     };
     static constexpr std::array<std::ptrdiff_t, J_rank> J_dimscalings = {
-        1, 1, 1, 1, 1,
+        1, 1, 1, 1, 16384,
     };
     static constexpr auto J_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;

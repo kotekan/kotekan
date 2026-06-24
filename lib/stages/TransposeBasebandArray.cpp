@@ -1,13 +1,22 @@
 #include "TransposeBasebandArray.hpp"
 
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for DataType
+#include "Config.hpp"   // for Config
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for DataType
+#include "DataType.hpp" // for DataType
+#include "NDArray.hpp"
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
 #include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
 
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
 #include <cstring>     // for memcpy, memset
@@ -153,10 +162,10 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     // Set the output buffer frame ndarray shape
 
     // Confusingly the array name is "E" for electric field
-    out_buf->allocate_ndarray_frame_desc(
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int4x2_swapped_withoffset, "E",
         {timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS / 2}, {"T", "F", "P", "D"},
-        {1, 1, 1, 1});
+        {1, 1, 1, 1}));
 
     INFO("TransposeBasebandArray: Input shape: [{:d}][{:d}][{:d}][{:d}][{:d}]", time_long,
          NUM_LOCAL_FREQ, ELEMENT_LONG, TIME_SHORT, ELEMENT_SHORT);

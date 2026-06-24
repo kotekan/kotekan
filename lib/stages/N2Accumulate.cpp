@@ -1,27 +1,50 @@
 #include "N2Accumulate.hpp"
 
 #include "Config.hpp"            // for Config
+#include "Config.hpp"            // for Config
+#include "DataType.hpp"          // for DataType
 #include "DataType.hpp"          // for DataType
 #include "FrameDesc.hpp"         // for FrameDesc
+#include "FrameDesc.hpp"         // for FrameDesc
+#include "Hash.hpp"              // for operator!=
 #include "Hash.hpp"              // for operator!=
 #include "N2FrameDesc.hpp"       // for N2FrameDesc
+#include "N2FrameDesc.hpp"       // for N2FrameDesc
+#include "N2FrameView.hpp"       // for N2FrameView
 #include "N2FrameView.hpp"       // for N2FrameView
 #include "N2Layout.hpp"          // for N2Layout
+#include "N2Layout.hpp"          // for N2Layout
+#include "N2Metadata.hpp"        // for N2Metadata, get_N2_metadata
 #include "N2Metadata.hpp"        // for N2Metadata, get_N2_metadata
 #include "N2Util.hpp"            // for frameID, modulo, operator+, cfloat, cmap
+#include "N2Util.hpp"            // for frameID, modulo, operator+, cfloat, cmap
+#include "NDArray.hpp"           // for GenericNDArray
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"         // for Telescope, freq_id_t
+#include "Telescope.hpp"         // for Telescope, freq_id_t
+#include "buffer.hpp"            // for Buffer
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
 #include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
 #include "dataset.hpp"           // for dset_id_t
+#include "dataset.hpp"           // for dset_id_t
+#include "div.hpp"               // for div_ceil, num_triangle_blocks
 #include "div.hpp"               // for div_ceil, num_triangle_blocks
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, FATAL_ERROR_NON_OO, INFO
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, FATAL_ERROR_NON_OO, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "timeUtil.hpp"          // for EOP, get_UT1_from_ERA, get_ERA_from_UT1, get_UT1_from_time
 #include "timeUtil.hpp"          // for EOP, get_UT1_from_ERA, get_ERA_from_UT1, get_UT1_from_time
 
 #include "fmt.hpp"          // for compile_string_to_view
+#include "fmt.hpp"          // for compile_string_to_view
 #include "gsl-lite.hpp"     // for span
+#include "gsl-lite.hpp"     // for span
+#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 #include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 
 #include <algorithm>  // for fill
@@ -203,47 +226,38 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _accum_bin_idx = -1;
 
     // Ensure incoming buffer shapes and type are correct
-    in_buf->allocate_ndarray_frame_desc(kotekan::int32, "n2k_correlation",
-                                        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame,
-                                         _n2k_correlation_num_blocks, _n2k_correlation_blocksize,
-                                         _n2k_correlation_blocksize, 2},
-                                        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"},
-                                        {_n_fpga_samples_per_n2k_correlation, 1, 16, 1, 1, 1});
+    in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::int32, "n2k_correlation",
+        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame, _n2k_correlation_num_blocks,
+         _n2k_correlation_blocksize, _n2k_correlation_blocksize, 2},
+        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"},
+        {_n_fpga_samples_per_n2k_correlation, 1, 16, 1, 1, 1}));
 
-    in_counts_buf->allocate_ndarray_frame_desc(kotekan::int32, "n2k_counts",
-                                               {_n_integrations_per_n2k_frame,
-                                                _num_freq_per_n2k_frame, _n2k_counts_num_blocks,
-                                                _n2k_counts_blocksize, _n2k_counts_blocksize},
-                                               {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"},
-                                               {_n_fpga_samples_per_n2k_correlation, 1, 64, 8, 8});
+    in_counts_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::int32, "n2k_counts",
+        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame, _n2k_counts_num_blocks,
+         _n2k_counts_blocksize, _n2k_counts_blocksize},
+        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"},
+        {_n_fpga_samples_per_n2k_correlation, 1, 64, 8, 8}));
 
-    in_rficounts_buf->allocate_ndarray_frame_desc(
+    in_rficounts_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "RFImask_counts", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
-        {"Tc", "F"}, {_n_fpga_samples_per_n2k_correlation, 1});
+        {"Tc", "F"}, {_n_fpga_samples_per_n2k_correlation, 1}));
 
-    in_plcounts_buf->allocate_ndarray_frame_desc(
-        kotekan::int32, "pl_lost_counts_scalar",
-        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame}, {"Tc", "F"},
-        {_n_fpga_samples_per_n2k_correlation, 1});
+    in_plcounts_buf->require_frame_desc(
+        kotekan::GenericNDArray::describe(kotekan::int32, "pl_lost_counts_scalar",
+                                          {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
+                                          {"Tc", "F"}, {_n_fpga_samples_per_n2k_correlation, 1}));
 
-    in_rfiframemask_buf->allocate_ndarray_frame_desc(
+    in_rfiframemask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint8, "RFIFrameMask", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
-        {"Tc", "F"}, {_n_fpga_samples_per_n2k_correlation, 1});
+        {"Tc", "F"}, {_n_fpga_samples_per_n2k_correlation, 1}));
 
 
     // Validate that the output buffer's frame descriptor (set by bufferFactory) matches
     // what this stage will produce
     {
-        auto out_frame_desc = out_buf->get_frame_description();
-        if (!out_frame_desc) {
-            FATAL_ERROR("N2Accumulate: Output buffer {:s} does not have a frame descriptor set",
-                        out_buf->buffer_name);
-        }
-        auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(out_frame_desc);
-        if (!n2_desc) {
-            FATAL_ERROR("N2Accumulate: Output buffer {:s} does not have an N2FrameDesc",
-                        out_buf->buffer_name);
-        }
+        auto n2_desc = out_buf->require_frame_desc<kotekan::N2FrameDesc>();
         // Validate the descriptor matches what we expect to produce
         if (n2_desc->get_num_elements() != (uint32_t)_num_elements) {
             FATAL_ERROR(

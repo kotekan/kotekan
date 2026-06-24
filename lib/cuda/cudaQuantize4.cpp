@@ -102,7 +102,7 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
                                                          _num_times / 2};
         const std::array<std::string, 4> beam_dimnames{"Ttildehi256", "R", "Fbar", "Ttildelo256"};
         const std::array<std::ptrdiff_t, 4> beam_dimscalings{_frb_downsampling_factor * 256, 1, 1,
-                                                             _frb_downsampling_factor};
+                                                             _frb_downsampling_factor * 2};
         return NDArrayBuffer<kotekan::int4x2_t, 4>(_gpu_mem_beams, "I3", beam_lengths,
                                                    beam_dimnames, beam_dimscalings, *this);
     }()),

@@ -2,6 +2,7 @@
 
 #include <Config.hpp>          // for Config
 #include <DataType.hpp>        // for string_to_type, DataType
+#include <NDArray.hpp>         // for GenericNDArray
 #include <Stage.hpp>           // for Stage
 #include <StageFactory.hpp>    // for REGISTER_KOTEKAN_STAGE
 #include <Symbol.hpp>          // for Symbol
@@ -296,12 +297,13 @@ public:
 
                     std::vector<std::ptrdiff_t> dimensions(dims.begin(), dims.end());
                     std::vector<kotekan::Symbol> dimnames(dim_names.begin(), dim_names.end());
-                    //TODO std::vector<std::ptrdiff_t> dimscalings(dim_scalings.begin(), dim_scalings.end());
+                    std::vector<std::ptrdiff_t> dimscalings(dim_scalings.begin(),
+                                                            dim_scalings.end());
 
-                    //TODO buffer->allocate_ndarray_frame_desc(value_type, name, dimensions, dimnames,dimscalings);
-                    buffer->allocate_ndarray_frame_desc(value_type, name, dimensions, dimnames, dim_scalings);
+                    buffer->require_frame_desc(kotekan::GenericNDArray::describe(
+                        value_type, name, dimensions, dimnames, dimscalings));
                     /* test that things are consistent */
-                    meta->check_frame_desc(buffer->get_ndarray_frame_desc());
+                    meta->check_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
                 }
 
                 // Read buffer

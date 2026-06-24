@@ -90,39 +90,45 @@ n2_pool:
     num_metadata_objects: 16 * buffer_depth
 
 fake_correlation_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
 
 fake_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
     metadata_pool: main_pool
 
 fake_rfimask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set * num_local_freq) / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     metadata_pool: main_pool
 
 fake_rficounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 fake_plcounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 fake_rfi_frame_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    value_type: uint8
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 n2_buffer:

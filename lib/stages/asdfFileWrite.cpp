@@ -140,8 +140,11 @@ public:
             assert(metadata_is_chord(mc) || metadata_is_N2(mc));
             const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
             const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
-                buffer->get_ndarray_frame_desc();
-            assert(frame_desc);
+                buffer->get_frame_desc<kotekan::GenericNDArray>();
+            if (!frame_desc)
+                FATAL_ERROR("Buffer \"{:s}\" has no NDArray frame descriptor; asdfFileWrite "
+                            "needs one to describe the written array",
+                            buffer->buffer_name);
 
             const double this_time = current_time();
             const double elapsed_time = this_time - start_time;

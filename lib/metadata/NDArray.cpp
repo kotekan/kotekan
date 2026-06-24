@@ -1,8 +1,10 @@
+#include "NDArray.hpp"
+
+#include "Config.hpp"    // for Config
 #include "DataType.hpp"  // for DataType, GetType_t, operator<<
 #include "FrameDesc.hpp" // for FrameDesc
 #include "Symbol.hpp"    // for Symbol, operator<<, operator!=, operator==
 
-#include <NDArray.hpp>
 #include <cassert>     // for assert
 #include <cstring>     // for memcmp
 #include <sstream>     // for basic_ostringstream
@@ -52,7 +54,7 @@ template<DataType my_datatype, size_t my_rank>
 static inline std::shared_ptr<GenericNDArray>
 make_NDArray(const DataType datatype, const Symbol quantity_name,
              const std::vector<std::ptrdiff_t>& extents, const std::vector<Symbol>& dimnames,
-             const std::vector<std::ptrdiff_t>& dimscalings, void* data) {
+             const std::vector<std::ptrdiff_t>& dimscalings) {
     // recurse until datatype matches
     if constexpr (my_datatype == unknown_type) {
         assert(my_datatype != unknown_type);
@@ -66,25 +68,205 @@ make_NDArray(const DataType datatype, const Symbol quantity_name,
             // both match
             return std::shared_ptr<GenericNDArray>(new NDArray<GetType_t<my_datatype>, my_rank>(
                 quantity_name, extents, dimnames, dimscalings,
-                static_cast<GetType_t<my_datatype>*>(data)));
+                static_cast<GetType_t<my_datatype>*>(nullptr)));
         } else {
             return make_NDArray<my_datatype, my_rank - 1>(datatype, quantity_name, extents,
-                                                          dimnames, dimscalings, data);
+                                                          dimnames, dimscalings);
         }
     } else {
         return make_NDArray<DataType(my_datatype - 1), my_rank>(datatype, quantity_name, extents,
-                                                                dimnames, dimscalings, data);
+                                                                dimnames, dimscalings);
     }
 }
 
 std::shared_ptr<GenericNDArray>
-GenericNDArray::create(const DataType value_datatype, const Symbol quantity_name,
-                       const std::vector<std::ptrdiff_t>& extents,
-                       const std::vector<Symbol>& dimnames,
-                       const std::vector<std::ptrdiff_t>& dimscalings, void* data) {
+GenericNDArray::describe(const DataType value_datatype, const Symbol quantity_name,
+                         const std::vector<std::ptrdiff_t>& extents,
+                         const std::vector<Symbol>& dimnames,
+                         const std::vector<std::ptrdiff_t>& dimscalings) {
     assert(extents.size() == dimnames.size() && "Sizes of extents and dimnames must aggree");
+    assert(extents.size() == dimscalings.size() && "Sizes of extents and dimscalings must aggree");
     return make_NDArray<DataType(end_type - 1), max_rank>(value_datatype, quantity_name, extents,
-                                                          dimnames, dimscalings, data);
+                                                          dimnames, dimscalings);
+}
+
+std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config,
+                                                            const std::string& location) {
+    const std::string type_name = config.get<std::string>(location, "value_type");
+    const DataType value_datatype = string_to_type(type_name);
+    if (value_datatype == unknown_type)
+        throw std::runtime_error(fmt::format(
+            fmt("GenericNDArray: unknown value_type '{:s}' in path {:s}"), type_name, location));
+
+    // `quantity_name` and `dimnames` are semantic labels: they are
+    // OPTIONAL in config. When omitted, the descriptor is left with
+    // unset (empty) labels and the producing stage fills them in via
+    // Buffer::ensure_frame_desc(); when given, the stage validates
+    // against them. `value_type` and `extents` are structural (they
+    // fix the byte layout the bufferFactory allocates) and are
+    // required.
+    const Symbol quantity_name(config.get_default<std::string>(location, "quantity_name", ""));
+
+    // Extent entries may be arithmetic expressions referencing other
+    // (scoped) config values, so evaluate them individually.
+    const auto extents_json = config.get<std::vector<nlohmann::json>>(location, "extents");
+    std::vector<std::ptrdiff_t> extents;
+    extents.reserve(extents_json.size());
+    for (const auto& extent : extents_json)
+        extents.push_back(config.eval<std::ptrdiff_t>(location, extent));
+
+    if (extents.empty() || extents.size() > max_rank)
+        throw std::runtime_error(
+            fmt::format(fmt("GenericNDArray: rank {:d} is outside [1, {:d}] in path {:s}"),
+                        extents.size(), max_rank, location));
+    for (std::size_t d = 0; d < extents.size(); ++d)
+        if (extents[d] <= 0)
+            throw std::runtime_error(fmt::format(
+                fmt("GenericNDArray: extent {:d} of dimension {:d} is not positive in path {:s}"),
+                extents[d], d, location));
+
+    const auto dimname_strings =
+        config.get_default<std::vector<std::string>>(location, "dimnames", {});
+    std::vector<Symbol> dimnames;
+    if (dimname_strings.empty()) {
+        // Labels omitted: leave one unset (empty) label per axis for a stage to fill.
+        dimnames.assign(extents.size(), Symbol(""));
+    } else {
+        if (dimname_strings.size() != extents.size())
+            throw std::runtime_error(fmt::format(
+                fmt("GenericNDArray: extents size ({:d}) does not match dimnames size ({:d}) in "
+                    "path {:s}"),
+                extents.size(), dimname_strings.size(), location));
+        dimnames.reserve(dimname_strings.size());
+        for (const auto& dimname : dimname_strings)
+            dimnames.emplace_back(dimname);
+        for (std::size_t d = 0; d < dimnames.size(); ++d)
+            for (std::size_t d1 = 0; d1 < d; ++d1)
+                if (dimnames[d] == dimnames[d1])
+                    throw std::runtime_error(
+                        fmt::format(fmt("GenericNDArray: duplicate dimname '{:s}' in path {:s}"),
+                                    std::string(dimnames[d]), location));
+    }
+
+    // `dimscalings` is an optional structural label like `dimnames`: when
+    // omitted, each axis defaults to a scaling of 1 (no downsampling).
+    // Entries may be arithmetic expressions referencing other (scoped) config
+    // values, so evaluate them individually.
+    const auto dimscalings_json =
+        config.get_default<std::vector<nlohmann::json>>(location, "dimscalings", {});
+    std::vector<std::ptrdiff_t> dimscalings;
+    if (dimscalings_json.empty()) {
+        // Scalings omitted: default each axis to 1.
+        dimscalings.assign(extents.size(), 1);
+    } else {
+        if (dimscalings_json.size() != extents.size())
+            throw std::runtime_error(fmt::format(
+                fmt("GenericNDArray: extents size ({:d}) does not match dimscalings size ({:d}) in "
+                    "path {:s}"),
+                extents.size(), dimscalings_json.size(), location));
+        dimscalings.reserve(dimscalings_json.size());
+        for (const auto& dimscaling : dimscalings_json)
+            dimscalings.push_back(config.eval<std::ptrdiff_t>(location, dimscaling));
+        for (std::size_t d = 0; d < dimscalings.size(); ++d)
+            if (dimscalings[d] <= 0)
+                throw std::runtime_error(
+                    fmt::format(fmt("GenericNDArray: dimscaling {:d} of dimension "
+                                    "{:d} is not positive in path {:s}"),
+                                dimscalings[d], d, location));
+    }
+
+    return describe(value_datatype, quantity_name, extents, dimnames, dimscalings);
+}
+
+std::shared_ptr<GenericNDArray> GenericNDArray::reconcile(const GenericNDArray& a,
+                                                          const GenericNDArray& b) {
+    // Structural fields must match exactly.
+    if (a.get_value_datatype() != b.get_value_datatype())
+        throw std::runtime_error(fmt::format(fmt("value type mismatch: {:s} != {:s}"),
+                                             type_to_string(a.get_value_datatype()),
+                                             type_to_string(b.get_value_datatype())));
+    if (a.get_extents() != b.get_extents())
+        throw std::runtime_error(fmt::format(fmt("extents do not match: {:s} != {:s}"),
+                                             format_vector(a.get_extents()),
+                                             format_vector(b.get_extents())));
+
+    // Labels: an unset (empty) label is filled from the other side; labels set
+    // on both sides must agree.
+    const Symbol unset("");
+    auto merge_label = [&unset](const Symbol& x, const Symbol& y, const char* what) -> Symbol {
+        if (x == unset)
+            return y;
+        if (y == unset)
+            return x;
+        if (x == y)
+            return x;
+        throw std::runtime_error(
+            fmt::format(fmt("{:s} mismatch: {:s} != {:s}"), what, std::string(x), std::string(y)));
+    };
+
+    // Dimscalings behave like labels: a scaling of 1 is the "unspecified"
+    // default (no downsampling) used when a config buffer declaration omits
+    // `dimscalings`, and it yields to an explicit non-1 scaling supplied by the
+    // producing stage. Two differing explicit (non-1) scalings are a conflict.
+    auto merge_scaling = [](std::ptrdiff_t x, std::ptrdiff_t y) -> std::ptrdiff_t {
+        if (x == 1)
+            return y;
+        if (y == 1)
+            return x;
+        if (x == y)
+            return x;
+        throw std::runtime_error(fmt::format(fmt("dimscaling mismatch: {:d} != {:d}"), x, y));
+    };
+
+    const Symbol quantity_name =
+        merge_label(a.get_quantity_name(), b.get_quantity_name(), "quantity name");
+    const std::vector<Symbol> da = a.get_dimnames();
+    const std::vector<Symbol> db = b.get_dimnames();
+    std::vector<Symbol> dimnames(da.size());
+    for (std::size_t d = 0; d < da.size(); ++d)
+        dimnames[d] = merge_label(da[d], db[d], "dimname");
+
+    const std::vector<std::ptrdiff_t> sa = a.get_dimscalings();
+    const std::vector<std::ptrdiff_t> sb = b.get_dimscalings();
+    std::vector<std::ptrdiff_t> dimscalings(sa.size());
+    for (std::size_t d = 0; d < sa.size(); ++d)
+        dimscalings[d] = merge_scaling(sa[d], sb[d]);
+
+    // `b` contributed nothing that `a` lacked: nothing to complete, so signal
+    // "no change" (the caller keeps the existing descriptor).
+    if (quantity_name == a.get_quantity_name() && dimnames == da && dimscalings == sa)
+        return nullptr;
+    return describe(a.get_value_datatype(), quantity_name, a.get_extents(), dimnames, dimscalings);
+}
+
+std::string GenericNDArray::structure_mismatch(const GenericNDArray& other) const {
+    if (get_value_datatype() != other.get_value_datatype())
+        return fmt::format(fmt("value type mismatch: {:s} != {:s}"),
+                           type_to_string(get_value_datatype()),
+                           type_to_string(other.get_value_datatype()));
+    if (get_quantity_name() != other.get_quantity_name())
+        return fmt::format(fmt("quantity name mismatch: {:s} != {:s}"), get_quantity_name(),
+                           other.get_quantity_name());
+    if (get_rank() != other.get_rank())
+        return fmt::format(fmt("rank mismatch: {:d} != {:d}"), get_rank(), other.get_rank());
+    if (get_extents() != other.get_extents())
+        return fmt::format(fmt("extents do not match: {:s} != {:s}"), format_vector(get_extents()),
+                           format_vector(other.get_extents()));
+    if (get_dimnames() != other.get_dimnames())
+        return fmt::format(fmt("dimnames do not match: {:s} != {:s}"),
+                           format_vector(get_dimnames()), format_vector(other.get_dimnames()));
+    if (get_dimscalings() != other.get_dimscalings())
+        return fmt::format(fmt("dimscalings do not match: {:s} != {:s}"),
+                           format_vector(get_dimscalings()),
+                           format_vector(other.get_dimscalings()));
+    return std::string();
+}
+
+std::string GenericNDArray::describe_mismatch(const FrameDesc& other) const {
+    const GenericNDArray* nd = dynamic_cast<const GenericNDArray*>(&other);
+    if (!nd)
+        return FrameDesc::describe_mismatch(other);
+    return structure_mismatch(*nd);
 }
 
 bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
@@ -93,15 +275,7 @@ bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
         return false;
     const GenericNDArray& other = *other_ptr;
 
-    if (this->get_value_datatype() != other.get_value_datatype())
-        return false;
-    if (this->get_quantity_name() != other.get_quantity_name())
-        return false;
-    if (this->get_rank() != other.get_rank())
-        return false;
-    if (this->get_extents() != other.get_extents())
-        return false;
-    if (this->get_dimnames() != other.get_dimnames())
+    if (!structure_mismatch(other).empty())
         return false;
     if (this->get_dimscalings() != other.get_dimscalings())
         return false;

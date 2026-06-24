@@ -9,6 +9,7 @@
 #define ICE_BOARD_SHUFFLE_HPP
 
 #include "Config.hpp"
+#include "NDArray.hpp" // for GenericNDArray, NDArray
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
@@ -274,11 +275,12 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
         out_bufs[i] = buffer_container.get_buffer(buffer_names[i]);
         out_bufs[i]->register_producer(unique_name);
         /* new style array description */
-        out_bufs[i]
-            ->allocate_ndarray_frame_desc<
-                kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 3>(
-                "E", {1, ptrdiff_t(out_bufs[i]->frame_size) / sample_size, sample_size},
-                {"F", "T", "E"}, {1, 1, 1});
+        out_bufs[i]->ensure_frame_desc(
+            kotekan::NDArray<kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type,
+                             3>::describe("E",
+                                          {1, ptrdiff_t(out_bufs[i]->frame_size) / sample_size,
+                                           sample_size},
+                                          {"F", "T", "E"}, {1, 1, 1}));
     }
 
     lost_samples_buf =
@@ -490,7 +492,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         meta->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */
-        meta->check_frame_desc(out_bufs[i]->get_ndarray_frame_desc());
+        meta->check_frame_desc(out_bufs[i]->get_frame_desc<kotekan::GenericNDArray>());
 
         // Print out the chordMetadata
         DEBUG("chordMetadata: seq: {:d} freq_id: {:d} dim[0]: {:d} dim[1]: {:d}",
@@ -542,10 +544,11 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     std::strncpy(meta->name, "lost_samples", sizeof meta->name);
     meta->set_strides_simple();
     /* new style array description */
-    lost_samples_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::uint8>::type, 1>(
-        "lost_samples", {ptrdiff_t(lost_samples_buf->frame_size)}, {"T"}, {1});
+    lost_samples_buf->ensure_frame_desc(
+        kotekan::NDArray<kotekan::GetType<kotekan::uint8>::type, 1>::describe(
+            "lost_samples", {ptrdiff_t(lost_samples_buf->frame_size)}, {"T"}, {1}));
     /* test that things are consistent */
-    meta->check_frame_desc(lost_samples_buf->get_ndarray_frame_desc());
+    meta->check_frame_desc(lost_samples_buf->get_frame_desc<kotekan::GenericNDArray>());
 
 
     return true;

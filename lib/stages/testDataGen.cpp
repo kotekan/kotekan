@@ -1,20 +1,36 @@
 #include "testDataGen.hpp"
 
 #include "CHORDTelescope.hpp"  // for CHORDTelescope
+#include "CHORDTelescope.hpp"  // for CHORDTelescope
+#include "Config.hpp"          // for Config
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
+#include "DataType.hpp"        // for DataType, KOTEKAN_FLOAT16, float16_t
+#include "NDArray.hpp"         // for GenericNDArray, Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"          // for Symbol
+#include "Symbol.hpp"          // for Symbol
+#include "Telescope.hpp"       // for Telescope, stream_t
 #include "Telescope.hpp"       // for Telescope, stream_t
 #include "buffer.hpp"          // for Buffer
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_FREQ
+#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
 #include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
 #include "kotekanTrackers.hpp" // for KotekanTrackers
+#include "kotekanTrackers.hpp" // for KotekanTrackers
+#include "oneHotMetadata.hpp"  // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
 #include "oneHotMetadata.hpp"  // for metadata_is_onehot, set_onehot_frame_counter, set_onehot_...
 #include "restServer.hpp"      // for HTTP_RESPONSE, restServer, connectionInstance
+#include "restServer.hpp"      // for HTTP_RESPONSE, restServer, connectionInstance
+#include "visUtil.hpp"         // for current_time, ts_to_double, StatTracker
 #include "visUtil.hpp"         // for current_time, ts_to_double, StatTracker
 
+#include "fmt.hpp" // for compile_string_to_view
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <algorithm>   // for copy
@@ -366,9 +382,10 @@ void testDataGen::main_thread() {
         const std::vector<kotekan::Symbol> dimnames(_dim_name.begin(), _dim_name.end());
         const std::vector<std::ptrdiff_t> dimscalings(_dim_scaling.begin(), _dim_scaling.end());
 
-        buf->allocate_ndarray_frame_desc(chordmeta->type, _name, extents, dimnames, dimscalings);
+        buf->ensure_frame_desc(kotekan::GenericNDArray::describe(chordmeta->type, _name, extents,
+                                                                 dimnames, dimscalings));
         /* test that things are consistent */
-        chordmeta->check_frame_desc(buf->get_ndarray_frame_desc());
+        chordmeta->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
 
         if (type == "onehot") {
             int val = value;

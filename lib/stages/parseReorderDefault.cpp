@@ -1,6 +1,7 @@
 #include "parseReorderDefault.hpp"
 
 #include "DataType.hpp"        // for DataType
+#include "NDArray.hpp"         // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"       // for Telescope, ElementOrder
 #include "bufferContainer.hpp" // for bufferContainer
@@ -60,23 +61,23 @@ parseReorderDefault::parseReorderDefault(Config& config, const std::string& uniq
 
 #if 0 // this is what it should be
     if (_input_order == ElementOrder::CHIMECorrelator) {
-        _out_buf->allocate_ndarray_frame_desc(kotekan::int32, _name,
-                                              {_num_polarizations * _num_dishes}, {"E"}, {1});
+        _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+            kotekan::int32, _name, {_num_polarizations * _num_dishes}, {"E"}, {1}));
     } else if (_input_order == ElementOrder::CHIMECylinder) {
-        _out_buf->allocate_ndarray_frame_desc(
+        _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
             kotekan::int32, _name,
             {_num_chime_cylinders, _num_polarizations, _num_dishes / _num_chime_cylinders},
-            {"C", "P", "D"}, {1, 1, 1});
+            {"C", "P", "D"}, {1, 1, 1}));
     } else if (_input_order == ElementOrder::CHIMEBeamformer) {
-        _out_buf->allocate_ndarray_frame_desc(
-            kotekan::int32, _name, {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1});
+        _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+            kotekan::int32, _name, {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
     } else {
         FATAL_ERROR("Unexpected input_order {:s}", _input_order);
     }
 #else
     // this is what xpose2048 expects
-    _out_buf->allocate_ndarray_frame_desc(kotekan::int32, _name, {_num_polarizations, _num_dishes},
-                                          {"P", "D"}, {1, 1});
+    _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::int32, _name, {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
 #endif
 }
 
@@ -129,8 +130,8 @@ void parseReorderDefault::main_thread() {
 
         chordmeta->set_frame_counter(0); // these do not actually change with time
 
-        chordmeta->set_from_frame_desc(_out_buf->get_ndarray_frame_desc());
-        chordmeta->check_frame_desc(_out_buf->get_ndarray_frame_desc());
+        chordmeta->set_from_frame_desc(_out_buf->get_frame_desc<kotekan::GenericNDArray>());
+        chordmeta->check_frame_desc(_out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         _out_buf->mark_frame_full(unique_name, frame_id);
 

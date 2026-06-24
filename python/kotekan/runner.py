@@ -818,7 +818,13 @@ class DumpVisBuffer(OutputBuffer):
 
 
 class ReadChordBuffer(InputBuffer):
-    """Write down a ChordBuffer and reads it with hdf5FileRead."""
+    """Write down a ChordBuffer and reads it with hdf5FileRead.
+
+    When the first buffer's metadata carries name/type/dim_names, the
+    kotekan buffer is declared as `kotekan_buffer: ndarray` so the frame
+    descriptor is attached at startup (and hdf5FileRead validates against
+    it); otherwise it falls back to a plain standard buffer.
+    """
 
     _buf_ind = 0
 
@@ -831,14 +837,29 @@ class ReadChordBuffer(InputBuffer):
         self.input_dir = input_dir
         self.buffer_list = buffer_list
 
-        self.buffer_block = {
-            self.name: {
-                "kotekan_buffer": "standard",
-                "metadata_pool": "main_pool",
-                "num_frames": "buffer_depth",
-                "frame_size": buffer_list[0].data.nbytes,
+        meta = buffer_list[0].metadata
+        if all(key in meta for key in ("name", "type", "dim_names", "dim_scalings")):
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "ndarray",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "value_type": str(meta["type"]),
+                    "quantity_name": str(meta["name"]),
+                    "extents": [int(n) for n in buffer_list[0].data.shape],
+                    "dimnames": [str(d) for d in meta["dim_names"]],
+                    "dimscalings": [int(n) for n in meta["dim_scalings"]],
+                }
             }
-        }
+        else:
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "standard",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "frame_size": buffer_list[0].data.nbytes,
+                }
+            }
 
         stage_config = {
             "kotekan_stage": "hdf5FileRead",
@@ -865,6 +886,19 @@ class DumpChordBuffer(OutputBuffer):
     ----------
     output_dir : str
         Temp. directory to output to. Dumped files are not removed.
+    quantity_name : str, optional
+        Together with `dimnames` and `dimscalings`, declare the buffer as `kotekan_buffer:
+        ndarray`, attaching the frame descriptor at startup (the stage under
+        test then validates against it instead of allocating it). Must match
+        the descriptor the producing stage declares exactly.
+    dimnames : list of str, optional
+        Axis labels, one per entry of `shape`. See `quantity_name`.
+    dimscalings : list of int, optional
+        Axis scalings, one per entry of `shape`. See `quantity_name`.
+    value_type : str, optional
+        kotekan DataType name for the ndarray declaration. Defaults to the
+        numpy name of `dtype`, which is correct for plain types; packed
+        types (e.g. "uint1x8", "int4x2") must be given explicitly.
     """
 
     _buf_ind = 0
@@ -872,7 +906,16 @@ class DumpChordBuffer(OutputBuffer):
     name = None
 
     def __init__(
-        self, output_dir, shape, dtype, max_frames=-1, input_order="CHORDBeamformer"
+        self,
+        output_dir,
+        shape,
+        dtype,
+        max_frames=-1,
+        input_order="CHORDBeamformer",
+        quantity_name=None,
+        dimnames=None,
+        dimscalings=None,
+        value_type=None,
     ):
         self.name = f"dumpchord_buf{self._buf_ind}"
         stage_name = f"dump{self._buf_ind}"
@@ -884,14 +927,38 @@ class DumpChordBuffer(OutputBuffer):
         self.max_frames = max_frames
         self.dtype = dtype
 
-        self.buffer_block = {
-            self.name: {
-                "kotekan_buffer": "standard",
-                "metadata_pool": "main_pool",
-                "num_frames": "buffer_depth",
-                "frame_size": self.num_entries * np.dtype(self.dtype).itemsize,
+        if quantity_name is not None:
+            if dimnames is None or len(dimnames) != len(shape):
+                raise ValueError(
+                    "dimnames must be given with quantity_name, one per axis"
+                )
+            if dimscalings is None:
+                # Optional: default each axis to a scaling of 1, matching
+                # GenericNDArray::from_config when `dimscalings` is omitted.
+                dimscalings = [1] * len(shape)
+            elif len(dimscalings) != len(shape):
+                raise ValueError("dimscalings must have one entry per axis")
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "ndarray",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "value_type": value_type or np.dtype(self.dtype).name,
+                    "quantity_name": quantity_name,
+                    "extents": [int(n) for n in shape],
+                    "dimnames": list(dimnames),
+                    "dimscalings": list(dimscalings),
+                }
             }
-        }
+        else:
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "standard",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "frame_size": self.num_entries * np.dtype(self.dtype).itemsize,
+                }
+            }
 
         self.stage_block = {
             stage_name: {

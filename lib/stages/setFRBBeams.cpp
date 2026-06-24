@@ -149,10 +149,10 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
     rest_server.register_get_callback(unique_name + "/beams",
                                       std::bind(&setFRBBeams::send_beams, this, _1));
 
-    out_pos_buf->allocate_ndarray_frame_desc<float, 2>(
-        "frb2_beam_positions", {static_cast<ptrdiff_t>(num_beams), 2}, {"R", "X/Y"}, {1, 1});
-    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>(
-        "frb2_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"R"}, {1});
+    out_pos_buf->require_frame_desc(kotekan::NDArray<float, 2>::describe(
+        "frb2_beam_positions", {static_cast<ptrdiff_t>(num_beams), 2}, {"R", "X/Y"}, {1, 1}));
+    out_id_buf->require_frame_desc(kotekan::NDArray<uint64_t, 1>::describe(
+        "frb2_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"R"}, {1}));
 }
 
 setFRBBeams::~setFRBBeams() {
@@ -241,20 +241,20 @@ void setFRBBeams::main_thread() {
         const std::shared_ptr<chordMetadata> pos_meta =
             get_chord_metadata(out_pos_buf, pos_frame_id);
 
-        pos_meta->set_from_frame_desc(out_pos_buf->get_ndarray_frame_desc());
+        pos_meta->set_from_frame_desc(out_pos_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // If this gets made time-dependent, set fpga_seq_num, and fpga_time_downsampling here.
 
-        pos_meta->check_frame_desc(out_pos_buf->get_ndarray_frame_desc());
+        pos_meta->check_frame_desc(out_pos_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         out_id_buf->allocate_new_metadata_object(id_frame_id);
         const std::shared_ptr<chordMetadata> id_meta = get_chord_metadata(out_id_buf, id_frame_id);
 
-        id_meta->set_from_frame_desc(out_id_buf->get_ndarray_frame_desc());
+        id_meta->set_from_frame_desc(out_id_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // If this gets made time-dependent, set fpga_seq_num, and fpga_time_downsampling here.
 
-        id_meta->check_frame_desc(out_id_buf->get_ndarray_frame_desc());
+        id_meta->check_frame_desc(out_id_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         out_pos_buf->mark_frame_full(unique_name, pos_frame_id++);
         out_id_buf->mark_frame_full(unique_name, id_frame_id++);
