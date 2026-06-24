@@ -57,6 +57,13 @@ public:
                                 cudaEvent_t& copy_end_event);
 
     /**
+    * @brief Print avialable colcks for given GPU and set sevice clock
+    * @param unique_name Base path from CudaProcess
+    * @param gpu_id_  Device ID
+    */
+    void cudaDeviceInterface::set_device_clocks(const string& unique_name, int32_t gpu_id_);
+
+    /**
      * @brief Asynchronous Copies memory from the device GPU (global memory) to host (CPU RAM).
      *
      * @param dst The CPU memory pointer
