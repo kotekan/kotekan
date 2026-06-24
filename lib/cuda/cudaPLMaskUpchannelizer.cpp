@@ -40,21 +40,23 @@ using kotekan::round_down;
  *
  * @par GPU Memory
  * @gpu_mem Input expanded PL mask
- *   @gpu_mem_buffer    @c ring
- *   @gpu_mem_quantity  @c pl_mask
- *   @gpu_mem_type      @c uint1x8
- *   @gpu_mem_dim_name  [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
- *   @gpu_mem_shape     [@c buffer_depth * num_times / 64][@c num_frequencies][@c num_polarizations]
- *                      [@c num_dishes / 8][@c 64 / 8]
- *   @gpu_mem_metadata  @c chordMetadata
+ *   @gpu_mem_buffer       @c ring
+ *   @gpu_mem_quantity     @c pl_mask
+ *   @gpu_mem_type         @c uint1x8
+ *   @gpu_mem_dim_name     [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
+ *   @gpu_mem_dim_scaling  [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
+ *   @gpu_mem_shape        [@c buffer_depth * num_times / 64][@c num_frequencies][@c num_polarizations]
+ *                         [@c num_dishes / 8][@c 64 / 8]
+ *   @gpu_mem_metadata     @c chordMetadata
  * @gpu_mem Output upchannelized expanded PL mask
- *   @gpu_mem_buffer    @c ring
- *   @gpu_mem_quantity  @c pl_mask
- *   @gpu_mem_type      @c uint1x8
- *   @gpu_mem_dim_name  [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
- *   @gpu_mem_shape     [@c buffer_depth * num_times / (64 * upchannelization_factor)]
- *                      [@c num_frequencies_out][@c num_polarizations][@c num_dishes / 8][@c 64 / 8]
- *   @gpu_mem_metadata  @c chordMetadata
+ *   @gpu_mem_buffer       @c ring
+ *   @gpu_mem_quantity     @c pl_mask
+ *   @gpu_mem_type         @c uint1x8
+ *   @gpu_mem_dim_name     [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
+ *   @gpu_mem_dim_scaling  [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
+ *   @gpu_mem_shape        [@c buffer_depth * num_times / (64 * upchannelization_factor)]
+ *                         [@c num_frequencies_out][@c num_polarizations][@c num_dishes / 8][@c 64 / 8]
+ *   @gpu_mem_metadata     @c chordMetadata
  * @conf  buffer_depth                         Int.  The number of GPU frames used for pipelining.
  * @conf  num_times                            Int.  Number of time samples per frame (input cadence).
  * @conf  num_frequencies                      Int.  Number of (input) frequencies on this node.
@@ -137,13 +139,17 @@ cudaPLMaskUpchannelizer::cudaPLMaskUpchannelizer(kotekan::Config& config,
                      std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 64),
                                                    num_frequencies, num_polarizations,
                                                    div_noremainder(num_dishes, 8), 64 / 8},
-                     std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, *this),
+                     std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"},
+                     std::array<std::ptrdiff_t, 5>{64, 1, 1, 8, 8}, *this),
     pl_upchannelized_expanded_mask(
         upchannelized_expanded_pl_mask_name, "pl_mask_exp",
         std::array<std::ptrdiff_t, 5>{
             buffer_depth * div_noremainder(num_times, 64 * upchannelization_factor),
             num_frequencies_out, num_polarizations, div_noremainder(num_dishes, 8), 64 / 8},
-        std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, *this)
+        std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"},
+        std::array<std::ptrdiff_t, 5>{64 * upchannelization_factor, 1, 1, 8,
+                                      8 * upchannelization_factor},
+        *this)
 //
 {
     if (!(0 <= Fmin && Fmin <= Fmax && Fmax <= num_frequencies))
