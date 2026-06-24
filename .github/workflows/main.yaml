@@ -7,11 +7,9 @@ name: kotekan-ci-tests
 on:
   pull_request:
     branches:
-    - chord
     - develop
   push:
     branches:
-    - chord
     - develop
 
 # Cancel a superseded PR run on a new commit; let push runs finish.
@@ -27,12 +25,12 @@ jobs:
   # Kotekan docker image build and push
   kotekan-docker:
     permissions: write-all
-    uses: ./.github/workflows/build_push_docker.yml
+    uses: ./.github/workflows/build_push_docker.yaml
 
   kotekan-cpu-tests:
     name: CPU
     needs: kotekan-docker
-    uses: ./.github/workflows/test_kotekan_build.yml
+    uses: ./.github/workflows/test_kotekan_build.yaml
     with:
       container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
       ccache_key: ${{ matrix.ccache_key }}
@@ -203,7 +201,7 @@ jobs:
   kotekan-gpu-tests:
     name: "GPU"
     needs: kotekan-docker
-    uses: ./.github/workflows/test_kotekan_build.yml
+    uses: ./.github/workflows/test_kotekan_build.yaml
     with:
       container_image: ${{ needs.kotekan-docker.outputs.docker_gpu_img_name }}
       ccache_key: ${{ matrix.ccache_key }}
@@ -276,7 +274,7 @@ jobs:
   kotekan-lint:
     name: "Lint"
     needs: kotekan-docker
-    uses: ./.github/workflows/test_kotekan_build.yml
+    uses: ./.github/workflows/test_kotekan_build.yaml
     with:
       container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
       ccache_key: kotekan-lint
@@ -344,7 +342,7 @@ jobs:
           commit-message: "auto-lint: apply formatter fixes"
           title: "auto-lint: apply formatter fixes for ${{ env.SOURCE_BRANCH }}"
           body: |
-            Automatically opened by the `auto-lint-fix` job in `main.yml`
+            Automatically opened by the `auto-lint-fix` job in `main.yaml`
             after the `kotekan-lint` check failed on `${{ env.SOURCE_BRANCH }}`
             (commit `${{ env.SOURCE_SHA }}`).
 
