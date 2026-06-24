@@ -5,6 +5,8 @@ using CUDA
 using CUDASIMDTypes
 using IndexSpaces
 using Mustache
+using Random
+using StaticArrays
 
 const Memory = IndexSpaces.Memory
 
@@ -514,12 +516,12 @@ function make_chimefrb_kernel()
                 Γ3_dish5_1 = cispi(q * n_dish5_1 % 512i32 * Float32(2 / 512))
                 (
                     +Γ3_dish5_0.re,
-                    +Γ3_dish5_0.im,
                     -Γ3_dish5_0.im,
+                    +Γ3_dish5_0.im,
                     +Γ3_dish5_0.re,
                     +Γ3_dish5_1.re,
-                    +Γ3_dish5_1.im,
                     -Γ3_dish5_1.im,
+                    +Γ3_dish5_1.im,
                     +Γ3_dish5_1.re,
                 )
             end
@@ -660,12 +662,12 @@ function make_chimefrb_kernel()
                 Γ5_dish2_1 = cispi(q * n_dish2_1 % 512i32 * Float32(2 / 512))
                 (
                     +Γ5_dish2_0.re,
-                    +Γ5_dish2_0.im,
                     -Γ5_dish2_0.im,
+                    +Γ5_dish2_0.im,
                     +Γ5_dish2_0.re,
                     +Γ5_dish2_1.re,
-                    +Γ5_dish2_1.im,
                     -Γ5_dish2_1.im,
+                    +Γ5_dish2_1.im,
                     +Γ5_dish2_1.re,
                 )
             end
@@ -1132,13 +1134,13 @@ function make_chimefrb_kernel()
                 sqrt_half = Float16x2(sqrt(0.5f0), sqrt(0.5f0))
                 Xre, Xim = X
                 n % 8 == 0 && return :(+$Xre), :(+$Xim)
-                n % 8 == 1 && return :(+$sqrt_half * $Xre), :(+$sqrt_half * $Xim)
+                n % 8 == 1 && return :(+$sqrt_half * ($Xre - $Xim)), :(+$sqrt_half * ($Xre + $Xim))
                 n % 8 == 2 && return :(-$Xim), :(+$Xre)
-                n % 8 == 3 && return :(-$sqrt_half * $Xim), :(+$sqrt_half * $Xre)
+                n % 8 == 3 && return :(-$sqrt_half * ($Xre + $Xim)), :(+$sqrt_half * ($Xre - $Xim))
                 n % 8 == 4 && return :(-$Xre), :(-$Xim)
-                n % 8 == 5 && return :(-$sqrt_half * $Xre), :(-$sqrt_half * $Xim)
+                n % 8 == 5 && return :(-$sqrt_half * ($Xre - $Xim)), :(-$sqrt_half * ($Xre + $Xim))
                 n % 8 == 6 && return :(+$Xim), :(-$Xre)
-                n % 8 == 7 && return :(+$sqrt_half * $Xim), :(-$sqrt_half * $Xre)
+                n % 8 == 7 && return :(+$sqrt_half * ($Xre + $Xim)), :(-$sqrt_half * ($Xre - $Xim))
                 @assert false
             end
 
@@ -1356,7 +1358,7 @@ println("[Done creating chimefrb kernel]")
     return nothing
 end
 
-function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=0, silent::Bool=false)
+function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftest::Bool=false, nruns::Int=0, silent::Bool=false)
     !silent && println("CHIME FRB beamformer")
 
     if output_kernel
@@ -1399,11 +1401,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
     W_memory = Array{Float16x2}(undef, M * N * Fbar * P)
     E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * Fbar * Tbar)
     I_memory = Array{Float16x2}(undef, M * 2 * N * Fbar * Ttilde)
+    I_wanted = Array{Float16x2}(undef, M * 2 * N * Fbar * Ttilde)
     info_memory = Array{Int32}(undef, num_threads * num_warps * num_blocks)
-
-    println("Setting up input data...")
-    map!(f -> Float16x2(1, 1), W_memory, W_memory)
-    map!(i -> Int4x8(-4, -3, -2, -1, 0, 1, 2, 3), E_memory, E_memory)
 
     Ttildemin = Int32(0)
     Ttildemax = Int32(fld(fld(Tbar, 4), Tds))
@@ -1429,9 +1428,65 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
     @assert Ttildemin ≤ Ttildemax < Int32(2 * Ttilde)
     @assert Ttildemax - Ttildemin == (Tbarmax - Tbarmin) ÷ Int32(Tds)
 
+    println("Setting up input data...")
+    if run_selftest
+        # Plane-wave self-test with a CPU reference beamformer (ported from `frb.jl`).
+        function uniform_in_disk()
+            r = sqrt(rand(Float32))
+            α = rand(Float32)
+            return r * cispi(2 * α)
+        end
+        c2t(c::Complex) = (real(c), imag(c))
+
+        Random.seed!(0)
+
+        map!(i -> chimify(zero(Int4x8)), E_memory, E_memory)
+        map!(i -> zero(Float16x2), I_wanted, I_wanted)
+
+        # Constant input gain, scaled to keep intensities within Float16 range.
+        Wvalue = (1 + 0im) / 16
+        map!(i -> Float16x2(c2t(Wvalue)...), W_memory, W_memory)
+
+        # A single nonzero (freq, polr, time) sample, identical across all dishes.
+        freq = rand(0:(Fbar - 1))
+        polr = rand(0:(P - 1))
+        time = rand(0:(Int(Tbarmax) - 1))
+        Fvalue = 7.5f0 * uniform_in_disk()
+        Evalue = Complex{Int8}(clamp(round(Int, real(Fvalue)), -7, 7), clamp(round(Int, imag(Fvalue)), -7, 7))
+        @show freq polr time Evalue
+
+        for dish in 0:(D - 1)
+            Eidx = dish ÷ 4 + idiv(D, 4) * polr + idiv(D, 4) * P * freq + idiv(D, 4) * P * Fbar * time
+            Evalue8 = convert(NTuple{8,Int8}, unchimify(E_memory[Eidx + 1]))
+            Evalue8 = setindex(Evalue8, real(Evalue), 2 * (dish % 4) + 0 + 1)
+            Evalue8 = setindex(Evalue8, imag(Evalue), 2 * (dish % 4) + 1 + 1)
+            E_memory[Eidx + 1] = chimify(Int4x8(Evalue8...))
+        end
+
+        # Reference intensities (Eqn. 4): sum over dishes of the 2-D beam phase, then |·|².
+        # chimefrb's implicit dish layout is dishm = dish % M (N-S), dishn = dish ÷ M (E-W).
+        dstime = time ÷ Tds
+        for beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
+            Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq + M * 2 * N * Fbar * dstime
+            Ẽvalue = complex(0.0f0)
+            for dish in 0:(D - 1)
+                dishm = dish % M
+                dishn = dish ÷ M
+                Ẽvalue += cispi((2 * dishm * beamp / Float32(2 * M) + 2 * dishn * beamq / Float32(2 * N)) % 2.0f0) * Wvalue * Evalue
+            end
+            Ivalue = output_gain * abs2(Ẽvalue)
+            Ivalue2 = convert(NTuple{2,Float32}, I_wanted[Iidx + 1])
+            Ivalue2 = setindex(Ivalue2, Ivalue, beamp % 2 + 1)
+            I_wanted[Iidx + 1] = Float16x2(Ivalue2...)
+        end
+    else
+        map!(f -> Float16x2(1, 1), W_memory, W_memory)
+        map!(i -> Int4x8(-4, -3, -2, -1, 0, 1, 2, 3), E_memory, E_memory)
+    end
+
     println("Copying data from CPU to GPU...")
     W_cuda = CuArray(W_memory)
-    E_cuda = CuArray(chimify.(E_memory))
+    E_cuda = run_selftest ? CuArray(E_memory) : CuArray(chimify.(E_memory))
     I_cuda = CUDA.fill(Float16x2(NaN, NaN), length(I_memory))
     info_cuda = CUDA.fill(-1i32, length(info_memory))
 
@@ -1483,6 +1538,29 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
     # @assert all(!isnan, (@view I_memory[1:(M * 2 * N * Fbar * Ttildemax)]))
     info_memory = Array(info_cuda)
     @assert all(==(0), info_memory)
+
+    if run_selftest
+        println("Checking results...")
+        error_count = 0
+        for freq in 0:(Fbar - 1), dstime in Int(Ttildemin):(Int(Ttildemax) - 1), beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
+            Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq + M * 2 * N * Fbar * dstime
+            have_value = convert(NTuple{2,Float32}, I_memory[Iidx + 1])[beamp % 2 + 1]
+            want_value = convert(NTuple{2,Float32}, I_wanted[Iidx + 1])[beamp % 2 + 1]
+            if !isapprox(have_value, want_value; atol=10 * eps(Float16), rtol=10 * eps(Float16))
+                error_count += 1
+                if error_count ≤ 20
+                    println("    beamp=$beamp beamq=$beamq freq=$freq dstime=$dstime I=$have_value I₀=$want_value")
+                elseif error_count == 21
+                    println("    [additional error messages suppressed]")
+                end
+            end
+        end
+        if error_count > 0
+            println("*** SELF-TEST FAILED: $(error_count) mismatches ***")
+        else
+            println("Self-test passed.")
+        end
+    end
 
     println("Done.")
     return nothing
@@ -1731,6 +1809,9 @@ if CUDA.functional()
         end
     end
     fix_ptx_kernel()
+
+    # # Self-test (compares the kernel against a CPU reference beamformer)
+    # main(; run_selftest=true)
 
     # # Run benchmark
     # main(; nruns=100)
