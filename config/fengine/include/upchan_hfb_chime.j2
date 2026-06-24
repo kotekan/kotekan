@@ -98,3 +98,34 @@ run_upchan_hfb_U128:
           upchan_U128_voltage_name: upchan_hfb_U128_voltage
           Fmin: upchan_hfb_upchan_U128_min_channel
           Fmax: upchan_hfb_upchan_U128_max_channel
+
+################################################################################
+
+# Packet loss mask
+
+host_upchan_hfb_U128_expanded_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_hfb_upchan_U128_max_num_channels * (num_times / 64 / 128)
+    metadata_pool: main_pool
+host_upchan_hfb_U128_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_hfb_upchan_U128_max_num_channels * (num_times / 64 / 128)
+    metadata_pool: main_pool
+
+run_upchan_pl_hfb_U128:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        out_buffers:
+            host_upchan_hfb_U128_expanded_pl_mask_ringbuffer: host_upchan_hfb_U128_expanded_pl_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskUpchannelizer
+          expanded_pl_mask_name: pl_expanded_mask
+          upchannelized_expanded_pl_mask_name: upchan_hfb_U128_expanded_pl_mask
+          upchannelization_factor: 128
+          num_frequencies_out: upchan_hfb_upchan_U128_max_num_channels
+          Fmin: upchan_hfb_upchan_U128_min_channel
+          Fmax: upchan_hfb_upchan_U128_max_channel
