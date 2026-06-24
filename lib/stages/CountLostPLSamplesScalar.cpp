@@ -144,7 +144,7 @@ CountLostPLSamplesScalar::CountLostPLSamplesScalar(Config& config, const std::st
     // the declared extents), so it only requires that descriptors were declared.
     in_buf->require_frame_desc();
     out_buf->require_frame_desc();
-#warning "TODO: check frame desc (the comment above is wrong)"
+    // TODO: check frame desc (the comment above is wrong)
 }
 
 CountLostPLSamplesScalar::~CountLostPLSamplesScalar() {}
