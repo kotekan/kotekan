@@ -8,9 +8,9 @@ Compiled docs are available at https://kotekan.readthedocs.io/.
 
 # Build Instructions
 
-| `develop` | `chord` |
-|------|------|
-| [![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yml/badge.svg)](https://github.com/kotekan/kotekan/actions/workflows/main.yml) | [![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yml/badge.svg?branch=chord)](https://github.com/kotekan/kotekan/actions/workflows/main.yml) |
+| `develop` |
+|------|
+| [![kotekan-ci-tests](https://github.com/kotekan/kotekan/actions/workflows/main.yaml/badge.svg?branch=develop)](https://github.com/kotekan/kotekan/actions/workflows/main.yaml) |
 
 
 Detailed instructions are available at https://kotekan.readthedocs.io/latest/compiling/general.html

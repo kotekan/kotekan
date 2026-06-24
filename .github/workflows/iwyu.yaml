@@ -42,7 +42,7 @@ jobs:
   # Build/push Docker images via reusable workflow
   iwyu-build-docker:
     permissions: write-all
-    uses: ./.github/workflows/build_push_docker.yml
+    uses: ./.github/workflows/build_push_docker.yaml
     # For IWYU we don't override build_branch; the reusable workflow
     # will choose a tag based on event / Dockerfile changes.
     # with:
