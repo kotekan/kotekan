@@ -579,7 +579,7 @@ cudaUpchannelizer_pathfinder_U32::execute(cudaPipelineState& /*pipestate*/,
             }
         }
 
-        Ebar_buffer.check_for_poison(0x00, 0, Fmax - Fmin);
+        Ebar_buffer.check_for_poison(0x00, 0, cuda_upchannelization_factor * (Fmax - Fmin));
     } // if (poison_buffers)
 
     return record_end_event();
