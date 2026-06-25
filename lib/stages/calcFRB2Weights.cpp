@@ -103,10 +103,10 @@ public:
         W2_buffer->register_producer(unique_name);
 
         frb2_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
-            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}));
+            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}, {1, 1}));
         W2_buffer->require_frame_desc(kotekan::NDArray<float16_t, 4>::describe(
             "W2", {frb2_num_frequencies, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P},
-            {"Fbar", "R", "beamQ", "beamP"}));
+            {"Fbar", "R", "beamQ", "beamP"}, {1, 1, 1, 1}));
     }
 
     virtual ~calcFRB2Weights() {}

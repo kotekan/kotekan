@@ -179,6 +179,10 @@ private:
         2,
         576,
     };
+    static constexpr std::array<std::ptrdiff_t, S_rank> S_dimscalings = {
+        1,
+        1,
+    };
     static constexpr auto S_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -201,14 +205,17 @@ private:
         W_index_dishM,
         W_index_dishN,
         W_index_P,
-        W_index_F,
+        W_index_Fbar,
         W_rank,
     };
     static constexpr std::array<const char*, W_rank> W_labels = {
-        "C", "dishM", "dishN", "P", "F",
+        "C", "dishM", "dishN", "P", "Fbar",
     };
     static constexpr std::array<std::ptrdiff_t, W_rank> W_lengths = {
         2, 24, 24, 2, 128,
+    };
+    static constexpr std::array<std::ptrdiff_t, W_rank> W_dimscalings = {
+        1, 1, 1, 1, 1,
     };
     static constexpr auto W_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -218,7 +225,7 @@ private:
     };
     static constexpr std::array<std::ptrdiff_t, W_rank + 1> W_strides = {
         W_calc_stride(W_index_C), W_calc_stride(W_index_dishM), W_calc_stride(W_index_dishN),
-        W_calc_stride(W_index_P), W_calc_stride(W_index_F),     W_calc_stride(W_rank),
+        W_calc_stride(W_index_P), W_calc_stride(W_index_Fbar),  W_calc_stride(W_rank),
     };
     static constexpr std::ptrdiff_t W_length = W_strides[W_rank];
     static constexpr std::ptrdiff_t W_length_in_bytes = type_total_bytes(W_type) * W_length;
@@ -244,6 +251,12 @@ private:
         2,
         128,
         2048,
+    };
+    static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_dimscalings = {
+        1,
+        1,
+        1,
+        16,
     };
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -282,6 +295,12 @@ private:
         512,
         1024,
     };
+    static constexpr std::array<std::ptrdiff_t, I_rank> I_dimscalings = {
+        1,
+        1,
+        1,
+        192,
+    };
     static constexpr auto I_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -313,6 +332,11 @@ private:
         32,
         24,
         128,
+    };
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_dimscalings = {
+        1,
+        1,
+        1,
     };
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -386,12 +410,16 @@ cudaFRBBeamformer_chord_U16::cudaFRBBeamformer_chord_U16(Config& config,
     I_name(config.get<std::string>(unique_name, "frb_beamgrid_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
-    S_buffer(S_name, S_quantity, reverse(S_lengths), reverse(S_labels), *this),
+    S_buffer(S_name, S_quantity, reverse(S_lengths), reverse(S_labels), reverse(S_dimscalings),
+             *this),
     host_S_buffer(S_length), W_buffer(W_name, W_quantity, reverse(W_lengths), reverse(W_labels),
-                                      *this, buffer_type_t::do_once),
-    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels), *this),
-    I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), *this),
-    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
+                                      reverse(W_dimscalings), *this, buffer_type_t::do_once),
+    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels),
+                reverse(Ebar_dimscalings), *this),
+    I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), reverse(I_dimscalings),
+             *this),
+    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels),
+                reverse(info_dimscalings), *this),
     host_info_buffer(info_length),
 
     did_init_host_S_buffer(false), did_set_metadata(false) {

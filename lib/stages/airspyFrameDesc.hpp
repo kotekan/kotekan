@@ -35,7 +35,7 @@ namespace kotekan_airspy {
 /// Raw airspy samples: int16 1-D buffer of length @p n_samples.
 inline std::shared_ptr<kotekan::GenericNDArray> make_input_desc(std::ptrdiff_t n_samples) {
     return kotekan::GenericNDArray::describe(kotekan::DataType::int16, "airspy_samples",
-                                             {n_samples}, {"sample"});
+                                             {n_samples}, {"sample"}, {1});
 }
 
 /// fftwEngine output spectra: cfloat32 1-D buffer of length @p n_complex.
@@ -44,7 +44,7 @@ inline std::shared_ptr<kotekan::GenericNDArray> make_input_desc(std::ptrdiff_t n
 /// arithmetic comes from their own config.
 inline std::shared_ptr<kotekan::GenericNDArray> make_fengine_desc(std::ptrdiff_t n_complex) {
     return kotekan::GenericNDArray::describe(kotekan::DataType::cfloat32, "fengine_spectra",
-                                             {n_complex}, {"bin"});
+                                             {n_complex}, {"bin"}, {1});
 }
 
 /// SimpleCrosscorr / simpleAutocorr -> networkPowerStream layout. Per
@@ -65,10 +65,11 @@ inline std::shared_ptr<kotekan::GenericNDArray>
 make_power_corr_desc(std::ptrdiff_t num_elements, std::ptrdiff_t spectrum_length) {
     if (num_elements == 1) {
         return kotekan::GenericNDArray::describe(kotekan::DataType::float32, "power_corr",
-                                                 {spectrum_length + 1}, {"bin"});
+                                                 {spectrum_length + 1}, {"bin"}, {1});
     }
     return kotekan::GenericNDArray::describe(kotekan::DataType::float32, "power_corr",
-                                             {num_elements, spectrum_length + 1}, {"elem", "bin"});
+                                             {num_elements, spectrum_length + 1}, {"elem", "bin"},
+                                             {1, 1});
 }
 
 } // namespace kotekan_airspy

@@ -140,7 +140,7 @@ BOOST_AUTO_TEST_CASE(optional_labels_and_reconcile) {
 
     // a fully-labelled descriptor of the same structure
     auto full = GenericNDArray::describe(kotekan::float32, Symbol("gain"), {4, 2},
-                                         {Symbol("F"), Symbol("E")});
+                                         {Symbol("F"), Symbol("E")}, {1, 1});
 
     // reconcile fills the unset labels from the labelled side
     auto merged = GenericNDArray::reconcile(*partial, *full);
@@ -148,17 +148,19 @@ BOOST_AUTO_TEST_CASE(optional_labels_and_reconcile) {
     BOOST_CHECK(merged->get_quantity_name() == Symbol("gain"));
     BOOST_CHECK(merged->get_dimname(0) == Symbol("F"));
     BOOST_CHECK(merged->get_dimname(1) == Symbol("E"));
+    BOOST_CHECK(merged->get_dimscaling(0) == 1);
+    BOOST_CHECK(merged->get_dimscaling(1) == 1);
     // the reverse adds nothing (`full` already has all labels) -> nullptr
     BOOST_CHECK(!GenericNDArray::reconcile(*full, *partial));
 
     // structural mismatch (extents) throws
     auto other_extents = GenericNDArray::describe(kotekan::float32, Symbol("gain"), {2, 4},
-                                                  {Symbol("F"), Symbol("E")});
+                                                  {Symbol("F"), Symbol("E")}, {1, 1});
     BOOST_CHECK_THROW(GenericNDArray::reconcile(*full, *other_extents), std::runtime_error);
 
     // conflicting set labels throw
     auto other_label = GenericNDArray::describe(kotekan::float32, Symbol("other"), {4, 2},
-                                                {Symbol("F"), Symbol("E")});
+                                                {Symbol("F"), Symbol("E")}, {1, 1});
     BOOST_CHECK_THROW(GenericNDArray::reconcile(*full, *other_label), std::runtime_error);
 }
 
@@ -201,8 +203,8 @@ BOOST_AUTO_TEST_CASE(buffer_factory_ndarray) {
     // A stage-style declare call now validates against the factory-set
     // descriptor instead of allocating (the migration "auto-degrade"
     // property); a matching call passes through silently.
-    buf->ensure_frame_desc(
-        kotekan::NDArray<float, 2>::describe(Symbol("gains"), {16, 4}, {Symbol("F"), Symbol("G")}));
+    buf->ensure_frame_desc(kotekan::NDArray<float, 2>::describe(
+        Symbol("gains"), {16, 4}, {Symbol("F"), Symbol("G")}, {1, 1}));
     BOOST_CHECK(buf->get_frame_desc<kotekan::GenericNDArray>() == desc);
 
     // ... and a MISMATCHING declare call is fatal. (Under the boost test
@@ -210,32 +212,34 @@ BOOST_AUTO_TEST_CASE(buffer_factory_ndarray) {
     // raising SIGTERM, so the fatal paths are testable with CHECK_THROW.)
     // Same byte size, swapped extents/dimnames -- reaches the field checks:
     BOOST_CHECK_THROW((buf->ensure_frame_desc(kotekan::NDArray<float, 2>::describe(
-                          Symbol("gains"), {4, 16}, {Symbol("G"), Symbol("F")}))),
+                          Symbol("gains"), {4, 16}, {Symbol("G"), Symbol("F")}, {1, 1}))),
                       std::runtime_error);
     // Same byte size and shape, wrong value type:
     BOOST_CHECK_THROW((buf->ensure_frame_desc(kotekan::NDArray<int32_t, 2>::describe(
-                          Symbol("gains"), {16, 4}, {Symbol("F"), Symbol("G")}))),
+                          Symbol("gains"), {16, 4}, {Symbol("F"), Symbol("G")}, {1, 1}))),
                       std::runtime_error);
     // Same byte size and shape, wrong quantity name:
     BOOST_CHECK_THROW((buf->ensure_frame_desc(kotekan::NDArray<float, 2>::describe(
-                          Symbol("not_gains"), {16, 4}, {Symbol("F"), Symbol("G")}))),
+                          Symbol("not_gains"), {16, 4}, {Symbol("F"), Symbol("G")}, {1, 1}))),
                       std::runtime_error);
 
     // ensure_frame_desc with a mismatching descriptor of equal byte size is
     // fatal (previously only a soft ERROR):
-    BOOST_CHECK_THROW(buf->ensure_frame_desc(GenericNDArray::describe(
-                          kotekan::float32, Symbol("gains"), {4, 16}, {Symbol("G"), Symbol("F")})),
-                      std::runtime_error);
+    BOOST_CHECK_THROW(
+        buf->ensure_frame_desc(GenericNDArray::describe(kotekan::float32, Symbol("gains"), {4, 16},
+                                                        {Symbol("G"), Symbol("F")}, {1, 1})),
+        std::runtime_error);
     // ... as is one with the wrong byte size:
-    BOOST_CHECK_THROW(buf->ensure_frame_desc(GenericNDArray::describe(
-                          kotekan::float32, Symbol("gains"), {16, 8}, {Symbol("F"), Symbol("G")})),
-                      std::runtime_error);
+    BOOST_CHECK_THROW(
+        buf->ensure_frame_desc(GenericNDArray::describe(kotekan::float32, Symbol("gains"), {16, 8},
+                                                        {Symbol("F"), Symbol("G")}, {1, 1})),
+        std::runtime_error);
     // The recorded descriptor is unchanged by any of the rejected calls
     BOOST_CHECK(buf->get_frame_desc<kotekan::GenericNDArray>() == desc);
 
     // Setting an equal descriptor again is accepted
     buf->ensure_frame_desc(GenericNDArray::describe(kotekan::float32, Symbol("gains"), {16, 4},
-                                                 {Symbol("F"), Symbol("G")}));
+                                                    {Symbol("F"), Symbol("G")}, {1, 1}));
     BOOST_CHECK(buf->get_frame_desc<kotekan::GenericNDArray>() == desc);
 
     for (auto& [name, b] : buffers)

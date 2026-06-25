@@ -1,31 +1,32 @@
 // 4-bit FRB beam quantizer for CHORD
 
-#include <cuda_fp16.h>              // for __half
-#include <cuda_runtime_api.h>       // for cudaGetLastError
-#include <algorithm>                // for max
-#include <array>                    // for array
-#include <cassert>                  // for assert
-#include <cstddef>                  // for ptrdiff_t
-#include <cstdint>                  // for int64_t
-#include <stdexcept>                // for runtime_error
-#include <string>                   // for allocator, basic_string, string
-#include <tuple>                    // for tuple, make_tuple
-#include <vector>                   // for vector
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for int4x2_t, float16_t
+#include "NDArray.hpp"             // for NDArray
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaQuantizeKernel4.hpp" // for gpu_quantize4
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "div.hpp"                 // for div_noremainder
+#include "driver_types.h"          // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "metadata.hpp"            // for metadataObject
 
-#include "DataType.hpp"             // for int4x2_t, float16_t
-#include "NDArray.hpp"              // for NDArray
-#include "NDArrayBuffer.hpp"        // for NDArrayBuffer
-#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
-#include "cudaQuantizeKernel4.hpp"  // for gpu_quantize4
-#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
-#include "div.hpp"                  // for div_noremainder
-#include "gpuCommand.hpp"           // for gpuCommandType
-#include "Config.hpp"               // for Config
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "driver_types.h"           // for cudaEvent_t, CUevent_st, CUstream_st, cudaStream_t
-#include "fmt.hpp"                  // for format
-#include "metadata.hpp"             // for metadataObject
+#include "fmt.hpp" // for format
+
+#include <algorithm>          // for max
+#include <array>              // for array
+#include <cassert>            // for assert
+#include <cstddef>            // for ptrdiff_t
+#include <cstdint>            // for int64_t
+#include <cuda_fp16.h>        // for __half
+#include <cuda_runtime_api.h> // for cudaGetLastError
+#include <stdexcept>          // for runtime_error
+#include <string>             // for allocator, basic_string, string
+#include <tuple>              // for tuple, make_tuple
+#include <vector>             // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -43,6 +44,7 @@ public:
     static constexpr int FRAME_SIZE = 32;
 
 private:
+    const int _frb_downsampling_factor;
     const int _num_beams;
     const int _num_frequencies;
     const int _num_times;
@@ -69,6 +71,7 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
                              bufferContainer& host_buffers, cudaDeviceInterface& device, int inst) :
     cudaCommand(config, unique_name, host_buffers, device, inst),
     //
+    _frb_downsampling_factor(config.get<int>(unique_name, "frb_downsampling_factor")),
     _num_beams(config.get<std::int64_t>(unique_name, "num_beams")),
     _num_frequencies(config.get<std::int64_t>(unique_name, "num_frequencies")),
     _num_times(config.get<std::int64_t>(unique_name, "num_times")),
@@ -85,8 +88,10 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
         const std::array<std::ptrdiff_t, 4> input_lengths{1, _num_beams, _num_frequencies,
                                                           _num_times};
         const std::array<std::string, 4> input_dimnames{"Ttildehi256", "R", "Fbar", "Ttildelo256"};
+        const std::array<std::ptrdiff_t, 4> input_dimscalings{_frb_downsampling_factor * 256, 1, 1,
+                                                              _frb_downsampling_factor};
         return NDArrayBuffer<float16_t, 4>(_gpu_mem_input, "I2", input_lengths, input_dimnames,
-                                           *this);
+                                           input_dimscalings, *this);
     }()),
     beam_buffer([&]() {
         // The data are stored as 4-bit integers, 2 values per byte
@@ -96,8 +101,10 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
         const std::array<std::ptrdiff_t, 4> beam_lengths{1, _num_beams, _num_frequencies,
                                                          _num_times / 2};
         const std::array<std::string, 4> beam_dimnames{"Ttildehi256", "R", "Fbar", "Ttildelo256"};
+        const std::array<std::ptrdiff_t, 4> beam_dimscalings{_frb_downsampling_factor * 256, 1, 1,
+                                                             _frb_downsampling_factor * 2};
         return NDArrayBuffer<kotekan::int4x2_t, 4>(_gpu_mem_beams, "I3", beam_lengths,
-                                                   beam_dimnames, *this);
+                                                   beam_dimnames, beam_dimscalings, *this);
     }()),
     offsetscale_buffer([&]() {
         assert(_num_times % CHUNK_SIZE == 0);
@@ -105,8 +112,11 @@ cudaQuantize4::cudaQuantize4(Config& config, const std::string& unique_name,
         const std::array<std::ptrdiff_t, 4> offsetscale_lengths{1, _num_beams, _num_frequencies, 2};
         const std::array<std::string, 4> offsetscale_dimnames{"Ttilde256", "R", "Fbar",
                                                               "offset/scale"};
+        const std::array<std::ptrdiff_t, 4> offsetscale_dimscalings{_frb_downsampling_factor * 256,
+                                                                    1, 1, 1};
         return NDArrayBuffer<float16_t, 4>(_gpu_mem_beams_offsetscale, "I3_offsetscale",
-                                           offsetscale_lengths, offsetscale_dimnames, *this);
+                                           offsetscale_lengths, offsetscale_dimnames,
+                                           offsetscale_dimscalings, *this);
     }())
 //
 {

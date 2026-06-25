@@ -153,11 +153,11 @@ testN2kGen::testN2kGen(Config& config, const std::string& unique_name,
     corr_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "n2k_correlation",
         {num_integrations, num_local_freq, corr_num_blocks, corr_blocksize, corr_blocksize, 2},
-        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}));
+        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}, {sub_integration_ntime, 1, 16, 1, 1, 1}));
     count_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "n2k_counts",
         {num_integrations, num_local_freq, count_num_blocks, count_blocksize, count_blocksize},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}));
+        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"}, {sub_integration_ntime, 1, 64, 8, 8}));
 }
 
 std::shared_ptr<chordMetadata> testN2kGen::get_new_metadata(Buffer* buf, frameID frame_id) {

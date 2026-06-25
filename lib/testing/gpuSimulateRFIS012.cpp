@@ -61,17 +61,17 @@ gpuSimulateRFIS012::gpuSimulateRFIS012(Config& config, const std::string& unique
     in_voltage_buf->require_frame_desc(
         kotekan::NDArray<kotekan::int4x2_swapped_withoffset_t, 4>::describe(
             "E", {_samples_per_data_set, _num_local_freq, _num_polarizations, _num_dishes},
-            {"T", "F", "P", "D"}));
+            {"T", "F", "P", "D"}, {1, 1, 1, 1}));
     in_plmask_buf->require_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 5>::describe(
         "pl_mask",
         {_samples_per_data_set / 128, _num_local_freq / 4, _num_polarizations, _num_dishes / 8, 8},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"}));
+        {"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16}));
 
     // Make frame desc for produced buffer
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
     out_rfis012_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
         "S012", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
-        {"Trfi", "F", "S", "P", "D"}));
+        {"Trfi", "F", "S", "P", "D"}, {_rfi_downsampling_factor, 1, 1, 1, 1}));
 }
 
 gpuSimulateRFIS012::~gpuSimulateRFIS012() {}

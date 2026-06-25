@@ -5,6 +5,7 @@
 ################################################################################
 
 # cudaQuantize requires `frb_num_output_times` to be a multiple of 256
+frb_downsampling_factor: 384
 frb_num_output_times: 256
 frb1_swap_MN: true
 frb1_num_beams_P: 2 * num_dishes_y
@@ -30,6 +31,9 @@ host_frb1_U16_phase_buffer:
     num_frames: 1
     value_type: float16
     extents: [upchan_U16_max_num_channels * 16, num_polarizations, num_dishes_x, num_dishes_y, num_components]
+    quantity_name: "W"
+    dimnames: ["Fbar", "P", "dishN", "dishM", "C"]
+    dimscalings: [1, 1, 1, 1, 1]
     metadata_pool: main_pool
 
 host_frb2_beam_positions_buffer:
@@ -37,6 +41,9 @@ host_frb2_beam_positions_buffer:
     num_frames: 1
     value_type: float32
     extents: [frb2_num_beams, 2]
+    quantity_name: "frb2_beam_positions"
+    dimnames: ["R", "X/Y"]
+    dimscalings: [1, 1]
     metadata_pool: main_pool
 
 host_frb2_beam_ids_buffer:
@@ -44,6 +51,9 @@ host_frb2_beam_ids_buffer:
     num_frames: 1
     value_type: uint64
     extents: [frb2_num_beams]
+    quantity_name: "frb2_beam_ids"
+    dimnames: ["R"]
+    dimscalings: [1]
     metadata_pool: main_pool
 
 host_frb2_weights_buffer:
@@ -51,14 +61,22 @@ host_frb2_weights_buffer:
     num_frames: 1
     value_type: float16
     extents: [upchan_U16_max_output_channel - upchan_U16_min_output_channel, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P]
+    quantity_name: "W2"
+    dimnames: ["Fbar", "R", "beamQ", "beamP"]
+    dimscalings: [1, 1, 1, 1]
     metadata_pool: main_pool
 
 # Beams
 
 host_frb1_beams_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
+    # frame_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
+    value_type: float16
+    extents: [frb_num_output_times, upchan_U16_max_num_output_channels, frb1_num_beams_Q, frb1_num_beams_P]
+    quantity_name: "I"
+    dimnames: ["Ttilde", "Fbar", "beamQ", "beamP"]
+    dimscalings: [frb_downsampling_factor, 1, 1, 1]
     metadata_pool: main_pool
 host_frb1_beams_ringbuffer:
     kotekan_buffer: ring
@@ -67,22 +85,37 @@ host_frb1_beams_ringbuffer:
     metadata_pool: main_pool
 
 host_frb2_beams_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: sizeof_float16 * frb2_num_beams * upchan_U16_max_num_output_channels * frb_num_output_times
+    # frame_size: sizeof_float16 * frb2_num_beams * upchan_U16_max_num_output_channels * frb_num_output_times
+    value_type: float16
+    extents: [1, frb2_num_beams, upchan_U16_max_num_output_channels, frb_num_output_times]
+    quantity_name: "I2"
+    dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
+    dimscalings: [frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor]
     metadata_pool: main_pool
 
 host_frb3_beams_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: sizeof_uint8 * frb2_num_beams * upchan_U16_max_num_output_channels * frb_num_output_times
+    # frame_size: sizeof_uint8 * frb2_num_beams * upchan_U16_max_num_output_channels * frb_num_output_times
+    value_type: uint8
+    extents: [1, frb2_num_beams / 8, upchan_U16_max_num_output_channels / 64, 16, 8, 4, 16, 16]
+    quantity_name: "I3"
+    dimnames: ["Ttilde256", "R8", "Fbar64", "Ttilde16_lo16", "Rlo8", "Fbar16_lo4", "Fbarlo16", "Ttildelo16"]
+    dimscalings: [frb_downsampling_factor * 256, 8, 64, frb_downsampling_factor * 16, 1, 16, 1, frb_downsampling_factor]
     metadata_pool: main_pool
 
 host_frb3_beams_offsetscale_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
     # the output is quantized in chunks of `frb_chunk_size`
-    frame_size: sizeof_float16 * 2 * frb2_num_beams * upchan_U16_max_num_output_channels * frb_num_output_times / frb_chunk_size
+    # frame_size: sizeof_float16 * 2 * frb2_num_beams * upchan_U16_max_num_output_channels * frb_num_output_times / frb_chunk_size
+    value_type: float16
+    extents: [1, frb2_num_beams / 8, upchan_U16_max_num_output_channels / 64, 16, 8, 4, 2]
+    quantity_name: "I3_offsetscale"
+    dimnames: ["Ttilde256", "R8", "Fbar64", "Ttilde16_lo16", "Rlo8", "Fbar16_lo4", "offset/scale"]
+    dimscalings: [frb_downsampling_factor * 256, 8, 64, frb_downsampling_factor * 16, 1, 16, 1]
     metadata_pool: main_pool
 
 ################################################################################

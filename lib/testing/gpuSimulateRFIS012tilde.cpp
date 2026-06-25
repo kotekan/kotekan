@@ -56,11 +56,12 @@ gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::stri
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
     int64_t nf = _num_local_freq;
     in_rfi_s012_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
-        "S012", {nt, nf, 3, _num_polarizations, _num_dishes}, {"Trfi", "F", "S", "P", "D"}));
+        "S012", {nt, nf, 3, _num_polarizations, _num_dishes}, {"Trfi", "F", "S", "P", "D"},
+        {_rfi_downsampling_factor, 1, 1, 1, 1}));
     in_bf_mask_buf->require_frame_desc(kotekan::NDArray<std::int8_t, 2>::describe(
-        "bf_mask", {_num_polarizations, _num_dishes}, {"P", "D"}));
-    out_rfi_s012tilde_buf->require_frame_desc(
-        kotekan::NDArray<uint64_t, 3>::describe("S012tilde", {nt, nf, 3}, {"Trfi", "F", "S"}));
+        "bf_mask", {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
+    out_rfi_s012tilde_buf->require_frame_desc(kotekan::NDArray<uint64_t, 3>::describe(
+        "S012tilde", {nt, nf, 3}, {"Trfi", "F", "S"}, {_rfi_downsampling_factor, 1, 1}));
 }
 
 gpuSimulateRFIS012tilde::~gpuSimulateRFIS012tilde() {}

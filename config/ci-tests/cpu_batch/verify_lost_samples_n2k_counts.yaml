@@ -147,6 +147,7 @@ gen_rfimask:
     name: "RFImask"
     array_shape: [2, 12, 128]    # [samples_per_data_set/1024, num_local_freq, 128]
     dim_name: ["T8hi128", "F", "T8lo128"]
+    dim_scaling: [1024, 1, 8]
     num_frames: 2*buffer_depth
     meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
 

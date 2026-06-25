@@ -61,7 +61,7 @@ class testRFIFrameMaskGen : public Stage {
 public:
     testRFIFrameMaskGen(Config& config, const std::string& unique_name,
                         bufferContainer& buffer_container);
-    ~testRFIFrameMaskGen(){};
+    ~testRFIFrameMaskGen() {};
     void main_thread() override;
 
 private:
@@ -140,8 +140,9 @@ testRFIFrameMaskGen::testRFIFrameMaskGen(Config& config, const std::string& uniq
     }
 
     // allocate frame descriptors
-    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
-        kotekan::uint8, name, {num_integrations, num_local_freq}, {"Tc", "F"}));
+    out_buf->require_frame_desc(
+        kotekan::GenericNDArray::describe(kotekan::uint8, name, {num_integrations, num_local_freq},
+                                          {"Tc", "F"}, {sub_integration_ntime, 1}));
 }
 
 std::shared_ptr<chordMetadata> testRFIFrameMaskGen::get_new_metadata(Buffer* buf,

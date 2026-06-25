@@ -93,6 +93,7 @@ gen_data_voltage:
     name: "E"
     array_shape: [2048, 8, 2, 64]
     dim_name: ["T", "F", "P", "D"]
+    dim_scaling: [1, 1, 1, 1]
     num_frames: buffer_depth  # Must be at least what check_data expects
 
 gen_data_rfi_RFImask:
@@ -103,6 +104,7 @@ gen_data_rfi_RFImask:
     name: "RFImask"
     array_shape: [2, 8, 128]
     dim_name: ["T8hi128", "F", "T8lo128"]
+    dim_scaling: [1024, 1, 8]
     num_frames: buffer_depth
     meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
 

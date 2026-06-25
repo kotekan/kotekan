@@ -1,25 +1,26 @@
-#include <unistd.h>             // for sleep
-#include <cassert>              // for assert
-#include <cstdint>              // for int8_t, int32_t
-#include <string>               // for basic_string, string
-#include <vector>               // for vector
-#include <algorithm>            // for clamp
-#include <array>                // for array
-#include <cmath>                // for sin, lrint, sqrt, M_PI
-#include <complex>              // for complex, imag, polar, real
-#include <cstddef>              // for ptrdiff_t
-#include <functional>           // for function
-#include <memory>               // for allocator, __shared_ptr_access, shared_ptr
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for DEBUG
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"   // for DEBUG
-#include "Telescope.hpp"        // for Telescope
-#include "fmt.hpp"              // for compile_string_to_view, format
+#include "fmt.hpp" // for compile_string_to_view, format
+
+#include <algorithm>  // for clamp
+#include <array>      // for array
+#include <cassert>    // for assert
+#include <cmath>      // for sin, lrint, sqrt, M_PI
+#include <complex>    // for complex, imag, polar, real
+#include <cstddef>    // for ptrdiff_t
+#include <cstdint>    // for int8_t, int32_t
+#include <functional> // for function
+#include <memory>     // for allocator, __shared_ptr_access, shared_ptr
+#include <string>     // for basic_string, string
+#include <unistd.h>   // for sleep
+#include <vector>     // for vector
 
 
 class calcBBPhase : public kotekan::Stage {
@@ -71,14 +72,14 @@ public:
         s_buffer->register_producer(unique_name);
 
         bb_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
-            "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"}));
+            "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"}, {1, 1}));
 
         A_buffer->require_frame_desc(kotekan::NDArray<std::int8_t, 5>::describe(
             "A", {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
-            {"F", "P", "B", "D", "C"}));
+            {"F", "P", "B", "D", "C"}, {1, 1, 1, 1, 1}));
 
         s_buffer->require_frame_desc(kotekan::NDArray<std::int32_t, 3>::describe(
-            "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"}));
+            "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"}, {1, 1, 1}));
     }
 
     virtual ~calcBBPhase() {}
@@ -180,14 +181,13 @@ public:
                             const float dish_x = feed_pos_m.at(element)[0];
                             const float dish_y = feed_pos_m.at(element)[1];
                             const float dish_z = feed_pos_m.at(element)[2];
-                            // Buffered beam positions are nx & ny cartesian components in GRID frame.
-                            // |n| = 1.0
+                            // Buffered beam positions are nx & ny cartesian components in GRID
+                            // frame. |n| = 1.0
                             const float n_x = bb_beam_positions_frame[2 * beam + 0];
                             const float n_y = bb_beam_positions_frame[2 * beam + 1];
                             const float n_z = sqrt(1 - (pow2(n_x) + pow2(n_y)));
-                            const float deltat = n_x * dish_x / c0
-                                                 + n_y * dish_y / c0
-                                                 + n_z * dish_z / c0;
+                            const float deltat =
+                                n_x * dish_x / c0 + n_y * dish_y / c0 + n_z * dish_z / c0;
                             const float f = frequencies.at(freq);
                             const float phi = 2 * float(M_PI) * f * deltat;
                             const std::complex<float> A = polar(127.5f, phi);

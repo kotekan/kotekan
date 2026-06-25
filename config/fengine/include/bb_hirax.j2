@@ -25,6 +25,9 @@ host_bb_beam_positions_buffer:
     num_frames: 1
     value_type: float32
     extents: [bb_num_beams, 2]
+    quantity_name: "bb_beam_positions"
+    dimnames: ["B", "X/Y"]
+    dimscalings: [1, 1]
     metadata_pool: main_pool
 
 host_bb_beam_ids_buffer:
@@ -32,6 +35,9 @@ host_bb_beam_ids_buffer:
     num_frames: 1
     value_type: uint64
     extents: [bb_num_beams]
+    quantity_name: "bb_beam_ids"
+    dimnames: ["B"]
+    dimscalings: [1]
     metadata_pool: main_pool
 
 host_bb_phase_buffer:
@@ -39,6 +45,9 @@ host_bb_phase_buffer:
     num_frames: 1
     value_type: int8
     extents: [num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components]
+    quantity_name: "A"
+    dimnames: ["F", "P", "B", "D", "C"]
+    dimscalings: [1, 1, 1, 1, 1]
     metadata_pool: main_pool
 
 host_bb_shift_buffer:
@@ -46,12 +55,20 @@ host_bb_shift_buffer:
     num_frames: 1
     value_type: int32
     extents: [num_frequencies, num_polarizations, bb_num_beams]
+    quantity_name: "s"
+    dimnames: ["F", "P", "B"]
+    dimscalings: [1, 1, 1]
     metadata_pool: main_pool
 
 host_bb_beams_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
+    # frame_size: num_times * num_polarizations * num_frequencies * bb_num_beams
+    value_type: int4x2_swapped_withoffset
+    extents: [1, bb_num_beams, num_frequencies, num_polarizations, num_times]
+    quantity_name: "J"
+    dimnames: ["Thi", "B", "F", "P", "T"]
+    dimscalings: [num_times, 1, 1, 1, 1]
     metadata_pool: main_pool
 
 ################################################################################

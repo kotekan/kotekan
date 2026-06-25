@@ -838,7 +838,7 @@ class ReadChordBuffer(InputBuffer):
         self.buffer_list = buffer_list
 
         meta = buffer_list[0].metadata
-        if all(key in meta for key in ("name", "type", "dim_names")):
+        if all(key in meta for key in ("name", "type", "dim_names", "dim_scalings")):
             self.buffer_block = {
                 self.name: {
                     "kotekan_buffer": "ndarray",
@@ -848,6 +848,7 @@ class ReadChordBuffer(InputBuffer):
                     "quantity_name": str(meta["name"]),
                     "extents": [int(n) for n in buffer_list[0].data.shape],
                     "dimnames": [str(d) for d in meta["dim_names"]],
+                    "dimscalings": [int(n) for n in meta["dim_scalings"]],
                 }
             }
         else:
@@ -886,12 +887,14 @@ class DumpChordBuffer(OutputBuffer):
     output_dir : str
         Temp. directory to output to. Dumped files are not removed.
     quantity_name : str, optional
-        Together with `dimnames`, declare the buffer as `kotekan_buffer:
+        Together with `dimnames` and `dimscalings`, declare the buffer as `kotekan_buffer:
         ndarray`, attaching the frame descriptor at startup (the stage under
         test then validates against it instead of allocating it). Must match
         the descriptor the producing stage declares exactly.
     dimnames : list of str, optional
         Axis labels, one per entry of `shape`. See `quantity_name`.
+    dimscalings : list of int, optional
+        Axis scalings, one per entry of `shape`. See `quantity_name`.
     value_type : str, optional
         kotekan DataType name for the ndarray declaration. Defaults to the
         numpy name of `dtype`, which is correct for plain types; packed
@@ -911,6 +914,7 @@ class DumpChordBuffer(OutputBuffer):
         input_order="CHORDBeamformer",
         quantity_name=None,
         dimnames=None,
+        dimscalings=None,
         value_type=None,
     ):
         self.name = f"dumpchord_buf{self._buf_ind}"
@@ -928,6 +932,12 @@ class DumpChordBuffer(OutputBuffer):
                 raise ValueError(
                     "dimnames must be given with quantity_name, one per axis"
                 )
+            if dimscalings is None:
+                # Optional: default each axis to a scaling of 1, matching
+                # GenericNDArray::from_config when `dimscalings` is omitted.
+                dimscalings = [1] * len(shape)
+            elif len(dimscalings) != len(shape):
+                raise ValueError("dimscalings must have one entry per axis")
             self.buffer_block = {
                 self.name: {
                     "kotekan_buffer": "ndarray",
@@ -937,6 +947,7 @@ class DumpChordBuffer(OutputBuffer):
                     "quantity_name": quantity_name,
                     "extents": [int(n) for n in shape],
                     "dimnames": list(dimnames),
+                    "dimscalings": list(dimscalings),
                 }
             }
         else:

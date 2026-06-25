@@ -84,7 +84,7 @@ public:
         buffer->require_frame_desc(
             kotekan::NDArray<kotekan::int4x2_swapped_withoffset_t, 4>::describe(
                 "E", {num_times, num_frequencies, num_polarizations, num_dishes},
-                {"T", "F", "P", "D"}));
+                {"T", "F", "P", "D"}, {1, 1, 1, 1}));
     }
 
     virtual ~inventVoltage() {}

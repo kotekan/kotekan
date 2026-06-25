@@ -309,6 +309,9 @@ public:
             const auto dimnames = frame_desc->get_dimnames();
             std::vector<std::string> dim_names(dimnames.begin(), dimnames.end());
             dataset.createAttribute("dim_names", dim_names);
+            const auto dimscalings = frame_desc->get_dimscalings();
+            std::vector<std::ptrdiff_t> dim_scalings(dimscalings.begin(), dimscalings.end());
+            dataset.createAttribute("dim_scalings", dim_scalings);
 
             if (meta->has_fpga_seq_num()) {
                 dataset.createAttribute("fpga_seq_num", meta->get_fpga_seq_num());

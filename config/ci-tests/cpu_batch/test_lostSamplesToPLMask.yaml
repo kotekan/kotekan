@@ -48,6 +48,7 @@ pl_mask_buffers:
     value_type: uint1x8
     extents: [num_frame_samples / pl_mask_downsampling_factor / pl_mask_hilo_split, num_freq_bins, num_polarizations, num_dishes / pl_mask_dishes_per_bin, pl_mask_hilo_split / 8]
     dimnames: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+    dimscalings: [128, 4, 1, 8, 16]
     out_pl_mask_buffer:
         kotekan_buffer: ndarray
     cmp_pl_mask_buffer:

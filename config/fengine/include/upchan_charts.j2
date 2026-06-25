@@ -87,6 +87,9 @@ host_upchan_U32_gain_buffer:
     num_frames: 1
     value_type: float16
     extents: [upchan_U32_max_num_channels * 32]
+    quantity_name: "G"
+    dimnames: ["Fbar"]
+    dimscalings: [1]
     metadata_pool: main_pool
 
 # Packet loss masks
@@ -104,9 +107,14 @@ host_upchan_U32_expanded_pl_mask_ringbuffer:
 # Voltages
 
 host_upchan_U32_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_dishes * num_polarizations * (upchan_U32_max_num_channels * 32) * (num_times / 32)
+    # frame_size: num_dishes * num_polarizations * (upchan_U32_max_num_channels * 32) * (num_times / 32)
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times / 32, upchan_U32_max_num_channels * 32, num_polarizations, num_dishes]
+    quantity_name: "Ebar"
+    dimnames: ["Tbar", "Fbar", "P", "D"]
+    dimscalings: [32, 1, 1, 1]
     metadata_pool: main_pool
 host_upchan_U32_voltage_ringbuffer:
     kotekan_buffer: ring

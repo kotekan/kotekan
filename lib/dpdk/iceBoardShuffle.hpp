@@ -280,7 +280,7 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
                              3>::describe("E",
                                           {1, ptrdiff_t(out_bufs[i]->frame_size) / sample_size,
                                            sample_size},
-                                          {"F", "T", "E"}));
+                                          {"F", "T", "E"}, {1, 1, 1}));
     }
 
     lost_samples_buf =
@@ -546,7 +546,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
     /* new style array description */
     lost_samples_buf->ensure_frame_desc(
         kotekan::NDArray<kotekan::GetType<kotekan::uint8>::type, 1>::describe(
-            "lost_samples", {ptrdiff_t(lost_samples_buf->frame_size)}, {"T"}));
+            "lost_samples", {ptrdiff_t(lost_samples_buf->frame_size)}, {"T"}, {1}));
     /* test that things are consistent */
     meta->check_frame_desc(lost_samples_buf->get_frame_desc<kotekan::GenericNDArray>());
 
