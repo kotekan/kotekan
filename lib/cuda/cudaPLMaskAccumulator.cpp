@@ -128,7 +128,7 @@ cudaPLMaskAccumulator::cudaPLMaskAccumulator(kotekan::Config& config,
     pl_counts(pl_counts_name, "pl_counts",
               std::array<std::ptrdiff_t, 4>{num_subintegrations, num_frequencies, num_polarizations,
                                             num_dishes},
-              std::array<std::string, 4>{"Tc", "F", "P", "D"}, {sub_integration_ntime, 1, 1, 8},
+              std::array<std::string, 4>{"Tc", "F", "P", "D"}, {sub_integration_ntime, 1, 1, 1},
               *this)
 //
 {
