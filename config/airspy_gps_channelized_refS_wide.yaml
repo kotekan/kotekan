@@ -1,0 +1,88 @@
+---
+# Real-sky validation of the r2c channelized acquire on the 20 MSPS L1 reference.
+#   rawFileRead -> fftwEngine(input_type:real, r2c PFB) -> GnssChannelizedCorrelator
+# Feed: captures/l1band_ref_20msps.bin, (-1)^n flipped + 4-byte 0 header, in /tmp/gpsin_ref.
+# Native 20 MSPS (no resampling): carrier at Fs/4 = 5 MHz. Known sats PRN 10/23/32.
+type: config
+log_level: warn
+instrument_name: airspy_gps
+
+telescope:
+    name: ICETelescope
+    num_polarizations: 1
+    num_dishes: 1
+
+samples_per_data_set: 49920    # multiple of 2N=80 (r2c hop): 624 hops per frame
+bytes_per_sample: 2
+buffer_depth: 16
+sizeof_float: 4
+cpu_affinity: [0, 1, 2, 3]
+
+input_buf:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * bytes_per_sample
+
+read_in:
+    kotekan_stage: rawFileRead
+    buf: input_buf
+    base_dir: "/tmp/gpsin_refS"
+    file_name: "gpsin"
+    file_ext: "raw"
+    end_interrupt: true
+
+spectrum_length: 40
+num_taps: 4
+chan_buf:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * sizeof_float
+
+fengine:
+    kotekan_stage: fftwEngine
+    in_buf: input_buf
+    out_buf: chan_buf
+    log_level: warn
+    input_type: real
+    pfb_window: hamming
+
+n_prn: 7
+record_floats: 11
+record_buf:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: n_prn * record_floats * sizeof_float
+
+gps:
+    kotekan_stage: GnssChannelizedCorrelator
+    in_buf: chan_buf
+    out_buf: record_buf
+    log_level: warn
+    signal: GPS_L1CA
+    sample_rate: 20.0e6
+    f_offset: 5.0e6
+    spectrum_length: 40
+    num_taps: 4
+    pfb_window: hamming
+    acquire: true
+    acquire_snr: 12.0
+    acquire_windows: 64           # ~64 ms incoherent integration of the |D|^2 surface
+    doppler_min: -6000.0
+    doppler_max: 6000.0
+    doppler_step: 250.0
+    doppler_margin_hz: 900000.0
+    # Known present: PRN 10, 23, 32. Controls (expect no lock): 1, 5, 15, 20.
+    prns: [1, 5, 10, 15, 20, 23, 32]
+
+write_records:
+    kotekan_stage: rawFileWrite
+    in_buf: record_buf
+    base_dir: "/tmp/gpsout_refS"
+    file_name: "chan"
+    file_ext: "raw"
+    prefix_hostname: false
+    num_frames_per_file: 100000
+    exit_after_n_files: 100000

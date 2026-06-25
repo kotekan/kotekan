@@ -1,0 +1,134 @@
+---
+##########################################
+# airspy_gps_distributed_live.yaml
+#
+# LIVE L5 (GPS_L5_Q pilot) distributed pipeline off the airspy:
+# NOTE: airspy 20 MSPS = 10 MHz band captures only the central ~half of L5's
+# 20 MHz main lobe (partial code power); NH20 overlay not applied (constant within
+# a 1 ms window, so per-window records are unaffected).
+#   airspyInput(20 MSPS) -> fftwEngine(PFB, 200 kHz) -> GnssSubbandSplit ->
+#       per subband { GnssChannelizedSearch (async), GnssChannelizedTracker } ->
+#       GnssCoherentCombiner -> rawFileWrite
+# Driven by python/scripts/gps_distributed_broker.py (REST). Active antenna ->
+# bias-tee ON. Downtown RFI may rail the front end; watch the search detection
+# logs and combiner /get_status. Same N=50 / chordMetadata path as the offline
+# distributed config.
+##########################################
+type: config
+log_level: info
+instrument_name: airspy_gps
+
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+rest_server: { cors_allow_origins: ["http://localhost:8080"] }
+
+samples_per_data_set: 50000    # multiple of 2N=100 -> 500 hops/frame; 2.5 ms/frame @20 MSPS
+bytes_per_sample: 2
+buffer_depth: 16
+sizeof_float: 4
+cpu_affinity: [0, 1, 2, 3]
+
+# Front end: LO on L1, 10 MSPS device mode -> 20 MSPS real, carrier at Fs/4 = 5 MHz.
+sample_bw: 10
+freq: 1176.45            # L5 (moves LO ~400 MHz off L1)
+gain_lna: 14
+gain_mix: 15
+gain_if: 15
+biast_power: true              # ACTIVE antenna -> bias-tee ON
+
+signal: GPS_L5_Q            # dataless pilot; L1 out of CHORD band
+spectrum_length: 50            # 200 kHz channels @ 20 MSPS (~CHORD 195 kHz)
+num_taps: 4
+sample_rate: 20.0e6
+f_offset: 5.0e6
+n_prn: 32
+record_floats: 11
+hops_per_record: 200
+doppler_margin_hz: 10000.0    # L5 (10.23 Mcps) already fills the 10 MHz band -> covering = all channels
+
+gnss_pool:
+    kotekan_metadata_pool: GnssChanMetadata
+    num_metadata_objects: 8 * buffer_depth
+
+input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
+chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+subA_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: 100000 }
+subB_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: 100000 }
+recA_buf:  { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+recB_buf:  { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+
+airspy_input:
+    kotekan_stage: airspyInput
+    out_buf: input_buf
+#   serial: 0x03A464C837525967   # pin the dongle; omit for "first found"
+
+fengine:
+    kotekan_stage: fftwEngine
+    in_buf: input_buf
+    out_buf: chan_buf
+    input_type: real
+    pfb_window: hamming
+
+split:
+    kotekan_stage: GnssSubbandSplit
+    in_buf: chan_buf
+    out_bufs: [subA_buf, subB_buf]
+    subband_lo: [0, 25]
+    subband_hi: [25, 50]
+
+# Search the full live constellation across both subbands (drop nothing).
+search_a:
+    kotekan_stage: GnssChannelizedSearch
+    in_buf: subA_buf
+    channel_offset: 0
+    n_channels: 25
+    acquire_snr: 11.0
+    acquire_windows: 32
+    doppler_min: -6000.0
+    doppler_max: 6000.0
+    doppler_step: 500.0
+    prns: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]
+search_b:
+    kotekan_stage: GnssChannelizedSearch
+    in_buf: subB_buf
+    channel_offset: 25
+    n_channels: 25
+    acquire_snr: 11.0
+    acquire_windows: 32
+    doppler_min: -6000.0
+    doppler_max: 6000.0
+    doppler_step: 500.0
+    prns: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]
+
+# Trackers start with no active PRNs; the broker seeds detected sats.
+track_a:
+    kotekan_stage: GnssChannelizedTracker
+    in_buf: subA_buf
+    out_buf: recA_buf
+    channel_offset: 0
+    n_channels: 25
+    prns: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]
+    active_prns: [1]   # warmup; broker seeds the detected set (active_prns:[] would mean ALL)
+track_b:
+    kotekan_stage: GnssChannelizedTracker
+    in_buf: subB_buf
+    out_buf: recB_buf
+    channel_offset: 25
+    n_channels: 25
+    prns: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]
+    active_prns: [1]   # warmup; broker seeds the detected set
+
+combiner:
+    kotekan_stage: GnssCoherentCombiner
+    in_bufs: [recA_buf, recB_buf]
+    out_buf: out_buf
+
+write_records:
+    kotekan_stage: rawFileWrite
+    in_buf: out_buf
+    base_dir: "/tmp/gpslive"
+    file_name: "gps"
+    file_ext: "raw"
+    prefix_hostname: false
+    num_frames_per_file: 100000
+    exit_after_n_files: 100000

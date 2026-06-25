@@ -44,13 +44,32 @@ add_executable(
     ../../lib/stages/pfbPrototype.cpp ../../lib/stages/gpsCACode.cpp)
 target_include_directories(test_gnss_channelized_despread PRIVATE ../../lib/stages)
 
-# Channelized acquisition: per-channel correlation + cross-channel fine-lag DFT,
-# checked against the injected code phase / Doppler. No FFTW.
-add_executable(
-    test_gnss_channelized_acquire test_gnss_channelized_acquire.cpp
-    ../../lib/stages/gnssChannelizedAcquire.cpp ../../lib/stages/pfbPrototype.cpp
-    ../../lib/stages/gpsCACode.cpp)
-target_include_directories(test_gnss_channelized_acquire PRIVATE ../../lib/stages)
+# Channelized acquisition: FFT-domain coarse correlation + cross-channel fine-lag
+# DFT + incoherent multi-window accumulation, checked against injected code
+# phase / Doppler. Gated on FFTW (matches lib/stages, which only compiles
+# gnssChannelizedAcquire.cpp under FFTW_FOUND): the coarse-correlation workspace
+# needs fftwf. FFTW_FOUND is set by FeatureMath.cmake before this subdirectory.
+if(FFTW_FOUND)
+    add_executable(
+        test_gnss_channelized_acquire test_gnss_channelized_acquire.cpp
+        ../../lib/stages/gnssChannelizedAcquire.cpp ../../lib/stages/pfbPrototype.cpp
+        ../../lib/stages/gpsCACode.cpp)
+    target_include_directories(test_gnss_channelized_acquire PRIVATE ../../lib/stages)
+    target_include_directories(test_gnss_channelized_acquire SYSTEM PRIVATE ${FFTW_INCLUDES})
+    target_link_libraries(test_gnss_channelized_acquire PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
+
+    # Channelized replica bank: per-signal code dispatch (L1 C/A, L5 I/Q, L2C),
+    # checked by self / cross-PRN / cross-signal despread. Needs FFTW (r2c replica).
+    add_executable(
+        test_gnss_channelized_replica test_gnss_channelized_replica.cpp
+        ../../lib/stages/gnssChannelizedReplica.cpp ../../lib/stages/gnssChannelizedDespread.cpp
+        ../../lib/stages/gnssBandPlan.cpp ../../lib/stages/pfbPrototype.cpp
+        ../../lib/stages/gpsCACode.cpp ../../lib/stages/gpsL2CCode.cpp
+        ../../lib/stages/gpsL5Code.cpp)
+    target_include_directories(test_gnss_channelized_replica PRIVATE ../../lib/stages)
+    target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})
+    target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
+endif()
 
 add_executable(test_stat_tracker test_stat_tracker.cpp)
 target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)

@@ -140,3 +140,42 @@ BOOST_AUTO_TEST_CASE(channelized_matches_full_band_under_noise) {
     BOOST_CHECK_LT(std::abs(chan - cd(A)), 0.1 * std::abs(A)); // near truth
     BOOST_CHECK_LT(std::abs(chan - full), 0.1 * std::abs(A));  // and tracks full-band
 }
+
+// Centerpiece of the distributed combine: split the covering channels across two
+// disjoint subbands, despread each independently, and recombine. The raw
+// correlation G and replica energy are sums over channels, so they are additive
+// across the partition, and (sum G)/(sum energy) reproduces the full despread
+// amplitude exactly -- this is the invariant the coherent combiner stage relies on.
+BOOST_AUTO_TEST_CASE(channel_partition_recombines_coherently) {
+    const cf A(0.8f, 0.6f);
+    auto code = ca_code(1);
+    auto dch = analyze(sim_bpsk_baseband(code, SP, 0.0, A), proto());
+    auto rch = analyze(sim_bpsk_baseband(code, SP, 0.0, cf(1.0f, 0.0f)), proto());
+
+    auto full = channelized_despread(dch, rch);
+
+    std::vector<std::vector<cf>> dA, rA, dB, rB;
+    for (int c = 0; c < N; ++c) {
+        if (c < N / 2) {
+            dA.push_back(dch[c]);
+            rA.push_back(rch[c]);
+        } else {
+            dB.push_back(dch[c]);
+            rB.push_back(rch[c]);
+        }
+    }
+    auto resA = channelized_despread(dA, rA);
+    auto resB = channelized_despread(dB, rB);
+
+    // Raw correlation + replica energy are additive across the channel partition...
+    const cd corr = resA.correlation + resB.correlation;
+    const double energy = resA.replica_energy + resB.replica_energy;
+    BOOST_CHECK_CLOSE(corr.real(), full.correlation.real(), 1e-3);
+    BOOST_CHECK_CLOSE(corr.imag(), full.correlation.imag(), 1e-3);
+    BOOST_CHECK_CLOSE(energy, full.replica_energy, 1e-3);
+
+    // ...so the recombined amplitude (sum G)/(sum energy) equals the full despread.
+    const cd recombined = corr / energy;
+    BOOST_CHECK_CLOSE(recombined.real(), full.amplitude.real(), 1e-3);
+    BOOST_CHECK_CLOSE(recombined.imag(), full.amplitude.imag(), 1e-3);
+}

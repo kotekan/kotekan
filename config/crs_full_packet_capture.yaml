@@ -25,7 +25,7 @@ numa_node: 0
 
 # Pool
 main_pool:
-    kotekan_metadata_pool: chordMetadata
+    kotekan_metadata_pool: GnssChanMetadata
     num_metadata_objects: 15 * buffer_depth
 
 # Buffers

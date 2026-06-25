@@ -28,6 +28,14 @@ type: config
 log_level: info
 instrument_name: airspy_gps
 
+# The chord-branch framework builds a default ICETelescope at startup whose
+# constructor requires num_polarizations/num_dishes, even though this pipeline
+# never uses the telescope. Provide a trivial 1x1 stub.
+telescope:
+    name: ICETelescope
+    num_polarizations: 1
+    num_dishes: 1
+
 rest_server:
     cors_allow_origins:
         - "http://localhost:8080"
@@ -47,7 +55,7 @@ freq: 1575.42
 gain_lna: 14
 gain_mix: 15
 gain_if: 15
-biast_power: false
+biast_power: true
 
 cpu_affinity: [0, 1, 2, 3]
 
@@ -78,7 +86,7 @@ fengine:
     in_buf: input_buf
     out_buf: chan_buf
     cpu_affinity: [3]
-    input_type: complex
+    input_type: real             # airspy is REAL -> r2c PFB (N real-FFT -> N/2 chans)
     pfb_window: hamming
     # spectrum_length / num_taps inherited from the top level
 
@@ -87,7 +95,7 @@ record_floats: 11
 n_prn: 8                       # PRNs per worker; out frame = n_prn*record_floats*4
 sample_rate: 5.0e6
 f_offset: 1.25e6
-hops_per_record: 125           # one C/A period: round(1e-3*5e6)/40
+hops_per_record: 62            # one C/A period: round(1e-3*5e6)/(2*40), r2c 2N samples/hop
 acquire: true
 acquire_snr: 12.0
 doppler_min: -6000.0
@@ -144,7 +152,9 @@ collector:
 write_records:
     kotekan_stage: rawFileWrite
     in_buf: merged_buf
-    base_dir: "./gps_records"
+    base_dir: "/tmp/gpsout"
     file_name: "gps"
     file_ext: "raw"
     prefix_hostname: false
+    num_frames_per_file: 100000
+    exit_after_n_files: 100000

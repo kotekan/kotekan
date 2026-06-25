@@ -1,0 +1,44 @@
+---
+type: config
+log_level: info
+instrument_name: airspy_gps
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+rest_server: { cors_allow_origins: ["http://localhost:8080"] }
+
+samples_per_data_set: 50000
+bytes_per_sample: 2
+buffer_depth: 16
+sizeof_float: 4
+cpu_affinity: [0, 1, 2, 3]   # bufferSend/Recv require it; inherited by all stages
+
+spectrum_length: 50
+num_taps: 4
+sample_rate: 20.0e6
+f_offset: 5.0e6
+n_prn: 2
+record_floats: 11
+hops_per_record: 200
+doppler_margin_hz: 900000.0
+
+gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }
+rec_pool:  { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }
+
+input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
+chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+subA_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: 100000 }
+subB_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: 100000 }
+recA_buf:  { kotekan_buffer: standard, metadata_pool: rec_pool, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+recB_buf:  { kotekan_buffer: standard, metadata_pool: rec_pool, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+
+read_in: { kotekan_stage: rawFileRead, buf: input_buf, base_dir: "/tmp/gpsin_ref", file_name: "gpsin", file_ext: "raw", end_interrupt: false }
+fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
+split:   { kotekan_stage: GnssSubbandSplit, in_buf: chan_buf, out_bufs: [subA_buf, subB_buf], subband_lo: [0, 25], subband_hi: [25, 50] }
+
+send_a: { kotekan_stage: bufferSend, buf: subA_buf, server_ip: 127.0.0.1, server_port: 14001, drop_frames: false }
+send_b: { kotekan_stage: bufferSend, buf: subB_buf, server_ip: 127.0.0.1, server_port: 14002, drop_frames: false }
+recv_a: { kotekan_stage: bufferRecv, buf: recA_buf, listen_port: 14003, num_threads: 1 }
+recv_b: { kotekan_stage: bufferRecv, buf: recB_buf, listen_port: 14004, num_threads: 1 }
+
+combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [recA_buf, recB_buf], out_buf: out_buf }
+write_records: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpsxnode", file_name: "gps", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 100000, exit_after_n_files: 100000 }

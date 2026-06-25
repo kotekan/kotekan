@@ -15,6 +15,7 @@
 #include "kotekanLogging.hpp"   // for DEBUG, FATAL_ERROR
 #include "fmt.hpp"              // for compile_string_to_view
 #include "NDArray.hpp"          // for GenericNDArray
+#include "GnssChanMetadata.hpp" // for get_gnss_chan_metadata, metadata_is_gnss_chan
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -107,6 +108,7 @@ fftwEngine::~fftwEngine() {
 void fftwEngine::main_thread() {
     frame_in = 0;
     frame_out = 0;
+    long long frames_produced = 0; // monotonic output-frame counter (absolute reference)
 
     constexpr int BYTES_PER_SAMPLE = 2; // int16_t
 
@@ -167,9 +169,25 @@ void fftwEngine::main_thread() {
             }
         }
 
+        // Stamp the absolute sample reference (chordMetadata fpga_seq) so downstream
+        // search/track -- possibly on other nodes after bufferSend/Recv -- share one
+        // "sample 0" for code-phase referencing. Propagate the source seq if the input
+        // carries it, else generate from the monotonic output-frame counter.
+        if (out_buf->metadata_pool) {
+            out_buf->allocate_new_metadata_object(frame_out);
+            int64_t seq = frames_produced * (int64_t)samples_per_input_frame; // abs sample of hop 0
+            if (metadata_is_gnss_chan(in_buf)) {
+                auto* mi = get_gnss_chan_metadata(in_buf, frame_in);
+                if (mi && mi->fpga_seq >= 0) // propagate the source seq if present
+                    seq = mi->fpga_seq;
+            }
+            get_gnss_chan_metadata(out_buf, frame_out)->fpga_seq = seq;
+        }
+
         in_buf->mark_frame_empty(unique_name, frame_in);
         out_buf->mark_frame_full(unique_name, frame_out);
         frame_in = (frame_in + 1) % in_buf->num_frames;
         frame_out = (frame_out + 1) % out_buf->num_frames;
+        frames_produced++;
     }
 }

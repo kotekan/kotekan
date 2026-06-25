@@ -19,3 +19,6 @@ docs/sphinx/html/*
 .cache/*
 scratch/*
 *.log
+
+# Local macOS build dir
+/build_mac/

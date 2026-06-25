@@ -7,6 +7,7 @@
 #include "BasebandMetadata.hpp"  // for BasebandMetadata
 #include "BeamMetadata.hpp"      // for BeamMetadata
 #include "Config.hpp"            // for Config
+#include "GnssChanMetadata.hpp"  // for GnssChanMetadata
 #include "HFBMetadata.hpp"       // for HFBMetadata
 #include "N2Metadata.hpp"        // for N2Metadata
 #include "chordMetadata.hpp"     // for chordMetadata
@@ -102,6 +103,11 @@ std::shared_ptr<metadataPool> metadataFactory::new_pool(const std::string& pool_
 
     if (pool_type == "BasebandMetadata") {
         return metadataPool::create(num_metadata_objects, sizeof(BasebandMetadata), location,
+                                    pool_type);
+    }
+
+    if (pool_type == "GnssChanMetadata") {
+        return metadataPool::create(num_metadata_objects, sizeof(GnssChanMetadata), location,
                                     pool_type);
     }
     // No metadata found

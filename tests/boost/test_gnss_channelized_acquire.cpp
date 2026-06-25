@@ -7,6 +7,7 @@
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>
 #include <complex>
+#include <random>
 #include <vector>
 
 using cf = std::complex<float>;
@@ -25,6 +26,15 @@ constexpr int M = NS / N;                      // 132 hops
 std::vector<int8_t> ca(int prn) {
     auto a = gps::generate_ca_code(prn);
     return std::vector<int8_t>(a.begin(), a.end());
+}
+
+// Reproducible standard-normal sample via Box-Muller on the engine's raw output.
+// (std::normal_distribution is NOT portable across stdlib implementations, so a
+// seeded test would diverge between macOS/libc++ and cobalt/libstdc++.)
+double gauss(std::mt19937& rng) {
+    const double u1 = (rng() + 1.0) / 4294967297.0; // (0,1), excludes 0 for log
+    const double u2 = (rng() + 1.0) / 4294967297.0;
+    return std::sqrt(-2.0 * std::log(u1)) * std::cos(2.0 * M_PI * u2);
 }
 
 // Wideband baseband signal at code phase `cp` chips, Doppler `fd` Hz, amp `amp`.
@@ -198,4 +208,99 @@ BOOST_AUTO_TEST_CASE(wrong_prn_has_low_snr) {
     auto r = gnss::channelized_acquire(data, repl0, energy_covering(repl0), grid, FS, CHIP_RATE, N,
                                        CODE_LEN);
     BOOST_CHECK_LT(r.snr, 12.0); // no coherent peak for the wrong code
+}
+
+// channelized_acquire is just channelized_accumulate(one window) + channelized_peak;
+// exercising the split directly (with an explicit AcquireWorkspace) must reproduce
+// the wrapper exactly, and report the expected surface dimensions.
+BOOST_AUTO_TEST_CASE(accumulate_peak_matches_wrapper) {
+    const auto proto = dsp::pfb_prototype(N, P, dsp::Window::Hamming);
+    const long true_tau = 50;
+    const double true_dop = 200.0;
+    auto data = stft(gen(5, true_tau * CHIP_RATE / FS, true_dop, cf(1.0f, 0.0f)), proto);
+    auto repl0 = stft(gen(5, 0.0, 0.0, cf(1.0f, 0.0f)), proto);
+    const auto cov = energy_covering(repl0);
+    const std::vector<double> grid = {-400, -200, 0, 200, 400};
+
+    auto rw = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN);
+
+    gnss::AcquireWorkspace ws;
+    std::vector<double> surf;
+    const auto dims = gnss::channelized_accumulate(data, repl0, cov, grid, FS, N, surf, ws);
+    auto rs = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN);
+
+    BOOST_CHECK_EQUAL(dims.n_dop, (int)grid.size());
+    BOOST_CHECK_EQUAL(dims.Mp, M); // repl0 hop-period
+    BOOST_CHECK_EQUAL(dims.sph, N); // complex bank: hop == channel count (samples_per_hop=0)
+    BOOST_CHECK_EQUAL(rs.peak_tau_samples, rw.peak_tau_samples);
+    BOOST_CHECK_EQUAL(rs.doppler_hz, rw.doppler_hz);
+    BOOST_CHECK_CLOSE(rs.snr, rw.snr, 1e-2);
+}
+
+// Re-accumulating the same noiseless window K times scales the |D|^2 surface (and
+// its peak) by K, leaving the peak/mean ratio and the recovered lag/Doppler
+// unchanged -- the basic invariant the incoherent accumulator must satisfy.
+BOOST_AUTO_TEST_CASE(accumulation_scales_surface_linearly) {
+    const auto proto = dsp::pfb_prototype(N, P, dsp::Window::Hamming);
+    const long true_tau = 50;
+    const double true_dop = 200.0;
+    auto data = stft(gen(5, true_tau * CHIP_RATE / FS, true_dop, cf(1.0f, 0.0f)), proto);
+    auto repl0 = stft(gen(5, 0.0, 0.0, cf(1.0f, 0.0f)), proto);
+    const auto cov = energy_covering(repl0);
+    const std::vector<double> grid = {-400, -200, 0, 200, 400};
+
+    gnss::AcquireWorkspace ws;
+    std::vector<double> surf1, surfK;
+    const auto dims1 = gnss::channelized_accumulate(data, repl0, cov, grid, FS, N, surf1, ws);
+    constexpr int K = 5;
+    gnss::AcquisitionSurface dimsK{};
+    for (int k = 0; k < K; ++k)
+        dimsK = gnss::channelized_accumulate(data, repl0, cov, grid, FS, N, surfK, ws);
+
+    auto r1 = gnss::channelized_peak(surf1, dims1, grid, FS, CHIP_RATE, CODE_LEN);
+    auto rK = gnss::channelized_peak(surfK, dimsK, grid, FS, CHIP_RATE, CODE_LEN);
+
+    BOOST_CHECK_EQUAL(rK.peak_tau_samples, r1.peak_tau_samples);
+    BOOST_CHECK_EQUAL(rK.doppler_hz, r1.doppler_hz);
+    BOOST_CHECK_CLOSE(rK.peak, K * r1.peak, 1e-2); // surface scales by K
+    BOOST_CHECK_CLOSE(rK.snr, r1.snr, 1e-2);        // ratio invariant
+}
+
+// A signal too weak to acquire in one window (a noise spike wins the surface) is
+// recovered once enough independent-noise windows are integrated incoherently --
+// the sensitivity mechanism the accumulation exists for.
+BOOST_AUTO_TEST_CASE(accumulation_recovers_weak_signal_under_noise) {
+    const auto proto = dsp::pfb_prototype(N, P, dsp::Window::Hamming);
+    const long true_tau = 50;
+    const double true_dop = 200.0;
+    const double cp = true_tau * CHIP_RATE / FS;
+    constexpr float AMP = 0.30f;   // per-sample signal amplitude
+    constexpr float SIGMA = 6.0f;  // per-I/Q noise sigma (signal well below noise)
+    constexpr int K = 32;
+
+    auto repl0 = stft(gen(5, 0.0, 0.0, cf(1.0f, 0.0f)), proto);
+    const auto cov = energy_covering(repl0);
+    const std::vector<double> grid = {-400, -200, 0, 200, 400};
+
+    std::mt19937 rng(2024u);
+
+    gnss::AcquireWorkspace ws;
+    std::vector<double> surf;
+    gnss::AcquisitionSurface dims{};
+    long tau1 = 0;
+    for (int k = 0; k < K; ++k) {
+        auto wb = gen(5, cp, true_dop, cf(AMP, 0.0f));
+        for (auto& v : wb)
+            v += cf((float)(SIGMA * gauss(rng)), (float)(SIGMA * gauss(rng)));
+        dims = gnss::channelized_accumulate(stft(wb, proto), repl0, cov, grid, FS, N, surf, ws);
+        if (k == 0) {
+            std::vector<double> s1(surf); // first-window-only surface
+            tau1 = gnss::channelized_peak(s1, dims, grid, FS, CHIP_RATE, CODE_LEN).peak_tau_samples;
+        }
+    }
+    auto rK = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN);
+
+    BOOST_CHECK_GT(std::abs(tau1 - true_tau), (long)SP);      // single window: misses
+    BOOST_CHECK_EQUAL(rK.doppler_hz, true_dop);               // K windows: Doppler right
+    BOOST_CHECK_LE(std::abs(rK.peak_tau_samples - true_tau), (long)SP); // ...and code phase
 }

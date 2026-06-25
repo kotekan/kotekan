@@ -9,6 +9,7 @@
 #include "gnssSignal.hpp"      // for SignalDescriptor, signal_by_name
 #include "gpsCACode.hpp"       // for generate_ca_code
 #include "gpsL2CCode.hpp"      // for generate_l2cm_code, generate_l2cl_code
+#include "gpsL5Code.hpp"       // for generate_l5i_code, generate_l5q_code
 #include "kotekanLogging.hpp"  // for DEBUG, INFO, FATAL_ERROR
 
 #include "restServer.hpp" // for restServer, connectionInstance, HTTP_RESPONSE
@@ -72,6 +73,14 @@ static std::vector<int8_t> replica_code(const gnss::SignalDescriptor& sig, int p
         return gps::generate_l2cm_code(prn);
     if (name == "GPS_L2C_CL")
         return gps::generate_l2cl_code(prn);
+    if (name == "GPS_L5_I") {
+        const auto a = gps::generate_l5i_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "GPS_L5_Q") {
+        const auto a = gps::generate_l5q_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
     throw std::runtime_error("GpsReplicaCorrelator: no replica generator for " + name);
 }
 

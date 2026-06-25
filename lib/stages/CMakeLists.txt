@@ -47,6 +47,9 @@ add_library(
     gpsL2CCode.cpp
     gpsL5Code.cpp
     GnssRecordCollector.cpp
+    GnssSubbandSplit.cpp
+    GnssCoherentCombiner.cpp
+    GnssTrackState.cpp
     SpawnProcess.cpp
     freqSplit.cpp
     FreqSubset.cpp
@@ -143,11 +146,17 @@ if(FFTW_FOUND)
         kotekan_stages
         PRIVATE fftwEngine.cpp
                 GpsReplicaCorrelator.cpp
+                GnssCorrelatorCore.cpp
+                GnssTracker.cpp
+                GnssAcquire.cpp
                 pfbPrototype.cpp
                 gnssBandPlan.cpp
                 gnssChannelizedDespread.cpp
                 gnssChannelizedAcquire.cpp
-                GnssChannelizedCorrelator.cpp)
+                gnssChannelizedReplica.cpp
+                GnssChannelizedCorrelator.cpp
+                GnssChannelizedTracker.cpp
+                GnssChannelizedSearch.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
 endif()

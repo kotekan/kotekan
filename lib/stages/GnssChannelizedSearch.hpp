@@ -1,0 +1,115 @@
+/**
+ * @file
+ * @brief Async per-subband channelized GNSS search (the search half of the
+ *        distributed split), reporting detections over REST.
+ *  - GnssChannelizedSearch : public kotekan::Stage
+ */
+
+#ifndef GNSS_CHANNELIZED_SEARCH_HPP
+#define GNSS_CHANNELIZED_SEARCH_HPP
+
+#include "Config.hpp"                 // for Config
+#include "Stage.hpp"                  // for Stage
+#include "buffer.hpp"                 // for Buffer
+#include "bufferContainer.hpp"        // for bufferContainer
+#include "gnssChannelizedAcquire.hpp" // for AcquireWorkspace
+#include "gnssChannelizedReplica.hpp" // for ChannelizedReplicaBank
+#include "restServer.hpp"             // for connectionInstance
+
+#include <complex>            // for complex
+#include <condition_variable> // for condition_variable
+#include <memory>             // for unique_ptr
+#include <mutex>              // for mutex
+#include <string>             // for string
+#include <thread>             // for thread
+#include <vector>             // for vector
+
+/**
+ * @class GnssChannelizedSearch
+ * @brief Non-backpressuring channelized acquisition over one subband's channels.
+ *
+ * Mirrors @ref GnssAcquire's design in the channelized domain: the consumer loop
+ * copies a snapshot of channelized hops and immediately releases every frame, so
+ * the producer never waits; a worker thread runs the heavy parallel-code-phase
+ * search (the incoherent-accumulation @ref gnssChannelizedAcquire, FFT coarse
+ * correlation) over the snapshot on this subband's owned channels. Because each
+ * subband holds only a slice of the carrier's code power it is less sensitive than
+ * the full band -- but it only has to find a sat in *some* subband; the broker then
+ * seeds every subband's @ref GnssChannelizedTracker at one consensus (code phase,
+ * Doppler) so the per-subband despreads recombine coherently to full sensitivity.
+ *
+ * Detections (PRN -> Doppler, code phase, SNR) are published over REST
+ * (@c GET unique_name/get_detections) for the broker to poll. Code phase + Doppler
+ * follow the tracker's seeding convention (r2c Doppler-sign flip + sub-hop refine),
+ * and code phase is grid-consistent with the tracker (both on the hop*2N window
+ * grid), so a reported seed is directly usable -- modulo slow code-Doppler drift,
+ * which periodic re-seeding by the broker absorbs.
+ *
+ * @conf signal/sample_rate/f_offset/spectrum_length/num_taps/pfb_window  As the F-engine.
+ * @conf channel_offset   Int (default 0). Global index of this subband's channel 0.
+ * @conf n_channels       Int. Channels owned by this subband.
+ * @conf prns             Array<Int>. PRN universe to search.
+ * @conf doppler_min/max/step  Double. Acquisition Doppler grid, Hz.
+ * @conf acquire_snr      Double (default 12). Surface SNR to declare a detection.
+ * @conf acquire_windows  Int (default 64). |D|^2 windows to integrate per snapshot.
+ * @conf doppler_margin_hz Double (default 5000). Covering-channel selection band.
+ *
+ * @buffer in_buf This subband's channels, [hop][n_channels] cfloat32.
+ *
+ * @author Keith Vanderlinde
+ */
+class GnssChannelizedSearch : public kotekan::Stage {
+public:
+    GnssChannelizedSearch(kotekan::Config& config, const std::string& unique_name,
+                          kotekan::bufferContainer& buffer_container);
+    ~GnssChannelizedSearch() override;
+    void main_thread() override;
+
+private:
+    void search_worker();
+    void search_snapshot();
+    void get_detections_callback(kotekan::connectionInstance& conn);
+
+    struct Detection {
+        double doppler_hz = 0.0;
+        double code_phase_chips = 0.0;
+        float snr = 0.0f;
+        bool valid = false;
+        int misses = 0; ///< consecutive non-detecting snapshots since last valid hit
+    };
+
+    Buffer* in_buf;
+
+    int _N;
+    int _fft_len;
+    int _chan_offset;
+    int _n_chan;
+    int _hops_per_record; ///< hops per integration window
+    int _acquire_windows; ///< windows accumulated per snapshot
+    int _hold_snapshots;  ///< keep a detection valid this many non-detecting snapshots
+    double _sample_rate;
+    double _doppler_margin_hz;
+    double _acquire_snr;
+    std::vector<int> _prns;
+    std::vector<double> _doppler_grid;
+
+    std::unique_ptr<gnss::ChannelizedReplicaBank> _replica;
+    gnss::AcquireWorkspace _acq_ws;
+
+    std::vector<Detection> _detections; ///< per-PRN latest detection
+    std::mutex _det_mtx;
+
+    // --- snapshot hand-off (consumer loop -> worker) ---
+    std::vector<std::complex<float>> _snapshot; ///< acquire_windows*hpr hops, n_chan each
+    size_t _snap_hops;                          ///< hops the snapshot holds
+    long long _snap_start_hop;                  ///< absolute hop index of snapshot hop 0
+                                                ///< (so reported code phase is absolute-referenced)
+    std::thread _worker;
+    std::mutex _m;
+    std::condition_variable _cv;
+    bool _snap_ready;
+    bool _worker_busy;
+    bool _worker_stop;
+};
+
+#endif // GNSS_CHANNELIZED_SEARCH_HPP

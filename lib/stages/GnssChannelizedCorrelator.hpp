@@ -11,6 +11,7 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "gnssChannelizedAcquire.hpp"  // for AcquireWorkspace
 #include "gnssChannelizedDespread.hpp" // for DespreadResult
 #include "gnssSignal.hpp"      // for SignalDescriptor
 #include "pfbPrototype.hpp"    // for Window
@@ -30,8 +31,8 @@
  *
  * The measurement tier of the distributed-band pipeline (see
  * @ref gnssChannelizedDespread.hpp). It consumes the channelized voltage stream
- * a PFB F-engine produces (@ref fftwEngine with num_taps>1: fftshifted
- * @c fftwf_complex spectra, @c spectrum_length channels per hop) and, for each
+ * a PFB F-engine produces (@ref fftwEngine input_type=real, num_taps>1: r2c
+ * real-FFT channels, natural order over [0, Fs/2), @c spectrum_length per hop) and, for each
  * active PRN at its *known* code phase + Doppler, generates the matching
  * replica, PFB-analyzes it through the identical bank, gathers the channels
  * covering the carrier (@ref gnssBandPlan.hpp), and reports the complex despread
@@ -43,7 +44,7 @@
  *
  * @par Buffers
  * @buffer in_buf Channelized voltages from the PFB F-engine.
- *     @buffer_format Array of @c fftwf_complex, [hops][spectrum_length], fftshifted
+ *     @buffer_format Array of @c fftwf_complex, [hops][spectrum_length], r2c natural order
  *     @buffer_metadata none
  * @buffer out_buf One record per PRN per measurement window.
  *     @buffer_format float32[9] + float64 UTC per PRN (matches GpsReplicaCorrelator)
@@ -60,6 +61,8 @@
  * @conf code_phase_chips  Array of Double. Seeded code phase per PRN (scalar broadcasts).
  * @conf acquire           Bool (default false). Self-seed unlocked PRNs from the channels.
  * @conf acquire_snr       Double (default 12). Surface SNR to accept an acquisition.
+ * @conf acquire_windows   Int (default 64). Windows to integrate the |D|^2 acquire
+ *                         surface (incoherently) before testing the SNR threshold.
  * @conf doppler_min       Double (default -6000). Acquisition Doppler grid start, Hz.
  * @conf doppler_max       Double (default 6000). Acquisition Doppler grid end, Hz.
  * @conf doppler_step      Double (default 500). Acquisition Doppler grid step, Hz.
@@ -91,7 +94,7 @@ private:
     /// [spectrum_length][hops] fftshifted channels.
     std::vector<std::vector<std::complex<float>>>
     replica_channels(int p, long long window_start_sample, double code_phase_chips,
-                     double doppler_hz);
+                     double doppler_hz, int n_hops = -1);
     /// Channel indices whose passband covers the carrier for PRN @c p at the
     /// given Doppler.
     std::vector<int> covering_bins(int p, double doppler_hz) const;
@@ -116,6 +119,8 @@ private:
     double _doppler_margin_hz;
 
     int _N;        ///< channels per hop (spectrum_length)
+    int _fft_len;  ///< real-FFT length = 2*_N (full-rate samples per hop)
+    int _repl_period_hops; ///< replica hop-period: code_samples / gcd(fft_len, code_samples)
     int _num_taps; ///< PFB taps per channel
     dsp::Window _window_type;
     std::vector<float> _proto; ///< prototype matching the F-engine
@@ -130,17 +135,26 @@ private:
     // the channels before measuring (see gnssChannelizedAcquire.hpp).
     bool _acquire;
     double _acquire_snr;              ///< surface SNR to accept an acquisition (lock)
+    int _acquire_windows;             ///< windows to integrate the |D|^2 surface before deciding
     std::vector<double> _doppler_grid; ///< acquisition Doppler trials, Hz
     std::vector<uint8_t> _locked;     ///< per-PRN: seed valid (skip re-acquire)
+    std::vector<std::vector<double>> _acq_surf; ///< per-PRN incoherent |D|^2 surface accumulator
+    std::vector<int> _acq_count;      ///< per-PRN windows accumulated so far
+    gnss::AcquireWorkspace _acq_ws;   ///< reusable FFT workspace for the coarse correlation
+    /// Per-PRN cached acquire replica [N][Mp]. The code-0/Doppler-0 replica is
+    /// invariant across windows (code period == window step, carrier at Fs/4), so
+    /// it is generated once and reused, eliminating per-window replica regen.
+    std::vector<std::vector<std::vector<std::complex<float>>>> _repl0_cache;
 
     std::vector<uint8_t> _active; ///< go/no-go mask aligned with _prns
     std::mutex _mask_mutex;
 
-    // FFTW for the replica analysis (size _N forward, matches the F-engine).
-    fftwf_complex* _fold;  ///< pfb_fold output (pre-FFT)
-    fftwf_complex* _spec;  ///< FFT output (pre-fftshift)
-    fftwf_plan _p_fwd;
-    std::vector<std::complex<float>> _replica_hist; ///< persistent fold delay line
+    // FFTW for the replica analysis: real r2c of length _fft_len = 2*_N, matching
+    // the F-engine's real-input PFB (fftwEngine input_type: real).
+    float* _fold;          ///< pfb_fold real output (length _fft_len)
+    fftwf_complex* _spec;  ///< r2c output (length _N+1; we keep channels [0, _N))
+    fftwf_plan _p_fwd;     ///< real -> complex (_fft_len -> _N+1)
+    std::vector<float> _replica_hist; ///< persistent real fold delay line
 };
 
 #endif // GNSS_CHANNELIZED_CORRELATOR_HPP

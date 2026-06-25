@@ -1,0 +1,53 @@
+---
+# Validate GnssChannelizedSearch + the absolute code-phase referencing: the async
+# search must report (Doppler, code phase) matching the tracker's known seeds
+# (PRN 10: dop -1250, cp ~647; PRN 23: dop -2750, cp ~747.5). Full band, real ref.
+type: config
+log_level: info
+instrument_name: airspy_gps
+
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+samples_per_data_set: 49920
+bytes_per_sample: 2
+buffer_depth: 16
+sizeof_float: 4
+cpu_affinity: [0, 1, 2, 3]
+
+spectrum_length: 40
+num_taps: 4
+sample_rate: 20.0e6
+f_offset: 5.0e6
+
+input_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
+chan_buf:  { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+
+read_in:
+    kotekan_stage: rawFileRead
+    buf: input_buf
+    base_dir: "/tmp/gpsin_ref"
+    file_name: "gpsin"
+    file_ext: "raw"
+    end_interrupt: true
+
+fengine:
+    kotekan_stage: fftwEngine
+    in_buf: input_buf
+    out_buf: chan_buf
+    input_type: real
+    pfb_window: hamming
+
+search:
+    kotekan_stage: GnssChannelizedSearch
+    in_buf: chan_buf
+    channel_offset: 0
+    n_channels: 40
+    signal: GPS_L1CA
+    doppler_margin_hz: 900000.0
+    acquire_snr: 12.0
+    acquire_windows: 32
+    hops_per_record: 250
+    doppler_min: -6000.0
+    doppler_max: 6000.0
+    doppler_step: 500.0
+    prns: [5, 10, 23]      # 1 control (5) + 2 known (10, 23)
