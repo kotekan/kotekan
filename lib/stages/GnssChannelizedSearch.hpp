@@ -73,6 +73,7 @@ private:
     struct Detection {
         double doppler_hz = 0.0;
         double code_phase_chips = 0.0;
+        long long ref_hop = 0; ///< snapshot reference hop (fpga_seq/fft_len) cp0 is anchored to
         float snr = 0.0f;
         bool valid = false;
         int misses = 0; ///< consecutive non-detecting snapshots since last valid hit

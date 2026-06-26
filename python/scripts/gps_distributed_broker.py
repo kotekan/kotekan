@@ -59,6 +59,40 @@ def _log(msg):
     print("[broker] %s" % msg, file=sys.stderr, flush=True)
 
 
+def fit_cp_rate(hist, code_len):
+    """Least-squares fit cp0 vs capture hop -> (rate chips/hop, hop_ref, cp_ref).
+
+    The search anchors each cp0 to its snapshot hop (capture time, shared with the
+    tracker via fpga_seq), but cp0 drifts ~linearly with that hop (residual code-rate
+    error). Fitting the slope lets the tracker extrapolate to its own window hop and
+    sit on the peak -- a first-order code model that removes the seed-staleness bias.
+    Returns None if there isn't enough spread to fit. cp0 is unwrapped (period
+    code_len) along the sequence before fitting; the result is anchored at the latest
+    hop. hop is centred to keep the (large) absolute index from losing precision.
+    """
+    if len(hist) < 3:
+        return None
+    hops = [h for h, _ in hist]
+    cps = [c for _, c in hist]
+    unw = [cps[0]]
+    for c in cps[1:]:
+        d = c - (unw[-1] % code_len)
+        d -= code_len * round(d / code_len)  # nearest wrap
+        unw.append(unw[-1] + d)
+    h0 = hops[-1]
+    dh = [float(h - h0) for h in hops]
+    n = len(dh)
+    sh, sc = sum(dh), sum(unw)
+    shh = sum(x * x for x in dh)
+    shc = sum(x * y for x, y in zip(dh, unw))
+    den = n * shh - sh * sh
+    if den == 0.0:
+        return None
+    rate = (n * shc - sh * sc) / den          # chips per hop
+    cp_ref = (sc - rate * sh) / n             # fitted cp0 at h0
+    return rate, h0, cp_ref % code_len
+
+
 def expand_token(tok):
     """Expand the first bash-style {a..b} range in a token, recursing for more.
 
@@ -154,6 +188,10 @@ def main(argv=None):
     ap.add_argument("--carrier-hz", type=float, default=1575.42e6, help="carrier for Doppler pred")
     ap.add_argument("--doppler-sign", type=float, default=1.0,
                     help="multiply predicted Doppler (set -1 if the convention is inverted)")
+    ap.add_argument("--code-length", type=float, default=1023.0,
+                    help="spreading-code length (chips) for cp0 unwrap/fit (L1 C/A = 1023)")
+    ap.add_argument("--hops-per-sec", type=float, default=125000.0,
+                    help="F-engine hops/s (Fs/fft_len) -- only to log the cp slope in chips/s")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -181,8 +219,12 @@ def main(argv=None):
                 _log("almanac unavailable (%s); falling back to search Doppler" % e)
                 args.almanac = False
 
-    seeds = {}       # prn -> {"doppler_hz", "code_phase_chips"} (consensus)
+    seeds = {}       # prn -> {"doppler_hz", "code_phase_chips", ...} (consensus)
     low_hits = {}    # prn -> consecutive low-|A| poll count
+    cp_hist = {}     # prn -> [(ref_hop, cp0), ...] recent distinct snapshots (for the slope fit)
+    CODE_LEN = float(args.code_length)
+    MAX_GAP_HOPS = 2.0e6   # reset cp history across a gap this large (re-acquisition)
+    HIST_LEN = 8           # snapshots kept for the slope fit
     _log("detectors=%d trackers=%d combiner=%s interval=%.2fs gating=%s"
          % (len(detectors), len(trackers), combiner, args.interval, gating))
     _log("trackers: %s" % (trackers if len(trackers) <= 6
@@ -191,7 +233,7 @@ def main(argv=None):
     while True:
         t0 = time.time()
         # 1. collect best-SNR detection per PRN across all detection sources
-        best = {}  # prn -> (snr, dop, cp)
+        best = {}  # prn -> (snr, dop, cp, ref_hop)
         for d_ep in detectors:
             try:
                 dets = _get("%s/get_detections" % d_ep)
@@ -203,7 +245,8 @@ def main(argv=None):
                 if snr < args.acquire_snr:
                     continue
                 if prn not in best or snr > best[prn][0]:
-                    best[prn] = (snr, float(d["doppler_hz"]), float(d["code_phase_chips"]))
+                    best[prn] = (snr, float(d["doppler_hz"]), float(d["code_phase_chips"]),
+                                 int(d.get("ref_hop", 0)))
 
         # 2. orbit-predicted Doppler + visibility (almanac assist), else plain gate
         pred = {}          # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]
@@ -238,11 +281,32 @@ def main(argv=None):
         # refresh / add consensus seeds: code phase from the search, Doppler from the
         # orbit prediction when available (precise enough for coherent integration),
         # else the coarse search grid.
-        for prn, (snr, dop, cp) in best.items():
+        for prn, (snr, dop, cp, ref_hop) in best.items():
             if up is not None and prn not in up:
                 continue
             seed_dop = (pred[prn][0] + clock_bias) if (args.almanac and prn in pred) else dop
-            seeds[prn] = {"doppler_hz": seed_dop, "code_phase_chips": cp}
+
+            # Maintain a per-PRN cp0-vs-hop history (only distinct snapshots; the search
+            # holds its detection between updates) and fit the first-order code drift.
+            h = cp_hist.get(prn, [])
+            if h and (ref_hop - h[-1][0]) > MAX_GAP_HOPS:
+                h = []  # gap too large -> re-acquisition, old slope is stale
+            if not h or ref_hop != h[-1][0]:
+                h.append((ref_hop, cp))
+                h = h[-HIST_LEN:]
+            cp_hist[prn] = h
+
+            seed = {"doppler_hz": seed_dop, "code_phase_chips": cp,
+                    "code_phase_rate": 0.0, "ref_hop": ref_hop}
+            fit = fit_cp_rate(h, CODE_LEN)
+            if fit is not None:
+                rate, h0, cp_ref = fit
+                seed["code_phase_rate"] = rate
+                seed["ref_hop"] = h0
+                seed["code_phase_chips"] = cp_ref
+                _log("PRN %d cp-fit: %.2f chips @ hop %d, slope %+.3f chips/s (%d pts)"
+                     % (prn, cp_ref, h0, rate * args.hops_per_sec, len(h)))
+            seeds[prn] = seed
             low_hits[prn] = 0
 
         # 3. drop on lost lock (sustained low combined |A|) or set below horizon

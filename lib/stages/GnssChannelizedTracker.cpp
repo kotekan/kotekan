@@ -68,6 +68,8 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     };
     seed("doppler_hz", _doppler);
     seed("code_phase_chips", _code_phase);
+    _code_phase_rate.assign(n_prn, 0.0);
+    _ref_hop.assign(n_prn, 0);
 
     try {
         _replica = std::make_unique<gnss::ChannelizedReplicaBank>(
@@ -102,6 +104,12 @@ void GnssChannelizedTracker::set_seeds_callback(kotekan::connectionInstance& con
                 if (_prns[i] == prn) {
                     _doppler[i] = s.at("doppler_hz").get<double>();
                     _code_phase[i] = s.at("code_phase_chips").get<double>();
+                    // Optional first-order code-phase model: cp0 drifts linearly with the
+                    // capture hop (residual code-rate error), so the broker can hand a
+                    // slope + anchor hop and the tracker extrapolates to its own window
+                    // hop -- removing the seed-staleness bias rather than searching it out.
+                    _code_phase_rate[i] = s.value("code_phase_rate", 0.0);
+                    _ref_hop[i] = s.value("ref_hop", (long long)0);
                     _active[i] = 1;
                 }
         }
@@ -155,12 +163,15 @@ void GnssChannelizedTracker::main_thread() {
             const long long window_start = window_start_hop * (long long)_fft_len;
 
             // Snapshot the (REST-updatable) seeds + active set for this window.
-            std::vector<double> dop, cp;
+            std::vector<double> dop, cp, cp_rate;
+            std::vector<long long> ref_hop;
             std::vector<uint8_t> active;
             {
                 std::lock_guard<std::mutex> lk(_seed_mtx);
                 dop = _doppler;
                 cp = _code_phase;
+                cp_rate = _code_phase_rate;
+                ref_hop = _ref_hop;
                 active = _active;
             }
 
@@ -188,8 +199,17 @@ void GnssChannelizedTracker::main_thread() {
                 for (int c : cover)
                     if (c >= _chan_offset && c < _chan_offset + _n_chan)
                         owned.push_back(c);
+                // First-order extrapolate the seed cp0 from its anchor hop to this
+                // window's capture hop: cp0 drifts ~linearly with capture time (residual
+                // code-rate error), so this removes the seed-staleness bias up front; the
+                // pull-in below only mops up the small non-linear/fit residual.
+                const double L = (double)_replica->code_length();
+                double cp_seed = cp[p] + cp_rate[p] * (double)(window_start_hop - ref_hop[p]);
+                cp_seed = std::fmod(cp_seed, L);
+                if (cp_seed < 0.0)
+                    cp_seed += L;
                 rec[1] = (float)dop[p];
-                rec[2] = (float)cp[p];
+                rec[2] = (float)cp_seed;
                 rec[6] = (float)owned.size();
                 if (owned.empty())
                     continue; // carrier not in this subband
@@ -211,11 +231,11 @@ void GnssChannelizedTracker::main_thread() {
                 // (this tracker spans all covering channels, so one peak cp is coherent
                 // across them). pullin_chips=0 -> a single despread at the seed.
                 gnss::DespreadResult best{};
-                double best_pw = -1.0, best_cp = cp[p];
+                double best_pw = -1.0, best_cp = cp_seed;
                 for (double off = -_pullin_chips; off <= _pullin_chips + 1e-9;
                      off += (_pullin_step > 0.0 ? _pullin_step : 1.0)) {
-                    const auto repl =
-                        _replica->channels(p, window_start, cp[p] + off, dop[p], _hops_per_record);
+                    const auto repl = _replica->channels(p, window_start, cp_seed + off, dop[p],
+                                                         _hops_per_record);
                     std::vector<std::vector<cf>> repl_ch;
                     repl_ch.reserve(owned.size());
                     for (int c : owned)
@@ -225,7 +245,7 @@ void GnssChannelizedTracker::main_thread() {
                     if (pw > best_pw) {
                         best_pw = pw;
                         best = res;
-                        best_cp = cp[p] + off;
+                        best_cp = cp_seed + off;
                     }
                     if (_pullin_chips <= 0.0)
                         break;
