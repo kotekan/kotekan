@@ -35,9 +35,11 @@ the ~0.5 s decorrelation time. REST via stdlib urllib; visibility via skyfield
 import argparse
 import json
 import re
+import statistics
 import sys
 import time
 import urllib.request
+from datetime import datetime, timezone
 
 
 def _get(url, timeout=5.0):
@@ -143,6 +145,15 @@ def main(argv=None):
     ap.add_argument("--lon", type=float, help="receiver longitude")
     ap.add_argument("--alt", type=float, default=0.0, help="receiver altitude, m")
     ap.add_argument("--mask-deg", type=float, default=5.0, help="elevation mask, deg")
+    ap.add_argument("--almanac", action="store_true",
+                    help="orbit-predict each PRN's Doppler (needs --lat/--lon + skyfield): "
+                         "seed trackers with the precise predicted Doppler (geometry + a common "
+                         "clock-freq bias solved from the measured sats) instead of the coarse "
+                         "search grid, and gate to visible sats. Code phase still from the search.")
+    ap.add_argument("--tle", default=None, help="GPS TLE file/URL (default: Celestrak gps-ops)")
+    ap.add_argument("--carrier-hz", type=float, default=1575.42e6, help="carrier for Doppler pred")
+    ap.add_argument("--doppler-sign", type=float, default=1.0,
+                    help="multiply predicted Doppler (set -1 if the convention is inverted)")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -152,6 +163,23 @@ def main(argv=None):
     trackers = parse_endpoints(args.trackers, base)
     combiner = resolve_prefix(args.combiner, base)
     gating = args.lat is not None and args.lon is not None
+
+    # Almanac assist: load the GPS constellation once (TLEs), predict per-cycle.
+    almanac_sats = None
+    if args.almanac:
+        if not gating:
+            _log("--almanac needs --lat/--lon; disabling")
+            args.almanac = False
+        else:
+            try:
+                from gps_beamtrack import load_gps_satellites, predict_dopplers
+                from gps_beamtrack import DEFAULT_TLE_URL
+                almanac_sats = load_gps_satellites(args.tle or DEFAULT_TLE_URL)
+                _log("almanac: loaded %d GPS TLEs; predicting Doppler @ (%.4f, %.4f)"
+                     % (len(almanac_sats), args.lat, args.lon))
+            except Exception as e:
+                _log("almanac unavailable (%s); falling back to search Doppler" % e)
+                args.almanac = False
 
     seeds = {}       # prn -> {"doppler_hz", "code_phase_chips"} (consensus)
     low_hits = {}    # prn -> consecutive low-|A| poll count
@@ -177,14 +205,44 @@ def main(argv=None):
                 if prn not in best or snr > best[prn][0]:
                     best[prn] = (snr, float(d["doppler_hz"]), float(d["code_phase_chips"]))
 
-        # 2. visibility gate
-        up = visible_prns(args.lat, args.lon, args.alt, args.mask_deg, 0.0) if gating else None
+        # 2. orbit-predicted Doppler + visibility (almanac assist), else plain gate
+        pred = {}          # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]
+        clock_bias = 0.0   # common receiver clock-frequency bias, Hz
+        up = None
+        if args.almanac:
+            try:
+                from gps_beamtrack import predict_dopplers
+                raw = predict_dopplers(args.lat, args.lon, args.alt,
+                                       t_utc=datetime.now(tz=timezone.utc), _sats=almanac_sats,
+                                       f_carrier_hz=args.carrier_hz)
+                pred = {p: (args.doppler_sign * d, r, e) for p, (d, r, e) in raw.items()}
+            except Exception as e:
+                _log("predict_dopplers failed: %s" % e)
+            up = {p for p, v in pred.items() if v[2] >= args.mask_deg}
+            # Common clock-frequency bias = median(measured - predicted) over detected
+            # sats. A tight residual spread confirms the sign convention; a wild spread
+            # (resid ~ -2x predicted) means flip --doppler-sign.
+            resid = [best[p][1] - pred[p][0] for p in best if p in pred]
+            if resid:
+                clock_bias = statistics.median(resid)
+            for p in sorted(best):
+                if p in pred:
+                    _log("PRN %d: meas %+.0f  pred %+.0f  resid %+.0f Hz (elev %.0f)"
+                         % (p, best[p][1], pred[p][0], best[p][1] - pred[p][0], pred[p][2]))
+            if resid:
+                _log("clock-freq bias %+.0f Hz (%d sats) -> seeding predicted Doppler"
+                     % (clock_bias, len(resid)))
+        elif gating:
+            up = visible_prns(args.lat, args.lon, args.alt, args.mask_deg, 0.0)
 
-        # refresh / add consensus seeds from fresh detections
+        # refresh / add consensus seeds: code phase from the search, Doppler from the
+        # orbit prediction when available (precise enough for coherent integration),
+        # else the coarse search grid.
         for prn, (snr, dop, cp) in best.items():
             if up is not None and prn not in up:
                 continue
-            seeds[prn] = {"doppler_hz": dop, "code_phase_chips": cp}
+            seed_dop = (pred[prn][0] + clock_bias) if (args.almanac and prn in pred) else dop
+            seeds[prn] = {"doppler_hz": seed_dop, "code_phase_chips": cp}
             low_hits[prn] = 0
 
         # 3. drop on lost lock (sustained low combined |A|) or set below horizon

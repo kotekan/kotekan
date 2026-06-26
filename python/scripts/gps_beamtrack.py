@@ -32,7 +32,7 @@ import glob
 import os
 import struct
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
@@ -95,6 +95,50 @@ def load_gps_satellites(tle_source):
         if m:
             by_prn[int(m.group(1))] = s
     return by_prn
+
+
+def predict_dopplers(lat, lon, alt_m, prns=None, t_utc=None, f_carrier_hz=1575.42e6,
+                     tle_source=DEFAULT_TLE_URL, _sats=None):
+    """Predict {prn: (doppler_hz, doppler_rate_hz_per_s, elevation_deg)} for GPS sats
+    at a receiver (lat, lon, alt_m WGS84) and time t_utc (UTC datetime, default now).
+
+    This is the GEOMETRIC (line-of-sight range-rate) Doppler only. It does NOT
+    include the receiver clock-frequency error, which adds a *common* offset across
+    all PRNs (airspy TCXO ~1 ppm -> ~+-1.5 kHz at L1); solve that one bias from the
+    measured Doppler of an acquired sat, then it applies to every prediction.
+
+    Sign convention: +Doppler = satellite approaching (received carrier shifted up),
+    matching the GNSS pipeline's reported Doppler. Requires skyfield. Pass _sats
+    (a {prn: EarthSatellite} from load_gps_satellites) to avoid reloading TLEs.
+    """
+    from skyfield.api import load, wgs84
+    C = 299792458.0
+    ts = load.timescale()
+    observer = wgs84.latlon(lat, lon, elevation_m=alt_m)
+    by_prn = _sats if _sats is not None else load_gps_satellites(tle_source)
+    if t_utc is None:
+        t_utc = datetime.now(tz=timezone.utc)
+    dt = 0.5
+    t0 = ts.from_datetime(t_utc)
+    t1 = ts.from_datetime(t_utc + timedelta(seconds=dt))
+
+    def _doppler(sat, t):
+        g = (sat - observer).at(t)
+        r = g.position.km * 1e3          # m  (sat relative to observer)
+        v = g.velocity.km_per_s * 1e3    # m/s
+        range_rate = float(np.dot(r, v) / np.linalg.norm(r))  # +ve = receding
+        return -f_carrier_hz * range_rate / C                 # +ve = approaching
+
+    out = {}
+    for prn in (prns if prns is not None else list(by_prn)):
+        sat = by_prn.get(int(prn))
+        if sat is None:
+            continue
+        d0 = _doppler(sat, t0)
+        rate = (_doppler(sat, t1) - d0) / dt
+        elev = (sat - observer).at(t0).altaz()[0].degrees
+        out[int(prn)] = (d0, rate, float(elev))
+    return out
 
 
 def attach_altaz(records, lat, lon, alt_m, tle_source=DEFAULT_TLE_URL):

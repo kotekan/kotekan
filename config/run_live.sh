@@ -32,9 +32,19 @@ sleep 4
 echo "front end: $(curl -s localhost:12048/airspy_in/adcstat | tr -d '\n ')"
 echo "browser waterfall + ADC: http://localhost:8080"
 
+# Almanac assist (predicted Doppler) when a location is given:
+#   LAT=43.66 LON=-79.40 ./config/run_live.sh
+# Watch /tmp/gpslive_broker.log for the predicted-vs-measured Doppler + clock bias.
+ALM=""
+if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
+  ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100}"
+  echo "almanac assist ON @ ($LAT, $LON) -- predicted-Doppler seeding"
+else
+  echo "almanac assist OFF (set LAT= LON= to enable predicted-Doppler seeding)"
+fi
 echo "starting broker..."
 python3 $BROKER --detectors search --trackers 'track_{12..28}' --combiner combiner \
-        --acquire-snr 6 --interval 0.2 > /tmp/gpslive_broker.log 2>&1 &
+        --acquire-snr 6 --interval 0.2 $ALM > /tmp/gpslive_broker.log 2>&1 &
 BPID=$!
 
 echo "=== watching (Ctrl-C to stop) ==="
