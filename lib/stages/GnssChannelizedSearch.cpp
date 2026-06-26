@@ -75,6 +75,7 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     }
     _hops_per_record =
         config.get_default<int>(unique_name, "hops_per_record", _replica->repl_period_hops());
+    _replica->code_doppler_sign = config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
 
     _detections.assign(_prns.size(), Detection{});
     _snap_hops = (size_t)_acquire_windows * _hops_per_record;
@@ -173,7 +174,15 @@ void GnssChannelizedSearch::search_snapshot() {
             // modulo the replica period first to keep float precision.
             const double L = (double)_replica->code_length();
             const double off = std::fmod((double)(_snap_start_hop % Mp) * (double)_fft_len * cps, L);
-            double cp = std::fmod(best_cp - off, L);
+            // Code-Doppler drift of the reference over the FULL absolute snapshot start
+            // (NOT Mp-periodic, so use the full snap_start_hop): makes cp0 the true
+            // sample-0 phase, matching the feed-forward in ChannelizedReplicaBank, so
+            // the seed is latency-invariant (a stale seed no longer drifts the cp).
+            const double drift = std::fmod((double)_snap_start_hop * (double)_fft_len * cps
+                                               * (_replica->code_doppler_sign * dop
+                                                  / _replica->carrier_hz()),
+                                           L);
+            double cp = std::fmod(best_cp - off - drift, L);
             if (cp < 0.0)
                 cp += L;
             det.doppler_hz = dop;

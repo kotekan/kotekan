@@ -48,6 +48,7 @@ num_taps: 4
 sample_rate: 20.0e6
 f_offset: 5.0e6
 signal: GPS_L1CA
+code_doppler_sign: 1.0   # flip to -1.0 if high-Doppler sats still won't lock
 n_prn: %d
 record_floats: 11
 doppler_margin_hz: 900000.0

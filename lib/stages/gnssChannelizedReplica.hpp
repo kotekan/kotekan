@@ -61,10 +61,16 @@ public:
     /// Bipolar code chip for PRN index @c p at fractional chip phase (wraps period).
     int8_t code_chip(int p, double chip_phase) const;
 
+    /// Code-Doppler feed-forward sign (+1 nominal: approaching -> faster code, as the
+    /// carrier). Flip to -1 if the r2c fold inverts it vs the seed convention; set by
+    /// the stage from config `code_doppler_sign` so it can be tuned without a rebuild.
+    double code_doppler_sign = 1.0;
+
     int spectrum_length() const { return _N; }
     int fft_len() const { return _fft_len; }
     int repl_period_hops() const { return _repl_period_hops; }
     double chip_rate_hz() const { return _sig.chip_rate_hz; }
+    double carrier_hz() const { return _sig.carrier_hz; } ///< sky carrier (for code-Doppler)
     long code_length() const { return _sig.code_length; }
 
 private:

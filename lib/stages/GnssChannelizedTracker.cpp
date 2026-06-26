@@ -78,6 +78,7 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     }
     _hops_per_record =
         config.get_default<int>(unique_name, "hops_per_record", _replica->repl_period_hops());
+    _replica->code_doppler_sign = config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
 
     const auto active_prns = config.get_default<std::vector<int>>(unique_name, "active_prns", {});
     _active.assign(n_prn, 1);

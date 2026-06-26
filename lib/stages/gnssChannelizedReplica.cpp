@@ -112,14 +112,15 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
     std::vector<float> block(_fft_len);
     std::vector<std::vector<cf>> chan(_N, std::vector<cf>(n_hops));
 
-    // NOTE: code-Doppler (the spreading-code clock scaling with carrier Doppler,
-    // chip_rate*(1 +/- f_d/f_RF), ~1.8 chip/s at L1) is NOT applied here yet. With a
-    // fixed seed the despread drifts within ~0.5 s, so the broker must re-seed
-    // faster than that; a feed-forward code-Doppler term (sign TBD -- the r2c fold
-    // may flip it vs the carrier) is a tracker refinement to add + validate once
-    // self-consistent search->track seeding exists (a stale hardcoded seed can't
-    // test it cleanly). See distributed-pipeline-stages memory.
-    const double chip_per_sample = _sig.chip_rate_hz / _sample_rate;
+    // Code-Doppler feed-forward: the spreading code clock scales with the carrier
+    // Doppler, chip_rate*(1 + f_d/f_RF) (~1.8 chip/s at L1). The code phase is read
+    // at the ABSOLUTE sample index n, so without this term a seed referenced to
+    // sample 0 drifts by code_Doppler * (seed age) -- a few chips for a fast sat,
+    // which is what keeps high-Doppler sats from locking. Same sign as the carrier
+    // (both track the same line-of-sight velocity); GnssChannelizedSearch applies
+    // the matching term when referencing its measured cp back to sample 0.
+    const double chip_per_sample =
+        _sig.chip_rate_hz / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
     const double wcarrier = 2.0 * M_PI * (_f_offset + doppler_hz) / _sample_rate;
 
     for (int h = 0; h < total; ++h) {
