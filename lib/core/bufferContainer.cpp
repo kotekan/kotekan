@@ -1,9 +1,10 @@
 #include "bufferContainer.hpp"
 
-#include <stdexcept>   // for runtime_error
+#include "buffer.hpp" // for GenericBuffer, Buffer, is_frame_buffer
 
-#include "buffer.hpp"  // for GenericBuffer, Buffer, is_frame_buffer
-#include "fmt.hpp"     // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <stdexcept> // for runtime_error
 
 using std::map;
 using std::string;
@@ -15,23 +16,21 @@ bufferContainer::bufferContainer() {}
 bufferContainer::~bufferContainer() {}
 
 void bufferContainer::add_buffer(const string& name, GenericBuffer* buf) {
-    if (buffers.count(name) != 0) {
-        throw std::runtime_error(fmt::format(fmt("The buffer named {:s} already exists!"), name));
-    }
+    if (buffers.count(name) != 0)
+        FATAL_ERROR_NON_OO("The buffer named {:s} already exists!", name);
     buffers[name] = buf;
 }
 
 Buffer* bufferContainer::get_buffer(const string& name) {
     GenericBuffer* gb = get_generic_buffer(name);
     if (!is_frame_buffer(gb))
-        throw std::runtime_error(
-            fmt::format(fmt("The buffer named {:s} is not a basic Buffer!"), name));
+        FATAL_ERROR_NON_OO("The buffer named {:s} is not a basic Buffer!", name);
     return dynamic_cast<Buffer*>(gb);
 }
 
 GenericBuffer* bufferContainer::get_generic_buffer(const string& name) {
     if (buffers.count(name) == 0)
-        throw std::runtime_error(fmt::format(fmt("The buffer named {:s} doesn't exist!"), name));
+        FATAL_ERROR_NON_OO("The buffer named {:s} doesn't exist!", name);
     GenericBuffer* gb = buffers[name];
     return gb;
 }

@@ -1,22 +1,28 @@
 #include "givenDataGen.hpp"
 
-#include <assert.h>             // for assert
-#include <stdint.h>             // for uint8_t
-#include <unistd.h>             // for sleep
-#include <string>               // for allocator, basic_string, string
-#include <vector>               // for vector
-#include <cstdio>               // for snprintf
-#include <cstring>              // for memcpy
-#include <functional>           // for bind, function
-#include <memory>               // for shared_ptr, __shared_ptr_access
-#include <stdexcept>            // for invalid_argument, runtime_error
+#include "DataType.hpp"        // for type_total_bytes, string_to_type, DataType
+#include "DataType.hpp"        // for type_total_bytes, string_to_type, DataType
+#include "NDArray.hpp"         // for GenericNDArray, Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp" // for bufferContainer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM
 
-#include "DataType.hpp"         // for type_total_bytes, string_to_type, DataType
-#include "NDArray.hpp"          // for GenericNDArray, Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM
-#include "fmt.hpp"              // for format
+#include "fmt.hpp" // for format
+#include "fmt.hpp" // for format
+
+#include <assert.h>   // for assert
+#include <cstdio>     // for snprintf
+#include <cstring>    // for memcpy
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdexcept>  // for invalid_argument, runtime_error
+#include <stdint.h>   // for uint8_t
+#include <string>     // for allocator, basic_string, string
+#include <unistd.h>   // for sleep
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;
@@ -33,6 +39,7 @@ givenDataGen::givenDataGen(Config& config, const std::string& unique_name,
     _datatype(kotekan::string_to_type(config.get<std::string>(unique_name, "datatype"))),
     _array_shape(config.get<std::vector<ptrdiff_t>>(unique_name, "array_shape")),
     _dim_name(config.get<std::vector<kotekan::Symbol>>(unique_name, "dim_name")),
+    _dim_scalings(config.get<std::vector<std::ptrdiff_t>>(unique_name, "dim_scalings")),
     _do_once(config.get<bool>(unique_name, "do_once")) {
 
     _out_buf->register_producer(unique_name);
@@ -43,6 +50,11 @@ givenDataGen::givenDataGen(Config& config, const std::string& unique_name,
 
     if (_array_shape.size() != _dim_name.size()) {
         throw std::invalid_argument("givenDataGen: 'array_shape' and 'dim_name' config "
+                                    "settings must be the same length!");
+    }
+
+    if (_array_shape.size() != _dim_scalings.size()) {
+        throw std::invalid_argument("givenDataGen: 'array_shape' and 'dim_scalings' config "
                                     "settings must be the same length!");
     }
 
@@ -112,8 +124,8 @@ void givenDataGen::main_thread() {
         }
         chordmeta->set_strides_simple();
 
-        _out_buf->require_frame_desc(
-            kotekan::GenericNDArray::describe(chordmeta->type, _name, _array_shape, _dim_name));
+        _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+            chordmeta->type, _name, _array_shape, _dim_name, _dim_scalings));
         /* test that things are consistent */
         chordmeta->check_frame_desc(_out_buf->get_frame_desc<kotekan::GenericNDArray>());
 

@@ -63,20 +63,21 @@ applyGenPL::applyGenPL(Config& config, const std::string& unique_name,
 
     input_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int4x2_swapped_withoffset, "E",
-        {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"}));
+        {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"},
+        {1, 1, 1, 1}));
     plmask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, "pl_mask",
         {_samples_per_data_set / 128, _num_local_freq / 4, 2, (_num_elements / 8) / 2, 8},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"}));
+        {"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16}));
     output_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int4x2_swapped_withoffset, "E",
-        {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"}));
+        {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2}, {"T", "F", "P", "D"},
+        {1, 1, 1, 1}));
 }
 
 applyGenPL::~applyGenPL() {}
 
 void applyGenPL::main_thread() {
-
     int input_frame_id = 0;
     int plmask_frame_id = 0;
     int output_frame_id = 0;

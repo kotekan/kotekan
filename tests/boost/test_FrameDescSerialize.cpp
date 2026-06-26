@@ -26,8 +26,9 @@ static std::shared_ptr<const FrameDesc> round_trip(const FrameDesc& desc) {
 }
 
 BOOST_AUTO_TEST_CASE(ndarray_round_trip_with_labels) {
+    // Use a non-unit dimscaling so the round trip exercises scaling transmission.
     auto desc = GenericNDArray::describe(string_to_type("float32"), Symbol("voltage"), {4, 8, 2},
-                                         {Symbol("F"), Symbol("T"), Symbol("P")});
+                                         {Symbol("F"), Symbol("T"), Symbol("P")}, {1, 2, 1});
     auto back = round_trip(*desc);
     BOOST_REQUIRE(back);
     BOOST_CHECK(*back == *desc);
@@ -35,7 +36,8 @@ BOOST_AUTO_TEST_CASE(ndarray_round_trip_with_labels) {
 
 BOOST_AUTO_TEST_CASE(ndarray_round_trip_packed_type_no_labels) {
     // packed type, labels left unset (empty symbols)
-    auto desc = GenericNDArray::describe(string_to_type("int4x2"), Symbol(""), {2048}, {Symbol("")});
+    auto desc =
+        GenericNDArray::describe(string_to_type("int4x2"), Symbol(""), {2048}, {Symbol("")}, {1});
     auto back = round_trip(*desc);
     BOOST_REQUIRE(back);
     BOOST_CHECK(*back == *desc);
@@ -62,7 +64,8 @@ BOOST_AUTO_TEST_CASE(deserialize_rejects_unknown_tag) {
 }
 
 BOOST_AUTO_TEST_CASE(deserialize_rejects_truncated_payload) {
-    auto desc = GenericNDArray::describe(string_to_type("float32"), Symbol("v"), {4}, {Symbol("F")});
+    auto desc =
+        GenericNDArray::describe(string_to_type("float32"), Symbol("v"), {4}, {Symbol("F")}, {1});
     std::vector<char> bytes(desc->serialized_size());
     desc->serialize(bytes.data());
     BOOST_CHECK_THROW(FrameDesc::deserialize(bytes.data(), bytes.size() - 3), std::exception);
@@ -81,6 +84,8 @@ BOOST_AUTO_TEST_CASE(deserialize_rejects_bad_value_type) {
     p = wire::put_str(p, ""); // quantity_name
     p = wire::put_u32(p, 1);  // dimnames count
     p = wire::put_str(p, ""); // dimname
+    p = wire::put_u32(p, 1);  // dimscalings count
+    p = wire::put_i64(p, 1);  // dimscaling
     BOOST_CHECK_THROW(FrameDesc::deserialize(bytes.data(), p - bytes.data()), std::exception);
 }
 
@@ -99,6 +104,9 @@ BOOST_AUTO_TEST_CASE(deserialize_rejects_duplicate_dimnames) {
     p = wire::put_u32(p, 2);   // dimnames count
     p = wire::put_str(p, "F"); // dimname 0
     p = wire::put_str(p, "F"); // dimname 1 (duplicate)
+    p = wire::put_u32(p, 2);   // dimscalings count
+    p = wire::put_i64(p, 1);   // dimscaling 0
+    p = wire::put_i64(p, 1);   // dimscaling 1
     BOOST_CHECK_THROW(FrameDesc::deserialize(bytes.data(), p - bytes.data()), std::exception);
 }
 

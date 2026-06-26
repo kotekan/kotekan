@@ -1,20 +1,23 @@
 #include "PLMaskExpandedToCompact.hpp"
 
-#include <visUtil.hpp>          // for frameID, modulo
-#include <stddef.h>             // for size_t, ptrdiff_t
-#include <cstdint>              // for uint64_t, uint32_t, uint8_t
-#include <memory>               // for shared_ptr, __shared_ptr_access
-#include <vector>               // for vector
-
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO
-#include "fmt.hpp"              // for compile_string_to_view
-#include "DataType.hpp"         // for DataType
+#include "Config.hpp"   // for Config
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for DataType
+#include "DataType.hpp" // for DataType
 #include "NDArray.hpp"
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <cstdint>     // for uint64_t, uint32_t, uint8_t
+#include <memory>      // for shared_ptr, __shared_ptr_access
+#include <stddef.h>    // for size_t, ptrdiff_t
+#include <vector>      // for vector
+#include <visUtil.hpp> // for frameID, modulo
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -68,11 +71,11 @@ STAGE_CONSTRUCTOR(PLMaskExpandedToCompact) {
     in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, "pl_mask_exp",
         {(ptrdiff_t)(T / 64), (ptrdiff_t)F, 2, (ptrdiff_t)(E_div_8 / 2), 8},
-        {"Thi64", "F", "P", "D8", "Tlo64"}));
+        {"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 8}));
     out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, "pl_mask",
         {(ptrdiff_t)(T / 128), (ptrdiff_t)F_compact, 2, (ptrdiff_t)(E_div_8 / 2), 8},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"}));
+        {"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16}));
 
     INFO("PLMaskExpandedToCompact: Expanded [T/64={:d}][F={:d}][E/8={:d}] -> "
          "Compact [T/128={:d}][F4={:d}][E/8={:d}]",

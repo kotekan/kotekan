@@ -4,6 +4,7 @@
 
 ################################################################################
 
+hfb_downsampling_factor: 384
 hfb_num_output_times: 1
 
 hfb2_num_beams_x: 4
@@ -25,6 +26,9 @@ host_hfb1_U128_phase_buffer:
     num_frames: 1
     value_type: float16
     extents: [upchan_hfb_upchan_U128_max_num_channels * 128, num_polarizations, num_dishes_x, num_dishes_y, num_components]
+    quantity_name: "W"
+    dimnames: ["Fbar", "P", "dishN", "dishM", "C"]
+    dimscalings: [1, 1, 1, 1, 1]
     metadata_pool: main_pool
 
 host_hfb2_beam_positions_buffer:
@@ -32,6 +36,9 @@ host_hfb2_beam_positions_buffer:
     num_frames: 1
     value_type: float32
     extents: [hfb2_num_beams, 2]
+    quantity_name: "frb2_beam_positions"
+    dimnames: ["R", "X/Y"]
+    dimscalings: [1, 1]
     metadata_pool: main_pool
 
 host_hfb2_beam_ids_buffer:
@@ -39,6 +46,9 @@ host_hfb2_beam_ids_buffer:
     num_frames: 1
     value_type: uint64
     extents: [hfb2_num_beams]
+    quantity_name: "frb2_beam_ids"
+    dimnames: ["R"]
+    dimscalings: [1]
     metadata_pool: main_pool
 
 host_hfb2_weights_buffer:
@@ -46,14 +56,22 @@ host_hfb2_weights_buffer:
     num_frames: 1
     value_type: float16
     extents: [upchan_hfb_upchan_U128_max_num_output_channels, hfb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P]
+    quantity_name: "W2"
+    dimnames: ["Fbar", "R", "beamQ", "beamP"]
+    dimscalings: [1, 1, 1, 1]
     metadata_pool: main_pool
 
 # Beams
 
 host_hfb1_beams_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times
+    # frame_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times
+    value_type: float16
+    extents: [hfb_num_output_times, upchan_hfb_upchan_U128_max_num_output_channels, frb1_num_beams_Q, frb1_num_beams_P]
+    quantity_name: "I"
+    dimnames: ["Ttilde", "Fbar", "beamQ", "beamP"]
+    dimscalings: [hfb_downsampling_factor, 1, 1, 1]
     metadata_pool: main_pool
 host_hfb1_beams_ringbuffer:
     kotekan_buffer: ring
@@ -62,9 +80,14 @@ host_hfb1_beams_ringbuffer:
     metadata_pool: main_pool
 
 host_hfb2_beams_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: sizeof_float16 * hfb2_num_beams * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times
+     #frame_size: sizeof_float16 * hfb2_num_beams * upchan_hfb_upchan_U128_max_num_output_channels * hfb_num_output_times
+    value_type: float16
+    extents: [1, hfb2_num_beams, upchan_hfb_upchan_U128_max_num_output_channels, hfb_num_output_times]
+    quantity_name: "I2"
+    dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
+    dimscalings: [hfb_downsampling_factor * 256, 1, 1, hfb_downsampling_factor]
     metadata_pool: main_pool
 
 # host_hfb3_beams_buffer:

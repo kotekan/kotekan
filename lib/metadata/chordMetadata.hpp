@@ -90,6 +90,7 @@ public:
     int dims;
     int dim[CHORD_META_MAX_DIM];
     char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // "F", "T", "D", etc
+    int64_t dim_scaling[CHORD_META_MAX_DIM];
     // The stride counts elements, not bytes
     int64_t stride[CHORD_META_MAX_DIM];
     // The offset counts elements, not bytes
@@ -118,7 +119,7 @@ public:
         return s.str();
     }
 
-    void set_array_dimension(int dim, int size, const std::string& name) {
+    void set_array_dimension(int dim, int size, const std::string& name, int64_t scaling) {
         assert(dim < CHORD_META_MAX_DIM);
         this->dim[dim] = size;
         // GCC helpfully tries to warn us that the destination string may end up not
@@ -129,6 +130,7 @@ public:
 #endif
         strncpy(this->dim_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
 #pragma GCC diagnostic pop
+        this->dim_scaling[dim] = scaling;
     }
 
     void set_strides_simple() {

@@ -1,5 +1,5 @@
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for float16_t
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for float16_t
 #include "NDArray.hpp"
 #include "Stage.hpp"           // for Stage
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
@@ -86,7 +86,7 @@ public:
             "W",
             {upchan_max_num_channels * upchan_factor, num_polarizations, num_dishes_N, num_dishes_M,
              num_components},
-            {"F", "P", "dishN", "dishM", "C"}));
+            {"Fbar", "P", "dishN", "dishM", "C"}, {1, 1, 1, 1, 1}));
         frb1_phase_buffer->allocate_new_metadata_object(frame_id);
         const auto& frb1_phase_meta = get_chord_metadata(frb1_phase_buffer->get_metadata(frame_id));
         frb1_phase_meta->set_from_frame_desc(

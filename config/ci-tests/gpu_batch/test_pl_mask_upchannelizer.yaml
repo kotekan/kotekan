@@ -1,0 +1,18 @@
+---
+# Standalone test of the PL-mask upchannelizer CUDA kernel: the testPLMaskUpchannelizer stage
+# invents data, runs the GPU kernel and the CPU reference, and compares them bit-for-bit.
+# All test parameters are hard-coded in the stage, so no config is required beyond the stage itself.
+
+type: config
+log_level: INFO
+
+cpu_affinity: [0]
+
+# Required by the default telescope setup (the stage itself reads no config).
+num_polarizations: 2
+num_dishes: 512
+
+test_pl_mask_upchannelizer:
+    kotekan_stage: testPLMaskUpchannelizer
+    # Safety cap for the GPU-vs-CPU sweep in debug builds (the test runs in a few seconds).
+    join_timeout: 60

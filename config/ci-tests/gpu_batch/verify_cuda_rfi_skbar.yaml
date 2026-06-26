@@ -128,6 +128,7 @@ gen_bf_mask:
     name: "bf_mask"
     array_shape: [2, 64]
     dim_name: ["P", "D"]
+    dim_scaling: [1, 1]
     num_frames: 1
 
 run_send_rfi_s012bar:

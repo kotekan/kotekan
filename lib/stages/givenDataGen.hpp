@@ -1,16 +1,16 @@
 #ifndef GIVEN_DATA_GEN_H
 #define GIVEN_DATA_GEN_H
 
-#include <vector>               // for vector
-#include <cstddef>              // for ptrdiff_t
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType
+#include "Stage.hpp"           // for Stage
+#include "Symbol.hpp"          // for Symbol
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "Symbol.hpp"           // for Symbol
-#include "buffer.hpp"           // for Buffer
-#include "DataType.hpp"         // for DataType
-#include "bufferContainer.hpp"  // for bufferContainer
+#include <cstddef> // for ptrdiff_t
+#include <string>  // for string
+#include <vector>  // for vector
 
 /**
  * @class givenDataGen
@@ -44,6 +44,7 @@ private:
     const kotekan::DataType _datatype;
     const std::vector<std::ptrdiff_t> _array_shape;
     const std::vector<kotekan::Symbol> _dim_name;
+    const std::vector<std::ptrdiff_t> _dim_scalings;
     const bool _do_once;
 };
 

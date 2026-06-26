@@ -49,7 +49,7 @@ def generate_rfimask(vals, seq_num, num_times, num_freq, rfi_downsampling):
 
     data = np.empty((num_times // 1024, num_freq, 128), dtype=np.uint8)
     meta = runner.chordbuffer.get_metadata(
-        "RFImask", "uint1x8", ("T8hi128", "F", "T8lo128")
+        "RFImask", "uint1x8", ("T8hi128", "F", "T8lo128"), (1024, 1, 8)
     )
     meta["fpga_seq_num"] = seq_num
     meta["time_downsampling_fpga"] = 1024
@@ -163,6 +163,7 @@ def rfimasksum_data(tmpdir_factory, setup):
         input_order="CHIMEBeamformer",
         quantity_name="RFImask_counts",
         dimnames=["Tc", "F"],
+        dimscalings=[config["sub_integration_ntime"], 1],
     )
 
     test = runner.KotekanStageTester(

@@ -32,6 +32,9 @@ host_n2k_correlation_buffer:
     num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
     value_type: int32
     extents: [n2k_num_subintegrations, num_frequencies, n2k_correlation_triangle_num_blocks, n2k_correlation_blocksize, n2k_correlation_blocksize, 2]
+    quantity_name: "n2k_correlation"
+    dimnames: ["Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"]
+    dimscalings: [n2k_sub_integration_ntime, 1, 16, 1, 1, 1]
     metadata_pool: main_pool
 
 host_n2k_counts_buffer:
@@ -39,6 +42,9 @@ host_n2k_counts_buffer:
     num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
     value_type: int32
     extents: [n2k_num_subintegrations, num_frequencies, n2k_counts_triangle_num_blocks, n2k_counts_blocksize, n2k_counts_blocksize]
+    quantity_name: "n2k_counts"
+    dimnames: ["Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"]
+    dimscalings: [n2k_sub_integration_ntime, 1, 64, 8, 8]
     metadata_pool: main_pool
 
 host_n2k_plcounts_buffer:
@@ -46,6 +52,9 @@ host_n2k_plcounts_buffer:
     num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
     value_type: int32
     extents: [n2k_num_subintegrations, num_frequencies]
+    quantity_name: "pl_lost_counts_scalar"
+    dimnames: ["Tc", "F"]
+    dimscalings: [n2k_sub_integration_ntime, 1]
     metadata_pool: main_pool
 
 host_n2k_rficounts_buffer:
@@ -53,6 +62,9 @@ host_n2k_rficounts_buffer:
     num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
     value_type: int32
     extents: [n2k_num_subintegrations, num_frequencies]
+    quantity_name: "RFImask_counts"
+    dimnames: ["Tc", "F"]
+    dimscalings: [n2k_sub_integration_ntime, 1]
     metadata_pool: main_pool
 
 host_n2k_rfiframemask_buffer:
@@ -60,6 +72,9 @@ host_n2k_rfiframemask_buffer:
     num_frames: 4 * buffer_depth # 4 times larger as buffer for a slow N2Accumulate
     value_type: uint8
     extents: [n2k_num_subintegrations, num_frequencies]
+    quantity_name: "RFIFrameMask"
+    dimnames: ["Tc", "F"]
+    dimscalings: [n2k_sub_integration_ntime, 1]
     metadata_pool: main_pool
 
 host_n2_vis_buffer:

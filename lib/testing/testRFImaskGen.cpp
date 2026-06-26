@@ -66,7 +66,7 @@ class testRFImaskGen : public Stage {
 public:
     testRFImaskGen(Config& config, const std::string& unique_name,
                    bufferContainer& buffer_container);
-    ~testRFImaskGen(){};
+    ~testRFImaskGen() {};
     void main_thread() override;
 
 private:
@@ -133,7 +133,7 @@ testRFImaskGen::testRFImaskGen(Config& config, const std::string& unique_name,
     // allocate frame descriptors
     out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, name, {samples_per_data_set / 1024, num_local_freq, 128},
-        {"T8hi128", "F", "T8lo128"}));
+        {"T8hi128", "F", "T8lo128"}, {1024, 1, 8}));
 
     if (out_buf->frame_size != out_buf->frames_desc->get_byte_size())
         FATAL_ERROR("out_but {:s} has frame size {:d}, expected {:d}.", out_buf->buffer_name,

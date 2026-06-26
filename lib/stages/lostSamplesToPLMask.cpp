@@ -1,23 +1,24 @@
 #include "lostSamplesToPLMask.hpp"
 
-#include <assert.h>             // for assert
-#include <stddef.h>             // for size_t, ptrdiff_t
-#include <algorithm>            // for copy
-#include <functional>           // for bind, function
-#include <memory>               // for shared_ptr, __shared_ptr_access
-#include <vector>               // for vector
-#include <cstring>              // for memcpy
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType, GetType_t
+#include "NDArray.hpp"         // for GenericNDArray
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for FATAL_ERROR
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "json.hpp"             // for basic_json, json, iter_impl
-#include "DataType.hpp"         // for DataType, GetType_t
-#include "NDArray.hpp"          // for GenericNDArray
-#include "fmt.hpp"              // for compile_string_to_view, format
-#include "kotekanLogging.hpp"   // for FATAL_ERROR
+#include "fmt.hpp"  // for compile_string_to_view, format
+#include "json.hpp" // for basic_json, json, iter_impl
+
+#include <algorithm>  // for copy
+#include <assert.h>   // for assert
+#include <cstring>    // for memcpy
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stddef.h>   // for size_t, ptrdiff_t
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -73,7 +74,7 @@ lostSamplesToPLMask::lostSamplesToPLMask(Config& config, const std::string& uniq
              ptrdiff_t(lost_samples_bufs.size()), num_polarizations,
              num_dishes / PL_MASK_DISHES_PER_BIN,
              PL_MASK_HILO_SPLIT / BITS_PER_BYTE /* because we count uint1x8, not uint1 */},
-            {"T2hi64", "F4", "P", "D8", "T2lo64"}));
+            {"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16}));
 }
 
 lostSamplesToPLMask::~lostSamplesToPLMask() {}
@@ -101,9 +102,9 @@ void lostSamplesToPLMask::main_thread() {
             // constant for all iterations but only set by the producer before
             // it marks the frame as full, so cannot be checked before the first
             // wait_for_full_frame()
-            auto const expected_lost_samples_frame_desc =
-                kotekan::GenericNDArray::describe(kotekan::DataType::uint8, "lost_samples",
-                                                  {ptrdiff_t(lost_samples_buf->frame_size)}, {"T"});
+            auto const expected_lost_samples_frame_desc = kotekan::GenericNDArray::describe(
+                kotekan::DataType::uint8, "lost_samples", {ptrdiff_t(lost_samples_buf->frame_size)},
+                {"T"}, {1});
             assert(*lost_samples_buf->get_frame_desc<kotekan::GenericNDArray>()
                    == *expected_lost_samples_frame_desc);
 

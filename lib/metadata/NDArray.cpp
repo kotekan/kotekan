@@ -1,18 +1,16 @@
-#include "Config.hpp"   // for Config
-#include "DataType.hpp" // for operator<<
-#include "Symbol.hpp"   // for operator<<, Symbol
+#include "NDArray.hpp"
 
-#include <NDArray.hpp>
-#include <sys/types.h>    // for ssize_t
-#include <cassert>        // for assert
-#include <sstream>        // for basic_ostringstream
-#include <stdexcept>      // for runtime_error
-#include <string>         // for operator<<, basic_string, string
-#include <cstring>        // for memcmp
+#include "Config.hpp"    // for Config
+#include "DataType.hpp"  // for DataType, GetType_t, operator<<
+#include "FrameDesc.hpp" // for FrameDesc
+#include "Symbol.hpp"    // for Symbol, operator<<, operator!=, operator==
 
-#include "DataType.hpp"   // for DataType, GetType_t, operator<<
-#include "Symbol.hpp"     // for Symbol, operator<<, operator!=, operator==
-#include "FrameDesc.hpp"  // for FrameDesc
+#include <cassert>     // for assert
+#include <cstring>     // for memcmp
+#include <sstream>     // for basic_ostringstream
+#include <stdexcept>   // for runtime_error
+#include <string>      // for operator<<, basic_string, string
+#include <sys/types.h> // for ssize_t
 
 namespace kotekan {
 
@@ -81,6 +79,7 @@ void GenericNDArray::output_framedesc(std::ostream& os) const {
        << "    empty:           " << format_bool(get_empty()) << "\n"
        << "    size:            " << get_size() << "\n"
        << "    dimnames:        " << format_vector(get_dimnames()) << "\n"
+       << "    dimscalings:     " << format_vector(get_dimscalings()) << "\n"
        << "    strides:         " << format_vector(get_strides()) << "\n";
 }
 
@@ -96,6 +95,8 @@ size_t GenericNDArray::serialized_payload_size() const {
     n += sizeof(uint32_t);             // dimnames count
     for (const auto& dimname : get_dimnames())
         n += wire::str_size(symbol_str(dimname));
+    n += sizeof(uint32_t);             // dimscalings count
+    n += get_rank() * sizeof(int64_t); // dimscalings
     return n;
 }
 
@@ -110,6 +111,10 @@ void GenericNDArray::serialize_payload(char* out) const {
     out = wire::put_u32(out, static_cast<uint32_t>(dimnames.size()));
     for (const auto& dimname : dimnames)
         out = wire::put_str(out, symbol_str(dimname));
+    const auto dimscalings = get_dimscalings();
+    out = wire::put_u32(out, static_cast<uint32_t>(dimscalings.size()));
+    for (const auto scaling : dimscalings)
+        out = wire::put_i64(out, static_cast<int64_t>(scaling));
 }
 
 std::shared_ptr<const FrameDesc> GenericNDArray::deserialize_payload(const char* bytes,
@@ -141,10 +146,33 @@ std::shared_ptr<const FrameDesc> GenericNDArray::deserialize_payload(const char*
     for (uint32_t d = 0; d < num_dimnames; ++d)
         dimnames.emplace_back(r.get_str());
 
+    const uint32_t num_dimscalings = r.get_u32();
+    if (num_dimscalings > max_rank)
+        throw std::runtime_error(fmt::format(
+            fmt("GenericNDArray::deserialize: dimscalings count {:d} exceeds maximum {:d}"),
+            num_dimscalings, max_rank));
+    std::vector<std::ptrdiff_t> dimscalings;
+    dimscalings.reserve(num_dimscalings);
+    for (uint32_t d = 0; d < num_dimscalings; ++d)
+        dimscalings.push_back(static_cast<std::ptrdiff_t>(r.get_i64()));
+
     r.require_empty();
     validate_ndarray_fields(value_datatype, type_name, extents, dimnames,
                             "received frame descriptor");
-    return describe(value_datatype, quantity_name, extents, dimnames);
+    // validate_ndarray_fields() does not cover dimscalings; guard the same
+    // invariants describe()/NDArray assert (one positive scaling per axis)
+    // before constructing, so corrupt wire data throws rather than aborts.
+    if (dimscalings.size() != extents.size())
+        throw std::runtime_error(fmt::format(
+            fmt("GenericNDArray::deserialize: dimscalings count {:d} does not match rank {:d}"),
+            dimscalings.size(), extents.size()));
+    for (std::size_t d = 0; d < dimscalings.size(); ++d)
+        if (dimscalings[d] <= 0)
+            throw std::runtime_error(
+                fmt::format(fmt("GenericNDArray::deserialize: dimscaling {:d} of dimension {:d} is "
+                                "not positive"),
+                            dimscalings[d], d));
+    return describe(value_datatype, quantity_name, extents, dimnames, dimscalings);
 }
 
 // this templated function implemets a reurives 2D loop calling itself until
@@ -153,7 +181,8 @@ std::shared_ptr<const FrameDesc> GenericNDArray::deserialize_payload(const char*
 template<DataType my_datatype, size_t my_rank>
 static inline std::shared_ptr<GenericNDArray>
 make_NDArray(const DataType datatype, const Symbol quantity_name,
-             const std::vector<std::ptrdiff_t>& extents, const std::vector<Symbol>& dimnames) {
+             const std::vector<std::ptrdiff_t>& extents, const std::vector<Symbol>& dimnames,
+             const std::vector<std::ptrdiff_t>& dimscalings) {
     // recurse until datatype matches
     if constexpr (my_datatype == unknown_type) {
         assert(my_datatype != unknown_type);
@@ -166,24 +195,27 @@ make_NDArray(const DataType datatype, const Symbol quantity_name,
         } else if (int(extents.size()) == my_rank) {
             // both match
             return std::shared_ptr<GenericNDArray>(new NDArray<GetType_t<my_datatype>, my_rank>(
-                quantity_name, extents, dimnames, static_cast<GetType_t<my_datatype>*>(nullptr)));
+                quantity_name, extents, dimnames, dimscalings,
+                static_cast<GetType_t<my_datatype>*>(nullptr)));
         } else {
             return make_NDArray<my_datatype, my_rank - 1>(datatype, quantity_name, extents,
-                                                          dimnames);
+                                                          dimnames, dimscalings);
         }
     } else {
         return make_NDArray<DataType(my_datatype - 1), my_rank>(datatype, quantity_name, extents,
-                                                                dimnames);
+                                                                dimnames, dimscalings);
     }
 }
 
-std::shared_ptr<GenericNDArray> GenericNDArray::describe(const DataType value_datatype,
-                                                         const Symbol quantity_name,
-                                                         const std::vector<std::ptrdiff_t>& extents,
-                                                         const std::vector<Symbol>& dimnames) {
+std::shared_ptr<GenericNDArray>
+GenericNDArray::describe(const DataType value_datatype, const Symbol quantity_name,
+                         const std::vector<std::ptrdiff_t>& extents,
+                         const std::vector<Symbol>& dimnames,
+                         const std::vector<std::ptrdiff_t>& dimscalings) {
     assert(extents.size() == dimnames.size() && "Sizes of extents and dimnames must aggree");
+    assert(extents.size() == dimscalings.size() && "Sizes of extents and dimscalings must aggree");
     return make_NDArray<DataType(end_type - 1), max_rank>(value_datatype, quantity_name, extents,
-                                                          dimnames);
+                                                          dimnames, dimscalings);
 }
 
 std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config,
@@ -191,11 +223,12 @@ std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config
     const std::string type_name = config.get<std::string>(location, "value_type");
     const DataType value_datatype = string_to_type(type_name);
 
-    // `quantity_name` and `dimnames` are semantic labels: they are OPTIONAL in
-    // config. When omitted, the descriptor is left with unset (empty) labels and
-    // the producing stage fills them in via Buffer::ensure_frame_desc(); when
-    // given, the stage validates against them. `value_type` and `extents` are
-    // structural (they fix the byte layout the bufferFactory allocates) and are
+    // `quantity_name` and `dimnames` are semantic labels: they are
+    // OPTIONAL in config. When omitted, the descriptor is left with
+    // unset (empty) labels and the producing stage fills them in via
+    // Buffer::ensure_frame_desc(); when given, the stage validates
+    // against them. `value_type` and `extents` are structural (they
+    // fix the byte layout the bufferFactory allocates) and are
     // required.
     const Symbol quantity_name(config.get_default<std::string>(location, "quantity_name", ""));
 
@@ -219,8 +252,35 @@ std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config
             dimnames.emplace_back(dimname);
     }
 
+    // `dimscalings` is an optional structural label like `dimnames`: when
+    // omitted, each axis defaults to a scaling of 1 (no downsampling).
+    // Entries may be arithmetic expressions referencing other (scoped) config
+    // values, so evaluate them individually.
+    const auto dimscalings_json =
+        config.get_default<std::vector<nlohmann::json>>(location, "dimscalings", {});
+    std::vector<std::ptrdiff_t> dimscalings;
+    if (dimscalings_json.empty()) {
+        // Scalings omitted: default each axis to 1.
+        dimscalings.assign(extents.size(), 1);
+    } else {
+        if (dimscalings_json.size() != extents.size())
+            throw std::runtime_error(fmt::format(
+                fmt("GenericNDArray: extents size ({:d}) does not match dimscalings size ({:d}) in "
+                    "path {:s}"),
+                extents.size(), dimscalings_json.size(), location));
+        dimscalings.reserve(dimscalings_json.size());
+        for (const auto& dimscaling : dimscalings_json)
+            dimscalings.push_back(config.eval<std::ptrdiff_t>(location, dimscaling));
+        for (std::size_t d = 0; d < dimscalings.size(); ++d)
+            if (dimscalings[d] <= 0)
+                throw std::runtime_error(
+                    fmt::format(fmt("GenericNDArray: dimscaling {:d} of dimension "
+                                    "{:d} is not positive in path {:s}"),
+                                dimscalings[d], d, location));
+    }
+
     validate_ndarray_fields(value_datatype, type_name, extents, dimnames, location);
-    return describe(value_datatype, quantity_name, extents, dimnames);
+    return describe(value_datatype, quantity_name, extents, dimnames, dimscalings);
 }
 
 std::shared_ptr<GenericNDArray> GenericNDArray::reconcile(const GenericNDArray& a,
@@ -245,8 +305,22 @@ std::shared_ptr<GenericNDArray> GenericNDArray::reconcile(const GenericNDArray& 
             return x;
         if (x == y)
             return x;
-        throw std::runtime_error(fmt::format(fmt("{:s} mismatch: {:s} != {:s}"), what,
-                                             std::string(x), std::string(y)));
+        throw std::runtime_error(
+            fmt::format(fmt("{:s} mismatch: {:s} != {:s}"), what, std::string(x), std::string(y)));
+    };
+
+    // Dimscalings behave like labels: a scaling of 1 is the "unspecified"
+    // default (no downsampling) used when a config buffer declaration omits
+    // `dimscalings`, and it yields to an explicit non-1 scaling supplied by the
+    // producing stage. Two differing explicit (non-1) scalings are a conflict.
+    auto merge_scaling = [](std::ptrdiff_t x, std::ptrdiff_t y) -> std::ptrdiff_t {
+        if (x == 1)
+            return y;
+        if (y == 1)
+            return x;
+        if (x == y)
+            return x;
+        throw std::runtime_error(fmt::format(fmt("dimscaling mismatch: {:d} != {:d}"), x, y));
     };
 
     const Symbol quantity_name =
@@ -257,11 +331,17 @@ std::shared_ptr<GenericNDArray> GenericNDArray::reconcile(const GenericNDArray& 
     for (std::size_t d = 0; d < da.size(); ++d)
         dimnames[d] = merge_label(da[d], db[d], "dimname");
 
-    // `b` contributed no labels that `a` lacked: nothing to complete, so signal
+    const std::vector<std::ptrdiff_t> sa = a.get_dimscalings();
+    const std::vector<std::ptrdiff_t> sb = b.get_dimscalings();
+    std::vector<std::ptrdiff_t> dimscalings(sa.size());
+    for (std::size_t d = 0; d < sa.size(); ++d)
+        dimscalings[d] = merge_scaling(sa[d], sb[d]);
+
+    // `b` contributed nothing that `a` lacked: nothing to complete, so signal
     // "no change" (the caller keeps the existing descriptor).
-    if (quantity_name == a.get_quantity_name() && dimnames == da)
+    if (quantity_name == a.get_quantity_name() && dimnames == da && dimscalings == sa)
         return nullptr;
-    return describe(a.get_value_datatype(), quantity_name, a.get_extents(), dimnames);
+    return describe(a.get_value_datatype(), quantity_name, a.get_extents(), dimnames, dimscalings);
 }
 
 std::string GenericNDArray::structure_mismatch(const GenericNDArray& other) const {
@@ -280,6 +360,10 @@ std::string GenericNDArray::structure_mismatch(const GenericNDArray& other) cons
     if (get_dimnames() != other.get_dimnames())
         return fmt::format(fmt("dimnames do not match: {:s} != {:s}"),
                            format_vector(get_dimnames()), format_vector(other.get_dimnames()));
+    if (get_dimscalings() != other.get_dimscalings())
+        return fmt::format(fmt("dimscalings do not match: {:s} != {:s}"),
+                           format_vector(get_dimscalings()),
+                           format_vector(other.get_dimscalings()));
     return std::string();
 }
 
@@ -297,6 +381,8 @@ bool GenericNDArray::operator==(const FrameDesc& other_desc) const {
     const GenericNDArray& other = *other_ptr;
 
     if (!structure_mismatch(other).empty())
+        return false;
+    if (this->get_dimscalings() != other.get_dimscalings())
         return false;
     if (this->get_strides() != other.get_strides())
         return false;

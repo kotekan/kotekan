@@ -48,11 +48,12 @@ gpuSimulateN2kPLExpand::gpuSimulateN2kPLExpand(Config& config, const std::string
     int ne = _num_elements / 8;
     input_buf->require_frame_desc(
         kotekan::NDArray<kotekan::GetType<kotekan::uint1x8>::type, 5>::describe(
-            "pl_mask", {nt / 2, (nf + 3) / 4, 2, ne / 2, 8},
-            {"T2hi64", "F4", "P", "D8", "T2lo64"}));
+            "pl_mask", {nt / 2, (nf + 3) / 4, 2, ne / 2, 8}, {"T2hi64", "F4", "P", "D8", "T2lo64"},
+            {128, 4, 1, 8, 16}));
     output_buf->require_frame_desc(
         kotekan::NDArray<kotekan::GetType<kotekan::uint1x8>::type, 5>::describe(
-            "pl_mask_exp", {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"}));
+            "pl_mask_exp", {nt, nf, 2, ne / 2, 8}, {"Thi64", "F", "P", "D8", "Tlo64"},
+            {64, 1, 1, 8, 8}));
 }
 
 gpuSimulateN2kPLExpand::~gpuSimulateN2kPLExpand() {}

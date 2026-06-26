@@ -97,6 +97,9 @@ host_bf_mask_buffer:
     num_frames: 1
     value_type: int8
     extents: [num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["P", "D"]
+    dimscalings: [1, 1]
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
@@ -104,6 +107,9 @@ host_pl_mask_buffer:
     num_frames: buffer_depth
     value_type: uint1x8
     extents: [num_times / 2 / 64, num_frequencies / 4, num_polarizations, num_dishes / 8, 64 / 8]
+    quantity_name: "pl_mask"
+    dimnames: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+    dimscalings: [128, 4, 1, 8, 16]
     metadata_pool: main_pool
 host_pl_mask_ringbuffer:
     kotekan_buffer: ring
@@ -115,6 +121,9 @@ host_pl_expanded_mask_buffer:
     num_frames: buffer_depth
     value_type: uint1x8
     extents: [num_times / 64, num_frequencies, num_polarizations, num_dishes / 8, 64 / 8]
+    quantity_name: "pl_mask_exp"
+    dimnames: ["Thi64", "F", "P", "D8", "Tlo64"]
+    dimscalings: [64, 1, 1, 8, 8]
     metadata_pool: main_pool
 host_pl_expanded_mask_ringbuffer:
     kotekan_buffer: ring
@@ -126,6 +135,9 @@ host_voltage_buffer:
     num_frames: buffer_depth
     value_type: int4x2_swapped_withoffset
     extents: [num_times, num_frequencies, num_polarizations, num_dishes]
+    quantity_name: "E"
+    dimnames: ["T", "F", "P", "D"]
+    dimscalings: [1, 1, 1, 1]
     metadata_pool: main_pool
 host_voltage_ringbuffer:
     kotekan_buffer: ring

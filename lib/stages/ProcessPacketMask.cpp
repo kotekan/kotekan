@@ -1,20 +1,21 @@
 #include "ProcessPacketMask.hpp"
 
-#include <visUtil.hpp>          // for frameID, modulo
-#include <assert.h>             // for assert
-#include <cstring>              // for size_t, memset
-#include <stdexcept>            // for runtime_error
-#include <memory>               // for __shared_ptr_access, shared_ptr
-
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"   // for INFO, DEBUG2
-#include "fmt.hpp"              // for compile_string_to_view, format, fmt
-#include "DataType.hpp"         // for DataType
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for DataType
 #include "NDArray.hpp"
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for INFO, DEBUG2
+
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <assert.h>    // for assert
+#include <cstring>     // for size_t, memset
+#include <memory>      // for __shared_ptr_access, shared_ptr
+#include <stdexcept>   // for runtime_error
+#include <visUtil.hpp> // for frameID, modulo
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -134,7 +135,7 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
     pl_mask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, "pl_mask_exp",
         {time_long * time_short / 64, num_frequency, 2, element_long * element_short / 8 / 2, 8},
-        {"Thi64", "F", "P", "D8", "Tlo64"}));
+        {"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 8}));
 
     // Validate rfi_mask buffer size
     // rfi_mask shape: uint8_t [T/1024][F][128] where T = time_long * time_short
@@ -148,7 +149,7 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
 
     rfi_mask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint1x8, "RFImask", {time_long * time_short / 1024, num_frequency, 128},
-        {"T8hi128", "F", "T8lo128"}));
+        {"T8hi128", "F", "T8lo128"}, {1024, 1, 8}));
 
     INFO("ProcessPacketMask: Initialized with {:d} receipt bitmap buffers",
          receipt_bitmap_bufs.size());
@@ -351,11 +352,11 @@ void ProcessPacketMask::main_thread() {
             get_chord_metadata(voltage_buf, voltage_frame_id)->get_fpga_seq_num());
         pl_mask_meta->type = kotekan::uint1x8;
         pl_mask_meta->dims = 5;
-        pl_mask_meta->set_array_dimension(0, time_long * time_short / 64, "Thi64");
-        pl_mask_meta->set_array_dimension(1, num_frequency, "F");
-        pl_mask_meta->set_array_dimension(2, 2, "P");
-        pl_mask_meta->set_array_dimension(3, E_DIV_8 / 2, "D8");
-        pl_mask_meta->set_array_dimension(4, 8, "Tlo64");
+        pl_mask_meta->set_array_dimension(0, time_long * time_short / 64, "Thi64", 64);
+        pl_mask_meta->set_array_dimension(1, num_frequency, "F", 1);
+        pl_mask_meta->set_array_dimension(2, 2, "P", 1);
+        pl_mask_meta->set_array_dimension(3, E_DIV_8 / 2, "D8", 8);
+        pl_mask_meta->set_array_dimension(4, 8, "Tlo64", 8);
         pl_mask_meta->set_name("pl_mask_exp");
 
         pl_mask_meta->set_strides_simple();
@@ -374,9 +375,9 @@ void ProcessPacketMask::main_thread() {
             get_chord_metadata(voltage_buf, voltage_frame_id)->get_fpga_seq_num());
         rfi_mask_meta->type = kotekan::uint1x8;
         rfi_mask_meta->dims = 3;
-        rfi_mask_meta->set_array_dimension(0, time_long * time_short / 1024, "T8hi128");
-        rfi_mask_meta->set_array_dimension(1, num_frequency, "F");
-        rfi_mask_meta->set_array_dimension(2, 128, "T8lo128");
+        rfi_mask_meta->set_array_dimension(0, time_long * time_short / 1024, "T8hi128", 1024);
+        rfi_mask_meta->set_array_dimension(1, num_frequency, "F", 1);
+        rfi_mask_meta->set_array_dimension(2, 128, "T8lo128", 8);
         rfi_mask_meta->set_name("RFImask");
 
         rfi_mask_meta->set_strides_simple();

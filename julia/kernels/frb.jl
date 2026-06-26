@@ -116,7 +116,7 @@ end
 
 const Ttilde = 4 * 256
 
-const output_gain = 1 / (8 * Tds)
+const output_gain = 1 / (8 * Tds) #TODO   1 / (2 * Tds)
 
 # Derived compile-time parameters (section 4.4)
 const Mpad = nextpow(2, M)
@@ -2539,7 +2539,10 @@ function fix_ptx_kernel()
                     "name" => "S",
                     "kotekan_name" => "frb_dishlayout_name",
                     "type" => "int16",
-                    "axes" => [Dict("label" => "MN", "length" => 2), Dict("label" => "D", "length" => M * N)],
+                    "axes" => [
+                        Dict("label" => "MN", "length" => 2, "dimscaling" => 1),
+                        Dict("label" => "D", "length" => M * N, "dimscaling" => 1),
+                    ],
                     "isoutput" => false,
                     "hasbuffer" => false,
                     "isscalar" => false,
@@ -2550,11 +2553,11 @@ function fix_ptx_kernel()
                     "kotekan_name" => "frb_phase_name",
                     "type" => "float16",
                     "axes" => [
-                        Dict("label" => "C", "length" => C),
-                        Dict("label" => "dishM", "length" => M),
-                        Dict("label" => "dishN", "length" => N),
-                        Dict("label" => "P", "length" => P),
-                        Dict("label" => "F", "length" => Fbar_W),
+                        Dict("label" => "C", "length" => C, "dimscaling" => 1),
+                        Dict("label" => "dishM", "length" => M, "dimscaling" => 1),
+                        Dict("label" => "dishN", "length" => N, "dimscaling" => 1),
+                        Dict("label" => "P", "length" => P, "dimscaling" => 1),
+                        Dict("label" => "Fbar", "length" => Fbar_W, "dimscaling" => 1),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
@@ -2566,10 +2569,10 @@ function fix_ptx_kernel()
                     "kotekan_name" => "voltage_name",
                     "type" => "int4x2_swapped_withoffset",
                     "axes" => [
-                        Dict("label" => "D", "length" => D),
-                        Dict("label" => "P", "length" => P),
-                        Dict("label" => "Fbar", "length" => Fbar_in),
-                        Dict("label" => "Tbar", "length" => Tbar),
+                        Dict("label" => "D", "length" => D, "dimscaling" => 1),
+                        Dict("label" => "P", "length" => P, "dimscaling" => 1),
+                        Dict("label" => "Fbar", "length" => Fbar_in, "dimscaling" => 1),
+                        Dict("label" => "Tbar", "length" => Tbar, "dimscaling" => U),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
@@ -2581,10 +2584,10 @@ function fix_ptx_kernel()
                     "kotekan_name" => "frb_beamgrid_name",
                     "type" => "float16",
                     "axes" => [
-                        Dict("label" => "beamP", "length" => 2 * M),
-                        Dict("label" => "beamQ", "length" => 2 * N),
-                        Dict("label" => "Fbar", "length" => Fbar_out),
-                        Dict("label" => "Ttilde", "length" => Ttilde),
+                        Dict("label" => "beamP", "length" => 2 * M, "dimscaling" => 1),
+                        Dict("label" => "beamQ", "length" => 2 * N, "dimscaling" => 1),
+                        Dict("label" => "Fbar", "length" => Fbar_out, "dimscaling" => 1),
+                        Dict("label" => "Ttilde", "length" => Ttilde, "dimscaling" => Tds_U1),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
@@ -2596,9 +2599,9 @@ function fix_ptx_kernel()
                     "kotekan_name" => "gpu_mem_info",
                     "type" => "int32",
                     "axes" => [
-                        Dict("label" => "thread", "length" => num_threads),
-                        Dict("label" => "warp", "length" => num_warps),
-                        Dict("label" => "block", "length" => num_blocks),
+                        Dict("label" => "thread", "length" => num_threads, "dimscaling" => 1),
+                        Dict("label" => "warp", "length" => num_warps, "dimscaling" => 1),
+                        Dict("label" => "block", "length" => num_blocks, "dimscaling" => 1),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => false,

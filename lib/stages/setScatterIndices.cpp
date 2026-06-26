@@ -1,21 +1,30 @@
-#include <unistd.h>             // for sleep
-#include <cassert>              // for assert
-#include <cstdint>              // for int32_t
-#include <string>               // for basic_string, string
-#include <vector>               // for vector
-#include <cstddef>              // for ptrdiff_t
-#include <functional>           // for function
-#include <memory>               // for allocator, __shared_ptr_access, shared_ptr
-
-#include "Config.hpp"           // for Config
+#include "Config.hpp" // for Config
+#include "Config.hpp" // for Config
 #include "NDArray.hpp"
-#include "Stage.hpp"            // for Stage
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for get_chord_metadata, chordMetadata
-#include "kotekanLogging.hpp"   // for DEBUG
-#include "fmt.hpp"              // for compile_string_to_view, format
+#include "Stage.hpp"           // for Stage
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
+#include "kotekanLogging.hpp"  // for DEBUG
+#include "kotekanLogging.hpp"  // for DEBUG
+
+#include "fmt.hpp" // for compile_string_to_view, format
+#include "fmt.hpp" // for compile_string_to_view, format
+
+#include <cassert>    // for assert
+#include <cstddef>    // for ptrdiff_t
+#include <cstdint>    // for int32_t
+#include <functional> // for function
+#include <memory>     // for allocator, __shared_ptr_access, shared_ptr
+#include <string>     // for basic_string, string
+#include <unistd.h>   // for sleep
+#include <vector>     // for vector
 
 class setScatterIndices : public kotekan::Stage {
     // Telescope layout
@@ -65,7 +74,7 @@ public:
 
         // Set metadata
         scatter_indices_buffer->require_frame_desc(kotekan::NDArray<std::int32_t, 2>::describe(
-            "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"}));
+            "scatter_indices", {num_polarizations, num_dishes}, {"P", "D"}, {1, 1}));
         scatter_indices_buffer->allocate_new_metadata_object(frame_id);
         const auto& scatter_indices_meta =
             get_chord_metadata(scatter_indices_buffer->get_metadata(frame_id));

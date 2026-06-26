@@ -1,3 +1,4 @@
+#include "CHORDTelescope.hpp"    // for CHORDTelescope
 #include "Config.hpp"            // for Config
 #include "DataType.hpp"          // for string_to_type, DataType
 #include "NDArray.hpp"           // for NDArray, GenericNDArray
@@ -5,7 +6,6 @@
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"            // for Symbol
 #include "Telescope.hpp"         // for Telescope
-#include "CHORDTelescope.hpp"    // for CHORDTelescope
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"     // for chordMetadata, metadata_is_chord, get_c...
@@ -73,7 +73,7 @@ public:
 
         // Set metadata
         buffer->require_frame_desc(kotekan::NDArray<std::int8_t, 2>::describe(
-            "bf_mask", {num_polarizations, num_dishes}, {"P", "D"}));
+            "bf_mask", {num_polarizations, num_dishes}, {"P", "D"}, {1, 1}));
         buffer->allocate_new_metadata_object(frame_id);
         const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
         meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());

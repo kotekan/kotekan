@@ -50,7 +50,7 @@
 {
 	.reg .pred 	%p<84>;
 	.reg .b16 	%rs<83>;
-	.reg .b32 	%r<2072>;
+	.reg .b32 	%r<2168>;
 	.reg .f32 	%f<327>;
 	.reg .b64 	%rd<183>;
 
@@ -611,57 +611,57 @@ $L__BB0_7:                              // %pass205
 	// begin inline asm
 	cvt.rn.f16x2.f32 %r1076, %r263, %r262;
 	// end inline asm
-	mov.b32 	%r310, %f188;
-	xor.b32  	%r289, %r310, -2147483648;
-	mov.b32 	%r311, %f215;
-	xor.b32  	%r290, %r311, -2147483648;
+	mov.b32 	%r286, %f188;
+	mov.b32 	%r287, %f215;
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1007, %r290, %r289;
+	cvt.rn.f16x2.f32 %r1007, %r287, %r286;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1017, %r290, %r289;
+	cvt.rn.f16x2.f32 %r1017, %r287, %r286;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1027, %r290, %r289;
+	cvt.rn.f16x2.f32 %r1027, %r287, %r286;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1037, %r290, %r289;
+	cvt.rn.f16x2.f32 %r1037, %r287, %r286;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1047, %r290, %r289;
+	cvt.rn.f16x2.f32 %r1047, %r287, %r286;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1057, %r290, %r289;
+	cvt.rn.f16x2.f32 %r1057, %r287, %r286;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1067, %r290, %r289;
+	cvt.rn.f16x2.f32 %r1067, %r287, %r286;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1077, %r290, %r289;
+	cvt.rn.f16x2.f32 %r1077, %r287, %r286;
+	// end inline asm
+	xor.b32  	%r313, %r286, -2147483648;
+	xor.b32  	%r314, %r287, -2147483648;
+	// begin inline asm
+	cvt.rn.f16x2.f32 %r1008, %r314, %r313;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1008, %r311, %r310;
+	cvt.rn.f16x2.f32 %r1018, %r314, %r313;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1018, %r311, %r310;
+	cvt.rn.f16x2.f32 %r1028, %r314, %r313;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1028, %r311, %r310;
+	cvt.rn.f16x2.f32 %r1038, %r314, %r313;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1038, %r311, %r310;
+	cvt.rn.f16x2.f32 %r1048, %r314, %r313;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1048, %r311, %r310;
+	cvt.rn.f16x2.f32 %r1058, %r314, %r313;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1058, %r311, %r310;
+	cvt.rn.f16x2.f32 %r1068, %r314, %r313;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1068, %r311, %r310;
-	// end inline asm
-	// begin inline asm
-	cvt.rn.f16x2.f32 %r1078, %r311, %r310;
+	cvt.rn.f16x2.f32 %r1078, %r314, %r313;
 	// end inline asm
 	// begin inline asm
 	cvt.rn.f16x2.f32 %r1009, %r263, %r262;
@@ -928,57 +928,57 @@ $L__BB0_7:                              // %pass205
 	// begin inline asm
 	cvt.rn.f16x2.f32 %r1348, %r407, %r406;
 	// end inline asm
-	mov.b32 	%r454, %f296;
-	xor.b32  	%r433, %r454, -2147483648;
-	mov.b32 	%r455, %f323;
-	xor.b32  	%r434, %r455, -2147483648;
+	mov.b32 	%r430, %f296;
+	mov.b32 	%r431, %f323;
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1279, %r434, %r433;
+	cvt.rn.f16x2.f32 %r1279, %r431, %r430;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1289, %r434, %r433;
+	cvt.rn.f16x2.f32 %r1289, %r431, %r430;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1299, %r434, %r433;
+	cvt.rn.f16x2.f32 %r1299, %r431, %r430;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1309, %r434, %r433;
+	cvt.rn.f16x2.f32 %r1309, %r431, %r430;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1319, %r434, %r433;
+	cvt.rn.f16x2.f32 %r1319, %r431, %r430;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1329, %r434, %r433;
+	cvt.rn.f16x2.f32 %r1329, %r431, %r430;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1339, %r434, %r433;
+	cvt.rn.f16x2.f32 %r1339, %r431, %r430;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1349, %r434, %r433;
+	cvt.rn.f16x2.f32 %r1349, %r431, %r430;
+	// end inline asm
+	xor.b32  	%r457, %r430, -2147483648;
+	xor.b32  	%r458, %r431, -2147483648;
+	// begin inline asm
+	cvt.rn.f16x2.f32 %r1280, %r458, %r457;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1280, %r455, %r454;
+	cvt.rn.f16x2.f32 %r1290, %r458, %r457;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1290, %r455, %r454;
+	cvt.rn.f16x2.f32 %r1300, %r458, %r457;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1300, %r455, %r454;
+	cvt.rn.f16x2.f32 %r1310, %r458, %r457;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1310, %r455, %r454;
+	cvt.rn.f16x2.f32 %r1320, %r458, %r457;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1320, %r455, %r454;
+	cvt.rn.f16x2.f32 %r1330, %r458, %r457;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1330, %r455, %r454;
+	cvt.rn.f16x2.f32 %r1340, %r458, %r457;
 	// end inline asm
 	// begin inline asm
-	cvt.rn.f16x2.f32 %r1340, %r455, %r454;
-	// end inline asm
-	// begin inline asm
-	cvt.rn.f16x2.f32 %r1350, %r455, %r454;
+	cvt.rn.f16x2.f32 %r1350, %r458, %r457;
 	// end inline asm
 	// begin inline asm
 	cvt.rn.f16x2.f32 %r1281, %r407, %r406;
@@ -1164,29 +1164,29 @@ $L__BB0_7:                              // %pass205
 	add.s64 	%rd36, %rd58, %rd89;
 	shl.b32 	%r667, %r153, 19;
 	cvt.s64.s32 	%rd37, %r667;
-	mov.b32 	%r2062, 0;
+	mov.b32 	%r2158, 0;
 	mov.u16 	%rs81, 0;
 $L__BB0_8:                              // %L2578
                                         // =>This Loop Header: Depth=1
                                         //     Child Loop BB0_10 Depth 2
-	add.s32 	%r668, %r2062, %r151;
+	add.s32 	%r668, %r2158, %r151;
 	setp.ge.s32 	%p73, %r668, %r152;
 	@%p73 bra 	$L__BB0_12;
 // %bb.9:                               // %L2585.preheader
                                         //   in Loop: Header=BB0_8 Depth=1
-	mul.hi.u32 	%r671, %r2062, -1431655765;
+	mul.hi.u32 	%r671, %r2158, -1431655765;
 	shr.u32 	%r5, %r671, 4;
 	mov.b32 	%r825, 0;
-	mov.b32 	%r2063, 24;
+	mov.b32 	%r2159, 24;
 	mov.u16 	%rs82, %rs81;
-	mov.u32 	%r2064, %r825;
-	mov.u32 	%r2065, %r825;
-	mov.u32 	%r2066, %r825;
-	mov.u32 	%r2067, %r825;
-	mov.u32 	%r2068, %r825;
-	mov.u32 	%r2069, %r825;
-	mov.u32 	%r2070, %r825;
-	mov.u32 	%r2071, %r825;
+	mov.u32 	%r2160, %r825;
+	mov.u32 	%r2161, %r825;
+	mov.u32 	%r2162, %r825;
+	mov.u32 	%r2163, %r825;
+	mov.u32 	%r2164, %r825;
+	mov.u32 	%r2165, %r825;
+	mov.u32 	%r2166, %r825;
+	mov.u32 	%r2167, %r825;
 $L__BB0_10:                             // %L2585
                                         //   Parent Loop BB0_8 Depth=1
                                         // =>  This Inner Loop Header: Depth=2
@@ -1197,23 +1197,23 @@ $L__BB0_10:                             // %L2585
 	add.s16 	%rs78, %rs82, %rs77;
 	and.b16  	%rs79, %rs78, 28672;
 	sub.s16 	%rs80, %rs82, %rs79;
-	cvt.u32.u16 	%r1988, %rs80;
-	shl.b32 	%r1989, %r1988, 17;
-	add.s32 	%r1990, %r146, %r1989;
-	shr.s32 	%r1991, %r1990, 31;
-	shr.u32 	%r1992, %r1991, 3;
-	add.s32 	%r1993, %r1990, %r1992;
-	shr.s32 	%r1994, %r1993, 29;
-	setp.lt.s32 	%p76, %r1990, 0;
-	and.b32  	%r1995, %r1993, -536870912;
-	setp.ne.s32 	%p77, %r1995, %r1990;
+	cvt.u32.u16 	%r2084, %rs80;
+	shl.b32 	%r2085, %r2084, 17;
+	add.s32 	%r2086, %r146, %r2085;
+	shr.s32 	%r2087, %r2086, 31;
+	shr.u32 	%r2088, %r2087, 3;
+	add.s32 	%r2089, %r2086, %r2088;
+	shr.s32 	%r2090, %r2089, 29;
+	setp.lt.s32 	%p76, %r2086, 0;
+	and.b32  	%r2091, %r2089, -536870912;
+	setp.ne.s32 	%p77, %r2091, %r2086;
 	and.pred  	%p78, %p76, %p77;
-	selp.u32 	%r1996, 1, 0, %p78;
-	sub.s32 	%r1997, %r1996, %r1994;
-	shl.b32 	%r1998, %r1997, 29;
-	add.s32 	%r1999, %r1990, %r1998;
-	add.s32 	%r2000, %r1999, 1;
-	mul.wide.s32 	%rd90, %r2000, 4;
+	selp.u32 	%r2092, 1, 0, %p78;
+	sub.s32 	%r2093, %r2092, %r2090;
+	shl.b32 	%r2094, %r2093, 29;
+	add.s32 	%r2095, %r2086, %r2094;
+	add.s32 	%r2096, %r2095, 1;
+	mul.wide.s32 	%rd90, %r2096, 4;
 	add.s64 	%rd91, %rd2, %rd90;
 	ld.global.v2.u32 	{%r676, %r722}, [%rd91+-4];
 	mov.u16 	%rs52, 25600;
@@ -1685,70 +1685,70 @@ $L__BB0_10:                             // %L2585
 	// begin inline asm
 	prmt.b32 %r1144, %r1141, %r1142, %r771;
 	// end inline asm
-	selp.b32 	%r2001, %r1116, %r1084, %p75;
-	shfl.sync.bfly.b32	%r2002, %r2001, 1, 31, -1;
-	selp.b32 	%r2003, %r1084, %r2002, %p75;
-	selp.b32 	%r2004, %r2002, %r1116, %p75;
-	selp.b32 	%r2005, %r1120, %r1088, %p75;
-	shfl.sync.bfly.b32	%r2006, %r2005, 1, 31, -1;
-	selp.b32 	%r2007, %r1088, %r2006, %p75;
-	selp.b32 	%r2008, %r2006, %r1120, %p75;
-	selp.b32 	%r2009, %r1124, %r1092, %p75;
-	shfl.sync.bfly.b32	%r2010, %r2009, 1, 31, -1;
-	selp.b32 	%r2011, %r1092, %r2010, %p75;
-	selp.b32 	%r2012, %r2010, %r1124, %p75;
-	selp.b32 	%r2013, %r1128, %r1096, %p75;
-	shfl.sync.bfly.b32	%r2014, %r2013, 1, 31, -1;
-	selp.b32 	%r2015, %r1096, %r2014, %p75;
-	selp.b32 	%r2016, %r2014, %r1128, %p75;
-	selp.b32 	%r2017, %r1132, %r1100, %p75;
-	shfl.sync.bfly.b32	%r2018, %r2017, 1, 31, -1;
-	selp.b32 	%r2019, %r1100, %r2018, %p75;
-	selp.b32 	%r2020, %r2018, %r1132, %p75;
-	selp.b32 	%r2021, %r1136, %r1104, %p75;
-	shfl.sync.bfly.b32	%r2022, %r2021, 1, 31, -1;
-	selp.b32 	%r2023, %r1104, %r2022, %p75;
-	selp.b32 	%r2024, %r2022, %r1136, %p75;
-	selp.b32 	%r2025, %r1140, %r1108, %p75;
-	shfl.sync.bfly.b32	%r2026, %r2025, 1, 31, -1;
-	selp.b32 	%r2027, %r1108, %r2026, %p75;
-	selp.b32 	%r2028, %r2026, %r1140, %p75;
-	selp.b32 	%r2029, %r1144, %r1112, %p75;
-	shfl.sync.bfly.b32	%r2030, %r2029, 1, 31, -1;
-	selp.b32 	%r2031, %r1112, %r2030, %p75;
-	selp.b32 	%r2032, %r2030, %r1144, %p75;
-	selp.b32 	%r2033, %r2019, %r2003, %p74;
-	shfl.sync.bfly.b32	%r2034, %r2033, 2, 31, -1;
-	selp.b32 	%r1155, %r2003, %r2034, %p74;
-	selp.b32 	%r1191, %r2034, %r2019, %p74;
-	selp.b32 	%r2035, %r2023, %r2007, %p74;
-	shfl.sync.bfly.b32	%r2036, %r2035, 2, 31, -1;
-	selp.b32 	%r1164, %r2007, %r2036, %p74;
-	selp.b32 	%r1200, %r2036, %r2023, %p74;
-	selp.b32 	%r2037, %r2020, %r2004, %p74;
-	shfl.sync.bfly.b32	%r2038, %r2037, 2, 31, -1;
-	selp.b32 	%r1173, %r2004, %r2038, %p74;
-	selp.b32 	%r1209, %r2038, %r2020, %p74;
-	selp.b32 	%r2039, %r2024, %r2008, %p74;
-	shfl.sync.bfly.b32	%r2040, %r2039, 2, 31, -1;
-	selp.b32 	%r1182, %r2008, %r2040, %p74;
-	selp.b32 	%r1218, %r2040, %r2024, %p74;
-	selp.b32 	%r2041, %r2027, %r2011, %p74;
-	shfl.sync.bfly.b32	%r2042, %r2041, 2, 31, -1;
-	selp.b32 	%r1152, %r2011, %r2042, %p74;
-	selp.b32 	%r1188, %r2042, %r2027, %p74;
-	selp.b32 	%r2043, %r2031, %r2015, %p74;
-	shfl.sync.bfly.b32	%r2044, %r2043, 2, 31, -1;
-	selp.b32 	%r1161, %r2015, %r2044, %p74;
-	selp.b32 	%r1197, %r2044, %r2031, %p74;
-	selp.b32 	%r2045, %r2028, %r2012, %p74;
-	shfl.sync.bfly.b32	%r2046, %r2045, 2, 31, -1;
-	selp.b32 	%r1170, %r2012, %r2046, %p74;
-	selp.b32 	%r1206, %r2046, %r2028, %p74;
-	selp.b32 	%r2047, %r2032, %r2016, %p74;
-	shfl.sync.bfly.b32	%r2048, %r2047, 2, 31, -1;
-	selp.b32 	%r1179, %r2016, %r2048, %p74;
-	selp.b32 	%r1215, %r2048, %r2032, %p74;
+	selp.b32 	%r2097, %r1116, %r1084, %p75;
+	shfl.sync.bfly.b32	%r2098, %r2097, 1, 31, -1;
+	selp.b32 	%r2099, %r1084, %r2098, %p75;
+	selp.b32 	%r2100, %r2098, %r1116, %p75;
+	selp.b32 	%r2101, %r1120, %r1088, %p75;
+	shfl.sync.bfly.b32	%r2102, %r2101, 1, 31, -1;
+	selp.b32 	%r2103, %r1088, %r2102, %p75;
+	selp.b32 	%r2104, %r2102, %r1120, %p75;
+	selp.b32 	%r2105, %r1124, %r1092, %p75;
+	shfl.sync.bfly.b32	%r2106, %r2105, 1, 31, -1;
+	selp.b32 	%r2107, %r1092, %r2106, %p75;
+	selp.b32 	%r2108, %r2106, %r1124, %p75;
+	selp.b32 	%r2109, %r1128, %r1096, %p75;
+	shfl.sync.bfly.b32	%r2110, %r2109, 1, 31, -1;
+	selp.b32 	%r2111, %r1096, %r2110, %p75;
+	selp.b32 	%r2112, %r2110, %r1128, %p75;
+	selp.b32 	%r2113, %r1132, %r1100, %p75;
+	shfl.sync.bfly.b32	%r2114, %r2113, 1, 31, -1;
+	selp.b32 	%r2115, %r1100, %r2114, %p75;
+	selp.b32 	%r2116, %r2114, %r1132, %p75;
+	selp.b32 	%r2117, %r1136, %r1104, %p75;
+	shfl.sync.bfly.b32	%r2118, %r2117, 1, 31, -1;
+	selp.b32 	%r2119, %r1104, %r2118, %p75;
+	selp.b32 	%r2120, %r2118, %r1136, %p75;
+	selp.b32 	%r2121, %r1140, %r1108, %p75;
+	shfl.sync.bfly.b32	%r2122, %r2121, 1, 31, -1;
+	selp.b32 	%r2123, %r1108, %r2122, %p75;
+	selp.b32 	%r2124, %r2122, %r1140, %p75;
+	selp.b32 	%r2125, %r1144, %r1112, %p75;
+	shfl.sync.bfly.b32	%r2126, %r2125, 1, 31, -1;
+	selp.b32 	%r2127, %r1112, %r2126, %p75;
+	selp.b32 	%r2128, %r2126, %r1144, %p75;
+	selp.b32 	%r2129, %r2115, %r2099, %p74;
+	shfl.sync.bfly.b32	%r2130, %r2129, 2, 31, -1;
+	selp.b32 	%r1155, %r2099, %r2130, %p74;
+	selp.b32 	%r1191, %r2130, %r2115, %p74;
+	selp.b32 	%r2131, %r2119, %r2103, %p74;
+	shfl.sync.bfly.b32	%r2132, %r2131, 2, 31, -1;
+	selp.b32 	%r1164, %r2103, %r2132, %p74;
+	selp.b32 	%r1200, %r2132, %r2119, %p74;
+	selp.b32 	%r2133, %r2116, %r2100, %p74;
+	shfl.sync.bfly.b32	%r2134, %r2133, 2, 31, -1;
+	selp.b32 	%r1173, %r2100, %r2134, %p74;
+	selp.b32 	%r1209, %r2134, %r2116, %p74;
+	selp.b32 	%r2135, %r2120, %r2104, %p74;
+	shfl.sync.bfly.b32	%r2136, %r2135, 2, 31, -1;
+	selp.b32 	%r1182, %r2104, %r2136, %p74;
+	selp.b32 	%r1218, %r2136, %r2120, %p74;
+	selp.b32 	%r2137, %r2123, %r2107, %p74;
+	shfl.sync.bfly.b32	%r2138, %r2137, 2, 31, -1;
+	selp.b32 	%r1152, %r2107, %r2138, %p74;
+	selp.b32 	%r1188, %r2138, %r2123, %p74;
+	selp.b32 	%r2139, %r2127, %r2111, %p74;
+	shfl.sync.bfly.b32	%r2140, %r2139, 2, 31, -1;
+	selp.b32 	%r1161, %r2111, %r2140, %p74;
+	selp.b32 	%r1197, %r2140, %r2127, %p74;
+	selp.b32 	%r2141, %r2124, %r2108, %p74;
+	shfl.sync.bfly.b32	%r2142, %r2141, 2, 31, -1;
+	selp.b32 	%r1170, %r2108, %r2142, %p74;
+	selp.b32 	%r1206, %r2142, %r2124, %p74;
+	selp.b32 	%r2143, %r2128, %r2112, %p74;
+	shfl.sync.bfly.b32	%r2144, %r2143, 2, 31, -1;
+	selp.b32 	%r1179, %r2112, %r2144, %p74;
+	selp.b32 	%r1215, %r2144, %r2128, %p74;
 	// begin inline asm
 	neg.f16x2 %r1148, %r96;
 	// end inline asm
@@ -1958,589 +1958,685 @@ $L__BB0_10:                             // %L2585
 	st.shared.u32 	[%rd19], %r1408;
 	st.shared.u32 	[%rd20], %r1416;
 	bar.sync 	0;
-	ld.shared.u32 	%r1461, [%rd21];
-	ld.shared.u32 	%r1487, [%rd22];
-	ld.shared.u32 	%r1469, [%rd23];
-	ld.shared.u32 	%r1495, [%rd24];
-	ld.shared.u32 	%r1488, [%rd25];
-	ld.shared.u32 	%r1459, [%rd26];
-	ld.shared.u32 	%r1491, [%rd27];
-	ld.shared.u32 	%r1465, [%rd28];
-	ld.shared.u32 	%r1476, [%rd29];
-	ld.shared.u32 	%r1498, [%rd30];
-	ld.shared.u32 	%r1484, [%rd31];
-	ld.shared.u32 	%r1506, [%rd32];
-	ld.shared.u32 	%r1499, [%rd33];
-	ld.shared.u32 	%r1474, [%rd34];
-	ld.shared.u32 	%r1502, [%rd35];
-	ld.shared.u32 	%r1480, [%rd36];
+	ld.shared.u32 	%r1467, [%rd21];
+	ld.shared.u32 	%r1505, [%rd22];
+	ld.shared.u32 	%r1457, [%rd23];
+	ld.shared.u32 	%r1458, [%rd24];
+	ld.shared.u32 	%r1506, [%rd25];
+	ld.shared.u32 	%r1465, [%rd26];
+	ld.shared.u32 	%r1462, [%rd27];
+	ld.shared.u32 	%r1463, [%rd28];
+	ld.shared.u32 	%r1488, [%rd29];
+	ld.shared.u32 	%r1522, [%rd30];
+	ld.shared.u32 	%r1478, [%rd31];
+	ld.shared.u32 	%r1479, [%rd32];
+	ld.shared.u32 	%r1523, [%rd33];
+	ld.shared.u32 	%r1486, [%rd34];
+	ld.shared.u32 	%r1483, [%rd35];
+	ld.shared.u32 	%r1484, [%rd36];
 	// begin inline asm
-	add.rn.f16x2 %r1420, %r1461, %r1469;
+	add.rn.f16x2 %r1420, %r1467, %r1457;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1423, %r1420, %r1488;
+	add.rn.f16x2 %r1423, %r1420, %r1506;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1837, %r1423, %r1491;
+	add.rn.f16x2 %r1933, %r1423, %r1462;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1429, %r1476, %r1484;
+	add.rn.f16x2 %r1429, %r1488, %r1478;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1432, %r1429, %r1499;
+	add.rn.f16x2 %r1432, %r1429, %r1523;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1844, %r1432, %r1502;
+	add.rn.f16x2 %r1940, %r1432, %r1483;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1438, %r1487, %r1495;
+	add.rn.f16x2 %r1438, %r1505, %r1458;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1441, %r1438, %r1459;
+	add.rn.f16x2 %r1441, %r1438, %r1465;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1840, %r1441, %r1465;
+	add.rn.f16x2 %r1936, %r1441, %r1463;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1447, %r1498, %r1506;
+	add.rn.f16x2 %r1447, %r1522, %r1479;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1450, %r1447, %r1474;
+	add.rn.f16x2 %r1450, %r1447, %r1486;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1848, %r1450, %r1480;
+	add.rn.f16x2 %r1944, %r1450, %r1484;
 	// end inline asm
-	mov.b32 	%r1457, 967326120;
 	// begin inline asm
-	neg.f16x2 %r1456, %r1457;
+	sub.rn.f16x2 %r1456, %r1457, %r1458;
 	// end inline asm
+	mov.b32 	%r1460, 967326120;
 	// begin inline asm
-	neg.f16x2 %r1458, %r1459;
+	neg.f16x2 %r1459, %r1460;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1460, %r1461, %r1458;
+	add.rn.f16x2 %r1461, %r1462, %r1463;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1463, %r1456, %r1465, %r1460;
+	neg.f16x2 %r1464, %r1465;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1856, %r1457, %r1469, %r1463;
+	add.rn.f16x2 %r1466, %r1467, %r1464;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1471, %r1457;
+	fma.rn.f16x2 %r1469, %r1459, %r1461, %r1466;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1473, %r1474;
+	fma.rn.f16x2 %r1952, %r1460, %r1456, %r1469;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1475, %r1476, %r1473;
+	sub.rn.f16x2 %r1477, %r1478, %r1479;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1478, %r1471, %r1480, %r1475;
+	neg.f16x2 %r1480, %r1460;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1863, %r1457, %r1484, %r1478;
+	add.rn.f16x2 %r1482, %r1483, %r1484;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1486, %r1487, %r1488;
+	neg.f16x2 %r1485, %r1486;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1489, %r1457, %r1491, %r1486;
+	add.rn.f16x2 %r1487, %r1488, %r1485;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1859, %r1457, %r1495, %r1489;
+	fma.rn.f16x2 %r1490, %r1480, %r1482, %r1487;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1497, %r1498, %r1499;
+	fma.rn.f16x2 %r1959, %r1460, %r1477, %r1490;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1500, %r1457, %r1502, %r1497;
+	add.rn.f16x2 %r1498, %r1457, %r1458;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1867, %r1457, %r1506, %r1500;
+	sub.rn.f16x2 %r1501, %r1462, %r1463;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1508, %r1495;
+	add.rn.f16x2 %r1504, %r1505, %r1506;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1510, %r1488;
+	fma.rn.f16x2 %r1507, %r1460, %r1501, %r1504;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1512, %r1461, %r1508;
+	fma.rn.f16x2 %r1955, %r1460, %r1498, %r1507;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1515, %r1512, %r1510;
+	add.rn.f16x2 %r1515, %r1478, %r1479;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1875, %r1515, %r1465;
+	sub.rn.f16x2 %r1518, %r1483, %r1484;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1521, %r1506;
+	add.rn.f16x2 %r1521, %r1522, %r1523;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1523, %r1499;
+	fma.rn.f16x2 %r1524, %r1460, %r1518, %r1521;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1525, %r1476, %r1521;
+	fma.rn.f16x2 %r1963, %r1460, %r1515, %r1524;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1528, %r1525, %r1523;
+	neg.f16x2 %r1532, %r1458;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1882, %r1528, %r1480;
+	neg.f16x2 %r1534, %r1506;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1534, %r1459;
+	add.rn.f16x2 %r1536, %r1467, %r1532;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1536, %r1491;
+	add.rn.f16x2 %r1539, %r1536, %r1534;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1538, %r1487, %r1469;
+	add.rn.f16x2 %r1971, %r1539, %r1463;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1541, %r1538, %r1534;
+	neg.f16x2 %r1545, %r1479;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1878, %r1541, %r1536;
+	neg.f16x2 %r1547, %r1523;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1547, %r1474;
+	add.rn.f16x2 %r1549, %r1488, %r1545;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1549, %r1502;
+	add.rn.f16x2 %r1552, %r1549, %r1547;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1551, %r1498, %r1484;
+	add.rn.f16x2 %r1978, %r1552, %r1484;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1554, %r1551, %r1547;
+	neg.f16x2 %r1558, %r1465;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1886, %r1554, %r1549;
+	neg.f16x2 %r1560, %r1462;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1560, %r1457;
+	add.rn.f16x2 %r1562, %r1505, %r1457;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1562, %r1461, %r1459;
+	add.rn.f16x2 %r1565, %r1562, %r1558;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1565, %r1457, %r1491, %r1562;
+	add.rn.f16x2 %r1974, %r1565, %r1560;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1894, %r1560, %r1495, %r1565;
+	neg.f16x2 %r1571, %r1486;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1573, %r1457;
+	neg.f16x2 %r1573, %r1483;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1575, %r1476, %r1474;
+	add.rn.f16x2 %r1575, %r1522, %r1478;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1578, %r1457, %r1502, %r1575;
+	add.rn.f16x2 %r1578, %r1575, %r1571;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1901, %r1573, %r1506, %r1578;
+	add.rn.f16x2 %r1982, %r1578, %r1573;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1586, %r1488;
+	neg.f16x2 %r1584, %r1460;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1588, %r1487, %r1586;
+	add.rn.f16x2 %r1586, %r1457, %r1458;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1591, %r1457, %r1465, %r1588;
+	sub.rn.f16x2 %r1589, %r1462, %r1463;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1897, %r1457, %r1469, %r1591;
+	add.rn.f16x2 %r1592, %r1467, %r1465;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1599, %r1499;
+	fma.rn.f16x2 %r1595, %r1460, %r1589, %r1592;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1601, %r1498, %r1599;
+	fma.rn.f16x2 %r1990, %r1584, %r1586, %r1595;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1604, %r1457, %r1480, %r1601;
+	neg.f16x2 %r1603, %r1460;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1905, %r1457, %r1484, %r1604;
+	add.rn.f16x2 %r1605, %r1478, %r1479;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1612, %r1469;
+	sub.rn.f16x2 %r1608, %r1483, %r1484;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1614, %r1491;
+	add.rn.f16x2 %r1611, %r1488, %r1486;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1616, %r1461, %r1612;
+	fma.rn.f16x2 %r1614, %r1460, %r1608, %r1611;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1619, %r1616, %r1488;
+	fma.rn.f16x2 %r1997, %r1603, %r1605, %r1614;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1913, %r1619, %r1614;
+	sub.rn.f16x2 %r1622, %r1457, %r1458;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1625, %r1484;
+	add.rn.f16x2 %r1625, %r1462, %r1463;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1627, %r1502;
+	neg.f16x2 %r1628, %r1506;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1629, %r1476, %r1625;
+	add.rn.f16x2 %r1630, %r1505, %r1628;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1632, %r1629, %r1499;
+	fma.rn.f16x2 %r1633, %r1460, %r1625, %r1630;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1920, %r1632, %r1627;
+	fma.rn.f16x2 %r1993, %r1460, %r1622, %r1633;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1638, %r1495;
+	sub.rn.f16x2 %r1641, %r1478, %r1479;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1640, %r1465;
+	add.rn.f16x2 %r1644, %r1483, %r1484;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1642, %r1487, %r1638;
+	neg.f16x2 %r1647, %r1523;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1645, %r1642, %r1459;
+	add.rn.f16x2 %r1649, %r1522, %r1647;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1916, %r1645, %r1640;
+	fma.rn.f16x2 %r1652, %r1460, %r1644, %r1649;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1651, %r1506;
+	fma.rn.f16x2 %r2001, %r1460, %r1641, %r1652;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1653, %r1480;
+	neg.f16x2 %r1660, %r1457;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1655, %r1498, %r1651;
+	neg.f16x2 %r1662, %r1462;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1658, %r1655, %r1474;
+	add.rn.f16x2 %r1664, %r1467, %r1660;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1924, %r1658, %r1653;
+	add.rn.f16x2 %r1667, %r1664, %r1506;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1664, %r1457;
+	add.rn.f16x2 %r2009, %r1667, %r1662;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1666, %r1459;
+	neg.f16x2 %r1673, %r1478;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1668, %r1461, %r1666;
+	neg.f16x2 %r1675, %r1483;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1671, %r1457, %r1465, %r1668;
+	add.rn.f16x2 %r1677, %r1488, %r1673;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1932, %r1664, %r1469, %r1671;
+	add.rn.f16x2 %r1680, %r1677, %r1523;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1679, %r1457;
+	add.rn.f16x2 %r2016, %r1680, %r1675;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1681, %r1474;
+	neg.f16x2 %r1686, %r1458;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1683, %r1476, %r1681;
+	neg.f16x2 %r1688, %r1463;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1686, %r1457, %r1480, %r1683;
+	add.rn.f16x2 %r1690, %r1505, %r1686;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1939, %r1679, %r1484, %r1686;
+	add.rn.f16x2 %r1693, %r1690, %r1465;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1694, %r1457;
+	add.rn.f16x2 %r2012, %r1693, %r1688;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1696, %r1457;
+	neg.f16x2 %r1699, %r1479;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1698, %r1487, %r1488;
+	neg.f16x2 %r1701, %r1484;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1701, %r1696, %r1491, %r1698;
+	add.rn.f16x2 %r1703, %r1522, %r1699;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1935, %r1694, %r1495, %r1701;
+	add.rn.f16x2 %r1706, %r1703, %r1486;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1709, %r1457;
+	add.rn.f16x2 %r2020, %r1706, %r1701;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1711, %r1457;
+	neg.f16x2 %r1712, %r1460;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1713, %r1498, %r1499;
+	sub.rn.f16x2 %r1714, %r1457, %r1458;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1716, %r1711, %r1502, %r1713;
+	add.rn.f16x2 %r1717, %r1462, %r1463;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1943, %r1709, %r1506, %r1716;
+	neg.f16x2 %r1720, %r1465;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1724, %r1488;
+	add.rn.f16x2 %r1722, %r1467, %r1720;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1726, %r1465;
+	fma.rn.f16x2 %r1725, %r1460, %r1717, %r1722;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1728, %r1461, %r1495;
+	fma.rn.f16x2 %r2028, %r1712, %r1714, %r1725;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1731, %r1728, %r1724;
+	neg.f16x2 %r1733, %r1460;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1951, %r1731, %r1726;
+	sub.rn.f16x2 %r1735, %r1478, %r1479;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1737, %r1499;
+	add.rn.f16x2 %r1738, %r1483, %r1484;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1739, %r1480;
+	neg.f16x2 %r1741, %r1486;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1741, %r1476, %r1506;
+	add.rn.f16x2 %r1743, %r1488, %r1741;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1744, %r1741, %r1737;
+	fma.rn.f16x2 %r1746, %r1460, %r1738, %r1743;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1958, %r1744, %r1739;
+	fma.rn.f16x2 %r2035, %r1733, %r1735, %r1746;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1750, %r1469;
+	neg.f16x2 %r1754, %r1460;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1752, %r1459;
+	add.rn.f16x2 %r1756, %r1457, %r1458;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1754, %r1487, %r1750;
+	neg.f16x2 %r1759, %r1460;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1757, %r1754, %r1752;
+	sub.rn.f16x2 %r1761, %r1462, %r1463;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1954, %r1757, %r1491;
+	add.rn.f16x2 %r1764, %r1505, %r1506;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1763, %r1484;
+	fma.rn.f16x2 %r1767, %r1759, %r1761, %r1764;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1765, %r1474;
+	fma.rn.f16x2 %r2031, %r1754, %r1756, %r1767;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1767, %r1498, %r1763;
+	neg.f16x2 %r1775, %r1460;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1770, %r1767, %r1765;
+	add.rn.f16x2 %r1777, %r1478, %r1479;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1962, %r1770, %r1502;
+	neg.f16x2 %r1780, %r1460;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1776, %r1457;
+	sub.rn.f16x2 %r1782, %r1483, %r1484;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1778, %r1461, %r1459;
+	add.rn.f16x2 %r1785, %r1522, %r1523;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1781, %r1776, %r1491, %r1778;
+	fma.rn.f16x2 %r1788, %r1780, %r1782, %r1785;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1970, %r1457, %r1495, %r1781;
+	fma.rn.f16x2 %r2039, %r1775, %r1777, %r1788;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1789, %r1457;
+	neg.f16x2 %r1796, %r1506;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1791, %r1476, %r1474;
+	neg.f16x2 %r1798, %r1463;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1794, %r1789, %r1502, %r1791;
+	add.rn.f16x2 %r1800, %r1467, %r1458;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1977, %r1457, %r1506, %r1794;
+	add.rn.f16x2 %r1803, %r1800, %r1796;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1802, %r1457;
+	add.rn.f16x2 %r2047, %r1803, %r1798;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1804, %r1457;
+	neg.f16x2 %r1809, %r1523;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1806, %r1488;
+	neg.f16x2 %r1811, %r1484;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1808, %r1487, %r1806;
+	add.rn.f16x2 %r1813, %r1488, %r1479;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1811, %r1804, %r1465, %r1808;
+	add.rn.f16x2 %r1816, %r1813, %r1809;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1973, %r1802, %r1469, %r1811;
+	add.rn.f16x2 %r2054, %r1816, %r1811;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1819, %r1457;
+	neg.f16x2 %r1822, %r1457;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1821, %r1457;
+	neg.f16x2 %r1824, %r1465;
 	// end inline asm
 	// begin inline asm
-	neg.f16x2 %r1823, %r1499;
+	add.rn.f16x2 %r1826, %r1505, %r1822;
 	// end inline asm
 	// begin inline asm
-	add.rn.f16x2 %r1825, %r1498, %r1823;
+	add.rn.f16x2 %r1829, %r1826, %r1824;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1828, %r1821, %r1480, %r1825;
+	add.rn.f16x2 %r2050, %r1829, %r1462;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1981, %r1819, %r1484, %r1828;
+	neg.f16x2 %r1835, %r1478;
 	// end inline asm
 	// begin inline asm
-	mul.rn.f16x2 %r1836, %r1837, %r1837;
+	neg.f16x2 %r1837, %r1486;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1839, %r1840, %r1840, %r1836;
+	add.rn.f16x2 %r1839, %r1522, %r1835;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1843, %r1844, %r1844, %r1839;
+	add.rn.f16x2 %r1842, %r1839, %r1837;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1847, %r1848, %r1848, %r1843;
+	add.rn.f16x2 %r2058, %r1842, %r1483;
 	// end inline asm
-	mov.b32 	%r1852, 492117333;
 	// begin inline asm
-	fma.rn.f16x2 %r2071, %r1852, %r1847, %r2071;
+	add.rn.f16x2 %r1848, %r1457, %r1458;
 	// end inline asm
 	// begin inline asm
-	mul.rn.f16x2 %r1855, %r1856, %r1856;
+	neg.f16x2 %r1851, %r1460;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1858, %r1859, %r1859, %r1855;
+	sub.rn.f16x2 %r1853, %r1462, %r1463;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1862, %r1863, %r1863, %r1858;
+	add.rn.f16x2 %r1856, %r1467, %r1465;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1866, %r1867, %r1867, %r1862;
+	fma.rn.f16x2 %r1859, %r1851, %r1853, %r1856;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r2070, %r1852, %r1866, %r2070;
+	fma.rn.f16x2 %r2066, %r1460, %r1848, %r1859;
 	// end inline asm
 	// begin inline asm
-	mul.rn.f16x2 %r1874, %r1875, %r1875;
+	add.rn.f16x2 %r1867, %r1478, %r1479;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1877, %r1878, %r1878, %r1874;
+	neg.f16x2 %r1870, %r1460;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1881, %r1882, %r1882, %r1877;
+	sub.rn.f16x2 %r1872, %r1483, %r1484;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1885, %r1886, %r1886, %r1881;
+	add.rn.f16x2 %r1875, %r1488, %r1486;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r2069, %r1852, %r1885, %r2069;
+	fma.rn.f16x2 %r1878, %r1870, %r1872, %r1875;
 	// end inline asm
 	// begin inline asm
-	mul.rn.f16x2 %r1893, %r1894, %r1894;
+	fma.rn.f16x2 %r2073, %r1460, %r1867, %r1878;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1896, %r1897, %r1897, %r1893;
+	neg.f16x2 %r1886, %r1460;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1900, %r1901, %r1901, %r1896;
+	sub.rn.f16x2 %r1888, %r1457, %r1458;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1904, %r1905, %r1905, %r1900;
+	neg.f16x2 %r1891, %r1460;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r2068, %r1852, %r1904, %r2068;
+	add.rn.f16x2 %r1893, %r1462, %r1463;
 	// end inline asm
 	// begin inline asm
-	mul.rn.f16x2 %r1912, %r1913, %r1913;
+	neg.f16x2 %r1896, %r1506;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1915, %r1916, %r1916, %r1912;
+	add.rn.f16x2 %r1898, %r1505, %r1896;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1919, %r1920, %r1920, %r1915;
+	fma.rn.f16x2 %r1901, %r1891, %r1893, %r1898;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1923, %r1924, %r1924, %r1919;
+	fma.rn.f16x2 %r2069, %r1886, %r1888, %r1901;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r2067, %r1852, %r1923, %r2067;
+	neg.f16x2 %r1909, %r1460;
 	// end inline asm
 	// begin inline asm
-	mul.rn.f16x2 %r1931, %r1932, %r1932;
+	sub.rn.f16x2 %r1911, %r1478, %r1479;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1934, %r1935, %r1935, %r1931;
+	neg.f16x2 %r1914, %r1460;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1938, %r1939, %r1939, %r1934;
+	add.rn.f16x2 %r1916, %r1483, %r1484;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1942, %r1943, %r1943, %r1938;
+	neg.f16x2 %r1919, %r1523;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r2066, %r1852, %r1942, %r2066;
+	add.rn.f16x2 %r1921, %r1522, %r1919;
 	// end inline asm
 	// begin inline asm
-	mul.rn.f16x2 %r1950, %r1951, %r1951;
+	fma.rn.f16x2 %r1924, %r1914, %r1916, %r1921;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1953, %r1954, %r1954, %r1950;
+	fma.rn.f16x2 %r2077, %r1909, %r1911, %r1924;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1957, %r1958, %r1958, %r1953;
+	mul.rn.f16x2 %r1932, %r1933, %r1933;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1961, %r1962, %r1962, %r1957;
+	fma.rn.f16x2 %r1935, %r1936, %r1936, %r1932;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r2065, %r1852, %r1961, %r2065;
+	fma.rn.f16x2 %r1939, %r1940, %r1940, %r1935;
 	// end inline asm
 	// begin inline asm
-	mul.rn.f16x2 %r1969, %r1970, %r1970;
+	fma.rn.f16x2 %r1943, %r1944, %r1944, %r1939;
 	// end inline asm
+	mov.b32 	%r1948, 492117333;
 	// begin inline asm
-	fma.rn.f16x2 %r1972, %r1973, %r1973, %r1969;
+	fma.rn.f16x2 %r2167, %r1948, %r1943, %r2167;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1976, %r1977, %r1977, %r1972;
+	mul.rn.f16x2 %r1951, %r1952, %r1952;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r1980, %r1981, %r1981, %r1976;
+	fma.rn.f16x2 %r1954, %r1955, %r1955, %r1951;
 	// end inline asm
 	// begin inline asm
-	fma.rn.f16x2 %r2064, %r1852, %r1980, %r2064;
+	fma.rn.f16x2 %r1958, %r1959, %r1959, %r1954;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r1962, %r1963, %r1963, %r1958;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2166, %r1948, %r1962, %r2166;
+	// end inline asm
+	// begin inline asm
+	mul.rn.f16x2 %r1970, %r1971, %r1971;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r1973, %r1974, %r1974, %r1970;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r1977, %r1978, %r1978, %r1973;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r1981, %r1982, %r1982, %r1977;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2165, %r1948, %r1981, %r2165;
+	// end inline asm
+	// begin inline asm
+	mul.rn.f16x2 %r1989, %r1990, %r1990;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r1992, %r1993, %r1993, %r1989;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r1996, %r1997, %r1997, %r1992;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2000, %r2001, %r2001, %r1996;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2164, %r1948, %r2000, %r2164;
+	// end inline asm
+	// begin inline asm
+	mul.rn.f16x2 %r2008, %r2009, %r2009;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2011, %r2012, %r2012, %r2008;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2015, %r2016, %r2016, %r2011;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2019, %r2020, %r2020, %r2015;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2163, %r1948, %r2019, %r2163;
+	// end inline asm
+	// begin inline asm
+	mul.rn.f16x2 %r2027, %r2028, %r2028;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2030, %r2031, %r2031, %r2027;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2034, %r2035, %r2035, %r2030;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2038, %r2039, %r2039, %r2034;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2162, %r1948, %r2038, %r2162;
+	// end inline asm
+	// begin inline asm
+	mul.rn.f16x2 %r2046, %r2047, %r2047;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2049, %r2050, %r2050, %r2046;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2053, %r2054, %r2054, %r2049;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2057, %r2058, %r2058, %r2053;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2161, %r1948, %r2057, %r2161;
+	// end inline asm
+	// begin inline asm
+	mul.rn.f16x2 %r2065, %r2066, %r2066;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2068, %r2069, %r2069, %r2065;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2072, %r2073, %r2073, %r2068;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2076, %r2077, %r2077, %r2072;
+	// end inline asm
+	// begin inline asm
+	fma.rn.f16x2 %r2160, %r1948, %r2076, %r2160;
 	// end inline asm
 	bar.sync 	0;
-	add.s32 	%r2063, %r2063, -1;
+	add.s32 	%r2159, %r2159, -1;
 	add.s16 	%rs82, %rs82, 1;
-	setp.eq.s32 	%p79, %r2063, 0;
+	setp.eq.s32 	%p79, %r2159, 0;
 	@%p79 bra 	$L__BB0_11;
 	bra.uni 	$L__BB0_10;
-$L__BB0_11:                             // %pass6790
+$L__BB0_11:                             // %pass6886
                                         //   in Loop: Header=BB0_8 Depth=1
-	shl.b32 	%r2049, %r5, 19;
-	or.b32  	%r2050, %r2049, %r137;
-	or.b32  	%r2051, %r2050, %r136;
-	or.b32  	%r2052, %r2051, %r3;
-	cvt.u64.u32 	%rd92, %r2052;
+	shl.b32 	%r2145, %r5, 19;
+	or.b32  	%r2146, %r2145, %r137;
+	or.b32  	%r2147, %r2146, %r136;
+	or.b32  	%r2148, %r2147, %r3;
+	cvt.u64.u32 	%rd92, %r2148;
 	add.s64 	%rd93, %rd92, %rd37;
 	shr.u64 	%rd94, %rd93, 35;
 	add.s64 	%rd95, %rd93, %rd94;
@@ -2555,9 +2651,9 @@ $L__BB0_11:                             // %pass6790
 	sub.s64 	%rd101, %rd93, %rd100;
 	shl.b64 	%rd102, %rd101, 2;
 	add.s64 	%rd103, %rd3, %rd102;
-	st.global.u32 	[%rd103], %r2071;
-	or.b32  	%r2053, %r2052, 256;
-	cvt.u64.u32 	%rd104, %r2053;
+	st.global.u32 	[%rd103], %r2167;
+	or.b32  	%r2149, %r2148, 256;
+	cvt.u64.u32 	%rd104, %r2149;
 	add.s64 	%rd105, %rd104, %rd37;
 	shr.u64 	%rd106, %rd105, 35;
 	add.s64 	%rd107, %rd105, %rd106;
@@ -2568,9 +2664,9 @@ $L__BB0_11:                             // %pass6790
 	add.s64 	%rd112, %rd3, %rd111;
 	shl.b64 	%rd113, %rd105, 2;
 	add.s64 	%rd114, %rd112, %rd113;
-	st.global.u32 	[%rd114], %r2070;
-	or.b32  	%r2054, %r2052, 512;
-	cvt.u64.u32 	%rd115, %r2054;
+	st.global.u32 	[%rd114], %r2166;
+	or.b32  	%r2150, %r2148, 512;
+	cvt.u64.u32 	%rd115, %r2150;
 	add.s64 	%rd116, %rd115, %rd37;
 	shr.u64 	%rd117, %rd116, 35;
 	add.s64 	%rd118, %rd116, %rd117;
@@ -2581,9 +2677,9 @@ $L__BB0_11:                             // %pass6790
 	add.s64 	%rd123, %rd3, %rd122;
 	shl.b64 	%rd124, %rd116, 2;
 	add.s64 	%rd125, %rd123, %rd124;
-	st.global.u32 	[%rd125], %r2069;
-	or.b32  	%r2055, %r2052, 768;
-	cvt.u64.u32 	%rd126, %r2055;
+	st.global.u32 	[%rd125], %r2165;
+	or.b32  	%r2151, %r2148, 768;
+	cvt.u64.u32 	%rd126, %r2151;
 	add.s64 	%rd127, %rd126, %rd37;
 	shr.u64 	%rd128, %rd127, 35;
 	add.s64 	%rd129, %rd127, %rd128;
@@ -2594,9 +2690,9 @@ $L__BB0_11:                             // %pass6790
 	add.s64 	%rd134, %rd3, %rd133;
 	shl.b64 	%rd135, %rd127, 2;
 	add.s64 	%rd136, %rd134, %rd135;
-	st.global.u32 	[%rd136], %r2068;
-	or.b32  	%r2056, %r2052, 1024;
-	cvt.u64.u32 	%rd137, %r2056;
+	st.global.u32 	[%rd136], %r2164;
+	or.b32  	%r2152, %r2148, 1024;
+	cvt.u64.u32 	%rd137, %r2152;
 	add.s64 	%rd138, %rd137, %rd37;
 	shr.u64 	%rd139, %rd138, 35;
 	add.s64 	%rd140, %rd138, %rd139;
@@ -2607,9 +2703,9 @@ $L__BB0_11:                             // %pass6790
 	add.s64 	%rd145, %rd3, %rd144;
 	shl.b64 	%rd146, %rd138, 2;
 	add.s64 	%rd147, %rd145, %rd146;
-	st.global.u32 	[%rd147], %r2067;
-	or.b32  	%r2057, %r2052, 1280;
-	cvt.u64.u32 	%rd148, %r2057;
+	st.global.u32 	[%rd147], %r2163;
+	or.b32  	%r2153, %r2148, 1280;
+	cvt.u64.u32 	%rd148, %r2153;
 	add.s64 	%rd149, %rd148, %rd37;
 	shr.u64 	%rd150, %rd149, 35;
 	add.s64 	%rd151, %rd149, %rd150;
@@ -2620,9 +2716,9 @@ $L__BB0_11:                             // %pass6790
 	add.s64 	%rd156, %rd3, %rd155;
 	shl.b64 	%rd157, %rd149, 2;
 	add.s64 	%rd158, %rd156, %rd157;
-	st.global.u32 	[%rd158], %r2066;
-	or.b32  	%r2058, %r2052, 1536;
-	cvt.u64.u32 	%rd159, %r2058;
+	st.global.u32 	[%rd158], %r2162;
+	or.b32  	%r2154, %r2148, 1536;
+	cvt.u64.u32 	%rd159, %r2154;
 	add.s64 	%rd160, %rd159, %rd37;
 	shr.u64 	%rd161, %rd160, 35;
 	add.s64 	%rd162, %rd160, %rd161;
@@ -2633,9 +2729,9 @@ $L__BB0_11:                             // %pass6790
 	add.s64 	%rd167, %rd3, %rd166;
 	shl.b64 	%rd168, %rd160, 2;
 	add.s64 	%rd169, %rd167, %rd168;
-	st.global.u32 	[%rd169], %r2065;
-	or.b32  	%r2059, %r2052, 1792;
-	cvt.u64.u32 	%rd170, %r2059;
+	st.global.u32 	[%rd169], %r2161;
+	or.b32  	%r2155, %r2148, 1792;
+	cvt.u64.u32 	%rd170, %r2155;
 	add.s64 	%rd171, %rd170, %rd37;
 	shr.u64 	%rd172, %rd171, 35;
 	add.s64 	%rd173, %rd171, %rd172;
@@ -2646,20 +2742,20 @@ $L__BB0_11:                             // %pass6790
 	add.s64 	%rd178, %rd3, %rd177;
 	shl.b64 	%rd179, %rd171, 2;
 	add.s64 	%rd180, %rd178, %rd179;
-	st.global.u32 	[%rd180], %r2064;
-	add.s32 	%r149, %r2062, 24;
+	st.global.u32 	[%rd180], %r2160;
+	add.s32 	%r149, %r2158, 24;
 	add.s16 	%rs81, %rs81, 24;
-	setp.eq.s32 	%p83, %r2062, 24552;
-	mov.u32 	%r2062, %r149;
+	setp.eq.s32 	%p83, %r2158, 24552;
+	mov.u32 	%r2158, %r149;
 	@%p83 bra 	$L__BB0_12;
 	bra.uni 	$L__BB0_8;
 $L__BB0_12:                             // %pass2308
-	mov.b32 	%r2060, 0;
-	st.global.u32 	[%rd4], %r2060;
+	mov.b32 	%r2156, 0;
+	st.global.u32 	[%rd4], %r2156;
 	ret;
 $L__BB0_13:                             // %pass163
-	mov.b32 	%r2061, 2;
-	st.global.u32 	[%rd4], %r2061;
+	mov.b32 	%r2157, 2;
+	st.global.u32 	[%rd4], %r2157;
 	mov.u64 	%rd181, exception887;
 	cvta.global.u64 	%rd182, %rd181;
 	{ // callseq 11, 0

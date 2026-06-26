@@ -87,17 +87,17 @@ gpuSimulateN2kCorr::gpuSimulateN2kCorr(Config& config, const std::string& unique
     input_buf->require_frame_desc(
         kotekan::NDArray<kotekan::int4x2_swapped_withoffset_t, 4>::describe(
             "E", {_samples_per_data_set, _num_local_freq, 2, _num_elements / 2},
-            {"T", "F", "P", "D"}));
+            {"T", "F", "P", "D"}, {1, 1, 1, 1}));
     rfimask_buf->require_frame_desc(
         kotekan::NDArray<kotekan::GetType<kotekan::uint1x8>::type, 3>::describe(
             "RFImask", {_samples_per_data_set / 1024, _num_local_freq, 128},
-            {"T8hi128", "F", "T8lo128"}));
+            {"T8hi128", "F", "T8lo128"}, {1024, 1, 8}));
     output_buf->require_frame_desc(
         kotekan::NDArray<kotekan::GetType<kotekan::int32>::type, 6>::describe(
             "n2k_correlation",
             {nt_outer, _num_local_freq, num_triangle_blocks(_num_elements, _corr_blocksize), 16, 16,
              2},
-            {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}));
+            {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}, {_sub_integration_ntime, 1, 16, 1, 1, 1}));
 }
 
 gpuSimulateN2kCorr::~gpuSimulateN2kCorr() {}
@@ -258,13 +258,14 @@ void gpuSimulateN2kCorr::main_thread() {
         meta_out->type = kotekan::int32;
         meta_out->dims = 6;
         assert(meta_out->dims <= CHORD_META_MAX_DIM);
-        meta_out->set_array_dimension(0, nt_outer, "Tc");
-        meta_out->set_array_dimension(1, _num_local_freq, "F");
+        meta_out->set_array_dimension(
+            0, nt_outer, "Tc", meta_in->get_time_downsampling_fpga() * _sub_integration_ntime);
+        meta_out->set_array_dimension(1, _num_local_freq, "F", 1);
         meta_out->set_array_dimension(2, num_triangle_blocks(_num_elements, _corr_blocksize),
-                                      "DPhi");
-        meta_out->set_array_dimension(3, 16, "DPlo1");
-        meta_out->set_array_dimension(4, 16, "DPlo2");
-        meta_out->set_array_dimension(5, 2, "C");
+                                      "DPhi", 16);
+        meta_out->set_array_dimension(3, 16, "DPlo1", 1);
+        meta_out->set_array_dimension(4, 16, "DPlo2", 1);
+        meta_out->set_array_dimension(5, 2, "C", 1);
         meta_out->set_strides_simple();
 
         // frame_desc set in constructor
