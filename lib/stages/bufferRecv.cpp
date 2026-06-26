@@ -616,6 +616,34 @@ void connInstance::internal_read_callback() {
                 if (metadata)
                     metadata->set_from_bytes((char*)metadata_space, buf_frame_header.metadata_size);
 
+                // When use_frame_desc is set the descriptor is transmitted over the
+                // wire and validated above; otherwise reconstruct it here from the
+                // received chordMetadata.
+                if (!use_frame_desc) {
+                    auto chord = std::dynamic_pointer_cast<chordMetadata>(metadata);
+                    if (chord) {
+                        /* new style array description */
+                        std::vector<std::ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
+                        std::vector<kotekan::Symbol> dimnames(chord->dims);
+                        for (size_t d = 0; d < dimnames.size(); ++d) {
+                            dimnames.at(d) =
+                                std::string(chord->dim_name[d],
+                                            strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
+                        }
+                        std::vector<std::ptrdiff_t> dimscalings(chord->dim_scaling,
+                                                                chord->dim_scaling + chord->dims);
+
+                        // The frame descriptor is discovered from the received frame,
+                        // so ensure_frame_desc: attach it when the receive buffer is
+                        // undeclared (e.g. `standard`), or validate the received shape
+                        // against the buffer's declared descriptor when it has one.
+                        buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                            chord->type, chord->get_name(), dimensions, dimnames, dimscalings));
+                        /* test that things are consistent */
+                        chord->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
+                    }
+                }
+
                 buf->mark_frame_full(producer_name, frame_id);
 
                 // Save a prometheus metric of the elapsed time
