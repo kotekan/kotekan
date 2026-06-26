@@ -15,7 +15,9 @@
 #include <exception>           // for exception
 #include <limits>              // for numeric_limits
 #include <list>                // for list
+#include <map>                 // for map
 #include <regex>               // for regex, regex_match, cmatch, sregex_token_iterator
+#include <set>                 // for set
 #include <stdexcept>           // for runtime_error
 #include <string>              // for basic_string, operator==, string, char_traits, allocator
 #include <type_traits>         // for is_arithmetic, is_integral, enable_if, is_same, conditional
@@ -265,9 +267,51 @@ public:
      */
     void dump_config() const;
 
+    /**
+     * @brief Enable or disable recording of config value accesses.
+     *
+     * When enabled, every leaf value returned by @c get_value() is recorded,
+     * together with the base path (typically a stage's unique name) that
+     * requested it. Branch (object) reads are not recorded; only leaf values
+     * count as "used". A summary of which leaf items were and were not used
+     * can then be logged with @c log_access_summary().
+     *
+     * Intended to be set once at startup, before any values are read, so the
+     * summary covers all framework and stage accesses.
+     *
+     * @param enable Whether to record accesses.
+     */
+    void set_track_access(bool enable);
+
+    /**
+     * @brief Log (at INFO) a summary of which config leaf items were accessed
+     *        and which were not, listing for each used item the base paths
+     *        (stages) that accessed it.
+     *
+     * Does nothing if access tracking was never enabled.
+     */
+    void log_access_summary() const;
+
 private:
     /// Internal json object
     nlohmann::json _json;
+
+    /// Whether to record config leaf accesses (see @c set_track_access()). Set
+    /// once at startup before stages run, so reads of it need no locking.
+    bool _track_access = false;
+
+    /// Resolved JSON pointer of each accessed leaf -> the base paths (stages)
+    /// that requested it. Only populated while @c _track_access is set.
+    mutable std::map<std::string, std::set<std::string>> _accessed;
+
+    /// Record one leaf access at resolved @c leaf_path requested from
+    /// @c base_path. Called by @c get_value() when tracking is enabled.
+    void record_access(const std::string& leaf_path, const std::string& base_path) const;
+
+    /// Append the JSON pointer of every leaf (non-object) node reachable from
+    /// @c j (built under @c path) to @c leaves. Helper for @c log_access_summary().
+    void collect_leaf_paths(const nlohmann::json& j, const std::string& path,
+                            std::vector<std::string>& leaves) const;
 
     /**
      * @brief Finds all values with key "name". Searches the given json.

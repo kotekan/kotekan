@@ -48,6 +48,10 @@ kotekanMode::kotekanMode(Config& config_) : config(config_) {
 
 kotekanMode::~kotekanMode() {
 
+    // Log which config items were used (and by which stage) if usage tracking
+    // was enabled. Done before tearing down stages, while config is intact.
+    config.log_access_summary();
+
     configUpdater::instance().reset();
     restServer::instance().remove_get_callback("/config");
     restServer::instance().remove_get_callback("/buffers");

@@ -191,6 +191,21 @@ parent scopes, then the root. Jinja2 templating can be used in ``.j2`` configs; 
 ``-e '{"key": "value"}'`` when invoking kotekan. Shared constants can be defined at higher levels
 and referenced by name in child blocks.
 
+Config usage tracking
+---------------------
+
+Set the top-level ``log_config_usage: true`` to have kotekan record which config leaf items (scalar
+values, strings, and lists -- not the object blocks that contain them) are actually read while a
+pipeline runs, and by which path. At shutdown an ``INFO`` summary is logged listing the accessed
+items (with the requesting base paths, typically stage ``unique_name``\ s) and the items that were
+never accessed. This is useful for spotting stale or misspelled config keys that no stage consumes.
+The feature is off by default and adds no overhead unless enabled.
+
+Framework dispatch markers (``kotekan_buffer``, ``kotekan_stage``, ``kotekan_metadata_pool``,
+``kotekan_update_endpoint``) are excluded from the summary: the factories and config updater consume
+those by walking the config tree directly rather than through a value lookup, so they would otherwise
+always appear as unused.
+
 REST server
 -----------
 

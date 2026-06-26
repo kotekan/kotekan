@@ -6,8 +6,12 @@
 #include <cstddef>   // for size_t
 #include <cstdint>   // for int32_t, uint8_t
 #include <fstream>   // for basic_ifstream, basic_istream, ifstream
+#include <map>       // for map
+#include <mutex>     // for mutex, lock_guard
+#include <set>       // for set
 #include <stdexcept> // for runtime_error
 #include <stdio.h>   // for sprintf
+#include <string>    // for string
 #include <vector>    // for vector
 
 #ifdef WITH_SSL
@@ -18,6 +22,11 @@ using nlohmann::json;
 using std::vector;
 
 namespace kotekan {
+
+// Guards Config::_accessed for all instances. Access tracking is an opt-in
+// diagnostic feature, so a single shared lock (rather than a per-instance
+// mutex, which would make Config non-copyable) is sufficient.
+static std::mutex access_lock;
 
 // Instantiation of the most common types to prevent them being built inline
 // everywhere used.
@@ -95,26 +104,31 @@ json Config::get_value(const std::string& base_path, const std::string& name) co
     std::string search_path = base_path;
     for (;;) {
 
+        // Resolve the value's full JSON pointer at the current search scope,
+        // walking up the tree until found. Behaviour matches the original
+        // chain of guards, but with a single exit so accesses can be recorded.
+        std::string value_path;
         if (search_path == "" && exists("/", name)) {
-            json::json_pointer value_pointer(fmt::format(fmt("/{:s}"), name));
-            return _json.at(value_pointer);
-        }
-
-        if (search_path == "")
+            value_path = fmt::format(fmt("/{:s}"), name);
+        } else if (search_path == "") {
             break;
-
-        if (search_path == "/" && exists(search_path, name)) {
-            json::json_pointer value_pointer(search_path + name);
-            return _json.at(value_pointer);
+        } else if (search_path == "/" && exists(search_path, name)) {
+            value_path = search_path + name;
+        } else if (exists(search_path, name)) {
+            value_path = fmt::format(fmt("{:s}/{:s}"), search_path, name);
+        } else {
+            std::size_t last_slash = search_path.find_last_of("/");
+            search_path = search_path.substr(0, last_slash);
+            continue;
         }
 
-        if (exists(search_path, name)) {
-            json::json_pointer value_pointer(fmt::format(fmt("{:s}/{:s}"), search_path, name));
-            return _json.at(value_pointer);
-        }
-
-        std::size_t last_slash = search_path.find_last_of("/");
-        search_path = search_path.substr(0, last_slash);
+        json::json_pointer value_pointer(value_path);
+        const json& value = _json.at(value_pointer);
+        // Note the access of a leaf value (not a branch/object) when tracking
+        // is enabled, attributed to the requesting base path.
+        if (_track_access && !value.is_object())
+            record_access(value_path, base_path);
+        return value;
     }
     throw std::runtime_error(
         fmt::format(fmt("The config option: {:s} is required, but was not found in the path: {:s}"),
@@ -156,6 +170,74 @@ void Config::get_value_recursive(const json& j, const std::string& name,
 
 void Config::dump_config() const {
     INFO_NON_OO("Config: {:s}", _json.dump(4));
+}
+
+void Config::set_track_access(bool enable) {
+    _track_access = enable;
+}
+
+void Config::record_access(const std::string& leaf_path, const std::string& base_path) const {
+    std::lock_guard<std::mutex> lock(access_lock);
+    _accessed[leaf_path].insert(base_path);
+}
+
+// Leaves that are never read through get(): the framework dispatch markers
+// (kotekan_buffer/kotekan_stage/kotekan_metadata_pool/kotekan_update_endpoint),
+// which the factories and configUpdater consume by walking get_full_config_json()
+// directly, plus the top-level meta keys. These are not tunable config values,
+// so excluding them keeps the usage summary focused on real settings.
+static bool is_framework_key(const std::string& path) {
+    const std::size_t slash = path.find_last_of('/');
+    const std::string key = (slash == std::string::npos) ? path : path.substr(slash + 1);
+    if (key.rfind("kotekan_", 0) == 0)
+        return true;
+    return path == "/type" || path == "/log_config_usage";
+}
+
+void Config::collect_leaf_paths(const json& j, const std::string& path,
+                                vector<std::string>& leaves) const {
+    if (j.is_object()) {
+        for (auto it = j.begin(); it != j.end(); ++it)
+            collect_leaf_paths(it.value(), fmt::format(fmt("{:s}/{:s}"), path, it.key()), leaves);
+    } else if (!is_framework_key(path)) {
+        leaves.push_back(path);
+    }
+}
+
+void Config::log_access_summary() const {
+    if (!_track_access)
+        return;
+
+    // Enumerate every leaf in the config, then split into accessed vs. not,
+    // using the paths recorded by get_value().
+    vector<std::string> leaves;
+    collect_leaf_paths(_json, "", leaves);
+
+    std::string accessed;
+    std::string not_accessed;
+    std::size_t n_accessed = 0;
+
+    std::lock_guard<std::mutex> lock(access_lock);
+    for (const std::string& leaf : leaves) {
+        auto it = _accessed.find(leaf);
+        if (it == _accessed.end()) {
+            not_accessed += fmt::format(fmt("\n    {:s}"), leaf);
+            continue;
+        }
+        n_accessed++;
+        std::string base_paths;
+        for (const std::string& base_path : it->second) {
+            if (!base_paths.empty())
+                base_paths += ", ";
+            base_paths += base_path;
+        }
+        accessed += fmt::format(fmt("\n    {:s}  <- {:s}"), leaf, base_paths);
+    }
+
+    INFO_NON_OO("Config usage summary: {:d} of {:d} leaf items accessed.\n"
+                "  Accessed (item <- requesting paths):{:s}\n"
+                "  Not accessed:{:s}",
+                n_accessed, leaves.size(), accessed, not_accessed);
 }
 
 const json& Config::get_full_config_json() const {

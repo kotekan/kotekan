@@ -415,6 +415,13 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
 
     if (dump_config)
         config.dump_config();
+
+    // When enabled, record which config leaf items get read (and by which
+    // path) so a usage summary can be logged at shutdown (see ~kotekanMode).
+    // Turned on here, before any values are read, so the summary is complete.
+    if (config.get_default<bool>("/", "log_config_usage", false))
+        config.set_track_access(true);
+
     update_log_levels(config);
 
     request_backtraces(config.get_default<std::vector<std::string>>("/", "trap_signals", {}));
