@@ -3,6 +3,7 @@
 #include "GnssCorrFrame.hpp"  // for CorrFrameHeader, corr_*
 #include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
 #include "gnssChannelizedAcquire.hpp" // for aggregate_accumulate, channelized_peak
+#include "gnssChannelizedDespread.hpp" // for channelized_despread (central refine)
 #include "gnssSignal.hpp"     // for SignalDescriptor, signal_by_name
 #include "kotekanLogging.hpp" // for INFO, WARN, FATAL_ERROR
 #include "pfbPrototype.hpp"   // for window_from_string
@@ -165,15 +166,46 @@ void GnssSearchAggregator::main_thread() {
             det.snr = (float)a.snr;
             if (detected) {
                 const double dop = -a.doppler_hz; // r2c fold conjugates freq axis
-                double cp = std::fmod(a.code_phase_chips - off, L);
+
+                // CENTRAL REFINE: the coarse acquire cp is ~1-3 chips off the true
+                // despread peak (windowed-PFB fine-lag bias) -- too coarse to lock a
+                // tracker. Climb to the true peak with an exact ±1-hop despread scan
+                // over the covering channels' shipped window-0 raw (the same refine
+                // the monolithic GnssChannelizedSearch does, now distributed: each
+                // subband shipped its g_c contribution as raw, summed here).
+                const int hpr = h0->raw_hops;
+                const long long anchor = (long long)Mp * sph;
+                const int span = sph;
+                double best_cp = a.code_phase_chips, best_pw = -1.0;
+                std::vector<std::vector<cf>> d(nc, std::vector<cf>(hpr));
+                for (int ci = 0; ci < nc; ++ci) {
+                    const cf* raw = reinterpret_cast<const cf*>(
+                        cov_frames[ci] + gnss::corr_raw_offset(n_prn, nwin, nd, Mp));
+                    for (int m = 0; m < hpr; ++m)
+                        d[ci][m] = raw[m];
+                }
+                for (int k = -span; k <= span; ++k) {
+                    const double cp_try = a.code_phase_chips + k * cps;
+                    const auto repl = _replica->channels(p, anchor, cp_try, dop, hpr); // [N][hpr]
+                    std::vector<std::vector<cf>> r(nc);
+                    for (int ci = 0; ci < nc; ++ci)
+                        r[ci] = repl[cov_freq[ci]];
+                    const double pw = std::norm(gnss::channelized_despread(d, r).amplitude);
+                    if (pw > best_pw) {
+                        best_pw = pw;
+                        best_cp = cp_try;
+                    }
+                }
+
+                double cp = std::fmod(best_cp - off, L);
                 if (cp < 0.0)
                     cp += L;
                 det.doppler_hz = dop;
                 det.code_phase_chips = cp;
                 det.valid = true;
-                INFO("GnssSearchAggregator[{:s}]: PRN {:d} detected (Doppler {:+.0f} Hz, cp {:.1f} "
-                     "chips, snr {:.1f}, {:d} chan)",
-                     unique_name, _prns[p], dop, cp, a.snr, nc);
+                INFO("GnssSearchAggregator[{:s}]: PRN {:d} detected (Doppler {:+.0f} Hz, cp {:.2f} "
+                     "chips [refined {:+.2f}], snr {:.1f}, {:d} chan)",
+                     unique_name, _prns[p], dop, cp, best_cp - a.code_phase_chips, a.snr, nc);
             }
             std::lock_guard<std::mutex> lk(_det_mtx);
             if (detected) {

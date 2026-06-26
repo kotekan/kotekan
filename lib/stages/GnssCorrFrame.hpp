@@ -21,8 +21,11 @@
 namespace gnss {
 
 /// Header at the start of every @ref GnssChannelCorrelator output frame.
-/// Followed (covering channels only) by @c n_prn * nwin * nd * Mp complex<float>
-/// in PRN-major, then window, then Doppler, then coarse-lag order.
+/// Followed (covering channels only) by the complex P_c payload
+/// (@c n_prn * nwin * nd * Mp, PRN-major then window, Doppler, coarse-lag), then
+/// the raw window-0 block (@c raw_hops complex) this channel contributed -- the
+/// voltage the central refine (@ref GnssSearchAggregator) despreads on a fine cp
+/// grid to climb from the coarse acquire peak to the true (lockable) code phase.
 struct CorrFrameHeader {
     int32_t magic;          ///< CORR_FRAME_MAGIC
     int32_t chan_freq;      ///< global frequency index of this correlator's channel
@@ -33,6 +36,7 @@ struct CorrFrameHeader {
     int32_t nd;             ///< Doppler trials
     int32_t Mp;             ///< coarse-lag range (replica hop-period)
     int32_t sph;            ///< full-rate samples per hop (fine-lag range / r2c 2N)
+    int32_t raw_hops;       ///< hops of window-0 raw appended for the refine (= hops/record)
 };
 
 constexpr int32_t CORR_FRAME_MAGIC = 0x47435231; // 'GCR1'
@@ -43,14 +47,19 @@ inline size_t corr_payload_offset() {
     return (h + 7) & ~size_t(7);
 }
 
-/// Complex floats in a full payload for the given dimensions.
+/// Complex floats in a full P_c payload for the given dimensions.
 inline size_t corr_payload_complex(int n_prn, int nwin, int nd, int Mp) {
     return (size_t)n_prn * nwin * nd * Mp;
 }
 
-/// Total frame bytes needed for the given dimensions (covering worst case).
-inline size_t corr_frame_size(int n_prn, int nwin, int nd, int Mp) {
+/// Byte offset of the raw window-0 block (immediately after the P_c payload).
+inline size_t corr_raw_offset(int n_prn, int nwin, int nd, int Mp) {
     return corr_payload_offset() + corr_payload_complex(n_prn, nwin, nd, Mp) * 2 * sizeof(float);
+}
+
+/// Total frame bytes for the given dimensions (covering worst case: P_c + raw).
+inline size_t corr_frame_size(int n_prn, int nwin, int nd, int Mp, int raw_hops) {
+    return corr_raw_offset(n_prn, nwin, nd, Mp) + (size_t)raw_hops * 2 * sizeof(float);
 }
 
 /// Flat index of P_c[prn][win][d][q] within the complex payload.

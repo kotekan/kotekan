@@ -108,6 +108,7 @@ void GnssChannelCorrelator::correlate_snapshot(char* out, long long snap_start_h
     hdr->nd = nd;
     hdr->Mp = Mp;
     hdr->sph = _fft_len;
+    hdr->raw_hops = hpr;
     if (!_covers)
         return; // header-only frame keeps the aggregator's gather aligned
 
@@ -128,6 +129,13 @@ void GnssChannelCorrelator::correlate_snapshot(char* out, long long snap_start_h
                     payload[gnss::corr_index(p, w, d, q, nwin, nd, Mp)] = P[d][q];
         }
     }
+
+    // Window-0 raw voltage for this channel: the central refine despreads it on a
+    // fine cp grid to climb from the coarse peak to the lockable code phase. One
+    // window (hpr hops) is ~0.25% of the P_c payload -- negligible to ship.
+    cf* raw = reinterpret_cast<cf*>(out + gnss::corr_raw_offset(n_prn, nwin, nd, Mp));
+    for (int m = 0; m < hpr; ++m)
+        raw[m] = _snapshot[(size_t)m];
 }
 
 void GnssChannelCorrelator::main_thread() {

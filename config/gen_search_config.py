@@ -16,11 +16,13 @@ PRNS = "[5, 10, 23]"     # 1 control (5) + 2 known (10, 23)
 NWIN = 8                 # integration windows per snapshot (P_c payload scales with this)
 NPRN = 3
 
-# P_c payload per covering frame: n_prn * nwin * nd * Mp complex<float>.
+# P_c payload per covering frame: n_prn * nwin * nd * Mp complex<float>, plus a
+# window-0 raw block (Mp hops, the refine voltage; ~0.25% of the payload).
 # nd = 25 (doppler -6000..6000 step 500), Mp = 250 (code_samples 20000 / gcd(80,20000)).
 ND, MP, HDR = 25, 250, 64
 PAY = NPRN * NWIN * ND * MP * 8
-FRAME = HDR + PAY
+RAW = MP * 8           # window-0 raw, hpr(=Mp) complex<float>
+FRAME = HDR + PAY + RAW
 
 L = []
 L.append("""---

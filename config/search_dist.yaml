@@ -31,85 +31,85 @@ input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buf
 chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
 
 ch_00: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_00: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_00: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_01: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_01: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_01: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_02: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_02: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_02: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_03: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_03: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_03: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_04: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_04: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_04: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_05: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_05: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_05: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_06: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_06: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_06: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_07: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_07: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_07: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_08: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_08: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_08: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_09: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_09: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_09: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_10: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_10: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_10: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_11: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_11: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_11: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_12: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_12: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_12: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_13: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_13: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_13: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_14: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_14: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_14: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_15: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_15: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_15: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_16: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_16: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_16: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_17: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_17: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_17: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_18: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_18: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_18: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_19: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_19: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_19: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_20: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_20: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_20: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_21: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_21: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_21: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_22: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_22: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_22: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_23: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_23: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_23: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_24: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_24: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_24: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_25: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_25: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_25: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_26: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_26: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_26: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_27: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_27: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_27: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_28: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_28: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_28: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_29: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_29: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_29: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_30: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_30: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_30: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_31: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_31: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_31: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_32: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_32: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_32: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_33: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_33: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_33: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_34: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_34: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_34: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_35: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_35: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_35: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_36: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_36: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_36: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_37: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_37: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_37: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_38: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_38: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_38: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 ch_39: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / 40 }
-pc_39: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1200064 }
+pc_39: { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: 1202064 }
 
 read_in: { kotekan_stage: rawFileRead, buf: input_buf, base_dir: "/tmp/gpsin_ref", file_name: "gpsin", file_ext: "raw", end_interrupt: true }
 fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
