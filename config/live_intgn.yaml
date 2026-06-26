@@ -59,7 +59,11 @@ fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, inpu
 
 search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 20, acquire_snr: 10.0, acquire_windows: 20 }
 valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
-track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 20, pullin_chips: 1.0, pullin_step: 0.5 }
+# capture_utc0 > 0 -> stamp each record's UTC as capture_utc0 + window_start/sample_rate
+# (true CAPTURE time from fpga_seq), not wall-clock-at-emit. Emit time is bursty (the
+# pipeline drains buffered frames then stalls), which corrupts the integration time axis
+# and any phase-vs-time Doppler fit; capture time is exact 1 ms/record with clean gaps.
+track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 20, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0 }
 # integration_length: 1 -> emit every per-record A raw (offline integration in the reader).
 combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1 }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpsintgn", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
