@@ -53,6 +53,10 @@
  * @conf code_phase_chips Array<Double>. Seeded code phase per PRN (scalar broadcasts).
  * @conf doppler_margin_hz Double (default 5000). Extra band for covering-channel select.
  * @conf hops_per_record  Int (default: one code period). Coherent window, hops.
+ * @conf pullin_chips     Double (default 0). Code pull-in half-window (chips): despread
+ *                        over seed +/- this and lock to the peak |A|, so a stale/drifting
+ *                        seed still locks (DLL-style). 0 = single despread at the seed.
+ * @conf pullin_step      Double (default 0.5). Pull-in grid step (chips).
  * @conf active_prns      Array<Int> (optional). Initial go/no-go mask (default all on).
  * @conf capture_utc0     Double (default 0). UTC of sample 0; 0 = wall-clock at emit.
  *
@@ -89,6 +93,9 @@ private:
     int _chan_offset; ///< global index of this subband's local channel 0
     int _n_chan;      ///< channels owned by this subband
     int _hops_per_record;
+
+    double _pullin_chips; ///< code pull-in half-window (chips); 0 = despread at the seed only
+    double _pullin_step;  ///< code pull-in grid step (chips)
 
     std::vector<int> _prns;
     std::vector<double> _doppler;

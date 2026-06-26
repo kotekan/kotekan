@@ -79,6 +79,8 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     _hops_per_record =
         config.get_default<int>(unique_name, "hops_per_record", _replica->repl_period_hops());
     _replica->code_doppler_sign = config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
+    _pullin_chips = config.get_default<double>(unique_name, "pullin_chips", 0.0);
+    _pullin_step = config.get_default<double>(unique_name, "pullin_step", 0.5);
 
     const auto active_prns = config.get_default<std::vector<int>>(unique_name, "active_prns", {});
     _active.assign(n_prn, 1);
@@ -192,23 +194,46 @@ void GnssChannelizedTracker::main_thread() {
                 if (owned.empty())
                     continue; // carrier not in this subband
 
-                const auto repl =
-                    _replica->channels(p, window_start, cp[p], dop[p], _hops_per_record);
-                std::vector<std::vector<cf>> data_ch, repl_ch;
+                // The window data is fixed; only the replica varies with the cp trial.
+                std::vector<std::vector<cf>> data_ch;
                 data_ch.reserve(owned.size());
-                repl_ch.reserve(owned.size());
                 for (int c : owned) {
                     std::vector<cf> col(_hops_per_record);
                     const int local = c - _chan_offset;
                     for (int m = 0; m < _hops_per_record; ++m)
                         col[m] = window[(size_t)m * _n_chan + local];
                     data_ch.push_back(std::move(col));
-                    repl_ch.push_back(repl[c]);
                 }
-                const auto res = gnss::channelized_despread(data_ch, repl_ch);
-                rec[3] = (float)res.correlation.real();
-                rec[4] = (float)res.correlation.imag();
-                rec[5] = (float)res.replica_energy;
+
+                // Code pull-in: the seed cp is ~1 chip stale (search latency + residual
+                // cp drift), so despread over a small cp window and lock to the peak |A|
+                // -- a DLL-style search that makes the lock drift/latency-independent
+                // (this tracker spans all covering channels, so one peak cp is coherent
+                // across them). pullin_chips=0 -> a single despread at the seed.
+                gnss::DespreadResult best{};
+                double best_pw = -1.0, best_cp = cp[p];
+                for (double off = -_pullin_chips; off <= _pullin_chips + 1e-9;
+                     off += (_pullin_step > 0.0 ? _pullin_step : 1.0)) {
+                    const auto repl =
+                        _replica->channels(p, window_start, cp[p] + off, dop[p], _hops_per_record);
+                    std::vector<std::vector<cf>> repl_ch;
+                    repl_ch.reserve(owned.size());
+                    for (int c : owned)
+                        repl_ch.push_back(repl[c]);
+                    const auto res = gnss::channelized_despread(data_ch, repl_ch);
+                    const double pw = std::norm(res.amplitude);
+                    if (pw > best_pw) {
+                        best_pw = pw;
+                        best = res;
+                        best_cp = cp[p] + off;
+                    }
+                    if (_pullin_chips <= 0.0)
+                        break;
+                }
+                rec[2] = (float)best_cp; // the locked (pulled-in) code phase
+                rec[3] = (float)best.correlation.real();
+                rec[4] = (float)best.correlation.imag();
+                rec[5] = (float)best.replica_energy;
             }
 
             // Stamp the window's absolute sample on the record frame: it survives
