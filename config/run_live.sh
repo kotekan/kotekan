@@ -14,7 +14,11 @@
 set -u
 KOTEKAN=./build_mac/kotekan/kotekan
 CFG=${CFG:-config/live_full.yaml}        # CFG=config/live_lowrate.yaml for the 5 MSPS test
-TRK=${TRK:-track_{12..28}}               # tracker range (track_{02..18} for low-rate)
+# NB: the brace range MUST live in its own var -- nesting it inside ${TRK:-...} makes
+# bash match ${ to the first } and append a stray '}' (e.g. TRK=track -> "track}",
+# which 404s every set_seeds). Keep the default brace-free of the ${} wrapper.
+TRK_DEFAULT='track_{12..28}'             # tracker range (track_{02..18} for low-rate)
+TRK=${TRK:-$TRK_DEFAULT}
 BROKER=python/scripts/gps_distributed_broker.py
 LOG=/tmp/gpslive.log
 
