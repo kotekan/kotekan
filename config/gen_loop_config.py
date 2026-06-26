@@ -17,6 +17,10 @@ recombines coherently. N=40 @ 20 MSPS; covering channels 12..28 (GPS L1CA).
 Output: config/loop_single.yaml.
 """
 
+import sys
+TRANSPORT = "--transport" in sys.argv  # insert bufferSend/Recv before the gather
+                                       # (mirrors the live config, to repro its bug)
+PORT0 = 15001
 NCH = 40
 COV = list(range(12, 29))     # covering channels 12..28 (17), the search gather set
 NCOV = len(COV)
@@ -63,6 +67,9 @@ chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buf
 for c in range(NCH):
     L.append("ch_%02d:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / %d }" % (c, NCH))
     L.append("rec_%02d: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }" % c)
+if TRANSPORT:
+    for c in COV:
+        L.append("rc_%02d:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / %d }" % (c, NCH))
 L.append("gather_buf: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / %d * %d }" % (NCH, NCOV))
 L.append("out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }")
 L.append("")
@@ -81,7 +88,15 @@ L.append("split: { kotekan_stage: GnssSubbandSplit, in_buf: chan_buf, out_bufs: 
 L.append("")
 
 # Search arm (variant B): gather the covering channels -> monolithic search.
-gather_in = "[" + ", ".join("ch_%02d" % c for c in COV) + "]"
+# --transport inserts a bufferSend/Recv per covering channel before the gather,
+# mirroring the live config (to reproduce/debug its no-lock).
+if TRANSPORT:
+    for i, c in enumerate(COV):
+        L.append("send_%02d: { kotekan_stage: bufferSend, buf: ch_%02d, server_ip: 127.0.0.1, server_port: %d, drop_frames: false }" % (c, c, PORT0 + i))
+        L.append("recv_%02d: { kotekan_stage: bufferRecv, buf: rc_%02d, listen_port: %d, num_threads: 1 }" % (c, c, PORT0 + i))
+    gather_in = "[" + ", ".join("rc_%02d" % c for c in COV) + "]"
+else:
+    gather_in = "[" + ", ".join("ch_%02d" % c for c in COV) + "]"
 L.append("gather: { kotekan_stage: GnssChannelGather, in_bufs: %s, out_buf: gather_buf }" % gather_in)
 L.append("""search:
     kotekan_stage: GnssChannelizedSearch
@@ -104,6 +119,7 @@ L.append("combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: %s, out_buf:
 # rawFileWrite logs it; swap to dropAllFrames if you only want the REST poll.
 L.append('record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpsloop", file_name: "snr", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 100000, exit_after_n_files: 100000 }')
 
-open("config/loop_single.yaml", "w").write("\n".join(L) + "\n")
-print("wrote config/loop_single.yaml: gather(%d covering) -> search, %d trackers, 1 combiner"
-      % (NCOV, NCH))
+_out = "config/loop_transport.yaml" if TRANSPORT else "config/loop_single.yaml"
+open(_out, "w").write("\n".join(L) + "\n")
+print("wrote %s: %sgather(%d covering) -> search, %d trackers, 1 combiner"
+      % (_out, "%dx send/recv -> " % NCOV if TRANSPORT else "", NCOV, NCH))
