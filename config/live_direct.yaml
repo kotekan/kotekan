@@ -1,0 +1,57 @@
+---
+# Isolation test: live airspy search/track run DIRECTLY on the F-engine output
+# (chan_buf), with NO split / bufferSend / bufferRecv / gather. The covering
+# channels are naturally aligned in one [hop][N] frame, so if the cp `coarse`
+# stabilizes here (vs the random-across-[0,1023] bounce through the gather), the
+# gather/transport channel-alignment is the culprit. 5 MSPS, N=20.
+type: config
+log_level: info
+instrument_name: airspy_gps
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+samples_per_data_set: 49920
+bytes_per_sample: 2
+buffer_depth: 16
+sizeof_float: 4
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7]
+
+spectrum_length: 20
+num_taps: 4
+sample_rate: 5.0e6
+f_offset: 1.25e6
+signal: GPS_L1CA
+code_doppler_sign: 1.0
+n_prn: 32
+record_floats: 11
+doppler_margin_hz: 250000.0
+acquire_snr: 10.0
+acquire_windows: 20
+doppler_min: -6000.0
+doppler_max: 6000.0
+doppler_step: 500.0
+prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+
+gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }
+
+input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
+chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+rec_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+
+airspy_in:
+    kotekan_stage: airspyInput
+    out_buf: input_buf
+    freq: 1575.42
+    sample_bw: 2.5
+    gain_lna: 14
+    gain_mix: 15
+    gain_if: 15
+    biast_power: true
+fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
+
+# Search + track read chan_buf directly (channel_offset 0, all N=20 channels);
+# covering channels are selected internally. No gather/transport in the path.
+search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 20, acquire_snr: 10.0, acquire_windows: 20 }
+track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf, out_buf: rec_buf, channel_offset: 0, n_channels: 20 }
+combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 10 }
+record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpslive", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
