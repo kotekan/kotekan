@@ -158,7 +158,8 @@ if(FFTW_FOUND)
                 GnssChannelizedTracker.cpp
                 GnssChannelizedSearch.cpp
                 GnssChannelCorrelator.cpp
-                GnssSearchAggregator.cpp)
+                GnssSearchAggregator.cpp
+                GnssChannelGather.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
 endif()
