@@ -95,6 +95,36 @@ def derotate_wander(A, t, win, max_gap_s):
     return A * np.exp(-1j * phi)
 
 
+def navbit_wipe(A, t, bit_s=0.020, nphase=20):
+    """Estimated GPS nav-bit (50 bps -> 20 ms) data wipe-off. Bit-sync by the 20 ms
+    phase that maximises per-bit coherence, resolve the bit sign per epoch via squaring
+    (theta0 = 1/2 arg sum s^2, removing the +-1 ambiguity), then multiply it back out.
+    Removing the data modulation lets coherent integration run past the 20 ms nav bit.
+    Estimated here (bright sat); for deep sidelobes the bits are DECODED from a strong
+    reference / predicted from ephemeris (same bits for every beam). Pass FLL-derotated
+    A so the carrier doesn't smear the per-epoch sums."""
+    t0 = t[0]
+    best_off, best_g = 0.0, -1.0
+    for k in range(nphase):
+        off = k * bit_s / nphase
+        ep = np.floor((t - t0 - off) / bit_s).astype(np.int64)
+        ep -= ep.min()
+        cnt = np.bincount(ep)
+        sr = np.bincount(ep, weights=A.real)
+        si = np.bincount(ep, weights=A.imag)
+        v = cnt >= 2
+        g = float(np.mean(np.hypot(sr[v], si[v]))) if v.any() else 0.0
+        if g > best_g:
+            best_g, best_off = g, off
+    ep = np.floor((t - t0 - best_off) / bit_s).astype(np.int64)
+    ep -= ep.min()
+    s = np.bincount(ep, weights=A.real) + 1j * np.bincount(ep, weights=A.imag)
+    theta0 = 0.5 * np.angle(np.sum(s * s))            # common phase (squaring kills the bit)
+    bit = np.sign(np.real(s * np.exp(-1j * theta0)))  # +-1 per 20 ms epoch
+    bit[bit == 0] = 1.0
+    return A * bit[ep], best_off, int((bit != bit[0]).sum())
+
+
 def windowed_doppler(A, t, win, max_gap_s):
     """Residual carrier fit in consecutive win-record windows -> array of df (Hz).
     A constant residual gives a tight cluster (one derotation fixes it); a wandering
@@ -206,6 +236,35 @@ def main(argv=None):
             print("  %3d  %6.1f | %7.3f    %5.2f   %6.1f | %8.3f    %5.2f   %6.1f%s"
                   % (K, K * med, coh, coh / incoh if incoh else 0, snr,
                      dcoh, dcoh / dincoh if dincoh else 0, dsnr, tag))
+
+    # Nav-bit wipe on the brightest sat: FLL-derotate, estimate + remove the 20 ms data
+    # bits, then integrate well past 20 ms. This is the path to seconds of coherent
+    # integration (deep-sidelobe SNR) -- here the bits are estimated from the bright sat;
+    # the live science decodes/predicts them from a strong reference.
+    pb = locked[0]
+    Ab, tb = by_prn[pb]
+    fll_win = max(50, int(round(0.05 / nominal_s)))
+    deAb = derotate_wander(Ab, tb, fll_win, 1.5 * nominal_s)
+    wiped, woff, nflip = navbit_wipe(deAb, tb)
+    Kw = [20, 50, 100, 200, 500, 1000, 2000]
+    rawc = integrate(deAb, Kw)
+    wipc = integrate(wiped, Kw)
+    nzc = integrate(by_prn[noise_prn][0], Kw)
+    print("\n=== NAV-BIT WIPE (PRN %d) ===  bit-sync offset %.1f ms, %d bit flips; "
+          "FLL-derotated then data-wiped" % (pb, woff * 1e3, nflip))
+    print("   K   t(ms) |  no-wipe coh  c/i |  WIPED coh   c/i   SNR_coh   (past 20 ms)")
+    for K in Kw:
+        if K not in wipc:
+            continue
+        r, w = rawc.get(K), wipc[K]
+        fl = nzc[K]["coh"] if K in nzc and nzc[K]["coh"] else float("nan")
+        print("  %4d  %6.0f |  %8.3f  %4.2f |  %8.3f  %4.2f  %7.1f"
+              % (K, K * med, r["coh"] if r else float("nan"),
+                 (r["coh"] / r["incoh"] if r and r["incoh"] else 0),
+                 w["coh"], w["coh"] / w["incoh"] if w["incoh"] else 0,
+                 w["coh"] / fl if fl == fl and fl else float("nan")))
+    print("  >> no-wipe coh dies at the 20 ms nav bit; WIPED coh keeps growing -> SNR climbs")
+    print("     past it. Seconds of coherent integration = the deep-sidelobe sensitivity.")
 
     # Is the residual carrier a CONSTANT (one derotation fixes it) or WANDERING (the
     # broker re-seeds Doppler each ~0.2 s cycle from a coarse grid -> a staircase no
