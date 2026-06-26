@@ -188,6 +188,9 @@ def main(argv=None):
     ap.add_argument("--carrier-hz", type=float, default=1575.42e6, help="carrier for Doppler pred")
     ap.add_argument("--doppler-sign", type=float, default=1.0,
                     help="multiply predicted Doppler (set -1 if the convention is inverted)")
+    ap.add_argument("--bias-alpha", type=float, default=0.05,
+                    help="EMA weight for the clock-freq bias (smaller = steadier seed Doppler; "
+                         "~0.05 => few-second time constant, dithers out the 500 Hz grid)")
     ap.add_argument("--code-length", type=float, default=1023.0,
                     help="spreading-code length (chips) for cp0 unwrap/fit (L1 C/A = 1023)")
     ap.add_argument("--hops-per-sec", type=float, default=125000.0,
@@ -222,6 +225,7 @@ def main(argv=None):
     seeds = {}       # prn -> {"doppler_hz", "code_phase_chips", ...} (consensus)
     low_hits = {}    # prn -> consecutive low-|A| poll count
     cp_hist = {}     # prn -> [(ref_hop, cp0), ...] recent distinct snapshots (for the slope fit)
+    clock_bias_ema = None  # smoothed common clock-frequency bias (slow TCXO drift), Hz
     CODE_LEN = float(args.code_length)
     MAX_GAP_HOPS = 2.0e6   # reset cp history across a gap this large (re-acquisition)
     HIST_LEN = 8           # snapshots kept for the slope fit
@@ -250,7 +254,8 @@ def main(argv=None):
 
         # 2. orbit-predicted Doppler + visibility (almanac assist), else plain gate
         pred = {}          # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]
-        clock_bias = 0.0   # common receiver clock-frequency bias, Hz
+        # Hold the last smoothed bias through detection dropouts (the TCXO didn't move).
+        clock_bias = clock_bias_ema if clock_bias_ema is not None else 0.0
         up = None
         if args.almanac:
             try:
@@ -267,14 +272,22 @@ def main(argv=None):
             # (resid ~ -2x predicted) means flip --doppler-sign.
             resid = [best[p][1] - pred[p][0] for p in best if p in pred]
             if resid:
-                clock_bias = statistics.median(resid)
+                # The per-cycle median is quantized to the 500 Hz search grid and jumps
+                # hundreds of Hz as the detected-sat set flickers; the TRUE bias is a slow
+                # TCXO drift. EMA-smooth it (sub-grid dither across sats/cycles averages
+                # out the quantization) so every sat's seed Doppler is stable -- a jittery
+                # common bias was wrecking coherent integration (residual carrier +-260 Hz).
+                raw_bias = statistics.median(resid)
+                clock_bias_ema = (raw_bias if clock_bias_ema is None
+                                  else clock_bias_ema + args.bias_alpha * (raw_bias - clock_bias_ema))
+                clock_bias = clock_bias_ema
             for p in sorted(best):
                 if p in pred:
                     _log("PRN %d: meas %+.0f  pred %+.0f  resid %+.0f Hz (elev %.0f)"
                          % (p, best[p][1], pred[p][0], best[p][1] - pred[p][0], pred[p][2]))
             if resid:
-                _log("clock-freq bias %+.0f Hz (%d sats) -> seeding predicted Doppler"
-                     % (clock_bias, len(resid)))
+                _log("clock-freq bias %+.0f Hz (raw %+.0f, %d sats, EMA a=%.2f) -> seeding "
+                     "predicted Doppler" % (clock_bias, raw_bias, len(resid), args.bias_alpha))
         elif gating:
             up = visible_prns(args.lat, args.lon, args.alt, args.mask_deg, 0.0)
 
