@@ -54,8 +54,9 @@ def load_records(base_dir, record_floats):
 
 
 def integrate(A, Ks):
-    """Per K: mean over non-overlapping K-blocks of coherent |<A>| and incoherent
-    sqrt<|A|^2>. Returns {K: (coh, incoh, nblocks)}."""
+    """Per K, over non-overlapping K-record blocks: coherent |<A>| and incoherent
+    sqrt<|A|^2>, as mean +/- std across blocks. Returns {K: dict(coh, coh_std,
+    incoh, incoh_std, nb)}."""
     N = len(A)
     out = {}
     for K in Ks:
@@ -63,9 +64,10 @@ def integrate(A, Ks):
         if nb < 1:
             continue
         blk = A[:nb * K].reshape(nb, K)
-        coh = np.abs(blk.mean(axis=1)).mean()
-        incoh = np.sqrt((np.abs(blk) ** 2).mean(axis=1)).mean()
-        out[K] = (coh, incoh, nb)
+        coh = np.abs(blk.mean(axis=1))                  # |<A>| per block
+        incoh = np.sqrt((np.abs(blk) ** 2).mean(axis=1))  # sqrt<|A|^2> per block
+        out[K] = dict(coh=coh.mean(), coh_std=coh.std(),
+                      incoh=incoh.mean(), incoh_std=incoh.std(), nb=nb)
     return out
 
 
@@ -101,28 +103,49 @@ def main(argv=None):
     print("\nmedian inter-record dt %.2f ms; %d gaps >3x median (of %d). Using dt=%.2f ms."
           % (med, gaps, len(dutc), args.dt_ms))
 
-    noise_curve = integrate(by_prn[noise_prn][0], Ks)
-    for p in locked:
-        A, _ = by_prn[p]
-        cur = integrate(A, Ks)
-        print("\n=== PRN %d ===  (coherent SNR = coh / noise-PRN coh)" % p)
-        print("   K   t(ms)   coh|<A>|  incoh sqrt<|A|^2>   coh/incoh   coh_SNR(xsqrtK?)")
-        for K in Ks:
-            if K not in cur:
-                continue
-            coh, incoh, nb = cur[K]
-            ncoh = noise_curve.get(K, (np.nan,))[0]
-            snr = coh / ncoh if ncoh and np.isfinite(ncoh) else float("nan")
-            ref = (coh / cur[1][0]) if 1 in cur else float("nan")  # coh(K)/coh(1)
-            tag = "  <- expect ~flat if coherent" if K <= 20 else "  <- nav-bit/Doppler rolloff"
-            print("  %3d  %6.1f   %7.3f     %8.3f        %6.2f      %6.1f%s"
-                  % (K, K * args.dt_ms, coh, incoh, coh / incoh if incoh else 0, snr,
-                     tag if K in (20, 32) else ""))
-            _ = ref
+    # The noise PRN gives the NOISE FLOOR of each method: coherent |<A>| averages the
+    # random-phase noise toward zero (falls ~1/sqrt(K)); incoherent sqrt<|A|^2> squares
+    # away the phase so the noise can't cancel (flat pedestal ~sigma). That contrast --
+    # NOT the signal estimate, which converges to |a| for BOTH -- is the whole argument.
+    nz = integrate(by_prn[noise_prn][0], Ks)
+    print("\n=== NOISE FLOOR (PRN %d, no signal) ===" % noise_prn)
+    print("   K   t(ms)   coh floor   incoh floor    (coh should fall ~1/sqrt(K); incoh ~flat)")
+    base = nz[1]["coh"] if 1 in nz else float("nan")
+    for K in Ks:
+        if K not in nz:
+            continue
+        ideal = base / np.sqrt(K)  # 1/sqrt(K) reference from K=1
+        print("  %3d  %6.1f   %8.4f     %8.4f      (1/sqrtK ref %.4f)"
+              % (K, K * args.dt_ms, nz[K]["coh"], nz[K]["incoh"], ideal))
 
-    print("\nRead: coherent should TRACK incoherent (ratio ~1) while phase-stable, then")
-    print("fall once K*dt passes ~20 ms (nav bit). coh_SNR vs the noise PRN should climb")
-    print("~sqrt(K) over that coherent span -- that's the integration gain into the sidelobes.")
+    for p in locked:
+        cur = integrate(by_prn[p][0], Ks)
+        print("\n=== PRN %d ===  signal estimate; SNR_coh = coh|<A>| / coherent floor" % p)
+        print("   K   t(ms)   coh|<A>|  incoh sqrt<|A|^2>   coh/incoh   SNR_coh(~sqrtK?)")
+        for K in Ks:
+            if K not in cur or K not in nz:
+                continue
+            coh, incoh = cur[K]["coh"], cur[K]["incoh"]
+            # Signal over the collapsing coherent floor -> amplitude SNR ~sqrt(K)
+            # (= K in power) WHILE phase-coherent; rolls off past the coherence limit.
+            snr_coh = coh / nz[K]["coh"] if nz[K]["coh"] else float("nan")
+            tag = ""
+            if K * args.dt_ms >= 20 and (K - 1) * args.dt_ms < 20:
+                tag = "  <- ~20 ms nav-bit edge"
+            print("  %3d  %6.1f   %7.3f     %8.3f       %5.2f       %6.1f%s"
+                  % (K, K * args.dt_ms, coh, incoh, coh / incoh if incoh else 0,
+                     snr_coh, tag))
+
+    print("\nRead:")
+    print(" * coh|<A>| and incoh sqrt<|A|^2> BOTH converge to |a| (the signal amplitude) --")
+    print("   that's why they look equal; a mean amplitude is not an SNR.")
+    print(" * The difference is the FLOOR (table above): coherent's collapses ~1/sqrt(K),")
+    print("   incoherent's is a fixed sigma pedestal. So the coherent amplitude SNR climbs")
+    print("   ~sqrt(K) (= K in power); incoherent only gains ~sqrt(K) in POWER (slower), via")
+    print("   shrinking its floor's block-to-block scatter -- it never lowers the floor.")
+    print(" * coh/incoh ~1 then rolling off, and SNR_coh peaking, mark the coherence limit")
+    print("   (20 ms nav bit, or earlier if residual Doppler) -- that sets the next step:")
+    print("   nav-bit wipe / L5 pilot to keep integrating coherently past it.")
 
     if args.png:
         try:
@@ -134,11 +157,15 @@ def main(argv=None):
                 cur = integrate(by_prn[p][0], Ks)
                 ks = [k for k in Ks if k in cur]
                 t = [k * args.dt_ms for k in ks]
-                ax.plot(t, [cur[k][0] for k in ks], "-o", label="PRN%d coherent" % p)
-                ax.plot(t, [cur[k][1] for k in ks], "--s", label="PRN%d incoherent" % p)
-            ks = [k for k in Ks if k in noise_curve]
-            ax.plot([k * args.dt_ms for k in ks], [noise_curve[k][0] for k in ks],
-                    ":x", color="gray", label="PRN%d (noise) coherent" % noise_prn)
+                ax.plot(t, [cur[k]["coh"] for k in ks], "-o", label="PRN%d coherent |<A>|" % p)
+                ax.plot(t, [cur[k]["incoh"] for k in ks], "--s",
+                        label="PRN%d incoherent" % p)
+            ks = [k for k in Ks if k in nz]
+            t = [k * args.dt_ms for k in ks]
+            ax.plot(t, [nz[k]["coh"] for k in ks], ":x", color="gray",
+                    label="PRN%d coherent FLOOR (1/sqrtK)" % noise_prn)
+            ax.plot(t, [nz[k]["incoh"] for k in ks], ":+", color="black",
+                    label="PRN%d incoherent FLOOR (flat)" % noise_prn)
             ax.axvline(20.0, color="r", ls=":", lw=1, label="20 ms nav bit")
             ax.set_xscale("log"); ax.set_yscale("log")
             ax.set_xlabel("integration time (ms)"); ax.set_ylabel("|A|")
