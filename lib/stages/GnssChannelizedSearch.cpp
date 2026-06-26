@@ -188,9 +188,15 @@ void GnssChannelizedSearch::search_snapshot() {
             det.doppler_hz = dop;
             det.code_phase_chips = cp;
             det.valid = true;
-            INFO("GnssChannelizedSearch[{:s}]: PRN {:d} detected (Doppler {:+.0f} Hz, cp {:.1f} "
-                 "chips, snr {:.1f})",
-                 unique_name, _prns[p], dop, cp, a.snr);
+            // DIAG: decompose where cp comes from, to localize any instability:
+            //   hop   = absolute snapshot reference (fpga_seq/fft_len)
+            //   coarse= cross-channel acquire cp (pre-refine)   refine= +- from refine
+            //   off/drift = nominal + code-Doppler back-reference to sample 0
+            //   cp0   = final reported code phase
+            INFO("GnssChannelizedSearch[{:s}]: PRN {:d} snr {:.1f} dop {:+.0f} | hop {:d} "
+                 "coarse {:.2f} refine {:+.2f} off {:.2f} drift {:.2f} -> cp0 {:.2f}",
+                 unique_name, _prns[p], a.snr, dop, _snap_start_hop, a.code_phase_chips,
+                 best_cp - a.code_phase_chips, off, drift, cp);
         }
         // Latch: a fresh detection replaces the held one; a miss keeps the last valid
         // detection for _hold_snapshots snapshots (a momentary miss must not drop the

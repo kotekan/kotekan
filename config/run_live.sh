@@ -13,7 +13,8 @@
 # Run from the repo root (the dir containing config/ and build_mac/).
 set -u
 KOTEKAN=./build_mac/kotekan/kotekan
-CFG=config/live_full.yaml
+CFG=${CFG:-config/live_full.yaml}        # CFG=config/live_lowrate.yaml for the 5 MSPS test
+TRK=${TRK:-track_{12..28}}               # tracker range (track_{02..18} for low-rate)
 BROKER=python/scripts/gps_distributed_broker.py
 LOG=/tmp/gpslive.log
 
@@ -43,7 +44,7 @@ else
   echo "almanac assist OFF (set LAT= LON= to enable predicted-Doppler seeding)"
 fi
 echo "starting broker..."
-python3 $BROKER --detectors search --trackers 'track_{12..28}' --combiner combiner \
+python3 $BROKER --detectors search --trackers "$TRK" --combiner combiner \
         --acquire-snr 6 --interval 0.2 $ALM > /tmp/gpslive_broker.log 2>&1 &
 BPID=$!
 
