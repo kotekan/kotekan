@@ -35,6 +35,7 @@ gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * 
 
 input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
 chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+chan_buf2: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
 rec_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
 out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
 
@@ -51,7 +52,12 @@ fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, inpu
 
 # Search + track read chan_buf directly (channel_offset 0, all N=20 channels);
 # covering channels are selected internally. No gather/transport in the path.
+# Search reads chan_buf directly (async/lossy -- never backpressures). The tracker
+# is lossless and WOULD push back on the F-engine -> airspy USB drops, so a valve
+# decouples it: drops chan_buf2 frames if the tracker falls behind, but never blocks
+# the F-engine/airspy (keeps the capture drop-free -> fpga_seq exact -> code lock).
 search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 20, acquire_snr: 10.0, acquire_windows: 20 }
-track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf, out_buf: rec_buf, channel_offset: 0, n_channels: 20 }
+valve:  { kotekan_stage: valve, in_buf: chan_buf, out_buf: chan_buf2 }
+track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 20 }
 combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 10 }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpslive", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
