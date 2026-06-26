@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
 """Generate the CLOSED-LOOP single-kotekan config: search + track in one instance,
-driven by the external Python broker. Each sub-band channel feeds BOTH a
-GnssChannelCorrelator (search) and a GnssChannelizedTracker (measure):
+driven by the external Python broker. The search runs on the UNIFIED (variant B)
+path -- gather the covering channels' voltage and run the monolithic
+GnssChannelizedSearch -- not the retired combed-P_c path.
 
   F-engine -> GnssSubbandSplit (N channels)
-            |-> N GnssChannelCorrelator -> GnssSearchAggregator   (REST detections)
-            \\-> N GnssChannelizedTracker -> GnssCoherentCombiner  (REST |A| status)
+            |-> GnssChannelGather (covering chans) -> GnssChannelizedSearch  (REST detections)
+            \\-> N GnssChannelizedTracker -> GnssCoherentCombiner            (REST |A| status)
 
 The trackers start UNSEEDED (code phase/Doppler 0 -> combined |A| ~ noise). The
-broker (python/scripts/gps_distributed_broker.py) polls aggregate/get_detections,
-forms consensus seeds, and POSTs them to track_NN/set_seeds; the combined |A|
-should then jump as every sub-band despreads the same (cp, Doppler) and recombines
-coherently. Matches the N=40 @ 20 MSPS geometry of search_dist.yaml.
+broker (python/scripts/gps_distributed_broker.py --detectors search) polls
+search/get_detections, forms consensus seeds, and POSTs them to track_NN/set_seeds;
+the combined |A| then jumps as every sub-band despreads the same (cp, Doppler) and
+recombines coherently. N=40 @ 20 MSPS; covering channels 12..28 (GPS L1CA).
 
 Output: config/loop_single.yaml.
 """
 
 NCH = 40
+COV = list(range(12, 29))     # covering channels 12..28 (17), the search gather set
+NCOV = len(COV)
 PRNS = "[10, 23]"
-NWIN = 8
-NPRN = 2
-ND, MP, HDR = 25, 250, 64
-PC_FRAME = HDR + NPRN * NWIN * ND * MP * 8 + MP * 8  # +window-0 raw block for the refine
+SPRNS = "[5, 10, 23]"         # search adds a control PRN (5)
 
 L = []
 L.append("""---
@@ -34,7 +34,6 @@ telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
 samples_per_data_set: 49920
 bytes_per_sample: 2
 buffer_depth: 16
-p_depth: 4
 sizeof_float: 4
 cpu_affinity: [0, 1, 2, 3]
 
@@ -43,31 +42,36 @@ num_taps: 4
 sample_rate: 20.0e6
 f_offset: 5.0e6
 signal: GPS_L1CA
-n_prn: %d
+n_prn: 2
 record_floats: 11
 doppler_margin_hz: 900000.0
 acquire_snr: 12.0
-acquire_windows: %d
+acquire_windows: 10
 doppler_min: -6000.0
 doppler_max: 6000.0
 doppler_step: 500.0
 prns: %s
 
-gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 6 * buffer_depth }
+gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 16 * buffer_depth }
 
 input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
 chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
-""" % (NCH, NPRN, NWIN, PRNS))
+""" % (NCH, PRNS))
 
-# Each channel: data buffer (two consumers: corr + track), P_c buffer, record buffer.
+# Each channel: data buffer (covering ones have two consumers: gather + track),
+# plus a per-channel record buffer.
 for c in range(NCH):
     L.append("ch_%02d:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / %d }" % (c, NCH))
-    L.append("pc_%02d:  { kotekan_buffer: standard, metadata_pool: none, num_frames: p_depth, frame_size: %d }" % (c, PC_FRAME))
     L.append("rec_%02d: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }" % c)
+L.append("gather_buf: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float / %d * %d }" % (NCH, NCOV))
 L.append("out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }")
 L.append("")
 
-L.append("""read_in: { kotekan_stage: rawFileRead, buf: input_buf, base_dir: "/tmp/gpsin_ref", file_name: "gpsin", file_ext: "raw", end_interrupt: true }
+# Realtime-paced replay (2496 us/frame @ 20 MSPS, end_interrupt false) so the
+# wall-clock broker can re-seed faster than code-Doppler drift; without pacing the
+# 3 s capture blasts through in <1 s and the loop never locks (test artifact, not
+# a pipeline limit). Drop frame_period_us for a live airspy (it paces itself).
+L.append("""read_in: { kotekan_stage: rawFileRead, buf: input_buf, base_dir: "/tmp/gpsin_ref", file_name: "gpsin", file_ext: "raw", end_interrupt: false, frame_period_us: 2496 }
 fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }""")
 
 out_bufs = "[" + ", ".join("ch_%02d" % c for c in range(NCH)) + "]"
@@ -76,15 +80,21 @@ hi = "[" + ", ".join(str(c + 1) for c in range(NCH)) + "]"
 L.append("split: { kotekan_stage: GnssSubbandSplit, in_buf: chan_buf, out_bufs: %s, subband_lo: %s, subband_hi: %s }" % (out_bufs, lo, hi))
 L.append("")
 
-# Search arm: one correlator per channel -> aggregator.
-for c in range(NCH):
-    L.append("corr_%02d: { kotekan_stage: GnssChannelCorrelator, in_buf: ch_%02d, out_buf: pc_%02d, channel_offset: %d }" % (c, c, c, c))
-agg_in = "[" + ", ".join("pc_%02d" % c for c in range(NCH)) + "]"
-L.append("aggregate: { kotekan_stage: GnssSearchAggregator, in_bufs: %s }" % agg_in)
+# Search arm (variant B): gather the covering channels -> monolithic search.
+gather_in = "[" + ", ".join("ch_%02d" % c for c in COV) + "]"
+L.append("gather: { kotekan_stage: GnssChannelGather, in_bufs: %s, out_buf: gather_buf }" % gather_in)
+L.append("""search:
+    kotekan_stage: GnssChannelizedSearch
+    in_buf: gather_buf
+    channel_offset: %d
+    n_channels: %d
+    acquire_snr: 12.0
+    acquire_windows: 10
+    prns: %s""" % (COV[0], NCOV, SPRNS))
 L.append("")
 
-# Track arm: one tracker per channel (UNSEEDED) -> combiner. Same ch_NN buffers
-# (second consumer); seeds arrive from the broker via track_NN/set_seeds.
+# Track arm: one tracker per channel (UNSEEDED) -> combiner. Covering ch_NN buffers
+# have a second consumer (the gather); seeds arrive from the broker via set_seeds.
 for c in range(NCH):
     L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1 }" % (c, c, c, c))
 comb_in = "[" + ", ".join("rec_%02d" % c for c in range(NCH)) + "]"
@@ -95,5 +105,5 @@ L.append("combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: %s, out_buf:
 L.append('record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpsloop", file_name: "snr", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 100000, exit_after_n_files: 100000 }')
 
 open("config/loop_single.yaml", "w").write("\n".join(L) + "\n")
-print("wrote config/loop_single.yaml: %d correlators + %d trackers, 1 aggregator, 1 combiner; P_c %.1f MB"
-      % (NCH, NCH, PC_FRAME / 1e6))
+print("wrote config/loop_single.yaml: gather(%d covering) -> search, %d trackers, 1 combiner"
+      % (NCOV, NCH))

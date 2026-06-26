@@ -55,7 +55,7 @@ airspy_input:
     gain_mix: 10 #0-15
     gain_if: 10  #0-15
     biast_power: false
-    serial: 0x744C60C821311C4F  # CHORD-feed dongle
+#    serial: 0x744C60C821311C4F  # CHORD-feed dongle
 
 spectrum_output:
     integration_length: 64

@@ -16,19 +16,18 @@ centrally and what crosses the wire).
                           ┌───────────────────────┼────────────────────────┐
                    ch_00 … ch_(N-1)   (one channel each, [hop] cf, fpga_seq)
                           │                                                  │
-          ┌───────── SEARCH PLANE ──────────┐              ┌──── TRACK PLANE ────┐
-          ▼ (variant A: combed P_c)         ▼ (variant B)  ▼                     │
-   GnssChannelCorrelator ×N        bufferSend ×Ncov   GnssChannelizedTracker ×N   │
-        │ pc_NN                        │ (TCP)            │ rec_NN                 │
-   GnssSearchAggregator          bufferRecv ×Ncov    GnssCoherentCombiner         │
-        │                             │ rc_NN             │ out_buf                │
-        │                        GnssChannelGather        ▼                       │
-        │                             │ gather_buf    (ΣG)/(ΣE) = |A|             │
-        │                        GnssChannelizedSearch     │                      │
-        ▼                             ▼                     ▼                      │
-   REST /get_detections ◄────────────┘              REST /get_status              │
-        │ (PRN, dop, refined cp)                          │ (|A| per PRN)         │
-        └───────────► broker.py ──── POST /set_seeds ─────┴──────────────────────┘
+              ┌──────── SEARCH PLANE ────────┐      ┌──── TRACK PLANE ────┐
+              ▼ (covering channels)           │      ▼                     │
+        bufferSend ×Ncov ──TCP──► bufferRecv ×Ncov   GnssChannelizedTracker ×N
+                                       │ rc_NN        │ rec_NN              │
+                                  GnssChannelGather   │                    │
+                                       │ gather_buf   GnssCoherentCombiner  │
+                                  GnssChannelizedSearch     │ out_buf       │
+                                       │              (ΣG)/(ΣE) = |A|       │
+                                       ▼                     ▼              │
+                          REST /get_detections        REST /get_status      │
+                              │ (PRN, dop, refined cp)     │ (|A| per PRN)  │
+                              └──► broker.py ─ POST /set_seeds ─┴───────────┘
 ```
 
 ## Front end (shared)
@@ -45,32 +44,26 @@ another. Stamped once at the F-engine, propagated through split / gather.
 
 ## Search plane — two realizations of the *same* search
 
-Both find `(PRN, Doppler, code phase)` with a coarse acquire then an exact ±1-hop
+Finds `(PRN, Doppler, code phase)` with a coarse acquire then an exact ±1-hop
 despread **refine** (the refine is mandatory — the coarse cp is 1–3 chips off the
-true peak, too coarse to lock a tracker). They differ only in *what crosses the
-wire*.
-
-**Variant A — combed P_c** (`search_dist.yaml`; local validation scaffold):
+true peak, too coarse to lock a tracker). It ships the covering channels' raw
+voltage (the *small* data) to one search node and runs the monolithic search there.
 
 | stage | in → out | role |
 |---|---|---|
-| `GnssChannelCorrelator` ×N | `ch_NN` → `pc_NN` | per-channel coarse FFT correlation → the `P_c` surface; covering channels also append their window-0 raw (for the refine) |
-| `GnssSearchAggregator` | `pc_00…` → REST | gather all `P_c`, cross-channel fine-lag combine + peak (coarse), then central refine on the appended raws |
-
-This ships the **`P_c` surface**, which is `n_prn·nd` *larger* than the raw data
-— fine in one kotekan (local RAM), prohibitive cross-node (see the scaling note).
-
-**Variant B — unified raw gather** (`search_unified.yaml`; the cross-node keeper):
-
-| stage | in → out | role |
-|---|---|---|
-| `bufferSend` ×Ncov | `ch_NN` → TCP | ship covering channels' raw voltage (the *small* data) |
+| `bufferSend` ×Ncov | `ch_NN` → TCP | ship covering channels' raw voltage (≤1 covering channel per CHORD node) |
 | `bufferRecv` ×Ncov | TCP → `rc_NN` | receive on the search node (deserializes `GnssChanMetadata`) |
 | `GnssChannelGather` | `rc_…` → `gather_buf` | lock-step interleave the covering channels → one `[hop][Ncov]` buffer |
-| `GnssChannelizedSearch` | `gather_buf` → REST | the monolithic coarse+refine search, unchanged, over the gathered channels |
+| `GnssChannelizedSearch` | `gather_buf` → REST | the monolithic coarse+refine search over the gathered channels |
 
 Covering set = channels whose passband overlaps `carrier ± (chip_rate + Doppler
 margin)`. For the L1/20 MSPS validation that's 17 channels (12–28).
+
+> **Retired:** an earlier *combed-P_c* variant (`GnssChannelCorrelator` per channel
+> → `GnssSearchAggregator`) distributed the correlation to the edge and shipped the
+> `P_c` surface. That surface is `n_prn·nd` *larger* than the raw voltage, so it
+> only made sense in one kotekan (local RAM); it was retired in favour of the raw
+> gather above. See `gnss_distributed_search_scaling.md` and git history.
 
 ## Track plane (measurement → coherent combine)
 
@@ -100,7 +93,7 @@ Re-seeds every ~0.2 s to stay ahead of code-Doppler drift. The loop *locks*
 | `input_buf` | raw real int16 | none |
 | `chan_buf` | `[hop][N]` cfloat | `GnssChanMetadata` (fpga_seq) |
 | `ch_NN` / `rc_NN` | `[hop]` cfloat (one channel) | `GnssChanMetadata` |
-| `pc_NN` | `CorrFrameHeader` + `P_c[prn][win][d][q]` + raw block | none |
+| `rc_NN` | `[hop]` cfloat (received covering channel) | `GnssChanMetadata` |
 | `gather_buf` | `[hop][Ncov]` cfloat | `GnssChanMetadata` |
 | `rec_NN` / `out_buf` | 11 floats/PRN: `[0]`PRN `[1]`dop `[2]`cp `[3]`G.re `[4]`G.im `[5]`E `[6]`n_chan `[9,10]`UTC | none |
 
@@ -112,9 +105,8 @@ Everything channelized rides the `gnss_pool` (`GnssChanMetadata`, an 8-byte
 | config | arrangement |
 |---|---|
 | `comb_single.yaml` | front end + track plane (config-seeded); coherent reassembly == full band |
-| `search_dist.yaml` | front end + search variant A |
-| `search_unified.yaml` | front end + search variant B (cross-node keeper) |
-| `loop_single.yaml` | front end + both planes, broker-driven: the full closed loop |
+| `search_unified.yaml` | front end + unified raw-gather search (`--local` skips the transport) |
+| `loop_single.yaml` | front end + both planes, broker-driven, realtime-paced: the full closed loop |
 
 ## Practical notes
 
@@ -136,3 +128,9 @@ Everything channelized rides the `gnss_pool` (`GnssChanMetadata`, an 8-byte
   frame-routing stages.
 - **`end_interrupt: false`** when a send/recv transport is in the pipeline, or the
   instance shuts down the instant the input file ends and in-flight data is lost.
+- **Realtime replay pacing** (`rawFileRead frame_period_us`): a capture replays as
+  fast as the host can read it (~10× real time), which a *wall-clock* control loop
+  like the broker can't keep pace with — it re-seeds far too slowly in data-time and
+  the loop never locks. Set `frame_period_us` to the per-frame period (2496 µs at
+  20 MSPS / 49920-sample frames) to replay at acquisition rate; a live airspy paces
+  itself. The `loop_single.yaml` demo bakes this in.
