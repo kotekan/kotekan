@@ -57,7 +57,7 @@ fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, inpu
 # decouples it: drops chan_buf2 frames if the tracker falls behind, but never blocks
 # the F-engine/airspy (keeps the capture drop-free -> fpga_seq exact -> code lock).
 search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 20, acquire_snr: 10.0, acquire_windows: 20 }
-valve:  { kotekan_stage: valve, in_buf: chan_buf, out_buf: chan_buf2 }
+valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 20 }
 combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 10 }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpslive", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
