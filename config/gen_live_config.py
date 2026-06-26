@@ -33,6 +33,10 @@ log_level: info
 instrument_name: airspy_gps
 telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
 
+# Allow the browser power-waterfall viewer (served on :8080) to query the REST API.
+rest_server:
+    cors_allow_origins: ["http://localhost:8080", "http://127.0.0.1:8080"]
+
 samples_per_data_set: 49920
 bytes_per_sample: 2
 buffer_depth: 16
@@ -102,6 +106,29 @@ for c in COV:
 comb_in = "[" + ", ".join("rec_%02d" % c for c in COV) + "]"
 L.append("combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: %s, out_buf: out_buf }" % comb_in)
 L.append('record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpslive", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }')
+L.append("")
+
+# Diagnostic spectrum path: a second, FINE F-engine (1248 ch = 8 kHz/bin over the
+# 10 MHz band; fft_len 2496 divides the 49920-sample frame at 20 hops) taps the
+# shared airspy input_buf -> simpleAutocorr (voltages -> power) -> networkPowerStream
+# (TCP :23401) -> SpawnProcess (browser waterfall + ADC stats). Independent of the
+# GNSS pipeline; lets you watch for RFI / compression / oscillations live.
+# Viewer in a browser at http://localhost:8080 (needs twisted+autobahn -- set
+# VIEWER_PYTHON to that venv). spectrum_length is scoped local so the GNSS F-engine
+# keeps its N=40.
+L.append("""diag:
+    spectrum_length: 1248
+    integration_length: 64
+    power_integration_length: 64
+
+    post_fengine_diag: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+    fengine_diag: { kotekan_stage: fftwEngine, input_type: real, num_taps: 4, pfb_window: hamming, in_buf: input_buf, out_buf: post_fengine_diag }
+
+    post_corr_diag: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: ( spectrum_length + 1 ) * sizeof_float }
+    autocorr: { kotekan_stage: simpleAutocorr, in_buf: post_fengine_diag, out_buf: post_corr_diag }
+
+    power_stream: { kotekan_stage: networkPowerStream, num_freq: 1248, num_elements: 1, samples_per_data_set: 64, power_integration_length: 64, freq: 1575.42, sample_bw: 10, destination_port: 23401, destination_ip: "127.0.0.1", destination_protocol: TCP, in_buf: post_corr_diag }
+    spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: post_corr_diag, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py' }""")
 
 open("config/live_full.yaml", "w").write("\n".join(L) + "\n")
 print("wrote config/live_full.yaml: airspy -> PFB -> split -> %dx send/recv -> gather -> search; %d trackers -> combiner -> record"

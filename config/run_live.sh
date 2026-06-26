@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# One-command launcher for the full live airspy GNSS run + diagnostic viewer.
+#
+#   ./config/run_live.sh
+#
+# Starts kotekan (config/live_full.yaml: airspy -> PFB -> split -> transmit ->
+# gather -> search, + trackers -> combiner -> recorded |A|, + the fine-spectrum
+# power viewer), then the broker, then prints detections + combined level every
+# few seconds. Watch the power waterfall + ADC stats in a browser at
+#   http://localhost:8080
+# Recorded signal level lands in /tmp/gpslive/level_*.raw.  Ctrl-C to stop all.
+#
+# Run from the repo root (the dir containing config/ and build_mac/).
+set -u
+KOTEKAN=./build_mac/kotekan/kotekan
+CFG=config/live_full.yaml
+BROKER=python/scripts/gps_distributed_broker.py
+LOG=/tmp/gpslive.log
+
+cleanup() { echo; echo "stopping..."; kill "${BPID:-}" 2>/dev/null
+            pkill -9 -f build_mac/kotekan/kotekan 2>/dev/null
+            pkill -9 -f livebeam_server 2>/dev/null; exit 0; }
+trap cleanup INT TERM
+
+pkill -9 -f build_mac/kotekan/kotekan 2>/dev/null; pkill -9 -f livebeam_server 2>/dev/null
+mkdir -p /tmp/gpslive; rm -f /tmp/gpslive/* 2>/dev/null
+sleep 1
+
+echo "starting kotekan (live_full.yaml) -> $LOG"
+$KOTEKAN -c $CFG > $LOG 2>&1 &
+sleep 4
+echo "front end: $(curl -s localhost:12048/airspy_in/adcstat | tr -d '\n ')"
+echo "browser waterfall + ADC: http://localhost:8080"
+
+echo "starting broker..."
+python3 $BROKER --detectors search --trackers 'track_{12..28}' --combiner combiner \
+        --acquire-snr 6 --interval 0.2 > /tmp/gpslive_broker.log 2>&1 &
+BPID=$!
+
+echo "=== watching (Ctrl-C to stop) ==="
+while true; do
+  sleep 3
+  curl -s localhost:12048/search/get_detections 2>/dev/null | python3 -c "
+import sys,json,urllib.request
+d=json.load(sys.stdin)
+amp=json.load(urllib.request.urlopen('http://localhost:12048/combiner/get_status'))
+top=sorted(amp,key=lambda r:-r['amplitude'])[:3]
+adc=json.load(urllib.request.urlopen('http://localhost:12048/airspy_in/adcstat'))
+hdr='rms=%.0f rail=%.2f'%(adc['rms'],adc['railfrac'])
+if d:
+    s='  DETECT: '+'; '.join('PRN%d dop%+.0f cp%.0f snr%.1f'%(x['prn'],x['doppler_hz'],x['code_phase_chips'],x['snr']) for x in sorted(d,key=lambda r:-r['snr'])[:4])
+else:
+    s='  searching...'
+lvl='  |A|: '+' '.join('PRN%d=%.2f'%(r['prn'],r['amplitude']) for r in top if r['amplitude']>0) or '  |A|: --'
+print('[%s]%s%s'%(hdr,s,lvl))
+" 2>/dev/null || echo "  (waiting for pipeline...)"
+done

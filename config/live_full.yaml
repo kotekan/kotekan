@@ -5,6 +5,10 @@ log_level: info
 instrument_name: airspy_gps
 telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
 
+# Allow the browser power-waterfall viewer (served on :8080) to query the REST API.
+rest_server:
+    cors_allow_origins: ["http://localhost:8080", "http://127.0.0.1:8080"]
+
 samples_per_data_set: 49920
 bytes_per_sample: 2
 buffer_depth: 16
@@ -176,3 +180,17 @@ track_27: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_27, out_buf: rec_2
 track_28: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_28, out_buf: rec_28, channel_offset: 28, n_channels: 1 }
 combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_12, rec_13, rec_14, rec_15, rec_16, rec_17, rec_18, rec_19, rec_20, rec_21, rec_22, rec_23, rec_24, rec_25, rec_26, rec_27, rec_28], out_buf: out_buf }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpslive", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+
+diag:
+    spectrum_length: 1248
+    integration_length: 64
+    power_integration_length: 64
+
+    post_fengine_diag: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+    fengine_diag: { kotekan_stage: fftwEngine, input_type: real, num_taps: 4, pfb_window: hamming, in_buf: input_buf, out_buf: post_fengine_diag }
+
+    post_corr_diag: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: ( spectrum_length + 1 ) * sizeof_float }
+    autocorr: { kotekan_stage: simpleAutocorr, in_buf: post_fengine_diag, out_buf: post_corr_diag }
+
+    power_stream: { kotekan_stage: networkPowerStream, num_freq: 1248, num_elements: 1, samples_per_data_set: 64, power_integration_length: 64, freq: 1575.42, sample_bw: 10, destination_port: 23401, destination_ip: "127.0.0.1", destination_protocol: TCP, in_buf: post_corr_diag }
+    spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: post_corr_diag, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py' }
