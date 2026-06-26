@@ -79,6 +79,18 @@ def fit_residual_doppler(A, t, max_gap_s):
     return float(np.median(dphi[ok] / dt[ok]) / (2.0 * np.pi)), int(ok.sum())
 
 
+def windowed_doppler(A, t, win, max_gap_s):
+    """Residual carrier fit in consecutive win-record windows -> array of df (Hz).
+    A constant residual gives a tight cluster (one derotation fixes it); a wandering
+    seed (broker re-solving a coarse-grid clock bias each cycle) gives a wide spread."""
+    out = []
+    for s in range(0, len(A) - win, win):
+        f, n = fit_residual_doppler(A[s:s + win], t[s:s + win], max_gap_s)
+        if n > win // 2:
+            out.append(f)
+    return np.array(out)
+
+
 def integrate(A, Ks):
     """Per K, over non-overlapping K-record blocks: coherent |<A>| and incoherent
     sqrt<|A|^2>, as mean +/- std across blocks. Returns {K: dict(coh, coh_std,
@@ -177,6 +189,23 @@ def main(argv=None):
             print("  %3d  %6.1f | %7.3f    %5.2f   %6.1f | %8.3f    %5.2f   %6.1f%s"
                   % (K, K * med, coh, coh / incoh if incoh else 0, snr,
                      dcoh, dcoh / dincoh if dincoh else 0, dsnr, tag))
+
+    # Is the residual carrier a CONSTANT (one derotation fixes it) or WANDERING (the
+    # broker re-seeds Doppler each ~0.2 s cycle from a coarse grid -> a staircase no
+    # single df can track)? Fit df in per-cycle windows and report the spread.
+    p0 = locked[0]
+    A0, t0 = by_prn[p0]
+    win = max(50, int(round(0.2 / nominal_s)))
+    wf = windowed_doppler(A0, t0, win, 1.5 * nominal_s)
+    if len(wf) > 2:
+        print("\nCarrier stability (PRN %d, %d-record ~%.0f ms windows, %d of them):" %
+              (p0, win, win * nominal_s * 1e3, len(wf)))
+        print("  residual df  min %+.0f / med %+.0f / max %+.0f Hz, spread (std) %.0f Hz" %
+              (wf.min(), np.median(wf), wf.max(), wf.std()))
+        print("  >> spread >> a few Hz means the SEED Doppler is wandering cycle-to-cycle")
+        print("     (coarse search grid -> jittery clock-bias re-solve); one global")
+        print("     derotation can't track it. A continuous carrier loop (FLL) is the fix.")
+        print("  >> spread of only a few Hz but coherence still short -> oscillator phase noise.")
 
     print("\nRead:")
     print(" * coh|<A>| and incoh sqrt<|A|^2> both converge to |a| -- equal estimates, not SNRs.")
