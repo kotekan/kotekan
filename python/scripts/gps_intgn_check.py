@@ -67,12 +67,14 @@ def load_records(base_dir, record_floats, n_prn):
 
 
 def fit_residual_doppler(A, t, max_gap_s, min_pairs=50):
-    """Residual carrier (Hz) from the phase walk between adjacent records: dphi =
-    arg(A_{i+1} conj A_i) = 2pi*df*dt for a coherent lock (+ a pi flip at nav-bit
-    edges, rejected by the median). Only adjacent (non-gap) pairs. Needs CAPTURE-time
-    t (set capture_utc0); emit-time t would scramble it."""
+    """Residual carrier (Hz) from the phase walk between adjacent records. The product
+    A_{i+1} conj A_i carries 2pi*df*dt PLUS a possible pi flip when a nav-bit edge falls
+    between the records; squaring it (angle(p^2)/2) cancels the +-1 data so the fit isn't
+    fooled by bit flips (valid for |df*dt| < 1/4, i.e. |df| < 250 Hz here). Only adjacent
+    (non-gap) pairs. Needs CAPTURE-time t (set capture_utc0); emit-time t would scramble it."""
     dt = np.diff(t)
-    dphi = np.angle(A[1:] * np.conj(A[:-1]))
+    prod = A[1:] * np.conj(A[:-1])
+    dphi = np.angle(prod * prod) / 2.0  # squared -> removes the +-1 nav-bit pi flips
     ok = (dt > 0) & (dt < max_gap_s) & (np.abs(A[1:]) > 0) & (np.abs(A[:-1]) > 0)
     if ok.sum() < min_pairs:
         return 0.0, 0
@@ -119,10 +121,14 @@ def navbit_wipe(A, t, bit_s=0.020, nphase=20):
     ep = np.floor((t - t0 - best_off) / bit_s).astype(np.int64)
     ep -= ep.min()
     s = np.bincount(ep, weights=A.real) + 1j * np.bincount(ep, weights=A.imag)
-    theta0 = 0.5 * np.angle(np.sum(s * s))            # common phase (squaring kills the bit)
-    bit = np.sign(np.real(s * np.exp(-1j * theta0)))  # +-1 per 20 ms epoch
+    # Track the carrier phase PER EPOCH (squaring + unwrap removes the +-1 data), then
+    # the bit is the sign along that phase. This follows a slow carrier far better than a
+    # single global phase; a fast wander still aliases the unwrap -> the live FLL is what
+    # ultimately delivers clean bits, but this decodes a well-tracked carrier cleanly.
+    phi = 0.5 * np.unwrap(np.angle(s * s))
+    bit = np.sign(np.real(s * np.exp(-1j * phi)))     # +-1 per 20 ms epoch
     bit[bit == 0] = 1.0
-    return A * bit[ep], best_off, int((bit != bit[0]).sum())
+    return A * bit[ep], best_off, int((bit != bit[0]).sum()), bit
 
 
 def windowed_doppler(A, t, win, max_gap_s):
@@ -244,8 +250,30 @@ def main(argv=None):
     pb = locked[0]
     Ab, tb = by_prn[pb]
     fll_win = max(50, int(round(0.05 / nominal_s)))
+    # Estimate + wipe the bits on the RAW signal (per-epoch carrier-tracked), THEN remove
+    # the carrier from the bit-free stream (the FLL discriminator is meaningless across a
+    # bit edge, so it must run after the wipe). no-wipe reference = carrier removed only.
+    wiped_raw, woff, nflip, bitseq = navbit_wipe(Ab, tb)
     deAb = derotate_wander(Ab, tb, fll_win, 1.5 * nominal_s)
-    wiped, woff, nflip = navbit_wipe(deAb, tb)
+    wiped = derotate_wander(wiped_raw, tb, fll_win, 1.5 * nominal_s)
+    # Decode the actual GPS nav message from the estimated bits (parity-validated):
+    # real subframes with the TLM preamble + a marching TOW prove these are the true
+    # data bits, so the wipe is exact, not a guess.
+    try:
+        from gps_nav_decode import frame_sync
+        bits01 = (bitseq < 0).astype(np.int8)            # +-1 epoch signs -> 0/1 (polarity-free)
+        subs = frame_sync(bits01)
+        if subs:
+            tows = [tow for _, tow, _ in subs]
+            print("\nNAV DECODE (PRN %d): %d parity-valid subframes; subframe IDs %s; TOW %s"
+                  % (pb, len(subs), [s for _, _, s in subs][:6],
+                     "marching" if len(tows) > 1 and all(
+                         tows[i + 1] - tows[i] == 1 for i in range(len(tows) - 1)) else tows[:6]))
+        else:
+            print("\nNAV DECODE (PRN %d): no parity-valid subframe yet (bit errors from gaps/SNR "
+                  "or too short) -- estimated wipe still applies." % pb)
+    except Exception as e:
+        print("\nNAV DECODE skipped: %s" % e)
     Kw = [20, 50, 100, 200, 500, 1000, 2000]
     rawc = integrate(deAb, Kw)
     wipc = integrate(wiped, Kw)
