@@ -123,18 +123,28 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
         _sig.chip_rate_hz / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
     const double wcarrier = 2.0 * M_PI * (_f_offset + doppler_hz) / _sample_rate;
 
+    // Carrier as a phasor recurrence: cos(wcarrier*n) = Re(e^{i wcarrier n}), advanced
+    // by one complex multiply per sample instead of a transcendental cos() each --
+    // the per-sample cos dominated replica generation (esp. CHORD's large fft_len).
+    // Renormalised per hop so the unit-modulus phasor doesn't drift; matches the direct
+    // cos to ~1e-12, and is in fact steadier at large n (no huge-argument range loss).
+    const std::complex<double> cstep(std::cos(wcarrier), std::sin(wcarrier));
+    std::complex<double> cph = std::polar(1.0, wcarrier * (double)start); // phasor at n=start
+
     for (int h = 0; h < total; ++h) {
         for (int i = 0; i < _fft_len; ++i) {
             const long long n = start + (long long)h * _fft_len + i;
-            if (n < 0) {
+            if (n >= 0) {
+                const int8_t c = code_chip(p, code_phase_chips + (double)n * chip_per_sample);
+                // Real passband replica code*cos(carrier); the r2c bank keeps the
+                // positive-frequency half (the +carrier image), matching the data.
+                block[i] = c * (float)cph.real();
+            } else {
                 block[i] = 0.0f; // pre-stream: matches F-engine zero init
-                continue;
             }
-            const int8_t c = code_chip(p, code_phase_chips + (double)n * chip_per_sample);
-            // Real passband replica code*cos(carrier); the r2c bank keeps the
-            // positive-frequency half (the +carrier image), matching the data.
-            block[i] = c * (float)std::cos(wcarrier * (double)n);
+            cph *= cstep; // advance the carrier phasor (kept aligned with n)
         }
+        cph /= std::abs(cph); // renormalise to unit modulus once per hop
         dsp::pfb_push(_replica_hist.data(), block.data(), _fft_len, _num_taps);
         dsp::pfb_fold(_replica_hist.data(), _proto.data(), _fft_len, _num_taps, _fold);
         fftwf_execute(_p_fwd); // _fold (real) -> _spec (r2c, _N+1 bins)
