@@ -241,4 +241,4 @@ track_37: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_37, out_buf: rec_3
 track_38: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_38, out_buf: rec_38, channel_offset: 38, n_channels: 1 }
 track_39: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_39, out_buf: rec_39, channel_offset: 39, n_channels: 1 }
 combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_00, rec_01, rec_02, rec_03, rec_04, rec_05, rec_06, rec_07, rec_08, rec_09, rec_10, rec_11, rec_12, rec_13, rec_14, rec_15, rec_16, rec_17, rec_18, rec_19, rec_20, rec_21, rec_22, rec_23, rec_24, rec_25, rec_26, rec_27, rec_28, rec_29, rec_30, rec_31, rec_32, rec_33, rec_34, rec_35, rec_36, rec_37, rec_38, rec_39], out_buf: out_buf }
-sink: { kotekan_stage: dropAllFrames, in_buf: out_buf }
+record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpsloop", file_name: "snr", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 100000, exit_after_n_files: 100000 }

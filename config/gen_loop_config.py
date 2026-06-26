@@ -89,7 +89,10 @@ for c in range(NCH):
     L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1 }" % (c, c, c, c))
 comb_in = "[" + ", ".join("rec_%02d" % c for c in range(NCH)) + "]"
 L.append("combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: %s, out_buf: out_buf }" % comb_in)
-L.append("sink: { kotekan_stage: dropAllFrames, in_buf: out_buf }")
+# The combiner's out_buf is the SNR tap: one record/PRN per window, carrying the
+# coherent-combine amplitude |A| (rec[3], also rec[6] as the SNR proxy) + dop/cp.
+# rawFileWrite logs it; swap to dropAllFrames if you only want the REST poll.
+L.append('record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpsloop", file_name: "snr", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 100000, exit_after_n_files: 100000 }')
 
 open("config/loop_single.yaml", "w").write("\n".join(L) + "\n")
 print("wrote config/loop_single.yaml: %d correlators + %d trackers, 1 aggregator, 1 combiner; P_c %.1f MB"
