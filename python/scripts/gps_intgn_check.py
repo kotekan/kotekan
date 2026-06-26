@@ -20,6 +20,7 @@ Usage:  python3 gps_intgn_check.py [/tmp/gpsintgn] [--record-floats 11]
 import argparse
 import glob
 import os
+import struct
 import sys
 
 import numpy as np
@@ -29,27 +30,39 @@ S_PRN, S_IAMP, S_ARE, S_AIM, S_CAMP = 0, 3, 4, 5, 6
 UTC_SLOT = 9
 
 
-def load_records(base_dir, record_floats):
+def load_records(base_dir, record_floats, n_prn):
+    """Parse rawFileWrite framing: each frame is [uint32 metadata_size][metadata]
+    [n_prn*record_floats float32 of data]. out_buf is metadata-less (size 0), but
+    that 4-byte header is ALWAYS written, so a flat float reshape is misaligned --
+    skip the header per frame."""
     files = sorted(glob.glob(os.path.join(base_dir, "*.raw")))
     if not files:
         sys.exit("no *.raw under %s -- run live_intgn.yaml first" % base_dir)
-    raw = np.concatenate([np.fromfile(f, dtype=np.float32) for f in files])
-    nrec_floats = raw.size - (raw.size % record_floats)
-    flat = raw[:nrec_floats].reshape(-1, record_floats)
-    n_prn_guess = None
-    # Frames hold n_prn records back-to-back; infer n_prn from the PRN-id column
-    # repeating (first row's neighbours share the frame). Fall back to grouping by
-    # the distinct PRN ids present.
-    prn_ids = np.unique(np.rint(flat[:, S_PRN]).astype(int))
-    prn_ids = prn_ids[prn_ids > 0]
+    frame_floats = n_prn * record_floats
+    frame_bytes = frame_floats * 4
+    frames = []
+    for fn in files:
+        buf = open(fn, "rb").read()
+        pos, n = 0, len(buf)
+        while pos + 4 <= n:
+            (msize,) = struct.unpack_from("<I", buf, pos)
+            pos += 4 + msize
+            if pos + frame_bytes > n:
+                break
+            frames.append(np.frombuffer(buf, np.float32, frame_floats, pos))
+            pos += frame_bytes
+    if not frames:
+        sys.exit("no complete %d-PRN frames found (wrong --n-prn? expected n_prn*%d floats)"
+                 % (n_prn, record_floats))
+    flat = np.stack(frames).reshape(-1, record_floats)  # (n_frames*n_prn, record_floats)
     by_prn = {}
-    for prn in prn_ids:
-        sel = np.rint(flat[:, S_PRN]).astype(int) == prn
-        rows = flat[sel]
+    for prn in np.unique(np.rint(flat[:, S_PRN]).astype(int)):
+        if prn <= 0:
+            continue
+        rows = flat[np.rint(flat[:, S_PRN]).astype(int) == prn]
         A = rows[:, S_ARE].astype(np.float64) + 1j * rows[:, S_AIM].astype(np.float64)
-        utc = rows[:, UTC_SLOT:UTC_SLOT + 2].copy().view(np.float64).ravel()
+        utc = np.ascontiguousarray(rows[:, UTC_SLOT:UTC_SLOT + 2]).view(np.float64).ravel()
         by_prn[int(prn)] = (A, utc)
-    _ = n_prn_guess
     return by_prn
 
 
@@ -76,23 +89,31 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("base_dir", nargs="?", default="/tmp/gpsintgn")
     ap.add_argument("--record-floats", type=int, default=11)
+    ap.add_argument("--n-prn", type=int, default=9, help="records per frame (config n_prn)")
     ap.add_argument("--dt-ms", type=float, default=1.0, help="record period (ms) for the time axis")
     ap.add_argument("--png", default=None, help="write a coh/incoh-vs-time plot here")
     args = ap.parse_args(argv)
 
-    by_prn = load_records(args.base_dir, args.record_floats)
-    # Mean per-record |A| ranks locked sats (high) vs noise PRNs (low).
-    strength = {p: float(np.abs(A).mean()) for p, (A, _) in by_prn.items() if len(A) > 8}
-    if not strength:
-        sys.exit("no PRN had enough records to integrate")
+    by_prn = load_records(args.base_dir, args.record_floats, args.n_prn)
+    # Unseeded PRNs are emitted as EXACT zeros (tracker memsets inactive records) --
+    # drop them (std ~0) so they can't be mistaken for a noise reference.
+    tracked = {p: v for p, v in by_prn.items()
+               if len(v[0]) > 8 and float(np.abs(v[0]).std()) > 1e-9}
+    if not tracked:
+        sys.exit("no PRN was actively tracked (all records zero -- broker never seeded?)")
+    strength = {p: float(np.abs(A).mean()) for p, (A, _) in tracked.items()}
     ranked = sorted(strength, key=strength.get, reverse=True)
+    by_prn = tracked
     print("per-record mean |A| by PRN (lock = high, noise = low):")
     for p in ranked:
-        n = len(by_prn[p][0])
-        print("  PRN %2d  |A|=%.3f  (%d records)" % (p, strength[p], n))
+        print("  PRN %2d  |A|=%.3f  (%d records)" % (p, strength[p], len(by_prn[p][0])))
 
     locked = [p for p in ranked if strength[p] > 2.0 * strength[ranked[-1]]][:3] or ranked[:1]
     noise_prn = ranked[-1]
+    if strength[noise_prn] > 0.5 * strength[ranked[0]]:
+        print("\nNOTE: weakest tracked PRN %d (|A|=%.3f) still has signal -- no clean noise\n"
+              "reference, so the noise floor below is an OVER-estimate (SNR_coh a lower bound)."
+              % (noise_prn, strength[noise_prn]))
     Ks = [1, 2, 3, 5, 8, 12, 20, 32, 50, 80, 128, 200]
 
     # Contiguity: large UTC gaps mean K records span > K*dt ms (valve drops).
