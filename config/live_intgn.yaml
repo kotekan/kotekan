@@ -35,7 +35,12 @@ acquire_snr: 10.0
 acquire_windows: 20
 doppler_min: -6000.0
 doppler_max: 6000.0
-doppler_step: 500.0
+# 100 Hz (was 500): with few sats the clock-bias estimate degenerates to one sat's
+# grid-quantized Doppler, so the seed inherits +-grid/2 of steady residual carrier
+# (was +-250 Hz -> killed coherence past ~5 ms). Finer grid -> +-50 Hz residual ->
+# ~10 ms coherence. Costs search compute, but the search is async/lossy (never
+# backpressures), so it just lowers the snapshot rate -- fine with the EMA-steady seed.
+doppler_step: 100.0
 prns: [5, 10, 15, 18, 20, 23, 24, 27, 29]
 
 gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }
