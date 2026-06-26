@@ -1,4 +1,5 @@
 #include "airspyInput.hpp"
+#include <chrono>
 
 #include <fcntl.h>              // for open, O_RDWR
 #include <stdint.h>             // for uint32_t, uint8_t
@@ -239,9 +240,20 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
 
         if (frame_loc == 0) {
             DEBUG("Airspy waiting for frame_id {:d}", frame_id);
+            auto _w0 = std::chrono::steady_clock::now();
             frame_ptr = (unsigned char*)buf->wait_for_empty_frame(unique_name, frame_id);
             if (frame_ptr == nullptr)
                 break;
+            // DIAG: if the callback blocks here, input_buf is full -> the pipeline is
+            // behind realtime and libairspy's FIFO is overflowing (silent sample drops,
+            // which break the frame-counted fpga_seq -> random code phase).
+            const double _wms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - _w0)
+                    .count();
+            if (_wms > 2.0)
+                INFO("airspy: blocked {:.1f} ms waiting for an empty frame -- pipeline behind "
+                     "realtime, USB FIFO likely dropping samples",
+                     _wms);
         }
 
         size_t copy_length = std::min<size_t>(bt, buf->frame_size - frame_loc);
