@@ -66,7 +66,7 @@ def load_records(base_dir, record_floats, n_prn):
     return by_prn
 
 
-def fit_residual_doppler(A, t, max_gap_s):
+def fit_residual_doppler(A, t, max_gap_s, min_pairs=50):
     """Residual carrier (Hz) from the phase walk between adjacent records: dphi =
     arg(A_{i+1} conj A_i) = 2pi*df*dt for a coherent lock (+ a pi flip at nav-bit
     edges, rejected by the median). Only adjacent (non-gap) pairs. Needs CAPTURE-time
@@ -74,9 +74,25 @@ def fit_residual_doppler(A, t, max_gap_s):
     dt = np.diff(t)
     dphi = np.angle(A[1:] * np.conj(A[:-1]))
     ok = (dt > 0) & (dt < max_gap_s) & (np.abs(A[1:]) > 0) & (np.abs(A[:-1]) > 0)
-    if ok.sum() < 50:
+    if ok.sum() < min_pairs:
         return 0.0, 0
     return float(np.median(dphi[ok] / dt[ok]) / (2.0 * np.pi)), int(ok.sum())
+
+
+def derotate_wander(A, t, win, max_gap_s):
+    """Remove the slow carrier WANDER (not just a global offset): fit a local residual
+    per win-record window, integrate it into a continuous phase, and derotate. This is
+    a perfect-FLL oracle -- if coherence still caps after this, the wall is the nav bit
+    (or phase noise faster than `win`), not carrier tracking."""
+    dfs = np.zeros(len(A))
+    for s in range(0, len(A), win):
+        e = min(s + win, len(A))
+        if e - s >= 20:
+            f, n = fit_residual_doppler(A[s:e], t[s:e], max_gap_s, min_pairs=15)
+            dfs[s:e] = f if n > (e - s) // 2 else 0.0
+    dt = np.diff(t, prepend=t[0])
+    phi = np.cumsum(2.0 * np.pi * dfs * dt)  # continuous phase (keeps cross-window coherence)
+    return A * np.exp(-1j * phi)
 
 
 def windowed_doppler(A, t, win, max_gap_s):
@@ -168,14 +184,15 @@ def main(argv=None):
     for p in locked:
         A, t = by_prn[p]
         cur = integrate(A, Ks)
-        # Estimate + remove the residual carrier; re-integrate the derotated stream.
-        # If the raw roll-off is residual Doppler, derotation restores coherence out to
-        # the nav bit; if it doesn't recover, the limit is phase noise / nav bits.
+        # Global residual (one number) for reference, then a perfect-FLL oracle that
+        # removes the slow carrier WANDER per window. If deRot still caps, the wall is
+        # the nav bit / fast phase noise -- not carrier tracking (no FLL would beat it).
         df, npair = fit_residual_doppler(A, t, max_gap_s=1.5 * nominal_s)
-        deA = A * np.exp(-2j * np.pi * df * (t - t[0]))
+        fll_win = max(50, int(round(0.05 / nominal_s)))  # ~50 ms windows track the wander
+        deA = derotate_wander(A, t, fll_win, 1.5 * nominal_s)
         der = integrate(deA, Ks)
-        print("\n=== PRN %d ===  residual carrier %+0.1f Hz (%d pairs); derotated = carrier removed"
-              % (p, df, npair))
+        print("\n=== PRN %d ===  global residual %+0.1f Hz (%d pairs); deRot = per-window "
+              "carrier removed (perfect-FLL oracle)" % (p, df, npair))
         print("   K   t(ms) | coh|<A>|  coh/incoh  SNR_coh |  deRot coh  deRot c/i  deRot SNR")
         for K in Ks:
             if K not in cur or K not in nz:
