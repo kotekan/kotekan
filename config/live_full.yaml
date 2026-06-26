@@ -178,7 +178,7 @@ track_25: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_25, out_buf: rec_2
 track_26: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_26, out_buf: rec_26, channel_offset: 26, n_channels: 1 }
 track_27: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_27, out_buf: rec_27, channel_offset: 27, n_channels: 1 }
 track_28: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_28, out_buf: rec_28, channel_offset: 28, n_channels: 1 }
-combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_12, rec_13, rec_14, rec_15, rec_16, rec_17, rec_18, rec_19, rec_20, rec_21, rec_22, rec_23, rec_24, rec_25, rec_26, rec_27, rec_28], out_buf: out_buf }
+combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_12, rec_13, rec_14, rec_15, rec_16, rec_17, rec_18, rec_19, rec_20, rec_21, rec_22, rec_23, rec_24, rec_25, rec_26, rec_27, rec_28], out_buf: out_buf, integration_length: 10 }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpslive", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 diag:

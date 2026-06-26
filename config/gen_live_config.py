@@ -104,7 +104,7 @@ L.append("")
 for c in COV:
     L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1 }" % (c, c, c, c))
 comb_in = "[" + ", ".join("rec_%02d" % c for c in COV) + "]"
-L.append("combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: %s, out_buf: out_buf }" % comb_in)
+L.append("combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: %s, out_buf: out_buf, integration_length: 10 }" % comb_in)
 L.append('record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpslive", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }')
 L.append("")
 

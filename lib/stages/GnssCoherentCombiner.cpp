@@ -4,7 +4,8 @@
 #include "visUtil.hpp"      // for frameID
 
 #include "json.hpp"   // for json
-#include <cmath>      // for hypot
+#include <algorithm> // for max
+#include <cmath>      // for hypot, sqrt
 #include <functional> // for bind
 
 using kotekan::Config;
@@ -28,6 +29,8 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     if (_n_prn <= 0 && !in_bufs.empty())
         _n_prn = in_bufs[0]->frame_size / (int)sizeof(float) / RECORD_FLOATS;
 
+    _integration_length = std::max(1, config.get_default<int>(unique_name, "integration_length", 1));
+
     _st_prn.assign(_n_prn, 0);
     _st_amp.assign(_n_prn, 0.0f);
     _st_dop.assign(_n_prn, 0.0f);
@@ -45,11 +48,13 @@ void GnssCoherentCombiner::main_thread() {
         in_ids.emplace_back(b);
     frameID out_id(out_buf);
 
-    while (!stop_thread) {
-        float* out = (float*)out_buf->wait_for_empty_frame(unique_name, out_id);
-        if (out == nullptr)
-            break;
+    // Per-PRN integration accumulators over _integration_length records.
+    std::vector<double> acc_pow(_n_prn), acc_ar(_n_prn), acc_ai(_n_prn), acc_nchan(_n_prn);
+    std::vector<float> ref_prn(_n_prn), ref_dop(_n_prn), ref_cp(_n_prn);
+    std::vector<double> ref_utc(_n_prn);
+    int n_acc = 0;
 
+    while (!stop_thread) {
         // Gather the i-th frame of every subband (same window, same PRN order).
         std::vector<float*> ins;
         bool stopping = false;
@@ -65,7 +70,8 @@ void GnssCoherentCombiner::main_thread() {
             break;
 
         for (int p = 0; p < _n_prn; ++p) {
-            // Sum the un-normalized correlation and replica energy across subbands.
+            // Sum the un-normalized correlation and replica energy across subbands
+            // (the cross-channel coherent combine), then the full-band amplitude.
             double gr = 0.0, gi = 0.0, energy = 0.0, nchan = 0.0;
             const float* ref = ins[0] + (size_t)p * RECORD_FLOATS; // PRN/dop/cp/UTC reference
             for (float* in : ins) {
@@ -78,21 +84,45 @@ void GnssCoherentCombiner::main_thread() {
             const double ar = energy > 0.0 ? gr / energy : 0.0;
             const double ai = energy > 0.0 ? gi / energy : 0.0;
 
+            // Accumulate over time: incoherent power (|A|^2) + coherent complex (A).
+            acc_pow[p] += ar * ar + ai * ai;
+            acc_ar[p] += ar;
+            acc_ai[p] += ai;
+            acc_nchan[p] += nchan;
+            if (n_acc == 0) { // window reference from the first record of the block
+                ref_prn[p] = ref[0];
+                ref_dop[p] = ref[1];
+                ref_cp[p] = ref[2];
+                ref_utc[p] = *reinterpret_cast<const double*>(ref + RECORD_UTC_SLOT);
+            }
+        }
+
+        for (size_t i = 0; i < in_bufs.size(); ++i)
+            in_bufs[i]->mark_frame_empty(unique_name, in_ids[i]++);
+
+        if (++n_acc < _integration_length)
+            continue; // keep accumulating
+
+        float* out = (float*)out_buf->wait_for_empty_frame(unique_name, out_id);
+        if (out == nullptr)
+            break;
+        const double inv = 1.0 / (double)n_acc;
+        for (int p = 0; p < _n_prn; ++p) {
             float* rec = out + (size_t)p * RECORD_FLOATS;
             for (int f = 0; f < RECORD_FLOATS; ++f)
                 rec[f] = 0.0f;
-            rec[0] = ref[0];                            // PRN
-            rec[1] = ref[1];                            // Doppler (seeded, shared)
-            rec[2] = ref[2];                            // code phase (seeded, shared)
-            rec[3] = (float)std::hypot(ar, ai);         // |A|
-            rec[4] = (float)ar;                         // A.re
-            rec[5] = (float)ai;                         // A.im
-            rec[6] = (float)std::hypot(ar, ai);         // SNR proxy (amplitude magnitude)
-            rec[7] = (float)nchan;                      // total covering channels used
-            // UTC double occupies slots RECORD_UTC_SLOT..+1; copy from the reference.
-            *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) =
-                *reinterpret_cast<const double*>(ref + RECORD_UTC_SLOT);
+            rec[0] = ref_prn[p];
+            rec[1] = ref_dop[p];
+            rec[2] = ref_cp[p];
+            rec[3] = (float)std::sqrt(acc_pow[p] * inv);             // |A|_incoh = sqrt<|A|^2>
+            rec[4] = (float)(acc_ar[p] * inv);                       // <A>.re (coherent mean)
+            rec[5] = (float)(acc_ai[p] * inv);                       // <A>.im
+            rec[6] = (float)std::hypot(acc_ar[p], acc_ai[p]) * inv;  // |<A>|_coh
+            rec[7] = (float)(acc_nchan[p] * inv);                    // covering channels used
+            *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = ref_utc[p];
+            acc_pow[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = 0.0; // reset
         }
+        n_acc = 0;
 
         // Publish the latest full-band amplitudes for the broker's drop decisions.
         {
@@ -105,9 +135,6 @@ void GnssCoherentCombiner::main_thread() {
                 _st_cp[p] = rec[2];
             }
         }
-
-        for (size_t i = 0; i < in_bufs.size(); ++i)
-            in_bufs[i]->mark_frame_empty(unique_name, in_ids[i]++);
         out_buf->mark_frame_full(unique_name, out_id++);
     }
 }

@@ -35,11 +35,21 @@
  * output uses the standard GNSS record layout (matches @ref GnssChannelizedCorrelator)
  * so existing readers consume it unchanged.
  *
+ * Optional temporal integration (@c integration_length records): the per-record
+ * full-band amplitude is accumulated K ways before emission, giving both the
+ * robust **incoherent** amplitude @f$ \sqrt{\langle|A|^2\rangle} @f$ (slot 3,
+ * ~sqrt(K) SNR, no phase needed) and the **coherent** mean @f$ \langle A\rangle @f$
+ * (slots 4/5/6, up to K SNR and unbiased, but only valid once the Doppler seed is
+ * fine enough that the carrier phase is stable across the K records -- with a
+ * coarse Doppler grid the coherent mean decorrelates and only slot 3 is usable).
+ *
  * @conf n_prn  Int. Records (PRNs) per frame; default from in-frame size.
+ * @conf integration_length Int (default 1). Tracker records accumulated per output.
  *
  * @buffer in_bufs Per-subband tracker record streams (RECORD_FLOATS floats/PRN:
  *                 0=PRN 1=dop 2=cp 3=corr.re 4=corr.im 5=energy 6=n_chan 9,10=UTC).
- * @buffer out_buf Combined records (0=PRN 1=dop 2=cp 3=|A| 4=A.re 5=A.im 6=|A| 9,10=UTC).
+ * @buffer out_buf Combined records (0=PRN 1=dop 2=cp 3=|A|_incoh 4=<A>.re 5=<A>.im
+ *                 6=|<A>|_coh 7=n_chan 9,10=UTC).
  *
  * @author Keith Vanderlinde
  */
@@ -59,6 +69,7 @@ private:
     std::vector<Buffer*> in_bufs;
     Buffer* out_buf;
     int _n_prn;
+    int _integration_length; ///< tracker records accumulated per output (1 = no integration)
 
     // Latest combined record snapshot for REST status (full-band |A| per PRN).
     std::vector<int> _st_prn;
