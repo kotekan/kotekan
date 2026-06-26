@@ -21,7 +21,7 @@ sample_rate: 5.0e6
 f_offset: 1.25e6
 signal: GPS_L1CA
 code_doppler_sign: 1.0
-n_prn: 32
+n_prn: 9
 record_floats: 11
 doppler_margin_hz: 250000.0
 acquire_snr: 10.0
@@ -29,7 +29,7 @@ acquire_windows: 20
 doppler_min: -6000.0
 doppler_max: 6000.0
 doppler_step: 500.0
-prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+prns: [5, 10, 15, 18, 20, 23, 24, 27, 29]
 
 gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }
 
