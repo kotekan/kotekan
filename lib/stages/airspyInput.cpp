@@ -251,7 +251,7 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - _w0)
                     .count();
             if (_wms > 2.0)
-                INFO("airspy: blocked {:.1f} ms waiting for an empty frame -- pipeline behind "
+                WARN("airspy: blocked {:.1f} ms waiting for an empty frame -- pipeline behind "
                      "realtime, USB FIFO likely dropping samples",
                      _wms);
         }
