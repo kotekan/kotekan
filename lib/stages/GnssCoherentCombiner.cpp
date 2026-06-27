@@ -38,6 +38,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
 
     _st_prn.assign(_n_prn, 0);
     _st_amp.assign(_n_prn, 0.0f);
+    _st_coh.assign(_n_prn, 0.0f);
     _st_deep.assign(_n_prn, 0.0f);
     _st_dop.assign(_n_prn, 0.0f);
     _st_cp.assign(_n_prn, 0.0f);
@@ -146,6 +147,7 @@ void GnssCoherentCombiner::main_thread() {
                 const float* rec = out + (size_t)p * RECORD_FLOATS;
                 _st_prn[p] = (int)std::lround(rec[0]);
                 _st_amp[p] = rec[3];
+                _st_coh[p] = rec[6];
                 _st_deep[p] = rec[8];
                 _st_dop[p] = rec[1];
                 _st_cp[p] = rec[2];
@@ -161,6 +163,7 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
     for (int p = 0; p < _n_prn; ++p)
         reply.push_back({{"prn", _st_prn[p]},
                          {"amplitude", _st_amp[p]},
+                         {"coh_amplitude", _st_coh[p]},
                          {"deep_amplitude", _st_deep[p]},
                          {"doppler_hz", _st_dop[p]},
                          {"code_phase_chips", _st_cp[p]}});

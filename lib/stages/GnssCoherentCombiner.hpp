@@ -95,7 +95,7 @@ private:
 
     // Latest combined record snapshot for REST status (full-band |A| per PRN).
     std::vector<int> _st_prn;
-    std::vector<float> _st_amp, _st_deep, _st_dop, _st_cp;
+    std::vector<float> _st_amp, _st_coh, _st_deep, _st_dop, _st_cp;
     std::mutex _st_mtx;
 };
 

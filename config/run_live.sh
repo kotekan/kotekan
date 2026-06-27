@@ -90,7 +90,9 @@ if d:
 else:
     s='  searching...'
 if deep:
-    lvl='  |A|/deep: '+' '.join('PRN%d=%.2f/%.2f'%(r['prn'],r['amplitude'],r.get('deep_amplitude',0)) for r in top if r['amplitude']>0)
+    # the wipe's job: recover the coherent gain the plain coherent mean (coh) loses at the
+    # 20 ms nav bit. coh ~ |a|/sqrt(#bits) (dead); deep ~ |a| (alive). incoherent |A| in ().
+    lvl='  coh->deep (|A|): '+' '.join('PRN%d=%.2f->%.2f(%.2f)'%(r['prn'],r.get('coh_amplitude',0),r.get('deep_amplitude',0),r['amplitude']) for r in top if r['amplitude']>0)
 else:
     lvl='  |A|: '+' '.join('PRN%d=%.2f'%(r['prn'],r['amplitude']) for r in top if r['amplitude']>0) or '  |A|: --'
 print('[%s]%s%s'%(hdr,s,lvl))
