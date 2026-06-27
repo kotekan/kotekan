@@ -30,14 +30,39 @@ S_PRN, S_IAMP, S_ARE, S_AIM, S_CAMP = 0, 3, 4, 5, 6
 UTC_SLOT = 9
 
 
+def detect_n_prn(buf, record_floats, lo=1, hi=48):
+    """Infer records-per-frame from the rawFileWrite framing (the config n_prn changes
+    run-to-run with the visible-sat count). The correct n has a zero metadata_size word
+    at every frame boundary and the same set of valid PRN ids (1..32, distinct) in each
+    frame."""
+    for n in range(lo, hi + 1):
+        stride = 4 + n * record_floats * 4
+        nf = len(buf) // stride
+        if nf < 3:
+            continue
+        if any(struct.unpack_from("<I", buf, k * stride)[0] != 0 for k in range(min(20, nf))):
+            continue
+        prns = lambda k: [round(struct.unpack_from("<f", buf, k * stride + 4 + r * record_floats * 4)[0])
+                          for r in range(n)]  # noqa: E731
+        p0, p1 = prns(0), prns(1)
+        if all(1 <= x <= 32 for x in p0) and len(set(p0)) == n and p0 == p1:
+            return n
+    return None
+
+
 def load_records(base_dir, record_floats, n_prn):
     """Parse rawFileWrite framing: each frame is [uint32 metadata_size][metadata]
     [n_prn*record_floats float32 of data]. out_buf is metadata-less (size 0), but
     that 4-byte header is ALWAYS written, so a flat float reshape is misaligned --
-    skip the header per frame."""
+    skip the header per frame. n_prn<=0 auto-detects it from the framing."""
     files = sorted(glob.glob(os.path.join(base_dir, "*.raw")))
     if not files:
         sys.exit("no *.raw under %s -- run live_intgn.yaml first" % base_dir)
+    if n_prn <= 0:
+        n_prn = detect_n_prn(open(files[0], "rb").read(65536), record_floats)
+        if not n_prn:
+            sys.exit("could not auto-detect n_prn -- pass --n-prn explicitly")
+        sys.stderr.write("[intgn] auto-detected n_prn=%d\n" % n_prn)
     frame_floats = n_prn * record_floats
     frame_bytes = frame_floats * 4
     frames = []
@@ -166,7 +191,8 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("base_dir", nargs="?", default="/tmp/gpsintgn")
     ap.add_argument("--record-floats", type=int, default=11)
-    ap.add_argument("--n-prn", type=int, default=9, help="records per frame (config n_prn)")
+    ap.add_argument("--n-prn", type=int, default=0,
+                    help="records per frame (config n_prn); 0 = auto-detect from the framing")
     ap.add_argument("--dt-ms", type=float, default=1.0, help="record period (ms) for the time axis")
     ap.add_argument("--png", default=None, help="write a coh/incoh-vs-time plot here")
     args = ap.parse_args(argv)
