@@ -34,6 +34,16 @@ ChannelizedReplicaBank make_bank(const char* signal, const std::vector<int>& prn
     return ChannelizedReplicaBank(*sig, FS, FOFF, N, P, dsp::Window::Hamming, prns);
 }
 
+// Relative rms error of a hop series against a reference series.
+double rel_err(const std::vector<cf>& a, const std::vector<cf>& ref) {
+    double num = 0.0, den = 0.0;
+    for (size_t m = 0; m < a.size(); ++m) {
+        num += std::norm(a[m] - ref[m]);
+        den += std::norm(ref[m]);
+    }
+    return std::sqrt(num / den);
+}
+
 } // namespace
 
 // The bank dispatches the L5 Q5 code: self-despread is a perfect matched filter (1),
@@ -89,14 +99,6 @@ BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb) {
     const long long ws = 1000000;
     const int n_hops = 200;
     const std::vector<int> want = {8, 10, 12}; // covering channels near the 1.25 MHz carrier
-    auto rel_err = [&](const std::vector<cf>& a, const std::vector<cf>& ref) {
-        double num = 0.0, den = 0.0;
-        for (size_t m = 0; m < a.size(); ++m) {
-            num += std::norm(a[m] - ref[m]);
-            den += std::norm(ref[m]);
-        }
-        return std::sqrt(num / den);
-    };
     for (double dop : {0.0, 2000.0, -3500.0}) {
         auto exact = bank.channels(0, ws, 300.0, dop, n_hops);
         auto hop = bank.channels_hoprate(0, ws, 300.0, dop, n_hops, want);
@@ -114,4 +116,38 @@ BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb) {
             BOOST_CHECK_LT(rel_err(wiped[ci], neg), 1e-5);
         }
     }
+}
+
+// The streaming wrapper builds the prefix-sum filter once and reuses it across
+// contiguous generate() calls, rebuilding only on a large Doppler step -- so steady
+// generation is O(n_chips)/hop. Checks: exact match to channels(), the amortization
+// (one rebuild over many chunks), and the refresh policy.
+BOOST_AUTO_TEST_CASE(hoprate_stream_amortizes_and_matches) {
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L1CA");
+    BOOST_REQUIRE(sig != nullptr);
+    gnss::ChannelizedReplicaBank bank(*sig, 5.0e6, 1.25e6, 20, 4, dsp::Window::Hamming, {1});
+    const std::vector<int> want = {8, 10, 12};
+    gnss::HopRateReplicaStream stream(bank, 0, want, 40.0); // refresh on >40 Hz drift
+    const int n_hops = 50;
+    const double cp = 300.0, dop = 1500.0;
+
+    long long ws = 1000000;
+    for (int chunk = 0; chunk < 5; ++chunk) { // contiguous chunks, stable Doppler
+        const auto& out = stream.generate(ws, cp, dop, n_hops);
+        auto exact = bank.channels(0, ws, cp, dop, n_hops);
+        for (size_t ci = 0; ci < want.size(); ++ci)
+            BOOST_CHECK_LT(rel_err(out[ci], exact[want[ci]]), 1e-5);
+        ws += (long long)n_hops * bank.fft_len();
+    }
+    BOOST_CHECK_EQUAL(stream.rebuilds(), 1); // filter built once, reused across 5 chunks
+
+    // Small wobble (< refresh): no rebuild; the 20 Hz-stale filter error is bounded (~-54 dB
+    // here -- it scales ~linearly with the drift, so refresh_hz sets the peel depth).
+    const auto& wob = stream.generate(ws, cp, dop + 20.0, n_hops);
+    BOOST_CHECK_EQUAL(stream.rebuilds(), 1);
+    BOOST_CHECK_LT(rel_err(wob[1], bank.channels(0, ws, cp, dop + 20.0, n_hops)[10]), 3e-3);
+
+    // Large jump (> refresh): rebuild.
+    stream.generate(ws, cp, dop + 500.0, n_hops);
+    BOOST_CHECK_EQUAL(stream.rebuilds(), 2);
 }

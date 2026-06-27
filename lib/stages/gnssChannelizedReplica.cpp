@@ -159,38 +159,50 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
     return chan;
 }
 
-std::vector<std::vector<cf>>
-ChannelizedReplicaBank::channels_hoprate(int p, long long window_start_sample,
-                                         double code_phase_chips, double doppler_hz, int n_hops,
-                                         const std::vector<int>& want,
-                                         const std::function<float(long long)>& nav_bit) {
+ChannelizedReplicaBank::HopRateFilter
+ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double doppler_hz) const {
     const double cps =
         _sig.chip_rate_hz / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
     const double wc = 2.0 * M_PI * (_f_offset + doppler_hz) / _sample_rate;
     const int Lf = _fft_len * _num_taps;
-    const int n_chips = (int)std::ceil((double)(Lf - 1) * cps) + 2; // chips the filter spans
-    const int nw = (int)want.size();
     const std::complex<double> I(0.0, 1.0);
 
-    // Per wanted channel, the cumulative filter Phi[k] = Σ_{<k} filt[k], for both carrier
-    // images (A: +carrier, B: -carrier). filt = prototype modulated to the channel-carrier
-    // offset. A chip's contribution to the hop is Phi[k_hi+1]-Phi[k_lo] over its integer tap
-    // range -- exact (chip edges fall between samples). Built once for this Doppler.
-    std::vector<std::vector<std::complex<double>>> PhiA(nw), PhiB(nw);
+    HopRateFilter f;
+    f.doppler_hz = doppler_hz;
+    f.n_chips = (int)std::ceil((double)(Lf - 1) * cps) + 2; // chips the filter spans
+    f.chans = want;
+    const int nw = (int)want.size();
+    f.PhiA.resize(nw);
+    f.PhiB.resize(nw);
+    // Per channel, the cumulative filter Phi[k] = Σ_{<k} filt[k] for both carrier images
+    // (A: +carrier, B: -carrier); filt = prototype modulated to the channel-carrier offset.
+    // A chip's hop contribution is Phi[k_hi+1]-Phi[k_lo] over its integer tap range -- exact.
     for (int ci = 0; ci < nw; ++ci) {
         const double off = 2.0 * M_PI * (double)want[ci] / (double)_fft_len;
-        PhiA[ci].assign(Lf + 1, 0.0);
-        PhiB[ci].assign(Lf + 1, 0.0);
+        f.PhiA[ci].assign(Lf + 1, 0.0);
+        f.PhiB[ci].assign(Lf + 1, 0.0);
         for (int k = 0; k < Lf; ++k) {
             const double pk = _proto[k];
-            PhiA[ci][k + 1] = PhiA[ci][k] + pk * std::exp(-I * (off + wc) * (double)k);
-            PhiB[ci][k + 1] = PhiB[ci][k] + pk * std::exp(-I * (off - wc) * (double)k);
+            f.PhiA[ci][k + 1] = f.PhiA[ci][k] + pk * std::exp(-I * (off + wc) * (double)k);
+            f.PhiB[ci][k + 1] = f.PhiB[ci][k] + pk * std::exp(-I * (off - wc) * (double)k);
         }
     }
+    return f;
+}
 
-    // Stream the hops: R_j[m] = 1/2 ( e^{+i wc n_m} Σ_d code·d̂·WA(d) + e^{-i wc n_m} ... WB(d) ),
-    // n_m the window's reference sample, d the chip relative to the window edge. The carrier
-    // phasor is a per-hop recurrence; the nav bit (if any) is applied per chip (exact).
+std::vector<std::vector<cf>>
+ChannelizedReplicaBank::hoprate_stream(const HopRateFilter& f, int p, long long window_start_sample,
+                                       double code_phase_chips, double doppler_hz, int n_hops,
+                                       const std::function<float(long long)>& nav_bit) const {
+    // Per-hop carrier + code phase use the CURRENT Doppler (exact); the filter shape f is
+    // built for a nearby Doppler (it barely moves). R_j[m] = 1/2 ( e^{+i wc n_m} Σ_d code·d̂·
+    // (PhiA over chip d) + e^{-i wc n_m} ... PhiB ), d the chip relative to the window edge.
+    const double cps =
+        _sig.chip_rate_hz / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
+    const double wc = 2.0 * M_PI * (_f_offset + doppler_hz) / _sample_rate;
+    const int Lf = _fft_len * _num_taps;
+    const int nw = (int)f.PhiA.size();
+
     std::vector<std::vector<cf>> chan(nw, std::vector<cf>(n_hops));
     const long long n0 = window_start_sample + _fft_len - 1;
     std::complex<double> pa = std::polar(1.0, std::fmod(wc * (double)n0, 2.0 * M_PI));
@@ -203,7 +215,7 @@ ChannelizedReplicaBank::channels_hoprate(int p, long long window_start_sample,
         const std::complex<double> pb = std::conj(pa);
         for (int ci = 0; ci < nw; ++ci) {
             std::complex<double> sA(0.0, 0.0), sB(0.0, 0.0);
-            for (int d = 0; d < n_chips; ++d) {
+            for (int d = 0; d < f.n_chips; ++d) {
                 int klo = (int)std::floor((phi + d - 1.0) / cps) + 1; // chip d's tap range
                 int khi = (int)std::floor((phi + d) / cps);
                 if (klo < 0)
@@ -216,8 +228,8 @@ ChannelizedReplicaBank::channels_hoprate(int p, long long window_start_sample,
                 double cv = (double)code_chip(p, (double)cidx);
                 if (nav_bit)
                     cv *= nav_bit(cidx);
-                sA += cv * (PhiA[ci][khi + 1] - PhiA[ci][klo]);
-                sB += cv * (PhiB[ci][khi + 1] - PhiB[ci][klo]);
+                sA += cv * (f.PhiA[ci][khi + 1] - f.PhiA[ci][klo]);
+                sB += cv * (f.PhiB[ci][khi + 1] - f.PhiB[ci][klo]);
             }
             chan[ci][m] = (cf)(0.5 * (pa * sA + pb * sB));
         }
@@ -225,6 +237,31 @@ ChannelizedReplicaBank::channels_hoprate(int p, long long window_start_sample,
         pa /= std::abs(pa);
     }
     return chan;
+}
+
+std::vector<std::vector<cf>>
+ChannelizedReplicaBank::channels_hoprate(int p, long long window_start_sample,
+                                         double code_phase_chips, double doppler_hz, int n_hops,
+                                         const std::vector<int>& want,
+                                         const std::function<float(long long)>& nav_bit) const {
+    return hoprate_stream(hoprate_filter(want, doppler_hz), p, window_start_sample,
+                          code_phase_chips, doppler_hz, n_hops, nav_bit);
+}
+
+HopRateReplicaStream::HopRateReplicaStream(const ChannelizedReplicaBank& bank, int prn_index,
+                                           std::vector<int> channels, double refresh_hz) :
+    _bank(bank), _prn(prn_index), _chans(std::move(channels)), _refresh_hz(refresh_hz) {}
+
+const std::vector<std::vector<cf>>&
+HopRateReplicaStream::generate(long long window_start, double cp, double doppler_hz, int n_hops,
+                               const std::function<float(long long)>& nav_bit) {
+    if (!_built || std::fabs(doppler_hz - _filter.doppler_hz) > _refresh_hz) {
+        _filter = _bank.hoprate_filter(_chans, doppler_hz); // slow part -- only on a real drift
+        _built = true;
+        ++_rebuilds;
+    }
+    _out = _bank.hoprate_stream(_filter, _prn, window_start, cp, doppler_hz, n_hops, nav_bit);
+    return _out;
 }
 
 } // namespace gnss

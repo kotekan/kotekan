@@ -73,7 +73,27 @@ public:
     std::vector<std::vector<std::complex<float>>>
     channels_hoprate(int p, long long window_start_sample, double code_phase_chips,
                      double doppler_hz, int n_hops, const std::vector<int>& want,
-                     const std::function<float(long long)>& nav_bit = {});
+                     const std::function<float(long long)>& nav_bit = {}) const;
+
+    /// The slowly-varying half of the hop-rate generator: the cumulative channel filters
+    /// (both carrier images) for @c want at @c doppler_hz. Depends only on the carrier
+    /// offset, so it barely moves with Doppler -- rebuild only every ~tens of Hz of drift.
+    /// @ref HopRateReplicaStream caches it; @ref hoprate_stream consumes it.
+    struct HopRateFilter {
+        double doppler_hz = 0.0;
+        int n_chips = 0;
+        std::vector<int> chans;
+        std::vector<std::vector<std::complex<double>>> PhiA, PhiB; ///< [channel][Lf+1]
+    };
+    HopRateFilter hoprate_filter(const std::vector<int>& want, double doppler_hz) const;
+
+    /// Stream @c n_hops from a prebuilt @ref HopRateFilter. The per-hop carrier phasor +
+    /// code phase use the CURRENT @c code_phase_chips / @c doppler_hz (exact); the filter
+    /// shape comes from @c f (built for a nearby Doppler). @c nav_bit per chip = exact wipe.
+    std::vector<std::vector<std::complex<float>>>
+    hoprate_stream(const HopRateFilter& f, int p, long long window_start_sample,
+                   double code_phase_chips, double doppler_hz, int n_hops,
+                   const std::function<float(long long)>& nav_bit = {}) const;
 
     /// Global channel indices whose passband covers the carrier at @c doppler_hz.
     std::vector<int> covering_bins(double doppler_hz, double doppler_margin_hz) const;
@@ -108,6 +128,50 @@ private:
     fftwf_complex* _spec;
     fftwf_plan _p_fwd;
     std::vector<float> _replica_hist;
+};
+
+/**
+ * @class HopRateReplicaStream
+ * @brief Realtime streaming wrapper around @ref ChannelizedReplicaBank::hoprate_stream.
+ *
+ * Holds the cumulative channel filter (the O(num_taps*fft_len) part) and reuses it across
+ * @ref generate() calls, rebuilding it only when the carrier Doppler has drifted past
+ * @c refresh_hz -- so steady-state generation is O(n_chips) MACs/hop. One stream per PRN
+ * per channel set; not thread-safe. The bank it references must outlive it.
+ *
+ * @author Keith Vanderlinde
+ */
+class HopRateReplicaStream {
+public:
+    /// @param bank        the replica bank (must outlive this; provides codes/filter).
+    /// @param prn_index   PRN index into the bank.
+    /// @param channels    global channel indices to generate (the covering set).
+    /// @param refresh_hz  rebuild when |doppler - built| exceeds this -- it bounds the filter
+    ///                    staleness (~-54 dB at 20 Hz, ~linear), so it sets the peel depth.
+    ///                    The rebuild is cheap and amortizes over ~seconds (Doppler drifts
+    ///                    ~1 Hz/s), so run tight: a few Hz for a deep peel of a +60 dB source.
+    HopRateReplicaStream(const ChannelizedReplicaBank& bank, int prn_index,
+                         std::vector<int> channels, double refresh_hz = 2.0);
+
+    /// Next @c n_hops from @c window_start at code phase @c cp and carrier @c doppler_hz.
+    /// Rebuilds the cached filter on a large Doppler step; otherwise reuses it. @c nav_bit
+    /// applies the +-1 data per chip (exact wipe). Returns [channels][n_hops] (owned here).
+    const std::vector<std::vector<std::complex<float>>>&
+    generate(long long window_start, double cp, double doppler_hz, int n_hops,
+             const std::function<float(long long)>& nav_bit = {});
+
+    /// Filter rebuilds so far (diagnostics; ~0 in steady lock).
+    long rebuilds() const { return _rebuilds; }
+
+private:
+    const ChannelizedReplicaBank& _bank;
+    int _prn;
+    std::vector<int> _chans;
+    double _refresh_hz;
+    bool _built = false;
+    long _rebuilds = 0;
+    ChannelizedReplicaBank::HopRateFilter _filter;
+    std::vector<std::vector<std::complex<float>>> _out;
 };
 
 } // namespace gnss
