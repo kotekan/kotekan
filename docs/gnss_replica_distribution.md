@@ -78,14 +78,21 @@ drifts), then each hop is `~P·f_chip/channel_BW` MACs (a ~`Fs/f_chip` ≈ 313×
 **~0.01 Tflop/s/node**). Both carrier images kept; the carrier is a per-hop output
 phasor; the nav wipe is the free per-hop sign post-multiply.
 
-**Validated** (`python/scripts/gps_hoprate_validate.py`; C++
+**Validated, and exact** (`python/scripts/gps_hoprate_validate.py`; C++
 `ChannelizedReplicaBank::channels_hoprate()` + boost test `hoprate_matches_exact_pfb`):
-the chip-collapse reproduces the exact full-PFB to −200 dB (math is an identity), and
-the φ-bank generator matches `channels()` to **−81…−144 dB** at n_phi=16384 on airspy
-params. `R_c` is genuinely a *step* function of sub-chip phase (±1 code), so linear φ
-interpolation plateaus; the array's memory budget wants a **Farrow / smooth-cumulative
-interpolation** (small table) or an exact piecewise-constant lookup — the next
-optimization, but the math/structure is proven.
+the per-chip form reproduces the exact full-PFB to **machine precision** (−144 dB at
+float32). The right form is the **prefix-sum**, not a φ-bank: a chip's filter
+contribution is `Φ[k_hi]−Φ[k_lo−1]` over its *integer* tap range (chip edges fall
+*between* samples, so there's nothing to interpolate). Exact, and memory-light — just
+the cumulative filter `Φ` (length `P·fft_len`), not an `n_phi×n_chips` table. The φ-bank
+with interpolation was a stepping stone (it plateaued, since `R_c` is a step function of
+sub-chip phase); the prefix-sum is exact with less memory, so no Farrow is needed.
+
+**Nav-bit edge handled exactly.** A 20 ms data-bit edge falls on a code-period (= chip)
+boundary, so the wipe is applied **per chip** in the same sum (the `nav_bit` arg), giving
+the exact `d̂·R_c`. The per-hop post-multiply is *not* good enough here — it smears the
+~`P` hops straddling each edge by ~100% (worst-hop +13 dB), a ~−30 dB power leak that a
++60 dB GNSS source would splash all over the celestial signal.
 
 ```
  acquire ─► lock (cp,Doppler)/sat ─► trajectory predictor + nav decode
@@ -98,6 +105,7 @@ optimization, but the math/structure is proven.
 Wins 1 & 2 are settled. Hop-rate local generation (pathway #5) is validated, so
 **(B) is the recommendation** — generate-local, only the kbps trajectory+bit
 broadcast, no bulk replica distribution. (A) is the fallback if a node ever can't
-afford even ~0.01 Tflop/s. Remaining: a memory-light φ interpolation (Farrow/exact)
-for the CHORD per-channel footprint, and the streaming generator wrapper (build the
-φ-bank once, stream hops) since the speedup is amortized over a long stream.
+afford even ~0.01 Tflop/s. Remaining: the streaming generator wrapper (build the
+prefix-sum `Φ` once, stream hops, rebuild slowly as Doppler drifts) since the speedup
+is amortized over a long stream; and the GPU kernel form (a bank of per-PRN chip-rate
+filters).

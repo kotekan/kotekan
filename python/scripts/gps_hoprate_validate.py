@@ -39,7 +39,7 @@ def pfb_prototype(num_chan, num_taps, window="hamming"):
 
 # ---- exact reference: ChannelizedReplicaBank::channels() in numpy -----------
 def exact_pfb(code, fft_len, num_taps, proto, Fs, f_offset, chip_rate, f_carrier,
-              cp, dop, window_start, n_hops, cd_sign=1.0):
+              cp, dop, window_start, n_hops, cd_sign=1.0, navbit=None):
     L = len(code)
     warm = num_taps - 1
     start = window_start - warm * fft_len
@@ -49,8 +49,10 @@ def exact_pfb(code, fft_len, num_taps, proto, Fs, f_offset, chip_rate, f_carrier
     chan = np.zeros((fft_len // 2 + 1, n_hops), dtype=complex)
     for h in range(n_hops + warm):
         n = start + h * fft_len + np.arange(fft_len)
-        chip = np.floor(cp + n * cps).astype(np.int64) % L
-        block = np.where(n >= 0, code[chip] * np.cos(wc * n), 0.0)
+        chip_abs = np.floor(cp + n * cps).astype(np.int64)        # absolute chip (for nav bit)
+        chip = chip_abs % L
+        bit = navbit(chip_abs) if navbit is not None else 1.0     # exact: data on the code
+        block = np.where(n >= 0, bit * code[chip] * np.cos(wc * n), 0.0)
         hist[fft_len:] = hist[:-fft_len]            # slide old back
         hist[:fft_len] = block[::-1]                # newest sample -> hist[0]
         fold = sum(proto[q * fft_len:(q + 1) * fft_len] * hist[q * fft_len:(q + 1) * fft_len]
@@ -139,6 +141,47 @@ def hoprate_phibank(code, fft_len, num_taps, proto, Fs, f_offset, chip_rate, f_c
     return out
 
 
+def hoprate_prefix(code, fft_len, num_taps, proto, Fs, f_offset, chip_rate, f_carrier,
+                   cp, dop, window_start, n_hops, j, n_chips=40, cd_sign=1.0,
+                   navbit=None, navbit_per_hop=False):
+    """EXACT hop-rate generator via the prefix-sum: each chip's filter contribution is
+    Phi[k_hi] - Phi[k_lo-1] over its INTEGER tap range -- no interpolation, because the
+    chip boundaries land between integer taps. O(n_chips)/hop, memory = the prefix sum.
+    Edge 1 (chip edge in the filter) is exact here. navbit applies the +-1 data; per-chip
+    (navbit_per_hop=False) is exact (the bit edge is chip-aligned), per-hop is the cheap
+    post-multiply approximation that smears the ~P hops straddling a bit edge."""
+    Lc = len(code)
+    Lf = fft_len * num_taps
+    cps = chip_rate / Fs * (1.0 + cd_sign * dop / f_carrier)
+    wc = 2 * np.pi * (f_offset + dop) / Fs
+    k = np.arange(Lf)
+    filtA = proto * np.exp(-1j * (2 * np.pi * j / fft_len + wc) * k)
+    filtB = proto * np.exp(-1j * (2 * np.pi * j / fft_len - wc) * k)
+    PhiA = np.concatenate([[0], np.cumsum(filtA)])               # PhiA[k] = Σ filtA[0:k]
+    PhiB = np.concatenate([[0], np.cumsum(filtB)])
+    out = np.zeros(n_hops, dtype=complex)
+    for m in range(n_hops):
+        n_m = window_start + (m + 1) * fft_len - 1
+        C = cp + n_m * cps
+        chip0 = int(np.floor(C))
+        phi = C - chip0
+        hop_bit = navbit(chip0) if (navbit is not None and navbit_per_hop) else 1.0
+        sA = sB = 0.0 + 0j
+        for d in range(n_chips):
+            klo = max(int(np.floor((phi + d - 1) / cps)) + 1, 0)
+            khi = min(int(np.floor((phi + d) / cps)), Lf - 1)
+            if khi < klo:
+                continue
+            cidx = chip0 - d
+            cv = code[cidx % Lc]
+            if navbit is not None and not navbit_per_hop:
+                cv *= navbit(cidx)                              # exact: bit per chip
+            sA += cv * (PhiA[khi + 1] - PhiA[klo])
+            sB += cv * (PhiB[khi + 1] - PhiB[klo])
+        out[m] = 0.5 * hop_bit * (np.exp(1j * wc * n_m) * sA + np.exp(-1j * wc * n_m) * sB)
+    return out
+
+
 def db(x):
     return 20 * np.log10(x + 1e-300)
 
@@ -185,6 +228,42 @@ def main():
                                  n_phi=n_phi, n_chips=40)
             errs.append(db(np.sqrt(np.mean(np.abs(hp - r) ** 2)) / rms))
         print("   %4d  | %6.1f  %6.1f  %6.1f" % (n_phi, errs[0], errs[1], errs[2]))
+
+    def rel(a, r):
+        return db(np.sqrt(np.mean(np.abs(a - r) ** 2)) / np.sqrt(np.mean(np.abs(r) ** 2)))
+
+    print("\nC) EXACT prefix-sum generator (Edge 1: chip edge inside the filter):")
+    print("   the chip's filter sum = Phi[k_hi]-Phi[k_lo-1] over integer taps -> exact, no interp")
+    dop = 2000.0
+    ref = exact_pfb(code, fft_len, num_taps, proto, Fs, f_offset, chip_rate, f_carrier,
+                    300.0, dop, window_start, n_hops)
+    for j in (8, 10, 12):
+        hp = hoprate_prefix(code, fft_len, num_taps, proto, Fs, f_offset, chip_rate,
+                            f_carrier, 300.0, dop, window_start, n_hops, j, n_chips=40)
+        print("   j=%2d  err %6.1f dB" % (j, rel(hp, ref[j])))
+
+    print("\nD) NAV-BIT EDGE (Edge 2): a 20 ms bit edge falls on a code-period (=chip) boundary,")
+    print("   so applying the +-1 bit PER CHIP is exact; the per-hop post-multiply smears ~P hops.")
+    Lc = len(code)
+    center = 300.0 + (window_start + n_hops // 2 * fft_len) * (chip_rate / Fs)
+    edge_chip = round(center / Lc) * Lc                      # a code-period boundary in the window
+
+    def navbit(c):
+        return np.where(np.asarray(c) < edge_chip, 1.0, -1.0)
+
+    ref = exact_pfb(code, fft_len, num_taps, proto, Fs, f_offset, chip_rate, f_carrier,
+                    300.0, dop, window_start, n_hops, navbit=navbit)  # the TRUE wiped replica
+    for j in (8, 10, 12):
+        exact_w = hoprate_prefix(code, fft_len, num_taps, proto, Fs, f_offset, chip_rate,
+                                 f_carrier, 300.0, dop, window_start, n_hops, j,
+                                 navbit=navbit, navbit_per_hop=False)
+        approx_w = hoprate_prefix(code, fft_len, num_taps, proto, Fs, f_offset, chip_rate,
+                                  f_carrier, 300.0, dop, window_start, n_hops, j,
+                                  navbit=navbit, navbit_per_hop=True)
+        worst = db(np.max(np.abs(approx_w - ref[j])) / np.sqrt(np.mean(np.abs(ref[j]) ** 2)))
+        nbad = int(np.sum(np.abs(approx_w - ref[j]) > 0.01 * np.sqrt(np.mean(np.abs(ref[j]) ** 2))))
+        print("   j=%2d | per-chip(exact) %6.1f dB | per-hop(approx) rms %6.1f dB, worst-hop %5.1f "
+              "dB, %d straddling hops" % (j, rel(exact_w, ref[j]), rel(approx_w, ref[j]), worst, nbad))
 
 
 if __name__ == "__main__":

@@ -77,10 +77,11 @@ BOOST_AUTO_TEST_CASE(l1ca_distinct_from_l5q) {
     BOOST_CHECK_LT(despread_mag(r1, r5), 0.3); // L1 code vs L5 code decorrelate
 }
 
-// The hop-rate generator (per-chip phi-bank) must reproduce the exact full-PFB
-// channels() to better than -50 dB on the covering channels -- the C++ analog of
-// python/scripts/gps_hoprate_validate.py. Airspy-scale params (5 MSPS, N=20, ~4.9
-// samples/chip) so the chip-collapse is exercised.
+// The hop-rate prefix-sum generator must reproduce the exact full-PFB channels() to
+// ~machine precision on the covering channels (the chip-collapse is an identity; the
+// chip-edge-in-the-filter is exact via Phi[k_hi]-Phi[k_lo-1] over integer taps). The
+// C++ analog of python/scripts/gps_hoprate_validate.py. Airspy-scale (5 MSPS, N=20,
+// ~4.9 samples/chip).
 BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L1CA");
     BOOST_REQUIRE(sig != nullptr);
@@ -88,18 +89,29 @@ BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb) {
     const long long ws = 1000000;
     const int n_hops = 200;
     const std::vector<int> want = {8, 10, 12}; // covering channels near the 1.25 MHz carrier
+    auto rel_err = [&](const std::vector<cf>& a, const std::vector<cf>& ref) {
+        double num = 0.0, den = 0.0;
+        for (size_t m = 0; m < a.size(); ++m) {
+            num += std::norm(a[m] - ref[m]);
+            den += std::norm(ref[m]);
+        }
+        return std::sqrt(num / den);
+    };
     for (double dop : {0.0, 2000.0, -3500.0}) {
         auto exact = bank.channels(0, ws, 300.0, dop, n_hops);
-        auto hop = bank.channels_hoprate(0, ws, 300.0, dop, n_hops, want, 16384);
+        auto hop = bank.channels_hoprate(0, ws, 300.0, dop, n_hops, want);
+        // Constant nav bit -1 must just negate the result (per-chip wipe plumbing). The
+        // edge-exactness (bit edge on a code-period boundary) is covered in the python.
+        auto wiped = bank.channels_hoprate(0, ws, 300.0, dop, n_hops, want,
+                                           [](long long) { return -1.0f; });
         for (size_t ci = 0; ci < want.size(); ++ci) {
-            double num = 0.0, den = 0.0;
-            for (int m = 0; m < n_hops; ++m) {
-                num += std::norm(hop[ci][m] - exact[want[ci]][m]);
-                den += std::norm(exact[want[ci]][m]);
-            }
-            const double rel = std::sqrt(num / den);
-            BOOST_CHECK_MESSAGE(rel < 3.2e-3, // -50 dB
-                                "dop " << dop << " ch " << want[ci] << " rel err " << rel);
+            BOOST_CHECK_MESSAGE(rel_err(hop[ci], exact[want[ci]]) < 1e-5,
+                                "dop " << dop << " ch " << want[ci] << " hop-rate err "
+                                       << rel_err(hop[ci], exact[want[ci]]));
+            std::vector<cf> neg(n_hops);
+            for (int m = 0; m < n_hops; ++m)
+                neg[m] = -exact[want[ci]][m];
+            BOOST_CHECK_LT(rel_err(wiped[ci], neg), 1e-5);
         }
     }
 }

@@ -11,10 +11,11 @@
 #include "gnssSignal.hpp"   // for SignalDescriptor
 #include "pfbPrototype.hpp" // for Window
 
-#include <complex> // for complex
-#include <cstdint> // for int8_t
-#include <fftw3.h> // for fftwf_plan, fftwf_complex
-#include <vector>  // for vector
+#include <complex>    // for complex
+#include <cstdint>    // for int8_t
+#include <fftw3.h>    // for fftwf_plan, fftwf_complex
+#include <functional> // for function
+#include <vector>     // for vector
 
 namespace gnss {
 
@@ -55,18 +56,24 @@ public:
     channels(int p, long long window_start_sample, double code_phase_chips, double doppler_hz,
              int n_hops);
 
-    /// Hop-rate channelized replica for the listed channels -- numerically equal to
-    /// @ref channels() but built per chip, not per sample. The spreading code is constant
-    /// over a chip (~Fs/chip_rate samples), so the polyphase filter collapses to a per-chip
-    /// sum: precompute the filter integrated over each chip vs sub-chip phase (the phi-bank,
-    /// built once for this Doppler), then each hop is O(n_chips) MACs instead of
-    /// O(num_taps*fft_len). Carrier = a per-hop output phasor + the channel-carrier offset
-    /// baked into the (slowly-rebuilt) filter; both carrier images are kept. The phi-bank
-    /// cost amortizes over a long stream, so this wins for streaming generation, not short
-    /// bursts. Returns [want.size()][n_hops]. @c n_phi sub-chip phase bins (accuracy knob).
+    /// Hop-rate channelized replica for the listed channels -- numerically EQUAL to
+    /// @ref channels() (to ~machine precision) but built per chip, not per sample. The
+    /// spreading code is constant over a chip (~Fs/chip_rate samples), so the polyphase
+    /// filter collapses to a per-chip sum: a chip's filter contribution is the cumulative
+    /// filter @c Phi[k_hi]-Phi[k_lo-1] over its INTEGER tap range (the chip boundaries land
+    /// between samples, so this is exact -- no interpolation). Carrier = a per-hop output
+    /// phasor + the channel-carrier offset baked into the (slowly-rebuilt) filter; both
+    /// images kept. Each hop is O(n_chips) MACs vs O(num_taps*fft_len) per sample; the
+    /// O(num_taps*fft_len) prefix-sum amortizes over a stream.
+    ///
+    /// @c nav_bit (optional): the +-1 data bit for an absolute chip index. The 20 ms nav
+    /// edge falls on a code-period (=chip) boundary, so multiplying it in PER CHIP gives the
+    /// EXACT data-wiped replica @c d*R_c (a per-hop post-multiply would smear the ~num_taps
+    /// hops straddling an edge by ~100%). Returns [want.size()][n_hops].
     std::vector<std::vector<std::complex<float>>>
     channels_hoprate(int p, long long window_start_sample, double code_phase_chips,
-                     double doppler_hz, int n_hops, const std::vector<int>& want, int n_phi = 4096);
+                     double doppler_hz, int n_hops, const std::vector<int>& want,
+                     const std::function<float(long long)>& nav_bit = {});
 
     /// Global channel indices whose passband covers the carrier at @c doppler_hz.
     std::vector<int> covering_bins(double doppler_hz, double doppler_margin_hz) const;
