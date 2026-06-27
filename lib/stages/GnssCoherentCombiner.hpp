@@ -78,9 +78,12 @@ private:
     /// broker poll: latest full-band |A| (and seed) per PRN, for drop decisions.
     void get_status_callback(kotekan::connectionInstance& conn);
 
-    /// Nav-bit-wiped deep coherent amplitude from a window of per-record A: bit-sync,
-    /// per-epoch +-1 estimate by squaring, wipe, coherent-sum / N. 0 if too short.
-    double navwipe_amplitude(const std::vector<std::complex<double>>& a) const;
+    /// Nav-bit-wiped deep coherent amplitude from a window of per-record (A, capture-UTC):
+    /// bin records into nav-bit epochs by their ABSOLUTE code-period index (from UTC, so
+    /// valve drops just leave gaps, not misalignment), bit-sync, per-epoch +-1 by squaring,
+    /// wipe, coherent-sum / N. 0 if too short. Needs capture-time UTC (capture_utc0 > 0).
+    double navwipe_amplitude(const std::vector<std::complex<double>>& a,
+                             const std::vector<double>& utc) const;
 
     std::vector<Buffer*> in_bufs;
     Buffer* out_buf;
@@ -88,6 +91,7 @@ private:
     int _integration_length; ///< tracker records accumulated per output (1 = no integration)
     int _navwipe_bit_records; ///< records per nav bit (0 = no wipe)
     std::vector<std::vector<std::complex<double>>> _navbuf; ///< per-PRN per-record A over the window
+    std::vector<std::vector<double>> _navutc;              ///< per-PRN per-record capture UTC
 
     // Latest combined record snapshot for REST status (full-band |A| per PRN).
     std::vector<int> _st_prn;
