@@ -57,6 +57,15 @@
  *                        over seed +/- this and lock to the peak |A|, so a stale/drifting
  *                        seed still locks (DLL-style). 0 = single despread at the seed.
  * @conf pullin_step      Double (default 0.5). Pull-in grid step (chips).
+ * @conf fll_gain         Double (default 0). Carrier frequency-lock-loop gain: each record
+ *                        the per-PRN tracked Doppler steps by gain*(frequency error from the
+ *                        bit-robust phase walk arg((A_k conj A_{k-1})^2)/2). 0 = open-loop
+ *                        (use the broker Doppler). ~0.02-0.05 drives the ~15 Hz seed wander
+ *                        to <1 Hz, the residual needed for seconds of coherent integration.
+ * @conf fll_reacq_hz     Double (default 200). Re-seed the FLL from the broker Doppler when
+ *                        they diverge by more than this (loss of lock / sat change).
+ * @conf fll_max_gap_s    Double (default 0.005). Skip the FLL update across a record gap
+ *                        larger than this (a dropped frame would alias the phase walk).
  * @conf active_prns      Array<Int> (optional). Initial go/no-go mask (default all on).
  * @conf capture_utc0     Double (default 0). UTC of sample 0; 0 = wall-clock at emit.
  *
@@ -96,6 +105,10 @@ private:
 
     double _pullin_chips; ///< code pull-in half-window (chips); 0 = despread at the seed only
     double _pullin_step;  ///< code pull-in grid step (chips)
+
+    double _fll_gain;     ///< carrier FLL loop gain (0 = open-loop, use the broker Doppler)
+    double _fll_reacq_hz; ///< |f_track - seed| beyond this re-acquires from the broker seed
+    double _fll_max_gap;  ///< skip the FLL discriminator if records are >this many apart (s)
 
     std::vector<int> _prns;
     std::vector<double> _doppler;

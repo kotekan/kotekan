@@ -9,6 +9,8 @@
 
 #include <algorithm> // for fill
 #include <chrono>    // for system_clock
+#include <cmath>     // for nan, arg, norm, isnan, fabs
+#include <complex>   // for complex, arg, norm
 #include <cstring>   // for memcpy
 #include <set>       // for set
 
@@ -83,6 +85,9 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     _replica->code_doppler_sign = config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
     _pullin_chips = config.get_default<double>(unique_name, "pullin_chips", 0.0);
     _pullin_step = config.get_default<double>(unique_name, "pullin_step", 0.5);
+    _fll_gain = config.get_default<double>(unique_name, "fll_gain", 0.0);
+    _fll_reacq_hz = config.get_default<double>(unique_name, "fll_reacq_hz", 200.0);
+    _fll_max_gap = config.get_default<double>(unique_name, "fll_max_gap_s", 0.005);
 
     const auto active_prns = config.get_default<std::vector<int>>(unique_name, "active_prns", {});
     _active.assign(n_prn, 1);
@@ -129,6 +134,15 @@ void GnssChannelizedTracker::main_thread() {
     int frame_in = 0;
     int frame_out = 0;
     const int n_prn = (int)_prns.size();
+
+    // Carrier FLL state (per PRN): the tracked Doppler and the previous record's despread
+    // amplitude + hop, for the record-to-record frequency discriminator. NaN = not yet
+    // acquired. The loop owns the fine carrier; the broker seed only (re)acquires it.
+    std::vector<double> f_track(n_prn, std::nan(""));
+    std::vector<cf> a_prev(n_prn, cf(0.0f, 0.0f));
+    std::vector<uint8_t> a_prev_ok(n_prn, 0);
+    std::vector<long long> hop_prev(n_prn, 0);
+    const double record_dt = (double)_hops_per_record * (double)_fft_len / _sample_rate;
 
     // Rolling measurement window of [hop][subband-channel] voltages.
     std::vector<cf> window((size_t)_hops_per_record * _n_chan);
@@ -190,8 +204,11 @@ void GnssChannelizedTracker::main_thread() {
                     rec[f] = 0.0f;
                 rec[0] = (float)_prns[p];
                 *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = utc;
-                if (!active[p])
+                if (!active[p]) {
+                    f_track[p] = std::nan(""); // forget the loop; re-acquire when it returns
+                    a_prev_ok[p] = 0;
                     continue;
+                }
 
                 // Covering channels for this carrier that fall in this subband.
                 const auto cover = _replica->covering_bins(dop[p], _doppler_margin_hz);
@@ -208,7 +225,17 @@ void GnssChannelizedTracker::main_thread() {
                 cp_seed = std::fmod(cp_seed, L);
                 if (cp_seed < 0.0)
                     cp_seed += L;
-                rec[1] = (float)dop[p];
+
+                // Carrier frequency: the FLL-tracked value, (re)acquired from the broker
+                // seed when uninitialised or far adrift; open-loop uses the seed directly.
+                if (_fll_gain > 0.0) {
+                    if (std::isnan(f_track[p]) || std::fabs(f_track[p] - dop[p]) > _fll_reacq_hz) {
+                        f_track[p] = dop[p];
+                        a_prev_ok[p] = 0;
+                    }
+                }
+                const double fcar = (_fll_gain > 0.0) ? f_track[p] : dop[p];
+                rec[1] = (float)fcar;
                 rec[2] = (float)cp_seed;
                 rec[6] = (float)owned.size();
                 if (owned.empty())
@@ -234,7 +261,7 @@ void GnssChannelizedTracker::main_thread() {
                 double best_pw = -1.0, best_cp = cp_seed;
                 for (double off = -_pullin_chips; off <= _pullin_chips + 1e-9;
                      off += (_pullin_step > 0.0 ? _pullin_step : 1.0)) {
-                    const auto repl = _replica->channels(p, window_start, cp_seed + off, dop[p],
+                    const auto repl = _replica->channels(p, window_start, cp_seed + off, fcar,
                                                          _hops_per_record);
                     std::vector<std::vector<cf>> repl_ch;
                     repl_ch.reserve(owned.size());
@@ -254,6 +281,29 @@ void GnssChannelizedTracker::main_thread() {
                 rec[3] = (float)best.correlation.real();
                 rec[4] = (float)best.correlation.imag();
                 rec[5] = (float)best.replica_energy;
+
+                // Carrier FLL: drive the tracked Doppler with the bit-robust frequency
+                // discriminator across consecutive records. The product A_k conj A_{k-1}
+                // turns at 2*pi*(freq error)*dt; squaring it cancels the +-1 nav-bit pi
+                // flip (valid while |err*dt| < 1/4). Skip across a gap (a dropped frame
+                // would alias). This closes the ~15 Hz seed wander down to the <1 Hz
+                // residual that long coherent integration (and clean nav-bit decode) need.
+                if (_fll_gain > 0.0) {
+                    const cf a_cur = (cf)best.amplitude;
+                    const double dt = (double)(window_start_hop - hop_prev[p]) * (double)_fft_len
+                                      / _sample_rate;
+                    if (a_prev_ok[p] && dt > 0.0 && dt <= _fll_max_gap
+                        && std::abs(a_cur) > 0.0f && std::abs(a_prev[p]) > 0.0f) {
+                        const std::complex<double> prod =
+                            std::complex<double>(a_cur) * std::conj(std::complex<double>(a_prev[p]));
+                        const double dphi = std::arg(prod * prod) / 2.0; // bit-robust phase walk
+                        const double ferr = dphi / (2.0 * M_PI * dt);    // Hz
+                        f_track[p] += _fll_gain * ferr;
+                    }
+                    a_prev[p] = a_cur;
+                    a_prev_ok[p] = 1;
+                    hop_prev[p] = window_start_hop;
+                }
             }
 
             // Stamp the window's absolute sample on the record frame: it survives

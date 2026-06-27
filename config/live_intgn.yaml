@@ -68,7 +68,10 @@ valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 # (true CAPTURE time from fpga_seq), not wall-clock-at-emit. Emit time is bursty (the
 # pipeline drains buffered frames then stalls), which corrupts the integration time axis
 # and any phase-vs-time Doppler fit; capture time is exact 1 ms/record with clean gaps.
-track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 20, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0 }
+# fll_gain: per-PRN carrier frequency-lock loop drives the residual carrier (the ~15 Hz
+# seed wander) to <1 Hz, the precision needed for seconds of coherent integration and a
+# clean nav-bit decode. The broker seed only (re)acquires; the loop owns the fine carrier.
+track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 20, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
 # integration_length: 1 -> emit every per-record A raw (offline integration in the reader).
 combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1 }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpsintgn", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
