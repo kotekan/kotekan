@@ -24,7 +24,9 @@ LOG=/tmp/gpslive.log
 
 cleanup() { echo; echo "stopping..."; kill "${BPID:-}" 2>/dev/null
             pkill -9 -f build_mac/kotekan/kotekan 2>/dev/null
-            pkill -9 -f livebeam_server 2>/dev/null; exit 0; }
+            pkill -9 -f livebeam_server 2>/dev/null
+            [ -n "${RUNCFG:-}" ] && [ "${RUNCFG:-}" != "$CFG" ] && rm -f "$RUNCFG"
+            exit 0; }
 trap cleanup INT TERM
 
 pkill -9 -f build_mac/kotekan/kotekan 2>/dev/null; pkill -9 -f livebeam_server 2>/dev/null
@@ -34,7 +36,8 @@ pkill -9 -f build_mac/kotekan/kotekan 2>/dev/null; pkill -9 -f livebeam_server 2
 # LAT/LON; patches a temp copy so the committed config is untouched. Launch RUNCFG.
 RUNCFG="$CFG"
 if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
-  RUNCFG=$(mktemp "${TMPDIR:-/tmp}/live_cfg_XXXXXX.yaml")
+  # PID-based temp (portable: BSD/macOS mktemp rejects a .yaml suffix after the X's).
+  RUNCFG="${TMPDIR:-/tmp}/live_cfg_$$.yaml"
   if ! python3 python/scripts/gps_visible_prns.py --lat "$LAT" --lon "$LON" \
          --alt "${ALT:-100}" --patch "$CFG" --out "$RUNCFG"; then
     echo "PRN refresh failed (network/time?) -- using $CFG as-is"; cp "$CFG" "$RUNCFG"
