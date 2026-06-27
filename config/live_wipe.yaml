@@ -1,0 +1,80 @@
+---
+# LIVE nav-bit-wipe demo: the combiner wipes the 20 ms data bit and integrates
+# search + valve -> track -> combiner -> record), but the combiner records EVERY
+# tracker record raw (integration_length: 1), so the per-record complex amplitude A
+# (rec[4]=A.re rec[5]=A.im rec[3]=|A|, UTC slot 9) lands on disk. gps_intgn_check.py
+# then reconstructs coherent |<A>| and incoherent sqrt<|A|^2> vs integration length K
+# offline -- one ~60 s run gives the whole ladder + the nav-bit coherence rolloff.
+#
+# Pull-in is lightened to +/-1 chip: the broker's cp slope now lands the seed on the
+# peak, so the tracker stays realtime (fewer valve drops -> more contiguous records,
+# cleaner coherent integration). Run:  CFG=config/live_intgn.yaml TRK=track \
+#   LAT=43.968697 LON=-79.252106 ALT=260 ./config/run_live.sh   (Ctrl-C after ~60 s),
+# then:  python3 python/scripts/gps_intgn_check.py /tmp/gpsintgn
+type: config
+log_level: info
+instrument_name: airspy_gps
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+samples_per_data_set: 49920
+bytes_per_sample: 2
+buffer_depth: 16
+sizeof_float: 4
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7]
+
+spectrum_length: 20
+num_taps: 4
+sample_rate: 5.0e6
+f_offset: 1.25e6
+signal: GPS_L1CA
+code_doppler_sign: 1.0
+n_prn: 11
+record_floats: 11
+doppler_margin_hz: 250000.0
+acquire_snr: 10.0
+acquire_windows: 20
+doppler_min: -6000.0
+doppler_max: 6000.0
+# 100 Hz (was 500): with few sats the clock-bias estimate degenerates to one sat's
+# grid-quantized Doppler, so the seed inherits +-grid/2 of steady residual carrier
+# (was +-250 Hz -> killed coherence past ~5 ms). Finer grid -> +-50 Hz residual ->
+# ~10 ms coherence. Costs search compute, but the search is async/lossy (never
+# backpressures), so it just lowers the snapshot rate -- fine with the EMA-steady seed.
+doppler_step: 100.0
+# Visible PRNs change as the constellation rotates (~half an orbit in ~8 h) -- refresh
+# with: python3 python/scripts/gps_visible_prns.py  (or run_live.sh auto-updates when
+# LAT/LON are set). This set was visible at the site ~2026-06-27 00:08 UTC.
+prns: [28, 32, 31, 25, 3, 10, 26, 1, 12, 13, 2]
+
+gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }
+
+input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
+chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+chan_buf2: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+rec_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+
+airspy_in:
+    kotekan_stage: airspyInput
+    out_buf: input_buf
+    freq: 1575.42
+    sample_bw: 2.5
+    gain_lna: 14
+    gain_mix: 15
+    gain_if: 15
+    biast_power: true
+fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
+
+search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 20, acquire_snr: 10.0, acquire_windows: 20 }
+valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
+# capture_utc0 > 0 -> stamp each record's UTC as capture_utc0 + window_start/sample_rate
+# (true CAPTURE time from fpga_seq), not wall-clock-at-emit. Emit time is bursty (the
+# pipeline drains buffered frames then stalls), which corrupts the integration time axis
+# and any phase-vs-time Doppler fit; capture time is exact 1 ms/record with clean gaps.
+# fll_gain: per-PRN carrier frequency-lock loop drives the residual carrier (the ~15 Hz
+# seed wander) to <1 Hz, the precision needed for seconds of coherent integration and a
+# clean nav-bit decode. The broker seed only (re)acquires; the loop owns the fine carrier.
+track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 20, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
+# integration_length: 1000, navwipe_bit_records: 20 -> navwipe: integrate ~1 s (50 nav bits) coherently; deep |A| in slot 8.
+combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20 }
+record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpswipe", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
