@@ -66,20 +66,38 @@ offline "wipe last" pattern, lifted into the distributed system.
   replica (quantization ~25 dB down → peel residual ~45 dB under the noise); split
   across 2–3 aggregator nodes for headroom. Manageable on 100 GbE, but not free.
 
-## Architecture (B): local generation — pending the hop-rate cost
+## Architecture (B): local generation — VALIDATED, the recommended path
 
-If a node can make its own `R_c` cheaply, **the 5–50 Gbps distribution disappears**
-and the central path shrinks to a **~kbps broadcast** of the per-PRN trajectory
-params + nav bits. The whole question is the per-node generation cost: full-rate
-`code×carrier×PFB` is ~1.5 Tflop/s/node (too much to want ×128), but the **hop-rate
-reformulation** (exploit that the code is constant over a chip → fold the channel
-filter per chip → ~`P·f_chip/channel_BW` MACs/hop, a ~`Fs/f_chip` ≈ 313× cut) could
-drop it to ~0.01 Tflop/s/node. If that holds and stays accurate, **(B) wins** — local
-generation, no bulk distribution, only the kbps control broadcast. Derivation and
-numerical validation: TODO (this is the open question).
+A node makes its own `R_c` cheaply, so **the 5–50 Gbps distribution disappears** and
+the central path shrinks to a **~kbps broadcast** of the per-PRN trajectory params +
+nav bits. Full-rate `code×carrier×PFB` would be ~1.5 Tflop/s/node (too much ×128),
+but the **hop-rate reformulation** wins: the code is constant over a chip, so the
+polyphase filter collapses to a per-chip sum — precompute the channel filter
+integrated over each chip vs sub-chip phase (a φ-bank, rebuilt slowly as the Doppler
+drifts), then each hop is `~P·f_chip/channel_BW` MACs (a ~`Fs/f_chip` ≈ 313× cut →
+**~0.01 Tflop/s/node**). Both carrier images kept; the carrier is a per-hop output
+phasor; the nav wipe is the free per-hop sign post-multiply.
+
+**Validated** (`python/scripts/gps_hoprate_validate.py`; C++
+`ChannelizedReplicaBank::channels_hoprate()` + boost test `hoprate_matches_exact_pfb`):
+the chip-collapse reproduces the exact full-PFB to −200 dB (math is an identity), and
+the φ-bank generator matches `channels()` to **−81…−144 dB** at n_phi=16384 on airspy
+params. `R_c` is genuinely a *step* function of sub-chip phase (±1 code), so linear φ
+interpolation plateaus; the array's memory budget wants a **Farrow / smooth-cumulative
+interpolation** (small table) or an exact piecewise-constant lookup — the next
+optimization, but the math/structure is proven.
+
+```
+ acquire ─► lock (cp,Doppler)/sat ─► trajectory predictor + nav decode
+   broadcast per-PRN {cp, Doppler, rates, clock} + d̂   (~kbps total)
+ node:  build R_c locally (hop-rate φ-bank, ~0.01 Tflop/s) · d̂ · ─► inject/peel
+```
 
 ## Status
 
-Wins 1 & 2 are settled and apply either way. The A-vs-B choice hinges on the
-hop-rate generation cost/accuracy (pathway #5). If hop-rate generation pans out,
-supersede (A) with (B) and keep only the kbps trajectory+bit broadcast.
+Wins 1 & 2 are settled. Hop-rate local generation (pathway #5) is validated, so
+**(B) is the recommendation** — generate-local, only the kbps trajectory+bit
+broadcast, no bulk replica distribution. (A) is the fallback if a node ever can't
+afford even ~0.01 Tflop/s. Remaining: a memory-light φ interpolation (Farrow/exact)
+for the CHORD per-channel footprint, and the streaming generator wrapper (build the
+φ-bank once, stream hops) since the speedup is amortized over a long stream.

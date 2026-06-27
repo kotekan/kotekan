@@ -55,6 +55,19 @@ public:
     channels(int p, long long window_start_sample, double code_phase_chips, double doppler_hz,
              int n_hops);
 
+    /// Hop-rate channelized replica for the listed channels -- numerically equal to
+    /// @ref channels() but built per chip, not per sample. The spreading code is constant
+    /// over a chip (~Fs/chip_rate samples), so the polyphase filter collapses to a per-chip
+    /// sum: precompute the filter integrated over each chip vs sub-chip phase (the phi-bank,
+    /// built once for this Doppler), then each hop is O(n_chips) MACs instead of
+    /// O(num_taps*fft_len). Carrier = a per-hop output phasor + the channel-carrier offset
+    /// baked into the (slowly-rebuilt) filter; both carrier images are kept. The phi-bank
+    /// cost amortizes over a long stream, so this wins for streaming generation, not short
+    /// bursts. Returns [want.size()][n_hops]. @c n_phi sub-chip phase bins (accuracy knob).
+    std::vector<std::vector<std::complex<float>>>
+    channels_hoprate(int p, long long window_start_sample, double code_phase_chips,
+                     double doppler_hz, int n_hops, const std::vector<int>& want, int n_phi = 4096);
+
     /// Global channel indices whose passband covers the carrier at @c doppler_hz.
     std::vector<int> covering_bins(double doppler_hz, double doppler_margin_hz) const;
 

@@ -159,4 +159,76 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
     return chan;
 }
 
+std::vector<std::vector<cf>>
+ChannelizedReplicaBank::channels_hoprate(int p, long long window_start_sample,
+                                         double code_phase_chips, double doppler_hz, int n_hops,
+                                         const std::vector<int>& want, int n_phi) {
+    const double cps =
+        _sig.chip_rate_hz / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
+    const double wc = 2.0 * M_PI * (_f_offset + doppler_hz) / _sample_rate;
+    const int Lf = _fft_len * _num_taps;
+    const int n_chips = (int)std::ceil((double)(Lf - 1) * cps) + 2; // chips the filter spans
+    const int nw = (int)want.size();
+    const std::complex<double> I(0.0, 1.0);
+
+    // phi-bank: per wanted channel, the prototype filter -- modulated to the channel-carrier
+    // offset (both images A: +carrier, B: -carrier) -- integrated over each chip, as a
+    // function of the sub-chip phase. d = -floor(phi - k*cps) is tap k's chip relative to the
+    // window edge. Built once here for this Doppler (rebuild slowly as it drifts).
+    std::vector<std::vector<std::complex<double>>> WA(nw), WB(nw);
+    for (int ci = 0; ci < nw; ++ci) {
+        const double off = 2.0 * M_PI * (double)want[ci] / (double)_fft_len;
+        WA[ci].assign((size_t)n_phi * n_chips, 0.0);
+        WB[ci].assign((size_t)n_phi * n_chips, 0.0);
+        for (int g = 0; g < n_phi; ++g) {
+            const double phi = ((double)g + 0.5) / (double)n_phi;
+            std::complex<double>* wa = &WA[ci][(size_t)g * n_chips];
+            std::complex<double>* wb = &WB[ci][(size_t)g * n_chips];
+            for (int k = 0; k < Lf; ++k) {
+                const int d = (int)(-std::floor(phi - (double)k * cps));
+                if (d < 0 || d >= n_chips)
+                    continue;
+                const double pk = _proto[k];
+                wa[d] += pk * std::exp(-I * (off + wc) * (double)k);
+                wb[d] += pk * std::exp(-I * (off - wc) * (double)k);
+            }
+        }
+    }
+
+    // Stream the hops: R_j[m] = 1/2 ( e^{+i wc n_m} Σ code·WA + e^{-i wc n_m} Σ code·WB ),
+    // n_m the window's reference sample. The carrier phasor is a per-hop recurrence.
+    std::vector<std::vector<cf>> chan(nw, std::vector<cf>(n_hops));
+    const long long n0 = window_start_sample + _fft_len - 1;
+    std::complex<double> pa = std::polar(1.0, std::fmod(wc * (double)n0, 2.0 * M_PI));
+    const std::complex<double> pstep = std::polar(1.0, std::fmod(wc * (double)_fft_len, 2.0 * M_PI));
+    for (int m = 0; m < n_hops; ++m) {
+        const long long n_m = n0 + (long long)m * _fft_len;
+        const double C = code_phase_chips + (double)n_m * cps;
+        const long long chip0 = (long long)std::floor(C);
+        const double phi = C - (double)chip0;
+        double gr = phi * (double)n_phi - 0.5;
+        int g0 = (int)std::floor(gr);
+        const double f = gr - std::floor(gr);
+        g0 = ((g0 % n_phi) + n_phi) % n_phi;
+        const int g1 = (g0 + 1) % n_phi;
+        const std::complex<double> pb = std::conj(pa);
+        for (int ci = 0; ci < nw; ++ci) {
+            const std::complex<double>* a0 = &WA[ci][(size_t)g0 * n_chips];
+            const std::complex<double>* a1 = &WA[ci][(size_t)g1 * n_chips];
+            const std::complex<double>* b0 = &WB[ci][(size_t)g0 * n_chips];
+            const std::complex<double>* b1 = &WB[ci][(size_t)g1 * n_chips];
+            std::complex<double> sA(0.0, 0.0), sB(0.0, 0.0);
+            for (int d = 0; d < n_chips; ++d) {
+                const double cv = (double)code_chip(p, (double)(chip0 - d));
+                sA += cv * ((1.0 - f) * a0[d] + f * a1[d]);
+                sB += cv * ((1.0 - f) * b0[d] + f * b1[d]);
+            }
+            chan[ci][m] = (cf)(0.5 * (pa * sA + pb * sB));
+        }
+        pa *= pstep;
+        pa /= std::abs(pa);
+    }
+    return chan;
+}
+
 } // namespace gnss
