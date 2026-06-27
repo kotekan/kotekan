@@ -6,7 +6,7 @@ sky direction with the signal's full code processing gain, then use those gains
 to **calibrate** the array and to **remove** the satellites from the data. This
 note sketches how that maps onto CHORD's F-X system. It builds on the
 channelized GNSS pipeline in `lib/stages/Gnss*` / `gnss*` and
-`python/scripts/gps_broker.py`.
+`python/scripts/gps_distributed_broker.py`.
 
 ## In-band signals
 
@@ -123,7 +123,7 @@ the peel/null on `V`, the tracking loop, and the array gain calibration.
 
 ## Orchestration (control plane)
 
-A slow external process (the `gps_broker.py` pattern) reads the almanac and:
+A slow external process (the `gps_distributed_broker.py` pattern) reads the almanac and:
 
 - queues **rising** satellites into the single-antenna acquisition stage;
 - hands each resulting (code phase, Doppler) to the inject/track stage;
@@ -158,10 +158,30 @@ in-band signal.
    tracker) ──────────────────────────────────────┘
 ```
 
----
+## Status against the end-goal (5 steps)
 
-*Status:* the channelized acquire → refine → measure pipeline and the broker
-exist and are validated locally on a single airspy (`config/airspy_gps_channelized.yaml`).
-The CHORD-specific pieces — synthetic-lane replica injection, the predictive
-voltage peel, and the rank-K vis-matrix null — are the integration work this note
-describes.
+The single-airspy prototype now demonstrates a **complete GNSS receiver**, on-sky
+(`config/live_intgn.yaml`; see `gnss_pipeline_reference.md`):
+
+1. **Identify + lock sats — DONE.** Almanac-assisted acquire → refine; code lock via
+   a broker cp-slope + tracker pull-in (DLL); carrier lock via a tracker **FLL**
+   (NCO derotation). On-sky: residual carrier driven to ~5 Hz, code phase stable.
+2. **Generate waveforms — DONE.** `ChannelizedReplicaBank` builds the code×carrier
+   replica through the F-engine's exact PFB (the hot path; carrier-phasor optimized).
+3. **Track + record, ~perfect calibration — DONE (offline back end).** The despread
+   `A = ΣG/ΣE` is the complex gain. **Nav-bit wipe + decode** give *seconds* of
+   coherent integration (on-sky: 5 parity-valid subframes, marching TOW; SNR climbing
+   √K to ~1 s, ~18×). *Remaining:* port the wipe + long accumulate **into the combiner**
+   (live), and add **ephemeris-predicted bits** for beams too weak to self-decode.
+4. **Peel — NEXT, demonstrable on airspy.** Reconstruct each sat's contribution
+   `A·R_c·databit(t)` and subtract it from the channelized voltage; show the residual
+   sat power collapse. Needs the **decoded nav bits** (to put the data modulation back
+   into the reconstructed waveform) and removal at the **30 ms cadence** (a 30 ms span
+   crosses a nav-bit edge). This is why nav-bit decode/predict comes first.
+5. **Null beams — needs a real array.** Phase solutions across N antennas; not
+   demonstrable on a single feed, but the per-direction null math (above) is ready for
+   the prototype-pipeline system.
+
+The CHORD-specific integration pieces this note describes — synthetic-lane replica
+injection into the N² kernel, the predictive voltage peel, and the rank-K vis-matrix
+null — remain the array-side work; steps 1–4 are exercisable on airspy first.
