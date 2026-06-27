@@ -11,12 +11,13 @@
 #include "restClient.hpp"        // for restClient
 #include "updateQueue.hpp"       // for updateQueue
 #include "visBuffer.hpp"         // for VisFrameView
-#include "visUtil.hpp"           // for cfloat, frameID
+#include "visUtil.hpp"           // for cfloat
 
 #include "json.hpp" // for json
 
-#include <atomic>       // for atomic
-#include <ctime>        // for timespec, size_t
+#include <atomic>             // for atomic
+#include <condition_variable> // for condition_variable
+#include <ctime>              // for timespec, size_t
 #include <map>          // for map
 #include <mutex>        // for mutex
 #include <optional>     // for optional
@@ -145,14 +146,23 @@ private:
     /// Number of parallel threads accessing the same buffers (default 1)
     uint32_t num_threads;
 
-    /// Input frame ID, shared by apply threads.
-    frameID frame_id_in;
-
-    /// Output frame ID, shared by apply threads.
-    frameID frame_id_out;
-
-    /// Mutex protecting shared frame IDs.
+    /// Ordered cursors shared by the apply threads: threads claim input frames
+    /// in order (claim_seq), compute gains in parallel, then publish strictly in
+    /// claim order (emit_seq, output slot out_count) so the output stays in
+    /// temporal order. A "late" frame is dropped without taking an output slot.
+    /// The per-slot "busy" flags stop two threads sharing a wrapped slot, even
+    /// when num_threads exceeds the buffer depth. frame_cv wakes threads waiting
+    /// to claim, to take their emit turn, or for a slot to be released.
+    uint64_t claim_seq = 0;
+    uint64_t emit_seq = 0;
+    uint64_t out_count = 0;
     std::mutex m_frame_ids;
+    std::condition_variable frame_cv;
+    std::vector<bool> in_frame_busy;
+    std::vector<bool> out_frame_busy;
+
+    /// Release a slot and wake any thread waiting for it.
+    void release_frame(std::vector<bool>& busy, int frame_id);
 
     // Prometheus metrics
     kotekan::prometheus::Gauge& update_age_metric;
