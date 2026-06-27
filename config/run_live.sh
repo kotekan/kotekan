@@ -28,17 +28,30 @@ cleanup() { echo; echo "stopping..."; kill "${BPID:-}" 2>/dev/null
 trap cleanup INT TERM
 
 pkill -9 -f build_mac/kotekan/kotekan 2>/dev/null; pkill -9 -f livebeam_server 2>/dev/null
+
+# Refresh the search PRN list to what's actually overhead NOW (the constellation rotates
+# ~half an orbit in ~8 h, so a hardcoded list goes stale -> zero detections). Needs
+# LAT/LON; patches a temp copy so the committed config is untouched. Launch RUNCFG.
+RUNCFG="$CFG"
+if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
+  RUNCFG=$(mktemp "${TMPDIR:-/tmp}/live_cfg_XXXXXX.yaml")
+  if ! python3 python/scripts/gps_visible_prns.py --lat "$LAT" --lon "$LON" \
+         --alt "${ALT:-100}" --patch "$CFG" --out "$RUNCFG"; then
+    echo "PRN refresh failed (network/time?) -- using $CFG as-is"; cp "$CFG" "$RUNCFG"
+  fi
+fi
+
 # Record dir comes from the config's rawFileWrite base_dir (rawFileWrite open()s with
 # O_CREAT -> makes the file but NOT the dir; a missing dir exit()s kotekan at the first
 # write -> "waiting for pipeline" forever). Create + clean whatever the config points at.
-RECDIR=$(grep -oE 'base_dir:[[:space:]]*"[^"]*"' "$CFG" | head -1 | sed -E 's/.*"([^"]*)".*/\1/')
+RECDIR=$(grep -oE 'base_dir:[[:space:]]*"[^"]*"' "$RUNCFG" | head -1 | sed -E 's/.*"([^"]*)".*/\1/')
 RECDIR=${RECDIR:-/tmp/gpslive}
 mkdir -p "$RECDIR"; rm -f "$RECDIR"/* 2>/dev/null
 echo "recording to $RECDIR"
 sleep 1
 
-echo "starting kotekan (live_full.yaml) -> $LOG"
-$KOTEKAN -c $CFG > $LOG 2>&1 &
+echo "starting kotekan ($CFG) -> $LOG"
+$KOTEKAN -c $RUNCFG > $LOG 2>&1 &
 sleep 4
 echo "front end: $(curl -s localhost:12048/airspy_in/adcstat | tr -d '\n ')"
 echo "browser waterfall + ADC: http://localhost:8080"
