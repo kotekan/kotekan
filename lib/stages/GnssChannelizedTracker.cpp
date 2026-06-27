@@ -135,14 +135,18 @@ void GnssChannelizedTracker::main_thread() {
     int frame_out = 0;
     const int n_prn = (int)_prns.size();
 
-    // Carrier FLL state (per PRN): the tracked Doppler and the previous record's despread
-    // amplitude + hop, for the record-to-record frequency discriminator. NaN = not yet
-    // acquired. The loop owns the fine carrier; the broker seed only (re)acquires it.
-    std::vector<double> f_track(n_prn, std::nan(""));
+    // Carrier FLL state (per PRN). The replica stays at a FIXED reference Doppler f_ref
+    // (NaN = not yet acquired) -- it is anchored to the absolute sample index, so retuning
+    // it mid-stream would jump the phase by 2*pi*df*t_abs (huge). Instead an NCO accumulates
+    // a phase correction phi_track (= integral of 2*pi*f_track) that derotates the despread
+    // output, and the discriminator drives the residual frequency f_track. a_prev holds the
+    // previous (derotated) amplitude for the record-to-record discriminator.
+    std::vector<double> f_ref(n_prn, std::nan(""));
+    std::vector<double> f_track(n_prn, 0.0);   // FLL residual-frequency estimate (Hz)
+    std::vector<double> phi_track(n_prn, 0.0); // NCO accumulated carrier phase (rad)
     std::vector<cf> a_prev(n_prn, cf(0.0f, 0.0f));
     std::vector<uint8_t> a_prev_ok(n_prn, 0);
     std::vector<long long> hop_prev(n_prn, 0);
-    const double record_dt = (double)_hops_per_record * (double)_fft_len / _sample_rate;
 
     // Rolling measurement window of [hop][subband-channel] voltages.
     std::vector<cf> window((size_t)_hops_per_record * _n_chan);
@@ -205,7 +209,7 @@ void GnssChannelizedTracker::main_thread() {
                 rec[0] = (float)_prns[p];
                 *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = utc;
                 if (!active[p]) {
-                    f_track[p] = std::nan(""); // forget the loop; re-acquire when it returns
+                    f_ref[p] = std::nan(""); // forget the loop; re-acquire when it returns
                     a_prev_ok[p] = 0;
                     continue;
                 }
@@ -226,16 +230,18 @@ void GnssChannelizedTracker::main_thread() {
                 if (cp_seed < 0.0)
                     cp_seed += L;
 
-                // Carrier frequency: the FLL-tracked value, (re)acquired from the broker
-                // seed when uninitialised or far adrift; open-loop uses the seed directly.
-                if (_fll_gain > 0.0) {
-                    if (std::isnan(f_track[p]) || std::fabs(f_track[p] - dop[p]) > _fll_reacq_hz) {
-                        f_track[p] = dop[p];
-                        a_prev_ok[p] = 0;
-                    }
+                // FLL reference Doppler: (re)acquire from the broker seed when uninitialised
+                // or far adrift (loss of lock / sat change), else hold it FIXED so the
+                // absolute-anchored replica phase stays continuous; the NCO tracks the rest.
+                if (_fll_gain > 0.0
+                    && (std::isnan(f_ref[p]) || std::fabs(f_ref[p] - dop[p]) > _fll_reacq_hz)) {
+                    f_ref[p] = dop[p];
+                    f_track[p] = 0.0;
+                    phi_track[p] = 0.0;
+                    a_prev_ok[p] = 0;
                 }
-                const double fcar = (_fll_gain > 0.0) ? f_track[p] : dop[p];
-                rec[1] = (float)fcar;
+                const double fcar = (_fll_gain > 0.0) ? f_ref[p] : dop[p]; // constant replica Doppler
+                rec[1] = (float)(fcar + (_fll_gain > 0.0 ? f_track[p] : 0.0));
                 rec[2] = (float)cp_seed;
                 rec[6] = (float)owned.size();
                 if (owned.empty())
@@ -278,29 +284,40 @@ void GnssChannelizedTracker::main_thread() {
                         break;
                 }
                 rec[2] = (float)best_cp; // the locked (pulled-in) code phase
-                rec[3] = (float)best.correlation.real();
-                rec[4] = (float)best.correlation.imag();
-                rec[5] = (float)best.replica_energy;
 
-                // Carrier FLL: drive the tracked Doppler with the bit-robust frequency
-                // discriminator across consecutive records. The product A_k conj A_{k-1}
-                // turns at 2*pi*(freq error)*dt; squaring it cancels the +-1 nav-bit pi
-                // flip (valid while |err*dt| < 1/4). Skip across a gap (a dropped frame
-                // would alias). This closes the ~15 Hz seed wander down to the <1 Hz
-                // residual that long coherent integration (and clean nav-bit decode) need.
-                if (_fll_gain > 0.0) {
-                    const cf a_cur = (cf)best.amplitude;
+                if (_fll_gain <= 0.0) {
+                    rec[3] = (float)best.correlation.real();
+                    rec[4] = (float)best.correlation.imag();
+                    rec[5] = (float)best.replica_energy;
+                } else {
+                    // Carrier NCO + FLL. The replica is at the fixed f_ref, so the despread
+                    // carries the residual carrier (true - f_ref). Advance the phase NCO by
+                    // the tracked residual over the inter-record gap and derotate the output
+                    // -- this corrects frequency WITHOUT retuning the absolute-anchored
+                    // replica. The bit-robust discriminator (square the phase product to
+                    // cancel the +-1 nav-bit pi flip, valid while |err*dt|<1/4) then drives
+                    // f_track toward the residual; skip it across a frame gap (it would alias).
                     const double dt = (double)(window_start_hop - hop_prev[p]) * (double)_fft_len
                                       / _sample_rate;
-                    if (a_prev_ok[p] && dt > 0.0 && dt <= _fll_max_gap
-                        && std::abs(a_cur) > 0.0f && std::abs(a_prev[p]) > 0.0f) {
-                        const std::complex<double> prod =
-                            std::complex<double>(a_cur) * std::conj(std::complex<double>(a_prev[p]));
-                        const double dphi = std::arg(prod * prod) / 2.0; // bit-robust phase walk
-                        const double ferr = dphi / (2.0 * M_PI * dt);    // Hz
-                        f_track[p] += _fll_gain * ferr;
+                    if (a_prev_ok[p] && dt > 0.0) {
+                        phi_track[p] += 2.0 * M_PI * f_track[p] * dt; // NCO (advances over gaps too)
+                        phi_track[p] = std::remainder(phi_track[p], 2.0 * M_PI); // keep bounded
                     }
-                    a_prev[p] = a_cur;
+                    const std::complex<double> rot = std::polar(1.0, -phi_track[p]);
+                    const std::complex<double> g_corr = std::complex<double>(best.correlation) * rot;
+                    const cf a_corr = (cf)(std::complex<double>(best.amplitude) * rot);
+                    rec[3] = (float)g_corr.real();
+                    rec[4] = (float)g_corr.imag();
+                    rec[5] = (float)best.replica_energy;
+
+                    if (a_prev_ok[p] && dt > 0.0 && dt <= _fll_max_gap
+                        && std::abs(a_corr) > 0.0f && std::abs(a_prev[p]) > 0.0f) {
+                        const std::complex<double> prod =
+                            std::complex<double>(a_corr) * std::conj(std::complex<double>(a_prev[p]));
+                        const double dphi = std::arg(prod * prod) / 2.0; // bit-robust phase walk
+                        f_track[p] += _fll_gain * dphi / (2.0 * M_PI * dt); // += gain * (residual Hz)
+                    }
+                    a_prev[p] = a_corr;
                     a_prev_ok[p] = 1;
                     hop_prev[p] = window_start_hop;
                 }
