@@ -115,6 +115,7 @@ amp=json.load(urllib.request.urlopen('http://localhost:12048/combiner/get_status
 # sig = detection significance (sigma above noise): deep nav-wiped SNR or the noise-debiased
 # incoherent SNR. >>1 = a real lock; ~1 = noise (the raw |A| sits at the noise floor for weak sats).
 sigf=lambda r: max(r.get('deep_snr',0) or 0, r.get('amp_snr',0) or 0)
+ampf=lambda r: r.get('deep_amplitude') or r.get('unbiased_amplitude') or 0  # unbiased Â (not the noise-biased |A|)
 top=sorted(amp,key=lambda r:-sigf(r))[:3]
 adc=json.load(urllib.request.urlopen('http://localhost:12048/airspy_in/adcstat'))
 hdr='rms=%.0f rail=%.2f'%(adc['rms'],adc['railfrac'])
@@ -122,7 +123,7 @@ if d:
     s='  DETECT: '+'; '.join('PRN%d dop%+.0f cp%.0f snr%.1f'%(x['prn'],x['doppler_hz'],x['code_phase_chips'],x['snr']) for x in sorted(d,key=lambda r:-r['snr'])[:4])
 else:
     s='  searching...'
-lvl='  sig(|A|): '+(' '.join('PRN%d=%.1fσ(%.2f)'%(r['prn'],sigf(r),r['amplitude']) for r in top if r['amplitude']>0) or '--')
+lvl='  sig(Â): '+(' '.join('PRN%d=%.1fσ(%.2f)'%(r['prn'],sigf(r),ampf(r)) for r in top if sigf(r)>0) or '--')
 print('[%s]%s%s'%(hdr,s,lvl))
 " 2>/dev/null || echo "  (waiting for pipeline...)"
 done

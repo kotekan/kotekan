@@ -48,6 +48,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_deep.assign(_n_prn, 0.0f);
     _st_deep_snr.assign(_n_prn, 0.0f);
     _st_amp_snr.assign(_n_prn, 0.0f);
+    _st_amp_dbi.assign(_n_prn, 0.0f);
     _st_dop.assign(_n_prn, 0.0f);
     _st_cp.assign(_n_prn, 0.0f);
 }
@@ -167,6 +168,7 @@ void GnssCoherentCombiner::main_thread() {
                                     : 1.0 / (double)n_acc;
         std::vector<double> deep_snr(_n_prn, 0.0); // significance of the deep detection (for REST)
         std::vector<double> amp_snr(_n_prn, 0.0);  // noise-debiased incoherent significance (REST)
+        std::vector<double> amp_dbi(_n_prn, 0.0);  // noise-debiased (unbiased) signal amplitude
         const double Keff = _rolling ? (double)_integration_length : (double)n_acc;
         for (int p = 0; p < _n_prn; ++p) {
             float* rec = out + (size_t)p * RECORD_FLOATS;
@@ -190,6 +192,7 @@ void GnssCoherentCombiner::main_thread() {
                 const double var = std::max(0.0, m4 - m2 * m2);
                 const double s2 = std::sqrt(std::max(0.0, m2 * m2 - var));
                 const double noise = m2 - s2;
+                amp_dbi[p] = std::sqrt(s2); // unbiased signal amplitude (~0 for noise, =signal for a sat)
                 // Normalise by the H0 std of the s^2 estimator (~N/K^{1/4}) so the significance is
                 // ~1 for noise REGARDLESS of K (a stable lock threshold) and grows for real signal.
                 amp_snr[p] = noise > 1e-12 ? s2 * std::pow(Keff, 0.25) / noise : 0.0;
@@ -219,6 +222,7 @@ void GnssCoherentCombiner::main_thread() {
                 _st_deep[p] = rec[8];
                 _st_deep_snr[p] = (float)deep_snr[p];
                 _st_amp_snr[p] = (float)amp_snr[p];
+                _st_amp_dbi[p] = (float)amp_dbi[p];
                 _st_dop[p] = rec[1];
                 _st_cp[p] = rec[2];
             }
@@ -237,6 +241,7 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"deep_amplitude", _st_deep[p]},
                          {"deep_snr", _st_deep_snr[p]},
                          {"amp_snr", _st_amp_snr[p]},
+                         {"unbiased_amplitude", _st_amp_dbi[p]},
                          {"doppler_hz", _st_dop[p]},
                          {"code_phase_chips", _st_cp[p]}});
     conn.send_json_reply(reply);

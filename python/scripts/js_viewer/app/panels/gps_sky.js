@@ -150,7 +150,7 @@ export class GpsSkyPanel {
         const sats = new Map();   // prn -> merged record
         const get = (prn) => {
             if (!sats.has(prn)) sats.set(prn, {prn, az: null, el: null,
-                snr: null, amp: 0, coh: 0, deep: 0, sig: 0, detected: false});
+                snr: null, amp: 0, coh: 0, deep: 0, dbi: 0, sig: 0, detected: false});
             return sats.get(prn);
         };
         if (sky && Array.isArray(sky.sats))
@@ -164,6 +164,10 @@ export class GpsSkyPanel {
                 r.amp = c.amplitude || 0;
                 r.coh = c.coh_amplitude || 0;
                 r.deep = c.deep_amplitude || 0;
+                // unbiased |A| (Â): the noise-debiased signal amplitude -- ~0 for noise, = the
+                // signal for a real sat. The deep nav-wiped amplitude when available, else the
+                // moment-debiased estimate. This is the honest amplitude (vs the noise-biased |A|).
+                r.dbi = c.deep_amplitude || c.unbiased_amplitude || 0;
                 // significance = how many sigma the signal is above the noise: deep (nav-wiped)
                 // when available, else the noise-debiased incoherent SNR. >>1 real, ~1 noise.
                 r.sig = Math.max(c.deep_snr || 0, c.amp_snr || 0);
@@ -244,7 +248,7 @@ export class GpsSkyPanel {
                 + cell(r.el != null ? r.el.toFixed(0) + "°" : "—")
                 + cell(r.snr != null ? r.snr.toFixed(1) : "—")
                 + cell(num(r.amp), "text-align:right;color:#8a929b;")
-                + cell(num(r.deep || r.coh, 3), "text-align:right;")
+                + cell(num(r.dbi, 3), "text-align:right;")
                 + cell(sig, "text-align:right;")
                 + "</tr>";
         };
@@ -252,9 +256,9 @@ export class GpsSkyPanel {
             + "<th style='text-align:left;padding:1px 6px;'>PRN</th>"
             + "<th style='text-align:left;padding:1px 6px;'>El</th>"
             + "<th style='text-align:left;padding:1px 6px;'>SNR</th>"
-            + "<th style='text-align:right;padding:1px 6px;' title='incoherent |A| (noise-biased)'>|A|</th>"
-            + "<th style='text-align:right;padding:1px 6px;'>deep</th>"
-            + "<th style='text-align:right;padding:1px 6px;' title='deep significance = deep / its uncertainty'>sig</th></tr>";
+            + "<th style='text-align:right;padding:1px 6px;' title='raw incoherent |A| (noise-biased: ≈ the noise floor for a weak sat)'>|A|</th>"
+            + "<th style='text-align:right;padding:1px 6px;' title='unbiased |A|: noise-debiased signal amplitude (≈0 for noise, = the signal for a real sat)'>Â</th>"
+            + "<th style='text-align:right;padding:1px 6px;' title='detection significance = signal / its uncertainty (σ above noise): >>1 real, ~1 noise'>sig</th></tr>";
         let body = locked.map(r => row(r, true)).join("");
         if (!locked.length)
             body = "<tr><td colspan='6' style='padding:4px 6px;color:#999;'>"
