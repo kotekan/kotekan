@@ -301,15 +301,17 @@ dbg_read_lostsamples_{{ id }}:
 
 baseband_output_buffers:
   # 32 times smaller frames, 32 times the number of frames
-  frame_size: samples_per_data_set * num_elements * num_freq_host_buf / 32
+  value_type: int4x2_swapped_withoffset
+  extents: [num_freq_host_buf, samples_per_data_set/32, num_elements]
+  dimnames: [F, T, E]
   metadata_pool: baseband_pool
 {%- for id in range(num_freq_gpu_buf) %}
   baseband_output_buffer_{{ id }}:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 11 * 32 # baseband_buffer_depth
 {%- endfor %}
   baseband_output_buffer_merged:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 12
 
 # Stages
