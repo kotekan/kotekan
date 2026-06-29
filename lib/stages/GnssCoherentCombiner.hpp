@@ -100,8 +100,11 @@ private:
     /// bin records into nav-bit epochs by their ABSOLUTE code-period index (from UTC, so
     /// valve drops just leave gaps, not misalignment), bit-sync, per-epoch +-1 by squaring,
     /// wipe, coherent-sum / N. 0 if too short. Needs capture-time UTC (capture_utc0 > 0).
+    /// @c snr_out (optional): the deep detection's significance = coherent sum / its noise std
+    /// (estimated from the component orthogonal to the aligned signal). deep == this SNR times its
+    /// own uncertainty, so SNR >> 1 is a real lock, ~1 is noise.
     double navwipe_amplitude(const std::vector<std::complex<double>>& a,
-                             const std::vector<double>& utc) const;
+                             const std::vector<double>& utc, double* snr_out = nullptr) const;
 
     std::vector<Buffer*> in_bufs;
     Buffer* out_buf;
@@ -115,7 +118,7 @@ private:
 
     // Latest combined record snapshot for REST status (full-band |A| per PRN).
     std::vector<int> _st_prn;
-    std::vector<float> _st_amp, _st_coh, _st_deep, _st_dop, _st_cp;
+    std::vector<float> _st_amp, _st_coh, _st_deep, _st_deep_snr, _st_amp_snr, _st_dop, _st_cp;
     std::mutex _st_mtx;
 };
 

@@ -112,20 +112,17 @@ while true; do
 import sys,json,urllib.request
 d=json.load(sys.stdin)
 amp=json.load(urllib.request.urlopen('http://localhost:12048/combiner/get_status'))
-deep=any(r.get('deep_amplitude',0)>0 for r in amp)
-top=sorted(amp,key=lambda r:-(r.get('deep_amplitude',0) or r['amplitude']))[:3]
+# sig = detection significance (sigma above noise): deep nav-wiped SNR or the noise-debiased
+# incoherent SNR. >>1 = a real lock; ~1 = noise (the raw |A| sits at the noise floor for weak sats).
+sigf=lambda r: max(r.get('deep_snr',0) or 0, r.get('amp_snr',0) or 0)
+top=sorted(amp,key=lambda r:-sigf(r))[:3]
 adc=json.load(urllib.request.urlopen('http://localhost:12048/airspy_in/adcstat'))
 hdr='rms=%.0f rail=%.2f'%(adc['rms'],adc['railfrac'])
 if d:
     s='  DETECT: '+'; '.join('PRN%d dop%+.0f cp%.0f snr%.1f'%(x['prn'],x['doppler_hz'],x['code_phase_chips'],x['snr']) for x in sorted(d,key=lambda r:-r['snr'])[:4])
 else:
     s='  searching...'
-if deep:
-    # the wipe's job: recover the coherent gain the plain coherent mean (coh) loses at the
-    # 20 ms nav bit. coh ~ |a|/sqrt(#bits) (dead); deep ~ |a| (alive). incoherent |A| in ().
-    lvl='  coh->deep (|A|): '+' '.join('PRN%d=%.2f->%.2f(%.2f)'%(r['prn'],r.get('coh_amplitude',0),r.get('deep_amplitude',0),r['amplitude']) for r in top if r['amplitude']>0)
-else:
-    lvl='  |A|: '+' '.join('PRN%d=%.2f'%(r['prn'],r['amplitude']) for r in top if r['amplitude']>0) or '  |A|: --'
+lvl='  sig(|A|): '+(' '.join('PRN%d=%.1fσ(%.2f)'%(r['prn'],sigf(r),r['amplitude']) for r in top if r['amplitude']>0) or '--')
 print('[%s]%s%s'%(hdr,s,lvl))
 " 2>/dev/null || echo "  (waiting for pipeline...)"
 done

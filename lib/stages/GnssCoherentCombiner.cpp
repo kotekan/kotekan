@@ -46,6 +46,8 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_amp.assign(_n_prn, 0.0f);
     _st_coh.assign(_n_prn, 0.0f);
     _st_deep.assign(_n_prn, 0.0f);
+    _st_deep_snr.assign(_n_prn, 0.0f);
+    _st_amp_snr.assign(_n_prn, 0.0f);
     _st_dop.assign(_n_prn, 0.0f);
     _st_cp.assign(_n_prn, 0.0f);
 }
@@ -65,6 +67,7 @@ void GnssCoherentCombiner::main_thread() {
     // rolling: exponential moving AVERAGES (alpha = 1/_integration_length), bias-corrected at
     // emit by dividing by (1 - (1-alpha)^n_roll) so they read true running means from record 1.
     std::vector<double> acc_pow(_n_prn), acc_ar(_n_prn), acc_ai(_n_prn), acc_nchan(_n_prn);
+    std::vector<double> acc_pow2(_n_prn); // <|A|^4>, for the noise-debiased incoherent significance
     std::vector<float> ref_prn(_n_prn), ref_dop(_n_prn), ref_cp(_n_prn);
     std::vector<double> ref_utc(_n_prn);
     int n_acc = 0;              // block: records in the current block
@@ -102,10 +105,13 @@ void GnssCoherentCombiner::main_thread() {
             const double ar = energy > 0.0 ? gr / energy : 0.0;
             const double ai = energy > 0.0 ? gi / energy : 0.0;
 
-            // Accumulate over time: incoherent power (|A|^2) + coherent complex (A).
+            // Accumulate over time: incoherent power (|A|^2) + its square (|A|^4, for the noise
+            // debias) + coherent complex (A).
             const double utc_p = *reinterpret_cast<const double*>(ref + RECORD_UTC_SLOT);
+            const double p2 = ar * ar + ai * ai;
             if (_rolling) { // exponential moving average (no reset; integrates indefinitely)
-                acc_pow[p] += alpha * (ar * ar + ai * ai - acc_pow[p]);
+                acc_pow[p] += alpha * (p2 - acc_pow[p]);
+                acc_pow2[p] += alpha * (p2 * p2 - acc_pow2[p]);
                 acc_ar[p] += alpha * (ar - acc_ar[p]);
                 acc_ai[p] += alpha * (ai - acc_ai[p]);
                 acc_nchan[p] += alpha * (nchan - acc_nchan[p]);
@@ -122,7 +128,8 @@ void GnssCoherentCombiner::main_thread() {
                 ref_cp[p] = ref[2];
                 ref_utc[p] = utc_p;
             } else { // block: running sums, reset at emit
-                acc_pow[p] += ar * ar + ai * ai;
+                acc_pow[p] += p2;
+                acc_pow2[p] += p2 * p2;
                 acc_ar[p] += ar;
                 acc_ai[p] += ai;
                 acc_nchan[p] += nchan;
@@ -158,6 +165,9 @@ void GnssCoherentCombiner::main_thread() {
         // undo the warm-up bias (1-(1-alpha)^n_roll) -> a true running mean from record 1.
         const double inv = _rolling ? 1.0 / (1.0 - std::pow(1.0 - alpha, (double)n_roll))
                                     : 1.0 / (double)n_acc;
+        std::vector<double> deep_snr(_n_prn, 0.0); // significance of the deep detection (for REST)
+        std::vector<double> amp_snr(_n_prn, 0.0);  // noise-debiased incoherent significance (REST)
+        const double Keff = _rolling ? (double)_integration_length : (double)n_acc;
         for (int p = 0; p < _n_prn; ++p) {
             float* rec = out + (size_t)p * RECORD_FLOATS;
             for (int f = 0; f < RECORD_FLOATS; ++f)
@@ -170,8 +180,22 @@ void GnssCoherentCombiner::main_thread() {
             rec[5] = (float)(acc_ai[p] * inv);                       // <A>.im
             rec[6] = (float)std::hypot(acc_ar[p], acc_ai[p]) * inv;  // |<A>|_coh
             rec[7] = (float)(acc_nchan[p] * inv);                    // covering channels used
+            // Noise-debiased incoherent significance: <|A|^2> = s^2 + N is biased by the noise
+            // floor N (so |A| ~= floor for weak sats), but the moments separate them --
+            // s^2 = sqrt(<|A|^2>^2 - Var(|A|^2)), N = <|A|^2> - s^2 -- giving a signal-vs-noise SNR
+            // that is ~0 for noise (not the floor) and grows ~sqrt(K) for a real sat. The honest
+            // "is it really there", independent of nav-bit wipe.
+            {
+                const double m2 = acc_pow[p] * inv, m4 = acc_pow2[p] * inv;
+                const double var = std::max(0.0, m4 - m2 * m2);
+                const double s2 = std::sqrt(std::max(0.0, m2 * m2 - var));
+                const double noise = m2 - s2;
+                // Normalise by the H0 std of the s^2 estimator (~N/K^{1/4}) so the significance is
+                // ~1 for noise REGARDLESS of K (a stable lock threshold) and grows for real signal.
+                amp_snr[p] = noise > 1e-12 ? s2 * std::pow(Keff, 0.25) / noise : 0.0;
+            }
             if (_navwipe_bit_records > 0) {
-                rec[8] = (float)navwipe_amplitude(_navbuf[p], _navutc[p]); // deep |A| past nav bit
+                rec[8] = (float)navwipe_amplitude(_navbuf[p], _navutc[p], &deep_snr[p]); // deep |A|
                 if (!_rolling) { // block clears the window; rolling slides it (capped above)
                     _navbuf[p].clear();
                     _navutc[p].clear();
@@ -179,7 +203,7 @@ void GnssCoherentCombiner::main_thread() {
             }
             *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = ref_utc[p];
             if (!_rolling)
-                acc_pow[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = 0.0; // block: reset
+                acc_pow[p] = acc_pow2[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = 0.0; // block: reset
         }
         if (!_rolling)
             n_acc = 0;
@@ -193,6 +217,8 @@ void GnssCoherentCombiner::main_thread() {
                 _st_amp[p] = rec[3];
                 _st_coh[p] = rec[6];
                 _st_deep[p] = rec[8];
+                _st_deep_snr[p] = (float)deep_snr[p];
+                _st_amp_snr[p] = (float)amp_snr[p];
                 _st_dop[p] = rec[1];
                 _st_cp[p] = rec[2];
             }
@@ -209,6 +235,8 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"amplitude", _st_amp[p]},
                          {"coh_amplitude", _st_coh[p]},
                          {"deep_amplitude", _st_deep[p]},
+                         {"deep_snr", _st_deep_snr[p]},
+                         {"amp_snr", _st_amp_snr[p]},
                          {"doppler_hz", _st_dop[p]},
                          {"code_phase_chips", _st_cp[p]}});
     conn.send_json_reply(reply);
@@ -216,7 +244,7 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
 
 double
 GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>& a,
-                                        const std::vector<double>& utc) const {
+                                        const std::vector<double>& utc, double* snr_out) const {
     const int br = _navwipe_bit_records;
     const int nrec = (int)a.size();
     if (br <= 0 || nrec < 2 * br)
@@ -285,13 +313,26 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
         return 0.0;
 
     // Estimate the +-1 per bit by squaring (theta0 = 1/2 arg sum s^2; the global sign cancels
-    // in |.|), wipe, and coherently sum -> the deep coherent gain (mean of the wiped A).
+    // in |.|), wipe, and coherently sum -> the deep coherent gain (mean of the wiped A). The
+    // component ORTHOGONAL to the aligned signal (the imaginary part after rot) carries no signal,
+    // so it measures the per-bit noise -> the deep's uncertainty and a significance SNR.
     cd sumsq(0.0, 0.0);
     for (const cd& v : s)
         sumsq += v * v;
     const cd rot = std::polar(1.0, -0.5 * std::arg(sumsq));
     cd deep(0.0, 0.0);
-    for (const cd& v : s)
-        deep += (std::real(v * rot) >= 0.0 ? 1.0 : -1.0) * v;
+    double noise2 = 0.0; // sum of squared orthogonal (noise) components, one per bit
+    for (const cd& v : s) {
+        const cd vr = v * rot; // align the signal onto the real axis
+        deep += (std::real(vr) >= 0.0 ? 1.0 : -1.0) * v;
+        noise2 += std::imag(vr) * std::imag(vr);
+    }
+    const int nb = (int)s.size();
+    const double sigma_bit = std::sqrt(noise2 / (double)nb);    // per-bit noise (1 axis)
+    const double noise_sum = sigma_bit * std::sqrt((double)nb); // noise std of the coherent sum
+    // SNR = significance of the deep detection (coherent sum / its noise); the deep's standard
+    // error is noise_sum/nrec, so SNR == deep / its uncertainty. Real lock SNR >> 1; noise ~1.
+    if (snr_out)
+        *snr_out = noise_sum > 0.0 ? std::abs(deep) / noise_sum : 0.0;
     return std::abs(deep) / (double)nrec; // coherent mean of the wiped per-record A
 }

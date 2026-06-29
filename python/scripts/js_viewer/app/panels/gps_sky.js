@@ -19,7 +19,8 @@ const CX = 50, CY = 50, R = 44;
 const EL_RINGS = [0, 30, 60];           // elevation circles to draw (deg)
 
 const POLL_MS = 1500;
-const AMP_LOCK = 0.30;                   // |A| above this counts as a live track
+const AMP_LOCK = 0.30;                   // |A| fallback lock (only where deep_snr is unavailable)
+const SNR_LOCK = 3.0;                    // detection significance (sigma above noise) for a lock
 
 function svg(tag, attrs) {
     const el = document.createElementNS(SVG_NS, tag);
@@ -149,7 +150,7 @@ export class GpsSkyPanel {
         const sats = new Map();   // prn -> merged record
         const get = (prn) => {
             if (!sats.has(prn)) sats.set(prn, {prn, az: null, el: null,
-                snr: null, amp: 0, coh: 0, deep: 0, detected: false});
+                snr: null, amp: 0, coh: 0, deep: 0, sig: 0, detected: false});
             return sats.get(prn);
         };
         if (sky && Array.isArray(sky.sats))
@@ -163,9 +164,16 @@ export class GpsSkyPanel {
                 r.amp = c.amplitude || 0;
                 r.coh = c.coh_amplitude || 0;
                 r.deep = c.deep_amplitude || 0;
+                // significance = how many sigma the signal is above the noise: deep (nav-wiped)
+                // when available, else the noise-debiased incoherent SNR. >>1 real, ~1 noise.
+                r.sig = Math.max(c.deep_snr || 0, c.amp_snr || 0);
             }
+        // "Locked" = a SIGNIFICANT detection (sig), not the raw |A| -- the incoherent |A| is biased
+        // by the noise floor (≈ floor for weak sats), so |A| >= AMP_LOCK flickered phantoms across
+        // the line. Fall back to |A| only where no significance is reported.
+        const have_sig = [...sats.values()].some(r => r.sig > 0);
         for (const r of sats.values())
-            r.active = r.detected || r.amp >= AMP_LOCK;
+            r.active = have_sig ? (r.sig >= SNR_LOCK) : (r.detected || r.amp >= AMP_LOCK);
 
         this._draw_sats([...sats.values()]);
         this._draw_table([...sats.values()], sky, adc);
@@ -225,26 +233,34 @@ export class GpsSkyPanel {
             const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;`
                 + `background:${on ? snr_color(r.snr) : "transparent"};`
                 + `border:1px solid ${on ? "#e8edf2" : "#7c8794"};margin-right:5px;"></span>`;
+            // sig = deep significance (deep / its uncertainty), the honest "is it real": >>1 lock,
+            // ~1 noise. dB tooltip = 20·log10(sig). |A| is the noise-biased incoherent amplitude.
+            const sig = r.sig
+                ? `<span title="${(20 * Math.log10(r.sig)).toFixed(0)} dB">`
+                  + r.sig.toFixed(1) + "σ</span>"
+                : "—";
             return `<tr style="${on ? "" : "color:#8a929b;"}">`
                 + cell(dot + "<b>" + r.prn + "</b>")
                 + cell(r.el != null ? r.el.toFixed(0) + "°" : "—")
                 + cell(r.snr != null ? r.snr.toFixed(1) : "—")
-                + cell(num(r.amp), "text-align:right;")
-                + cell(num(r.deep || r.coh), "text-align:right;")
+                + cell(num(r.amp), "text-align:right;color:#8a929b;")
+                + cell(num(r.deep || r.coh, 3), "text-align:right;")
+                + cell(sig, "text-align:right;")
                 + "</tr>";
         };
         const head = "<tr style='color:#666;border-bottom:1px solid #ddd;'>"
             + "<th style='text-align:left;padding:1px 6px;'>PRN</th>"
             + "<th style='text-align:left;padding:1px 6px;'>El</th>"
             + "<th style='text-align:left;padding:1px 6px;'>SNR</th>"
-            + "<th style='text-align:right;padding:1px 6px;'>|A|</th>"
-            + "<th style='text-align:right;padding:1px 6px;'>deep</th></tr>";
+            + "<th style='text-align:right;padding:1px 6px;' title='incoherent |A| (noise-biased)'>|A|</th>"
+            + "<th style='text-align:right;padding:1px 6px;'>deep</th>"
+            + "<th style='text-align:right;padding:1px 6px;' title='deep significance = deep / its uncertainty'>sig</th></tr>";
         let body = locked.map(r => row(r, true)).join("");
         if (!locked.length)
-            body = "<tr><td colspan='5' style='padding:4px 6px;color:#999;'>"
+            body = "<tr><td colspan='6' style='padding:4px 6px;color:#999;'>"
                 + "no locks yet…</td></tr>";
         if (idle.length)
-            body += "<tr><td colspan='5' style='padding:4px 6px 1px;color:#aaa;"
+            body += "<tr><td colspan='6' style='padding:4px 6px 1px;color:#aaa;"
                 + "font-size:11px;'>overhead, unlocked</td></tr>"
                 + idle.map(r => row(r, false)).join("");
         this._table.html(`<table style="border-collapse:collapse;width:100%;">`

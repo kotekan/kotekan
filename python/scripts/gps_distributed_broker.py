@@ -173,7 +173,12 @@ def main(argv=None):
     ap.add_argument("--acquire-snr", type=float, default=12.0,
                     help="min detection SNR to (re)seed a PRN")
     ap.add_argument("--drop-amplitude", type=float, default=0.3,
-                    help="combined |A| below which a tracked PRN is coasting (not yet locked)")
+                    help="combined |A| below which a tracked PRN is coasting (fallback metric when "
+                         "the combiner reports no deep significance / nav-bit wipe is off)")
+    ap.add_argument("--lock-snr", type=float, default=3.0,
+                    help="detection significance (sigma above noise) above which a sat counts as "
+                         "locked -- the primary, noise-relative lock metric (vs the noise-biased |A|; "
+                         "noise sits at ~1, a real lock at >>3)")
     ap.add_argument("--coast-budget", type=float, default=30.0,
                     help="seconds a VISIBLE sat is coasted (seed held + Doppler forecast forward) "
                          "through a signal dropout before dropping it -- so a radar sweep / brief "
@@ -369,11 +374,18 @@ def main(argv=None):
         # budget (genuine loss / prediction breakdown). |A| recovering resets the coast.
         coast_polls = max(1, int(round(args.coast_budget / max(args.interval, 1e-3))))
         try:
-            status = {int(r["prn"]): float(r["amplitude"])
-                      for r in _get("%s/get_status" % combiner)}
+            status = {int(r["prn"]): r for r in _get("%s/get_status" % combiner)}
         except Exception as e:
             status = {}
             _log("get_status failed: %s" % e)
+        # Lock metric: the detection SIGNIFICANCE (sigma above noise) -- the deep nav-wiped SNR when
+        # available, else the noise-debiased incoherent SNR -- not the raw |A|. The incoherent |A| is
+        # biased by the noise floor (~the floor for weak sats), so judging "still locked" by |A| >
+        # drop_amplitude let phantoms coast forever (|A| never falls below the floor). sig ~1 = noise,
+        # >>1 = a real lock. Falls back to |A| only if the combiner reports no significance at all.
+        def sig_of(r):
+            return max(float(r.get("deep_snr", 0)), float(r.get("amp_snr", 0)))
+        have_sig = any(sig_of(r) > 0 for r in status.values())
         for prn in list(seeds):
             if up is not None and prn not in up:
                 _log("drop PRN %d (set below horizon)" % prn)
@@ -385,14 +397,18 @@ def main(argv=None):
             # not re-detected this poll but still visible -> COAST: forecast the Doppler forward.
             if args.almanac and prn in pred:
                 seeds[prn]["doppler_hz"] = pred[prn][0] + clock_bias
-            amp = status.get(prn, 0.0)
-            if amp >= args.drop_amplitude:
-                low_hits[prn] = 0  # |A| held through the dropout -> the lock survived; reset coast
+            rec = status.get(prn, {})
+            if have_sig:
+                metric, thresh = sig_of(rec), args.lock_snr
+            else:
+                metric, thresh = float(rec.get("amplitude", 0.0)), args.drop_amplitude
+            if metric >= thresh:
+                low_hits[prn] = 0  # lock holding through the dropout -> reset coast
             else:
                 low_hits[prn] = low_hits.get(prn, 0) + 1
                 if low_hits[prn] >= coast_polls:
-                    _log("drop PRN %d (coast %.0fs expired, |A|=%.2f)"
-                         % (prn, args.coast_budget, amp))
+                    _log("drop PRN %d (coast %.0fs expired, %s=%.2f)"
+                         % (prn, args.coast_budget, "sig" if have_sig else "|A|", metric))
                     del seeds[prn]
                     low_hits.pop(prn, None)
 
