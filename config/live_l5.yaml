@@ -29,7 +29,7 @@ n_prn: 11
 record_floats: 11
 doppler_margin_hz: 250000.0
 acquire_snr: 10
-acquire_windows: 20
+acquire_windows: 100
 doppler_min: -6000.0
 doppler_max: 6000.0
 doppler_step: 250
