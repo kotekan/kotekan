@@ -11,7 +11,7 @@ Use it two ways:
   * L2 ground truth: does the monolithic see L2C at all, and at what SNR? (vs the channelized
     live_l2c.yaml, which currently sees nothing.) If mono detects and channelized doesn't, the
     channelized path still has a bug; if neither, it's a signal/antenna problem.
-  * L1 regression check: run on L1 and compare its SNR to the channelized live.yaml. The
+  * L1 regression check: run on L1 and compare its SNR to the channelized live_l1.yaml. The
     channelized replica fix is a no-op for L1 (comb_mult=1, unit tests pass), so the two
     should agree; if they do, a low L1 SNR is environmental (different sats / elevation / RFI),
     not a code regression.

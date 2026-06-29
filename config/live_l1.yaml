@@ -3,7 +3,7 @@
 # pipeline: valved CHORD-mirror (per-channel track + bufferSend/Recv node mimic + central
 # combine) + GPS-only viewer. See the generator header + docs/gnss_pipeline_reference.md.
 # Run (run_live.sh CFG=this):
-#   LAT=43.968697 LON=-79.252106 ALT=260 CFG=config/live.yaml ./config/run_live.sh
+#   LAT=43.968697 LON=-79.252106 ALT=260 CFG=config/live_l1.yaml ./config/run_live.sh
 type: config
 log_level: info
 instrument_name: airspy_gps

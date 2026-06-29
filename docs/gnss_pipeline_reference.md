@@ -60,7 +60,7 @@ A complete GNSS receiver on one airspy. The **search** reads `chan_buf` directly
 capture stays drop-free. (Drops are no longer catastrophic — `airspyInput` folds them
 into `sample_seq` as known gaps, and the search zero-fills its snapshot at the true
 `sample_seq` offset — but the valve still keeps the common case clean.) The default
-`live.yaml` runs the *distributed* arrangement of this same chain (split → per-channel
+`live_l1.yaml` runs the *distributed* arrangement of this same chain (split → per-channel
 send/recv → gather/search; per-channel track → combiner); the single-node form here is
 `live_intgn.yaml`.
 
@@ -176,11 +176,11 @@ All three live bands come from one signal-parameterized generator
 
 | config | arrangement |
 |---|---|
-| `live.yaml` | **the live config** (run_live.sh default), L1 C/A, 5 MSPS, N=12 (~208 kHz channels), **distributed CHORD-mirror** (per-channel track + bufferSend/Recv → gather/search + combiner + beam cube), **valve** after the F-engine (airspy-safe), FLL on, GPS-only browser viewer on :8080 |
+| `live_l1.yaml` | **the live config** (run_live.sh default), L1 C/A, 5 MSPS, N=12 (~208 kHz channels), **distributed CHORD-mirror** (per-channel track + bufferSend/Recv → gather/search + combiner + beam cube), **valve** after the F-engine (airspy-safe), FLL on, GPS-only browser viewer on :8080 |
 | `live_l2c.yaml` | retuned to **L2C** (1227.6 MHz, `GPS_L2C_CM`). N=10 (7 covering channels), fine `doppler_step:50`. **N=10 (not 12) is required**: at N=12 one 20 ms code period is 4166.67 hops, so the incoherent window wasn't an integer number of periods → the peak smeared and L2C detected nothing. CM is half the L2C power + time-multiplexed with CL (the replica zero-stuffs the combined code) |
 | `live_l5.yaml` | retuned to **L5** (1176.45 MHz, `GPS_L5_Q` pilot). **Wide front end**: `sample_bw:10` → 20 MSPS (captures ~half the ~20 MHz main lobe). N=10, all 10 channels covering. Dataless pilot → long coherent integration; ~10 MHz spans real beam variation (use the beam cube) |
 | `live_mono*.yaml` | **monolithic ground truth** (`gen_mono_config.py`, `run_mono.sh`): airspy → valve → `GpsReplicaCorrelator` (full-band FFT search/track) → records. The "what SNR should we get" reference, independent of the channelized path. L1 / L2C / L5 variants |
-| `live_wipe.yaml` | live chain + combiner nav-bit wipe (`navwipe_bit_records`, deep `\|A\|` past the 20 ms bit) — the navwipe / deep-integration demo |
+| `live_l1_wipe.yaml` | live chain + combiner nav-bit wipe (`navwipe_bit_records`, deep `\|A\|` past the 20 ms bit) — the navwipe / deep-integration demo |
 | `live_intgn.yaml` | single-node live chain, `integration_length:1` (record every raw `A` for `gps_intgn_check.py`). The deep-integration test bed |
 
 ## Practical notes

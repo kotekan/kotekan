@@ -1,20 +1,22 @@
 ---
-# LIVE nav-bit-wipe demo: the combiner wipes the 20 ms data bit and integrates
-# search + valve -> track -> combiner -> record), but the combiner records EVERY
-# tracker record raw (integration_length: 1), so the per-record complex amplitude A
-# (rec[4]=A.re rec[5]=A.im rec[3]=|A|, UTC slot 9) lands on disk. gps_intgn_check.py
-# then reconstructs coherent |<A>| and incoherent sqrt<|A|^2> vs integration length K
-# offline -- one ~60 s run gives the whole ladder + the nav-bit coherence rolloff.
-#
-# Pull-in is lightened to +/-1 chip: the broker's cp slope now lands the seed on the
-# peak, so the tracker stays realtime (fewer valve drops -> more contiguous records,
-# cleaner coherent integration). Run:  CFG=config/live_intgn.yaml TRK=track \
-#   LAT=43.968697 LON=-79.252106 ALT=260 ./config/run_live.sh   (Ctrl-C after ~60 s),
-# then:  python3 python/scripts/gps_intgn_check.py /tmp/gpsintgn
+# LIVE L1 nav-bit-wipe demo: like live_l1.yaml but SINGLE-NODE (one full-band tracker,
+# not the distributed per-channel split), with the combiner WIPING the 20 ms data bit and
+# coherently integrating past it: integration_length: 1000 + navwipe_bit_records: 20 wipes
+# ~1 s (50 nav bits) into a deep |A| (slot 8 / deep_amplitude -- the sig column's nav-wiped
+# significance). The GPS-only browser viewer serves on :8080. Run (TRK auto-derives to the
+# single "track" stage):
+#   LAT=43.968697 LON=-79.252106 ALT=260 CFG=config/live_l1_wipe.yaml ./config/run_live.sh
+# Recorded deep |A| lands in /tmp/gpswipe/level_*.raw.
 type: config
 log_level: info
 instrument_name: airspy_gps
 telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+# Let the browser GPS panel (served on :8080) reach kotekan's REST API cross-origin --
+# WITHOUT this the viewer can't poll combiner/get_status or search/get_detections, so every
+# sat shows unlocked (no sig, no SNR) even while the CLI watcher sees them fine.
+rest_server:
+    cors_allow_origins: ["http://localhost:8080", "http://127.0.0.1:8080"]
 
 samples_per_data_set: 49920
 bytes_per_sample: 2
@@ -78,3 +80,5 @@ track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec
 # integration_length: 1000, navwipe_bit_records: 20 -> navwipe: integrate ~1 s (50 nav bits) coherently; deep |A| in slot 8.
 combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20 }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpswipe", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+
+spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream' }

@@ -2,7 +2,7 @@
 """Generate a LEAN DISTRIBUTED live airspy GNSS pipeline -- the valved CHORD-mirror
 chain + GPS-only viewer -- for a chosen signal. Pick the signal via env GNSS_SIGNAL:
 
-  GNSS_SIGNAL=L1CA   python3 config/gen_live_config.py   # -> config/live.yaml      (default)
+  GNSS_SIGNAL=L1CA   python3 config/gen_live_config.py   # -> config/live_l1.yaml   (default)
   GNSS_SIGNAL=L2C_CM python3 config/gen_live_config.py   # -> config/live_l2c.yaml
 
 Ultimately CHORD runs every band/signal in parallel; on the single airspy prototype
@@ -68,7 +68,7 @@ import os
 # clean at CHORD). cap_coh keeps the window = 1 code period (1 ms) so it stays within one NH chip.
 SIGNALS = {
     "L1CA":   dict(name="GPS_L1CA",   freq=1575.42, chip=1.023e6, dstep=100.0, snr=10.0, N=12, sbw=2.5,
-                   win=20, period=1e-3,  cap_coh=False, out="live.yaml",     base="/tmp/gpslive"),
+                   win=20, period=1e-3,  cap_coh=False, out="live_l1.yaml",  base="/tmp/gpslive"),
     "L2C_CM": dict(name="GPS_L2C_CM", freq=1227.6,  chip=511.5e3, dstep=50.0,  snr=8.0,  N=10, sbw=2.5,
                    win=40, period=20e-3, cap_coh=True,  out="live_l2c.yaml",  base="/tmp/gpsl2c"),
     # win=100: L5 records are only 1 ms, so match the monolithic's 100 ms incoherent depth (it was
@@ -186,7 +186,7 @@ input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buf
 chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
 chan_buf2: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
 out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
-""" % (SIG, S["out"], N, FS_STR, FOFF_STR, S["name"], NPRN, S["snr"], S["win"], S["dstep"], PRNS))
+""" % (SIG, OUT_NAME, N, FS_STR, FOFF_STR, S["name"], NPRN, S["snr"], S["win"], S["dstep"], PRNS))
 
 # Per-channel buffers, COVERING channels only (no buffer/stage on dead channels).
 for c in COV:

@@ -3,7 +3,7 @@
 #
 #   LAT=43.968697 LON=-79.252106 ALT=260 ./config/run_live.sh
 #
-# Starts kotekan (config/live.yaml: airspy -> PFB -> { search, valve -> track ->
+# Starts kotekan (config/live_l1.yaml: airspy -> PFB -> { search, valve -> track ->
 # combiner -> recorded |A| }, + the GPS-only browser viewer), then the broker,
 # then prints detections + combined level every few seconds. Watch the overhead
 # sky + locked PRNs in a browser at
@@ -13,15 +13,15 @@
 # Run from the repo root (the dir containing config/ and build_mac/).
 set -u
 KOTEKAN=./build_mac/kotekan/kotekan
-CFG=${CFG:-config/live.yaml}             # L1 lean valved distributed config
-#   CFG=config/live_l2c.yaml  -> L2C (1227.6 MHz), CFG=config/live_wipe.yaml -> navwipe demo
+CFG=${CFG:-config/live_l1.yaml}          # L1 lean valved distributed config
+#   CFG=config/live_l2c.yaml  -> L2C (1227.6 MHz), CFG=config/live_l1_wipe.yaml -> navwipe demo
 # Derive the tracker stage names + the carrier straight from the config so any band/signal
-# works unchanged: live.yaml -> track_00..11, live_l2c.yaml -> track_02..10 (covering subset),
-# live_wipe.yaml -> a single "track". The broker accepts this comma list (it also expands
+# works unchanged: live_l1.yaml -> track_00..11, live_l2c.yaml -> track_02..10 (covering subset),
+# live_l1_wipe.yaml -> a single "track". The broker accepts this comma list (it also expands
 # {a..b} ranges itself, but a derived list needs no brace-quoting gymnastics).
 TRK=${TRK:-$(grep -oE '^track[_0-9]*' "$CFG" | tr '\n' ',' | sed 's/,$//')}
 # Loud warning if a requested tracker stage isn't actually in the config -- the classic
-# trap is passing TRK=track to the distributed live.yaml (whose trackers are track_00..11):
+# trap is passing TRK=track to the distributed live_l1.yaml (whose trackers are track_00..11):
 # the broker POSTs to track/set_seeds, gets a 404, never seeds -> the trackers despread at
 # cp=0 -> |A| stays pinned at the noise floor (~0.13) even though the SEARCH still detects.
 if [[ "$TRK" != *"{"* ]]; then  # skip brace ranges (the broker expands those itself)

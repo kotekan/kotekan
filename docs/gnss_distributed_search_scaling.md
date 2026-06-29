@@ -112,7 +112,7 @@ voltage centrally rather than combing `P_c` — the volume argument above is unc
   *arbitrary, possibly gapped* covering-channel subset (channels carry explicit
   `chan_freq`); the two-stage coarse→refine locks on real sky data; and the raw-voltage
   remap — `GnssSubbandSplit` → `bufferSend`/`bufferRecv` → `GnssChannelGather` →
-  `GnssChannelizedSearch` — is the live `live.yaml` path. The snapshot is drop-tolerant
+  `GnssChannelizedSearch` — is the live `live_l1.yaml` path. The snapshot is drop-tolerant
   (zero-fills gaps at the true `sample_seq` offset).
 - **Almanac-narrowed acquisition:** built (`set_doppler_hints` + broker `--narrow-search`),
   the robust + forward-compatible path (above).

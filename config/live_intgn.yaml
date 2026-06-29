@@ -1,5 +1,5 @@
 ---
-# Coherent-vs-incoherent integration check. Same lean valved path as live.yaml (airspy -> PFB ->
+# Coherent-vs-incoherent integration check. Same lean valved path as live_l1.yaml (airspy -> PFB ->
 # search + valve -> track -> combiner -> record), but the combiner records EVERY
 # tracker record raw (integration_length: 1), so the per-record complex amplitude A
 # (rec[4]=A.re rec[5]=A.im rec[3]=|A|, UTC slot 9) lands on disk. gps_intgn_check.py
@@ -15,6 +15,11 @@ type: config
 log_level: info
 instrument_name: airspy_gps
 telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+# Let the browser GPS panel (served on :8080) reach kotekan's REST API cross-origin
+# (without it the viewer can't poll combiner/search REST -> every sat shows unlocked).
+rest_server:
+    cors_allow_origins: ["http://localhost:8080", "http://127.0.0.1:8080"]
 
 samples_per_data_set: 49920
 bytes_per_sample: 2

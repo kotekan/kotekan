@@ -932,7 +932,7 @@ def main():
     # run_live.sh already exports for the broker's almanac assist. The site only
     # *positions* the sky plot; the panel is gated on the explicit --gps flag so
     # a non-GPS viewer launched from a shell that happens to have LAT/LON in its
-    # environment never sprouts a stray GPS card. (live.yaml passes --no-power-stream,
+    # environment never sprouts a stray GPS card. (live_l1.yaml passes --no-power-stream,
     # which implies --gps.)
     if args.lat is None and os.environ.get("LAT"):
         args.lat = float(os.environ["LAT"])
