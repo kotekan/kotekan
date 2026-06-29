@@ -153,6 +153,7 @@ void givenDataGen::main_thread() {
                 throw std::runtime_error("Dimension label too long");
             }
             chordmeta->dim[d] = _array_shape.at(d);
+            chordmeta->dim_scaling[d] = _dim_scalings.at(d);
         }
         chordmeta->set_strides_simple();
 
