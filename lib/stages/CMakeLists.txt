@@ -147,9 +147,6 @@ if(FFTW_FOUND)
         kotekan_stages
         PRIVATE fftwEngine.cpp
                 GpsReplicaCorrelator.cpp
-                GnssCorrelatorCore.cpp
-                GnssTracker.cpp
-                GnssAcquire.cpp
                 pfbPrototype.cpp
                 gnssBandPlan.cpp
                 gnssChannelizedDespread.cpp
