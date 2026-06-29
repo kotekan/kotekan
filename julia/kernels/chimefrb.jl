@@ -435,14 +435,6 @@ function make_chimefrb_kernel()
                     Γ2_dish2_0_dish5_0.im,
                     Γ2_dish2_1_dish5_0.re,
                     Γ2_dish2_1_dish5_0.im,
-                    Γ2_dish2_1_dish5_0.re,
-                    Γ2_dish2_0_dish5_0.im,
-                    Γ2_dish2_0_dish5_0.re,
-                    Γ2_dish2_1_dish5_0.im,
-                    Γ2_dish2_1_dish5_0.re,
-                    Γ2_dish2_0_dish5_1.im,
-                    Γ2_dish2_0_dish5_1.re,
-                    Γ2_dish2_1_dish5_1.im,
                     Γ2_dish2_0_dish5_1.re,
                     Γ2_dish2_0_dish5_1.im,
                     Γ2_dish2_1_dish5_1.re,
@@ -593,11 +585,6 @@ function make_chimefrb_kernel()
                     Γ4_dish2_0.im,
                     Γ4_dish2_1.re,
                     Γ4_dish2_1.im,
-                    Γ4_dish2_1.re,
-                    Γ4_dish2_0.im,
-                    Γ4_dish2_0.re,
-                    Γ4_dish2_1.im,
-                    Γ4_dish2_1.re,
                 )
             end
         end,
@@ -1556,7 +1543,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             end
         end
         if error_count > 0
-            println("*** SELF-TEST FAILED: $(error_count) mismatches ***")
+            error("*** SELF-TEST FAILED: $(error_count) mismatches ***")
         else
             println("Self-test passed.")
         end
@@ -1810,8 +1797,8 @@ if CUDA.functional()
     end
     fix_ptx_kernel()
 
-    # # Self-test (compares the kernel against a CPU reference beamformer)
-    # main(; run_selftest=true)
+    # Self-test (compares the kernel against a CPU reference beamformer)
+    main(; run_selftest=true)
 
     # # Run benchmark
     # main(; nruns=100)
