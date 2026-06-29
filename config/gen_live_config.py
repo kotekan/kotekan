@@ -98,6 +98,14 @@ INTEG_LEN = int(os.environ.get("INTEGRATION_LENGTH", "50"))
 # off (the FLL wander over a ~30 s coast is tolerable anyway); set ~half the locked |A| to enable.
 FLL_LOCK_AMP = float(os.environ.get("FLL_LOCK_AMP", "0"))
 
+# OUT_NAME / BASE_DIR override the output config name + record dir, so a capture variant (e.g.
+# INTEGRATION_LENGTH=1 -> record every raw per-record A for offline integration analysis) can be
+# generated WITHOUT clobbering the live config: e.g. the L2C deep-integration reference capture is
+#   GNSS_SIGNAL=L2C_CM INTEGRATION_LENGTH=1 OUT_NAME=live_intgn_l2c.yaml BASE_DIR=/tmp/gpsintgn_l2c \
+#     python3 config/gen_live_config.py   (then run it, then python3 .../gps_intgn_check.py the dir).
+OUT_NAME = os.environ.get("OUT_NAME", S["out"])
+BASE_DIR = os.environ.get("BASE_DIR", S["base"])
+
 # --- front-end / channel plan --------------------------------------------------
 N = S["N"]                      # PFB channels: Fs/(2N) wide each (L1 N=12 ~208 kHz; L2C/L5 N=10)
 FS = 2.0 * S["sbw"] * 1e6       # real rate = 2x the airspy device sample_bw (2.5->5e6, 10->20e6)
@@ -230,21 +238,21 @@ comb_in = "[" + ", ".join("rec_%02d" % c for c in COV) + "]"
 _roll = (", integration_mode: rolling" if INTEG_MODE == "rolling" else "")
 L.append("combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: %s, out_buf: out_buf, integration_length: %d%s }"
          % (comb_in, INTEG_LEN, _roll))
-L.append('record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "%s", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }' % S["base"])
+L.append('record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "%s", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }' % BASE_DIR)
 # Beam cube: the SAME per-channel tracker records, integrated PER CHANNEL (no cross-channel sum)
 # -> beam(t, frequency). Frequency-resolves the antenna beam (matters across L5's ~10 MHz). Second
 # consumer of rec_* alongside the combiner; it's light, and the valve absorbs any back-pressure.
 L.append("beamcube: { kotekan_stage: GnssBeamCube, in_bufs: %s, out_buf: beam_buf, channel0: %d, integration_length: %d%s }"
          % (comb_in, COV[0], INTEG_LEN, _roll))
-L.append('beamrec: { kotekan_stage: rawFileWrite, in_buf: beam_buf, base_dir: "%s", file_name: "beam", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }' % S["base"])
+L.append('beamrec: { kotekan_stage: rawFileWrite, in_buf: beam_buf, base_dir: "%s", file_name: "beam", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }' % BASE_DIR)
 L.append("")
 
 # GPS-only browser viewer (no power stream / waterfall): serves the GPS Sky panel on :8080,
 # polling REST + /gps_sky. SpawnProcess just drains out_buf (pure drain) so it can't backpressure.
 L.append("spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream' }")
 
-open("config/" + S["out"], "w").write("\n".join(L) + "\n")
+open("config/" + OUT_NAME, "w").write("\n".join(L) + "\n")
 print("wrote config/%s: %s @ %g MHz, %d covering channels %s -> %d trackers; valve + GPS viewer"
-      % (S["out"], S["name"], S["freq"], NCOV, COV, NCOV))
+      % (OUT_NAME, S["name"], S["freq"], NCOV, COV, NCOV))
 print("  broker carrier: --carrier-hz %g  | TRK='track_{%02d..%02d}' (non-contiguous if subset)"
       % (S["freq"] * 1e6, COV[0], COV[-1]))
