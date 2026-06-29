@@ -84,11 +84,22 @@ def read_records(paths, n_prn=None):
 
 def load_gps_satellites(tle_source):
     """Return {prn: EarthSatellite} from a Celestrak TLE file/URL. Names carry
-    the PRN as '... (PRN NN)'."""
-    import re
-    from skyfield.api import load
+    the PRN as '... (PRN NN)'.
 
-    sats = load.tle_file(tle_source)
+    A URL is downloaded into a per-user cache dir (~/.cache/kotekan_gps), not the
+    current directory: skyfield names the cache after the URL basename, so the
+    default loader otherwise drops a stray 'gp.php' in the repo root on every run.
+    The cache is shared across scripts and reused until stale, so this also avoids
+    re-hitting Celestrak each broker cycle. Local file paths load in place."""
+    import re
+    from skyfield.api import Loader, load
+
+    if isinstance(tle_source, str) and tle_source.startswith(("http://", "https://")):
+        cache = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
+        os.makedirs(cache, exist_ok=True)
+        sats = Loader(cache, verbose=False).tle_file(tle_source)
+    else:
+        sats = load.tle_file(tle_source)
     by_prn = {}
     for s in sats:
         m = re.search(r"PRN\s*(\d+)", s.name or "")

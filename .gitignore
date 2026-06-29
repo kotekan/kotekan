@@ -22,3 +22,9 @@ scratch/*
 
 # Local macOS build dir
 /build_mac/
+
+# Celestrak TLE downloads: the almanac now caches these in ~/.cache/kotekan_gps,
+# but skyfield's default loader names a URL download after its basename ("gp.php"),
+# so guard against any stray landing in the repo root.
+gp.php
+gp.php*
