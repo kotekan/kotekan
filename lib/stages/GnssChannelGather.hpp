@@ -28,7 +28,7 @@
  * (lock-step, same absolute hops -- they share one F-engine cadence) into a
  * contiguous @c [hop][n_in] frame that the existing @ref GnssChannelizedSearch
  * consumes unchanged, with @c channel_offset set to the first covering channel's
- * global frequency index. The fpga_seq reference is propagated from input 0.
+ * global frequency index. The sample_seq reference is propagated from input 0.
  *
  * @buffer in_bufs  Per-channel voltage, each [hop] cfloat32 (one channel).
  * @buffer out_buf  Gathered voltage, [hop][n_in] cfloat32 (channel-minor).

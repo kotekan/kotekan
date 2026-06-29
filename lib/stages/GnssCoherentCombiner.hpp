@@ -44,6 +44,18 @@
  * fine enough that the carrier phase is stable across the K records -- with a
  * coarse Doppler grid the coherent mean decorrelates and only slot 3 is usable).
  *
+ * Two integration cadences (@c integration_mode):
+ *  - @c block (default): accumulate K records, emit once, reset. One output per K
+ *    records; the historical behaviour, byte-identical when the key is absent.
+ *  - @c rolling: an exponential moving average with time constant K records
+ *    (alpha = 1/K), updated every record and emitted every @c output_every records
+ *    WITHOUT reset. Bias-corrected (divide by 1-(1-alpha)^n) so it reads a true
+ *    running mean from the first record. Incoherent integration has no nav-bit cap
+ *    and only needs the tracker to hold the code/Doppler bin, so a long rolling K
+ *    (e.g. minutes of records) lets a weak sat climb out continuously -- you watch
+ *    slot 3 (and the nav-wiped slot 8) grow instead of waiting K records per sample.
+ *    The coherent slots 4-6 carry the same nav-bit limitation as in block mode.
+ *
  * Optional **nav-bit wipe** (@c navwipe_bit_records > 0): coherent integration past
  * the 20 ms GPS data bit. Each record (one code period) lies wholly within one data
  * bit, so @f$ A_{rec} = d \cdot (\text{clean despread}) @f$ -- a constant +-1 sign. Over
@@ -54,9 +66,15 @@
  * 20 ms (slot 8), where the plain coherent mean (slot 6) decorrelates at the nav bit.
  *
  * @conf n_prn  Int. Records (PRNs) per frame; default from in-frame size.
- * @conf integration_length Int (default 1). Tracker records accumulated per output.
+ * @conf integration_length Int (default 1). block: tracker records accumulated per output.
+ *       rolling: EMA time constant in records (the effective integration depth).
+ * @conf integration_mode String (default "block"). "block" or "rolling" (see above).
+ * @conf output_every Int (rolling only; default max(1, integration_length/10)). Records
+ *       between rolling emits -- decouples the EMA update rate (every record) from the
+ *       output/record cadence.
  * @conf navwipe_bit_records Int (default 0=off). Records per nav bit (~20 ms / record);
- *       e.g. 20 at 5 MSPS / 1 ms records. Needs integration_length >> this.
+ *       e.g. 20 at 5 MSPS / 1 ms records. Needs integration_length >> this. In rolling mode
+ *       the wipe runs over a sliding window of the last integration_length records.
  *
  * @buffer in_bufs Per-subband tracker record streams (RECORD_FLOATS floats/PRN:
  *                 0=PRN 1=dop 2=cp 3=corr.re 4=corr.im 5=energy 6=n_chan 9,10=UTC).
@@ -88,7 +106,9 @@ private:
     std::vector<Buffer*> in_bufs;
     Buffer* out_buf;
     int _n_prn;
-    int _integration_length; ///< tracker records accumulated per output (1 = no integration)
+    int _integration_length; ///< block: records/output; rolling: EMA time constant (records)
+    bool _rolling;           ///< rolling EMA integration vs block-and-reset
+    int _emit_every;         ///< rolling: records between emits (output cadence)
     int _navwipe_bit_records; ///< records per nav bit (0 = no wipe)
     std::vector<std::vector<std::complex<double>>> _navbuf; ///< per-PRN per-record A over the window
     std::vector<std::vector<double>> _navutc;              ///< per-PRN per-record capture UTC

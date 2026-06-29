@@ -65,6 +65,30 @@ across disjoint bands (watch the 1176 stack, which is not).
 
 ## Removing the satellites: peel + null
 
+Two independent axes, easily conflated. **Where** the removal acts — on the
+per-sample **voltages** (pre-vis) or on the integrated **visibility matrix `V`**
+(post-vis, the N+M triangle) — and **what** it does — **peel** (subtract the
+source *model*, preserving the spatial DOF) vs **null** (project the mode `a`
+*out*, costing a DOF). Peel ≠ null: *subtract* vs *project*. The rank-1
+`a aᴴ P` subtraction **is** the visibility peel — the triangle formula
+`V'_ij = V_ij − V_ik V_jk*/V_kk` is exactly that subtraction (`aᵢ ∝ V_ik`); the
+spatial null is the projection `P_⊥ V P_⊥`.
+
+|  | voltage (per-sample, pre-vis) | visibility (per-integration, on `V`) |
+|---|---|---|
+| **peel** (subtract model) | subtract `aᵢ·g(t)` — needs the **waveform** (code/W) | subtract `a aᴴ P` — code/W/nav square away, `a` from open signal |
+| **null** (project out `a`) | `(I − aaᴴ/\|a\|²)·X` — needs only `a` | `P_⊥ V P_⊥` — needs only `a` |
+
+**Only the top-left cell needs the code.** Everywhere else the modulation
+squares away (`|g(t)|² = 1`), so removal needs only the *spatial* signature `a`
+(plus an amplitude, for the peel). That is why **encrypted P(Y)/M come off `V`
+for free**: a satellite's contribution to `V` is rank-1 `a aᴴ P` *regardless* of
+code/W/nav, with `a` taken from the co-hosted open signal (same sat, same band ⇒
+same `a`) and the amplitude fit from `V`. So the encrypted part is removed by
+*either* the visibility peel *or* the spatial null — neither needs the
+(unavailable) W-code; only the *voltage* peel of the encrypted part is off the
+table.
+
 **Voltage peel (pre-vis, deep).** Subtract the satellite's waveform from each
 antenna before correlation:
 
@@ -104,9 +128,11 @@ satellite from the co-hosted open signal's measured gains removes its **entire
 in-band emission at once** — open and encrypted together — and it is a *measured*
 (deep) null, not a nominal one: same direction ⇒ same geometric fringe, and same
 band ⇒ same per-antenna electronic gain and same (dispersive) ionospheric delay,
-so the open-signal gains transfer exactly. You only lose the **waveform peel** on
-the encrypted part (no code to build a replica), so the recipe is: peel the open
-component for depth, and let the direction-null sweep up the encrypted remainder.
+so the open-signal gains transfer exactly. You only lose the **voltage (waveform)
+peel** on the encrypted part (no code to build a replica) — the *visibility* peel
+(rank-1 `a aᴴ P`) and the spatial null both still remove it (table above). Recipe:
+voltage-peel the open component for depth, and let the visibility peel and/or the
+direction-null sweep up the encrypted remainder.
 (P(Y)/M are wider than L2C; the channels L2C doesn't illuminate are covered by
 the array's standard bandpass × the predicted fringe. Inter-signal antenna
 phase-centre offsets are a fixed cm-level bias, calibratable if deep nulls

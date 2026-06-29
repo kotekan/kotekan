@@ -160,13 +160,13 @@ void GnssChannelizedTracker::main_thread() {
             break;
         const int frame_hops = in_buf->frame_size / (int)sizeof(cf) / _n_chan;
 
-        // Absolute hop index of this frame's first hop, from fpga_seq (shared across
+        // Absolute hop index of this frame's first hop, from sample_seq (shared across
         // nodes so every tracker's window_start agrees); fall back to a local count.
         long long frame_first_hop = seen_hops;
         if (metadata_is_gnss_chan(in_buf)) {
             auto* mi = get_gnss_chan_metadata(in_buf, frame_in);
-            if (mi && mi->fpga_seq >= 0)
-                frame_first_hop = mi->fpga_seq / _fft_len;
+            if (mi && mi->sample_seq >= 0)
+                frame_first_hop = mi->sample_seq / _fft_len;
         }
 
         for (int in_pos = 0; in_pos < frame_hops; ++in_pos) {
@@ -328,7 +328,7 @@ void GnssChannelizedTracker::main_thread() {
             // the combiner verify per-subband window alignment before summing.
             if (out_buf->metadata_pool) {
                 out_buf->allocate_new_metadata_object(frame_out);
-                get_gnss_chan_metadata(out_buf, frame_out)->fpga_seq = window_start;
+                get_gnss_chan_metadata(out_buf, frame_out)->sample_seq = window_start;
             }
             out_buf->mark_frame_full(unique_name, frame_out);
             frame_out = (frame_out + 1) % out_buf->num_frames;

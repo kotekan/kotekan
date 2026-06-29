@@ -141,6 +141,35 @@ def predict_dopplers(lat, lon, alt_m, prns=None, t_utc=None, f_carrier_hz=1575.4
     return out
 
 
+def predict_skypos(lat, lon, alt_m, prns=None, t_utc=None,
+                   tle_source=DEFAULT_TLE_URL, _sats=None):
+    """Predict {prn: (az_deg, el_deg)} for GPS sats at a receiver (lat, lon,
+    alt_m WGS84) and time t_utc (UTC datetime, default now).
+
+    Azimuth is degrees clockwise from true North (N=0, E=90); elevation is
+    degrees above the horizon. Companion to predict_dopplers (which returns the
+    line-of-sight Doppler + elevation but drops azimuth); this is what the live
+    viewer's sky plot needs. Pass _sats (a {prn: EarthSatellite} from
+    load_gps_satellites) to avoid reloading TLEs. Requires skyfield.
+    """
+    from skyfield.api import load, wgs84
+    ts = load.timescale()
+    observer = wgs84.latlon(lat, lon, elevation_m=alt_m)
+    by_prn = _sats if _sats is not None else load_gps_satellites(tle_source)
+    if t_utc is None:
+        t_utc = datetime.now(tz=timezone.utc)
+    t0 = ts.from_datetime(t_utc)
+
+    out = {}
+    for prn in (prns if prns is not None else list(by_prn)):
+        sat = by_prn.get(int(prn))
+        if sat is None:
+            continue
+        alt_, az_, _ = (sat - observer).at(t0).altaz()
+        out[int(prn)] = (float(az_.degrees), float(alt_.degrees))
+    return out
+
+
 def attach_altaz(records, lat, lon, alt_m, tle_source=DEFAULT_TLE_URL):
     """Return (alt_deg, az_deg) arrays aligned with `records`, NaN where the PRN
     has no TLE. Requires skyfield."""

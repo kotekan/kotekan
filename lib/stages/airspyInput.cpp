@@ -17,6 +17,7 @@
 #include "Config.hpp"           // for Config
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
 #include "airspyFrameDesc.hpp"  // for make_input_desc
+#include "GnssChanMetadata.hpp" // for get_gnss_chan_metadata, metadata_is_gnss_chan (opt-in sample_seq)
 #include "buffer.hpp"           // for Buffer
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "kotekanLogging.hpp"   // for ERROR, INFO, DEBUG, FATAL_ERROR
@@ -225,6 +226,23 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
 
     void* in = transfer->samples;
     size_t bt = transfer->sample_count * BYTES_PER_SAMPLE;
+
+    // Account for samples libairspy dropped (FIFO overflow) just before this transfer's data.
+    // The gap sits between the current partial frame and this transfer's samples, so abandon the
+    // partial frame (it would straddle the gap) and advance the true sample index past the gap.
+    // sample_seq then tracks TRUE time -> the drop is a clean, KNOWN jump downstream (handled by
+    // the absolute-hop referencing) rather than the silent counter divergence that randomises
+    // code phase. (Only meaningful when the buffer carries GNSS metadata; harmless otherwise.)
+    if (transfer->dropped_samples > 0) {
+        _samples_seq += (int64_t)transfer->dropped_samples;
+        if (frame_loc != 0) { // discard the straddling partial frame; refill it post-gap
+            frame_loc = 0;
+            _frame_seq0 = _samples_seq;
+        }
+        WARN("airspy: {:d} samples dropped -- partial frame discarded, sample_seq gap inserted "
+             "(pipeline behind realtime)",
+             transfer->dropped_samples);
+    }
     while (bt > 0) {
         // Skip past any pending alignment lag.
         if (lag > 0) {
@@ -238,15 +256,18 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
             lag = 0;
         }
 
-        if (frame_loc == 0) {
+        // Fetch a fresh frame only when we don't already hold one. frame_ptr is nulled on a
+        // completed frame; a drop-discard keeps it (frame_loc reset to 0) so the held frame is
+        // refilled from the top with the post-gap sample index.
+        if (frame_loc == 0 && frame_ptr == nullptr) {
             DEBUG("Airspy waiting for frame_id {:d}", frame_id);
             auto _w0 = std::chrono::steady_clock::now();
             frame_ptr = (unsigned char*)buf->wait_for_empty_frame(unique_name, frame_id);
             if (frame_ptr == nullptr)
                 break;
-            // DIAG: if the callback blocks here, input_buf is full -> the pipeline is
-            // behind realtime and libairspy's FIFO is overflowing (silent sample drops,
-            // which break the frame-counted fpga_seq -> random code phase).
+            // DIAG: blocking here means input_buf is full -> pipeline behind realtime, libairspy
+            // FIFO overflowing. The drops are now accounted (transfer->dropped_samples -> a clean
+            // sample_seq gap), but they still cost data, so the warning still matters.
             const double _wms =
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - _w0)
                     .count();
@@ -254,6 +275,7 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
                 WARN("airspy: blocked {:.1f} ms waiting for an empty frame -- pipeline behind "
                      "realtime, USB FIFO likely dropping samples",
                      _wms);
+            _frame_seq0 = _samples_seq; // this frame's first sample is at the current true index
         }
 
         size_t copy_length = std::min<size_t>(bt, buf->frame_size - frame_loc);
@@ -263,6 +285,7 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
         memcpy(frame_ptr + frame_loc, in, copy_length);
         bt -= copy_length;
         in = (void*)((char*)in + copy_length);
+        _samples_seq += (int64_t)(copy_length / BYTES_PER_SAMPLE); // advance true index by received samples
         frame_loc = (frame_loc + copy_length) % buf->frame_size;
 
         if (frame_loc == 0) {
@@ -308,8 +331,17 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
                 fr[i + 1] = 2048 - fr[i + 1];
             }
 
+            // If the output buffer carries GNSS channel metadata, stamp the absolute sample
+            // index of this frame's first sample (sample_seq), moving the timing origin to the
+            // true source. The F-engine propagates it downstream; a no-op for buffers without
+            // a GNSS pool (existing configs), so it changes nothing there.
+            if (metadata_is_gnss_chan(buf)) {
+                buf->allocate_new_metadata_object(frame_id);
+                get_gnss_chan_metadata(buf, frame_id)->sample_seq = _frame_seq0;
+            }
             buf->mark_frame_full(unique_name, frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
+            frame_ptr = nullptr; // release: next iteration fetches a fresh frame
         }
     }
     pthread_mutex_unlock(&recv_busy);

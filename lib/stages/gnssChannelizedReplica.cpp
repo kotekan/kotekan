@@ -18,9 +18,11 @@ namespace gnss {
 using cf = std::complex<float>;
 
 namespace {
-// Dispatch the primary spreading code by signal name. NOTE: L2C is time-multiplexed
-// (CM/CL interleaved to 1.023 Mcps) -- here we generate the bare component code at
-// its 511.5 kcps rate, which is approximate for the real interleaved signal; and
+// Dispatch the primary spreading code by signal name. Returns the BARE component code
+// at its component chip rate (e.g. L2C CM = 10230 chips @ 511.5 kcps). For a
+// time-multiplexed signal the constructor then zero-stuffs this onto the COMBINED stream
+// (CM/CL interleaved to 1.023 Mcps) at the tdm_phase parity -- the real signal's
+// structure; despreading the bare 511.5 kcps code loses ~9-12 dB (gps_l2c_subband_validate.py).
 // L2C CL is time-assisted (1.5 s period -- track-only, not blind-acquirable). L5
 // (I5/Q5) is the clean, fully-supported L2/L5 target. The NH secondary overlay
 // (L5 NH10/NH20, applied per 1 ms primary period) is NOT applied here -- a constant
@@ -57,9 +59,26 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
     _repl_period_hops =
         (int)(code_samples / std::max<long>(1, std::gcd((long)_fft_len, code_samples)));
 
+    // Time-multiplexing (L2C CM/CL): the transmitted component sits at 2x its chip rate,
+    // interleaved with a sibling. Model the COMBINED stream -- the component at its
+    // tdm_phase parity, zeros where the sibling is -- so the channelized replica matches
+    // the real signal's spectrum (NOT the bare 511.5 kcps component, which loses ~9-12 dB;
+    // see python/scripts/gps_l2c_subband_validate.py). comb_mult=1 -> ordinary signal.
+    _comb_mult = _sig.time_multiplexed ? 2 : 1;
+    _eff_chip_rate = _sig.chip_rate_hz * _comb_mult;
+    _eff_code_length = _sig.code_length * _comb_mult;
     _full_code.resize(prns.size());
-    for (size_t p = 0; p < prns.size(); ++p)
-        _full_code[p] = signal_code(_sig.name, prns[p]);
+    for (size_t p = 0; p < prns.size(); ++p) {
+        auto comp = signal_code(_sig.name, prns[p]); // bare component code (+-1), code_length
+        if (_comb_mult == 1) {
+            _full_code[p] = std::move(comp);
+        } else {
+            std::vector<int8_t> comb((size_t)_eff_code_length, 0); // zero-stuffed sibling slots
+            for (long k = 0; k < _sig.code_length; ++k)
+                comb[(size_t)(_comb_mult * k + _sig.tdm_phase)] = comp[(size_t)k];
+            _full_code[p] = std::move(comb);
+        }
+    }
 
     std::lock_guard<std::mutex> planner_lock(fftw_planner_mutex());
     _fold = (float*)fftwf_malloc(sizeof(float) * _fft_len);
@@ -79,7 +98,7 @@ ChannelizedReplicaBank::~ChannelizedReplicaBank() {
 }
 
 int8_t ChannelizedReplicaBank::code_chip(int p, double chip_phase) const {
-    const long len = _sig.code_length;
+    const long len = _eff_code_length; // combined-stream length (== code_length for comb_mult 1)
     long idx = (long)std::floor(chip_phase);
     idx %= len;
     if (idx < 0)
@@ -120,7 +139,8 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
     // (both track the same line-of-sight velocity); GnssChannelizedSearch applies
     // the matching term when referencing its measured cp back to sample 0.
     const double chip_per_sample =
-        _sig.chip_rate_hz / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
+        _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
+    const double cp0 = (double)_comb_mult * code_phase_chips; // CM chips -> combined chips
     const double wcarrier = 2.0 * M_PI * (_f_offset + doppler_hz) / _sample_rate;
 
     // Carrier as a phasor recurrence: cos(wcarrier*n) = Re(e^{i wcarrier n}), advanced
@@ -135,7 +155,7 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
         for (int i = 0; i < _fft_len; ++i) {
             const long long n = start + (long long)h * _fft_len + i;
             if (n >= 0) {
-                const int8_t c = code_chip(p, code_phase_chips + (double)n * chip_per_sample);
+                const int8_t c = code_chip(p, cp0 + (double)n * chip_per_sample);
                 // Real passband replica code*cos(carrier); the r2c bank keeps the
                 // positive-frequency half (the +carrier image), matching the data.
                 block[i] = c * (float)cph.real();
@@ -162,7 +182,7 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
 ChannelizedReplicaBank::HopRateFilter
 ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double doppler_hz) const {
     const double cps =
-        _sig.chip_rate_hz / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
+        _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
     const double wc = 2.0 * M_PI * (_f_offset + doppler_hz) / _sample_rate;
     const int Lf = _fft_len * _num_taps;
     const std::complex<double> I(0.0, 1.0);
@@ -198,7 +218,8 @@ ChannelizedReplicaBank::hoprate_stream(const HopRateFilter& f, int p, long long 
     // built for a nearby Doppler (it barely moves). R_j[m] = 1/2 ( e^{+i wc n_m} Σ_d code·d̂·
     // (PhiA over chip d) + e^{-i wc n_m} ... PhiB ), d the chip relative to the window edge.
     const double cps =
-        _sig.chip_rate_hz / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
+        _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
+    const double cp0 = (double)_comb_mult * code_phase_chips; // CM chips -> combined chips
     const double wc = 2.0 * M_PI * (_f_offset + doppler_hz) / _sample_rate;
     const int Lf = _fft_len * _num_taps;
     const int nw = (int)f.PhiA.size();
@@ -209,7 +230,7 @@ ChannelizedReplicaBank::hoprate_stream(const HopRateFilter& f, int p, long long 
     const std::complex<double> pstep = std::polar(1.0, std::fmod(wc * (double)_fft_len, 2.0 * M_PI));
     for (int m = 0; m < n_hops; ++m) {
         const long long n_m = n0 + (long long)m * _fft_len;
-        const double C = code_phase_chips + (double)n_m * cps;
+        const double C = cp0 + (double)n_m * cps;
         const long long chip0 = (long long)std::floor(C);
         const double phi = C - (double)chip0;
         const std::complex<double> pb = std::conj(pa);

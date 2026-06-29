@@ -67,7 +67,7 @@ void GnssChannelGather::main_thread() {
             for (int h = 0; h < hops; ++h)
                 out[(size_t)h * n_in + i] = ins[i][h]; // [hop][channel], channel-minor
 
-        // Carry the absolute sample reference (fpga_seq) from input 0 so the search
+        // Carry the absolute sample reference (sample_seq) from input 0 so the search
         // keeps a node-independent "sample 0".
         if (in_bufs[0]->metadata_pool && out_buf->metadata_pool) {
             out_buf->allocate_new_metadata_object(out_id);

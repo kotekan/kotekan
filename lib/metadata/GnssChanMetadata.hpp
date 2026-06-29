@@ -17,7 +17,7 @@
 /**
  * @class GnssChanMetadata
  * @brief Carries one value across the GNSS channelized pipeline: the absolute
- *        sample index of the frame's first hop (@c fpga_seq).
+ *        sample index of the frame's first hop (@c sample_seq).
  *
  * The distributed search/track stages reference code phase to an absolute "sample
  * 0"; when subbands are shipped to other kotekan instances (bufferSend/Recv), that
@@ -34,7 +34,7 @@ public:
     size_t serialize(char* bytes) override;
     nlohmann::json to_json() override;
 
-    int64_t fpga_seq = -1; ///< absolute sample index of the frame's first hop (-1 = unset)
+    int64_t sample_seq = -1; ///< absolute sample index of the frame's first hop (-1 = unset)
 };
 
 /// The GnssChanMetadata of a frame, or nullptr if it has none.

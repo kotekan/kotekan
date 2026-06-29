@@ -39,10 +39,11 @@ import signal
 import socket
 import struct
 import sys
+import time
 
 import numpy as np
 from autobahn.twisted.websocket import WebSocketServerFactory, WebSocketServerProtocol
-from twisted.internet import reactor
+from twisted.internet import reactor, threads
 from twisted.internet.interfaces import IPushProducer
 from twisted.python import log
 from twisted.web import resource, server, static
@@ -103,6 +104,13 @@ WS_BUFFER_MIN_BYTES = 16 * 1024  # floor (also the autocorr value)
 # the kernel still ACKs while the browser stops draining, and we'd rather
 # kick the client and let it auto-reconnect than sit silently.
 WS_STUCK_PAUSED_S = 30
+
+
+# How often the /gps_sky endpoint recomputes satellite az/el. GPS sats move
+# <~0.1 deg/s, so a few seconds is plenty; the recompute runs in a worker
+# thread (skyfield + the one-time TLE fetch) and render_GET only ever serves
+# the cached result, so the Twisted reactor never blocks on orbit propagation.
+SKY_REFRESH_S = 5.0
 
 
 # Mode is decided by the number of visibility streams in the kotekan handshake.
@@ -376,39 +384,39 @@ def build_viewer_config(kotekan, args):
     The browser uses this to pick which UI modules to wire up, what labels to
     show for each visibility stream, where to reach kotekan's REST endpoints,
     and which optional integrations (CCERA pointing, galaxy view) to enable.
+
+    ``kotekan`` is None in GPS-only mode (--no-power-stream): there is no power
+    waterfall, so mode is "gps" and the client builds just the GPS panel.
     """
-    mode = kotekan.mode
+    if kotekan is None:
+        # GPS-only: no power stream, so no waterfall/spectrum fields. The client
+        # sees mode "gps" and builds only the GPS Sky panel (REST-polled).
+        mode = "gps"
+        airspy_stages, frame_period_s = [], 0.0
+        nfreq, nvis, vis_labels = 0, 0, []
+        ui = {}
+    else:
+        mode = kotekan.mode
 
-    # Pipeline-shaped defaults; the user can override the lists / values via CLI.
-    default_airspy_stages = {
-        "autocorr": ["airspy_input"],
-        "crosscorr": ["airspy_inputA", "airspy_inputB"],
-    }
-    default_color_range = {"autocorr": [-20, 20], "crosscorr": [-30, 30]}
-    airspy_stages = args.airspy_stages or default_airspy_stages.get(mode, [])
+        # Pipeline-shaped defaults; the user can override the lists / values via CLI.
+        default_airspy_stages = {
+            "autocorr": ["airspy_input"],
+            "crosscorr": ["airspy_inputA", "airspy_inputB"],
+        }
+        default_color_range = {"autocorr": [-20, 20], "crosscorr": [-30, 30]}
+        airspy_stages = args.airspy_stages or default_airspy_stages.get(mode, [])
 
-    # The exact data-clock spacing between emitted frames: N kotekan
-    # integrations per frame x kotekan's per-integration period. This is
-    # what the client's gap detector / time axis must key off. Reporting
-    # the *requested* interval instead (rather than the realized
-    # N x period) is what caused the every-other-row NaN striping in
-    # crosscorr -- there the kotekan period (~105 ms) exceeds the 50 ms
-    # request, so N clamps to 1 and the true spacing is ~105 ms, not 50.
-    frame_period_s = float(kotekan.integrate_n) * float(kotekan.kotekan_period_s)
-
-    return {
-        "version": VIEWER_PROTOCOL_VERSION,
-        "mode": mode,
-        "nfreq": int(kotekan.frame_nfreq),
-        "nvis": int(kotekan.frame_nvis),
-        "vis_labels": kotekan.vis_labels,
-        "frame_period_s": frame_period_s,
-        "kotekan": {
-            "rest_port": args.kotekan_rest_port,
-            "airspy_stages": airspy_stages,
-            "lag_align_stage": args.lag_align_stage,
-        },
-        "ui": {
+        # The exact data-clock spacing between emitted frames: N kotekan
+        # integrations per frame x kotekan's per-integration period. This is
+        # what the client's gap detector / time axis must key off. Reporting
+        # the *requested* interval instead (rather than the realized
+        # N x period) is what caused the every-other-row NaN striping in
+        # crosscorr -- there the kotekan period (~105 ms) exceeds the 50 ms
+        # request, so N clamps to 1 and the true spacing is ~105 ms, not 50.
+        frame_period_s = float(kotekan.integrate_n) * float(kotekan.kotekan_period_s)
+        nfreq, nvis, vis_labels = (int(kotekan.frame_nfreq), int(kotekan.frame_nvis),
+                                   kotekan.vis_labels)
+        ui = {
             "color_range": default_color_range.get(mode, [-20, 20]),
             "freq_range_mhz": [
                 float(kotekan.frame_freqs[0, 0] / 1e6),
@@ -419,12 +427,40 @@ def build_viewer_config(kotekan, args):
             "line_mask_mhz": [1419.9, 1420.9],  # HI line, 1420.4 +/- 0.5
             "autocal_freqs_mhz": [1416.0, 1421.0],
             "tuning_range_mhz": [24.0, 1800.0],  # airspy R2 span
+        }
+
+    return {
+        "version": VIEWER_PROTOCOL_VERSION,
+        "mode": mode,
+        "nfreq": nfreq,
+        "nvis": nvis,
+        "vis_labels": vis_labels,
+        "frame_period_s": frame_period_s,
+        "kotekan": {
+            "rest_port": args.kotekan_rest_port,
+            "airspy_stages": airspy_stages,
+            "lag_align_stage": args.lag_align_stage,
         },
+        "ui": ui,
         "optional_modules": {
             "airspy_controls": bool(airspy_stages) and not args.no_airspy_controls,
             "ccera_pointing": args.ccera_pointing,
             "galaxy_view": bool(args.galaxy_view_url),
             "galaxy_view_url": args.galaxy_view_url,
+            # GPS live-status panel (overhead-sky circle + locked-PRN list). It
+            # polls the kotekan GNSS stages (search/combiner) for locks + |A| and
+            # this server's /gps_sky endpoint for satellite az/el.
+            "gps_sky": bool(getattr(args, "_gps_enabled", False)),
+        },
+        # Where the GPS panel finds its data. ``has_site`` is whether this server
+        # knows the observer location (so it can serve /gps_sky); without it the
+        # panel still shows the locked list, just no sky positions.
+        "gps": {
+            "search_stage": args.gps_search_stage,
+            "combiner_stage": args.gps_combiner_stage,
+            "airspy_stage": args.gps_airspy_stage,
+            "mask_deg": args.gps_mask_deg,
+            "has_site": args.lat is not None and args.lon is not None,
         },
     }
 
@@ -493,12 +529,24 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
         self.factory.register(self)
         self._paused = False
         self._stuck_watchdog = None
+
+        kotekan = self.factory.kotekan
+        # GPS-only mode (no power stream): just ship the viewer_config and stop.
+        # There are no power frames to push, so we skip the producer/backpressure
+        # plumbing and the FREQLIST entirely. The client builds the GPS panel.
+        if kotekan is None:
+            self.sendMessage(
+                json.dumps({"nfreq": 0,
+                            "viewer_config": self.factory.viewer_config}).encode("utf-8"),
+                isBinary=False,
+            )
+            return
+
         # Tell the TCP transport to push us pause/resume callbacks when its
         # write buffer crosses the high/low water marks. ``streaming=True``
         # selects the IPushProducer (sync) protocol.
         self.transport.registerProducer(self, True)
 
-        kotekan = self.factory.kotekan
         # Size the kernel + Twisted write buffers to ~WS_BUFFER_FRAMES
         # actual frames. A frame is the MSG_TIMESTEP header (1 byte type +
         # 8 byte f64 time) plus nvis*nfreq f32 spectrum bins. Sizing by
@@ -672,7 +720,93 @@ class ModeResource(resource.Resource):
 
     def render_GET(self, request):
         request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
-        return json.dumps({"mode": self.kotekan.mode}).encode("utf-8")
+        mode = self.kotekan.mode if self.kotekan is not None else "gps"
+        return json.dumps({"mode": mode}).encode("utf-8")
+
+
+class GpsSkyResource(resource.Resource):
+    """``GET /gps_sky`` -> predicted GPS sky positions for the viewer's sky plot.
+
+    Reply::
+
+        {"ok": bool, "computing": bool, "lat": .., "lon": .., "alt": ..,
+         "mask_deg": .., "sats": [{"prn": N, "az": deg, "el": deg}, ...]}
+
+    Azimuth is degrees clockwise from true North, elevation degrees above the
+    horizon; only sats above ``mask_deg`` are returned. The kotekan REST stages
+    supply the locks / |A| / SNR; this endpoint supplies *where* each sat is,
+    which needs skyfield orbit propagation (not available in the DSP).
+
+    Positions are recomputed in a worker thread at most every
+    :data:`SKY_REFRESH_S` and ``render_GET`` only serves the cached result, so
+    the reactor never blocks on skyfield or the TLE fetch. Degrades to
+    ``ok=False`` (no skyfield / no observer site / TLE network down) and the
+    panel falls back to the REST-only locked list.
+    """
+
+    isLeaf = True
+
+    def __init__(self, lat, lon, alt, mask_deg):
+        resource.Resource.__init__(self)
+        self.lat, self.lon, self.alt, self.mask_deg = lat, lon, alt, mask_deg
+        self._cache = {"ok": False, "sats": []}  # last good (or empty) result
+        self._sats = None                        # cached {prn: EarthSatellite}
+        self._last_compute = None                # monotonic s of last attempt
+        self._refreshing = False
+
+    def _need_refresh(self):
+        if self.lat is None or self.lon is None:
+            return False
+        if self._last_compute is None:
+            return True
+        return (time.monotonic() - self._last_compute) >= SKY_REFRESH_S
+
+    def _compute(self):
+        """Runs in a worker thread: load TLEs once, propagate, filter by mask."""
+        from gps_beamtrack import (DEFAULT_TLE_URL, load_gps_satellites,
+                                   predict_skypos)
+        if self._sats is None:
+            self._sats = load_gps_satellites(DEFAULT_TLE_URL)
+        pos = predict_skypos(self.lat, self.lon, self.alt, _sats=self._sats)
+        sats = [{"prn": p, "az": round(az, 2), "el": round(el, 2)}
+                for p, (az, el) in sorted(pos.items()) if el >= self.mask_deg]
+        return {"ok": True, "sats": sats}
+
+    def _kick_refresh(self):
+        if self._refreshing:
+            return
+        self._refreshing = True
+
+        def done(res):
+            self._cache = res
+            self._last_compute = time.monotonic()
+            self._refreshing = False
+
+        def err(failure):
+            self._cache = {"ok": False, "sats": [], "error": failure.getErrorMessage()}
+            self._last_compute = time.monotonic()
+            self._refreshing = False
+            log_.warning("gps_sky compute failed: %s", failure.getErrorMessage())
+
+        threads.deferToThread(self._compute).addCallbacks(done, err)
+
+    def render_GET(self, request):
+        request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
+        request.setHeader(b"Access-Control-Allow-Origin", b"*")
+        if self._need_refresh():
+            self._kick_refresh()
+        out = {
+            "ok": bool(self._cache.get("ok")),
+            "computing": self._refreshing,
+            "lat": self.lat,
+            "lon": self.lon,
+            "alt": self.alt,
+            "mask_deg": self.mask_deg,
+            "sats": self._cache.get("sats", []),
+        }
+        if self._cache.get("error"):
+            out["error"] = self._cache["error"]
+        return json.dumps(out).encode("utf-8")
 
 
 def main():
@@ -760,7 +894,54 @@ def main():
         help="Background image URL for the all-sky galaxy view. "
         "Pass a URL to enable; leave unset to disable.",
     )
+
+    gg = ap.add_argument_group("GPS live-status panel")
+    gg.add_argument(
+        "--gps",
+        action="store_true",
+        help="Enable the GPS sky/locks panel. Auto-enabled when LAT/LON "
+        "are known (CLI --lat/--lon or env LAT/LON).",
+    )
+    gg.add_argument("--lat", type=float, default=None,
+                    help="Observer latitude (deg) for sky positions; "
+                    "default env LAT.")
+    gg.add_argument("--lon", type=float, default=None,
+                    help="Observer longitude (deg) for sky positions; "
+                    "default env LON.")
+    gg.add_argument("--alt", type=float, default=None,
+                    help="Observer altitude (m); default env ALT, else 0.")
+    gg.add_argument("--gps-mask-deg", type=float, default=5.0,
+                    help="Elevation mask (deg) for the sky plot (default 5).")
+    gg.add_argument("--gps-search-stage", default="search",
+                    help="kotekan GnssChannelizedSearch stage name "
+                    "(get_detections); default 'search'.")
+    gg.add_argument("--gps-combiner-stage", default="combiner",
+                    help="kotekan GnssCoherentCombiner stage name "
+                    "(get_status); default 'combiner'.")
+    gg.add_argument("--gps-airspy-stage", default="airspy_in",
+                    help="kotekan airspy stage name for the ADC noise readout "
+                    "(adcstat); default 'airspy_in'.")
+    gg.add_argument("--no-power-stream", action="store_true",
+                    help="Run GPS-only: don't wait for / serve a kotekan power "
+                    "stream (no waterfall). The lean live config uses this so the "
+                    "GPS panel works without a full-rate diagnostic PFB. Implies "
+                    "--gps.")
     args = ap.parse_args()
+
+    # Resolve the observer site from CLI, falling back to the env that
+    # run_live.sh already exports for the broker's almanac assist. The site only
+    # *positions* the sky plot; the panel is gated on the explicit --gps flag so
+    # a non-GPS viewer launched from a shell that happens to have LAT/LON in its
+    # environment never sprouts a stray GPS card. (live.yaml passes --no-power-stream,
+    # which implies --gps.)
+    if args.lat is None and os.environ.get("LAT"):
+        args.lat = float(os.environ["LAT"])
+    if args.lon is None and os.environ.get("LON"):
+        args.lon = float(os.environ["LON"])
+    if args.alt is None:
+        args.alt = float(os.environ.get("ALT", 0.0))
+    # GPS-only mode is meaningless without the panel, so it implies --gps.
+    args._gps_enabled = bool(args.gps or args.no_power_stream)
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -770,23 +951,30 @@ def main():
 
     static_dir = os.path.dirname(os.path.abspath(__file__))
 
-    kotekan = KotekanPowerStream(
-        host=args.kotekan_host,
-        port=args.kotekan_port,
-        emit_interval_s=args.viewer_integration_ms / 1000.0,
-    )
-    kotekan.start()  # blocks on accept until kotekan connects
-
-    if kotekan.mode == "unknown":
-        log_.warning(
-            "Unrecognised kotekan nvis=%d; proceeding anyway.", kotekan.frame_nvis
+    # GPS-only mode skips the kotekan power stream entirely (no blocking accept,
+    # no waterfall) and serves just the GPS panel + /gps_sky. Otherwise stand up
+    # the power stream as usual (blocks on accept until kotekan connects).
+    if args.no_power_stream:
+        kotekan = None
+        log_.info("GPS-only mode: no power stream (waterfall disabled)")
+    else:
+        kotekan = KotekanPowerStream(
+            host=args.kotekan_host,
+            port=args.kotekan_port,
+            emit_interval_s=args.viewer_integration_ms / 1000.0,
         )
+        kotekan.start()  # blocks on accept until kotekan connects
+        if kotekan.mode == "unknown":
+            log_.warning(
+                "Unrecognised kotekan nvis=%d; proceeding anyway.", kotekan.frame_nvis
+            )
 
     viewer_config = build_viewer_config(kotekan, args)
     log_.info("viewer_config: %s", json.dumps(viewer_config, indent=2))
 
     ws_factory = LiveBeamWSFactory(kotekan, viewer_config)
-    kotekan.on_frame = ws_factory.broadcast
+    if kotekan is not None:
+        kotekan.on_frame = ws_factory.broadcast
 
     reactor.listenTCP(args.ws_port, ws_factory)
 
@@ -794,10 +982,23 @@ def main():
     # "I edited the JS but the browser ignored me" trouble during development.
     root = NoCacheFile(static_dir)
     root.putChild(b"mode", ModeResource(kotekan))
+
+    # GPS sky positions (az/el) for the live-status panel. gps_beamtrack lives
+    # one dir up (python/scripts); add it to the path so the worker thread can
+    # import it. Only stood up when the panel is enabled, so a plain radio-
+    # astronomy run doesn't pull in skyfield / fetch TLEs.
+    if args._gps_enabled:
+        sys.path.insert(0, os.path.dirname(static_dir))
+        root.putChild(b"gps_sky",
+                      GpsSkyResource(args.lat, args.lon, args.alt, args.gps_mask_deg))
+        log_.info("GPS panel enabled (site lat=%s lon=%s alt=%s)",
+                  args.lat, args.lon, args.alt)
+
     reactor.listenTCP(args.http_port, server.Site(root))
 
     def _on_shutdown():
-        kotekan.close()
+        if kotekan is not None:
+            kotekan.close()
         ws_factory.close_all()
 
     reactor.addSystemEventTrigger("before", "shutdown", _on_shutdown)

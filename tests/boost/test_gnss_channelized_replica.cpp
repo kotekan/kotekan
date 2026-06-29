@@ -87,6 +87,37 @@ BOOST_AUTO_TEST_CASE(l1ca_distinct_from_l5q) {
     BOOST_CHECK_LT(despread_mag(r1, r5), 0.3); // L1 code vs L5 code decorrelate
 }
 
+// L2C is TIME-MULTIPLEXED: CM and CL interleave chip-by-chip into the combined 1.023 Mcps
+// stream (CM on the even combined chips, CL on the odd). ChannelizedReplicaBank must model
+// that -- the bare 511.5 kcps component code loses ~9-12 dB vs the real interleaved signal
+// (python/scripts/gps_l2c_subband_validate.py). The tell-tale of a correct model: CM and CL
+// have DISJOINT combined-chip slots, so the true interleaved signal (CM+CL) despreads with the
+// CM replica to ~the same amplitude as CM alone -- the CL half lands in the CM replica's zeros
+// and doesn't bleed in. A bank that held the bare CM code (no zeros) would let CL cross-talk in.
+BOOST_AUTO_TEST_CASE(l2c_cm_time_multiplexed) {
+    std::vector<int> prns = {1, 2};
+    auto bcm = make_bank("GPS_L2C_CM", prns);
+    auto bcl = make_bank("GPS_L2C_CL", prns);
+    // Partial window: the full 20 ms CM period is ~20k hops; a few hundred hops already give a
+    // clean matched filter (self is energy-normalised to 1) without the slow full-period run.
+    const int H = 400;
+    auto cmA = bcm.channels(0, 0, 0.0, 0.0, H);  // PRN 1 CM  (even combined chips)
+    auto cmB = bcm.channels(1, 0, 0.0, 0.0, H);  // PRN 2 CM
+    auto clA = bcl.channels(0, 0, 0.0, 0.0, H);  // PRN 1 CL  (odd combined chips)
+
+    BOOST_CHECK_CLOSE(despread_mag(cmA, cmA), 1.0, 1e-2); // self == matched filter
+    BOOST_CHECK_LT(despread_mag(cmA, cmB), 0.3);          // different PRN decorrelates
+
+    // The true L2C signal = CM (even) + CL (odd), summed channel-by-channel.
+    auto inter = cmA;
+    for (size_t ch = 0; ch < inter.size(); ++ch)
+        for (size_t m = 0; m < inter[ch].size(); ++m)
+            inter[ch][m] += clA[ch][m];
+    // CM recovered from the interleaved stream ~ CM recovered alone: the CL half is in the CM
+    // replica's zero slots, so it barely bleeds in. (No fix -> CL cross-talk drags this down.)
+    BOOST_CHECK_CLOSE(despread_mag(inter, cmA), 1.0, 5.0);
+}
+
 // The hop-rate prefix-sum generator must reproduce the exact full-PFB channels() to
 // ~machine precision on the covering channels (the chip-collapse is an identity; the
 // chip-edge-in-the-filter is exact via Phi[k_hi]-Phi[k_lo-1] over integer taps). The

@@ -49,6 +49,7 @@ add_library(
     GnssRecordCollector.cpp
     GnssSubbandSplit.cpp
     GnssCoherentCombiner.cpp
+    GnssBeamCube.cpp
     GnssTrackState.cpp
     SpawnProcess.cpp
     freqSplit.cpp

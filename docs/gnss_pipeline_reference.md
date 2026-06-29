@@ -142,9 +142,10 @@ incoherent, `[4,5]`=`⟨A⟩`, `[6]`=`|⟨A⟩|` coherent.
 
 | config | arrangement |
 |---|---|
-| `live_intgn.yaml` | **live receiver chain**, 5 MSPS, valve, FLL on, `integration_length:1` (record every raw `A` for the offline analyzer). The deep-integration test bed |
-| `live_direct.yaml` | live chain with `integration_length:10` — the lock/track config |
-| `live_full.yaml` / `live_lowrate.yaml` | comb/full-rate variants + the browser power viewer |
+| `live.yaml` | **the live config** (run_live.sh default, `gen_live_config.py`), L1 C/A, 5 MSPS, **distributed CHORD-mirror** (12× ~208 kHz channels → per-channel track + bufferSend/Recv → gather/search + combiner), **valve** after the F-engine (airspy-safe), FLL on, GPS-only browser viewer on :8080. Replaces the un-valved `live_full.yaml` |
+| `live_l2c.yaml` | same chain retuned to **L2C** (1227.6 MHz, `GPS_L2C_CM`), `GNSS_SIGNAL=L2C_CM python3 config/gen_live_config.py`. 9 covering channels (narrower 511.5 kcps code), fine `doppler_step:50` (20 ms coherent code), weaker (CM = half L2C power). Channelized L2C acquisition is heavier + less proven than L1 → lean on the broker's `--carrier-hz` almanac Doppler assist (run_live.sh derives it). |
+| `live_wipe.yaml` | live chain + combiner nav-bit wipe (`navwipe_bit_records`, deep `\|A\|` past the 20 ms bit) — the navwipe / deep-integration demo |
+| `live_intgn.yaml` | live chain with `integration_length:1` (record every raw `A` for the offline analyzer). The deep-integration test bed |
 | `comb_single` / `search_unified` / `loop_single` | distributed scaffolds (split/gather/transport) |
 
 ## Practical notes

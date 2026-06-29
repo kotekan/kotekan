@@ -1,5 +1,5 @@
 ---
-# Coherent-vs-incoherent integration check. Same live_direct path (airspy -> PFB ->
+# Coherent-vs-incoherent integration check. Same lean valved path as live.yaml (airspy -> PFB ->
 # search + valve -> track -> combiner -> record), but the combiner records EVERY
 # tracker record raw (integration_length: 1), so the per-record complex amplitude A
 # (rec[4]=A.re rec[5]=A.im rec[3]=|A|, UTC slot 9) lands on disk. gps_intgn_check.py

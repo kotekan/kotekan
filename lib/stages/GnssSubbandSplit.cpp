@@ -63,7 +63,7 @@ void GnssSubbandSplit::main_thread() {
             for (int h = 0; h < hops; ++h)
                 memcpy(out + (size_t)h * w, in + (size_t)h * _N + _lo[m],
                        sizeof(std::complex<float>) * (size_t)w);
-            // Propagate the absolute sample reference (fpga_seq) into each subband, so
+            // Propagate the absolute sample reference (sample_seq) into each subband, so
             // each downstream search/tracker shares one "sample 0" (the CHORD comb may
             // scatter these subbands across nodes).
             if (in_buf->metadata_pool && out_bufs[m]->metadata_pool) {

@@ -169,7 +169,7 @@ void fftwEngine::main_thread() {
             }
         }
 
-        // Stamp the absolute sample reference (chordMetadata fpga_seq) so downstream
+        // Stamp the absolute sample reference (chordMetadata sample_seq) so downstream
         // search/track -- possibly on other nodes after bufferSend/Recv -- share one
         // "sample 0" for code-phase referencing. Propagate the source seq if the input
         // carries it, else generate from the monotonic output-frame counter.
@@ -178,10 +178,10 @@ void fftwEngine::main_thread() {
             int64_t seq = frames_produced * (int64_t)samples_per_input_frame; // abs sample of hop 0
             if (metadata_is_gnss_chan(in_buf)) {
                 auto* mi = get_gnss_chan_metadata(in_buf, frame_in);
-                if (mi && mi->fpga_seq >= 0) // propagate the source seq if present
-                    seq = mi->fpga_seq;
+                if (mi && mi->sample_seq >= 0) // propagate the source seq if present
+                    seq = mi->sample_seq;
             }
-            get_gnss_chan_metadata(out_buf, frame_out)->fpga_seq = seq;
+            get_gnss_chan_metadata(out_buf, frame_out)->sample_seq = seq;
         }
 
         in_buf->mark_frame_empty(unique_name, frame_in);

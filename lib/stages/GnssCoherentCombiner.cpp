@@ -30,6 +30,12 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         _n_prn = in_bufs[0]->frame_size / (int)sizeof(float) / RECORD_FLOATS;
 
     _integration_length = std::max(1, config.get_default<int>(unique_name, "integration_length", 1));
+    const std::string mode = config.get_default<std::string>(unique_name, "integration_mode", "block");
+    _rolling = (mode == "rolling");
+    // Rolling output cadence: every output_every records (default ~10 outputs per time
+    // constant). Block mode emits once per integration_length records (ignores this).
+    _emit_every = std::max(1, config.get_default<int>(unique_name, "output_every",
+                                                      std::max(1, _integration_length / 10)));
     _navwipe_bit_records = config.get_default<int>(unique_name, "navwipe_bit_records", 0);
     if (_navwipe_bit_records > 0) {
         _navbuf.assign(_n_prn, {});
@@ -55,11 +61,16 @@ void GnssCoherentCombiner::main_thread() {
         in_ids.emplace_back(b);
     frameID out_id(out_buf);
 
-    // Per-PRN integration accumulators over _integration_length records.
+    // Per-PRN integration accumulators. block: running SUMS over _integration_length records.
+    // rolling: exponential moving AVERAGES (alpha = 1/_integration_length), bias-corrected at
+    // emit by dividing by (1 - (1-alpha)^n_roll) so they read true running means from record 1.
     std::vector<double> acc_pow(_n_prn), acc_ar(_n_prn), acc_ai(_n_prn), acc_nchan(_n_prn);
     std::vector<float> ref_prn(_n_prn), ref_dop(_n_prn), ref_cp(_n_prn);
     std::vector<double> ref_utc(_n_prn);
-    int n_acc = 0;
+    int n_acc = 0;              // block: records in the current block
+    long long n_roll = 0;      // rolling: total records seen (for EMA bias correction)
+    int since_emit = 0;        // rolling: records since the last emit
+    const double alpha = 1.0 / (double)_integration_length; // rolling EMA weight
 
     while (!stop_thread) {
         // Gather the i-th frame of every subband (same window, same PRN order).
@@ -92,32 +103,61 @@ void GnssCoherentCombiner::main_thread() {
             const double ai = energy > 0.0 ? gi / energy : 0.0;
 
             // Accumulate over time: incoherent power (|A|^2) + coherent complex (A).
-            acc_pow[p] += ar * ar + ai * ai;
-            acc_ar[p] += ar;
-            acc_ai[p] += ai;
-            acc_nchan[p] += nchan;
-            if (_navwipe_bit_records > 0) { // per-record (A, capture-UTC) for the nav-bit wipe
-                _navbuf[p].emplace_back(ar, ai);
-                _navutc[p].push_back(*reinterpret_cast<const double*>(ref + RECORD_UTC_SLOT));
-            }
-            if (n_acc == 0) { // window reference from the first record of the block
-                ref_prn[p] = ref[0];
+            const double utc_p = *reinterpret_cast<const double*>(ref + RECORD_UTC_SLOT);
+            if (_rolling) { // exponential moving average (no reset; integrates indefinitely)
+                acc_pow[p] += alpha * (ar * ar + ai * ai - acc_pow[p]);
+                acc_ar[p] += alpha * (ar - acc_ar[p]);
+                acc_ai[p] += alpha * (ai - acc_ai[p]);
+                acc_nchan[p] += alpha * (nchan - acc_nchan[p]);
+                if (_navwipe_bit_records > 0) { // sliding window of the last _integration_length recs
+                    _navbuf[p].emplace_back(ar, ai);
+                    _navutc[p].push_back(utc_p);
+                    if ((int)_navbuf[p].size() > _integration_length) {
+                        _navbuf[p].erase(_navbuf[p].begin());
+                        _navutc[p].erase(_navutc[p].begin());
+                    }
+                }
+                ref_prn[p] = ref[0]; // reference = the latest record (rolling has no block start)
                 ref_dop[p] = ref[1];
                 ref_cp[p] = ref[2];
-                ref_utc[p] = *reinterpret_cast<const double*>(ref + RECORD_UTC_SLOT);
+                ref_utc[p] = utc_p;
+            } else { // block: running sums, reset at emit
+                acc_pow[p] += ar * ar + ai * ai;
+                acc_ar[p] += ar;
+                acc_ai[p] += ai;
+                acc_nchan[p] += nchan;
+                if (_navwipe_bit_records > 0) { // per-record (A, capture-UTC) for the nav-bit wipe
+                    _navbuf[p].emplace_back(ar, ai);
+                    _navutc[p].push_back(utc_p);
+                }
+                if (n_acc == 0) { // window reference from the first record of the block
+                    ref_prn[p] = ref[0];
+                    ref_dop[p] = ref[1];
+                    ref_cp[p] = ref[2];
+                    ref_utc[p] = utc_p;
+                }
             }
         }
 
         for (size_t i = 0; i < in_bufs.size(); ++i)
             in_bufs[i]->mark_frame_empty(unique_name, in_ids[i]++);
 
-        if (++n_acc < _integration_length)
+        if (_rolling) {
+            ++n_roll;
+            if (++since_emit < _emit_every)
+                continue; // EMA keeps integrating; emit only every _emit_every records
+            since_emit = 0;
+        } else if (++n_acc < _integration_length) {
             continue; // keep accumulating
+        }
 
         float* out = (float*)out_buf->wait_for_empty_frame(unique_name, out_id);
         if (out == nullptr)
             break;
-        const double inv = 1.0 / (double)n_acc;
+        // block: divide sums by the block count. rolling: the EMA is already a mean, so just
+        // undo the warm-up bias (1-(1-alpha)^n_roll) -> a true running mean from record 1.
+        const double inv = _rolling ? 1.0 / (1.0 - std::pow(1.0 - alpha, (double)n_roll))
+                                    : 1.0 / (double)n_acc;
         for (int p = 0; p < _n_prn; ++p) {
             float* rec = out + (size_t)p * RECORD_FLOATS;
             for (int f = 0; f < RECORD_FLOATS; ++f)
@@ -132,13 +172,17 @@ void GnssCoherentCombiner::main_thread() {
             rec[7] = (float)(acc_nchan[p] * inv);                    // covering channels used
             if (_navwipe_bit_records > 0) {
                 rec[8] = (float)navwipe_amplitude(_navbuf[p], _navutc[p]); // deep |A| past nav bit
-                _navbuf[p].clear();
-                _navutc[p].clear();
+                if (!_rolling) { // block clears the window; rolling slides it (capped above)
+                    _navbuf[p].clear();
+                    _navutc[p].clear();
+                }
             }
             *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = ref_utc[p];
-            acc_pow[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = 0.0; // reset
+            if (!_rolling)
+                acc_pow[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = 0.0; // block: reset
         }
-        n_acc = 0;
+        if (!_rolling)
+            n_acc = 0;
 
         // Publish the latest full-band amplitudes for the broker's drop decisions.
         {

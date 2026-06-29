@@ -110,6 +110,16 @@ private:
     uint32_t frame_loc;
     /// Index of the current frame.
     int frame_id;
+    /// Absolute sample index since stream start, counting BOTH received samples and
+    /// libairspy-dropped ones (transfer->dropped_samples). When the output buffer has a GNSS
+    /// metadata pool, each completed frame is stamped with sample_seq = _frame_seq0 (its first
+    /// sample's index); the F-engine propagates it (else derives its own), so this is opt-in per
+    /// config and a no-op for pool-less buffers. Folding in dropped_samples makes sample_seq
+    /// track TRUE time across USB drops -- a drop becomes a clean, KNOWN gap downstream (the
+    /// search/tracker absolute-hop referencing handles it) instead of silent counter divergence.
+    /// On a drop the partial frame is abandoned so no frame straddles the gap.
+    int64_t _samples_seq = 0; ///< running true sample index (received + dropped)
+    int64_t _frame_seq0 = 0;  ///< true sample index of the current frame's first sample
     /// Pending byte-count of samples to skip before next copy (for inter-device alignment).
     uint32_t lag = 0;
     /// Whether @c airspy_init() succeeded (gates @c airspy_exit() in the destructor).

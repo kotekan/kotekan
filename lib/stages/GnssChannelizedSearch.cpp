@@ -62,8 +62,8 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _hold_snapshots = config.get_default<int>(unique_name, "hold_snapshots", 5);
     const double dmin = config.get_default<double>(unique_name, "doppler_min", -6000.0);
     const double dmax = config.get_default<double>(unique_name, "doppler_max", 6000.0);
-    const double dstep = config.get_default<double>(unique_name, "doppler_step", 500.0);
-    for (double f = dmin; f <= dmax + 1e-6; f += dstep)
+    _doppler_step = config.get_default<double>(unique_name, "doppler_step", 500.0);
+    for (double f = dmin; f <= dmax + 1e-6; f += _doppler_step)
         _doppler_grid.push_back(f);
 
     try {
@@ -78,6 +78,7 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _replica->code_doppler_sign = config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
 
     _detections.assign(_prns.size(), Detection{});
+    _dop_hints.assign(_prns.size(), DopHint{});
     _snap_hops = (size_t)_acquire_windows * _hops_per_record;
     _snapshot.assign(_snap_hops * (size_t)_n_chan, cf(0.0f, 0.0f));
 }
@@ -126,6 +127,22 @@ void GnssChannelizedSearch::search_snapshot() {
         for (int lc = 0; lc < _n_chan; ++lc)
             repl0[lc] = repl_full[_chan_offset + lc];
 
+        // Almanac-narrowed grid: if the broker pushed a Doppler hint for this PRN, scan only
+        // hint +- margin (the orbit fixes Doppler; only the common clock drift remains) -- far
+        // cheaper + lower false-alarm. No hint -> the full blind grid (unchanged without a broker).
+        // The hint is the PHYSICAL (reported) Doppler; the internal grid runs in the r2c-flipped
+        // convention (det.doppler_hz = -grid value below), so centre the window at -hint.
+        std::vector<double> pgrid;
+        {
+            std::lock_guard<std::mutex> lk(_hint_mtx);
+            if (_dop_hints[p].valid) {
+                const double c = -_dop_hints[p].doppler, m = std::max(0.0, _dop_hints[p].margin);
+                for (double f = c - m; f <= c + m + 1e-6; f += _doppler_step)
+                    pgrid.push_back(f);
+            }
+        }
+        const std::vector<double>& grid = pgrid.empty() ? _doppler_grid : pgrid;
+
         // Integrate the |D|^2 surface over the snapshot windows (incoherent).
         std::vector<double> surf;
         gnss::AcquisitionSurface dims{};
@@ -134,10 +151,10 @@ void GnssChannelizedSearch::search_snapshot() {
             for (int lc = 0; lc < _n_chan; ++lc)
                 for (int m = 0; m < hpr; ++m)
                     dch[lc][m] = _snapshot[((size_t)(w * hpr + m)) * _n_chan + lc];
-            dims = gnss::channelized_accumulate(dch, repl0, cov_local, _doppler_grid, _sample_rate,
-                                                _n_chan, surf, _acq_ws, cov_global, _fft_len);
+            dims = gnss::channelized_accumulate(dch, repl0, cov_local, grid, _sample_rate, _n_chan,
+                                                surf, _acq_ws, cov_global, _fft_len);
         }
-        const auto a = gnss::channelized_peak(surf, dims, _doppler_grid, _sample_rate,
+        const auto a = gnss::channelized_peak(surf, dims, grid, _sample_rate,
                                               _replica->chip_rate_hz(), _replica->code_length());
 
         const bool detected = a.snr >= _acquire_snr;
@@ -190,7 +207,7 @@ void GnssChannelizedSearch::search_snapshot() {
             det.ref_hop = _snap_start_hop; // capture-time anchor for cp0 (for the slope fit)
             det.valid = true;
             // DIAG: decompose where cp comes from, to localize any instability:
-            //   hop   = absolute snapshot reference (fpga_seq/fft_len)
+            //   hop   = absolute snapshot reference (sample_seq/fft_len)
             //   coarse= cross-channel acquire cp (pre-refine)   refine= +- from refine
             //   off/drift = nominal + code-Doppler back-reference to sample 0
             //   cp0   = final reported code phase
@@ -235,13 +252,16 @@ void GnssChannelizedSearch::main_thread() {
     kotekan::restServer::instance().register_get_callback(
         unique_name + "/get_detections",
         std::bind(&GnssChannelizedSearch::get_detections_callback, this, _1));
+    kotekan::restServer::instance().register_post_callback(
+        unique_name + "/set_doppler_hints",
+        std::bind(&GnssChannelizedSearch::set_doppler_hints_callback, this, _1, _2));
 
     _worker = std::thread(&GnssChannelizedSearch::search_worker, this);
 
     int frame_in = 0;
     bool filling = false;
-    size_t fill_hops = 0;
-    long long abs_hops = 0; // total hops consumed from the stream (absolute reference)
+    size_t filled_hops = 0;  // hops actually copied into the current snapshot (for the drop log)
+    long long abs_hops = 0;  // total hops consumed from the stream (absolute reference)
 
     while (!stop_thread) {
         auto* in_local = (cf*)in_buf->wait_for_full_frame(unique_name, frame_in);
@@ -249,30 +269,48 @@ void GnssChannelizedSearch::main_thread() {
             break;
         const int frame_hops = in_buf->frame_size / (int)sizeof(cf) / _n_chan;
 
-        // Absolute hop index of this frame's first hop, from the F-engine's fpga_seq
+        // Absolute hop index of this frame's first hop, from the F-engine's sample_seq
         // metadata (shared across nodes); fall back to a local count if absent.
         long long frame_first_hop = abs_hops;
         if (metadata_is_gnss_chan(in_buf)) {
             auto* mi = get_gnss_chan_metadata(in_buf, frame_in);
-            if (mi && mi->fpga_seq >= 0)
-                frame_first_hop = mi->fpga_seq / _fft_len;
+            if (mi && mi->sample_seq >= 0)
+                frame_first_hop = mi->sample_seq / _fft_len;
         }
 
         if (!filling) {
             std::lock_guard<std::mutex> lk(_m);
             if (!_worker_busy) {
                 filling = true;
-                fill_hops = 0;
+                filled_hops = 0;
                 _snap_start_hop = frame_first_hop; // snapshot hop 0 is this frame's hop 0
+                // Zero first so DROPPED frames (the search arm uses drop_frames, so gather_buf
+                // has gaps) leave signal-free holes -- each frame is then placed at its TRUE
+                // sample_seq offset below, keeping the code phase aligned across drops. Without
+                // this, a dropped frame shifts every later window's code phase and smears the
+                // |D|^2 peak away -- which is why a longer (40-frame) snapshot found nothing.
+                std::fill(_snapshot.begin(), _snapshot.end(), cf(0.0f, 0.0f));
             }
         }
         if (filling) {
-            const size_t take = std::min((size_t)frame_hops, _snap_hops - fill_hops);
-            std::memcpy(&_snapshot[fill_hops * (size_t)_n_chan], in_local,
-                        take * (size_t)_n_chan * sizeof(cf));
-            fill_hops += take;
-            if (fill_hops >= _snap_hops) {
+            // Place this frame at its absolute time position in the snapshot (drop-tolerant).
+            const long long off = frame_first_hop - _snap_start_hop;
+            if (off >= 0 && off < (long long)_snap_hops) {
+                const size_t take =
+                    std::min((size_t)frame_hops, _snap_hops - (size_t)off);
+                std::memcpy(&_snapshot[(size_t)off * (size_t)_n_chan], in_local,
+                            take * (size_t)_n_chan * sizeof(cf));
+                filled_hops += take;
+            }
+            // Finalize once this frame reaches the end of the snapshot's time window (gaps stay
+            // zero). A frame entirely past the window (off >= _snap_hops) also finalizes here.
+            if (off + frame_hops >= (long long)_snap_hops) {
                 filling = false;
+                if (filled_hops < _snap_hops) // dropped frames left holes; integration is shallower
+                    INFO("GnssChannelizedSearch[{:s}]: snapshot {:.0f}% filled ({:d}/{:d} hops; "
+                         "rest dropped upstream -> zero-filled, peak stays aligned)",
+                         unique_name, 100.0 * (double)filled_hops / (double)_snap_hops,
+                         (long)filled_hops, (long)_snap_hops);
                 std::lock_guard<std::mutex> lk(_m);
                 _snap_ready = true;
                 _worker_busy = true;
@@ -309,4 +347,32 @@ void GnssChannelizedSearch::get_detections_callback(kotekan::connectionInstance&
                          {"snr", d.snr}});
     }
     conn.send_json_reply(reply);
+}
+
+void GnssChannelizedSearch::set_doppler_hints_callback(kotekan::connectionInstance& conn,
+                                                       nlohmann::json& json_request) {
+    // Body: [{prn, doppler_hz, margin_hz}, ...] -- narrow each listed PRN's search to
+    // doppler_hz +- margin_hz (the broker's orbit prediction + clock-freq bias). margin_hz < 0
+    // CLEARS the hint (revert that PRN to the blind grid). PRNs not listed keep their current
+    // hint (the broker resends visible sats every cycle). Unknown PRNs are ignored.
+    try {
+        std::lock_guard<std::mutex> lk(_hint_mtx);
+        for (const auto& h : json_request) {
+            const int prn = h.at("prn").get<int>();
+            for (size_t i = 0; i < _prns.size(); ++i) {
+                if (_prns[i] != prn)
+                    continue;
+                const double margin = h.value("margin_hz", 0.0);
+                if (margin < 0.0)
+                    _dop_hints[i] = DopHint{}; // clear -> blind grid for this PRN
+                else
+                    _dop_hints[i] = DopHint{true, h.at("doppler_hz").get<double>(), margin};
+                break;
+            }
+        }
+    } catch (const std::exception& e) {
+        conn.send_error(e.what(), kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }

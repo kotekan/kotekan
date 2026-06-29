@@ -121,6 +121,14 @@ private:
     int _fft_len;   ///< 2*N real samples per hop (r2c)
     int _num_taps;
     int _repl_period_hops; ///< code_samples / gcd(fft_len, code_samples)
+    // Time-multiplexed signals (L2C CM/CL) interleave their component with a sibling at
+    // 2x the component chip rate. We model the COMBINED stream: the component code placed
+    // at its tdm_phase parity of the combined chips, zeros at the sibling's. So the bank
+    // works at the combined rate/length, and _full_code holds the combined (zero-stuffed)
+    // sequence. comb_mult=1 (eff_*=_sig.*) for ordinary signals -> exact no-op.
+    int _comb_mult;          ///< 2 if time_multiplexed, else 1
+    double _eff_chip_rate;   ///< _sig.chip_rate_hz * _comb_mult (combined chipping rate)
+    long _eff_code_length;   ///< _sig.code_length * _comb_mult (combined-stream length)
     std::vector<float> _proto;
     std::vector<std::vector<int8_t>> _full_code;
 

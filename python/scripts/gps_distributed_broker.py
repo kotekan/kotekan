@@ -188,6 +188,15 @@ def main(argv=None):
     ap.add_argument("--carrier-hz", type=float, default=1575.42e6, help="carrier for Doppler pred")
     ap.add_argument("--doppler-sign", type=float, default=1.0,
                     help="multiply predicted Doppler (set -1 if the convention is inverted)")
+    ap.add_argument("--narrow-search", action="store_true",
+                    help="push per-PRN predicted Doppler to the detectors' /set_doppler_hints so the "
+                         "search scans only doppler +- margin (almanac-narrowed acquisition) instead "
+                         "of its blind grid; needs --almanac. Far cheaper + more sensitive.")
+    ap.add_argument("--search-margin-hz", type=float, default=500.0,
+                    help="narrow search half-window once the clock-freq bias is solved (Hz)")
+    ap.add_argument("--search-margin-wide-hz", type=float, default=3000.0,
+                    help="wider search half-window BEFORE the bias is solved (covers the unknown "
+                         "TCXO offset; shrinks to --search-margin-hz once a few sats pin the clock)")
     ap.add_argument("--bias-alpha", type=float, default=0.05,
                     help="EMA weight for the clock-freq bias (smaller = steadier seed Doppler; "
                          "~0.05 => few-second time constant, dithers out the 500 Hz grid)")
@@ -290,6 +299,28 @@ def main(argv=None):
                      "predicted Doppler" % (clock_bias, raw_bias, len(resid), args.bias_alpha))
         elif gating:
             up = visible_prns(args.lat, args.lon, args.alt, args.mask_deg, 0.0)
+
+        # 2b. Almanac-narrow the SEARCH: push per-PRN predicted Doppler to the detectors so each
+        # scans only doppler +- margin instead of its blind grid -- far cheaper + more sensitive,
+        # and it's what lets the not-yet-detected sats be acquired without a full sweep. The margin
+        # is WIDE until the common clock-freq bias is solved (the geometric Doppler is then offset
+        # by the unknown TCXO), NARROW once a few sats pin it. Sent for all predicted+visible sats.
+        if args.narrow_search and args.almanac and pred:
+            margin = (args.search_margin_hz if clock_bias_ema is not None
+                      else args.search_margin_wide_hz)
+            hints = [dict(prn=p, doppler_hz=pred[p][0] + clock_bias, margin_hz=margin)
+                     for p in sorted(pred) if (up is None or p in up)]
+            pushed = 0
+            for d_ep in detectors:
+                try:
+                    _post("%s/set_doppler_hints" % d_ep, hints)
+                    pushed += 1
+                except Exception as e:
+                    _log("set_doppler_hints %s failed: %s" % (d_ep, e))
+            _log("narrowed search: %d hints +-%d Hz (%s) -> %d/%d detectors"
+                 % (len(hints), int(margin),
+                    "bias solved" if clock_bias_ema is not None else "pre-solve wide",
+                    pushed, len(detectors)))
 
         # refresh / add consensus seeds: code phase from the search, Doppler from the
         # orbit prediction when available (precise enough for coherent integration),

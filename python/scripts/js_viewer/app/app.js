@@ -25,6 +25,7 @@ import {AirspyGainPanel}          from "./panels/airspy_gain.js";
 import {LagAlignPanel}            from "./panels/lag_align.js";
 import {CCERAPointingPanel}       from "./panels/ccera.js";
 import {GalaxyViewPanel}          from "./panels/galaxy.js";
+import {GpsSkyPanel}              from "./panels/gps_sky.js";
 
 
 function default_state() {
@@ -172,6 +173,23 @@ export class App {
             lag_align_stage: k.lag_align_stage || null,
         });
 
+        // GPS-only mode (lean live config, no power stream): there's no
+        // waterfall/spectrum to build -- just the GPS Sky panel, full-bleed.
+        // It polls kotekan REST + /gps_sky on its own timer.
+        if (cfg_mode === "gps") {
+            const g = cfg.gps || {};
+            this.layout.addWidget({mount_id: "gps_card", title: "GPS Sky",
+                                   x: 0, y: 0, w: 12, h: 12, min_w: 5, min_h: 6});
+            this.panels.push(new GpsSkyPanel({
+                app: this, target: "gps_card",
+                search_stage: g.search_stage, combiner_stage: g.combiner_stage,
+                airspy_stage: g.airspy_stage, mask_deg: g.mask_deg,
+                has_site: g.has_site,
+            }));
+            this.layout.restore_from_storage();
+            return;
+        }
+
         const ui  = cfg.ui || {};
         const opt = cfg.optional_modules || {};
 
@@ -314,6 +332,20 @@ export class App {
             this.panels.push(new GalaxyViewPanel({
                 app: this, target: "gal_viewer",
                 image_url: opt.galaxy_view_url,
+            }));
+        }
+
+        // GPS live-status: overhead-sky circle + locked-PRN table. Full-width
+        // row below the spectrum; the square sky sits left, the table right.
+        if (opt.gps_sky) {
+            const g = cfg.gps || {};
+            this.layout.addWidget({mount_id: "gps_card", title: "GPS Sky",
+                                   x: 0, y: 18, w: 12, h: 9, min_w: 5, min_h: 6});
+            this.panels.push(new GpsSkyPanel({
+                app: this, target: "gps_card",
+                search_stage: g.search_stage, combiner_stage: g.combiner_stage,
+                airspy_stage: g.airspy_stage, mask_deg: g.mask_deg,
+                has_site: g.has_site,
             }));
         }
 

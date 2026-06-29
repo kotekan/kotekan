@@ -54,6 +54,16 @@
  * @conf acquire_windows  Int (default 64). |D|^2 windows to integrate per snapshot.
  * @conf doppler_margin_hz Double (default 5000). Covering-channel selection band.
  *
+ * @par Almanac-narrowed Doppler (POST @c unique_name/set_doppler_hints)
+ * The orbit fixes each sat's Doppler to ~tens of Hz (geometry + a common clock-frequency
+ * bias); only that prediction is unknown a priori. The broker POSTs per-PRN hints
+ * @c [{prn, doppler_hz, margin_hz}] and the search then scans only @c doppler_hz +- margin_hz
+ * (at @c doppler_step) for that PRN instead of the blind @c doppler_min..max grid -- far cheaper
+ * and lower false-alarm, and it integrates at the right cell so weak sats clear. A PRN with no
+ * hint (broker absent / unpredicted) falls back to the full blind grid, so behaviour is
+ * unchanged without the broker. (On a disciplined-clock receiver the prediction is exact and
+ * the search collapses to a code-phase pin.)
+ *
  * @buffer in_buf This subband's channels, [hop][n_channels] cfloat32.
  *
  * @author Keith Vanderlinde
@@ -69,11 +79,12 @@ private:
     void search_worker();
     void search_snapshot();
     void get_detections_callback(kotekan::connectionInstance& conn);
+    void set_doppler_hints_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
     struct Detection {
         double doppler_hz = 0.0;
         double code_phase_chips = 0.0;
-        long long ref_hop = 0; ///< snapshot reference hop (fpga_seq/fft_len) cp0 is anchored to
+        long long ref_hop = 0; ///< snapshot reference hop (sample_seq/fft_len) cp0 is anchored to
         float snr = 0.0f;
         bool valid = false;
         int misses = 0; ///< consecutive non-detecting snapshots since last valid hit
@@ -91,8 +102,19 @@ private:
     double _sample_rate;
     double _doppler_margin_hz;
     double _acquire_snr;
+    double _doppler_step; ///< grid step, Hz (used to build a PRN's narrow almanac grid)
     std::vector<int> _prns;
-    std::vector<double> _doppler_grid;
+    std::vector<double> _doppler_grid; ///< blind fallback grid (doppler_min..max)
+
+    /// Per-PRN almanac Doppler hint from the broker (POST set_doppler_hints): when valid, the
+    /// search scans only doppler +- margin for that PRN instead of the blind grid.
+    struct DopHint {
+        bool valid = false;
+        double doppler = 0.0;
+        double margin = 0.0;
+    };
+    std::vector<DopHint> _dop_hints; ///< parallel to _prns
+    std::mutex _hint_mtx;
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> _replica;
     gnss::AcquireWorkspace _acq_ws;
