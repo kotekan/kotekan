@@ -77,10 +77,10 @@ void testDataGenFewHot::main_thread() {
 
         chordmeta->set_name("Ebar");
         chordmeta->dims = 4;
-        chordmeta->set_array_dimension(0, 1024, "Tbar");
-        chordmeta->set_array_dimension(1, 256, "Fbar");
-        chordmeta->set_array_dimension(2, 2, "P");
-        chordmeta->set_array_dimension(3, NUM_ELEMNS/2, "D");
+        chordmeta->set_array_dimension(0, 1024, "Tbar", 16);
+        chordmeta->set_array_dimension(1, 256, "Fbar", 1);
+        chordmeta->set_array_dimension(2, 2, "P", 1);
+        chordmeta->set_array_dimension(3, NUM_ELEMNS/2, "D", 1);
         chordmeta->set_strides_simple();
         chordmeta->type = kotekan::int4x2_swapped_withoffset;
         std::vector<int> coarse_freq(NUM_FREQ);
@@ -99,7 +99,7 @@ void testDataGenFewHot::main_thread() {
         chordmeta->set_frame_counter(seq_num);
 
         buf->ensure_frame_desc(kotekan::GenericNDArray::describe(kotekan::int4x2_swapped_withoffset,
-                                         "Ebar", std::vector<ptrdiff_t>{1024,256,2, NUM_ELEMNS/2}, std::vector<kotekan::Symbol>{"Tbar", "Fbar", "P", "D"}));
+                                         "Ebar", std::vector<ptrdiff_t>{1024,256,2, NUM_ELEMNS/2}, std::vector<kotekan::Symbol>{"Tbar", "Fbar", "P", "D"}, std::vector<ptrdiff_t>{16,1,1,1}));
         /* test that things are consistent */
         chordmeta->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
 
