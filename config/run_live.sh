@@ -78,12 +78,21 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   # --carrier-hz (from the config's freq) makes the predicted Doppler correct for whatever
   # band is loaded -- L1 ~1.5 kHz, L2 ~0.779x that. Essential for L2C, where the heavier
   # 20 ms acquisition really wants the broker to narrow the Doppler search.
-  # --narrow-search: also push the predicted Doppler to the SEARCH so it scans a tight window
-  # per PRN instead of the blind grid (cheaper + more sensitive; the search collapses toward a
-  # code-phase pin once the clock-freq bias is solved). Override the window via SEARCH_MARGIN_HZ.
+  # --narrow-search (default on): also push the predicted Doppler to the SEARCH so it scans a
+  # tight window per PRN instead of the blind grid (cheaper + more sensitive; the search collapses
+  # toward a code-phase pin once the clock-freq bias is solved). Override the window via
+  # SEARCH_MARGIN_HZ; set NARROW_SEARCH=0 to fall back to the blind grid (A/B baseline -- also the
+  # safe mode if the almanac --doppler-sign is still unconfirmed, since a wrong sign narrows onto
+  # the wrong half and finds nothing). DOPPLER_SIGN=-1 flips the predicted-Doppler sign.
   ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
-  ALM="$ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500}"
-  echo "almanac assist ON @ ($LAT, $LON), carrier ${CARRIER_HZ} Hz -- predicted-Doppler seeding + narrowed search"
+  ALM="$ALM --doppler-sign ${DOPPLER_SIGN:-1}"
+  if [ "${NARROW_SEARCH:-1}" != "0" ]; then
+    ALM="$ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500}"
+    _ns="+ narrowed search"
+  else
+    _ns="(blind search -- NARROW_SEARCH=0)"
+  fi
+  echo "almanac assist ON @ ($LAT, $LON), carrier ${CARRIER_HZ} Hz -- predicted-Doppler seeding $_ns"
 else
   echo "almanac assist OFF (set LAT= LON= to enable predicted-Doppler seeding)"
 fi
