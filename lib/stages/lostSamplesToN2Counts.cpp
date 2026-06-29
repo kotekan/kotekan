@@ -1,28 +1,16 @@
 #include "lostSamplesToN2Counts.hpp"
 
 #include "Config.hpp"          // for Config
-#include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType_t
-#include "DataType.hpp"        // for DataType, GetType_t
-#include "N2Util.hpp"          // for frameID, modulo
 #include "N2Util.hpp"          // for frameID, modulo
 #include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
 #include "div.hpp"             // for num_triangle_blocks
-#include "div.hpp"             // for num_triangle_blocks
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG
 
-#include "fmt.hpp"  // for compile_string_to_view, format
-#include "fmt.hpp"  // for compile_string_to_view, format
-#include "json.hpp" // for basic_json, json, iter_impl
 #include "json.hpp" // for basic_json, json, iter_impl
 
 #include <functional> // for bind, function
@@ -104,10 +92,6 @@ lostSamplesToN2Counts::lostSamplesToN2Counts(Config& config, const std::string& 
             "Number of lost_samples buffers ({:d}) does not evenly divide total frequencies ({:d})",
             _nbufs, num_n2k_freq);
 
-    // rfi_mask's shape is established and validated by its producer; this stage
-    // works from frame_size and config (checked above), so it only requires that
-    // a descriptor was declared rather than re-asserting the full shape.
-    rfi_mask_buf->require_frame_desc();
 
     // This is a bit of a misnomer - the lost_samples buffer does not _include_
     // multiple frequencies, but information may be shared by multiple frequencies
@@ -130,6 +114,12 @@ lostSamplesToN2Counts::lostSamplesToN2Counts(Config& config, const std::string& 
                     n2k_counts_buf->frame_size, _expected_counts_frame_size);
 
     // Set the frame description
+    rfi_mask_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType_t<kotekan::uint1x8>, 3>::describe(
+            "RFImask",
+            {static_cast<ptrdiff_t>(samples_per_data_set) / 1024,
+             static_cast<ptrdiff_t>(num_n2k_freq), 1024 / 8},
+            {"T8hi128", "F", "T8lo128"}, {1024, 1, 8}));
     // The buffer name and axis names are the same as those set in
     // cudaPL1butCorrelator
     n2k_counts_buf->require_frame_desc(
