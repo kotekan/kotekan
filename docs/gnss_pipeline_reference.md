@@ -14,7 +14,7 @@ Two arrangements share one F-engine and one DSP core (`lib/stages/Gnss*` /
   the CHORD F-X integration in `gnss_chord_framework.md`.
 
 ```
-   airspyInput ─► input_buf ─► fftwEngine ─► chan_buf ([hop][N] cf, fpga_seq)
+   airspyInput ─► input_buf ─► fftwEngine ─► chan_buf ([hop][N] cf, sample_seq)
    (real int16)   (volts)     (r2c PFB)        │
                                    ┌────────────┴───────────────┐
                                    │ (async, lossy)             │ (lossless)
@@ -39,27 +39,39 @@ Two arrangements share one F-engine and one DSP core (`lib/stages/Gnss*` /
 | stage | in → out | role |
 |---|---|---|
 | `airspyInput` / `rawFileRead` | → `input_buf` | source: raw real samples (int16). Logs a WARN when the USB FIFO blocks (pipeline behind realtime) |
-| `fftwEngine` | `input_buf` → `chan_buf` | F-engine: r2c polyphase filterbank, 2N real samples/hop → N complex channels. **Stamps `GnssChanMetadata.fpga_seq`** = absolute index of the frame's first sample |
+| `fftwEngine` | `input_buf` → `chan_buf` | F-engine: r2c polyphase filterbank, 2N real samples/hop → N complex channels. Propagates `GnssChanMetadata.sample_seq` if the input carries it (else derives its own) |
 | `GnssSubbandSplit` | `chan_buf` → `ch_00…` | (distributed only) demux `[hop][N]` into one buffer per channel |
 
-`fpga_seq` is the linchpin: the absolute "sample 0" reference that makes every
+`sample_seq` is the linchpin: the absolute "sample 0" reference that makes every
 reported code phase node-independent (a seed found on one node is valid on
-another) **and** gives the tracker a true capture clock. Stamped once at the
-F-engine, propagated through split / gather / valve.
+another) **and** gives the tracker a true capture clock. **`airspyInput` stamps it**
+(when its output buffer has a GNSS pool) and folds in `dropped_samples`, so a USB
+drop becomes a *known gap* in `sample_seq`, not silent counter divergence — the
+absolute-hop referencing in the search/tracker (and the search's zero-filled snapshot)
+then handle the gap cleanly. Propagated through split / gather / valve. (Generic name:
+the airspy has no FPGA; CHORD's separate `chordMetadata.fpga_seq` is untouched — a thin
+entry adapter would copy it into `sample_seq`, dropped UDP frames showing as the same
+kind of gap.)
 
 ## Live receiver chain (the prototype we run)
 
 A complete GNSS receiver on one airspy. The **search** reads `chan_buf` directly
 (async, never backpressures); a **valve** feeds the lossless tracker so the airspy
-capture stays drop-free (drops would diverge `fpga_seq` → random code phase).
+capture stays drop-free. (Drops are no longer catastrophic — `airspyInput` folds them
+into `sample_seq` as known gaps, and the search zero-fills its snapshot at the true
+`sample_seq` offset — but the valve still keeps the common case clean.) The default
+`live.yaml` runs the *distributed* arrangement of this same chain (split → per-channel
+send/recv → gather/search; per-channel track → combiner); the single-node form here is
+`live_intgn.yaml`.
 
 | stage | in → out | role |
 |---|---|---|
-| `GnssChannelizedSearch` | `chan_buf` → REST | coarse acquire + exact ±1-hop **refine** over the covering channels; async worker, holds the latest detection. Publishes `(PRN, dop, refined cp, ref_hop, snr)` |
+| `GnssChannelizedSearch` | `chan_buf` → REST | coarse acquire + exact ±1-hop **refine** over the covering channels; async worker, holds the latest detection. Snapshot is **drop-tolerant** (places each frame at its `sample_seq` offset, zero-fills gaps). **Almanac-narrowed** via `POST set_doppler_hints`: per-PRN, scan only `doppler ± margin` instead of the blind grid (blind fallback when no hint). Publishes `(PRN, dop, refined cp, ref_hop, snr)` |
 | `Valve` | `chan_buf` → `chan_buf2` | drops a frame if the tracker is behind — decouples the lossless track→record chain from the realtime airspy (keeps capture drop-free) |
 | `GnssChannelizedTracker` | `chan_buf2` → `rec_buf` | despread each active PRN. **Code:** seed cp extrapolated by the broker's slope, then a ±`pullin_chips` DLL search locks the peak. **Carrier:** a per-PRN **FLL** (NCO derotation, `fll_gain`) drives the residual to ~Hz so coherence holds for seconds. Emits per-PRN `(G, E)`, derotated |
-| `GnssCoherentCombiner` | `rec_buf` → `out_buf` | sum `G_c`,`E_c` across covering channels → `A = ΣG/ΣE`; accumulate `integration_length` records (incoherent `√⟨|A|²⟩` + coherent `|⟨A⟩|`). Publishes per-PRN `|A|` over REST |
-| `rawFileWrite` | `out_buf` → disk | per-PRN records to `base_dir` (run_live.sh creates it) |
+| `GnssCoherentCombiner` | `rec_NN` → `out_buf` | sum `G_c`,`E_c` across covering channels → `A = ΣG/ΣE`; accumulate `integration_length` records (incoherent `√⟨|A|²⟩` + coherent `|⟨A⟩|` + nav-wiped deep `|A|`). `integration_mode: rolling` = an EMA (no nav-bit cap on the incoherent `|A|`), so a weak sat climbs out continuously. Publishes per-PRN `|A|` over REST |
+| `GnssBeamCube` | `rec_NN` → `beam_buf` | the combiner *without* the cross-channel sum: per-channel deep `|A_c|` = **beam(time, frequency)**. Reuses the same tracker records (no extra correlation); matters across L5's ~10 MHz. Reader: `gps_beam_watch.py` |
+| `rawFileWrite` | `out_buf` / `beam_buf` → disk | per-PRN records (and the beam cube) to `base_dir` (run scripts create it) |
 
 **Code tracking = slope + pull-in.** The search's `cp0` drifts ~linearly with
 capture hop (residual code-rate error: sample-clock + Doppler-grid). The broker
@@ -84,6 +96,11 @@ sample buffers:
   gates to visible sats and seeds the precise **predicted Doppler** plus a common
   clock-frequency bias, **EMA-smoothed** (`--bias-alpha`) so the coarse-grid jitter
   doesn't wander the seed;
+- **narrowed search** (`--narrow-search`): pushes each predicted Doppler to the search
+  (`set_doppler_hints`) so it scans a tight window instead of the blind grid — **wide**
+  until the common clock-freq bias is solved off the first sat, then **narrow** (the
+  forward-compatible CHORD pattern: a disciplined clock collapses the search to a
+  code-phase pin);
 - fits the per-PRN **cp slope** (`cp0` vs `ref_hop`) and sends `code_phase_rate` + anchor;
 - polls `combiner/get_status` for `|A|` → drops a PRN on sustained low amplitude;
 - `POST …/set_seeds` to the tracker(s). Re-seeds every ~0.2 s.
@@ -99,8 +116,18 @@ constellation rotates ~half an orbit in ~8 h.
 | `python/scripts/gps_intgn_check.py` | reconstructs coherent vs incoherent integration vs K from the recorded per-record `A`; noise-floor (1/√K vs flat), carrier-stability fit, perfect-FLL oracle, **nav-bit wipe** (estimate bits → wipe → integrate past 20 ms), and the on-sky **nav decode**. Auto-detects `n_prn` |
 | `python/scripts/gps_nav_decode.py` | IS-GPS-200 L1 C/A decoder: (1+2) Hamming parity, TLM-preamble frame sync, HOW (TOW + subframe ID). Validated on-sky (5 subframes, marching TOW) |
 
-These run on `rawFileWrite` output. Moving the nav-bit wipe + long coherent
-accumulate **into the combiner** (live) is the next pipeline step.
+Live readouts + site diagnostics:
+
+| tool | role |
+|---|---|
+| `gps_mono_watch.py` | live per-PRN SNR from the monolithic ground truth (`run_mono.sh`) |
+| `gps_beam_watch.py` | live **beam(time, frequency)** from the beam cube — ASCII `\|A\|`-vs-channel per PRN |
+| `gps_gain_sweep.py` | sweep the airspy LO vs ADC rms — tuner gain-slope vs in-band RFI |
+| `gps_pulse_check.py` | time-domain RFI triage of a raw `airspy_rx` capture: pulse/CW/broadband, PRF, ADC-level/quantization, in-band spectrum shape, rms-vs-time |
+
+The nav-bit wipe + long coherent accumulate now live **in the combiner**
+(`navwipe_bit_records`, `integration_mode: rolling`); the next pipeline step is the
+**voltage peel** (framework note, step 4).
 
 ## Distributed (CHORD-scale) realization
 
@@ -128,32 +155,41 @@ node dropping is just a missing term — unbiased, auto-renormalized.
 | buffer | layout | metadata |
 |---|---|---|
 | `input_buf` | raw real int16 | none |
-| `chan_buf` / `chan_buf2` | `[hop][N]` cfloat | `GnssChanMetadata` (fpga_seq) |
+| `chan_buf` / `chan_buf2` | `[hop][N]` cfloat | `GnssChanMetadata` (sample_seq) |
 | `ch_NN` / `rc_NN` / `gather_buf` | `[hop](×Ncov)` cfloat | `GnssChanMetadata` |
 | `rec_NN` / `out_buf` | 11 floats/PRN | none |
+| `beam_buf` | `4 + Ncov + 2` floats/PRN | none |
 
 Record floats: `[0]`PRN `[1]`Doppler (tracker: **f_ref+f_track**, the FLL-tracked
 carrier) `[2]`code phase (pulled-in) `[3]`G.re `[4]`G.im `[5]`E `[6]`n_chan_used
 `[9,10]`UTC (double; **capture time** `capture_utc0 + window_start/Fs` when
 `capture_utc0>0`, else wall-clock at emit). Combiner reuses the slots: `[3]`=`√⟨|A|²⟩`
-incoherent, `[4,5]`=`⟨A⟩`, `[6]`=`|⟨A⟩|` coherent.
+incoherent, `[4,5]`=`⟨A⟩`, `[6]`=`|⟨A⟩|` coherent, `[7]`=n_chan, `[8]`=nav-wiped deep `|A|`.
+Beam cube: `[0]`PRN `[1]`dop `[2]`cp `[3]`channel0, then `Ncov` per-channel `|A_c|`, then
+UTC (double) at slot `4+Ncov`.
 
 ## Configs
 
+All three live bands come from one signal-parameterized generator
+(`GNSS_SIGNAL=L1CA|L2C_CM|L5_Q python3 config/gen_live_config.py`); `N` is per-signal so
+`fft_len = 2N` divides one code period (the integer-period invariant — see below).
+
 | config | arrangement |
 |---|---|
-| `live.yaml` | **the live config** (run_live.sh default, `gen_live_config.py`), L1 C/A, 5 MSPS, **distributed CHORD-mirror** (12× ~208 kHz channels → per-channel track + bufferSend/Recv → gather/search + combiner), **valve** after the F-engine (airspy-safe), FLL on, GPS-only browser viewer on :8080. Replaces the un-valved `live_full.yaml` |
-| `live_l2c.yaml` | same chain retuned to **L2C** (1227.6 MHz, `GPS_L2C_CM`), `GNSS_SIGNAL=L2C_CM python3 config/gen_live_config.py`. 9 covering channels (narrower 511.5 kcps code), fine `doppler_step:50` (20 ms coherent code), weaker (CM = half L2C power). Channelized L2C acquisition is heavier + less proven than L1 → lean on the broker's `--carrier-hz` almanac Doppler assist (run_live.sh derives it). |
+| `live.yaml` | **the live config** (run_live.sh default), L1 C/A, 5 MSPS, N=12 (~208 kHz channels), **distributed CHORD-mirror** (per-channel track + bufferSend/Recv → gather/search + combiner + beam cube), **valve** after the F-engine (airspy-safe), FLL on, GPS-only browser viewer on :8080 |
+| `live_l2c.yaml` | retuned to **L2C** (1227.6 MHz, `GPS_L2C_CM`). N=10 (7 covering channels), fine `doppler_step:50`. **N=10 (not 12) is required**: at N=12 one 20 ms code period is 4166.67 hops, so the incoherent window wasn't an integer number of periods → the peak smeared and L2C detected nothing. CM is half the L2C power + time-multiplexed with CL (the replica zero-stuffs the combined code) |
+| `live_l5.yaml` | retuned to **L5** (1176.45 MHz, `GPS_L5_Q` pilot). **Wide front end**: `sample_bw:10` → 20 MSPS (captures ~half the ~20 MHz main lobe). N=10, all 10 channels covering. Dataless pilot → long coherent integration; ~10 MHz spans real beam variation (use the beam cube) |
+| `live_mono*.yaml` | **monolithic ground truth** (`gen_mono_config.py`, `run_mono.sh`): airspy → valve → `GpsReplicaCorrelator` (full-band FFT search/track) → records. The "what SNR should we get" reference, independent of the channelized path. L1 / L2C / L5 variants |
 | `live_wipe.yaml` | live chain + combiner nav-bit wipe (`navwipe_bit_records`, deep `\|A\|` past the 20 ms bit) — the navwipe / deep-integration demo |
-| `live_intgn.yaml` | live chain with `integration_length:1` (record every raw `A` for the offline analyzer). The deep-integration test bed |
-| `comb_single` / `search_unified` / `loop_single` | distributed scaffolds (split/gather/transport) |
+| `live_intgn.yaml` | single-node live chain, `integration_length:1` (record every raw `A` for `gps_intgn_check.py`). The deep-integration test bed |
 
 ## Practical notes
 
 - **Valve, not backpressure.** The lossless track→combine→disk chain would stall the
-  F-engine → airspy USB drops → `fpga_seq` diverges → random code phase. The valve
-  drops `chan_buf2` frames instead, keeping capture exact. Heavier per-PRN work (large
-  pull-in, many PRNs) just raises the drop rate; capture stays clean.
+  F-engine → airspy USB drops. The valve drops `chan_buf2` frames instead, keeping the
+  capture clean. Drops are also now *survivable* (folded into `sample_seq` as known gaps,
+  not silent counter divergence), so the valve is about staying clean in the common case,
+  not avoiding catastrophe. Heavier per-PRN work just raises the drop rate; capture holds.
 - **Capture time, not emit time.** Set `capture_utc0>0` so records carry
   `capture_utc0 + window_start/Fs` — exact 1 ms/record with clean gaps. Emit
   wall-clock is bursty (the pipeline drains buffered frames then stalls) and breaks any

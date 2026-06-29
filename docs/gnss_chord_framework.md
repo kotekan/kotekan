@@ -194,11 +194,14 @@ The single-airspy prototype now demonstrates a **complete GNSS receiver**, on-sk
    (NCO derotation). On-sky: residual carrier driven to ~5 Hz, code phase stable.
 2. **Generate waveforms — DONE.** `ChannelizedReplicaBank` builds the code×carrier
    replica through the F-engine's exact PFB (the hot path; carrier-phasor optimized).
-3. **Track + record, ~perfect calibration — DONE (offline back end).** The despread
+3. **Track + record, ~perfect calibration — DONE (now live).** The despread
    `A = ΣG/ΣE` is the complex gain. **Nav-bit wipe + decode** give *seconds* of
    coherent integration (on-sky: 5 parity-valid subframes, marching TOW; SNR climbing
-   √K to ~1 s, ~18×). *Remaining:* port the wipe + long accumulate **into the combiner**
-   (live), and add **ephemeris-predicted bits** for beams too weak to self-decode.
+   √K to ~1 s, ~18×). The wipe + long accumulate are now **in the combiner**
+   (`navwipe_bit_records`, `integration_mode: rolling`), with **ephemeris-predicted
+   bits** for beams too weak to self-decode. Also extended off L1 C/A: **L2C** (the
+   integer-code-period window fix) and **L5** (20 MSPS wide front end, dataless Q5
+   pilot), plus a per-frequency **beam cube** for the wide signals.
 4. **Peel — NEXT, demonstrable on airspy.** Reconstruct each sat's contribution
    `A·R_c·databit(t)` and subtract it from the channelized voltage; show the residual
    sat power collapse. Needs the **decoded nav bits** (to put the data modulation back

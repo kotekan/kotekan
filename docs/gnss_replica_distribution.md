@@ -105,7 +105,7 @@ the exact `d̂·R_c`. The per-hop post-multiply is *not* good enough here — it
 Wins 1 & 2 are settled. Hop-rate local generation (pathway #5) is validated, so
 **(B) is the recommendation** — generate-local, only the kbps trajectory+bit
 broadcast, no bulk replica distribution. (A) is the fallback if a node ever can't
-afford even ~0.01 Tflop/s. Remaining: the streaming generator wrapper (build the
-prefix-sum `Φ` once, stream hops, rebuild slowly as Doppler drifts) since the speedup
-is amortized over a long stream; and the GPU kernel form (a bank of per-PRN chip-rate
-filters).
+afford even ~0.01 Tflop/s. The streaming generator wrapper is **built**
+(`HopRateReplicaStream`: prefix-sum `Φ` once, stream hops, rebuild slowly as the
+Doppler drifts; boost test `hoprate_stream_amortizes_and_matches`). Remaining: the GPU
+kernel form (a bank of per-PRN chip-rate filters).

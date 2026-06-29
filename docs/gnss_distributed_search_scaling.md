@@ -2,9 +2,10 @@
 
 A note on *why* the distributed channelized search merges centrally, how much
 data that actually is, and how it degrades when part of the band is missing.
-Companion to `gnss_chord_framework.md`; grounded in the prototype stages
-`GnssChannelCorrelator` / `GnssSearchAggregator` / `GnssChannelizedTracker` /
-`GnssCoherentCombiner` and the broker.
+Companion to `gnss_chord_framework.md`; grounded in the current stages
+`GnssChannelGather` → `GnssChannelizedSearch` (central acquire over gathered covering
+voltage), `GnssChannelizedTracker` / `GnssCoherentCombiner`, and the broker. (The
+earlier comb-the-`P_c`-surface variant was retired — see below.)
 
 ## Two different "merges" — don't conflate them
 
@@ -92,15 +93,27 @@ seat the coarse peak wrong; lean on the refine, and report sensitivity over the
 *present* channels (the amplitude calibration is already correct, the SNR budget
 just shrinks). Most of the band present → negligible impact.
 
+## Almanac collapses the search dimension
+
+The cost above is for a *blind* 2-D (Doppler × code-lag) scan. In practice the orbit
+removes the expensive axis: the broker predicts each sat's Doppler (geometry + a common
+clock-frequency bias) and pushes it to the search (`--narrow-search`), which then scans a
+**tight Doppler window** instead of the blind grid — wide until the first sat solves the
+common bias, then narrow. Acquisition becomes a code-phase pin at the known Doppler, the
+same cheap targeted despread as tracking; on a disciplined clock (known offset) even the
+code phase is predicted and the blind search disappears. So the search isn't just *remapped*
+cheaply — with the almanac it is *small*, and shrinks further toward CHORD's no-blind-search
+reality. (The acquisition surface is still bigger than the voltage, so it still gathers raw
+voltage centrally rather than combing `P_c` — the volume argument above is unchanged.)
+
 ## Status
 
-- **Search compute:** done & validated. `channelized_acquire` / the aggregator
-  already operate over an *arbitrary, possibly gapped* covering-channel subset
-  (channels carry explicit `chan_freq`), and the two-stage coarse→refine locks on
-  real sky data (PRN 23 combiner |A| ~1→3.5–5 once seeded).
-- **Unified (centralized) search:** the *DSP* is the monolithic
-  `GnssChannelizedSearch` / the aggregator core — already handles the full
-  covering set. What remains is the **raw-voltage gather** (remap): `bufferSend` /
-  `bufferRecv` (validated) shipping covering-channel voltage to the search node
-  and assembling the `[channel][hop]` buffer. Transport, not new DSP.
+- **Search compute + gather:** done & validated. `channelized_acquire` operates over an
+  *arbitrary, possibly gapped* covering-channel subset (channels carry explicit
+  `chan_freq`); the two-stage coarse→refine locks on real sky data; and the raw-voltage
+  remap — `GnssSubbandSplit` → `bufferSend`/`bufferRecv` → `GnssChannelGather` →
+  `GnssChannelizedSearch` — is the live `live.yaml` path. The snapshot is drop-tolerant
+  (zero-fills gaps at the true `sample_seq` offset).
+- **Almanac-narrowed acquisition:** built (`set_doppler_hints` + broker `--narrow-search`),
+  the robust + forward-compatible path (above).
 - **Not the plan:** shipping the `P_c` surface cross-node. Prototype scaffold only.
