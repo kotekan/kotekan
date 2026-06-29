@@ -150,8 +150,8 @@ vis_pool:
 host_voltage_buffers:
   num_frames: baseband_buffer_depth
   value_type: int4x2_swapped_withoffset
-  extents: [1, samples_per_data_set * num_elements * num_freq_host_buf / 2048, 2048]
-  dimnames: ["F", "T", "E"]
+  extents: [num_freq_host_buf, samples_per_data_set, num_elements]
+  dimnames: [F, T, E]
   metadata_pool: main_pool
   use_hugepages: true
   numa_0:
@@ -457,6 +457,12 @@ run_send_voltage:
 set_scatter_indices:
     kotekan_stage: parseReorderDefault
     out_buf: host_scatter_indices_buffer
+    # TODO: need to undo transpose to beamformer (from cylinder order) in
+    # conversion to visFrame
+    # FEngine simulator produces beamformer order
+    # FEngine produces correlator order
+    input_order: CHIMEcorrelator
+    output_order: CHIMEBeamformer
     name: scatter_indices
 
 # Buffers
@@ -1005,6 +1011,8 @@ rfi_RFImask_count:
 
 n2k_PLmask_count:
     kotekan_stage: CountLostPLSamplesScalar
+    # this is pretty silly, the actual source of truth is
+    # lost_samples_buffer_{{ id }} which are already scalars
     in_buf: host_pl_mask_buffer
     out_buf: host_n2k_PLcounts_buffer
     sub_integration_ntime: n2k_sub_integration_ntime
