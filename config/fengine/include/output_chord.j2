@@ -415,12 +415,6 @@ write_data:
         in_buf: host_n2_vis_buffer
         file_name: n2_vis
         create_single_file: false # not implemented
-        max_frames: 1
-    # write_n2_vis:
-    #     kotekan_stage: hdf5N2Write
-    #     num_file_t: 4
-    #     in_buf: host_n2_vis_buffer
-    #     join_timeout: 600
     write_bb_beam_positions:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beam_positions_buffer
