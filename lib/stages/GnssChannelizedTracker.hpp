@@ -109,6 +109,7 @@ private:
     double _fll_gain;     ///< carrier FLL loop gain (0 = open-loop, use the broker Doppler)
     double _fll_reacq_hz; ///< |f_track - seed| beyond this re-acquires from the broker seed
     double _fll_max_gap;  ///< skip the FLL discriminator if records are >this many apart (s)
+    double _fll_lock_amp; ///< freeze the FLL when despread |A| < this (signal dropout); 0 = never
 
     std::vector<int> _prns;
     std::vector<double> _doppler;

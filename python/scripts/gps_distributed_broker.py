@@ -12,9 +12,10 @@ Each iteration:
      consensus already done) or, in the older fan-out, a GnssChannelizedSearch per
      subband -- either way the broker takes the strongest hit per PRN across them.
   2. (optional) gate by visibility: drop below-horizon PRNs.
-  3. GET <combiner>/get_status for the full-band |A| per PRN; drop a tracked PRN
-     after it stays below --drop-amplitude for --drop-hits consecutive polls
-     (lock lost).
+  3. GET <combiner>/get_status for the full-band |A| per PRN; COAST a visible PRN
+     through a signal dropout (hold its seed + forecast its Doppler forward from the
+     orbit) so a radar sweep / brief fade doesn't lose the lock -- drop only when it
+     SETS or |A| stays down for the whole --coast-budget (the predictor promotion).
   4. POST the consensus seed set [{prn, doppler_hz, code_phase_chips}] to *every*
      tracker's /set_seeds, so all subbands despread the same (cp, Doppler) and the
      per-subband products recombine coherently.
@@ -172,9 +173,15 @@ def main(argv=None):
     ap.add_argument("--acquire-snr", type=float, default=12.0,
                     help="min detection SNR to (re)seed a PRN")
     ap.add_argument("--drop-amplitude", type=float, default=0.3,
-                    help="combined |A| below which a tracked PRN is a drop candidate")
+                    help="combined |A| below which a tracked PRN is coasting (not yet locked)")
+    ap.add_argument("--coast-budget", type=float, default=30.0,
+                    help="seconds a VISIBLE sat is coasted (seed held + Doppler forecast forward) "
+                         "through a signal dropout before dropping it -- so a radar sweep / brief "
+                         "fade doesn't lose the lock. The code prediction stays good for ~tens of s "
+                         "on a free-running TCXO; raise it with a disciplined clock (OCXO). |A| "
+                         "recovering resets the coast; setting below the horizon drops immediately.")
     ap.add_argument("--drop-hits", type=int, default=8,
-                    help="consecutive low-|A| polls before dropping a PRN")
+                    help="(superseded by --coast-budget) old consecutive-low-|A|-polls drop count")
     ap.add_argument("--lat", type=float, help="receiver latitude (enables gating)")
     ap.add_argument("--lon", type=float, help="receiver longitude")
     ap.add_argument("--alt", type=float, default=0.0, help="receiver altitude, m")
@@ -353,7 +360,14 @@ def main(argv=None):
             seeds[prn] = seed
             low_hits[prn] = 0
 
-        # 3. drop on lost lock (sustained low combined |A|) or set below horizon
+        # 3. COAST / drop (the trajectory-predictor promotion). A visible sat is coasted through a
+        # signal dropout (radar sweep, brief fade): its seed is held and its Doppler forecast
+        # forward from the orbit + clock each poll, so the tracker keeps despreading at the
+        # PREDICTED trajectory and re-peaks when the signal returns -- the lock survives the gap
+        # instead of being pruned and re-acquired. The code prediction holds for ~the coast budget;
+        # drop ONLY when the sat SETS (the unambiguous "gone") or |A| stays down for the whole
+        # budget (genuine loss / prediction breakdown). |A| recovering resets the coast.
+        coast_polls = max(1, int(round(args.coast_budget / max(args.interval, 1e-3))))
         try:
             status = {int(r["prn"]): float(r["amplitude"])
                       for r in _get("%s/get_status" % combiner)}
@@ -362,15 +376,23 @@ def main(argv=None):
             _log("get_status failed: %s" % e)
         for prn in list(seeds):
             if up is not None and prn not in up:
-                _log("drop PRN %d (below horizon)" % prn)
+                _log("drop PRN %d (set below horizon)" % prn)
                 del seeds[prn]
                 low_hits.pop(prn, None)
                 continue
+            if prn in best:  # re-detected -> re-anchored in the seed loop above (coast reset there)
+                continue
+            # not re-detected this poll but still visible -> COAST: forecast the Doppler forward.
+            if args.almanac and prn in pred:
+                seeds[prn]["doppler_hz"] = pred[prn][0] + clock_bias
             amp = status.get(prn, 0.0)
-            if prn not in best:  # not re-detected this poll; judge by combined |A|
-                low_hits[prn] = low_hits.get(prn, 0) + (1 if amp < args.drop_amplitude else 0)
-                if low_hits[prn] >= args.drop_hits:
-                    _log("drop PRN %d (lock lost, |A|=%.2f)" % (prn, amp))
+            if amp >= args.drop_amplitude:
+                low_hits[prn] = 0  # |A| held through the dropout -> the lock survived; reset coast
+            else:
+                low_hits[prn] = low_hits.get(prn, 0) + 1
+                if low_hits[prn] >= coast_polls:
+                    _log("drop PRN %d (coast %.0fs expired, |A|=%.2f)"
+                         % (prn, args.coast_budget, amp))
                     del seeds[prn]
                     low_hits.pop(prn, None)
 

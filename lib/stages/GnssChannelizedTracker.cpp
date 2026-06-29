@@ -88,6 +88,10 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     _fll_gain = config.get_default<double>(unique_name, "fll_gain", 0.0);
     _fll_reacq_hz = config.get_default<double>(unique_name, "fll_reacq_hz", 200.0);
     _fll_max_gap = config.get_default<double>(unique_name, "fll_max_gap_s", 0.005);
+    // Freeze the FLL discriminator when the despread |A| drops below this -- so a signal dropout
+    // (radar sweep, the broker coasting the seed) doesn't drive f_track on noise; the NCO keeps
+    // coasting at the held frequency and the loop resumes cleanly on return. 0 = never freeze.
+    _fll_lock_amp = config.get_default<double>(unique_name, "fll_lock_amp", 0.0);
 
     const auto active_prns = config.get_default<std::vector<int>>(unique_name, "active_prns", {});
     _active.assign(n_prn, 1);
@@ -311,7 +315,8 @@ void GnssChannelizedTracker::main_thread() {
                     rec[5] = (float)best.replica_energy;
 
                     if (a_prev_ok[p] && dt > 0.0 && dt <= _fll_max_gap
-                        && std::abs(a_corr) > 0.0f && std::abs(a_prev[p]) > 0.0f) {
+                        && std::abs(a_corr) > (float)_fll_lock_amp
+                        && std::abs(a_prev[p]) > (float)_fll_lock_amp) {
                         const std::complex<double> prod =
                             std::complex<double>(a_corr) * std::conj(std::complex<double>(a_prev[p]));
                         const double dphi = std::arg(prod * prod) / 2.0; // bit-robust phase walk

@@ -97,8 +97,12 @@ else
   echo "almanac assist OFF (set LAT= LON= to enable predicted-Doppler seeding)"
 fi
 echo "starting broker (trackers: $TRK)..."
+# --coast-budget: hold a visible sat (seed + forecast Doppler) through a signal dropout this many
+# seconds before dropping it, so a radar sweep / brief fade doesn't lose the lock (raise it with a
+# disciplined clock). Default 30 s -- inside the free-running-TCXO code-prediction horizon.
 python3 $BROKER --detectors search --trackers "$TRK" --combiner combiner \
-        --acquire-snr 6 --interval 0.2 $ALM > /tmp/gpslive_broker.log 2>&1 &
+        --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} $ALM \
+        > /tmp/gpslive_broker.log 2>&1 &
 BPID=$!
 
 echo "=== watching (Ctrl-C to stop) ==="

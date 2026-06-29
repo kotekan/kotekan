@@ -124,18 +124,18 @@ recv_11: { kotekan_stage: bufferRecv, buf: rc_11, listen_port: 15012, num_thread
 gather: { kotekan_stage: GnssChannelGather, in_bufs: [rc_00, rc_01, rc_02, rc_03, rc_04, rc_05, rc_06, rc_07, rc_08, rc_09, rc_10, rc_11], out_buf: gather_buf }
 search: { kotekan_stage: GnssChannelizedSearch, in_buf: gather_buf, channel_offset: 0, n_channels: 12, acquire_snr: 10, acquire_windows: 20 }
 
-track_00: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_00, out_buf: rec_00, channel_offset: 0, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
-track_01: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_01, out_buf: rec_01, channel_offset: 1, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
-track_02: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_02, out_buf: rec_02, channel_offset: 2, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
-track_03: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_03, out_buf: rec_03, channel_offset: 3, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
-track_04: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_04, out_buf: rec_04, channel_offset: 4, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
-track_05: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_05, out_buf: rec_05, channel_offset: 5, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
-track_06: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_06, out_buf: rec_06, channel_offset: 6, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
-track_07: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_07, out_buf: rec_07, channel_offset: 7, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
-track_08: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_08, out_buf: rec_08, channel_offset: 8, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
-track_09: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_09, out_buf: rec_09, channel_offset: 9, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
-track_10: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_10, out_buf: rec_10, channel_offset: 10, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
-track_11: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_11, out_buf: rec_11, channel_offset: 11, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
+track_00: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_00, out_buf: rec_00, channel_offset: 0, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }
+track_01: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_01, out_buf: rec_01, channel_offset: 1, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }
+track_02: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_02, out_buf: rec_02, channel_offset: 2, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }
+track_03: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_03, out_buf: rec_03, channel_offset: 3, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }
+track_04: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_04, out_buf: rec_04, channel_offset: 4, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }
+track_05: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_05, out_buf: rec_05, channel_offset: 5, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }
+track_06: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_06, out_buf: rec_06, channel_offset: 6, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }
+track_07: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_07, out_buf: rec_07, channel_offset: 7, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }
+track_08: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_08, out_buf: rec_08, channel_offset: 8, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }
+track_09: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_09, out_buf: rec_09, channel_offset: 9, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }
+track_10: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_10, out_buf: rec_10, channel_offset: 10, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }
+track_11: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_11, out_buf: rec_11, channel_offset: 11, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }
 combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_00, rec_01, rec_02, rec_03, rec_04, rec_05, rec_06, rec_07, rec_08, rec_09, rec_10, rec_11], out_buf: out_buf, integration_length: 50 }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpslive", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 beamcube: { kotekan_stage: GnssBeamCube, in_bufs: [rec_00, rec_01, rec_02, rec_03, rec_04, rec_05, rec_06, rec_07, rec_08, rec_09, rec_10, rec_11], out_buf: beam_buf, channel0: 0, integration_length: 50 }

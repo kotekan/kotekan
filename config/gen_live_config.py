@@ -93,6 +93,10 @@ INTEG_MODE = os.environ.get("INTEGRATION_MODE", "block")
 if INTEG_MODE not in ("block", "rolling"):
     raise SystemExit("INTEGRATION_MODE must be block or rolling (got %r)" % INTEG_MODE)
 INTEG_LEN = int(os.environ.get("INTEGRATION_LENGTH", "50"))
+# FLL_LOCK_AMP: freeze the tracker's carrier FLL when the despread |A| drops below this (a signal
+# dropout -- radar sweep, the broker coasting the seed), so f_track doesn't wander on noise. 0 =
+# off (the FLL wander over a ~30 s coast is tolerable anyway); set ~half the locked |A| to enable.
+FLL_LOCK_AMP = float(os.environ.get("FLL_LOCK_AMP", "0"))
 
 # --- front-end / channel plan --------------------------------------------------
 N = S["N"]                      # PFB channels: Fs/(2N) wide each (L1 N=12 ~208 kHz; L2C/L5 N=10)
@@ -221,7 +225,7 @@ L.append("")
 # Track arm: one tracker PER covering channel (n_channels:1) = the CHORD per-node
 # correlation; the combiner coherently reassembles. Broker seeds every tracker.
 for c in COV:
-    L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03%s }" % (c, c, c, c, HOPS))
+    L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: %g%s }" % (c, c, c, c, FLL_LOCK_AMP, HOPS))
 comb_in = "[" + ", ".join("rec_%02d" % c for c in COV) + "]"
 _roll = (", integration_mode: rolling" if INTEG_MODE == "rolling" else "")
 L.append("combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: %s, out_buf: out_buf, integration_length: %d%s }"
