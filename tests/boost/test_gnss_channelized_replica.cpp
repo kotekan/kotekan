@@ -114,6 +114,18 @@ BOOST_AUTO_TEST_CASE(boc_subcarrier_applied) {
     BOOST_CHECK_LT(despread_mag(rboc, rbpsk), 0.3);         // BOC vs BPSK (same code) decorrelate
 }
 
+// End-to-end L1C-P through the bank: the descriptor dispatches the Weil code AND applies BOC(1,1),
+// so a self-despread is a matched filter and a different PRN decorrelates -- the real L1C signal.
+BOOST_AUTO_TEST_CASE(l1cp_self_and_cross_prn) {
+    std::vector<int> prns = {1, 2};
+    auto bank = make_bank("GPS_L1C_P", prns);
+    const int H = bank.repl_period_hops();
+    auto rA = bank.channels(0, 0, 0.0, 0.0, H); // PRN 1
+    auto rB = bank.channels(1, 0, 0.0, 0.0, H); // PRN 2
+    BOOST_CHECK_CLOSE(despread_mag(rA, rA), 1.0, 1e-2); // self == matched filter
+    BOOST_CHECK_LT(despread_mag(rA, rB), 0.3);          // different PRN decorrelates
+}
+
 // I5 and Q5 are distinct codes on the same carrier -> they decorrelate.
 BOOST_AUTO_TEST_CASE(l5i_distinct_from_l5q) {
     std::vector<int> prns = {1};

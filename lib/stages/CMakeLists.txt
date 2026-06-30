@@ -44,6 +44,7 @@ add_library(
     SampleAutocorr.cpp
     SimpleCrosscorr.cpp
     gpsCACode.cpp
+    gpsL1CCode.cpp
     gpsL2CCode.cpp
     gpsL5Code.cpp
     GnssRecordCollector.cpp

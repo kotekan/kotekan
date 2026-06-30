@@ -22,6 +22,9 @@ target_include_directories(test_gps_l2c_code PRIVATE ../../lib/stages)
 add_executable(test_gps_l5_code test_gps_l5_code.cpp ../../lib/stages/gpsL5Code.cpp)
 target_include_directories(test_gps_l5_code PRIVATE ../../lib/stages)
 
+add_executable(test_gps_l1c_code test_gps_l1c_code.cpp ../../lib/stages/gpsL1CCode.cpp)
+target_include_directories(test_gps_l1c_code PRIVATE ../../lib/stages)
+
 # Pure band-plan logic: compile the source directly, no Telescope/FFTW needed.
 add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnssBandPlan.cpp)
 target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages)
@@ -70,7 +73,7 @@ if(FFTW_FOUND)
         test_gnss_channelized_replica test_gnss_channelized_replica.cpp
         ../../lib/stages/gnssChannelizedReplica.cpp ../../lib/stages/gnssChannelizedDespread.cpp
         ../../lib/stages/gnssBandPlan.cpp ../../lib/stages/pfbPrototype.cpp
-        ../../lib/stages/gpsCACode.cpp ../../lib/stages/gpsL2CCode.cpp
+        ../../lib/stages/gpsCACode.cpp ../../lib/stages/gpsL1CCode.cpp ../../lib/stages/gpsL2CCode.cpp
         ../../lib/stages/gpsL5Code.cpp)
     target_include_directories(test_gnss_channelized_replica PRIVATE ../../lib/stages)
     target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})

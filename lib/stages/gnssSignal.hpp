@@ -73,6 +73,16 @@ inline constexpr SignalDescriptor GPS_L1CA = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
 };
 
+/// GPS L1C-P (1575.42 MHz, modernized civil) -- the dataless *pilot*: 10230-chip Weil code at
+/// 1.023 Mcps (10 ms), BOC(1,1). ReplicaSource: gpsL1CCode (Legendre + Weil + 7-chip insertion).
+/// secondary_length 0 for now -- the 1800-symbol L1CO overlay generator is a follow-on.
+inline constexpr SignalDescriptor GPS_L1C_P = {
+    "GPS_L1C_P", 1575.42e6, 1.023e6, 10230, 10e-3,
+    Modulation::BOC, 1, 1, // BOC(1,1)
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/0,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
+};
+
 /// GPS L2C CM (1227.6 MHz) -- the *data* component: 10230 chips at 511.5 kcps
 /// (20 ms), chip-interleaved with CL to a 1.023 Mcps stream; carries CNAV
 /// (25 bps + FEC -> 50 sps). ReplicaSource: gpsL2CCode (27-stage LFSR + CM
@@ -122,7 +132,7 @@ inline constexpr SignalDescriptor GPS_L5_Q = {
 /// pilot (CL) component. Likewise L5 splits into I5 (data) and Q5 (pilot).
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
-         {&GPS_L1CA, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q})
+         {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q})
         if (name == s->name)
             return s;
     return nullptr;

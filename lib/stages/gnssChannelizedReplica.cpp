@@ -3,6 +3,7 @@
 #include "fftwPlannerLock.hpp" // for fftw_planner_mutex
 #include "gnssBandPlan.hpp"    // for ChannelBand, covering_channels
 #include "gpsCACode.hpp"       // for generate_ca_code
+#include "gpsL1CCode.hpp"      // for generate_l1cp_code
 #include "gpsL2CCode.hpp"      // for generate_l2cm_code, generate_l2cl_code
 #include "gpsL5Code.hpp"       // for generate_l5i_code, generate_l5q_code
 
@@ -30,6 +31,10 @@ namespace {
 // within one period (invisible to acquisition), but it unlocks multi-period coherent
 // integration of the dataless Q5 pilot once the period alignment (nh_phase) is set.
 std::vector<int8_t> signal_code(const std::string& name, int prn) {
+    if (name == "GPS_L1C_P") {
+        auto a = gps::generate_l1cp_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
     if (name == "GPS_L5_I") {
         auto a = gps::generate_l5i_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
