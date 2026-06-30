@@ -26,6 +26,7 @@
 #define GNSS_CHANNELIZED_DESPREAD_HPP
 
 #include <complex> // for complex
+#include <cstdint> // for int8_t
 #include <vector>  // for vector
 
 namespace gnss {
@@ -47,6 +48,28 @@ struct DespreadResult {
  */
 DespreadResult channelized_despread(const std::vector<std::vector<std::complex<float>>>& data_ch,
                                     const std::vector<std::vector<std::complex<float>>>& repl_ch);
+
+/// Result of a known-secondary-overlay deep wipe (@ref overlay_wipe).
+struct OverlayWipeResult {
+    double amplitude = 0.0; ///< deep coherent |A| = |sum of overlay-corrected per-record A| / nrec
+    double snr = 0.0;       ///< significance = coherent sum / its orthogonal-noise std (~1 noise, >>1 real)
+    int phase = 0;          ///< overlay alignment (0..len-1) that maximised the coherent sum
+};
+
+/**
+ * Deep coherent integration of a dataless pilot past its primary period by wiping a KNOWN
+ * secondary overlay (the L5 Neuman-Hofman NH10/NH20 -- one +-1 chip per primary period).
+ *
+ * @c a is the per-record complex despread amplitude (one record = one primary period, so one
+ * overlay chip), @c utc the matching capture time per record (to index the ABSOLUTE primary-
+ * period -- a dropped record just skips an index, keeping the overlay aligned), @c overlay the
+ * bipolar (+-1) sequence. Unlike the nav-bit wipe (estimates the +-1 by squaring), the overlay
+ * is KNOWN, so this just searches its @c overlay.size() alignments for the one that maximises
+ * the coherent sum, then sums the overlay-corrected records -- recovering the pilot's full
+ * coherent gain (capped only by the carrier coherence time, not the 1 ms primary period).
+ */
+OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
+                               const std::vector<double>& utc, const std::vector<int8_t>& overlay);
 
 } // namespace gnss
 

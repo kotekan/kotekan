@@ -41,7 +41,8 @@ target_include_directories(test_pfb_prototype PRIVATE ../../lib/stages)
 add_executable(
     test_gnss_channelized_despread test_gnss_channelized_despread.cpp
     ../../lib/stages/gnssChannelizedDespread.cpp ../../lib/stages/gnssSimSignal.cpp
-    ../../lib/stages/pfbPrototype.cpp ../../lib/stages/gpsCACode.cpp)
+    ../../lib/stages/pfbPrototype.cpp ../../lib/stages/gpsCACode.cpp
+    ../../lib/stages/gpsL5Code.cpp)
 target_include_directories(test_gnss_channelized_despread PRIVATE ../../lib/stages)
 
 # Channelized acquisition: FFT-domain coarse correlation + cross-channel fine-lag
