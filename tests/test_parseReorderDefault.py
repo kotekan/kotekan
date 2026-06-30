@@ -10,8 +10,8 @@ if not runner.has_hdf5():
 
 parseReorderDefault_params = {
     "out_buf": "reorder_buffer",
-    "input_order": "correlator",
-    "output_order": "beamformer",
+    "input_order": "CHIMECorrelator",
+    "output_order": "CHIMEBeamformer",
     "name": "scatter_indices",
 }
 
