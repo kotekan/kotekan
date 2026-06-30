@@ -114,6 +114,12 @@ INTEG_LEN = int(os.environ.get("INTEGRATION_LENGTH", "50"))
 # dropout -- radar sweep, the broker coasting the seed), so f_track doesn't wander on noise. 0 =
 # off (the FLL wander over a ~30 s coast is tolerable anyway); set ~half the locked |A| to enable.
 FLL_LOCK_AMP = float(os.environ.get("FLL_LOCK_AMP", "0"))
+# FLL_GAIN: the tracker carrier-loop gain (default 0.03). Set 0 for pure FEED-FORWARD (open-loop on
+# the broker's predicted Doppler) -- the decisive test for a MARGINAL signal whose closed FLL chases
+# its own ~1-sigma noise and randomises the per-record carrier phase (the L1C-P deep-wipe wall: the
+# per-record phase decohered record-to-record even though C/A coheres for seconds on the same clock).
+# fll_gain=0 leaves only the smooth clock-drift residual, which the offline derotation can remove.
+FLL_GAIN = float(os.environ.get("FLL_GAIN", "0.03"))
 
 # OUT_NAME / BASE_DIR override the output config name + record dir, so a capture variant (e.g.
 # INTEGRATION_LENGTH=1 -> record every raw per-record A for offline integration analysis) can be
@@ -257,7 +263,7 @@ L.append("")
 # Track arm: one tracker PER covering channel (n_channels:1) = the CHORD per-node
 # correlation; the combiner coherently reassembles. Broker seeds every tracker.
 for c in COV:
-    L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: %g%s }" % (c, c, c, c, FLL_LOCK_AMP, HOPS))
+    L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: %g, fll_lock_amp: %g%s }" % (c, c, c, c, FLL_GAIN, FLL_LOCK_AMP, HOPS))
 comb_in = "[" + ", ".join("rec_%02d" % c for c in COV) + "]"
 _roll = (", integration_mode: rolling" if INTEG_MODE == "rolling" else "")
 # Dataless-pilot deep integration: the combiner wipes a KNOWN secondary overlay (the L5 Q5

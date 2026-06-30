@@ -55,7 +55,11 @@ def load_records(base_dir, record_floats, n_prn):
     [n_prn*record_floats float32 of data]. out_buf is metadata-less (size 0), but
     that 4-byte header is ALWAYS written, so a flat float reshape is misaligned --
     skip the header per frame. n_prn<=0 auto-detects it from the framing."""
-    files = sorted(glob.glob(os.path.join(base_dir, "*.raw")))
+    # The combiner record stream is file_name "level"; prefer it so a sibling "beam" cube
+    # (GnssBeamCube, a DIFFERENT 4+NCOV+2 record layout) in the same dir can't poison the
+    # auto-detect. Fall back to any *.raw for captures without the level/beam split.
+    files = sorted(glob.glob(os.path.join(base_dir, "level*.raw"))) \
+        or sorted(glob.glob(os.path.join(base_dir, "*.raw")))
     if not files:
         sys.exit("no *.raw under %s -- run live_intgn.yaml first" % base_dir)
     if n_prn <= 0:
