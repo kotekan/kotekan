@@ -166,7 +166,7 @@ BOOST_AUTO_TEST_CASE(recovers_with_fftwengine_convention) {
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
     auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, Nc, CODE_LEN,
                                        chan_freq);
-    BOOST_CHECK_EQUAL(r.doppler_hz, true_dop);
+    BOOST_CHECK_LT(std::abs(r.doppler_hz - true_dop), 100.0); // sub-grid refine: within half a 200 Hz cell
     BOOST_CHECK_LE(std::abs(r.peak_tau_samples - true_tau), (long)SP);
     BOOST_CHECK_GT(r.snr, 15.0);
 }
@@ -184,7 +184,7 @@ BOOST_AUTO_TEST_CASE(recovers_code_phase_and_doppler) {
     const std::vector<double> grid = {-400, -200, 0, 200, 400};
     auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS, CHIP_RATE, N, CODE_LEN);
 
-    BOOST_CHECK_EQUAL(r.doppler_hz, true_dop);
+    BOOST_CHECK_LT(std::abs(r.doppler_hz - true_dop), 100.0); // sub-grid refine: within half a 200 Hz cell
     BOOST_CHECK_LE(std::abs(r.peak_tau_samples - true_tau), (long)SP); // within one chip
     BOOST_CHECK_GT(r.snr, 20.0);                                        // sharp peak
 }
@@ -198,7 +198,7 @@ BOOST_AUTO_TEST_CASE(hop_aligned_phase_recovered) {
     const std::vector<double> grid = {-200, 0, 200};
     auto r = gnss::channelized_acquire(data, repl0, energy_covering(repl0), grid, FS, CHIP_RATE, N,
                                        CODE_LEN);
-    BOOST_CHECK_EQUAL(r.doppler_hz, 0.0);
+    BOOST_CHECK_LT(std::abs(r.doppler_hz), 100.0); // sub-grid refine: ~0 within half a cell
     BOOST_CHECK_LE(std::abs(r.peak_tau_samples - true_tau), (long)SP);
 }
 
@@ -304,7 +304,7 @@ BOOST_AUTO_TEST_CASE(accumulation_recovers_weak_signal_under_noise) {
     auto rK = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN);
 
     BOOST_CHECK_GT(std::abs(tau1 - true_tau), (long)SP);      // single window: misses
-    BOOST_CHECK_EQUAL(rK.doppler_hz, true_dop);               // K windows: Doppler right
+    BOOST_CHECK_LT(std::abs(rK.doppler_hz - true_dop), 100.0); // K windows: Doppler right (sub-grid refine)
     BOOST_CHECK_LE(std::abs(rK.peak_tau_samples - true_tau), (long)SP); // ...and code phase
 }
 
@@ -353,7 +353,7 @@ BOOST_AUTO_TEST_CASE(l2c_single_window_acquire_recovers) {
     BOOST_TEST_MESSAGE("L2C single-window: snr=" << r.snr << " dop=" << r.doppler_hz
                                                  << " cp=" << r.code_phase_chips << " (true "
                                                  << true_cp << ")");
-    BOOST_CHECK_EQUAL(std::abs(r.doppler_hz), true_dop); // grid value (sign per bank convention)
+    BOOST_CHECK_LT(std::abs(std::abs(r.doppler_hz) - true_dop), 100.0); // grid value (sign per bank convention)
     BOOST_CHECK_GT(r.snr, 15.0);                         // sharp coherent peak
     double cp_err = std::fabs(r.code_phase_chips - true_cp);
     cp_err = std::min(cp_err, (double)sig->code_length - cp_err);
@@ -448,7 +448,7 @@ BOOST_AUTO_TEST_CASE(l5_single_window_acquire_recovers) {
     BOOST_TEST_MESSAGE("L5 acquire: snr=" << r.snr << " dop=" << r.doppler_hz
                                           << " cp=" << r.code_phase_chips << " (true " << true_cp
                                           << ")  cov=" << cov.size() << " chans");
-    BOOST_CHECK_EQUAL(std::abs(r.doppler_hz), true_dop); // detects with the right Doppler
+    BOOST_CHECK_LT(std::abs(std::abs(r.doppler_hz) - true_dop), 100.0); // detects with the right Doppler
     BOOST_CHECK_GT(r.snr, 15.0);                          // strong peak
     // Acquire localizes the coarse lag to ~1 hop: at 20 MSPS we hold only ~half L5's main lobe, so
     // the autocorrelation peak is ~2x broader and the raw cp is hop-coarse (here ~0.8 hop off).
@@ -516,7 +516,7 @@ BOOST_AUTO_TEST_CASE(narrowed_doppler_grid_recovers_and_sign_is_right) {
     auto r = gnss::channelized_acquire(data, repl0, cov, narrow, FS_L5, sig->chip_rate_hz, N_L5,
                                        sig->code_length, cov, fft_len);
     BOOST_TEST_MESSAGE("narrow(-hint): snr=" << r.snr << " dop=" << r.doppler_hz);
-    BOOST_CHECK_EQUAL(r.doppler_hz, -true_dop); // grid value = -physical (the r2c flip)
+    BOOST_CHECK_LT(std::abs(r.doppler_hz + true_dop), 25.0); // ~-physical within half a 50 Hz cell (r2c + sub-grid refine)
     BOOST_CHECK_GT(r.snr, 15.0);                // narrowing kept the detection
 
     // Wrong sign: centre at +hint (2*dop from the true peak) -> a clean miss.
@@ -525,4 +525,46 @@ BOOST_AUTO_TEST_CASE(narrowed_doppler_grid_recovers_and_sign_is_right) {
                                         sig->code_length, cov, fft_len);
     BOOST_TEST_MESSAGE("narrow(+hint, wrong): snr=" << rw.snr);
     BOOST_CHECK_LT(rw.snr, r.snr * 0.3); // wrong-sign window decorrelates -> no peak
+}
+
+// The sub-grid Doppler parabola refine must BEAT the coarse-grid cell on an OFF-grid signal.
+// Reference truth = a fine-grid (step 5) max in the SAME channelization frame (so any small
+// channelization Doppler bias cancels); a coarse grid (step 100) + refine should land closer.
+BOOST_AUTO_TEST_CASE(doppler_parabola_refine_beats_grid) {
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
+    constexpr double FS_L5 = 20.0e6, FOFF_L5 = 5.0e6;
+    constexpr int N_L5 = 10;
+    gnss::ChannelizedReplicaBank bank(*sig, FS_L5, FOFF_L5, N_L5, 4, dsp::Window::Hamming, {1});
+    const int fft_len = 2 * N_L5;
+    const int Mp = bank.repl_period_hops();
+    const long long anchor = (long long)Mp * fft_len;
+    auto repl0 = bank.channels(0, anchor, 0.0, 0.0, Mp);
+    const auto cov = energy_covering_n(repl0, N_L5);
+
+    const double true_cp = 137.0, true_dop = 3037.0; // OFF the coarse grid (-3000 step 100)
+    auto data = bank.channels(0, anchor, true_cp, true_dop, Mp);
+    auto acq = [&](const std::vector<double>& g) {
+        return gnss::channelized_acquire(data, repl0, cov, g, FS_L5, sig->chip_rate_hz, N_L5,
+                                         sig->code_length, cov, fft_len);
+    };
+    auto grid_around = [&](double c, double margin, double step) {
+        std::vector<double> g;
+        for (double f = c - margin; f <= c + margin + 1e-6; f += step)
+            g.push_back(f);
+        return g;
+    };
+    const double ref = acq(grid_around(-3037.0, 60.0, 5.0)).doppler_hz; // fine-grid "truth"
+    const auto coarse = grid_around(-3000.0, 250.0, 100.0);
+    const double refined = acq(coarse).doppler_hz;
+    // the nearest coarse cell to ref (what we'd have reported WITHOUT the refine)
+    double cell = coarse[0];
+    for (double f : coarse)
+        if (std::abs(f - ref) < std::abs(cell - ref))
+            cell = f;
+    const double err_grid = std::abs(cell - ref), err_ref = std::abs(refined - ref);
+    BOOST_TEST_MESSAGE("refine: fine-ref=" << ref << " coarse-cell=" << cell << " refined="
+                                           << refined << " | grid_err=" << err_grid
+                                           << " refined_err=" << err_ref);
+    BOOST_CHECK_LT(err_ref, err_grid);  // the refine is closer to truth than the raw cell
+    BOOST_CHECK_LT(err_ref, 25.0);      // and within ~step/4
 }

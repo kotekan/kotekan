@@ -171,6 +171,7 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     long surf_n = 0;
     int best_d = 0;
     long best_tau = 0;
+    std::vector<double> dop_peak(dims.n_dop, 0.0); // per-Doppler max-over-tau (for the sub-grid fit)
 
     for (int d = 0; d < dims.n_dop; ++d) {
         const double* base = surf.data() + (long)d * dims.Mp * dims.sph;
@@ -180,6 +181,8 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
                 const double pw = row[s];
                 surf_sum += pw;
                 surf_n++;
+                if (pw > dop_peak[d])
+                    dop_peak[d] = pw;
                 if (pw > best.peak) {
                     best.peak = pw;
                     best_d = d;
@@ -190,6 +193,23 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     }
 
     best.doppler_hz = doppler_grid.empty() ? 0.0 : doppler_grid[best_d];
+    // Sub-grid Doppler refine: the correlation-vs-Doppler peak is smooth but sampled on a
+    // coarse grid (doppler_step), so the cell max is only +-step/2 accurate. Fit a parabola to
+    // the peak and its two Doppler neighbours -- using each cell's OWN max-over-tau, not the
+    // power at the centre cell's tau (the code-Doppler shifts the peak tau slightly cell to
+    // cell, so a fixed-tau slice is asymmetric and biases the vertex) -- and take the vertex.
+    // Lifts the seed to ~+-step/20: a tighter Doppler for the tracker FLL to pull in from and a
+    // sharper input to the broker's clock-bias solve. Skipped at the grid edges / non-concave.
+    const int nd = (int)doppler_grid.size();
+    if (nd >= 3 && best_d > 0 && best_d < nd - 1) {
+        const double sm = dop_peak[best_d - 1], s0 = dop_peak[best_d], sp = dop_peak[best_d + 1];
+        const double denom = sm - 2.0 * s0 + sp;
+        if (denom < 0.0) {
+            double delta = 0.5 * (sm - sp) / denom; // parabola vertex, in grid cells (|delta|<=0.5)
+            delta = std::max(-0.5, std::min(0.5, delta));
+            best.doppler_hz += delta * (doppler_grid[best_d + 1] - doppler_grid[best_d]);
+        }
+    }
     const double mean = (surf_n > 0) ? surf_sum / (double)surf_n : 0.0;
     best.snr = (mean > 0.0) ? best.peak / mean : 0.0;
 
