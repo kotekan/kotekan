@@ -24,10 +24,11 @@ namespace {
 // (CM/CL interleaved to 1.023 Mcps) at the tdm_phase parity -- the real signal's
 // structure; despreading the bare 511.5 kcps code loses ~9-12 dB (gps_l2c_subband_validate.py).
 // L2C CL is time-assisted (1.5 s period -- track-only, not blind-acquirable). L5
-// (I5/Q5) is the clean, fully-supported L2/L5 target. The NH secondary overlay
-// (L5 NH10/NH20, applied per 1 ms primary period) is NOT applied here -- a constant
-// sign within a <=1 ms window, so it only matters for multi-period coherent
-// integration (the pilot's long-integration benefit), a separate refinement.
+// (I5/Q5) is the clean, fully-supported L2/L5 target. This returns the BARE primary
+// code; the NH secondary overlay (L5 NH10/NH20, one +-1 chip per 1 ms primary period)
+// is applied on top in channels()/hoprate_stream via overlay_sign() -- a constant sign
+// within one period (invisible to acquisition), but it unlocks multi-period coherent
+// integration of the dataless Q5 pilot once the period alignment (nh_phase) is set.
 std::vector<int8_t> signal_code(const std::string& name, int prn) {
     if (name == "GPS_L5_I") {
         auto a = gps::generate_l5i_code(prn);
@@ -80,6 +81,19 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
         }
     }
 
+    // Secondary (Neuman-Hofman) overlay: one +-1 chip per primary period (NH10 on L5 I5,
+    // NH20 on L5 Q5). Applied per period in channels()/hoprate_stream so a multi-period
+    // coherent integration of the dataless Q5 pilot doesn't decorrelate at the 1 ms primary
+    // rollover. Empty (no-op) for signals without a secondary code (L1 C/A, L2C).
+    if (_sig.secondary_length > 0) {
+        const std::string name(_sig.name);
+        if (name == "GPS_L5_Q")
+            _secondary.assign(gps::L5_NH20.begin(), gps::L5_NH20.end());
+        else if (name == "GPS_L5_I")
+            _secondary.assign(gps::L5_NH10.begin(), gps::L5_NH10.end());
+        _secondary_length = (int)_secondary.size();
+    }
+
     std::lock_guard<std::mutex> planner_lock(fftw_planner_mutex());
     _fold = (float*)fftwf_malloc(sizeof(float) * _fft_len);
     _spec = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * (_N + 1));
@@ -106,6 +120,15 @@ int8_t ChannelizedReplicaBank::code_chip(int p, double chip_phase) const {
     return _full_code[p][idx];
 }
 
+int ChannelizedReplicaBank::overlay_sign(long long period, int nh_phase) const {
+    if (_secondary_length <= 0)
+        return 1; // no secondary code -> composes as a no-op
+    long long k = (period + nh_phase) % _secondary_length;
+    if (k < 0)
+        k += _secondary_length;
+    return _secondary[(size_t)k];
+}
+
 std::vector<int> ChannelizedReplicaBank::covering_bins(double doppler_hz,
                                                        double doppler_margin_hz) const {
     // Global r2c bin grid: bin j centred at j*Fs/(2N) over [0, Fs/2), natural order.
@@ -122,7 +145,8 @@ std::vector<int> ChannelizedReplicaBank::covering_bins(double doppler_hz,
 
 std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long window_start_sample,
                                                               double code_phase_chips,
-                                                              double doppler_hz, int n_hops) {
+                                                              double doppler_hz, int n_hops,
+                                                              int nh_phase) {
     const int warm = _num_taps - 1; // prime the continuous polyphase delay line
     const int total = n_hops + warm;
     const long long start = window_start_sample - (long long)warm * _fft_len;
@@ -155,7 +179,14 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
         for (int i = 0; i < _fft_len; ++i) {
             const long long n = start + (long long)h * _fft_len + i;
             if (n >= 0) {
-                const int8_t c = code_chip(p, cp0 + (double)n * chip_per_sample);
+                const double phase = cp0 + (double)n * chip_per_sample;
+                int8_t c = code_chip(p, phase);
+                // Apply the secondary (NH) overlay per primary period (no-op if none): the
+                // primary code repeats every _eff_code_length chips, the overlay flips at
+                // those rollovers, so a multi-period coherent despread stays aligned.
+                if (_secondary_length > 0)
+                    c = (int8_t)(c * overlay_sign((long long)std::floor(phase / (double)_eff_code_length),
+                                                  nh_phase));
                 // Real passband replica code*cos(carrier); the r2c bank keeps the
                 // positive-frequency half (the +carrier image), matching the data.
                 block[i] = c * (float)cph.real();
@@ -213,7 +244,8 @@ ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double dopp
 std::vector<std::vector<cf>>
 ChannelizedReplicaBank::hoprate_stream(const HopRateFilter& f, int p, long long window_start_sample,
                                        double code_phase_chips, double doppler_hz, int n_hops,
-                                       const std::function<float(long long)>& nav_bit) const {
+                                       const std::function<float(long long)>& nav_bit,
+                                       int nh_phase) const {
     // Per-hop carrier + code phase use the CURRENT Doppler (exact); the filter shape f is
     // built for a nearby Doppler (it barely moves). R_j[m] = 1/2 ( e^{+i wc n_m} Σ_d code·d̂·
     // (PhiA over chip d) + e^{-i wc n_m} ... PhiB ), d the chip relative to the window edge.
@@ -249,6 +281,9 @@ ChannelizedReplicaBank::hoprate_stream(const HopRateFilter& f, int p, long long 
                 double cv = (double)code_chip(p, (double)cidx);
                 if (nav_bit)
                     cv *= nav_bit(cidx);
+                if (_secondary_length > 0)
+                    cv *= overlay_sign(
+                        (long long)std::floor((double)cidx / (double)_eff_code_length), nh_phase);
                 sA += cv * (f.PhiA[ci][khi + 1] - f.PhiA[ci][klo]);
                 sB += cv * (f.PhiB[ci][khi + 1] - f.PhiB[ci][klo]);
             }
@@ -264,9 +299,10 @@ std::vector<std::vector<cf>>
 ChannelizedReplicaBank::channels_hoprate(int p, long long window_start_sample,
                                          double code_phase_chips, double doppler_hz, int n_hops,
                                          const std::vector<int>& want,
-                                         const std::function<float(long long)>& nav_bit) const {
+                                         const std::function<float(long long)>& nav_bit,
+                                         int nh_phase) const {
     return hoprate_stream(hoprate_filter(want, doppler_hz), p, window_start_sample,
-                          code_phase_chips, doppler_hz, n_hops, nav_bit);
+                          code_phase_chips, doppler_hz, n_hops, nav_bit, nh_phase);
 }
 
 HopRateReplicaStream::HopRateReplicaStream(const ChannelizedReplicaBank& bank, int prn_index,

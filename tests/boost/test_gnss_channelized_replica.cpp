@@ -3,6 +3,7 @@
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
 #include "gnssChannelizedReplica.hpp"  // for ChannelizedReplicaBank
 #include "gnssSignal.hpp"              // for signal_by_name
+#include "gpsL5Code.hpp"               // for L5_NH20 (overlay reference)
 #include "pfbPrototype.hpp"            // for Window
 
 #include <boost/test/included/unit_test.hpp>
@@ -58,6 +59,40 @@ BOOST_AUTO_TEST_CASE(l5q_self_and_cross_prn) {
 
     BOOST_CHECK_CLOSE(despread_mag(rA, rA), 1.0, 1e-2); // self == matched filter
     BOOST_CHECK_LT(despread_mag(rA, rB), 0.3);          // different PRN decorrelates
+}
+
+// The L5 Q5 NH20 secondary overlay is applied per primary period: it matches IS-GPS-705,
+// and a multi-period coherent despread stays matched only when the overlay alignment
+// (nh_phase) agrees -- which is what unlocks coherent integration of the dataless pilot
+// past the 1 ms primary period (vs the overlay-blind sum, which the balanced NH20 averages
+// to ~0). Single-period despread is unaffected (the overlay is a constant sign there).
+BOOST_AUTO_TEST_CASE(l5q_nh20_overlay) {
+    std::vector<int> prns = {1};
+    auto bank = make_bank("GPS_L5_Q", prns);
+    BOOST_REQUIRE_EQUAL(bank.secondary_length(), 20);
+    // the overlay sequence the bank applies is exactly the IS-GPS-705 NH20
+    int s = 0;
+    for (int k = 0; k < 20; ++k) {
+        BOOST_CHECK_EQUAL(bank.overlay_sign(k, 0), (int)gps::L5_NH20[k]);
+        s += gps::L5_NH20[k];
+    }
+    BOOST_CHECK_LE(std::abs(s), 4); // NH20 is (near-)balanced -> overlay-blind sum decorrelates
+
+    const int K = 20, H = K * bank.repl_period_hops(); // span a full NH period (20 ms)
+    auto data = bank.channels(0, 0, 0.0, 0.0, H, 0);      // overlaid signal, alignment 0
+    auto aligned = bank.channels(0, 0, 0.0, 0.0, H, 0);   // matching replica
+    auto shifted = bank.channels(0, 0, 0.0, 0.0, H, 1);   // overlay off by one NH chip
+
+    BOOST_TEST_MESSAGE("overlay: aligned=" << despread_mag(data, aligned)
+                                           << " shifted=" << despread_mag(data, shifted));
+    BOOST_CHECK_CLOSE(despread_mag(data, aligned), 1.0, 1e-2); // aligned -> coherent over 20 periods
+    BOOST_CHECK_LT(despread_mag(data, shifted), 0.2);          // one-chip NH misalignment decorrelates
+
+    // sanity: a single primary period is overlay-phase-INSENSITIVE (one constant chip)
+    const int H1 = bank.repl_period_hops();
+    auto p0 = bank.channels(0, 0, 0.0, 0.0, H1, 0);
+    auto p1 = bank.channels(0, 0, 0.0, 0.0, H1, 1);
+    BOOST_CHECK_CLOSE(despread_mag(p0, p1), 1.0, 1e-2); // single period: still a matched filter
 }
 
 // I5 and Q5 are distinct codes on the same carrier -> they decorrelate.
