@@ -30,34 +30,18 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(parseReorderDefault);
 
-#define CHIME_ORDER_CORRELATOR "correlator" // not regular
-#define CHIME_ORDER_CYLINDER "cylinder"     // cyl-pol-dish
-#define CHIME_ORDER_BEAMFORMER "beamformer" // pol-dish
-
 parseReorderDefault::parseReorderDefault(Config& config, const std::string& unique_name,
                                          bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&parseReorderDefault::main_thread, this)),
     _out_buf(get_buffer("out_buf")), _name(config.get<std::string>(unique_name, "name")),
-    _input_order_str(
-        config.get_default<std::string>(unique_name, "input_order", CHIME_ORDER_CORRELATOR)),
-    _output_order_str(
-        config.get_default<std::string>(unique_name, "output_order", CHIME_ORDER_CYLINDER)),
-    _input_order(parseOrderStr(_input_order_str)), _output_order(parseOrderStr(_output_order_str)),
+    _input_order(config.get_default<ElementOrder>(unique_name, "input_order",
+                                                  ElementOrder::CHIMECorrelator)),
+    _output_order(
+        config.get_default<ElementOrder>(unique_name, "output_order", ElementOrder::CHIMECylinder)),
     _num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     _num_dishes(config.get<int>(unique_name, "num_dishes")) {
     _out_buf->register_producer(unique_name);
-
-    if (_input_order_str != CHIME_ORDER_CORRELATOR && _input_order_str != CHIME_ORDER_CYLINDER
-        && _input_order_str != CHIME_ORDER_BEAMFORMER) {
-        FATAL_ERROR("Input element order {} is not a CHIME order.", _input_order);
-    }
-
-    if (_output_order_str != CHIME_ORDER_CORRELATOR && _output_order_str != CHIME_ORDER_CYLINDER
-        && _output_order_str != CHIME_ORDER_BEAMFORMER) {
-        FATAL_ERROR("Output element order {} is not a CHIME order.", _output_order);
-    }
-
 
 #if 0 // this is what it should be
     if (_input_order == ElementOrder::CHIMECorrelator) {
@@ -79,19 +63,6 @@ parseReorderDefault::parseReorderDefault(Config& config, const std::string& uniq
     _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, _name, {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
 #endif
-}
-
-ElementOrder parseReorderDefault::parseOrderStr(const std::string& ord_str) {
-    if (ord_str == CHIME_ORDER_CORRELATOR)
-        return ElementOrder::CHIMECorrelator;
-    else if (ord_str == CHIME_ORDER_CYLINDER)
-        return ElementOrder::CHIMECylinder;
-    else if (ord_str == CHIME_ORDER_BEAMFORMER)
-        return ElementOrder::CHIMEBeamformer;
-
-    FATAL_ERROR_NON_OO("parseReorderDefault: Order string {:s} was not {:s}, {:s}, or {:s}",
-                       ord_str, CHIME_ORDER_CORRELATOR, CHIME_ORDER_CYLINDER,
-                       CHIME_ORDER_BEAMFORMER);
 }
 
 void parseReorderDefault::main_thread() {

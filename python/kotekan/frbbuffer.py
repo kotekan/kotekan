@@ -42,7 +42,7 @@ class FrbPacket(ctypes.Structure):
         with io.FileIO(filename, "rb") as fh:
             fh.readinto(buf)
 
-        return from_buffer(cls, buf[4:], max_packets, filename)
+        return cls.from_buffer(buf[4:], max_packets, filename)
 
     @classmethod
     def from_buffer(cls, buffer, max_packets=None, name=None):
