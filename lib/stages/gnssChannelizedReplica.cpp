@@ -181,6 +181,17 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
             if (n >= 0) {
                 const double phase = cp0 + (double)n * chip_per_sample;
                 int8_t c = code_chip(p, phase);
+                // BOC sub-carrier (L1C, Galileo E1/E6, ...): a square wave synchronous with the
+                // code, boc_m/boc_n cycles per chip, multiplied onto the code -- splits the
+                // spectrum into +-(boc_m*1.023 MHz) lobes with a null at the carrier. Sine-BOC:
+                // +1 over the first half of each sub-carrier cycle, -1 over the second. No-op for
+                // BPSK signals (C/A, L2C, L5). (Within-chip, so the per-sample path handles it;
+                // the per-chip hoprate path does NOT yet -- it assumes a constant chip.)
+                if (_sig.mod == Modulation::BOC) {
+                    const double x = (double)_sig.boc_m / (double)_sig.boc_n * phase;
+                    if (x - std::floor(x) >= 0.5)
+                        c = (int8_t)(-c);
+                }
                 // Apply the secondary (NH) overlay per primary period when an alignment is set
                 // (nh_phase >= 0): the primary code repeats every _eff_code_length chips, the
                 // overlay flips at those rollovers, so a multi-period coherent despread stays

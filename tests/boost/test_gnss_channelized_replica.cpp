@@ -95,6 +95,25 @@ BOOST_AUTO_TEST_CASE(l5q_nh20_overlay) {
     BOOST_CHECK_CLOSE(despread_mag(p0, p1), 1.0, 1e-2); // single period: still a matched filter
 }
 
+// BOC(1,1) sub-carrier (the first non-BPSK modulation, for L1C / Galileo): applied here to the
+// C/A code as a synthetic BOC signal. The BOC replica self-despreads (matched filter), but
+// DECORRELATES against the plain BPSK replica of the SAME code -- because the sub-carrier
+// averages to zero over a chip, so it has genuinely split the spectrum off the carrier.
+BOOST_AUTO_TEST_CASE(boc_subcarrier_applied) {
+    gnss::SignalDescriptor boc = *gnss::signal_by_name("GPS_L1CA"); // C/A chips...
+    boc.mod = gnss::Modulation::BOC;                                // ...+ a BOC(1,1) sub-carrier
+    boc.boc_m = 1;
+    boc.boc_n = 1;
+    ChannelizedReplicaBank bank_boc(boc, FS, FOFF, N, P, dsp::Window::Hamming, {1});
+    auto bank_bpsk = make_bank("GPS_L1CA", {1});
+    const int H = bank_boc.repl_period_hops();
+    auto rboc = bank_boc.channels(0, 0, 0.0, 0.0, H);
+    auto rbpsk = bank_bpsk.channels(0, 0, 0.0, 0.0, H);
+
+    BOOST_CHECK_CLOSE(despread_mag(rboc, rboc), 1.0, 1e-2); // self == matched filter
+    BOOST_CHECK_LT(despread_mag(rboc, rbpsk), 0.3);         // BOC vs BPSK (same code) decorrelate
+}
+
 // I5 and Q5 are distinct codes on the same carrier -> they decorrelate.
 BOOST_AUTO_TEST_CASE(l5i_distinct_from_l5q) {
     std::vector<int> prns = {1};
