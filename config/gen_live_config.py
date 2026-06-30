@@ -4,6 +4,8 @@ chain + GPS-only viewer -- for a chosen signal. Pick the signal via env GNSS_SIG
 
   GNSS_SIGNAL=L1CA   python3 config/gen_live_config.py   # -> config/live_l1.yaml   (default)
   GNSS_SIGNAL=L2C_CM python3 config/gen_live_config.py   # -> config/live_l2c.yaml
+  GNSS_SIGNAL=L1C_P  python3 config/gen_live_config.py   # -> config/live_l1c.yaml (BOC(1,1) pilot)
+  GNSS_SIGNAL=L5_Q   python3 config/gen_live_config.py   # -> config/live_l5.yaml
 
 Ultimately CHORD runs every band/signal in parallel; on the single airspy prototype
 each is its own band (one run at a time, retune the front end). This generator is the
@@ -71,6 +73,20 @@ SIGNALS = {
                    win=20, period=1e-3,  cap_coh=False, out="live_l1.yaml",  base="/tmp/gpslive"),
     "L2C_CM": dict(name="GPS_L2C_CM", freq=1227.6,  chip=511.5e3, dstep=50.0,  snr=8.0,  N=10, sbw=2.5,
                    win=40, period=20e-3, cap_coh=True,  out="live_l2c.yaml",  base="/tmp/gpsl2c"),
+    # L1C-P (modernized civil pilot, Block III): BOC(1,1) -> the replica's channels() applies the
+    # sine sub-carrier (committed 1d3c6c51), splitting the band into +-1.023 MHz lobes with a NULL
+    # at the carrier; at the 2.5 MHz front end all 10 channels are "covering" (the central bin sits
+    # in the null -> ~no energy, harmless). Code period 10 ms (10230 chips @ 1.023 Mcps), so N=10
+    # is FORCED by the integer-code-period invariant (fft_len 2N=20 divides CODE_SAMPLES=50000 ->
+    # 2500 hops/period; N=12 does NOT). cap_coh=True is REQUIRED beyond nav-safety: L1C-P carries
+    # the 1800-symbol L1CO overlay (each symbol = one 10 ms primary period) and that generator is
+    # not built yet (descriptor secondary_length=0), so a multi-period coherent window would
+    # integrate across UNKNOWN overlay flips and cancel; capping the window to one 10 ms period
+    # stays inside a single L1CO symbol. dstep=50 Hz (10 ms coherent -> ~1/2T cells, like L2C). The
+    # combiner secondary_overlay wipe (deep |A|) is the follow-on once the L1CO generator lands. L1
+    # is out of CHORD's band, so this is an airspy-prototype + BOC pathfinder, not a mapping handle.
+    "L1C_P":  dict(name="GPS_L1C_P",  freq=1575.42, chip=1.023e6, dstep=50.0,  snr=8.0,  N=10, sbw=2.5,
+                   win=20, period=10e-3, cap_coh=True,  out="live_l1c.yaml",  base="/tmp/gpsl1c"),
     # win=100: L5 records are only 1 ms, so match the monolithic's 100 ms incoherent depth (it was
     # 20 ms = 5x shallower, which is why the channelized cleared only the strongest sat vs mono's six).
     "L5_Q":   dict(name="GPS_L5_Q",   freq=1176.45, chip=10.23e6, dstep=250.0, snr=10.0, N=10, sbw=10.0,

@@ -16,6 +16,7 @@ KOTEKAN=./build_mac/kotekan/kotekan
 CFG=${CFG:-config/live_l1.yaml}          # L1 lean valved distributed config
 #   CFG: live_l2c.yaml -> L2C (1227.6 MHz); live_l5.yaml -> L5 (1176.45 MHz); live_l5_wipe.yaml ->
 #        L5 Q5 pilot DEEP overlay-wipe (rolling, NH20 wiped in the combiner -> deep |A| past 1 ms);
+#        live_l1c.yaml -> L1C-P (1575.42 MHz, BOC(1,1) Block-III civil pilot, track_00..09);
 #        live_l1_wipe.yaml -> L1 navwipe demo
 # Derive the tracker stage names + the carrier straight from the config so any band/signal
 # works unchanged: live_l1.yaml -> track_00..11, live_l2c.yaml -> track_02..10 (covering subset),
