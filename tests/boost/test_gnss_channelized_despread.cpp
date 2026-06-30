@@ -3,6 +3,7 @@
 #include "gnssChannelizedDespread.hpp" // for channelized_despread, overlay_wipe
 #include "gnssSimSignal.hpp"           // for sim_bpsk_baseband
 #include "gpsCACode.hpp"               // for generate_ca_code
+#include "gpsL1CCode.hpp"              // for generate_l1co_code (L1C-P per-PRN overlay)
 #include "gpsL5Code.hpp"               // for L5_NH20 (overlay-wipe test)
 #include "pfbPrototype.hpp"            // for pfb_prototype, pfb_push, pfb_fold
 
@@ -227,4 +228,30 @@ BOOST_AUTO_TEST_CASE(overlay_wipe_noise_floor) {
     auto res = gnss::overlay_wipe(a, utc, overlay);
     BOOST_CHECK_LT(res.snr, 4.0);                  // noise stays below a lock threshold
     BOOST_CHECK_LT(res.amplitude, 3.0 / std::sqrt((double)nrec)); // ~ noise/sqrt(N), not a signal
+}
+
+// The SAME overlay_wipe, driven by the REAL per-PRN L1C-P overlay (the combiner's L1CO path).
+// L1CO is 1800 symbols (vs NH20's 20), so its phase search is only well-posed once the window
+// holds a comparable number of records -- a LONG integration recovers the injected pilot phase
+// and amplitude even at per-record SNR ~ 1. (With far fewer records the 1800-way max overfits
+// noise, which is exactly why the L1C deep wipe wants a long rolling window + a higher deep_snr
+// floor, ~sqrt(2 ln 1800) ~ 3.9 sigma.) PRN18 is a GPS III bird that actually broadcasts L1C.
+BOOST_AUTO_TEST_CASE(overlay_wipe_recovers_l1cp_pilot_long_window) {
+    auto ov_arr = gps::generate_l1co_code(18);
+    const std::vector<int8_t> overlay(ov_arr.begin(), ov_arr.end());
+    const int L = (int)overlay.size(), nrec = 2 * L, true_phase = 123;
+    const double S = 0.5, theta = 0.7, sigma = 0.5; // per-record SNR ~ 1
+    std::mt19937 rng(3);
+    std::normal_distribution<double> g(0.0, sigma / std::sqrt(2.0));
+    std::vector<cd> a(nrec);
+    std::vector<double> utc(nrec);
+    for (int r = 0; r < nrec; ++r) {
+        const cd sig = S * std::polar(1.0, theta) * (double)overlay[(r + true_phase) % L];
+        a[r] = sig + cd(g(rng), g(rng));
+        utc[r] = r * 10e-3; // 10 ms L1C primary periods
+    }
+    auto res = gnss::overlay_wipe(a, utc, overlay);
+    BOOST_CHECK_EQUAL(res.phase, true_phase);   // recovered the 1800-long alignment
+    BOOST_CHECK_CLOSE(res.amplitude, S, 10.0);  // deep |A| ~ pilot amplitude
+    BOOST_CHECK_GT(res.snr, 10.0);              // strongly significant after the long coherent sum
 }

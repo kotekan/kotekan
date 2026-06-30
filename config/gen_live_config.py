@@ -122,6 +122,13 @@ FLL_LOCK_AMP = float(os.environ.get("FLL_LOCK_AMP", "0"))
 #     python3 config/gen_live_config.py   (then run it, then python3 .../gps_intgn_check.py the dir).
 OUT_NAME = os.environ.get("OUT_NAME", S["out"])
 BASE_DIR = os.environ.get("BASE_DIR", S["base"])
+# OVERLAY overrides the combiner secondary_overlay (deep pilot wipe). Defaults to the signal row's
+# overlay (L5 always wipes its NH20), "" for signals without one. Set it to turn a basic config
+# into a deep-wipe variant WITHOUT baking the wipe into the basic config -- e.g. the L1C-P deep
+# wipe (its 1800-symbol L1CO overlay needs a LONG rolling window to make the phase search well-posed):
+#   GNSS_SIGNAL=L1C_P INTEGRATION_MODE=rolling INTEGRATION_LENGTH=3600 OVERLAY=L1CO \
+#     OUT_NAME=live_l1c_wipe.yaml BASE_DIR=/tmp/gpsl1cwipe python3 config/gen_live_config.py
+OVERLAY = os.environ.get("OVERLAY", S.get("overlay", "") or "")
 
 # --- front-end / channel plan --------------------------------------------------
 N = S["N"]                      # PFB channels: Fs/(2N) wide each (L1 N=12 ~208 kHz; L2C/L5 N=10)
@@ -256,7 +263,7 @@ _roll = (", integration_mode: rolling" if INTEG_MODE == "rolling" else "")
 # Dataless-pilot deep integration: the combiner wipes a KNOWN secondary overlay (the L5 Q5
 # NH20) at its searched alignment -> deep coherent |A| past the 1 ms primary period (slot 8 /
 # deep_amplitude + deep_snr), no nav-bit estimate. Empty for signals without an overlay.
-_overlay = (", secondary_overlay: %s" % S["overlay"]) if S.get("overlay") else ""
+_overlay = (", secondary_overlay: %s" % OVERLAY) if OVERLAY else ""
 L.append("combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: %s, out_buf: out_buf, integration_length: %d%s%s }"
          % (comb_in, INTEG_LEN, _roll, _overlay))
 L.append('record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "%s", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }' % BASE_DIR)

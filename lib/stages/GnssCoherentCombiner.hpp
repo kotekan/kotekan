@@ -114,7 +114,8 @@ private:
     bool _rolling;           ///< rolling EMA integration vs block-and-reset
     int _emit_every;         ///< rolling: records between emits (output cadence)
     int _navwipe_bit_records; ///< records per nav bit (0 = no wipe)
-    std::vector<int8_t> _secondary; ///< known secondary overlay (L5 NH10/NH20); empty if unused
+    std::vector<int8_t> _secondary; ///< known PRN-independent overlay (L5 NH10/NH20); empty if unused
+    std::vector<std::vector<int8_t>> _l1co; ///< per-PRN L1C-P overlays (index prn-1, 1..32); empty if unused
     bool _wipe_buffer = false;      ///< buffer per-record A for a deep wipe (navwipe or overlay)
     std::vector<std::vector<std::complex<double>>> _navbuf; ///< per-PRN per-record A over the window
     std::vector<std::vector<double>> _navutc;              ///< per-PRN per-record capture UTC

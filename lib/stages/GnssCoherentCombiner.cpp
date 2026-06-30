@@ -4,6 +4,7 @@
 #include "visUtil.hpp"      // for frameID
 
 #include "gnssChannelizedDespread.hpp" // for overlay_wipe
+#include "gpsL1CCode.hpp"              // for generate_l1co_code (per-PRN L1C-P overlay)
 #include "gpsL5Code.hpp"               // for L5_NH10/NH20 (secondary overlay sequences)
 
 #include "json.hpp"   // for json
@@ -49,7 +50,19 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         _secondary.assign(gps::L5_NH20.begin(), gps::L5_NH20.end());
     else if (sec == "L5_NH10")
         _secondary.assign(gps::L5_NH10.begin(), gps::L5_NH10.end());
-    _wipe_buffer = (_navwipe_bit_records > 0 || !_secondary.empty());
+    else if (sec == "L1CO") {
+        // L1C-P overlay is PER-PRN (not one shared NH sequence), so cache all 32 here and pick
+        // by the slot's current PRN at wipe time. NOTE: it is 1800 symbols long (vs NH20's 20),
+        // so the overlay_wipe phase search is only well-determined once the integration window
+        // holds a comparable number of records -- run this with a LONG rolling integration and
+        // read the deep_snr against a higher floor (~sqrt(2 ln 1800) ~ 3.9 sigma, vs NH20's 2.4).
+        _l1co.resize(32);
+        for (int prn = 1; prn <= 32; ++prn) {
+            const auto o = gps::generate_l1co_code(prn);
+            _l1co[(size_t)(prn - 1)].assign(o.begin(), o.end());
+        }
+    }
+    _wipe_buffer = (_navwipe_bit_records > 0 || !_secondary.empty() || !_l1co.empty());
     if (_wipe_buffer) {
         _navbuf.assign(_n_prn, {});
         _navutc.assign(_n_prn, {});
@@ -212,13 +225,24 @@ void GnssCoherentCombiner::main_thread() {
                 // ~1 for noise REGARDLESS of K (a stable lock threshold) and grows for real signal.
                 amp_snr[p] = noise > 1e-12 ? s2 * std::pow(Keff, 0.25) / noise : 0.0;
             }
-            if (!_secondary.empty()) {
-                // Dataless pilot (L5 Q5): wipe the KNOWN secondary overlay at its best-fitting
-                // alignment -> deep coherent |A| past the 1 ms primary period (no nav-bit estimate).
-                const auto ow = gnss::overlay_wipe(_navbuf[p], _navutc[p], _secondary);
-                rec[8] = (float)ow.amplitude;
-                deep_snr[p] = ow.snr;
-                nh_phase[p] = ow.phase;
+            if (!_secondary.empty() || !_l1co.empty()) {
+                // Dataless pilot: wipe the KNOWN secondary overlay at its best-fitting alignment
+                // -> deep coherent |A| past the primary period (no nav-bit estimate). L5 Q5 uses
+                // one PRN-independent NH overlay; L1C-P uses the per-PRN L1CO, picked by the
+                // slot's current PRN (a slot's PRN can change as the search re-assigns channels).
+                const std::vector<int8_t>* ov = &_secondary;
+                if (_l1co.empty()) {
+                    // L5: _secondary already points at the shared overlay.
+                } else {
+                    const int prn = (int)std::lround(ref_prn[p]);
+                    ov = (prn >= 1 && prn <= (int)_l1co.size()) ? &_l1co[(size_t)(prn - 1)] : nullptr;
+                }
+                if (ov && !ov->empty()) {
+                    const auto ow = gnss::overlay_wipe(_navbuf[p], _navutc[p], *ov);
+                    rec[8] = (float)ow.amplitude;
+                    deep_snr[p] = ow.snr;
+                    nh_phase[p] = ow.phase;
+                }
                 if (!_rolling) { _navbuf[p].clear(); _navutc[p].clear(); }
             } else if (_navwipe_bit_records > 0) {
                 rec[8] = (float)navwipe_amplitude(_navbuf[p], _navutc[p], &deep_snr[p]); // deep |A|
