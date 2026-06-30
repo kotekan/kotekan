@@ -489,6 +489,9 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         meta->dim[0] = 1;
         meta->dim[1] = out_bufs[i]->frame_size / sample_size;
         meta->dim[2] = sample_size;
+        meta->dim_scaling[0] = 1;
+        meta->dim_scaling[1] = 1;
+        meta->dim_scaling[2] = 1;
         meta->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */
@@ -540,6 +543,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
     std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
     meta->dim[0] = lost_samples_buf->frame_size; // One byte per time sample
+    meta->dim_scaling[0] = 1;
     meta->dims = 1;
     std::strncpy(meta->name, "lost_samples", sizeof meta->name);
     meta->set_strides_simple();
