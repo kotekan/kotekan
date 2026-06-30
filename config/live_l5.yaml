@@ -124,7 +124,7 @@ track_06: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_06, out_buf: rec_0
 track_07: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_07, out_buf: rec_07, channel_offset: 7, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hops_per_record: 1000 }
 track_08: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_08, out_buf: rec_08, channel_offset: 8, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hops_per_record: 1000 }
 track_09: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_09, out_buf: rec_09, channel_offset: 9, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hops_per_record: 1000 }
-combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_00, rec_01, rec_02, rec_03, rec_04, rec_05, rec_06, rec_07, rec_08, rec_09], out_buf: out_buf, integration_length: 50 }
+combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_00, rec_01, rec_02, rec_03, rec_04, rec_05, rec_06, rec_07, rec_08, rec_09], out_buf: out_buf, integration_length: 50, secondary_overlay: L5_NH20 }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpsl5", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 beamcube: { kotekan_stage: GnssBeamCube, in_bufs: [rec_00, rec_01, rec_02, rec_03, rec_04, rec_05, rec_06, rec_07, rec_08, rec_09], out_buf: beam_buf, channel0: 0, integration_length: 50 }
 beamrec: { kotekan_stage: rawFileWrite, in_buf: beam_buf, base_dir: "/tmp/gpsl5", file_name: "beam", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }

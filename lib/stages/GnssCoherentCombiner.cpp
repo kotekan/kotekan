@@ -3,10 +3,14 @@
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
 #include "visUtil.hpp"      // for frameID
 
+#include "gnssChannelizedDespread.hpp" // for overlay_wipe
+#include "gpsL5Code.hpp"               // for L5_NH10/NH20 (secondary overlay sequences)
+
 #include "json.hpp"   // for json
 #include <algorithm> // for max
 #include <cmath>      // for hypot, sqrt
 #include <functional> // for bind
+#include <string>     // for string
 
 using kotekan::Config;
 using kotekan::bufferContainer;
@@ -37,7 +41,16 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _emit_every = std::max(1, config.get_default<int>(unique_name, "output_every",
                                                       std::max(1, _integration_length / 10)));
     _navwipe_bit_records = config.get_default<int>(unique_name, "navwipe_bit_records", 0);
-    if (_navwipe_bit_records > 0) {
+    // Known secondary overlay (the L5 Neuman-Hofman pilot overlay) -> deep coherent integration
+    // by searching its alignment, instead of the squaring nav-bit estimate. Mutually exclusive
+    // with navwipe_bit_records (a pilot has no nav bit). Both buffer the per-record A.
+    const std::string sec = config.get_default<std::string>(unique_name, "secondary_overlay", "");
+    if (sec == "L5_NH20")
+        _secondary.assign(gps::L5_NH20.begin(), gps::L5_NH20.end());
+    else if (sec == "L5_NH10")
+        _secondary.assign(gps::L5_NH10.begin(), gps::L5_NH10.end());
+    _wipe_buffer = (_navwipe_bit_records > 0 || !_secondary.empty());
+    if (_wipe_buffer) {
         _navbuf.assign(_n_prn, {});
         _navutc.assign(_n_prn, {});
     }
@@ -49,6 +62,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_deep_snr.assign(_n_prn, 0.0f);
     _st_amp_snr.assign(_n_prn, 0.0f);
     _st_amp_dbi.assign(_n_prn, 0.0f);
+    _st_nh_phase.assign(_n_prn, -1);
     _st_dop.assign(_n_prn, 0.0f);
     _st_cp.assign(_n_prn, 0.0f);
 }
@@ -116,7 +130,7 @@ void GnssCoherentCombiner::main_thread() {
                 acc_ar[p] += alpha * (ar - acc_ar[p]);
                 acc_ai[p] += alpha * (ai - acc_ai[p]);
                 acc_nchan[p] += alpha * (nchan - acc_nchan[p]);
-                if (_navwipe_bit_records > 0) { // sliding window of the last _integration_length recs
+                if (_wipe_buffer) { // sliding window of the last _integration_length recs (deep wipe)
                     _navbuf[p].emplace_back(ar, ai);
                     _navutc[p].push_back(utc_p);
                     if ((int)_navbuf[p].size() > _integration_length) {
@@ -134,7 +148,7 @@ void GnssCoherentCombiner::main_thread() {
                 acc_ar[p] += ar;
                 acc_ai[p] += ai;
                 acc_nchan[p] += nchan;
-                if (_navwipe_bit_records > 0) { // per-record (A, capture-UTC) for the nav-bit wipe
+                if (_wipe_buffer) { // per-record (A, capture-UTC) for the deep wipe
                     _navbuf[p].emplace_back(ar, ai);
                     _navutc[p].push_back(utc_p);
                 }
@@ -168,6 +182,7 @@ void GnssCoherentCombiner::main_thread() {
                                     : 1.0 / (double)n_acc;
         std::vector<double> deep_snr(_n_prn, 0.0); // significance of the deep detection (for REST)
         std::vector<double> amp_snr(_n_prn, 0.0);  // noise-debiased incoherent significance (REST)
+        std::vector<int> nh_phase(_n_prn, -1);     // secondary-overlay alignment found (L5; -1 = n/a)
         std::vector<double> amp_dbi(_n_prn, 0.0);  // noise-debiased (unbiased) signal amplitude
         const double Keff = _rolling ? (double)_integration_length : (double)n_acc;
         for (int p = 0; p < _n_prn; ++p) {
@@ -197,7 +212,15 @@ void GnssCoherentCombiner::main_thread() {
                 // ~1 for noise REGARDLESS of K (a stable lock threshold) and grows for real signal.
                 amp_snr[p] = noise > 1e-12 ? s2 * std::pow(Keff, 0.25) / noise : 0.0;
             }
-            if (_navwipe_bit_records > 0) {
+            if (!_secondary.empty()) {
+                // Dataless pilot (L5 Q5): wipe the KNOWN secondary overlay at its best-fitting
+                // alignment -> deep coherent |A| past the 1 ms primary period (no nav-bit estimate).
+                const auto ow = gnss::overlay_wipe(_navbuf[p], _navutc[p], _secondary);
+                rec[8] = (float)ow.amplitude;
+                deep_snr[p] = ow.snr;
+                nh_phase[p] = ow.phase;
+                if (!_rolling) { _navbuf[p].clear(); _navutc[p].clear(); }
+            } else if (_navwipe_bit_records > 0) {
                 rec[8] = (float)navwipe_amplitude(_navbuf[p], _navutc[p], &deep_snr[p]); // deep |A|
                 if (!_rolling) { // block clears the window; rolling slides it (capped above)
                     _navbuf[p].clear();
@@ -221,6 +244,7 @@ void GnssCoherentCombiner::main_thread() {
                 _st_coh[p] = rec[6];
                 _st_deep[p] = rec[8];
                 _st_deep_snr[p] = (float)deep_snr[p];
+                _st_nh_phase[p] = nh_phase[p];
                 _st_amp_snr[p] = (float)amp_snr[p];
                 _st_amp_dbi[p] = (float)amp_dbi[p];
                 _st_dop[p] = rec[1];
@@ -241,6 +265,7 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"deep_amplitude", _st_deep[p]},
                          {"deep_snr", _st_deep_snr[p]},
                          {"amp_snr", _st_amp_snr[p]},
+                         {"nh_phase", _st_nh_phase[p]},
                          {"unbiased_amplitude", _st_amp_dbi[p]},
                          {"doppler_hz", _st_dop[p]},
                          {"code_phase_chips", _st_cp[p]}});

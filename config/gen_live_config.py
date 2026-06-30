@@ -74,7 +74,8 @@ SIGNALS = {
     # win=100: L5 records are only 1 ms, so match the monolithic's 100 ms incoherent depth (it was
     # 20 ms = 5x shallower, which is why the channelized cleared only the strongest sat vs mono's six).
     "L5_Q":   dict(name="GPS_L5_Q",   freq=1176.45, chip=10.23e6, dstep=250.0, snr=10.0, N=10, sbw=10.0,
-                   win=100, period=1e-3, cap_coh=True,  out="live_l5.yaml",   base="/tmp/gpsl5"),
+                   win=100, period=1e-3, cap_coh=True,  out="live_l5.yaml",   base="/tmp/gpsl5",
+                   overlay="L5_NH20"), # dataless Q5 pilot: combiner wipes the known NH20 -> deep |A|
 }
 SIG = os.environ.get("GNSS_SIGNAL", "L1CA")
 if SIG not in SIGNALS:
@@ -236,8 +237,12 @@ for c in COV:
     L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: %g%s }" % (c, c, c, c, FLL_LOCK_AMP, HOPS))
 comb_in = "[" + ", ".join("rec_%02d" % c for c in COV) + "]"
 _roll = (", integration_mode: rolling" if INTEG_MODE == "rolling" else "")
-L.append("combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: %s, out_buf: out_buf, integration_length: %d%s }"
-         % (comb_in, INTEG_LEN, _roll))
+# Dataless-pilot deep integration: the combiner wipes a KNOWN secondary overlay (the L5 Q5
+# NH20) at its searched alignment -> deep coherent |A| past the 1 ms primary period (slot 8 /
+# deep_amplitude + deep_snr), no nav-bit estimate. Empty for signals without an overlay.
+_overlay = (", secondary_overlay: %s" % S["overlay"]) if S.get("overlay") else ""
+L.append("combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: %s, out_buf: out_buf, integration_length: %d%s%s }"
+         % (comb_in, INTEG_LEN, _roll, _overlay))
 L.append('record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "%s", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }' % BASE_DIR)
 # Beam cube: the SAME per-channel tracker records, integrated PER CHANNEL (no cross-channel sum)
 # -> beam(t, frequency). Frequency-resolves the antenna beam (matters across L5's ~10 MHz). Second

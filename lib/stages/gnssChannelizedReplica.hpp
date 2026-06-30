@@ -53,12 +53,14 @@ public:
     /// Replica for PRN index @c p over @c n_hops hops from @c window_start_sample at
     /// the given code phase + Doppler; returns [spectrum_length][n_hops] channels.
     /// @c nh_phase aligns the secondary (Neuman-Hofman) overlay: the +-1 overlay chip for
-    /// absolute primary-period index @c k is @c secondary[(k + nh_phase) mod len]. No effect
-    /// for signals without a secondary code (L1 C/A, L2C); the alignment is unknown a priori
-    /// (tie to GPS time or search the @ref secondary_length() phases that maximise coherence).
+    /// absolute primary-period index @c k is @c secondary[(k + nh_phase) mod len]. NEGATIVE
+    /// (the default) leaves the overlay OFF -> the RAW despread (so a downstream search, e.g.
+    /// @ref overlay_wipe, can find the alignment from the per-record A); set it >=0 once the
+    /// alignment is known (from GPS time, or that search). No effect for signals without a
+    /// secondary code (L1 C/A, L2C).
     std::vector<std::vector<std::complex<float>>>
     channels(int p, long long window_start_sample, double code_phase_chips, double doppler_hz,
-             int n_hops, int nh_phase = 0);
+             int n_hops, int nh_phase = -1);
 
     /// Hop-rate channelized replica for the listed channels -- numerically EQUAL to
     /// @ref channels() (to ~machine precision) but built per chip, not per sample. The
@@ -77,7 +79,7 @@ public:
     std::vector<std::vector<std::complex<float>>>
     channels_hoprate(int p, long long window_start_sample, double code_phase_chips,
                      double doppler_hz, int n_hops, const std::vector<int>& want,
-                     const std::function<float(long long)>& nav_bit = {}, int nh_phase = 0) const;
+                     const std::function<float(long long)>& nav_bit = {}, int nh_phase = -1) const;
 
     /// The slowly-varying half of the hop-rate generator: the cumulative channel filters
     /// (both carrier images) for @c want at @c doppler_hz. Depends only on the carrier
@@ -97,7 +99,7 @@ public:
     std::vector<std::vector<std::complex<float>>>
     hoprate_stream(const HopRateFilter& f, int p, long long window_start_sample,
                    double code_phase_chips, double doppler_hz, int n_hops,
-                   const std::function<float(long long)>& nav_bit = {}, int nh_phase = 0) const;
+                   const std::function<float(long long)>& nav_bit = {}, int nh_phase = -1) const;
 
     /// Global channel indices whose passband covers the carrier at @c doppler_hz.
     std::vector<int> covering_bins(double doppler_hz, double doppler_margin_hz) const;

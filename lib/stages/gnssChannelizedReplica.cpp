@@ -181,10 +181,11 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
             if (n >= 0) {
                 const double phase = cp0 + (double)n * chip_per_sample;
                 int8_t c = code_chip(p, phase);
-                // Apply the secondary (NH) overlay per primary period (no-op if none): the
-                // primary code repeats every _eff_code_length chips, the overlay flips at
-                // those rollovers, so a multi-period coherent despread stays aligned.
-                if (_secondary_length > 0)
+                // Apply the secondary (NH) overlay per primary period when an alignment is set
+                // (nh_phase >= 0): the primary code repeats every _eff_code_length chips, the
+                // overlay flips at those rollovers, so a multi-period coherent despread stays
+                // aligned. nh_phase < 0 -> overlay off (raw despread, the default).
+                if (_secondary_length > 0 && nh_phase >= 0)
                     c = (int8_t)(c * overlay_sign((long long)std::floor(phase / (double)_eff_code_length),
                                                   nh_phase));
                 // Real passband replica code*cos(carrier); the r2c bank keeps the
@@ -281,7 +282,7 @@ ChannelizedReplicaBank::hoprate_stream(const HopRateFilter& f, int p, long long 
                 double cv = (double)code_chip(p, (double)cidx);
                 if (nav_bit)
                     cv *= nav_bit(cidx);
-                if (_secondary_length > 0)
+                if (_secondary_length > 0 && nh_phase >= 0)
                     cv *= overlay_sign(
                         (long long)std::floor((double)cidx / (double)_eff_code_length), nh_phase);
                 sA += cv * (f.PhiA[ci][khi + 1] - f.PhiA[ci][klo]);
