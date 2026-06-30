@@ -3,6 +3,7 @@
 #include "fmt.hpp"  // for compile_string_to_view, format, fmt
 #include "json.hpp" // for json, basic_json, iter_impl, operator>>
 
+#include <cctype>    // for tolower
 #include <cstddef>   // for size_t
 #include <cstdint>   // for int32_t, uint8_t
 #include <fstream>   // for basic_ifstream, basic_istream, ifstream
@@ -124,10 +125,10 @@ json Config::get_value(const std::string& base_path, const std::string& name) co
 
         json::json_pointer value_pointer(value_path);
         const json& value = _json.at(value_pointer);
-        // Note the access of a leaf value (not a branch/object) when tracking
-        // is enabled, attributed to the requesting base path.
-        if (_track_access && !value.is_object())
-            record_access(value_path, base_path);
+        // Note the access when tracking is enabled, attributed to the
+        // requesting base path. A whole-object fetch records all its leaves.
+        if (_usage_report_level != UsageReportLevel::off)
+            record_access(value_path, value, base_path);
         return value;
     }
     throw std::runtime_error(
@@ -172,13 +173,51 @@ void Config::dump_config() const {
     INFO_NON_OO("Config: {:s}", _json.dump(4));
 }
 
-void Config::set_track_access(bool enable) {
-    _track_access = enable;
+void Config::set_usage_report_level(UsageReportLevel level) {
+    _usage_report_level = level;
 }
 
-void Config::record_access(const std::string& leaf_path, const std::string& base_path) const {
+Config::UsageReportLevel Config::parse_usage_report_level(const json& value) {
+    if (value.is_boolean())
+        return value.get<bool>() ? UsageReportLevel::info : UsageReportLevel::off;
+    if (value.is_string()) {
+        std::string s = value.get<std::string>();
+        for (char& c : s)
+            c = std::tolower(static_cast<unsigned char>(c));
+        if (s == "off" || s == "none" || s == "false")
+            return UsageReportLevel::off;
+        if (s == "info" || s == "true" || s == "on")
+            return UsageReportLevel::info;
+        if (s == "warn" || s == "warning")
+            return UsageReportLevel::warn;
+        if (s == "error")
+            return UsageReportLevel::error;
+        if (s == "fatal" || s == "fatal_error")
+            return UsageReportLevel::fatal;
+    }
+    throw std::runtime_error(
+        fmt::format(fmt("Invalid log_config_usage value {:s}; expected a boolean or one of "
+                        "'off', 'info', 'warn', 'error', 'fatal_error'."),
+                    value.dump()));
+}
+
+void Config::record_access(const std::string& path, const json& value,
+                           const std::string& base_path) const {
     std::lock_guard<std::mutex> lock(access_lock);
-    _accessed[leaf_path].insert(base_path);
+    record_access_locked(path, value, base_path);
+}
+
+void Config::record_access_locked(const std::string& path, const json& value,
+                                  const std::string& base_path) const {
+    if (value.is_object()) {
+        // The caller fetched a whole block (e.g. gpuProcess reading its
+        // in_buffers/out_buffers map) and consumes every entry, so mark them all.
+        for (auto it = value.begin(); it != value.end(); ++it)
+            record_access_locked(fmt::format(fmt("{:s}/{:s}"), path, it.key()), it.value(),
+                                 base_path);
+    } else {
+        _accessed[path].insert(base_path);
+    }
 }
 
 // Leaves that are never read through get(): the framework dispatch markers
@@ -197,6 +236,11 @@ static bool is_framework_key(const std::string& path) {
 void Config::collect_leaf_paths(const json& j, const std::string& path,
                                 vector<std::string>& leaves) const {
     if (j.is_object()) {
+        // configUpdater-managed blocks are consumed via the update endpoint
+        // (a get_full_config_json() tree walk), not through get(), so their
+        // values never register as accessed -- don't count them.
+        if (j.contains("kotekan_update_endpoint"))
+            return;
         for (auto it = j.begin(); it != j.end(); ++it)
             collect_leaf_paths(it.value(), fmt::format(fmt("{:s}/{:s}"), path, it.key()), leaves);
     } else if (!is_framework_key(path)) {
@@ -205,7 +249,7 @@ void Config::collect_leaf_paths(const json& j, const std::string& path,
 }
 
 void Config::log_access_summary() const {
-    if (!_track_access)
+    if (_usage_report_level == UsageReportLevel::off)
         return;
 
     // Enumerate every leaf in the config, then split into accessed vs. not,
@@ -217,27 +261,60 @@ void Config::log_access_summary() const {
     std::string not_accessed;
     std::size_t n_accessed = 0;
 
-    std::lock_guard<std::mutex> lock(access_lock);
-    for (const std::string& leaf : leaves) {
-        auto it = _accessed.find(leaf);
-        if (it == _accessed.end()) {
-            not_accessed += fmt::format(fmt("\n    {:s}"), leaf);
-            continue;
+    {
+        std::lock_guard<std::mutex> lock(access_lock);
+        for (const std::string& leaf : leaves) {
+            auto it = _accessed.find(leaf);
+            if (it == _accessed.end()) {
+                not_accessed += fmt::format(fmt("\n    {:s}"), leaf);
+                continue;
+            }
+            n_accessed++;
+            std::string base_paths;
+            for (const std::string& base_path : it->second) {
+                if (!base_paths.empty())
+                    base_paths += ", ";
+                base_paths += base_path;
+            }
+            accessed += fmt::format(fmt("\n    {:s}  <- {:s}"), leaf, base_paths);
         }
-        n_accessed++;
-        std::string base_paths;
-        for (const std::string& base_path : it->second) {
-            if (!base_paths.empty())
-                base_paths += ", ";
-            base_paths += base_path;
-        }
-        accessed += fmt::format(fmt("\n    {:s}  <- {:s}"), leaf, base_paths);
     }
 
-    INFO_NON_OO("Config usage summary: {:d} of {:d} leaf items accessed.\n"
-                "  Accessed (item <- requesting paths):{:s}\n"
-                "  Not accessed:{:s}",
-                n_accessed, leaves.size(), accessed, not_accessed);
+    const std::size_t n_unused = leaves.size() - n_accessed;
+    const std::string summary =
+        fmt::format(fmt("Config usage summary: {:d} of {:d} leaf items accessed.\n"
+                        "  Accessed (item <- requesting paths):{:s}\n"
+                        "  Not accessed:{:s}"),
+                    n_accessed, leaves.size(), accessed, not_accessed);
+
+    // With nothing unused there is nothing to flag, regardless of level.
+    if (n_unused == 0) {
+        INFO_NON_OO("{:s}", summary);
+        return;
+    }
+
+    switch (_usage_report_level) {
+        case UsageReportLevel::warn:
+            WARN_NON_OO("{:s}", summary);
+            break;
+        case UsageReportLevel::error:
+            ERROR_NON_OO("{:s}", summary);
+            break;
+        case UsageReportLevel::fatal:
+            ERROR_NON_OO("{:s}", summary);
+            // Note: not FATAL_ERROR_NON_OO, which throws -- this runs from
+            // ~kotekanMode (a noexcept destructor). Set the error message and
+            // exit code directly so kotekan exits non-zero after teardown.
+            kotekanLogging::set_error_message(
+                fmt("Config usage: {:d} config item(s) were not accessed."), n_unused);
+            exit_kotekan(ReturnCode::FATAL_ERROR);
+            break;
+        case UsageReportLevel::info:
+        case UsageReportLevel::off:
+        default:
+            INFO_NON_OO("{:s}", summary);
+            break;
+    }
 }
 
 const json& Config::get_full_config_json() const {

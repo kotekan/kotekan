@@ -194,12 +194,21 @@ and referenced by name in child blocks.
 Config usage tracking
 ---------------------
 
-Set the top-level ``log_config_usage: true`` to have kotekan record which config leaf items (scalar
+Set the top-level ``log_config_usage`` to have kotekan record which config leaf items (scalar
 values, strings, and lists -- not the object blocks that contain them) are actually read while a
-pipeline runs, and by which path. At shutdown an ``INFO`` summary is logged listing the accessed
-items (with the requesting base paths, typically stage ``unique_name``\ s) and the items that were
-never accessed. This is useful for spotting stale or misspelled config keys that no stage consumes.
-The feature is off by default and adds no overhead unless enabled.
+pipeline runs, and by which path. At shutdown a summary is logged listing the accessed items (with
+the requesting base paths, typically stage ``unique_name``\ s) and the items that were never
+accessed. This is useful for spotting stale or misspelled config keys that no stage consumes. The
+feature is off by default and adds no overhead unless enabled.
+
+The value selects how unused items are reported:
+
+- ``false`` (default) -- disabled.
+- ``true`` / ``info`` -- log the summary at ``INFO``.
+- ``warn`` / ``error`` -- log the summary at that severity when one or more items went unused
+  (otherwise ``INFO``).
+- ``fatal_error`` -- additionally fail kotekan with a non-zero exit when any item went unused. Useful
+  in CI to reject configs that carry stale parameters.
 
 Framework dispatch markers (``kotekan_buffer``, ``kotekan_stage``, ``kotekan_metadata_pool``,
 ``kotekan_update_endpoint``) are excluded from the summary: the factories and config updater consume

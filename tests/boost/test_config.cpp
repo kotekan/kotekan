@@ -144,7 +144,7 @@ BOOST_AUTO_TEST_CASE(_access_tracking) {
 
     // With tracking enabled, get() must still resolve values normally, while
     // recording the resolved leaf paths and the requesting base paths.
-    config.set_track_access(true);
+    config.set_usage_report_level(Config::UsageReportLevel::info);
 
     BOOST_CHECK_EQUAL(config.get<int>("/stage_a", "value"), 10);
     BOOST_CHECK_EQUAL(config.get<int>("/stage_b", "value"), 20);
@@ -160,4 +160,24 @@ BOOST_AUTO_TEST_CASE(_access_tracking) {
 
     // Tracking does not perturb subsequent reads.
     BOOST_CHECK_EQUAL(config.get<int>("/stage_b", "value"), 20);
+}
+
+BOOST_AUTO_TEST_CASE(_parse_usage_report_level) {
+    using L = Config::UsageReportLevel;
+
+    // Boolean forms.
+    BOOST_CHECK(Config::parse_usage_report_level(json(false)) == L::off);
+    BOOST_CHECK(Config::parse_usage_report_level(json(true)) == L::info);
+
+    // String forms (case-insensitive), including aliases.
+    BOOST_CHECK(Config::parse_usage_report_level(json("off")) == L::off);
+    BOOST_CHECK(Config::parse_usage_report_level(json("info")) == L::info);
+    BOOST_CHECK(Config::parse_usage_report_level(json("WARN")) == L::warn);
+    BOOST_CHECK(Config::parse_usage_report_level(json("error")) == L::error);
+    BOOST_CHECK(Config::parse_usage_report_level(json("fatal_error")) == L::fatal);
+    BOOST_CHECK(Config::parse_usage_report_level(json("fatal")) == L::fatal);
+
+    // Anything else is a hard error so config typos are caught at startup.
+    BOOST_CHECK_THROW(Config::parse_usage_report_level(json("loud")), std::runtime_error);
+    BOOST_CHECK_THROW(Config::parse_usage_report_level(json(3)), std::runtime_error);
 }
