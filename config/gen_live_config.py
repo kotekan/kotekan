@@ -86,7 +86,7 @@ SIGNALS = {
     # combiner secondary_overlay wipe (deep |A|) is the follow-on once the L1CO generator lands. L1
     # is out of CHORD's band, so this is an airspy-prototype + BOC pathfinder, not a mapping handle.
     "L1C_P":  dict(name="GPS_L1C_P",  freq=1575.42, chip=1.023e6, dstep=50.0,  snr=8.0,  N=10, sbw=2.5,
-                   win=20, period=10e-3, cap_coh=True,  out="live_l1c.yaml",  base="/tmp/gpsl1c"),
+                   win=20, period=10e-3, cap_coh=True,  boc_m=1, out="live_l1c.yaml",  base="/tmp/gpsl1c"),
     # win=100: L5 records are only 1 ms, so match the monolithic's 100 ms incoherent depth (it was
     # 20 ms = 5x shallower, which is why the channelized cleared only the strongest sat vs mono's six).
     "L5_Q":   dict(name="GPS_L5_Q",   freq=1176.45, chip=10.23e6, dstep=250.0, snr=10.0, N=10, sbw=10.0,
@@ -137,10 +137,15 @@ BASE_DIR = os.environ.get("BASE_DIR", S["base"])
 OVERLAY = os.environ.get("OVERLAY", S.get("overlay", "") or "")
 
 # --- front-end / channel plan --------------------------------------------------
+# SBW overrides the airspy front-end bandwidth (MHz): 2.5 -> 5 MSPS / 1.25 MHz IF, 10 -> 20 MSPS /
+# 5 MHz IF. Default = the signal row's sbw. There is no reason to lock a BOC signal (L1C, later
+# Galileo E1/E6) to 2.5 MHz: its power sits in TWO +-boc_m*1.023 MHz lobes, and at 2.5 MHz the
+# upper lobe (~2.27 MHz) is clipped at the band edge. SBW=10 captures BOTH full lobes -> ~+2-3 dB
+# and a sharper BOC correlation peak. FS / F_OFFSET / BIN_W / the covering plan all derive from it.
+SBW = float(os.environ.get("SBW", S["sbw"]))  # airspy device sample_bw (MHz)
 N = S["N"]                      # PFB channels: Fs/(2N) wide each (L1 N=12 ~208 kHz; L2C/L5 N=10)
-FS = 2.0 * S["sbw"] * 1e6       # real rate = 2x the airspy device sample_bw (2.5->5e6, 10->20e6)
+FS = 2.0 * SBW * 1e6            # real rate = 2x the airspy device sample_bw (2.5->5e6, 10->20e6)
 F_OFFSET = FS / 4.0             # = Fs/4; carrier lands on bin N/2 (even N -> bin centre)
-SBW = S["sbw"]                  # airspy device sample_bw (MHz)
 # Emit Fs/f_offset in "<x>e6" form with a guaranteed decimal point: YAML 1.1 needs the dot to
 # read scientific notation as a FLOAT (bare "5e+06" parses as a STRING -> config get<double> fails).
 FS_STR = "%se6" % (FS / 1e6)
@@ -153,10 +158,13 @@ if S["cap_coh"] and CODE_SAMPLES % (2 * N) != 0:
         "fft_len=2N=%d must divide code_samples=%d for an integer-code-period coherent window "
         "(else the incoherent search smears); pick N so 2N | %d (e.g. N=10 -> 5000 hops/period)"
         % (2 * N, CODE_SAMPLES, CODE_SAMPLES))
-# Covering channels: r2c bin j centred at j*BIN_W over [0, Fs/2); keep those whose
-# passband overlaps the signal's occupied band carrier +- (chip_rate + doppler_margin)
-# -- mirrors gnss::covering_channels (half_bandwidth = chip_rate for BPSK).
-_half = S["chip"] + DOPPLER_MARGIN
+# Covering channels: r2c bin j centred at j*BIN_W over [0, Fs/2); keep those whose passband
+# overlaps the signal's occupied band carrier +- _half. For BPSK _half = chip_rate (mirrors
+# gnss::covering_channels). For BOC the power is in lobes out at +-boc_m*1.023 MHz, so the
+# occupied band runs to ~boc_m*1.023 MHz + chip_rate -- WITHOUT this the wide (10 MHz) plan would
+# keep only the central (null) bins and MISS the BOC lobes. At 2.5 MHz it is a no-op (all bins
+# already covered). boc_m defaults to 0 (BPSK).
+_half = S.get("boc_m", 0) * 1.023e6 + S["chip"] + DOPPLER_MARGIN
 _lo, _hi = F_OFFSET - _half, F_OFFSET + _half
 COV = [j for j in range(N)
        if (j * BIN_W - 0.5 * BIN_W) < _hi and (j * BIN_W + 0.5 * BIN_W) > _lo]
