@@ -21,6 +21,38 @@ constexpr int L1CP_INS[32] = {
 // 7-chip insertion pattern "0110100" in bipolar (+1 for 0, -1 for 1).
 constexpr int8_t INS[7] = {1, -1, -1, 1, -1, 1, 1};
 
+// L1CO overlay: per-PRN 11-stage Galois LFSR feedback polynomial (S1_poly) and initial state
+// (S1_init), octal, PRN 1..32 (IS-GPS-800 / PocketSDR sec_code_L1CP). PocketSDR clocks the LFSR
+// MSB-first after bit-reversing the low 11 bits of both the tap (poly>>1) and the init; we
+// reproduce that exactly. GPS PRNs 1..63 use this S1 LFSR alone (the second S2 product code
+// applies only to PRN>=64), so this single-LFSR form is exact for every GPS satellite.
+constexpr int L1CO_S1_POLY[32] = {
+    05111, 05421, 05501, 05403, 06417, 06141, 06351, 06501, 06205, 06235, 07751,
+    06623, 06733, 07627, 05667, 05051, 07665, 06325, 04365, 04745, 07633, 06747,
+    04475, 04225, 07063, 04423, 06651, 04161, 07237, 04473, 05477, 06163};
+constexpr int L1CO_S1_INIT[32] = {
+    03266, 02040, 01527, 03307, 03756, 03026, 00562, 00420, 03415, 00337, 00265,
+    01230, 02204, 01440, 02412, 03516, 02761, 03750, 02701, 01206, 01544, 01774,
+    00546, 02213, 03707, 02051, 03650, 01777, 03203, 01762, 02100, 00571};
+
+// Reverse the low 11 bits of r (PocketSDR rev_reg with N=11).
+inline unsigned rev11(unsigned r) {
+    unsigned rr = 0;
+    for (int i = 0; i < 11; ++i)
+        rr = (rr << 1) | ((r >> (unsigned)i) & 1u);
+    return rr;
+}
+
+// Parity (XOR of all set bits) -- the LFSR feedback. Portable (no __builtin_parity dependency).
+inline unsigned parity(unsigned x) {
+    unsigned p = 0;
+    while (x) {
+        p ^= 1u;
+        x &= x - 1u;
+    }
+    return p;
+}
+
 // Legendre sequence L (length N_L), built once: +1 everywhere, -1 at quadratic residues
 // mod N_L (PocketSDR convention; L(0)=+1). Static so it's computed on first use only.
 const std::array<int8_t, N_L>& legendre() {
@@ -51,6 +83,19 @@ std::array<int8_t, L1C_CODE_LENGTH> generate_l1cp_code(int prn) {
         code[(size_t)t] = INS[t - (p - 1)];
     for (int t = p + 6; t < L1C_CODE_LENGTH; ++t) // Weil chips after, shifted by the 7 inserted
         code[(size_t)t] = weil(t - 7);
+    return code;
+}
+
+std::array<int8_t, L1CO_LENGTH> generate_l1co_code(int prn) {
+    if (prn < 1 || prn > 32)
+        throw std::out_of_range("generate_l1co_code: PRN must be 1..32");
+    const unsigned tap = rev11((unsigned)L1CO_S1_POLY[prn - 1] >> 1);
+    unsigned R = rev11((unsigned)L1CO_S1_INIT[prn - 1]);
+    std::array<int8_t, L1CO_LENGTH> code;
+    for (int i = 0; i < L1CO_LENGTH; ++i) {
+        code[(size_t)i] = (R & 1u) ? (int8_t)-1 : (int8_t)1; // CHIP: bit 0 -> +1, bit 1 -> -1
+        R = (parity(R & tap) << 10) | (R >> 1);              // Galois clock, feedback into MSB
+    }
     return code;
 }
 

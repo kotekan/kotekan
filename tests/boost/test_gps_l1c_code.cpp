@@ -5,23 +5,28 @@
 #include <array>
 #include <boost/test/included/unit_test.hpp>
 #include <cstdint>
+#include <cstdlib> // for std::abs(int)
 #include <numeric>
 #include <stdexcept>
 
 using gps::generate_l1cp_code;
+using gps::generate_l1co_code;
 using gps::L1C_CODE_LENGTH;
+using gps::L1CO_LENGTH;
 
 namespace {
 
 // First n chips packed MSB-first: chip -1 -> bit 1, +1 -> bit 0.
-uint32_t first_bits(const std::array<int8_t, L1C_CODE_LENGTH>& code, int n) {
+template<size_t N>
+uint32_t first_bits(const std::array<int8_t, N>& code, int n) {
     uint32_t v = 0;
     for (int i = 0; i < n; ++i)
         v = (v << 1) | ((code[i] == -1) ? 1u : 0u);
     return v;
 }
 
-int balance(const std::array<int8_t, L1C_CODE_LENGTH>& code) {
+template<size_t N>
+int balance(const std::array<int8_t, N>& code) {
     return std::accumulate(code.begin(), code.end(), 0);
 }
 
@@ -52,4 +57,39 @@ BOOST_AUTO_TEST_CASE(codes_are_bipolar_full_length_and_distinct) {
 BOOST_AUTO_TEST_CASE(invalid_prn_throws) {
     BOOST_CHECK_THROW(generate_l1cp_code(0), std::out_of_range);
     BOOST_CHECK_THROW(generate_l1cp_code(33), std::out_of_range);
+}
+
+// L1CO overlay. first-24-symbol octals are regression pins from the PocketSDR sec_code_L1CP
+// 11-stage LFSR (S1 only -- exact for GPS PRNs). balance == 0 for EVERY PRN (each 1800-symbol
+// overlay is exactly 900/900) is a hard, table-independent cross-check of the LFSR. PRN18/23 are
+// the GPS III birds actually broadcasting L1C, so their pins are the operationally relevant ones.
+BOOST_AUTO_TEST_CASE(l1co_first24_and_balance) {
+    BOOST_CHECK_EQUAL(first_bits(generate_l1co_code(1), 24), 065550354u);
+    BOOST_CHECK_EQUAL(first_bits(generate_l1co_code(5), 24), 077357174u);
+    BOOST_CHECK_EQUAL(first_bits(generate_l1co_code(10), 24), 006765531u);
+    BOOST_CHECK_EQUAL(first_bits(generate_l1co_code(18), 24), 077214573u);
+    BOOST_CHECK_EQUAL(first_bits(generate_l1co_code(23), 24), 013144242u);
+    for (int prn = 1; prn <= 32; ++prn) {
+        auto c = generate_l1co_code(prn);
+        BOOST_REQUIRE_EQUAL(c.size(), (size_t)L1CO_LENGTH);
+        BOOST_CHECK_EQUAL(balance(c), 0); // every overlay is exactly balanced
+        for (int8_t x : c)
+            BOOST_CHECK(x == 1 || x == -1);
+    }
+}
+
+// Distinct PRNs decorrelate (full-length cross-correlation small vs the 1800 autocorrelation);
+// and the overlay is independent of the primary -- a near-orthogonal pair pins both generators.
+BOOST_AUTO_TEST_CASE(l1co_distinct_and_low_cross_correlation) {
+    auto a = generate_l1co_code(18), b = generate_l1co_code(23);
+    BOOST_CHECK(a != b);
+    int cross = 0;
+    for (int i = 0; i < L1CO_LENGTH; ++i)
+        cross += a[(size_t)i] * b[(size_t)i];
+    BOOST_CHECK_LT(std::abs(cross), L1CO_LENGTH / 10); // |PRN18.PRN23| << 1800 (auto)
+}
+
+BOOST_AUTO_TEST_CASE(l1co_invalid_prn_throws) {
+    BOOST_CHECK_THROW(generate_l1co_code(0), std::out_of_range);
+    BOOST_CHECK_THROW(generate_l1co_code(33), std::out_of_range);
 }

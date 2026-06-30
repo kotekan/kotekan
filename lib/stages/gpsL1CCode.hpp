@@ -8,10 +8,10 @@
  * W(t) = L(t)*L((t+w) mod 10223) with a fixed 7-chip pattern ("0110100") inserted at a
  * per-PRN index p -- so each PRN is keyed by a (Weil index w, insertion index p) pair from
  * IS-GPS-800 Tables 3.2-2 / 6.3-1 (transcribed from PocketSDR sdr_code). The pilot also
- * carries a 1800-symbol L1CO overlay (18 s) -- a separate refinement, not generated here yet.
+ * carries a 1800-symbol L1CO overlay (18 s) -- @ref generate_l1co_code, an 11-stage LFSR.
  *
  * This implements the L1C-P PILOT primary code (the better track/peel target: dataless,
- * fully known modulation). L1C-D would add its own (w,p) table.
+ * fully known modulation) and its overlay. L1C-D would add its own (w,p) table.
  */
 
 #ifndef GPS_L1C_CODE_HPP
@@ -23,10 +23,15 @@
 namespace gps {
 
 constexpr int L1C_CODE_LENGTH = 10230; ///< chips in one L1C primary period (10 ms @ 1.023 Mcps)
-constexpr int L1CO_LENGTH = 1800;      ///< L1C-P overlay (secondary) length, 18 s (generator TODO)
+constexpr int L1CO_LENGTH = 1800;      ///< L1C-P overlay (secondary) length, 18 s (one symbol/10 ms)
 
 /// L1C-P (pilot) primary spreading code for @p prn (1..32), bipolar +1/-1.
 std::array<int8_t, L1C_CODE_LENGTH> generate_l1cp_code(int prn);
+
+/// L1C-P overlay (secondary) code for @p prn (1..32), bipolar +1/-1, length @ref L1CO_LENGTH.
+/// One overlay symbol multiplies each 10 ms primary period; coherently integrating L1C-P past
+/// one period requires wiping this (cf. the L5 NH overlay, but per-PRN and 1800 long).
+std::array<int8_t, L1CO_LENGTH> generate_l1co_code(int prn);
 
 } // namespace gps
 
