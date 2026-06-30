@@ -13,10 +13,11 @@
 #include "datasetManager.hpp"    // for dset_id_t, state_id_t, fingerprint_t
 #include "datasetState.hpp"      // for prodState, stackState
 #include "prometheusMetrics.hpp" // for MetricFamily, Gauge, Counter
-#include "visUtil.hpp"           // for frameID, rstack_ctype, input_ctype, prod_ctype
+#include "visUtil.hpp"           // for rstack_ctype, input_ctype, prod_ctype
 
-#include <cstdint>    // for uint32_t
-#include <functional> // for function
+#include <condition_variable> // for condition_variable
+#include <cstdint>            // for uint32_t, uint64_t
+#include <functional>         // for function
 #include <map>        // for map
 #include <mutex>      // for mutex
 #include <string>     // for string
@@ -103,10 +104,15 @@ private:
     Buffer* in_buf;
     Buffer* out_buf;
 
-    // Frame IDs, shared by compress threads and their mutex.
-    frameID frame_id_in;
-    frameID frame_id_out;
+    // Ordered ring cursors shared by the compress threads. `claim` hands out the
+    // next frame in order; `commit` is the next frame allowed to publish. The
+    // threads compute in parallel but publish strictly in claim order, so a
+    // frame is never handed to two threads and the output stays in input order.
+    // frame_cv wakes threads waiting to claim or to take their commit turn.
+    uint64_t claim = 0;
+    uint64_t commit = 0;
     std::mutex m_frame_ids;
+    std::condition_variable frame_cv;
     std::mutex m_dset_map;
 
     // Map the incoming ID to an outgoing one
