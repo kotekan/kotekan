@@ -1,0 +1,39 @@
+---
+# Raw L1 VOLTAGE DUMP for offline development/debugging. airspyInput -> rawFileWrite of the
+# input_buf: the exact samples the live pipeline ingests (airspyInput already DC-subtracts and
+# NYQUIST-FLIPS, so the carrier is at f_offset = Fs/4 = 1.25 MHz, int16 real, 5 MSPS). Front end
+# matches the live L1 configs (freq 1575.42, sample_bw 2.5, gains 14/15/15, bias-tee ON for the
+# ACTIVE antenna). Grab ~30 s of a clean sky; the dump is deterministic, so the whole PFB ->
+# despread -> track chain can then be developed OFFLINE with zero more live captures.
+#
+# Run (no broker/viewer/almanac needed -- it is just airspy -> disk):
+#   ./build_mac/kotekan/kotekan -c config/airspy_l1_voltage_dump.yaml -b 0.0.0.0:12048
+#   ... let it run ~30 s, then Ctrl-C. Files land in /tmp/gpsvolt/volt_*.raw
+#
+# Format: rawFileWrite framing = per 1 s frame [uint32 metadata_size=0][5000000 int16 real samples].
+# Offline: parse the 4-byte-per-frame header, read int16 real @ 5 MSPS, carrier (any L1 signal:
+# C/A / L1C / P(Y)) at +1.25 MHz. First frame includes the airspy gain-settle transient -- skip it.
+# Replayable through kotekan too (rawFileRead -> fengine/tracker) with samples_per_data_set matched.
+type: config
+log_level: info
+instrument_name: airspy_gps
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+samples_per_data_set: 5000000   # 1 s at 5 MSPS real (10 MB/frame); even sample count (airspy needs it)
+bytes_per_sample: 2
+buffer_depth: 8
+# Reference for the offline analysis (not consumed here): Fs = 5.0e6, f_offset = 1.25e6.
+
+input_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
+
+airspy_in:
+    kotekan_stage: airspyInput
+    out_buf: input_buf
+    freq: 1575.42
+    sample_bw: 2.5
+    gain_lna: 14
+    gain_mix: 15
+    gain_if: 15
+    biast_power: true
+
+dump: { kotekan_stage: rawFileWrite, in_buf: input_buf, base_dir: "/tmp/gpsvolt", file_name: "volt", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
