@@ -144,6 +144,13 @@ HOLD_RECORDS = int(os.environ.get("HOLD_RECORDS", "5"))
 # per-channel 0.1-0.32). This validates the cross-channel theory before the CHORD-faithful fix
 # (shared broker-seeded cp, no per-node re-pick). Search arm unchanged (still seeds the tracker).
 SINGLE_TRACKER = os.environ.get("SINGLE_TRACKER", "0") == "1"
+# PULLIN_CHIPS: code-phase pull-in half-window (chips), default 1.0. The per-record max-power
+# pull-in re-picks cp ~0.6-0.8 chip EVERY record, and in a channelized despread a code delay
+# imprints a carrier phase (~2pi*f_IF*delta_tau) -> per-record phase GLITCHES that wreck coherent
+# integration (2026-07-01 C/A control: 42% glitchy records, 77% with cp jumps >0.3 chip; but CLEAN
+# stretches hold R~1.0 over 30-60 ms). Set 0 to despread at the SMOOTH extrapolated seed cp (no
+# per-record re-pick) -- the coherence fix test. The real fix is a DLL with memory; this validates it.
+PULLIN_CHIPS = float(os.environ.get("PULLIN_CHIPS", "1.0"))
 
 # OUT_NAME / BASE_DIR override the output config name + record dir, so a capture variant (e.g.
 # INTEGRATION_LENGTH=1 -> record every raw per-record A for offline integration analysis) can be
@@ -297,11 +304,11 @@ L.append("")
 # (reads chan_buf2), so its pull-in maximises the COMBINED |A| -> a single shared cp -> the
 # channels add coherently (the cross-channel-decoherence test). Broker seeds the tracker(s).
 if SINGLE_TRACKER:
-    L.append("track_00: { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_00, channel_offset: 0, n_channels: %d, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: %g, fll_reacq_hz: %g, fll_lock_amp: %g, hold_lock_amp: %g, hold_lock_records: %d%s }" % (N, FLL_GAIN, FLL_REACQ_HZ, FLL_LOCK_AMP, HOLD_LOCK_AMP, HOLD_RECORDS, HOPS))
+    L.append("track_00: { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_00, channel_offset: 0, n_channels: %d, pullin_chips: %g, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: %g, fll_reacq_hz: %g, fll_lock_amp: %g, hold_lock_amp: %g, hold_lock_records: %d%s }" % (N, PULLIN_CHIPS, FLL_GAIN, FLL_REACQ_HZ, FLL_LOCK_AMP, HOLD_LOCK_AMP, HOLD_RECORDS, HOPS))
     comb_in = "[rec_00]"
 else:
     for c in COV:
-        L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: %g, fll_reacq_hz: %g, fll_lock_amp: %g, hold_lock_amp: %g, hold_lock_records: %d%s }" % (c, c, c, c, FLL_GAIN, FLL_REACQ_HZ, FLL_LOCK_AMP, HOLD_LOCK_AMP, HOLD_RECORDS, HOPS))
+        L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1, pullin_chips: %g, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: %g, fll_reacq_hz: %g, fll_lock_amp: %g, hold_lock_amp: %g, hold_lock_records: %d%s }" % (c, c, c, c, PULLIN_CHIPS, FLL_GAIN, FLL_REACQ_HZ, FLL_LOCK_AMP, HOLD_LOCK_AMP, HOLD_RECORDS, HOPS))
     comb_in = "[" + ", ".join("rec_%02d" % c for c in COV) + "]"
 _roll = (", integration_mode: rolling" if INTEG_MODE == "rolling" else "")
 # Dataless-pilot deep integration: the combiner wipes a KNOWN secondary overlay (the L5 Q5
