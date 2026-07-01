@@ -32,10 +32,11 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gps_intgn_check import load_records, integrate, fit_residual_doppler, derotate_wander  # noqa: E402
 
-# GPS III space vehicles broadcast L1C; older blocks (IIR/IIR-M/IIF) do NOT. PRNs as of 2026
-# (SV01-06 = PRN 04/18/23/14/11/28); update as IIIF launches. Used only to TAG the output --
-# a "lock" on any other PRN here is cross-correlation/noise, not real L1C.
-GPS_III_PRNS = {4, 11, 14, 18, 23, 28}
+# GPS III space vehicles broadcast L1C; older blocks (IIR/IIR-M/IIF) do NOT. PRNs as of mid-2026
+# (SV01-06 = PRN 04/18/23/14/11/28); PRN13 is a newer GPS III commissioning ~2026 (may broadcast
+# L1C in a test mode). This set is APPROXIMATE + trails launches/commissioning -- cross-check a live
+# constellation status page. Used only to TAG the output; a "lock" on any other PRN is cross-corr.
+GPS_III_PRNS = {4, 11, 13, 14, 18, 23, 28}
 
 # --- L1CO overlay generator (port of gps::generate_l1co_code; PocketSDR sec_code_L1CP, S1 only,
 # exact for GPS PRNs 1..63). 11-stage Galois LFSR, per-PRN feedback poly + init (octal). -------
