@@ -74,72 +74,45 @@ Symbol N2FrameDesc::get_quantity_name() const {
     return Symbol("N2");
 }
 
-FrameDesc::WireType N2FrameDesc::wire_type() const {
-    return FrameDesc::WireType::n2;
-}
-
-size_t N2FrameDesc::serialized_payload_size() const {
-    // num_elements, num_ev, num_products, product_list count (u32 each) + layout name
-    size_t n = 4 * sizeof(uint32_t) + wire::str_size(N2Layout_to_string(n2_layout));
-    if (layout_requires_product_list(n2_layout))
-        n += product_list.size() * 2 * sizeof(uint16_t);
-    return n;
-}
-
-void N2FrameDesc::serialize_payload(char* out) const {
-    out = wire::put_u32(out, num_elements);
-    out = wire::put_u32(out, num_ev);
-    out = wire::put_u32(out, num_products);
-    // Encode the layout by name (matching the NDArray value_type encoding) so the
-    // wire form survives any reordering of the N2Layout enum.
-    out = wire::put_str(out, N2Layout_to_string(n2_layout));
+nlohmann::json N2FrameDesc::to_json() const {
+    nlohmann::json j;
+    j["frame_desc_type"] = "N2";
+    j["num_elements"] = num_elements;
+    j["num_ev"] = num_ev;
+    j["num_products"] = num_products;
+    // Encode the layout by name (via its json serializer) so the wire form
+    // survives any reordering of the N2Layout enum.
+    j["n2_layout"] = n2_layout;
     // Subset layouts cannot be regenerated from num_elements alone, so send the
-    // explicit product list; other layouts the receiver regenerates (count 0).
-    if (layout_requires_product_list(n2_layout)) {
-        out = wire::put_u32(out, static_cast<uint32_t>(product_list.size()));
-        for (const auto& prod : product_list) {
-            out = wire::put_u16(out, prod.input_a);
-            out = wire::put_u16(out, prod.input_b);
-        }
-    } else {
-        out = wire::put_u32(out, 0);
-    }
+    // explicit product list; other layouts the receiver regenerates.
+    if (layout_requires_product_list(n2_layout))
+        j["product_list"] = product_list;
+    return j;
 }
 
-std::shared_ptr<const FrameDesc> N2FrameDesc::deserialize_payload(const char* bytes, size_t size) {
-    wire::Reader r(bytes, size);
-    const uint32_t num_elements = r.get_u32();
-    const uint32_t num_ev = r.get_u32();
-    const uint32_t num_products = r.get_u32();
-    const N2Layout n2_layout = string_to_N2Layout(r.get_str());
+std::shared_ptr<const FrameDesc> N2FrameDesc::from_json(const nlohmann::json& j) {
+    const uint32_t num_elements = j.at("num_elements").get<uint32_t>();
+    const uint32_t num_ev = j.at("num_ev").get<uint32_t>();
+    const uint32_t num_products = j.at("num_products").get<uint32_t>();
+    const N2Layout n2_layout = j.at("n2_layout").get<N2Layout>();
 
-    const uint32_t num_products_listed = r.get_u32();
-    if (r.remaining() < static_cast<size_t>(num_products_listed) * 2 * sizeof(uint16_t))
-        throw std::runtime_error("N2FrameDesc::deserialize: product_list count exceeds payload");
     std::vector<N2::prod_ctype> product_list;
-    product_list.reserve(num_products_listed);
-    for (uint32_t i = 0; i < num_products_listed; ++i) {
-        N2::prod_ctype prod;
-        prod.input_a = r.get_u16();
-        prod.input_b = r.get_u16();
-        product_list.push_back(prod);
-    }
-    r.require_empty();
+    if (j.contains("product_list"))
+        product_list = j.at("product_list").get<std::vector<N2::prod_ctype>>();
 
-    // num_products is derivable from the layout and element count, so reject a wire
-    // value that disagrees. Otherwise a corrupt-but-parseable count for a non-subset
-    // layout (which the constructor stores verbatim) yields an inconsistent
-    // descriptor that would later FATAL on the frame-size check instead of being
-    // dropped here.
+    // num_products is derivable from the layout and element count, so reject a
+    // value that disagrees. Otherwise a corrupt-but-parseable count for a
+    // non-subset layout (which the constructor stores verbatim) yields an
+    // inconsistent descriptor that would later FATAL on the frame-size check
+    // instead of being rejected here. get_num_prod() also throws on an unknown
+    // layout, so that is rejected too.
     const size_t expected_num_products = get_num_prod(num_elements, n2_layout, product_list);
     if (num_products != expected_num_products)
         throw std::runtime_error(fmt::format(
-            fmt("N2FrameDesc::deserialize: num_products {:d} inconsistent with layout (expected "
+            fmt("N2FrameDesc::from_json: num_products {:d} inconsistent with layout (expected "
                 "{:d})"),
             num_products, expected_num_products));
 
-    // The N2FrameDesc constructor validates layout/product_list consistency and
-    // throws on an unknown layout, so malformed input is rejected here.
     return std::make_shared<N2FrameDesc>(num_elements, num_ev, num_products, n2_layout,
                                          std::move(product_list));
 }

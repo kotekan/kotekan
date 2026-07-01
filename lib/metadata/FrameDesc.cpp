@@ -1,8 +1,7 @@
 #include "FrameDesc.hpp"
 
-#include <cstdint>     // for uint32_t
-#include <cstring>     // for memcpy
-#include <stdexcept>   // for runtime_error
+#include <stdexcept> // for runtime_error
+#include <string>    // for string
 
 #include "N2FrameDesc.hpp"  // for N2FrameDesc
 #include "NDArray.hpp"      // for GenericNDArray
@@ -10,24 +9,14 @@
 
 namespace kotekan {
 
-std::shared_ptr<const FrameDesc> FrameDesc::deserialize(const char* bytes, size_t size) {
-    if (size < sizeof(uint32_t))
-        throw std::runtime_error("FrameDesc::deserialize: input too small for the wire tag");
-
-    uint32_t tag;
-    std::memcpy(&tag, bytes, sizeof(tag));
-    const char* payload = bytes + sizeof(tag);
-    const size_t payload_size = size - sizeof(tag);
-
-    switch (static_cast<WireType>(tag)) {
-        case WireType::generic_ndarray:
-            return GenericNDArray::deserialize_payload(payload, payload_size);
-        case WireType::n2:
-            return N2FrameDesc::deserialize_payload(payload, payload_size);
-        default:
-            throw std::runtime_error(
-                fmt::format(fmt("FrameDesc::deserialize: unknown wire_type tag {:d}"), tag));
-    }
+std::shared_ptr<const FrameDesc> FrameDesc::from_json(const nlohmann::json& j) {
+    const std::string type = j.at("frame_desc_type").get<std::string>();
+    if (type == "ndarray")
+        return GenericNDArray::from_json(j);
+    if (type == "N2")
+        return N2FrameDesc::from_json(j);
+    throw std::runtime_error(
+        fmt::format(fmt("FrameDesc::from_json: unknown frame_desc_type '{:s}'"), type));
 }
 
 } // namespace kotekan

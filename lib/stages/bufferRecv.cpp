@@ -488,15 +488,16 @@ void connInstance::internal_read_callback() {
                         ConfigTracker::instance().getUpstreamConfigs(client_ip, upstream_rest_port);
                     }
 
-                    state = use_frame_desc ? connState::frame_desc_size : connState::metadata;
+                    state = (use_frame_desc && !frame_desc_read) ? connState::frame_desc_size
+                                                                 : connState::metadata;
                     bytes_read = 0;
                 }
 
             } break;
             case connState::frame_desc_size: {
-                // Independent of the config tracker; only read when use_frame_desc
-                // is set on both ends. The size rides every frame (0 = no
-                // descriptor on this frame), the payload only on the first.
+                // Sent once per connection (independent of the config tracker),
+                // only when use_frame_desc is set on both ends: a 4-byte JSON
+                // length (0 if the sender had no descriptor) then the payload.
                 n = read(fd, ((int8_t*)&frame_desc_size) + bytes_read,
                          sizeof(frame_desc_size) - bytes_read);
                 if (n <= 0) {
@@ -518,6 +519,7 @@ void connInstance::internal_read_callback() {
                     }
                     bytes_read = 0;
                     if (frame_desc_size == 0) {
+                        frame_desc_read = true;
                         state = connState::metadata;
                     } else {
                         frame_desc_space.resize(frame_desc_size);
@@ -534,22 +536,26 @@ void connInstance::internal_read_callback() {
                 bytes_read += n;
                 if (bytes_read >= frame_desc_size) {
                     assert(bytes_read == frame_desc_size);
-                    // Validate on read -- before the frame/drop decision -- so a
-                    // dropped frame still validates the descriptor. Malformed bytes
-                    // close the connection; a real config-vs-received mismatch is
-                    // fatal in ensure_frame_desc, the intended contract check.
+                    // Parse and reconcile before the frame/drop decision. A
+                    // malformed descriptor is contaminated control data, so we
+                    // shut down (FATAL) rather than swallow it; a real
+                    // config-vs-received mismatch is fatal in ensure_frame_desc.
+                    // The try/catch is required only because this runs in a
+                    // libevent callback, which cannot unwind C++ exceptions.
                     std::shared_ptr<const kotekan::FrameDesc> recv_desc;
                     try {
-                        recv_desc = kotekan::FrameDesc::deserialize(frame_desc_space.data(),
-                                                                    frame_desc_size);
+                        const auto j =
+                            nlohmann::json::parse(frame_desc_space.begin(), frame_desc_space.end());
+                        recv_desc = kotekan::FrameDesc::from_json(j);
                     } catch (const std::exception& e) {
-                        ERROR("Failed to deserialize frame descriptor from {:s}: {:s}", client_ip,
-                              e.what());
+                        FATAL_ERROR("Failed to deserialize frame descriptor from {:s}: {:s}",
+                                    client_ip, e.what());
                         decrement_ref_count();
                         close_instance();
                         return;
                     }
                     buf->ensure_frame_desc(recv_desc);
+                    frame_desc_read = true;
                     state = connState::metadata;
                     bytes_read = 0;
                 }

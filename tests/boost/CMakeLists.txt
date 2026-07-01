@@ -195,7 +195,7 @@ target_link_libraries(
             kotekan_metadata
             -Wl,--no-whole-archive)
 
-# test_FrameDescSerialize - FrameDesc wire serialization round-trip + adversarial input
+# test_FrameDescSerialize - FrameDesc JSON serialization round-trip + adversarial input
 add_executable(test_FrameDescSerialize test_FrameDescSerialize.cpp)
 target_link_libraries(test_FrameDescSerialize PRIVATE libexternal kotekan_libs kotekan_utils
                                                       kotekan_core kotekan_metadata)

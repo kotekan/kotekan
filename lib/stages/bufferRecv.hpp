@@ -142,7 +142,9 @@ private:
     /// Whether to use the config tracker
     bool use_config_tracker;
 
-    /// Expect a serialized frame descriptor on the wire (matched with the sender)
+    /// Expect a serialized frame descriptor on the wire. Not negotiated: it must
+    /// be set identically on the sending bufferSend (like use_config_tracker); a
+    /// mismatch desynchronizes the stream and fails fast.
     bool use_frame_desc;
 
     static void read_callback(evutil_socket_t fd, short what, void* arg);
@@ -322,7 +324,11 @@ public:
     /// Whether to expect a serialized frame descriptor on the wire
     const bool use_frame_desc;
 
-    /// Size in bytes of the frame descriptor on the current frame (0 if none)
+    /// Set once the frame descriptor has been read on this connection; the sender
+    /// transmits it only on the first frame, so later frames skip the read.
+    bool frame_desc_read = false;
+
+    /// Size in bytes of the frame descriptor (0 if the sender had none)
     uint32_t frame_desc_size = 0;
 
     /// Scratch buffer for the received serialized frame descriptor

@@ -146,12 +146,12 @@ void bufferSend::main_thread() {
             DEBUG2("Sent header: {:d}", n_sent);
 
             // Send the frame descriptor once per connection (independent of the
-            // config tracker). The 4-byte size rides every frame for uniform
-            // framing; the serialized descriptor follows only on the first frame.
-            if (use_frame_desc) {
-                auto desc = desc_sent ? nullptr : buf->get_frame_desc();
-                uint32_t frame_desc_size =
-                    desc ? static_cast<uint32_t>(desc->serialized_size()) : 0;
+            // config tracker), right after the first frame's header: a 4-byte
+            // JSON length followed by that many bytes. Later frames send neither.
+            if (use_frame_desc && !desc_sent) {
+                auto desc = buf->get_frame_desc();
+                const std::string desc_json = desc ? desc->to_json().dump() : std::string();
+                uint32_t frame_desc_size = static_cast<uint32_t>(desc_json.size());
                 n_sent = 0;
                 while ((n = send(socket_fd, &((uint8_t*)&frame_desc_size)[n_sent],
                                  sizeof(frame_desc_size) - n_sent, MSG_NOSIGNAL))
@@ -164,10 +164,8 @@ void bufferSend::main_thread() {
                     continue;
                 }
                 if (frame_desc_size > 0) {
-                    char desc_buf[frame_desc_size];
-                    desc->serialize(desc_buf);
                     n_sent = 0;
-                    while ((n = send(socket_fd, desc_buf + n_sent, frame_desc_size - n_sent,
+                    while ((n = send(socket_fd, desc_json.data() + n_sent, frame_desc_size - n_sent,
                                      MSG_NOSIGNAL))
                            > 0)
                         n_sent += n;

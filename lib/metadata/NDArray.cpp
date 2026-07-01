@@ -31,14 +31,26 @@ std::string format_vector(const std::vector<T>& vec) {
     return buf.str();
 }
 
-// An unset (empty) Symbol has no string; serialize it as a zero-length string.
+// An unset (empty) Symbol has no string; render it as an empty string for logs
+// and error messages (get_string() aborts on an invalid Symbol).
 std::string symbol_str(const Symbol& s) {
     return s.valid() ? s.get_string() : std::string();
 }
 
+// Serialize a Symbol to JSON, encoding an unset (invalid) Symbol as `null` so a
+// deliberately-unset label is distinguishable from a set one on the wire.
+nlohmann::json symbol_to_json(const Symbol& s) {
+    return s.valid() ? nlohmann::json(s.get_string()) : nlohmann::json(nullptr);
+}
+
+// Inverse of symbol_to_json: `null` becomes an unset (invalid) Symbol.
+Symbol symbol_from_json(const nlohmann::json& j) {
+    return j.is_null() ? Symbol() : Symbol(j.get<std::string>());
+}
+
 // Validate the structural fields and labels of an NDArray descriptor, throwing
 // std::runtime_error (with `context` in the message) on any problem. Used by the
-// wire deserializer to reject malformed descriptors received over bufferRecv.
+// JSON deserializer to reject malformed descriptors received over bufferRecv.
 void validate_ndarray_fields(DataType value_datatype, const std::string& value_type_name,
                              const std::vector<std::ptrdiff_t>& extents,
                              const std::vector<Symbol>& dimnames,
@@ -94,80 +106,36 @@ void GenericNDArray::output_framedesc(std::ostream& os) const {
        << "    strides:         " << format_vector(get_strides()) << "\n";
 }
 
-FrameDesc::WireType GenericNDArray::wire_type() const {
-    return FrameDesc::WireType::generic_ndarray;
-}
-
-size_t GenericNDArray::serialized_payload_size() const {
-    size_t n = wire::str_size(type_to_string(get_value_datatype()));
-    n += sizeof(uint32_t);             // rank
-    n += get_rank() * sizeof(int64_t); // extents
-    n += wire::str_size(symbol_str(get_quantity_name()));
-    n += sizeof(uint32_t);             // dimnames count
+nlohmann::json GenericNDArray::to_json() const {
+    nlohmann::json j;
+    j["frame_desc_type"] = "ndarray";
+    j["value_type"] = type_to_string(get_value_datatype());
+    j["extents"] = get_extents();
+    j["quantity_name"] = symbol_to_json(get_quantity_name());
+    nlohmann::json dimnames = nlohmann::json::array();
     for (const auto& dimname : get_dimnames())
-        n += wire::str_size(symbol_str(dimname));
-    n += sizeof(uint32_t);             // dimscalings count
-    n += get_rank() * sizeof(int64_t); // dimscalings
-    return n;
+        dimnames.push_back(symbol_to_json(dimname));
+    j["dimnames"] = std::move(dimnames);
+    j["dimscalings"] = get_dimscalings();
+    return j;
 }
 
-void GenericNDArray::serialize_payload(char* out) const {
-    out = wire::put_str(out, type_to_string(get_value_datatype()));
-    const auto extents = get_extents();
-    out = wire::put_u32(out, static_cast<uint32_t>(extents.size()));
-    for (const auto extent : extents)
-        out = wire::put_i64(out, static_cast<int64_t>(extent));
-    out = wire::put_str(out, symbol_str(get_quantity_name()));
-    const auto dimnames = get_dimnames();
-    out = wire::put_u32(out, static_cast<uint32_t>(dimnames.size()));
-    for (const auto& dimname : dimnames)
-        out = wire::put_str(out, symbol_str(dimname));
-    const auto dimscalings = get_dimscalings();
-    out = wire::put_u32(out, static_cast<uint32_t>(dimscalings.size()));
-    for (const auto scaling : dimscalings)
-        out = wire::put_i64(out, static_cast<int64_t>(scaling));
-}
-
-std::shared_ptr<const FrameDesc> GenericNDArray::deserialize_payload(const char* bytes,
-                                                                     size_t size) {
-    wire::Reader r(bytes, size);
-    const std::string type_name = r.get_str();
+std::shared_ptr<const FrameDesc> GenericNDArray::from_json(const nlohmann::json& j) {
+    const std::string type_name = j.at("value_type").get<std::string>();
     const DataType value_datatype = string_to_type(type_name);
 
-    // Bound rank and the dimname count before reserving so a corrupt length cannot
-    // drive a large allocation; validate_ndarray_fields() does the full validation.
-    const uint32_t rank = r.get_u32();
-    if (rank > max_rank)
-        throw std::runtime_error(fmt::format(
-            fmt("GenericNDArray::deserialize: rank {:d} exceeds maximum {:d}"), rank, max_rank));
-    std::vector<std::ptrdiff_t> extents;
-    extents.reserve(rank);
-    for (uint32_t d = 0; d < rank; ++d)
-        extents.push_back(static_cast<std::ptrdiff_t>(r.get_i64()));
+    const auto extents = j.at("extents").get<std::vector<std::ptrdiff_t>>();
 
-    const Symbol quantity_name(r.get_str());
+    const Symbol quantity_name = symbol_from_json(j.at("quantity_name"));
 
-    const uint32_t num_dimnames = r.get_u32();
-    if (num_dimnames > max_rank)
-        throw std::runtime_error(fmt::format(
-            fmt("GenericNDArray::deserialize: dimnames count {:d} exceeds maximum {:d}"),
-            num_dimnames, max_rank));
     std::vector<Symbol> dimnames;
-    dimnames.reserve(num_dimnames);
-    for (uint32_t d = 0; d < num_dimnames; ++d)
-        dimnames.emplace_back(r.get_str());
+    for (const auto& dimname : j.at("dimnames"))
+        dimnames.push_back(symbol_from_json(dimname));
 
-    const uint32_t num_dimscalings = r.get_u32();
-    if (num_dimscalings > max_rank)
-        throw std::runtime_error(fmt::format(
-            fmt("GenericNDArray::deserialize: dimscalings count {:d} exceeds maximum {:d}"),
-            num_dimscalings, max_rank));
-    std::vector<std::ptrdiff_t> dimscalings;
-    dimscalings.reserve(num_dimscalings);
-    for (uint32_t d = 0; d < num_dimscalings; ++d)
-        dimscalings.push_back(static_cast<std::ptrdiff_t>(r.get_i64()));
+    const auto dimscalings = j.at("dimscalings").get<std::vector<std::ptrdiff_t>>();
 
-    r.require_empty();
+    // Full validation, including bounding the rank; describe() then resolves the
+    // runtime datatype/rank into a concrete NDArray.
     validate_ndarray_fields(value_datatype, type_name, extents, dimnames, dimscalings,
                             "received frame descriptor");
     return describe(value_datatype, quantity_name, extents, dimnames, dimscalings);

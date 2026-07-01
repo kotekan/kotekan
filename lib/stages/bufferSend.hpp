@@ -142,7 +142,9 @@ private:
     /// Set to true if this is the first transmission
     std::atomic<bool> first_transmission_sent;
 
-    /// Set once the frame descriptor has been sent on the current connection
+    /// Set once the frame descriptor has been sent on the current connection.
+    /// Read and set by the send thread, and reset by the connect thread when a
+    /// new connection is established, so it is atomic (like first_transmission_sent).
     std::atomic<bool> desc_sent;
 
     /// Internal server address struct

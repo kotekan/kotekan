@@ -210,9 +210,10 @@ Transmitting descriptors between nodes
 network so the receiver validates its config-declared descriptor against the
 sender's. Enable it with ``use_frame_desc: true`` on **both** stages -- a matched
 flag, like ``use_config_tracker`` -- and the wire format is unchanged when it is
-off (independent of the config tracker). The descriptor is serialized once per
-connection; on receive it is reconciled with ``ensure_frame_desc``, attaching it
-to an undeclared (``standard``) buffer or validating a declared one (fatal on
+off (independent of the config tracker). The descriptor is serialized to JSON
+once per connection; on receive it is reconciled with ``ensure_frame_desc``,
+attaching it to a buffer declared without a descriptor (a ``standard`` buffer) or
+validating one that has a descriptor (an ``ndarray`` or ``N2`` buffer; fatal on
 mismatch). This works for every descriptor type, including ``N2``, whose
 per-frame metadata carries no structural fields and so cannot otherwise be
 validated across the wire.

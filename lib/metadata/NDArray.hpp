@@ -125,12 +125,10 @@ public:
     /// Compare two NDArrays, useful to compare metadata
     bool operator==(const FrameDesc& other) const override;
 
-    /// FrameDesc wire-serialization overrides (see FrameDesc::serialize).
-    WireType wire_type() const override;
-    size_t serialized_payload_size() const override;
-    void serialize_payload(char* out) const override;
-    /// Reconstruct a GenericNDArray from a payload written by serialize_payload().
-    static std::shared_ptr<const FrameDesc> deserialize_payload(const char* bytes, size_t size);
+    /// FrameDesc JSON-serialization override (see FrameDesc::to_json).
+    nlohmann::json to_json() const override;
+    /// Reconstruct a GenericNDArray from JSON written by to_json().
+    static std::shared_ptr<const FrameDesc> from_json(const nlohmann::json& j);
 };
 
 /// A `NDArray<T,D>` is a `D`-dimensional array of type `T`. Different
