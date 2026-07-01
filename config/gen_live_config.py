@@ -129,6 +129,14 @@ FLL_GAIN = float(os.environ.get("FLL_GAIN", "0.03"))
 # channel): L1C-P strong channels ran ~0.2-0.5, edge channels ~0.03, so ~0.1 engages the strong set.
 HOLD_LOCK_AMP = float(os.environ.get("HOLD_LOCK_AMP", "0"))
 HOLD_RECORDS = int(os.environ.get("HOLD_RECORDS", "5"))
+# SINGLE_TRACKER=1: ONE tracker owning ALL N channels (reads chan_buf2 directly), so its code
+# pull-in maximises the COMBINED cross-channel |A| -> one shared code phase -> the per-channel
+# correlations add coherently. The default distributed mode uses NCOV per-channel trackers
+# (n_channels 1) that each pull-in their OWN cp, which on a BOC pilot desynchronises the channels
+# and cancels ~15 dB in the combiner (2026-07-01 finding: PRN11 snr 43.9 -> combined |A| 0.044 vs
+# per-channel 0.1-0.32). This validates the cross-channel theory before the CHORD-faithful fix
+# (shared broker-seeded cp, no per-node re-pick). Search arm unchanged (still seeds the tracker).
+SINGLE_TRACKER = os.environ.get("SINGLE_TRACKER", "0") == "1"
 
 # OUT_NAME / BASE_DIR override the output config name + record dir, so a capture variant (e.g.
 # INTEGRATION_LENGTH=1 -> record every raw per-record A for offline integration analysis) can be
@@ -277,11 +285,17 @@ L.append("gather: { kotekan_stage: GnssChannelGather, in_bufs: %s, out_buf: gath
 L.append("search: { kotekan_stage: GnssChannelizedSearch, in_buf: gather_buf, channel_offset: %d, n_channels: %d, acquire_snr: %g, acquire_windows: %d%s }" % (COV[0], NCOV, S["snr"], S["win"], HOPS))
 L.append("")
 
-# Track arm: one tracker PER covering channel (n_channels:1) = the CHORD per-node
-# correlation; the combiner coherently reassembles. Broker seeds every tracker.
-for c in COV:
-    L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: %g, fll_lock_amp: %g, hold_lock_amp: %g, hold_lock_records: %d%s }" % (c, c, c, c, FLL_GAIN, FLL_LOCK_AMP, HOLD_LOCK_AMP, HOLD_RECORDS, HOPS))
-comb_in = "[" + ", ".join("rec_%02d" % c for c in COV) + "]"
+# Track arm. Default: one tracker PER covering channel (n_channels:1) = the CHORD per-node
+# correlation; the combiner reassembles. SINGLE_TRACKER: ONE tracker owning ALL N channels
+# (reads chan_buf2), so its pull-in maximises the COMBINED |A| -> a single shared cp -> the
+# channels add coherently (the cross-channel-decoherence test). Broker seeds the tracker(s).
+if SINGLE_TRACKER:
+    L.append("track_00: { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_00, channel_offset: 0, n_channels: %d, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: %g, fll_lock_amp: %g, hold_lock_amp: %g, hold_lock_records: %d%s }" % (N, FLL_GAIN, FLL_LOCK_AMP, HOLD_LOCK_AMP, HOLD_RECORDS, HOPS))
+    comb_in = "[rec_00]"
+else:
+    for c in COV:
+        L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: %g, fll_lock_amp: %g, hold_lock_amp: %g, hold_lock_records: %d%s }" % (c, c, c, c, FLL_GAIN, FLL_LOCK_AMP, HOLD_LOCK_AMP, HOLD_RECORDS, HOPS))
+    comb_in = "[" + ", ".join("rec_%02d" % c for c in COV) + "]"
 _roll = (", integration_mode: rolling" if INTEG_MODE == "rolling" else "")
 # Dataless-pilot deep integration: the combiner wipes a KNOWN secondary overlay (the L5 Q5
 # NH20) at its searched alignment -> deep coherent |A| past the 1 ms primary period (slot 8 /
@@ -293,9 +307,11 @@ L.append('record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "%s"
 # Beam cube: the SAME per-channel tracker records, integrated PER CHANNEL (no cross-channel sum)
 # -> beam(t, frequency). Frequency-resolves the antenna beam (matters across L5's ~10 MHz). Second
 # consumer of rec_* alongside the combiner; it's light, and the valve absorbs any back-pressure.
-L.append("beamcube: { kotekan_stage: GnssBeamCube, in_bufs: %s, out_buf: beam_buf, channel0: %d, integration_length: %d%s }"
-         % (comb_in, COV[0], INTEG_LEN, _roll))
-L.append('beamrec: { kotekan_stage: rawFileWrite, in_buf: beam_buf, base_dir: "%s", file_name: "beam", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }' % BASE_DIR)
+# Omitted for SINGLE_TRACKER (one combined record per PRN -> no per-channel axis to cube).
+if not SINGLE_TRACKER:
+    L.append("beamcube: { kotekan_stage: GnssBeamCube, in_bufs: %s, out_buf: beam_buf, channel0: %d, integration_length: %d%s }"
+             % (comb_in, COV[0], INTEG_LEN, _roll))
+    L.append('beamrec: { kotekan_stage: rawFileWrite, in_buf: beam_buf, base_dir: "%s", file_name: "beam", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }' % BASE_DIR)
 L.append("")
 
 # GPS-only browser viewer (no power stream / waterfall): serves the GPS Sky panel on :8080,
@@ -303,7 +319,12 @@ L.append("")
 L.append("spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream' }")
 
 open("config/" + OUT_NAME, "w").write("\n".join(L) + "\n")
-print("wrote config/%s: %s @ %g MHz, %d covering channels %s -> %d trackers; valve + GPS viewer"
-      % (OUT_NAME, S["name"], S["freq"], NCOV, COV, NCOV))
-print("  broker carrier: --carrier-hz %g  | TRK='track_{%02d..%02d}' (non-contiguous if subset)"
-      % (S["freq"] * 1e6, COV[0], COV[-1]))
+if SINGLE_TRACKER:
+    print("wrote config/%s: %s @ %g MHz, %d covering channels %s -> 1 SHARED-cp tracker (chan_buf2, "
+          "n_channels=%d); valve + GPS viewer" % (OUT_NAME, S["name"], S["freq"], NCOV, COV, N))
+    print("  broker carrier: --carrier-hz %g  | TRK='track_00'" % (S["freq"] * 1e6))
+else:
+    print("wrote config/%s: %s @ %g MHz, %d covering channels %s -> %d trackers; valve + GPS viewer"
+          % (OUT_NAME, S["name"], S["freq"], NCOV, COV, NCOV))
+    print("  broker carrier: --carrier-hz %g  | TRK='track_{%02d..%02d}' (non-contiguous if subset)"
+          % (S["freq"] * 1e6, COV[0], COV[-1]))
