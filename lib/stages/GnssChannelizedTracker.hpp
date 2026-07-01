@@ -66,6 +66,12 @@
  *                        they diverge by more than this (loss of lock / sat change).
  * @conf fll_max_gap_s    Double (default 0.005). Skip the FLL update across a record gap
  *                        larger than this (a dropped frame would alias the phase walk).
+ * @conf hold_lock_amp    Double (default 0 = off). Held-reference deep-integration threshold:
+ *                        after hold_lock_records straight records with despread |A| >= this, FREEZE
+ *                        the absolute-anchored code+carrier reference (no broker re-seed, no
+ *                        per-record pull-in) so the per-record phase stays continuous for the
+ *                        combiner deep wipe; release after that many below. Per-channel |A|.
+ * @conf hold_lock_records Int (default 5). Records to arm / release the hold.
  * @conf active_prns      Array<Int> (optional). Initial go/no-go mask (default all on).
  * @conf capture_utc0     Double (default 0). UTC of sample 0; 0 = wall-clock at emit.
  *
@@ -110,6 +116,16 @@ private:
     double _fll_reacq_hz; ///< |f_track - seed| beyond this re-acquires from the broker seed
     double _fll_max_gap;  ///< skip the FLL discriminator if records are >this many apart (s)
     double _fll_lock_amp; ///< freeze the FLL when despread |A| < this (signal dropout); 0 = never
+
+    // Held-reference deep-integration mode (dataless pilots). Once a PRN despreads above
+    // _hold_lock_amp for _hold_lock_records straight records, FREEZE its absolute-anchored
+    // code+carrier reference (cp0 + code-Doppler rate, fcar) and stop re-deciding it per record:
+    // no broker re-seed, no per-record max-power pull-in (both noise-driven on a marginal BOC
+    // signal -> they jump the code phase ~150 chips/record and randomise the per-record carrier
+    // phase, which the combiner deep wipe integrates over). Release after the same run below the
+    // threshold. 0 = disabled (legacy per-record behaviour). See the 2026-06-30 L1C findings.
+    double _hold_lock_amp;   ///< despread |A| to arm/hold the frozen reference; 0 = mode off
+    int _hold_lock_records;  ///< consecutive records above/below _hold_lock_amp to hold/release
 
     std::vector<int> _prns;
     std::vector<double> _doppler;

@@ -62,7 +62,8 @@ if(FFTW_FOUND)
         # the bug hunt exercises the production replica + acquire path, not a test stand-in.
         ../../lib/stages/gnssChannelizedReplica.cpp ../../lib/stages/gnssBandPlan.cpp
         ../../lib/stages/gnssChannelizedDespread.cpp
-        ../../lib/stages/gpsL2CCode.cpp ../../lib/stages/gpsL5Code.cpp)
+        ../../lib/stages/gpsL2CCode.cpp ../../lib/stages/gpsL5Code.cpp
+        ../../lib/stages/gpsL1CCode.cpp) # replica signal_code() dispatches GPS_L1C_P
     target_include_directories(test_gnss_channelized_acquire PRIVATE ../../lib/stages)
     target_include_directories(test_gnss_channelized_acquire SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_acquire PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})

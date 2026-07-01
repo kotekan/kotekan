@@ -120,6 +120,15 @@ FLL_LOCK_AMP = float(os.environ.get("FLL_LOCK_AMP", "0"))
 # per-record phase decohered record-to-record even though C/A coheres for seconds on the same clock).
 # fll_gain=0 leaves only the smooth clock-drift residual, which the offline derotation can remove.
 FLL_GAIN = float(os.environ.get("FLL_GAIN", "0.03"))
+# HOLD_LOCK_AMP / HOLD_RECORDS: held-reference deep-integration mode (0 = off). Once a tracker
+# despreads its channel above HOLD_LOCK_AMP for HOLD_RECORDS straight records it FREEZES its
+# absolute-anchored code+carrier reference (no broker re-seed, no per-record max-power pull-in) so
+# the per-record carrier phase stays continuous -- the fix for the marginal-BOC deep-wipe wall (the
+# noisy search + BOC-sidelobe pull-in were jumping cp ~150 chips/record and randomising the phase;
+# see the 2026-06-30 L1C findings). Threshold is the PER-CHANNEL |A| (each tracker owns one
+# channel): L1C-P strong channels ran ~0.2-0.5, edge channels ~0.03, so ~0.1 engages the strong set.
+HOLD_LOCK_AMP = float(os.environ.get("HOLD_LOCK_AMP", "0"))
+HOLD_RECORDS = int(os.environ.get("HOLD_RECORDS", "5"))
 
 # OUT_NAME / BASE_DIR override the output config name + record dir, so a capture variant (e.g.
 # INTEGRATION_LENGTH=1 -> record every raw per-record A for offline integration analysis) can be
@@ -271,7 +280,7 @@ L.append("")
 # Track arm: one tracker PER covering channel (n_channels:1) = the CHORD per-node
 # correlation; the combiner coherently reassembles. Broker seeds every tracker.
 for c in COV:
-    L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: %g, fll_lock_amp: %g%s }" % (c, c, c, c, FLL_GAIN, FLL_LOCK_AMP, HOPS))
+    L.append("track_%02d: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_%02d, out_buf: rec_%02d, channel_offset: %d, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: %g, fll_lock_amp: %g, hold_lock_amp: %g, hold_lock_records: %d%s }" % (c, c, c, c, FLL_GAIN, FLL_LOCK_AMP, HOLD_LOCK_AMP, HOLD_RECORDS, HOPS))
 comb_in = "[" + ", ".join("rec_%02d" % c for c in COV) + "]"
 _roll = (", integration_mode: rolling" if INTEG_MODE == "rolling" else "")
 # Dataless-pilot deep integration: the combiner wipes a KNOWN secondary overlay (the L5 Q5
