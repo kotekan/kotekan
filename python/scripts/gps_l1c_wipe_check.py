@@ -32,11 +32,25 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gps_intgn_check import load_records, integrate, fit_residual_doppler, derotate_wander  # noqa: E402
 
-# GPS III space vehicles broadcast L1C; older blocks (IIR/IIR-M/IIF) do NOT. PRNs as of mid-2026
-# (SV01-06 = PRN 04/18/23/14/11/28); PRN13 is a newer GPS III commissioning ~2026 (may broadcast
-# L1C in a test mode). This set is APPROXIMATE + trails launches/commissioning -- cross-check a live
-# constellation status page. Used only to TAG the output; a "lock" on any other PRN is cross-corr.
-GPS_III_PRNS = {4, 11, 13, 14, 18, 23, 28}
+# Which PRNs broadcast L1C = GPS Block III onward. Block/signal capability is NOT in an almanac or
+# the TLE elements -- but Celestrak encodes it in the TLE sat NAMES ('GPS BIII-10 (PRN 13)'), so we
+# DERIVE it live from the same feed the visibility uses (auto-tracks launches/commissioning). Falls
+# back to the Block III set from the 2026-07-01 Celestrak gps-ops TLE only if that feed/cache is
+# unavailable offline. Used only to TAG the output; a "lock" on any non-L1C PRN is cross-correlation.
+def _l1c_prns():
+    try:
+        from gps_beamtrack import l1c_capable_prns
+        s = l1c_capable_prns()
+        if s:
+            sys.stderr.write("[l1c] Block III PRNs from live Celestrak TLE: %s\n"
+                             % sorted(s))
+            return s
+    except Exception as e:
+        sys.stderr.write("[l1c] TLE block lookup failed (%s); using hardcoded fallback\n" % e)
+    return {1, 4, 11, 13, 14, 18, 20, 21, 23, 28}  # APPROXIMATE fallback; trails the constellation
+
+
+GPS_III_PRNS = _l1c_prns()
 
 # --- L1CO overlay generator (port of gps::generate_l1co_code; PocketSDR sec_code_L1CP, S1 only,
 # exact for GPS PRNs 1..63). 11-stage Galois LFSR, per-PRN feedback poly + init (octal). -------

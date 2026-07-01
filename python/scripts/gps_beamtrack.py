@@ -108,6 +108,28 @@ def load_gps_satellites(tle_source):
     return by_prn
 
 
+def gps_block_by_prn(tle_source=DEFAULT_TLE_URL, _sats=None):
+    """Return {prn: block} (e.g. 'IIF', 'IIR', 'IIRM', 'III') read from the Celestrak TLE
+    NAMES ('GPS BIII-10 (PRN 13)'). Satellite BLOCK/signal capability is NOT carried by any
+    almanac or the TLE elements themselves -- it is metadata -- but Celestrak encodes it in
+    the sat name, so we read it from the SAME live feed the visibility uses instead of
+    hardcoding a list that goes stale as satellites launch / commission / retire."""
+    import re
+    sats = _sats if _sats is not None else load_gps_satellites(tle_source)
+    blocks = {}
+    for prn, s in sats.items():
+        m = re.search(r"GPS\s+B([A-Z]+)-?\d", s.name or "")
+        blocks[prn] = m.group(1) if m else "?"
+    return blocks
+
+
+def l1c_capable_prns(tle_source=DEFAULT_TLE_URL, _sats=None):
+    """PRNs that broadcast L1C = GPS Block III onward (TLE block name starts 'III'). Derived
+    from the live Celestrak names, so it tracks launches/commissioning automatically. (Older
+    IIR/IIR-M/IIF have no L1C.)"""
+    return {prn for prn, b in gps_block_by_prn(tle_source, _sats).items() if b.startswith("III")}
+
+
 def predict_dopplers(lat, lon, alt_m, prns=None, t_utc=None, f_carrier_hz=1575.42e6,
                      tle_source=DEFAULT_TLE_URL, _sats=None):
     """Predict {prn: (doppler_hz, doppler_rate_hz_per_s, elevation_deg)} for GPS sats
