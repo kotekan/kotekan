@@ -109,9 +109,15 @@ echo "starting broker (trackers: $TRK)..."
 # --coast-budget: hold a visible sat (seed + forecast Doppler) through a signal dropout this many
 # seconds before dropping it, so a radar sweep / brief fade doesn't lose the lock (raise it with a
 # disciplined clock). Default 30 s -- inside the free-running-TCXO code-prediction horizon.
+# Persist the receiver code-rate clock offset (l-a) across runs: a strong band (L1 C/A) converges it
+# and writes it here; a weak band (L1C) reads it at startup and seeds its pilots on-peak from cycle 1
+# instead of self-calibrating. Override with BROKER_EXTRA="--code-bias-init <ppm>" to pin a value; rm
+# the file to reset (e.g. after a cold start, once warm). The OCXO will make l-a small + stable.
+CODE_BIAS_FILE=${CODE_BIAS_FILE:-/tmp/gps_code_bias.ppm}
 python3 $BROKER --detectors search --trackers "$TRK" --combiner combiner \
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
-        ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} ${BROKER_EXTRA:-} $ALM \
+        ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" \
+        ${BROKER_EXTRA:-} $ALM \
         > /tmp/gpslive_broker.log 2>&1 &
 BPID=$!
 

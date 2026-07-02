@@ -246,6 +246,13 @@ def main(argv=None):
                     help="EMA weight for the receiver code-rate clock offset (l-a); slow -> tracks TCXO/OCXO drift")
     ap.add_argument("--code-bias-min-sats", type=int, default=2,
                     help="fitted sats needed before the pooled code-rate clock offset is trusted + seeded to weak sats")
+    ap.add_argument("--code-bias-init", type=float, default=None,
+                    help="warm-start the receiver code-rate clock offset (l-a) in PPM, e.g. from a prior "
+                         "strong-signal (L1 C/A) run -- so a weak band (L1C) seeds on-peak from cycle 1 "
+                         "instead of self-calibrating. Live samples still refine it if any sats fit.")
+    ap.add_argument("--code-bias-file", type=str, default=None,
+                    help="persist the converged (l-a) ppm here: read at startup (unless --code-bias-init "
+                         "is set) and rewritten each update, so the offset carries across runs/bands")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -278,6 +285,16 @@ def main(argv=None):
     cp_hist = {}     # prn -> [(ref_hop, cp0), ...] recent distinct snapshots (for the slope fit)
     clock_bias_ema = None  # smoothed common clock-frequency bias (slow TCXO drift), Hz
     code_bias_ema = None   # smoothed receiver code-rate clock offset (l-a), dimensionless (~2.6 ppm airspy)
+    if args.code_bias_init is not None:
+        code_bias_ema = args.code_bias_init * 1e-6
+        _log("code-rate clock offset warm-started at %+.3f ppm (--code-bias-init)" % (code_bias_ema * 1e6))
+    elif args.code_bias_file:
+        try:
+            with open(args.code_bias_file) as f:
+                code_bias_ema = float(f.read().strip()) * 1e-6
+            _log("code-rate clock offset loaded %+.3f ppm from %s" % (code_bias_ema * 1e6, args.code_bias_file))
+        except Exception:
+            pass
     CODE_LEN = float(args.code_length)
     MAX_GAP_HOPS = 2.0e6   # reset cp history across a gap this large (re-acquisition)
     HIST_LEN = 8           # snapshots kept for the slope fit
@@ -464,6 +481,12 @@ def main(argv=None):
                                  else code_bias_ema + args.code_bias_alpha * (raw_cb - code_bias_ema))
                 _log("code-rate clock offset (l-a) %+.3f ppm (raw %+.3f, %d fitted sats, EMA a=%.2f)"
                      % (code_bias_ema * 1e6, raw_cb * 1e6, len(la_samples), args.code_bias_alpha))
+                if args.code_bias_file:
+                    try:
+                        with open(args.code_bias_file, "w") as f:
+                            f.write("%.4f\n" % (code_bias_ema * 1e6))
+                    except Exception:
+                        pass
         if code_bias_ema is not None:
             n_seeded = 0
             for prn, seed in seeds.items():
