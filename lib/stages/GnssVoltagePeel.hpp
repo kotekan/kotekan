@@ -46,8 +46,20 @@
  * @conf prns             Array<Int>. PRNs to peel.
  * @conf doppler_hz/code_phase_chips  Array<Double>. Seeds (broker-updatable via set_seeds).
  * @conf pullin_chips     Double (default 0.5). Code pull-in half-window (chips) locked to peak |A|,
- *                        so a small residual code error still peels on-peak.
+ *                        so a small residual code error still peels on-peak. SET 0 when smoothing the
+ *                        gain (fll_gain>0/gain_alpha>0): a per-record re-pick jumps the carrier phase
+ *                        by ~2*pi*f_IF*dtau and wrecks the phase track -- rely on the l-a cp_rate.
  * @conf pullin_step      Double (default 0.25). Pull-in grid step (chips).
+ * @conf fll_gain         Double (default 0). Carrier FLL gain: track the residual carrier phase (so the
+ *                        gain can be derotated before smoothing). 0 = feed-forward (use the broker dop).
+ * @conf gain_alpha       Double (default 0). Complex-gain EMA rate on the DEROTATED, de-bitted gain --
+ *                        the v2 depth knob. 0 = v1 (per-record gain, ~3 dB self-noise); ~0.05-0.1
+ *                        averages the gain over ~10-40 records -> the gain-estimate noise (hence the
+ *                        subtracted self-noise) drops ~sqrt(window), so the peel deepens toward the
+ *                        prototype's ~35 dB. A decision-directed sign tracks the C/A nav bit / L5-NH
+ *                        overlay / pilot (=+1) uniformly, so only the SLOW gain is averaged.
+ * @conf fll_lock_amp     Double (default 0). Freeze the FLL + gain EMA when |A| < this (dropout).
+ * @conf fll_max_gap_s    Double (default 0.005). Skip the FLL discriminator across a larger record gap.
  * @conf active_prns      Array<Int> (optional). Initial go/no-go mask (default all on).
  *
  * @buffer in_buf  This dish's channels, [hop][n_chan] cfloat32.
@@ -82,6 +94,10 @@ private:
 
     double _pullin_chips;
     double _pullin_step;
+    double _fll_gain;      ///< carrier FLL gain (0 = feed-forward)
+    double _gain_alpha;    ///< derotated-gain EMA rate (0 = per-record gain, v1)
+    double _fll_lock_amp;  ///< freeze FLL + gain EMA below this |A|
+    double _fll_max_gap;   ///< skip the FLL discriminator across a record gap larger than this (s)
 
     std::vector<int> _prns;
     std::vector<double> _doppler;

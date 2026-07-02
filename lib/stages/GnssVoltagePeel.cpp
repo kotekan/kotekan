@@ -86,6 +86,10 @@ GnssVoltagePeel::GnssVoltagePeel(Config& config, const std::string& unique_name,
     _replica->code_doppler_sign = config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
     _pullin_chips = config.get_default<double>(unique_name, "pullin_chips", 0.5);
     _pullin_step = config.get_default<double>(unique_name, "pullin_step", 0.25);
+    _fll_gain = config.get_default<double>(unique_name, "fll_gain", 0.0);
+    _gain_alpha = config.get_default<double>(unique_name, "gain_alpha", 0.0);
+    _fll_lock_amp = config.get_default<double>(unique_name, "fll_lock_amp", 0.0);
+    _fll_max_gap = config.get_default<double>(unique_name, "fll_max_gap_s", 0.005);
 
     const auto active_prns = config.get_default<std::vector<int>>(unique_name, "active_prns", {});
     _active.assign(n_prn, 1);
@@ -144,6 +148,19 @@ void GnssVoltagePeel::main_thread() {
     int frame_out = 0;
     const int n_prn = (int)_prns.size();
     const double L = (double)_replica->code_length();
+
+    // v2 smooth-gain state (per PRN): an FLL tracks the residual carrier phase so the gain can be
+    // derotated; gain_ema is a complex EMA of the DEROTATED, de-bitted gain. The decision-directed
+    // sign + FLL NCO carry the fast nav-bit/overlay and carrier phase, so only the SLOW dish gain is
+    // averaged -> the subtracted gain's noise (hence the peel self-noise) drops ~sqrt(EMA window).
+    std::vector<double> f_ref(n_prn, std::nan(""));
+    std::vector<double> f_track(n_prn, 0.0);
+    std::vector<double> phi_track(n_prn, 0.0);
+    std::vector<cf> a_prev(n_prn, cf(0.0f, 0.0f));
+    std::vector<uint8_t> a_prev_ok(n_prn, 0);
+    std::vector<long long> hop_prev(n_prn, 0);
+    std::vector<cf> gain_ema(n_prn, cf(0.0f, 0.0f));
+    const double dt_hop = (double)_fft_len / _sample_rate;
 
     std::vector<cf> window((size_t)_hops_per_record * _n_chan);
     int hops_filled = 0;
@@ -222,7 +239,7 @@ void GnssVoltagePeel::main_thread() {
                 // Code pull-in: lock to the peak |A| over a small cp window so a residual code
                 // error still peels on-peak (the broker cp_rate folds in the l-a clock bias).
                 gnss::DespreadResult best{};
-                double best_pw = -1.0;
+                double best_pw = -1.0, best_off = 0.0;
                 std::vector<std::vector<cf>> best_repl;
                 for (double off = -_pullin_chips; off <= _pullin_chips + 1e-9;
                      off += (_pullin_step > 0.0 ? _pullin_step : 1.0)) {
@@ -237,18 +254,74 @@ void GnssVoltagePeel::main_thread() {
                     if (pw > best_pw) {
                         best_pw = pw;
                         best = res;
+                        best_off = off;
                         best_repl = std::move(repl_ch);
                     }
                     if (_pullin_chips <= 0.0)
                         break;
                 }
+                // Code-delay carrier phase: a signal delayed by the pull-in offset carries a phase
+                // 2*pi*(f_offset+dop)*off/chip_rate. Reference the despread phase back to the SMOOTH
+                // cp track (remove best_off's phase) so the FLL/gain see a continuous carrier despite
+                // the per-record pull-in re-pick, then re-apply it for the subtraction at best_repl.
+                const double dphi_code = 2.0 * M_PI * (_f_offset + fcar) * best_off
+                                         / _replica->chip_rate_hz();
 
-                // SUBTRACT a*R from the residual over the covering channels.
-                const cf a = (cf)best.amplitude;
+                // Gain to subtract. v1: the raw per-record despread (noisy -> ~3 dB self-noise).
+                // v2 (fll_gain>0 / gain_alpha>0): FLL-track the residual carrier phase, derotate the
+                // gain, EMA the SLOW (de-bitted) gain, re-apply the bit + carrier phase -> the gain
+                // noise averages down so much less noise is subtracted back along R (deeper peel).
+                cf a_use = (cf)best.amplitude;
+                if (_fll_gain > 0.0 || _gain_alpha > 0.0) {
+                    using cd = std::complex<double>;
+                    if (std::isnan(f_ref[p])) {
+                        f_ref[p] = fcar;
+                        f_track[p] = 0.0;
+                        phi_track[p] = 0.0;
+                        a_prev_ok[p] = 0;
+                        gain_ema[p] = cf(0.0f, 0.0f);
+                    }
+                    const double dt =
+                        a_prev_ok[p] ? (double)(window_start_hop - hop_prev[p]) * dt_hop : 0.0;
+                    if (a_prev_ok[p] && dt > 0.0) {
+                        phi_track[p] += 2.0 * M_PI * f_track[p] * dt;
+                        phi_track[p] = std::remainder(phi_track[p], 2.0 * M_PI);
+                    }
+                    const cd a_raw = cd(best.amplitude) * std::polar(1.0, -dphi_code); // -> smooth cp ref
+                    const cd a_corr = a_raw * std::polar(1.0, -phi_track[p]);          // derotated
+                    if (_fll_gain > 0.0 && a_prev_ok[p] && dt > 0.0 && dt <= _fll_max_gap
+                        && std::abs(a_corr) > _fll_lock_amp && std::abs(a_prev[p]) > _fll_lock_amp) {
+                        const cd prod = a_corr * std::conj(cd(a_prev[p]));
+                        f_track[p] += _fll_gain * std::arg(prod * prod) / 2.0 / (2.0 * M_PI * dt);
+                    }
+                    a_prev[p] = (cf)a_corr;
+                    a_prev_ok[p] = 1;
+                    hop_prev[p] = window_start_hop;
+                    cd a_smooth = a_corr;
+                    if (_gain_alpha > 0.0 && std::abs(a_corr) > _fll_lock_amp) {
+                        // decision-directed sign vs the running gain (nav bit / NH overlay / pilot=+1)
+                        const double sign =
+                            (std::abs(gain_ema[p]) == 0.0f
+                             || std::real(a_corr * std::conj(cd(gain_ema[p]))) >= 0.0)
+                                ? 1.0
+                                : -1.0;
+                        const cd g_deb = a_corr * sign;
+                        gain_ema[p] = (std::abs(gain_ema[p]) == 0.0f)
+                                          ? (cf)g_deb
+                                          : (cf)((1.0 - _gain_alpha) * cd(gain_ema[p])
+                                                 + _gain_alpha * g_deb);
+                        a_smooth = cd(gain_ema[p]) * sign; // smoothed gain, bit re-applied
+                    }
+                    // back to the model frame AND to best_cp (re-apply the code-delay phase) so the
+                    // subtraction matches best_repl.
+                    a_use = (cf)(a_smooth * std::polar(1.0, phi_track[p] + dphi_code));
+                }
+
+                // SUBTRACT a_use*R from the residual over the covering channels.
                 for (size_t ci = 0; ci < owned.size(); ++ci) {
                     const int local = owned[ci] - _chan_offset;
                     for (int m = 0; m < _hops_per_record; ++m)
-                        out[(size_t)m * _n_chan + local] -= a * best_repl[ci][m];
+                        out[(size_t)m * _n_chan + local] -= a_use * best_repl[ci][m];
                 }
                 {
                     std::lock_guard<std::mutex> lk(_diag_mtx);

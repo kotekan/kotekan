@@ -48,10 +48,10 @@ peel:
     doppler_hz: [1832]
     code_phase_chips: [629.15]
     code_phase_rate: [1.85e-5]     # chips/hop = +3.86 chip/s (l-a-corrected code drift) / (5e6/24 hops/s)
-    pullin_chips: 1.0
-    pullin_step: 0.25
+    pullin_chips: 0.0
+    pullin_step: 0.2
     fll_gain: 0.05
-    gain_alpha: 0.15
-    fll_lock_amp: 0.0   # v2: FLL + derotated smooth-gain (phase-corrected for the pull-in code delay)
+    gain_alpha: 0.1
+    fll_lock_amp: 0.0
 
 search_peel: { kotekan_stage: GnssChannelizedSearch, in_buf: resid_buf, channel_offset: 0, n_channels: 12, acquire_snr: 8, acquire_windows: 20, prns: [32, 28, 31, 12] }
