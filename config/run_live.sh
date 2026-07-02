@@ -39,6 +39,17 @@ CARRIER_HZ=$(awk '/^[[:space:]]*freq:/{printf "%.0f", $2*1e6; exit}' "$CFG")  # 
 # estimate (l-a). Derived from the config so any band works. (L5's 10.23 Mcps code also needs
 # --chip-rate-hz 10230000 --code-length 10230 for the code-bias -- add those to BROKER_EXTRA for L5.)
 HOPS_PER_SEC=$(awk '/^[[:space:]]*sample_rate:/{sr=$2} /^[[:space:]]*spectrum_length:/{n=$2} END{if(sr>0&&n>0)printf "%.4f", sr/(2*n)}' "$CFG")
+# Signal-specific chip rate + primary-code length for the broker's cp-fit and code-rate clock-bias,
+# parsed straight from the C++ SignalDescriptor table (the single source of truth) keyed by the
+# config's signal:. So any band works with no per-band flags -- L1CA 1.023e6/1023, L1C_P 1.023e6/
+# 10230, L2C_CM 511.5e3/10230, L5_Q 10.23e6/10230. Unknown/absent -> broker defaults (L1 C/A).
+SIGNAL=$(awk '/^[[:space:]]*signal:/{print $2; exit}' "$CFG")
+SIGHDR="lib/stages/gnssSignal.hpp"
+CHIP_HZ=""; CODELEN=""
+if [ -n "${SIGNAL:-}" ] && [ -f "$SIGHDR" ]; then
+  CHIP_HZ=$(awk -F, -v s="$SIGNAL" '$1 ~ ("^[[:space:]]*\"" s "\"$"){c=$3;gsub(/[^0-9.eE+-]/,"",c);print c;exit}' "$SIGHDR")
+  CODELEN=$(awk -F, -v s="$SIGNAL" '$1 ~ ("^[[:space:]]*\"" s "\"$"){l=$4;gsub(/[^0-9]/,"",l);print l;exit}' "$SIGHDR")
+fi
 BROKER=python/scripts/gps_distributed_broker.py
 LOG=/tmp/gpslive.log
 
@@ -114,9 +125,11 @@ echo "starting broker (trackers: $TRK)..."
 # instead of self-calibrating. Override with BROKER_EXTRA="--code-bias-init <ppm>" to pin a value; rm
 # the file to reset (e.g. after a cold start, once warm). The OCXO will make l-a small + stable.
 CODE_BIAS_FILE=${CODE_BIAS_FILE:-/tmp/gps_code_bias.ppm}
+echo "signal $SIGNAL: hops/s ${HOPS_PER_SEC:-default}, chip ${CHIP_HZ:-default} Hz, code ${CODELEN:-default} chips, l-a file $CODE_BIAS_FILE"
 python3 $BROKER --detectors search --trackers "$TRK" --combiner combiner \
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
         ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" \
+        ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} \
         ${BROKER_EXTRA:-} $ALM \
         > /tmp/gpslive_broker.log 2>&1 &
 BPID=$!
