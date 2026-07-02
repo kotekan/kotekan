@@ -1,50 +1,28 @@
 #include "N2Accumulate.hpp"
 
 #include "Config.hpp"            // for Config
-#include "Config.hpp"            // for Config
-#include "DataType.hpp"          // for DataType
 #include "DataType.hpp"          // for DataType
 #include "FrameDesc.hpp"         // for FrameDesc
-#include "FrameDesc.hpp"         // for FrameDesc
-#include "Hash.hpp"              // for operator!=
 #include "Hash.hpp"              // for operator!=
 #include "N2FrameDesc.hpp"       // for N2FrameDesc
-#include "N2FrameDesc.hpp"       // for N2FrameDesc
-#include "N2FrameView.hpp"       // for N2FrameView
 #include "N2FrameView.hpp"       // for N2FrameView
 #include "N2Layout.hpp"          // for N2Layout
-#include "N2Layout.hpp"          // for N2Layout
 #include "N2Metadata.hpp"        // for N2Metadata, get_N2_metadata
-#include "N2Metadata.hpp"        // for N2Metadata, get_N2_metadata
-#include "N2Util.hpp"            // for frameID, modulo, operator+, cfloat, cmap
 #include "N2Util.hpp"            // for frameID, modulo, operator+, cfloat, cmap
 #include "NDArray.hpp"           // for GenericNDArray
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"         // for Telescope, freq_id_t
 #include "Telescope.hpp"         // for Telescope, freq_id_t
 #include "buffer.hpp"            // for Buffer
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
-#include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
-#include "dataset.hpp"           // for dset_id_t
 #include "dataset.hpp"           // for dset_id_t
 #include "div.hpp"               // for div_ceil, num_triangle_blocks
-#include "div.hpp"               // for div_ceil, num_triangle_blocks
-#include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, FATAL_ERROR_NON_OO, INFO
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, FATAL_ERROR_NON_OO, INFO
 #include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "prometheusMetrics.hpp" // for Metrics, Gauge
-#include "timeUtil.hpp"          // for EOP, get_UT1_from_ERA, get_ERA_from_UT1, get_UT1_from_time
 #include "timeUtil.hpp"          // for EOP, get_UT1_from_ERA, get_ERA_from_UT1, get_UT1_from_time
 
 #include "fmt.hpp"          // for compile_string_to_view
-#include "fmt.hpp"          // for compile_string_to_view
 #include "gsl-lite.hpp"     // for span
-#include "gsl-lite.hpp"     // for span
-#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 #include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 
 #include <algorithm>  // for fill
@@ -103,7 +81,15 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _tel(Telescope::instance()),
     _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _input_order)),
     skipped_frame_counter(Metrics::instance().add_counter(
-        "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
+        "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})),
+    n_valid_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_num_valid_fpga_ticks",
+                                                unique_name, {"freq_id"})),
+    n_pl_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_num_flagged_fpga_ticks_pl",
+                                             unique_name, {"freq_id"})),
+    n_rfi_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_num_flagged_fpga_ticks_rfi",
+                                              unique_name, {"freq_id"})),
+    n_rfi_only_gauge(Metrics::instance().add_gauge(
+        "kotekan_N2accumulate_num_flagged_fpga_ticks_rfi_only", unique_name, {"freq_id"})) {
 
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
@@ -1002,6 +988,15 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
             meta->dataset_id = dataset_id;
         }
         N2FrameView out_vis(out_buf, out_frame_id + f);
+
+        // Update some prometheus metrics here, since metadata is already available
+        auto fid = std::to_string(meta->freq_id);
+        n_valid_gauge.labels({fid}).set(static_cast<float>(meta->n_valid_fpga_ticks)
+                                        / ticks_in_accum);
+        n_pl_gauge.labels({fid}).set(static_cast<float>(meta->n_pl_fpga_ticks) / ticks_in_accum);
+        n_rfi_gauge.labels({fid}).set(static_cast<float>(meta->n_rfi_fpga_ticks) / ticks_in_accum);
+        n_rfi_only_gauge.labels({fid}).set(static_cast<float>(meta->n_rfi_only_fpga_ticks)
+                                           / ticks_in_accum);
 
         // Sample numbers for normalizing variaces/weights
         int64_t ns = _n_valid_fpga_samples_in_vis.at(f); // ns = "number of samples"
