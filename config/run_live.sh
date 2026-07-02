@@ -34,6 +34,11 @@ if [[ "$TRK" != *"{"* ]]; then  # skip brace ranges (the broker expands those it
   done
 fi
 CARRIER_HZ=$(awk '/^[[:space:]]*freq:/{printf "%.0f", $2*1e6; exit}' "$CFG")  # for the broker almanac Doppler
+# F-engine hop rate = sample_rate / fft_len (fft_len = 2*spectrum_length, real input). The broker
+# needs this to convert the fitted cp slope (chips/hop) into chips/s AND for the code-rate clock-bias
+# estimate (l-a). Derived from the config so any band works. (L5's 10.23 Mcps code also needs
+# --chip-rate-hz 10230000 --code-length 10230 for the code-bias -- add those to BROKER_EXTRA for L5.)
+HOPS_PER_SEC=$(awk '/^[[:space:]]*sample_rate:/{sr=$2} /^[[:space:]]*spectrum_length:/{n=$2} END{if(sr>0&&n>0)printf "%.4f", sr/(2*n)}' "$CFG")
 BROKER=python/scripts/gps_distributed_broker.py
 LOG=/tmp/gpslive.log
 
@@ -105,7 +110,8 @@ echo "starting broker (trackers: $TRK)..."
 # seconds before dropping it, so a radar sweep / brief fade doesn't lose the lock (raise it with a
 # disciplined clock). Default 30 s -- inside the free-running-TCXO code-prediction horizon.
 python3 $BROKER --detectors search --trackers "$TRK" --combiner combiner \
-        --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} $ALM \
+        --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
+        ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} ${BROKER_EXTRA:-} $ALM \
         > /tmp/gpslive_broker.log 2>&1 &
 BPID=$!
 

@@ -94,6 +94,30 @@ def fit_cp_rate(hist, code_len):
     return rate, h0, cp_ref % code_len
 
 
+def code_clock_bias_sample(rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz, carrier_hz):
+    """One satellite's estimate of the receiver LO-vs-ADC clock offset (l - a), dimensionless.
+
+    The whole signal is Doppler-scaled by v/c at the antenna, but the receiver observes the CODE
+    against its ADC sample clock and the CARRIER against its tuner-LO clock:
+        code_frac    = fitted code rate / chip rate   = v/c - a   (a = ADC clock error)
+        carrier_frac = measured Doppler  / carrier    = v/c - l   (l = LO  clock error)
+    so code_frac - carrier_frac = l - a -- v/c CANCELS, leaving the common clock offset with NO
+    ephemeris needed. It is the same for every satellite, so strong detections calibrate it and weak
+    ones inherit it (the code-side twin of the existing carrier clock_bias). ~+2.6 ppm on the airspy.
+    """
+    code_frac = rate_chips_per_hop * hops_per_sec / chip_hz
+    carrier_frac = doppler_hz / carrier_hz
+    return code_frac - carrier_frac
+
+
+def cp_rate_from_code_bias(doppler_hz, code_bias, hops_per_sec, chip_hz, carrier_hz):
+    """Seed the code-phase rate (chips/hop) for ANY sat from carrier-aiding + the calibrated offset:
+    code_rate = f_chip * (doppler/f_L1 + (l - a)). Gives a not-yet-fittable weak/new sat an accurate
+    code rate from its FIRST detection, instead of waiting to build its own >=3-snapshot slope fit."""
+    code_frac = doppler_hz / carrier_hz + code_bias
+    return code_frac * chip_hz / hops_per_sec
+
+
 def expand_token(tok):
     """Expand the first bash-style {a..b} range in a token, recursing for more.
 
@@ -215,7 +239,13 @@ def main(argv=None):
     ap.add_argument("--code-length", type=float, default=1023.0,
                     help="spreading-code length (chips) for cp0 unwrap/fit (L1 C/A = 1023)")
     ap.add_argument("--hops-per-sec", type=float, default=125000.0,
-                    help="F-engine hops/s (Fs/fft_len) -- only to log the cp slope in chips/s")
+                    help="F-engine hops/s (Fs/fft_len) -- cp slope chips/s log + the code clock-bias estimate")
+    ap.add_argument("--chip-rate-hz", type=float, default=1.023e6,
+                    help="spreading chip rate (L1 C/A 1.023e6) -- for the code-rate clock-bias estimate")
+    ap.add_argument("--code-bias-alpha", type=float, default=0.05,
+                    help="EMA weight for the receiver code-rate clock offset (l-a); slow -> tracks TCXO/OCXO drift")
+    ap.add_argument("--code-bias-min-sats", type=int, default=2,
+                    help="fitted sats needed before the pooled code-rate clock offset is trusted + seeded to weak sats")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -247,6 +277,7 @@ def main(argv=None):
     low_hits = {}    # prn -> consecutive low-|A| poll count
     cp_hist = {}     # prn -> [(ref_hop, cp0), ...] recent distinct snapshots (for the slope fit)
     clock_bias_ema = None  # smoothed common clock-frequency bias (slow TCXO drift), Hz
+    code_bias_ema = None   # smoothed receiver code-rate clock offset (l-a), dimensionless (~2.6 ppm airspy)
     CODE_LEN = float(args.code_length)
     MAX_GAP_HOPS = 2.0e6   # reset cp history across a gap this large (re-acquisition)
     HIST_LEN = 8           # snapshots kept for the slope fit
@@ -337,6 +368,8 @@ def main(argv=None):
         # refresh / add consensus seeds: code phase from the search, Doppler from the
         # orbit prediction when available (precise enough for coherent integration),
         # else the coarse search grid.
+        la_samples = []   # per-sat (l-a) estimates this cycle, from sats with a good code-rate fit
+        fitted = set()    # PRNs that got their own >=3-snapshot slope fit this cycle
         for prn, (snr, dop, cp, ref_hop) in best.items():
             if up is not None and prn not in up:
                 continue
@@ -360,8 +393,15 @@ def main(argv=None):
                 seed["code_phase_rate"] = rate
                 seed["ref_hop"] = h0
                 seed["code_phase_chips"] = cp_ref
-                _log("PRN %d cp-fit: %.2f chips @ hop %d, slope %+.3f chips/s (%d pts)"
-                     % (prn, cp_ref, h0, rate * args.hops_per_sec, len(h)))
+                fitted.add(prn)
+                # This fit contributes an (l-a) sample: its code_frac minus the sat's carrier_frac.
+                # Only strong, geometry-clean detections (SNR gate) -- weak/noisy slopes would bias it.
+                la = code_clock_bias_sample(rate, seed_dop, args.hops_per_sec,
+                                            args.chip_rate_hz, args.carrier_hz)
+                if snr >= args.acquire_snr:
+                    la_samples.append(la)
+                _log("PRN %d cp-fit: %.2f chips @ hop %d, slope %+.3f chips/s (%d pts, l-a %+.3f ppm)"
+                     % (prn, cp_ref, h0, rate * args.hops_per_sec, len(h), la * 1e6))
             seeds[prn] = seed
             low_hits[prn] = 0
 
@@ -411,6 +451,30 @@ def main(argv=None):
                          % (prn, args.coast_budget, "sig" if have_sig else "|A|", metric))
                     del seeds[prn]
                     low_hits.pop(prn, None)
+
+        # 3b. Receiver code-rate clock offset (l-a): pool the strong sats' per-fit samples (robust
+        # median), EMA-smooth it (slow -> tracks TCXO/OCXO drift), then SEED it to every sat that
+        # could NOT fit its own slope (weak / just-acquired / coasting) as carrier-aiding + (l-a).
+        # The code-side twin of the carrier clock_bias: strong detections calibrate the clock so weak
+        # ones never drift off-peak. Ephemeris-free (v/c cancels). Bounded +-50 ppm against a rogue fit.
+        if len(la_samples) >= args.code_bias_min_sats:
+            raw_cb = statistics.median(la_samples)
+            if -50e-6 < raw_cb < 50e-6:
+                code_bias_ema = (raw_cb if code_bias_ema is None
+                                 else code_bias_ema + args.code_bias_alpha * (raw_cb - code_bias_ema))
+                _log("code-rate clock offset (l-a) %+.3f ppm (raw %+.3f, %d fitted sats, EMA a=%.2f)"
+                     % (code_bias_ema * 1e6, raw_cb * 1e6, len(la_samples), args.code_bias_alpha))
+        if code_bias_ema is not None:
+            n_seeded = 0
+            for prn, seed in seeds.items():
+                if prn not in fitted:  # weak/new/coasting -> carrier-aiding + the calibrated offset
+                    seed["code_phase_rate"] = cp_rate_from_code_bias(
+                        seed["doppler_hz"], code_bias_ema, args.hops_per_sec,
+                        args.chip_rate_hz, args.carrier_hz)
+                    n_seeded += 1
+            if n_seeded:
+                _log("seeded code rate from (l-a) %+.3f ppm -> %d unfitted sat(s)"
+                     % (code_bias_ema * 1e6, n_seeded))
 
         # 4. push consensus seeds to every tracker
         payload = [dict(prn=prn, **v) for prn, v in sorted(seeds.items())]
