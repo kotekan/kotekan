@@ -50,8 +50,6 @@ rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
     rfi_downsampling_factor = config.get<size_t>(unique_name, "rfi_downsampling_factor");
     rfi_second_downsampling_factor =
         config.get<size_t>(unique_name, "rfi_second_downsampling_factor");
-    // Stage-specific params
-    num_sigma_deviations = config.get<uint16_t>(unique_name, "num_sigma_deviations");
     // Packet/network config params
     frames_per_packet = config.get_default<size_t>(unique_name, "frames_per_packet", 1);
     dest_port = config.get<size_t>(unique_name, "destination_port");
