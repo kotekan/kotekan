@@ -26,6 +26,8 @@ buffer_depth: 8
 
 input_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
 
+cpu_affinity: [0, 1, 2, 3]
+
 airspy_in:
     kotekan_stage: airspyInput
     out_buf: input_buf

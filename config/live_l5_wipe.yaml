@@ -82,8 +82,8 @@ airspy_in:
     freq: 1176.45
     sample_bw: 10
     gain_lna: 14
-    gain_mix: 15
-    gain_if: 15
+    gain_mix: 10
+    gain_if: 10
     biast_power: true
 fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
 # VALVE: drops a whole frame (cleanly -- fpga_seq preserved) if chan_buf2 is full, so the
