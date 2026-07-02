@@ -143,8 +143,11 @@ private:
     bool use_config_tracker;
 
     /// Expect a serialized frame descriptor on the wire. Not negotiated: it must
-    /// be set identically on the sending bufferSend (like use_config_tracker); a
-    /// mismatch desynchronizes the stream and fails fast.
+    /// be set identically on the sending bufferSend (like use_config_tracker). A
+    /// mismatch desynchronizes the stream: set here but not on the sender is
+    /// caught by the descriptor size/parse checks (fatal); set on the sender but
+    /// not here misreads the descriptor bytes as metadata and is only caught at
+    /// the next frame header, after one corrupted frame.
     bool use_frame_desc;
 
     static void read_callback(evutil_socket_t fd, short what, void* arg);

@@ -92,14 +92,36 @@ BOOST_AUTO_TEST_CASE(from_json_rejects_duplicate_dimnames) {
     BOOST_CHECK_THROW(FrameDesc::from_json(j), std::exception);
 }
 
-BOOST_AUTO_TEST_CASE(from_json_rejects_inconsistent_n2_num_products) {
-    // FullUpperTri with num_elements=4 implies 10 products; a num_products that
-    // disagrees must be rejected rather than stored verbatim into the descriptor.
+BOOST_AUTO_TEST_CASE(from_json_rejects_unexpected_n2_product_list) {
+    // FullUpperTri derives its product list locally; one arriving on the wire
+    // would silently override the derived product count, so it is rejected.
     nlohmann::json j;
     j["frame_desc_type"] = "N2";
     j["num_elements"] = 4;
     j["num_ev"] = 0;
-    j["num_products"] = 99; // wrong; should be 10
     j["n2_layout"] = "FullUpperTri";
+    j["product_list"] = {{0, 1}, {0, 2}, {3, 3}};
+    BOOST_CHECK_THROW(FrameDesc::from_json(j), std::exception);
+}
+
+BOOST_AUTO_TEST_CASE(from_json_rejects_missing_n2_product_list) {
+    // Subset layouts cannot be regenerated from num_elements alone, so the
+    // explicit product list is required.
+    nlohmann::json j;
+    j["frame_desc_type"] = "N2";
+    j["num_elements"] = 8;
+    j["num_ev"] = 0;
+    j["n2_layout"] = "GeneralSubset";
+    BOOST_CHECK_THROW(FrameDesc::from_json(j), std::exception);
+}
+
+BOOST_AUTO_TEST_CASE(from_json_rejects_out_of_range_n2_product) {
+    // Product input indices must lie within num_elements.
+    nlohmann::json j;
+    j["frame_desc_type"] = "N2";
+    j["num_elements"] = 8;
+    j["num_ev"] = 0;
+    j["n2_layout"] = "GeneralSubset";
+    j["product_list"] = {{0, 1}, {60000, 60001}};
     BOOST_CHECK_THROW(FrameDesc::from_json(j), std::exception);
 }

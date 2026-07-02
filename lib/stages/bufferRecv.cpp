@@ -507,12 +507,15 @@ void connInstance::internal_read_callback() {
                 bytes_read += n;
                 if (bytes_read >= sizeof(frame_desc_size)) {
                     assert(bytes_read == sizeof(frame_desc_size));
-                    // A serialized descriptor is small; reject absurd sizes from a
-                    // mismatched/hostile peer before allocating and reading.
+                    // A serialized descriptor is small; an absurd size means a
+                    // mismatched/hostile peer, i.e. contaminated control data, so
+                    // shut down (as the malformed-descriptor case below) rather
+                    // than reconnect-loop on it.
                     constexpr uint32_t MAX_FRAME_DESC_SIZE = 1u << 20; // 1 MiB
                     if (frame_desc_size > MAX_FRAME_DESC_SIZE) {
-                        ERROR("Received frame_desc size ({:d}) exceeds maximum ({:d}) from {:s}",
-                              frame_desc_size, MAX_FRAME_DESC_SIZE, client_ip);
+                        FATAL_ERROR("Received frame_desc size ({:d}) exceeds maximum ({:d}) from "
+                                    "{:s} (use_frame_desc set here but not on the sender?)",
+                                    frame_desc_size, MAX_FRAME_DESC_SIZE, client_ip);
                         decrement_ref_count();
                         close_instance();
                         return;
@@ -622,32 +625,31 @@ void connInstance::internal_read_callback() {
                 if (metadata)
                     metadata->set_from_bytes((char*)metadata_space, buf_frame_header.metadata_size);
 
-                // When use_frame_desc is set the descriptor is transmitted over the
-                // wire and validated above; otherwise reconstruct it here from the
-                // received chordMetadata.
-                if (!use_frame_desc) {
-                    auto chord = std::dynamic_pointer_cast<chordMetadata>(metadata);
-                    if (chord) {
-                        /* new style array description */
-                        std::vector<std::ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
-                        std::vector<kotekan::Symbol> dimnames(chord->dims);
-                        for (size_t d = 0; d < dimnames.size(); ++d) {
-                            dimnames.at(d) =
-                                std::string(chord->dim_name[d],
-                                            strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
-                        }
-                        std::vector<std::ptrdiff_t> dimscalings(chord->dim_scaling,
-                                                                chord->dim_scaling + chord->dims);
-
-                        // The frame descriptor is discovered from the received frame,
-                        // so ensure_frame_desc: attach it when the receive buffer is
-                        // undeclared (e.g. `standard`), or validate the received shape
-                        // against the buffer's declared descriptor when it has one.
-                        buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
-                            chord->type, chord->get_name(), dimensions, dimnames, dimscalings));
-                        /* test that things are consistent */
-                        chord->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
+                // Reconstruct a descriptor from the received chordMetadata on every
+                // frame, complementing the once-per-connection wire descriptor read
+                // when use_frame_desc is set (which also covers metadata types, like
+                // N2, that carry no structural fields).
+                auto chord = std::dynamic_pointer_cast<chordMetadata>(metadata);
+                if (chord) {
+                    /* new style array description */
+                    std::vector<std::ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
+                    std::vector<kotekan::Symbol> dimnames(chord->dims);
+                    for (size_t d = 0; d < dimnames.size(); ++d) {
+                        dimnames.at(d) =
+                            std::string(chord->dim_name[d],
+                                        strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
                     }
+                    std::vector<std::ptrdiff_t> dimscalings(chord->dim_scaling,
+                                                            chord->dim_scaling + chord->dims);
+
+                    // The frame descriptor is discovered from the received frame,
+                    // so ensure_frame_desc: attach it when the receive buffer is
+                    // undeclared (e.g. `standard`), or validate the received shape
+                    // against the buffer's declared descriptor when it has one.
+                    buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                        chord->type, chord->get_name(), dimensions, dimnames, dimscalings));
+                    /* test that things are consistent */
+                    chord->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
                 }
 
                 buf->mark_frame_full(producer_name, frame_id);

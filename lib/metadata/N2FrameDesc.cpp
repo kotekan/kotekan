@@ -27,6 +27,14 @@ N2FrameDesc::N2FrameDesc(uint32_t num_elements, uint32_t num_ev, uint32_t num_pr
                 "N2FrameDesc: product_list size ({:d}) does not match num_products ({:d})",
                 this->product_list.size(), num_products));
         }
+        for (const auto& prod : this->product_list) {
+            if (prod.input_a >= num_elements || prod.input_b >= num_elements) {
+                throw std::runtime_error(fmt::format(
+                    "N2FrameDesc: product ({:d},{:d}) references an input outside "
+                    "num_elements ({:d})",
+                    prod.input_a, prod.input_b, num_elements));
+            }
+        }
     }
 }
 
@@ -79,8 +87,9 @@ nlohmann::json N2FrameDesc::to_json() const {
     j["frame_desc_type"] = "N2";
     j["num_elements"] = num_elements;
     j["num_ev"] = num_ev;
-    j["num_products"] = num_products;
-    // Encode the layout by name (via its json serializer) so the wire form
+    // num_products is not transmitted: it is derived from the layout (or the
+    // product list), so an inconsistent count cannot be expressed on the wire.
+    // The layout is encoded by name (via its json serializer) so the wire form
     // survives any reordering of the N2Layout enum.
     j["n2_layout"] = n2_layout;
     // Subset layouts cannot be regenerated from num_elements alone, so send the
@@ -93,26 +102,23 @@ nlohmann::json N2FrameDesc::to_json() const {
 std::shared_ptr<const FrameDesc> N2FrameDesc::from_json(const nlohmann::json& j) {
     const uint32_t num_elements = j.at("num_elements").get<uint32_t>();
     const uint32_t num_ev = j.at("num_ev").get<uint32_t>();
-    const uint32_t num_products = j.at("num_products").get<uint32_t>();
     const N2Layout n2_layout = j.at("n2_layout").get<N2Layout>();
 
+    // Subset layouts require the explicit product list; for other layouts the
+    // list is regenerated locally, and one arriving anyway is malformed input
+    // (it would otherwise silently override the derived product count).
     std::vector<N2::prod_ctype> product_list;
-    if (j.contains("product_list"))
+    if (layout_requires_product_list(n2_layout)) {
         product_list = j.at("product_list").get<std::vector<N2::prod_ctype>>();
+    } else if (j.contains("product_list")) {
+        throw std::runtime_error(
+            fmt::format(fmt("N2FrameDesc::from_json: unexpected product_list for layout {:s}"),
+                        N2Layout_to_string(n2_layout)));
+    }
 
-    // num_products is derivable from the layout and element count, so reject a
-    // value that disagrees. Otherwise a corrupt-but-parseable count for a
-    // non-subset layout (which the constructor stores verbatim) yields an
-    // inconsistent descriptor that would later FATAL on the frame-size check
-    // instead of being rejected here. get_num_prod() also throws on an unknown
-    // layout, so that is rejected too.
-    const size_t expected_num_products = get_num_prod(num_elements, n2_layout, product_list);
-    if (num_products != expected_num_products)
-        throw std::runtime_error(fmt::format(
-            fmt("N2FrameDesc::from_json: num_products {:d} inconsistent with layout (expected "
-                "{:d})"),
-            num_products, expected_num_products));
-
+    // Derive num_products as the config path does; the constructor validates
+    // the product list (including index bounds) and throws on any problem.
+    const uint32_t num_products = get_num_prod(num_elements, n2_layout, product_list);
     return std::make_shared<N2FrameDesc>(num_elements, num_ev, num_products, n2_layout,
                                          std::move(product_list));
 }
