@@ -139,8 +139,8 @@ public:
             assert(dims.at(1) == 2);
             std::vector<std::array<std::int64_t, 2>> dish_grid_indices(dims.at(0));
             attr.read_raw(reinterpret_cast<std::int64_t*>(dish_grid_indices.data()));
-            const auto& expected_dish_grid_indices =
-                telescope.get_main_array_grid_indices(num_dishes, ElementOrder::CHORDBeamformer);
+            const auto& expected_dish_grid_indices = telescope.get_main_array_grid_indices(
+                num_dishes, telescope.fiducial_element_order());
             if (dish_grid_indices != expected_dish_grid_indices)
                 FATAL_ERROR("Attribute dish_grid_indices is {}, expected {}", dish_grid_indices,
                             expected_dish_grid_indices);
@@ -155,7 +155,7 @@ public:
             std::vector<std::array<double, 3>> feed_positions_m(dims.at(0));
             attr.read_raw(reinterpret_cast<double*>(feed_positions_m.data()));
             const auto& expected_feed_positions_m =
-                telescope.get_feed_positions_m(num_dishes, ElementOrder::CHORDBeamformer);
+                telescope.get_feed_positions_m(num_dishes, telescope.fiducial_element_order());
             if (feed_positions_m != expected_feed_positions_m)
                 FATAL_ERROR("Attribute feed_positions_m is {}, expected {}", feed_positions_m,
                             expected_feed_positions_m);

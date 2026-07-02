@@ -13,20 +13,11 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_rfi_RFImask_buffer
         file_name: rfi_RFImask
-    # write_n2k_correlation:
-    #     kotekan_stage: hdf5FileWrite
-    #     in_buf: host_n2k_correlation_buffer
-    #     file_name: n2k_correlation
-    # write_n2k_counts:
-    #     kotekan_stage: hdf5FileWrite
-    #     in_buf: host_n2k_counts_buffer
-    #     file_name: n2k_counts
-    write_n2:
+    write_n2_vis:
         kotekan_stage: hdf5FileWrite
         in_buf: host_n2_vis_buffer
         file_name: n2_vis
         create_single_file: false # not implemented
-        max_frames: 10 * num_frequencies # each frame has 1006.63296 ms
     write_bb_beams:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beams_buffer
@@ -40,3 +31,8 @@ write_data:
         in_buf: host_frb3_beams_offsetscale_buffer
         file_name: frb3_beams_offsetscale
         max_frames: 32          # each frame has 335.54432 ms
+    # this is chime only
+    write_hfb2_beams:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_hfb2_beams_buffer
+        file_name: hfb2_beams

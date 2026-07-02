@@ -28,6 +28,8 @@ add_library(
     cudaCopyToRingbuffer.cpp
     cudaCopyNToRingbuffer.cpp
     cudaFRBBeamReformer.cpp
+    cudaHFB1Accumulate.cpp
+    cudaHFB1Accumulate.cu
     cudaMemsetInt.cu
     chordMVPSetup.cpp
     cudaPLMaskAccumulator.cpp

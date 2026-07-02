@@ -51,7 +51,7 @@ parseReorderDefault::parseReorderDefault(Config& config, const std::string& uniq
         _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
             kotekan::int32, _name,
             {_num_chime_cylinders, _num_polarizations, _num_dishes / _num_chime_cylinders},
-            {"C", "P", "D"}, {1, 1, 1}));
+            {"D", "P", "D"}, {_num_dishes / _num_chime_cylinders, 1, 1}));
     } else if (_input_order == ElementOrder::CHIMEBeamformer) {
         _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
             kotekan::int32, _name, {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
@@ -59,7 +59,8 @@ parseReorderDefault::parseReorderDefault(Config& config, const std::string& uniq
         FATAL_ERROR("Unexpected input_order {:s}", _input_order);
     }
 #else
-    // this is what xpose2048 expects
+    // xpose2048 expects its input in correlator order {"E"} and will produce output in beamformer
+    // order {"P", "D"}.
     _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, _name, {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
 #endif

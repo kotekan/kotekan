@@ -18,7 +18,7 @@
 num_dishes_x: 8
 num_dishes_y: 8
 num_dishes: 64
-input_order: CHORDBeamformer
+# input_order: CHORDBeamformer
 
 # Telescope
 
@@ -53,6 +53,11 @@ telescope:
       label: CHARTS-{{"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[y]}}{{"{:02d}".format(x+1)}}
 {%   endfor %}
 {% endfor %}
+
+    sampling_rate_MHz: adc_frequency / 1.0e+6
+    fft_length: num_samples_per_frame
+    min_science_freq_MHz: 1000 * adc_frequency / num_samples_per_frame / 1.0e+6
+    max_science_freq_MHz: 1671 * adc_frequency / num_samples_per_frame / 1.0e+6
 
 ################################################################################
 

@@ -96,12 +96,11 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _num_elements(_num_polarizations * _num_dishes),
     _num_workers(config.get_default<int>(unique_name, "num_workers", 1)),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
-    _input_order(config.get<ElementOrder>(unique_name, "input_order")),
     _variance_mode(config.get<N2VarianceMode>(unique_name, "variance_mode")),
     _debug_accum_mode(config.get_default<bool>(unique_name, "debug_accum_mode", false)),
     _profile_info(config.get_default<bool>(unique_name, "profile_info", false)),
     _tel(Telescope::instance()),
-    _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _input_order)),
+    _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _tel.fiducial_element_order())),
     skipped_frame_counter(Metrics::instance().add_counter(
         "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
 

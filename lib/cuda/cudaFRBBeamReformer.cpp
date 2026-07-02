@@ -125,7 +125,7 @@ cudaFRBBeamReformer::cudaFRBBeamReformer(kotekan::Config& config, const std::str
         frb2_beams_name, "I2",
         std::array<std::ptrdiff_t, 4>{1, frb2_num_beams, frb2_num_frequencies, frb2_num_times},
         std::array<std::string, 4>{"Ttildehi256", "R", "Fbar", "Ttildelo256"},
-        {frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor}, *this),
+        {frb_downsampling_factor * frb2_num_times, 1, 1, frb_downsampling_factor}, *this),
 
     did_set_metadata(false)
 
