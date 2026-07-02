@@ -111,7 +111,6 @@ private:
     // How many frequencies we will process
     const int Fbar_in_min, Fbar_in_max;
     const int Fbar_out_min, Fbar_out_max;
-    const ElementOrder input_order;
 
     // Kernel arguments:
     enum class args {
@@ -400,7 +399,6 @@ cudaFRBBeamformer_chord_U2::cudaFRBBeamformer_chord_U2(Config& config,
     Fbar_in_max(config.get<int>(unique_name, "Fbar_in_max")),
     Fbar_out_min(config.get<int>(unique_name, "Fbar_out_min")),
     Fbar_out_max(config.get<int>(unique_name, "Fbar_out_max")),
-    input_order(config.get<ElementOrder>(unique_name, "input_order")),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
@@ -442,13 +440,6 @@ cudaFRBBeamformer_chord_U2::cudaFRBBeamformer_chord_U2(Config& config,
     I_buffer.register_producer();
     register_gpu_buffer_user(
         {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
-
-    if (input_order != ElementOrder::CHIMEBeamformer
-        && input_order != ElementOrder::CHORDBeamformer) {
-        FATAL_ERROR("FRBBeamformer cannot run with input_order: {}. Must be CHIMEBeamformer or "
-                    "CHORDBeamformer",
-                    input_order);
-    }
 
     set_command_type(gpuCommandType::KERNEL);
 
@@ -739,7 +730,7 @@ cudaEvent_t cudaFRBBeamformer_chord_U2::execute(cudaPipelineState& /*pipestate*/
         // The input order is a Beamformer type (P slow, D fast), so the first num_dishes
         // entries will contain the grid indices for all connected dishes.
         std::vector<grid_idx_2d_t> grid_indices =
-            tel.get_main_array_grid_indices(cuda_number_of_dishes, input_order);
+            tel.get_main_array_grid_indices(cuda_number_of_dishes, tel.fiducial_element_order());
 
         // Now build:
         // 1) a table of grid locations populated with the index of the dish at that location,
