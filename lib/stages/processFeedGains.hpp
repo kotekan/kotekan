@@ -48,6 +48,8 @@ using std::vector;
  * @conf   num_beams                             Int. Number of beams with unique gain files
  * @conf   num_local_freq                        Int. Number of frequencies per node
  * @conf   upchan_factor                         Int. Frequency upchannelization factor.
+ * @conf   num_components                        Int. Number of gain components. Should be either
+ *                                                   1 (real) or 2 (real/imag).
  *
  * @author Liam Gray
  *
@@ -88,6 +90,8 @@ private:
     uint32_t num_local_freq;
     /// Frequency upchannelization factor
     uint32_t upchan_factor;
+    /// Number of components
+    uint32_t num_components;
 
     /// Number of elements in the output buffer
     uint32_t out_num_values;
