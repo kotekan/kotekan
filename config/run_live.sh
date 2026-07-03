@@ -24,6 +24,11 @@ CFG=${CFG:-config/live_l1.yaml}          # L1 lean valved distributed config
 # live_l1_wipe.yaml -> a single "track". The broker accepts this comma list (it also expands
 # {a..b} ranges itself, but a derived list needs no brace-quoting gymnastics).
 TRK=${TRK:-$(grep -oE '^track[_0-9]*' "$CFG" | tr '\n' ',' | sed 's/,$//')}
+# Also hand any GnssVoltagePeel stage to the broker's --trackers: it POSTs the same consensus seeds
+# {cp, Doppler, cp_rate(+l-a)} to /<peel>/set_seeds, so the peel reconstructs + subtracts each sat
+# on-peak. Its residual feeds search_resid (peeled sats should drop). Chain L5/L1C peels the same way.
+PEEL=$(grep -oE '^[a-z_0-9]+: \{ kotekan_stage: GnssVoltagePeel' "$CFG" | grep -oE '^[a-z_0-9]+' | tr '\n' ',' | sed 's/,$//')
+[ -n "$PEEL" ] && TRK="${TRK:+$TRK,}$PEEL" && echo "voltage-peel stage(s) seeded by the broker: $PEEL"
 # Loud warning if a requested tracker stage isn't actually in the config -- the classic
 # trap is passing TRK=track to the distributed live_l1.yaml (whose trackers are track_00..11):
 # the broker POSTs to track/set_seeds, gets a 404, never seeds -> the trackers despread at
