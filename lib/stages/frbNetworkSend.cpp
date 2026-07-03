@@ -371,10 +371,10 @@ void frbNetworkSend::main_thread() {
                                   reinterpret_cast<float*>(scale + _nbeams * _nfreq_coarse);
                               for (int b = 0; b < _nbeams; ++b) {
                                   for (int f = 0; f < _nfreq_coarse; ++f) {
-                                      const ptrdiff_t idx_out = b * _nfreq_coarse + f;
-                                      const ptrdiff_t idx_in = frb_packet_num * _nbeams * _nfreq_coarse + idx_out;
+                                      const size_t idx_out = b * _nfreq_coarse + f;
+                                      const size_t idx_in = frb_packet_num * _nbeams * _nfreq_coarse + idx_out;
                                       assert(idx_out < _nbeams * _nfreq_coarse);
-                                      assert(idx_in < num_frequencies * _total_nbeams);
+                                      assert(idx_in < offsetscale_buf->frame_size / sizeof(*offsetscale_buffer) / 2);
 
                                       offset[idx_out] =
                                           static_cast<float>(offsetscale_buffer[2 * idx_in + 0]);
