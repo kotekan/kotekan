@@ -301,10 +301,6 @@ private:
     static constexpr std::complex<float> _sentinel_phase =
         std::complex<float>(2.0f, 2.0f); //  fringestop phases have |z| = 1.0
 
-    // Reference to the prometheus metric that we will use for counting skipped
-    // frames
-    // TODO ...
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& skipped_frame_counter;
     // Prometheus metric for tracking valid and flagged sample counts
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& n_valid_gauge;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& n_pl_gauge;
