@@ -70,7 +70,6 @@ frbNetworkSend::frbNetworkSend(Config& config_, const std::string& unique_name,
     // Apply config.
     udp_frb_packet_size = config.get_default<int>(unique_name, "udp_frb_packet_size", 4272);
     udp_frb_port_number = config.get_default<int>(unique_name, "udp_frb_port_number", 1313);
-    number_of_nodes = config.get_default<int>(unique_name, "number_of_nodes", 256);
     number_of_subnets = config.get_default<int>(unique_name, "number_of_subnets", 4);
     packets_per_stream = config.get_default<int>(unique_name, "packets_per_stream", 8);
     beam_offset = config.get_default<int>(unique_name, "beam_offset", 0);
