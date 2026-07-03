@@ -183,22 +183,20 @@ void frbNetworkSend::main_thread() {
     // check expected frame layout
     // TODO: this could easily handle any value for R4, Fbar64, Ttilde16_lo16
     const ptrdiff_t _frb_downsampling_factor = time_downsampling_fpga; // I think...
-    auto const expected_beams_frame_desc = kotekan::GenericNDArray::describe(
+    in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::DataType::uint8, "I3",
         std::vector<ptrdiff_t>{1, _total_nbeams / _nbeams, num_frequencies / _nfreq_coarse,
          16 /*TODO: get from option? */ , _nbeams, _nfreq_coarse,
          _factor_upchan_out, _timesamples_per_frb_packet},
-        std::vector<kotekan::Symbol>{"Ttilde256",     "R4",        "Fbar64", "Ttilde16_lo16", "Rlo4",      "Fbar16_lo4", "Fbarlo16",      "Ttildelo16"},
-        std::vector<ptrdiff_t>{_frb_downsampling_factor * 256, 4, 64, _frb_downsampling_factor * 16, 1, 16, 1, 1});
-    assert(*beams_frame_desc == *expected_beams_frame_desc);
+        std::vector<kotekan::Symbol>{"Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "Fbarlo16", "Ttildelo16"},
+        std::vector<ptrdiff_t>{_frb_downsampling_factor * 256, 4, 64, _frb_downsampling_factor * 16, 1, 16, 1, 1}));
 
-    auto const expected_offsetscale_frame_desc = kotekan::GenericNDArray::describe(
+    offsetscale_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::DataType::float16, "I3_offsetscale",
         std::vector<ptrdiff_t>{1, _total_nbeams / _nbeams, num_frequencies / _nfreq_coarse,
          16 /*TODO: get from option? */ , _nbeams, _nfreq_coarse, 2},
         std::vector<kotekan::Symbol>{"Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "offset/scale"},
-        std::vector<ptrdiff_t>{_frb_downsampling_factor * 256, 4, 64, _frb_downsampling_factor * 16, 1, 16, 1});
-    assert(*offsetscale_frame_desc == *expected_offsetscale_frame_desc);
+        std::vector<ptrdiff_t>{_frb_downsampling_factor * 256, 4, 64, _frb_downsampling_factor * 16, 1, 16, 1}));
 
     // waiting for at least two frames for the buffer to fill up takes care of the random delay at
     // the start.
