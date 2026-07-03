@@ -516,9 +516,6 @@ void connInstance::internal_read_callback() {
                         FATAL_ERROR("Received frame_desc size ({:d}) exceeds maximum ({:d}) from "
                                     "{:s} (use_frame_desc set here but not on the sender?)",
                                     frame_desc_size, MAX_FRAME_DESC_SIZE, client_ip);
-                        decrement_ref_count();
-                        close_instance();
-                        return;
                     }
                     bytes_read = 0;
                     if (frame_desc_size == 0) {
@@ -543,8 +540,8 @@ void connInstance::internal_read_callback() {
                     // malformed descriptor is contaminated control data, so we
                     // shut down (FATAL) rather than swallow it; a real
                     // config-vs-received mismatch is fatal in ensure_frame_desc.
-                    // The try/catch is required only because this runs in a
-                    // libevent callback, which cannot unwind C++ exceptions.
+                    // Catch parse/deserialize errors and raise FATAL_ERROR so the
+                    // failure gets a controlled shutdown, not a bare exception.
                     std::shared_ptr<const kotekan::FrameDesc> recv_desc;
                     try {
                         const auto j =
@@ -553,9 +550,6 @@ void connInstance::internal_read_callback() {
                     } catch (const std::exception& e) {
                         FATAL_ERROR("Failed to deserialize frame descriptor from {:s}: {:s}",
                                     client_ip, e.what());
-                        decrement_ref_count();
-                        close_instance();
-                        return;
                     }
                     buf->ensure_frame_desc(recv_desc);
                     frame_desc_read = true;
