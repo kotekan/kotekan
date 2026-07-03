@@ -74,7 +74,7 @@ private:
 
     /// Create a frame desc for the output buffer. Default creates a frame desc
     /// containing [beam, freq, subfreq, element, ReIm] axes.
-    virtual void ensure_frame_desc(Buffer* buf);
+    virtual void set_frame_desc(Buffer* buf);
 
     std::vector<Buffer*> gain_buffers;
     Buffer* in_mask_buf;
@@ -95,6 +95,10 @@ private:
     /// Fixed buffers used to hold gains separately from the kotekan buffers
     std::vector<float> gain_store_buf;
     std::vector<uint8_t> mask_store_buf;
+
+    /// Store gain upchannelization factors
+    std::vector<int> freq_upchan_factor;
+    std::vector<int> freq_upchan_index;
 };
 
 

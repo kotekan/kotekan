@@ -86,7 +86,7 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
     // via ensure_frame_desc. This works equally if out_buf is later declared
     // ndarray, in which case ensure_frame_desc validates against the config
     // descriptor instead of attaching one.
-    ensure_frame_desc(out_buf);
+    set_frame_desc(out_buf);
 
     // Allocate permanent buffers to hold the loaded gains in memory. These will only
     // be updated whenever the gains are updated, and get repeatedly copied
@@ -97,13 +97,21 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
 
 processFeedGains::~processFeedGains() {}
 
-void processFeedGains::ensure_frame_desc(Buffer* buf) {
-    buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float32>, 5>::describe(
+void processFeedGains::set_frame_desc(Buffer* buf) {
+    buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float32>, 4>::describe(
         "processed_gain",
-        {static_cast<ptrdiff_t>(num_beams), static_cast<ptrdiff_t>(num_local_freq),
-         static_cast<ptrdiff_t>(upchan_factor), static_cast<ptrdiff_t>(num_elements),
-         static_cast<ptrdiff_t>(2)},
-        {"R", "F", "U", "E", "ReIm"}, {1, 1, 1, 1, 1}));
+        {static_cast<ptrdiff_t>(num_beams), static_cast<ptrdiff_t>(num_local_freq * upchan_factor),
+         static_cast<ptrdiff_t>(num_elements), static_cast<ptrdiff_t>(2)},
+        {"R", "Fbar", "E", "ReIm"}, {1, 1, 1, 1}));
+
+    freq_upchan_factor = std::vector<int>(num_local_freq * upchan_factor, 1);
+    freq_upchan_index = std::vector<int>(num_local_freq * upchan_factor);
+
+    // set the actual frequency upchan indices. Assume increasing index
+    // TODO: verify that this is correct
+    for (uint64_t f = 0; f < num_local_freq * upchan_factor; ++f) {
+        freq_upchan_index[f] = static_cast<int>(f % upchan_factor);
+    }
 }
 
 void processFeedGains::copy_upchannelize_f(const float* src_f, float* dst_f, size_t fid) {
@@ -196,6 +204,9 @@ void processFeedGains::main_thread() {
         auto meta = get_chord_metadata(out_buf, out_buf_frame_id);
         meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
         meta->set_name("processed_gain");
+        // Set the frequency upchannelization metadata
+        meta->set_freq_upchan_factor(freq_upchan_factor);
+        meta->set_freq_upchan_index(freq_upchan_index);
         // Verify that frame desc and metadata match
         meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
