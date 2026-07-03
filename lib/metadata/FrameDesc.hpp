@@ -65,8 +65,9 @@ public:
     /// Serialize this descriptor to a JSON object (includes @c frame_desc_type).
     virtual nlohmann::json to_json() const = 0;
 
-    /// Reconstruct a descriptor from JSON written by @c to_json(). Throws
-    /// std::runtime_error on an unknown type or malformed/missing fields.
+    /// Reconstruct a descriptor from JSON written by @c to_json(). An unknown
+    /// type or invalid descriptor is fatal (FATAL_ERROR_NON_OO); malformed or
+    /// missing fields throw (nlohmann), made fatal by the caller (bufferRecv).
     static std::shared_ptr<const FrameDesc> from_json(const nlohmann::json& j);
     /// @}
 };

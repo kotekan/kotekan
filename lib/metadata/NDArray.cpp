@@ -1,9 +1,10 @@
 #include "NDArray.hpp"
 
-#include "Config.hpp"    // for Config
-#include "DataType.hpp"  // for DataType, GetType_t, operator<<
-#include "FrameDesc.hpp" // for FrameDesc
-#include "Symbol.hpp"    // for Symbol, operator<<, operator!=, operator==
+#include "Config.hpp"         // for Config
+#include "DataType.hpp"       // for DataType, GetType_t, operator<<
+#include "FrameDesc.hpp"      // for FrameDesc
+#include "Symbol.hpp"         // for Symbol, operator<<, operator!=, operator==
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
 
 #include <cassert>     // for assert
 #include <cstring>     // for memcmp
@@ -31,9 +32,10 @@ std::string format_vector(const std::vector<T>& vec) {
     return buf.str();
 }
 
-// Validate the structural fields and labels of an NDArray descriptor, throwing
-// std::runtime_error (with `context` in the message) on any problem. Shared by
-// from_config and the JSON deserializer (for descriptors received over
+// Validate the structural fields and labels of an NDArray descriptor. A bad
+// descriptor is unrecoverable (frames would be mis-sized downstream), so any
+// problem is fatal (FATAL_ERROR_NON_OO, with `context` in the message). Shared
+// by from_config and the JSON deserializer (for descriptors received over
 // bufferRecv), so both paths enforce the same rules.
 void validate_ndarray_fields(DataType value_datatype, const std::string& value_type_name,
                              const std::vector<std::ptrdiff_t>& extents,
@@ -41,37 +43,34 @@ void validate_ndarray_fields(DataType value_datatype, const std::string& value_t
                              const std::vector<std::ptrdiff_t>& dimscalings,
                              const std::string& context) {
     if (value_datatype == unknown_type)
-        throw std::runtime_error(fmt::format(
-            fmt("GenericNDArray ({:s}): unknown value_type '{:s}'"), context, value_type_name));
+        FATAL_ERROR_NON_OO("GenericNDArray ({:s}): unknown value_type '{:s}'", context,
+                           value_type_name);
     if (extents.empty() || extents.size() > GenericNDArray::max_rank)
-        throw std::runtime_error(
-            fmt::format(fmt("GenericNDArray ({:s}): rank {:d} is outside [1, {:d}]"), context,
-                        extents.size(), GenericNDArray::max_rank));
+        FATAL_ERROR_NON_OO("GenericNDArray ({:s}): rank {:d} is outside [1, {:d}]", context,
+                           extents.size(), GenericNDArray::max_rank);
     for (std::size_t d = 0; d < extents.size(); ++d)
         if (extents[d] <= 0)
-            throw std::runtime_error(fmt::format(
-                fmt("GenericNDArray ({:s}): extent {:d} of dimension {:d} is not positive"),
-                context, extents[d], d));
+            FATAL_ERROR_NON_OO("GenericNDArray ({:s}): extent {:d} of dimension {:d} is not "
+                               "positive",
+                               context, extents[d], d);
     if (dimnames.size() != extents.size())
-        throw std::runtime_error(
-            fmt::format(fmt("GenericNDArray ({:s}): dimnames count {:d} does not match rank {:d}"),
-                        context, dimnames.size(), extents.size()));
+        FATAL_ERROR_NON_OO("GenericNDArray ({:s}): dimnames count {:d} does not match rank {:d}",
+                           context, dimnames.size(), extents.size());
     // Only set (non-empty) labels can collide; unset labels are filled in later.
     for (std::size_t d = 0; d < dimnames.size(); ++d)
         for (std::size_t d1 = 0; d1 < d; ++d1)
             if (dimnames[d].valid() && dimnames[d] == dimnames[d1])
-                throw std::runtime_error(
-                    fmt::format(fmt("GenericNDArray ({:s}): duplicate dimname '{:s}'"), context,
-                                dimnames[d]));
+                FATAL_ERROR_NON_OO("GenericNDArray ({:s}): duplicate dimname '{:s}'", context,
+                                   dimnames[d]);
     if (dimscalings.size() != extents.size())
-        throw std::runtime_error(fmt::format(
-            fmt("GenericNDArray ({:s}): dimscalings count {:d} does not match rank {:d}"), context,
-            dimscalings.size(), extents.size()));
+        FATAL_ERROR_NON_OO("GenericNDArray ({:s}): dimscalings count {:d} does not match rank "
+                           "{:d}",
+                           context, dimscalings.size(), extents.size());
     for (std::size_t d = 0; d < dimscalings.size(); ++d)
         if (dimscalings[d] <= 0)
-            throw std::runtime_error(fmt::format(
-                fmt("GenericNDArray ({:s}): dimscaling {:d} of dimension {:d} is not positive"),
-                context, dimscalings[d], d));
+            FATAL_ERROR_NON_OO("GenericNDArray ({:s}): dimscaling {:d} of dimension {:d} is not "
+                               "positive",
+                               context, dimscalings[d], d);
 }
 
 } // namespace
