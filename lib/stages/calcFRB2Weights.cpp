@@ -220,13 +220,13 @@ public:
             // with the feed grid array and are also orthogonal. This makes the
             // vectors very simple, with a single component in the x and y directions
             // respectively.
-            const float sigmax_x = telescope.get_feed_separation_x_m();
-            const float sigmax_y = 0;
-            const float sigmax_z = 0;
+            const float sigmaM_x = frb1_swap_MN ? 0 : telescope.get_feed_separation_x_m();
+            const float sigmaM_y = frb1_swap_MN ? telescope.get_feed_separation_y_m(): 0;
+            const float sigmaM_z = 0;
 
-            const float sigmay_x = 0;
-            const float sigmay_y = telescope.get_feed_separation_y_m();
-            const float sigmay_z = 0;
+            const float sigmaN_x = frb1_swap_MN ? telescope.get_feed_separation_y_m(): 0;
+            const float sigmaN_y = frb1_swap_MN ? 0 : telescope.get_feed_separation_y_m();
+            const float sigmaN_z = 0;
 
             std::atomic<int> nfreqs_done = 0;
 
@@ -255,14 +255,12 @@ public:
                         //   theta = M (nhat ⋅ sigma) / lambda
                         // where nhat is the unit vector in the direction of the sky location
                         // sigma is the dish displacement in meters East-West.
-                        const float theta_x = num_dishes_x
-                                              * (nx * sigmax_x + ny * sigmax_y + nz * sigmax_z)
+                        const float theta_M = num_dishes_M
+                                              * (nx * sigmaM_x + ny * sigmaM_y + nz * sigmaM_z)
                                               / wavelength;
-                        const float theta_y = num_dishes_y
-                                              * (nx * sigmay_x + ny * sigmay_y + nz * sigmay_z)
+                        const float theta_N = num_dishes_N
+                                              * (nx * sigmaN_x + ny * sigmaN_y + nz * sigmaN_z)
                                               / wavelength;
-                        const float theta_M = frb1_swap_MN ? theta_y : theta_x;
-                        const float theta_N = frb1_swap_MN ? theta_x : theta_y;
 
                         for (int i = 0; i < frb1_num_beams_P; ++i)
                             Up[i] = Ufunc(i, num_dishes_M, theta_M);
