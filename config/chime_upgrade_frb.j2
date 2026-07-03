@@ -1617,11 +1617,15 @@ FRB:
         ] %}
         {% set achromatic_beam_angles_EW = [ -0.4, 0.0, 0.4, 0.8 ] %}
         {% set m_pi = 3.14159265358979 %}
+        {% set sin_achromatic_beam_angles_EW = [
+          -0.00698126029796155, 0.0, 0.00698126029796155, 0.0139621803391453
+        ] %}
         values:
+# direction sine in the normal vector sin(angle-from-zenith-towards-x), equally spaced for CHIME
 {%- for ns in range(frb2_num_beams_y) %}
 {%- for ew in range(frb2_num_beams_x) %}
-          - {{ achromatic_beam_angles_EW[ew] / 180 * m_pi }}
-          - {{ achromatic_beam_angles_NS[ns] / 180 * m_pi }}
+          - {{ sin_achromatic_beam_angles_EW[ew] }}
+          - {{ (ns - 127)*1.73205080756888/256 }}
 {%- endfor %}
 {%- endfor %}
         name: frb2_beam_positions
