@@ -814,13 +814,8 @@ rfi_broadcast:
     rfi_sktilde_buf: host_rfi_SKtilde_buffer
     rfi_skbar_buf: host_rfi_SKbar_buffer
     rfi_mask_buf: host_rfi_RFImask_buffer
-    # 3-sigma deviations seems reasonable for identifying outliers,
-    # and empirically produces vaguely comparable results to the
-    # old system
-    num_sigma_deviations: 3
-    # Simply selected from the old system, and accounted for by
-    # the receiver. Can be increased or decreased based on the rate
-    # at which we want to be sending packets
+    # Same value as legacy system. Can be increased or decreased based
+    # on the rate at which we want to be sending packets
     frames_per_packet: 10
     destination_port: "3000"
     # This is the IP of `vm-steelpan-recv1`. Needs to be updated when
