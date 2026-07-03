@@ -7,9 +7,6 @@ log_level: INFO
 
 buffer_depth: 4
 cpu_affinity: [2]  # [2,3,4,5,8,9,10,11]
-sizeof_float: 4
-frame_arrival_period: 5.12e-6 * samples_per_data_set
-sizeof_int: 4
 
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 2048
@@ -17,7 +14,6 @@ samples_per_data_set: 4096
 rfi_downsampling_factor: 256
 # sub_integration_ntime: 8192  # ~40 ms for chord
 # samples_per_data_set: 8192   # 
-num_times: samples_per_data_set
 num_polarizations: 2
 num_dishes: 64
 num_elements: num_polarizations * num_dishes
@@ -168,13 +164,10 @@ gen_fake_corr_counts:
     kotekan_stage: testN2kGen
     out_buf: fake_correlation_buffer
     out_counts_buf: fake_counts_buffer
-    in_rfimask_buf: fake_rfimask_buffer
     correlation_type: "f_times_ee"
     counts_type: "random_scalar"
     correlation_value: [1, -1]
     counts_value: sub_integration_ntime
-    counts_min: 0
-    counts_max: sub_integration_ntime
     mul_correlation_by_counts: true
     num_frames: frames_to_generate
     freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
@@ -237,3 +230,4 @@ writers:
         file_name: n2_vis_posdef
         in_buf: n2_buffer
         max_frames: num_local_freq * n2_frames_to_write # Will trigger exit after writing this many frames
+log_config_usage: fatal_error

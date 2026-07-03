@@ -5,12 +5,9 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: INFO
 
-num_gpus: 1
 buffer_depth: 4
 cpu_affinity: [2]  # [2,3,4,5,8,9,10,11]
-sizeof_float: 4
 frame_arrival_period: 5.12e-6 * samples_per_data_set
-sizeof_int: 4
 
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 2048
@@ -39,8 +36,6 @@ frames_to_test: 2 * buffer_depth
 # test values
 E_re: 3
 E_im: -5
-corr_re: (E_re * E_re + E_im * E_im) * sub_integration_ntime
-corr_im: 0
 
 # Pool
 main_pool:
@@ -155,7 +150,6 @@ gen_pl_mask:
 
 gen_fake_corr_counts:
     kotekan_stage: testN2kGen
-    in_rfimask_buf: host_rfi_RFImask_buffer
     out_buf: fake_correlation_buffer
     out_counts_buf: fake_counts_buffer
     correlation_type: "const"
@@ -281,3 +275,4 @@ check_counts_data:
     num_frames_to_test: frames_to_test
     trigger_exit_on_pass: false
     check_metadata: true
+log_config_usage: fatal_error

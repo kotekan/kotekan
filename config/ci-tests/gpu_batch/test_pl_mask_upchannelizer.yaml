@@ -16,3 +16,4 @@ test_pl_mask_upchannelizer:
     kotekan_stage: testPLMaskUpchannelizer
     # Safety cap for the GPU-vs-CPU sweep in debug builds (the test runs in a few seconds).
     join_timeout: 60
+log_config_usage: fatal_error

@@ -7,15 +7,11 @@ log_level: INFO
 
 buffer_depth: 4
 cpu_affinity: [2]  # [2,3,4,5,8,9,10,11]
-sizeof_float: 4
-frame_arrival_period: 2.56e-6 * samples_per_data_set
-sizeof_int: 4
 
 # For faster CHIME testing, we're using...
 sub_integration_ntime: 2048
 samples_per_data_set: 4096
 rfi_downsampling_factor: 256
-num_times: samples_per_data_set
 num_polarizations: 2
 num_dishes: 64
 num_elements: num_polarizations * num_dishes
@@ -149,13 +145,10 @@ gen_fake_corr_counts:
     kotekan_stage: testN2kGen
     out_buf: fake_correlation_buffer
     out_counts_buf: fake_counts_buffer
-    in_rfimask_buf: fake_rfimask_buffer
     correlation_type: "f_times_ee"
     counts_type: "random_scalar"
     correlation_value: [1, -1]
     counts_value: sub_integration_ntime
-    counts_min: 0
-    counts_max: sub_integration_ntime
     mul_correlation_by_counts: true
     num_frames: frames_to_generate
     freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
@@ -195,47 +188,41 @@ writers:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_corr
         in_buf: fake_correlation_buffer
-        input_order: CHIMEBeamformer
 
     write_fake_counts:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_counts
         in_buf: fake_counts_buffer
-        input_order: CHIMEBeamformer
 
     write_fake_rfimask:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_rfimask
         in_buf: fake_rfimask_buffer
-        input_order: CHIMEBeamformer
 
     write_fake_rficounts:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_rficounts
         in_buf: fake_rficounts_buffer
-        input_order: CHIMEBeamformer
 
     write_fake_plcounts:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_plcounts
         in_buf: fake_plcounts_buffer
-        input_order: CHIMEBeamformer
 
     write_fake_rfi_frame_mask:
         kotekan_stage: hdf5FileWrite
         file_name: n2k_rfiframemask
         in_buf: fake_rfi_frame_mask_buffer
-        input_order: CHIMEBeamformer
 
     write_N2:
         kotekan_stage: hdf5FileWrite
         file_name: n2_vis_posdef
         in_buf: n2_buffer
         max_frames: num_local_freq * n2_frames_to_write # Will trigger exit after writing this many frames
-        input_order: CHIMEBeamformer
 
     write_vis:
         kotekan_stage: rawFileWrite
         file_name: vis
         in_buf: vis_buffer
         file_ext: raw
+log_config_usage: fatal_error

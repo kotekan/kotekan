@@ -12,12 +12,9 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: INFO
 
-num_gpus: 1
 buffer_depth: 4
 cpu_affinity: [2, 3, 4, 5, 8, 9, 10, 11]
-sizeof_float: 4
 frame_arrival_period: 5.12e-6 * samples_per_data_set
-sizeof_int: 4
 
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 512
@@ -31,9 +28,6 @@ num_elements: num_polarizations * num_dishes
 num_local_freq: 8
 
 #counts matrix size
-counts_blocksize: 8
-counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
-counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
 
 # vis matrix size
 vis_blocksize: 16
@@ -171,3 +165,4 @@ check_data:
     second_buf: simulated_correlation_buffer
     num_frames_to_test: buffer_depth
     check_metadata: true
+log_config_usage: fatal_error
