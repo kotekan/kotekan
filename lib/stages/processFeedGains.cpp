@@ -32,6 +32,7 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
     num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
     num_beams = config.get_default<uint32_t>(unique_name, "num_beams", 1);
     upchan_factor = config.get_default<uint32_t>(unique_name, "upchan_factor", 1);
+    num_components = config.get<uint32_t>(unique_name, "num_components");
 
     // Input gain buffers
     json in_buf_list = config.get_value(unique_name, "gain_buffers");
@@ -52,9 +53,10 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
                         gain_buffers.at(0)->frame_size);
         }
 
-        if (buf->frame_size != num_local_freq * num_elements * 2 * sizeof(float)) {
+        if (buf->frame_size != num_local_freq * num_elements * num_components * sizeof(float)) {
             FATAL_ERROR("Input buffer does not have the expected size. Expected {:d}, got {:d}",
-                        num_local_freq * num_elements * 2 * sizeof(float), buf->frame_size);
+                        num_local_freq * num_elements * num_components * sizeof(float),
+                        buf->frame_size);
         }
     }
 
@@ -73,7 +75,7 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
                     in_mask_size, in_mask_buf->frame_size);
     }
 
-    out_num_values = num_beams * num_elements * num_local_freq * upchan_factor * 2;
+    out_num_values = num_beams * num_elements * num_local_freq * upchan_factor * num_components;
     auto out_buf_size = out_num_values * sizeof(float);
     if (out_buf->frame_size != out_buf_size) {
         FATAL_ERROR("Output buffer does not have the expected shape. Expected {:d}, got {:d}",
@@ -101,8 +103,8 @@ void processFeedGains::set_frame_desc(Buffer* buf) {
     buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float32>, 4>::describe(
         "processed_gain",
         {static_cast<ptrdiff_t>(num_beams), static_cast<ptrdiff_t>(num_local_freq * upchan_factor),
-         static_cast<ptrdiff_t>(num_elements), static_cast<ptrdiff_t>(2)},
-        {"R", "Fbar", "E", "ReIm"}, {1, 1, 1, 1}));
+         static_cast<ptrdiff_t>(num_elements), static_cast<ptrdiff_t>(num_components)},
+        {"R", "Fbar", "E", "C"}, {1, 1, 1, 1}));
 
     freq_upchan_factor = std::vector<int>(num_local_freq * upchan_factor, 1);
     freq_upchan_index = std::vector<int>(num_local_freq * upchan_factor);
@@ -118,15 +120,15 @@ void processFeedGains::copy_upchannelize_f(const float* src_f, float* dst_f, siz
     (void)fid; // not used in the default implementation
     for (size_t u = 0; u < upchan_factor; ++u) {
         // copy ell elements from the source into each fine channel
-        float* u_ptr = dst_f + u * num_elements * 2;
-        std::copy_n(src_f, 2 * num_elements, u_ptr);
+        float* u_ptr = dst_f + u * num_elements * num_components;
+        std::copy_n(src_f, num_components * num_elements, u_ptr);
     }
 }
 
 void processFeedGains::copy_upchannelize(float* frame, size_t beam_id) {
-    size_t in_fstride = num_elements * 2;
+    size_t in_fstride = num_elements * num_components;
     // duplicate the gains at each upchan = 0 bin for each freq
-    size_t out_fstride = upchan_factor * num_elements * 2;
+    size_t out_fstride = upchan_factor * num_elements * num_components;
 
     // data starting at this beam_id
     float* out_ptr = gain_store_buf.data() + beam_id * num_local_freq * out_fstride;
@@ -220,9 +222,11 @@ void processFeedGains::main_thread() {
         for (size_t e = 0; e < num_elements; e++) {
             if (mask_store_buf[e] == 0) {
                 // zero out this element for all other indices
-                for (size_t k = 2 * e; k < out_num_values; k += 2 * num_elements) {
-                    out_frame[k] = 0.0;
-                    out_frame[k + 1] = 0.0;
+                for (size_t k = num_components * e; k < out_num_values;
+                     k += num_components * num_elements) {
+                    for (size_t j = 0; j < num_components; ++j) {
+                        out_frame[k + j] = 0.0;
+                    }
                 }
             }
         }
