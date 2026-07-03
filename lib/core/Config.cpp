@@ -10,6 +10,7 @@
 #include <map>       // for map
 #include <mutex>     // for mutex, lock_guard
 #include <set>       // for set
+#include <sstream>   // for ostringstream
 #include <stdexcept> // for runtime_error
 #include <stdio.h>   // for sprintf
 #include <string>    // for string
@@ -257,8 +258,8 @@ void Config::log_access_summary() const {
     vector<std::string> leaves;
     collect_leaf_paths(_json, "", leaves);
 
-    std::string accessed;
-    std::string not_accessed;
+    std::ostringstream accessed;
+    std::ostringstream not_accessed;
     std::size_t n_accessed = 0;
 
     {
@@ -266,17 +267,19 @@ void Config::log_access_summary() const {
         for (const std::string& leaf : leaves) {
             auto it = _accessed.find(leaf);
             if (it == _accessed.end()) {
-                not_accessed += fmt::format(fmt("\n    {:s}"), leaf);
+                not_accessed << fmt::format(fmt("\n    {:s}"), leaf);
                 continue;
             }
             n_accessed++;
-            std::string base_paths;
+            std::ostringstream base_paths;
+            bool first = true;
             for (const std::string& base_path : it->second) {
-                if (!base_paths.empty())
-                    base_paths += ", ";
-                base_paths += base_path;
+                if (!first)
+                    base_paths << ", ";
+                first = false;
+                base_paths << base_path;
             }
-            accessed += fmt::format(fmt("\n    {:s}  <- {:s}"), leaf, base_paths);
+            accessed << fmt::format(fmt("\n    {:s}  <- {:s}"), leaf, base_paths.str());
         }
     }
 
@@ -285,7 +288,7 @@ void Config::log_access_summary() const {
         fmt::format(fmt("Config usage summary: {:d} of {:d} leaf items accessed.\n"
                         "  Accessed (item <- requesting paths):{:s}\n"
                         "  Not accessed:{:s}"),
-                    n_accessed, leaves.size(), accessed, not_accessed);
+                    n_accessed, leaves.size(), accessed.str(), not_accessed.str());
 
     // With nothing unused there is nothing to flag, regardless of level.
     if (n_unused == 0) {
