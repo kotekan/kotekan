@@ -10,12 +10,23 @@
 #include "json.hpp"        // for json
 
 #include <boost/test/included/unit_test.hpp>
+#include <csignal>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 using namespace kotekan;
+
+// N2FrameDesc validation failures are fatal: FATAL_ERROR_NON_OO signals kotekan
+// shutdown (SIGTERM) before throwing FatalError. Ignore the signal so the tests
+// observe the throw instead of being terminated.
+struct IgnoreSigterm {
+    IgnoreSigterm() {
+        std::signal(SIGTERM, SIG_IGN);
+    }
+};
+BOOST_GLOBAL_FIXTURE(IgnoreSigterm);
 
 // Serialize a descriptor to JSON text and read it back, exercising the same
 // dump/parse path bufferSend/bufferRecv use over the wire.

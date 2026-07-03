@@ -67,8 +67,9 @@ public:
      * @param n2_layout     The layout of the visibility matrix
      * @param product_list  Optional explicit list of products (required for subset layouts)
      *
-     * @throws std::runtime_error If product_list is required but not provided, or if
-     *         product_list.size() != num_products for layouts that require it.
+     * @note Validation failures (product_list missing, sized inconsistently with
+     *       num_products, or referencing inputs outside num_elements) are fatal
+     *       and shut kotekan down (FATAL_ERROR_NON_OO).
      */
     N2FrameDesc(uint32_t num_elements, uint32_t num_ev, uint32_t num_products, N2Layout n2_layout,
                 std::vector<N2::prod_ctype> product_list = {});
@@ -82,7 +83,8 @@ public:
 
     // FrameDesc JSON-serialization override (see FrameDesc::to_json)
     nlohmann::json to_json() const override;
-    /// Reconstruct an N2FrameDesc from JSON written by to_json().
+    /// Reconstruct an N2FrameDesc from JSON written by to_json(). Validation
+    /// failures are fatal (see the constructor).
     static std::shared_ptr<const FrameDesc> from_json(const nlohmann::json& j);
 
     // Accessors

@@ -2,9 +2,7 @@
 
 #include <set>                 // for set
 #include <ostream>             // for basic_ostream, operator<<
-#include <stdexcept>           // for runtime_error
-
-#include "kotekanLogging.hpp"  // for ERROR_NON_OO
+#include "kotekanLogging.hpp"  // for FATAL_ERROR_NON_OO
 #include "fmt.hpp"             // for format, compile_string_to_view, format_string
 
 namespace kotekan {
@@ -15,24 +13,25 @@ N2FrameDesc::N2FrameDesc(uint32_t num_elements, uint32_t num_ev, uint32_t num_pr
     product_list(product_list.empty() ? generate_product_list(num_elements, n2_layout)
                                       : std::move(product_list)) {
 
-    // Validate product list for layouts that require it
+    // Validate product list for layouts that require it. A bad descriptor is
+    // unrecoverable (frames would be mis-sized downstream), so failures are
+    // fatal.
     if (layout_requires_product_list(n2_layout)) {
         if (this->product_list.empty()) {
-            throw std::runtime_error(fmt::format(
+            FATAL_ERROR_NON_OO(
                 "N2FrameDesc: layout {:s} requires {:s} in config (product_list was empty)",
-                N2Layout_to_string(n2_layout), note_additional_required_config_param(n2_layout)));
+                N2Layout_to_string(n2_layout), note_additional_required_config_param(n2_layout));
         }
         if (this->product_list.size() != num_products) {
-            throw std::runtime_error(fmt::format(
+            FATAL_ERROR_NON_OO(
                 "N2FrameDesc: product_list size ({:d}) does not match num_products ({:d})",
-                this->product_list.size(), num_products));
+                this->product_list.size(), num_products);
         }
         for (const auto& prod : this->product_list) {
             if (prod.input_a >= num_elements || prod.input_b >= num_elements) {
-                throw std::runtime_error(fmt::format(
-                    "N2FrameDesc: product ({:d},{:d}) references an input outside "
-                    "num_elements ({:d})",
-                    prod.input_a, prod.input_b, num_elements));
+                FATAL_ERROR_NON_OO("N2FrameDesc: product ({:d},{:d}) references an input outside "
+                                   "num_elements ({:d})",
+                                   prod.input_a, prod.input_b, num_elements);
             }
         }
     }
@@ -69,8 +68,8 @@ N2FrameDesc N2FrameDesc::_from_config_impl(kotekan::Config& config, const std::s
             break;
 
         default:
-            throw std::runtime_error(
-                fmt::format("N2FrameDesc: unknown N2Layout {:s}", N2Layout_to_string(n2_layout)));
+            FATAL_ERROR_NON_OO("N2FrameDesc: unknown N2Layout {:s}",
+                               N2Layout_to_string(n2_layout));
     }
 
     const uint32_t num_prod = get_num_prod(num_elements, n2_layout, product_list);
@@ -111,13 +110,12 @@ std::shared_ptr<const FrameDesc> N2FrameDesc::from_json(const nlohmann::json& j)
     if (layout_requires_product_list(n2_layout)) {
         product_list = j.at("product_list").get<std::vector<N2::prod_ctype>>();
     } else if (j.contains("product_list")) {
-        throw std::runtime_error(
-            fmt::format(fmt("N2FrameDesc::from_json: unexpected product_list for layout {:s}"),
-                        N2Layout_to_string(n2_layout)));
+        FATAL_ERROR_NON_OO("N2FrameDesc::from_json: unexpected product_list for layout {:s}",
+                           N2Layout_to_string(n2_layout));
     }
 
     // Derive num_products as the config path does; the constructor validates
-    // the product list (including index bounds) and throws on any problem.
+    // the product list (including index bounds) and fails fatally on any problem.
     const uint32_t num_products = get_num_prod(num_elements, n2_layout, product_list);
     return std::make_shared<N2FrameDesc>(num_elements, num_ev, num_products, n2_layout,
                                          std::move(product_list));
@@ -209,9 +207,8 @@ N2FrameDesc::generate_product_list(uint32_t num_elements, N2Layout layout,
         }
 
         default:
-            throw std::runtime_error(
-                fmt::format("N2FrameDesc::generate_product_list: layout {:s} is not supported",
-                            N2Layout_to_string(layout)));
+            FATAL_ERROR_NON_OO("N2FrameDesc::generate_product_list: layout {:s} is not supported",
+                               N2Layout_to_string(layout));
     }
 }
 
@@ -270,21 +267,14 @@ size_t N2FrameDesc::get_num_prod(uint32_t num_elements_in, N2Layout n2_layout_in
         case N2Layout::InputANDMasked:
         case N2Layout::InputORMasked:
         case N2Layout::GeneralSubset:
-        case N2Layout::RedundantBaselineAvg: {
-            std::string msg =
-                fmt::format("N2FrameDesc::get_num_prod cannot compute num_prod for layout {:s} "
-                            "- requires {:s} in config",
-                            N2Layout_to_string(n2_layout_in),
-                            note_additional_required_config_param(n2_layout_in));
-            ERROR_NON_OO("{:s}", msg);
-            throw std::runtime_error(msg);
-        }
-        default: {
-            std::string msg = fmt::format("N2FrameDesc::get_num_prod given unknown N2Layout: {:s}",
-                                          N2Layout_to_string(n2_layout_in));
-            ERROR_NON_OO("{:s}", msg);
-            throw std::runtime_error(msg);
-        }
+        case N2Layout::RedundantBaselineAvg:
+            FATAL_ERROR_NON_OO("N2FrameDesc::get_num_prod cannot compute num_prod for layout {:s} "
+                               "- requires {:s} in config",
+                               N2Layout_to_string(n2_layout_in),
+                               note_additional_required_config_param(n2_layout_in));
+        default:
+            FATAL_ERROR_NON_OO("N2FrameDesc::get_num_prod given unknown N2Layout: {:s}",
+                               N2Layout_to_string(n2_layout_in));
     }
 }
 
