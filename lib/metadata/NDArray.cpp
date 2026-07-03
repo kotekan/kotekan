@@ -31,23 +31,6 @@ std::string format_vector(const std::vector<T>& vec) {
     return buf.str();
 }
 
-// An unset (empty) Symbol has no string; render it as an empty string for logs
-// and error messages (get_string() throws on an invalid Symbol).
-std::string symbol_str(const Symbol& s) {
-    return s.valid() ? s.get_string() : std::string();
-}
-
-// Serialize a Symbol to JSON, encoding an unset (invalid) Symbol as `null` so a
-// deliberately-unset label is distinguishable from a set one on the wire.
-nlohmann::json symbol_to_json(const Symbol& s) {
-    return s.valid() ? nlohmann::json(s.get_string()) : nlohmann::json(nullptr);
-}
-
-// Inverse of symbol_to_json: `null` becomes an unset (invalid) Symbol.
-Symbol symbol_from_json(const nlohmann::json& j) {
-    return j.is_null() ? Symbol() : Symbol(j.get<std::string>());
-}
-
 // Validate the structural fields and labels of an NDArray descriptor, throwing
 // std::runtime_error (with `context` in the message) on any problem. Shared by
 // from_config and the JSON deserializer (for descriptors received over
@@ -79,7 +62,7 @@ void validate_ndarray_fields(DataType value_datatype, const std::string& value_t
             if (dimnames[d].valid() && dimnames[d] == dimnames[d1])
                 throw std::runtime_error(
                     fmt::format(fmt("GenericNDArray ({:s}): duplicate dimname '{:s}'"), context,
-                                symbol_str(dimnames[d])));
+                                dimnames[d]));
     if (dimscalings.size() != extents.size())
         throw std::runtime_error(fmt::format(
             fmt("GenericNDArray ({:s}): dimscalings count {:d} does not match rank {:d}"), context,
@@ -112,11 +95,8 @@ nlohmann::json GenericNDArray::to_json() const {
     j["frame_desc_type"] = "ndarray";
     j["value_type"] = type_to_string(get_value_datatype());
     j["extents"] = get_extents();
-    j["quantity_name"] = symbol_to_json(get_quantity_name());
-    nlohmann::json dimnames = nlohmann::json::array();
-    for (const auto& dimname : get_dimnames())
-        dimnames.push_back(symbol_to_json(dimname));
-    j["dimnames"] = std::move(dimnames);
+    j["quantity_name"] = get_quantity_name();
+    j["dimnames"] = get_dimnames();
     j["dimscalings"] = get_dimscalings();
     return j;
 }
@@ -127,11 +107,9 @@ std::shared_ptr<const FrameDesc> GenericNDArray::from_json(const nlohmann::json&
 
     const auto extents = j.at("extents").get<std::vector<std::ptrdiff_t>>();
 
-    const Symbol quantity_name = symbol_from_json(j.at("quantity_name"));
+    const Symbol quantity_name = j.at("quantity_name").get<Symbol>();
 
-    std::vector<Symbol> dimnames;
-    for (const auto& dimname : j.at("dimnames"))
-        dimnames.push_back(symbol_from_json(dimname));
+    const auto dimnames = j.at("dimnames").get<std::vector<Symbol>>();
 
     const auto dimscalings = j.at("dimscalings").get<std::vector<std::ptrdiff_t>>();
 

@@ -154,7 +154,10 @@ template<>
 struct fmt::formatter<kotekan::Symbol> : fmt::formatter<std::string> {
     template<typename FormatContext>
     auto format(const kotekan::Symbol& sym, FormatContext& ctx) const {
-        return fmt::formatter<std::string>::format(sym.get_string(), ctx);
+        // An unset (invalid) Symbol has no string; render it as empty rather
+        // than letting get_string() throw.
+        return fmt::formatter<std::string>::format(
+            sym.valid() ? sym.get_string() : std::string(), ctx);
     }
 };
 
