@@ -27,7 +27,7 @@ samples_per_data_set: 49920
 bytes_per_sample: 2
 buffer_depth: 16
 sizeof_float: 4
-cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7]
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 
 spectrum_length: 12
 num_taps: 4

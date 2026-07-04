@@ -11,7 +11,7 @@ samples_per_data_set: 100000     # whole code blocks: 20 L1 / 1 L2C @ 5 MSPS, 5 
 bytes_per_sample: 2
 buffer_depth: 16
 sizeof_float: 4
-cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7]
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 
 n_prn: 11
 record_floats: 11
