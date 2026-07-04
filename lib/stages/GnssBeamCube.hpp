@@ -10,7 +10,8 @@
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
+#include "bufferContainer.hpp"
+#include "gnssRecord.hpp" // for RECORD_FLOATS (tracker-record schema) // for bufferContainer
 
 #include <string> // for string
 #include <vector> // for vector
@@ -65,7 +66,7 @@ public:
 
     /// Input record layout (matches GnssChannelizedTracker / GnssCoherentCombiner):
     /// 0=PRN 1=dop 2=cp 3=G.re 4=G.im 5=E 6=n_chan, UTC float64 at slot 9.
-    static constexpr int IN_RECORD_FLOATS = 11;
+    static constexpr int IN_RECORD_FLOATS = gnss::RECORD_FLOATS; // schema: gnssRecord.hpp
     static constexpr int IN_UTC_SLOT = 9;
     /// Output header floats before the per-channel |A| block.
     static constexpr int OUT_HEADER = 4; // PRN, dop, cp, channel0

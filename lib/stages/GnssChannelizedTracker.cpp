@@ -84,8 +84,7 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     _hops_per_record =
         config.get_default<int>(unique_name, "hops_per_record", _replica->repl_period_hops());
     _replica->code_doppler_sign = config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
-    _pullin_chips = config.get_default<double>(unique_name, "pullin_chips", 0.0);
-    _pullin_step = config.get_default<double>(unique_name, "pullin_step", 0.5);
+    _dll_spacing = config.get_default<double>(unique_name, "dll_spacing_chips", 0.5);
     _fll_gain = config.get_default<double>(unique_name, "fll_gain", 0.0);
     _fll_reacq_hz = config.get_default<double>(unique_name, "fll_reacq_hz", 200.0);
     _fll_max_gap = config.get_default<double>(unique_name, "fll_max_gap_s", 0.005);
@@ -93,11 +92,6 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     // (radar sweep, the broker coasting the seed) doesn't drive f_track on noise; the NCO keeps
     // coasting at the held frequency and the loop resumes cleanly on return. 0 = never freeze.
     _fll_lock_amp = config.get_default<double>(unique_name, "fll_lock_amp", 0.0);
-    // Held-reference deep-integration mode (0 = off). See the header note + the 2026-06-30 L1C
-    // findings: freezing the code+carrier reference once locked is what lets the combiner deep
-    // wipe integrate coherently across records on a marginal BOC pilot.
-    _hold_lock_amp = config.get_default<double>(unique_name, "hold_lock_amp", 0.0);
-    _hold_lock_records = config.get_default<int>(unique_name, "hold_lock_records", 5);
 
     const auto active_prns = config.get_default<std::vector<int>>(unique_name, "active_prns", {});
     _active.assign(n_prn, 1);
@@ -162,22 +156,6 @@ void GnssChannelizedTracker::main_thread() {
     std::vector<long long> hop_prev(n_prn, 0);
     std::vector<long long> reacq_hop(n_prn, 0); // hop where f_ref was last (re)fixed: anchor for the Doppler-rate feed-forward
 
-    // Held-reference deep-integration state (per PRN). While held[p], the code+carrier reference
-    // is FROZEN: cp = hold_cp0 + hold_rate*(hop - hold_ref_hop), carrier = hold_dop, no broker
-    // re-seed, no per-record pull-in. hold_rate is the code-Doppler drift implied by hold_dop
-    // (chips/hop), so the frozen cp tracks the code Doppler exactly. lock_up/lock_down count the
-    // consecutive records above/below _hold_lock_amp that arm / release the hold.
-    std::vector<uint8_t> held(n_prn, 0);
-    std::vector<int> lock_up(n_prn, 0), lock_down(n_prn, 0);
-    std::vector<double> hold_cp0(n_prn, 0.0), hold_rate(n_prn, 0.0), hold_dop(n_prn, 0.0);
-    std::vector<long long> hold_ref_hop(n_prn, 0);
-    // Code-Doppler drift per hop for a given carrier Doppler (chips/hop): the Doppler stretches
-    // the chip rate by code_doppler_sign*dop/carrier, integrated over fft_len samples/hop. (The
-    // nominal whole-period advance wraps mod code_length, so only this residual moves cp record
-    // to record.) Matches the replica's chip_per_sample Doppler term.
-    const double _code_rate_per_hz_hop = _replica->code_doppler_sign * _replica->chip_rate_hz()
-                                         / _replica->carrier_hz() * (double)_fft_len / _sample_rate;
-
     // Rolling measurement window of [hop][subband-channel] voltages.
     std::vector<cf> window((size_t)_hops_per_record * _n_chan);
     int hops_filled = 0;
@@ -239,33 +217,25 @@ void GnssChannelizedTracker::main_thread() {
                     rec[f] = 0.0f;
                 rec[0] = (float)_prns[p];
                 *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = utc;
-                // A held PRN keeps tracking on its own frozen reference even if the broker drops
-                // it from the seed list (the noisy search flapping active is exactly what the hold
-                // exists to ignore); only a signal-strength release below lets it go.
-                if (!active[p] && !held[p]) {
+                if (!active[p]) {
                     f_ref[p] = std::nan(""); // forget the loop; re-acquire when it returns
                     a_prev_ok[p] = 0;
-                    lock_up[p] = 0;
                     continue;
                 }
 
-                // Effective carrier Doppler for the replica: the FROZEN hold_dop while held, else
-                // the broker seed. Covering channels follow it.
-                const double dop_eff = held[p] ? hold_dop[p] : dop[p];
+                // Effective carrier Doppler for the replica = the broker seed. Covering
+                // channels follow it.
+                const double dop_eff = dop[p];
                 const auto cover = _replica->covering_bins(dop_eff, _doppler_margin_hz);
                 std::vector<int> owned;
                 for (int c : cover)
                     if (c >= _chan_offset && c < _chan_offset + _n_chan)
                         owned.push_back(c);
-                // Code phase at this window. While HELD: extrapolate the FROZEN anchor at the
-                // code-Doppler rate (no broker re-seed) -> phase-continuous. Else: first-order
-                // extrapolate the seed cp0 from its anchor hop (removes seed staleness; the
-                // pull-in below mops up the residual).
+                // Code phase at this window: first-order extrapolation of the seeded cp0 from
+                // its anchor hop (removes seed staleness). The broker's DLL trims the residual
+                // at ~Hz from the shipped E/L correlators -- the tracker itself never moves it.
                 const double L = (double)_replica->code_length();
-                double cp_seed =
-                    held[p]
-                        ? hold_cp0[p] + hold_rate[p] * (double)(window_start_hop - hold_ref_hop[p])
-                        : cp[p] + cp_rate[p] * (double)(window_start_hop - ref_hop[p]);
+                double cp_seed = cp[p] + cp_rate[p] * (double)(window_start_hop - ref_hop[p]);
                 cp_seed = std::fmod(cp_seed, L);
                 if (cp_seed < 0.0)
                     cp_seed += L;
@@ -273,8 +243,7 @@ void GnssChannelizedTracker::main_thread() {
                 // FLL reference Doppler: (re)acquire from the broker seed when uninitialised
                 // or far adrift (loss of lock / sat change), else hold it FIXED so the
                 // absolute-anchored replica phase stays continuous; the NCO tracks the rest.
-                // (Skipped while held -- hold_dop is the fixed reference and there is no NCO.)
-                if (_fll_gain > 0.0 && !held[p]
+                if (_fll_gain > 0.0
                     && (std::isnan(f_ref[p]) || std::fabs(f_ref[p] - dop[p]) > _fll_reacq_hz)) {
                     f_ref[p] = dop[p];
                     f_track[p] = 0.0;
@@ -282,21 +251,19 @@ void GnssChannelizedTracker::main_thread() {
                     a_prev_ok[p] = 0;
                     reacq_hop[p] = window_start_hop; // anchor the Doppler-rate feed-forward here
                 }
-                const double fcar =
-                    held[p] ? hold_dop[p] : ((_fll_gain > 0.0) ? f_ref[p] : dop[p]);
+                const double fcar = (_fll_gain > 0.0) ? f_ref[p] : dop[p];
                 // 2nd-order carrier feed-forward: ramp the replica frequency by the almanac Doppler
                 // RATE so the despread residual stays ~constant across a multi-100 ms coherent window.
                 // A 1st-order FLL alone velocity-lags the ramp -> a quadratic carrier phase that
                 // cancels the deep sum, worst at zenith (max Doppler acceleration). Anchor at the hop
-                // where the base carrier was last fixed: reacq_hop (FLL ref), hold_ref_hop (held), or
-                // the fresh broker seed anchor ref_hop (no FLL). With the ramp in the replica, the FLL
-                // sees only the small constant clock/fit residual -- no loop-logic change needed.
-                const long long ff_anchor =
-                    held[p] ? hold_ref_hop[p] : ((_fll_gain > 0.0) ? reacq_hop[p] : ref_hop[p]);
+                // where the base carrier was last fixed: reacq_hop (FLL ref) or the fresh broker
+                // seed anchor ref_hop (no FLL). With the ramp in the replica, the FLL sees only
+                // the small constant clock/fit residual -- no loop-logic change needed.
+                const long long ff_anchor = (_fll_gain > 0.0) ? reacq_hop[p] : ref_hop[p];
                 const double fcar_eff =
                     fcar + dop_rate[p] * (double)(window_start_hop - ff_anchor) * (double)_fft_len
                                / _sample_rate;
-                rec[1] = (float)(fcar_eff + ((_fll_gain > 0.0 && !held[p]) ? f_track[p] : 0.0));
+                rec[1] = (float)(fcar_eff + ((_fll_gain > 0.0) ? f_track[p] : 0.0));
                 rec[2] = (float)cp_seed;
                 rec[6] = (float)owned.size();
                 if (owned.empty())
@@ -313,46 +280,37 @@ void GnssChannelizedTracker::main_thread() {
                     data_ch.push_back(std::move(col));
                 }
 
-                // Code pull-in: the seed cp is ~1 chip stale (search latency + residual
-                // cp drift), so despread over a small cp window and lock to the peak |A|
-                // -- a DLL-style search that makes the lock drift/latency-independent
-                // (this tracker spans all covering channels, so one peak cp is coherent
-                // across them). pullin_chips=0 -> a single despread at the seed. DISABLED while
-                // held: the per-record max-power re-pick is exactly what jumps the code phase
-                // (esp. onto BOC negative sidelobes), so a held PRN despreads at its frozen cp.
-                const double pullin = held[p] ? 0.0 : _pullin_chips;
-                gnss::DespreadResult best{};
-                double best_pw = -1.0, best_cp = cp_seed;
-                for (double off = -pullin; off <= pullin + 1e-9;
-                     off += (_pullin_step > 0.0 ? _pullin_step : 1.0)) {
-                    const auto repl = _replica->channels(p, window_start, cp_seed + off, fcar_eff,
-                                                         _hops_per_record);
+                // Early/Prompt/Late despread -- three DUMB correlators at the COMMANDED
+                // code phase (R1, docs/gnss_architecture_audit.md). The Prompt despreads
+                // exactly at cp_seed: it is the science output and is phase-continuous by
+                // construction, because the tracker makes NO alignment decisions (the
+                // retired per-record max-power pull-in re-phased the despread and killed
+                // deep coherence; the retired hold_lock false-armed on noise statistics).
+                // Early/Late sit at -+_dll_spacing chips on the correlation triangle and
+                // exist ONLY so the low-rate DLL downstream can measure the sub-chip
+                // tracking error: the combiner aggregates |E|^2 / |L|^2 across subbands and
+                // windows, and the BROKER closes the code loop at ~Hz through set_seeds.
+                // Only E/L powers are consumed, so they ship un-derotated.
+                auto despread_at = [&](double cpx) {
+                    const auto repl =
+                        _replica->channels(p, window_start, cpx, fcar_eff, _hops_per_record);
                     std::vector<std::vector<cf>> repl_ch;
                     repl_ch.reserve(owned.size());
                     for (int c : owned)
                         repl_ch.push_back(repl[c]);
-                    const auto res = gnss::channelized_despread(data_ch, repl_ch);
-                    // Candidate statistic: the GLRT |G|^2/E, not |A|^2 = |G|^2/E^2. Candidates
-                    // can have very different replica energies in a narrow subband (extreme on
-                    // L2C CL, whose 75 code segments differ a lot within one channel); |A|^2
-                    // over-penalises high-energy replicas by E, so on noise it systematically
-                    // picks the LOWEST-energy candidate. |G|^2/E is the matched-filter detection
-                    // statistic and ranks candidates fairly. (Equal-E candidates, e.g. the
-                    // +-1-chip C/A pull-in, are ranked identically either way.)
-                    const double pw = res.replica_energy > 0.0
-                                          ? std::norm(res.correlation) / res.replica_energy
-                                          : 0.0;
-                    if (pw > best_pw) {
-                        best_pw = pw;
-                        best = res;
-                        best_cp = cp_seed + off;
-                    }
-                    if (pullin <= 0.0)
-                        break;
-                }
-                rec[2] = (float)best_cp; // the locked (pulled-in) code phase
+                    return gnss::channelized_despread(data_ch, repl_ch);
+                };
+                const auto early = despread_at(cp_seed - _dll_spacing);
+                const auto best = despread_at(cp_seed); // prompt
+                const auto late = despread_at(cp_seed + _dll_spacing);
+                rec[gnss::REC_E_RE] = (float)early.correlation.real();
+                rec[gnss::REC_E_IM] = (float)early.correlation.imag();
+                rec[gnss::REC_E_ENERGY] = (float)early.replica_energy;
+                rec[gnss::REC_L_RE] = (float)late.correlation.real();
+                rec[gnss::REC_L_IM] = (float)late.correlation.imag();
+                rec[gnss::REC_L_ENERGY] = (float)late.replica_energy;
 
-                if (_fll_gain <= 0.0 || held[p]) {
+                if (_fll_gain <= 0.0) {
                     rec[3] = (float)best.correlation.real();
                     rec[4] = (float)best.correlation.imag();
                     rec[5] = (float)best.replica_energy;
@@ -388,30 +346,6 @@ void GnssChannelizedTracker::main_thread() {
                     a_prev[p] = a_corr;
                     a_prev_ok[p] = 1;
                     hop_prev[p] = window_start_hop;
-                }
-
-                // Held-reference deep-integration state machine. Arm after _hold_lock_records
-                // straight records with despread |A| >= _hold_lock_amp: FREEZE the just-locked
-                // code phase (best_cp) + the code-Doppler rate implied by the full tracked Doppler,
-                // so cp extrapolates along the (narrow BOC) peak with no per-record re-decision.
-                // Release after the same run below the threshold (cp drifted off / sat set), which
-                // resumes normal broker seed-following + pull-in to re-acquire.
-                if (_hold_lock_amp > 0.0) {
-                    const double amp = std::abs(best.amplitude);
-                    if (amp >= _hold_lock_amp) {
-                        lock_down[p] = 0;
-                        if (!held[p] && ++lock_up[p] >= _hold_lock_records) {
-                            held[p] = 1;
-                            hold_cp0[p] = best_cp;
-                            hold_ref_hop[p] = window_start_hop;
-                            hold_dop[p] = fcar + ((_fll_gain > 0.0) ? f_track[p] : 0.0);
-                            hold_rate[p] = _code_rate_per_hz_hop * hold_dop[p];
-                        }
-                    } else {
-                        lock_up[p] = 0;
-                        if (held[p] && ++lock_down[p] >= _hold_lock_records)
-                            held[p] = 0; // release -> re-acquire from the broker seed
-                    }
                 }
             }
 

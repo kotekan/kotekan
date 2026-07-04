@@ -13,6 +13,7 @@
 #include "buffer.hpp"                 // for Buffer
 #include "bufferContainer.hpp"        // for bufferContainer
 #include "gnssChannelizedReplica.hpp" // for ChannelizedReplicaBank
+#include "gnssRecord.hpp"             // for RECORD_FLOATS + slot names (the record schema)
 #include "restServer.hpp"             // for connectionInstance
 
 #include "json.hpp" // for json
@@ -53,10 +54,11 @@
  * @conf code_phase_chips Array<Double>. Seeded code phase per PRN (scalar broadcasts).
  * @conf doppler_margin_hz Double (default 5000). Extra band for covering-channel select.
  * @conf hops_per_record  Int (default: one code period). Coherent window, hops.
- * @conf pullin_chips     Double (default 0). Code pull-in half-window (chips): despread
- *                        over seed +/- this and lock to the peak |A|, so a stale/drifting
- *                        seed still locks (DLL-style). 0 = single despread at the seed.
- * @conf pullin_step      Double (default 0.5). Pull-in grid step (chips).
+ * @conf dll_spacing_chips Double (default 0.5). Early/Late correlator offset from the
+ *                        Prompt (chips). The tracker despreads E/P/L at the COMMANDED code
+ *                        phase and makes NO alignment decisions (R1, the architecture
+ *                        audit): the combiner aggregates |E|^2/|L|^2 and the broker closes
+ *                        the delay-lock loop at ~Hz through set_seeds.
  * @conf fll_gain         Double (default 0). Carrier frequency-lock-loop gain: each record
  *                        the per-PRN tracked Doppler steps by gain*(frequency error from the
  *                        bit-robust phase walk arg((A_k conj A_{k-1})^2)/2). 0 = open-loop
@@ -66,12 +68,6 @@
  *                        they diverge by more than this (loss of lock / sat change).
  * @conf fll_max_gap_s    Double (default 0.005). Skip the FLL update across a record gap
  *                        larger than this (a dropped frame would alias the phase walk).
- * @conf hold_lock_amp    Double (default 0 = off). Held-reference deep-integration threshold:
- *                        after hold_lock_records straight records with despread |A| >= this, FREEZE
- *                        the absolute-anchored code+carrier reference (no broker re-seed, no
- *                        per-record pull-in) so the per-record phase stays continuous for the
- *                        combiner deep wipe; release after that many below. Per-channel |A|.
- * @conf hold_lock_records Int (default 5). Records to arm / release the hold.
  * @conf active_prns      Array<Int> (optional). Initial go/no-go mask (default all on).
  * @conf capture_utc0     Double (default 0). UTC of sample 0; 0 = wall-clock at emit.
  *
@@ -86,10 +82,9 @@ public:
                            kotekan::bufferContainer& buffer_container);
     void main_thread() override;
 
-    // Record layout (floats): 0=PRN 1=Doppler 2=code_phase 3=corr.re 4=corr.im
-    // 5=replica_energy 6=n_chan_used 7,8=spare 9,10=UTC (double in slots 9..10).
-    static constexpr int RECORD_FLOATS = 11;
-    static constexpr int RECORD_UTC_SLOT = 9;
+    // Record layout: see gnssRecord.hpp (E/P/L tracker flavour).
+    static constexpr int RECORD_FLOATS = gnss::RECORD_FLOATS;     // schema: gnssRecord.hpp
+    static constexpr int RECORD_UTC_SLOT = gnss::RECORD_UTC_SLOT;
 
 private:
     /// broker -> tracker: set the consensus seeds + active set. Body is a JSON array
@@ -109,23 +104,12 @@ private:
     int _n_chan;      ///< channels owned by this subband
     int _hops_per_record;
 
-    double _pullin_chips; ///< code pull-in half-window (chips); 0 = despread at the seed only
-    double _pullin_step;  ///< code pull-in grid step (chips)
+    double _dll_spacing;  ///< Early/Late correlator offset from Prompt (chips)
 
     double _fll_gain;     ///< carrier FLL loop gain (0 = open-loop, use the broker Doppler)
     double _fll_reacq_hz; ///< |f_track - seed| beyond this re-acquires from the broker seed
     double _fll_max_gap;  ///< skip the FLL discriminator if records are >this many apart (s)
     double _fll_lock_amp; ///< freeze the FLL when despread |A| < this (signal dropout); 0 = never
-
-    // Held-reference deep-integration mode (dataless pilots). Once a PRN despreads above
-    // _hold_lock_amp for _hold_lock_records straight records, FREEZE its absolute-anchored
-    // code+carrier reference (cp0 + code-Doppler rate, fcar) and stop re-deciding it per record:
-    // no broker re-seed, no per-record max-power pull-in (both noise-driven on a marginal BOC
-    // signal -> they jump the code phase ~150 chips/record and randomise the per-record carrier
-    // phase, which the combiner deep wipe integrates over). Release after the same run below the
-    // threshold. 0 = disabled (legacy per-record behaviour). See the 2026-06-30 L1C findings.
-    double _hold_lock_amp;   ///< despread |A| to arm/hold the frozen reference; 0 = mode off
-    int _hold_lock_records;  ///< consecutive records above/below _hold_lock_amp to hold/release
 
     std::vector<int> _prns;
     std::vector<double> _doppler;

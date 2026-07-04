@@ -15,7 +15,7 @@ any residual Doppler. A noise-only PRN's coherent estimate instead falls as
 1/sqrt(K) from K=1 (random phases average to zero). The ratio of the two is the
 processing gain that digs into the dish sidelobes.
 
-Usage:  python3 gps_intgn_check.py [/tmp/gpsintgn] [--record-floats 11]
+Usage:  python3 gps_intgn_check.py [/tmp/gpsintgn] [--record-floats 15]
 """
 import argparse
 import glob
@@ -194,7 +194,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("base_dir", nargs="?", default="/tmp/gpsintgn")
-    ap.add_argument("--record-floats", type=int, default=11)
+    ap.add_argument("--record-floats", type=int, default=15)
     ap.add_argument("--n-prn", type=int, default=0,
                     help="records per frame (config n_prn); 0 = auto-detect from the framing")
     ap.add_argument("--dt-ms", type=float, default=1.0, help="record period (ms) for the time axis")

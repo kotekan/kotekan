@@ -12,6 +12,7 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
+#include "gnssRecord.hpp"      // for RECORD_FLOATS + slot names (the record schema)
 #include "restServer.hpp"      // for connectionInstance
 
 #include <complex> // for complex
@@ -90,8 +91,8 @@ public:
                          kotekan::bufferContainer& buffer_container);
     void main_thread() override;
 
-    static constexpr int RECORD_FLOATS = 11;
-    static constexpr int RECORD_UTC_SLOT = 9;
+    static constexpr int RECORD_FLOATS = gnss::RECORD_FLOATS;     // schema: gnssRecord.hpp
+    static constexpr int RECORD_UTC_SLOT = gnss::RECORD_UTC_SLOT;
 
 private:
     /// broker poll: latest full-band |A| (and seed) per PRN, for drop decisions.
@@ -127,6 +128,7 @@ private:
     std::vector<float> _st_amp, _st_coh, _st_deep, _st_deep_snr, _st_amp_snr, _st_amp_dbi, _st_dop,
         _st_cp;
     std::vector<int> _st_nh_phase; ///< secondary-overlay alignment found per PRN (-1 = n/a)
+    std::vector<float> _st_dll_disc; ///< window-averaged DLL discriminator (broker closes the loop)
     std::vector<float> _st_coh_s;  ///< measured coherence: time span of the chosen deep window (s)
     std::vector<int> _st_deep_rec; ///< records in the chosen deep window (= full window unless the
                                    ///< auto-coherence ladder found a shorter, more coherent one)

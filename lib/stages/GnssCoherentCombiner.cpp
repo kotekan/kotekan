@@ -92,6 +92,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_nh_phase.assign(_n_prn, -1);
     _st_dop.assign(_n_prn, 0.0f);
     _st_cp.assign(_n_prn, 0.0f);
+    _st_dll_disc.assign(_n_prn, 0.0f);
     _st_coh_s.assign(_n_prn, 0.0f);
     _st_deep_rec.assign(_n_prn, 0);
 }
@@ -112,6 +113,7 @@ void GnssCoherentCombiner::main_thread() {
     // emit by dividing by (1 - (1-alpha)^n_roll) so they read true running means from record 1.
     std::vector<double> acc_pow(_n_prn), acc_ar(_n_prn), acc_ai(_n_prn), acc_nchan(_n_prn);
     std::vector<double> acc_pow2(_n_prn); // <|A|^4>, for the noise-debiased incoherent significance
+    std::vector<double> acc_epow(_n_prn), acc_lpow(_n_prn); // <|E|^2>, <|L|^2> for the DLL disc
     std::vector<float> ref_prn(_n_prn), ref_dop(_n_prn), ref_cp(_n_prn);
     std::vector<double> ref_utc(_n_prn);
     int n_acc = 0;              // block: records in the current block
@@ -138,6 +140,7 @@ void GnssCoherentCombiner::main_thread() {
             // Sum the un-normalized correlation and replica energy across subbands
             // (the cross-channel coherent combine), then the full-band amplitude.
             double gr = 0.0, gi = 0.0, energy = 0.0, nchan = 0.0;
+            double er = 0.0, ei = 0.0, e_energy = 0.0, lr = 0.0, li = 0.0, l_energy = 0.0;
             const float* ref = ins[0] + (size_t)p * RECORD_FLOATS; // PRN/dop/cp/UTC reference
             for (float* in : ins) {
                 const float* rec = in + (size_t)p * RECORD_FLOATS;
@@ -145,9 +148,20 @@ void GnssCoherentCombiner::main_thread() {
                 gi += rec[4];
                 energy += rec[5];
                 nchan += rec[6];
+                // Early/Late correlators (gnssRecord.hpp): additive across subbands exactly
+                // like the prompt -- sum raw G and energy, normalize full-band below. Only the
+                // POWERS feed the DLL discriminator, so per-subband NCO phases are irrelevant.
+                er += rec[gnss::REC_E_RE];
+                ei += rec[gnss::REC_E_IM];
+                e_energy += rec[gnss::REC_E_ENERGY];
+                lr += rec[gnss::REC_L_RE];
+                li += rec[gnss::REC_L_IM];
+                l_energy += rec[gnss::REC_L_ENERGY];
             }
             const double ar = energy > 0.0 ? gr / energy : 0.0;
             const double ai = energy > 0.0 ? gi / energy : 0.0;
+            const double e2 = e_energy > 0.0 ? (er * er + ei * ei) / (e_energy * e_energy) : 0.0;
+            const double l2 = l_energy > 0.0 ? (lr * lr + li * li) / (l_energy * l_energy) : 0.0;
 
             // Accumulate over time: incoherent power (|A|^2) + its square (|A|^4, for the noise
             // debias) + coherent complex (A).
@@ -156,6 +170,8 @@ void GnssCoherentCombiner::main_thread() {
             if (_rolling) { // exponential moving average (no reset; integrates indefinitely)
                 acc_pow[p] += alpha * (p2 - acc_pow[p]);
                 acc_pow2[p] += alpha * (p2 * p2 - acc_pow2[p]);
+                acc_epow[p] += alpha * (e2 - acc_epow[p]);
+                acc_lpow[p] += alpha * (l2 - acc_lpow[p]);
                 acc_ar[p] += alpha * (ar - acc_ar[p]);
                 acc_ai[p] += alpha * (ai - acc_ai[p]);
                 acc_nchan[p] += alpha * (nchan - acc_nchan[p]);
@@ -174,6 +190,8 @@ void GnssCoherentCombiner::main_thread() {
             } else { // block: running sums, reset at emit
                 acc_pow[p] += p2;
                 acc_pow2[p] += p2 * p2;
+                acc_epow[p] += e2;
+                acc_lpow[p] += l2;
                 acc_ar[p] += ar;
                 acc_ai[p] += ai;
                 acc_nchan[p] += nchan;
@@ -241,6 +259,19 @@ void GnssCoherentCombiner::main_thread() {
             rec[5] = (float)(acc_ai[p] * inv);                       // <A>.im
             rec[6] = (float)std::hypot(acc_ar[p], acc_ai[p]) * inv;  // |<A>|_coh
             rec[7] = (float)(acc_nchan[p] * inv);                    // covering channels used
+            // DLL observables (gnssRecord.hpp): window-averaged full-band Early/Late powers and
+            // the normalized early-minus-late discriminator. ~Linear in the code-phase error
+            // over ~+-dll_spacing (tau ~ disc/4 chips at 0.5-chip spacing); the BROKER closes
+            // the loop from these at ~Hz. Noise averages out over the window, so no per-record
+            // decisions anywhere (R1).
+            {
+                const double e_pow = acc_epow[p] * inv;
+                const double l_pow = acc_lpow[p] * inv;
+                rec[gnss::CMB_E_POW] = (float)e_pow;
+                rec[gnss::CMB_L_POW] = (float)l_pow;
+                rec[gnss::CMB_DLL_DISC] =
+                    (e_pow + l_pow) > 0.0 ? (float)((e_pow - l_pow) / (e_pow + l_pow)) : 0.0f;
+            }
             // Noise-debiased incoherent significance: <|A|^2> = s^2 + N is biased by the noise
             // floor N (so |A| ~= floor for weak sats), but the moments separate them --
             // s^2 = sqrt(<|A|^2>^2 - Var(|A|^2)), N = <|A|^2> - s^2 -- giving a signal-vs-noise SNR
@@ -318,7 +349,7 @@ void GnssCoherentCombiner::main_thread() {
             }
             *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = ref_utc[p];
             if (!_rolling)
-                acc_pow[p] = acc_pow2[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = 0.0; // block: reset
+                acc_pow[p] = acc_pow2[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = acc_epow[p] = acc_lpow[p] = 0.0; // block: reset
         }
         if (!_rolling)
             n_acc = 0;
@@ -340,6 +371,7 @@ void GnssCoherentCombiner::main_thread() {
                 _st_cp[p] = rec[2];
                 _st_coh_s[p] = (float)coh_s[p];
                 _st_deep_rec[p] = deep_rec[p];
+                _st_dll_disc[p] = rec[gnss::CMB_DLL_DISC];
             }
         }
         out_buf->mark_frame_full(unique_name, out_id++);
@@ -361,7 +393,8 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"doppler_hz", _st_dop[p]},
                          {"code_phase_chips", _st_cp[p]},
                          {"coherence_s", _st_coh_s[p]},
-                         {"deep_records", _st_deep_rec[p]}});
+                         {"deep_records", _st_deep_rec[p]},
+                         {"dll_disc", _st_dll_disc[p]}});
     conn.send_json_reply(reply);
 }
 

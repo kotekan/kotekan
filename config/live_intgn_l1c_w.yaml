@@ -28,7 +28,7 @@ f_offset: 5.0e6
 signal: GPS_L1C_P
 code_doppler_sign: 1.0
 n_prn: 11
-record_floats: 11
+record_floats: 15
 doppler_margin_hz: 250000.0
 acquire_snr: 8
 acquire_windows: 20
