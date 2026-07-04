@@ -47,7 +47,6 @@ add_library(
     gpsL1CCode.cpp
     gpsL2CCode.cpp
     gpsL5Code.cpp
-    GnssRecordCollector.cpp
     GnssSubbandSplit.cpp
     GnssCoherentCombiner.cpp
     GnssBeamCube.cpp
@@ -153,7 +152,6 @@ if(FFTW_FOUND)
                 gnssChannelizedDespread.cpp
                 gnssChannelizedAcquire.cpp
                 gnssChannelizedReplica.cpp
-                GnssChannelizedCorrelator.cpp
                 GnssChannelizedTracker.cpp
                 GnssChannelizedSearch.cpp
                 GnssVoltagePeel.cpp
