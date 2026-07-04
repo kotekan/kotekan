@@ -10,9 +10,9 @@
 #   http://localhost:8080
 # Recorded signal level lands in /tmp/gpslive/level_*.raw.  Ctrl-C to stop all.
 #
-# Run from the repo root (the dir containing config/ and build_mac/).
+# Run from the repo root (the dir containing config/ and build/).
 set -u
-KOTEKAN=./build_mac/kotekan/kotekan
+KOTEKAN=${KOTEKAN:-./build/kotekan/kotekan}
 CFG=${CFG:-config/live_l1.yaml}          # L1 lean valved distributed config
 #   CFG: live_l2c.yaml -> L2C (1227.6 MHz); live_l5.yaml -> L5 (1176.45 MHz); live_l5_wipe.yaml ->
 #        L5 Q5 pilot DEEP overlay-wipe (rolling, NH20 wiped in the combiner -> deep |A| past 1 ms);
@@ -59,13 +59,13 @@ BROKER=python/scripts/gps_distributed_broker.py
 LOG=/tmp/gpslive.log
 
 cleanup() { echo; echo "stopping..."; kill "${BPID:-}" 2>/dev/null
-            pkill -9 -f build_mac/kotekan/kotekan 2>/dev/null
+            pkill -9 -f kotekan/kotekan 2>/dev/null
             pkill -9 -f livebeam_server 2>/dev/null
             [ -n "${RUNCFG:-}" ] && [ "${RUNCFG:-}" != "$CFG" ] && rm -f "$RUNCFG"
             exit 0; }
 trap cleanup INT TERM
 
-pkill -9 -f build_mac/kotekan/kotekan 2>/dev/null; pkill -9 -f livebeam_server 2>/dev/null
+pkill -9 -f kotekan/kotekan 2>/dev/null; pkill -9 -f livebeam_server 2>/dev/null
 
 # Refresh the search PRN list to what's actually overhead NOW (the constellation rotates
 # ~half an orbit in ~8 h, so a hardcoded list goes stale -> zero detections). Needs
@@ -75,7 +75,7 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   # PID-based temp (portable: BSD/macOS mktemp rejects a .yaml suffix after the X's).
   RUNCFG="${TMPDIR:-/tmp}/live_cfg_$$.yaml"
   if ! python3 python/scripts/gps_visible_prns.py --lat "$LAT" --lon "$LON" \
-         --alt "${ALT:-100}" --patch "$CFG" --out "$RUNCFG"; then
+         --alt "${ALT:-100}" ${SIGNAL:+--signal "$SIGNAL"} --patch "$CFG" --out "$RUNCFG"; then
     echo "PRN refresh failed (network/time?) -- using $CFG as-is"; cp "$CFG" "$RUNCFG"
   fi
 fi
