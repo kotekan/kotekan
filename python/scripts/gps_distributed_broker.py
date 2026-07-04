@@ -253,6 +253,9 @@ def main(argv=None):
     ap.add_argument("--code-bias-file", type=str, default=None,
                     help="persist the converged (l-a) ppm here: read at startup (unless --code-bias-init "
                          "is set) and rewritten each update, so the offset carries across runs/bands")
+    ap.add_argument("--fit-gap-s", type=float, default=16.0,
+                    help="reset the cp-fit history across a detection gap longer than this "
+                         "(seconds of capture time; converted via --hops-per-sec)")
     ap.add_argument("--dll-gain", type=float, default=0.25,
                     help="code delay-lock-loop gain (0 = off): each poll, nudge a persistent "
                          "per-PRN cp TRIM by gain * tau_est from the combiner's E/L discriminator. "
@@ -317,7 +320,13 @@ def main(argv=None):
         except Exception:
             pass
     CODE_LEN = float(args.code_length)
-    MAX_GAP_HOPS = 2.0e6   # reset cp history across a gap this large (re-acquisition)
+    # Reset the cp-fit history across a snapshot gap larger than this (re-acquisition). TIME-
+    # based, not hop-based: a fixed hop count silently scales with the band's hop rate (the L1-era
+    # 2e6 hops = 16 s at 125 kHz but only 2 s at the L5 front end's 1 MHz -- shorter than the L5
+    # search's snapshot cadence, so the history reset every cycle and the fit NEVER fired: no
+    # empirical code rate, carrier-aiding quantization * seed staleness walked the prompt chips
+    # off-peak. The 2026-07-04 L5 signature: strong search, trackers at the floor, 0 cp-fits).
+    MAX_GAP_HOPS = args.fit_gap_s * args.hops_per_sec
     HIST_LEN = 8           # snapshots kept for the slope fit
     _log("detectors=%d trackers=%d combiner=%s interval=%.2fs gating=%s"
          % (len(detectors), len(trackers), combiner, args.interval, gating))
