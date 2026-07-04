@@ -18,6 +18,14 @@ telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
 rest_server:
     cors_allow_origins: ["http://localhost:8080", "http://127.0.0.1:8080", "http://gx10.vdl:8080"]
 
+# Receiver clock quality -> sizes the carrier-Doppler search (accuracy) + the coherent-integration
+# ceiling (stability), so one knob adapts the pipeline from the airspy TCXO to a GPSDO/rubidium/maser.
+# name: auto (default; starts wide, the broker's clock-bias estimate narrows it live). Override with
+# tcxo|ocxo|gpsdo|rubidium|maser, or pin accuracy_ppm / coherence_s. Canonical table: clockProfile.hpp.
+# The search stage reads this directly (Doppler grid); run_live derives the integration cap + broker
+# margins. When present it supersedes the legacy doppler_min/max below (kept as a fallback).
+clock_profile: { name: auto }
+
 samples_per_data_set: 49920
 bytes_per_sample: 2
 buffer_depth: 16

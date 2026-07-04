@@ -31,6 +31,8 @@ cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7]
 spectrum_length: 10
 num_taps: 4
 sample_rate: 5.0e6
+# receiver clock quality (auto = wide cold search, narrowed live; see clockProfile.hpp + live_l1_wipe.yaml)
+clock_profile: { name: auto }
 f_offset: 1.25e6
 signal: GPS_L1C_P
 code_doppler_sign: 1.0

@@ -55,6 +55,35 @@ if [ -n "${SIGNAL:-}" ] && [ -f "$SIGHDR" ]; then
   CHIP_HZ=$(awk -F, -v s="$SIGNAL" '$1 ~ ("^[[:space:]]*\"" s "\"$"){c=$3;gsub(/[^0-9.eE+-]/,"",c);print c;exit}' "$SIGHDR")
   CODELEN=$(awk -F, -v s="$SIGNAL" '$1 ~ ("^[[:space:]]*\"" s "\"$"){l=$4;gsub(/[^0-9]/,"",l);print l;exit}' "$SIGHDR")
 fi
+# --- Receiver clock profile (clockProfile.hpp is the canonical table) ---------------------------
+# One knob for clock quality across airspy TCXO ... GPSDO ... maser. The search STAGE reads
+# clock_profile from the config directly (sizes the Doppler grid from accuracy_ppm); here we resolve
+# the SAME profile to (a) cap integration_length from coherence_s and (b) hand the broker a matching
+# cold per-PRN margin. Name = CLOCK= env OR the config's clock_profile.name (default auto); explicit
+# accuracy_ppm / coherence_s in the block override the preset.
+CLKHDR="lib/stages/clockProfile.hpp"
+_clkline=$(grep -oE '^clock_profile:[^#]*' "$CFG" | head -1)
+CLK_NAME=${CLOCK:-$(echo "$_clkline" | grep -oE 'name:[[:space:]]*[A-Za-z]+' | awk '{print $NF}')}
+CLK_NAME=${CLK_NAME:-auto}
+CLK_ACC_CFG=$(echo "$_clkline" | grep -oE 'accuracy_ppm:[[:space:]]*[0-9.eE+-]+' | grep -oE '[0-9.eE+-]+$')
+CLK_COH_CFG=$(echo "$_clkline" | grep -oE 'coherence_s:[[:space:]]*[0-9.eE+-]+' | grep -oE '[0-9.eE+-]+$')
+if [ -f "$CLKHDR" ]; then
+  read -r CLK_ACC CLK_COH < <(awk -v p="$CLK_NAME" \
+    '$0 ~ ("name == \"" p "\"") && match($0, /\{[0-9eE.+-]+,[[:space:]]*[0-9eE.+-]+\}/){
+       s=substr($0,RSTART+1,RLENGTH-2); gsub(/[[:space:]]/,"",s); split(s,a,","); print a[1],a[2]; exit}' "$CLKHDR")
+fi
+CLK_ACC=${CLK_ACC_CFG:-${CLK_ACC:-2.0}}   # auto/unknown -> conservative 2.0 ppm / 0.2 s
+CLK_COH=${CLK_COH_CFG:-${CLK_COH:-0.2}}
+# Broker COLD per-PRN margin from the accuracy bound (clock offset ~ accuracy*f_c, + 500 Hz almanac).
+CLK_WIDE_HZ=$(awk -v a="$CLK_ACC" -v f="${CARRIER_HZ:-1575420000}" 'BEGIN{printf "%.0f", a*1e-6*f + 500}')
+# Coherent-integration cap (records; 1 record = 1 primary code period = CODELEN/CHIP_HZ). Applied only
+# for a COMMITTED profile (named non-auto clock OR explicit coherence_s) and only if it TIGHTENS the
+# config -- pure auto leaves integration_length alone (v2 will measure + grow it live).
+CLK_MAXINT=""
+if { [ "$CLK_NAME" != auto ] || [ -n "$CLK_COH_CFG" ]; } && [ -n "${CHIP_HZ:-}" ] && [ -n "${CODELEN:-}" ]; then
+  CLK_MAXINT=$(awk -v c="$CLK_COH" -v ch="$CHIP_HZ" -v cl="$CODELEN" 'BEGIN{rp=cl/ch; if(rp>0)printf "%d",int(c/rp)}')
+fi
+echo "clock profile '$CLK_NAME': accuracy ${CLK_ACC} ppm, coherence ${CLK_COH} s -> broker cold margin +-${CLK_WIDE_HZ} Hz${CLK_MAXINT:+, integ cap ${CLK_MAXINT} rec}"
 BROKER=python/scripts/gps_distributed_broker.py
 LOG=/tmp/gpslive.log
 
@@ -77,6 +106,26 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   if ! python3 python/scripts/gps_visible_prns.py --lat "$LAT" --lon "$LON" \
          --alt "${ALT:-100}" ${SIGNAL:+--signal "$SIGNAL"} --patch "$CFG" --out "$RUNCFG"; then
     echo "PRN refresh failed (network/time?) -- using $CFG as-is"; cp "$CFG" "$RUNCFG"
+  fi
+fi
+
+# Apply the clock profile to the RUNCFG (temp copy only -- never the committed config): a CLOCK= env
+# name override, and the coherence integration cap for a committed profile. The search stage reads
+# clock_profile itself for the Doppler grid; this only touches name + integration_length.
+if [ -n "${CLOCK:-}" ] || [ -n "${CLK_MAXINT:-}" ]; then
+  if [ "$RUNCFG" = "$CFG" ]; then RUNCFG="${TMPDIR:-/tmp}/live_cfg_$$.yaml"; cp "$CFG" "$RUNCFG"; fi
+  if [ -n "${CLOCK:-}" ]; then
+    if grep -q '^clock_profile:' "$RUNCFG"; then
+      sed -i -E "s/^(clock_profile:[[:space:]]*\{[^}]*name:[[:space:]]*)[A-Za-z]+/\1$CLOCK/" "$RUNCFG"
+    else
+      printf 'clock_profile: { name: %s }\n' "$CLOCK" >> "$RUNCFG"
+    fi
+  fi
+  if [ -n "${CLK_MAXINT:-}" ]; then   # cap integration_length DOWN to the coherence limit, never up
+    awk -v m="$CLK_MAXINT" '{ if (match($0, /integration_length:[[:space:]]*[0-9]+/)) {
+        v=$0; sub(/.*integration_length:[[:space:]]*/,"",v); sub(/[^0-9].*/,"",v);
+        if (v+0 > m+0) sub(/integration_length:[[:space:]]*[0-9]+/, "integration_length: " m) }
+      print }' "$RUNCFG" > "$RUNCFG.tmp" && mv "$RUNCFG.tmp" "$RUNCFG"
   fi
 fi
 
@@ -112,7 +161,9 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
   ALM="$ALM --doppler-sign ${DOPPLER_SIGN:-1}"
   if [ "${NARROW_SEARCH:-1}" != "0" ]; then
-    ALM="$ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500}"
+    # --search-margin-wide-hz = the COLD per-PRN window (pre-clock-bias), sized from the clock
+    # profile's accuracy bound; the warm margin (--search-margin-hz) applies once the bias solves.
+    ALM="$ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500} --search-margin-wide-hz ${CLK_WIDE_HZ:-3000}"
     _ns="+ narrowed search"
   else
     _ns="(blind search -- NARROW_SEARCH=0)"

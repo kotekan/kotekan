@@ -2,6 +2,7 @@
 
 #include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
 #include "GnssChanMetadata.hpp"        // for get_gnss_chan_metadata, metadata_is_gnss_chan
+#include "clockProfile.hpp"           // for resolve_clock_profile, clock_doppler_half_range_hz
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
 #include "gnssSignal.hpp"              // for SignalDescriptor, signal_by_name
 #include "kotekanLogging.hpp"          // for INFO, FATAL_ERROR
@@ -60,9 +61,26 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _acquire_snr = config.get_default<double>(unique_name, "acquire_snr", 12.0);
     _acquire_windows = config.get_default<int>(unique_name, "acquire_windows", 64);
     _hold_snapshots = config.get_default<int>(unique_name, "hold_snapshots", 5);
-    const double dmin = config.get_default<double>(unique_name, "doppler_min", -6000.0);
-    const double dmax = config.get_default<double>(unique_name, "doppler_max", 6000.0);
+    double dmin = config.get_default<double>(unique_name, "doppler_min", -6000.0);
+    double dmax = config.get_default<double>(unique_name, "doppler_max", 6000.0);
     _doppler_step = config.get_default<double>(unique_name, "doppler_step", 500.0);
+    // Clock-profile Doppler sizing: the top-level /clock_profile block (shared by every stage) sets
+    // the receiver clock quality; when present, the carrier search extent is DERIVED from its
+    // frequency-accuracy bound + the band's max sky Doppler, so one knob sizes every band and clock
+    // (airspy TCXO ... GPSDO ... maser). Absent -> legacy explicit doppler_min/max. See clockProfile.hpp.
+    const std::string clk_name =
+        config.get_default<std::string>("/clock_profile", "name", std::string(""));
+    const double clk_acc = config.get_default<double>("/clock_profile", "accuracy_ppm", std::nan(""));
+    const double clk_coh = config.get_default<double>("/clock_profile", "coherence_s", std::nan(""));
+    if (!clk_name.empty() || !std::isnan(clk_acc)) {
+        const gnss::ClockProfile cp =
+            gnss::resolve_clock_profile(clk_name.empty() ? "auto" : clk_name, clk_acc, clk_coh);
+        const double half = gnss::clock_doppler_half_range_hz(sig->carrier_hz, cp.accuracy_ppm);
+        dmin = -half;
+        dmax = half;
+        INFO("GnssChannelizedSearch: clock_profile '{:s}' ({:.3g} ppm) -> Doppler search +-{:.0f} Hz",
+             clk_name.empty() ? "auto" : clk_name, cp.accuracy_ppm, half);
+    }
     for (double f = dmin; f <= dmax + 1e-6; f += _doppler_step)
         _doppler_grid.push_back(f);
 
