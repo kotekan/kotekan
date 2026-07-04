@@ -108,7 +108,12 @@ track_05: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_05, out_buf: rec_0
 track_06: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_06, out_buf: rec_06, channel_offset: 6, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hops_per_record: 5000 }
 track_07: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_07, out_buf: rec_07, channel_offset: 7, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hops_per_record: 5000 }
 track_08: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_08, out_buf: rec_08, channel_offset: 8, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hops_per_record: 5000 }
-combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_02, rec_03, rec_04, rec_05, rec_06, rec_07, rec_08], out_buf: out_buf, integration_length: 50 }
+# L2C DEEP WIPE (2026-07-04, unblocked by the GPSDO): records are 20 ms = ONE CNAV symbol
+# (5000 hops @ 250 kHz), so navwipe_bit_records: 1 wipes the 50 sym/s data and the sum integrates
+# coherently past 20 ms. Measured on-sky (gps_intgn_check, PRN20): carrier residual ~0 Hz, wiped
+# SNR climbs sqrt(K) to a ~2-4 s knee (197 sigma @ 4 s). integration_length 200 = 4 s MAX buffer;
+# the auto_coherence ladder finds the knee live and reports it as coherence_s in get_status.
+combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_02, rec_03, rec_04, rec_05, rec_06, rec_07, rec_08], out_buf: out_buf, integration_length: 200, navwipe_bit_records: 1 }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpsl2c", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 beamcube: { kotekan_stage: GnssBeamCube, in_bufs: [rec_02, rec_03, rec_04, rec_05, rec_06, rec_07, rec_08], out_buf: beam_buf, channel0: 2, integration_length: 50 }
 beamrec: { kotekan_stage: rawFileWrite, in_buf: beam_buf, base_dir: "/tmp/gpsl2c", file_name: "beam", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
