@@ -120,6 +120,13 @@ private:
     /// On a drop the partial frame is abandoned so no frame straddles the gap.
     int64_t _samples_seq = 0; ///< running true sample index (received + dropped)
     int64_t _frame_seq0 = 0;  ///< true sample index of the current frame's first sample
+    /// Wall-clock UTC (unix seconds) of TRUE sample 0, anchored at the first producer callback
+    /// (~ms accuracy: USB delivery latency; the tiny alignment lag is ignored). 0 = not yet
+    /// anchored. Served in /adcstat as "utc0_sample0" -- the absolute-time anchor for the
+    /// broker's L2C CL time-assist: the CL 1.5 s code epoch is locked to GPS time, so an
+    /// absolute timeline good to ~10 ms pins the CL segment (the measured CM code phase
+    /// supplies the fine time below that).
+    std::atomic<double> _utc0_sample0{0.0};
     /// Pending byte-count of samples to skip before next copy (for inter-device alignment).
     uint32_t lag = 0;
     /// Whether @c airspy_init() succeeded (gates @c airspy_exit() in the destructor).

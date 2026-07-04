@@ -102,6 +102,8 @@ void airspyInput::adcstat_callback(kotekan::connectionInstance& conn) {
     reply["rms"] = adcrms;
     reply["mean"] = adcmean;
     reply["railfrac"] = adcrailfrac;
+    // Absolute-time anchor for the CL time-assist (0.0 until the first producer callback).
+    reply["utc0_sample0"] = _utc0_sample0.load(std::memory_order_relaxed);
     adcstat_ready = false;
     lock.unlock();
 
@@ -223,6 +225,21 @@ int airspyInput::airspy_callback(airspy_transfer_t* transfer) {
 void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
     // Serialise overlapping callbacks; libairspy can in principle deliver them concurrently.
     pthread_mutex_lock(&recv_busy);
+
+    // One-shot absolute-time anchor (see the header doc): this transfer's samples span the last
+    // sample_count / real_rate seconds ending ~now (real stream = 2x the complex device rate;
+    // USB delivery latency ~1-3 ms). Refer back to TRUE sample 0 so downstream can turn any
+    // sample_seq/hop into wall-clock UTC: utc0_sample0 + seq / real_rate.
+    if (_utc0_sample0.load(std::memory_order_relaxed) == 0.0) {
+        const double now = std::chrono::duration<double>(
+                               std::chrono::system_clock::now().time_since_epoch())
+                               .count();
+        const double real_rate = 2.0 * (double)_sample_rate;
+        const double t_first = now - (double)transfer->sample_count / real_rate;
+        _utc0_sample0.store(
+            t_first
+            - (double)(_samples_seq + (int64_t)transfer->dropped_samples) / real_rate);
+    }
 
     void* in = transfer->samples;
     size_t bt = transfer->sample_count * BYTES_PER_SAMPLE;

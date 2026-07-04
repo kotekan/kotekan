@@ -253,6 +253,17 @@ def main(argv=None):
     ap.add_argument("--code-bias-file", type=str, default=None,
                     help="persist the converged (l-a) ppm here: read at startup (unless --code-bias-init "
                          "is set) and rewritten each update, so the offset carries across runs/bands")
+    ap.add_argument("--cl-assist", action="store_true",
+                    help="trackers despread the L2C CL pilot: lift each seed's code_phase_chips by "
+                         "k*10230 with the CL segment k COMPUTED from absolute capture time (the "
+                         "airspy /adcstat utc0_sample0 anchor) + almanac range. CL's 1.5 s epoch is "
+                         "GPS-time-locked, so k is arithmetic, not a 75-way search (which is "
+                         "SNR-starved per-record in a narrow subband). Needs --almanac.")
+    ap.add_argument("--adc-stage", default="airspy_in",
+                    help="airspy input stage name for the utc0_sample0 anchor GET (CL assist)")
+    ap.add_argument("--cl-time-adjust", type=float, default=0.0,
+                    help="seconds added to the CL time-assist clock -- escape hatch for a future "
+                         "non-multiple-of-1.5s GPS-UTC offset or a known host-clock bias")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -282,6 +293,7 @@ def main(argv=None):
 
     seeds = {}       # prn -> {"doppler_hz", "code_phase_chips", ...} (consensus)
     low_hits = {}    # prn -> consecutive low-|A| poll count
+    utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     cp_hist = {}     # prn -> [(ref_hop, cp0), ...] recent distinct snapshots (for the slope fit)
     clock_bias_ema = None  # smoothed common clock-frequency bias (slow TCXO drift), Hz
     code_bias_ema = None   # smoothed receiver code-rate clock offset (l-a), dimensionless (~2.6 ppm airspy)
@@ -333,9 +345,10 @@ def main(argv=None):
                                        t_utc=datetime.now(tz=timezone.utc), _sats=almanac_sats,
                                        f_carrier_hz=args.carrier_hz)
                 # doppler_sign flips to the receiver's observed convention -- apply it to BOTH the
-                # Doppler and its rate so the 2nd-order feed-forward ramps the right way.
-                pred = {p: (args.doppler_sign * d, args.doppler_sign * r, e)
-                        for p, (d, r, e) in raw.items()}
+                # Doppler and its rate so the 2nd-order feed-forward ramps the right way. (Range
+                # is geometry, no sign; it feeds the CL time-assist propagation delay.)
+                pred = {p: (args.doppler_sign * d, args.doppler_sign * r, e, rng)
+                        for p, (d, r, e, rng) in raw.items()}
             except Exception as e:
                 _log("predict_dopplers failed: %s" % e)
             up = {p for p, v in pred.items() if v[2] >= args.mask_deg}
@@ -390,6 +403,17 @@ def main(argv=None):
         # else the coarse search grid.
         la_samples = []   # per-sat (l-a) estimates this cycle, from sats with a good code-rate fit
         fitted = set()    # PRNs that got their own >=3-snapshot slope fit this cycle
+        cl_report = []    # CL time-assist per-PRN (k, fine-time residual) log lines this cycle
+        # CL time-assist anchor: wall-clock UTC of capture sample 0 (airspy stamps it at its
+        # first USB callback; /adcstat serves it). 0.0 until the stream starts -- retry lazily.
+        if args.cl_assist and not utc0_sample0:
+            try:
+                utc0_sample0 = float(
+                    _get("%s/%s/adcstat" % (base, args.adc_stage)).get("utc0_sample0", 0.0))
+                if utc0_sample0:
+                    _log("CL time-assist: capture sample-0 UTC anchor %.3f" % utc0_sample0)
+            except Exception as e:
+                _log("CL time-assist: adcstat anchor unavailable (%s); retrying" % e)
         for prn, (snr, dop, cp, ref_hop) in best.items():
             if up is not None and prn not in up:
                 continue
@@ -427,6 +451,26 @@ def main(argv=None):
                     la_samples.append(la)
                 _log("PRN %d cp-fit: %.2f chips @ hop %d, slope %+.3f chips/s (%d pts, l-a %+.3f ppm)"
                      % (prn, cp_ref, h0, rate * args.hops_per_sec, len(h), la * 1e6))
+            # L2C CL TIME-ASSIST: the trackers despread the CL pilot, whose absolute code phase
+            # is cp_CL = cp_CM + k*10230 with k the CL segment index -- COMPUTED, not searched.
+            # CL's 1.5 s epoch is locked to GPS time in Z-count (1.5 s) units, and GPS-UTC (18 s)
+            # and the GPS epoch (unix 315964800) are both exact multiples of 1.5 s, so unix time
+            # mod 1.5 IS GPS time mod 1.5 (--cl-time-adjust is the escape hatch if that ever
+            # changes). cp is absolute-anchored at capture sample 0, so evaluate the TRANSMIT
+            # time of sample 0 (utc0_sample0 - range/c) and SNAP the predicted CL chip count to
+            # the measured cp_CM (mod 10230): the code phase supplies the fine time; the wall
+            # clock only picks the segment (needs ~10 ms absolute accuracy, and the logged
+            # residual MEASURES the anchor+host-clock error). Second-order cp0/range drift keeps
+            # this valid for ~hour-long runs.
+            if args.cl_assist and utc0_sample0 and args.almanac and prn in pred:
+                tau = pred[prn][3] / 299792458.0
+                cl_chips = (((utc0_sample0 - tau + args.cl_time_adjust) % 1.5)
+                            * args.chip_rate_hz)
+                cp_cm = seed["code_phase_chips"]
+                k = int(round((cl_chips - cp_cm) / CODE_LEN))
+                fine_ms = (cl_chips - cp_cm - k * CODE_LEN) / args.chip_rate_hz * 1e3
+                seed["code_phase_chips"] = (cp_cm + (k % 75) * CODE_LEN) % (75 * CODE_LEN)
+                cl_report.append("PRN %d k=%d fine %+.1f ms" % (prn, k % 75, fine_ms))
             seeds[prn] = seed
             low_hits[prn] = 0
 
@@ -517,6 +561,8 @@ def main(argv=None):
             except Exception as e:
                 _log("set_seeds %s failed: %s" % (t_ep, e))
         _log("active=%s (%d); seeded %d/%d trackers" % (sorted(seeds), len(seeds), ok, len(trackers)))
+        if cl_report:
+            _log("CL assist: " + "; ".join(cl_report))
 
         if args.once:
             return

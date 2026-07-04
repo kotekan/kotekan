@@ -4,12 +4,17 @@
 # CM (global signal: -- CL's 1.5 s period is un-searchable blind), but the TRACKERS despread the
 # dataless CL pilot (per-stage signal: GPS_L2C_CL; the replica bank builds the proper TDM
 # time-gated CL stream, tdm_phase 1). CM and CL epochs are LOCKED: cp_CL = cp_CM + k*10230,
-# k in [0,75) -- the trackers resolve k with a segment-grid pull-in (pullin_chips 378510 =
-# 37*10230, step 10230 -> exactly the 75 candidates; ranked by the GLRT |G|^2/E) and hold_lock
-# FREEZES the winner -- amp 0.18 + 20 records: BOTH must clear the max-of-75-candidates noise
-# statistics (normalized-|A| floor ~0.12, max-of-75 ~0.2+), or the hold false-arms on noise at
-# startup BEFORE the first broker seed (cp=0 -> frozen at k*10230 forever; observed + fixed). (the
-# 75-way sweep is acquisition-only; held = one despread/record). CL has NO data and NO overlay,
+# k in [0,75) -- and k is COMPUTED, not searched: the broker's --cl-assist (auto-enabled by
+# run_live for this config) evaluates the CL segment from the capture's absolute UTC anchor
+# (airspy /adcstat utc0_sample0) + almanac range, snapping the predicted CL chip count to the
+# measured cp_CM, which supplies the fine time (the wall clock only needs ~10 ms). A per-record
+# 75-way pull-in sweep was tried first and is SNR-STARVED by design in a 250 kHz subband
+# (~40 dB less integration than the offline full-band validation) -- hence time-assist. The
+# trackers keep the ordinary +-1-chip pull-in for seed noise, and hold_lock (amp 0.18 + 20
+# records) was tried and STILL false-armed pre-seed: for the zero-stuffed CL replica a half-chip
+# offset craters the single-channel replica energy E, inflating the arm statistic |A|=|G|/E past
+# any fixed threshold. Hold is OFF (amp 0): with time-assist continuously seeding the CORRECT
+# absolute cp, seed-following + the ordinary +-1-chip pull-in suffices. CL has NO data and NO overlay,
 # so the combiner integrates plain-coherently (secondary_overlay: COHERENT) -- no bit estimate --
 # with the auto-coherence ladder reporting the live knee as coherence_s.
 # Run (run_live.sh CFG=this):
@@ -111,13 +116,13 @@ recv_08: { kotekan_stage: bufferRecv, buf: rc_08, listen_port: 15007, num_thread
 gather: { kotekan_stage: GnssChannelGather, in_bufs: [rc_02, rc_03, rc_04, rc_05, rc_06, rc_07, rc_08], out_buf: gather_buf }
 search: { kotekan_stage: GnssChannelizedSearch, in_buf: gather_buf, channel_offset: 2, n_channels: 7, acquire_snr: 8, acquire_windows: 40, hops_per_record: 5000 }
 
-track_02: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_02, out_buf: rec_02, channel_offset: 2, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 378510, pullin_step: 10230, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0.18, hold_lock_records: 20, hops_per_record: 5000 }
-track_03: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_03, out_buf: rec_03, channel_offset: 3, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 378510, pullin_step: 10230, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0.18, hold_lock_records: 20, hops_per_record: 5000 }
-track_04: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_04, out_buf: rec_04, channel_offset: 4, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 378510, pullin_step: 10230, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0.18, hold_lock_records: 20, hops_per_record: 5000 }
-track_05: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_05, out_buf: rec_05, channel_offset: 5, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 378510, pullin_step: 10230, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0.18, hold_lock_records: 20, hops_per_record: 5000 }
-track_06: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_06, out_buf: rec_06, channel_offset: 6, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 378510, pullin_step: 10230, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0.18, hold_lock_records: 20, hops_per_record: 5000 }
-track_07: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_07, out_buf: rec_07, channel_offset: 7, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 378510, pullin_step: 10230, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0.18, hold_lock_records: 20, hops_per_record: 5000 }
-track_08: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_08, out_buf: rec_08, channel_offset: 8, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 378510, pullin_step: 10230, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0.18, hold_lock_records: 20, hops_per_record: 5000 }
+track_02: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_02, out_buf: rec_02, channel_offset: 2, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0, hold_lock_records: 20, hops_per_record: 5000 }
+track_03: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_03, out_buf: rec_03, channel_offset: 3, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0, hold_lock_records: 20, hops_per_record: 5000 }
+track_04: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_04, out_buf: rec_04, channel_offset: 4, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0, hold_lock_records: 20, hops_per_record: 5000 }
+track_05: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_05, out_buf: rec_05, channel_offset: 5, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0, hold_lock_records: 20, hops_per_record: 5000 }
+track_06: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_06, out_buf: rec_06, channel_offset: 6, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0, hold_lock_records: 20, hops_per_record: 5000 }
+track_07: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_07, out_buf: rec_07, channel_offset: 7, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0, hold_lock_records: 20, hops_per_record: 5000 }
+track_08: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_08, out_buf: rec_08, channel_offset: 8, n_channels: 1, signal: GPS_L2C_CL, pullin_chips: 0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hold_lock_amp: 0, hold_lock_records: 20, hops_per_record: 5000 }
 # CL is a dataless pilot with no overlay: records are consecutive phase-continuous segments of
 # the one 1.5 s code, so the deep integration is a PLAIN coherent sum (secondary_overlay:
 # COHERENT = length-1 all-ones overlay -> gap-robust sum + SNR + auto-coherence ladder, no bit

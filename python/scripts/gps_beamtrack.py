@@ -162,8 +162,11 @@ def l1c_capable_prns(tle_source=DEFAULT_TLE_URL, _sats=None):
 
 def predict_dopplers(lat, lon, alt_m, prns=None, t_utc=None, f_carrier_hz=1575.42e6,
                      tle_source=DEFAULT_TLE_URL, _sats=None):
-    """Predict {prn: (doppler_hz, doppler_rate_hz_per_s, elevation_deg)} for GPS sats
+    """Predict {prn: (doppler_hz, doppler_rate_hz_per_s, elevation_deg, range_m)} for GPS sats
     at a receiver (lat, lon, alt_m WGS84) and time t_utc (UTC datetime, default now).
+    range_m is the slant range (for propagation delay, ~64-89 ms; TLE accuracy ~km -> ~us,
+    far better than the ~10 ms the CL time-assist needs). Access entries by INDEX so the
+    tuple can grow.
 
     This is the GEOMETRIC (line-of-sight range-rate) Doppler only. It does NOT
     include the receiver clock-frequency error, which adds a *common* offset across
@@ -199,8 +202,10 @@ def predict_dopplers(lat, lon, alt_m, prns=None, t_utc=None, f_carrier_hz=1575.4
             continue
         d0 = _doppler(sat, t0)
         rate = (_doppler(sat, t1) - d0) / dt
-        elev = (sat - observer).at(t0).altaz()[0].degrees
-        out[int(prn)] = (d0, rate, float(elev))
+        g0 = (sat - observer).at(t0)
+        elev = g0.altaz()[0].degrees
+        rng = float(np.linalg.norm(g0.position.km)) * 1e3  # slant range, m
+        out[int(prn)] = (d0, rate, float(elev), rng)
     return out
 
 

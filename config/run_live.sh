@@ -29,6 +29,12 @@ TRK=${TRK:-$(grep -oE '^track[_0-9]*' "$CFG" | tr '\n' ',' | sed 's/,$//')}
 # on-peak. Its residual feeds search_resid (peeled sats should drop). Chain L5/L1C peels the same way.
 PEEL=$(grep -oE '^[a-z_0-9]+: \{ kotekan_stage: GnssVoltagePeel' "$CFG" | grep -oE '^[a-z_0-9]+' | tr '\n' ',' | sed 's/,$//')
 [ -n "$PEEL" ] && TRK="${TRK:+$TRK,}$PEEL" && echo "voltage-peel stage(s) seeded by the broker: $PEEL"
+# L2C CL pilot trackers (per-stage signal: GPS_L2C_CL): turn on the broker's time-assist -- it
+# lifts each seed's cp by k*10230 with the CL segment k computed from the capture's absolute UTC
+# anchor (airspy /adcstat utc0_sample0) + almanac range. Needs the almanac (LAT/LON).
+CLA=""
+grep -qE 'signal: GPS_L2C_CL' "$CFG" && CLA="--cl-assist" \
+  && echo "L2C CL time-assist ON (CL segment k computed from capture UTC + almanac range)"
 # Loud warning if a requested tracker stage isn't actually in the config -- the classic
 # trap is passing TRK=track to the distributed live_l1.yaml (whose trackers are track_00..11):
 # the broker POSTs to track/set_seeds, gets a 404, never seeds -> the trackers despread at
@@ -186,7 +192,7 @@ python3 $BROKER --detectors search --trackers "$TRK" --combiner combiner \
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
         ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" \
         ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} \
-        ${BROKER_EXTRA:-} $ALM \
+        ${BROKER_EXTRA:-} $ALM $CLA \
         > /tmp/gpslive_broker.log 2>&1 &
 BPID=$!
 
