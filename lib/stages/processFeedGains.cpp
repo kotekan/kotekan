@@ -33,6 +33,7 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
     num_beams = config.get_default<uint32_t>(unique_name, "num_beams", 1);
     upchan_factor = config.get_default<uint32_t>(unique_name, "upchan_factor", 1);
     num_components = config.get<uint32_t>(unique_name, "num_components");
+    scaling_factor = config.get_default<float>(unique_name, "scaling_factor", 1.0);
 
     // Input gain buffers
     json in_buf_list = config.get_value(unique_name, "gain_buffers");
@@ -93,7 +94,7 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
     // Allocate permanent buffers to hold the loaded gains in memory. These will only
     // be updated whenever the gains are updated, and get repeatedly copied
     // into received kotekan buffers
-    gain_store_buf = std::vector<float>(out_num_values, 0.0f);
+    gain_store_buf = std::vector<float>(out_num_values, std::numeric_limits<float>::quiet_NaN());
     mask_store_buf = std::vector<uint8_t>(num_elements, 1u);
 }
 
@@ -121,7 +122,9 @@ void processFeedGains::copy_upchannelize_f(const float* src_f, float* dst_f, siz
     for (size_t u = 0; u < upchan_factor; ++u) {
         // copy ell elements from the source into each fine channel
         float* u_ptr = dst_f + u * num_elements * num_components;
-        std::copy_n(src_f, num_components * num_elements, u_ptr);
+        // apply the constant scaling factor
+        std::transform(src_f, src_f + num_components * num_elements, u_ptr,
+                       [this](float v) { return v * this->scaling_factor; });
     }
 }
 
