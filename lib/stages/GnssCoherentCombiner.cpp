@@ -50,6 +50,13 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         _secondary.assign(gps::L5_NH20.begin(), gps::L5_NH20.end());
     else if (sec == "L5_NH10")
         _secondary.assign(gps::L5_NH10.begin(), gps::L5_NH10.end());
+    else if (sec == "COHERENT")
+        // Dataless pilot with NO overlay at all (L2C CL: the 1.5 s code is the only modulation
+        // and records are consecutive segments of it, phase-continuous by construction): a
+        // length-1 all-ones "overlay" turns overlay_wipe into a plain gap-robust coherent sum
+        // with the same SNR estimate and auto-coherence ladder -- deep coherent integration
+        // with no bit estimate and no alignment search.
+        _secondary.assign(1, (int8_t)1);
     else if (sec == "L1CO") {
         // L1C-P overlay is PER-PRN (not one shared NH sequence), so cache all 32 here and pick
         // by the slot's current PRN at wipe time. NOTE: it is 1800 symbols long (vs NH20's 20),

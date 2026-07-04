@@ -332,7 +332,16 @@ void GnssChannelizedTracker::main_thread() {
                     for (int c : owned)
                         repl_ch.push_back(repl[c]);
                     const auto res = gnss::channelized_despread(data_ch, repl_ch);
-                    const double pw = std::norm(res.amplitude);
+                    // Candidate statistic: the GLRT |G|^2/E, not |A|^2 = |G|^2/E^2. Candidates
+                    // can have very different replica energies in a narrow subband (extreme on
+                    // L2C CL, whose 75 code segments differ a lot within one channel); |A|^2
+                    // over-penalises high-energy replicas by E, so on noise it systematically
+                    // picks the LOWEST-energy candidate. |G|^2/E is the matched-filter detection
+                    // statistic and ranks candidates fairly. (Equal-E candidates, e.g. the
+                    // +-1-chip C/A pull-in, are ranked identically either way.)
+                    const double pw = res.replica_energy > 0.0
+                                          ? std::norm(res.correlation) / res.replica_energy
+                                          : 0.0;
                     if (pw > best_pw) {
                         best_pw = pw;
                         best = res;
