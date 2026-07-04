@@ -71,6 +71,7 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     seed("doppler_hz", _doppler);
     seed("code_phase_chips", _code_phase);
     _code_phase_rate.assign(n_prn, 0.0);
+    _doppler_rate.assign(n_prn, 0.0);
     _ref_hop.assign(n_prn, 0);
 
     try {
@@ -123,6 +124,9 @@ void GnssChannelizedTracker::set_seeds_callback(kotekan::connectionInstance& con
                     // slope + anchor hop and the tracker extrapolates to its own window
                     // hop -- removing the seed-staleness bias rather than searching it out.
                     _code_phase_rate[i] = s.value("code_phase_rate", 0.0);
+                    // Optional 2nd-order carrier model: the almanac Doppler rate (Hz/s), used to
+                    // ramp the replica frequency so the coherent-integration residual stays flat.
+                    _doppler_rate[i] = s.value("doppler_rate_hz_s", 0.0);
                     _ref_hop[i] = s.value("ref_hop", (long long)0);
                     _active[i] = 1;
                 }
@@ -156,6 +160,7 @@ void GnssChannelizedTracker::main_thread() {
     std::vector<cf> a_prev(n_prn, cf(0.0f, 0.0f));
     std::vector<uint8_t> a_prev_ok(n_prn, 0);
     std::vector<long long> hop_prev(n_prn, 0);
+    std::vector<long long> reacq_hop(n_prn, 0); // hop where f_ref was last (re)fixed: anchor for the Doppler-rate feed-forward
 
     // Held-reference deep-integration state (per PRN). While held[p], the code+carrier reference
     // is FROZEN: cp = hold_cp0 + hold_rate*(hop - hold_ref_hop), carrier = hold_dop, no broker
@@ -206,7 +211,7 @@ void GnssChannelizedTracker::main_thread() {
             const long long window_start = window_start_hop * (long long)_fft_len;
 
             // Snapshot the (REST-updatable) seeds + active set for this window.
-            std::vector<double> dop, cp, cp_rate;
+            std::vector<double> dop, cp, cp_rate, dop_rate;
             std::vector<long long> ref_hop;
             std::vector<uint8_t> active;
             {
@@ -214,6 +219,7 @@ void GnssChannelizedTracker::main_thread() {
                 dop = _doppler;
                 cp = _code_phase;
                 cp_rate = _code_phase_rate;
+                dop_rate = _doppler_rate;
                 ref_hop = _ref_hop;
                 active = _active;
             }
@@ -274,10 +280,23 @@ void GnssChannelizedTracker::main_thread() {
                     f_track[p] = 0.0;
                     phi_track[p] = 0.0;
                     a_prev_ok[p] = 0;
+                    reacq_hop[p] = window_start_hop; // anchor the Doppler-rate feed-forward here
                 }
                 const double fcar =
                     held[p] ? hold_dop[p] : ((_fll_gain > 0.0) ? f_ref[p] : dop[p]);
-                rec[1] = (float)(fcar + ((_fll_gain > 0.0 && !held[p]) ? f_track[p] : 0.0));
+                // 2nd-order carrier feed-forward: ramp the replica frequency by the almanac Doppler
+                // RATE so the despread residual stays ~constant across a multi-100 ms coherent window.
+                // A 1st-order FLL alone velocity-lags the ramp -> a quadratic carrier phase that
+                // cancels the deep sum, worst at zenith (max Doppler acceleration). Anchor at the hop
+                // where the base carrier was last fixed: reacq_hop (FLL ref), hold_ref_hop (held), or
+                // the fresh broker seed anchor ref_hop (no FLL). With the ramp in the replica, the FLL
+                // sees only the small constant clock/fit residual -- no loop-logic change needed.
+                const long long ff_anchor =
+                    held[p] ? hold_ref_hop[p] : ((_fll_gain > 0.0) ? reacq_hop[p] : ref_hop[p]);
+                const double fcar_eff =
+                    fcar + dop_rate[p] * (double)(window_start_hop - ff_anchor) * (double)_fft_len
+                               / _sample_rate;
+                rec[1] = (float)(fcar_eff + ((_fll_gain > 0.0 && !held[p]) ? f_track[p] : 0.0));
                 rec[2] = (float)cp_seed;
                 rec[6] = (float)owned.size();
                 if (owned.empty())
@@ -306,7 +325,7 @@ void GnssChannelizedTracker::main_thread() {
                 double best_pw = -1.0, best_cp = cp_seed;
                 for (double off = -pullin; off <= pullin + 1e-9;
                      off += (_pullin_step > 0.0 ? _pullin_step : 1.0)) {
-                    const auto repl = _replica->channels(p, window_start, cp_seed + off, fcar,
+                    const auto repl = _replica->channels(p, window_start, cp_seed + off, fcar_eff,
                                                          _hops_per_record);
                     std::vector<std::vector<cf>> repl_ch;
                     repl_ch.reserve(owned.size());

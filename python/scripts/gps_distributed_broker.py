@@ -332,7 +332,10 @@ def main(argv=None):
                 raw = predict_dopplers(args.lat, args.lon, args.alt,
                                        t_utc=datetime.now(tz=timezone.utc), _sats=almanac_sats,
                                        f_carrier_hz=args.carrier_hz)
-                pred = {p: (args.doppler_sign * d, r, e) for p, (d, r, e) in raw.items()}
+                # doppler_sign flips to the receiver's observed convention -- apply it to BOTH the
+                # Doppler and its rate so the 2nd-order feed-forward ramps the right way.
+                pred = {p: (args.doppler_sign * d, args.doppler_sign * r, e)
+                        for p, (d, r, e) in raw.items()}
             except Exception as e:
                 _log("predict_dopplers failed: %s" % e)
             up = {p for p, v in pred.items() if v[2] >= args.mask_deg}
@@ -404,6 +407,11 @@ def main(argv=None):
 
             seed = {"doppler_hz": seed_dop, "code_phase_chips": cp,
                     "code_phase_rate": 0.0, "ref_hop": ref_hop}
+            # 2nd-order carrier feed-forward: hand the tracker the almanac Doppler RATE (Hz/s, sign-
+            # applied like doppler_hz) so it ramps the replica frequency and the deep-integration
+            # residual stays flat even at zenith (max Doppler acceleration). Anchored at ref_hop.
+            if args.almanac and prn in pred:
+                seed["doppler_rate_hz_s"] = pred[prn][1]
             fit = fit_cp_rate(h, CODE_LEN)
             if fit is not None:
                 rate, h0, cp_ref = fit

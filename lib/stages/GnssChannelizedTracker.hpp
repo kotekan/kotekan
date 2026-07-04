@@ -131,6 +131,7 @@ private:
     std::vector<double> _doppler;
     std::vector<double> _code_phase;
     std::vector<double> _code_phase_rate; ///< dcp0/dhop (chips per hop) for first-order extrapolation
+    std::vector<double> _doppler_rate;    ///< almanac carrier Doppler rate (Hz/s) for the 2nd-order carrier feed-forward
     std::vector<long long> _ref_hop;      ///< hop the seeded cp0 + rate are anchored to
     std::vector<uint8_t> _active;
     std::mutex _seed_mtx; ///< guards _doppler/_code_phase/_active (REST set_seeds vs main loop)
