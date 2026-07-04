@@ -63,6 +63,13 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         }
     }
     _wipe_buffer = (_navwipe_bit_records > 0 || !_secondary.empty() || !_l1co.empty());
+    // Auto-coherence (default ON, the clock_profile philosophy: automatic unless overridden):
+    // integration_length is a MAX -- at emit the deep wipe is also evaluated over trailing
+    // sub-windows (full, 1/2, 1/4, ... octaves) and the best deep SNR wins, so the deep |A|
+    // reads the longest span the clock (+ sky) actually COHERES over instead of a decohered
+    // full-window average. The chosen span is exported as coherence_s via get_status -- a live
+    // measurement of the receiver clock's usable coherence time.
+    _auto_coherence = config.get_default<bool>(unique_name, "auto_coherence", true);
     if (_wipe_buffer) {
         _navbuf.assign(_n_prn, {});
         _navutc.assign(_n_prn, {});
@@ -78,6 +85,8 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_nh_phase.assign(_n_prn, -1);
     _st_dop.assign(_n_prn, 0.0f);
     _st_cp.assign(_n_prn, 0.0f);
+    _st_coh_s.assign(_n_prn, 0.0f);
+    _st_deep_rec.assign(_n_prn, 0);
 }
 
 void GnssCoherentCombiner::main_thread() {
@@ -197,6 +206,21 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<double> amp_snr(_n_prn, 0.0);  // noise-debiased incoherent significance (REST)
         std::vector<int> nh_phase(_n_prn, -1);     // secondary-overlay alignment found (L5; -1 = n/a)
         std::vector<double> amp_dbi(_n_prn, 0.0);  // noise-debiased (unbiased) signal amplitude
+        std::vector<double> coh_s(_n_prn, 0.0);    // measured coherence: span of the winning window
+        std::vector<int> deep_rec(_n_prn, 0);      // records in the winning deep window
+        // Auto-coherence ladder: deep-wipe window lengths to try -- the full buffer (always,
+        // legacy behaviour) plus up to 4 octave-shorter trailing suffixes (>= min_len). Walked
+        // longest-first; a shorter window must beat the incumbent deep SNR by >5%, so ties
+        // integrate DEEP and the winner sits at the knee of the coherence curve.
+        auto ladder = [&](size_t n, size_t min_len) {
+            std::vector<size_t> lens;
+            if (n > 0)
+                lens.push_back(n);
+            if (_auto_coherence)
+                for (size_t l = n / 2; l >= std::max<size_t>(min_len, 2) && lens.size() < 5; l /= 2)
+                    lens.push_back(l);
+            return lens;
+        };
         const double Keff = _rolling ? (double)_integration_length : (double)n_acc;
         for (int p = 0; p < _n_prn; ++p) {
             float* rec = out + (size_t)p * RECORD_FLOATS;
@@ -238,14 +262,48 @@ void GnssCoherentCombiner::main_thread() {
                     ov = (prn >= 1 && prn <= (int)_l1co.size()) ? &_l1co[(size_t)(prn - 1)] : nullptr;
                 }
                 if (ov && !ov->empty()) {
-                    const auto ow = gnss::overlay_wipe(_navbuf[p], _navutc[p], *ov);
-                    rec[8] = (float)ow.amplitude;
-                    deep_snr[p] = ow.snr;
-                    nh_phase[p] = ow.phase;
+                    const auto& ab = _navbuf[p];
+                    const auto& ub = _navutc[p];
+                    for (size_t len : ladder(ab.size(), std::max<size_t>(2 * ov->size(), 64))) {
+                        gnss::OverlayWipeResult ow;
+                        if (len == ab.size()) {
+                            ow = gnss::overlay_wipe(ab, ub, *ov);
+                        } else {
+                            const std::vector<std::complex<double>> as(ab.end() - (long)len,
+                                                                       ab.end());
+                            const std::vector<double> us(ub.end() - (long)len, ub.end());
+                            ow = gnss::overlay_wipe(as, us, *ov);
+                        }
+                        if (deep_rec[p] == 0 || ow.snr > deep_snr[p] * 1.05) {
+                            rec[8] = (float)ow.amplitude;
+                            deep_snr[p] = ow.snr;
+                            nh_phase[p] = ow.phase;
+                            deep_rec[p] = (int)len;
+                            coh_s[p] = ub.empty() ? 0.0 : ub.back() - ub[ub.size() - len];
+                        }
+                    }
                 }
                 if (!_rolling) { _navbuf[p].clear(); _navutc[p].clear(); }
             } else if (_navwipe_bit_records > 0) {
-                rec[8] = (float)navwipe_amplitude(_navbuf[p], _navutc[p], &deep_snr[p]); // deep |A|
+                const auto& ab = _navbuf[p];
+                const auto& ub = _navutc[p];
+                for (size_t len :
+                     ladder(ab.size(), std::max<size_t>(4 * (size_t)_navwipe_bit_records, 64))) {
+                    double snr = 0.0, amp;
+                    if (len == ab.size()) {
+                        amp = navwipe_amplitude(ab, ub, &snr); // deep |A|
+                    } else {
+                        const std::vector<std::complex<double>> as(ab.end() - (long)len, ab.end());
+                        const std::vector<double> us(ub.end() - (long)len, ub.end());
+                        amp = navwipe_amplitude(as, us, &snr);
+                    }
+                    if (deep_rec[p] == 0 || snr > deep_snr[p] * 1.05) {
+                        rec[8] = (float)amp;
+                        deep_snr[p] = snr;
+                        deep_rec[p] = (int)len;
+                        coh_s[p] = ub.empty() ? 0.0 : ub.back() - ub[ub.size() - len];
+                    }
+                }
                 if (!_rolling) { // block clears the window; rolling slides it (capped above)
                     _navbuf[p].clear();
                     _navutc[p].clear();
@@ -273,6 +331,8 @@ void GnssCoherentCombiner::main_thread() {
                 _st_amp_dbi[p] = (float)amp_dbi[p];
                 _st_dop[p] = rec[1];
                 _st_cp[p] = rec[2];
+                _st_coh_s[p] = (float)coh_s[p];
+                _st_deep_rec[p] = deep_rec[p];
             }
         }
         out_buf->mark_frame_full(unique_name, out_id++);
@@ -292,7 +352,9 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"nh_phase", _st_nh_phase[p]},
                          {"unbiased_amplitude", _st_amp_dbi[p]},
                          {"doppler_hz", _st_dop[p]},
-                         {"code_phase_chips", _st_cp[p]}});
+                         {"code_phase_chips", _st_cp[p]},
+                         {"coherence_s", _st_coh_s[p]},
+                         {"deep_records", _st_deep_rec[p]}});
     conn.send_json_reply(reply);
 }
 
