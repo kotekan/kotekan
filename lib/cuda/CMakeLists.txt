@@ -1,9 +1,8 @@
 project(kotekan_cuda)
 
-if(${CUDA_ARCHITECTURE})
-    set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES})
-else()
-    # NVIDIA Ampere
+# Default to NVIDIA Ampere (A40, sm_86). Override for other GPUs with e.g.
+# -DCMAKE_CUDA_ARCHITECTURES=121 (GB10 / Grace Blackwell).
+if(NOT CMAKE_CUDA_ARCHITECTURES)
     set(CMAKE_CUDA_ARCHITECTURES 86)
 endif()
 
@@ -135,7 +134,8 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 target_include_directories(kotekan_cuda INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
 target_include_directories(kotekan_cuda PUBLIC .)
 
-target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-gencode
-                                            arch=compute_86,code=sm_86 -lineinfo>)
+# Per-architecture gencode flags are derived from CMAKE_CUDA_ARCHITECTURES (set above);
+# keep -lineinfo for profiling/debug symbols.
+target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)
 
 add_dependencies(kotekan_cuda kotekan_gpu)
