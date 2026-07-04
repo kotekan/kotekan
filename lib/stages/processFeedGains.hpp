@@ -96,6 +96,9 @@ private:
     /// Number of elements in the output buffer
     uint32_t out_num_values;
 
+    /// Fixed scaling factor
+    float scaling_factor;
+
     /// Fixed buffers used to hold gains separately from the kotekan buffers
     std::vector<float> gain_store_buf;
     std::vector<uint8_t> mask_store_buf;
