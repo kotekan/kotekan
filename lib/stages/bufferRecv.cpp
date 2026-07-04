@@ -128,7 +128,14 @@ void bufferRecv::worker_thread() {
             work_queue.pop_front();
         }
         DEBUG2("Starting worker thread job, queue depth: {:d}", work_queue.size());
-        instance->internal_read_callback();
+        try {
+            instance->internal_read_callback();
+        } catch (const FatalError& e) {
+            // FATAL_ERROR already called exit_kotekan; end this worker and let
+            // the shutdown it started proceed (same handling as Stage::start).
+            ERROR("bufferRecv worker thread caught FatalError: {:s}; shutting down.", e.what());
+            return;
+        }
     }
 }
 
@@ -507,14 +514,18 @@ void connInstance::internal_read_callback() {
                 bytes_read += n;
                 if (bytes_read >= sizeof(frame_desc_size)) {
                     assert(bytes_read == sizeof(frame_desc_size));
-                    // A serialized descriptor is small; an absurd size means a
-                    // mismatched/hostile peer, i.e. contaminated control data, so
-                    // shut down (as the malformed-descriptor case below) rather
-                    // than reconnect-loop on it.
-                    constexpr uint32_t MAX_FRAME_DESC_SIZE = 1u << 20; // 1 MiB
+                    // Reject an implausibly large size before allocating/reading it.
+                    // The largest legitimate descriptor is an N2 subset product_list
+                    // for the biggest array we support: num_elements up to 2048 is a
+                    // full upper triangle of ~2.1M products at ~12 JSON bytes each,
+                    // i.e. ~24 MiB. 64 MiB leaves headroom; a size past it means a
+                    // mismatched/hostile peer sending contaminated control data, so
+                    // shut down (as the malformed-descriptor case below).
+                    constexpr uint32_t MAX_FRAME_DESC_SIZE = 64u << 20; // 64 MiB
                     if (frame_desc_size > MAX_FRAME_DESC_SIZE) {
                         FATAL_ERROR("Received frame_desc size ({:d}) exceeds maximum ({:d}) from "
-                                    "{:s} (use_frame_desc set here but not on the sender?)",
+                                    "{:s} (sender/receiver use_frame_desc mismatch or corrupt "
+                                    "stream?)",
                                     frame_desc_size, MAX_FRAME_DESC_SIZE, client_ip);
                     }
                     bytes_read = 0;
