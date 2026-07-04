@@ -66,10 +66,6 @@ N2FrameDesc N2FrameDesc::_from_config_impl(kotekan::Config& config, const std::s
             // Read product_list directly
             product_list = config.get<std::vector<N2::prod_ctype>>(location, "product_list");
             break;
-
-        default:
-            FATAL_ERROR_NON_OO("N2FrameDesc: unknown N2Layout {:s}",
-                               N2Layout_to_string(n2_layout));
     }
 
     const uint32_t num_prod = get_num_prod(num_elements, n2_layout, product_list);
@@ -122,6 +118,9 @@ std::shared_ptr<const FrameDesc> N2FrameDesc::from_json(const nlohmann::json& j)
 }
 
 bool N2FrameDesc::layout_requires_product_list(N2Layout layout) {
+    // No default: the switch is exhaustive, so -Wswitch flags any new layout at
+    // compile time. The guard below only fires for an out-of-range value (a bad
+    // cast), reported as an integer since it has no name to print.
     switch (layout) {
         case N2Layout::FullUpperTri:
         case N2Layout::Autocorrelations:
@@ -131,9 +130,9 @@ bool N2FrameDesc::layout_requires_product_list(N2Layout layout) {
         case N2Layout::GeneralSubset:
         case N2Layout::RedundantBaselineAvg:
             return true;
-        default:
-            return true;
     }
+    FATAL_ERROR_NON_OO("N2FrameDesc::layout_requires_product_list: invalid N2Layout value {:d}",
+                       static_cast<int32_t>(layout));
 }
 
 const char* N2FrameDesc::note_additional_required_config_param(N2Layout layout) {
@@ -147,9 +146,10 @@ const char* N2FrameDesc::note_additional_required_config_param(N2Layout layout) 
         case N2Layout::GeneralSubset:
         case N2Layout::RedundantBaselineAvg:
             return "product_list";
-        default:
-            return "product_list";
     }
+    FATAL_ERROR_NON_OO(
+        "N2FrameDesc::note_additional_required_config_param: invalid N2Layout value {:d}",
+        static_cast<int32_t>(layout));
 }
 
 std::vector<N2::prod_ctype>
@@ -206,10 +206,14 @@ N2FrameDesc::generate_product_list(uint32_t num_elements, N2Layout layout,
             return products;
         }
 
-        default:
-            FATAL_ERROR_NON_OO("N2FrameDesc::generate_product_list: layout {:s} is not supported",
+        case N2Layout::GeneralSubset:
+        case N2Layout::RedundantBaselineAvg:
+            FATAL_ERROR_NON_OO("N2FrameDesc::generate_product_list: layout {:s} requires an "
+                               "explicit product_list and cannot be generated",
                                N2Layout_to_string(layout));
     }
+    FATAL_ERROR_NON_OO("N2FrameDesc::generate_product_list: invalid N2Layout value {:d}",
+                       static_cast<int32_t>(layout));
 }
 
 void N2FrameDesc::output_framedesc(std::ostream& os) const {
@@ -272,10 +276,9 @@ size_t N2FrameDesc::get_num_prod(uint32_t num_elements_in, N2Layout n2_layout_in
                                "- requires {:s} in config",
                                N2Layout_to_string(n2_layout_in),
                                note_additional_required_config_param(n2_layout_in));
-        default:
-            FATAL_ERROR_NON_OO("N2FrameDesc::get_num_prod given unknown N2Layout: {:s}",
-                               N2Layout_to_string(n2_layout_in));
     }
+    FATAL_ERROR_NON_OO("N2FrameDesc::get_num_prod: invalid N2Layout value {:d}",
+                       static_cast<int32_t>(n2_layout_in));
 }
 
 n2frame_layout_t N2FrameDesc::get_frame_layout(uint32_t num_elements_in, uint32_t num_ev_in,
