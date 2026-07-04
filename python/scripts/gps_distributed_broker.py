@@ -253,6 +253,14 @@ def main(argv=None):
     ap.add_argument("--code-bias-file", type=str, default=None,
                     help="persist the converged (l-a) ppm here: read at startup (unless --code-bias-init "
                          "is set) and rewritten each update, so the offset carries across runs/bands")
+    ap.add_argument("--dll-gain", type=float, default=0.25,
+                    help="code delay-lock-loop gain (0 = off): each poll, nudge a persistent "
+                         "per-PRN cp TRIM by gain * tau_est from the combiner's E/L discriminator. "
+                         "The trim rides on top of the search-fit cp, converging to the fit's "
+                         "grid-quantization bias -- sub-chip code tracking with no per-record "
+                         "decisions (R1, docs/gnss_architecture_audit.md).")
+    ap.add_argument("--dll-spacing", type=float, default=0.5,
+                    help="tracker Early/Late spacing in chips (must match dll_spacing_chips)")
     ap.add_argument("--cl-assist", action="store_true",
                     help="trackers despread the L2C CL pilot: lift each seed's code_phase_chips by "
                          "k*10230 with the CL segment k COMPUTED from absolute capture time (the "
@@ -294,6 +302,7 @@ def main(argv=None):
     seeds = {}       # prn -> {"doppler_hz", "code_phase_chips", ...} (consensus)
     low_hits = {}    # prn -> consecutive low-|A| poll count
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
+    dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
     cp_hist = {}     # prn -> [(ref_hop, cp0), ...] recent distinct snapshots (for the slope fit)
     clock_bias_ema = None  # smoothed common clock-frequency bias (slow TCXO drift), Hz
     code_bias_ema = None   # smoothed receiver code-rate clock offset (l-a), dimensionless (~2.6 ppm airspy)
@@ -521,6 +530,30 @@ def main(argv=None):
                     del seeds[prn]
                     low_hits.pop(prn, None)
 
+        # 3c. Delay-lock loop (R1): close the CODE loop from the combiner's window-averaged E/L
+        # powers. disc = (<|E|^2>-<|L|^2>)/(<|E|^2>+<|L|^2>) ~ -4*tau at 0.5-chip spacing, where
+        # tau = (true - commanded) cp: the correlation triangle gives |E|=R(d+tau), |L|=R(d-tau),
+        # so a LATE true peak strengthens L and drives disc negative -> tau_est = -disc/4,
+        # scaled by (spacing/0.5). The per-PRN TRIM integrates gain*tau_est and is applied to
+        # the seed at POST time only -- the stored seed stays pure fit/coast state, so the trim
+        # converges to the search fit's quantization bias instead of double-counting on coasted
+        # seeds. Gated on lock significance (an unlocked PRN's disc is noise). Bounded +-3 chips.
+        if args.dll_gain > 0.0:
+            dll_report = []
+            for prn in list(seeds):
+                rec = status.get(prn, {})
+                disc = float(rec.get("dll_disc", 0.0))
+                if sig_of(rec) < args.lock_snr or disc == 0.0:
+                    continue
+                tau = -max(-1.0, min(1.0, disc)) / 4.0 * (args.dll_spacing / 0.5)
+                dll_trim[prn] = max(-3.0, min(3.0, dll_trim.get(prn, 0.0) + args.dll_gain * tau))
+                dll_report.append("PRN %d disc %+.3f trim %+.2f" % (prn, disc, dll_trim[prn]))
+            if dll_report:
+                _log("DLL: " + "; ".join(dll_report))
+            for k in list(dll_trim):
+                if k not in seeds:
+                    del dll_trim[k]
+
         # 3b. Receiver code-rate clock offset (l-a): pool the strong sats' per-fit samples (robust
         # median), EMA-smooth it (slow -> tracks TCXO/OCXO drift), then SEED it to every sat that
         # could NOT fit its own slope (weak / just-acquired / coasting) as carrier-aiding + (l-a).
@@ -551,8 +584,13 @@ def main(argv=None):
                 _log("seeded code rate from (l-a) %+.3f ppm -> %d unfitted sat(s)"
                      % (code_bias_ema * 1e6, n_seeded))
 
-        # 4. push consensus seeds to every tracker
-        payload = [dict(prn=prn, **v) for prn, v in sorted(seeds.items())]
+        # 4. push consensus seeds to every tracker (DLL trim applied at POST time only)
+        payload = []
+        for prn, v in sorted(seeds.items()):
+            d = dict(prn=prn, **v)
+            if dll_trim.get(prn):
+                d["code_phase_chips"] = d["code_phase_chips"] + dll_trim[prn]
+            payload.append(d)
         ok = 0
         for t_ep in trackers:
             try:
