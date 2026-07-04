@@ -123,11 +123,41 @@ def gps_block_by_prn(tle_source=DEFAULT_TLE_URL, _sats=None):
     return blocks
 
 
+def _signal_block_filter(signal):
+    """Predicate over a GPS block name ('IIR','IIRM','IIF','III',...) selecting the blocks that
+    broadcast `signal`. Returns None when EVERY GPS satellite carries the signal (no filter).
+    Block name is as read from the Celestrak TLE by gps_block_by_prn(). Signal is the config's
+    `signal:` token (e.g. GPS_L1CA, GPS_L2C_CM, GPS_L5_Q, GPS_L1C_P). Which block first carried
+    each civil signal: L1 C/A -> all; L2C -> Block IIR-M+; L5 -> Block IIF+; L1C -> Block III."""
+    s = (signal or "").upper()
+    if "L1CA" in s:                         # L1 C/A: every GPS satellite (check before 'L1C')
+        return None
+    if "L5" in s:                           # L5: Block IIF and newer
+        return lambda b: b == "IIF" or b.startswith("III")
+    if "L2C" in s or "L2_CM" in s:          # L2C: Block IIR-M and newer
+        return lambda b: b == "IIRM" or b == "IIF" or b.startswith("III")
+    if "L1C" in s:                          # L1C: Block III only
+        return lambda b: b.startswith("III")
+    return None                             # unknown -> don't filter
+
+
+def signal_capable_prns(signal, tle_source=DEFAULT_TLE_URL, _sats=None):
+    """PRNs whose GPS block actually broadcasts `signal`, from the live Celestrak block names, so
+    it tracks launches/commissioning automatically. Returns ALL PRNs when the signal is on every
+    satellite (L1 C/A) or is unknown. Non-transmitting sats belong nowhere near a search list --
+    correlating their (absent) code only wastes channels and manufactures false detections."""
+    blocks = gps_block_by_prn(tle_source, _sats)
+    pred = _signal_block_filter(signal)
+    if pred is None:
+        return set(blocks)
+    return {prn for prn, b in blocks.items() if pred(b)}
+
+
 def l1c_capable_prns(tle_source=DEFAULT_TLE_URL, _sats=None):
     """PRNs that broadcast L1C = GPS Block III onward (TLE block name starts 'III'). Derived
     from the live Celestrak names, so it tracks launches/commissioning automatically. (Older
     IIR/IIR-M/IIF have no L1C.)"""
-    return {prn for prn, b in gps_block_by_prn(tle_source, _sats).items() if b.startswith("III")}
+    return signal_capable_prns("GPS_L1C_P", tle_source, _sats)
 
 
 def predict_dopplers(lat, lon, alt_m, prns=None, t_utc=None, f_carrier_hz=1575.42e6,

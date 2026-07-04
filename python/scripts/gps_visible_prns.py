@@ -12,15 +12,21 @@ import sys
 from datetime import datetime, timezone
 
 
-def visible_prns(lat, lon, alt, mask_deg, tle=None):
-    """PRNs above the elevation mask now, highest elevation first."""
-    from gps_beamtrack import predict_dopplers
+def visible_prns(lat, lon, alt, mask_deg, tle=None, signal=None):
+    """PRNs above the elevation mask now, highest elevation first. When `signal` is given, drop
+    PRNs whose GPS block does not broadcast that signal (e.g. on L5 the IIR/IIR-M sats have no L5
+    transmitter, so searching them only manufactures false detects)."""
+    from gps_beamtrack import predict_dopplers, signal_capable_prns
     kw = {"tle_source": tle} if tle else {}
     pred = predict_dopplers(lat, lon, alt, prns=list(range(1, 33)),
                             t_utc=datetime.now(timezone.utc), **kw)
     up = sorted(((p, d[2]) for p, d in pred.items() if d[2] >= mask_deg),
                 key=lambda x: -x[1])
-    return [p for p, _ in up]
+    prns = [p for p, _ in up]
+    if signal:
+        capable = signal_capable_prns(signal, **kw)
+        prns = [p for p in prns if p in capable]
+    return prns
 
 
 def main(argv=None):
@@ -32,11 +38,15 @@ def main(argv=None):
     ap.add_argument("--mask", type=float, default=10.0, help="elevation mask, deg")
     ap.add_argument("--max", type=int, default=12, help="cap the list (highest elev first)")
     ap.add_argument("--tle", default=None, help="TLE file/URL (default Celestrak gps-ops)")
+    ap.add_argument("--signal", default=None,
+                    help="config signal token (e.g. GPS_L5_Q); drop PRNs whose block can't "
+                         "transmit it (L5 -> IIF+, L2C -> IIR-M+, L1C -> III, L1CA -> all)")
     ap.add_argument("--patch", help="config to rewrite prns:/n_prn: from the visible set")
     ap.add_argument("--out", help="write the patched config here (default: in place)")
     args = ap.parse_args(argv)
 
-    prns = visible_prns(args.lat, args.lon, args.alt, args.mask, args.tle)[:args.max]
+    prns = visible_prns(args.lat, args.lon, args.alt, args.mask, args.tle,
+                        args.signal)[:args.max]
     if not prns:
         sys.exit("no GPS sats above %g deg -- check time/location/network" % args.mask)
 
