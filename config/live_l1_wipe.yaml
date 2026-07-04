@@ -16,7 +16,7 @@ telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
 # WITHOUT this the viewer can't poll combiner/get_status or search/get_detections, so every
 # sat shows unlocked (no sig, no SNR) even while the CLI watcher sees them fine.
 rest_server:
-    cors_allow_origins: ["http://localhost:8080", "http://127.0.0.1:8080"]
+    cors_allow_origins: ["http://localhost:8080", "http://127.0.0.1:8080", "http://gx10.vdl:8080"]
 
 samples_per_data_set: 49920
 bytes_per_sample: 2
@@ -35,8 +35,8 @@ record_floats: 11
 doppler_margin_hz: 250000.0
 acquire_snr: 10.0
 acquire_windows: 20
-doppler_min: -6000.0
-doppler_max: 6000.0
+doppler_min: -5500.0
+doppler_max: 5500.0
 # 100 Hz (was 500): with few sats the clock-bias estimate degenerates to one sat's
 # grid-quantized Doppler, so the seed inherits +-grid/2 of steady residual carrier
 # (was +-250 Hz -> killed coherence past ~5 ms). Finer grid -> +-50 Hz residual ->
@@ -76,8 +76,18 @@ valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 # fll_gain: per-PRN carrier frequency-lock loop drives the residual carrier (the ~15 Hz
 # seed wander) to <1 Hz, the precision needed for seconds of coherent integration and a
 # clean nav-bit decode. The broker seed only (re)acquires; the loop owns the fine carrier.
-track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 20, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03 }
-# integration_length: 1000, navwipe_bit_records: 20 -> navwipe: integrate ~1 s (50 nav bits) coherently; deep |A| in slot 8.
+# hold_lock DISABLED (2026-07-04): the deep-integration ceiling here is CARRIER coherence, not code.
+# A strong-signal run showed the deep |A| anti-correlates with elevation -- PRN21 at zenith (79 deg,
+# strongest SNR) had the WORST deep |A| (0.013) because zenith = max Doppler RATE (~0.9 Hz/s @ L1) -> a
+# quadratic carrier-phase ramp of ~2.8 rad over the 1 s window cancels the coherent sum (a 0.4 s diag
+# confirmed it: PRN21 recovered to ~0.30). hold_lock froze the carrier at a CONSTANT hold_dop (no rate
+# term) -> wrong for an accelerating sat -> amp 0 (off). Keep pullin_chips: 1.0 (re-centering reaches
+# the lock). FIXED: GnssChannelizedTracker now ramps the replica frequency by the almanac Doppler RATE
+# (broker seeds doppler_rate_hz_s), so the residual stays flat and the FULL 1 s coheres even at zenith.
+track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 20, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, hold_lock_amp: 0, hold_lock_records: 5 }
+# integration_length: 1000, navwipe_bit_records: 20 -> navwipe: integrate ~1 s (50 nav bits)
+# coherently; deep |A| in slot 8. Restored to 1000 now that the Doppler-rate feed-forward removes the
+# zenith ramp (was temporarily 400 for the coherence-limit diagnostic).
 combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20 }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpswipe", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 

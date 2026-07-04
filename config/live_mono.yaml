@@ -44,8 +44,8 @@ gps_correlator:
     signal: GPS_L1CA
     sample_rate: 5.0e6
     f_offset: 1.25e6
-    doppler_min: -6000.0
-    doppler_max: 6000.0
+    doppler_min: -5500.0
+    doppler_max: 5500.0
     doppler_step: 500
     incoherent_ms: 100
     lock_snr: 12

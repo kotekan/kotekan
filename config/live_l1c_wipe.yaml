@@ -18,7 +18,7 @@ telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
 
 # Let the browser GPS panel (served on :8080) reach kotekan's REST API cross-origin.
 rest_server:
-    cors_allow_origins: ["http://localhost:8080", "http://127.0.0.1:8080"]
+    cors_allow_origins: ["http://localhost:8080", "http://127.0.0.1:8080", "http://gx10.vdl:8080"]
 
 samples_per_data_set: 49920
 bytes_per_sample: 2
@@ -37,8 +37,8 @@ record_floats: 11
 doppler_margin_hz: 250000.0
 acquire_snr: 8
 acquire_windows: 20
-doppler_min: -6000.0
-doppler_max: 6000.0
+doppler_min: -5500.0
+doppler_max: 5500.0
 doppler_step: 50
 # run_live.sh auto-patches prns:/n_prn: to what's overhead now (gps_visible_prns.py).
 prns: [28, 32, 31, 25, 3, 10, 26, 1, 12, 13, 2]
