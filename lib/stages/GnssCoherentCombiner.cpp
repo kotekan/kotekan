@@ -77,6 +77,11 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // full-window average. The chosen span is exported as coherence_s via get_status -- a live
     // measurement of the receiver clock's usable coherence time.
     _auto_coherence = config.get_default<bool>(unique_name, "auto_coherence", true);
+    // Shared-carrier-loop observable: measure the full-band cross-record phase walk. Data
+    // signals need the bit-robust SQUARED product (+-1 symbol flips cancel; unambiguous to
+    // +-1/(4*dt)); a dataless pilot (L2C CL) sets carrier_pilot: true for the unsquared
+    // product -- twice the unaliased range, no squaring loss at low SNR.
+    _carrier_pilot = config.get_default<bool>(unique_name, "carrier_pilot", false);
     if (_wipe_buffer) {
         _navbuf.assign(_n_prn, {});
         _navutc.assign(_n_prn, {});
@@ -93,6 +98,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_dop.assign(_n_prn, 0.0f);
     _st_cp.assign(_n_prn, 0.0f);
     _st_dll_disc.assign(_n_prn, 0.0f);
+    _st_car_resid.assign(_n_prn, 0.0f);
     _st_coh_s.assign(_n_prn, 0.0f);
     _st_deep_rec.assign(_n_prn, 0);
 }
@@ -114,6 +120,13 @@ void GnssCoherentCombiner::main_thread() {
     std::vector<double> acc_pow(_n_prn), acc_ar(_n_prn), acc_ai(_n_prn), acc_nchan(_n_prn);
     std::vector<double> acc_pow2(_n_prn); // <|A|^4>, for the noise-debiased incoherent significance
     std::vector<double> acc_epow(_n_prn), acc_lpow(_n_prn); // <|E|^2>, <|L|^2> for the DLL disc
+    // Shared carrier loop: vector-averaged cross-record phase product per PRN over the emit
+    // window. S += (A_k conj A_{k-1})^{2|1}; at emit resid_hz = arg(S)/{2|1}/(2 pi dt_med).
+    std::vector<std::complex<double>> car_S(_n_prn);
+    std::vector<double> car_dt(_n_prn);
+    std::vector<int> car_n(_n_prn);
+    std::vector<std::complex<double>> car_prev(_n_prn);
+    std::vector<double> car_prev_utc(_n_prn, -1.0);
     std::vector<float> ref_prn(_n_prn), ref_dop(_n_prn), ref_cp(_n_prn);
     std::vector<double> ref_utc(_n_prn);
     int n_acc = 0;              // block: records in the current block
@@ -167,6 +180,22 @@ void GnssCoherentCombiner::main_thread() {
             // debias) + coherent complex (A).
             const double utc_p = *reinterpret_cast<const double*>(ref + RECORD_UTC_SLOT);
             const double p2 = ar * ar + ai * ai;
+            {
+                // Full-band carrier phase walk vs the previous record (gap-gated: a valve drop
+                // would alias the product). Squared for data signals, plain for pilots.
+                const std::complex<double> A(ar, ai);
+                const double dt_c = utc_p - car_prev_utc[p];
+                if (car_prev_utc[p] > 0.0 && dt_c > 0.0 && dt_c < 0.050) {
+                    std::complex<double> prod = A * std::conj(car_prev[p]);
+                    if (!_carrier_pilot)
+                        prod *= prod;
+                    car_S[p] += prod;
+                    car_dt[p] += dt_c;
+                    car_n[p] += 1;
+                }
+                car_prev[p] = A;
+                car_prev_utc[p] = utc_p;
+            }
             if (_rolling) { // exponential moving average (no reset; integrates indefinitely)
                 acc_pow[p] += alpha * (p2 - acc_pow[p]);
                 acc_pow2[p] += alpha * (p2 * p2 - acc_pow2[p]);
@@ -271,6 +300,19 @@ void GnssCoherentCombiner::main_thread() {
                 rec[gnss::CMB_L_POW] = (float)l_pow;
                 rec[gnss::CMB_DLL_DISC] =
                     (e_pow + l_pow) > 0.0 ? (float)((e_pow - l_pow) / (e_pow + l_pow)) : 0.0f;
+                // Shared carrier observable: window-averaged full-band residual (Hz). The
+                // broker integrates this into carrier_trim_hz for every subband tracker --
+                // ONE loop at full-band SNR instead of N noise-driven per-channel FLLs.
+                double resid_hz = 0.0;
+                if (car_n[p] > 0 && std::abs(car_S[p]) > 0.0) {
+                    const double dphi =
+                        std::arg(car_S[p]) / (_carrier_pilot ? 1.0 : 2.0);
+                    resid_hz = dphi / (2.0 * M_PI * (car_dt[p] / car_n[p]));
+                }
+                rec[gnss::CMB_CARRIER_RESID] = (float)resid_hz;
+                car_S[p] = {0.0, 0.0};
+                car_dt[p] = 0.0;
+                car_n[p] = 0;
             }
             // Noise-debiased incoherent significance: <|A|^2> = s^2 + N is biased by the noise
             // floor N (so |A| ~= floor for weak sats), but the moments separate them --
@@ -372,6 +414,7 @@ void GnssCoherentCombiner::main_thread() {
                 _st_coh_s[p] = (float)coh_s[p];
                 _st_deep_rec[p] = deep_rec[p];
                 _st_dll_disc[p] = rec[gnss::CMB_DLL_DISC];
+                _st_car_resid[p] = rec[gnss::CMB_CARRIER_RESID];
             }
         }
         out_buf->mark_frame_full(unique_name, out_id++);
@@ -394,7 +437,8 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"code_phase_chips", _st_cp[p]},
                          {"coherence_s", _st_coh_s[p]},
                          {"deep_records", _st_deep_rec[p]},
-                         {"dll_disc", _st_dll_disc[p]}});
+                         {"dll_disc", _st_dll_disc[p]},
+                         {"carrier_hz_resid", _st_car_resid[p]}});
     conn.send_json_reply(reply);
 }
 

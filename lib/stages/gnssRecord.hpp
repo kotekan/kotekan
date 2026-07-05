@@ -26,7 +26,8 @@
  *    0 PRN   1 Doppler_Hz   2 code_phase_chips
  *    3 |A|_incoh  4 <A>.re  5 <A>.im  6 |<A>|_coh  7 n_chan  8 deep |A|
  *    9,10 UTC
- *    11 <|E|^2>  12 <|L|^2>  13 DLL discriminator  14 spare
+ *    11 <|E|^2>  12 <|L|^2>  13 DLL discriminator  14 carrier residual (Hz, full-band
+ *       cross-record phase walk -- the shared carrier loop's observable; broker closes it)
  *
  * The monolithic ground-truth path (GpsReplicaCorrelator + gps_mono_watch.py) keeps its own
  * frozen 11-float layout and does NOT include this header. Python tools parse these constants
@@ -65,6 +66,7 @@ constexpr int CMB_DEEP = 8;
 constexpr int CMB_E_POW = 11;
 constexpr int CMB_L_POW = 12;
 constexpr int CMB_DLL_DISC = 13;
+constexpr int CMB_CARRIER_RESID = 14;
 
 } // namespace gnss
 #endif // GNSS_RECORD_HPP

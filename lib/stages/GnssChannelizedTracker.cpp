@@ -72,6 +72,7 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     seed("code_phase_chips", _code_phase);
     _code_phase_rate.assign(n_prn, 0.0);
     _doppler_rate.assign(n_prn, 0.0);
+    _carrier_trim.assign(n_prn, 0.0);
     _ref_hop.assign(n_prn, 0);
 
     try {
@@ -92,6 +93,7 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     // (radar sweep, the broker coasting the seed) doesn't drive f_track on noise; the NCO keeps
     // coasting at the held frequency and the loop resumes cleanly on return. 0 = never freeze.
     _fll_lock_amp = config.get_default<double>(unique_name, "fll_lock_amp", 0.0);
+    _carrier_shared = config.get_default<bool>(unique_name, "carrier_shared", false);
 
     const auto active_prns = config.get_default<std::vector<int>>(unique_name, "active_prns", {});
     _active.assign(n_prn, 1);
@@ -121,6 +123,10 @@ void GnssChannelizedTracker::set_seeds_callback(kotekan::connectionInstance& con
                     // Optional 2nd-order carrier model: the almanac Doppler rate (Hz/s), used to
                     // ramp the replica frequency so the coherent-integration residual stays flat.
                     _doppler_rate[i] = s.value("doppler_rate_hz_s", 0.0);
+                    // Shared carrier loop: broker-commanded NCO frequency (Hz). Phase-continuous
+                    // by construction -- the NCO integrates it, so a trim change alters the slope
+                    // of phi, never jumps it.
+                    _carrier_trim[i] = s.value("carrier_trim_hz", 0.0);
                     _ref_hop[i] = s.value("ref_hop", (long long)0);
                     _active[i] = 1;
                 }
@@ -189,7 +195,7 @@ void GnssChannelizedTracker::main_thread() {
             const long long window_start = window_start_hop * (long long)_fft_len;
 
             // Snapshot the (REST-updatable) seeds + active set for this window.
-            std::vector<double> dop, cp, cp_rate, dop_rate;
+            std::vector<double> dop, cp, cp_rate, dop_rate, ctrim;
             std::vector<long long> ref_hop;
             std::vector<uint8_t> active;
             {
@@ -198,6 +204,7 @@ void GnssChannelizedTracker::main_thread() {
                 cp = _code_phase;
                 cp_rate = _code_phase_rate;
                 dop_rate = _doppler_rate;
+                ctrim = _carrier_trim;
                 ref_hop = _ref_hop;
                 active = _active;
             }
@@ -243,7 +250,8 @@ void GnssChannelizedTracker::main_thread() {
                 // FLL reference Doppler: (re)acquire from the broker seed when uninitialised
                 // or far adrift (loss of lock / sat change), else hold it FIXED so the
                 // absolute-anchored replica phase stays continuous; the NCO tracks the rest.
-                if (_fll_gain > 0.0
+                const bool nco_mode = (_fll_gain > 0.0) || _carrier_shared;
+                if (nco_mode
                     && (std::isnan(f_ref[p]) || std::fabs(f_ref[p] - dop[p]) > _fll_reacq_hz)) {
                     f_ref[p] = dop[p];
                     f_track[p] = 0.0;
@@ -251,7 +259,7 @@ void GnssChannelizedTracker::main_thread() {
                     a_prev_ok[p] = 0;
                     reacq_hop[p] = window_start_hop; // anchor the Doppler-rate feed-forward here
                 }
-                const double fcar = (_fll_gain > 0.0) ? f_ref[p] : dop[p];
+                const double fcar = nco_mode ? f_ref[p] : dop[p];
                 // 2nd-order carrier feed-forward: ramp the replica frequency by the almanac Doppler
                 // RATE so the despread residual stays ~constant across a multi-100 ms coherent window.
                 // A 1st-order FLL alone velocity-lags the ramp -> a quadratic carrier phase that
@@ -259,11 +267,12 @@ void GnssChannelizedTracker::main_thread() {
                 // where the base carrier was last fixed: reacq_hop (FLL ref) or the fresh broker
                 // seed anchor ref_hop (no FLL). With the ramp in the replica, the FLL sees only
                 // the small constant clock/fit residual -- no loop-logic change needed.
-                const long long ff_anchor = (_fll_gain > 0.0) ? reacq_hop[p] : ref_hop[p];
+                const long long ff_anchor = nco_mode ? reacq_hop[p] : ref_hop[p];
                 const double fcar_eff =
                     fcar + dop_rate[p] * (double)(window_start_hop - ff_anchor) * (double)_fft_len
                                / _sample_rate;
-                rec[1] = (float)(fcar_eff + ((_fll_gain > 0.0) ? f_track[p] : 0.0));
+                rec[1] = (float)(fcar_eff
+                                 + ((_fll_gain > 0.0) ? f_track[p] : 0.0) + ctrim[p]);
                 rec[2] = (float)cp_seed;
                 rec[6] = (float)owned.size();
                 if (owned.empty())
@@ -310,7 +319,7 @@ void GnssChannelizedTracker::main_thread() {
                 rec[gnss::REC_L_IM] = (float)late.correlation.imag();
                 rec[gnss::REC_L_ENERGY] = (float)late.replica_energy;
 
-                if (_fll_gain <= 0.0) {
+                if (!nco_mode) {
                     rec[3] = (float)best.correlation.real();
                     rec[4] = (float)best.correlation.imag();
                     rec[5] = (float)best.replica_energy;
@@ -324,8 +333,11 @@ void GnssChannelizedTracker::main_thread() {
                     // f_track toward the residual; skip it across a frame gap (it would alias).
                     const double dt = (double)(window_start_hop - hop_prev[p]) * (double)_fft_len
                                       / _sample_rate;
+                    // NCO frequency: local FLL estimate (if enabled) + the broker-commanded
+                    // shared-loop trim. Trim changes alter the slope of phi, never jump it.
+                    const double f_nco = ((_fll_gain > 0.0) ? f_track[p] : 0.0) + ctrim[p];
                     if (a_prev_ok[p] && dt > 0.0) {
-                        phi_track[p] += 2.0 * M_PI * f_track[p] * dt; // NCO (advances over gaps too)
+                        phi_track[p] += 2.0 * M_PI * f_nco * dt; // NCO (advances over gaps too)
                         phi_track[p] = std::remainder(phi_track[p], 2.0 * M_PI); // keep bounded
                     }
                     const std::complex<double> rot = std::polar(1.0, -phi_track[p]);

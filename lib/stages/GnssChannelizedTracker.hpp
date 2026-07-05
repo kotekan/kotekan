@@ -68,6 +68,10 @@
  *                        they diverge by more than this (loss of lock / sat change).
  * @conf fll_max_gap_s    Double (default 0.005). Skip the FLL update across a record gap
  *                        larger than this (a dropped frame would alias the phase walk).
+ * @conf carrier_shared   Bool (default false). Shared-carrier mode: keep the fixed f_ref + NCO
+ *                        (phase continuity) but take the NCO frequency from the broker's
+ *                        carrier_trim_hz instead of a local discriminator -- one loop closed
+ *                        at full-band SNR (the carrier twin of the DLL). Use with fll_gain 0.
  * @conf active_prns      Array<Int> (optional). Initial go/no-go mask (default all on).
  * @conf capture_utc0     Double (default 0). UTC of sample 0; 0 = wall-clock at emit.
  *
@@ -110,12 +114,17 @@ private:
     double _fll_reacq_hz; ///< |f_track - seed| beyond this re-acquires from the broker seed
     double _fll_max_gap;  ///< skip the FLL discriminator if records are >this many apart (s)
     double _fll_lock_amp; ///< freeze the FLL when despread |A| < this (signal dropout); 0 = never
+    bool _carrier_shared; ///< fixed-f_ref + NCO machinery WITHOUT the local discriminator: the
+                          ///< NCO frequency is commanded by the broker (carrier_trim_hz), which
+                          ///< closes ONE loop from the combiner's full-band residual -- for
+                          ///< bands whose per-channel SNR is below the local-FLL cliff (CL, L5)
 
     std::vector<int> _prns;
     std::vector<double> _doppler;
     std::vector<double> _code_phase;
     std::vector<double> _code_phase_rate; ///< dcp0/dhop (chips per hop) for first-order extrapolation
     std::vector<double> _doppler_rate;    ///< almanac carrier Doppler rate (Hz/s) for the 2nd-order carrier feed-forward
+    std::vector<double> _carrier_trim;    ///< broker-commanded NCO frequency (Hz): the SHARED carrier loop
     std::vector<long long> _ref_hop;      ///< hop the seeded cp0 + rate are anchored to
     std::vector<uint8_t> _active;
     std::mutex _seed_mtx; ///< guards _doppler/_code_phase/_active (REST set_seeds vs main loop)

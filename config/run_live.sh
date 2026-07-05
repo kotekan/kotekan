@@ -33,8 +33,8 @@ PEEL=$(grep -oE '^[a-z_0-9]+: \{ kotekan_stage: GnssVoltagePeel' "$CFG" | grep -
 # lifts each seed's cp by k*10230 with the CL segment k computed from the capture's absolute UTC
 # anchor (airspy /adcstat utc0_sample0) + almanac range. Needs the almanac (LAT/LON).
 CLA=""
-grep -qE 'signal: GPS_L2C_CL' "$CFG" && CLA="--cl-assist" \
-  && echo "L2C CL time-assist ON (CL segment k computed from capture UTC + almanac range)"
+grep -qE 'signal: GPS_L2C_CL' "$CFG" && CLA="--cl-assist --carrier-gain ${CARRIER_GAIN:-0.2}" \
+  && echo "L2C CL time-assist ON (k from capture UTC + almanac range) + shared carrier loop"
 # Loud warning if a requested tracker stage isn't actually in the config -- the classic
 # trap is passing TRK=track to the distributed live_l1.yaml (whose trackers are track_00..11):
 # the broker POSTs to track/set_seeds, gets a 404, never seeds -> the trackers despread at

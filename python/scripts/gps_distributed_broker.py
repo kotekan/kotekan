@@ -269,6 +269,13 @@ def main(argv=None):
     ap.add_argument("--fit-gap-s", type=float, default=16.0,
                     help="reset the cp-fit history across a detection gap longer than this "
                          "(seconds of capture time; converted via --hops-per-sec)")
+    ap.add_argument("--carrier-gain", type=float, default=0.0,
+                    help="SHARED carrier loop gain (0 = off): integrate the combiner's full-band "
+                         "carrier_hz_resid into a per-PRN carrier_trim_hz commanded to every "
+                         "subband tracker's NCO -- one loop at full-band SNR instead of N "
+                         "noise-driven per-channel FLLs. Trackers need carrier_shared: true.")
+    ap.add_argument("--carrier-max-hz", type=float, default=40.0,
+                    help="clamp on the shared carrier trim (Hz)")
     ap.add_argument("--dll-gain", type=float, default=0.25,
                     help="code delay-lock-loop gain (0 = off): each poll, nudge a persistent "
                          "per-PRN cp TRIM by gain * tau_est from the combiner's E/L discriminator. "
@@ -319,6 +326,8 @@ def main(argv=None):
     low_hits = {}    # prn -> consecutive low-|A| poll count
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
+    car_trim = {}       # prn -> persistent NCO frequency command (Hz): the shared carrier loop
+    car_last = {}       # prn -> last integrated residual (dedup: one integration per emit)
     cp_hist = {}     # prn -> [(ref_hop, cp0), ...] recent distinct snapshots (for the slope fit)
     clock_bias_ema = None  # smoothed common clock-frequency bias (slow TCXO drift), Hz
     code_bias_ema = None   # smoothed receiver code-rate clock offset (l-a), dimensionless (~2.6 ppm airspy)
@@ -576,6 +585,36 @@ def main(argv=None):
                 if k not in seeds:
                     del dll_trim[k]
 
+        # 3d. SHARED CARRIER LOOP (the carrier twin of 3c): integrate the combiner's full-band
+        # cross-record phase-walk residual into a commanded NCO frequency per PRN. The residual
+        # is measured AFTER the current trim (the NCO derotates before records ship), so the
+        # plain integrator converges: trim += gain * resid. No lock gate: the observable is
+        # vector-averaged over the emit window at FULL-BAND SNR (the whole point -- per-channel
+        # amplitude gates would exclude exactly the weak-band cases this loop exists for);
+        # the clamp bounds any noise walk.
+        if args.carrier_gain > 0.0:
+            car_report = []
+            for prn in list(seeds):
+                rec = status.get(prn, {})
+                resid = float(rec.get("carrier_hz_resid", 0.0))
+                if resid == 0.0:
+                    continue
+                # Integrate each MEASUREMENT once, not each poll: the combiner emits a new
+                # residual every ~1.5 s window while this loop polls at ~5 Hz -- integrating
+                # the stale value 5-7x per measurement over-applies the gain and oscillates
+                # (observed +-20 Hz swings). A changed value marks a fresh emit.
+                if resid == car_last.get(prn):
+                    continue
+                car_last[prn] = resid
+                trim = car_trim.get(prn, 0.0) + args.carrier_gain * resid
+                car_trim[prn] = max(-args.carrier_max_hz, min(args.carrier_max_hz, trim))
+                car_report.append("PRN %d resid %+.2f Hz trim %+.2f" % (prn, resid, car_trim[prn]))
+            if car_report:
+                _log("CAR: " + "; ".join(car_report))
+            for k in list(car_trim):
+                if k not in seeds:
+                    del car_trim[k]
+
         # 3b. Receiver code-rate clock offset (l-a): pool the strong sats' per-fit samples (robust
         # median), EMA-smooth it (slow -> tracks TCXO/OCXO drift), then SEED it to every sat that
         # could NOT fit its own slope (weak / just-acquired / coasting) as carrier-aiding + (l-a).
@@ -612,6 +651,8 @@ def main(argv=None):
             d = dict(prn=prn, **v)
             if dll_trim.get(prn):
                 d["code_phase_chips"] = d["code_phase_chips"] + dll_trim[prn]
+            if car_trim.get(prn):
+                d["carrier_trim_hz"] = car_trim[prn]
             payload.append(d)
         ok = 0
         for t_ep in trackers:

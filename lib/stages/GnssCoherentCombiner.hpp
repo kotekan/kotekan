@@ -118,6 +118,7 @@ private:
     std::vector<int8_t> _secondary; ///< known PRN-independent overlay (L5 NH10/NH20); empty if unused
     std::vector<std::vector<int8_t>> _l1co; ///< per-PRN L1C-P overlays (index prn-1, 1..32); empty if unused
     bool _wipe_buffer = false;      ///< buffer per-record A for a deep wipe (navwipe or overlay)
+    bool _carrier_pilot;            ///< pilot: unsquared phase product (no bits; 2x range)
     bool _auto_coherence;           ///< deep wipe over an octave ladder of trailing sub-windows,
                                     ///< keep the best -> integrate as deep as the clock coheres
     std::vector<std::vector<std::complex<double>>> _navbuf; ///< per-PRN per-record A over the window
@@ -129,6 +130,7 @@ private:
         _st_cp;
     std::vector<int> _st_nh_phase; ///< secondary-overlay alignment found per PRN (-1 = n/a)
     std::vector<float> _st_dll_disc; ///< window-averaged DLL discriminator (broker closes the loop)
+    std::vector<float> _st_car_resid; ///< full-band carrier residual, Hz (shared carrier loop)
     std::vector<float> _st_coh_s;  ///< measured coherence: time span of the chosen deep window (s)
     std::vector<int> _st_deep_rec; ///< records in the chosen deep window (= full window unless the
                                    ///< auto-coherence ladder found a shorter, more coherent one)
