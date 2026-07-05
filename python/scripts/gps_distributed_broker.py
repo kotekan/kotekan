@@ -97,25 +97,38 @@ def fit_cp_rate(hist, code_len):
 def code_clock_bias_sample(rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz, carrier_hz):
     """One satellite's estimate of the receiver LO-vs-ADC clock offset (l - a), dimensionless.
 
-    The whole signal is Doppler-scaled by v/c at the antenna, but the receiver observes the CODE
-    against its ADC sample clock and the CARRIER against its tuner-LO clock:
-        code_frac    = fitted code rate / chip rate   = v/c - a   (a = ADC clock error)
-        carrier_frac = measured Doppler  / carrier    = v/c - l   (l = LO  clock error)
-    so code_frac - carrier_frac = l - a -- v/c CANCELS, leaving the common clock offset with NO
-    ephemeris needed. It is the same for every satellite, so strong detections calibrate it and weak
-    ones inherit it (the code-side twin of the existing carrier clock_bias). ~+2.6 ppm on the airspy.
+    CONVENTION (the 2026-07-04 L5 finding): the fitted slope here is the drift of the SEARCH's
+    absolute-anchored cp0, which is a RESIDUAL rate -- the replica/search already apply the
+    geometric code Doppler internally (chip_per_sample scales with the seeded Doppler; the
+    search references cp back to sample 0 with the matching term). What remains in the cp0
+    slope is f_chip * (l - a) (+ the small Doppler-quantization residue), so
+        l - a  =  slope / f_chip
+    with NO carrier_frac subtraction: v/c never appears in a residual slope. (The original
+    formula subtracted doppler/carrier, valid for the OFFLINE raw-drift tools like
+    l1_code_drift.py where the code drift is measured without a feed-forward -- but applied to
+    residual-convention slopes it contaminated l-a by the per-sat carrier_frac: the estimates
+    disagreed band-to-band (+0.25 ppm L1 / -0.63 ppm L5) where the residual reading agrees
+    (+0.03 / -0.04 ppm, both near the GPSDO's measured +0.06).)
+    doppler_hz/carrier_hz are kept in the signature for call-site stability; unused.
     """
-    code_frac = rate_chips_per_hop * hops_per_sec / chip_hz
-    carrier_frac = doppler_hz / carrier_hz
-    return code_frac - carrier_frac
+    del doppler_hz, carrier_hz  # residual convention: geometry is already fed forward
+    return rate_chips_per_hop * hops_per_sec / chip_hz
 
 
 def cp_rate_from_code_bias(doppler_hz, code_bias, hops_per_sec, chip_hz, carrier_hz):
-    """Seed the code-phase rate (chips/hop) for ANY sat from carrier-aiding + the calibrated offset:
-    code_rate = f_chip * (doppler/f_L1 + (l - a)). Gives a not-yet-fittable weak/new sat an accurate
-    code rate from its FIRST detection, instead of waiting to build its own >=3-snapshot slope fit."""
-    code_frac = doppler_hz / carrier_hz + code_bias
-    return code_frac * chip_hz / hops_per_sec
+    """Seed the cp0 slope (chips/hop) for a not-yet-fittable sat from the calibrated (l - a).
+
+    RESIDUAL convention (2026-07-04 L5 finding): cp0 is absolute-anchored and the replica applies
+    the geometric code Doppler itself, so the correct seeded slope is ONLY the clock residual
+        cp0_rate = f_chip * (l - a)
+    The original formula added doppler/f_carrier -- the FULL physics code rate -- which the
+    replica then applied AGAIN: unfitted sats slid off-peak at the code-Doppler rate. Fatal at
+    L5 (+-30 chips/s -> off the +-1 chip peak in <1 s; the replay smoking gun: seeded cp 6690,
+    displayed 6477 after 65 s = -3.28 chips/s = exactly dop/f * f_chip), historically masked at
+    L1 (+-3 chips/s) by fast fits + the old per-record pull-in re-centering.
+    doppler_hz/carrier_hz kept in the signature for call-site stability; unused."""
+    del doppler_hz, carrier_hz  # residual convention: geometry is already fed forward
+    return code_bias * chip_hz / hops_per_sec
 
 
 def expand_token(tok):
