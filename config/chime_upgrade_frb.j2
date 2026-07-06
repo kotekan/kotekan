@@ -22,6 +22,7 @@ type: config
 log_level: info
 
 {% set using_dpdk = False %}
+{% set fake_upchan_voltage = False %}
 {% set do_once_and_dump = True %}
 
 {% set num_polarizations = 2 %}
@@ -78,11 +79,11 @@ fpga_controller:
 # Telescope
 telescope:
   name: CHIMETelescope
-  require_gps: true
+  require_gps: false
   query_gps: true # GPS time is provided via coco
   gps_host_info: /fpga_controller
   query_frequency_map: true # Frequency map is provided via coco
-  require_frequency_map: true # Make sure we have the full frequency map
+  require_frequency_map: false # Make sure we have the full frequency map
   allow_default_frequency_map: false # Don't fall back on default map
   eop_updatable_config: /earth_rotation_data
 
@@ -100,12 +101,16 @@ updatable_config:
   bad_inputs:
       kotekan_update_endpoint: json
       # yamlfix:off
-      bad_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
+      bad_inputs: {%- if using_dpdk %}
+                  [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
                     370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
                     807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
                    1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
                    1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
                    1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034]
+                  {%- else %}
+                  []
+                  {%- endif -%}
       # yamlfix:on
       start_time: 1535048997.
       update_id: "initial_flags"
@@ -235,46 +240,77 @@ dpdk:
 
   # One handler must be given per port, mapping is in port order.
   handlers:
-  # Strange ordering sorts frequencies such that they are ordered
+  # the funny ordering sorts frequencies
+  # 666, 698, 730, 738, 826, 898, 906, 978, 58, 66, 818, 962, 234, 746, 802, 954
+  # such that theyr are ordered
+  # it will mess up the lost_samples_buffer_X arrays
 {%- for id in range(4) %}
     - dpdk_handler: iceBoardShuffle
       link_group: 0
       link_group_subid: {{ id }}
       out_bufs:
+      ###
         - host_voltage_buffer_3
         - host_voltage_buffer_4
         - host_voltage_buffer_5
         - host_voltage_buffer_6
+      ###
+      #{#
+      {% for i in range(0,4) %}
+        - host_voltage_buffer_{{ i }}
+      {% endfor %}
+      #}#
       lost_samples_buf: lost_samples_buffer_0
 
     - dpdk_handler: iceBoardShuffle
       link_group: 1
       link_group_subid: {{ id }}
       out_bufs:
+      ###
         - host_voltage_buffer_10
         - host_voltage_buffer_11
         - host_voltage_buffer_12
         - host_voltage_buffer_15
+      ###
+      #{#
+      {% for i in range(4,8) %}
+        - host_voltage_buffer_{{ i }}
+      {% endfor %}
+      #}#
       lost_samples_buf: lost_samples_buffer_1
 
     - dpdk_handler: iceBoardShuffle
       link_group: 2
       link_group_subid: {{ id }}
       out_bufs:
+      ###
         - host_voltage_buffer_0
         - host_voltage_buffer_1
         - host_voltage_buffer_9
         - host_voltage_buffer_14
+      ###
+      #{#
+      {% for i in range(8,12) %}
+        - host_voltage_buffer_{{ i }}
+      {% endfor %}
+      #}#
       lost_samples_buf: lost_samples_buffer_2
 
     - dpdk_handler: iceBoardShuffle
       link_group: 3
       link_group_subid: {{ id }}
       out_bufs:
+      ###
         - host_voltage_buffer_2
         - host_voltage_buffer_7
         - host_voltage_buffer_8
         - host_voltage_buffer_13
+      ###
+      #{#
+      {% for i in range(12,16) %}
+        - host_voltage_buffer_{{ i }}
+      {% endfor %}
+      #}#
       lost_samples_buf: lost_samples_buffer_3
 {%- endfor %}
 
@@ -306,7 +342,9 @@ dbg_read_voltages_{{ id }}:
 {%- endfor %}
 ##}
 
-{% set frequency_channels = [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978] %}
+{% set frequency_channels = [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ] %}
+#{#
+
 {% for id in range(16) %}   # num_frequencies = 16
 dbg_read_voltages_{{ id }}:
     kotekan_stage: hdf5FileReadSingleFile
@@ -327,6 +365,7 @@ fake_lost_samples_{{ id }}:
     value: 0
     name: lost_samples
     array_shape: [ 16384 ]
+    dim_scaling: [ 1 ]
     dim_name: [ T ]
     num_local_freq: 4
     manual_freq_ids:
@@ -335,6 +374,7 @@ fake_lost_samples_{{ id }}:
 {%- endfor %}
     out_buf: lost_samples_buffer_{{ id }}
 {% endfor %}
+##}
 
 # TODO: do these still need to exist, or are they replaced by the
 # jinja-templated shuffle above?
@@ -443,6 +483,37 @@ dbg_read_lostsamples_{{ id }}:
     file_name: lost_samples_buffer_{{ id }}
 {%- endfor %}
 ##}
+
+{% for id in range(16) %}   # num_frequencies = 16
+fake_voltages_{{ id }}:
+    kotekan_stage: testDataGen
+    type: const_offset
+    value: 0x88
+    array_shape: [ 1, 16384, 2048 ]
+    dim_scaling: [ 1, 1, 1 ]
+    dim_name: [ F, T , E ]
+    num_local_freq: 1
+    manual_freq_ids:
+        - {{ frequency_channels[id] }}
+    out_buf: host_voltage_buffer_{{ id }}
+{% endfor %}
+
+{% for id in range(16//4) %}   # num_frequencies = 16
+fake_lost_samples_{{ id }}:
+    kotekan_stage: testDataGen
+    type: ramp # to get uint8 as data type
+    value: 0
+    name: lost_samples
+    array_shape: [ 16384 ]
+    dim_scaling: [ 1 ]
+    dim_name: [ T ]
+    num_local_freq: 4
+    manual_freq_ids:
+{%- for f in range(4) %}
+        - {{ frequency_channels[4*id + f] }}
+{%- endfor %}
+    out_buf: lost_samples_buffer_{{ id }}
+{% endfor %}
 
 {%- endif %}
 
@@ -611,8 +682,7 @@ set_scatter_indices:
     out_buf: host_scatter_indices_buffer
     # TODO: need to undo transpose to beamformer (from cylinder order) in
     # conversion to visFrame
-    # FEngine simulator produces beamformer order
-    input_order: CHIMEBeamformer #CHIMEcorrelator
+    input_order: CHIMECorrelator
     output_order: CHIMEBeamformer
     name: scatter_indices
 
@@ -1251,7 +1321,6 @@ switch_failed_out:
 #
 # NOTE: these *must* be sorted since the are passed through a std::set which
 # sorts them
-# frequency_channels: [ 269, 277, 285, 293, 301, 477, 485, 493, 541, 717, 749, 901, 957, 981, 989, 1005 ]
 frequency_channels: [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978]
 
 upchan_factors: [16]
@@ -1346,10 +1415,10 @@ FRB:
         kotekan_buffer: ndarray
         num_frames: host_buffer_depth
         value_type: float16
-        extents: [num_freq_gpu_buf * factor_upchan_out, num_polarizations, num_dishes_y, num_dishes_x, num_components]
+        extents: [num_freq_gpu_buf * factor_upchan_out, num_polarizations, num_dishes_x, num_dishes_y, num_components]
         quantity_name: "W"  # also referred to as weights, hence the name
         dimnames: ["Fbar", "P", "dishN", "dishM", "C"]
-        dimscalings: [factor_upchan_out, 1, 1, 1, 1]
+        dimscalings: [1, 1, 1, 1, 1]
         metadata_pool: main_pool
 
     host_frb2_weights_buffer:
@@ -1432,24 +1501,30 @@ FRB:
         upchan_max_num_channels: upchan_U16_max_num_channels
         upchan_gain: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
         upchan_gain_buffer: host_upchan_U16_gain_buffer
+        metadata_buffer: host_rfi_RFImask_buffer
 
     run_upchan_U16:
-{%- if not using_dpdk %}
+{%- if fake_upchan_voltage %}
         cpu_0:
             kotekan_stage: testDataGenFewHot
             type: fewhot
             freq_id: {{ frequency_channels }}
             elemns:
+### all ones (source at Zenith)
+{%- for el in range(0,4*256) %}
+                - {{ el }}
+{%- endfor %}
+###
 #{# two elements in EW only
                 - 0
                 - 512
 #}#
-### all elements in EW, but delta in NS
+#{# all elements in EW, but delta in NS
                 - 0
                 - 256
                 - 512
                 - 768
-###
+#}#
 #{# two bands EW spanning full NS
 {%- for el in range(0,256) %}
                 - {{ el }}
@@ -1460,6 +1535,8 @@ FRB:
 #}#
             samples_per_dataset: samples_per_data_set
             out_buf: host_upchan_U16_voltage_buffer
+
+    run_send_upchan_U16_voltage:
         gpu_0:
             kotekan_stage: cudaProcess
             log_level: debug
@@ -1533,7 +1610,7 @@ FRB:
         beamformer_type: "frb"
         filename_template: "quick_gains_%04d_reordered.bin"
         num_local_freq: num_freq_gpu_buf
-        default_gains: [1.0, 1.0]
+        default_gains: [1.0, 0.0] # 1.0 + 0.0j ie unit gain
         gain_buffers:
           - host_frb1_phase_buffer
         in_buf: host_rfi_RFImask_buffer
@@ -1544,6 +1621,7 @@ FRB:
         kotekan_stage: processFRBFeedGains
         num_local_freq: num_freq_gpu_buf
         upchan_factor: factor_upchan_out
+        frb1_swap_MN: true
         scaling_factor: 1.0 / 32
         gain_buffers:
           - host_frb1_phase_buffer
@@ -1677,6 +1755,7 @@ FRB:
         frb1_swap_MN: true # yes, this is used by FRB 2
         frb2_weights: host_frb2_weights_buffer
         num_threads: 32
+        metadata: host_rfi_RFImask_buffer
 ###
 #{#
         kotekan_stage: hdf5FileRead
@@ -1756,6 +1835,7 @@ FRB:
 
 {%- if do_once_and_dump %}
     # dump data for debugging
+{% if True %}
     dump_frb_beams:
         max_frames: 1
         upchan_U16_voltage:
@@ -1794,6 +1874,7 @@ FRB:
             input_order: CHIMEBeamformer # this makes no sense, but is required
             in_buf: host_frb2_beam_positions_buffer
             file_name: host_frb2_beam_positions_buffer
+{% endif %}
         host_frb2_weights_buffer:
             kotekan_stage: hdf5FileWrite
             base_dir: frb_weights
@@ -1807,6 +1888,23 @@ FRB:
             in_buf: host_frb1_U16_phase_buffer
             file_name: host_frb1_U16_phase_buffer
 {%- endif %}
+
+{% if False %}
+    frb_send:
+        kotekan_stage: frbNetworkSend
+        in_buf: host_frb3_beams_buffer
+        offsetscale_buf: host_frb3_beams_offsetscale_buffer
+        udp_frb_port_number: 1314 # 1313
+        num_frequencies: num_local_freq # total number of *coarse* frequencies
+        number_of_subnets: 0 # testing mode
+        # don't ping
+        ping_dead_threshold: 0
+        L1_node_ips:
+            - 10.8.204.11
+{%- for i in range(255) %}
+            - 127.0.0.1
+{% endfor %}
+{% endif %}
 
 ################################################################################
 # Output to receivers
