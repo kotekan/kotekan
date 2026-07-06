@@ -1808,6 +1808,20 @@ FRB:
             file_name: host_frb1_U16_phase_buffer
 {%- endif %}
 
+    frb_send:
+        kotekan_stage: frbNetworkSend
+        in_buf: host_frb3_beams_buffer
+        offsetscale_buf: host_frb3_beams_offsetscale_buffer
+        udp_frb_port_number: 1314 # 1313
+        num_frequencies: num_local_freq # total number of *coarse* frequencies
+        number_of_subnets: 0 # testing mode
+        # don't ping
+        ping_dead_threshold: 0
+        L1_node_ips:
+{%- for i in range(256) %}
+            - 127.0.0.1
+{% endfor %}
+
 ################################################################################
 # Output to receivers
 
