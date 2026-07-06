@@ -23,6 +23,7 @@ log_level: info
 
 # Test configuration parameters
 {% set using_dpdk = True %}
+{% set fake_upchan_voltage = False %}
 {% set do_once_and_dump = False %}
 {% set send_baseband = False %}
 
@@ -46,7 +47,7 @@ num_ev_to_calculate: 4            # from n2 test case
 samples_per_data_set: 16384
 sample_period_ns: 2560
 network_frame_arrival_period: 16384 * sample_period_ns / 1e9
-baseband_buffer_depth: 3*32 # 3*272 = ~33 seconds after accounting for active frames
+baseband_buffer_depth: 3*272 # = ~33 seconds after accounting for active frames
 # see where / if / how to use host_buffer_depth and gpu_buffer_depth
 # must be at least size of gpu_buffer_depth
 host_buffer_depth: 12
@@ -90,8 +91,8 @@ telescope:
 
 earth_rotation_data:
   kotekan_update_endpoint: json
-  earth_orientation_parameter_table:
-    - {t_inst_ns: 0, delta_UT1_inst: 0.0, xp_as: 0.0, yp_as: 0.0}
+#  earth_orientation_parameter_table:
+#    - {t_inst_ns: 0, delta_UT1_inst: 0.0, xp_as: 0.0, yp_as: 0.0}
 
 updatable_config:
   frb_gain:
@@ -102,12 +103,16 @@ updatable_config:
   bad_inputs:
       kotekan_update_endpoint: json
       # yamlfix:off
-      bad_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
+      bad_inputs: {%- if using_dpdk %}
+                  [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
                     370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
                     807,  855,  944,  960,  967,  971,  981,  986, 1005, 1010, 1020,
                    1023, 1058, 1141, 1166, 1225, 1280, 1281, 1285, 1311, 1314, 1343,
                    1380, 1381, 1479, 1521, 1523, 1543, 1642, 1684, 1687, 1738, 1792,
                    1794, 1910, 1912, 1943, 1945, 1950, 1982, 1984, 1987, 2032, 2034]
+                  {%- else %}
+                  []
+                  {%- endif -%}
       # yamlfix:on
       start_time: 1535048997.
       update_id: "initial_flags"
@@ -238,46 +243,46 @@ dpdk:
 
   # One handler must be given per port, mapping is in port order.
   handlers:
-  # Strange ordering sorts frequencies such that they are ordered
+  # the funny ordering sorts frequencies
+  # 666, 698, 730, 738, 826, 898, 906, 978, 58, 66, 818, 962, 234, 746, 802, 954
+  # such that theyr are ordered
+  # it will mess up the lost_samples_buffer_X arrays
+{% set shuffled_host_buffers = [ 3, 4, 5, 6, 10, 11, 12, 15, 0, 1, 9, 14, 2, 7, 8, 13 ] %}
 {%- for id in range(4) %}
     - dpdk_handler: iceBoardShuffle
       link_group: 0
       link_group_subid: {{ id }}
       out_bufs:
-        - host_voltage_buffer_3
-        - host_voltage_buffer_4
-        - host_voltage_buffer_5
-        - host_voltage_buffer_6
+      {% for i in range(0,4) %}
+        - host_voltage_buffer_{{ shuffled_host_buffers[i] }}
+      {% endfor %}
       lost_samples_buf: lost_samples_buffer_0
 
     - dpdk_handler: iceBoardShuffle
       link_group: 1
       link_group_subid: {{ id }}
       out_bufs:
-        - host_voltage_buffer_10
-        - host_voltage_buffer_11
-        - host_voltage_buffer_12
-        - host_voltage_buffer_15
+      {% for i in range(4,8) %}
+        - host_voltage_buffer_{{ shuffled_host_buffers[i] }}
+      {% endfor %}
       lost_samples_buf: lost_samples_buffer_1
 
     - dpdk_handler: iceBoardShuffle
       link_group: 2
       link_group_subid: {{ id }}
       out_bufs:
-        - host_voltage_buffer_0
-        - host_voltage_buffer_1
-        - host_voltage_buffer_9
-        - host_voltage_buffer_14
+      {% for i in range(8,12) %}
+        - host_voltage_buffer_{{ shuffled_host_buffers[i] }}
+      {% endfor %}
       lost_samples_buf: lost_samples_buffer_2
 
     - dpdk_handler: iceBoardShuffle
       link_group: 3
       link_group_subid: {{ id }}
       out_bufs:
-        - host_voltage_buffer_2
-        - host_voltage_buffer_7
-        - host_voltage_buffer_8
-        - host_voltage_buffer_13
+      {% for i in range(12,16) %}
+        - host_voltage_buffer_{{ shuffled_host_buffers[i] }}
+      {% endfor %}
       lost_samples_buf: lost_samples_buffer_3
 {%- endfor %}
 
@@ -285,10 +290,10 @@ dpdk:
 zero_samples:
   duplicate_ls_buffer: False
 {%- for id in range(num_freq_gpu_buf) %}
-  zero_{{ id }}:
+  zero_{{ shuffled_host_buffers[id] }}:
     kotekan_stage: zeroSamples
     lost_samples_buf: lost_samples_buffer_{{ id // 4 }}
-    out_buf: host_voltage_buffer_{{ id }}
+    out_buf: host_voltage_buffer_{{ shuffled_host_buffers[id] }}
 {%- endfor %}
 
 {%- else %}
@@ -309,7 +314,9 @@ dbg_read_voltages_{{ id }}:
 {%- endfor %}
 ##}
 
-{% set frequency_channels = [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978] %}
+{% set frequency_channels = [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ] %}
+#{#
+
 {% for id in range(16) %}   # num_frequencies = 16
 dbg_read_voltages_{{ id }}:
     kotekan_stage: hdf5FileReadSingleFile
@@ -330,6 +337,7 @@ fake_lost_samples_{{ id }}:
     value: 0
     name: lost_samples
     array_shape: [ 16384 ]
+    dim_scaling: [ 1 ]
     dim_name: [ T ]
     num_local_freq: 4
     manual_freq_ids:
@@ -338,105 +346,17 @@ fake_lost_samples_{{ id }}:
 {%- endfor %}
     out_buf: lost_samples_buffer_{{ id }}
 {% endfor %}
+##}
 
-# TODO: do these still need to exist, or are they replaced by the
-# jinja-templated shuffle above?
+# read from individual files, one per buffer
 #{#
-dbg_read_voltages_0:
+{% for id in range(16) %}
+dbg_read_voltages_{{ id }}:
     kotekan_stage: hdf5FileRead
     input_dir: debug-data
-    out_buf: host_voltage_buffer_0
-    file_name: host_voltage_buffer_0
-
-dbg_read_voltages_1:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_1
-    file_name: host_voltage_buffer_8
-
-dbg_read_voltages_2:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_2
-    file_name: host_voltage_buffer_12
-
-dbg_read_voltages_3:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_3
-    file_name: host_voltage_buffer_13
-
-dbg_read_voltages_4:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_4
-    file_name: host_voltage_buffer_9
-
-dbg_read_voltages_5:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_5
-    file_name: host_voltage_buffer_4
-
-dbg_read_voltages_6:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_6
-    file_name: host_voltage_buffer_1
-
-dbg_read_voltages_7:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_7
-    file_name: host_voltage_buffer_2
-
-dbg_read_voltages_8:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_8
-    file_name: host_voltage_buffer_14
-
-dbg_read_voltages_9:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_9
-    file_name: host_voltage_buffer_10
-
-dbg_read_voltages_10:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_10
-    file_name: host_voltage_buffer_15
-
-dbg_read_voltages_11:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_11
-    file_name: host_voltage_buffer_11
-
-dbg_read_voltages_12:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_12
-    file_name: host_voltage_buffer_5
-
-dbg_read_voltages_13:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_13
-    file_name: host_voltage_buffer_6
-
-dbg_read_voltages_14:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_14
-    file_name: host_voltage_buffer_7
-
-dbg_read_voltages_15:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_15
-    file_name: host_voltage_buffer_3
+    out_buf: host_voltage_buffer_{{ id }}
+    file_name: host_voltage_buffer_{{ id }}
+{% endfor $}
 
 {%- for id in range(4) %}
 dbg_read_lostsamples_{{ id }}:
@@ -446,6 +366,37 @@ dbg_read_lostsamples_{{ id }}:
     file_name: lost_samples_buffer_{{ id }}
 {%- endfor %}
 ##}
+
+{% for id in range(16) %}   # num_frequencies = 16
+fake_voltages_{{ id }}:
+    kotekan_stage: testDataGen
+    type: const_offset
+    value: 0x88
+    array_shape: [ 1, 16384, 2048 ]
+    dim_scaling: [ 1, 1, 1 ]
+    dim_name: [ F, T , E ]
+    num_local_freq: 1
+    manual_freq_ids:
+        - {{ frequency_channels[id] }}
+    out_buf: host_voltage_buffer_{{ id }}
+{% endfor %}
+
+{% for id in range(16//4) %}   # num_frequencies = 16
+fake_lost_samples_{{ id }}:
+    kotekan_stage: testDataGen
+    type: ramp # to get uint8 as data type
+    value: 0
+    name: lost_samples
+    array_shape: [ 16384 ]
+    dim_scaling: [ 1 ]
+    dim_name: [ T ]
+    num_local_freq: 4
+    manual_freq_ids:
+{%- for f in range(4) %}
+        - {{ frequency_channels[4*id + f] }}
+{%- endfor %}
+    out_buf: lost_samples_buffer_{{ id }}
+{% endfor %}
 
 {%- endif %}
 
@@ -528,6 +479,9 @@ lostSamplesToPLMask:
     # num_polarizations: num_polarizations # set via a global
     pl_mask_buf: host_pl_mask_buffer
     lost_samples_buffers:
+    # TODO: this wrong for shuffled_host_buffers not being trivial since the
+    # C++ code assumes a fixed relation betwene the lost_samples buffers and
+    # the host voltage buffers, which is no longer true
 {%- for id in range(num_freq_gpu_buf // 4) %}
       - lost_samples_buffer_{{ id }}
 {%- endfor %}
@@ -614,8 +568,7 @@ set_scatter_indices:
     out_buf: host_scatter_indices_buffer
     # TODO: need to undo transpose to beamformer (from cylinder order) in
     # conversion to visFrame
-    # FEngine simulator produces beamformer order
-    input_order: CHIMEBeamformer #CHIMEcorrelator
+    input_order: CHIMECorrelator
     output_order: CHIMEBeamformer
     name: scatter_indices
 
@@ -1069,6 +1022,9 @@ run_n2k_counts:
         # num_elements: num_elements
         rfi_mask_buf: host_rfi_RFImask_buffer
         lost_samples_buffers:
+        # TODO: this likely is wrong for non-trivial shuffled_host_buffers
+        # since it assumes a fixed relation between lost_samples and
+        # host_voltage buffers
 {%- for id in range(num_freq_gpu_buf // 4) %}
         - lost_samples_buffer_{{ id }}
 {%- endfor %}
@@ -1204,6 +1160,8 @@ eigencalc:
     krylov: 2
     subspace: 1
     # Masking config from chime science run
+    # TODO: these are (Roland assumes) in CHIME cylinder order but data is in
+    # CHIME beamformer order (after xpose2048)
     diagonal_bands_filled: [ [0, 30], [251, 262] ]
     exclude_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
                       370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
@@ -1242,21 +1200,6 @@ switch_failed_out:
 # FRB beamforming
 
 # UpchannelizationSchedule (used by setUpchanGain) expects these in the root level of the config tree.
-# TODO: change this and get the frequency indices from get_coarse_freq() so
-# that input files do not contain per-node information
-#
-# adapted from fengine_chime.j2
-# TODO: this cannot be a fixed list since the frequencies change per x-engine node
-#       instead we can / should used coarse_freq metadata entry
-# The frequency channels we keep.
-#     Channel 1024 has 400 MHz for CHIME, channel 0 has 800 MHz.
-#     There are 2.56 channels per MHz, with a channel width of 390625 Hz.
-#
-# NOTE: these *must* be sorted since the are passed through a std::set which
-# sorts them
-# frequency_channels: [ 269, 277, 285, 293, 301, 477, 485, 493, 541, 717, 749, 901, 957, 981, 989, 1005 ]
-frequency_channels: [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978]
-
 upchan_factors: [16]
 # ranges are [min, max)
 upchan_channel_ranges:
@@ -1349,10 +1292,10 @@ FRB:
         kotekan_buffer: ndarray
         num_frames: host_buffer_depth
         value_type: float16
-        extents: [num_freq_gpu_buf * factor_upchan_out, num_polarizations, num_dishes_y, num_dishes_x, num_components]
+        extents: [num_freq_gpu_buf * factor_upchan_out, num_polarizations, num_dishes_x, num_dishes_y, num_components]
         quantity_name: "W"  # also referred to as weights, hence the name
         dimnames: ["Fbar", "P", "dishN", "dishM", "C"]
-        dimscalings: [factor_upchan_out, 1, 1, 1, 1]
+        dimscalings: [1, 1, 1, 1, 1]
         metadata_pool: main_pool
 
     host_frb2_weights_buffer:
@@ -1376,6 +1319,17 @@ FRB:
         dimnames: ["Ttilde", "Fbar", "beamQ", "beamP"]
         dimscalings: [frb_downsampling_factor, 1, 1, 1]
         metadata_pool: main_pool
+
+    host_frb1_beams_buffer_post:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        value_type: float16
+        extents: [frb_num_output_times, upchan_U16_max_num_output_channels, frb1_num_beams_Q, frb1_num_beams_P]
+        quantity_name: "I"
+        dimnames: ["Ttilde", "Fbar", "beamQ", "beamP"]
+        dimscalings: [frb_downsampling_factor, 1, 1, 1]
+        metadata_pool: main_pool
+
     host_frb1_beams_ringbuffer:
         kotekan_buffer: ring
         num_frames: gpu_buffer_depth
@@ -1383,6 +1337,16 @@ FRB:
         metadata_pool: main_pool
 
     host_frb2_beams_buffer:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        value_type: float16
+        extents: [1, frb2_num_beams, upchan_U16_max_num_output_channels, frb_num_output_times]
+        quantity_name: "I2"
+        dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
+        dimscalings: [frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor]
+        metadata_pool: main_pool
+
+    host_frb2_beams_buffer_post:
         kotekan_buffer: ndarray
         num_frames: host_buffer_depth
         value_type: float16
@@ -1427,6 +1391,17 @@ FRB:
         dimscalings: [frb_downsampling_factor * 256, 4, 64, frb_downsampling_factor * 16, 1, 16, 1]
         metadata_pool: main_pool
 
+    host_frb3_beams_offsetscale_buffer_post:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        # the output is quantized in chunks of `frb_chunk_size`
+        value_type: float16
+        extents: [1, frb2_num_beams/4, upchan_U16_max_num_output_channels/64, 16, 4, 4, 2]
+        quantity_name: "I3_offsetscale"
+        dimnames: ["Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "offset/scale"]
+        dimscalings: [frb_downsampling_factor * 256, 4, 64, frb_downsampling_factor * 16, 1, 16, 1]
+        metadata_pool: main_pool
+
     # Stages
 
     run_set_upchan_U16_gain:
@@ -1435,24 +1410,30 @@ FRB:
         upchan_max_num_channels: upchan_U16_max_num_channels
         upchan_gain: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
         upchan_gain_buffer: host_upchan_U16_gain_buffer
+        metadata_buffer: host_rfi_RFImask_buffer
 
     run_upchan_U16:
-{%- if not using_dpdk %}
+{%- if fake_upchan_voltage %}
         cpu_0:
             kotekan_stage: testDataGenFewHot
             type: fewhot
             freq_id: {{ frequency_channels }}
             elemns:
+### all ones (source at Zenith)
+{%- for el in range(0,4*256) %}
+                - {{ el }}
+{%- endfor %}
+###
 #{# two elements in EW only
                 - 0
                 - 512
 #}#
-### all elements in EW, but delta in NS
+#{# all elements in EW, but delta in NS
                 - 0
                 - 256
                 - 512
                 - 768
-###
+#}#
 #{# two bands EW spanning full NS
 {%- for el in range(0,256) %}
                 - {{ el }}
@@ -1463,6 +1444,8 @@ FRB:
 #}#
             samples_per_dataset: samples_per_data_set
             out_buf: host_upchan_U16_voltage_buffer
+
+    run_send_upchan_U16_voltage:
         gpu_0:
             kotekan_stage: cudaProcess
             log_level: debug
@@ -1508,6 +1491,7 @@ FRB:
               Fmax: upchan_U16_max_channel
             - name: cudaSyncOutput
 
+#{# for debugging only
     run_recv_upchan_U16_voltage:
         gpu_0:
             kotekan_stage: cudaProcess
@@ -1527,6 +1511,7 @@ FRB:
               output_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
               ring_buffer_size: buffer_depth * output_size
               out_buf: host_upchan_U16_voltage_buffer
+#}#
 {%- endif %}
 
     # FRB 1
@@ -1536,7 +1521,7 @@ FRB:
         beamformer_type: "frb"
         filename_template: "quick_gains_%04d_reordered.bin"
         num_local_freq: num_freq_gpu_buf
-        default_gains: [1.0, 1.0]
+        default_gains: [1.0, 0.0] # 1.0 + 0.0j ie unit gain
         gain_buffers:
           - host_frb1_phase_buffer
         in_buf: host_rfi_RFImask_buffer
@@ -1547,6 +1532,7 @@ FRB:
         kotekan_stage: processFRBFeedGains
         num_local_freq: num_freq_gpu_buf
         upchan_factor: factor_upchan_out
+        frb1_swap_MN: true
         scaling_factor: 1.0 / 32
         gain_buffers:
           - host_frb1_phase_buffer
@@ -1678,6 +1664,7 @@ FRB:
         frb2_beam_positions: host_frb2_beam_positions_buffer
         frb1_swap_MN: true # yes, this is used by FRB 2
         frb2_weights: host_frb2_weights_buffer
+        metadata: host_rfi_RFImask_buffer
 ###
 #{#
         kotekan_stage: hdf5FileRead
@@ -1730,6 +1717,7 @@ FRB:
               gpu_mem_output: frb3_beams
               gpu_mem_offsetscale: frb3_beams_offsetscale
             - name: cudaSyncOutput
+#{# for debugging only
             - name: cudaCopyFromRingbuffer
               # TODO: Don't do this in production
               host_signal: host_frb1_beams_ringbuffer
@@ -1737,6 +1725,7 @@ FRB:
               output_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
               ring_buffer_size: gpu_buffer_depth * output_size
               out_buf: host_frb1_beams_buffer
+#}#
             - name: cudaOutputData
               # TODO: Don't do this in production
               gpu_mem: frb2_beams_buffer
@@ -1753,6 +1742,26 @@ FRB:
         in_bufs:
           - enabled: host_frb3_beams_buffer
         out_buf: host_frb3_beams_buffer_post
+        updatable_config: /updatable_config/enable_frb_out
+    switch_frb_offsetscale_out:
+        kotekan_stage: bufferSwitch
+        in_bufs:
+          - enabled: host_frb3_beams_offsetscale_buffer
+        out_buf: host_frb3_beams_offsetscale_buffer_post
+        updatable_config: /updatable_config/enable_frb_out
+
+    switch_frb2_out:
+        kotekan_stage: bufferSwitch
+        in_bufs:
+          - enabled: host_frb2_beams_buffer
+        out_buf: host_frb2_beams_buffer_post
+        updatable_config: /updatable_config/enable_frb_out
+
+    switch_frb1_out:
+        kotekan_stage: bufferSwitch
+        in_bufs:
+          - enabled: host_frb1_beams_buffer
+        out_buf: host_frb1_beams_buffer_post
         updatable_config: /updatable_config/enable_frb_out
 
 {%- if do_once_and_dump %}
@@ -1807,7 +1816,24 @@ FRB:
             input_order: CHIMEBeamformer # this makes no sense, but is required
             in_buf: host_frb1_U16_phase_buffer
             file_name: host_frb1_U16_phase_buffer
-{%- endif %}
+{% endif %}
+
+{% if False %}
+    frb_send:
+        kotekan_stage: frbNetworkSend
+        in_buf: host_frb3_beams_buffer
+        offsetscale_buf: host_frb3_beams_offsetscale_buffer
+        udp_frb_port_number: 1314 # 1313
+        num_frequencies: num_local_freq # total number of *coarse* frequencies
+        number_of_subnets: 0 # testing mode
+        # don't ping
+        ping_dead_threshold: 0
+        L1_node_ips:
+            - 10.8.204.11
+{%- for i in range(255) %}
+            - 127.0.0.1
+{% endfor %}
+{% endif %}
 
 ################################################################################
 # Output to receivers
@@ -1859,6 +1885,36 @@ write_frb:
     base_dir: frb_beams
     in_buf: host_frb3_beams_buffer_post
     file_name: host_frb3_beams_buffer
+    create_single_file: true
+    input_order: CHIMEBeamformer
+
+write_frb_offsetscale:
+    kotekan_stage: hdf5FileWrite
+    log_level: warn
+    use_compression: false
+    base_dir: frb_beams
+    in_buf: host_frb3_beams_offsetscale_buffer_post
+    file_name: host_frb3_offsetscale_buffer
+    create_single_file: true
+    input_order: CHIMEBeamformer
+
+write_frb2:
+    kotekan_stage: hdf5FileWrite
+    log_level: warn
+    use_compression: false
+    base_dir: frb_beams
+    in_buf: host_frb2_beams_buffer_post
+    file_name: host_frb2_beams_buffer
+    create_single_file: true
+    input_order: CHIMEBeamformer
+
+write_frb1:
+    kotekan_stage: hdf5FileWrite
+    log_level: warn
+    use_compression: false
+    base_dir: frb_beams
+    in_buf: host_frb1_beams_buffer_post
+    file_name: host_frb1_beams_buffer
     create_single_file: true
     input_order: CHIMEBeamformer
 
