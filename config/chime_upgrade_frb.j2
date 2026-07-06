@@ -89,6 +89,10 @@ earth_rotation_data:
     - {t_inst_ns: 0, delta_UT1_inst: 0.0, xp_as: 0.0, yp_as: 0.0}
 
 updatable_config:
+  frb_gain:
+    0:
+      kotekan_update_endpoint: "json"
+      gain_directory: /mnt/frb-archiver/daily_gain_solutions/Latest_FRB
   # bad input mask, assumed to be in cylinder order
   bad_inputs:
       kotekan_update_endpoint: json
@@ -1322,16 +1326,26 @@ FRB:
         metadata_pool: main_pool
 
     # Beamforming Phases and interpolation weights
+    host_frb1_phase_buffer:
+        kotekan_buffer: ndarray
+        num_frames: 1
+        value_type: float32
+        extents: [num_freq_gpu_buf, num_elements, num_components]
+        quantity_name: "gain"
+        dimnames: ["F", "E", "C"]
+        dimscalings: [1, 1, 1]
+        metadata_pool: main_pool
 
     host_frb1_U16_phase_buffer:
         kotekan_buffer: ndarray
         num_frames: 1
-        # TODO: check what this "16" is
         value_type: float16
-        extents: [upchan_U16_max_num_channels * 16, num_polarizations, num_dishes_x, num_dishes_y, num_components]
+        # TODO: verify that the correct variables are being used for
+        # the upchannelized frequencies
+        extents: [1, num_freq_gpu_buf * factor_upchan_out, num_elements, num_components]
         quantity_name: "W"
-        dimnames: ["Fbar", "P", "dishN", "dishM", "C"]
-        dimscalings: [1, 1, 1, 1, 1]
+        dimnames: ["R", "Fbar", "E", "C"]
+        dimscalings: [1, factor_upchan_out, 1, 1]
         metadata_pool: main_pool
 
     host_frb2_weights_buffer:
@@ -1499,17 +1513,27 @@ FRB:
 
     # FRB 1
 
-    run_set_frb1_U16_phase:
-        kotekan_stage: setFRB1Phase
+    load_frb1_phase:
+        kotekan_stage: loadFeedGains
+        beamformer_type: "frb"
+        filename_template: "quick_gains_%04d_reordered.bin"
+        num_local_freq: num_freq_gpu_buf
+        default_gains: [1.0, 1.0]
+        gain_buffers:
+          - host_frb1_phase_buffer
+        in_buf: host_rfi_RFImask_buffer
+        updatable_config:
+          frb_gain: /updatable_config/frb_gain
+
+    process_frb1_U16_phase:
+        kotekan_stage: processFeedGains
+        num_local_freq: num_freq_gpu_buf
         upchan_factor: factor_upchan_out
-        # TODO: replace the stage with one that actually takes the gains into account
-        # TODO: need to worry about over / underflow
-        frb1_input_scale: 1.0 / 32
-        frb1_swap_MN: true
-        upchan_min_channel: upchan_U16_min_channel
-        upchan_max_channel: upchan_U16_max_channel
-        upchan_max_num_channels: upchan_U16_max_num_channels
-        frb1_phase: host_frb1_U16_phase_buffer
+        scaling_factor: 1.0 / 32
+        gain_buffers:
+          - host_frb1_phase_buffer
+        in_mask_buf: host_bf_mask_buffer
+        out_buf: host_frb1_U16_phase_buffer
 
     run_frb1_U16:
         gpu_0:
