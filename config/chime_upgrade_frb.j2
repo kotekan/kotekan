@@ -81,11 +81,11 @@ fpga_controller:
 # Telescope
 telescope:
   name: CHIMETelescope
-  require_gps: true
+  require_gps: false
   query_gps: true # GPS time is provided via coco
   gps_host_info: /fpga_controller
   query_frequency_map: true # Frequency map is provided via coco
-  require_frequency_map: true # Make sure we have the full frequency map
+  require_frequency_map: false # Make sure we have the full frequency map
   allow_default_frequency_map: false # Don't fall back on default map
   eop_updatable_config: /earth_rotation_data
 
@@ -248,18 +248,13 @@ dpdk:
 
   # One handler must be given per port, mapping is in port order.
   handlers:
-  # the funny ordering sorts frequencies
-  # 666, 698, 730, 738, 826, 898, 906, 978, 58, 66, 818, 962, 234, 746, 802, 954
-  # such that theyr are ordered
-  # it will mess up the lost_samples_buffer_X arrays
-{% set shuffled_host_buffers = [ 3, 4, 5, 6, 10, 11, 12, 15, 0, 1, 9, 14, 2, 7, 8, 13 ] %}
 {%- for id in range(4) %}
     - dpdk_handler: iceBoardShuffle
       link_group: 0
       link_group_subid: {{ id }}
       out_bufs:
       {% for i in range(0,4) %}
-        - host_voltage_buffer_{{ shuffled_host_buffers[i] }}
+        - host_voltage_buffer_{{ i }}
       {% endfor %}
       lost_samples_buf: lost_samples_buffer_0
 
@@ -268,7 +263,7 @@ dpdk:
       link_group_subid: {{ id }}
       out_bufs:
       {% for i in range(4,8) %}
-        - host_voltage_buffer_{{ shuffled_host_buffers[i] }}
+        - host_voltage_buffer_{{ i }}
       {% endfor %}
       lost_samples_buf: lost_samples_buffer_1
 
@@ -277,7 +272,7 @@ dpdk:
       link_group_subid: {{ id }}
       out_bufs:
       {% for i in range(8,12) %}
-        - host_voltage_buffer_{{ shuffled_host_buffers[i] }}
+        - host_voltage_buffer_{{ i }}
       {% endfor %}
       lost_samples_buf: lost_samples_buffer_2
 
@@ -286,7 +281,7 @@ dpdk:
       link_group_subid: {{ id }}
       out_bufs:
       {% for i in range(12,16) %}
-        - host_voltage_buffer_{{ shuffled_host_buffers[i] }}
+        - host_voltage_buffer_{{ i }}
       {% endfor %}
       lost_samples_buf: lost_samples_buffer_3
 {%- endfor %}
@@ -1824,6 +1819,7 @@ FRB:
 
 {%- if do_once_and_dump %}
     # dump data for debugging
+{% if True %}
     dump_frb_beams:
         max_frames: 1
         upchan_U16_voltage:
@@ -1862,6 +1858,7 @@ FRB:
             input_order: CHIMEBeamformer # this makes no sense, but is required
             in_buf: host_frb2_beam_positions_buffer
             file_name: host_frb2_beam_positions_buffer
+{% endif %}
         host_frb2_weights_buffer:
             kotekan_stage: hdf5FileWrite
             base_dir: frb_weights
