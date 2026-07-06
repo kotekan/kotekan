@@ -342,10 +342,13 @@ def test_gaussian(gaussian_data):
     vis_set = np.array([frame.vis for frame in gaussian_data])
     weight_set = np.array([frame.weight for frame in gaussian_data])
 
-    # These tests need a 5 sigma fluctuation to cause failure
-    assert np.allclose(vis_set.mean(axis=0), exp_vis, atol=7e-4, rtol=0)
-    assert np.allclose(vis_set.var(axis=0), frac_var, rtol=7e-2, atol=0)
-    assert np.allclose((1.0 / weight_set).mean(axis=0), frac_var, rtol=1e-2, atol=0)
+    # These tests need a 5 sigma fluctuation to cause failure. The diagonal
+    # (auto-correlation) entries are real-valued and so have ~sqrt(2) larger
+    # estimator spread than the complex off-diagonal entries; the tolerances
+    # below are sized for the noisier diagonal case.
+    assert np.allclose(vis_set.mean(axis=0), exp_vis, atol=1e-3, rtol=0)
+    assert np.allclose(vis_set.var(axis=0), frac_var, rtol=1.2e-1, atol=0)
+    assert np.allclose((1.0 / weight_set).mean(axis=0), frac_var, rtol=1.5e-2, atol=0)
 
 
 # Test that we can deal with whole frames being dropped
@@ -361,9 +364,10 @@ def test_missing_frames(drop_frame_data):
     vis_set = np.array([frame.vis for frame in drop_frame_data])
     weight_set = np.array([frame.weight for frame in drop_frame_data])
 
-    # These tests need a 5 sigma fluctuation to cause failure
-    assert np.allclose(vis_set.mean(axis=0), exp_vis, atol=7e-4, rtol=0)
-    assert np.allclose(vis_set.var(axis=0), frac_var, rtol=7e-2, atol=0)
+    # These tests need a 5 sigma fluctuation to cause failure. (See note in
+    # test_gaussian: real-valued diagonal entries dominate the tolerance.)
+    assert np.allclose(vis_set.mean(axis=0), exp_vis, atol=1e-3, rtol=0)
+    assert np.allclose(vis_set.var(axis=0), frac_var, rtol=1.2e-1, atol=0)
     assert np.allclose((1.0 / weight_set).mean(axis=0), frac_var, rtol=5e-2, atol=0)
 
 
