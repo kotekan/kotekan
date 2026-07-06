@@ -102,13 +102,14 @@ processFeedGains::~processFeedGains() {}
 
 void processFeedGains::set_frame_desc(Buffer* buf) {
     buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float32>, 4>::describe(
-        "processed_gain",
+        "W",
         {static_cast<ptrdiff_t>(num_beams), static_cast<ptrdiff_t>(num_local_freq * upchan_factor),
          static_cast<ptrdiff_t>(num_elements), static_cast<ptrdiff_t>(num_components)},
         {"R", "Fbar", "E", "C"}, {1, 1, 1, 1}));
 
     freq_upchan_factor = std::vector<int>(num_local_freq * upchan_factor, 1);
     freq_upchan_index = std::vector<int>(num_local_freq * upchan_factor);
+    coarse_freq = std::vector<int>(num_local_freq * upchan_factor);
 
     // set the actual frequency upchan indices. Assume increasing index
     // TODO: verify that this is correct
@@ -119,12 +120,13 @@ void processFeedGains::set_frame_desc(Buffer* buf) {
 
 void processFeedGains::copy_upchannelize_f(const float* src_f, float* dst_f, size_t fid) {
     (void)fid; // not used in the default implementation
+    auto scaling_factor = this->scaling_factor;
     for (size_t u = 0; u < upchan_factor; ++u) {
         // copy ell elements from the source into each fine channel
         float* u_ptr = dst_f + u * num_elements * num_components;
         // apply the constant scaling factor
         std::transform(src_f, src_f + num_components * num_elements, u_ptr,
-                       [this](float v) { return v * this->scaling_factor; });
+                       [scaling_factor](float v) { return v * scaling_factor; });
     }
 }
 
@@ -154,6 +156,8 @@ void processFeedGains::main_thread() {
     for (size_t iter = 0; iter < gain_buffers.size(); iter++) {
         gain_buffer_frame_ids.emplace_back(gain_buffers.at(iter));
     }
+
+    bool set_coarse_freqs = false;
 
     while (!stop_thread) {
         // Poll all possible producing buffers
@@ -208,10 +212,22 @@ void processFeedGains::main_thread() {
         out_buf->allocate_new_metadata_object(out_buf_frame_id);
         auto meta = get_chord_metadata(out_buf, out_buf_frame_id);
         meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
-        meta->set_name("processed_gain");
+        meta->set_name("W");
         // Set the frequency upchannelization metadata
         meta->set_freq_upchan_factor(freq_upchan_factor);
         meta->set_freq_upchan_index(freq_upchan_index);
+        // Also need to set coarse frequencies, which requires metadata
+        // from the input frame
+        if (set_coarse_freqs) {
+            auto meta_in = get_chord_metadata(in_mask_buf, in_mask_frame_id);
+            auto coarse_freqs_in = meta_in->get_coarse_freq();
+
+            for (uint64_t f = 0; f < num_local_freq * upchan_factor; ++f) {
+                int idx = f / upchan_factor;
+                coarse_freq[f] = coarse_freqs_in[idx];
+            }
+        }
+        meta->set_coarse_freq(coarse_freq);
         // Verify that frame desc and metadata match
         meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 

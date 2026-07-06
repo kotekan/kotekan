@@ -106,6 +106,7 @@ private:
     /// Store gain upchannelization factors
     std::vector<int> freq_upchan_factor;
     std::vector<int> freq_upchan_index;
+    std::vector<int> coarse_freq;
 };
 
 
