@@ -250,9 +250,17 @@ void GnssChannelizedTracker::main_thread() {
                 // FLL reference Doppler: (re)acquire from the broker seed when uninitialised
                 // or far adrift (loss of lock / sat change), else hold it FIXED so the
                 // absolute-anchored replica phase stays continuous; the NCO tracks the rest.
+                // The adrift test uses the TOTAL tracked Doppler (f_ref + f_track) vs the seed,
+                // NOT f_ref alone: f_ref is pinned and the seed is stable, so f_ref-only was
+                // blind to f_track diverging underneath it -- and the bit-robust FLL
+                // discriminator aliases past ~1/(4*dt) (~250 Hz at 1 ms records), so once noise
+                // (a drooping off-peak |A|) kicked f_track past that it ran away unbounded
+                // (observed -1158 Hz, deep dead). Resetting at fll_reacq_hz < the alias limit
+                // catches it before it aliases (the 2026-07-07 L1 deep-decay root cause).
                 const bool nco_mode = (_fll_gain > 0.0) || _carrier_shared;
+                const double f_tracked = f_ref[p] + ((_fll_gain > 0.0) ? f_track[p] : 0.0);
                 if (nco_mode
-                    && (std::isnan(f_ref[p]) || std::fabs(f_ref[p] - dop[p]) > _fll_reacq_hz)) {
+                    && (std::isnan(f_ref[p]) || std::fabs(f_tracked - dop[p]) > _fll_reacq_hz)) {
                     f_ref[p] = dop[p];
                     f_track[p] = 0.0;
                     phi_track[p] = 0.0;
@@ -358,8 +366,7 @@ void GnssChannelizedTracker::main_thread() {
                     a_prev[p] = a_corr;
                     a_prev_ok[p] = 1;
                     hop_prev[p] = window_start_hop;
-                }
-            }
+                }            }
 
             // Stamp the window's absolute sample on the record frame: it survives
             // bufferSend/Recv (records ship back to the combiner across nodes) and lets
