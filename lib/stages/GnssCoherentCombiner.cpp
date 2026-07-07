@@ -204,7 +204,14 @@ void GnssCoherentCombiner::main_thread() {
                 acc_ar[p] += alpha * (ar - acc_ar[p]);
                 acc_ai[p] += alpha * (ai - acc_ai[p]);
                 acc_nchan[p] += alpha * (nchan - acc_nchan[p]);
-                if (_wipe_buffer) { // sliding window of the last _integration_length recs (deep wipe)
+                if (_wipe_buffer && energy > 0.0) {
+                    // Sliding window of the last _integration_length recs (deep wipe). Records
+                    // with NO despread (PRN inactive this window: broker drop/coast churn) are
+                    // NOT buffered -- the wipe is UTC-indexed and gap-robust, so they become
+                    // gaps exactly like valve drops. Buffering their exact zeros instead
+                    // diluted the amplitude while contributing NOTHING to the orthogonal-noise
+                    // estimate: a mostly-zero window reported a tiny deep |A| at an enormous
+                    // fake significance (observed 500 sigma at |A|=0.04 on flapping CL sats).
                     _navbuf[p].emplace_back(ar, ai);
                     _navutc[p].push_back(utc_p);
                     if ((int)_navbuf[p].size() > _integration_length) {
@@ -224,7 +231,9 @@ void GnssCoherentCombiner::main_thread() {
                 acc_ar[p] += ar;
                 acc_ai[p] += ai;
                 acc_nchan[p] += nchan;
-                if (_wipe_buffer) { // per-record (A, capture-UTC) for the deep wipe
+                if (_wipe_buffer && energy > 0.0) { // per-record (A, UTC) for the deep wipe;
+                    // zero-energy (inactive) records are gaps, not zeros -- see the rolling
+                    // branch comment (fake-significance pathology otherwise).
                     _navbuf[p].emplace_back(ar, ai);
                     _navutc[p].push_back(utc_p);
                 }
