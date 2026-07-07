@@ -257,6 +257,10 @@ def main(argv=None):
                     help="spreading chip rate (L1 C/A 1.023e6) -- for the code-rate clock-bias estimate")
     ap.add_argument("--code-bias-alpha", type=float, default=0.05,
                     help="EMA weight for the receiver code-rate clock offset (l-a); slow -> tracks TCXO/OCXO drift")
+    ap.add_argument("--code-bias-max", type=float, default=3.0,
+                    help="reject per-sat l-a samples beyond +-this (ppm) before the median -- a "
+                         "noisy/unwrap-blown slope fit is an outlier a few-sat median can't reject; "
+                         "the seeded code rate must stay ~0.1 ppm stable or the deep decoheres")
     ap.add_argument("--code-bias-min-sats", type=int, default=2,
                     help="fitted sats needed before the pooled code-rate clock offset is trusted + seeded to weak sats")
     ap.add_argument("--code-bias-init", type=float, default=None,
@@ -276,6 +280,8 @@ def main(argv=None):
                          "noise-driven per-channel FLLs. Trackers need carrier_shared: true.")
     ap.add_argument("--carrier-max-hz", type=float, default=40.0,
                     help="clamp on the shared carrier trim (Hz)")
+    ap.add_argument("--carrier-leak", type=float, default=0.05,
+                    help="shared carrier integrator leak (same role as --dll-leak)")
     ap.add_argument("--dll-gain", type=float, default=0.25,
                     help="code delay-lock-loop gain (0 = off): each poll, nudge a persistent "
                          "per-PRN cp TRIM by gain * tau_est from the combiner's E/L discriminator. "
@@ -284,6 +290,10 @@ def main(argv=None):
                          "decisions (R1, docs/gnss_architecture_audit.md).")
     ap.add_argument("--dll-spacing", type=float, default=0.5,
                     help="tracker Early/Late spacing in chips (must match dll_spacing_chips)")
+    ap.add_argument("--dll-leak", type=float, default=0.05,
+                    help="DLL integrator leak (0 = pure integrator): trim mean-reverts each "
+                         "update so discriminator NOISE can't random-walk it to the clamp. DC "
+                         "loop gain = dll_gain/dll_leak; ~1/leak windows of smoothing.")
     ap.add_argument("--cl-assist", action="store_true",
                     help="trackers despread the L2C CL pilot: lift each seed's code_phase_chips by "
                          "k*10230 with the CL segment k COMPUTED from absolute capture time (the "
@@ -326,6 +336,7 @@ def main(argv=None):
     low_hits = {}    # prn -> consecutive low-|A| poll count
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
+    dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
     car_trim = {}       # prn -> persistent NCO frequency command (Hz): the shared carrier loop
     car_last = {}       # prn -> last integrated residual (dedup: one integration per emit)
     cp_hist = {}     # prn -> [(ref_hop, cp0), ...] recent distinct snapshots (for the slope fit)
@@ -487,7 +498,11 @@ def main(argv=None):
                 # Only strong, geometry-clean detections (SNR gate) -- weak/noisy slopes would bias it.
                 la = code_clock_bias_sample(rate, seed_dop, args.hops_per_sec,
                                             args.chip_rate_hz, args.carrier_hz)
-                if snr >= args.acquire_snr:
+                # PER-SAMPLE gate: a single noisy/unwrap-blown slope fit is a large l-a outlier
+                # that the few-sat median can't reject -- and a wandering pooled l-a swings the
+                # seeded code rate (+-1 ppm = +-1 chip/s), walking the deep integration off-peak
+                # within its ~1 s window (the 2026-07-07 L1 deep decay). Bound to --code-bias-max.
+                if snr >= args.acquire_snr and abs(la) < args.code_bias_max * 1e-6:
                     la_samples.append(la)
                 _log("PRN %d cp-fit: %.2f chips @ hop %d, slope %+.3f chips/s (%d pts, l-a %+.3f ppm)"
                      % (prn, cp_ref, h0, rate * args.hops_per_sec, len(h), la * 1e6))
@@ -576,8 +591,21 @@ def main(argv=None):
                 disc = float(rec.get("dll_disc", 0.0))
                 if sig_of(rec) < args.lock_snr or disc == 0.0:
                     continue
+                # One integration per NEW measurement: the combiner emits a fresh disc each
+                # integration window (~1 s) while this loop polls at ~5 Hz -- integrating the
+                # stale value 5x per emit over-applies the gain (part of the 2026-07-07 L1
+                # runaway). A changed value marks a fresh emit.
+                if disc == dll_last.get(prn):
+                    continue
+                dll_last[prn] = disc
                 tau = -max(-1.0, min(1.0, disc)) / 4.0 * (args.dll_spacing / 0.5)
-                dll_trim[prn] = max(-3.0, min(3.0, dll_trim.get(prn, 0.0) + args.dll_gain * tau))
+                # LEAKY integrator: mean-reverts, so discriminator NOISE cannot random-walk the
+                # trim to the clamp (a pure integrator did -- L1 trims reached +-1 to 3 chips
+                # over 2 min, dragging the code off the +-0.5-chip peak and collapsing the deep
+                # while the search stayed strong). Steady state gain*tau/leak still nulls a real
+                # static fit bias; noise averages over ~1/leak windows.
+                trim = (1.0 - args.dll_leak) * dll_trim.get(prn, 0.0) + args.dll_gain * tau
+                dll_trim[prn] = max(-3.0, min(3.0, trim))
                 dll_report.append("PRN %d disc %+.3f trim %+.2f" % (prn, disc, dll_trim[prn]))
             if dll_report:
                 _log("DLL: " + "; ".join(dll_report))
@@ -606,7 +634,8 @@ def main(argv=None):
                 if resid == car_last.get(prn):
                     continue
                 car_last[prn] = resid
-                trim = car_trim.get(prn, 0.0) + args.carrier_gain * resid
+                trim = ((1.0 - args.carrier_leak) * car_trim.get(prn, 0.0)
+                        + args.carrier_gain * resid)
                 car_trim[prn] = max(-args.carrier_max_hz, min(args.carrier_max_hz, trim))
                 car_report.append("PRN %d resid %+.2f Hz trim %+.2f" % (prn, resid, car_trim[prn]))
             if car_report:
@@ -622,7 +651,7 @@ def main(argv=None):
         # ones never drift off-peak. Ephemeris-free (v/c cancels). Bounded +-50 ppm against a rogue fit.
         if len(la_samples) >= args.code_bias_min_sats:
             raw_cb = statistics.median(la_samples)
-            if -50e-6 < raw_cb < 50e-6:
+            if abs(raw_cb) < args.code_bias_max * 1e-6:
                 code_bias_ema = (raw_cb if code_bias_ema is None
                                  else code_bias_ema + args.code_bias_alpha * (raw_cb - code_bias_ema))
                 _log("code-rate clock offset (l-a) %+.3f ppm (raw %+.3f, %d fitted sats, EMA a=%.2f)"
@@ -636,13 +665,16 @@ def main(argv=None):
         if code_bias_ema is not None:
             n_seeded = 0
             for prn, seed in seeds.items():
-                if prn not in fitted:  # weak/new/coasting -> carrier-aiding + the calibrated offset
-                    seed["code_phase_rate"] = cp_rate_from_code_bias(
-                        seed["doppler_hz"], code_bias_ema, args.hops_per_sec,
-                        args.chip_rate_hz, args.carrier_hz)
-                    n_seeded += 1
+                # ALL sats (fitted included): l-a is common to the receiver, so the smooth pooled
+                # value is the correct code rate for everyone -- far quieter than each sat's own
+                # short-baseline slope fit (which stays as the cp0 anchor only). Weak/new/coasting
+                # sats that never fit still get it here.
+                seed["code_phase_rate"] = cp_rate_from_code_bias(
+                    seed["doppler_hz"], code_bias_ema, args.hops_per_sec,
+                    args.chip_rate_hz, args.carrier_hz)
+                n_seeded += 1
             if n_seeded:
-                _log("seeded code rate from (l-a) %+.3f ppm -> %d unfitted sat(s)"
+                _log("seeded code rate from (l-a) %+.3f ppm -> %d sat(s)"
                      % (code_bias_ema * 1e6, n_seeded))
 
         # 4. push consensus seeds to every tracker (DLL trim applied at POST time only)
