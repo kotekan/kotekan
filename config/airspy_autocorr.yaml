@@ -35,6 +35,7 @@ rest_server:
     cors_allow_origins:
         - "http://localhost:8080"
         - "http://127.0.0.1:8080"
+        - "http://gx10.vdl:8080"
 
 samples_per_data_set: 32768
 bytes_per_sample: 2
