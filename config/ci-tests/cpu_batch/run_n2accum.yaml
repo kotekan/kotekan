@@ -53,8 +53,6 @@ telescope:
     dish_grid_size_y: 24
     dish_inputs: []
 
-input_order: CHORDBeamformer
-
 gps_time:
     frame0_nano: start_time_s * GIGA
 

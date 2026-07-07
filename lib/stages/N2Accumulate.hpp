@@ -254,8 +254,7 @@ private:
 
     const int _num_workers; ///< number of OpenMP threads to use to process data
 
-    const bool _do_fringestop;       ///< Whether to fringestop
-    const ElementOrder _input_order; ///< Order label of the inputs
+    const bool _do_fringestop; ///< Whether to fringestop
     const N2VarianceMode _variance_mode;
     const bool _debug_accum_mode;
     const bool _profile_info;

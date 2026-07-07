@@ -6,7 +6,7 @@ Allocating input data...
    Fixed kernel parameters:
        Fbar:   2048   (number of frequencies)
        Tbar:   512   (maximum number of input time samples)
-       Ttilde: 4   (maximum number of output time samples)
+       Ttilde: 80   (maximum number of output time samples)
        Tds:    128   (downsampling factor)
     Dynamic kernel parameters:
     Tbarmin:   0   (input time samples)
@@ -24,7 +24,7 @@ Allocating input data...
    Fixed kernel parameters:
        Fbar:   2048   (number of frequencies)
        Tbar:   512   (maximum number of input time samples)
-       Ttilde: 4   (maximum number of output time samples)
+       Ttilde: 80   (maximum number of output time samples)
        Tds:    128   (downsampling factor)
     Dynamic kernel parameters:
     Tbarmin:   0   (input time samples)

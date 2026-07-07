@@ -74,9 +74,6 @@ private:
 
     // Whether to apply fringestopping phases.
     bool do_fringestop;
-
-    // Ordering of input elements
-    ElementOrder input_order;
     
     // Feed positions in grid frame
     std::vector<vec3d_t> feed_positions_m;

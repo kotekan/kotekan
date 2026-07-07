@@ -222,13 +222,13 @@ private:
         512,
         8,
         2048,
-        4,
+        80,
     };
     static constexpr std::array<std::ptrdiff_t, I_rank> I_dimscalings = {
         1,
         1,
         1,
-        384,
+        16384,
     };
     static constexpr auto I_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
