@@ -55,6 +55,8 @@ telescope:
 
     sampling_rate_MHz: adc_frequency / 1.0e+6
     fft_length: num_samples_per_frame
+    # CHARTS multiplexes multiple antenna elements onto the same ADC in a non-trivial pattern.
+    # This channel indexing describes the downstream result (the output of the F-engine).
     min_science_freq_MHz: 1000 * adc_frequency / num_samples_per_frame / 1.0e+6
     max_science_freq_MHz: 1671 * adc_frequency / num_samples_per_frame / 1.0e+6
 

@@ -53,34 +53,32 @@ telescope:
 
     sampling_rate_MHz: adc_frequency / 1.0e+6
     fft_length: num_samples_per_frame
-    min_science_freq_MHz: 1025 * adc_frequency / num_samples_per_frame / 1.0e+6
-    max_science_freq_MHz: 2048 * adc_frequency / num_samples_per_frame / 1.0e+6
+    min_science_freq_MHz: (2048 - 1023) * adc_frequency / num_samples_per_frame / 1.0e+6
+    max_science_freq_MHz: (2048 -    0) * adc_frequency / num_samples_per_frame / 1.0e+6
 
 ################################################################################
 
 # ADC
 
-adc_frequency: 1.6e+9           # [Hz]
+adc_frequency: 0.8e+9           # [Hz]
 
 ################################################################################
 
 # PFB
 
 num_taps: 4
-num_samples_per_frame: 4096
+num_samples_per_frame: 2048
 
 frequency_pool_rank: 0
 frequency_pool_size: 64
 
 num_frequencies: 16       # 2048 frequencies / 64 gpus * 50% coverage
 # The frequency channels we keep.
-#     A channel's frequency is   freq = channel * adc_frequency / num_samples_per_frame
-#     Note that   channel = freq = 0   is the DC channel.
-#     Channel 1024 has 400 MHz for CHIME, channel 2048 has 800 MHz.
+#     A channel's frequency is   freq = (2048 - channel) * adc_frequency / num_samples_per_frame
+#     Channel 2048 has 400 MHz for CHIME, channel 1024 has 800 MHz.
 #     There are 2.56 channels per MHz, with a channel width of 390625 Hz.
 # (These particular channels were chosen with a fixed step size between these channel boundaries.)
 frequency_channels: [
-    # 1025, 1089, 1153, 1217, 1281, 1345, 1409, 1473, 1537, 1601, 1665, 1729, 1793, 1857, 1921, 1985,
     63, 127, 191, 255, 319, 383, 447, 511, 575, 639, 703, 767, 831, 895, 959, 1023
 ]
 

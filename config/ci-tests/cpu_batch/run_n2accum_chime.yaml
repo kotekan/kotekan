@@ -171,7 +171,6 @@ N2_accumulate:
     variance_mode: CHIMEv1
     bin_in_ERA: false
     do_fringestop: false
-    input_order: CHIMEBeamformer
 
 vis_convert:
     kotekan_stage: n2FrameToVisFrame

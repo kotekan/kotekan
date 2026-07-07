@@ -43,8 +43,7 @@ using kotekan::mod;
  *   @gpu_mem_type         @c float16
  *   @gpu_mem_dim_name     [@c Ttilde][@c Fbar][@c beamQ][@c beamP]
  * @conf  buffer_depth                 Int.  The number of GPU frames used for pipelining.
- * @conf  hfb_second_downsampling_factor                    Int.  Number of input time samples to
- * average per output.
+ * @conf  hfb_second_downsampling_factor  Int.  Number of input time samples to average per output.
  * @conf  num_frequencies              Int.  Number of frequency channels.
  * @conf  frb1_num_beams_P             Int.  Beam dimension P (must satisfy P*Q == 2*256 * 2*4).
  * @conf  frb1_num_beams_Q             Int.  Beam dimension Q.
@@ -199,9 +198,8 @@ cudaEvent_t cudaHFB1Accumulate::execute(cudaPipelineState& /*pipestate*/,
     float16_t* const in_memory = in_nd.data() + pos_in * in_nd.get_stride(0);
     float16_t* const out_memory = out_nd.data() + pos_out * out_nd.get_stride(0);
 
-    launch_accumulate_hfb1(reinterpret_cast<__half*>(out_memory),
-                           reinterpret_cast<const __half*>(in_memory), num_frequencies,
-                           hfb_second_downsampling_factor, device.getStream(cuda_stream_id));
+    launch_accumulate_hfb1(out_memory, in_memory, num_frequencies, hfb_second_downsampling_factor,
+                           device.getStream(cuda_stream_id));
 
     return record_end_event();
 }

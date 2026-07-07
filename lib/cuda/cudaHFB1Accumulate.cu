@@ -37,7 +37,7 @@ __global__ void accumulate_hfb1(__half* __restrict__ const accumulator,
                                 const __half* __restrict__ const input, const int num_frequencies,
                                 const int num_times) {
   // Array indexing:
-  //     input[F][PQ][T]
+  //     input[T][F][PQ]
   //     accumulator[F][PQ]
   const int frequency = blockIdx.x;
   const int pq = 8 * threadIdx.x;
