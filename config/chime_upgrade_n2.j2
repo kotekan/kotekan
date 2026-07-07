@@ -344,7 +344,7 @@ baseband_merge:
 
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: host_buffer_depth
     value_type: int8
     extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
@@ -669,8 +669,6 @@ run_rfi_S012tilde:
             host_rfi_S012tilde_ringbuffer: host_rfi_S012tilde_ringbuffer
         commands:
         - name: cudaInputData
-          # TODO: Don't double-copy bf_mask
-          do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
         - name: cudaSyncInput
@@ -715,8 +713,6 @@ run_rfi_SKtilde:
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         commands:
         - name: cudaInputData
-          # TODO: Don't double-copy bf_mask
-          do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
         - name: cudaSyncInput
@@ -743,8 +739,6 @@ run_rfi_SKbar:
             host_rfi_SKbartilde_ringbuffer: host_rfi_SKbartilde_ringbuffer
         commands:
         - name: cudaInputData
-          # TODO: Don't double-copy bf_mask
-          do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
         - name: cudaSyncInput
