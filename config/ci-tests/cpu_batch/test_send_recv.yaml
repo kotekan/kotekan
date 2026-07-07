@@ -142,7 +142,6 @@ buffer_send_standard:
     buf: send_buffer
     server_ip: 127.0.0.1
     server_port: 11024
-    retry_time: 1.0
     drop_frames: false
 
 buffer_recv_standard:
@@ -169,7 +168,6 @@ buffer_send_standard_noCT:
     buf: send_buffer_noCT
     server_ip: 127.0.0.1
     server_port: 11026
-    retry_time: 1.0
     drop_frames: false
 
 buffer_recv_standard_NoCT:
@@ -187,7 +185,6 @@ fake_n2:
     log_level: WARN
     kotekan_stage: FakeN2
     out_buf: send_N2_buffer
-    num_total_freq: 3
     cadence: 0.2
     wait: false
     mode: default
@@ -198,7 +195,6 @@ buffer_send_n2:
     buf: send_N2_buffer
     server_ip: 127.0.0.1
     server_port: 11025
-    retry_time: 1.0
     drop_frames: false
 
 buffer_recv_n2:
@@ -224,7 +220,6 @@ buffer_send_ndarray:
     buf: send_ndarray_buffer
     server_ip: 127.0.0.1
     server_port: 11027
-    retry_time: 1.0
     drop_frames: false
 
 buffer_recv_ndarray:
@@ -250,7 +245,6 @@ buffer_send_ndarray_nolabel:
     buf: send_ndarray_nolabel_buffer
     server_ip: 127.0.0.1
     server_port: 11028
-    retry_time: 1.0
     drop_frames: false
 
 buffer_recv_ndarray_nolabel:
@@ -314,3 +308,4 @@ buffer_monitor:
         - recv_ndarray_buffer
         - recv_ndarray_nolabel_buffer
     clean_exit_after_frames: 6 # Trigger success after this many frames have been seen
+log_config_usage: fatal_error

@@ -10,10 +10,7 @@ type: config
 log_level: INFO
 
 cpu_affinity: [0, 1]
-num_gpus: 1
 
-frame_arrival_period: 5.12e-6 * samples_per_data_set
-sizeof_int: 4
 
 num_dishes: 64   # Needs to be CHORD/Pathfinder compatible.
 num_polarizations: 2
@@ -21,7 +18,6 @@ num_elements: num_polarizations * num_dishes
 num_freq_bins: 3 # actual CHIME has 4, but then its 4 bins of 4 freqs each, which is a worse test case
 num_local_freq: 4 *  num_freq_bins
 
-input_order: CHIMEBeamformer
 
 pl_mask_downsampling_factor: 2
 pl_mask_dishes_per_bin: 8
@@ -34,7 +30,6 @@ counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
 buffer_depth: 5
 samples_per_data_set: 2048
 sub_integration_ntime: 1024
-num_times: samples_per_data_set
   # num_frame_samples: pl_mask_hilo_split * pl_mask_downsampling_factor * 2  # 2 pl_mask tiles worth of samples
 
 # Pools
@@ -298,3 +293,4 @@ writers:
         file_name: ls_counts
         in_buf: host_ls_counts_buffer
 
+log_config_usage: fatal_error

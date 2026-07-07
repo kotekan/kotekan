@@ -26,6 +26,8 @@ log_level: info
 {% set num_elements = num_polarizations * num_dishes %}
 num_polarizations: {{ num_polarizations }}
 num_dishes: {{ num_dishes }}
+num_dishes_x: 4
+num_dishes_y: 256
 num_elements: {{ num_elements }}
 
 num_components: 2 # Re/Im
@@ -39,7 +41,7 @@ num_ev_to_calculate: 4            # from n2 test case
 samples_per_data_set: 16384
 sample_period_ns: 2560
 network_frame_arrival_period: 16384 * sample_period_ns / 1e9
-baseband_buffer_depth: 3*272 # 3*272 = ~33 seconds after accounting for active frames
+baseband_buffer_depth: 3*32 # 3*272 = ~33 seconds after accounting for active frames
 # see where / if / how to use host_buffer_depth and gpu_buffer_depth
 # must be at least size of gpu_buffer_depth
 host_buffer_depth: 12
@@ -53,12 +55,14 @@ cpu_affinity: [0, 10, 11, 12, 13] #, 14, 15, 16, 17, 18, 19]
 
 # Constants
 sizeof_float: 4
+sizeof_float16: 2
 sizeof_float32: 4
 sizeof_int8: 1
 sizeof_int: 4
 sizeof_int32: 4
 sizeof_uint64: 8
 sizeof_short: 2
+sizeof_uint8: 1
 
 use_hugepages: false
 
@@ -103,14 +107,14 @@ updatable_config:
       kotekan_update_endpoint: json
       enabled: true
       valid_at_time_ns: 0
-  
+
   rfi_second_stage_thresholds:
       kotekan_update_endpoint: json
       thresholds: []
       valid_at_time_ns: 0
 
-  # these are to trigger visibility dumps while starting kotekan early to avoid
-  # packet sync hickups
+# these are to trigger visibility dumps while starting kotekan early to avoid
+# packet sync hickups
   enable_vis_out:
     kotekan_update_endpoint: "json"
     enabled: false
@@ -177,7 +181,7 @@ lost_samples_buffer_{{ id }}:
 # Stages
 
 # set to False on instead read data from disk
-{%- if True %}
+{%- if False %}
 
 # This configuration assumes that the system ports are ordered in as 4x10G
 # links for each QSFP+, and that each QSFP+ port comes from exactly one iceBoard
@@ -275,6 +279,13 @@ zero_samples:
 
 {%- else %}
 
+# frequencies in merged-GPU buffer must be ordered for the UpchanScheduler to
+# work, as a workaround here I shuffle the input files wrt to their buffers.
+# This fails to correctly handle lost samples masks since those are for 4
+# frequencies each (would need to modify zeroSamples)
+# The best solution will be for UchanScheduler to be stage and consume a frame
+# to look at the metadata (and thus frequency ordering) in there.
+#{#
 {%- for id in range(16) %}
 dbg_read_voltages_{{ id }}:
     kotekan_stage: hdf5FileRead
@@ -282,6 +293,134 @@ dbg_read_voltages_{{ id }}:
     out_buf: host_voltage_buffer_{{ id }}
     file_name: host_voltage_buffer_{{ id }}
 {%- endfor %}
+##}
+
+{% set frequency_channels = [269, 277, 285, 293, 301, 477, 485, 493, 541, 717, 749, 901, 957, 981, 989, 1005] %}
+{% for id in range(16) %}   # num_frequencies = 16
+dbg_read_voltages_{{ id }}:
+    kotekan_stage: hdf5FileReadSingleFile
+    input_dir: fengine-data
+    # this is both (up to .h5) the name of the file and the name of the dataset
+    # in the file
+    file_name: voltage
+    num_times: samples_per_data_set
+    frequency_channels: [{{ frequency_channels[id] }}]
+    combine_dishes_and_polarizations: true
+    transpose_frequency_and_time: true
+    out_buf: host_voltage_buffer_{{ id }}
+{% endfor %}
+{% for id in range(16//4) %}   # num_frequencies = 16
+fake_lost_samples_{{ id }}:
+    kotekan_stage: testDataGen
+    type: ramp # to get uint8 as data type
+    value: 0
+    name: lost_samples
+    array_shape: [ 16384 ]
+    dim_name: [ T ]
+    num_local_freq: 4
+    manual_freq_ids:
+{%- for f in range(4) %}
+        - {{ frequency_channels[4*id + f] }}
+{%- endfor %}
+    out_buf: lost_samples_buffer_{{ id }}
+{% endfor %}
+
+#{#
+dbg_read_voltages_0:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_0
+    file_name: host_voltage_buffer_0
+
+dbg_read_voltages_1:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_1
+    file_name: host_voltage_buffer_8
+
+dbg_read_voltages_2:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_2
+    file_name: host_voltage_buffer_12
+
+dbg_read_voltages_3:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_3
+    file_name: host_voltage_buffer_13
+
+dbg_read_voltages_4:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_4
+    file_name: host_voltage_buffer_9
+
+dbg_read_voltages_5:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_5
+    file_name: host_voltage_buffer_4
+
+dbg_read_voltages_6:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_6
+    file_name: host_voltage_buffer_1
+
+dbg_read_voltages_7:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_7
+    file_name: host_voltage_buffer_2
+
+dbg_read_voltages_8:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_8
+    file_name: host_voltage_buffer_14
+
+dbg_read_voltages_9:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_9
+    file_name: host_voltage_buffer_10
+
+dbg_read_voltages_10:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_10
+    file_name: host_voltage_buffer_15
+
+dbg_read_voltages_11:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_11
+    file_name: host_voltage_buffer_11
+
+dbg_read_voltages_12:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_12
+    file_name: host_voltage_buffer_5
+
+dbg_read_voltages_13:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_13
+    file_name: host_voltage_buffer_6
+
+dbg_read_voltages_14:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_14
+    file_name: host_voltage_buffer_7
+
+dbg_read_voltages_15:
+    kotekan_stage: hdf5FileRead
+    input_dir: debug-data
+    out_buf: host_voltage_buffer_15
+    file_name: host_voltage_buffer_3
 
 {%- for id in range(4) %}
 dbg_read_lostsamples_{{ id }}:
@@ -290,9 +429,9 @@ dbg_read_lostsamples_{{ id }}:
     out_buf: lost_samples_buffer_{{ id }}
     file_name: lost_samples_buffer_{{ id }}
 {%- endfor %}
+##}
 
 {%- endif %}
-
 
 ################################################################################
 # Baseband capture and dump system
@@ -460,8 +599,7 @@ set_scatter_indices:
     # TODO: need to undo transpose to beamformer (from cylinder order) in
     # conversion to visFrame
     # FEngine simulator produces beamformer order
-    # FEngine produces correlator order
-    input_order: CHIMEcorrelator
+    input_order: CHIMEBeamformer #CHIMEcorrelator
     output_order: CHIMEBeamformer
     name: scatter_indices
 
@@ -532,7 +670,7 @@ host_rfi_S012_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times
     type: uint64
     dimnames: ["Trfi", "F", "S", "P", "D"]
-    extents: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
+    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_S012bar_ringbuffer:
@@ -541,7 +679,7 @@ host_rfi_S012bar_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times_bar
     type: uint64
     dimnames: ["Trfibar", "F", "S", "P", "D"]
-    extents: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
+    shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_S012tilde_ringbuffer:
@@ -550,7 +688,7 @@ host_rfi_S012tilde_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_uint64 * 3 * num_freq_gpu_buf * rfi_num_times
     type: uint64
     dimnames: ["Trfi", "F", "S"]
-    extents: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
+    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
 
 host_rfi_SKtilde_buffer:
@@ -567,7 +705,7 @@ host_rfi_SKtilde_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
     type: float32
     dimnames: ["Trfi", "F", "S"]
-    extents: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
+    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer:
@@ -584,7 +722,7 @@ host_rfi_RFImask_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * num_freq_gpu_buf * samples_per_data_set / 8
     type: uint1x8
     dimnames: ["T8hi128", "F", "T8lo128"]
-    extents: [gpu_buffer_depth * samples_per_data_set / 8 / 128, num_freq_gpu_buf, 128]
+    shape: [gpu_buffer_depth * samples_per_data_set / 8 / 128, num_freq_gpu_buf, 128]
     metadata_pool: main_pool
 
 host_rfi_SKbar_buffer:
@@ -600,7 +738,7 @@ host_rfi_SKbar_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_float32 * num_dishes * num_polarizations * 3 * num_freq_gpu_buf * rfi_num_times_bar
     type: float32
     dimnames: ["Trfi", "F", "S", "P", "D"]
-    extents: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizaions, num_dishes]
+    shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3, num_polarizaions, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_SKbartilde_buffer:
@@ -616,7 +754,7 @@ host_rfi_SKbartilde_ringbuffer:
     ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times_bar
     type: float32
     dimnames: ["Trfi", "F", "S"]
-    extents: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3]
+    shape: [gpu_buffer_depth * rfi_num_times_bar, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
 
 # The mask for second stage RFI excision.
@@ -1096,6 +1234,534 @@ switch_failed_out:
     updatable_config: /updatable_config/enable_failed_out
 
 ################################################################################
+# FRB beamforming
+
+# UpchannelizationSchedule (used by setUpchanGain) expects these in the root level of the config tree.
+# TODO: change this and get the frequency indices from get_coarse_freq() so
+# that input files do not contain per-node information
+#
+# adapted from fengine_chime.j2
+# TODO: this cannot be a fixed list since the frequencies change per x-engine node
+#       instead we can / should used coarse_freq metadata entry
+# The frequency channels we keep.
+#     Channel 1024 has 400 MHz for CHIME, channel 0 has 800 MHz.
+#     There are 2.56 channels per MHz, with a channel width of 390625 Hz.
+#
+# NOTE: these *must* be sorted since the are passed through a std::set which
+# sorts them
+frequency_channels: [ 269, 277, 285, 293, 301, 477, 485, 493, 541, 717, 749, 901, 957, 981, 989, 1005 ]
+
+upchan_factors: [16]
+# ranges are [min, max)
+upchan_channel_ranges:
+    16: [0, 2048]
+
+FRB:
+    # cudaQuantize requires `frb_num_output_times` to be a multiple of 256
+    frb_num_output_times: 256
+    frb_chunk_size: 256
+    frb_downsampling_factor: 24 * 16 # 384
+
+    # The GPU-local (not global) channel index range for each upchannelization factor
+
+    # actual = 16, scaled = 256
+    factor_upchan_out: 16
+    upchan_U16_max_num_channels: 16 # probably should be {{ num_freq_gpu_buf }}
+    upchan_U16_min_channel: 0
+    upchan_U16_max_channel: 16 # probably should be {{ num_freq_gpu_buf }}
+    upchan_U16_min_output_channel: 0
+    upchan_U16_max_output_channel: (upchan_U16_max_channel - upchan_U16_min_channel) * 16
+    upchan_U16_max_num_output_channels: upchan_U16_max_output_channel - upchan_U16_min_output_channel
+
+    # TODO: remove
+    frb1_num_beams_P: 2 * num_dishes_y
+    frb1_num_beams_Q: 2 * num_dishes_x
+
+    {%- set frb2_num_beams_x = 4 %}
+    {%- set frb2_num_beams_y = 256 %}
+    {%- set frb2_num_beams = frb2_num_beams_x * frb2_num_beams_y %}
+    frb2_num_beams_x: {{ frb2_num_beams_x }}
+    frb2_num_beams_y: {{ frb2_num_beams_y }}
+    frb2_num_beams: {{ frb2_num_beams }}
+
+    # Buffers
+
+    # Upchanneling Gains
+    host_upchan_U16_gain_buffer:
+        # TODO: check why not element specific, is here gains == complex_phase_for_ideal_system?
+        kotekan_buffer: ndarray
+        num_frames: 1
+        # TODO: check if factor_upchan_out was the correct 16 to use here
+        value_type: float16
+        extents: [upchan_U16_max_num_channels * 16]
+        quantity_name: "G"
+        dimnames: ["Fbar"]
+        dimscalings: [1]
+        metadata_pool: main_pool
+
+    # Upchannelized voltages
+    host_upchan_U16_voltage_buffer:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        value_type: int4x2_swapped_withoffset
+        extents: [samples_per_data_set / 16, upchan_U16_max_num_channels * 16, num_polarizations, num_dishes]
+        quantity_name: "Ebar"
+        dimnames: ["Tbar", "Fbar", "P", "D"]
+        dimscalings: [16, 1, 1, 1]
+        metadata_pool: main_pool
+    host_upchan_U16_voltage_ringbuffer:
+        kotekan_buffer: ring
+        ring_buffer_size: gpu_buffer_depth * num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
+        metadata_pool: main_pool
+
+    # Beam locations
+
+    host_frb2_beam_positions_buffer:
+        kotekan_buffer: ndarray
+        num_frames: 1
+        value_type: float32
+        extents: [frb2_num_beams, 2]
+        quantity_name: "frb2_beam_positions"
+        dimnames: ["R", "X/Y"]
+        dimscalings: [1, 1]
+        metadata_pool: main_pool
+
+    # Beamforming Phases and interpolation weights
+
+    host_frb1_U16_phase_buffer:
+        kotekan_buffer: ndarray
+        num_frames: 1
+        # TODO: check what this "16" is
+        value_type: float16
+        extents: [upchan_U16_max_num_channels * 16, num_polarizations, num_dishes_x, num_dishes_y, num_components]
+        quantity_name: "W"
+        dimnames: ["Fbar", "P", "dishN", "dishM", "C"]
+        dimscalings: [1, 1, 1, 1, 1]
+        metadata_pool: main_pool
+
+    host_frb2_weights_buffer:
+        kotekan_buffer: ndarray
+        num_frames: 1
+        value_type: float16
+        extents: [upchan_U16_max_num_output_channels, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P]
+        quantity_name: "W2"
+        dimnames: ["Fbar", "R", "beamQ", "beamP"]
+        dimscalings: [1, 1, 1, 1]
+        metadata_pool: main_pool
+
+    # (Intermediate) Beams
+
+    host_frb1_beams_buffer:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        value_type: float16
+        extents: [frb_num_output_times, upchan_U16_max_num_output_channels, frb1_num_beams_Q, frb1_num_beams_P]
+        quantity_name: "I"
+        dimnames: ["Ttilde", "Fbar", "beamQ", "beamP"]
+        dimscalings: [frb_downsampling_factor, 1, 1, 1]
+        metadata_pool: main_pool
+    host_frb1_beams_ringbuffer:
+        kotekan_buffer: ring
+        num_frames: gpu_buffer_depth
+        ring_buffer_size: gpu_buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
+        metadata_pool: main_pool
+
+    host_frb2_beams_buffer:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        value_type: float16
+        extents: [1, frb2_num_beams, upchan_U16_max_num_output_channels, frb_num_output_times]
+        quantity_name: "I2"
+        dimnames: ["Ttildehi256", "R", "Fbar", "Ttildelo256"]
+        dimscalings: [frb_downsampling_factor * 256, 1, 1, frb_downsampling_factor]
+        metadata_pool: main_pool
+
+    host_frb3_beams_buffer:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        value_type: uint8
+        extents: [1, frb2_num_beams/4, upchan_U16_max_num_output_channels/64, 16,
+                  4, 4, 16, 16]
+        quantity_name: "I3"
+        dimnames: ["Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "Fbarlo16", "Ttildelo16"]
+        dimscalings: [frb_downsampling_factor * 256, 4, 64, frb_downsampling_factor * 16, 1, 16, 1,
+                      frb_downsampling_factor]
+        metadata_pool: main_pool
+
+    host_frb3_beams_offsetscale_buffer:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        # the output is quantized in chunks of `frb_chunk_size`
+        value_type: float16
+        extents: [1, frb2_num_beams/4, upchan_U16_max_num_output_channels/64, 16, 4, 4, 2]
+        quantity_name: "I3_offsetscale"
+        dimnames: ["Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "offset/scale"]
+        dimscalings: [frb_downsampling_factor * 256, 4, 64, frb_downsampling_factor * 16, 1, 16, 1]
+        metadata_pool: main_pool
+
+    # Stages
+
+    run_set_upchan_U16_gain:
+        kotekan_stage: setUpchanGain
+        upchan_factor: factor_upchan_out
+        upchan_max_num_channels: upchan_U16_max_num_channels
+        upchan_gain: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        upchan_gain_buffer: host_upchan_U16_gain_buffer
+
+    run_upchan_U16:
+        cpu_0:
+            kotekan_stage: testDataGenFewHot
+            type: fewhot
+            freq_id: {{ frequency_channels }}
+            elemns:
+#{# two elements in EW only
+                - 0
+                - 512
+#}#
+### all elements in EW, but delta in NS
+                - 0
+                - 256
+                - 512
+                - 768
+###
+#{# two bands EW spanning full NS
+{%- for el in range(0,256) %}
+                - {{ el }}
+{%- endfor %}
+{%- for el in range(256,256+256) %}
+                - {{ el }}
+{%- endfor %}
+#}#
+            samples_per_dataset: samples_per_data_set
+            out_buf: host_upchan_U16_voltage_buffer
+        gpu_0:
+#{#
+            kotekan_stage: cudaProcess
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            # maybe? Depends on the chunking of the previous stage
+            frame_arrival_period: network_frame_arrival_period
+            num_times: samples_per_data_set
+            in_buffers:
+                host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+                host_upchan_U16_gain_buffer: host_upchan_U16_gain_buffer
+            out_buffers:
+                host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
+            commands:
+            - name: cudaInputData
+              do_once: true
+              in_buf: host_upchan_U16_gain_buffer
+              gpu_mem: upchan_U16_gain_buffer
+            - name: cudaSyncInput
+            - name: cudaUpchannelizer_chime_U16
+              poison_buffers: yes
+              voltage_name: xposed_voltage
+              upchan_U16_gain_name: upchan_U16_gain
+              upchan_U16_voltage_name: upchan_U16_voltage
+              Fmin: upchan_U16_min_channel
+              Fmax: upchan_U16_max_channel
+            - name: cudaSyncOutput
+#}#
+            kotekan_stage: cudaProcess
+            log_level: debug
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            frame_arrival_period: network_frame_arrival_period
+            num_times: 1024
+            in_buffers:
+                host_upchan_U16_voltage_buffer: host_upchan_U16_voltage_buffer
+            out_buffers:
+                host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
+            commands:
+            - name: cudaCopyToRingbuffer
+              input_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
+              ring_buffer_size: gpu_buffer_depth * input_size
+              in_buf: host_upchan_U16_voltage_buffer
+              signal_buf: host_upchan_U16_voltage_ringbuffer
+              gpu_mem_output: upchan_U16_voltage_buffer
+
+#{#
+    run_recv_upchan_U16_voltage:
+        gpu_0:
+            kotekan_stage: cudaProcess
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            # maybe? Depends on the chunking of the previous stage
+            frame_arrival_period: network_frame_arrival_period
+            num_times: samples_per_data_set
+            in_buffers:
+                host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
+            out_buffers:
+                host_upchan_U16_voltage_buffer: host_upchan_U16_voltage_buffer
+            commands:
+            - name: cudaCopyFromRingbuffer
+              host_signal: host_upchan_U16_voltage_ringbuffer
+              gpu_mem_input: upchan_U16_voltage_buffer
+              output_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
+              ring_buffer_size: buffer_depth * output_size
+              out_buf: host_upchan_U16_voltage_buffer
+#}#
+
+    # FRB 1
+
+    run_set_frb1_U16_phase:
+        kotekan_stage: setFRB1Phase
+        upchan_factor: factor_upchan_out
+        # TODO: replace the stage with one that actually takes the gains into account
+        # TODO: need to worry about over / underflow
+        frb1_input_scale: 1.0 / 32
+        frb1_swap_MN: true
+        upchan_min_channel: upchan_U16_min_channel
+        upchan_max_channel: upchan_U16_max_channel
+        upchan_max_num_channels: upchan_U16_max_num_channels
+        frb1_phase: host_frb1_U16_phase_buffer
+
+    run_frb1_U16:
+        gpu_0:
+            kotekan_stage: cudaProcess
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            # maybe? Depends on the chunking of the previous stage
+            frame_arrival_period: network_frame_arrival_period
+            num_times: samples_per_data_set
+            in_buffers:
+                host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
+                host_frb1_U16_phase_buffer: host_frb1_U16_phase_buffer
+            out_buffers:
+                host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
+            commands:
+            - name: cudaInputData
+              do_once: true
+              in_buf: host_frb1_U16_phase_buffer
+              gpu_mem: frb1_U16_phase_buffer
+            - name: cudaSyncInput
+            - name: cudaCHIMEFRBBeamformer_chime_U16
+              voltage_name: upchan_U16_voltage
+              frb_phase_name: frb1_U16_phase
+              frb_beamgrid_name: frb1_beams
+
+    # FRB 2 and 3
+
+    run_set_beam_positions:
+        kotekan_stage: givenDataGen
+        out_buf: host_frb2_beam_positions_buffer
+        # beam separation in EW should be 0.4deg
+        # beam separtion in NS is such that sin(angle) changes by sqrt(3)/256
+        # from https://github.com/chime-frb-open-data/chime-frb-beam-model/blob/e65b070243056fe5d33a2b1f4ce52ce685b74fc5/cfbm/formed.py#L86 via Paul Scholz
+        # these are in degrees
+        {% set achromatic_beam_angles_NS = [
+          -59.233549987193, -58.483949017744, -57.750011991337, -57.030682735392,
+          -56.325015186745, -55.632157961228, -54.951341594436, -54.281867909548,
+          -53.623101094342, -52.974460163257, -52.335412550528, -51.705468633724,
+          -51.084177027739, -50.471120520824, -49.865912548762, -49.268194122623,
+          -48.677631140774, -48.093912028012, -47.516745654459, -46.945859494750,
+          -46.380997994466, -45.821921115990, -45.268403040290, -44.720231004668,
+          -44.177204259468, -43.639133129205, -43.105838165609, -42.577149381831,
+          -42.052905558502, -41.532953613565, -41.017148028873, -40.505350327419,
+          -39.997428595831, -39.493257047447, -38.992715621809, -38.495689616956,
+          -38.002069351269, -37.511749852028, -37.024630568130, -36.540615104732,
+          -36.059610977784, -35.581529386675, -35.106285003368, -34.633795776594,
+          -34.163982749795, -33.696769891667, -33.232083938230, -32.769854245498,
+          -32.310012651875, -31.852493349502, -31.397232763854, -30.944169440944,
+          -30.493243941552, -30.044398741939, -29.597578140579, -29.152728170452,
+          -28.709796516497, -28.268732437860, -27.829486694586, -27.392011478463,
+          -26.956260347703, -26.522188165229, -26.089751040299, -25.658906273255,
+          -25.229612303199, -24.801828658382, -24.375515909156, -23.950635623309,
+          -23.527150323638, -23.105023447617, -22.684219309041, -22.264703061504,
+          -21.846440663620, -21.429398845876, -21.013545079011, -20.598847543840,
+          -20.185275102441, -19.772797270613, -19.361384191546, -18.951006610626,
+          -18.541635851308, -18.133243792004, -17.725802843931, -17.319285929850,
+          -16.913666463666, -16.508918330831, -16.105015869508, -15.701933852452,
+          -15.299647469582, -14.898132311183, -14.497364351730, -14.097319934285,
+          -13.697975755437, -13.299308850762, -12.901296580776, -12.503916617343,
+          -12.107146930528, -11.710965775867, -11.315351682022, -10.920283438811,
+          -10.525740085598, -10.131700900000, -9.738145386924, -9.345053267885,
+          -8.952404470621, -8.560179118959, -8.168357522938, -7.776920169160,
+          -7.385847711369, -6.995120961233, -6.604720879320, -6.214628566261,
+          -5.824825254074, -5.435292297655, -5.046011166415, -4.656963436047,
+          -4.268130780430, -3.879494963637, -3.491037832061, -3.102741306625,
+          -2.714587375093, -2.326558084442, -1.938635533317, -1.550801864542,
+          -1.163039257672, -0.775329921606, -0.387656087213, 0.000000000000,
+          0.387656087213, 0.775329921606, 1.163039257672, 1.550801864542,
+          1.938635533317, 2.326558084442, 2.714587375093, 3.102741306625,
+          3.491037832061, 3.879494963637, 4.268130780430, 4.656963436047,
+          5.046011166415, 5.435292297655, 5.824825254074, 6.214628566261,
+          6.604720879320, 6.995120961233, 7.385847711369, 7.776920169160,
+          8.168357522938, 8.560179118959, 8.952404470621, 9.345053267885,
+          9.738145386924, 10.131700900000, 10.525740085598, 10.920283438811,
+          11.315351682022, 11.710965775867, 12.107146930528, 12.503916617343,
+          12.901296580776, 13.299308850762, 13.697975755437, 14.097319934285,
+          14.497364351730, 14.898132311183, 15.299647469582, 15.701933852452,
+          16.105015869508, 16.508918330831, 16.913666463666, 17.319285929850,
+          17.725802843931, 18.133243792004, 18.541635851308, 18.951006610626,
+          19.361384191546, 19.772797270613, 20.185275102441, 20.598847543840,
+          21.013545079011, 21.429398845876, 21.846440663620, 22.264703061504,
+          22.684219309041, 23.105023447617, 23.527150323638, 23.950635623309,
+          24.375515909156, 24.801828658382, 25.229612303199, 25.658906273255,
+          26.089751040299, 26.522188165229, 26.956260347703, 27.392011478463,
+          27.829486694586, 28.268732437860, 28.709796516497, 29.152728170452,
+          29.597578140579, 30.044398741939, 30.493243941552, 30.944169440944,
+          31.397232763854, 31.852493349502, 32.310012651875, 32.769854245498,
+          33.232083938230, 33.696769891667, 34.163982749795, 34.633795776594,
+          35.106285003368, 35.581529386675, 36.059610977784, 36.540615104732,
+          37.024630568130, 37.511749852028, 38.002069351269, 38.495689616956,
+          38.992715621809, 39.493257047447, 39.997428595831, 40.505350327419,
+          41.017148028873, 41.532953613565, 42.052905558502, 42.577149381831,
+          43.105838165609, 43.639133129205, 44.177204259468, 44.720231004668,
+          45.268403040290, 45.821921115990, 46.380997994466, 46.945859494750,
+          47.516745654459, 48.093912028012, 48.677631140774, 49.268194122623,
+          49.865912548762, 50.471120520824, 51.084177027739, 51.705468633724,
+          52.335412550528, 52.974460163257, 53.623101094342, 54.281867909548,
+          54.951341594436, 55.632157961228, 56.325015186745, 57.030682735392,
+          57.750011991337, 58.483949017744, 59.233549987193, 60.000000000000,
+        ] %}
+        {% set achromatic_beam_angles_EW = [ -0.4, 0.0, 0.4, 0.8 ] %}
+        {% set m_pi = 3.14159265358979 %}
+        {% set sin_achromatic_beam_angles_EW = [
+          -0.00698126029796155, 0.0, 0.00698126029796155, 0.0139621803391453
+        ] %}
+        values:
+# direction sine in the normal vector sin(angle-from-zenith-towards-x), equally spaced for CHIME
+{%- for ns in range(frb2_num_beams_y) %}
+{%- for ew in range(frb2_num_beams_x) %}
+          - {{ sin_achromatic_beam_angles_EW[ew] }}
+          - {{ (ns - 127)*1.73205080756888/256 }}
+{%- endfor %}
+{%- endfor %}
+        name: frb2_beam_positions
+        datatype: float32
+        array_shape: [ {{ frb2_num_beams }}, 2]
+        dim_scalings: [ 1, 1 ]
+        dim_name: [ "R", "X/Y" ]
+        do_once: yes
+
+    run_calc_frb2_weights:
+###
+        kotekan_stage: calcFRB2Weights
+        cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+        frb2_num_frequencies: upchan_U16_max_num_output_channels
+        frb2_beam_positions: host_frb2_beam_positions_buffer
+        frb1_swap_MN: true # yes, this is used by FRB 2
+        frb2_weights: host_frb2_weights_buffer
+        num_threads: 32
+###
+#{#
+        kotekan_stage: hdf5FileRead
+        input_dir: frb_weights
+        do_once: yes
+        out_buf: host_frb2_weights_buffer
+        file_name: host_frb2_weights_buffer
+#}#
+
+    run_frb23:
+        gpu_0:
+            kotekan_stage: cudaProcess
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            # maybe? Depends on the chunking of the previous stage
+            frame_arrival_period: network_frame_arrival_period
+            num_times: samples_per_data_set
+            in_buffers:
+                host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
+                host_frb2_weights_buffer: host_frb2_weights_buffer
+            out_buffers:
+                host_frb1_beams_buffer: host_frb1_beams_buffer
+                host_frb2_beams_buffer: host_frb2_beams_buffer
+                host_frb3_beams_buffer: host_frb3_beams_buffer
+                host_frb3_beams_offsetscale_buffer: host_frb3_beams_offsetscale_buffer
+            commands:
+            - name: cudaInputData
+              do_once: true
+              in_buf: host_frb2_weights_buffer
+              gpu_mem: frb2_weights_buffer
+            - name: cudaSyncInput
+            - name: cudaFRBBeamReformer
+              frb1_max_num_frequencies: upchan_U16_max_num_output_channels
+              frb1_max_num_times: buffer_depth * frb_num_output_times
+              frb2_num_frequencies: upchan_U16_max_num_output_channels
+              #frb1_num_beams_P: frb1_num_beams_P
+              #frb1_num_beams_Q: frb1_num_beams_Q
+              # frb2_num_beams: frb2_num_beams
+              frb2_num_times: frb_num_output_times
+              in_signal: host_frb1_beams_ringbuffer
+              frb1_beams_name: frb1_beams
+              frb2_weights_name: frb2_weights
+              frb2_beams_name: frb2_beams
+            - name: cudaQuantize8 # TODOL use "CHIME" variant
+              # the output is quantized in chunks of `frb_chunk_size`
+              num_beams: frb2_num_beams
+              num_frequencies: upchan_U16_max_num_output_channels
+              num_times: frb_num_output_times
+              gpu_mem_input: frb2_beams
+              gpu_mem_output: frb3_beams
+              gpu_mem_offsetscale: frb3_beams_offsetscale
+            - name: cudaSyncOutput
+            - name: cudaCopyFromRingbuffer
+              # TODO: Don't do this in production
+              host_signal: host_frb1_beams_ringbuffer
+              gpu_mem_input: frb1_beams_buffer
+              output_size: sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
+              ring_buffer_size: gpu_buffer_depth * output_size
+              out_buf: host_frb1_beams_buffer
+            - name: cudaOutputData
+              # TODO: Don't do this in production
+              gpu_mem: frb2_beams_buffer
+              out_buf: host_frb2_beams_buffer
+            - name: cudaOutputData
+              gpu_mem: frb3_beams_buffer
+              out_buf: host_frb3_beams_buffer
+            - name: cudaOutputData
+              gpu_mem: frb3_beams_offsetscale_buffer
+              out_buf: host_frb3_beams_offsetscale_buffer
+
+    # dump data for debugging
+    dump_frb_beams:
+        max_frames: 1
+        upchan_U16_voltage:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_beams
+            input_order: CHIMEBeamformer # this makes no sense, but is required
+            in_buf: host_upchan_U16_voltage_buffer
+            file_name: upchan_U16_voltage_buffer
+        beams1:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_beams
+            input_order: CHIMEBeamformer # this makes no sense, but is required
+            in_buf: host_frb1_beams_buffer
+            file_name: host_frb1_beams_buffer
+        beams2:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_beams
+            input_order: CHIMEBeamformer # this makes no sense, but is required
+            in_buf: host_frb2_beams_buffer
+            file_name: host_frb2_beams_buffer
+        beams:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_beams
+            input_order: CHIMEBeamformer # this makes no sense, but is required
+            in_buf: host_frb3_beams_buffer
+            file_name: host_frb3_beams_buffer
+        offsetscale:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_beams
+            input_order: CHIMEBeamformer # this makes no sense, but is required
+            in_buf: host_frb3_beams_offsetscale_buffer
+            file_name: host_frb3_offsetscale_buffer
+        host_frb2_beam_positions_buffer:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_weights
+            input_order: CHIMEBeamformer # this makes no sense, but is required
+            in_buf: host_frb2_beam_positions_buffer
+            file_name: host_frb2_beam_positions_buffer
+        host_frb2_weights_buffer:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_weights
+            input_order: CHIMEBeamformer # this makes no sense, but is required
+            in_buf: host_frb2_weights_buffer
+            file_name: host_frb2_weights_buffer
+
+
+################################################################################
 # output to receivers
 
 # this will move to the baseband receiver eventually
@@ -1136,16 +1802,32 @@ write_failed_vis:
     file_length: 256
     in_buf: failed_vis_buffer_post
 
-# System to optionally dump sk statistics data
+# enable to dump sk statistics data
+{% if False %}
+host_rfi_SKtilde_buffer:
+    kotekan_buffer: ndarray
+    num_frames: host_buffer_depth
+    frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [rfi_num_times, num_freq_gpu_buf, 3]
+    metadata_pool: main_pool
 host_rfi_SKtilde_buffer_post:
     kotekan_buffer: ndarray
     num_frames: host_buffer_depth
     frame_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
-    value_type: float32
+    type: float32
     dimnames: ["Trfi", "F", "S"]
-    extents: [rfi_num_times, num_freq_gpu_buf, 3]
+    shape: [rfi_num_times, num_freq_gpu_buf, 3]
     metadata_pool: main_pool
-
+host_rfi_SKtilde_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: gpu_buffer_depth
+    ring_buffer_size: gpu_buffer_depth * sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
+    type: float32
+    dimnames: ["Trfi", "F", "S"]
+    shape: [gpu_buffer_depth * rfi_num_times, num_freq_gpu_buf, 3]
+    metadata_pool: main_pool
 run_recv_rfi_SKtilde:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -1164,22 +1846,21 @@ run_recv_rfi_SKtilde:
           output_size: sizeof_float32 * 3 * num_freq_gpu_buf * rfi_num_times
           ring_buffer_size: gpu_buffer_depth * output_size
           out_buf: host_rfi_SKtilde_buffer
-
 switch_sk_out:
     kotekan_stage: bufferSwitch
     in_bufs:
       - enabled: host_rfi_SKtilde_buffer
     out_buf: host_rfi_SKtilde_buffer_post
     updatable_config: /updatable_config/enable_sk_out
-
 dump_rfi_SKtilde:
-    kotekan_stage: hdf5FileWrite
+   kotekan_stage: hdf5FileWrite
     log_level: warn
-    base_dir: rfi_sk_dump
-    in_buf: host_rfi_SKtilde_buffer_post
-    file_name: host_rfi_SKtilde_buffer
-    create_single_file: true
-    input_order: CHIMEBeamformer
+   base_dir: rfi_sk_dump
+   in_buf: host_rfi_SKtilde_buffer_post
+   file_name: host_rfi_SKtilde_buffer
+   create_single_file: true
+   input_order: CHIMEBeamformer
+{% endif %}
 
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)
