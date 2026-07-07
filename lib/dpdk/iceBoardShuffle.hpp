@@ -671,7 +671,7 @@ inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf* mbuf) {
     }
 
     int cur_mbuf_len = mbuf->data_len;
-    assert(cur_mbuf_len >= flag_len);
+    assert(cur_mbuf_len >= flag_len + rounding_factor);
     assert(previous_segment_sizes + cur_mbuf_len - flag_len - rounding_factor
            == 4922); // Make sure the flag address is correct.
     const uint8_t* mbuf_data =
