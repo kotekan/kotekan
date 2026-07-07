@@ -660,16 +660,19 @@ inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf* mbuf) {
     const int flag_len = 4; // 32-bits = 4 bytes
     const int rounding_factor = 2;
 
-    // Go to the last part of the packet
-    // Note this assumes that the footer doesn't cross two mbuf
-    // segment, but based on the packet design this should never happen.
+#ifndef NDEBUG
+    uint32_t previous_segment_sizes = 0;
+#endif
     while (mbuf->next != nullptr) {
+#ifndef NDEBUG
+        previous_segment_sizes += mbuf->data_len;
+#endif
         mbuf = mbuf->next;
     }
 
     int cur_mbuf_len = mbuf->data_len;
-    assert(cur_mbuf_len >= flag_len);
-    assert(2048 * 2 + cur_mbuf_len - flag_len - rounding_factor
+    assert(cur_mbuf_len >= flag_len + rounding_factor);
+    assert(previous_segment_sizes + cur_mbuf_len - flag_len - rounding_factor
            == 4922); // Make sure the flag address is correct.
     const uint8_t* mbuf_data =
         rte_pktmbuf_mtod_offset(mbuf, uint8_t*, cur_mbuf_len - flag_len - rounding_factor);
