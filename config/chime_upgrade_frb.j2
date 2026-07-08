@@ -1474,12 +1474,12 @@ FRB:
                 - 0
                 - 512
 #}#
-### all elements in EW, but delta in NS
+#{# all elements in EW, but delta in NS
                 - 0
                 - 256
                 - 512
                 - 768
-###
+#}#
 #{# two bands EW spanning full NS
 {%- for el in range(0,256) %}
                 - {{ el }}
@@ -1490,6 +1490,26 @@ FRB:
 #}#
             samples_per_dataset: samples_per_data_set
             out_buf: host_upchan_U16_voltage_buffer
+
+    run_send_upchan_U16_voltage:
+        gpu_0:
+            kotekan_stage: cudaProcess
+            log_level: debug
+            gpu_id: 0
+            buffer_depth: gpu_buffer_depth
+            frame_arrival_period: network_frame_arrival_period
+            num_times: 1024
+            in_buffers:
+                host_upchan_U16_voltage_buffer: host_upchan_U16_voltage_buffer
+            out_buffers:
+                host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
+            commands:
+            - name: cudaCopyToRingbuffer
+              input_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
+              ring_buffer_size: gpu_buffer_depth * input_size
+              in_buf: host_upchan_U16_voltage_buffer
+              signal_buf: host_upchan_U16_voltage_ringbuffer
+              gpu_mem_output: upchan_U16_voltage_buffer
         gpu_0:
             kotekan_stage: cudaProcess
             log_level: debug
@@ -1510,7 +1530,7 @@ FRB:
               gpu_mem_output: upchan_U16_voltage_buffer
 {%- else %}
         gpu_0:
-            kotekan_stage: cudaProcess
+           kotekan_stage: cudaProcess
             gpu_id: 0
             buffer_depth: gpu_buffer_depth
             # maybe? Depends on the chunking of the previous stage
