@@ -3,7 +3,6 @@
 #include "Config.hpp"         // for Config
 #include "DataType.hpp"       // for float16_t
 #include "N2Util.hpp"         // for frameID
-#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"         // for Buffer
 #include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
 #include "configUpdater.hpp"  // for configUpdater
@@ -22,8 +21,6 @@ using kotekan::Config;
 using kotekan::configUpdater;
 using kotekan::Stage;
 using nlohmann::json;
-
-REGISTER_KOTEKAN_STAGE(processFeedGains);
 
 processFeedGains::processFeedGains(Config& config, const std::string& unique_name,
                                    bufferContainer& buffer_container) :
@@ -84,14 +81,6 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
                     out_buf_size, out_buf->frame_size);
     }
 
-    // Set (originate) the output buffer frame description. out_buf is declared
-    // `standard` here: this gains subsystem (chime_upgrade_test_gains, DPDK-only)
-    // hasn't been migrated to ndarray, so the stage attaches the descriptor itself
-    // via ensure_frame_desc. This works equally if out_buf is later declared
-    // ndarray, in which case ensure_frame_desc validates against the config
-    // descriptor instead of attaching one.
-    set_frame_desc(out_buf);
-
     // Allocate permanent buffers to hold the loaded gains in memory. These will only
     // be updated whenever the gains are updated, and get repeatedly copied
     // into received kotekan buffers
@@ -100,39 +89,6 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
     mask_store_buf = std::vector<uint8_t>(num_elements, 1u);
 }
 
-processFeedGains::~processFeedGains() {}
-
-void processFeedGains::set_frame_desc(Buffer* buf) {
-    buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float16>, 4>::describe(
-        "W",
-        {static_cast<ptrdiff_t>(num_beams), static_cast<ptrdiff_t>(num_local_freq * upchan_factor),
-         static_cast<ptrdiff_t>(num_elements), static_cast<ptrdiff_t>(num_components)},
-        {"R", "Fbar", "E", "C"}, {1, 1, 1, 1}));
-
-    freq_upchan_factor = std::vector<int>(num_local_freq * upchan_factor, upchan_factor);
-    freq_upchan_index = std::vector<int>(num_local_freq * upchan_factor);
-    coarse_freq = std::vector<int>(num_local_freq * upchan_factor, -1);
-
-    // set the actual frequency upchan indices. Assume increasing
-    // upchannelized index
-    // TODO: this needs to be consistent with the upchannelizer, and
-    // potentially configurable
-    for (uint64_t f = 0; f < num_local_freq * upchan_factor; ++f) {
-        freq_upchan_index[f] = static_cast<int>(f % upchan_factor);
-    }
-}
-
-void processFeedGains::copy_upchannelize_f(const float* src_f, float16_t* dst_f, size_t fid) {
-    (void)fid; // not used in the default implementation
-    auto scaling_factor = this->scaling_factor;
-    for (size_t u = 0; u < upchan_factor; ++u) {
-        // copy ell elements from the source into each fine channel
-        float16_t* u_ptr = dst_f + u * num_elements * num_components;
-        // apply the constant scaling factor
-        std::transform(src_f, src_f + num_components * num_elements, u_ptr,
-                       [scaling_factor](float v) { return float16_t(v * scaling_factor); });
-    }
-}
 
 void processFeedGains::copy_upchannelize(float* frame, size_t beam_id) {
     size_t in_fstride = num_elements * num_components;
@@ -153,6 +109,11 @@ void processFeedGains::copy_upchannelize(float* frame, size_t beam_id) {
 }
 
 void processFeedGains::main_thread() {
+    // Set (originate) the output buffer frame description. This is done
+    // in the main thread instead of the constructor so that implementations
+    // in derived classes will be called correctly
+    set_frame_desc(out_buf);
+
     // make frame IDs for each gain buffer, and the output buffers
     N2::frameID in_mask_frame_id(in_mask_buf);
     N2::frameID out_buf_frame_id(out_buf);
@@ -171,11 +132,17 @@ void processFeedGains::main_thread() {
 
             // check if this buffer has an available frame, using a short
             // timeout to avoid blocking
-            timespec timeout = double_to_ts(current_time());
+            timespec timeout;
+            if (set_coarse_freqs_once) {
+                // first frame - need to wait until we get something
+                timeout = double_to_ts(60 * 60 * 24);
+            } else {
+                timeout = double_to_ts(current_time());
+            }
             int status = buf->wait_for_full_frame_timeout(unique_name, frame_id, timeout);
 
             if (status == 0) {
-                DEBUG("Received gain update for beam {:d}", beam_id);
+                INFO("Received gain update for beam {:d}", beam_id);
                 // frame available
                 float* frame = (float*)buf->frames.at(frame_id);
                 // copy gains into the permanent buffer and upchannelize
@@ -206,7 +173,6 @@ void processFeedGains::main_thread() {
         int status =
             in_mask_buf->wait_for_full_frame_timeout(unique_name, in_mask_frame_id, timeout);
         if (status == 0) {
-            DEBUG("Received bad input mask update");
             // frame available, so update
             uint8_t* in_mask_frame = (uint8_t*)in_mask_buf->frames.at(in_mask_frame_id);
             // copy into the permanent buffer
