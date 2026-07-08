@@ -185,7 +185,7 @@ lost_samples_buffer_{{ id }}:
 # Stages
 
 # set to False on instead read data from disk
-{%- if False %}
+{%- if True %}
 
 # This configuration assumes that the system ports are ordered in as 4x10G
 # links for each QSFP+, and that each QSFP+ port comes from exactly one iceBoard
@@ -229,45 +229,77 @@ dpdk:
 
   # One handler must be given per port, mapping is in port order.
   handlers:
+  # the funny ordering sorts frequencies
+  # 666, 698, 730, 738, 826, 898, 906, 978, 58, 66, 818, 962, 234, 746, 802, 954
+  # such that theyr are ordered
+  # it will mess up the lost_samples_buffer_X arrays
 {%- for id in range(4) %}
     - dpdk_handler: iceBoardShuffle
       link_group: 0
       link_group_subid: {{ id }}
       out_bufs:
-        - host_voltage_buffer_0
-        - host_voltage_buffer_1
-        - host_voltage_buffer_2
+      ###
         - host_voltage_buffer_3
+        - host_voltage_buffer_4
+        - host_voltage_buffer_5
+        - host_voltage_buffer_6
+      ###
+      #{#
+      {% for i in range(0,4) %}
+        - host_voltage_buffer_{{ i }}
+      {% endfor %}
+      #}#
       lost_samples_buf: lost_samples_buffer_0
 
     - dpdk_handler: iceBoardShuffle
       link_group: 1
       link_group_subid: {{ id }}
       out_bufs:
-        - host_voltage_buffer_4
-        - host_voltage_buffer_5
-        - host_voltage_buffer_6
-        - host_voltage_buffer_7
+      ###
+        - host_voltage_buffer_10
+        - host_voltage_buffer_11
+        - host_voltage_buffer_12
+        - host_voltage_buffer_15
+      ###
+      #{#
+      {% for i in range(4,8) %}
+        - host_voltage_buffer_{{ i }}
+      {% endfor %}
+      #}#
       lost_samples_buf: lost_samples_buffer_1
 
     - dpdk_handler: iceBoardShuffle
       link_group: 2
       link_group_subid: {{ id }}
       out_bufs:
-        - host_voltage_buffer_8
+      ###
+        - host_voltage_buffer_0
+        - host_voltage_buffer_1
         - host_voltage_buffer_9
-        - host_voltage_buffer_10
-        - host_voltage_buffer_11
+        - host_voltage_buffer_14
+      ###
+      #{#
+      {% for i in range(8,12) %}
+        - host_voltage_buffer_{{ i }}
+      {% endfor %}
+      #}#
       lost_samples_buf: lost_samples_buffer_2
 
     - dpdk_handler: iceBoardShuffle
       link_group: 3
       link_group_subid: {{ id }}
       out_bufs:
-        - host_voltage_buffer_12
+      ###
+        - host_voltage_buffer_2
+        - host_voltage_buffer_7
+        - host_voltage_buffer_8
         - host_voltage_buffer_13
-        - host_voltage_buffer_14
-        - host_voltage_buffer_15
+      ###
+      #{#
+      {% for i in range(12,16) %}
+        - host_voltage_buffer_{{ i }}
+      {% endfor %}
+      #}#
       lost_samples_buf: lost_samples_buffer_3
 {%- endfor %}
 
@@ -299,7 +331,7 @@ dbg_read_voltages_{{ id }}:
 {%- endfor %}
 ##}
 
-{% set frequency_channels = [269, 277, 285, 293, 301, 477, 485, 493, 541, 717, 749, 901, 957, 981, 989, 1005] %}
+{% set frequency_channels = [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ] %}
 {% for id in range(16) %}   # num_frequencies = 16
 dbg_read_voltages_{{ id }}:
     kotekan_stage: hdf5FileReadSingleFile
@@ -1248,7 +1280,8 @@ switch_failed_out:
 #
 # NOTE: these *must* be sorted since the are passed through a std::set which
 # sorts them
-frequency_channels: [ 269, 277, 285, 293, 301, 477, 485, 493, 541, 717, 749, 901, 957, 981, 989, 1005 ]
+frequency_channels: [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ]
+#frequency_channels: [ 666, 698, 730, 738, 826, 898, 906, 978, 58, 66, 818, 962, 234, 746, 802, 954 ]
 
 upchan_factors: [16]
 # ranges are [min, max)
