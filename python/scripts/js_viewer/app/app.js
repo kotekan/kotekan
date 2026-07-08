@@ -26,6 +26,7 @@ import {LagAlignPanel}            from "./panels/lag_align.js";
 import {CCERAPointingPanel}       from "./panels/ccera.js";
 import {GalaxyViewPanel}          from "./panels/galaxy.js";
 import {GpsSkyPanel}              from "./panels/gps_sky.js";
+import {GpsAmpHistoryPanel}       from "./panels/gps_amp_history.js";
 
 
 function default_state() {
@@ -178,13 +179,21 @@ export class App {
         // It polls kotekan REST + /gps_sky on its own timer.
         if (cfg_mode === "gps") {
             const g = cfg.gps || {};
+            // Stacked full-width: sky on top, Â(t) history below -- neither tall.
             this.layout.addWidget({mount_id: "gps_card", title: "GPS Sky",
-                                   x: 0, y: 0, w: 12, h: 12, min_w: 5, min_h: 6});
+                                   x: 0, y: 0, w: 12, h: 6, min_w: 4, min_h: 4});
             this.panels.push(new GpsSkyPanel({
                 app: this, target: "gps_card",
                 search_stage: g.search_stage, combiner_stage: g.combiner_stage,
                 airspy_stage: g.airspy_stage, mask_deg: g.mask_deg,
                 has_site: g.has_site,
+            }));
+            // Â(t) history for a chosen PRN, with error bars -- buffered in-browser.
+            this.layout.addWidget({mount_id: "gps_amp_card", title: "GPS Â history",
+                                   x: 0, y: 6, w: 12, h: 5, min_w: 4, min_h: 3});
+            this.panels.push(new GpsAmpHistoryPanel({
+                app: this, target: "gps_amp_card",
+                combiner_stage: g.combiner_stage,
             }));
             this.layout.restore_from_storage();
             return;

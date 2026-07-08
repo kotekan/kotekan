@@ -7,7 +7,7 @@
 // this when the default widget set changes shape (eg the Controls card got
 // split into Display / Buffer / Baseline / Airspy / Control) so a stale
 // saved layout can't collide with the new defaults.
-const STORAGE_KEY = "airspy_viewer_layout_v3";
+const STORAGE_KEY = "airspy_viewer_layout_v5";
 
 export class LayoutManager {
     constructor({root}) {
