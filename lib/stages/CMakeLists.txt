@@ -12,6 +12,7 @@ add_library(
     pulsarPostProcess.cpp
     loadFeedGains.cpp
     processFeedGains.cpp
+    processFRBFeedGains.cpp
     nDiskFileWrite.cpp
     nDiskFileRead.cpp
     networkPowerStream.cpp
