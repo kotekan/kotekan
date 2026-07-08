@@ -68,7 +68,7 @@ void testDataGenFewHot::main_thread() {
         assert(chordmeta && "metadata must be of type chordMetadata");
 
         chordmeta->set_fpga_seq_num(seq_num * samples_per_dataset);
-        chordmeta->set_time_downsampling_fpga(1);
+        chordmeta->set_time_downsampling_fpga(16);
 
         // TODO: Fix this, cannot change from frame to frame (and should not be "now")
         struct timeval now;
