@@ -66,6 +66,23 @@ public:
 
     void main_thread() override;
 
+protected:
+    /// Number of elements, should be 2048
+    uint32_t num_elements;
+    /// Number of pulsar beams, should be 10
+    uint32_t num_beams;
+    /// Number of frequencies per node
+    uint32_t num_local_freq;
+    /// Frequency upchannelization factor
+    uint32_t upchan_factor;
+    /// Number of components
+    uint32_t num_components;
+
+    /// Store gain upchannelization factors
+    std::vector<int> freq_upchan_factor;
+    std::vector<int> freq_upchan_index;
+    std::vector<int> coarse_freq;
+
 private:
     /// Copy gain from a buffer and apply an upchannelization algorithm to gains for a single
     /// beam. Default duplicates the gain for each subfrequency.
@@ -83,17 +100,6 @@ private:
     Buffer* in_mask_buf;
     Buffer* out_buf;
 
-    /// Number of elements, should be 2048
-    uint32_t num_elements;
-    /// Number of pulsar beams, should be 10
-    uint32_t num_beams;
-    /// Number of frequencies per node
-    uint32_t num_local_freq;
-    /// Frequency upchannelization factor
-    uint32_t upchan_factor;
-    /// Number of components
-    uint32_t num_components;
-
     /// Number of elements in the output buffer
     uint32_t out_num_values;
 
@@ -103,11 +109,6 @@ private:
     /// Fixed buffers used to hold gains separately from the kotekan buffers
     std::vector<float16_t> gain_store_buf;
     std::vector<uint8_t> mask_store_buf;
-
-    /// Store gain upchannelization factors
-    std::vector<int> freq_upchan_factor;
-    std::vector<int> freq_upchan_index;
-    std::vector<int> coarse_freq;
 };
 
 
