@@ -36,7 +36,7 @@ void processFRBFeedGains::set_frame_desc(Buffer* buf) {
         {static_cast<ptrdiff_t>(num_local_freq * upchan_factor),
          static_cast<ptrdiff_t>(num_polarizations), static_cast<ptrdiff_t>(num_dishes_N),
          static_cast<ptrdiff_t>(num_dishes_M), static_cast<ptrdiff_t>(num_components)},
-        {"Fbar", "P", "dishN", "dishM", "C"}, {upchan_factor, 1, 1, 1, 1}));
+        {"Fbar", "P", "dishN", "dishM", "C"}, {1, 1, 1, 1, 1}));
 
     // everything below here ends up being the same as the parent class
     freq_upchan_factor = std::vector<int>(num_local_freq * upchan_factor, upchan_factor);

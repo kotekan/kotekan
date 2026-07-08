@@ -274,6 +274,7 @@ void loadFeedGains::main_thread() {
         auto meta = get_chord_metadata(buf, frame_id);
         meta->set_from_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
         meta->set_name("gain");
+        meta->set_coarse_freq(meta_freq_idx);
         // Verify that frame desc and metadata match
         meta->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
 
