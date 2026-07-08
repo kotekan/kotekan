@@ -1470,6 +1470,11 @@ FRB:
             type: fewhot
             freq_id: {{ frequency_channels }}
             elemns:
+### all ones (source at Zenith)
+{%- for el in range(0,4*256) %}
+                - {{ el }}
+{%- endfor %}
+###
 #{# two elements in EW only
                 - 0
                 - 512
