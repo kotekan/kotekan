@@ -171,7 +171,13 @@ void processFeedGains::main_thread() {
 
             // check if this buffer has an available frame, using a short
             // timeout to avoid blocking
-            timespec timeout = double_to_ts(current_time());
+            timespec timeout;
+            if (set_coarse_freqs_once) {
+                // first frame - need to wait until we get something
+                timeout = double_to_ts(60 * 60 * 24);
+            } else {
+                timeout = double_to_ts(current_time());
+            }
             int status = buf->wait_for_full_frame_timeout(unique_name, frame_id, timeout);
 
             if (status == 0) {
