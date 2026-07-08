@@ -108,6 +108,15 @@ private:
     double navwipe_amplitude(const std::vector<std::complex<double>>& a,
                              const std::vector<double>& utc, double* snr_out = nullptr) const;
 
+    /// Residual carrier frequency (Hz) from a window of per-record A, as a bit-robust phase-SLOPE
+    /// fit over the whole window (long baseline -> low variance -- the clean measurement the shared
+    /// carrier loop needs; the old consecutive-record product was short-baseline + doubly-noisy and
+    /// made the loop noise-inject). Squares A to cancel the +-1 nav-bit pi flips (data signals);
+    /// a dataless pilot (carrier_pilot) fits the raw phase. Uses capture-UTC as the time axis so
+    /// valve-drop gaps don't bias the slope. Returns 0 if too short / degenerate.
+    double carrier_resid_hz(const std::vector<std::complex<double>>& a,
+                            const std::vector<double>& utc) const;
+
     std::vector<Buffer*> in_bufs;
     Buffer* out_buf;
     int _n_prn;

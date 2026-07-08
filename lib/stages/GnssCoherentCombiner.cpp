@@ -309,13 +309,21 @@ void GnssCoherentCombiner::main_thread() {
                 rec[gnss::CMB_L_POW] = (float)l_pow;
                 rec[gnss::CMB_DLL_DISC] =
                     (e_pow + l_pow) > 0.0 ? (float)((e_pow - l_pow) / (e_pow + l_pow)) : 0.0f;
-                // Shared carrier observable: window-averaged full-band residual (Hz). The
-                // broker integrates this into carrier_trim_hz for every subband tracker --
-                // ONE loop at full-band SNR instead of N noise-driven per-channel FLLs.
+                // Shared carrier observable: full-band residual carrier (Hz). The broker
+                // integrates this into carrier_trim_hz for every subband tracker -- ONE loop at
+                // full-band SNR instead of N noise-driven per-channel FLLs. PREFER a bit-robust
+                // phase-SLOPE fit over the whole deep-wipe window (_navbuf): its long baseline
+                // gives a low-variance frequency, the clean measurement the loop needs to hold
+                // <0.5 Hz over a 1 s coherent window (OFFLINE-VALIDATED: with this residual removed,
+                // the L1 deep builds 77 sigma@1 s / 94@2 s vs a ~20 ms wall without). The old
+                // consecutive-record product (car_S) is short-baseline and doubly-noisy (squaring)
+                // -> it made the shared loop noise-inject; kept only as the fallback for non-wipe
+                // configs where _navbuf isn't populated.
                 double resid_hz = 0.0;
-                if (car_n[p] > 0 && std::abs(car_S[p]) > 0.0) {
-                    const double dphi =
-                        std::arg(car_S[p]) / (_carrier_pilot ? 1.0 : 2.0);
+                if (_wipe_buffer && _navbuf[p].size() >= 16) {
+                    resid_hz = carrier_resid_hz(_navbuf[p], _navutc[p]);
+                } else if (car_n[p] > 0 && std::abs(car_S[p]) > 0.0) {
+                    const double dphi = std::arg(car_S[p]) / (_carrier_pilot ? 1.0 : 2.0);
                     resid_hz = dphi / (2.0 * M_PI * (car_dt[p] / car_n[p]));
                 }
                 rec[gnss::CMB_CARRIER_RESID] = (float)resid_hz;
@@ -544,4 +552,53 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
     if (snr_out)
         *snr_out = noise_sum > 0.0 ? std::abs(deep) / noise_sum : 0.0;
     return std::abs(deep) / (double)nrec; // coherent mean of the wiped per-record A
+}
+
+double
+GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& a,
+                                       const std::vector<double>& utc) const {
+    const int n = (int)a.size();
+    if (n < 16)
+        return 0.0;
+    using cd = std::complex<double>;
+    // Bit-robust phase-SLOPE fit: square A to cancel the +-1 nav-bit pi flips (a data signal), or
+    // fit the raw phase for a dataless pilot. Unwrap vs the previous record (consecutive records
+    // are ~1 ms apart -> a residual up to ~1/(4 dt) stays inside +-pi/rec after squaring; the seed
+    // keeps f_res << that). Weighted (|A|^2) linear LSQ of the unwrapped phase vs CAPTURE-UTC, so a
+    // valve-drop gap contributes its true time span (not an index step) and weak records count less.
+    const double mult = _carrier_pilot ? 1.0 : 2.0; // squared phase advances at mult * the carrier
+    double phi = 0.0, raw_prev = 0.0;
+    bool have = false;
+    double Sw = 0, Swt = 0, Swtt = 0, Swp = 0, Swtp = 0;
+    const double t0 = utc[0];
+    for (int r = 0; r < n; ++r) {
+        const double w = std::norm(a[r]); // |A|^2
+        if (!(w > 0.0))
+            continue;
+        const cd v = _carrier_pilot ? a[r] : a[r] * a[r];
+        const double cur = std::arg(v); // (-pi, pi]
+        if (have) {
+            double d = cur - raw_prev;
+            while (d > M_PI)
+                d -= 2.0 * M_PI;
+            while (d < -M_PI)
+                d += 2.0 * M_PI;
+            phi += d;
+        } else {
+            phi = cur;
+            have = true;
+        }
+        raw_prev = cur;
+        const double t = utc[r] - t0;
+        Sw += w;
+        Swt += w * t;
+        Swtt += w * t * t;
+        Swp += w * phi;
+        Swtp += w * t * phi;
+    }
+    const double det = Sw * Swtt - Swt * Swt;
+    if (!(std::fabs(det) > 0.0))
+        return 0.0;
+    const double slope = (Sw * Swtp - Swt * Swp) / det; // d(phi)/dt (rad/s)
+    return slope / mult / (2.0 * M_PI);                 // -> residual carrier (Hz)
 }

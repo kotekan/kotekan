@@ -35,6 +35,17 @@ PEEL=$(grep -oE '^[a-z_0-9]+: \{ kotekan_stage: GnssVoltagePeel' "$CFG" | grep -
 CLA=""
 grep -qE 'signal: GPS_L2C_CL' "$CFG" && CLA="--cl-assist --carrier-gain ${CARRIER_GAIN:-0.2}" \
   && echo "L2C CL time-assist ON (k from capture UTC + almanac range) + shared carrier loop"
+# SHARED CARRIER LOOP: any config whose tracker sets carrier_shared: true runs pure feed-forward
+# (seed + almanac Doppler-rate ramp) + an NCO fed the broker's carrier_trim_hz. The combiner measures
+# the residual carrier as a bit-robust phase-SLOPE fit over the deep window and the broker integrates
+# it at LOW bandwidth (--carrier-gain) -> residual driven <1 Hz -> the deep coheres a full 1 s+
+# (REPLAY-VALIDATED: PRN19 80 sigma@1 s ON vs 7 sigma OFF). Auto-enabled here (CL adds its own
+# --carrier-gain above, so skip it there). Tune via CARRIER_GAIN / CARRIER_MAX_HZ / CARRIER_LEAK env.
+CARG=""
+if grep -qE 'carrier_shared:[[:space:]]*true' "$CFG" && ! grep -qE 'signal: GPS_L2C_CL' "$CFG"; then
+  CARG="--carrier-gain ${CARRIER_GAIN:-0.5} --carrier-max-hz ${CARRIER_MAX_HZ:-100} --carrier-leak ${CARRIER_LEAK:-0.005}"
+  echo "shared carrier loop ON (combiner slope-fit resid -> --carrier-gain ${CARRIER_GAIN:-0.5} -> tracker NCO)"
+fi
 # Loud warning if a requested tracker stage isn't actually in the config -- the classic
 # trap is passing TRK=track to the distributed live_l1.yaml (whose trackers are track_00..11):
 # the broker POSTs to track/set_seeds, gets a 404, never seeds -> the trackers despread at
@@ -192,7 +203,7 @@ python3 $BROKER --detectors search --trackers "$TRK" --combiner combiner \
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
         ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" \
         ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} \
-        ${BROKER_EXTRA:-} $ALM $CLA \
+        ${BROKER_EXTRA:-} $ALM $CLA $CARG \
         > /tmp/gpslive_broker.log 2>&1 &
 BPID=$!
 

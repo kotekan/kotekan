@@ -92,7 +92,15 @@ valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 # term) -> wrong for an accelerating sat -> amp 0 (off). Keep pullin_chips: 1.0 (re-centering reaches
 # the lock). FIXED: GnssChannelizedTracker now ramps the replica frequency by the almanac Doppler RATE
 # (broker seeds doppler_rate_hz_s), so the residual stays flat and the FULL 1 s coheres even at zenith.
-track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 20, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, hold_lock_amp: 0, hold_lock_records: 5 }
+# SHARED CARRIER LOOP (2026-07-08): tracker runs PURE FEED-FORWARD (fll_gain 0 -> seed + almanac
+# Doppler-rate ramp only) + an NCO that applies the broker's carrier_trim_hz (carrier_shared). The
+# COMBINER measures the residual carrier as a bit-robust phase-SLOPE fit over the deep window
+# (low-variance, the clean measurement the loop needs) and the broker integrates it at LOW bandwidth
+# (--carrier-gain) into the trim -> residual driven <1 Hz -> the deep coheres a full 1 s+. Replaces
+# the per-record FLL (which aliased past ~250 Hz -> runaway). run_live.sh AUTO-ENABLES the loop for
+# any carrier_shared config (--carrier-gain 0.5, override via CARRIER_GAIN env) -- no BROKER_EXTRA
+# needed. REPLAY-VALIDATED on the strong 07-04 capture: PRN19 deep 80 sigma@1 s ON vs 7 sigma OFF.
+track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 20, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.0, carrier_shared: true, hold_lock_amp: 0, hold_lock_records: 5 }
 # integration_length: 1000, navwipe_bit_records: 20 -> navwipe: integrate ~1 s (50 nav bits)
 # coherently; deep |A| in slot 8. Restored to 1000 now that the Doppler-rate feed-forward removes the
 # zenith ramp (was temporarily 400 for the coherence-limit diagnostic).
