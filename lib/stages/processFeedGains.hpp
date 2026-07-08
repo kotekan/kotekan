@@ -62,27 +62,11 @@ public:
                      kotekan::bufferContainer& buffer_container);
 
     /// Destructor.
-    ~processFeedGains();
+    virtual ~processFeedGains() = default;
 
     void main_thread() override;
 
-private:
-    /// Copy gain from a buffer and apply an upchannelization algorithm to gains for a single
-    /// beam. Default duplicates the gain for each subfrequency.
-    void copy_upchannelize(float* frame, size_t beam_id);
-
-    /// Implement logic to upchannelize a single fine frequency, given a coarse frequency.
-    /// Default will just duplicate the coarse frequency gain `N` times.
-    virtual void copy_upchannelize_f(const float* src_f, float16_t* dst_f, size_t fid);
-
-    /// Create a frame desc for the output buffer. Default creates a frame desc
-    /// containing [beam, freq, element, ReIm] axes.
-    virtual void set_frame_desc(Buffer* buf);
-
-    std::vector<Buffer*> gain_buffers;
-    Buffer* in_mask_buf;
-    Buffer* out_buf;
-
+protected:
     /// Number of elements, should be 2048
     uint32_t num_elements;
     /// Number of pulsar beams, should be 10
@@ -94,20 +78,35 @@ private:
     /// Number of components
     uint32_t num_components;
 
-    /// Number of elements in the output buffer
-    uint32_t out_num_values;
-
-    /// Fixed scaling factor
+    /// fixed scaling factor
     float scaling_factor;
-
-    /// Fixed buffers used to hold gains separately from the kotekan buffers
-    std::vector<float16_t> gain_store_buf;
-    std::vector<uint8_t> mask_store_buf;
 
     /// Store gain upchannelization factors
     std::vector<int> freq_upchan_factor;
     std::vector<int> freq_upchan_index;
     std::vector<int> coarse_freq;
+
+private:
+    /// Copy gain from a buffer and apply an upchannelization algorithm to gains for a single
+    /// beam. Default duplicates the gain for each subfrequency.
+    void copy_upchannelize(float* frame, size_t beam_id);
+
+    /// Implement logic to upchannelize a single fine frequency, given a coarse frequency.
+    virtual void copy_upchannelize_f(const float* src_f, float16_t* dst_f, size_t fid) = 0;
+
+    /// Create a frame desc for the output buffer.
+    virtual void set_frame_desc(Buffer* buf) = 0;
+
+    std::vector<Buffer*> gain_buffers;
+    Buffer* in_mask_buf;
+    Buffer* out_buf;
+
+    /// Number of elements in the output buffer
+    uint32_t out_num_values;
+
+    /// Fixed buffers used to hold gains separately from the kotekan buffers
+    std::vector<float16_t> gain_store_buf;
+    std::vector<uint8_t> mask_store_buf;
 };
 
 
