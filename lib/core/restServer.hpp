@@ -142,6 +142,14 @@ public:
     static restServer& instance();
 
     /**
+     * @brief Check whether the restServer singleton is still alive.
+     *
+     * Safe to call during static destruction. Returns false after the
+     * restServer destructor has begun.
+     */
+    static bool is_alive();
+
+    /**
      * @brief Validate a bind address.
      *
      * Accepts the following forms:

@@ -17,6 +17,9 @@
 #include <dlfcn.h>     // for dladdr, Dl_info
 #include <execinfo.h>  // for backtrace, backtrace_symbols
 #include <signal.h>    // for sighandler_t, signal, kill, SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGQUIT
+#ifdef __APPLE__
+typedef sig_t sighandler_t;
+#endif
 #include <unistd.h>    // for getpid, NULL, pid_t
 #include <stdlib.h>    // for free
 #include <fstream>     // for basic_ostream, operator<<, basic_ostream::operator<<, basic_ofstream

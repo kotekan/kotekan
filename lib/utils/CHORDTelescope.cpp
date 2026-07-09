@@ -549,7 +549,7 @@ void CHORDTelescope::fill_input_maps(dishInputFields& input) const {
     }
 }
 
-uint64_t CHORDTelescope::get_num_stacks() const {
+size_t CHORDTelescope::get_num_stacks() const {
     FATAL_ERROR("get_num_stacks() has not been implemented in CHORDTelescope yet.");
     return 0;
 }

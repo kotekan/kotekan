@@ -1,7 +1,7 @@
 project(kotekan_boost_tests)
 
 # Prep ourselves for compiling boost
-find_package(Boost REQUIRED COMPONENTS unit_test_framework filesystem system)
+find_package(Boost REQUIRED COMPONENTS unit_test_framework filesystem)
 
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
@@ -172,8 +172,12 @@ if(HDF5_FOUND AND HighFive_FOUND)
 endif()
 
 add_executable(test_Telescope test_Telescope.cpp)
-target_link_libraries(test_Telescope PRIVATE -Wl,--whole-archive kotekan_utils kotekan_testing
-                                             -Wl,--no-whole-archive)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(test_Telescope PRIVATE -Wl,-all_load kotekan_utils kotekan_testing)
+else()
+    target_link_libraries(test_Telescope PRIVATE -Wl,--whole-archive kotekan_utils kotekan_testing
+                                                 -Wl,--no-whole-archive)
+endif()
 
 add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)
 target_link_libraries(test_CHORDTelescope PRIVATE kotekan_utils)
@@ -185,27 +189,45 @@ target_link_libraries(test_N2FrameDesc PRIVATE kotekan_metadata kotekan_utils li
 # test_NDArrayBufferConfig - config-driven NDArray frame descriptors and the `ndarray` buffer type
 # in bufferFactory
 add_executable(test_NDArrayBufferConfig test_NDArrayBufferConfig.cpp)
-target_link_libraries(
-    test_NDArrayBufferConfig
-    PRIVATE libexternal
-            kotekan_libs
-            kotekan_utils
-            kotekan_core
-            -Wl,--whole-archive
-            kotekan_metadata
-            -Wl,--no-whole-archive)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_NDArrayBufferConfig PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core
+                                         -Wl,-all_load kotekan_metadata)
+else()
+    target_link_libraries(
+        test_NDArrayBufferConfig
+        PRIVATE libexternal
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
 
 # test_N2Subset - tests for N2Subset stage
 add_executable(test_N2Subset test_N2Subset.cpp)
-target_link_libraries(
-    test_N2Subset
-    PRIVATE libexternal
-            kotekan_stages
-            kotekan_libs
-            kotekan_utils
-            kotekan_core
-            -Wl,--whole-archive
-            kotekan_metadata
-            -Wl,--no-whole-archive)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_N2Subset
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_N2Subset
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
 target_include_directories(test_N2Subset PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                  ${KOTEKAN_SOURCE_DIR}/lib/utils)

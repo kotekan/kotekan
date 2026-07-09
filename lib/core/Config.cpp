@@ -339,7 +339,7 @@ std::string Config::get_md5sum() const {
 
     char md5str[33];
     for (int i = 0; i < 16; i++)
-        sprintf(&md5str[i * 2], "%02x", (unsigned int)md5sum[i]);
+        snprintf(&md5str[i * 2], 3, "%02x", (unsigned int)md5sum[i]);
 
     return std::string(md5str);
 }

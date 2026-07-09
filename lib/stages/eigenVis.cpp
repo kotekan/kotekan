@@ -88,7 +88,9 @@ void eigenVis::main_thread() {
     uint32_t freq_id;
 
     // Force serial BLAS; Blaze's OpenMP path provides intra-op parallelism.
+#ifndef __APPLE__
     openblas_set_num_threads(1);
+#endif
 
     auto& eigenvalue_metric = Metrics::instance().add_gauge(
         "kotekan_eigenvis_eigenvalue", unique_name, {"eigenvalue", "freq_id", "dataset_id"});
