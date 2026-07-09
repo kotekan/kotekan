@@ -191,13 +191,8 @@ target_link_libraries(test_N2FrameDesc PRIVATE kotekan_metadata kotekan_utils li
 add_executable(test_NDArrayBufferConfig test_NDArrayBufferConfig.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     target_link_libraries(
-        test_NDArrayBufferConfig
-        PRIVATE libexternal
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,-all_load
-                kotekan_metadata)
+        test_NDArrayBufferConfig PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core
+                                         -Wl,-all_load kotekan_metadata)
 else()
     target_link_libraries(
         test_NDArrayBufferConfig
