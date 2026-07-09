@@ -1,22 +1,28 @@
-// GPS deep-amplitude history: Â(t) with error bars for a PRN picked from a dropdown.
+// GPS deep-detection history: for a PRN picked from a dropdown, a live time series of EITHER
+//   * Â  = deep_amplitude (the deep nav-wiped matched-filter amplitude), 1σ = Â/deep_snr, OR
+//   * C/N₀ = 10·log10(deep_snr² / coherence_s) dB-Hz -- the gain-independent, un-compressed
+//     signal-quality measure. Â ∝ √(C/N₀) and its absolute level tracks front-end gain, so it
+//     looks flat across the (power-controlled, hemispherically-uniform) GPS sky; C/N₀ squares the
+//     SNR back out so the real per-pass / per-satellite variation is visible. Dividing by
+//     coherence_s (the winning deep window's coherent time) keeps it stable when the auto-coherence
+//     ladder switches window length. The dB-Hz zero-point is approximate (nav-wipe processing loss),
+//     but the VARIATION is right and comparable across days/receivers.
 //
-// Polls <combiner>/get_status on its own timer and BUFFERS (time, Â, σ) per PRN in the
-// browser only -- a tiny volume (one point per ~combiner emit) even over a long run, and it
-// is not served forward (a page reload starts fresh). The plotted quantity is the deep
-// nav-wiped amplitude Â = deep_amplitude, and its 1σ error bar is deep_amplitude/deep_snr
-// (deep_snr = |Â| / its uncertainty, so Â/deep_snr IS that uncertainty). Where the deep isn't
-// available it falls back to the moment-debiased unbiased_amplitude / amp_snr.
+// Polls <combiner>/get_status on its own timer and BUFFERS the raw (time, Â, significance,
+// coherence_s) per PRN in the browser only -- tiny volume, not served forward, fresh on reload.
 
 const POLL_MS = 1500;
 const MAX_PTS = 10000;      // per-PRN cap (~4 h at 1.5 s); drops oldest past this so the live
                             // re-render stays snappy. Data is tiny; this bounds RENDER cost, not RAM.
+const LN10_10 = 10 / Math.LN10;   // 10/ln10 = 4.3429; d(dB)/dx = LN10_10 / x
 
 export class GpsAmpHistoryPanel {
     constructor({app, target, combiner_stage}) {
         this.app = app;
         this.combiner_stage = combiner_stage || "combiner";
-        this.hist = new Map();       // prn -> {t:[Date], a:[Â], s:[σ]}
+        this.hist = new Map();       // prn -> {t:[Date], a:[Â], sig:[σ significance], coh:[s]}
         this.selected = null;
+        this.mode = "amp";           // "amp" (Â) | "cn0" (C/N₀ dB-Hz)
         this._inflight = false;
         this._dirty = false;         // new data for the selected PRN since last redraw
         this._plotted = false;
@@ -25,7 +31,7 @@ export class GpsAmpHistoryPanel {
         root.css({display: "flex", flexDirection: "column", width: "100%", height: "100%",
                   boxSizing: "border-box", fontFamily: "sans-serif", fontSize: "12px"});
 
-        // Controls: PRN dropdown + a live readout + clear.
+        // Controls: PRN dropdown + quantity toggle + live readout + clear.
         const bar = $("<div/>").css({flex: "0 0 auto", padding: "2px 4px 4px",
             display: "flex", alignItems: "center", gap: "8px"}).appendTo(root);
         $("<span/>").text("PRN").css({color: "#444"}).appendTo(bar);
@@ -35,11 +41,19 @@ export class GpsAmpHistoryPanel {
             this._plotted = false;   // force a fresh newPlot (axis rescale) on PRN switch
             this._redraw();
         });
+        this.modeSel = $("<select/>").css({fontSize: "12px"}).appendTo(bar);
+        this.modeSel.append($("<option/>").attr("value", "amp").text("Â"));
+        this.modeSel.append($("<option/>").attr("value", "cn0").text("C/N₀"));
+        this.modeSel.on("change", () => {
+            this.mode = this.modeSel.val();
+            this._plotted = false;   // Â and C/N₀ live on very different y-scales -> rescale
+            this._redraw();
+        });
         this._info = $("<span/>").css({color: "#666", marginLeft: "4px"}).appendTo(bar);
         $("<button/>").text("clear").css({fontSize: "11px", marginLeft: "auto"})
             .appendTo(bar).on("click", () => {
                 if (this.selected != null && this.hist.has(this.selected))
-                    this.hist.set(this.selected, {t: [], a: [], s: []});
+                    this.hist.set(this.selected, {t: [], a: [], sig: [], coh: []});
                 this._plotted = false;
                 this._redraw();
             });
@@ -75,15 +89,15 @@ export class GpsAmpHistoryPanel {
                     const A = c.deep_amplitude || c.unbiased_amplitude || 0;
                     const sig = Math.max(c.deep_snr || 0, c.amp_snr || 0);
                     if (A === 0 && sig === 0) continue;   // no despread this emit -> a gap, not a 0
-                    const sigma = sig > 0 ? A / sig : 0;
-                    if (!this.hist.has(prn)) this.hist.set(prn, {t: [], a: [], s: []});
+                    const coh = c.coherence_s || 0;
+                    if (!this.hist.has(prn)) this.hist.set(prn, {t: [], a: [], sig: [], coh: []});
                     const h = this.hist.get(prn);
                     const n = h.a.length;
                     // Dedup: consecutive polls can catch the SAME combiner emit -> identical
                     // floats. Skip those so the trace advances once per real emit.
-                    if (n && h.a[n - 1] === A && h.s[n - 1] === sigma) continue;
-                    h.t.push(now); h.a.push(A); h.s.push(sigma);
-                    if (h.t.length > MAX_PTS) { h.t.shift(); h.a.shift(); h.s.shift(); }
+                    if (n && h.a[n - 1] === A && h.sig[n - 1] === sig) continue;
+                    h.t.push(now); h.a.push(A); h.sig.push(sig); h.coh.push(coh);
+                    if (h.t.length > MAX_PTS) { h.t.shift(); h.a.shift(); h.sig.shift(); h.coh.shift(); }
                     if (prn === this.selected) this._dirty = true;
                 }
                 this._sync_dropdown();
@@ -119,38 +133,62 @@ export class GpsAmpHistoryPanel {
             this.sel.val(cur);
     }
 
+    // Map the buffered raw sample i to the plotted (y, 1σ) for the current mode.
+    _yval(h, i) {
+        const A = h.a[i], sig = h.sig[i], coh = h.coh[i];
+        if (this.mode === "cn0") {
+            // C/N₀ (dB-Hz) = 10 log10(deep_snr^2 / T_coh); dividing by the coherent time makes it a
+            // density (stable across ladder window changes). 1σ from the significance's ~unit std:
+            // d(dB)/d(sig) = (10/ln10)*(2/sig).
+            const T = coh > 0 ? coh : 1;
+            const y = sig > 0 ? 20 * Math.log10(sig) - 10 * Math.log10(T) : null;
+            const e = sig > 0 ? (2 * LN10_10) / sig : 0;
+            return [y, e];
+        }
+        return [A, sig > 0 ? A / sig : 0];   // Â and its noise-scale error bar
+    }
+
     _redraw() {
         if (this.selected == null || !window.Plotly) return;
         const h = this.hist.get(this.selected);
         if (!h) return;
-        // Live readout: latest Â ± σ and its significance.
+        const cn0 = this.mode === "cn0";
+
+        // Fresh arrays each render (Plotly.react diffs data BY REFERENCE, so reusing the in-place
+        // buffers would make it skip the redraw -- the plot would only refresh on a full newPlot).
+        const T = h.t.slice(), Y = new Array(h.a.length), E = new Array(h.a.length);
+        for (let i = 0; i < h.a.length; i++) { const ye = this._yval(h, i); Y[i] = ye[0]; E[i] = ye[1]; }
+
+        // Live readout.
         const n = h.a.length;
         if (n) {
-            const A = h.a[n - 1], s = h.s[n - 1];
-            const sig = s > 0 ? A / s : 0;
-            this._info.html(`Â = <b>${A.toFixed(3)}</b> ± ${s.toFixed(3)}`
-                + `&nbsp;(${sig.toFixed(1)}σ)&nbsp;· ${n} pts`);
+            const sig = h.sig[n - 1];
+            if (cn0)
+                this._info.html(`C/N₀ ≈ <b>${(Y[n - 1] ?? 0).toFixed(1)}</b> ± ${E[n - 1].toFixed(1)} dB-Hz`
+                    + `&nbsp;(${sig.toFixed(1)}σ)&nbsp;· ${n} pts`);
+            else
+                this._info.html(`Â = <b>${h.a[n - 1].toFixed(3)}</b> ± ${E[n - 1].toFixed(3)}`
+                    + `&nbsp;(${sig.toFixed(1)}σ)&nbsp;· ${n} pts`);
         } else {
             this._info.text("(no samples yet)");
         }
-        // FRESH array references each render: Plotly.react diffs data arrays BY REFERENCE, so
-        // handing it the same in-place-mutated h.* arrays makes it treat the trace as unchanged and
-        // skip the redraw (the plot then only refreshes on a full newPlot, e.g. a PRN swap). Slicing
-        // gives new references so the live append actually paints.
-        const T = h.t.slice(), Y = h.a.slice(), S = h.s.slice();
+
+        const unit = cn0 ? " dB-Hz" : "";
+        const fmt = cn0 ? ".1f" : ".3f";
         const trace = {
-            x: T, y: Y, customdata: S, type: "scatter", mode: "lines+markers",
+            x: T, y: Y, customdata: E, type: "scatter", mode: "lines+markers",
             line: {color: "#1f77b4", width: 1},
             marker: {size: 3, color: "#1f77b4"},
-            error_y: {type: "data", array: S, visible: true,
+            error_y: {type: "data", array: E, visible: true,
                       color: "rgba(31,119,180,0.35)", thickness: 1, width: 0},
-            hovertemplate: "%{x|%H:%M:%S}<br>Â %{y:.3f} ± %{customdata:.3f}<extra></extra>",
+            hovertemplate: `%{x|%H:%M:%S}<br>%{y:${fmt}} ± %{customdata:${fmt}}${unit}<extra></extra>`,
         };
         const layout = {
-            margin: {l: 48, r: 10, t: 6, b: 28},
+            margin: {l: 52, r: 10, t: 6, b: 28},
             xaxis: {type: "date", tickfont: {size: 10}, gridcolor: "#eee"},
-            yaxis: {title: {text: "Â  (deep |A|)", font: {size: 11}},
-                    rangemode: "tozero", tickfont: {size: 10}, gridcolor: "#eee", zeroline: true},
+            yaxis: {title: {text: cn0 ? "C/N₀ (dB-Hz, est.)" : "Â  (deep |A|)", font: {size: 11}},
+                    rangemode: cn0 ? "normal" : "tozero", tickfont: {size: 10},
+                    gridcolor: "#eee", zeroline: !cn0},
             showlegend: false, paper_bgcolor: "white", plot_bgcolor: "white",
         };
         if (!this._plotted) {
