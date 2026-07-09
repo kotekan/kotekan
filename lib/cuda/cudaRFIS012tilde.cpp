@@ -105,8 +105,7 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     rfi_S012tilde_name(config.get<std::string>(unique_name, "rfi_S012tilde_name")),
     // Buffers
     bf_mask(bf_mask_name, "bf_mask", std::array<std::ptrdiff_t, 2>{num_polarizations, num_dishes},
-            std::array<std::string, 2>{"P", "D"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this,
-            buffer_type_t::do_once),
+            std::array<std::string, 2>{"P", "D"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this),
     rfi_S012(rfi_S012_name, "S012",
              std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
                                            num_polarizations, num_dishes},
