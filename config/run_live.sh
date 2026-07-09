@@ -104,9 +104,10 @@ echo "clock profile '$CLK_NAME': accuracy ${CLK_ACC} ppm, coherence ${CLK_COH} s
 BROKER=python/scripts/gps_distributed_broker.py
 LOG=/tmp/gpslive.log
 
-cleanup() { echo; echo "stopping..."; kill "${BPID:-}" 2>/dev/null
+cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" 2>/dev/null
             pkill -9 -f kotekan/kotekan 2>/dev/null
             pkill -9 -f livebeam_server 2>/dev/null
+            pkill -9 -f gps_status_logger 2>/dev/null
             [ -n "${RUNCFG:-}" ] && [ "${RUNCFG:-}" != "$CFG" ] && rm -f "$RUNCFG"
             exit 0; }
 trap cleanup INT TERM
@@ -206,6 +207,15 @@ python3 $BROKER --detectors search --trackers "$TRK" --combiner combiner \
         ${BROKER_EXTRA:-} $ALM $CLA $CARG \
         > /tmp/gpslive_broker.log 2>&1 &
 BPID=$!
+
+# Persist per-PRN C/N0 + detection stats (deep_snr/coherence_s live only in REST/the browser -- the
+# recorded level_*.raw has Â but not those). One JSONL line per active PRN per poll, wall-clock
+# stamped, alongside the raw records. Offline: captures/gps_beam_survey.py --status <this file>.
+python3 python/scripts/gps_status_logger.py --url http://localhost:12048 \
+        --combiner combiner --search search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
+        --out "$RECDIR/status_log.jsonl" > /tmp/gpslive_logger.log 2>&1 &
+LOGPID=$!
+echo "C/N0 status log -> $RECDIR/status_log.jsonl"
 
 echo "=== watching (Ctrl-C to stop) ==="
 while true; do
