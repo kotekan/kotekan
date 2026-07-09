@@ -134,8 +134,8 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 target_include_directories(kotekan_cuda INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
 target_include_directories(kotekan_cuda PUBLIC .)
 
-# Per-architecture gencode flags are derived from CMAKE_CUDA_ARCHITECTURES (set above);
-# keep -lineinfo for profiling/debug symbols.
+# Per-architecture gencode flags are derived from CMAKE_CUDA_ARCHITECTURES (set above); keep
+# -lineinfo for profiling/debug symbols.
 target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)
 
 add_dependencies(kotekan_cuda kotekan_gpu)
