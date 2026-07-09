@@ -53,6 +53,20 @@ from zope.interface import implementer
 MSG_FREQLIST = 1  # bytes[1:] = nfreq * float32 frequency-bin centres (MHz)
 MSG_TIMESTEP = 2  # bytes[1:9] = float64 sample-time (UTC sec)
 #                  # bytes[9:]  = (nvis * nfreq) float32 power-spectrum bins
+MSG_FOLD = 3      # bytes[1:5] = int32 nphase
+#                  # bytes[5:]  = (nvis * nphase * nfreq) float32 folded power
+#                  #             (count-normalised, ascending freq, NaN = empty bin)
+
+# Dispersion constant (seconds) for DM in pc/cm^3 and frequency in GHz:
+#   delay = DM_CONST * DM * (f_lo^-2 - f_hi^-2)
+DM_CONST_S = 4.148808e-3
+
+# How often the folded profile is pushed to clients (s). The fold accumulates
+# every kotekan integration; only the *emission* is throttled.
+FOLD_EMIT_INTERVAL_S = 0.5
+
+# Default number of pulse-phase bins.
+DEFAULT_NPHASE = 128
 
 # Viewer protocol version. Bump on any breaking change to the WebSocket
 # protocol or viewer_config shape; the JS client compares against its own
@@ -126,6 +140,86 @@ STOKES_LOOKUP = {
 log_ = logging.getLogger("livebeam")
 
 
+class PulseFolder:
+    """Running phase-fold of the power stream on a pulsar ephemeris.
+
+    Accumulates each kotekan integration into ``nphase`` pulse-phase bins per
+    frequency channel per pol, at the native channel resolution. Phase comes
+    from the instrument clock; with ``dedisperse`` on, each channel is shifted
+    by its DM delay so the pulse stacks across the band, otherwise the natural
+    dispersion sweep is left in (a diagonal in the phase-frequency plot).
+
+    Single-threaded: accumulate() runs in the reactor's receive loop and
+    configure()/clear() in the WS onMessage handler -- both the reactor thread.
+    """
+
+    def __init__(self, freqs_hz, nvis, nphase=DEFAULT_NPHASE):
+        # Native channel centres (GHz), used for the per-channel DM delay.
+        self.freqs_ghz = np.asarray(freqs_hz, dtype=np.float64) / 1e9
+        self.nfreq = len(self.freqs_ghz)
+        self.freq_idx = np.arange(self.nfreq)
+        self.nvis = int(nvis)
+        self.nphase = int(nphase)
+        self.enabled = False
+        self.period = 1.0     # spin period (s)
+        self.dm = 0.0         # dispersion measure (pc/cm^3)
+        self.dedisperse = False
+        self._dphase = np.zeros(self.nfreq)  # per-channel phase offset (turns)
+        self._alloc()
+
+    def _alloc(self):
+        self.power = np.zeros((self.nvis, self.nphase, self.nfreq), dtype=np.float64)
+        self.count = np.zeros((self.nphase, self.nfreq), dtype=np.float64)
+
+    def clear(self):
+        self.power.fill(0.0)
+        self.count.fill(0.0)
+
+    def configure(self, enabled=None, period=None, dm=None,
+                  dedisperse=None, nphase=None):
+        """Update the ephemeris / mode. Any change clears the accumulator."""
+        if nphase is not None and int(nphase) != self.nphase:
+            self.nphase = max(2, int(nphase))
+            self._alloc()
+        if enabled is not None:
+            self.enabled = bool(enabled)
+        if period is not None and float(period) > 0:
+            self.period = float(period)
+        if dm is not None:
+            self.dm = max(0.0, float(dm))
+        if dedisperse is not None:
+            self.dedisperse = bool(dedisperse)
+        self._recompute_dphase()
+        self.clear()
+
+    def _recompute_dphase(self):
+        if self.dedisperse and self.dm > 0:
+            f_ref = self.freqs_ghz.max()  # reference at the top of the band
+            delay = DM_CONST_S * self.dm * (self.freqs_ghz ** -2 - f_ref ** -2)
+            # Shift each channel earlier by its delay so the pulse aligns.
+            self._dphase = (-delay / self.period) % 1.0
+        else:
+            self._dphase = np.zeros(self.nfreq)
+
+    def accumulate(self, databuf, t):
+        """Add one integration ``databuf`` (nvis, nfreq) observed at UTC ``t``."""
+        base = (t / self.period) % 1.0
+        bins = ((base + self._dphase) % 1.0 * self.nphase).astype(np.int64)
+        np.clip(bins, 0, self.nphase - 1, out=bins)
+        # (bins, freq_idx) pairs are unique per channel, so plain fancy-index
+        # += accumulates correctly without np.add.at.
+        idx = (bins, self.freq_idx)
+        for p in range(self.nvis):
+            self.power[p][idx] += databuf[p]
+        self.count[idx] += 1.0
+
+    def folded(self):
+        """Count-normalised fold (nvis, nphase, nfreq); NaN where no data yet."""
+        with np.errstate(invalid="ignore", divide="ignore"):
+            c = self.count[None, :, :]
+            return np.where(c > 0, self.power / c, np.nan)
+
+
 class KotekanPowerStream:
     """One kotekan-side TCP connection.
 
@@ -184,6 +278,8 @@ class KotekanPowerStream:
         # True when the band is inverted (channel 0 on top, sample_bw < 0),
         # detected from a negative raw_cadence at handshake.
         self.band_inverted = False
+        # Pulsar fold accumulator, built in start() once nfreq is known.
+        self.pulsefold = None
 
     def start(self):
         """Bind, ``accept`` (blocking), parse the handshake, and prime the loop."""
@@ -257,6 +353,8 @@ class KotekanPowerStream:
             )
 
         self.databuf = np.zeros((self.frame_nvis, self.frame_nfreq), dtype=np.float32)
+        # Pulsar fold accumulator (native channel centres / order).
+        self.pulsefold = PulseFolder(self.frame_freqs.mean(axis=1), self.frame_nvis)
         self.frame_idx = self.frame_idx0
         self.samples_summed = 0
         self.connected = True
@@ -398,11 +496,11 @@ class KotekanPowerStream:
             except socket.timeout:
                 pass
             else:
-                self._fold_integration()
+                self._on_integration()
                 drained = 0
                 while drained < MAX_DRAIN_PER_TICK and self._socket_has_data():
                     self._read_one_integration()
-                    self._fold_integration()
+                    self._on_integration()
                     drained += 1
         except Exception as e:
             log_.warning("kotekan recv: %s", e)
@@ -421,9 +519,26 @@ class KotekanPowerStream:
         if self.connected:
             reactor.callLater(0.001, self._tick)
 
+    def _on_integration(self):
+        """Called once per kotekan integration just read into databuf.
+
+        Feeds the browser-rate averager and, if a fold is active, the pulsar
+        fold accumulator (at full integration-rate time resolution, not the
+        coarser emitted-frame rate)."""
+        self._fold_integration()
+        pf = self.pulsefold
+        if pf is not None and pf.enabled:
+            t = self.frame_utc0 + self.frame_raw_cad * self.frame_int_len * (
+                self.frame_idx - self.frame_idx0
+            )
+            pf.accumulate(self.databuf, t)
+
     def _fold_integration(self):
         """Add the just-read integration to the current block; finalize the
-        block (-> outbuf, ready to emit) once N have accumulated."""
+        block (-> outbuf, ready to emit) once N have accumulated.
+
+        (Naming note: this is the browser-rate *integration averager*, not the
+        pulsar fold -- see PulseFolder for the latter.)"""
         self._acc += self.databuf
         self._acc_n += 1
         if self._acc_n >= self.integrate_n:
@@ -433,6 +548,21 @@ class KotekanPowerStream:
             self._acc.fill(0.0)
             self._acc_n = 0
             self._block_ready = True
+
+    def fold_display(self):
+        """Folded profile as the browser should see it: ``(nvis, nphase,
+        send_nfreq)`` float32, adjacent channels averaged by ``sum_freq`` and
+        flipped to ascending frequency -- matching display_spectrum's axis."""
+        folded = self.pulsefold.folded()  # (nvis, nphase, nfreq), NaN = empty
+        s = folded[:, :, : self._usable_nfreq]
+        if self.sum_freq > 1:
+            s = s.reshape(self.frame_nvis, self.pulsefold.nphase,
+                          self.send_nfreq, self.sum_freq)
+            with np.errstate(invalid="ignore"):
+                s = np.nanmean(s, axis=3)
+        if self._flip_freq:
+            s = s[:, :, ::-1]
+        return np.ascontiguousarray(s, dtype=np.float32)
 
     def sample_time(self):
         """UTC seconds of the newest integration in the last emitted block,
@@ -499,6 +629,8 @@ def build_viewer_config(kotekan, args):
         "nvis": int(kotekan.frame_nvis),
         "vis_labels": kotekan.vis_labels,
         "frame_period_s": frame_period_s,
+        # Pulsar fold is offered for dualpol (needs a power stream + a clock).
+        "fold": {"available": mode == "dualpol", "nphase": DEFAULT_NPHASE},
         "kotekan": {
             "rest_port": args.kotekan_rest_port,
             "airspy_stages": airspy_stages,
@@ -648,9 +780,49 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
             isBinary=True,
         )
 
+    def send_fold_frame(self):
+        kotekan = self.factory.kotekan
+        pf = kotekan.pulsefold
+        if self._paused or not kotekan.connected or pf is None or not pf.enabled:
+            return
+        fold = kotekan.fold_display()  # (nvis, nphase, send_nfreq) float32
+        self.sendMessage(
+            np.int8(MSG_FOLD).tobytes()
+            + np.int32(pf.nphase).tobytes()
+            + fold.tobytes(),
+            isBinary=True,
+        )
+
     def onMessage(self, payload, isBinary):
-        # The viewer is push-only; clients aren't expected to send anything.
-        log_.info("Ignoring unexpected %d-byte message from client", len(payload))
+        # Fold control is the one thing clients send us (JSON, text). Everything
+        # else is ignored -- the power/waterfall stream is push-only.
+        if isBinary:
+            return
+        try:
+            msg = json.loads(payload.decode("utf-8"))
+        except Exception:
+            log_.warning("Ignoring malformed client message (%d bytes)", len(payload))
+            return
+        cmd = msg.get("cmd")
+        pf = self.factory.kotekan.pulsefold
+        if pf is None:
+            return
+        if cmd == "set_fold":
+            pf.configure(
+                enabled=msg.get("enabled"),
+                period=msg.get("period"),
+                dm=msg.get("dm"),
+                dedisperse=msg.get("dedisperse"),
+                nphase=msg.get("nphase"),
+            )
+            log_.info(
+                "Fold: enabled=%s P=%.6gs DM=%g dedisp=%s nphase=%d",
+                pf.enabled, pf.period, pf.dm, pf.dedisperse, pf.nphase,
+            )
+        elif cmd == "clear_fold":
+            pf.clear()
+        else:
+            log_.info("Ignoring unknown client cmd: %r", cmd)
 
     def onClose(self, wasClean, code, reason):
         log_.info("WS closed: %s", reason)
@@ -711,6 +883,23 @@ class LiveBeamWSFactory(WebSocketServerFactory):
                     getattr(c, "peer", "?"),
                     e,
                 )
+                try:
+                    c.transport.loseConnection()
+                except Exception:
+                    pass
+
+    def broadcast_fold(self):
+        """Push the current folded profile to every client (throttled by a
+        timer in main). No-op unless a fold is active."""
+        pf = self.kotekan.pulsefold
+        if pf is None or not pf.enabled:
+            return
+        for c in list(self.clients):
+            try:
+                c.send_fold_frame()
+            except Exception as e:
+                log_.warning("WS %s: send_fold_frame raised %s; dropping client",
+                             getattr(c, "peer", "?"), e)
                 try:
                     c.transport.loseConnection()
                 except Exception:
@@ -907,6 +1096,16 @@ def main():
     kotekan.on_frame = ws_factory.broadcast
 
     reactor.listenTCP(args.ws_port, ws_factory)
+
+    # Fold emission is on its own slow timer (the fold accumulates every
+    # integration but only needs pushing a couple of times a second).
+    def _fold_tick():
+        try:
+            ws_factory.broadcast_fold()
+        finally:
+            if reactor.running:
+                reactor.callLater(FOLD_EMIT_INTERVAL_S, _fold_tick)
+    reactor.callLater(FOLD_EMIT_INTERVAL_S, _fold_tick)
 
     # HTTP root: static files + /mode endpoint. NoCacheFile saves us a lot of
     # "I edited the JS but the browser ignored me" trouble during development.

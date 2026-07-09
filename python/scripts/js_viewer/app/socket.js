@@ -20,6 +20,7 @@
 
 const MSG_FREQLIST = 1;
 const MSG_TIMESTEP = 2;
+const MSG_FOLD     = 3;
 
 // Bump this when the WS protocol or viewer_config shape changes in a way
 // the client can't handle. Server-side lives in livebeam_server.py as
@@ -137,6 +138,22 @@ export class Socket {
             bus.emit("state:redraw_requested");
             return;
         }
+        if (msgtype === MSG_FOLD) {
+            // int32 nphase, then (nvis * nphase * nfreq) float32 folded power.
+            const nphase = new Int32Array(e.data.slice(1, 5))[0];
+            const data = new Float32Array(e.data.slice(5));
+            state.fold = {nphase, data, nvis: state.nvis, nfreq: state.num_freqs};
+            bus.emit("state:fold_received", state.fold);
+            return;
+        }
         console.log("Unknown binary msgtype:", msgtype);
+    }
+
+    // Send a JSON control message to the server (fold controls). No-op if the
+    // socket isn't open.
+    send(obj) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(obj));
+        }
     }
 }

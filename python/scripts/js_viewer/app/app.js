@@ -12,6 +12,7 @@ import {Socket} from "./socket.js";
 import {WaterfallView} from "./waterfall_view.js";
 import {CrosscorrView} from "./crosscorr_view.js";
 import {DualpolView} from "./dualpol_view.js";
+import {FoldView} from "./fold_view.js";
 import {SpectrumView} from "./spectrum_view.js";
 
 import {ColorPanel}               from "./panels/color.js";
@@ -23,6 +24,7 @@ import {StartStopPanel}           from "./panels/start_stop.js";
 import {LocalRecordPanel}         from "./panels/record.js";
 import {BaselinePanel}            from "./panels/baseline.js";
 import {MedianSubtractPanel}      from "./panels/median.js";
+import {FoldPanel}                from "./panels/fold.js";
 import {AirspyGainPanel}          from "./panels/airspy_gain.js";
 import {LagAlignPanel}            from "./panels/lag_align.js";
 import {CCERAPointingPanel}       from "./panels/ccera.js";
@@ -72,6 +74,8 @@ function default_state() {
         // One-shot request for the primary WaterfallView to re-fit the colour
         // bar to the currently displayed values (set on first frame / mode change).
         request_color_fit: false,
+        // Latest folded profile (MSG_FOLD); {nphase, nvis, nfreq, data}.
+        fold: null,
     };
 }
 
@@ -234,12 +238,21 @@ export class App {
         // column and drop the single-stream spectrum + baseline pane.
         const wide = is_crosscorr || is_dualpol;
 
-        // Layout: autocorr stacks waterfall + spectrum on the left; the
-        // multi-stream modes (crosscorr 2x2, dualpol 1x2) take the full
-        // left column with no spectrum.
-        if (wide) {
-            const title = is_dualpol ? "Dual-pol Waterfall" : "Crosscorr";
-            this.layout.addWidget({mount_id: "img_holder", title,
+        const fold_available = is_dualpol && !!(cfg.fold && cfg.fold.available);
+
+        // Layout: autocorr stacks waterfall + spectrum on the left; crosscorr
+        // takes the full left column (2x2). dualpol takes the left column too,
+        // with the pulse-fold view stacked below the waterfall.
+        if (is_dualpol) {
+            this.layout.addWidget({mount_id: "img_holder", title: "Dual-pol Waterfall",
+                                   x: 0, y: 0, w: 8, h: fold_available ? 11 : 18,
+                                   min_w: 5, min_h: 6});
+            if (fold_available) {
+                this.layout.addWidget({mount_id: "fold_holder", title: "Pulse Fold",
+                                       x: 0, y: 11, w: 8, h: 7, min_w: 5, min_h: 5});
+            }
+        } else if (is_crosscorr) {
+            this.layout.addWidget({mount_id: "img_holder", title: "Crosscorr",
                                    x: 0, y: 0, w: 8, h: 18, min_w: 5, min_h: 8});
         } else {
             this.layout.addWidget({mount_id: "img_holder", title: "Waterfall",
@@ -264,6 +277,10 @@ export class App {
         } else if (is_dualpol) {
             this.waterfall = new DualpolView({app: this, target: "img_holder",
                                               labels: this.state.vis_labels});
+            if (fold_available) {
+                this.fold = new FoldView({app: this, target: "fold_holder",
+                                          labels: this.state.vis_labels});
+            }
         } else {
             this.waterfall = new WaterfallView({app: this, target: "img_holder"});
             this.spectrum  = new SpectrumView ({app: this, target: "spectrum_holder"});
@@ -325,6 +342,14 @@ export class App {
         if (is_dualpol) {
             this.panels.push(new MedianSubtractPanel({
                 app: this, target: "baseline_card"}));
+        }
+
+        // dualpol pulse-fold controls (target picker + period/DM + dedisperse).
+        if (fold_available) {
+            this.layout.addWidget({mount_id: "fold_card", title: "Pulse Fold",
+                                   x: 8, y: 15, w: 4, h: 6, min_w: 3, min_h: 5});
+            this.panels.push(new FoldPanel({
+                app: this, target: "fold_card", nphase: cfg.fold.nphase}));
         }
 
         // Airspy card: per-stage gain + ADC stats.
