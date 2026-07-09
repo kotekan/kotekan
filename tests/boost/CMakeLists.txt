@@ -189,15 +189,26 @@ target_link_libraries(test_N2FrameDesc PRIVATE kotekan_metadata kotekan_utils li
 # test_NDArrayBufferConfig - config-driven NDArray frame descriptors and the `ndarray` buffer type
 # in bufferFactory
 add_executable(test_NDArrayBufferConfig test_NDArrayBufferConfig.cpp)
-target_link_libraries(
-    test_NDArrayBufferConfig
-    PRIVATE libexternal
-            kotekan_libs
-            kotekan_utils
-            kotekan_core
-            -Wl,--whole-archive
-            kotekan_metadata
-            -Wl,--no-whole-archive)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_NDArrayBufferConfig
+        PRIVATE libexternal
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_NDArrayBufferConfig
+        PRIVATE libexternal
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
 
 # test_N2Subset - tests for N2Subset stage
 add_executable(test_N2Subset test_N2Subset.cpp)

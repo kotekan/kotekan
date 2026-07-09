@@ -15,9 +15,8 @@
 #include <cstdint>     // for int32_t, uint32_t
 #include <cstring>     // for memset, size_t
 #include <functional>  // for bind, function
-#if defined(__x86_64__) || defined(__i386__)
+#ifdef __AVX2__
 #include <immintrin.h> // for __m256, _mm256_div_ps, _mm256_loadu_ps, _mm256_set1_ps
-#include <mm_malloc.h> // for _mm_free, _mm_malloc
 #endif
 
 
@@ -55,7 +54,7 @@ void HFBTruncate::main_thread() {
 
     frameID frame_id(in_buf), output_frame_id(out_buf);
     float err, tr_hfb;
-#if defined(__x86_64__) || defined(__i386__)
+#ifdef __AVX2__
     const float err_init = 0.5 * err_sq_lim;
     const __m256 err_init_vec = _mm256_set1_ps(err_init);
     __m256 err_vec, wgt_vec;
@@ -92,7 +91,7 @@ void HFBTruncate::main_thread() {
 
         // truncate absorber data and weights (8 at a time on x86)
         i_vec = 0;
-#if defined(__x86_64__) || defined(__i386__)
+#ifdef __AVX2__
         for (; i_vec < int32_t(data_size) - 7; i_vec += 8) {
             wgt_vec = _mm256_loadu_ps(&output_frame.weight[i_vec]);
             err_vec = _mm256_div_ps(err_init_vec, wgt_vec);

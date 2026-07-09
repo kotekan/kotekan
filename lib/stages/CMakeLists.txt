@@ -158,8 +158,8 @@ if(HDF5_FOUND
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES}
                                                  HighFive::HighFive)
-    # applyGains.cpp uses std::atomic<timespec>, which relies on libatomic on some platforms
-    # (not needed on macOS where atomics are built into the compiler runtime)
+    # applyGains.cpp uses std::atomic<timespec>, which relies on libatomic on some platforms (not
+    # needed on macOS where atomics are built into the compiler runtime)
     if(NOT APPLE)
         target_link_libraries(kotekan_stages PRIVATE atomic)
     endif()
