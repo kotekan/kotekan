@@ -106,10 +106,20 @@ WS_STUCK_PAUSED_S = 30
 
 
 # Mode is decided by the number of visibility streams in the kotekan handshake.
-MODE_BY_NVIS = {1: "autocorr", 4: "crosscorr"}
+# ARO's computeDualpolPower emits nvis=2 (XX/YY) -> "dualpol".
+MODE_BY_NVIS = {1: "autocorr", 2: "dualpol", 4: "crosscorr"}
 VIS_LABELS_BY_MODE = {
     "autocorr": ["I"],
     "crosscorr": ["AA", "BB", "Re{AB*}", "Im{AB*}"],
+    # dualpol labels are derived from the handshake Stokes ids (see vis_labels).
+}
+
+# Stokes / polarisation id -> label, matching networkPowerStream's info-block
+# convention (``-5 - e``): -5=XX, -6=YY, ... plus the positive Stokes I/Q/U/V.
+STOKES_LOOKUP = {
+    -8: "YX", -7: "XY", -6: "YY", -5: "XX",
+    -4: "LR", -3: "RL", -2: "LL", -1: "RR",
+    1: "I", 2: "Q", 3: "U", 4: "V",
 }
 
 
@@ -145,17 +155,35 @@ class KotekanPowerStream:
         port=23401,
         on_frame=None,
         emit_interval_s=DEFAULT_VIEWER_INTEGRATION_MS / 1000.0,
+        power_dtype="float32",
+        sum_freq=1,
     ):
         self.host = host
         self.port = port
         self.on_frame = on_frame  # callable, fired once per emitted (averaged) frame
         self.connected = False
+        # Frequency downsampling: sum this many adjacent channels into one
+        # before sending to the browser (1 = no downsampling). Reduces the
+        # per-frame WS payload and the number of pixels the client renders.
+        self.sum_freq = max(1, int(sum_freq))
         # Browser-facing integration window; integrations drained inside one
         # window are averaged into a single emitted frame.
         self.emit_interval_s = emit_interval_s
+        # Payload interpretation of the power spectrum bytes. The airspy path
+        # (simpleAutocorr) sends float32; ARO's computeDualpolPower sends
+        # uint32 *integer* power sums. The handshake's sample_type can't
+        # distinguish them (both hardcode 4), so it's set explicitly. uint32
+        # payloads are normalised by samples_summed to a per-sample mean power,
+        # matching the historical ARO monitor's ``d/n`` (and giving a stable
+        # dB scale independent of the integration length).
+        self._np_dtype = np.uint32 if power_dtype == "uint32" else np.float32
+        self._normalize_counts = power_dtype == "uint32"
         # Populated by start() once kotekan's handshake is parsed.
         self.frame_nvis = 0
         self.frame_nfreq = 0
+        # True when the band is inverted (channel 0 on top, sample_bw < 0),
+        # detected from a negative raw_cadence at handshake.
+        self.band_inverted = False
 
     def start(self):
         """Bind, ``accept`` (blocking), parse the handshake, and prime the loop."""
@@ -190,6 +218,43 @@ class KotekanPowerStream:
         self.frame_elems = np.frombuffer(
             info[self.frame_nfreq * 4 * 2 :], dtype=np.int8
         )
+
+        # ARO runs with sample_bw < 0 (channel 0 on top), which makes kotekan
+        # report a *negative* raw_cadence. That's a frequency-ordering signal,
+        # not a negative duration -- the actual band direction is already
+        # carried by the descending info-block edges above. Use the magnitude
+        # for every timing computation (period, integrate_n, sample_time);
+        # left signed it would collapse integrate_n to 1 and run the waterfall
+        # time axis backwards.
+        self.band_inverted = self.frame_raw_cad < 0
+        self.frame_raw_cad = abs(self.frame_raw_cad)
+
+        # Display normalisation: what the browser receives is always
+        # ascending in frequency and (optionally) downsampled. The instrument
+        # may deliver either ordering -- ARO's PFB in the 2nd Nyquist zone
+        # gives a descending band (channel 0 = top). We detect the ordering
+        # from the actual bin edges and flip on the way out so every
+        # front-end component (axis, slider, spectrum) only ever sees
+        # ascending data. See _display_freqs_mhz / display_spectrum.
+        self._flip_freq = float(self.frame_freqs[0].mean()) > float(
+            self.frame_freqs[-1].mean()
+        )
+        # Largest channel count divisible by sum_freq (drop a partial tail).
+        self._usable_nfreq = self.frame_nfreq - (self.frame_nfreq % self.sum_freq)
+        self.send_nfreq = self._usable_nfreq // self.sum_freq
+        # Per-output-bin centre frequencies (MHz), downsampled then flipped to
+        # ascending -- the FREQLIST the browser plots against.
+        centres = self.frame_freqs[: self._usable_nfreq].mean(axis=1) / 1e6
+        centres = centres.reshape(self.send_nfreq, self.sum_freq).mean(axis=1)
+        if self._flip_freq:
+            centres = centres[::-1]
+        self.display_freqs_mhz = np.ascontiguousarray(centres, dtype=np.float32)
+        if self.sum_freq > 1 or self._flip_freq:
+            log_.info(
+                "Display: nfreq %d -> %d (sum_freq=%d), order=%s",
+                self.frame_nfreq, self.send_nfreq, self.sum_freq,
+                "flipped->ascending" if self._flip_freq else "ascending",
+            )
 
         self.databuf = np.zeros((self.frame_nvis, self.frame_nfreq), dtype=np.float32)
         self.frame_idx = self.frame_idx0
@@ -237,15 +302,37 @@ class KotekanPowerStream:
 
     @property
     def mode(self):
-        """``'autocorr'`` for nvis=1, ``'crosscorr'`` for nvis=4, else ``'unknown'``."""
+        """``'autocorr'`` nvis=1, ``'dualpol'`` nvis=2, ``'crosscorr'`` nvis=4."""
         return MODE_BY_NVIS.get(self.frame_nvis, "unknown")
 
     @property
     def vis_labels(self):
-        """Per-vis labels for the configured mode."""
+        """Per-vis labels for the configured mode.
+
+        For dualpol the labels come from the handshake Stokes ids (XX/YY, or
+        RR/LL, etc.) so the viewer names the pols correctly for whatever the
+        instrument actually sent, rather than a hardcoded pair.
+        """
+        if self.mode == "dualpol":
+            elems = getattr(self, "frame_elems", None)
+            if elems is not None:
+                return [STOKES_LOOKUP.get(int(e), f"pol{i}") for i, e in enumerate(elems)]
         return VIS_LABELS_BY_MODE.get(
             self.mode, [f"vis{i}" for i in range(self.frame_nvis)]
         )
+
+    def display_spectrum(self):
+        """The latest emitted frame as the browser should see it:
+        ``(nvis, send_nfreq)`` float32, adjacent channels summed by
+        ``sum_freq`` and flipped to ascending frequency if the instrument
+        band was descending. This is the single place the display-order and
+        downsampling conventions are applied."""
+        s = self.outbuf[:, : self._usable_nfreq]
+        if self.sum_freq > 1:
+            s = s.reshape(self.frame_nvis, self.send_nfreq, self.sum_freq).sum(axis=2)
+        if self._flip_freq:
+            s = s[:, ::-1]
+        return np.ascontiguousarray(s, dtype=np.float32)
 
     @staticmethod
     def _recv_exact(n, conn):
@@ -276,9 +363,11 @@ class KotekanPowerStream:
                 )
                 self.databuf[i, :] = 0
                 break
-            self.databuf[elem_idx, :] = np.frombuffer(
-                d[self.subframe_hdr_len :], dtype=np.float32
-            )
+            vals = np.frombuffer(d[self.subframe_hdr_len :], dtype=self._np_dtype)
+            vals = vals.astype(np.float32)
+            if self._normalize_counts and self.samples_summed:
+                vals = vals / self.samples_summed
+            self.databuf[elem_idx, :] = vals
 
     def _socket_has_data(self):
         """True if at least one more byte is buffered on the kotekan socket
@@ -384,7 +473,14 @@ def build_viewer_config(kotekan, args):
         "autocorr": ["airspy_input"],
         "crosscorr": ["airspy_inputA", "airspy_inputB"],
     }
-    default_color_range = {"autocorr": [-20, 20], "crosscorr": [-30, 30]}
+    # dualpol shows raw per-sample mean power in dB (uint32 counts normalised
+    # by samples_summed). Measured live on the ARO 46m iceboard stream the
+    # band sits ~3-10 dB with RFI spiking to ~60 dB; [0, 20] shows the
+    # bandpass with headroom and lets RFI saturate. Exact level depends on the
+    # instrument's requantisation, so this is just a first-look bracket the
+    # user re-centres with the Color slider (and baseline subtraction).
+    default_color_range = {"autocorr": [-20, 20], "crosscorr": [-30, 30],
+                           "dualpol": [0, 20]}
     airspy_stages = args.airspy_stages or default_airspy_stages.get(mode, [])
 
     # The exact data-clock spacing between emitted frames: N kotekan
@@ -399,7 +495,7 @@ def build_viewer_config(kotekan, args):
     return {
         "version": VIEWER_PROTOCOL_VERSION,
         "mode": mode,
-        "nfreq": int(kotekan.frame_nfreq),
+        "nfreq": int(kotekan.send_nfreq),
         "nvis": int(kotekan.frame_nvis),
         "vis_labels": kotekan.vis_labels,
         "frame_period_s": frame_period_s,
@@ -410,10 +506,12 @@ def build_viewer_config(kotekan, args):
         },
         "ui": {
             "color_range": default_color_range.get(mode, [-20, 20]),
-            "freq_range_mhz": [
+            # Always ascending, matching the flipped display order the browser
+            # receives (the raw band may be descending; see start()).
+            "freq_range_mhz": sorted([
                 float(kotekan.frame_freqs[0, 0] / 1e6),
                 float(kotekan.frame_freqs[-1, 1] / 1e6),
-            ],
+            ]),
             # Dataset-specific knobs the panels read instead of hardcoding:
             # baseline-fit line mask, auto-cal [calibrate, observe] freqs, tuner span.
             "line_mask_mhz": [1419.9, 1420.9],  # HI line, 1420.4 +/- 0.5
@@ -505,7 +603,7 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
         # frame count keeps backpressure semantics consistent across modes
         # (a fixed byte cap was ~1 crosscorr frame, tripping pause/resume
         # on every single frame).
-        frame_bytes = 9 + kotekan.frame_nvis * kotekan.frame_nfreq * 4
+        frame_bytes = 9 + kotekan.frame_nvis * kotekan.send_nfreq * 4
         buf_bytes = max(WS_BUFFER_MIN_BYTES, WS_BUFFER_FRAMES * frame_bytes)
         try:
             self.transport.getHandle().setsockopt(
@@ -514,7 +612,7 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
         except (AttributeError, OSError) as e:
             log_.warning("WS %s: could not set SO_SNDBUF: %s", self.peer, e)
         self.transport.bufferSize = buf_bytes
-        self.sendfreq = kotekan.frame_nfreq  # no downsampling for now
+        self.sendfreq = kotekan.send_nfreq  # after freq summing (see sum_freq)
 
         # JSON config message. Top-level ``nfreq`` is the legacy field the
         # current waterfall.js still reads; ``viewer_config`` is the new
@@ -527,12 +625,10 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
             isBinary=False,
         )
 
-        # Binary FREQLIST.
-        freqs_mhz = np.mean(
-            (kotekan.frame_freqs / 1e6).reshape(self.sendfreq, -1), axis=1
-        ).astype(np.float32)
+        # Binary FREQLIST -- downsampled, ascending centres (see start()).
         self.sendMessage(
-            np.int8(MSG_FREQLIST).tobytes() + freqs_mhz.tobytes(), isBinary=True
+            np.int8(MSG_FREQLIST).tobytes() + kotekan.display_freqs_mhz.tobytes(),
+            isBinary=True,
         )
 
     def send_power_frame(self):
@@ -546,7 +642,7 @@ class LiveBeamWSProtocol(WebSocketServerProtocol):
         if self._paused:
             return
         t = np.float64(kotekan.sample_time())
-        spectrum = kotekan.outbuf.astype(np.float32, copy=False)
+        spectrum = kotekan.display_spectrum()  # (nvis, send_nfreq), ascending
         self.sendMessage(
             np.int8(MSG_TIMESTEP).tobytes() + t.tobytes() + spectrum.tobytes(),
             isBinary=True,
@@ -697,6 +793,26 @@ def main():
         help="WebSocket port for browser clients (default 8539)",
     )
     ap.add_argument(
+        "--sum-freq",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Sum N adjacent frequency channels into one before sending to "
+        "the browser (default 1 = no downsampling). e.g. --sum-freq 4 turns "
+        "a 1024-channel band into 256, lightening the viewer. A partial tail "
+        "(nfreq %% N) is dropped.",
+    )
+    ap.add_argument(
+        "--power-dtype",
+        choices=["float32", "uint32"],
+        default="float32",
+        help="How to interpret the power-spectrum payload bytes. The airspy "
+        "pipeline (simpleAutocorr) sends float32 (the default); ARO's "
+        "computeDualpolPower sends uint32 integer power sums -- pass "
+        "'uint32' for ARO, which also normalises by samples_summed to a "
+        "per-sample mean power for a stable dB scale.",
+    )
+    ap.add_argument(
         "--http-port",
         default=8080,
         type=int,
@@ -774,6 +890,8 @@ def main():
         host=args.kotekan_host,
         port=args.kotekan_port,
         emit_interval_s=args.viewer_integration_ms / 1000.0,
+        power_dtype=args.power_dtype,
+        sum_freq=args.sum_freq,
     )
     kotekan.start()  # blocks on accept until kotekan connects
 

@@ -11,6 +11,7 @@ import {LayoutManager} from "./layout.js";
 import {Socket} from "./socket.js";
 import {WaterfallView} from "./waterfall_view.js";
 import {CrosscorrView} from "./crosscorr_view.js";
+import {DualpolView} from "./dualpol_view.js";
 import {SpectrumView} from "./spectrum_view.js";
 
 import {ColorPanel}               from "./panels/color.js";
@@ -86,16 +87,31 @@ export class App {
         // pipeline mode (autocorr vs. crosscorr).
         this.layout = new LayoutManager({root: "#layout-root"});
 
-        this.socket = new Socket({app: this,
-                                  url: "ws://" + location.hostname + ":8539"});
+        this.socket = new Socket({app: this, url: this._ws_url()});
         this._wire_status_banner();
         this.socket.connect();
     }
 
+    // Resolve the WebSocket endpoint. Defaults to ``ws://<page-host>:8539``,
+    // but both host and port are overridable via URL query params:
+    //   ?ws=8541          -- different WS port (e.g. a local dev port, or a
+    //                        forwarded port that differs from 8539)
+    //   ?wshost=1.2.3.4   -- different host than the page was served from
+    // This matters for the ARO deployment, where the viewer is reached over
+    // an SSH tunnel whose local ports need not match the server's 8539.
+    _ws_url() {
+        const q = new URLSearchParams(location.search);
+        const host = q.get("wshost") || location.hostname;
+        const port = q.get("ws") || "8539";
+        return `ws://${host}:${port}`;
+    }
+
     // Right-column cards. The mode branch in ``apply_viewer_config`` passes
     // per-mode tweaks: crosscorr drops the Baseline card and needs a taller
-    // Airspy card so two AirspyGainPanels fit stacked.
-    _add_controls_cards({include_baseline, airspy_h}) {
+    // Airspy card so two AirspyGainPanels fit stacked. The Airspy card is
+    // omitted entirely when there are no airspy REST controls (e.g. the ARO
+    // iceboard frontend, which exposes no equivalent gain/tuning controls).
+    _add_controls_cards({include_baseline, include_airspy, airspy_h}) {
         let y = 0;
         this.layout.addWidget({mount_id: "display_card", title: "Display",
                                x: 8, y, w: 4, h: 6, min_w: 3, min_h: 6});
@@ -108,10 +124,12 @@ export class App {
                                    x: 8, y, w: 4, h: 4, min_w: 3, min_h: 4});
             y += 4;
         }
-        const ah = airspy_h || 3;
-        this.layout.addWidget({mount_id: "airspy_card",  title: "Airspy",
-                               x: 8, y, w: 4, h: ah, min_w: 3, min_h: ah});
-        y += ah;
+        if (include_airspy) {
+            const ah = airspy_h || 3;
+            this.layout.addWidget({mount_id: "airspy_card",  title: "Airspy",
+                                   x: 8, y, w: 4, h: ah, min_w: 3, min_h: ah});
+            y += ah;
+        }
         this.layout.addWidget({mount_id: "control_card", title: "Control",
                                x: 8, y, w: 4, h: 2, min_w: 3, min_h: 2});
     }
@@ -184,8 +202,14 @@ export class App {
         // the window out if they want to inspect the edges.
         if (ui.freq_range_mhz) {
             const [lo, hi] = ui.freq_range_mhz;
-            const margin = (hi - lo) * 0.10;
-            this.state.disp_freq = [lo + margin, hi - margin];
+            if (cfg_mode === "dualpol") {
+                // ARO: show the whole band by default (no DC/Nyquist bins to
+                // hide -- the iceboard PFB band is fully populated).
+                this.state.disp_freq = [lo, hi];
+            } else {
+                const margin = (hi - lo) * 0.10;
+                this.state.disp_freq = [lo + margin, hi - margin];
+            }
         }
 
         // Server-driven integration interval. WaterfallView's gap detector
@@ -195,13 +219,20 @@ export class App {
             this.state.ms_per_datum = cfg.frame_period_s * 1000;
         }
         this.state.nvis = cfg_nvis;
+        this.state.vis_labels = cfg.vis_labels || null;
 
         const is_crosscorr = (cfg_mode === "crosscorr");
+        const is_dualpol   = (cfg_mode === "dualpol");
+        // "wide" modes give the multi-stream waterfall card the full left
+        // column and drop the single-stream spectrum + baseline pane.
+        const wide = is_crosscorr || is_dualpol;
 
-        // Layout: autocorr stacks waterfall + spectrum on the left; crosscorr
-        // gives the 2x2 waterfall card the full left column (no spectrum).
-        if (is_crosscorr) {
-            this.layout.addWidget({mount_id: "img_holder", title: "Crosscorr",
+        // Layout: autocorr stacks waterfall + spectrum on the left; the
+        // multi-stream modes (crosscorr 2x2, dualpol 1x2) take the full
+        // left column with no spectrum.
+        if (wide) {
+            const title = is_dualpol ? "Dual-pol Waterfall" : "Crosscorr";
+            this.layout.addWidget({mount_id: "img_holder", title,
                                    x: 0, y: 0, w: 8, h: 18, min_w: 5, min_h: 8});
         } else {
             this.layout.addWidget({mount_id: "img_holder", title: "Waterfall",
@@ -213,13 +244,17 @@ export class App {
         // ~0). Airspy card needs more vertical room in crosscorr so the
         // per-stage AirspyGainPanels (one per dongle) fit stacked.
         this._add_controls_cards({
-            include_baseline: !is_crosscorr,
+            include_baseline: !wide,
+            include_airspy: !!opt.airspy_controls,
             airspy_h: is_crosscorr ? 6 : 3,
         });
 
         // Instantiate the view(s) now that the mount divs exist.
         if (is_crosscorr) {
             this.waterfall = new CrosscorrView({app: this, target: "img_holder"});
+        } else if (is_dualpol) {
+            this.waterfall = new DualpolView({app: this, target: "img_holder",
+                                              labels: this.state.vis_labels});
         } else {
             this.waterfall = new WaterfallView({app: this, target: "img_holder"});
             this.spectrum  = new SpectrumView ({app: this, target: "spectrum_holder"});
@@ -233,10 +268,11 @@ export class App {
 
         // Display card: colormap controls + frequency window + waterfall
         // display length (all things that change what gets *shown*).
-        this.panels.push(new ColorPanel({
+        this.color_panel = new ColorPanel({
             app: this, target: "display_card",
             color_range: ui.color_range || [-20, 20],
-        }));
+        });
+        this.panels.push(this.color_panel);
         // Center-frequency (LO) control -- only when the airspy REST controls
         // are available to retune; otherwise the band is fixed by the source.
         if (opt.airspy_controls && this.kotekan.airspy_stages.length) {
@@ -257,10 +293,10 @@ export class App {
         this.panels.push(new BufferControlPanel({app: this, target: "buffer_card"}));
         this.panels.push(new LocalRecordPanel  ({app: this, target: "buffer_card"}));
 
-        if (!is_crosscorr) {
-            // Spectrum-pane extras + baseline tools are autocorr-only for
-            // now; baseline subtraction would need per-stream state in
-            // crosscorr mode, and the spectrum view assumes a single stream.
+        if (!wide) {
+            // Spectrum-pane extras + baseline tools are single-stream only for
+            // now; baseline subtraction would need per-stream state in the
+            // multi-stream modes, and the spectrum view assumes one stream.
             this.spectrum.add_excess({target: "spectrum_holder"});
 
             // Pass `autocal_stage: opt.airspy_controls ? this.kotekan.airspy_stages[0] : null`
@@ -307,6 +343,31 @@ export class App {
 
         // Control card: master start / stop.
         this.panels.push(new StartStopPanel({app: this, target: "control_card"}));
+
+        // dualpol: auto-fit the colour bar to the data on the first frame, so
+        // the handles span the real dynamic range instead of pegging against a
+        // fixed guess. Robust 1st/99th percentile in dB so a couple of RFI
+        // channels don't blow out the scale; the user can still drag wider.
+        if (is_dualpol) {
+            this._color_autoscaled = false;
+            this.bus.on("state:frame_received", ({data}) => {
+                if (this._color_autoscaled || !this.color_panel || !data || !data.length) return;
+                const db = [];
+                for (let i = 0; i < data.length; i++) {
+                    const v = data[i];
+                    if (v > 0) db.push(10 * Math.log10(v));
+                }
+                if (db.length < 8) return;
+                db.sort((a, b) => a - b);
+                const q = (p) => db[Math.min(db.length - 1,
+                                            Math.max(0, Math.round(p * (db.length - 1))))];
+                const lo = q(0.01), hi = q(0.99);
+                if (hi > lo) {
+                    this.color_panel.apply_range(lo, hi);
+                    this._color_autoscaled = true;
+                }
+            });
+        }
 
         if (opt.galaxy_view && opt.galaxy_view_url) {
             this.layout.addWidget({mount_id: "gal_viewer", title: "Galaxy View",

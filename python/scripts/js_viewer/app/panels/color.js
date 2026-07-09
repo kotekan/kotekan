@@ -104,33 +104,28 @@ export class ColorPanel {
         const cb = this.state.cb;
         const self = this;
         const marg = 15;
-        const inrange = [-1000, 1000];
-        const scale = (inrange[1] - inrange[0]) / (range[1] - range[0]);
+        // Raw jQuery-UI slider units; the dB domain (_range) they map to can
+        // be re-fit later via apply_range() (e.g. auto-scale to the data).
+        this._inrange = [-1000, 1000];
+        this._range = range.slice();
+        this._recompute_scale();
 
         const wrapper = $("<div/>")
             .css({position: "relative", width: "100%",
                   padding: `10px ${marg}px 6px`, "box-sizing": "border-box"})
             .appendTo($("#" + this._target));
 
-        const cbslider = $("<div/>").uniqueId()
+        this._cbslider = $("<div/>").uniqueId()
             .css({width: "100%"})
             .appendTo(wrapper);
 
-        let handle_label_0, handle_label_1;
-
-        cbslider.slider({
-            min: inrange[0], max: inrange[1], range: true,
-            values: [(cb.min - range[0]) * scale + inrange[0],
-                     (cb.max - range[0]) * scale + inrange[0]],
+        this._cbslider.slider({
+            min: this._inrange[0], max: this._inrange[1], range: true,
+            values: this._db_to_raw(cb.min, cb.max),
             slide: function(event, ui) {
-                cb.min = (ui.values[0] - inrange[0]) / scale + range[0];
-                cb.max = (ui.values[1] - inrange[0]) / scale + range[0];
-                handle_label_0.text(cb.min.toFixed(2));
-                handle_label_1.text(cb.max.toFixed(2));
-                for (let i = 0; i < self._cb_tags.length; i++) {
-                    self._cb_tags[i].text(
-                        (i / (self._cb_tags.length - 1) * (cb.max - cb.min) + cb.min).toFixed(2));
-                }
+                cb.min = self._raw_to_db(ui.values[0]);
+                cb.max = self._raw_to_db(ui.values[1]);
+                self._update_labels();
                 self.bus.emit("state:redraw_requested");
             },
         });
@@ -139,14 +134,14 @@ export class ColorPanel {
         // positions handles with ``left: %`` of the track, so a child with
         // ``left: 50%; transform: translateX(-50%)`` sits centered under
         // the handle and tracks it perfectly through resizes and slides.
-        const handles = cbslider.find(".ui-slider-handle");
+        const handles = this._cbslider.find(".ui-slider-handle");
         const label_css = {position: "absolute", top: "100%", left: "50%",
                            transform: "translateX(-50%)", "white-space": "nowrap",
                            "font-size": "12px", "font-family": "sans-serif",
                            "margin-top": "2px"};
-        handle_label_0 = $("<span/>").css(label_css).text(cb.min.toFixed(2))
+        this._handle_label_0 = $("<span/>").css(label_css).text(cb.min.toFixed(2))
             .appendTo(handles[0]);
-        handle_label_1 = $("<span/>").css(label_css).text(cb.max.toFixed(2))
+        this._handle_label_1 = $("<span/>").css(label_css).text(cb.max.toFixed(2))
             .appendTo(handles[1]);
 
         // Centered title below the slider. ``margin-top`` leaves room for
@@ -156,6 +151,44 @@ export class ColorPanel {
                   "font-family": "sans-serif", "margin-top": "24px"})
             .text("Color Bar Range [dB]")
             .appendTo(wrapper);
+    }
+
+    // dB <-> raw slider units, using the current dB domain (_range).
+    _recompute_scale() {
+        this._scale = (this._inrange[1] - this._inrange[0])
+                    / (this._range[1] - this._range[0]);
+    }
+    _db_to_raw(lo, hi) {
+        return [(lo - this._range[0]) * this._scale + this._inrange[0],
+                (hi - this._range[0]) * this._scale + this._inrange[0]];
+    }
+    _raw_to_db(v) {
+        return (v - this._inrange[0]) / this._scale + this._range[0];
+    }
+    _update_labels() {
+        const cb = this.state.cb;
+        if (this._handle_label_0) this._handle_label_0.text(cb.min.toFixed(2));
+        if (this._handle_label_1) this._handle_label_1.text(cb.max.toFixed(2));
+        for (let i = 0; i < this._cb_tags.length; i++) {
+            this._cb_tags[i].text(
+                (i / (this._cb_tags.length - 1) * (cb.max - cb.min) + cb.min).toFixed(2));
+        }
+    }
+
+    // Re-centre the colorbar on a new [lo, hi] dB window -- used to auto-fit
+    // to the live data on the first frame. Pads the track a little past the
+    // data so the handles aren't jammed against the ends (still draggable out).
+    apply_range(lo, hi) {
+        if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return;
+        const cb = this.state.cb;
+        const pad = Math.max(1, (hi - lo) * 0.15);
+        this._range = [lo - pad, hi + pad];
+        this._recompute_scale();
+        cb.min = lo;
+        cb.max = hi;
+        if (this._cbslider) this._cbslider.slider("values", this._db_to_raw(lo, hi));
+        this._update_labels();
+        this.bus.emit("state:redraw_requested");
     }
 
     _change_palette(name) {
