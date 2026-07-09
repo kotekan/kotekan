@@ -117,8 +117,13 @@ pkill -9 -f kotekan/kotekan 2>/dev/null; pkill -9 -f livebeam_server 2>/dev/null
 # Refresh the search PRN list to what's actually overhead NOW (the constellation rotates
 # ~half an orbit in ~8 h, so a hardcoded list goes stale -> zero detections). Needs
 # LAT/LON; patches a temp copy so the committed config is untouched. Launch RUNCFG.
+# SKIP for require_hint configs: those carry the whole constellation and let the search self-select
+# the visible set from the broker's hints (which follow the sky), so pinning a visible-now list would
+# only shrink the candidate set and stop new risers from ever being acquired.
 RUNCFG="$CFG"
-if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
+if grep -qE 'require_hint:[[:space:]]*true' "$CFG"; then
+  echo "require_hint config: search self-selects visible PRNs from broker hints (no visible-now patch)"
+elif [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   # PID-based temp (portable: BSD/macOS mktemp rejects a .yaml suffix after the X's).
   RUNCFG="${TMPDIR:-/tmp}/live_cfg_$$.yaml"
   if ! python3 python/scripts/gps_visible_prns.py --lat "$LAT" --lon "$LON" \

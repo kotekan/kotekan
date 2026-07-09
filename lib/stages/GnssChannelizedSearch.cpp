@@ -9,10 +9,16 @@
 #include "pfbPrototype.hpp"            // for window_from_string
 
 #include <algorithm>  // for min, max
+#include <chrono>     // for steady_clock (hint TTL)
 #include <cmath>      // for fabs, fmod, norm
 #include <cstring>    // for memcpy
 #include <functional> // for bind
 #include "json.hpp"   // for json
+
+// Monotonic seconds, for the Doppler-hint time-to-live (a hint the broker stops refreshing expires).
+static inline double steady_s() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 using kotekan::Config;
 using kotekan::bufferContainer;
@@ -61,6 +67,12 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _acquire_snr = config.get_default<double>(unique_name, "acquire_snr", 12.0);
     _acquire_windows = config.get_default<int>(unique_name, "acquire_windows", 64);
     _hold_snapshots = config.get_default<int>(unique_name, "hold_snapshots", 5);
+    // require_hint: scan only broker-hinted (visible) PRNs, skip the rest -> `prns` can list the
+    // whole constellation and the active-scan set follows the sky (mid-run PRN swap) at a cost that
+    // tracks the visible count, never blind-gridding a below-horizon sat. hint_ttl_s expires a hint
+    // the broker stopped refreshing (a set sat) so it drops out. Off by default (blind-grid legacy).
+    _require_hint = config.get_default<bool>(unique_name, "require_hint", false);
+    _hint_ttl_s = config.get_default<double>(unique_name, "hint_ttl_s", 8.0);
     double dmin = config.get_default<double>(unique_name, "doppler_min", -6000.0);
     double dmax = config.get_default<double>(unique_name, "doppler_max", 6000.0);
     _doppler_step = config.get_default<double>(unique_name, "doppler_step", 500.0);
@@ -139,26 +151,39 @@ void GnssChannelizedSearch::search_snapshot() {
             continue;
         }
 
+        // Almanac-narrowed grid: if the broker pushed a Doppler hint for this PRN, scan only
+        // hint +- margin (the orbit fixes Doppler; only the common clock drift remains) -- far
+        // cheaper + lower false-alarm. The hint is the PHYSICAL (reported) Doppler; the internal
+        // grid runs in the r2c-flipped convention (det.doppler_hz = -grid value below), so centre
+        // the window at -hint. A hint older than _hint_ttl_s (the broker stopped refreshing it =
+        // the sat set) counts as absent. No fresh hint -> the full blind grid, EXCEPT in
+        // require_hint mode where the PRN is SKIPPED entirely (no replica build, no scan): that
+        // lets `prns` list the whole constellation while cost tracks only the visible/hinted set,
+        // so PRNs swap in/out as the sky rotates without ever sweeping a below-horizon sat.
+        std::vector<double> pgrid;
+        bool hinted = false;
+        {
+            std::lock_guard<std::mutex> lk(_hint_mtx);
+            const DopHint& hh = _dop_hints[p];
+            if (hh.valid && (_hint_ttl_s <= 0.0 || steady_s() - hh.t_recv < _hint_ttl_s)) {
+                hinted = true;
+                const double c = -hh.doppler, m = std::max(0.0, hh.margin);
+                for (double f = c - m; f <= c + m + 1e-6; f += _doppler_step)
+                    pgrid.push_back(f);
+            }
+        }
+        if (_require_hint && !hinted) { // below horizon / stale -> not in the active set this cycle
+            std::lock_guard<std::mutex> lk(_det_mtx);
+            _detections[p] = Detection{};
+            continue;
+        }
+
         // repl0 (code 0, Doppler 0), sliced to this subband's local channels.
         const auto repl_full = _replica->channels(p, anchor, 0.0, 0.0, Mp); // [N][Mp]
         std::vector<std::vector<cf>> repl0(_n_chan);
         for (int lc = 0; lc < _n_chan; ++lc)
             repl0[lc] = repl_full[_chan_offset + lc];
 
-        // Almanac-narrowed grid: if the broker pushed a Doppler hint for this PRN, scan only
-        // hint +- margin (the orbit fixes Doppler; only the common clock drift remains) -- far
-        // cheaper + lower false-alarm. No hint -> the full blind grid (unchanged without a broker).
-        // The hint is the PHYSICAL (reported) Doppler; the internal grid runs in the r2c-flipped
-        // convention (det.doppler_hz = -grid value below), so centre the window at -hint.
-        std::vector<double> pgrid;
-        {
-            std::lock_guard<std::mutex> lk(_hint_mtx);
-            if (_dop_hints[p].valid) {
-                const double c = -_dop_hints[p].doppler, m = std::max(0.0, _dop_hints[p].margin);
-                for (double f = c - m; f <= c + m + 1e-6; f += _doppler_step)
-                    pgrid.push_back(f);
-            }
-        }
         const std::vector<double>& grid = pgrid.empty() ? _doppler_grid : pgrid;
 
         // Integrate the |D|^2 surface over the snapshot windows (incoherent).
@@ -382,9 +407,10 @@ void GnssChannelizedSearch::set_doppler_hints_callback(kotekan::connectionInstan
                     continue;
                 const double margin = h.value("margin_hz", 0.0);
                 if (margin < 0.0)
-                    _dop_hints[i] = DopHint{}; // clear -> blind grid for this PRN
+                    _dop_hints[i] = DopHint{}; // clear -> blind grid (or skip, if require_hint)
                 else
-                    _dop_hints[i] = DopHint{true, h.at("doppler_hz").get<double>(), margin};
+                    _dop_hints[i] =
+                        DopHint{true, h.at("doppler_hz").get<double>(), margin, steady_s()};
                 break;
             }
         }

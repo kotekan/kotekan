@@ -107,14 +107,22 @@ private:
     std::vector<double> _doppler_grid; ///< blind fallback grid (doppler_min..max)
 
     /// Per-PRN almanac Doppler hint from the broker (POST set_doppler_hints): when valid, the
-    /// search scans only doppler +- margin for that PRN instead of the blind grid.
+    /// search scans only doppler +- margin for that PRN instead of the blind grid. `t_recv` is a
+    /// steady-clock stamp (s) at receipt -> a hint the broker stops refreshing (the sat set) EXPIRES
+    /// after _hint_ttl_s, so with _require_hint the PRN drops out of the active scan set.
     struct DopHint {
         bool valid = false;
         double doppler = 0.0;
         double margin = 0.0;
+        double t_recv = 0.0;
     };
     std::vector<DopHint> _dop_hints; ///< parallel to _prns
     std::mutex _hint_mtx;
+    /// require_hint: scan ONLY PRNs with a fresh broker hint (visible sats), SKIP the rest (no blind
+    /// grid) -> cost tracks the visible count, and the set follows the sky (mid-run PRN swap) when
+    /// `prns` lists the whole constellation. hint_ttl_s: a hint older than this counts as absent.
+    bool _require_hint = false;
+    double _hint_ttl_s = 8.0;
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> _replica;
     gnss::AcquireWorkspace _acq_ws;
