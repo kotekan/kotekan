@@ -22,6 +22,7 @@ import {BufferControlPanel,
 import {StartStopPanel}           from "./panels/start_stop.js";
 import {LocalRecordPanel}         from "./panels/record.js";
 import {BaselinePanel}            from "./panels/baseline.js";
+import {MedianSubtractPanel}      from "./panels/median.js";
 import {AirspyGainPanel}          from "./panels/airspy_gain.js";
 import {LagAlignPanel}            from "./panels/lag_align.js";
 import {CCERAPointingPanel}       from "./panels/ccera.js";
@@ -65,6 +66,12 @@ function default_state() {
         CCERA: null,
         // Display-time baseline subtraction flag; flipped by BaselinePanel.
         baseline_enabled: false,
+        // Display-time per-channel median subtraction (dualpol); flipped by
+        // MedianSubtractPanel, applied per view in WaterfallView._dodraw.
+        median_subtract: false,
+        // One-shot request for the primary WaterfallView to re-fit the colour
+        // bar to the currently displayed values (set on first frame / mode change).
+        request_color_fit: false,
     };
 }
 
@@ -243,8 +250,10 @@ export class App {
         // Baseline is autocorr-only (crosscorr's cross-baseline is usually
         // ~0). Airspy card needs more vertical room in crosscorr so the
         // per-stage AirspyGainPanels (one per dongle) fit stacked.
+        // Baseline card: autocorr gets the airspy BaselinePanel, dualpol gets
+        // the median-subtract toggle; crosscorr has no single-stream baseline.
         this._add_controls_cards({
-            include_baseline: !wide,
+            include_baseline: !is_crosscorr,
             include_airspy: !!opt.airspy_controls,
             airspy_h: is_crosscorr ? 6 : 3,
         });
@@ -312,6 +321,12 @@ export class App {
             }));
         }
 
+        // dualpol baseline card: per-channel median subtraction (per pol).
+        if (is_dualpol) {
+            this.panels.push(new MedianSubtractPanel({
+                app: this, target: "baseline_card"}));
+        }
+
         // Airspy card: per-stage gain + ADC stats.
         if (opt.airspy_controls) {
             for (const stage of this.kotekan.airspy_stages) {
@@ -344,28 +359,20 @@ export class App {
         // Control card: master start / stop.
         this.panels.push(new StartStopPanel({app: this, target: "control_card"}));
 
-        // dualpol: auto-fit the colour bar to the data on the first frame, so
-        // the handles span the real dynamic range instead of pegging against a
-        // fixed guess. Robust 1st/99th percentile in dB so a couple of RFI
-        // channels don't blow out the scale; the user can still drag wider.
+        // dualpol colour auto-fit. The primary WaterfallView computes the
+        // 1st/99th percentile of the *displayed* values (honoring the freq
+        // window and median-subtract mode) whenever a fit is requested, then
+        // emits waterfall:fit_color -- so the handles span the real dynamic
+        // range instead of pegging a fixed guess, and re-fit sensibly when the
+        // median toggle changes what's on screen. Request one on the first
+        // frame; MedianSubtractPanel requests another on toggle.
         if (is_dualpol) {
-            this._color_autoscaled = false;
-            this.bus.on("state:frame_received", ({data}) => {
-                if (this._color_autoscaled || !this.color_panel || !data || !data.length) return;
-                const db = [];
-                for (let i = 0; i < data.length; i++) {
-                    const v = data[i];
-                    if (v > 0) db.push(10 * Math.log10(v));
-                }
-                if (db.length < 8) return;
-                db.sort((a, b) => a - b);
-                const q = (p) => db[Math.min(db.length - 1,
-                                            Math.max(0, Math.round(p * (db.length - 1))))];
-                const lo = q(0.01), hi = q(0.99);
-                if (hi > lo) {
-                    this.color_panel.apply_range(lo, hi);
-                    this._color_autoscaled = true;
-                }
+            this.bus.on("waterfall:fit_color", ({lo, hi}) => {
+                if (this.color_panel) this.color_panel.apply_range(lo, hi);
+            });
+            let first = true;
+            this.bus.on("state:frame_received", () => {
+                if (first) { first = false; this.state.request_color_fit = true; }
             });
         }
 

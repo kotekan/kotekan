@@ -85,13 +85,18 @@ export class WaterfallView {
      */
     constructor({app, target,
                  stream_extractor, value_transform,
-                 enable_baseline, is_primary, cb}) {
+                 enable_baseline, enable_median, is_primary, cb}) {
         this.app = app;
         this.bus = app.bus;
         this.state = app.state;
         this.stream_extractor = stream_extractor || ((row, _nf) => row);
         this.value_transform  = value_transform  || ((v) => 10 * Math.log10(v));
         this.enable_baseline  = (enable_baseline !== false);
+        // Per-channel median subtraction (the old pyPeek "medsub"): subtract
+        // each channel's median over the visible time window, so the standing
+        // bandpass drops out and time-varying signal pops. Computed per view,
+        // so it is dual-pol-aware (XX and YY each subtract their own median).
+        this.enable_median    = (enable_median !== false);
         this.is_primary       = (is_primary       !== false);
         this.cb               = cb || this.state.cb;
 
@@ -333,6 +338,14 @@ export class WaterfallView {
         });
     }
 
+    // Median of the first ``n`` entries of ``buf`` (sorts that slice in place).
+    _median(buf, n) {
+        const a = buf.subarray(0, n);
+        a.sort();  // Float32Array.sort is numeric, not lexicographic
+        const m = n >> 1;
+        return (n & 1) ? a[m] : 0.5 * (a[m - 1] + a[m]);
+    }
+
     _dodraw() {
         const s = this.state;
         if (!s.freq_list || s.freq_list.length < 2) return;
@@ -392,20 +405,63 @@ export class WaterfallView {
 
         const imageData = c.createImageData(nbins, ntimes);
         const disp_start = Math.max(0, scd.length - ntimes);
+        const ndisp = scd.length - disp_start;
         const baseline_on = this.enable_baseline && !!s.baseline_enabled;
+        const median_on   = this.enable_median   && !!s.median_subtract;
         const baseline = s.spectrum_baseline;
         const tx = this.value_transform;
         const cb = this.cb;
+
+        // Per-channel median over the displayed time window, in transformed
+        // (dB) space, for this view's own stream -- so XX and YY each remove
+        // their own bandpass. Recomputed every draw, so it tracks the
+        // scrolling window (a running median, like the old pyPeek medsub).
+        let med = null;
+        if (median_on) {
+            med = new Float32Array(nbins);
+            const col = new Float32Array(ndisp);
+            for (let i = 0; i < nbins; i++) {
+                const ii = i + freq_lo;
+                let n = 0;
+                for (let j = disp_start; j < scd.length; j++) {
+                    const v = tx(extracted[j][ii]);
+                    if (v === v && v !== Infinity && v !== -Infinity) col[n++] = v;
+                }
+                med[i] = n ? this._median(col, n) : 0;
+            }
+        }
+
+        // Collect displayed values for a colour re-fit if one was requested
+        // (first frame, or the display mode changed). Only the primary view
+        // drives the shared colour bar, and only when asked -- the sort is
+        // skipped on ordinary frames.
+        const want_fit = this.is_primary && !!s.request_color_fit;
+        const fit_vals = want_fit ? new Float32Array(nbins * ndisp) : null;
+        let fit_n = 0;
+
         for (let j = disp_start; j < scd.length; j++) {
             const row = extracted[j];
             for (let i = 0; i < nbins; i++) {
                 const ii = i + freq_lo;
                 let v = tx(row[ii]);
-                if (baseline_on) v -= tx(baseline[ii]);
+                if (median_on) v -= med[i];
+                else if (baseline_on) v -= tx(baseline[ii]);
                 cb.setPixel(imageData, i, j - disp_start, v);
+                if (want_fit && v === v && v !== Infinity && v !== -Infinity) {
+                    fit_vals[fit_n++] = v;
+                }
             }
         }
         c.putImageData(imageData, 0, 0);
+
+        if (want_fit && fit_n > 8) {
+            const a = fit_vals.subarray(0, fit_n);
+            a.sort();  // Float32Array.sort is numeric
+            const q = (p) => a[Math.min(fit_n - 1, Math.max(0, Math.round(p * (fit_n - 1))))];
+            const lo = q(0.01), hi = q(0.99);
+            s.request_color_fit = false;
+            if (hi > lo) this.bus.emit("waterfall:fit_color", {lo, hi});
+        }
 
         // Update axes to match the displayed data.
         this.freq_scale.domain([fl[freq_lo], fl[Math.min(freq_hi, fl.length - 1)]]);
