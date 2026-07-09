@@ -1,8 +1,8 @@
 // Per-pol mean spectrum for the dualpol viewer: the mean over the visible
-// waterfall buffer of each channel, one trace per pol (XX/YY). Respects the
-// median-subtract toggle -- when on, each channel's per-time median (dB) is
-// removed, so the trace shows deviations from the standing bandpass (RFI,
-// drifting sources) rather than the bandpass itself.
+// waterfall buffer of each channel, one trace per pol (XX/YY). This is the raw
+// bandpass and is deliberately independent of the waterfall's median-subtract
+// toggle -- subtracting each channel's per-time median from a mean-over-time
+// would just collapse the trace to ~0.
 //
 // Computed in dB space to match the waterfall (10*log10 is applied per sample
 // before averaging), and rate-limited so the Plotly redraw doesn't fight the
@@ -59,13 +59,6 @@ export class DualpolSpectrumView {
         }
     }
 
-    _median(buf, n) {
-        const a = buf.subarray(0, n);
-        a.sort();
-        const m = n >> 1;
-        return (n & 1) ? a[m] : 0.5 * (a[m - 1] + a[m]);
-    }
-
     _update() {
         const s = this.state;
         if (!s.freq_list || s.freq_list.length < 2 || !s.scroll_data.length) return;
@@ -74,11 +67,9 @@ export class DualpolSpectrumView {
         const scd = s.scroll_data;
         const ntimes = Math.min(scd.length, s.waterfall_buffer_display_length);
         const start = Math.max(0, scd.length - ntimes);
-        const median_on = !!s.median_subtract;
         const freqs = Array.from(s.freq_list);
 
         const ys = [];
-        const col = new Float32Array(scd.length - start);
         for (let p = 0; p < nvis; p++) {
             const off = p * nfreq;
             const y = new Array(nfreq);
@@ -86,16 +77,9 @@ export class DualpolSpectrumView {
                 let sum = 0, n = 0;
                 for (let j = start; j < scd.length; j++) {
                     const v = scd[j][off + f];
-                    if (v === v && v > 0) {
-                        const d = 10 * Math.log10(v);
-                        sum += d;
-                        if (median_on) col[n] = d;
-                        n++;
-                    }
+                    if (v === v && v > 0) { sum += 10 * Math.log10(v); n++; }
                 }
-                let val = n ? sum / n : null;
-                if (median_on && n) val -= this._median(col, n);
-                y[f] = val;
+                y[f] = n ? sum / n : null;
             }
             ys.push(y);
         }

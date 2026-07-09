@@ -134,8 +134,8 @@ export class App {
         y += 3;
         if (include_baseline) {
             this.layout.addWidget({mount_id: "baseline_card", title: "Baseline",
-                                   x: 8, y, w: 4, h: 4, min_w: 3, min_h: 4});
-            y += 4;
+                                   x: 8, y, w: 4, h: 3, min_w: 3, min_h: 2});
+            y += 3;
         }
         if (include_airspy) {
             const ah = airspy_h || 3;
@@ -144,7 +144,7 @@ export class App {
             y += ah;
         }
         this.layout.addWidget({mount_id: "control_card", title: "Control",
-                               x: 8, y, w: 4, h: 5, min_w: 3, min_h: 4});
+                               x: 8, y, w: 4, h: 3, min_w: 3, min_h: 2});
     }
 
     // Toolbar banner: surfaces protocol-version mismatches and WS-drop /
@@ -352,7 +352,7 @@ export class App {
         // dualpol pulse-fold controls (target picker + period/DM + dedisperse).
         if (fold_available) {
             this.layout.addWidget({mount_id: "fold_card", title: "Pulse Fold",
-                                   x: 8, y: 15, w: 4, h: 6, min_w: 3, min_h: 5});
+                                   x: 8, y: 15, w: 4, h: 6, min_w: 3, min_h: 3});
             this.panels.push(new FoldPanel({
                 app: this, target: "fold_card", nphase: cfg.fold.nphase}));
         }
@@ -386,13 +386,18 @@ export class App {
                 app: this, target: "pointing_card"}));
         }
 
-        // Control card: instrument metadata readout + connection light, then
-        // the master start / stop. Metadata is derived entirely from
-        // viewer_config, so it's useful for every pipeline.
+        // Control card: instrument metadata readout + connection light on the
+        // left, master start/stop on the right. Metadata is derived entirely
+        // from viewer_config, so it's useful for every pipeline.
         const band = ui.freq_range_mhz;
         const nchan = cfg.nfreq || this.state.num_freqs;
+        $("#control_card").css({display: "flex", "align-items": "center", gap: "6px"});
+        const meta_mount = $("<div/>").uniqueId()
+            .css({flex: "1 1 0", "min-width": "0"}).appendTo("#control_card");
+        const btn_mount = $("<div/>").uniqueId()
+            .css({flex: "0 0 auto"}).appendTo("#control_card");
         this.panels.push(new MetadataPanel({
-            app: this, target: "control_card",
+            app: this, target: meta_mount.attr("id"),
             meta: {
                 mode: cfg_mode,
                 vis_labels: this.state.vis_labels,
@@ -402,7 +407,7 @@ export class App {
                 cadence_ms: this.state.ms_per_datum,
             },
         }));
-        this.panels.push(new StartStopPanel({app: this, target: "control_card"}));
+        this.panels.push(new StartStopPanel({app: this, target: btn_mount.attr("id")}));
 
         // dualpol colour auto-fit. The primary WaterfallView computes the
         // 1st/99th percentile of the *displayed* values (honoring the freq

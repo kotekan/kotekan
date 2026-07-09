@@ -10,6 +10,11 @@ export class MetadataPanel {
         this._target = target;
         this.meta = meta || {};
         this._build();
+        // The panel is created *after* viewer_config arrives, i.e. after the
+        // socket already fired ws:open -- so seed the light from the live
+        // socket state instead of waiting for an event that already passed.
+        const ws = this.app.socket && this.app.socket.ws;
+        this._set_conn(!!ws && ws.readyState === 1 /* WebSocket.OPEN */);
         this.bus.on("ws:open", () => this._set_conn(true));
         this.bus.on("ws:close", () => this._set_conn(false));
         this.bus.on("ws:reconnect_scheduled", () => this._set_conn(false));
