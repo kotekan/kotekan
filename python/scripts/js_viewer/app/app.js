@@ -12,6 +12,7 @@ import {Socket} from "./socket.js";
 import {WaterfallView} from "./waterfall_view.js";
 import {CrosscorrView} from "./crosscorr_view.js";
 import {DualpolView} from "./dualpol_view.js";
+import {DualpolSpectrumView} from "./dualpol_spectrum_view.js";
 import {FoldView} from "./fold_view.js";
 import {SpectrumView} from "./spectrum_view.js";
 
@@ -21,6 +22,7 @@ import {TuningPanel}              from "./panels/tuning.js";
 import {BufferControlPanel,
         WaterfallControlPanel}     from "./panels/buffer.js";
 import {StartStopPanel}           from "./panels/start_stop.js";
+import {MetadataPanel}            from "./panels/metadata.js";
 import {LocalRecordPanel}         from "./panels/record.js";
 import {BaselinePanel}            from "./panels/baseline.js";
 import {MedianSubtractPanel}      from "./panels/median.js";
@@ -142,7 +144,7 @@ export class App {
             y += ah;
         }
         this.layout.addWidget({mount_id: "control_card", title: "Control",
-                               x: 8, y, w: 4, h: 2, min_w: 3, min_h: 2});
+                               x: 8, y, w: 4, h: 5, min_w: 3, min_h: 4});
     }
 
     // Toolbar banner: surfaces protocol-version mismatches and WS-drop /
@@ -245,11 +247,12 @@ export class App {
         // with the pulse-fold view stacked below the waterfall.
         if (is_dualpol) {
             this.layout.addWidget({mount_id: "img_holder", title: "Dual-pol Waterfall",
-                                   x: 0, y: 0, w: 8, h: fold_available ? 11 : 18,
-                                   min_w: 5, min_h: 6});
+                                   x: 0, y: 0, w: 8, h: 8, min_w: 5, min_h: 5});
+            this.layout.addWidget({mount_id: "spectrum_holder", title: "Mean Spectrum",
+                                   x: 0, y: 8, w: 8, h: 4, min_w: 4, min_h: 3});
             if (fold_available) {
                 this.layout.addWidget({mount_id: "fold_holder", title: "Pulse Fold",
-                                       x: 0, y: 11, w: 8, h: 7, min_w: 5, min_h: 5});
+                                       x: 0, y: 12, w: 8, h: 7, min_w: 5, min_h: 5});
             }
         } else if (is_crosscorr) {
             this.layout.addWidget({mount_id: "img_holder", title: "Crosscorr",
@@ -277,6 +280,8 @@ export class App {
         } else if (is_dualpol) {
             this.waterfall = new DualpolView({app: this, target: "img_holder",
                                               labels: this.state.vis_labels});
+            this.spectrum = new DualpolSpectrumView({app: this, target: "spectrum_holder",
+                                                     labels: this.state.vis_labels});
             if (fold_available) {
                 this.fold = new FoldView({app: this, target: "fold_holder",
                                           labels: this.state.vis_labels});
@@ -381,7 +386,22 @@ export class App {
                 app: this, target: "pointing_card"}));
         }
 
-        // Control card: master start / stop.
+        // Control card: instrument metadata readout + connection light, then
+        // the master start / stop. Metadata is derived entirely from
+        // viewer_config, so it's useful for every pipeline.
+        const band = ui.freq_range_mhz;
+        const nchan = cfg.nfreq || this.state.num_freqs;
+        this.panels.push(new MetadataPanel({
+            app: this, target: "control_card",
+            meta: {
+                mode: cfg_mode,
+                vis_labels: this.state.vis_labels,
+                band,
+                nchan,
+                res_mhz: (band && nchan) ? Math.abs(band[1] - band[0]) / nchan : null,
+                cadence_ms: this.state.ms_per_datum,
+            },
+        }));
         this.panels.push(new StartStopPanel({app: this, target: "control_card"}));
 
         // dualpol colour auto-fit. The primary WaterfallView computes the
