@@ -95,7 +95,7 @@ processFeedGains::processFeedGains(Config& config, const std::string& unique_nam
 processFeedGains::~processFeedGains() {}
 
 void processFeedGains::set_frame_desc(Buffer* buf) {
-    buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float16>, 4>::describe(
+    buf->require_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float16>, 4>::describe(
         "W",
         {static_cast<ptrdiff_t>(num_beams), static_cast<ptrdiff_t>(num_local_freq * upchan_factor),
          static_cast<ptrdiff_t>(num_elements), static_cast<ptrdiff_t>(num_components)},
