@@ -282,6 +282,10 @@ def main(argv=None):
                     help="clamp on the shared carrier trim (Hz)")
     ap.add_argument("--carrier-leak", type=float, default=0.05,
                     help="shared carrier integrator leak (same role as --dll-leak)")
+    ap.add_argument("--force-doppler-rate", type=float, default=None,
+                    help="REPLAY BENCH ONLY: attach this doppler_rate_hz_s to every seed (a "
+                         "recorded capture's sky is at another epoch, so no almanac rate) to "
+                         "exercise the tracker's NCO Doppler-rate feed-forward offline.")
     ap.add_argument("--dll-gain", type=float, default=0.25,
                     help="code delay-lock-loop gain (0 = off): each poll, nudge a persistent "
                          "per-PRN cp TRIM by gain * tau_est from the combiner's E/L discriminator. "
@@ -483,10 +487,15 @@ def main(argv=None):
             seed = {"doppler_hz": seed_dop, "code_phase_chips": cp,
                     "code_phase_rate": 0.0, "ref_hop": ref_hop}
             # 2nd-order carrier feed-forward: hand the tracker the almanac Doppler RATE (Hz/s, sign-
-            # applied like doppler_hz) so it ramps the replica frequency and the deep-integration
-            # residual stays flat even at zenith (max Doppler acceleration). Anchored at ref_hop.
+            # applied like doppler_hz); the tracker integrates it in its NCO (never a replica
+            # retune -- that walks the absolutely-anchored code/carrier off-peak) so the deep-
+            # integration residual stays flat even at zenith (max Doppler acceleration).
             if args.almanac and prn in pred:
                 seed["doppler_rate_hz_s"] = pred[prn][1]
+            elif args.force_doppler_rate is not None:
+                # Replay-bench override: a recorded capture's sky is at another epoch (no almanac),
+                # so inject a known rate into every seed to exercise the NCO feed-forward offline.
+                seed["doppler_rate_hz_s"] = args.force_doppler_rate
             fit = fit_cp_rate(h, CODE_LEN)
             if fit is not None:
                 rate, h0, cp_ref = fit

@@ -268,18 +268,26 @@ void GnssChannelizedTracker::main_thread() {
                     reacq_hop[p] = window_start_hop; // anchor the Doppler-rate feed-forward here
                 }
                 const double fcar = nco_mode ? f_ref[p] : dop[p];
-                // 2nd-order carrier feed-forward: ramp the replica frequency by the almanac Doppler
-                // RATE so the despread residual stays ~constant across a multi-100 ms coherent window.
-                // A 1st-order FLL alone velocity-lags the ramp -> a quadratic carrier phase that
-                // cancels the deep sum, worst at zenith (max Doppler acceleration). Anchor at the hop
-                // where the base carrier was last fixed: reacq_hop (FLL ref) or the fresh broker
-                // seed anchor ref_hop (no FLL). With the ramp in the replica, the FLL sees only
-                // the small constant clock/fit residual -- no loop-logic change needed.
-                const long long ff_anchor = nco_mode ? reacq_hop[p] : ref_hop[p];
-                const double fcar_eff =
-                    fcar + dop_rate[p] * (double)(window_start_hop - ff_anchor) * (double)_fft_len
-                               / _sample_rate;
-                rec[1] = (float)(fcar_eff
+                // 2nd-order carrier feed-forward -- applied in the NCO, NEVER as a replica retune.
+                // The replica's carrier AND code are anchored to ABSOLUTE sample 0 (phase = w*n,
+                // code = cp0 + n*chip_per_sample(f)), so retuning its frequency by df mid-stream
+                // rotates the whole phase history by 2*pi*df*t_abs and walks the code off-peak by
+                // chip_rate*t_abs*df/f_c (~0.65 chips per Hz per 1000 s of capture) -- a RAMPED
+                // replica frequency therefore destroys the correlation as the anchor ages
+                // (measured: |A| dies in ~10 s under an injected 5 Hz/s ramp; this was the root
+                // cause of the L1 deep decay, 2026-07-10). The NCO is the time-local corrector:
+                // integrating the ramp there (phi += 2*pi*f_nco*dt) yields exactly the intended
+                // quadratic phase with no absolute-anchor coupling. The replica frequency stays
+                // FIXED at f_ref between re-anchors; the fence below re-anchors it (one phase
+                // glitch) only when the true carrier walks far enough (~200 Hz) to decohere the
+                // intra-record despread itself. Non-NCO mode (plain correlator) needs no ramp at
+                // all: its dop refreshes from the broker every window (staleness < 0.2 s).
+                const double ff_hz = nco_mode ? dop_rate[p]
+                                                    * (double)(window_start_hop - reacq_hop[p])
+                                                    * (double)_fft_len / _sample_rate
+                                              : 0.0;
+                const double fcar_eff = fcar; // replica: FIXED between re-anchors (see above)
+                rec[1] = (float)(fcar + ff_hz
                                  + ((_fll_gain > 0.0) ? f_track[p] : 0.0) + ctrim[p]);
                 rec[2] = (float)cp_seed;
                 rec[6] = (float)owned.size();
@@ -342,8 +350,10 @@ void GnssChannelizedTracker::main_thread() {
                     const double dt = (double)(window_start_hop - hop_prev[p]) * (double)_fft_len
                                       / _sample_rate;
                     // NCO frequency: local FLL estimate (if enabled) + the broker-commanded
-                    // shared-loop trim. Trim changes alter the slope of phi, never jump it.
-                    const double f_nco = ((_fll_gain > 0.0) ? f_track[p] : 0.0) + ctrim[p];
+                    // shared-loop trim + the almanac Doppler-rate feed-forward (ff_hz -- see the
+                    // fcar comment above for why the ramp lives HERE and not in the replica).
+                    // All change the slope of phi, never jump it.
+                    const double f_nco = ((_fll_gain > 0.0) ? f_track[p] : 0.0) + ctrim[p] + ff_hz;
                     if (a_prev_ok[p] && dt > 0.0) {
                         phi_track[p] += 2.0 * M_PI * f_nco * dt; // NCO (advances over gaps too)
                         phi_track[p] = std::remainder(phi_track[p], 2.0 * M_PI); // keep bounded

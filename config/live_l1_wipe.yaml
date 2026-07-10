@@ -95,8 +95,9 @@ valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 # quadratic carrier-phase ramp of ~2.8 rad over the 1 s window cancels the coherent sum (a 0.4 s diag
 # confirmed it: PRN21 recovered to ~0.30). hold_lock froze the carrier at a CONSTANT hold_dop (no rate
 # term) -> wrong for an accelerating sat -> amp 0 (off). Keep pullin_chips: 1.0 (re-centering reaches
-# the lock). FIXED: GnssChannelizedTracker now ramps the replica frequency by the almanac Doppler RATE
-# (broker seeds doppler_rate_hz_s), so the residual stays flat and the FULL 1 s coheres even at zenith.
+# the lock). FIXED: GnssChannelizedTracker now ramps its NCO by the almanac Doppler RATE (NEVER the
+# replica -- an absolutely-anchored replica retune walks code+carrier off-peak as the anchor ages), so
+# the residual stays flat and the FULL 1 s coheres even at zenith (broker seeds doppler_rate_hz_s).
 # SHARED CARRIER LOOP (2026-07-08): tracker runs PURE FEED-FORWARD (fll_gain 0 -> seed + almanac
 # Doppler-rate ramp only) + an NCO that applies the broker's carrier_trim_hz (carrier_shared). The
 # COMBINER measures the residual carrier as a bit-robust phase-SLOPE fit over the deep window
