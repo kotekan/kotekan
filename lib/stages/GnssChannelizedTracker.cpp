@@ -282,12 +282,18 @@ void GnssChannelizedTracker::main_thread() {
                 // glitch) only when the true carrier walks far enough (~200 Hz) to decohere the
                 // intra-record despread itself. Non-NCO mode (plain correlator) needs no ramp at
                 // all: its dop refreshes from the broker every window (staleness < 0.2 s).
-                const double ff_hz = nco_mode ? dop_rate[p]
+                // Sign: the seed's doppler_rate_hz_s arrives PHYSICAL-signed (same convention as
+                // doppler_hz), but the despread residual / NCO / trim run in the r2c-flipped
+                // INTERNAL convention (residual = -(physical); same flip as the search's
+                // det.doppler_hz = -grid). Negate on entry -- measured both ways on the 07-04
+                // replay: the internal +0.34 Hz/s flattens the trim that the physical -0.31
+                // doubles, and live all trims crept to the rail before this negation.
+                const double ff_hz = nco_mode ? -dop_rate[p]
                                                     * (double)(window_start_hop - reacq_hop[p])
                                                     * (double)_fft_len / _sample_rate
                                               : 0.0;
                 const double fcar_eff = fcar; // replica: FIXED between re-anchors (see above)
-                rec[1] = (float)(fcar + ff_hz
+                rec[1] = (float)(fcar - ff_hz // report the ramp physical-signed
                                  + ((_fll_gain > 0.0) ? f_track[p] : 0.0) + ctrim[p]);
                 rec[2] = (float)cp_seed;
                 rec[6] = (float)owned.size();
