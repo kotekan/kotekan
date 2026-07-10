@@ -323,7 +323,7 @@ cudaCHIMEFRBBeamformer_chime_U16::cudaCHIMEFRBBeamformer_chime_U16(Config& confi
     info_name(unique_name + "/gpu_mem_info"),
 
     W_buffer(W_name, W_quantity, reverse(W_lengths), reverse(W_labels), reverse(W_dimscalings),
-             *this, buffer_type_t::do_once),
+             *this),
     Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels),
                 reverse(Ebar_dimscalings), *this),
     I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), reverse(I_dimscalings),
