@@ -26,6 +26,7 @@ export class GpsAmpHistoryPanel {
         this._inflight = false;
         this._dirty = false;         // new data for the selected PRN since last redraw
         this._plotted = false;
+        this._maxDr = 0;             // largest deep_records seen = the converged (~1 s) window
 
         const root = $("#" + target);
         root.css({display: "flex", flexDirection: "column", width: "100%", height: "100%",
@@ -53,7 +54,7 @@ export class GpsAmpHistoryPanel {
         $("<button/>").text("clear").css({fontSize: "11px", marginLeft: "auto"})
             .appendTo(bar).on("click", () => {
                 if (this.selected != null && this.hist.has(this.selected))
-                    this.hist.set(this.selected, {t: [], a: [], sig: [], coh: []});
+                    this.hist.set(this.selected, {t: [], a: [], sig: [], coh: [], dr: []});
                 this._plotted = false;
                 this._redraw();
             });
@@ -90,14 +91,16 @@ export class GpsAmpHistoryPanel {
                     const sig = Math.max(c.deep_snr || 0, c.amp_snr || 0);
                     if (A === 0 && sig === 0) continue;   // no despread this emit -> a gap, not a 0
                     const coh = c.coherence_s || 0;
-                    if (!this.hist.has(prn)) this.hist.set(prn, {t: [], a: [], sig: [], coh: []});
+                    const dr = c.deep_records || 0;
+                    if (dr > this._maxDr) this._maxDr = dr;   // the run's converged (~1 s) window
+                    if (!this.hist.has(prn)) this.hist.set(prn, {t: [], a: [], sig: [], coh: [], dr: []});
                     const h = this.hist.get(prn);
                     const n = h.a.length;
                     // Dedup: consecutive polls can catch the SAME combiner emit -> identical
                     // floats. Skip those so the trace advances once per real emit.
                     if (n && h.a[n - 1] === A && h.sig[n - 1] === sig) continue;
-                    h.t.push(now); h.a.push(A); h.sig.push(sig); h.coh.push(coh);
-                    if (h.t.length > MAX_PTS) { h.t.shift(); h.a.shift(); h.sig.shift(); h.coh.shift(); }
+                    h.t.push(now); h.a.push(A); h.sig.push(sig); h.coh.push(coh); h.dr.push(dr);
+                    if (h.t.length > MAX_PTS) { h.t.shift(); h.a.shift(); h.sig.shift(); h.coh.shift(); h.dr.shift(); }
                     if (prn === this.selected) this._dirty = true;
                 }
                 this._sync_dropdown();
@@ -156,32 +159,52 @@ export class GpsAmpHistoryPanel {
 
         // Fresh arrays each render (Plotly.react diffs data BY REFERENCE, so reusing the in-place
         // buffers would make it skip the redraw -- the plot would only refresh on a full newPlot).
-        const T = h.t.slice(), Y = new Array(h.a.length), E = new Array(h.a.length);
-        for (let i = 0; i < h.a.length; i++) { const ye = this._yval(h, i); Y[i] = ye[0]; E[i] = ye[1]; }
+        // Split by window length: the auto-coherence ladder's SHORT-window emits (deep_records well
+        // below the run's converged ~1 s window) have an extreme-value-inflated deep_snr, and C/N₀ =
+        // deep_snr^2/coherence_s then amplifies it -> spurious up-spikes. Route those to a faint grey
+        // "short window" series so the solid blue trace reads the true, physical baseline.
+        const T = h.t.slice(), Yf = new Array(h.a.length), Ys = new Array(h.a.length),
+              E = new Array(h.a.length);
+        const thr = 0.6 * (this._maxDr || 0);
+        let lastFull = -1;
+        for (let i = 0; i < h.a.length; i++) {
+            const ye = this._yval(h, i); E[i] = ye[1];
+            const isShort = this._maxDr > 0 && (h.dr[i] || 0) < thr;
+            Yf[i] = isShort ? null : ye[0];
+            Ys[i] = isShort ? ye[0] : null;
+            if (!isShort) lastFull = i;
+        }
 
-        // Live readout.
+        // Live readout: the latest FULL-window value (short-window emits are artifacts, not shown).
         const n = h.a.length;
-        if (n) {
-            const sig = h.sig[n - 1];
+        if (lastFull >= 0) {
+            const sig = h.sig[lastFull], yv = this._yval(h, lastFull);
+            const tag = (lastFull !== n - 1) ? ' · <span style="color:#aaa">short win now</span>' : '';
             if (cn0)
-                this._info.html(`C/N₀ ≈ <b>${(Y[n - 1] ?? 0).toFixed(1)}</b> ± ${E[n - 1].toFixed(1)} dB-Hz`
-                    + `&nbsp;(${sig.toFixed(1)}σ)&nbsp;· ${n} pts`);
+                this._info.html(`C/N₀ ≈ <b>${(yv[0] ?? 0).toFixed(1)}</b> ± ${yv[1].toFixed(1)} dB-Hz`
+                    + `&nbsp;(${sig.toFixed(1)}σ)&nbsp;· ${n} pts` + tag);
             else
-                this._info.html(`Â = <b>${h.a[n - 1].toFixed(3)}</b> ± ${E[n - 1].toFixed(3)}`
-                    + `&nbsp;(${sig.toFixed(1)}σ)&nbsp;· ${n} pts`);
+                this._info.html(`Â = <b>${h.a[lastFull].toFixed(3)}</b> ± ${yv[1].toFixed(3)}`
+                    + `&nbsp;(${sig.toFixed(1)}σ)&nbsp;· ${n} pts` + tag);
+        } else if (n) {
+            this._info.html('<span style="color:#aaa">short-window emits only — integration converging…</span>');
         } else {
             this._info.text("(no samples yet)");
         }
 
         const unit = cn0 ? " dB-Hz" : "";
         const fmt = cn0 ? ".1f" : ".3f";
-        const trace = {
-            x: T, y: Y, customdata: E, type: "scatter", mode: "lines+markers",
-            line: {color: "#1f77b4", width: 1},
-            marker: {size: 3, color: "#1f77b4"},
+        const full = {
+            x: T, y: Yf, customdata: E, type: "scatter", mode: "lines+markers",
+            line: {color: "#1f77b4", width: 1}, marker: {size: 3, color: "#1f77b4"}, connectgaps: false,
             error_y: {type: "data", array: E, visible: true,
                       color: "rgba(31,119,180,0.35)", thickness: 1, width: 0},
             hovertemplate: `%{x|%H:%M:%S}<br>%{y:${fmt}} ± %{customdata:${fmt}}${unit}<extra></extra>`,
+        };
+        const shortWin = {
+            x: T, y: Ys, type: "scatter", mode: "markers",
+            marker: {size: 2.5, color: "rgba(150,150,150,0.45)"},
+            hovertemplate: `%{x|%H:%M:%S}<br>%{y:${fmt}}${unit} · short window (artifact)<extra></extra>`,
         };
         const layout = {
             margin: {l: 52, r: 10, t: 6, b: 28},
@@ -192,11 +215,11 @@ export class GpsAmpHistoryPanel {
             showlegend: false, paper_bgcolor: "white", plot_bgcolor: "white",
         };
         if (!this._plotted) {
-            window.Plotly.newPlot(this.plot, [trace], layout,
+            window.Plotly.newPlot(this.plot, [full, shortWin], layout,
                 {displayModeBar: false, responsive: true});
             this._plotted = true;
         } else if (this._dirty) {
-            window.Plotly.react(this.plot, [trace], layout,
+            window.Plotly.react(this.plot, [full, shortWin], layout,
                 {displayModeBar: false, responsive: true});
         }
         this._dirty = false;
