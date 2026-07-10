@@ -31,7 +31,7 @@ processFRBFeedGains::processFRBFeedGains(Config& config, const std::string& uniq
 processFRBFeedGains::~processFRBFeedGains() {}
 
 void processFRBFeedGains::set_frame_desc(Buffer* buf) {
-    buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float16>, 5>::describe(
+    buf->require_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float16>, 5>::describe(
         "W",
         {static_cast<ptrdiff_t>(num_local_freq * upchan_factor),
          static_cast<ptrdiff_t>(num_polarizations), static_cast<ptrdiff_t>(num_dishes_N),

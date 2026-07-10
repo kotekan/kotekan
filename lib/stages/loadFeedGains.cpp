@@ -86,7 +86,7 @@ loadFeedGains::loadFeedGains(Config& config, const std::string& unique_name,
                         num_local_freq * num_elements * 2 * sizeof(float), buf->frame_size);
         }
         // Set frame description
-        buf->ensure_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float32>, 3>::describe(
+        buf->require_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float32>, 3>::describe(
             "gain",
             {static_cast<ptrdiff_t>(num_local_freq), static_cast<ptrdiff_t>(num_elements),
              static_cast<ptrdiff_t>(2)},
