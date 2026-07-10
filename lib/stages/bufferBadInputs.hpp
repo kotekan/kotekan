@@ -7,16 +7,17 @@
 #ifndef BUFFER_BAD_INPUT_DATA
 #define BUFFER_BAD_INPUT_DATA
 
-#include <stddef.h>             // for size_t
-#include <string>               // for string
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "N2Util.hpp"           // for frameID
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "json.hpp"             // for json
+#include "json.hpp" // for json
+
+#include <mutex>    // for lock_guard, mutex
+#include <stddef.h> // for size_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class bufferBadInputs
@@ -55,14 +56,20 @@ public:
     bool update_bad_inputs_callback(nlohmann::json& json);
 
 private:
+    /// Lock for changing the state of the bad input mask
+    std::mutex mtx;
+
     Buffer* out_buf;
     /// List of current bad inputs in received order, which
     // is expected to be cylinder order
     std::vector<int> bad_inputs;
     /// The size of the bad input mask.
     size_t num_elements;
-    // Need to use the frame_id outside of the main thread
-    N2::frameID frame_id;
+    // Number of bad inputs
+    uint64_t num_bad_inputs;
+
+    // Store the fixed mask in a permanent buffer
+    std::vector<uint8_t> input_mask;
 
     // The table to reorder from beamformer to cylinder order.
     // reorder[beamformer_idx] = cylinder_idx;
