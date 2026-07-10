@@ -15,6 +15,7 @@
 #include <exception>  // for exception
 #include <functional> // for bind, function, _1
 #include <memory>     // for __shared_ptr_access, shared_ptr
+#include <mutex>      // for lock_guard, mutex
 #include <regex>
 #include <stdio.h> // for fclose, fopen, fread, snprintf, FILE
 #include <string>
