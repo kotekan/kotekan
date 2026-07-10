@@ -1,3 +1,95 @@
+Precompiling packages...
+    LLVMLoopInfo Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/LLVMLoopInfo/X7sqD_FkdbY.ji.pidfile)
+    OrderedCollections Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/OrderedCollections/LtT3J_FkdbY.ji.pidfile)
+    DataValueInterfaces Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/DataValueInterfaces/9Lpkp_FkdbY.ji.pidfile)
+    AbstractFFTs Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/AbstractFFTs/Di3HZ_FkdbY.ji.pidfile)
+    LaTeXStrings Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/LaTeXStrings/H4HGh_FkdbY.ji.pidfile)
+    Reexport Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/Reexport/bTpYr_FkdbY.ji.pidfile)
+    Statistics Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/Statistics/ERcPL_FkdbY.ji.pidfile)
+    ExprTools Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/ExprTools/eM8wu_FkdbY.ji.pidfile)
+    Adapt Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/Adapt/rUIgN_FkdbY.ji.pidfile)
+    IteratorInterfaceExtensions Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/IteratorInterfaceExtensions/N0h8q_FkdbY.ji.pidfile)
+    DataAPI Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/DataAPI/3a8mN_FkdbY.ji.pidfile)
+    BFloat16s Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/BFloat16s/iiZ8G_FkdbY.ji.pidfile)
+    CEnum Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/CEnum/0gyUJ_FkdbY.ji.pidfile)
+    UnsafeAtomics Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/UnsafeAtomics/OuhNJ_FkdbY.ji.pidfile)
+    MacroTools Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/MacroTools/38lnR_FkdbY.ji.pidfile)
+    Crayons Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/Crayons/TXPcU_FkdbY.ji.pidfile)
+    301.3 ms  ✓ IteratorInterfaceExtensions
+    301.9 ms  ✓ Reexport
+    455.5 ms  ✓ LLVMLoopInfo
+    335.8 ms  ✓ LaTeXStrings
+    336.2 ms  ✓ DataValueInterfaces
+    398.3 ms  ✓ ExprTools
+    398.2 ms  ✓ DataAPI
+    398.4 ms  ✓ Adapt
+    GPUArraysCore Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/GPUArraysCore/qiYUe_FkdbY.ji.pidfile)
+    408.1 ms  ✓ Statistics
+    408.9 ms  ✓ AbstractFFTs
+    SparseArraysExt Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/SparseArraysExt/k0lPI_FkdbY.ji.pidfile)
+    464.5 ms  ✓ HashArrayMappedTries
+    465.7 ms  ✓ StaticArraysCore
+    463.1 ms  ✓ Scratch
+    623.7 ms  ✓ Preferences
+    467.0 ms  ✓ TableTraits
+    749.5 ms  ✓ Requires
+    791.4 ms  ✓ RandomNumbers
+    422.9 ms  ✓ ScopedValues
+    520.4 ms  ✓ GPUArraysCore
+    546.3 ms  ✓ Adapt → AdaptSparseArraysExt
+    555.8 ms  ✓ Statistics → SparseArraysExt
+    424.0 ms  ✓ PrecompileTools
+    510.6 ms  ✓ JLLWrappers
+   1258.0 ms  ✓ CUDA_Runtime_Discovery
+   1293.0 ms  ✓ CEnum
+   1397.5 ms  ✓ OrderedCollections
+    Tables Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/Tables/Z804B_FkdbY.ji.pidfile)
+   1410.9 ms  ✓ BFloat16s
+    793.2 ms  ✓ Random123
+   1699.7 ms  ✓ UnsafeAtomics
+    Atomix Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/Atomix/3LdQ4_FkdbY.ji.pidfile)
+    561.0 ms  ✓ demumble_jll
+   1713.9 ms  ✓ Crayons
+    580.2 ms  ✓ NVTX_jll
+    579.6 ms  ✓ JuliaNVTXCallbacks_jll
+    607.9 ms  ✓ LibTracyClient_jll
+    457.8 ms  ✓ Atomix
+   1206.5 ms  ✓ LLVMExtra_jll
+   2444.6 ms  ✓ MacroTools
+    751.6 ms  ✓ NVTX
+   1437.2 ms  ✓ StringManipulation
+    797.2 ms  ✓ Tracy
+   1788.1 ms  ✓ CUDA_Driver_jll
+   1649.4 ms  ✓ Tables
+    PrettyTables Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/PrettyTables/kRdcL_FkdbY.ji.pidfile)
+   2511.0 ms  ✓ CUDA_Runtime_jll
+   6223.8 ms  ✓ StaticArrays
+   1928.6 ms  ✓ CUDA_Compiler_jll
+    509.4 ms  ✓ Adapt → AdaptStaticArraysExt
+    526.1 ms  ✓ StaticArrays → StaticArraysStatisticsExt
+   6372.3 ms  ✓ LLVM
+   1029.2 ms  ✓ LLVM → BFloat16sExt
+   1091.4 ms  ✓ GPUToolbox
+   1471.8 ms  ✓ UnsafeAtomics → UnsafeAtomicsLLVM
+   3299.9 ms  ✓ KernelAbstractions
+    654.5 ms  ✓ KernelAbstractions → LinearAlgebraExt
+    832.6 ms  ✓ KernelAbstractions → SparseArraysExt
+   4483.8 ms  ✓ GPUArrays
+  14876.7 ms  ✓ PrettyTables
+  19797.0 ms  ✓ GPUCompiler
+  30203.8 ms  ✓ CUDA
+   3793.0 ms  ✓ Atomix → AtomixCUDAExt
+  59 dependencies successfully precompiled in 63 seconds. 33 already precompiled.
+Precompiling packages...
+   3681.5 ms  ✓ CUDASIMDTypes
+  1 dependency successfully precompiled in 4 seconds. 92 already precompiled.
+Precompiling packages...
+    IndexSpaces Being precompiled by another process (pid: 2075403, pidfile: /home/lgray/.julia/compiled/v1.12/IndexSpaces/n38FD_FkdbY.ji.pidfile)
+   3678.5 ms  ✓ IndexSpaces
+  1 dependency successfully precompiled in 4 seconds. 93 already precompiled.
+Precompiling packages...
+   1410.0 ms  ✓ Mustache
+  1 dependency successfully precompiled in 1 seconds. 8 already precompiled.
 [Creating chimefrb kernel...]
 [Done creating chimefrb kernel]
 CHIME FRB beamformer
