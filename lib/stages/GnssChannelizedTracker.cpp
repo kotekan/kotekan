@@ -434,12 +434,15 @@ void GnssChannelizedTracker::main_thread() {
                         data_ch.push_back(std::move(col));
                     }
                     auto despread_at = [&](double cpx) {
-                        const auto repl =
-                            _replica->channels(p, window_start, cpx, fcar_eff, _hops_per_record);
-                        std::vector<std::vector<cf>> repl_ch;
-                        repl_ch.reserve(owned.size());
-                        for (int c : owned)
-                            repl_ch.push_back(repl[c]);
+                        // hoprate (per-chip closed form) not channels() (per-sample fold+FFT):
+                        // numerically equal to ~machine precision (the GPU gate validates the
+                        // fused port of THIS path at 5e-7) and ~10x cheaper -- the difference
+                        // between a saturated tracker shedding frames and ~20% of a core at
+                        // the 20 MSPS wide front end (1000-hop L1 records, 4000-hop E1C).
+                        auto repl_ch = _replica->channels_hoprate(p, window_start, cpx,
+                                                                  fcar_eff, _hops_per_record,
+                                                                  owned);
+                        // rows come back in `owned` order, parallel to data_ch above.
                         return gnss::channelized_despread(data_ch, repl_ch);
                     };
                     early = despread_at(cp_seed - _dll_spacing);

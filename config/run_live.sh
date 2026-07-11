@@ -104,7 +104,7 @@ echo "clock profile '$CLK_NAME': accuracy ${CLK_ACC} ppm, coherence ${CLK_COH} s
 BROKER=python/scripts/gps_distributed_broker.py
 LOG=/tmp/gpslive.log
 
-cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" 2>/dev/null
+cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" "${GALPID:-}" "${GALLOGPID:-}" 2>/dev/null
             pkill -9 -f kotekan/kotekan 2>/dev/null
             pkill -9 -f livebeam_server 2>/dev/null
             pkill -9 -f gps_status_logger 2>/dev/null
@@ -212,6 +212,30 @@ python3 $BROKER --detectors search --trackers "$TRK" --combiner combiner \
         ${BROKER_EXTRA:-} $ALM $CLA $CARG \
         > /tmp/gpslive_broker.log 2>&1 &
 BPID=$!
+
+# ---- Second constellation: a config with a gal_track stage gets its OWN broker + logger
+# (Galileo E1 shares the L1 tune; the stages are parallel consumers of the same channelized
+# stream). Separate TLE group, seed endpoints, code-bias file; same receiver clock, so the
+# two l-a estimates should agree (a nice cross-check). E1 chips 1.023 Mcps, 4092-chip code.
+GALPID=""
+GALLOGPID=""
+if grep -qE '^gal_track:' "$RUNCFG"; then
+  GAL_TLE="https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle"
+  GAL_ALM=""
+  if [ -n "$LAT" ] && [ -n "$LON" ]; then
+    GAL_ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
+    GAL_ALM="$GAL_ALM --doppler-sign ${DOPPLER_SIGN:-1} --tle $GAL_TLE"
+    GAL_ALM="$GAL_ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500} --search-margin-wide-hz ${CLK_WIDE_HZ:-3000}"
+  else
+    echo "WARNING: gal_track present but LAT/LON unset -- Galileo require_hint search will scan NOTHING"
+  fi
+  echo "starting GALILEO broker (gal_search/gal_track/gal_combiner, TLE group=galileo)..."
+  python3 $BROKER --detectors gal_search --trackers gal_track --combiner gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30}           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_gal.ppm           --chip-rate-hz 1.023e6 --code-length 4092           $GAL_ALM $CARG           > /tmp/gpslive_broker_gal.log 2>&1 &
+  GALPID=$!
+  python3 python/scripts/gps_status_logger.py --url http://localhost:12048           --combiner gal_combiner --search gal_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/gpslive_logger_gal.log 2>&1 &
+  GALLOGPID=$!
+  echo "Galileo C/N0 status log -> $RECDIR/status_log_gal.jsonl"
+fi
 
 # Persist per-PRN C/N0 + detection stats (deep_snr/coherence_s live only in REST/the browser -- the
 # recorded level_*.raw has Â but not those). One JSONL line per active PRN per poll, wall-clock

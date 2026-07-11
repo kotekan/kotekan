@@ -82,9 +82,56 @@ def read_records(paths, n_prn=None):
     return np.array(rows, dtype=dtype)
 
 
+# Galileo TLE names ('GSAT0207 (GALILEO 14)') carry the GSAT platform number, NOT the E-PRN
+# (SVID) the spreading codes are keyed by. The mapping is operator metadata: transcribed from
+# the ESA GSC constellation-information page (gsc-europa.eu/system-service-status/
+# constellation-information, fetched 2026-07-11; machine-extracted, 32 entries). It changes
+# only at launches/decommissionings -- a TLE GSAT missing here is skipped with a warning
+# (decommissioned or not yet mapped; refresh from the GSC page). GSAT0104 (E20, failed 2014)
+# and GSAT0205 (E24) absent from the page are intentionally unmapped.
+GSAT_TO_PRN = {
+    "GSAT0101": 11,
+    "GSAT0102": 12,
+    "GSAT0103": 19,
+    "GSAT0201": 18,
+    "GSAT0202": 14,
+    "GSAT0203": 26,
+    "GSAT0204": 22,
+    "GSAT0206": 30,
+    "GSAT0207": 7,
+    "GSAT0208": 8,
+    "GSAT0209": 9,
+    "GSAT0210": 1,
+    "GSAT0211": 2,
+    "GSAT0212": 3,
+    "GSAT0213": 4,
+    "GSAT0214": 5,
+    "GSAT0215": 21,
+    "GSAT0216": 25,
+    "GSAT0217": 27,
+    "GSAT0218": 31,
+    "GSAT0219": 36,
+    "GSAT0220": 13,
+    "GSAT0221": 15,
+    "GSAT0222": 33,
+    "GSAT0223": 34,
+    "GSAT0224": 10,
+    "GSAT0225": 29,
+    "GSAT0226": 23,
+    "GSAT0227": 6,
+    "GSAT0232": 16,
+    "GSAT0233": 28,
+    "GSAT0234": 32,
+}
+
+
 def load_gps_satellites(tle_source):
-    """Return {prn: EarthSatellite} from a Celestrak TLE file/URL. Names carry
-    the PRN as '... (PRN NN)'.
+    """Return {prn: EarthSatellite} from a Celestrak TLE file/URL.
+
+    GPS names carry the PRN as '... (PRN NN)'; Galileo names carry 'GSAT####' which is
+    mapped to the E-PRN via GSAT_TO_PRN -- so the same loader (and everything downstream:
+    visibility, predicted Doppler, az/el) serves both constellations; the caller picks the
+    constellation by the TLE GROUP in the url (gps-ops / galileo).
 
     A URL is downloaded into a per-user cache dir (~/.cache/kotekan_gps), not the
     current directory: skyfield names the cache after the URL basename, so the
@@ -102,9 +149,19 @@ def load_gps_satellites(tle_source):
         sats = load.tle_file(tle_source)
     by_prn = {}
     for s in sats:
-        m = re.search(r"PRN\s*(\d+)", s.name or "")
+        name = s.name or ""
+        m = re.search(r"PRN\s*(\d+)", name)
         if m:
             by_prn[int(m.group(1))] = s
+            continue
+        g = re.search(r"GSAT0\d{3}", name)
+        if g:
+            prn = GSAT_TO_PRN.get(g.group(0))
+            if prn is not None:
+                by_prn[prn] = s
+            else:
+                print("[gps_beamtrack] unmapped Galileo %s -- refresh GSAT_TO_PRN"
+                      % g.group(0), file=sys.stderr)
     return by_prn
 
 

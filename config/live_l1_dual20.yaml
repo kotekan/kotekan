@@ -1,0 +1,168 @@
+---
+# DUAL-CONSTELLATION L1 @ 20 MSPS (WIDE front end): live_l1_dual.yaml regeared so Galileo's
+# BOC(1,1) spectrum FITS. At 5 MSPS/IF 1.25 the E1 lobes (carrier +-1.023 MHz, each ~2 MHz
+# null-to-null) straddle the whole band and spill past Nyquist -- measured ~11 dB below GPS
+# C/A (E25 12.7 sigma vs PRN19 161 sigma, same estimator, 07-04 capture). At 20 MSPS/IF 5 MHz
+# both lobes + the CBOC component sit fully in-band: +3-5 dB, putting E-sats above the search
+# gate. N=10 (fft_len 20 divides both the 20000-sample GPS ms and the 80000-sample E1 4 ms:
+# records = 1000 / 4000 hops). GPS C/A rides mid-band, unaffected. ~4x CPU on search/track
+# (the F0 GPU chain absorbs the trackers when wired here). GPS L1 C/A and
+# Galileo E1 share the SAME sky carrier (1575.42 MHz), so one airspy tune + one F-engine
+# feed BOTH: the gal_* stages are second consumers of the same channelized buffers. Each
+# constellation gets its own search/tracker/combiner/record + its OWN broker instance
+# (run_live.sh auto-launches the second broker with the Celestrak galileo TLE group when it
+# sees a gal_track stage). E1-C = the dataless BOC(1,1) pilot, 4 ms primary (500 hops/record
+# at this geometry), CS25 secondary handled per-record (navwipe_bit_records: 1); records are
+# 4 ms so integration_length: 250 = the same ~1 s emit cadence as GPS.
+#   LAT=43.968697 LON=-79.252106 ALT=260 CFG=config/live_l1_dual.yaml ./config/run_live.sh
+# GPS deep |A| -> /tmp/gpswipe/level_*.raw, Galileo -> /tmp/gpswipe/gal_level_*.raw.
+type: config
+log_level: info
+instrument_name: airspy_gps
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+# Let the browser GPS panel (served on :8080) reach kotekan's REST API cross-origin --
+# WITHOUT this the viewer can't poll combiner/get_status or search/get_detections, so every
+# sat shows unlocked (no sig, no SNR) even while the CLI watcher sees them fine.
+rest_server:
+    cors_allow_origins: ["http://localhost:8080", "http://127.0.0.1:8080", "http://gx10.vdl:8080"]
+
+# Receiver clock quality -> sizes the carrier-Doppler search (accuracy) + the coherent-integration
+# ceiling (stability), so one knob adapts the pipeline from the airspy TCXO to a GPSDO/rubidium/maser.
+# name: auto (default; starts wide, the broker's clock-bias estimate narrows it live). Override with
+# tcxo|ocxo|gpsdo|rubidium|maser, or pin accuracy_ppm / coherence_s. Canonical table: clockProfile.hpp.
+# The search stage reads this directly (Doppler grid); run_live derives the integration cap + broker
+# margins. When present it supersedes the legacy doppler_min/max below (kept as a fallback).
+clock_profile: { name: auto }
+
+samples_per_data_set: 199680
+bytes_per_sample: 2
+buffer_depth: 16
+sizeof_float: 4
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+
+spectrum_length: 10
+num_taps: 4
+sample_rate: 20.0e6
+f_offset: 5.0e6
+signal: GPS_L1CA
+code_doppler_sign: 1.0
+n_prn: 32
+record_floats: 15
+doppler_margin_hz: 250000.0
+acquire_snr: 10.0
+acquire_windows: 20
+doppler_min: -5500.0
+doppler_max: 5500.0
+# 100 Hz (was 500): with few sats the clock-bias estimate degenerates to one sat's
+# grid-quantized Doppler, so the seed inherits +-grid/2 of steady residual carrier
+# (was +-250 Hz -> killed coherence past ~5 ms). Finer grid -> +-50 Hz residual ->
+# ~10 ms coherence. Costs search compute, but the search is async/lossy (never
+# backpressures), so it just lowers the snapshot rate -- fine with the EMA-steady seed.
+doppler_step: 100.0
+# require_hint mode (below): the search carries a slot for the WHOLE constellation but only scans
+# the ones the broker flags visible (hints), so the active set follows the sky as PRNs rise/set --
+# no need to pin/refresh a visible list, and no cycles wasted on below-horizon sats. run_live.sh
+# skips its visible-PRN patch when require_hint is set (this full list survives). n_prn matches.
+prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+
+gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }
+
+input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
+chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+chan_buf2: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+rec_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+
+airspy_in:
+    kotekan_stage: airspyInput
+    out_buf: input_buf
+    freq: 1575.42
+    sample_bw: 10
+    gain_lna: 14
+    gain_mix: 15
+    gain_if: 15
+    biast_power: true
+fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
+
+# require_hint: scan ONLY broker-hinted (visible) PRNs, skip the rest -> the search carries all 32
+# candidate slots but costs only the ~10-12 visible narrow scans; PRNs swap in/out as they rise/set.
+# hint_ttl_s: a hint the broker stops refreshing (a set sat) expires after this, dropping the PRN.
+# Needs the broker's --narrow-search (run_live's almanac assist provides it).
+search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 10.0, acquire_windows: 20, require_hint: true, hint_ttl_s: 8.0 }
+valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
+# capture_utc0 > 0 -> stamp each record's UTC as capture_utc0 + window_start/sample_rate
+# (true CAPTURE time from fpga_seq), not wall-clock-at-emit. Emit time is bursty (the
+# pipeline drains buffered frames then stalls), which corrupts the integration time axis
+# and any phase-vs-time Doppler fit; capture time is exact 1 ms/record with clean gaps.
+# fll_gain: per-PRN carrier frequency-lock loop drives the residual carrier (the ~15 Hz
+# seed wander) to <1 Hz, the precision needed for seconds of coherent integration and a
+# clean nav-bit decode. The broker seed only (re)acquires; the loop owns the fine carrier.
+# hold_lock DISABLED (2026-07-04): the deep-integration ceiling here is CARRIER coherence, not code.
+# A strong-signal run showed the deep |A| anti-correlates with elevation -- PRN21 at zenith (79 deg,
+# strongest SNR) had the WORST deep |A| (0.013) because zenith = max Doppler RATE (~0.9 Hz/s @ L1) -> a
+# quadratic carrier-phase ramp of ~2.8 rad over the 1 s window cancels the coherent sum (a 0.4 s diag
+# confirmed it: PRN21 recovered to ~0.30). hold_lock froze the carrier at a CONSTANT hold_dop (no rate
+# term) -> wrong for an accelerating sat -> amp 0 (off). Keep pullin_chips: 1.0 (re-centering reaches
+# the lock). FIXED: GnssChannelizedTracker now ramps its NCO by the almanac Doppler RATE (NEVER the
+# replica -- an absolutely-anchored replica retune walks code+carrier off-peak as the anchor ages), so
+# the residual stays flat and the FULL 1 s coheres even at zenith (broker seeds doppler_rate_hz_s).
+# SHARED CARRIER LOOP (2026-07-08): tracker runs PURE FEED-FORWARD (fll_gain 0 -> seed + almanac
+# Doppler-rate ramp only) + an NCO that applies the broker's carrier_trim_hz (carrier_shared). The
+# COMBINER measures the residual carrier as a bit-robust phase-SLOPE fit over the deep window
+# (low-variance, the clean measurement the loop needs) and the broker integrates it at LOW bandwidth
+# (--carrier-gain) into the trim -> residual driven <1 Hz -> the deep coheres a full 1 s+. Replaces
+# the per-record FLL (which aliased past ~250 Hz -> runaway). run_live.sh AUTO-ENABLES the loop for
+# any carrier_shared config (--carrier-gain 0.5, override via CARRIER_GAIN env) -- no BROKER_EXTRA
+# needed. REPLAY-VALIDATED on the strong 07-04 capture: PRN19 deep 80 sigma@1 s ON vs 7 sigma OFF.
+track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 10, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.0, carrier_shared: true, hold_lock_amp: 0, hold_lock_records: 5 }
+# integration_length: 1000, navwipe_bit_records: 20 -> navwipe: integrate ~1 s (50 nav bits)
+# coherently; deep |A| in slot 8. Restored to 1000 now that the Doppler-rate feed-forward removes the
+# zenith ramp (was temporarily 400 for the coherence-limit diagnostic).
+combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20 }
+record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpswipe", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+
+# ---- Galileo E1-C parallel chain (same channelized stream, second consumers) ----
+gal_n_prn: 36
+gal_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: gal_n_prn * record_floats * sizeof_float }
+gal_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: gal_n_prn * record_floats * sizeof_float }
+gal_search:
+    kotekan_stage: GnssChannelizedSearch
+    in_buf: chan_buf
+    channel_offset: 0
+    n_channels: 10
+    signal: GAL_E1C
+    n_prn: 36
+    # E1-C budget vs GPS C/A: pilot -3 dB, 2.5 MHz band truncates the BOC(1,1) lobes ~-2.5 dB,
+    # Interplex alpha/sqrt2 -1.3 dB => strongest sats ~6-7 dB below GPS equivalents. 4 ms windows
+    # already recover +3 dB/window; deepen the incoherent stack + lower the gate to compensate
+    # (the drop-tolerant snapshot makes long windows safe).
+    prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+    acquire_snr: 7.0
+    acquire_windows: 60
+    require_hint: true
+    hint_ttl_s: 20.0
+gal_track:
+    kotekan_stage: GnssChannelizedTracker
+    in_buf: chan_buf2
+    out_buf: gal_rec_buf
+    channel_offset: 0
+    n_channels: 10
+    signal: GAL_E1C
+    n_prn: 36
+    prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+    pullin_chips: 1.0
+    pullin_step: 0.5
+    capture_utc0: 1.0
+    fll_gain: 0.0
+    carrier_shared: true
+    hold_lock_amp: 0
+    hold_lock_records: 5
+# E1-C records are one 4 ms primary period; the CS25 secondary flips per record, so the
+# per-record sign wipe (navwipe_bit_records: 1) absorbs it exactly like a nav bit until a
+# CS25 alignment search lands (then the tracker's overlay can wipe it deterministically).
+# integration_length 250 records = 1 s, matching the GPS emit cadence.
+gal_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [gal_rec_buf], out_buf: gal_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 250, navwipe_bit_records: 1 }
+gal_record: { kotekan_stage: rawFileWrite, in_buf: gal_out_buf, base_dir: "/tmp/gpswipe", file_name: "gal_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+
+spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream' }
