@@ -8,12 +8,14 @@
 //   ./cuda_gnss_despread_test            (prints PASS/FAIL per trial + max relative error)
 
 #include "cudaGnssDespreadKernel.hpp"
+#include "GnssCudaDespread.hpp"
 #include "gnssChannelizedReplica.hpp"
 #include "gnssChannelizedDespread.hpp"
 #include "gnssSignal.hpp"
 #include "gpsCACode.hpp"
 #include "pfbPrototype.hpp"
 
+#include <chrono>
 #include <cuda_runtime.h>
 #include <complex>
 #include <cstdio>
@@ -108,15 +110,13 @@ int main() {
             dataf[(size_t)c * n_hops + m] = make_float2(data_ch[c][m].real(), data_ch[c][m].imag());
     std::vector<gnss_cuda::DespreadJob> jobs(n_batch);
     const uint64_t all_mask = (n_chan >= 64) ? ~0ULL : ((1ULL << n_chan) - 1);
-    for (int b = 0; b < n_batch; ++b)
-        jobs[b] = {cps_trials[b], cps, wc, 0, (int)code8.size(), all_mask};
+    // (d_phiA/d_phiB are set below once allocated; per-job pointers = the batch API shape)
 
     gnss_cuda::DespreadParams p;
     p.n0 = window_start + fft_len - 1; // hoprate_stream's per-hop reference sample
     p.fft_len = fft_len;
     p.n_hops = n_hops;
     p.Lf = Lf;
-    p.n_chips = filt.n_chips;
 
     float2* d_data;
     int8_t* d_code;
@@ -134,11 +134,14 @@ int main() {
     CK(cudaMemcpy(d_code, code8.data(), code8.size(), cudaMemcpyHostToDevice));
     CK(cudaMemcpy(d_phiA, phiA.data(), phiA.size() * sizeof(double2), cudaMemcpyHostToDevice));
     CK(cudaMemcpy(d_phiB, phiB.data(), phiB.size() * sizeof(double2), cudaMemcpyHostToDevice));
+    for (int b = 0; b < n_batch; ++b)
+        jobs[b] = {cps_trials[b], cps, wc, 0, (int)code8.size(), all_mask,
+                   d_phiA, d_phiB, filt.n_chips};
     CK(cudaMemcpy(d_jobs, jobs.data(), jobs.size() * sizeof(gnss_cuda::DespreadJob),
                   cudaMemcpyHostToDevice));
 
-    CK(gnss_cuda::launch_despread(d_data, d_code, d_phiA, d_phiB, d_jobs, n_batch, n_chan, p,
-                                  d_corr, d_energy, 0));
+    CK(gnss_cuda::launch_despread(d_data, d_code, d_jobs, n_batch, n_chan, p, d_corr, d_energy,
+                                  0));
     CK(cudaDeviceSynchronize());
 
     std::vector<double2> g_corr((size_t)n_batch * n_chan);
@@ -170,5 +173,39 @@ int main() {
     }
     printf("%s (max relative error %.3e; %d trials x %d channels x %d hops)\n",
            pass ? "PASS" : "FAIL", max_rel, n_batch, n_chan, n_hops);
+
+    // --- Throughput bench: the REAL per-record path (GnssCudaDespread::despread_batch --
+    // upload_window + one batched launch + one sync per record), full-constellation batch.
+    // Reports records/s and the realtime margin vs the tracker's 1 kHz record cadence.
+    for (int bench_prn : {12, 32}) {
+        std::vector<int> prns;
+        for (int q = 1; q <= bench_prn; ++q)
+            prns.push_back(q);
+        gnss::ChannelizedReplicaBank bbank(*sig, fs, f_off, N, taps,
+                                           dsp::window_from_string("hamming"), prns);
+        GnssCudaDespread gpu(bbank, bench_prn, N, 0, n_hops, fs, f_off);
+        std::vector<cf> win((size_t)n_hops * N);
+        for (auto& v : win)
+            v = cf((float)frand(), (float)frand());
+        std::vector<GnssCudaDespread::Spec> specs(bench_prn);
+        std::vector<int> allch(N);
+        for (int c = 0; c < N; ++c)
+            allch[c] = c;
+        for (int q = 0; q < bench_prn; ++q)
+            specs[q] = {q, 100.0 + 7.0 * q, 0.5, -4000.0 + 250.0 * q, allch};
+        gpu.upload_window(win.data(), window_start);
+        (void)gpu.despread_batch(specs); // warm-up (Phi builds + JIT)
+        const int NREC = 2000;
+        const auto t0 = std::chrono::steady_clock::now();
+        for (int r = 0; r < NREC; ++r) {
+            gpu.upload_window(win.data(), window_start + (long long)r * n_hops * fft_len);
+            (void)gpu.despread_batch(specs);
+        }
+        const double dt = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0)
+                              .count();
+        printf("BENCH %2d PRN x E/P/L x %d chan x %d hops: %6.0f rec/s (%.1fx realtime @1kHz, "
+               "%.0f PRN-despreads/s)\n",
+               bench_prn, N, n_hops, NREC / dt, NREC / dt / 1000.0, 3.0 * bench_prn * NREC / dt);
+    }
     return pass ? 0 : 1;
 }

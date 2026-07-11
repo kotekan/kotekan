@@ -34,10 +34,23 @@ public:
     /// Upload one record window ([hop][chan] interleaved complex float, as the tracker holds it).
     void upload_window(const std::complex<float>* window, long long window_start_sample);
 
-    /// Despread the E/P/L triple for PRN slot @c p at the commanded code phase / carrier against
-    /// the uploaded window. @c covering = global channel ids minus chan_offset (this subband's
-    /// local indices). Results ordered {early, prompt, late}, channel-summed, matching
-    /// gnss::channelized_despread's fields.
+    /// One (PRN x E/P/L) despread request against the uploaded window. @c covering holds this
+    /// subband's LOCAL channel indices.
+    struct Spec {
+        int p;                     ///< PRN slot
+        double cp_seed;            ///< commanded prompt code phase (chips, signal units)
+        double spacing_chips;      ///< Early/Late offset
+        double doppler_hz;         ///< replica carrier (the tracker's fixed f_ref)
+        std::vector<int> covering; ///< local channel indices in this PRN's covering set
+    };
+
+    /// Batched despread: ALL requested PRNs' E/P/L triples in ONE kernel launch (G1c -- one
+    /// launch per record instead of one per PRN). Results parallel to @c specs, each ordered
+    /// {early, prompt, late}, channel-summed, matching gnss::channelized_despread's fields.
+    std::vector<std::array<gnss::DespreadResult, 3>>
+    despread_batch(const std::vector<Spec>& specs);
+
+    /// Single-PRN convenience (= despread_batch of one Spec).
     std::array<gnss::DespreadResult, 3> despread3(int p, double cp_seed, double spacing_chips,
                                                   double doppler_hz,
                                                   const std::vector<int>& covering);

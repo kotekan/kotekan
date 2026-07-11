@@ -43,6 +43,10 @@ struct GnssCudaDespread::Impl {
     int Lf = 0;
 
     std::vector<float2> stage;  // host transpose staging [chan][hop]
+    cudaStream_t stream = nullptr;
+    std::vector<gnss_cuda::DespreadJob> h_jobs;
+    std::vector<double2> h_corr;
+    std::vector<double> h_energy;
 
     Impl(gnss::ChannelizedReplicaBank& b, int np, int nc, int coff, int nh, double fs_, double fo,
          double rh) :
@@ -73,15 +77,22 @@ struct GnssCudaDespread::Impl {
         ck(cudaMalloc(&d_code, codes.size()), "alloc code");
         ck(cudaMemcpy(d_code, codes.data(), codes.size(), cudaMemcpyHostToDevice), "upload code");
 
+        const size_t maxb = (size_t)3 * np; // full cross-PRN batch: every slot x E/P/L
         ck(cudaMalloc(&d_data, (size_t)nc * nh * sizeof(float2)), "alloc data");
-        ck(cudaMalloc(&d_jobs, 3 * sizeof(gnss_cuda::DespreadJob)), "alloc jobs");
-        ck(cudaMalloc(&d_corr, (size_t)3 * nc * sizeof(double2)), "alloc corr");
-        ck(cudaMalloc(&d_energy, (size_t)3 * nc * sizeof(double)), "alloc energy");
+        ck(cudaMalloc(&d_jobs, maxb * sizeof(gnss_cuda::DespreadJob)), "alloc jobs");
+        ck(cudaMalloc(&d_corr, maxb * nc * sizeof(double2)), "alloc corr");
+        ck(cudaMalloc(&d_energy, maxb * nc * sizeof(double)), "alloc energy");
+        ck(cudaStreamCreate(&stream), "stream");
         phi.resize(np);
         stage.resize((size_t)nc * nh);
+        h_jobs.resize(maxb);
+        h_corr.resize(maxb * nc);
+        h_energy.resize(maxb * nc);
     }
 
     ~Impl() {
+        if (stream)
+            cudaStreamDestroy(stream);
         cudaFree(d_data);
         cudaFree(d_code);
         cudaFree(d_jobs);
@@ -137,64 +148,84 @@ void GnssCudaDespread::upload_window(const std::complex<float>* window,
             const std::complex<float>& v = window[(size_t)m * im.n_chan + c];
             im.stage[(size_t)c * im.n_hops + m] = make_float2(v.real(), v.imag());
         }
-    ck(cudaMemcpy(im.d_data, im.stage.data(), im.stage.size() * sizeof(float2),
-                  cudaMemcpyHostToDevice),
+    ck(cudaMemcpyAsync(im.d_data, im.stage.data(), im.stage.size() * sizeof(float2),
+                       cudaMemcpyHostToDevice, im.stream),
        "window upload");
     im.window_start = window_start_sample;
 }
 
-std::array<gnss::DespreadResult, 3>
-GnssCudaDespread::despread3(int p, double cp_seed, double spacing_chips, double doppler_hz,
-                            const std::vector<int>& covering) {
+std::vector<std::array<gnss::DespreadResult, 3>>
+GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     Impl& im = *_impl;
-    auto& pc = im.ensure_phi(p, doppler_hz);
+    std::vector<std::array<gnss::DespreadResult, 3>> out(specs.size());
+    if (specs.empty())
+        return out;
+    const int nb = (int)(3 * specs.size());
 
-    // Job parameters, exactly as hoprate_stream computes them.
-    const double cps = im.bank.eff_chip_rate() / im.fs
-                       * (1.0 + im.bank.code_doppler_sign * doppler_hz / im.bank.carrier_hz());
-    const double wc = 2.0 * M_PI * (im.f_off + doppler_hz) / im.fs;
-    uint64_t mask = 0;
-    for (int c : covering)
-        if (c >= 0 && c < im.n_chan)
-            mask |= (1ULL << c);
-
-    gnss_cuda::DespreadJob jobs[3];
-    const double trials[3] = {cp_seed - spacing_chips, cp_seed, cp_seed + spacing_chips};
-    for (int t = 0; t < 3; ++t)
-        jobs[t] = {(double)im.bank.comb_mult() * trials[t], cps, wc,
-                   im.code_offset[(size_t)p], (int)im.code_len, mask};
-    ck(cudaMemcpy(im.d_jobs, jobs, sizeof(jobs), cudaMemcpyHostToDevice), "jobs upload");
+    // Build the job array: one triple per spec, each carrying its PRN's Doppler-bucketed Phi
+    // tables (rebuilt+uploaded only when that sat's Doppler moved > refresh_hz).
+    for (size_t i = 0; i < specs.size(); ++i) {
+        const Spec& sp = specs[i];
+        auto& pc = im.ensure_phi(sp.p, sp.doppler_hz);
+        const double cps =
+            im.bank.eff_chip_rate() / im.fs
+            * (1.0 + im.bank.code_doppler_sign * sp.doppler_hz / im.bank.carrier_hz());
+        const double wc = 2.0 * M_PI * (im.f_off + sp.doppler_hz) / im.fs;
+        uint64_t mask = 0;
+        for (int c : sp.covering)
+            if (c >= 0 && c < im.n_chan)
+                mask |= (1ULL << c);
+        const double trials[3] = {sp.cp_seed - sp.spacing_chips, sp.cp_seed,
+                                  sp.cp_seed + sp.spacing_chips};
+        for (int t = 0; t < 3; ++t)
+            im.h_jobs[3 * i + t] = {(double)im.bank.comb_mult() * trials[t],
+                                    cps,
+                                    wc,
+                                    im.code_offset[(size_t)sp.p],
+                                    (int)im.code_len,
+                                    mask,
+                                    pc.d_A,
+                                    pc.d_B,
+                                    pc.n_chips};
+    }
+    ck(cudaMemcpyAsync(im.d_jobs, im.h_jobs.data(), (size_t)nb * sizeof(gnss_cuda::DespreadJob),
+                       cudaMemcpyHostToDevice, im.stream),
+       "jobs upload");
 
     gnss_cuda::DespreadParams par;
     par.n0 = im.window_start + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
-    par.n_chips = pc.n_chips;
-    ck(gnss_cuda::launch_despread(im.d_data, im.d_code, pc.d_A, pc.d_B, im.d_jobs, 3, im.n_chan,
-                                  par, im.d_corr, im.d_energy, 0),
+    ck(gnss_cuda::launch_despread(im.d_data, im.d_code, im.d_jobs, nb, im.n_chan, par, im.d_corr,
+                                  im.d_energy, im.stream),
        "launch");
-
-    std::vector<double2> corr((size_t)3 * im.n_chan);
-    std::vector<double> energy((size_t)3 * im.n_chan);
-    ck(cudaMemcpy(corr.data(), im.d_corr, corr.size() * sizeof(double2), cudaMemcpyDeviceToHost),
+    ck(cudaMemcpyAsync(im.h_corr.data(), im.d_corr, (size_t)nb * im.n_chan * sizeof(double2),
+                       cudaMemcpyDeviceToHost, im.stream),
        "corr down");
-    ck(cudaMemcpy(energy.data(), im.d_energy, energy.size() * sizeof(double),
-                  cudaMemcpyDeviceToHost),
+    ck(cudaMemcpyAsync(im.h_energy.data(), im.d_energy, (size_t)nb * im.n_chan * sizeof(double),
+                       cudaMemcpyDeviceToHost, im.stream),
        "energy down");
+    ck(cudaStreamSynchronize(im.stream), "sync"); // ONE sync per record for the whole batch
 
-    std::array<gnss::DespreadResult, 3> out;
-    for (int t = 0; t < 3; ++t) {
-        std::complex<double> g(0.0, 0.0);
-        double e = 0.0;
-        for (int c = 0; c < im.n_chan; ++c) {
-            g += std::complex<double>(corr[(size_t)t * im.n_chan + c].x,
-                                      corr[(size_t)t * im.n_chan + c].y);
-            e += energy[(size_t)t * im.n_chan + c];
+    for (size_t i = 0; i < specs.size(); ++i)
+        for (int t = 0; t < 3; ++t) {
+            const size_t row = (size_t)(3 * i + t) * im.n_chan;
+            std::complex<double> g(0.0, 0.0);
+            double e = 0.0;
+            for (int c = 0; c < im.n_chan; ++c) {
+                g += std::complex<double>(im.h_corr[row + c].x, im.h_corr[row + c].y);
+                e += im.h_energy[row + c];
+            }
+            out[i][t].correlation = g;
+            out[i][t].replica_energy = e;
+            out[i][t].amplitude = (e > 0.0) ? g / e : std::complex<double>(0.0, 0.0);
         }
-        out[t].correlation = g;
-        out[t].replica_energy = e;
-        out[t].amplitude = (e > 0.0) ? g / e : std::complex<double>(0.0, 0.0);
-    }
     return out;
+}
+
+std::array<gnss::DespreadResult, 3>
+GnssCudaDespread::despread3(int p, double cp_seed, double spacing_chips, double doppler_hz,
+                            const std::vector<int>& covering) {
+    return despread_batch({Spec{p, cp_seed, spacing_chips, doppler_hz, covering}})[0];
 }

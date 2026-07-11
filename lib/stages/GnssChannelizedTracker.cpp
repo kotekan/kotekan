@@ -12,6 +12,7 @@
 #include "pfbPrototype.hpp"            // for window_from_string
 
 #include <algorithm> // for fill
+#include <array>     // for array (GPU despread results)
 #include <chrono>    // for system_clock
 #include <cmath>     // for nan, arg, norm, isnan, fabs
 #include <complex>   // for complex, arg, norm
@@ -240,6 +241,17 @@ void GnssChannelizedTracker::main_thread() {
                                          std::chrono::system_clock::now().time_since_epoch())
                                          .count();
 
+            // ---- Pass 1: per-PRN CONTROL (seeds -> commanded cp/carrier + covering set),
+            // stashed per PRN so the despread can run as ONE batched GPU launch across all
+            // PRNs (G1c). The CPU path consumes the same stash inline in pass 2 -- the
+            // control logic is single-sourced for both paths.
+            struct PrnCmd {
+                bool run = false;
+                double cp_seed = 0.0, fcar_eff = 0.0, ff_hz = 0.0;
+                std::vector<int> owned; // GLOBAL covering channel ids in this subband
+            };
+            std::vector<PrnCmd> cmds(n_prn);
+            const bool nco_mode = (_fll_gain > 0.0) || _carrier_shared;
             for (int p = 0; p < n_prn; ++p) {
                 float* rec = out + (size_t)p * RECORD_FLOATS;
                 for (int f = 0; f < RECORD_FLOATS; ++f)
@@ -256,10 +268,9 @@ void GnssChannelizedTracker::main_thread() {
                 // channels follow it.
                 const double dop_eff = dop[p];
                 const auto cover = _replica->covering_bins(dop_eff, _doppler_margin_hz);
-                std::vector<int> owned;
                 for (int c : cover)
                     if (c >= _chan_offset && c < _chan_offset + _n_chan)
-                        owned.push_back(c);
+                        cmds[p].owned.push_back(c);
                 // Code phase at this window: first-order extrapolation of the seeded cp0 from
                 // its anchor hop (removes seed staleness). The broker's DLL trims the residual
                 // at ~Hz from the shipped E/L correlators -- the tracker itself never moves it.
@@ -279,7 +290,6 @@ void GnssChannelizedTracker::main_thread() {
                 // (a drooping off-peak |A|) kicked f_track past that it ran away unbounded
                 // (observed -1158 Hz, deep dead). Resetting at fll_reacq_hz < the alias limit
                 // catches it before it aliases (the 2026-07-07 L1 deep-decay root cause).
-                const bool nco_mode = (_fll_gain > 0.0) || _carrier_shared;
                 const double f_tracked = f_ref[p] + ((_fll_gain > 0.0) ? f_track[p] : 0.0);
                 if (nco_mode
                     && (std::isnan(f_ref[p]) || std::fabs(f_tracked - dop[p]) > _fll_reacq_hz)) {
@@ -300,7 +310,7 @@ void GnssChannelizedTracker::main_thread() {
                 // cause of the L1 deep decay, 2026-07-10). The NCO is the time-local corrector:
                 // integrating the ramp there (phi += 2*pi*f_nco*dt) yields exactly the intended
                 // quadratic phase with no absolute-anchor coupling. The replica frequency stays
-                // FIXED at f_ref between re-anchors; the fence below re-anchors it (one phase
+                // FIXED at f_ref between re-anchors; the fence above re-anchors it (one phase
                 // glitch) only when the true carrier walks far enough (~200 Hz) to decohere the
                 // intra-record despread itself. Non-NCO mode (plain correlator) needs no ramp at
                 // all: its dop refreshes from the broker every window (staleness < 0.2 s).
@@ -314,24 +324,47 @@ void GnssChannelizedTracker::main_thread() {
                                                     * (double)(window_start_hop - reacq_hop[p])
                                                     * (double)_fft_len / _sample_rate
                                               : 0.0;
-                const double fcar_eff = fcar; // replica: FIXED between re-anchors (see above)
+                cmds[p].cp_seed = cp_seed;
+                cmds[p].fcar_eff = fcar; // replica: FIXED between re-anchors (see above)
+                cmds[p].ff_hz = ff_hz;
                 rec[1] = (float)(fcar - ff_hz // report the ramp physical-signed
                                  + ((_fll_gain > 0.0) ? f_track[p] : 0.0) + ctrim[p]);
                 rec[2] = (float)cp_seed;
-                rec[6] = (float)owned.size();
-                if (owned.empty())
-                    continue; // carrier not in this subband
+                rec[6] = (float)cmds[p].owned.size();
+                cmds[p].run = !cmds[p].owned.empty(); // empty = carrier not in this subband
+            }
 
-                // The window data is fixed; only the replica varies with the cp trial.
-                std::vector<std::vector<cf>> data_ch;
-                data_ch.reserve(owned.size());
-                for (int c : owned) {
-                    std::vector<cf> col(_hops_per_record);
-                    const int local = c - _chan_offset;
-                    for (int m = 0; m < _hops_per_record; ++m)
-                        col[m] = window[(size_t)m * _n_chan + local];
-                    data_ch.push_back(std::move(col));
+#ifdef GNSS_CUDA
+            // ---- Batched GPU despread: every runnable PRN's E/P/L triple in ONE launch (each
+            // job carries its own Doppler-bucket Phi tables), one stream sync per record.
+            std::vector<std::array<gnss::DespreadResult, 3>> gpu_res;
+            std::vector<int> gpu_slot(n_prn, -1);
+            if (_use_cuda) {
+                std::vector<GnssCudaDespread::Spec> specs;
+                for (int p = 0; p < n_prn; ++p) {
+                    if (!cmds[p].run)
+                        continue;
+                    std::vector<int> local; // wrapper masks by LOCAL channel index
+                    local.reserve(cmds[p].owned.size());
+                    for (int c : cmds[p].owned)
+                        local.push_back(c - _chan_offset);
+                    gpu_slot[p] = (int)specs.size();
+                    specs.push_back(GnssCudaDespread::Spec{p, cmds[p].cp_seed, _dll_spacing,
+                                                           cmds[p].fcar_eff, std::move(local)});
                 }
+                gpu_res = ((GnssCudaDespread*)_cuda.get())->despread_batch(specs);
+            }
+#endif
+
+            // ---- Pass 2: despread results -> record slots + the carrier NCO/FLL.
+            for (int p = 0; p < n_prn; ++p) {
+                if (!cmds[p].run)
+                    continue;
+                float* rec = out + (size_t)p * RECORD_FLOATS;
+                const double cp_seed = cmds[p].cp_seed;
+                const double fcar_eff = cmds[p].fcar_eff;
+                const double ff_hz = cmds[p].ff_hz;
+                const std::vector<int>& owned = cmds[p].owned;
 
                 // Early/Prompt/Late despread -- three DUMB correlators at the COMMANDED
                 // code phase (R1, docs/gnss_architecture_audit.md). The Prompt despreads
@@ -344,27 +377,35 @@ void GnssChannelizedTracker::main_thread() {
                 // tracking error: the combiner aggregates |E|^2 / |L|^2 across subbands and
                 // windows, and the BROKER closes the code loop at ~Hz through set_seeds.
                 // Only E/L powers are consumed, so they ship un-derotated.
-                auto despread_at = [&](double cpx) {
-                    const auto repl =
-                        _replica->channels(p, window_start, cpx, fcar_eff, _hops_per_record);
-                    std::vector<std::vector<cf>> repl_ch;
-                    repl_ch.reserve(owned.size());
-                    for (int c : owned)
-                        repl_ch.push_back(repl[c]);
-                    return gnss::channelized_despread(data_ch, repl_ch);
-                };
                 gnss::DespreadResult early, best, late;
 #ifdef GNSS_CUDA
                 if (_use_cuda) {
-                    // Fused GPU replica+despread, E/P/L in one launch (hoprate semantics).
-                    const auto r3 = ((GnssCudaDespread*)_cuda.get())
-                                        ->despread3(p, cp_seed, _dll_spacing, fcar_eff, owned);
+                    const auto& r3 = gpu_res[(size_t)gpu_slot[p]];
                     early = r3[0];
                     best = r3[1]; // prompt
                     late = r3[2];
                 } else
 #endif
                 {
+                    // The window data is fixed; only the replica varies with the cp trial.
+                    std::vector<std::vector<cf>> data_ch;
+                    data_ch.reserve(owned.size());
+                    for (int c : owned) {
+                        std::vector<cf> col(_hops_per_record);
+                        const int local = c - _chan_offset;
+                        for (int m = 0; m < _hops_per_record; ++m)
+                            col[m] = window[(size_t)m * _n_chan + local];
+                        data_ch.push_back(std::move(col));
+                    }
+                    auto despread_at = [&](double cpx) {
+                        const auto repl =
+                            _replica->channels(p, window_start, cpx, fcar_eff, _hops_per_record);
+                        std::vector<std::vector<cf>> repl_ch;
+                        repl_ch.reserve(owned.size());
+                        for (int c : owned)
+                            repl_ch.push_back(repl[c]);
+                        return gnss::channelized_despread(data_ch, repl_ch);
+                    };
                     early = despread_at(cp_seed - _dll_spacing);
                     best = despread_at(cp_seed); // prompt
                     late = despread_at(cp_seed + _dll_spacing);

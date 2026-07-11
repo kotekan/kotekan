@@ -28,8 +28,6 @@ __device__ inline double2 cmul(double2 a, double2 b) {
 
 __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan][n_hops]
                                      const int8_t* __restrict__ code, // [batch-shared code table]
-                                     const double2* __restrict__ PhiA, // [nchan][Lf+1]
-                                     const double2* __restrict__ PhiB, // [nchan][Lf+1]
                                      const gnss_cuda::DespreadJob* __restrict__ jobs, // [nbatch]
                                      gnss_cuda::DespreadParams p,
                                      double2* __restrict__ corr,    // [nbatch][nchan]
@@ -57,10 +55,10 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
         const double2 pb = make_double2(c, -s);
 
         // Chip gather over the filter span: sA/sB = sum_d code[chip0-d] * (Phi[khi+1]-Phi[klo]).
-        const double2* phiA = PhiA + (size_t)ci * (p.Lf + 1);
-        const double2* phiB = PhiB + (size_t)ci * (p.Lf + 1);
+        const double2* phiA = job.phiA + (size_t)ci * (p.Lf + 1);
+        const double2* phiB = job.phiB + (size_t)ci * (p.Lf + 1);
         double2 sA = make_double2(0.0, 0.0), sB = make_double2(0.0, 0.0);
-        for (int d = 0; d < p.n_chips; ++d) {
+        for (int d = 0; d < job.n_chips; ++d) {
             int klo = (int)floor((phi + d - 1.0) / job.cps) + 1;
             int khi = (int)floor((phi + d) / job.cps);
             if (klo < 0)
@@ -119,10 +117,9 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
 
 namespace gnss_cuda {
 
-cudaError_t launch_despread(const float2* data, const int8_t* code, const double2* PhiA,
-                            const double2* PhiB, const DespreadJob* jobs, int n_batch, int n_chan,
-                            const DespreadParams& p, double2* corr, double* energy,
-                            cudaStream_t stream) {
+cudaError_t launch_despread(const float2* data, const int8_t* code, const DespreadJob* jobs,
+                            int n_batch, int n_chan, const DespreadParams& p, double2* corr,
+                            double* energy, cudaStream_t stream) {
     if (p.n_hops > 256)
         return cudaErrorInvalidValue; // reduction buffer sized for <=256 hops/record
     // round block up to a power of two >= n_hops for the reduction
@@ -130,8 +127,7 @@ cudaError_t launch_despread(const float2* data, const int8_t* code, const double
     while (block < p.n_hops)
         block <<= 1;
     dim3 grid(n_batch, n_chan);
-    gnss_despread_kernel<<<grid, block, 0, stream>>>(data, code, PhiA, PhiB, jobs, p, corr,
-                                                     energy);
+    gnss_despread_kernel<<<grid, block, 0, stream>>>(data, code, jobs, p, corr, energy);
     return cudaGetLastError();
 }
 

@@ -20,14 +20,19 @@
  */
 namespace gnss_cuda {
 
-/// Per-(PRN x correlator) trial: everything that varies within a batch.
+/// Per-(PRN x correlator) trial: everything that varies within a batch. Carries its own
+/// (device) Phi table pointers + filter span so ONE launch can mix PRNs from different
+/// Doppler buckets -- the G1c cross-PRN batch (one launch per record, all sats).
 struct DespreadJob {
-    double cp0;         ///< code phase (COMBINED-stream chips) at absolute sample 0 reference
-    double cps;         ///< chips per sample incl. code Doppler: eff_chip_rate/fs*(1+sign*f/f_c)
-    double wc;          ///< carrier angular rate: 2*pi*(f_offset + doppler)/fs
-    int code_offset;    ///< this PRN's offset into the shared code table
-    int code_len;       ///< combined-stream code length (chips)
-    uint64_t chan_mask; ///< bit ci set = channel ci is in this PRN's covering set (<=64 chans)
+    double cp0;           ///< code phase (COMBINED-stream chips) at absolute sample 0 reference
+    double cps;           ///< chips per sample incl. code Doppler: eff_chip_rate/fs*(1+sign*f/f_c)
+    double wc;            ///< carrier angular rate: 2*pi*(f_offset + doppler)/fs
+    int code_offset;      ///< this PRN's offset into the shared code table
+    int code_len;         ///< combined-stream code length (chips)
+    uint64_t chan_mask;   ///< bit ci set = channel ci is in this PRN's covering set (<=64 chans)
+    const double2* phiA;  ///< [n_chan][Lf+1] cumulative filter table, this PRN's Doppler bucket
+    const double2* phiB;  ///< (device pointers -- the tables live in the caller's per-PRN cache)
+    int n_chips;          ///< chips spanned by this bucket's filter (gather depth per hop)
 };
 
 /// Batch-shared geometry.
@@ -36,23 +41,20 @@ struct DespreadParams {
     int fft_len;  ///< samples per hop
     int n_hops;   ///< hops per record (<=256)
     int Lf;       ///< filter length fft_len*num_taps (Phi tables have Lf+1 entries)
-    int n_chips;  ///< chips spanned by the filter (gather depth per hop)
 };
 
 /**
  * Launch the fused despread.
- * @param data   [n_chan][n_hops] channelized voltage (covering channels, device)
+ * @param data   [n_chan][n_hops] channelized voltage (device)
  * @param code   shared int8 code table (all PRNs concatenated; jobs carry offsets; device)
- * @param PhiA/B [n_chan][Lf+1] cumulative filter tables, common Doppler bucket (device)
- * @param jobs   [n_batch] per-trial parameters (device)
+ * @param jobs   [n_batch] per-trial parameters incl. per-job Phi table pointers (device)
  * @param corr   out [n_batch][n_chan] complex correlations (device)
  * @param energy out [n_batch][n_chan] replica energies (device)
  * Cross-channel summation is left to the caller (tiny; host or follow-up kernel).
  */
-cudaError_t launch_despread(const float2* data, const int8_t* code, const double2* PhiA,
-                            const double2* PhiB, const DespreadJob* jobs, int n_batch, int n_chan,
-                            const DespreadParams& p, double2* corr, double* energy,
-                            cudaStream_t stream);
+cudaError_t launch_despread(const float2* data, const int8_t* code, const DespreadJob* jobs,
+                            int n_batch, int n_chan, const DespreadParams& p, double2* corr,
+                            double* energy, cudaStream_t stream);
 
 } // namespace gnss_cuda
 
