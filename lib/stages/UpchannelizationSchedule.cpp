@@ -166,12 +166,13 @@ bool UpchannelizationSchedule::invariant() const {
 }
 
 UpchannelizationSchedule::UpchannelizationSchedule(kotekan::Config& config,
-                                                   const std::string& unique_name) :
+                                                   const std::string& unique_name,
+                                                   const std::vector<int>& coarse_freq) :
     kotekan::kotekanLogging(),
     //
     unique_name(unique_name), config(config),
     //
-    frequency_channels(make_frequency_channels()),
+    frequency_channels(coarse_freq.size() ? coarse_freq : make_frequency_channels()),
     frequency_channels_to_indices(make_frequency_channels_to_indices()),
     //
     upchan_factors(make_upchan_factors()),
@@ -184,14 +185,16 @@ UpchannelizationSchedule::UpchannelizationSchedule(kotekan::Config& config,
     assert(invariant());
 }
 
-const UpchannelizationSchedule& UpchannelizationSchedule::instance(kotekan::Config& config,
-                                                                   const std::string& unique_name) {
+const UpchannelizationSchedule&
+UpchannelizationSchedule::instance(kotekan::Config& config, const std::string& unique_name,
+                                   const std::vector<int>& coarse_freq) {
     static std::map<std::string, UpchannelizationSchedule> the_instances;
     static std::mutex the_mutex;
 
     std::lock_guard<std::mutex> lock(the_mutex);
     const UpchannelizationSchedule& the_instance =
-        the_instances.try_emplace(unique_name, config, unique_name).first->second;
+        the_instances.try_emplace(unique_name, config, unique_name, coarse_freq).first->second;
+    assert(coarse_freq.size() && the_instance.frequency_channels == coarse_freq);
     return the_instance;
 }
 
