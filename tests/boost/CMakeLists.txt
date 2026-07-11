@@ -63,7 +63,8 @@ if(FFTW_FOUND)
         ../../lib/stages/gnssChannelizedReplica.cpp ../../lib/stages/gnssBandPlan.cpp
         ../../lib/stages/gnssChannelizedDespread.cpp
         ../../lib/stages/gpsL2CCode.cpp ../../lib/stages/gpsL5Code.cpp
-        ../../lib/stages/gpsL1CCode.cpp) # replica signal_code() dispatches GPS_L1C_P
+        ../../lib/stages/gpsL1CCode.cpp # replica signal_code() dispatches GPS_L1C_P
+        ../../lib/stages/galileoE1Code.cpp) # + GAL_E1B/E1C memory codes
     target_include_directories(test_gnss_channelized_acquire PRIVATE ../../lib/stages)
     target_include_directories(test_gnss_channelized_acquire SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_acquire PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
@@ -75,7 +76,7 @@ if(FFTW_FOUND)
         ../../lib/stages/gnssChannelizedReplica.cpp ../../lib/stages/gnssChannelizedDespread.cpp
         ../../lib/stages/gnssBandPlan.cpp ../../lib/stages/pfbPrototype.cpp
         ../../lib/stages/gpsCACode.cpp ../../lib/stages/gpsL1CCode.cpp ../../lib/stages/gpsL2CCode.cpp
-        ../../lib/stages/gpsL5Code.cpp)
+        ../../lib/stages/gpsL5Code.cpp ../../lib/stages/galileoE1Code.cpp)
     target_include_directories(test_gnss_channelized_replica PRIVATE ../../lib/stages)
     target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})

@@ -44,6 +44,7 @@ add_library(
     SampleAutocorr.cpp
     SimpleCrosscorr.cpp
     gpsCACode.cpp
+    galileoE1Code.cpp
     gpsL1CCode.cpp
     gpsL2CCode.cpp
     gpsL5Code.cpp

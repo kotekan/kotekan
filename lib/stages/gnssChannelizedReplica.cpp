@@ -5,6 +5,7 @@
 #include "gpsCACode.hpp"       // for generate_ca_code
 #include "gpsL1CCode.hpp"      // for generate_l1cp_code
 #include "gpsL2CCode.hpp"      // for generate_l2cm_code, generate_l2cl_code
+#include "galileoE1Code.hpp"
 #include "gpsL5Code.hpp"       // for generate_l5i_code, generate_l5q_code
 
 #include <algorithm> // for max
@@ -43,6 +44,14 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = gps::generate_l5q_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GAL_E1C") {
+        auto a = galileo::generate_e1c_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "GAL_E1B") {
+        auto a = galileo::generate_e1b_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
     if (name == "GPS_L2C_CM")
         return gps::generate_l2cm_code(prn);
     if (name == "GPS_L2C_CL")
@@ -70,7 +79,19 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
     // tdm_phase parity, zeros where the sibling is -- so the channelized replica matches
     // the real signal's spectrum (NOT the bare 511.5 kcps component, which loses ~9-12 dB;
     // see python/scripts/gps_l2c_subband_validate.py). comb_mult=1 -> ordinary signal.
-    _comb_mult = _sig.time_multiplexed ? 2 : 1;
+    // BOC(m,m) is modeled as an EXPANDED code, exactly like TDM: each chip becomes 2m
+    // half-cycle slots of alternating sign (sine-BOC: + first) at 2m x the chip rate. This
+    // replaces the old analytic per-sample sub-carrier branch so the sub-carrier lives IN
+    // the code table -- which is what the per-chip hoprate path (and the GPU despread kernel
+    // ported from it) require: they assume constant chips. Numerically identical to the
+    // analytic branch (unit-tested); the cp API stays in COMPONENT chips throughout
+    // (cp0 = comb_mult * cp internally). TDM and BOC are mutually exclusive.
+    if (_sig.time_multiplexed && _sig.mod == Modulation::BOC)
+        throw std::invalid_argument("ChannelizedReplicaBank: TDM+BOC not supported");
+    if (_sig.mod == Modulation::BOC && _sig.boc_m != _sig.boc_n)
+        throw std::invalid_argument("ChannelizedReplicaBank: only BOC(m,m) supported (got "
+                                    + std::string(_sig.name) + ")");
+    _comb_mult = _sig.time_multiplexed ? 2 : (_sig.mod == Modulation::BOC ? 2 * _sig.boc_m : 1);
     _eff_chip_rate = _sig.chip_rate_hz * _comb_mult;
     _eff_code_length = _sig.code_length * _comb_mult;
     _full_code.resize(prns.size());
@@ -78,10 +99,17 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
         auto comp = signal_code(_sig.name, prns[p]); // bare component code (+-1), code_length
         if (_comb_mult == 1) {
             _full_code[p] = std::move(comp);
-        } else {
+        } else if (_sig.time_multiplexed) {
             std::vector<int8_t> comb((size_t)_eff_code_length, 0); // zero-stuffed sibling slots
             for (long k = 0; k < _sig.code_length; ++k)
                 comb[(size_t)(_comb_mult * k + _sig.tdm_phase)] = comp[(size_t)k];
+            _full_code[p] = std::move(comb);
+        } else { // BOC(m,m): alternating-sign half-cycles, sine convention (+ first)
+            std::vector<int8_t> comb((size_t)_eff_code_length);
+            for (long k = 0; k < _sig.code_length; ++k)
+                for (int j = 0; j < _comb_mult; ++j)
+                    comb[(size_t)(_comb_mult * k + j)] =
+                        (int8_t)((j % 2) ? -comp[(size_t)k] : comp[(size_t)k]);
             _full_code[p] = std::move(comb);
         }
     }
@@ -96,6 +124,8 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
             _secondary.assign(gps::L5_NH20.begin(), gps::L5_NH20.end());
         else if (name == "GPS_L5_I")
             _secondary.assign(gps::L5_NH10.begin(), gps::L5_NH10.end());
+        else if (name == "GAL_E1C")
+            _secondary.assign(galileo::E1C_CS25.begin(), galileo::E1C_CS25.end());
         _secondary_length = (int)_secondary.size();
     }
 
@@ -186,17 +216,10 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
             if (n >= 0) {
                 const double phase = cp0 + (double)n * chip_per_sample;
                 int8_t c = code_chip(p, phase);
-                // BOC sub-carrier (L1C, Galileo E1/E6, ...): a square wave synchronous with the
-                // code, boc_m/boc_n cycles per chip, multiplied onto the code -- splits the
-                // spectrum into +-(boc_m*1.023 MHz) lobes with a null at the carrier. Sine-BOC:
-                // +1 over the first half of each sub-carrier cycle, -1 over the second. No-op for
-                // BPSK signals (C/A, L2C, L5). (Within-chip, so the per-sample path handles it;
-                // the per-chip hoprate path does NOT yet -- it assumes a constant chip.)
-                if (_sig.mod == Modulation::BOC) {
-                    const double x = (double)_sig.boc_m / (double)_sig.boc_n * phase;
-                    if (x - std::floor(x) >= 0.5)
-                        c = (int8_t)(-c);
-                }
+                // BOC sub-carrier: baked into the EXPANDED code table at construction (each
+                // chip = 2m alternating-sign half-cycles at 2m x the rate) -- shared by this
+                // per-sample path, the per-chip hoprate path, AND the GPU despread kernel.
+                // The old analytic per-sample branch here would now double-apply it.
                 // Apply the secondary (NH) overlay per primary period when an alignment is set
                 // (nh_phase >= 0): the primary code repeats every _eff_code_length chips, the
                 // overlay flips at those rollovers, so a multi-period coherent despread stays

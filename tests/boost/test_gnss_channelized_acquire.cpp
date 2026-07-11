@@ -568,3 +568,71 @@ BOOST_AUTO_TEST_CASE(doppler_parabola_refine_beats_grid) {
     BOOST_CHECK_LT(err_ref, err_grid);  // the refine is closer to truth than the raw cell
     BOOST_CHECK_LT(err_ref, 25.0);      // and within ~step/4
 }
+
+// Galileo E1-C at the L1 front-end geometry (5 MSPS / N=20, the live_l1 configs): the BOC(1,1)
+// pilot as an EXPANDED code (2 half-cycle slots per chip at 2.046 Mcps -- the same comb
+// machinery as L2C TDM, which is what gives the hoprate path AND the GPU despread kernel BOC
+// support). Drives the real ChannelizedReplicaBank(GAL_E1C) + channelized_acquire, then the
+// stage's exact-despread refine, at production geometry -- the whole Galileo acquire path.
+BOOST_AUTO_TEST_CASE(gal_e1c_single_window_acquire_recovers) {
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name("GAL_E1C");
+    BOOST_REQUIRE(sig != nullptr);
+    constexpr double FS = 5.0e6;   // live L1 front end
+    constexpr double FOFF = 1.25e6;
+    constexpr int N = 20;          // live_l1 spectrum_length
+    gnss::ChannelizedReplicaBank bank(*sig, FS, FOFF, N, 4, dsp::Window::Hamming, {11});
+    BOOST_REQUIRE_EQUAL(bank.comb_mult(), 2);             // BOC(1,1) -> expanded x2
+    BOOST_REQUIRE_EQUAL(bank.eff_code_length(), 8184);    // 4092 * 2
+    const int fft_len = 2 * N;
+    const int Mp = bank.repl_period_hops(); // 20000 samples / gcd(40, 20000) = 500 hops = 4 ms
+    BOOST_REQUIRE_EQUAL(Mp, 500); // one 4 ms E1 period is an integer number of hops at N=20
+    const long long anchor = (long long)Mp * fft_len;
+
+    auto repl0 = bank.channels(0, anchor, 0.0, 0.0, Mp);
+    const auto cov = energy_covering_n(repl0, N);
+    BOOST_REQUIRE(!cov.empty());
+
+    const double true_cp = 1234.25; // E1 chips (4.89 samples/chip)
+    const double true_dop = 300.0;
+    auto data = bank.channels(0, anchor, true_cp, true_dop, Mp);
+
+    const std::vector<double> grid = {-600, -300, 0, 300, 600};
+    auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS, sig->chip_rate_hz, N,
+                                       sig->code_length, cov, fft_len);
+    BOOST_TEST_MESSAGE("E1C acquire: snr=" << r.snr << " dop=" << r.doppler_hz
+                                           << " cp=" << r.code_phase_chips << " (true " << true_cp
+                                           << ")  cov=" << cov.size() << " chans");
+    BOOST_CHECK_LT(std::abs(std::abs(r.doppler_hz) - true_dop), 150.0);
+    BOOST_CHECK_GT(r.snr, 15.0);
+
+    // Stage-style exact-despread refine around the coarse lag -> sub-chip cp.
+    const double cps = sig->chip_rate_hz / FS;
+    const double dop = -r.doppler_hz; // r2c sign flip, as the stage applies
+    double best_cp = r.code_phase_chips, best_pw = -1.0;
+    for (int off = -fft_len; off <= fft_len; ++off) {
+        const double cp = r.code_phase_chips + off * cps;
+        const auto repl = bank.channels(0, anchor, cp, dop, Mp);
+        std::vector<std::vector<cf>> d, rr;
+        for (int c : cov) {
+            d.push_back(data[c]);
+            rr.push_back(repl[c]);
+        }
+        const double pw = std::norm(gnss::channelized_despread(d, rr).amplitude);
+        if (pw > best_pw) {
+            best_pw = pw;
+            best_cp = cp;
+        }
+    }
+    double cp_err = std::fabs(best_cp - true_cp);
+    cp_err = std::min(cp_err, (double)sig->code_length - cp_err);
+    BOOST_TEST_MESSAGE("E1C refined cp=" << best_cp << " err " << cp_err << " chips");
+    BOOST_CHECK_LT(cp_err, 0.5); // BOC correlation peak is SHARPER than BPSK -- sub-half-chip
+
+    // Cross-PRN rejection: despreading PRN 11's signal with PRN 12's replica finds no peak.
+    gnss::ChannelizedReplicaBank bank12(*sig, FS, FOFF, N, 4, dsp::Window::Hamming, {12});
+    auto repl12 = bank12.channels(0, anchor, 0.0, 0.0, Mp);
+    auto r12 = gnss::channelized_acquire(data, repl12, cov, grid, FS, sig->chip_rate_hz, N,
+                                         sig->code_length, cov, fft_len);
+    BOOST_TEST_MESSAGE("E1C cross-PRN snr=" << r12.snr);
+    BOOST_CHECK_LT(r12.snr, r.snr * 0.25);
+}

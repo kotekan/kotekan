@@ -126,13 +126,35 @@ inline constexpr SignalDescriptor GPS_L5_Q = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
 };
 
+/// Galileo E1-C (1575.42 MHz) -- the OS dataless *pilot*: 4092-chip memory code at 1.023 Mcps
+/// (4 ms), BOC(1,1) (the CBOC(6,1,1/11) high-frequency component is ~1/11 of the power;
+/// modeling BOC(1,1) costs ~0.4 dB -- standard practice). 25-chip CS25 secondary (100 ms).
+/// SAME sky carrier as GPS L1 -- one airspy tune covers both constellations.
+/// ReplicaSource: galileoE1Code (ICD Annex C memory-code tables).
+inline constexpr SignalDescriptor GAL_E1C = {
+    "GAL_E1C", 1575.42e6, 1.023e6, 4092, 4e-3,
+    Modulation::BOC, 1, 1, // BOC(1,1)
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/25,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
+};
+
+/// Galileo E1-B (1575.42 MHz) -- the OS *data* component (I/NAV, 250 sps = 4 ms symbols,
+/// one symbol per primary period). Same geometry as E1-C, no secondary code.
+inline constexpr SignalDescriptor GAL_E1B = {
+    "GAL_E1B", 1575.42e6, 1.023e6, 4092, 4e-3,
+    Modulation::BOC, 1, 1, // BOC(1,1)
+    /*pilot=*/false, /*nav_symbol_s=*/4e-3, /*secondary_length=*/0,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
 /// pilot (CL) component. Likewise L5 splits into I5 (data) and Q5 (pilot).
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
-         {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q})
+         {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
+          &GAL_E1B})
         if (name == s->name)
             return s;
     return nullptr;
