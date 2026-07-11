@@ -28,6 +28,7 @@ add_library(
     cudaCopyNToRingbuffer.cpp
     cudaFRBBeamReformer.cpp
     cudaMemsetInt.cu
+    cudaGnssDespreadKernel.cu
     chordMVPSetup.cpp
     cudaPLMaskAccumulator.cpp
     cudaPLMaskExpander.cpp
@@ -134,3 +135,10 @@ target_include_directories(kotekan_cuda PUBLIC .)
 target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)
 
 add_dependencies(kotekan_cuda kotekan_gpu)
+
+# GNSS despread kernel validation (G1a gate, docs/gnss_gpu_migration.md): CPU hoprate replica +
+# despread vs the fused GPU kernel on identical inputs. Run: ./lib/cuda/cuda_gnss_despread_test
+add_executable(cuda_gnss_despread_test cudaGnssDespreadTest.cpp)
+target_link_libraries(cuda_gnss_despread_test PRIVATE kotekan_cuda kotekan_stages kotekan_core
+                                                     kotekan_libs libexternal)
+target_include_directories(cuda_gnss_despread_test PRIVATE . ../stages ../core ../utils ../metadata)
