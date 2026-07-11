@@ -125,3 +125,55 @@ intrinsics); (b) FRAGILE-DRIVER rule on GX10 — userspace only, never touch the
 float is NOT enough for `cp0 + n·cps`; keep phase accumulation in double, math is cheap
 relative to memory traffic); (d) the E/P/L triple shares the data window — compute all three
 in one kernel launch (3× replica, 1× data read).
+
+## 6. Phase F — cudaProcess framework migration (started 2026-07-11)
+
+Decision (user + audit): migrate the despread into the `cudaProcess` command-chain BEFORE
+porting the fftw work to cuFFT — the framework decides the data layout (GPU-resident named
+arrays, frames in flight, event-chained streams); anything built outside it (including a
+cuFFT F-engine) would target host buffers and be rebuilt when the framework lands. The
+side-car `GnssCudaDespread` (G1b/c) pays a launch+sync round-trip per record; the chain
+gets pipelining for free and IS the CHORD-shaped deliverable.
+
+### F0 — despread in the chain (device ring, kernel unchanged)
+
+Geometry fact that shapes everything: chan frames are 1248 hops, records are 125 — records
+straddle frame boundaries. Fix: a DEVICE RING of channelized hops sized an exact MULTIPLE OF
+125 hops → consumed in 125-hop units, a record window is always CONTIGUOUS in ring memory
+(never straddles the wrap) → `cudaGnssDespreadKernel.cu` runs unchanged.
+
+Chain (yaml `gputrack: cudaProcess`):
+  - `cudaInputData`           chan_buf2 -> gpu[gnss_chan] (staging, depth N)
+  - `cudaCopyToRingbuffer`    gpu[gnss_chan] -> gpu ring (RingBuffer signaling, multiple of
+                              125*n_chan*sizeof(cf) bytes)
+  - `cudaGnssDespread` (WITH_STATE) ring -> gpu[gnss_epl]: state = seeds + /set_seeds REST +
+    ChannelizedReplicaBank + Doppler-bucketed Phi caches (ports of GnssCudaDespread + the
+    tracker's pass-1 control: currency translation, quadratic code FF, f_ref fence, ff_hz).
+    Per gpu-frame: claim k*125 readable hops, build the (records x active PRNs x E/P/L) job
+    table on host, ONE batched launch, write EPL correlations + a CONTROL BLOCK
+    [prn, cp_seed, fcar, ff_hz, ctrim, n_owned, sample_seq...] per record into gnss_epl.
+  - `cudaOutputData`          gpu[gnss_epl] -> epl_buf (host; tiny, ~KB/frame)
+
+Downstream host stage `GnssGpuRecordAssemble`: epl_buf -> rec_buf. Pass-2 port: cross-channel
+sum, NCO phase integration + derotation (phase continuity state lives HERE), record floats
+(gnssRecord.hpp schema), so the combiner/broker/viewer are untouched. Stateless w.r.t. seeds
+(everything needed rides in the control block).
+
+Control cadence: seeds snapshot per gpu-frame (~10-20 ms) instead of per record (1 ms) —
+same broker cadence (0.2 s), no behavior change. sample_seq from GnssChanMetadata via the
+claimed metadata refs anchors absolute hop indexing.
+
+Gate F0: replay A/B (12049) vs the CPU path AND vs the G1c side-car: records equivalent,
+sustained holds, throughput >= side-car. Then delete the side-car path (`use_cuda`).
+
+### F1 — cuFFT PFB (prototype-only F-engine)
+
+Upstream command in the same chain: raw airspy samples -> gpu once, r2c cuFFT + PFB window
+as a command writing the SAME gnss_chan staging array; retires fftwEngine from GNSS configs.
+Explicitly NOT CHORD deliverable (FPGA channelizes there) — marked prototype-only.
+
+### F2/F3 — G2 acquisition + G3 peel as chain commands
+
+Same device-resident channelized ring feeds both: acquisition on the search's drop-tolerant
+arm (batched cuFFT correlate, incoherent accumulate, device peak-pick); peel as the despread
+kernel + subtract writing an output ring. These become straight kernel work once F0 lands.
