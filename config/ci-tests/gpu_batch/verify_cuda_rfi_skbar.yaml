@@ -46,7 +46,7 @@ main_pool:
 
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: int8
     extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
@@ -127,7 +127,7 @@ gen_bf_mask:
     array_shape: [2, 64]
     dim_name: ["P", "D"]
     dim_scaling: [1, 1]
-    num_frames: 1
+    num_frames: 2 * buffer_depth
 
 run_send_rfi_s012bar:
     gpu_0:
@@ -158,7 +158,7 @@ run_rfi_skbar:
             host_rfi_skbartilde_ringbuffer: host_rfi_skbartilde_ringbuffer
         commands:
             - name: cudaInputData
-              do_once: true
+              do_once: false
               in_buf: host_bf_mask_buffer
               gpu_mem: bf_mask_buffer
             - name: cudaSyncInput
