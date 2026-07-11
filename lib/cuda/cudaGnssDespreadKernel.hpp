@@ -24,15 +24,16 @@ namespace gnss_cuda {
 /// (device) Phi table pointers + filter span so ONE launch can mix PRNs from different
 /// Doppler buckets -- the G1c cross-PRN batch (one launch per record, all sats).
 struct DespreadJob {
-    double cp0;           ///< code phase (COMBINED-stream chips) at absolute sample 0 reference
-    double cps;           ///< chips per sample incl. code Doppler: eff_chip_rate/fs*(1+sign*f/f_c)
-    double wc;            ///< carrier angular rate: 2*pi*(f_offset + doppler)/fs
-    int code_offset;      ///< this PRN's offset into the shared code table
-    int code_len;         ///< combined-stream code length (chips)
-    uint64_t chan_mask;   ///< bit ci set = channel ci is in this PRN's covering set (<=64 chans)
-    const double2* phiA;  ///< [n_chan][Lf+1] cumulative filter table, this PRN's Doppler bucket
-    const double2* phiB;  ///< (device pointers -- the tables live in the caller's per-PRN cache)
-    int n_chips;          ///< chips spanned by this bucket's filter (gather depth per hop)
+    double cp0;          ///< code phase (COMBINED-stream chips) at absolute sample 0 reference
+    double cps;          ///< chips per sample incl. code Doppler: eff_chip_rate/fs*(1+sign*f/f_c)
+    double inv_cps;      ///< 1/cps (tap-boundary indices via multiply, not the costly FP64 divide)
+    double wc;           ///< carrier angular rate: 2*pi*(f_offset + doppler)/fs
+    int code_offset;     ///< this PRN's offset into the shared code table
+    int code_len;        ///< combined-stream code length (chips)
+    uint64_t chan_mask;  ///< bit ci set = channel ci is in this PRN's covering set (<=64 chans)
+    const float2* phiA;  ///< [n_chan][Lf+1] cumulative filter table, this PRN's Doppler bucket
+    const float2* phiB;  ///< (float32: see the kernel's mixed-precision note)
+    int n_chips;         ///< chips spanned by this bucket's filter (gather depth per hop)
 };
 
 /// Batch-shared geometry.

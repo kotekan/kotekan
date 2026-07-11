@@ -36,7 +36,7 @@ struct GnssCudaDespread::Impl {
         bool valid = false;
         double doppler = 0.0;
         int n_chips = 0;
-        double2 *d_A = nullptr, *d_B = nullptr;
+        float2 *d_A = nullptr, *d_B = nullptr; // float32 tables (mixed-precision kernel)
     };
     std::vector<PhiCache> phi;
     std::vector<int> all_chans;
@@ -111,20 +111,20 @@ struct GnssCudaDespread::Impl {
             return pc;
         const auto f = bank.hoprate_filter(all_chans, doppler);
         const size_t n = (size_t)n_chan * (Lf + 1);
-        std::vector<double2> hA(n), hB(n);
+        std::vector<float2> hA(n), hB(n);
         for (int c = 0; c < n_chan; ++c)
             for (int k = 0; k <= Lf; ++k) {
                 hA[(size_t)c * (Lf + 1) + k] =
-                    make_double2(f.PhiA[c][k].real(), f.PhiA[c][k].imag());
+                    make_float2((float)f.PhiA[c][k].real(), (float)f.PhiA[c][k].imag());
                 hB[(size_t)c * (Lf + 1) + k] =
-                    make_double2(f.PhiB[c][k].real(), f.PhiB[c][k].imag());
+                    make_float2((float)f.PhiB[c][k].real(), (float)f.PhiB[c][k].imag());
             }
         if (!pc.d_A) {
-            ck(cudaMalloc(&pc.d_A, n * sizeof(double2)), "alloc PhiA");
-            ck(cudaMalloc(&pc.d_B, n * sizeof(double2)), "alloc PhiB");
+            ck(cudaMalloc(&pc.d_A, n * sizeof(float2)), "alloc PhiA");
+            ck(cudaMalloc(&pc.d_B, n * sizeof(float2)), "alloc PhiB");
         }
-        ck(cudaMemcpy(pc.d_A, hA.data(), n * sizeof(double2), cudaMemcpyHostToDevice), "PhiA up");
-        ck(cudaMemcpy(pc.d_B, hB.data(), n * sizeof(double2), cudaMemcpyHostToDevice), "PhiB up");
+        ck(cudaMemcpy(pc.d_A, hA.data(), n * sizeof(float2), cudaMemcpyHostToDevice), "PhiA up");
+        ck(cudaMemcpy(pc.d_B, hB.data(), n * sizeof(float2), cudaMemcpyHostToDevice), "PhiB up");
         pc.valid = true;
         pc.doppler = doppler;
         pc.n_chips = f.n_chips;
@@ -180,6 +180,7 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
         for (int t = 0; t < 3; ++t)
             im.h_jobs[3 * i + t] = {(double)im.bank.comb_mult() * trials[t],
                                     cps,
+                                    1.0 / cps,
                                     wc,
                                     im.code_offset[(size_t)sp.p],
                                     (int)im.code_len,

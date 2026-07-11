@@ -96,13 +96,13 @@ int main() {
     auto code = gps::generate_ca_code(prn); // +-1, 1023 chips
     std::vector<int8_t> code8(code.begin(), code.end());
 
-    std::vector<double2> phiA((size_t)n_chan * (Lf + 1)), phiB((size_t)n_chan * (Lf + 1));
+    std::vector<float2> phiA((size_t)n_chan * (Lf + 1)), phiB((size_t)n_chan * (Lf + 1));
     for (int c = 0; c < n_chan; ++c)
         for (int k = 0; k <= Lf; ++k) {
             phiA[(size_t)c * (Lf + 1) + k] =
-                make_double2(filt.PhiA[c][k].real(), filt.PhiA[c][k].imag());
+                make_float2((float)filt.PhiA[c][k].real(), (float)filt.PhiA[c][k].imag());
             phiB[(size_t)c * (Lf + 1) + k] =
-                make_double2(filt.PhiB[c][k].real(), filt.PhiB[c][k].imag());
+                make_float2((float)filt.PhiB[c][k].real(), (float)filt.PhiB[c][k].imag());
         }
     std::vector<float2> dataf((size_t)n_chan * n_hops);
     for (int c = 0; c < n_chan; ++c)
@@ -120,22 +120,23 @@ int main() {
 
     float2* d_data;
     int8_t* d_code;
-    double2 *d_phiA, *d_phiB, *d_corr;
+    float2 *d_phiA, *d_phiB;
+    double2* d_corr;
     gnss_cuda::DespreadJob* d_jobs;
     double* d_energy;
     CK(cudaMalloc(&d_data, dataf.size() * sizeof(float2)));
     CK(cudaMalloc(&d_code, code8.size()));
-    CK(cudaMalloc(&d_phiA, phiA.size() * sizeof(double2)));
-    CK(cudaMalloc(&d_phiB, phiB.size() * sizeof(double2)));
+    CK(cudaMalloc(&d_phiA, phiA.size() * sizeof(float2)));
+    CK(cudaMalloc(&d_phiB, phiB.size() * sizeof(float2)));
     CK(cudaMalloc(&d_jobs, jobs.size() * sizeof(gnss_cuda::DespreadJob)));
     CK(cudaMalloc(&d_corr, (size_t)n_batch * n_chan * sizeof(double2)));
     CK(cudaMalloc(&d_energy, (size_t)n_batch * n_chan * sizeof(double)));
     CK(cudaMemcpy(d_data, dataf.data(), dataf.size() * sizeof(float2), cudaMemcpyHostToDevice));
     CK(cudaMemcpy(d_code, code8.data(), code8.size(), cudaMemcpyHostToDevice));
-    CK(cudaMemcpy(d_phiA, phiA.data(), phiA.size() * sizeof(double2), cudaMemcpyHostToDevice));
-    CK(cudaMemcpy(d_phiB, phiB.data(), phiB.size() * sizeof(double2), cudaMemcpyHostToDevice));
+    CK(cudaMemcpy(d_phiA, phiA.data(), phiA.size() * sizeof(float2), cudaMemcpyHostToDevice));
+    CK(cudaMemcpy(d_phiB, phiB.data(), phiB.size() * sizeof(float2), cudaMemcpyHostToDevice));
     for (int b = 0; b < n_batch; ++b)
-        jobs[b] = {cps_trials[b], cps, wc, 0, (int)code8.size(), all_mask,
+        jobs[b] = {cps_trials[b], cps, 1.0 / cps, wc, 0, (int)code8.size(), all_mask,
                    d_phiA, d_phiB, filt.n_chips};
     CK(cudaMemcpy(d_jobs, jobs.data(), jobs.size() * sizeof(gnss_cuda::DespreadJob),
                   cudaMemcpyHostToDevice));
