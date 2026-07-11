@@ -22,11 +22,12 @@ namespace gnss_cuda {
 
 /// Per-(PRN x correlator) trial: everything that varies within a batch.
 struct DespreadJob {
-    double cp0;      ///< code phase (COMBINED-stream chips) at absolute sample 0 reference
-    double cps;      ///< chips per sample incl. code Doppler: eff_chip_rate/fs*(1+sign*f/f_c)
-    double wc;       ///< carrier angular rate: 2*pi*(f_offset + doppler)/fs
-    int code_offset; ///< this PRN's offset into the shared code table
-    int code_len;    ///< combined-stream code length (chips)
+    double cp0;         ///< code phase (COMBINED-stream chips) at absolute sample 0 reference
+    double cps;         ///< chips per sample incl. code Doppler: eff_chip_rate/fs*(1+sign*f/f_c)
+    double wc;          ///< carrier angular rate: 2*pi*(f_offset + doppler)/fs
+    int code_offset;    ///< this PRN's offset into the shared code table
+    int code_len;       ///< combined-stream code length (chips)
+    uint64_t chan_mask; ///< bit ci set = channel ci is in this PRN's covering set (<=64 chans)
 };
 
 /// Batch-shared geometry.

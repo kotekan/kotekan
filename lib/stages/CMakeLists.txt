@@ -246,3 +246,11 @@ if(CUDAToolkit_FOUND)
     get_target_property(STAGES_INCLUDES kotekan_stages INCLUDE_DIRECTORIES)
     message(STATUS "${STAGES_INCLUDES}")
 endif()
+
+# GPU GNSS despread driver (docs/gnss_gpu_migration.md G1b): only with CUDA; defines GNSS_CUDA so
+# GnssChannelizedTracker exposes use_cuda. One-way link stages -> kotekan_cuda (kernel only).
+if(USE_CUDA)
+    target_sources(kotekan_stages PRIVATE GnssCudaDespread.cpp)
+    target_link_libraries(kotekan_stages PRIVATE kotekan_cuda)
+    target_compile_definitions(kotekan_stages PRIVATE GNSS_CUDA=1)
+endif()

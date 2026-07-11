@@ -130,6 +130,10 @@ private:
     std::mutex _seed_mtx; ///< guards _doppler/_code_phase/_active (REST set_seeds vs main loop)
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> _replica;
+    /// GPU despread (docs/gnss_gpu_migration.md G1b): opaque so the header stays CUDA-free;
+    /// constructed (and the type completed) only in the .cpp under GNSS_CUDA.
+    std::shared_ptr<void> _cuda;
+    bool _use_cuda = false;
 };
 
 #endif // GNSS_CHANNELIZED_TRACKER_HPP

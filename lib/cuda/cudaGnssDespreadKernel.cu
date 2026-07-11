@@ -41,7 +41,8 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
 
     double2 acc = make_double2(0.0, 0.0);
     double e = 0.0;
-    if (m < p.n_hops) {
+    const bool covered = (job.chan_mask >> ci) & 1ULL; // channel in this PRN's covering set?
+    if (covered && m < p.n_hops) {
         // Per-hop code phase at the hop's reference sample (absolute anchoring).
         const long long n_m = p.n0 + (long long)m * p.fft_len;
         const double C = job.cp0 + (double)n_m * job.cps;

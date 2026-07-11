@@ -123,10 +123,17 @@ public:
 
     int spectrum_length() const { return _N; }
     int fft_len() const { return _fft_len; }
+    double f_offset() const { return _f_offset; }
     int repl_period_hops() const { return _repl_period_hops; }
     double chip_rate_hz() const { return _sig.chip_rate_hz; }
     double carrier_hz() const { return _sig.carrier_hz; } ///< sky carrier (for code-Doppler)
     long code_length() const { return _sig.code_length; }
+    // Combined-stream (TDM zero-stuffed) quantities + the raw code table -- what an external
+    // (GPU) despread needs to reproduce hoprate_stream exactly (see GnssCudaDespread).
+    double eff_chip_rate() const { return _eff_chip_rate; }
+    long eff_code_length() const { return _eff_code_length; }
+    int comb_mult() const { return _comb_mult; }
+    const std::vector<int8_t>& full_code(int p) const { return _full_code[(size_t)p]; }
 
 private:
     SignalDescriptor _sig;

@@ -107,8 +107,9 @@ int main() {
         for (int m = 0; m < n_hops; ++m)
             dataf[(size_t)c * n_hops + m] = make_float2(data_ch[c][m].real(), data_ch[c][m].imag());
     std::vector<gnss_cuda::DespreadJob> jobs(n_batch);
+    const uint64_t all_mask = (n_chan >= 64) ? ~0ULL : ((1ULL << n_chan) - 1);
     for (int b = 0; b < n_batch; ++b)
-        jobs[b] = {cps_trials[b], cps, wc, 0, (int)code8.size()};
+        jobs[b] = {cps_trials[b], cps, wc, 0, (int)code8.size(), all_mask};
 
     gnss_cuda::DespreadParams p;
     p.n0 = window_start + fft_len - 1; // hoprate_stream's per-hop reference sample

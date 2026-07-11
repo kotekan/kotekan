@@ -1,5 +1,9 @@
 #include "GnssChannelizedTracker.hpp"
 
+#ifdef GNSS_CUDA
+#include "GnssCudaDespread.hpp" // GPU batched despread (use_cuda: true)
+#endif
+
 #include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
 #include "GnssChanMetadata.hpp"        // for get_gnss_chan_metadata, metadata_is_gnss_chan
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
@@ -94,6 +98,20 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     // coasting at the held frequency and the loop resumes cleanly on return. 0 = never freeze.
     _fll_lock_amp = config.get_default<double>(unique_name, "fll_lock_amp", 0.0);
     _carrier_shared = config.get_default<bool>(unique_name, "carrier_shared", false);
+    // use_cuda: route the E/P/L despread through the GPU kernel (identical semantics to the
+    // hoprate replica path; validated 3.6e-9 vs CPU). Requires a USE_CUDA build.
+    _use_cuda = config.get_default<bool>(unique_name, "use_cuda", false);
+    if (_use_cuda) {
+#ifdef GNSS_CUDA
+        _cuda = std::make_shared<GnssCudaDespread>(*_replica, (int)_prns.size(), _n_chan,
+                                                   _chan_offset, _hops_per_record, _sample_rate,
+                                                   _replica->f_offset());
+        INFO("GNSS despread on GPU (use_cuda): {:d} PRN slots x E/P/L x {:d} channels",
+             (int)_prns.size(), _n_chan);
+#else
+        FATAL_ERROR("use_cuda: true but kotekan was built without USE_CUDA");
+#endif
+    }
 
     const auto active_prns = config.get_default<std::vector<int>>(unique_name, "active_prns", {});
     _active.assign(n_prn, 1);
@@ -193,6 +211,10 @@ void GnssChannelizedTracker::main_thread() {
             hops_filled = 0;
 
             const long long window_start = window_start_hop * (long long)_fft_len;
+#ifdef GNSS_CUDA
+            if (_use_cuda) // one upload per record; all PRNs' despreads read it
+                ((GnssCudaDespread*)_cuda.get())->upload_window(window.data(), window_start);
+#endif
 
             // Snapshot the (REST-updatable) seeds + active set for this window.
             std::vector<double> dop, cp, cp_rate, dop_rate, ctrim;
@@ -331,9 +353,22 @@ void GnssChannelizedTracker::main_thread() {
                         repl_ch.push_back(repl[c]);
                     return gnss::channelized_despread(data_ch, repl_ch);
                 };
-                const auto early = despread_at(cp_seed - _dll_spacing);
-                const auto best = despread_at(cp_seed); // prompt
-                const auto late = despread_at(cp_seed + _dll_spacing);
+                gnss::DespreadResult early, best, late;
+#ifdef GNSS_CUDA
+                if (_use_cuda) {
+                    // Fused GPU replica+despread, E/P/L in one launch (hoprate semantics).
+                    const auto r3 = ((GnssCudaDespread*)_cuda.get())
+                                        ->despread3(p, cp_seed, _dll_spacing, fcar_eff, owned);
+                    early = r3[0];
+                    best = r3[1]; // prompt
+                    late = r3[2];
+                } else
+#endif
+                {
+                    early = despread_at(cp_seed - _dll_spacing);
+                    best = despread_at(cp_seed); // prompt
+                    late = despread_at(cp_seed + _dll_spacing);
+                }
                 rec[gnss::REC_E_RE] = (float)early.correlation.real();
                 rec[gnss::REC_E_IM] = (float)early.correlation.imag();
                 rec[gnss::REC_E_ENERGY] = (float)early.replica_energy;
