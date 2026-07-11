@@ -76,6 +76,10 @@ def main(argv=None):
                     continue
                 last[prn] = (ds, da)
                 rec = {"t": round(now, 3), "prn": int(prn),
+                       # raw biased incoherent |A| -- with unbiased_amplitude this makes the noise
+                       # power exactly recoverable offline (N = amplitude^2 - unbiased^2), the
+                       # input to the incoherent C/N0 beam map (gps_cn0_map.py).
+                       "amplitude": r.get("amplitude") or 0.0,
                        "deep_snr": ds, "coherence_s": r.get("coherence_s") or 0.0,
                        "deep_records": r.get("deep_records") or 0,
                        "deep_amplitude": da, "amp_snr": asnr,
