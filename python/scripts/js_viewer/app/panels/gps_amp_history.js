@@ -159,17 +159,20 @@ export class GpsAmpHistoryPanel {
 
         // Fresh arrays each render (Plotly.react diffs data BY REFERENCE, so reusing the in-place
         // buffers would make it skip the redraw -- the plot would only refresh on a full newPlot).
-        // Split by window length: the auto-coherence ladder's SHORT-window emits (deep_records well
-        // below the run's converged ~1 s window) have an extreme-value-inflated deep_snr, and C/N₀ =
-        // deep_snr^2/coherence_s then amplifies it -> spurious up-spikes. Route those to a faint grey
-        // "short window" series so the solid blue trace reads the true, physical baseline.
+        // De-emphasize only LOW-SIGNIFICANCE short-window emits: near the ~7σ nav-wipe floor the
+        // auto-coherence ladder's short windows are extreme-value-inflated (spurious up-spikes),
+        // but a HIGH-significance short window is real signal -- post the 2026-07-11 code-loop fix
+        // the ladder legitimately rides 125-500 ms windows at 50-160σ, and greying those hid the
+        // true C/N₀ as "artifact". 20σ is safely above anything the floor's selection bias makes.
         const T = h.t.slice(), Yf = new Array(h.a.length), Ys = new Array(h.a.length),
               E = new Array(h.a.length);
         const thr = 0.6 * (this._maxDr || 0);
+        const SIG_REAL = 20;   // significance above which any window length is trusted
         let lastFull = -1;
         for (let i = 0; i < h.a.length; i++) {
             const ye = this._yval(h, i); E[i] = ye[1];
-            const isShort = this._maxDr > 0 && (h.dr[i] || 0) < thr;
+            const isShort = this._maxDr > 0 && (h.dr[i] || 0) < thr
+                            && (h.sig[i] || 0) < SIG_REAL;
             Yf[i] = isShort ? null : ye[0];
             Ys[i] = isShort ? ye[0] : null;
             if (!isShort) lastFull = i;
@@ -204,7 +207,7 @@ export class GpsAmpHistoryPanel {
         const shortWin = {
             x: T, y: Ys, type: "scatter", mode: "markers",
             marker: {size: 2.5, color: "rgba(150,150,150,0.45)"},
-            hovertemplate: `%{x|%H:%M:%S}<br>%{y:${fmt}}${unit} · short window (artifact)<extra></extra>`,
+            hovertemplate: `%{x|%H:%M:%S}<br>%{y:${fmt}}${unit} · short window, low sig<extra></extra>`,
         };
         const layout = {
             margin: {l: 52, r: 10, t: 6, b: 28},

@@ -272,10 +272,25 @@ void GnssChannelizedTracker::main_thread() {
                     if (c >= _chan_offset && c < _chan_offset + _n_chan)
                         cmds[p].owned.push_back(c);
                 // Code phase at this window: first-order extrapolation of the seeded cp0 from
-                // its anchor hop (removes seed staleness). The broker's DLL trims the residual
-                // at ~Hz from the shipped E/L correlators -- the tracker itself never moves it.
+                // its anchor hop (removes seed staleness), PLUS the known QUADRATIC code-
+                // Doppler term. The broker's hold-on-lock freezes the seed's LINEAR model, but
+                // the sky's code rate changes at dop_rate*f_chip/f_c (~3e-4 chips/s^2 at L1),
+                // so a frozen linear model walks off by 0.5*(dop_rate*f_chip/f_c)*dt^2 -- 0.5
+                // chips at 60 s, 2.3 at 120 s: the ~2 min C/N0 sawtooth (roll-off then
+                // re-anchor reset) observed live 2026-07-11. dop_rate is the almanac rate
+                // (physical-signed, refreshed every seed) -- a deterministic feed-forward, so
+                // it respects the piecewise-constant currency rule; the code twin of the NCO's
+                // ff_hz carrier ramp. Fresh anchors (dt~0) make it a no-op outside holds.
+                // The broker's DLL trims the residual at ~Hz from the shipped E/L correlators
+                // -- the tracker itself never moves it.
                 const double L = (double)_replica->code_length();
-                double cp_seed = cp[p] + cp_rate[p] * (double)(window_start_hop - ref_hop[p]);
+                const double dt_anchor =
+                    (double)(window_start_hop - ref_hop[p]) * (double)_fft_len / _sample_rate;
+                double cp_seed = cp[p] + cp_rate[p] * (double)(window_start_hop - ref_hop[p])
+                                 + 0.5 * _replica->code_doppler_sign * dop_rate[p]
+                                       * (_replica->eff_chip_rate()
+                                          / (double)_replica->comb_mult())
+                                       / _replica->carrier_hz() * dt_anchor * dt_anchor;
                 cp_seed = std::fmod(cp_seed, L);
                 if (cp_seed < 0.0)
                     cp_seed += L;
