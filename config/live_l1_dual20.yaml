@@ -115,7 +115,40 @@ valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 # the per-record FLL (which aliased past ~250 Hz -> runaway). run_live.sh AUTO-ENABLES the loop for
 # any carrier_shared config (--carrier-gain 0.5, override via CARRIER_GAIN env) -- no BROKER_EXTRA
 # needed. REPLAY-VALIDATED on the strong 07-04 capture: PRN19 deep 80 sigma@1 s ON vs 7 sigma OFF.
-track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf2, out_buf: rec_buf, channel_offset: 0, n_channels: 10, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.0, carrier_shared: true, hold_lock_amp: 0, hold_lock_records: 5 }
+# ---- GPS tracking on the F0 GPU chain (docs/gnss_gpu_migration.md §6): the CPU tracker
+# saturates a core at 20 MSPS (84% in hoprate_stream, 40% frames shed); the cudaProcess
+# despread runs the same records at ~300k PRN-despreads/s. Broker contract unchanged
+# (seed_endpoint /track/set_seeds; launch with TRK=track since no ^track stage exists).
+# epl frame = gnssGpuChain layout: 176 + 1024*n_prn + 1152*n_prn*n_chan (n_chan 10).
+epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 11520 * n_prn }
+gputrack:
+    kotekan_stage: cudaProcess
+    gpu_id: 0
+    num_cuda_streams: 3
+    frame_arrival_period: 0.0
+    in_buffers:  { chan_buf2: chan_buf2 }
+    out_buffers: { epl_buf: epl_buf }
+    commands:
+        - name: cudaInputData
+          in_buf: chan_buf2
+          gpu_mem: gnss_chan_frame
+        - name: cudaGnssTrack
+          # stream 1: cudaProcess chains events PER STREAM and cudaOutputData waits only its
+          # own stream's predecessor -- on the kernel stream the output copy races the work.
+          cuda_stream: 1
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: gnss_epl
+          in_frame_len: samples_per_data_set * sizeof_float
+          n_channels: 10
+          channel_offset: 0
+          capture_utc0: 1.0
+          fll_gain: 0.0
+          seed_endpoint: "/track/set_seeds"
+        - name: cudaOutputData
+          gpu_mem: gnss_epl
+          out_buf: epl_buf
+          in_buf: ""
+assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_buf, sample_rate: 20.0e6 }
 # integration_length: 1000, navwipe_bit_records: 20 -> navwipe: integrate ~1 s (50 nav bits)
 # coherently; deep |A| in slot 8. Restored to 1000 now that the Doppler-rate feed-forward removes the
 # zenith ramp (was temporarily 400 for the coherence-limit diagnostic).
