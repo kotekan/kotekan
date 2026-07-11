@@ -636,3 +636,57 @@ BOOST_AUTO_TEST_CASE(gal_e1c_single_window_acquire_recovers) {
     BOOST_TEST_MESSAGE("E1C cross-PRN snr=" << r12.snr);
     BOOST_CHECK_LT(r12.snr, r.snr * 0.25);
 }
+
+// BeiDou-3 B1C pilot at the 20 MSPS wide-front-end geometry (live_l1_dual20): Weil-code
+// primary (validated chip-for-chip against PocketSDR), BOC(1,1) expanded, 10 ms period =
+// 10000 hops at N=10 (integer). Same acquire->refine path as the E1C case.
+BOOST_AUTO_TEST_CASE(bds_b1c_single_window_acquire_recovers) {
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name("BDS_B1C_P");
+    BOOST_REQUIRE(sig != nullptr);
+    constexpr double FS = 20.0e6;
+    constexpr double FOFF = 5.0e6;
+    constexpr int N = 10;
+    gnss::ChannelizedReplicaBank bank(*sig, FS, FOFF, N, 4, dsp::Window::Hamming, {19});
+    BOOST_REQUIRE_EQUAL(bank.comb_mult(), 2);
+    const int fft_len = 2 * N;
+    const int Mp = bank.repl_period_hops();
+    BOOST_REQUIRE_EQUAL(Mp, 10000); // 10 ms = 200000 samples / 20 = integer hops
+    const long long anchor = (long long)Mp * fft_len;
+
+    auto repl0 = bank.channels(0, anchor, 0.0, 0.0, Mp);
+    const auto cov = energy_covering_n(repl0, N);
+    BOOST_REQUIRE(!cov.empty());
+
+    const double true_cp = 5678.5;
+    const double true_dop = -150.0;
+    auto data = bank.channels(0, anchor, true_cp, true_dop, Mp);
+    const std::vector<double> grid = {-300, -150, 0, 150, 300};
+    auto r = gnss::channelized_acquire(data, repl0, cov, grid, FS, sig->chip_rate_hz, N,
+                                       sig->code_length, cov, fft_len);
+    BOOST_TEST_MESSAGE("B1C acquire: snr=" << r.snr << " dop=" << r.doppler_hz
+                                           << " cp=" << r.code_phase_chips);
+    BOOST_CHECK_GT(r.snr, 15.0);
+    BOOST_CHECK_LT(std::abs(std::abs(r.doppler_hz) - 150.0), 80.0);
+
+    const double cps = sig->chip_rate_hz / FS;
+    const double dop = -r.doppler_hz;
+    double best_cp = r.code_phase_chips, best_pw = -1.0;
+    for (int off = -fft_len; off <= fft_len; ++off) {
+        const double cp = r.code_phase_chips + off * cps;
+        const auto repl = bank.channels(0, anchor, cp, dop, Mp);
+        std::vector<std::vector<cf>> d, rr;
+        for (int c : cov) {
+            d.push_back(data[c]);
+            rr.push_back(repl[c]);
+        }
+        const double pw = std::norm(gnss::channelized_despread(d, rr).amplitude);
+        if (pw > best_pw) {
+            best_pw = pw;
+            best_cp = cp;
+        }
+    }
+    double cp_err = std::fabs(best_cp - true_cp);
+    cp_err = std::min(cp_err, (double)sig->code_length - cp_err);
+    BOOST_TEST_MESSAGE("B1C refined cp=" << best_cp << " err " << cp_err);
+    BOOST_CHECK_LT(cp_err, 0.5);
+}

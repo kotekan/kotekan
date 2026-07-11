@@ -147,6 +147,19 @@ inline constexpr SignalDescriptor GAL_E1B = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
 };
 
+/// BeiDou-3 B1C pilot (1575.42 MHz -- the SAME carrier as GPS L1 / Galileo E1): 10230-chip
+/// Weil code at 1.023 Mcps (10 ms), transmitted QMBOC(6,1,4/33), modeled BOC(1,1) (the
+/// 4/33-power BOC(6,1) part is in quadrature -- negligible loss). Dataless pilot; the
+/// 1800-chip PER-PRN overlay is left to the combiner's per-record wipe (secondary_length 0
+/// here: the bank's single-sequence overlay slot can't carry per-PRN codes yet).
+/// ReplicaSource: beidouB1CCode (Legendre/Weil, algorithmic). BDS-3 only, PRN 19..63 mostly.
+inline constexpr SignalDescriptor BDS_B1C_P = {
+    "BDS_B1C_P", 1575.42e6, 1.023e6, 10230, 10e-3,
+    Modulation::BOC, 1, 1, // BOC(1,1)
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/0,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
@@ -154,7 +167,7 @@ inline constexpr SignalDescriptor GAL_E1B = {
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
-          &GAL_E1B})
+          &GAL_E1B, &BDS_B1C_P})
         if (name == s->name)
             return s;
     return nullptr;

@@ -5,6 +5,7 @@
 #include "gpsCACode.hpp"       // for generate_ca_code
 #include "gpsL1CCode.hpp"      // for generate_l1cp_code
 #include "gpsL2CCode.hpp"      // for generate_l2cm_code, generate_l2cl_code
+#include "beidouB1CCode.hpp"
 #include "galileoE1Code.hpp"
 #include "gpsL5Code.hpp"       // for generate_l5i_code, generate_l5q_code
 
@@ -50,6 +51,10 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
     }
     if (name == "GAL_E1B") {
         auto a = galileo::generate_e1b_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "BDS_B1C_P") {
+        auto a = beidou::generate_b1cp_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
     if (name == "GPS_L2C_CM")

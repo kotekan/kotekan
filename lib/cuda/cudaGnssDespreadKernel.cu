@@ -44,15 +44,17 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
                                      double* __restrict__ energy) { // [nbatch][nchan]
     const int b = blockIdx.x;  // batch (PRN x correlator)
     const int ci = blockIdx.y; // covering channel
-    const int m = threadIdx.x; // hop
+    const int m = threadIdx.x; // hop lane: handles hops m, m+blockDim, ... (grid-stride over
+                               // the record, so records LONGER than the block work -- 1000-hop
+                               // L1 / 4000-hop E1C records at the 20 MSPS wide front end)
     const gnss_cuda::DespreadJob job = jobs[b];
 
     double2 acc = make_double2(0.0, 0.0);
     double e = 0.0;
     const bool covered = (job.chan_mask >> ci) & 1ULL; // channel in this PRN's covering set?
-    if (covered && m < p.n_hops) {
+    for (int mh = m; covered && mh < p.n_hops; mh += blockDim.x) {
         // Per-hop code phase at the hop's reference sample (absolute anchoring): DOUBLE.
-        const long long n_m = p.n0 + (long long)m * p.fft_len;
+        const long long n_m = p.n0 + (long long)mh * p.fft_len;
         const double C = job.cp0 + (double)n_m * job.cps;
         const long long chip0 = (long long)floor(C);
         const double phi = C - (double)chip0;
@@ -93,15 +95,14 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
         const float2 t1 = cmulf(pa, sA);
         const float2 t2 = cmulf(pb, sB);
         const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
-        const float2 dd = data[(size_t)ci * p.data_stride + m];
-        acc.x = (double)(dd.x * r.x + dd.y * r.y); // Re(d * conj(r))
-        acc.y = (double)(dd.y * r.x - dd.x * r.y); // Im(d * conj(r))
-        e = (double)(r.x * r.x + r.y * r.y);
+        const float2 dd = data[(size_t)ci * p.data_stride + mh];
+        acc.x += (double)(dd.x * r.x + dd.y * r.y); // Re(d * conj(r))
+        acc.y += (double)(dd.y * r.x - dd.x * r.y); // Im(d * conj(r))
+        e += (double)(r.x * r.x + r.y * r.y);
     }
 
-    // Block reduction over hops (blockDim.x <= 1024; power-of-two padded loop).
+    // Block reduction over hop lanes (each lane already summed its strided hops above).
     __shared__ double sh_re[256], sh_im[256], sh_e[256];
-    // hops <= 256 for all current bands (125 @ L1, 250 @ L5-half...); assert via launcher.
     sh_re[m] = acc.x;
     sh_im[m] = acc.y;
     sh_e[m] = e;
@@ -127,11 +128,10 @@ namespace gnss_cuda {
 cudaError_t launch_despread(const float2* data, const int8_t* code, const DespreadJob* jobs,
                             int n_batch, int n_chan, const DespreadParams& p, double2* corr,
                             double* energy, cudaStream_t stream) {
-    if (p.n_hops > 256)
-        return cudaErrorInvalidValue; // reduction buffer sized for <=256 hops/record
-    // round block up to a power of two >= n_hops for the reduction
+    // Block = min(pow2 >= n_hops, 256); longer records grid-stride inside the kernel (the
+    // 20 MSPS wide front end runs 1000-hop L1 / 4000-hop E1C records).
     int block = 1;
-    while (block < p.n_hops)
+    while (block < p.n_hops && block < 256)
         block <<= 1;
     dim3 grid(n_batch, n_chan);
     gnss_despread_kernel<<<grid, block, 0, stream>>>(data, code, jobs, p, corr, energy);
