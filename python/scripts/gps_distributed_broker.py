@@ -216,6 +216,16 @@ def main(argv=None):
                     help="detection significance (sigma above noise) above which a sat counts as "
                          "locked -- the primary, noise-relative lock metric (vs the noise-biased |A|; "
                          "noise sits at ~1, a real lock at >>3)")
+    ap.add_argument("--hold-snr", type=float, default=8.0,
+                    help="incoherent amp_snr above which a tracked PRN's cp anchor is FROZEN "
+                         "(hold-on-lock: DLL owns the sub-chip residual; fit re-anchors only on "
+                         "loss). Uses amp_snr ONLY -- deep_snr's off-peak value is the nav-wipe "
+                         "rectification floor (~7), which would freeze bad anchors instantly.")
+    ap.add_argument("--hold-max-dop-hz", type=float, default=100.0,
+                    help="release a held seed when the fresh Doppler departs the FROZEN one by "
+                         "more than this: the stale replica carrier starts to decohere the "
+                         "single-record despread (~0.1 cycle over a 1 ms record at 100 Hz). "
+                         "Fresh re-anchor + re-hold follows within seconds.")
     ap.add_argument("--coast-budget", type=float, default=30.0,
                     help="seconds a VISIBLE sat is coasted (seed held + Doppler forecast forward) "
                          "through a signal dropout before dropping it -- so a radar sweep / brief "
@@ -255,6 +265,11 @@ def main(argv=None):
                     help="F-engine hops/s (Fs/fft_len) -- cp slope chips/s log + the code clock-bias estimate")
     ap.add_argument("--chip-rate-hz", type=float, default=1.023e6,
                     help="spreading chip rate (L1 C/A 1.023e6) -- for the code-rate clock-bias estimate")
+    ap.add_argument("--code-doppler-sign", type=float, default=1.0,
+                    help="must match the search stage's code_doppler_sign: the sign of the "
+                         "Doppler-dependent cp0 back-reference the search applies. Used to "
+                         "re-express cp0 history in the seed's Doppler currency before the "
+                         "slope fit (cp_to_seed_currency).")
     ap.add_argument("--code-bias-alpha", type=float, default=0.05,
                     help="EMA weight for the receiver code-rate clock offset (l-a); slow -> tracks TCXO/OCXO drift")
     ap.add_argument("--code-bias-max", type=float, default=3.0,
@@ -338,12 +353,50 @@ def main(argv=None):
 
     seeds = {}       # prn -> {"doppler_hz", "code_phase_chips", ...} (consensus)
     low_hits = {}    # prn -> consecutive low-|A| poll count
+    status = {}      # prn -> last combiner get_status record (previous cycle; lock gate below)
+    cp_held = set()  # PRNs whose cp anchor is FROZEN this cycle (locked -> DLL owns the residual)
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
     dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
     car_trim = {}       # prn -> persistent NCO frequency command (Hz): the shared carrier loop
     car_last = {}       # prn -> last integrated residual (dedup: one integration per emit)
-    cp_hist = {}     # prn -> [(ref_hop, cp0), ...] recent distinct snapshots (for the slope fit)
+    cp_hist = {}     # prn -> [(ref_hop, cp0, dop_det), ...] recent distinct snapshots (slope fit)
+
+    def cp_to_seed_currency(pts, dop_seed):
+        """Re-express search cp0 points in the CURRENT seed's Doppler currency.
+
+        The search anchors cp0 to absolute sample 0 through its own measured Doppler:
+        cp0 = cp_local - t_abs*f_chip*(sign*dop_det/f_carrier). That projection multiplies
+        per-detection Doppler noise (~10-25 Hz between scans) by the FULL RUN AGE --
+        ~0.65 chips per Hz per 1000 s at L1 -- so the fit's input scatter (and thus its
+        slope noise) grows linearly with run time: +-0.7 chips/s in the first minutes,
+        +-10 chips/s by t~17 min (measured 2026-07-11; the root cause of every
+        post-startup deep/incoherent collapse: the seeded rate sweeps the despread chips
+        off-peak within one integration window). The tracker's replica applies the same
+        projection FROM THE SEED's Doppler, so the one consistent currency is dop_seed:
+        adding back each point's own drift term (exact cancellation -- same formula, same
+        numbers the search subtracted) and re-projecting with dop_seed leaves noise that
+        never multiplies t_abs. The fitted slope keeps the residual convention
+        (l-a = slope/f_chip): dop_seed tracks the true Doppler to ~Hz, so the geometry
+        stays fed-forward, minus the noise."""
+        out = []
+        for hh, cc, dd in pts:
+            t_abs = hh / args.hops_per_sec
+            corr = t_abs * args.chip_rate_hz * (args.code_doppler_sign
+                                                * (dd - dop_seed) / args.carrier_hz)
+            out.append((hh, (cc + corr) % CODE_LEN))
+        return out
+
+    def sig_of_last(rec):
+        """Hold-on-lock gate metric from the (previous-cycle) combiner status: the INCOHERENT
+        amp_snr ONLY. deep_snr is useless here -- its off-peak value is the nav-wipe
+        rectification floor (~7 sigma), far above lock_snr, so a deep-based gate 'locks'
+        every PRN on its very first (1-2 chip noisy) fit and freezes a bad anchor forever.
+        amp_snr is moment-debiased: ~0-3 off-peak, >>5 only when the despread is genuinely
+        on the code peak -- exactly the condition under which freezing the anchor is safe."""
+        if not rec:
+            return 0.0
+        return float(rec.get("amp_snr", 0) or 0)
     clock_bias_ema = None  # smoothed common clock-frequency bias (slow TCXO drift), Hz
     code_bias_ema = None   # smoothed receiver code-rate clock offset (l-a), dimensionless (~2.6 ppm airspy)
     if args.code_bias_init is not None:
@@ -480,11 +533,16 @@ def main(argv=None):
             if h and (ref_hop - h[-1][0]) > MAX_GAP_HOPS:
                 h = []  # gap too large -> re-acquisition, old slope is stale
             if not h or ref_hop != h[-1][0]:
-                h.append((ref_hop, cp))
+                h.append((ref_hop, cp, dop))
                 h = h[-HIST_LEN:]
             cp_hist[prn] = h
 
-            seed = {"doppler_hz": seed_dop, "code_phase_chips": cp,
+            # The bare-detection cp is in the DETECTION's Doppler currency; the tracker will
+            # despread at seed_dop. Convert (else a sat first acquired at t_abs inherits a
+            # t_abs*f_chip*(dop-seed_dop)/f_c offset -- chips off-peak for any mid-run
+            # acquisition, before tracking even starts).
+            ((_, cp_seed_cur),) = cp_to_seed_currency([(ref_hop, cp, dop)], seed_dop)
+            seed = {"doppler_hz": seed_dop, "code_phase_chips": cp_seed_cur,
                     "code_phase_rate": 0.0, "ref_hop": ref_hop}
             # 2nd-order carrier feed-forward: hand the tracker the almanac Doppler RATE (Hz/s, sign-
             # applied like doppler_hz); the tracker integrates it in its NCO (never a replica
@@ -496,7 +554,7 @@ def main(argv=None):
                 # Replay-bench override: a recorded capture's sky is at another epoch (no almanac),
                 # so inject a known rate into every seed to exercise the NCO feed-forward offline.
                 seed["doppler_rate_hz_s"] = args.force_doppler_rate
-            fit = fit_cp_rate(h, CODE_LEN)
+            fit = fit_cp_rate(cp_to_seed_currency(h, seed_dop), CODE_LEN)
             if fit is not None:
                 rate, h0, cp_ref = fit
                 seed["code_phase_rate"] = rate
@@ -535,6 +593,41 @@ def main(argv=None):
                 fine_ms = (cl_chips - cp_cm - k * CODE_LEN) / args.chip_rate_hz * 1e3
                 seed["code_phase_chips"] = (cp_cm + (k % 75) * CODE_LEN) % (75 * CODE_LEN)
                 cl_report.append("PRN %d k=%d fine %+.1f ms" % (prn, k % 75, fine_ms))
+            # HOLD-ON-LOCK: once a PRN shows a real lock, FREEZE its cp anchor + rate and let the
+            # DLL trim own the sub-chip residual. The search's per-fix cp is only good to ~1-2
+            # chips (hop-resolution coarse + refine), so re-anchoring from the fit at every cycle
+            # injects that jitter into the despread 5x per second -- the replay signature: the
+            # incoherent amplitude flaps full-scale<->zero on seconds timescales and the deep
+            # never builds past the lucky windows (measured 2026-07-11, 07-04 capture). Classic
+            # acquisition->track handoff: the fit is for CAPTURE, the (frozen anchor + DLL) for
+            # TRACKING. Doppler keeps refreshing (carrier fence semantics unchanged); on lock
+            # loss the coast/drop path clears the seed and re-acquisition seeds fresh from the fit.
+            # The seed's (cp0, rate, ref_hop, doppler) form the tracker's code CURRENCY: cp0 is
+            # an absolute-sample-0 phase whose meaning shifts by t_abs*f_chip/f_c chips PER HZ
+            # of doppler change. The currency must therefore be PIECEWISE-CONSTANT while
+            # locked -- a merely-smooth doppler (detection grid jitter, clock-bias EMA wobble)
+            # multiplies t_abs and walks/jitters the despread off-peak (blind replay: +-12 Hz
+            # grid jitter -> +-0.5 chip at t=60 s; live soak: 0.2 Hz EMA wobble -> 0.5 chip at
+            # t=1 h). Freeze the WHOLE tuple; release on amp collapse or when the frozen
+            # doppler goes stale enough to decohere the 1-record despread itself.
+            prev = seeds.get(prn)
+            if (prev is not None and sig_of_last(status.get(prn)) >= args.hold_snr
+                    and abs(seed["doppler_hz"] - prev["doppler_hz"]) <= args.hold_max_dop_hz):
+                seed["doppler_hz"] = prev["doppler_hz"]
+                seed["code_phase_chips"] = prev["code_phase_chips"]
+                seed["code_phase_rate"] = prev["code_phase_rate"]
+                seed["ref_hop"] = prev["ref_hop"]
+                if prn not in cp_held:
+                    _log("HOLD PRN %d: seed currency frozen (amp_snr %.1f >= %.1f, dop %+.0f)"
+                         % (prn, sig_of_last(status.get(prn)), args.hold_snr,
+                            prev["doppler_hz"]))
+                cp_held.add(prn)
+            else:
+                if prn in cp_held:
+                    _log("RELEASE PRN %d: seed currency unfrozen (amp_snr %.1f, ddop %+.0f)"
+                         % (prn, sig_of_last(status.get(prn)),
+                            (seed["doppler_hz"] - prev["doppler_hz"]) if prev else 0.0))
+                cp_held.discard(prn)
             seeds[prn] = seed
             low_hits[prn] = 0
 
@@ -563,6 +656,7 @@ def main(argv=None):
             if up is not None and prn not in up:
                 _log("drop PRN %d (set below horizon)" % prn)
                 del seeds[prn]
+                cp_held.discard(prn)
                 low_hits.pop(prn, None)
                 continue
             if prn in best:  # re-detected -> re-anchored in the seed loop above (coast reset there)
@@ -677,7 +771,11 @@ def main(argv=None):
                 # ALL sats (fitted included): l-a is common to the receiver, so the smooth pooled
                 # value is the correct code rate for everyone -- far quieter than each sat's own
                 # short-baseline slope fit (which stays as the cp0 anchor only). Weak/new/coasting
-                # sats that never fit still get it here.
+                # sats that never fit still get it here. EXCEPT held (locked) sats: their frozen
+                # (anchor, rate) pair must stay consistent -- changing the rate under a stale
+                # ref_hop jumps the extrapolated cp.
+                if prn in cp_held:
+                    continue
                 seed["code_phase_rate"] = cp_rate_from_code_bias(
                     seed["doppler_hz"], code_bias_ema, args.hops_per_sec,
                     args.chip_rate_hz, args.carrier_hz)

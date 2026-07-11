@@ -324,6 +324,27 @@ void GnssChannelizedTracker::main_thread() {
                                                     * (double)(window_start_hop - reacq_hop[p])
                                                     * (double)_fft_len / _sample_rate
                                               : 0.0;
+                // CODE-CURRENCY TRANSLATION: the broker expresses cp0 for a replica whose
+                // code rate follows the CURRENT seed Doppler (the search's convention: its
+                // sample-0 drift back-reference uses the measured/seeded Doppler), but in NCO
+                // mode the replica actually runs at the PINNED f_ref. Same cp0 number +
+                // different code rate FROM ABSOLUTE SAMPLE 0 = a different code phase at this
+                // window: off by t_abs*f_chip*(dop-f_ref)/f_c (~0.65 chips/Hz per 1000 s at
+                // L1) -- it grows as the seed Doppler walks away from f_ref, and JUMPS by
+                // tens-to-hundreds of chips at soak age when the fence re-pins f_ref (the
+                // zombie-lock bomb: the code teleports off-peak, E/P/L see noise, the DLL
+                // disc reads 'centered' on noise, and nothing ever recovers -- measured
+                // 2026-07-11: tracker commanding 180 chips vs search truth 403 at t~1000 s).
+                // Translating cp0 into the replica's own currency makes the code phase AT THE
+                // WINDOW invariant, and exactly continuous across fences, where (dop - fcar)
+                // -> 0 by construction. Non-NCO mode: fcar == dop, exact no-op.
+                cp_seed += (double)window_start_hop * (double)_fft_len / _sample_rate
+                           * (_replica->eff_chip_rate() / (double)_replica->comb_mult())
+                           * _replica->code_doppler_sign * (dop[p] - fcar)
+                           / _replica->carrier_hz();
+                cp_seed = std::fmod(cp_seed, L);
+                if (cp_seed < 0.0)
+                    cp_seed += L;
                 cmds[p].cp_seed = cp_seed;
                 cmds[p].fcar_eff = fcar; // replica: FIXED between re-anchors (see above)
                 cmds[p].ff_hz = ff_hz;
