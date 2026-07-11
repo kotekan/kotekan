@@ -117,6 +117,7 @@ int main() {
     p.fft_len = fft_len;
     p.n_hops = n_hops;
     p.Lf = Lf;
+    p.data_stride = n_hops;
 
     float2* d_data;
     int8_t* d_code;

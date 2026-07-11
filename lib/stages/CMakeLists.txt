@@ -251,6 +251,10 @@ endif()
 # GnssChannelizedTracker exposes use_cuda. One-way link stages -> kotekan_cuda (kernel only).
 if(USE_CUDA)
     target_sources(kotekan_stages PRIVATE GnssCudaDespread.cpp)
+    # Phase F (docs/gnss_gpu_migration.md §6): the cudaProcess tracking command + its host
+    # record assembler. The command lives here (not lib/cuda) because it drives the
+    # GnssCudaDespread driver -- keeps the stages -> kotekan_cuda link one-way.
+    target_sources(kotekan_stages PRIVATE cudaGnssTrack.cpp GnssGpuRecordAssemble.cpp)
     target_link_libraries(kotekan_stages PRIVATE kotekan_cuda)
     target_compile_definitions(kotekan_stages PRIVATE GNSS_CUDA=1)
 endif()

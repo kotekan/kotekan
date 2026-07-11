@@ -55,6 +55,20 @@ public:
                                                   double doppler_hz,
                                                   const std::vector<int>& covering);
 
+    /// Phase-F (cudaProcess chain) entry: despread one record window read IN PLACE from a
+    /// DEVICE-resident channel-major array (row stride @c data_stride hops -- the internal
+    /// ring), on a CALLER stream, results into CALLER device buffers, NO synchronization.
+    /// @c d_jobs_slot must hold >= 3*specs.size() jobs (a per-frame arena slice: each record's
+    /// jobs get their own slice so multiple records stay in flight). Phi-bucket rebuilds
+    /// (rare: Doppler moved > refresh_hz) still upload synchronously. Returns jobs written.
+    /// Opaque pointer types keep this header CUDA-free for the tracker include.
+    int enqueue_batch_device(const void* d_window /*float2*/, int data_stride,
+                             long long window_start_sample, const std::vector<Spec>& specs,
+                             void* d_jobs_slot /*gnss_cuda::DespreadJob*/,
+                             void* d_corr_out /*double2, [3*specs][n_chan]*/,
+                             void* d_energy_out /*double, [3*specs][n_chan]*/,
+                             void* stream /*cudaStream_t*/);
+
 private:
     struct Impl;
     std::unique_ptr<Impl> _impl;

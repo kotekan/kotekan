@@ -93,7 +93,7 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
         const float2 t1 = cmulf(pa, sA);
         const float2 t2 = cmulf(pb, sB);
         const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
-        const float2 dd = data[(size_t)ci * p.n_hops + m];
+        const float2 dd = data[(size_t)ci * p.data_stride + m];
         acc.x = (double)(dd.x * r.x + dd.y * r.y); // Re(d * conj(r))
         acc.y = (double)(dd.y * r.x - dd.x * r.y); // Im(d * conj(r))
         e = (double)(r.x * r.x + r.y * r.y);
@@ -135,6 +135,46 @@ cudaError_t launch_despread(const float2* data, const int8_t* code, const Despre
         block <<= 1;
     dim3 grid(n_batch, n_chan);
     gnss_despread_kernel<<<grid, block, 0, stream>>>(data, code, jobs, p, corr, energy);
+    return cudaGetLastError();
+}
+
+__global__ void gnss_chan_ingest_kernel(const float2* __restrict__ frame,
+                                        float2* __restrict__ ring, int n_hops_f, int n_chan,
+                                        long long ring_hops, long long write_hop) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= n_hops_f * n_chan)
+        return;
+    const int m = idx / n_chan; // hop within the frame
+    const int c = idx % n_chan; // channel (coalesced across threads: frame is hop-major)
+    ring[(size_t)c * ring_hops + (size_t)((write_hop + m) % ring_hops)] = frame[idx];
+}
+
+cudaError_t launch_chan_ingest(const float2* frame, float2* ring, int n_hops_f, int n_chan,
+                               long long ring_hops, long long write_hop, cudaStream_t stream) {
+    const int total = n_hops_f * n_chan;
+    const int block = 256;
+    gnss_chan_ingest_kernel<<<(total + block - 1) / block, block, 0, stream>>>(
+        frame, ring, n_hops_f, n_chan, ring_hops, write_hop);
+    return cudaGetLastError();
+}
+
+__global__ void gnss_ring_zero_kernel(float2* __restrict__ ring, int n_chan,
+                                      long long ring_hops, long long write_hop,
+                                      long long count) {
+    const long long idx = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= count * n_chan)
+        return;
+    const long long m = idx / n_chan;
+    const int c = (int)(idx % n_chan);
+    ring[(size_t)c * ring_hops + (size_t)((write_hop + m) % ring_hops)] = make_float2(0.f, 0.f);
+}
+
+cudaError_t launch_ring_zero(float2* ring, int n_chan, long long ring_hops, long long write_hop,
+                             long long count, cudaStream_t stream) {
+    const long long total = count * n_chan;
+    const int block = 256;
+    gnss_ring_zero_kernel<<<(unsigned)((total + block - 1) / block), block, 0, stream>>>(
+        ring, n_chan, ring_hops, write_hop, count);
     return cudaGetLastError();
 }
 

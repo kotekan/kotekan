@@ -198,6 +198,7 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     par.fft_len = im.bank.fft_len();
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
+    par.data_stride = im.n_hops; // packed per-record staging buffer
     ck(gnss_cuda::launch_despread(im.d_data, im.d_code, im.d_jobs, nb, im.n_chan, par, im.d_corr,
                                   im.d_energy, im.stream),
        "launch");
@@ -223,6 +224,60 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
             out[i][t].amplitude = (e > 0.0) ? g / e : std::complex<double>(0.0, 0.0);
         }
     return out;
+}
+
+int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride,
+                                           long long window_start_sample,
+                                           const std::vector<Spec>& specs, void* d_jobs_slot,
+                                           void* d_corr_out, void* d_energy_out, void* stream) {
+    Impl& im = *_impl;
+    if (specs.empty())
+        return 0;
+    const int nb = (int)(3 * specs.size());
+    const cudaStream_t st = (cudaStream_t)stream;
+
+    // Same job construction as despread_batch; h_jobs staging is pageable, so the async H2D
+    // below is host-synchronous on return and the buffer is safely reusable per call.
+    for (size_t i = 0; i < specs.size(); ++i) {
+        const Spec& sp = specs[i];
+        auto& pc = im.ensure_phi(sp.p, sp.doppler_hz);
+        const double cps =
+            im.bank.eff_chip_rate() / im.fs
+            * (1.0 + im.bank.code_doppler_sign * sp.doppler_hz / im.bank.carrier_hz());
+        const double wc = 2.0 * M_PI * (im.f_off + sp.doppler_hz) / im.fs;
+        uint64_t mask = 0;
+        for (int c : sp.covering)
+            if (c >= 0 && c < im.n_chan)
+                mask |= (1ULL << c);
+        const double trials[3] = {sp.cp_seed - sp.spacing_chips, sp.cp_seed,
+                                  sp.cp_seed + sp.spacing_chips};
+        for (int t = 0; t < 3; ++t)
+            im.h_jobs[3 * i + t] = {(double)im.bank.comb_mult() * trials[t],
+                                    cps,
+                                    1.0 / cps,
+                                    wc,
+                                    im.code_offset[(size_t)sp.p],
+                                    (int)im.code_len,
+                                    mask,
+                                    pc.d_A,
+                                    pc.d_B,
+                                    pc.n_chips};
+    }
+    ck(cudaMemcpyAsync(d_jobs_slot, im.h_jobs.data(), (size_t)nb * sizeof(gnss_cuda::DespreadJob),
+                       cudaMemcpyHostToDevice, st),
+       "jobs upload (device batch)");
+
+    gnss_cuda::DespreadParams par;
+    par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
+    par.fft_len = im.bank.fft_len();
+    par.n_hops = im.n_hops;
+    par.Lf = im.Lf;
+    par.data_stride = data_stride;
+    ck(gnss_cuda::launch_despread((const float2*)d_window, im.d_code,
+                                  (gnss_cuda::DespreadJob*)d_jobs_slot, nb, im.n_chan, par,
+                                  (double2*)d_corr_out, (double*)d_energy_out, st),
+       "launch (device batch)");
+    return nb;
 }
 
 std::array<gnss::DespreadResult, 3>

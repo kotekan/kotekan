@@ -42,6 +42,10 @@ struct DespreadParams {
     int fft_len;  ///< samples per hop
     int n_hops;   ///< hops per record (<=256)
     int Lf;       ///< filter length fft_len*num_taps (Phi tables have Lf+1 entries)
+    int data_stride; ///< row stride (hops) of the [n_chan][*] data array: n_hops for a packed
+                     ///< per-record staging buffer, or the ring length when a window is read in
+                     ///< place from the device ring (phase F: ring_hops is a multiple of n_hops,
+                     ///< so a record window is always CONTIGUOUS within a channel row)
 };
 
 /**
@@ -56,6 +60,20 @@ struct DespreadParams {
 cudaError_t launch_despread(const float2* data, const int8_t* code, const DespreadJob* jobs,
                             int n_batch, int n_chan, const DespreadParams& p, double2* corr,
                             double* energy, cudaStream_t stream);
+
+/**
+ * Transpose-ingest one hop-major channelized frame into the channel-major device ring
+ * (phase F ingest command). frame is [n_hops_f][n_chan] (as the F-engine/bufferRecv delivers),
+ * ring is [n_chan][ring_hops]; element (m, c) lands at ring[c][(write_hop + m) % ring_hops].
+ */
+cudaError_t launch_chan_ingest(const float2* frame, float2* ring, int n_hops_f, int n_chan,
+                               long long ring_hops, long long write_hop, cudaStream_t stream);
+
+/// Zero-fill @c count hops of every channel row starting at ring hop @c write_hop (mod
+/// ring_hops) -- valve-drop gap fill, so ring position stays identically (absolute hop - hop0)
+/// and a window overlapping a gap despreads against clean zeros (SNR loss, never misalignment).
+cudaError_t launch_ring_zero(float2* ring, int n_chan, long long ring_hops, long long write_hop,
+                             long long count, cudaStream_t stream);
 
 } // namespace gnss_cuda
 
