@@ -236,11 +236,42 @@ void GnssVoltagePeel::main_thread() {
                         data_ch[ci][m] = out[(size_t)m * _n_chan + local];
                 }
 
-                // Code pull-in: lock to the peak |A| over a small cp window so a residual code
+                // PERIOD-BOUNDARY SEGMENTATION: the stream-aligned window straddles the code-
+                // period boundary at a cp-determined hop, and EVERY overlay/nav sign flip our
+                // signals have (C/A nav bits, L5 NH, E1C CS25, B1C per-period secondary) happens
+                // exactly THERE. A single per-window gain then models a sign-flipping signal
+                // with a constant one: in a flip window the net gain ~cancels and the
+                // "projection" removes almost nothing (2026-07-12 bench: B1C C21 peeled 0.9 dB
+                // while the per-window residual read exactly 0 -- the projection was perfect,
+                // onto the wrong basis). Estimate + subtract the gain PER SEGMENT instead:
+                // the projection onto span{R*1_A, R*1_B} captures any boundary sign flip
+                // without knowing the overlay. (GPS's bit edges also live on period
+                // boundaries -- this removes the old bench's bit-straddle depth cap too.)
+                int h_b = (int)llround((L - cp_seed) / L * (double)_hops_per_record);
+                if (h_b < 0)
+                    h_b = 0;
+                if (h_b > _hops_per_record)
+                    h_b = _hops_per_record;
+                std::vector<std::pair<int, int>> segs;
+                if (h_b > 0)
+                    segs.emplace_back(0, h_b);
+                if (h_b < _hops_per_record)
+                    segs.emplace_back(h_b, _hops_per_record);
+                auto slice = [](const std::vector<std::vector<cf>>& v, int m0, int m1) {
+                    std::vector<std::vector<cf>> s(v.size());
+                    for (size_t i = 0; i < v.size(); ++i)
+                        s[i].assign(v[i].begin() + m0, v[i].begin() + m1);
+                    return s;
+                };
+
+                // Code pull-in: lock to the peak over a small cp window so a residual code
                 // error still peels on-peak (the broker cp_rate folds in the l-a clock bias).
+                // The pull-in metric is the length-weighted SUM of segment powers -- flip-blind
+                // (a whole-window |A| would read ~0 on a flip window and pick garbage).
                 gnss::DespreadResult best{};
                 double best_pw = -1.0, best_off = 0.0;
                 std::vector<std::vector<cf>> best_repl;
+                std::vector<std::complex<double>> best_gain;
                 for (double off = -_pullin_chips; off <= _pullin_chips + 1e-9;
                      off += (_pullin_step > 0.0 ? _pullin_step : 1.0)) {
                     const auto repl =
@@ -249,13 +280,25 @@ void GnssVoltagePeel::main_thread() {
                     repl_ch.reserve(owned.size());
                     for (int c : owned)
                         repl_ch.push_back(repl[c]);
-                    const auto res = gnss::channelized_despread(data_ch, repl_ch);
-                    const double pw = std::norm(res.amplitude);
+                    double pw = 0.0;
+                    std::vector<std::complex<double>> gains;
+                    gnss::DespreadResult res0{};
+                    for (size_t si = 0; si < segs.size(); ++si) {
+                        const auto r = gnss::channelized_despread(
+                            slice(data_ch, segs[si].first, segs[si].second),
+                            slice(repl_ch, segs[si].first, segs[si].second));
+                        gains.push_back(r.amplitude);
+                        pw += std::norm(r.amplitude)
+                              * (double)(segs[si].second - segs[si].first);
+                        if (si == 0)
+                            res0 = r;
+                    }
                     if (pw > best_pw) {
                         best_pw = pw;
-                        best = res;
+                        best = res0;
                         best_off = off;
                         best_repl = std::move(repl_ch);
+                        best_gain = std::move(gains);
                     }
                     if (_pullin_chips <= 0.0)
                         break;
@@ -272,7 +315,11 @@ void GnssVoltagePeel::main_thread() {
                 // gain, EMA the SLOW (de-bitted) gain, re-apply the bit + carrier phase -> the gain
                 // noise averages down so much less noise is subtracted back along R (deeper peel).
                 cf a_use = (cf)best.amplitude;
-                if (_fll_gain > 0.0 || _gain_alpha > 0.0) {
+                // v2 smoothing only for the degenerate single-segment window (cp ~ 0): across a
+                // period boundary the smoothed gain would need overlay-aware sign handling
+                // (dead-reckoned secondary phase) -- follow-up; segmented windows subtract the
+                // raw per-segment gains (v1-style; self-noise ~2 dof/window).
+                if (segs.size() == 1 && (_fll_gain > 0.0 || _gain_alpha > 0.0)) {
                     using cd = std::complex<double>;
                     if (std::isnan(f_ref[p])) {
                         f_ref[p] = fcar;
@@ -317,11 +364,15 @@ void GnssVoltagePeel::main_thread() {
                     a_use = (cf)(a_smooth * std::polar(1.0, phi_track[p] + dphi_code));
                 }
 
-                // SUBTRACT a_use*R from the residual over the covering channels.
-                for (size_t ci = 0; ci < owned.size(); ++ci) {
-                    const int local = owned[ci] - _chan_offset;
-                    for (int m = 0; m < _hops_per_record; ++m)
-                        out[(size_t)m * _n_chan + local] -= a_use * best_repl[ci][m];
+                // SUBTRACT the gain(s)*R from the residual over the covering channels --
+                // per segment, so a sign flip at the period boundary is peeled exactly.
+                for (size_t si = 0; si < segs.size(); ++si) {
+                    const cf a_s = (segs.size() == 1) ? a_use : (cf)best_gain[si];
+                    for (size_t ci = 0; ci < owned.size(); ++ci) {
+                        const int local = owned[ci] - _chan_offset;
+                        for (int m = segs[si].first; m < segs[si].second; ++m)
+                            out[(size_t)m * _n_chan + local] -= a_s * best_repl[ci][m];
+                    }
                 }
                 {
                     std::lock_guard<std::mutex> lk(_diag_mtx);

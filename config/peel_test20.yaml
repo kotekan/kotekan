@@ -1,0 +1,68 @@
+---
+# GnssVoltagePeel offline bench at the 20 MSPS front end (the live dual20 numbers), on a raw
+# grab prepped by captures/prep_replay.py -> /tmp/gpsin. Two searches on the SAME stream:
+#   search_base -> the clean channelized voltage (baseline SNRs)
+#   search_peel -> the residual after the peel (peeled sats collapse; controls unchanged)
+# PASS 1 (peel prns []): the peel is a pass-through -- search_base == search_peel validates the
+# plumbing, and search_base's get_detections supplies {prn, doppler_hz, code_phase_chips,
+# ref_hop} in the pipeline's own conventions for the PASS 2 seeds (direct-seed, broker-free).
+# The signal/PRN block below is swapped per constellation by the bench driver (sed):
+# GPS_L1CA hops 1000 / GAL_E1C hops 4000 / BDS_B1C_P hops 10000 -- one signal per peel stage.
+# Run: ./build_cuda/kotekan/kotekan -c config/peel_test20.yaml -b 0.0.0.0:12060
+type: config
+log_level: info
+instrument_name: airspy_gps
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+samples_per_data_set: 199680
+bytes_per_sample: 2
+sizeof_float: 4
+buffer_depth: 16
+spectrum_length: 10
+sample_rate: 20.0e6
+f_offset: 5.0e6
+num_taps: 4
+signal: GPS_L1CA
+code_doppler_sign: 1.0
+doppler_margin_hz: 250000.0
+hops_per_record: 1000
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+
+gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }
+
+input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
+chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+resid_buf: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: 48, frame_size: hops_per_record * 10 * 8 }
+
+read_in:
+    kotekan_stage: rawFileRead
+    buf: input_buf
+    base_dir: "/tmp/gpsin"
+    file_name: "gpsin"
+    file_ext: "raw"
+    end_interrupt: true
+fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
+
+search_base: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf,  channel_offset: 0, n_channels: 10, acquire_snr: 8, acquire_windows: 20, prns: [6, 11, 21, 5, 12, 19] }
+
+peel:
+    kotekan_stage: GnssVoltagePeel
+    in_buf: chan_buf
+    out_buf: resid_buf
+    channel_offset: 0
+    n_channels: 10
+    # PASS 2: peel the two strongest (PRN 6, 11); 21/5/19/12 are un-peeled controls.
+    # Seeds from PASS 1's search_base (cp0 back-referenced to sample 0, ref_hop 0).
+    # code_phase_rate is RESIDUAL-convention (replica applies the geometric code doppler):
+    # f_chip * (l-a) / hops_per_sec with l-a = +0.085 ppm (2026-07-12 morning broker fit).
+    prns: [6, 11]
+    doppler_hz: [-2030, 139]
+    code_phase_chips: [551.90, 34.02]
+    code_phase_rate: [8.7e-8, 8.7e-8]
+    pullin_chips: 1.5
+    pullin_step: 0.25
+    fll_gain: 0.05
+    gain_alpha: 0.15
+    fll_lock_amp: 0.0   # v2: FLL + derotated smooth-gain (phase-corrected for the pull-in delay)
+
+search_peel: { kotekan_stage: GnssChannelizedSearch, in_buf: resid_buf, channel_offset: 0, n_channels: 10, acquire_snr: 8, acquire_windows: 20, prns: [6, 11, 21, 5, 12, 19] }
