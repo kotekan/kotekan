@@ -88,6 +88,11 @@ def main(argv=None):
                        "doppler_hz": r.get("doppler_hz"), "code_phase_chips": r.get("code_phase_chips"),
                        "carrier_hz_resid": r.get("carrier_hz_resid"),
                        "dll_disc": r.get("dll_disc"),
+                       # fixed-full-window noise-debiased coherent power (Hz, ~0 on noise) +
+                       # the reported rung's rectification floor -- the coherent beam-map
+                       # observable and its honesty certificate (gps_cn0_map.py)
+                       "deep_pow_hz": r.get("deep_pow_hz"),
+                       "deep_floor": r.get("deep_floor"),
                        "search_snr": det_snr.get(int(prn)), "adc_rms": rms}
                 f.write(json.dumps(rec, separators=(",", ":")) + "\n")
                 n += 1

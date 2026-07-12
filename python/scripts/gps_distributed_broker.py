@@ -216,6 +216,13 @@ def main(argv=None):
                     help="detection significance (sigma above noise) above which a sat counts as "
                          "locked -- the primary, noise-relative lock metric (vs the noise-biased |A|; "
                          "noise sits at ~1, a real lock at >>3)")
+    ap.add_argument("--hold-max-cp-err", type=float, default=0.4,
+                    help="release a HELD seed when the tracked code phase (held cp + DLL "
+                         "trim) disagrees with the search FIT by more than this (chips) on "
+                         "3 consecutive fixes. This is the DLL's capture half-range: a "
+                         "sharp-ACF (BOC) power discriminator has stable FALSE equilibria "
+                         "~0.75 chips out (prompt -12 dB) that the hold would otherwise "
+                         "servo forever while the search sees the true peak.")
     ap.add_argument("--hold-snr", type=float, default=8.0,
                     help="incoherent amp_snr above which a tracked PRN's cp anchor is FROZEN "
                          "(hold-on-lock: DLL owns the sub-chip residual; fit re-anchors only on "
@@ -381,6 +388,8 @@ def main(argv=None):
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
     dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
+    cp_escape = {}      # prn -> consecutive track-vs-search cp disagreements (hold referee)
+    cp_escape_sign = {} # prn -> last disagreement (sign-consistency: real parks are one-signed)
     car_trim = {}       # prn -> persistent NCO frequency command (Hz): the shared carrier loop
     car_last = {}       # prn -> last integrated residual (dedup: one integration per emit)
     cp_hist = {}     # prn -> [(ref_hop, cp0, dop_det), ...] recent distinct snapshots (slope fit)
@@ -654,7 +663,58 @@ def main(argv=None):
             # t=1 h). Freeze the WHOLE tuple; release on amp collapse or when the frozen
             # doppler goes stale enough to decohere the 1-record despread itself.
             prev = seeds.get(prn)
-            if (prev is not None and sig_of_last(status.get(prn)) >= args.hold_snr
+            # TRACK-vs-SEARCH consistency (the hold's independent referee): the freeze
+            # trusts the DLL to own the sub-chip residual, but a sharp-ACF (BOC)
+            # discriminator has a FINITE capture range (~1/3 chip at 0.5-eff-chip
+            # spacing) with further STABLE equilibria beyond it (prompt R ~ -0.25,
+            # -12 dB). An excursion past capture (a jittery era, one bad re-anchor)
+            # leaves the DLL contentedly servoing the WRONG lobe: deep stays coherent
+            # (and floor-certified), amp bleeds ~12 dB, and the hold never lets go --
+            # observed 2026-07-12 pm: C34 amp 440->0 over 35 min at deep 100+, the
+            # track parked ~0.75 chips off while the search kept finding the true
+            # peak at >100 sigma. The search FIT (sub-0.1-chip stable at 20 MSPS) is
+            # the referee: persistent disagreement beyond the capture range releases
+            # the freeze so the seed re-anchors on the true peak.
+            cp_err = None
+            if (prev is not None and prn in cp_held
+                    and all(k in seed for k in ("code_phase_chips", "code_phase_rate",
+                                                "ref_hop"))):
+                h_now = seed["ref_hop"]
+                cp_prev = (prev["code_phase_chips"]
+                           + prev["code_phase_rate"] * (h_now - prev["ref_hop"]))
+                # The tracker's commanded cp also carries the QUADRATIC doppler-rate code
+                # feed-forward from ref_hop (0.5*sgn*dop_rate*f_chip/f_c*dt^2 -- chips at
+                # hold ages of minutes); model it or long-held sats false-escape.
+                dt_anchor = (h_now - prev["ref_hop"]) / args.hops_per_sec
+                cp_prev += (0.5 * args.code_doppler_sign
+                            * float(prev.get("doppler_rate_hz_s", 0.0) or 0.0)
+                            * args.chip_rate_hz / args.carrier_hz * dt_anchor * dt_anchor)
+                # held cp (prev currency) -> the fresh seed's doppler currency
+                t_abs = h_now / args.hops_per_sec
+                cp_prev += (t_abs * args.chip_rate_hz * args.code_doppler_sign
+                            * (prev["doppler_hz"] - seed["doppler_hz"]) / args.carrier_hz)
+                cp_err = ((seed["code_phase_chips"] - cp_prev - dll_trim.get(prn, 0.0)
+                           + CODE_LEN / 2.0) % CODE_LEN) - CODE_LEN / 2.0
+            # Count only SIGN-CONSISTENT disagreements: a real wrong-lobe park is
+            # one-signed; search-fit noise on a weak sat alternates (first deploy:
+            # weak GPS sats escaped every minute on -0.5/+1.3/-0.5 flip-flops, and
+            # each escape re-injects the seed jitter + forces an overlay re-align).
+            if cp_err is not None and abs(cp_err) > args.hold_max_cp_err:
+                n_prev = cp_escape.get(prn, 0)
+                same_sign = (n_prev == 0) or (cp_err * cp_escape_sign.get(prn, 0.0) > 0)
+                cp_escape[prn] = n_prev + 1 if same_sign else 1
+                cp_escape_sign[prn] = cp_err
+            else:
+                cp_escape[prn] = 0
+            if cp_escape.get(prn, 0) >= 5:
+                _log("ESCAPE PRN %d: track %+.2f chips off the search fit (5 consecutive,"
+                     " sign-consistent) -> release hold + DLL trim, re-anchor on the fit"
+                     % (prn, cp_err))
+                cp_escape[prn] = 0
+                dll_trim.pop(prn, None)
+                dll_last.pop(prn, None)
+                cp_held.discard(prn)
+            elif (prev is not None and sig_of_last(status.get(prn)) >= args.hold_snr
                     and abs(seed["doppler_hz"] - prev["doppler_hz"]) <= args.hold_max_dop_hz):
                 seed["doppler_hz"] = prev["doppler_hz"]
                 seed["code_phase_chips"] = prev["code_phase_chips"]

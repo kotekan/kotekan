@@ -117,6 +117,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_car_resid.assign(_n_prn, 0.0f);
     _st_coh_s.assign(_n_prn, 0.0f);
     _st_deep_floor.assign(_n_prn, 0.0f);
+    _st_deep_pow.assign(_n_prn, 0.0f);
     _st_deep_rec.assign(_n_prn, 0);
 }
 
@@ -289,6 +290,17 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<double> coh_s(_n_prn, 0.0);    // measured coherence: span of the winning window
         std::vector<int> deep_rec(_n_prn, 0);      // records in the winning deep window
         std::vector<double> deep_floor(_n_prn, 0.0); // rectification floor at the reported rung
+        // FIXED-WINDOW, noise-debiased coherent power (Hz) for the beam map: the coherent
+        // twin of the incoherent x = s^2/N. Computed from the FULL window's wipe every emit
+        // -- NO ladder, NO detection gate, so a pixel average over emits is UNBIASED at
+        // arbitrarily weak signal (the map's radiometry rule: average the linear estimator
+        // INCLUDING its noise; never threshold-then-average). E[snr^2] under noise is the
+        // wipe's selection mean (overlay: max over n_align trials of ~Exp(2) -> 2(ln n +
+        // gamma); navwipe: floor^2 + 1); subtracting it centers noise on ZERO, and the
+        // map's below-horizon pedestal absorbs the approximation residue exactly as it
+        // does x's clip bias. Coherent integration buys sqrt(T_coh/T_rec) sensitivity --
+        // ~15 dB (GPS) / 12 (E1C) / 10 (B1C) deeper sidelobes per unit dwell.
+        std::vector<double> deep_pow(_n_prn, 0.0);
         // A wiped rung whose SNR is indistinguishable from its NOISE floor must not be
         // reported as coherence: the wipe's free parameters rectify pure noise to a
         // window-length-dependent floor, so an unlocked sat otherwise reports coh = the
@@ -427,6 +439,14 @@ void GnssCoherentCombiner::main_thread() {
                         deep_rec[p] = (int)full_len;
                         coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
                     }
+                    if (full_len > 1 && ub.size() >= full_len) {
+                        const double span = ub.back() - ub[ub.size() - full_len];
+                        const double T = span * (double)full_len / (double)(full_len - 1);
+                        const double bias = 2.0
+                            * (std::log((double)std::max<size_t>(ov->size(), 2)) + 0.5772);
+                        if (T > 0.0)
+                            deep_pow[p] = (full.snr * full.snr - bias) / T;
+                    }
                 }
                 if (!_rolling) { _navbuf[p].clear(); _navutc[p].clear(); }
             } else if (_navwipe_bit_records > 0) {
@@ -478,6 +498,13 @@ void GnssCoherentCombiner::main_thread() {
                     deep_floor[p] = nav_floor(full_len);
                     coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
                 }
+                if (full_len > 1 && ub.size() >= full_len) {
+                    const double span = ub.back() - ub[ub.size() - full_len];
+                    const double T = span * (double)full_len / (double)(full_len - 1);
+                    const double flr0 = nav_floor(full_len);
+                    if (T > 0.0)
+                        deep_pow[p] = (full_snr * full_snr - (flr0 * flr0 + 1.0)) / T;
+                }
                 if (!_rolling) { // block clears the window; rolling slides it (capped above)
                     _navbuf[p].clear();
                     _navutc[p].clear();
@@ -508,6 +535,7 @@ void GnssCoherentCombiner::main_thread() {
                 _st_coh_s[p] = (float)coh_s[p];
                 _st_deep_rec[p] = deep_rec[p];
                 _st_deep_floor[p] = (float)deep_floor[p];
+                _st_deep_pow[p] = (float)deep_pow[p];
                 _st_dll_disc[p] = rec[gnss::CMB_DLL_DISC];
                 _st_car_resid[p] = rec[gnss::CMB_CARRIER_RESID];
             }
@@ -533,6 +561,7 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"coherence_s", _st_coh_s[p]},
                          {"deep_records", _st_deep_rec[p]},
                          {"deep_floor", _st_deep_floor[p]},
+                         {"deep_pow_hz", _st_deep_pow[p]},
                          {"dll_disc", _st_dll_disc[p]},
                          {"carrier_hz_resid", _st_car_resid[p]}});
     conn.send_json_reply(reply);
