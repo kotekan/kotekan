@@ -99,7 +99,9 @@ export class GpsSkyPanel {
             if (r.az == null || r.el == null) continue;   // no orbit fix -> table only
             const cc = chain_color(r.tag);
             const {x, y} = project(r.az, r.el);
-            const rad = r.active ? 2.4 + Math.min(1.4, r.amp) : 1.9;
+            // Compact symbols (user request 2026-07-12): ~35% smaller than v1 so dense
+            // constellations don't overlap -- active 1.6..2.5 (was 2.4..3.8), idle 1.25.
+            const rad = r.active ? 1.6 + Math.min(0.9, r.amp) : 1.25;
             const dot = svg("circle", {cx: x, cy: y, r: rad,
                 fill: r.active ? snr_color(r.snr) : "none",
                 stroke: r.active ? cc : cc + "66",   // idle ring = translucent
@@ -111,8 +113,8 @@ export class GpsSkyPanel {
                 + (r.sig ? `  sig ${r.sig.toFixed(0)}σ` : "");
             dot.appendChild(tip);
             layer.appendChild(dot);
-            const lab = svg("text", {x: x + rad + 0.6, y: y + 1,
-                "font-size": 2.7,
+            const lab = svg("text", {x: x + rad + 0.5, y: y + 0.8,
+                "font-size": 2.2,
                 fill: r.active ? "#e8edf2" : "#8a929b"});
             lab.textContent = r.id;
             layer.appendChild(lab);

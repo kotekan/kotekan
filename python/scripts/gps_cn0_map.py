@@ -128,6 +128,9 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     # ---- gather logs (composite: all constellations sharing the 1575.42 tune) ----
+    # Repeat a tag to MERGE logs across nights (G=night1.jsonl G=night2.jsonl ...):
+    # dwell accumulates instead of resetting per run; the per-epoch pedestal bins
+    # handle the time gaps between sessions.
     logs = {}
     if args.logs:
         for spec in args.logs:
@@ -135,9 +138,9 @@ def main(argv=None):
             tag = tag or "G"
             if tag not in CONST:
                 ap.error("unknown constellation tag %r (use G/E/C)" % tag)
-            logs[tag] = path
+            logs.setdefault(tag, []).append(path)
     else:
-        logs = {tag: p for tag, p in DEFAULT_LOGS.items() if os.path.exists(p)}
+        logs = {tag: [p] for tag, p in DEFAULT_LOGS.items() if os.path.exists(p)}
     if not logs:
         ap.error("no status logs found")
 
@@ -150,10 +153,17 @@ def main(argv=None):
     TAG, PRN, T, ALT, AZ = [], [], [], [], []
     Y, YSIG, Y2, Y2SIG = [], [], [], []
     ped_ok = {}   # tag -> below-horizon pedestal was genuine (fallback poisons cross-cal)
-    for tag, path in sorted(logs.items()):
-        prn, t, x, xc, dop = load(path, tag)
+    for tag, paths in sorted(logs.items()):
+        parts = [load(p_, tag) for p_ in paths]
+        prn = np.concatenate([q[0] for q in parts])
+        t = np.concatenate([q[1] for q in parts])
+        x = np.concatenate([q[2] for q in parts])
+        xc = np.concatenate([q[3] for q in parts])
+        dop = np.concatenate([q[4] for q in parts])
+        o = np.argsort(t)   # merged sessions must be time-ordered for the excision scan
+        prn, t, x, xc, dop = prn[o], t[o], x[o], xc[o], dop[o]
         if len(x) == 0:
-            print("%s: empty log %s" % (tag, path))
+            print("%s: empty log(s) %s" % (tag, paths))
             continue
         # state-flagged re-anchor excision (value-blind)
         keep = np.ones(len(x), bool)
