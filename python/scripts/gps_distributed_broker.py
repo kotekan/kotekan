@@ -221,11 +221,14 @@ def main(argv=None):
                          "(hold-on-lock: DLL owns the sub-chip residual; fit re-anchors only on "
                          "loss). Uses amp_snr ONLY -- deep_snr's off-peak value is the nav-wipe "
                          "rectification floor (~7), which would freeze bad anchors instantly.")
-    ap.add_argument("--hold-max-dop-hz", type=float, default=100.0,
+    ap.add_argument("--hold-max-dop-hz", type=float, default=None,
                     help="release a held seed when the fresh Doppler departs the FROZEN one by "
-                         "more than this: the stale replica carrier starts to decohere the "
-                         "single-record despread (~0.1 cycle over a 1 ms record at 100 Hz). "
-                         "Fresh re-anchor + re-hold follows within seconds.")
+                         "more than this: the stale replica carrier decoheres the SINGLE-RECORD "
+                         "despread. Default = 0.1 cycle per record = 0.1*chip_rate/code_length "
+                         "-- it MUST scale with the record period (100 Hz for GPS 1 ms records, "
+                         "25 Hz for E1C 4 ms, 10 Hz for B1C 10 ms; the GPS-calibrated 100 Hz on "
+                         "B1C let the despread walk into the sinc NULL: amp oscillated 778<->0 "
+                         "on ~1 min cycles, the first tri-constellation night's BDS symptom).")
     ap.add_argument("--coast-budget", type=float, default=30.0,
                     help="seconds a VISIBLE sat is coasted (seed held + Doppler forecast forward) "
                          "through a signal dropout before dropping it -- so a radar sweep / brief "
@@ -410,6 +413,10 @@ def main(argv=None):
         except Exception:
             pass
     CODE_LEN = float(args.code_length)
+    if args.hold_max_dop_hz is None:
+        args.hold_max_dop_hz = 0.1 * args.chip_rate_hz / CODE_LEN
+        _log("hold-max-dop-hz auto: %.1f Hz (0.1 cycle per %.0f ms record)"
+             % (args.hold_max_dop_hz, 1e3 * CODE_LEN / args.chip_rate_hz))
     # Reset the cp-fit history across a snapshot gap larger than this (re-acquisition). TIME-
     # based, not hop-based: a fixed hop count silently scales with the band's hop rate (the L1-era
     # 2e6 hops = 16 s at 125 kHz but only 2 s at the L5 front end's 1 MHz -- shorter than the L5

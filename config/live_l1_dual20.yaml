@@ -200,6 +200,9 @@ gal_track:
           n_channels: 10
           channel_offset: 0
           signal: GAL_E1C
+          # fence at 0.1 cycle per 4 ms record: the GPS-scale 200 Hz lets the pinned replica
+          # carrier go stale enough to decohere the record despread (see broker hold-max note)
+          fll_reacq_hz: 25.0
           n_prn: 36
           prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
           capture_utc0: 1.0
@@ -262,6 +265,7 @@ bds_track:
           n_channels: 10
           channel_offset: 0
           signal: BDS_B1C_P
+          fll_reacq_hz: 10.0  # 0.1 cycle per 10 ms record (see gal_track note)
           n_prn: 63
           prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
           capture_utc0: 1.0
