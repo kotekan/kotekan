@@ -28,3 +28,4 @@ scratch/*
 # so guard against any stray landing in the repo root.
 gp.php
 gp.php*
+/build_cuda/

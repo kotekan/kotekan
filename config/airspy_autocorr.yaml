@@ -114,5 +114,5 @@ spectrum_output:
     spawn_pyviewer:
         kotekan_stage: SpawnProcess
         in_buf: post_corr_buf
-        exec: '${VIEWER_PYTHON:-python3} ../../python/scripts/js_viewer/livebeam_server.py'
+        exec: '${VIEWER_PYTHON:-python3} ./python/scripts/js_viewer/livebeam_server.py'
 
