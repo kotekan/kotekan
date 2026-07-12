@@ -4,6 +4,8 @@
 #include "visUtil.hpp"      // for frameID
 
 #include "gnssChannelizedDespread.hpp" // for overlay_wipe
+#include "beidouB1CCode.hpp"           // for generate_b1cp_secondary (per-PRN B1C overlay)
+#include "galileoE1Code.hpp"           // for E1C_CS25 (shared Galileo pilot overlay)
 #include "gpsL1CCode.hpp"              // for generate_l1co_code (per-PRN L1C-P overlay)
 #include "gpsL5Code.hpp"               // for L5_NH10/NH20 (secondary overlay sequences)
 
@@ -57,7 +59,21 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         // with the same SNR estimate and auto-coherence ladder -- deep coherent integration
         // with no bit estimate and no alignment search.
         _secondary.assign(1, (int8_t)1);
-    else if (sec == "L1CO") {
+    else if (sec == "E1_CS25")
+        // Galileo E1-C pilot: the 25-chip CS25 secondary, SAME sequence for every satellite
+        // (like the L5 NH overlays, just longer). One chip per 4 ms primary period; the
+        // 25-phase alignment search is well-determined within a 250-record (1 s) window.
+        _secondary.assign(galileo::E1C_CS25.begin(), galileo::E1C_CS25.end());
+    else if (sec == "B1C") {
+        // BeiDou-3 B1C pilot: PER-PRN 1800-chip Weil overlay -- structurally identical to
+        // L1CO (same length, same per-PRN pick-at-wipe-time), reusing its cache/selection
+        // path. Alignment floor ~sqrt(2 ln 1800) ~ 3.9 sigma, same caveat as L1CO.
+        _l1co.resize(63);
+        for (int prn = 1; prn <= 63; ++prn) {
+            const auto o = beidou::generate_b1cp_secondary(prn);
+            _l1co[(size_t)(prn - 1)].assign(o.begin(), o.end());
+        }
+    } else if (sec == "L1CO") {
         // L1C-P overlay is PER-PRN (not one shared NH sequence), so cache all 32 here and pick
         // by the slot's current PRN at wipe time. NOTE: it is 1800 symbols long (vs NH20's 20),
         // so the overlay_wipe phase search is only well-determined once the integration window
