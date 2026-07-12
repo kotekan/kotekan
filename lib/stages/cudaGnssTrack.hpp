@@ -91,6 +91,7 @@ private:
     cudaGnssTrackState* st();
 
     std::string _gpu_mem_input, _gpu_mem_output;
+    std::string _mem_ring, _mem_jobs; // stage-namespaced device allocation names
     size_t _in_frame_len = 0, _out_frame_len = 0;
     int _n_hops_frame = 0;
 

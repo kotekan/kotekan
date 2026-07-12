@@ -124,8 +124,14 @@ cudaGnssTrack::cudaGnssTrack(Config& config, const std::string& unique_name,
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
 
     // Persistent shared allocations: the ring (survives across frames) + code/Phi live in the
-    // despread driver. Jobs arena + output frames are per-frame arrays.
-    device.get_gpu_memory("gnss_ring", (size_t)s->n_chan * s->ring_hops * sizeof(float2));
+    // despread driver. Jobs arena + output frames are per-frame arrays. NAMES ARE NAMESPACED
+    // BY STAGE: the cudaDeviceInterface memory registry is shared across every cudaProcess on
+    // the GPU, so a bare "gnss_ring" COLLIDES when multiple constellation chains run (first
+    // allocation wins, the rest error and trample each other's ring geometry -- observed as
+    // the BDS chain silently degrading on the first tri-constellation night).
+    _mem_ring = unique_name + "/gnss_ring";
+    _mem_jobs = unique_name + "/gnss_jobs_arena";
+    device.get_gpu_memory(_mem_ring, (size_t)s->n_chan * s->ring_hops * sizeof(float2));
 }
 
 cudaGnssTrack::~cudaGnssTrack() = default;
@@ -141,13 +147,13 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
     const cudaStream_t stream = device.getStream(cuda_stream_id);
 
     float2* d_ring = (float2*)device.get_gpu_memory(
-        "gnss_ring", (size_t)S.n_chan * S.ring_hops * sizeof(float2));
+        _mem_ring, (size_t)S.n_chan * S.ring_hops * sizeof(float2));
     const float2* d_frame = (const float2*)device.get_gpu_memory_array(
         _gpu_mem_input, pipestate.gpu_frame_id, _gpu_buffer_depth, _in_frame_len);
     char* d_out = (char*)device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id,
                                                      _gpu_buffer_depth, _out_frame_len);
     gnss_cuda::DespreadJob* d_jobs = (gnss_cuda::DespreadJob*)device.get_gpu_memory_array(
-        "gnss_jobs_arena", pipestate.gpu_frame_id, _gpu_buffer_depth,
+        _mem_jobs, pipestate.gpu_frame_id, _gpu_buffer_depth,
         (size_t)gnss_gpu::max_jobs(S.n_prn) * sizeof(gnss_cuda::DespreadJob));
 
     // Absolute hop of this frame from the claimed metadata (contiguous fallback without it).
