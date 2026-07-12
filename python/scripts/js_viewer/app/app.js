@@ -26,6 +26,8 @@ import {LagAlignPanel}            from "./panels/lag_align.js";
 import {CCERAPointingPanel}       from "./panels/ccera.js";
 import {GalaxyViewPanel}          from "./panels/galaxy.js";
 import {GpsSkyPanel}              from "./panels/gps_sky.js";
+import {GpsTablePanel}            from "./panels/gps_table.js";
+import {GpsFeed}                  from "./panels/gps_feed.js";
 import {GpsAmpHistoryPanel}       from "./panels/gps_amp_history.js";
 
 
@@ -175,22 +177,27 @@ export class App {
         });
 
         // GPS-only mode (lean live config, no power stream): there's no
-        // waterfall/spectrum to build -- just the GPS Sky panel, full-bleed.
-        // It polls kotekan REST + /gps_sky on its own timer.
+        // waterfall/spectrum to build. ONE shared GpsFeed polls kotekan REST +
+        // /gps_sky; the skyplot and the detections table are separate resizable
+        // cards consuming it (so they always agree, incl. the G/E/C toggles).
         if (cfg_mode === "gps") {
             const g = cfg.gps || {};
-            // Stacked full-width: sky on top, Â(t) history below -- neither tall.
-            this.layout.addWidget({mount_id: "gps_card", title: "GPS Sky",
-                                   x: 0, y: 0, w: 12, h: 6, min_w: 4, min_h: 4});
-            this.panels.push(new GpsSkyPanel({
-                app: this, target: "gps_card",
+            const feed = new GpsFeed({
+                app: this,
                 search_stage: g.search_stage, combiner_stage: g.combiner_stage,
-                airspy_stage: g.airspy_stage, mask_deg: g.mask_deg,
-                has_site: g.has_site,
+                airspy_stage: g.airspy_stage,
+            });
+            this.layout.addWidget({mount_id: "gps_sky_card", title: "GNSS Sky",
+                                   x: 0, y: 0, w: 5, h: 8, min_w: 3, min_h: 4});
+            this.panels.push(new GpsSkyPanel({target: "gps_sky_card", feed}));
+            this.layout.addWidget({mount_id: "gps_table_card", title: "GNSS Detections",
+                                   x: 5, y: 0, w: 7, h: 8, min_w: 4, min_h: 3});
+            this.panels.push(new GpsTablePanel({
+                target: "gps_table_card", feed, has_site: g.has_site,
             }));
             // Â(t) history for a chosen PRN, with error bars -- buffered in-browser.
             this.layout.addWidget({mount_id: "gps_amp_card", title: "GPS Â history",
-                                   x: 0, y: 6, w: 12, h: 5, min_w: 4, min_h: 3});
+                                   x: 0, y: 8, w: 12, h: 5, min_w: 4, min_h: 3});
             this.panels.push(new GpsAmpHistoryPanel({
                 app: this, target: "gps_amp_card",
                 combiner_stage: g.combiner_stage,
@@ -344,17 +351,23 @@ export class App {
             }));
         }
 
-        // GPS live-status: overhead-sky circle + locked-PRN table. Full-width
-        // row below the spectrum; the square sky sits left, the table right.
+        // GPS live-status: skyplot + detections table as separate resizable
+        // cards below the spectrum, sharing one GpsFeed (see the gps-mode
+        // branch above for the full story).
         if (opt.gps_sky) {
             const g = cfg.gps || {};
-            this.layout.addWidget({mount_id: "gps_card", title: "GPS Sky",
-                                   x: 0, y: 18, w: 12, h: 9, min_w: 5, min_h: 6});
-            this.panels.push(new GpsSkyPanel({
-                app: this, target: "gps_card",
+            const feed = new GpsFeed({
+                app: this,
                 search_stage: g.search_stage, combiner_stage: g.combiner_stage,
-                airspy_stage: g.airspy_stage, mask_deg: g.mask_deg,
-                has_site: g.has_site,
+                airspy_stage: g.airspy_stage,
+            });
+            this.layout.addWidget({mount_id: "gps_sky_card", title: "GNSS Sky",
+                                   x: 0, y: 18, w: 5, h: 9, min_w: 3, min_h: 4});
+            this.panels.push(new GpsSkyPanel({target: "gps_sky_card", feed}));
+            this.layout.addWidget({mount_id: "gps_table_card", title: "GNSS Detections",
+                                   x: 5, y: 18, w: 7, h: 9, min_w: 4, min_h: 3});
+            this.panels.push(new GpsTablePanel({
+                target: "gps_table_card", feed, has_site: g.has_site,
             }));
         }
 
