@@ -262,6 +262,19 @@ def main(argv=None):
     ap.add_argument("--bias-alpha", type=float, default=0.05,
                     help="EMA weight for the clock-freq bias (smaller = steadier seed Doppler; "
                          "~0.05 => few-second time constant, dithers out the 500 Hz grid)")
+    ap.add_argument("--bias-min-sats", type=int, default=2,
+                    help="detected sats needed before a cycle's median residual may update the "
+                         "clock-freq bias (and hence NARROW the search). A single sat's residual "
+                         "is unfalsifiable: one bad prediction (wrong TLE mapping, non-transmitting "
+                         "sat cross-corr) gets swallowed as 'clock bias' and shifts every other "
+                         "hint out of the narrow window -- a self-locking deadlock where no second "
+                         "sat can ever acquire to correct it (2026-07-12: BDS-2 C14 froze the whole "
+                         "B1C constellation at -1550 Hz).")
+    ap.add_argument("--tle-name-filter", type=str, default=None,
+                    help="regex on the TLE NAME; almanac keeps only matching sats. Encodes "
+                         "signal capability the TLE group can't (e.g. 'BEIDOU-3' for B1C: "
+                         "BDS-2 birds don't transmit it -- their predictions poison the clock "
+                         "bias and their PRNs only manufacture cross-correlation locks).")
     ap.add_argument("--code-length", type=float, default=1023.0,
                     help="spreading-code length (chips) for cp0 unwrap/fit (L1 C/A = 1023)")
     ap.add_argument("--hops-per-sec", type=float, default=125000.0,
@@ -348,7 +361,14 @@ def main(argv=None):
                 from gps_beamtrack import load_gps_satellites, predict_dopplers
                 from gps_beamtrack import DEFAULT_TLE_URL
                 almanac_sats = load_gps_satellites(args.tle or DEFAULT_TLE_URL)
-                _log("almanac: loaded %d GPS TLEs; predicting Doppler @ (%.4f, %.4f)"
+                if args.tle_name_filter:
+                    import re as _re
+                    n0 = len(almanac_sats)
+                    almanac_sats = {p: s for p, s in almanac_sats.items()
+                                    if _re.search(args.tle_name_filter, s.name or "")}
+                    _log("tle-name-filter %r: %d/%d sats kept"
+                         % (args.tle_name_filter, len(almanac_sats), n0))
+                _log("almanac: loaded %d TLEs; predicting Doppler @ (%.4f, %.4f)"
                      % (len(almanac_sats), args.lat, args.lon))
             except Exception as e:
                 _log("almanac unavailable (%s); falling back to search Doppler" % e)
@@ -471,12 +491,16 @@ def main(argv=None):
             # sats. A tight residual spread confirms the sign convention; a wild spread
             # (resid ~ -2x predicted) means flip --doppler-sign.
             resid = [best[p][1] - pred[p][0] for p in best if p in pred]
-            if resid:
+            if len(resid) >= args.bias_min_sats:
                 # The per-cycle median is quantized to the 500 Hz search grid and jumps
                 # hundreds of Hz as the detected-sat set flickers; the TRUE bias is a slow
                 # TCXO drift. EMA-smooth it (sub-grid dither across sats/cycles averages
                 # out the quantization) so every sat's seed Doppler is stable -- a jittery
                 # common bias was wrecking coherent integration (residual carrier +-260 Hz).
+                # GATED on --bias-min-sats: one sat's residual is unfalsifiable and a bad
+                # one narrows the search into a self-locking deadlock (see the arg help);
+                # below the gate the EMA holds its last multi-sat value (or stays unsolved
+                # -> margins stay WIDE, which is exactly what lets more sats in).
                 raw_bias = statistics.median(resid)
                 clock_bias_ema = (raw_bias if clock_bias_ema is None
                                   else clock_bias_ema + args.bias_alpha * (raw_bias - clock_bias_ema))
@@ -485,9 +509,13 @@ def main(argv=None):
                 if p in pred:
                     _log("PRN %d: meas %+.0f  pred %+.0f  resid %+.0f Hz (elev %.0f)"
                          % (p, best[p][1], pred[p][0], best[p][1] - pred[p][0], pred[p][2]))
-            if resid:
+            if len(resid) >= args.bias_min_sats:
                 _log("clock-freq bias %+.0f Hz (raw %+.0f, %d sats, EMA a=%.2f) -> seeding "
                      "predicted Doppler" % (clock_bias, raw_bias, len(resid), args.bias_alpha))
+            elif resid:
+                _log("clock-freq bias %s (%d sat < --bias-min-sats %d: residual not trusted)"
+                     % ("held %+.0f Hz" % clock_bias if clock_bias_ema is not None
+                        else "UNSOLVED (wide margins)", len(resid), args.bias_min_sats))
         elif gating:
             up = visible_prns(args.lat, args.lon, args.alt, args.mask_deg, 0.0)
 

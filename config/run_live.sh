@@ -255,6 +255,10 @@ if grep -qE '^bds_track:' "$RUNCFG"; then
   if [ -n "$LAT" ] && [ -n "$LON" ]; then
     BDS_ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
     BDS_ALM="$BDS_ALM --doppler-sign ${DOPPLER_SIGN:-1} --tle $BDS_TLE"
+    # B1C is BDS-3 only: BDS-2 birds in the group TLE don't transmit it. Their predictions
+    # poisoned the clock-freq bias (2026-07-12: lone cross-corr 'C14' lock swallowed -1550 Hz
+    # as clock bias and deadlocked the narrowed search for the whole constellation).
+    BDS_ALM="$BDS_ALM --tle-name-filter BEIDOU-3"
     BDS_ALM="$BDS_ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500} --search-margin-wide-hz ${CLK_WIDE_HZ:-3000}"
   else
     echo "WARNING: bds_track present but LAT/LON unset -- BeiDou require_hint search will scan NOTHING"
