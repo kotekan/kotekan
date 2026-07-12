@@ -23,7 +23,16 @@ CFG=${CFG:-config/live_l1.yaml}          # L1 lean valved distributed config
 # works unchanged: live_l1.yaml -> track_00..11, live_l2c.yaml -> track_02..10 (covering subset),
 # live_l1_wipe.yaml -> a single "track". The broker accepts this comma list (it also expands
 # {a..b} ranges itself, but a derived list needs no brace-quoting gymnastics).
-TRK=${TRK:-$(grep -oE '^track[_0-9]*' "$CFG" | tr '\n' ',' | sed 's/,$//')}
+# GPU-chain configs name the seed target EXPLICITLY (cudaGnssTrack's seed_endpoint:
+# "/track/set_seeds" inside a cudaProcess commands: list, where the ^track stage-name grep
+# can't see it) -- collect those first; the stage-name grep remains for the CPU configs.
+# 2026-07-12: the stage-name-only grep launched the GPS broker of live_l1_dual20.yaml with
+# ZERO trackers -- seeds never POSTed, GPS tracking silently dead while search looked normal.
+# Skip the gal_/bds_ constellations: their own broker sections below seed them.
+TRK=${TRK:-$(
+  { grep -oE 'seed_endpoint:[[:space:]]*"/[a-z_0-9]+/set_seeds"' "$CFG" \
+      | sed -E 's|.*"/([a-z_0-9]+)/set_seeds"|\1|' | grep -vE '^(gal|bds)_';
+    grep -oE '^track[_0-9]*' "$CFG"; } | sort -u | tr '\n' ',' | sed 's/,$//')}
 # Also hand any GnssVoltagePeel stage to the broker's --trackers: it POSTs the same consensus seeds
 # {cp, Doppler, cp_rate(+l-a)} to /<peel>/set_seeds, so the peel reconstructs + subtracts each sat
 # on-peak. Its residual feeds search_resid (peeled sats should drop). Chain L5/L1C peels the same way.

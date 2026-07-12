@@ -118,7 +118,8 @@ valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 # ---- GPS tracking on the F0 GPU chain (docs/gnss_gpu_migration.md §6): the CPU tracker
 # saturates a core at 20 MSPS (84% in hoprate_stream, 40% frames shed); the cudaProcess
 # despread runs the same records at ~300k PRN-despreads/s. Broker contract unchanged
-# (seed_endpoint /track/set_seeds; launch with TRK=track since no ^track stage exists).
+# (seed_endpoint /track/set_seeds; run_live.sh derives TRK from the seed_endpoint entries --
+# the ^track stage-name grep alone can't see inside a cudaProcess commands: list).
 # epl frame = gnssGpuChain layout: 176 + 1024*n_prn + 1152*n_prn*n_chan (n_chan 10).
 epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 11520 * n_prn }
 gputrack:
