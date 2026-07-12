@@ -116,6 +116,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_dll_disc.assign(_n_prn, 0.0f);
     _st_car_resid.assign(_n_prn, 0.0f);
     _st_coh_s.assign(_n_prn, 0.0f);
+    _st_deep_floor.assign(_n_prn, 0.0f);
     _st_deep_rec.assign(_n_prn, 0);
 }
 
@@ -287,6 +288,15 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<double> amp_dbi(_n_prn, 0.0);  // noise-debiased (unbiased) signal amplitude
         std::vector<double> coh_s(_n_prn, 0.0);    // measured coherence: span of the winning window
         std::vector<int> deep_rec(_n_prn, 0);      // records in the winning deep window
+        std::vector<double> deep_floor(_n_prn, 0.0); // rectification floor at the reported rung
+        // A wiped rung whose SNR is indistinguishable from its NOISE floor must not be
+        // reported as coherence: the wipe's free parameters rectify pure noise to a
+        // window-length-dependent floor, so an unlocked sat otherwise reports coh = the
+        // FULL window at deep ~= floor -- a convincing false lock (observed 2026-07-12
+        // when the carrier loop briefly ran open). Rungs must clear FLOOR_MARGIN x floor
+        // to be eligible; when none does, coherence_s = 0 (the honest "no coherent
+        // detection") and the full-window numbers are reported for diagnostics only.
+        constexpr double FLOOR_MARGIN = 2.0;
         // Auto-coherence ladder: deep-wipe window lengths to try -- the full buffer (always,
         // legacy behaviour) plus up to 4 octave-shorter trailing suffixes (>= min_len). Walked
         // longest-first; a shorter window must beat the incumbent deep SNR by >5%, so ties
@@ -377,6 +387,14 @@ void GnssCoherentCombiner::main_thread() {
                 if (ov && !ov->empty()) {
                     const auto& ab = _navbuf[p];
                     const auto& ub = _navutc[p];
+                    // Overlay-wipe floor: best of ~n_align alignment trials of a Rayleigh
+                    // sum -> noise rectifies to ~sqrt(2 ln n) sigma, window-length-free.
+                    const double flr =
+                        std::sqrt(2.0 * std::log((double)std::max<size_t>(ov->size(), 2))) + 1.0;
+                    deep_floor[p] = flr;
+                    bool cleared = false;
+                    gnss::OverlayWipeResult full{};
+                    size_t full_len = 0;
                     for (size_t len : ladder(ab.size(), std::max<size_t>(2 * ov->size(), 64))) {
                         gnss::OverlayWipeResult ow;
                         if (len == ab.size()) {
@@ -387,19 +405,46 @@ void GnssCoherentCombiner::main_thread() {
                             const std::vector<double> us(ub.end() - (long)len, ub.end());
                             ow = gnss::overlay_wipe(as, us, *ov);
                         }
-                        if (deep_rec[p] == 0 || ow.snr > deep_snr[p] * 1.05) {
+                        if (full_len == 0) { // ladder walks longest-first
+                            full = ow;
+                            full_len = len;
+                        }
+                        if (ow.snr < FLOOR_MARGIN * flr)
+                            continue; // indistinguishable from noise rectification
+                        if (!cleared || ow.snr > deep_snr[p] * 1.05) {
                             rec[8] = (float)ow.amplitude;
                             deep_snr[p] = ow.snr;
                             nh_phase[p] = ow.phase;
                             deep_rec[p] = (int)len;
                             coh_s[p] = ub.empty() ? 0.0 : ub.back() - ub[ub.size() - len];
+                            cleared = true;
                         }
+                    }
+                    if (!cleared && full_len > 0) {
+                        rec[8] = (float)full.amplitude;
+                        deep_snr[p] = full.snr;
+                        nh_phase[p] = full.phase;
+                        deep_rec[p] = (int)full_len;
+                        coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
                     }
                 }
                 if (!_rolling) { _navbuf[p].clear(); _navutc[p].clear(); }
             } else if (_navwipe_bit_records > 0) {
                 const auto& ab = _navbuf[p];
                 const auto& ub = _navutc[p];
+                // Navwipe floor GROWS with window length: nb free +-1 bit signs rectify
+                // noise to ~sqrt(2 nb / pi) sigma, plus the bit-phase selection over
+                // _navwipe_bit_records alignments (~sqrt(ln br)). The ~7 sigma "GPS deep
+                // floor" at 50 bits is exactly this -- and it is why an unlocked sat's
+                // ladder drifts to the LONGEST rung (bigger floor) if not gated.
+                const double sel = std::sqrt(std::log((double)std::max(_navwipe_bit_records, 2)));
+                auto nav_floor = [&](size_t len) {
+                    const double nb = std::max(1.0, (double)len / (double)_navwipe_bit_records);
+                    return std::sqrt(2.0 * nb / M_PI) + sel;
+                };
+                bool cleared = false;
+                double full_amp = 0.0, full_snr = 0.0;
+                size_t full_len = 0;
                 for (size_t len :
                      ladder(ab.size(), std::max<size_t>(4 * (size_t)_navwipe_bit_records, 64))) {
                     double snr = 0.0, amp;
@@ -410,12 +455,28 @@ void GnssCoherentCombiner::main_thread() {
                         const std::vector<double> us(ub.end() - (long)len, ub.end());
                         amp = navwipe_amplitude(as, us, &snr);
                     }
-                    if (deep_rec[p] == 0 || snr > deep_snr[p] * 1.05) {
+                    if (full_len == 0) { // ladder walks longest-first
+                        full_amp = amp;
+                        full_snr = snr;
+                        full_len = len;
+                    }
+                    if (snr < FLOOR_MARGIN * nav_floor(len))
+                        continue; // indistinguishable from noise rectification
+                    if (!cleared || snr > deep_snr[p] * 1.05) {
                         rec[8] = (float)amp;
                         deep_snr[p] = snr;
                         deep_rec[p] = (int)len;
+                        deep_floor[p] = nav_floor(len);
                         coh_s[p] = ub.empty() ? 0.0 : ub.back() - ub[ub.size() - len];
+                        cleared = true;
                     }
+                }
+                if (!cleared && full_len > 0) {
+                    rec[8] = (float)full_amp;
+                    deep_snr[p] = full_snr;
+                    deep_rec[p] = (int)full_len;
+                    deep_floor[p] = nav_floor(full_len);
+                    coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
                 }
                 if (!_rolling) { // block clears the window; rolling slides it (capped above)
                     _navbuf[p].clear();
@@ -446,6 +507,7 @@ void GnssCoherentCombiner::main_thread() {
                 _st_cp[p] = rec[2];
                 _st_coh_s[p] = (float)coh_s[p];
                 _st_deep_rec[p] = deep_rec[p];
+                _st_deep_floor[p] = (float)deep_floor[p];
                 _st_dll_disc[p] = rec[gnss::CMB_DLL_DISC];
                 _st_car_resid[p] = rec[gnss::CMB_CARRIER_RESID];
             }
@@ -470,6 +532,7 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"code_phase_chips", _st_cp[p]},
                          {"coherence_s", _st_coh_s[p]},
                          {"deep_records", _st_deep_rec[p]},
+                         {"deep_floor", _st_deep_floor[p]},
                          {"dll_disc", _st_dll_disc[p]},
                          {"carrier_hz_resid", _st_car_resid[p]}});
     conn.send_json_reply(reply);
@@ -578,11 +641,38 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
         return 0.0;
     using cd = std::complex<double>;
     // Bit-robust phase-SLOPE fit: square A to cancel the +-1 nav-bit pi flips (a data signal), or
-    // fit the raw phase for a dataless pilot. Unwrap vs the previous record (consecutive records
-    // are ~1 ms apart -> a residual up to ~1/(4 dt) stays inside +-pi/rec after squaring; the seed
-    // keeps f_res << that). Weighted (|A|^2) linear LSQ of the unwrapped phase vs CAPTURE-UTC, so a
-    // valve-drop gap contributes its true time span (not an index step) and weak records count less.
+    // fit the raw phase for a dataless pilot. TWO STAGES, because a sequential record-to-record
+    // unwrap alone is fragile: at 1 ms records (GPS) the window has ~1000 unwrap steps at 2x the
+    // per-record phase noise, and ONE deep fade mid-window slips the accumulated phase by 2*pi,
+    // biasing the slope by several Hz. The broker loop then injects that error into the NCO
+    // (observed 2026-07-12: per-emit resid swings +-1..7 Hz on exactly the low-record-energy
+    // sats, capping GPS coherence at 0.125-0.25 s while E/C's 4/10 ms records converged).
+    //   Stage 1 -- slip-free coarse frequency: lag-L delay-and-multiply, ONE arg() of a
+    //   weighted complex sum (no accumulation, a fade only down-weights its pairs).
+    //   Stage 2 -- demodulate by the coarse frequency, then the weighted (|A|^2) LSQ of the
+    //   sequentially-unwrapped phase vs CAPTURE-UTC (uneven gaps contribute their true span).
+    //   Post-demod the true slope is ~0, so steps sit deep inside +-pi and cannot slip.
     const double mult = _carrier_pilot ? 1.0 : 2.0; // squared phase advances at mult * the carrier
+    // Stage 1: coarse f over pairs L records apart. L=4 trades variance against unambiguous
+    // range: +-1/(2*L*dt*mult) (+-62 Hz at 1 ms data records) covers any post-seed residual.
+    const int L = 4;
+    cd pair_sum(0.0, 0.0);
+    double dt_sum = 0.0;
+    int n_pair = 0;
+    for (int r = L; r < n; ++r) {
+        const double w = std::norm(a[r]) * std::norm(a[r - L]);
+        if (!(w > 0.0))
+            continue;
+        const cd vr = _carrier_pilot ? a[r] : a[r] * a[r];
+        const cd vp = _carrier_pilot ? a[r - L] : a[r - L] * a[r - L];
+        pair_sum += w * vr * std::conj(vp);
+        dt_sum += utc[r] - utc[r - L];
+        ++n_pair;
+    }
+    double f_coarse = 0.0;
+    if (n_pair > 0 && std::abs(pair_sum) > 0.0 && dt_sum > 0.0)
+        f_coarse = std::arg(pair_sum) / (2.0 * M_PI * (dt_sum / n_pair) * mult);
+    // Stage 2: LSQ slope of the unwrapped DEMODULATED phase.
     double phi = 0.0, raw_prev = 0.0;
     bool have = false;
     double Sw = 0, Swt = 0, Swtt = 0, Swp = 0, Swtp = 0;
@@ -591,7 +681,8 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
         const double w = std::norm(a[r]); // |A|^2
         if (!(w > 0.0))
             continue;
-        const cd v = _carrier_pilot ? a[r] : a[r] * a[r];
+        const cd v = (_carrier_pilot ? a[r] : a[r] * a[r])
+                     * std::polar(1.0, -2.0 * M_PI * f_coarse * mult * (utc[r] - t0));
         const double cur = std::arg(v); // (-pi, pi]
         if (have) {
             double d = cur - raw_prev;
@@ -616,5 +707,6 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
     if (!(std::fabs(det) > 0.0))
         return 0.0;
     const double slope = (Sw * Swtp - Swt * Swp) / det; // d(phi)/dt (rad/s)
-    return slope / mult / (2.0 * M_PI);                 // -> residual carrier (Hz)
+    // Total residual = the slip-free coarse stage PLUS the fine LSQ slope of what it left.
+    return f_coarse + slope / mult / (2.0 * M_PI);      // -> residual carrier (Hz)
 }

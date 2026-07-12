@@ -412,14 +412,22 @@ def main(argv=None):
 
     def sig_of_last(rec):
         """Hold-on-lock gate metric from the (previous-cycle) combiner status: the INCOHERENT
-        amp_snr ONLY. deep_snr is useless here -- its off-peak value is the nav-wipe
-        rectification floor (~7 sigma), far above lock_snr, so a deep-based gate 'locks'
-        every PRN on its very first (1-2 chip noisy) fit and freezes a bad anchor forever.
-        amp_snr is moment-debiased: ~0-3 off-peak, >>5 only when the despread is genuinely
-        on the code peak -- exactly the condition under which freezing the anchor is safe."""
+        amp_snr, OR the FLOOR-CLEARED deep_snr. deep used to be excluded outright -- its
+        off-peak value IS the nav-wipe rectification floor (~7 sigma), far above lock_snr,
+        so a deep gate would freeze every noisy first fit -- but since 2026-07-12 the
+        combiner only reports coherence_s > 0 when a ladder rung beat its rectification
+        floor by 2x, so coherence_s > 0 certifies the deep as a real coherent detection.
+        Accepting certified deep un-traps sharp-ACF (BOC) signals: seed jitter modulates
+        their per-record amplitude (the sharp peak turns code jitter into amplitude
+        variance), which suppresses the moment-debiased amp_snr below every gate while
+        the coherent sum stays strong -- without the deep path they can never reach hold,
+        and the jitter that caused it never stops (observed: B1C amp ~1-8 / deep 90-150)."""
         if not rec:
             return 0.0
-        return float(rec.get("amp_snr", 0) or 0)
+        amp = float(rec.get("amp_snr", 0) or 0)
+        if float(rec.get("coherence_s", 0) or 0) > 0.0:
+            return max(amp, float(rec.get("deep_snr", 0) or 0))
+        return amp
     clock_bias_ema = None  # smoothed common clock-frequency bias (slow TCXO drift), Hz
     code_bias_ema = None   # smoothed receiver code-rate clock offset (l-a), dimensionless (~2.6 ppm airspy)
     if args.code_bias_init is not None:
@@ -685,7 +693,12 @@ def main(argv=None):
         # drop_amplitude let phantoms coast forever (|A| never falls below the floor). sig ~1 = noise,
         # >>1 = a real lock. Falls back to |A| only if the combiner reports no significance at all.
         def sig_of(r):
-            return max(float(r.get("deep_snr", 0)), float(r.get("amp_snr", 0)))
+            # deep counts only when floor-cleared (coherence_s > 0): a floored deep (~7)
+            # otherwise keeps phantom coasts alive forever, exactly like raw |A| did.
+            amp = float(r.get("amp_snr", 0) or 0)
+            if float(r.get("coherence_s", 0) or 0) > 0.0:
+                return max(amp, float(r.get("deep_snr", 0) or 0))
+            return amp
         have_sig = any(sig_of(r) > 0 for r in status.values())
         for prn in list(seeds):
             if up is not None and prn not in up:

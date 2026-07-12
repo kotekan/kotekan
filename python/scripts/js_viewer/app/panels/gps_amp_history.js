@@ -94,9 +94,12 @@ export class GpsAmpHistoryPanel {
                     const prn = c.prn ? tag + c.prn : null;
                     if (!prn) continue;
                     const A = c.deep_amplitude || c.unbiased_amplitude || 0;
-                    const sig = Math.max(c.deep_snr || 0, c.amp_snr || 0);
-                    if (A === 0 && sig === 0) continue;   // no despread this emit -> a gap, not a 0
                     const coh = c.coherence_s || 0;
+                    // deep_snr counts only when floor-cleared (coherence_s > 0): a floored
+                    // deep (~7 sigma at the full window) is noise rectification, not signal.
+                    const sig = coh > 0 ? Math.max(c.deep_snr || 0, c.amp_snr || 0)
+                                        : (c.amp_snr || 0);
+                    if (A === 0 && sig === 0) continue;   // no despread this emit -> a gap, not a 0
                     const dr = c.deep_records || 0;
                     if (dr > this._maxDr) this._maxDr = dr;   // the run's converged (~1 s) window
                     if (!this.hist.has(prn)) this.hist.set(prn, {t: [], a: [], sig: [], coh: [], dr: []});
@@ -150,9 +153,10 @@ export class GpsAmpHistoryPanel {
         if (this.mode === "cn0") {
             // C/N₀ (dB-Hz) = 10 log10(deep_snr^2 / T_coh); dividing by the coherent time makes it a
             // density (stable across ladder window changes). 1σ from the significance's ~unit std:
-            // d(dB)/d(sig) = (10/ln10)*(2/sig).
-            const T = coh > 0 ? coh : 1;
-            const y = sig > 0 ? 20 * Math.log10(sig) - 10 * Math.log10(T) : null;
+            // d(dB)/d(sig) = (10/ln10)*(2/sig). coherence_s == 0 means the combiner certified NO
+            // coherent detection (no rung beat its rectification floor) -> a gap, not a value.
+            if (!(coh > 0)) return [null, 0];
+            const y = sig > 0 ? 20 * Math.log10(sig) - 10 * Math.log10(coh) : null;
             const e = sig > 0 ? (2 * LN10_10) / sig : 0;
             return [y, e];
         }

@@ -122,8 +122,12 @@ export class GpsFeed {
                     // unbiased |A| (Â): noise-debiased signal amplitude -- ~0 for
                     // noise. Deep (nav-wiped) when available, else moment-debiased.
                     r.dbi = s.deep_amplitude || s.unbiased_amplitude || 0;
-                    // significance: sigma above noise (deep preferred).
-                    r.sig = Math.max(s.deep_snr || 0, s.amp_snr || 0);
+                    // significance: sigma above noise. deep counts only when the combiner
+                    // certified it beat its rectification floor (coherence_s > 0) --
+                    // a floored deep (~7 sigma) is noise wearing a lock's clothing.
+                    r.sig = (s.coherence_s || 0) > 0
+                        ? Math.max(s.deep_snr || 0, s.amp_snr || 0)
+                        : (s.amp_snr || 0);
                     r.dop = s.doppler_hz != null ? s.doppler_hz : null;
                     r.coh_s = s.coherence_s != null ? s.coherence_s : null;
                     // Incoherent C/N0 (dB-Hz, pipeline zero-point): per-record

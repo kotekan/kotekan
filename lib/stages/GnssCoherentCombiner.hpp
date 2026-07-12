@@ -141,6 +141,9 @@ private:
     std::vector<float> _st_dll_disc; ///< window-averaged DLL discriminator (broker closes the loop)
     std::vector<float> _st_car_resid; ///< full-band carrier residual, Hz (shared carrier loop)
     std::vector<float> _st_coh_s;  ///< measured coherence: time span of the chosen deep window (s)
+                                   ///< -- 0 when NO ladder rung beat its rectification floor
+    std::vector<float> _st_deep_floor; ///< the reported rung's noise-rectification floor (sigma):
+                                       ///< deep_snr ~ this value means NO coherent detection
     std::vector<int> _st_deep_rec; ///< records in the chosen deep window (= full window unless the
                                    ///< auto-coherence ladder found a shorter, more coherent one)
     std::mutex _st_mtx;

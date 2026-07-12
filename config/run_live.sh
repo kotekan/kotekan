@@ -52,7 +52,14 @@ grep -qE 'signal: GPS_L2C_CL' "$CFG" && CLA="--cl-assist --carrier-gain ${CARRIE
 # --carrier-gain above, so skip it there). Tune via CARRIER_GAIN / CARRIER_MAX_HZ / CARRIER_LEAK env.
 CARG=""
 if grep -qE 'carrier_shared:[[:space:]]*true' "$CFG" && ! grep -qE 'signal: GPS_L2C_CL' "$CFG"; then
-  CARG="--carrier-gain ${CARRIER_GAIN:-0.5} --carrier-max-hz ${CARRIER_MAX_HZ:-100} --carrier-leak ${CARRIER_LEAK:-0.005}"
+  # leak 0.0005 (was 0.005): the leaky integrator's equilibrium leaves a STANDING residual
+  # = trim*leak/gain. GPS held seeds sit up to their 100 Hz fence off -> leak 0.005 left
+  # ~0.5-1 Hz standing carrier -> 300+ deg of phase wrap across a 1 s deep window, capping
+  # the GPS ladder at 0.125-0.25 s while E/C (10/25 Hz fences) held 1 s (2026-07-12; the
+  # offline ladder on the raw grab proved the LO coheres to 2 s+, sqrt-T to 494 sigma).
+  # 10x lower leak -> bias ~0.1 Hz worst-case; the slip-proof two-stage resid estimator
+  # (GnssCoherentCombiner::carrier_resid_hz) keeps the trim from random-walking instead.
+  CARG="--carrier-gain ${CARRIER_GAIN:-0.5} --carrier-max-hz ${CARRIER_MAX_HZ:-100} --carrier-leak ${CARRIER_LEAK:-0.0005}"
   echo "shared carrier loop ON (combiner slope-fit resid -> --carrier-gain ${CARRIER_GAIN:-0.5} -> tracker NCO)"
 fi
 # Loud warning if a requested tracker stage isn't actually in the config -- the classic
