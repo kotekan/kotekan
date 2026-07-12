@@ -50,7 +50,15 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
     hops_per_record =
         config.get_default<int>(unique_name, "hops_per_record", replica->repl_period_hops());
-    dll_spacing = config.get_default<double>(unique_name, "dll_spacing_chips", 0.5);
+    // dll_spacing_chips is in EFFECTIVE (post-comb) chips: /comb_mult converts to the component
+    // chips the cp API uses. This keeps Early/Late on the LINEAR flanks of the true correlation
+    // peak for every modulation. At +-0.5 COMPONENT chips on BOC(1,1), E/L sit at the ACF's
+    // NEGATIVE minima and the power discriminator's slope is sign-INVERTED at the peak -> the
+    // broker DLL walks to a stable false lock +-0.25 chips off-peak, prompt = R(0.25) = 0.25
+    // (-12 dB: the 2026-07-12 E1C/B1C deficit vs direct raw-voltage correlation). Same fix
+    // revives L2C's dead discriminator (E/L at the zero-stuffed ACF's feet).
+    dll_spacing = config.get_default<double>(unique_name, "dll_spacing_chips", 0.5)
+                  / (double)replica->comb_mult();
     fll_reacq_hz = config.get_default<double>(unique_name, "fll_reacq_hz", 200.0);
     // Cap the carrier-anchor AGE regardless of the Doppler fence: the NCO's Doppler-rate
     // feed-forward is LINEAR from the anchor, but the true rate drifts (~1.7e-4 Hz/s^2 for

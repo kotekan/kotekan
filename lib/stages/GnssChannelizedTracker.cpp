@@ -90,7 +90,10 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     _hops_per_record =
         config.get_default<int>(unique_name, "hops_per_record", _replica->repl_period_hops());
     _replica->code_doppler_sign = config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
-    _dll_spacing = config.get_default<double>(unique_name, "dll_spacing_chips", 0.5);
+    // EFFECTIVE (post-comb) chips -> component chips; see cudaGnssTrack for the BOC false-lock
+    // analysis (power disc at +-0.5 component chips on BOC(1,1) is sign-inverted -> -12 dB).
+    _dll_spacing = config.get_default<double>(unique_name, "dll_spacing_chips", 0.5)
+                   / (double)_replica->comb_mult();
     _fll_gain = config.get_default<double>(unique_name, "fll_gain", 0.0);
     _fll_reacq_hz = config.get_default<double>(unique_name, "fll_reacq_hz", 200.0);
     // Carrier-anchor age cap: see cudaGnssTrack (quadratic ff error ~0.5*rate_dot*age^2).

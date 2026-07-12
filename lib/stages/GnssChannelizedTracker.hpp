@@ -55,7 +55,10 @@
  * @conf doppler_margin_hz Double (default 5000). Extra band for covering-channel select.
  * @conf hops_per_record  Int (default: one code period). Coherent window, hops.
  * @conf dll_spacing_chips Double (default 0.5). Early/Late correlator offset from the
- *                        Prompt (chips). The tracker despreads E/P/L at the COMMANDED code
+ *                        Prompt, in EFFECTIVE (post-comb) chips -- component chips for BPSK,
+ *                        half-cycle slots for BOC(m,m), interleaved slots for TDM -- so E/L
+ *                        stay on the true peak's linear flanks for every modulation.
+ *                        The tracker despreads E/P/L at the COMMANDED code
  *                        phase and makes NO alignment decisions (R1, the architecture
  *                        audit): the combiner aggregates |E|^2/|L|^2 and the broker closes
  *                        the delay-lock loop at ~Hz through set_seeds.
