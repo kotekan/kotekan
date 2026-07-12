@@ -149,6 +149,7 @@ def main(argv=None):
     # ---- per-constellation: load, excise re-anchors, sky positions, pedestals -> densities ----
     TAG, PRN, T, ALT, AZ = [], [], [], [], []
     Y, YSIG, Y2, Y2SIG = [], [], [], []
+    ped_ok = {}   # tag -> below-horizon pedestal was genuine (fallback poisons cross-cal)
     for tag, path in sorted(logs.items()):
         prn, t, x, xc, dop = load(path, tag)
         if len(x) == 0:
@@ -188,6 +189,7 @@ def main(argv=None):
         t_rec = CONST[tag]["t_rec"]
         # incoherent: per-record ratio -> density (Hz)
         ped, glob, sig1, real_ped = pedestal(x, low, t, args.ped_tbin)
+        ped_ok[tag] = real_ped
         y = (x - ped) / t_rec
         ysig = sig1 / t_rec
         print("%s (%s): %d emits (%d re-anchor-cut), inc ped x=%.4f%s, single-emit floor "
@@ -218,6 +220,46 @@ def main(argv=None):
     sid = np.array([a + str(b) for a, b in zip(tag, prn)])   # "G12"/"E25"/"C19"
     span_h = (t.max() - t.min()) / 3600.0
     print("composite: %d emits, %d sats, span %.1f h" % (len(y), len(set(sid)), span_h))
+
+    # CROSS-CONSTELLATION ZERO POINTS (item 6): per constellation, the map observable
+    # carries direction-INDEPENDENT constants -- satellite EIRP convention, pilot power
+    # fraction (E1C -3 dB of E1, B1C pilot 3/4), the antenna's ~4 dB SAW rolloff at the
+    # BOC lobes -- that bias E/C low relative to GPS in the pooled composite while leaving
+    # each constellation's beam SHAPE intact. Fit ONE dB offset per tag per observable
+    # from sky cells where that tag and GPS both have enough emits (median of per-cell
+    # dB differences -- robust to per-sat EIRP scatter), and apply it before pooling.
+    def cross_cal(yv, ysv, label):
+        m0 = (alt > args.map_mask) & np.isfinite(yv) & np.isfinite(ysv)
+        az_e = np.linspace(0, 360, args.naz + 1)
+        el_e = np.linspace(args.map_mask, 90, args.nel + 1)
+        cell = {}
+        ai = np.clip(np.digitize(az[m0], az_e) - 1, 0, args.naz - 1)
+        ei = np.clip(np.digitize(alt[m0], el_e) - 1, 0, args.nel - 1)
+        tg, yy = tag[m0], yv[m0]
+        for t_, a_, e_, v_ in zip(tg, ai, ei, yy):
+            cell.setdefault((a_, e_), {}).setdefault(t_, []).append(v_)
+        out = np.ones(len(yv))
+        for t_ in ("E", "C"):
+            d = []
+            for c, per in cell.items():
+                if "G" in per and t_ in per and len(per["G"]) >= args.min_bin                         and len(per[t_]) >= args.min_bin:
+                    mg, mx = np.mean(per["G"]), np.mean(per[t_])
+                    if mg > 0 and mx > 0:
+                        d.append(10 * np.log10(mg / mx))
+            if len(d) >= 8:
+                off = float(np.median(d))
+                warn = "" if ped_ok.get("G", False) and ped_ok.get(t_, False) else \
+                    "  [UNRELIABLE: pedestal fallback truncates the shared-cell selection]"
+                print("cross-cal (%s): %s +%.2f dB from %d shared cells%s"
+                      % (label, t_, off, len(d), warn))
+                out[tag == t_] = 10 ** (off / 10.0)
+            else:
+                print("cross-cal (%s): %s skipped (%d shared cells < 8)"
+                      % (label, t_, len(d)))
+        return out
+    y = y * cross_cal(y, ysig, "incoherent")
+    if np.isfinite(y2).any():
+        y2 = y2 * cross_cal(y2, y2sig, "coherent")
 
     def to_db(mean_y, mean_sig, nsamp):
         lim = 2.0 * mean_sig / np.sqrt(np.maximum(nsamp, 1))

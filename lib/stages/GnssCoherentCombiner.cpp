@@ -470,8 +470,14 @@ void GnssCoherentCombiner::main_thread() {
                             const int L_ov = (int)ov->size();
                             const int ph = (int)(((_dr_phase[p] + steps) % L_ov + L_ov) % L_ov);
                             const auto dw = gnss::overlay_wipe_at(ab, ub, *ov, ph);
+                            // /2: snr^2 normalizes noise PER-AXIS (1-dof); the incoherent
+                            // x uses full complex (2-dof) noise power. Dividing by 2 puts
+                            // deep_pow on x's C/N0-density convention EXACTLY (derivation
+                            // 2026-07-12: snr^2 = n*A^2/sigma_axis^2, x = A^2/(2 sigma^2)
+                            // -> deep_pow_raw = 2*x/T_rec). Healthy-sat coh/inc then reads
+                            // ~0 dB + the incoherent estimator's amplitude-flutter penalty.
                             if (T > 0.0 && dw.snr > 0.0)
-                                deep_pow[p] = (dw.snr * dw.snr - 2.0) / T;
+                                deep_pow[p] = (dw.snr * dw.snr - 2.0) / (2.0 * T);
                             else
                                 dr_ok = false;
                         }
@@ -479,7 +485,7 @@ void GnssCoherentCombiner::main_thread() {
                             const double bias = 2.0
                                 * (std::log((double)std::max<size_t>(ov->size(), 2)) + 0.5772);
                             if (T > 0.0)
-                                deep_pow[p] = (full.snr * full.snr - bias) / T;
+                                deep_pow[p] = (full.snr * full.snr - bias) / (2.0 * T);
                         }
                     }
                 }
@@ -537,8 +543,8 @@ void GnssCoherentCombiner::main_thread() {
                     const double span = ub.back() - ub[ub.size() - full_len];
                     const double T = span * (double)full_len / (double)(full_len - 1);
                     const double flr0 = nav_floor(full_len);
-                    if (T > 0.0)
-                        deep_pow[p] = (full_snr * full_snr - (flr0 * flr0 + 1.0)) / T;
+                    if (T > 0.0) // /2: same 1-dof -> 2-dof convention as the overlay path
+                        deep_pow[p] = (full_snr * full_snr - (flr0 * flr0 + 1.0)) / (2.0 * T);
                 }
                 if (!_rolling) { // block clears the window; rolling slides it (capped above)
                     _navbuf[p].clear();

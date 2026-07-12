@@ -769,6 +769,17 @@ def main(argv=None):
                             (seed["doppler_hz"] - prev["doppler_hz"]) if prev else 0.0))
                 cp_held.discard(prn)
                 hold_miss.pop(prn, None)
+            # TRIM PRE-COMPENSATION (2026-07-12 night): the NCO trim holds (f_true - f_ref);
+            # when the seed doppler (= the tracker's f_ref) steps by ddop, the required trim
+            # shifts by exactly -ddop. Un-compensated, every 100 Hz GPS staleness release
+            # forced the loop to re-absorb the step from scratch: a ~10 Hz-residual,
+            # several-emit transient synchronized across sats (observed as constellation-
+            # wide coh-0 waves every ~200 s). Pre-shifting the trim makes the step seamless.
+            if prev is not None and prn in car_trim:
+                dstep = prev.get("doppler_hz", 0.0) - seed.get("doppler_hz", 0.0)
+                if dstep != 0.0:
+                    car_trim[prn] = max(-args.carrier_max_hz,
+                                        min(args.carrier_max_hz, car_trim[prn] + dstep))
             seeds[prn] = seed
             low_hits[prn] = 0
 
@@ -851,6 +862,10 @@ def main(argv=None):
                         + t_abs * args.chip_rate_hz * args.code_doppler_sign
                           * (old_dop - new_dop) / args.carrier_hz) % CODE_LEN
                     seeds[prn]["doppler_hz"] = new_dop
+                    if prn in car_trim:  # trim pre-compensation, same as the seed loop
+                        car_trim[prn] = max(-args.carrier_max_hz,
+                                            min(args.carrier_max_hz,
+                                                car_trim[prn] + (old_dop - new_dop)))
                 if "doppler_rate_hz_s" in seeds[prn]:
                     seeds[prn]["doppler_rate_hz_s"] = pred[prn][1]
             rec = status.get(prn, {})
