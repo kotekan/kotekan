@@ -216,6 +216,20 @@ def main(argv=None):
                     help="detection significance (sigma above noise) above which a sat counts as "
                          "locked -- the primary, noise-relative lock metric (vs the noise-biased |A|; "
                          "noise sits at ~1, a real lock at >>3)")
+    ap.add_argument("--coast-to-horizon", action="store_true",
+                    help="never drop a visible sat for low signal -- coast on the pure model "
+                         "(almanac doppler + pooled code rate, currency-corrected) until it "
+                         "SETS. The beam-map mode: sidelobe/null transits keep despreading on "
+                         "the predicted trajectory so the unbiased incoherent/coherent power "
+                         "observables sample the WHOLE beam, not just where the sat is locked. "
+                         "The model holds the code peak for ~1-2 min per the pooled l-a "
+                         "uncertainty; the search re-anchors whenever the signal returns.")
+    ap.add_argument("--noise-probes", type=int, default=0,
+                    help="keep this many deepest-below-horizon PRNs seeded as NOISE PROBES: "
+                         "the combiner then emits genuine signal-free records for the beam "
+                         "map's pedestal calibration (an almanac-gated broker otherwise never "
+                         "tracks one and the pedestal falls back to a signal percentile). "
+                         "Probes fail every lock gate naturally; ~2 is plenty.")
     ap.add_argument("--hold-max-cp-err", type=float, default=0.4,
                     help="release a HELD seed when the tracked code phase (held cp + DLL "
                          "trim) disagrees with the search FIT by more than this (chips) on "
@@ -390,6 +404,7 @@ def main(argv=None):
     dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
     cp_escape = {}      # prn -> consecutive track-vs-search cp disagreements (hold referee)
     cp_escape_sign = {} # prn -> last disagreement (sign-consistency: real parks are one-signed)
+    hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
     car_trim = {}       # prn -> persistent NCO frequency command (Hz): the shared carrier loop
     car_last = {}       # prn -> last integrated residual (dedup: one integration per emit)
     cp_hist = {}     # prn -> [(ref_hop, cp0, dop_det), ...] recent distinct snapshots (slope fit)
@@ -699,7 +714,14 @@ def main(argv=None):
             # one-signed; search-fit noise on a weak sat alternates (first deploy:
             # weak GPS sats escaped every minute on -0.5/+1.3/-0.5 flip-flops, and
             # each escape re-injects the seed jitter + forces an overlay re-align).
-            if cp_err is not None and abs(cp_err) > args.hold_max_cp_err:
+            # FIT-QUALITY gate (2026-07-12 evening): only a trustworthy fit may accuse the
+            # track -- >=6 history points (fit noise ~ per-fix/sqrt(n)) and a solid current
+            # detection (2x the acquire gate). Ungated, weak-sat fit noise drove 627 escapes
+            # in 2.7 h and each one re-anchored the seed (the churn behind the GPS "wobble").
+            fit_trusted = (fit is not None and len(h) >= 6
+                           and snr >= 2.0 * args.acquire_snr)
+            if (cp_err is not None and abs(cp_err) > args.hold_max_cp_err
+                    and fit_trusted):
                 n_prev = cp_escape.get(prn, 0)
                 same_sign = (n_prev == 0) or (cp_err * cp_escape_sign.get(prn, 0.0) > 0)
                 cp_escape[prn] = n_prev + 1 if same_sign else 1
@@ -714,8 +736,23 @@ def main(argv=None):
                 dll_trim.pop(prn, None)
                 dll_last.pop(prn, None)
                 cp_held.discard(prn)
-            elif (prev is not None and sig_of_last(status.get(prn)) >= args.hold_snr
-                    and abs(seed["doppler_hz"] - prev["doppler_hz"]) <= args.hold_max_dop_hz):
+                hold_miss.pop(prn, None)
+            elif (prev is not None
+                    and abs(seed["doppler_hz"] - prev["doppler_hz"]) <= args.hold_max_dop_hz
+                    and (sig_of_last(status.get(prn)) >= args.hold_snr
+                         or (prn in cp_held and hold_miss.get(prn, 0) < 3))):
+                # PERSISTENT-loss release (2026-07-12 evening): a single blank/stale status
+                # read (sig 0.0 -- a poll racing the emit, a slow combiner cycle) used to
+                # release the hold instantly: 562 of 736 releases in 2.7 h fired at
+                # amp_snr < 8, mostly 0.0, and every release re-fit the seed (dop jump) and
+                # paid the ~0.9 Hz x ~5 s carrier re-anchor transient -- the 2 s-median
+                # churn behind the GPS coherence wobble (settled sats measure 0.06 Hz).
+                # A held sat now rides through up to 3 consecutive sub-gate reads; doppler
+                # STALENESS still releases immediately (real currency decoherence).
+                if sig_of_last(status.get(prn)) >= args.hold_snr:
+                    hold_miss[prn] = 0
+                else:
+                    hold_miss[prn] = hold_miss.get(prn, 0) + 1
                 seed["doppler_hz"] = prev["doppler_hz"]
                 seed["code_phase_chips"] = prev["code_phase_chips"]
                 seed["code_phase_rate"] = prev["code_phase_rate"]
@@ -731,6 +768,7 @@ def main(argv=None):
                          % (prn, sig_of_last(status.get(prn)),
                             (seed["doppler_hz"] - prev["doppler_hz"]) if prev else 0.0))
                 cp_held.discard(prn)
+                hold_miss.pop(prn, None)
             seeds[prn] = seed
             low_hits[prn] = 0
 
@@ -760,18 +798,61 @@ def main(argv=None):
                 return max(amp, float(r.get("deep_snr", 0) or 0))
             return amp
         have_sig = any(sig_of(r) > 0 for r in status.values())
+        # NOISE PROBES (--noise-probes N): keep the N deepest-below-horizon PRNs seeded so
+        # the combiner emits GENUINE noise records for them -- the beam map's pedestal
+        # calibration (clip bias of the moment debias + the coherent estimator's selection
+        # residue) needs signal-free samples, and an almanac-gated broker otherwise never
+        # tracks one (2026-07-12: the GPS pedestal fell back to a signal percentile,
+        # x=10.6 ~ 40 dB-Hz, blinding the map's low end). Probes are exempt from the
+        # set-below-horizon drop and invisible to hints/hold/DLL/carrier (their sig ~ 0
+        # fails every gate naturally); dop/cp are arbitrary for noise -- predicted values
+        # keep the despread configuration representative.
+        probe_set = set()
+        if args.noise_probes > 0 and args.almanac and pred:
+            deep_low = sorted((p for p, v in pred.items() if v[2] < -15.0),
+                              key=lambda p: pred[p][2])[:args.noise_probes]
+            probe_set = set(deep_low)
+            for p in deep_low:
+                if p not in seeds:
+                    _log("noise probe PRN %d seeded (elev %.0f)" % (p, pred[p][2]))
+                seeds[p] = {"doppler_hz": pred[p][0] + clock_bias,
+                            "code_phase_chips": 0.0,
+                            "code_phase_rate": cp_rate_from_code_bias(
+                                pred[p][0], code_bias_ema or 0.0, args.hops_per_sec,
+                                args.chip_rate_hz, args.carrier_hz),
+                            "ref_hop": 0,
+                            "doppler_rate_hz_s": pred[p][1]}
         for prn in list(seeds):
+            if prn in probe_set:
+                continue
             if up is not None and prn not in up:
                 _log("drop PRN %d (set below horizon)" % prn)
                 del seeds[prn]
                 cp_held.discard(prn)
+                hold_miss.pop(prn, None)
                 low_hits.pop(prn, None)
                 continue
             if prn in best:  # re-detected -> re-anchored in the seed loop above (coast reset there)
                 continue
             # not re-detected this poll but still visible -> COAST: forecast the Doppler forward.
             if args.almanac and prn in pred:
-                seeds[prn]["doppler_hz"] = pred[prn][0] + clock_bias
+                new_dop = pred[prn][0] + clock_bias
+                old_dop = seeds[prn].get("doppler_hz", new_dop)
+                if new_dop != old_dop:
+                    # CURRENCY-CORRECT the coast (2026-07-12 evening): cp0 is meaningful only
+                    # in its doppler's currency -- updating the forecast dop WITHOUT
+                    # re-expressing cp walks the despread by t_abs*f_chip*ddop/f_c, chips/Hz
+                    # at soak age (the exact t_abs lever the code-currency rule forbids;
+                    # this is why long coasts silently lost the code peak). Same
+                    # translation as cp_to_seed_currency, at the seed's ref_hop.
+                    t_abs = seeds[prn].get("ref_hop", 0) / args.hops_per_sec
+                    seeds[prn]["code_phase_chips"] = (
+                        seeds[prn].get("code_phase_chips", 0.0)
+                        + t_abs * args.chip_rate_hz * args.code_doppler_sign
+                          * (old_dop - new_dop) / args.carrier_hz) % CODE_LEN
+                    seeds[prn]["doppler_hz"] = new_dop
+                if "doppler_rate_hz_s" in seeds[prn]:
+                    seeds[prn]["doppler_rate_hz_s"] = pred[prn][1]
             rec = status.get(prn, {})
             if have_sig:
                 metric, thresh = sig_of(rec), args.lock_snr
@@ -781,7 +862,7 @@ def main(argv=None):
                 low_hits[prn] = 0  # lock holding through the dropout -> reset coast
             else:
                 low_hits[prn] = low_hits.get(prn, 0) + 1
-                if low_hits[prn] >= coast_polls:
+                if low_hits[prn] >= coast_polls and not args.coast_to_horizon:
                     _log("drop PRN %d (coast %.0fs expired, %s=%.2f)"
                          % (prn, args.coast_budget, "sig" if have_sig else "|A|", metric))
                     del seeds[prn]

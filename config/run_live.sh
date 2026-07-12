@@ -199,6 +199,14 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   # the wrong half and finds nothing). DOPPLER_SIGN=-1 flips the predicted-Doppler sign.
   ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
   ALM="$ALM --doppler-sign ${DOPPLER_SIGN:-1}"
+  # 2 deepest-below-horizon PRNs stay seeded as NOISE PROBES: genuine signal-free emits
+  # calibrate the beam map's pedestal (the almanac gate otherwise never tracks one and
+  # the GPS pedestal fell back to a signal percentile, blinding the map's low end).
+  ALM="$ALM --noise-probes ${NOISE_PROBES:-2}"
+  # Beam-map coasting (default ON; COAST_TO_HORIZON=0 to disable): visible sats coast on
+  # the pure model through fades/nulls until they SET, so the unbiased power observables
+  # sample the whole beam instead of only the locked stretches.
+  if [ "${COAST_TO_HORIZON:-1}" != "0" ]; then ALM="$ALM --coast-to-horizon"; fi
   if [ "${NARROW_SEARCH:-1}" != "0" ]; then
     # --search-margin-wide-hz = the COLD per-PRN window (pre-clock-bias), sized from the clock
     # profile's accuracy bound; the warm margin (--search-margin-hz) applies once the bias solves.
