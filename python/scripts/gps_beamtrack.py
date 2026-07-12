@@ -125,6 +125,55 @@ GSAT_TO_PRN = {
 }
 
 
+def _igs_prn_by_catnum():
+    """{NORAD catalog number: (constellation letter, prn int)} from the IGS satellite
+    metadata SINEX (files.igs.org/pub/station/general/igs_satellite_metadata.snx) -- the
+    authoritative multi-GNSS SVN/COSPAR/SatCat/PRN registry. Constellations whose TLE names
+    carry no PRN (BeiDou 'BEIDOU-3 M23', and a backstop for Galileo) resolve through this:
+    TLEs carry the catalog number, the SINEX maps it to the CURRENTLY-VALID PRN assignment.
+    Cached beside the TLEs for 30 days; empty dict if unavailable (offline -> those sats
+    are skipped with a warning)."""
+    import re, time, urllib.request
+    cache = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
+    os.makedirs(cache, exist_ok=True)
+    snx = os.path.join(cache, "igs_satellite_metadata.snx")
+    if not os.path.exists(snx) or time.time() - os.path.getmtime(snx) > 30 * 86400:
+        try:
+            urllib.request.urlretrieve(
+                "https://files.igs.org/pub/station/general/igs_satellite_metadata.snx", snx)
+        except Exception as e:
+            if not os.path.exists(snx):
+                print("[gps_beamtrack] IGS satellite metadata unavailable (%s)" % e,
+                      file=sys.stderr)
+                return {}
+    svn_cat, svn_prn = {}, {}
+    section = None
+    now = time.strftime("%Y:%j:00000", time.gmtime())
+    for line in open(snx, errors="replace"):
+        if line.startswith("+SATELLITE/"):
+            section = line.strip().lstrip("+")
+            continue
+        if line.startswith("-SATELLITE/"):
+            section = None
+            continue
+        if line.startswith("*") or not line.strip():
+            continue
+        f = line.split()
+        if section == "SATELLITE/IDENTIFIER" and len(f) >= 3 and f[2].isdigit():
+            svn_cat[f[0]] = int(f[2])
+        elif section == "SATELLITE/PRN" and len(f) >= 4:
+            svn, t_from, t_to, prn = f[0], f[1], f[2], f[3]
+            current = (t_to == "0000:000:00000") or (t_to >= now)
+            if current and re.fullmatch(r"[A-Z]\d{2}", prn):
+                svn_prn[svn] = prn
+    out = {}
+    for svn, cat in svn_cat.items():
+        prn = svn_prn.get(svn)
+        if prn:
+            out[cat] = (prn[0], int(prn[1:]))
+    return out
+
+
 def load_gps_satellites(tle_source):
     """Return {prn: EarthSatellite} from a Celestrak TLE file/URL.
 
@@ -144,13 +193,28 @@ def load_gps_satellites(tle_source):
     if isinstance(tle_source, str) and tle_source.startswith(("http://", "https://")):
         cache = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
         os.makedirs(cache, exist_ok=True)
-        sats = Loader(cache, verbose=False).tle_file(tle_source)
+        # Cache PER GROUP: every Celestrak gp.php URL shares the basename "gp.php", and
+        # skyfield keys its cache on the basename -- so gps-ops/galileo/beidou would all
+        # silently REUSE whichever group was fetched first (observed: the viewer plotted
+        # Galileo and BeiDou "positions" exactly on top of the GPS sats, and the E/C brokers
+        # hinted GPS Doppler at E/C PRNs -- Galileo detected anyway only because the wide
+        # pre-solve margins covered the error). Name the file after the GROUP query param.
+        m = re.search(r"GROUP=([A-Za-z0-9_-]+)", tle_source)
+        fname = "tle_%s.txt" % (m.group(1) if m else "default")
+        sats = Loader(cache, verbose=False).tle_file(tle_source, filename=fname)
     else:
         sats = load.tle_file(tle_source)
     by_prn = {}
     for s in sats:
         name = s.name or ""
         m = re.search(r"PRN\s*(\d+)", name)
+        if m:
+            by_prn[int(m.group(1))] = s
+            continue
+        # BeiDou names carry the PRN as '... (C46)' -- and it DISAGREES with the IGS SINEX
+        # mapping for several sats (C46/C48 mapped to stale assignments there), so the name
+        # is authoritative when present; the SINEX below is the fallback for unnamed sats.
+        m = re.search(r"\(C(\d+)\)", name)
         if m:
             by_prn[int(m.group(1))] = s
             continue
@@ -162,7 +226,18 @@ def load_gps_satellites(tle_source):
             else:
                 print("[gps_beamtrack] unmapped Galileo %s -- refresh GSAT_TO_PRN"
                       % g.group(0), file=sys.stderr)
+            continue
+        # No PRN in the name (BeiDou et al.): NORAD catalog number -> IGS SINEX registry.
+        global _IGS_CAT_MAP
+        if _IGS_CAT_MAP is None:
+            _IGS_CAT_MAP = _igs_prn_by_catnum()
+        hit = _IGS_CAT_MAP.get(getattr(s.model, "satnum", -1))
+        if hit:
+            by_prn[hit[1]] = s
     return by_prn
+
+
+_IGS_CAT_MAP = None
 
 
 def gps_block_by_prn(tle_source=DEFAULT_TLE_URL, _sats=None):

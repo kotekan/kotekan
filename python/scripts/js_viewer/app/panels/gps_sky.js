@@ -50,6 +50,14 @@ export class GpsSkyPanel {
         this.search_stage = search_stage || "search";
         this.combiner_stage = combiner_stage || "combiner";
         this.airspy_stage = airspy_stage || "airspy_in";
+        // Tri-constellation: GPS + Galileo + BeiDou share the 1575.42 tune; the gal_/bds_
+        // stages exist only in the dual/tri configs -- a 404 on a missing stage resolves to
+        // null in _tick and that chain simply doesn't render. Sats key by tag+prn ("E25").
+        this.chains = [
+            {tag: "G", search: this.search_stage, combiner: this.combiner_stage},
+            {tag: "E", search: "gal_search", combiner: "gal_combiner"},
+            {tag: "C", search: "bds_search", combiner: "bds_combiner"},
+        ];
         this.mask_deg = mask_deg || 5;
         this.has_site = !!has_site;
         this._inflight = false;
@@ -124,12 +132,15 @@ export class GpsSkyPanel {
         this._inflight = true;
         const k = this.app.kotekan;
         const jget = (p) => p.then(r => r.ok ? r.json() : null).catch(() => null);
+        const per_chain = this.chains.map(c => Promise.all([
+            jget(k.stageGet(c.search, "get_detections")),
+            jget(k.stageGet(c.combiner, "get_status")),
+        ]));
         Promise.all([
             fetch("/gps_sky").then(r => r.ok ? r.json() : null).catch(() => null),
-            jget(k.stageGet(this.search_stage, "get_detections")),
-            jget(k.stageGet(this.combiner_stage, "get_status")),
             jget(k.stageGet(this.airspy_stage, "adcstat")),
-        ]).then(([sky, det, status, adc]) => {
+            ...per_chain,
+        ]).then(([sky, adc, ...chains]) => {
             this._inflight = false;
             // Hold the last good value per feed: a single slow/failed poll (e.g.
             // the combiner momentarily busy) must not blank every |A| for a
@@ -138,40 +149,58 @@ export class GpsSkyPanel {
             // amplitude rather than failing the request.
             const last = (this._last = this._last || {});
             if (sky) last.sky = sky;
-            if (det) last.det = det;
-            if (status) last.status = status;
             if (adc) last.adc = adc;
-            this._render(last.sky, last.det, last.status, last.adc);
+            last.chains = last.chains || {};
+            this.chains.forEach((c, i) => {
+                const [det, status] = chains[i];
+                const l = (last.chains[c.tag] = last.chains[c.tag] || {});
+                if (det) l.det = det;
+                if (status) l.status = status;
+            });
+            this._render(last.sky, last.chains, last.adc);
         });
     }
 
-    // Merge the three feeds into one per-PRN map and repaint.
-    _render(sky, det, status, adc) {
-        const sats = new Map();   // prn -> merged record
-        const get = (prn) => {
-            if (!sats.has(prn)) sats.set(prn, {prn, az: null, el: null,
+    // Merge the feeds of every constellation into one map keyed "G12"/"E25"/"C19".
+    _render(sky, chains, adc) {
+        const sats = new Map();
+        const get = (tag, prn) => {
+            const id = tag + prn;
+            if (!sats.has(id)) sats.set(id, {id, tag, prn, az: null, el: null,
                 snr: null, amp: 0, coh: 0, deep: 0, dbi: 0, sig: 0, detected: false});
-            return sats.get(prn);
+            return sats.get(id);
         };
         if (sky && Array.isArray(sky.sats))
-            for (const p of sky.sats) { const r = get(p.prn); r.az = p.az; r.el = p.el; }
-        if (Array.isArray(det))
-            for (const d of det) { const r = get(d.prn); r.snr = d.snr; r.detected = true; }
-        if (Array.isArray(status))
-            for (const c of status) {
-                if (!c.prn) continue;
-                const r = get(c.prn);
-                r.amp = c.amplitude || 0;
-                r.coh = c.coh_amplitude || 0;
-                r.deep = c.deep_amplitude || 0;
-                // unbiased |A| (Â): the noise-debiased signal amplitude -- ~0 for noise, = the
-                // signal for a real sat. The deep nav-wiped amplitude when available, else the
-                // moment-debiased estimate. This is the honest amplitude (vs the noise-biased |A|).
-                r.dbi = c.deep_amplitude || c.unbiased_amplitude || 0;
-                // significance = how many sigma the signal is above the noise: deep (nav-wiped)
-                // when available, else the noise-debiased incoherent SNR. >>1 real, ~1 noise.
-                r.sig = Math.max(c.deep_snr || 0, c.amp_snr || 0);
+            for (const p of sky.sats) {
+                const r = get(p.const || "G", p.prn); r.az = p.az; r.el = p.el;
             }
+        for (const c of this.chains) {
+            const l = (chains && chains[c.tag]) || {};
+            if (Array.isArray(l.det))
+                for (const d of l.det) { const r = get(c.tag, d.prn); r.snr = d.snr; r.detected = true; }
+            if (Array.isArray(l.status)) this._merge_status(l.status, c.tag, get);
+        }
+        this._finish_render(sats, sky, adc);
+    }
+
+    _merge_status(status, tag, get) {
+        for (const c of status) {
+            if (!c.prn) continue;
+            const r = get(tag, c.prn);
+            r.amp = c.amplitude || 0;
+            r.coh = c.coh_amplitude || 0;
+            r.deep = c.deep_amplitude || 0;
+            // unbiased |A| (Â): the noise-debiased signal amplitude -- ~0 for noise, = the
+            // signal for a real sat. The deep nav-wiped amplitude when available, else the
+            // moment-debiased estimate. This is the honest amplitude (vs the noise-biased |A|).
+            r.dbi = c.deep_amplitude || c.unbiased_amplitude || 0;
+            // significance = how many sigma the signal is above the noise: deep (nav-wiped)
+            // when available, else the noise-debiased incoherent SNR. >>1 real, ~1 noise.
+            r.sig = Math.max(c.deep_snr || 0, c.amp_snr || 0);
+        }
+    }
+
+    _finish_render(sats, sky, adc) {
         // "Locked" = a SIGNIFICANT detection (sig), not the raw |A| -- the incoherent |A| is biased
         // by the noise floor (≈ floor for weak sats), so |A| >= AMP_LOCK flickered phantoms across
         // the line. Fall back to |A| only where no significance is reported.
@@ -195,14 +224,14 @@ export class GpsSkyPanel {
                 stroke: r.active ? "#e8edf2" : "#7c8794",
                 "stroke-width": r.active ? 0.4 : 0.5});
             const tip = svg("title", {});
-            tip.textContent = `PRN ${r.prn}  el ${r.el.toFixed(0)}° az ${r.az.toFixed(0)}°`
+            tip.textContent = `${r.id}  el ${r.el.toFixed(0)}° az ${r.az.toFixed(0)}°`
                 + (r.snr != null ? `  snr ${r.snr.toFixed(1)}` : "")
                 + (r.amp ? `  |A| ${r.amp.toFixed(2)}` : "");
             dot.appendChild(tip);
             layer.appendChild(dot);
             const lab = svg("text", {x: x + rad + 0.6, y: y + 1,
                 "font-size": 2.7, fill: r.active ? "#e8edf2" : "#8a929b"});
-            lab.textContent = r.prn;
+            lab.textContent = r.id;
             layer.appendChild(lab);
         }
     }
@@ -244,7 +273,7 @@ export class GpsSkyPanel {
                   + r.sig.toFixed(1) + "σ</span>"
                 : "—";
             return `<tr style="${on ? "" : "color:#8a929b;"}">`
-                + cell(dot + "<b>" + r.prn + "</b>")
+                + cell(dot + "<b>" + r.id + "</b>")
                 + cell(r.el != null ? r.el.toFixed(0) + "°" : "—")
                 + cell(r.snr != null ? r.snr.toFixed(1) : "—")
                 + cell(num(r.amp), "text-align:right;color:#8a929b;")

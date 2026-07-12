@@ -104,7 +104,7 @@ echo "clock profile '$CLK_NAME': accuracy ${CLK_ACC} ppm, coherence ${CLK_COH} s
 BROKER=python/scripts/gps_distributed_broker.py
 LOG=/tmp/gpslive.log
 
-cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" "${GALPID:-}" "${GALLOGPID:-}" 2>/dev/null
+cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" "${GALPID:-}" "${GALLOGPID:-}" "${BDSPID:-}" "${BDSLOGPID:-}" 2>/dev/null
             pkill -9 -f kotekan/kotekan 2>/dev/null
             pkill -9 -f livebeam_server 2>/dev/null
             pkill -9 -f gps_status_logger 2>/dev/null
@@ -235,6 +235,34 @@ if grep -qE '^gal_track:' "$RUNCFG"; then
   python3 python/scripts/gps_status_logger.py --url http://localhost:12048           --combiner gal_combiner --search gal_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/gpslive_logger_gal.log 2>&1 &
   GALLOGPID=$!
   echo "Galileo C/N0 status log -> $RECDIR/status_log_gal.jsonl"
+fi
+
+# Third constellation: BeiDou B1C (bds_* stages), same pattern as Galileo.
+BDSPID=""
+BDSLOGPID=""
+if grep -qE '^bds_track:' "$RUNCFG"; then
+  BDS_TLE="https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle"
+  BDS_ALM=""
+  if [ -n "$LAT" ] && [ -n "$LON" ]; then
+    BDS_ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
+    BDS_ALM="$BDS_ALM --doppler-sign ${DOPPLER_SIGN:-1} --tle $BDS_TLE"
+    BDS_ALM="$BDS_ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500} --search-margin-wide-hz ${CLK_WIDE_HZ:-3000}"
+  else
+    echo "WARNING: bds_track present but LAT/LON unset -- BeiDou require_hint search will scan NOTHING"
+  fi
+  echo "starting BEIDOU broker (bds_search/bds_track/bds_combiner, TLE group=beidou)..."
+  python3 $BROKER --detectors bds_search --trackers bds_track --combiner bds_combiner \
+          --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
+          ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_bds.ppm \
+          --chip-rate-hz 1.023e6 --code-length 10230 \
+          $BDS_ALM $CARG \
+          > /tmp/gpslive_broker_bds.log 2>&1 &
+  BDSPID=$!
+  python3 python/scripts/gps_status_logger.py --url http://localhost:12048 \
+          --combiner bds_combiner --search bds_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
+          --out "$RECDIR/status_log_bds.jsonl" > /tmp/gpslive_logger_bds.log 2>&1 &
+  BDSLOGPID=$!
+  echo "BeiDou C/N0 status log -> $RECDIR/status_log_bds.jsonl"
 fi
 
 # Persist per-PRN C/N0 + detection stats (deep_snr/coherence_s live only in REST/the browser -- the

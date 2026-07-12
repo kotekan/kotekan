@@ -38,7 +38,7 @@ export class GpsAmpHistoryPanel {
         $("<span/>").text("PRN").css({color: "#444"}).appendTo(bar);
         this.sel = $("<select/>").css({fontSize: "12px"}).appendTo(bar);
         this.sel.on("change", () => {
-            this.selected = parseInt(this.sel.val(), 10);
+            this.selected = this.sel.val(); // constellation-tagged key ("G12"/"E25"/"C19")
             this._plotted = false;   // force a fresh newPlot (axis rescale) on PRN switch
             this._redraw();
         });
@@ -78,14 +78,20 @@ export class GpsAmpHistoryPanel {
         if (this._inflight) return;
         this._inflight = true;
         const k = this.app.kotekan;
-        k.stageGet(this.combiner_stage, "get_status")
-            .then(r => r.ok ? r.json() : null).catch(() => null)
-            .then(status => {
+        // Tri-constellation: poll every combiner; missing stages 404 -> null -> skipped.
+        // History keys are "G12"/"E25"/"C19".
+        const chains = [["G", this.combiner_stage], ["E", "gal_combiner"], ["C", "bds_combiner"]];
+        Promise.all(chains.map(([tag, stage]) =>
+            k.stageGet(stage, "get_status")
+                .then(r => r.ok ? r.json() : null).catch(() => null)
+                .then(st => [tag, st])))
+            .then(results => {
                 this._inflight = false;
-                if (!Array.isArray(status)) return;
                 const now = new Date();
+                for (const [tag, status] of results) {
+                if (!Array.isArray(status)) continue;
                 for (const c of status) {
-                    const prn = c.prn;
+                    const prn = c.prn ? tag + c.prn : null;
                     if (!prn) continue;
                     const A = c.deep_amplitude || c.unbiased_amplitude || 0;
                     const sig = Math.max(c.deep_snr || 0, c.amp_snr || 0);
@@ -103,6 +109,7 @@ export class GpsAmpHistoryPanel {
                     if (h.t.length > MAX_PTS) { h.t.shift(); h.a.shift(); h.sig.shift(); h.coh.shift(); h.dr.shift(); }
                     if (prn === this.selected) this._dirty = true;
                 }
+                }
                 this._sync_dropdown();
                 this._redraw();
             });
@@ -110,7 +117,8 @@ export class GpsAmpHistoryPanel {
 
     // Keep the dropdown in sync with the PRNs we've seen (sorted), preserving the selection.
     _sync_dropdown() {
-        const prns = [...this.hist.keys()].sort((a, b) => a - b);
+        const prns = [...this.hist.keys()].sort((a, b) =>
+            a[0] === b[0] ? parseInt(a.slice(1)) - parseInt(b.slice(1)) : a.localeCompare(b));
         const cur = this.sel.val();
         const have = new Set();
         this.sel.find("option").each(function () { have.add($(this).val()); });
@@ -119,7 +127,7 @@ export class GpsAmpHistoryPanel {
         if (changed) {
             this.sel.empty();
             for (const p of prns)
-                this.sel.append($("<option/>").attr("value", p).text("PRN " + p));
+                this.sel.append($("<option/>").attr("value", p).text(p));
             // Preserve selection; else default to the PRN with the most history.
             if (this.selected != null && this.hist.has(this.selected))
                 this.sel.val(String(this.selected));
@@ -132,7 +140,7 @@ export class GpsAmpHistoryPanel {
                 this._dirty = true;
             }
         }
-        if (cur && this.sel.val() !== cur && this.hist.has(parseInt(cur, 10)))
+        if (cur && this.sel.val() !== cur && this.hist.has(cur))
             this.sel.val(cur);
     }
 

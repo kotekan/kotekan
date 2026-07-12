@@ -761,15 +761,31 @@ class GpsSkyResource(resource.Resource):
             return True
         return (time.monotonic() - self._last_compute) >= SKY_REFRESH_S
 
+    # Constellations served on the sky plot: tag + Celestrak TLE group. GPS, Galileo and
+    # BeiDou B1C all share the 1575.42 tune, so the tri-constellation configs track all
+    # three; a group whose TLE fetch fails is skipped (the others still render).
+    CONSTELLATIONS = (
+        ("G", None),        # None -> gps_beamtrack.DEFAULT_TLE_URL (gps-ops)
+        ("E", "https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle"),
+        ("C", "https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle"),
+    )
+
     def _compute(self):
-        """Runs in a worker thread: load TLEs once, propagate, filter by mask."""
+        """Runs in a worker thread: load TLEs once per constellation, propagate, mask."""
         from gps_beamtrack import (DEFAULT_TLE_URL, load_gps_satellites,
                                    predict_skypos)
         if self._sats is None:
-            self._sats = load_gps_satellites(DEFAULT_TLE_URL)
-        pos = predict_skypos(self.lat, self.lon, self.alt, _sats=self._sats)
-        sats = [{"prn": p, "az": round(az, 2), "el": round(el, 2)}
-                for p, (az, el) in sorted(pos.items()) if el >= self.mask_deg]
+            self._sats = {}
+            for tag, url in self.CONSTELLATIONS:
+                try:
+                    self._sats[tag] = load_gps_satellites(url or DEFAULT_TLE_URL)
+                except Exception as e:
+                    log_.warning("gps_sky: %s TLEs unavailable: %s", tag, e)
+        sats = []
+        for tag, by_prn in self._sats.items():
+            pos = predict_skypos(self.lat, self.lon, self.alt, _sats=by_prn)
+            sats += [{"prn": p, "const": tag, "az": round(az, 2), "el": round(el, 2)}
+                     for p, (az, el) in sorted(pos.items()) if el >= self.mask_deg]
         return {"ok": True, "sats": sats}
 
     def _kick_refresh(self):
