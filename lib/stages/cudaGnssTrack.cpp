@@ -52,6 +52,15 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         config.get_default<int>(unique_name, "hops_per_record", replica->repl_period_hops());
     dll_spacing = config.get_default<double>(unique_name, "dll_spacing_chips", 0.5);
     fll_reacq_hz = config.get_default<double>(unique_name, "fll_reacq_hz", 200.0);
+    // Cap the carrier-anchor AGE regardless of the Doppler fence: the NCO's Doppler-rate
+    // feed-forward is LINEAR from the anchor, but the true rate drifts (~1.7e-4 Hz/s^2 for
+    // MEO), so the accumulated quadratic carrier error is ~0.5*rate_dot*age^2 -- ~14 cycles
+    // at the 400 s ages the loose GPS fence allowed (the trim loop absorbs most, leaving
+    // ~0.1-0.3 cycles across a 1 s deep window: the ladder retreated to 125 ms on ~half of
+    // strong GPS emits while E1C/B1C -- whose tight fences re-anchor every 20-40 s -- held
+    // full windows on the SAME LO, which is what localized this). 30 s caps it at ~0.08
+    // cycles; the fence's phase glitch costs one deep window (~3% duty at 1 s windows).
+    max_anchor_age_s = config.get_default<double>(unique_name, "max_anchor_age_s", 30.0);
 
     const int ring_records = config.get_default<int>(unique_name, "ring_records", 50);
     ring_hops = (long long)ring_records * hops_per_record;
@@ -274,7 +283,10 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                              + 0.5 * sgn * dop_rate[p] * chip_component / fc * dt_anchor
                                    * dt_anchor;
             bool reanchored = false;
-            if (std::isnan(S.f_ref[p]) || std::fabs(S.f_ref[p] - dop[p]) > S.fll_reacq_hz) {
+            const double anchor_age =
+                (double)(whop - S.reacq_hop[p]) * (double)S.fft_len / S.sample_rate;
+            if (std::isnan(S.f_ref[p]) || std::fabs(S.f_ref[p] - dop[p]) > S.fll_reacq_hz
+                || anchor_age > S.max_anchor_age_s) {
                 S.f_ref[p] = dop[p];
                 S.reacq_hop[p] = whop;
                 reanchored = true;

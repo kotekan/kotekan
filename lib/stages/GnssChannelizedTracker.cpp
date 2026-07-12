@@ -93,6 +93,8 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     _dll_spacing = config.get_default<double>(unique_name, "dll_spacing_chips", 0.5);
     _fll_gain = config.get_default<double>(unique_name, "fll_gain", 0.0);
     _fll_reacq_hz = config.get_default<double>(unique_name, "fll_reacq_hz", 200.0);
+    // Carrier-anchor age cap: see cudaGnssTrack (quadratic ff error ~0.5*rate_dot*age^2).
+    _max_anchor_age_s = config.get_default<double>(unique_name, "max_anchor_age_s", 30.0);
     _fll_max_gap = config.get_default<double>(unique_name, "fll_max_gap_s", 0.005);
     // Freeze the FLL discriminator when the despread |A| drops below this -- so a signal dropout
     // (radar sweep, the broker coasting the seed) doesn't drive f_track on noise; the NCO keeps
@@ -306,8 +308,11 @@ void GnssChannelizedTracker::main_thread() {
                 // (observed -1158 Hz, deep dead). Resetting at fll_reacq_hz < the alias limit
                 // catches it before it aliases (the 2026-07-07 L1 deep-decay root cause).
                 const double f_tracked = f_ref[p] + ((_fll_gain > 0.0) ? f_track[p] : 0.0);
+                const double anchor_age =
+                    (double)(window_start_hop - reacq_hop[p]) * (double)_fft_len / _sample_rate;
                 if (nco_mode
-                    && (std::isnan(f_ref[p]) || std::fabs(f_tracked - dop[p]) > _fll_reacq_hz)) {
+                    && (std::isnan(f_ref[p]) || std::fabs(f_tracked - dop[p]) > _fll_reacq_hz
+                        || anchor_age > _max_anchor_age_s)) {
                     f_ref[p] = dop[p];
                     f_track[p] = 0.0;
                     phi_track[p] = 0.0;

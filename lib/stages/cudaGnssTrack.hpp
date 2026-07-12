@@ -32,7 +32,7 @@ public:
     std::vector<int> prns;
     int n_prn = 0, n_chan = 0, chan_offset = 0, fft_len = 0, hops_per_record = 0;
     double sample_rate = 5e6, capture_utc0 = 0.0, doppler_margin_hz = 5000.0;
-    double dll_spacing = 0.5, fll_reacq_hz = 200.0;
+    double dll_spacing = 0.5, fll_reacq_hz = 200.0, max_anchor_age_s = 30.0;
     long long ring_hops = 0; ///< multiple of hops_per_record (windows never straddle the wrap)
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> replica;
