@@ -146,6 +146,9 @@ private:
                                        ///< deep_snr ~ this value means NO coherent detection
     std::vector<float> _st_deep_pow; ///< fixed-full-window noise-debiased coherent power (Hz):
                                      ///< the map's unbiased coherent observable (mean 0 on noise)
+    std::vector<int> _dr_phase;   ///< dead-reckon anchor: overlay phase at _dr_utc (-1 = none)
+    std::vector<double> _dr_utc;  ///< dead-reckon anchor capture-UTC (the winning rung's start)
+    std::vector<int> _dr_prn;     ///< PRN the anchor belongs to (slot reassignment invalidates)
     std::vector<int> _st_deep_rec; ///< records in the chosen deep window (= full window unless the
                                    ///< auto-coherence ladder found a shorter, more coherent one)
     std::mutex _st_mtx;

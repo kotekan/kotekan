@@ -118,6 +118,9 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_coh_s.assign(_n_prn, 0.0f);
     _st_deep_floor.assign(_n_prn, 0.0f);
     _st_deep_pow.assign(_n_prn, 0.0f);
+    _dr_phase.assign(_n_prn, -1);
+    _dr_utc.assign(_n_prn, 0.0);
+    _dr_prn.assign(_n_prn, -1);
     _st_deep_rec.assign(_n_prn, 0);
 }
 
@@ -439,13 +442,45 @@ void GnssCoherentCombiner::main_thread() {
                         deep_rec[p] = (int)full_len;
                         coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
                     }
+                    // DEAD-RECKON ANCHOR (selection-free coherent power): a floor-cleared
+                    // win pins the overlay alignment at a capture-UTC; it advances one chip
+                    // per primary period deterministically, so later emits can wipe at the
+                    // PREDICTED phase -- one straight coherent sum, no max-over-alignments,
+                    // E[snr^2] = 2 exactly. That removes the extreme-value variance that
+                    // made the coherent single-emit floors WORSE than the incoherent ones
+                    // (2026-07-12: C 26 vs 20.3 dB-Hz) and is what unlocks the coherent
+                    // observable's sqrt(T_coh/T_rec) sidelobe advantage.
+                    if (cleared) {
+                        _dr_phase[p] = nh_phase[p];
+                        _dr_utc[p] = ub[ub.size() - (size_t)deep_rec[p]];
+                        _dr_prn[p] = (int)std::lround(ref_prn[p]);
+                    } else if (_dr_prn[p] != (int)std::lround(ref_prn[p])) {
+                        _dr_phase[p] = -1; // slot reassigned to another sat: anchor invalid
+                    }
                     if (full_len > 1 && ub.size() >= full_len) {
-                        const double span = ub.back() - ub[ub.size() - full_len];
+                        const double t0f = ub[ub.size() - full_len];
+                        const double span = ub.back() - t0f;
                         const double T = span * (double)full_len / (double)(full_len - 1);
-                        const double bias = 2.0
-                            * (std::log((double)std::max<size_t>(ov->size(), 2)) + 0.5772);
-                        if (T > 0.0)
-                            deep_pow[p] = (full.snr * full.snr - bias) / T;
+                        const double rec_dt = span / (double)(full_len - 1);
+                        bool dr_ok = _dr_phase[p] >= 0 && rec_dt > 0.0
+                                     && _dr_prn[p] == (int)std::lround(ref_prn[p]);
+                        if (dr_ok) {
+                            const long long steps =
+                                (long long)std::llround((t0f - _dr_utc[p]) / rec_dt);
+                            const int L_ov = (int)ov->size();
+                            const int ph = (int)(((_dr_phase[p] + steps) % L_ov + L_ov) % L_ov);
+                            const auto dw = gnss::overlay_wipe_at(ab, ub, *ov, ph);
+                            if (T > 0.0 && dw.snr > 0.0)
+                                deep_pow[p] = (dw.snr * dw.snr - 2.0) / T;
+                            else
+                                dr_ok = false;
+                        }
+                        if (!dr_ok) { // no anchor yet: searched full window, selection-debiased
+                            const double bias = 2.0
+                                * (std::log((double)std::max<size_t>(ov->size(), 2)) + 0.5772);
+                            if (T > 0.0)
+                                deep_pow[p] = (full.snr * full.snr - bias) / T;
+                        }
                     }
                 }
                 if (!_rolling) { _navbuf[p].clear(); _navutc[p].clear(); }

@@ -68,6 +68,12 @@ struct OverlayWipeResult {
  * the coherent sum, then sums the overlay-corrected records -- recovering the pilot's full
  * coherent gain (capped only by the carrier coherence time, not the 1 ms primary period).
  */
+/// Selection-free overlay wipe at a GIVEN alignment (dead-reckoned by the caller):
+/// one coherent sum, no phase search -- E[snr^2] = 2 exactly under noise.
+OverlayWipeResult overlay_wipe_at(const std::vector<std::complex<double>>& a,
+                                  const std::vector<double>& utc,
+                                  const std::vector<int8_t>& overlay, int phase);
+
 OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
                                const std::vector<double>& utc, const std::vector<int8_t>& overlay);
 

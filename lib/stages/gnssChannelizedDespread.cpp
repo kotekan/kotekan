@@ -102,4 +102,50 @@ OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
     return out;
 }
 
+OverlayWipeResult overlay_wipe_at(const std::vector<std::complex<double>>& a,
+                                  const std::vector<double>& utc,
+                                  const std::vector<int8_t>& overlay, int phase) {
+    // SELECTION-FREE variant of overlay_wipe: the alignment is GIVEN (dead-reckoned by the
+    // caller from a previously-locked emit -- the overlay advances one chip per primary
+    // period, deterministically in capture-UTC), so this is one straight coherent sum: no
+    // max-over-alignments, hence none of the extreme-value bias/variance that inflates the
+    // searched estimator's noise floor. E[snr^2] under pure noise = 2 exactly (complex
+    // 2-dof), which is what makes the debiased coherent power unbiased per emit.
+    using cd = std::complex<double>;
+    OverlayWipeResult out;
+    const int nrec = (int)a.size();
+    const int L = (int)overlay.size();
+    if (L <= 0 || nrec < 2 || (int)utc.size() != nrec)
+        return out;
+    std::vector<double> dt;
+    dt.reserve(nrec - 1);
+    for (int r = 1; r < nrec; ++r)
+        dt.push_back(utc[r] - utc[r - 1]);
+    std::nth_element(dt.begin(), dt.begin() + dt.size() / 2, dt.end());
+    const double rec_dt = dt[dt.size() / 2];
+    if (!(rec_dt > 0.0))
+        return out;
+    cd s(0.0, 0.0);
+    std::vector<double> ch(nrec);
+    for (int r = 0; r < nrec; ++r) {
+        long long k = ((long long)std::llround((utc[r] - utc[0]) / rec_dt) + phase) % L;
+        if (k < 0)
+            k += L;
+        ch[r] = (double)overlay[(size_t)k];
+        s += a[r] * ch[r];
+    }
+    const double mag = std::abs(s);
+    const cd rot = mag > 0.0 ? std::polar(1.0, -std::arg(s)) : cd(1.0, 0.0);
+    double noise2 = 0.0;
+    for (int r = 0; r < nrec; ++r) {
+        const cd vr = a[r] * ch[r] * rot;
+        noise2 += std::imag(vr) * std::imag(vr);
+    }
+    const double noise_sum = std::sqrt(noise2);
+    out.amplitude = mag / (double)nrec;
+    out.snr = noise_sum > 0.0 ? mag / noise_sum : 0.0;
+    out.phase = ((phase % L) + L) % L;
+    return out;
+}
+
 } // namespace gnss
