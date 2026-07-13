@@ -109,8 +109,12 @@ def main(argv=None):
     ap.add_argument("--lat", type=float, default=43.968697)
     ap.add_argument("--lon", type=float, default=-79.252106)
     ap.add_argument("--alt", type=float, default=260.0)
-    ap.add_argument("--ped-mask", type=float, default=10.0,
-                    help="samples BELOW this elevation calibrate the noise pedestal (deg)")
+    ap.add_argument("--ped-mask", type=float, default=-5.0,
+                    help="samples BELOW this elevation calibrate the noise pedestal (deg). "
+                         "STRICTLY below the horizon (default -5): with coast-to-horizon the "
+                         "0..10 deg population is real on-peak signal, and a signal-fed "
+                         "pedestal imprints its wander on every sat (the 2026-07-13 morning "
+                         "artifact). Noise probes supply the below-horizon samples.")
     ap.add_argument("--map-mask", type=float, default=5.0, help="map elevation mask (deg)")
     ap.add_argument("--tbin", type=float, default=60.0, help="time-series bin (s)")
     ap.add_argument("--naz", type=int, default=48)
