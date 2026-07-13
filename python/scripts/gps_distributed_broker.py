@@ -216,6 +216,14 @@ def main(argv=None):
                     help="detection significance (sigma above noise) above which a sat counts as "
                          "locked -- the primary, noise-relative lock metric (vs the noise-biased |A|; "
                          "noise sits at ~1, a real lock at >>3)")
+    ap.add_argument("--trim-precomp", action="store_true",
+                    help="EXPERIMENTAL (2026-07-12 night, default OFF pending bench "
+                         "validation): pre-shift the carrier trim by -ddop at seed-doppler "
+                         "steps and currency-translate coasted cp on forecast updates. "
+                         "First on-sky deploy correlated with an E/C carrier collapse on "
+                         "high-flap-rate sats (deep med 1-4 at healthy amp; GPS unaffected) "
+                         "-- suspected sign/reference error; validate on the replay bench "
+                         "before re-enabling.")
     ap.add_argument("--coast-to-horizon", action="store_true",
                     help="never drop a visible sat for low signal -- coast on the pure model "
                          "(almanac doppler + pooled code rate, currency-corrected) until it "
@@ -775,7 +783,7 @@ def main(argv=None):
             # forced the loop to re-absorb the step from scratch: a ~10 Hz-residual,
             # several-emit transient synchronized across sats (observed as constellation-
             # wide coh-0 waves every ~200 s). Pre-shifting the trim makes the step seamless.
-            if prev is not None and prn in car_trim:
+            if args.trim_precomp and prev is not None and prn in car_trim:
                 dstep = prev.get("doppler_hz", 0.0) - seed.get("doppler_hz", 0.0)
                 if dstep != 0.0:
                     car_trim[prn] = max(-args.carrier_max_hz,
@@ -849,7 +857,7 @@ def main(argv=None):
             if args.almanac and prn in pred:
                 new_dop = pred[prn][0] + clock_bias
                 old_dop = seeds[prn].get("doppler_hz", new_dop)
-                if new_dop != old_dop:
+                if new_dop != old_dop and args.trim_precomp:
                     # CURRENCY-CORRECT the coast (2026-07-12 evening): cp0 is meaningful only
                     # in its doppler's currency -- updating the forecast dop WITHOUT
                     # re-expressing cp walks the despread by t_abs*f_chip*ddop/f_c, chips/Hz
@@ -866,6 +874,8 @@ def main(argv=None):
                         car_trim[prn] = max(-args.carrier_max_hz,
                                             min(args.carrier_max_hz,
                                                 car_trim[prn] + (old_dop - new_dop)))
+                elif new_dop != old_dop:
+                    seeds[prn]["doppler_hz"] = new_dop  # legacy coast update (no translation)
                 if "doppler_rate_hz_s" in seeds[prn]:
                     seeds[prn]["doppler_rate_hz_s"] = pred[prn][1]
             rec = status.get(prn, {})
