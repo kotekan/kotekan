@@ -1267,21 +1267,6 @@ switch_failed_out:
 # FRB beamforming
 
 # UpchannelizationSchedule (used by setUpchanGain) expects these in the root level of the config tree.
-# TODO: change this and get the frequency indices from get_coarse_freq() so
-# that input files do not contain per-node information
-#
-# adapted from fengine_chime.j2
-# TODO: this cannot be a fixed list since the frequencies change per x-engine node
-#       instead we can / should used coarse_freq metadata entry
-# The frequency channels we keep.
-#     Channel 1024 has 400 MHz for CHIME, channel 0 has 800 MHz.
-#     There are 2.56 channels per MHz, with a channel width of 390625 Hz.
-#
-# NOTE: these *must* be sorted since the are passed through a std::set which
-# sorts them
-frequency_channels: [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ]
-#frequency_channels: [ 666, 698, 730, 738, 826, 898, 906, 978, 58, 66, 818, 962, 234, 746, 802, 954 ]
-
 upchan_factors: [16]
 # ranges are [min, max)
 upchan_channel_ranges:
