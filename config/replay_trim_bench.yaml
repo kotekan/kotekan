@@ -1,0 +1,59 @@
+---
+# TRIM-PRECOMP replay bench (2026-07-12 night): reproduce the E/C carrier collapse on the
+# 20 MSPS raw grab, GPS-only, CPU tracker. The broker runs with --hold-snr 1e9 (hold never
+# engages) so every cycle re-fits the seed with grid-scattered doppler -- the sub-fence
+# step regime that E/C's 12-flap/min holds live in. A/B the same replay with and without
+# --trim-precomp: the pre-comp adjusts the NCO trim by -ddop assuming the tracker re-pins
+# f_ref, but sub-fence steps leave f_ref pinned -> each step injects a pure NCO error.
+# Prep: python3 captures/prep_replay.py captures/l1_20msps_2026-07-12.bin
+# Run:  ./build_cuda/kotekan/kotekan -c config/replay_trim_bench.yaml -b 0.0.0.0:12070
+type: config
+log_level: info
+instrument_name: airspy_gps
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+samples_per_data_set: 199680
+bytes_per_sample: 2
+sizeof_float: 4
+buffer_depth: 16
+spectrum_length: 10
+sample_rate: 20.0e6
+f_offset: 5.0e6
+num_taps: 4
+signal: GPS_L1CA
+code_doppler_sign: 1.0
+doppler_margin_hz: 250000.0
+hops_per_record: 1000
+n_prn: 8
+record_floats: 15
+acquire_snr: 8.0
+acquire_windows: 20
+doppler_min: -5500.0
+doppler_max: 5500.0
+doppler_step: 100.0
+prns: [6, 11, 21, 5, 12, 19, 13, 30]
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+
+gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }
+
+input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
+chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+rec_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+
+read_in:
+    kotekan_stage: rawFileRead
+    buf: input_buf
+    base_dir: "/tmp/gpsin"
+    file_name: "gpsin"
+    file_ext: "raw"
+    end_interrupt: true
+fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
+
+search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10 }
+
+track:  { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf, out_buf: rec_buf, channel_offset: 0, n_channels: 10, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.0, carrier_shared: true }
+
+combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20 }
+
+sink: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp", file_name: "trimbench_sink", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
