@@ -215,6 +215,11 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   # the pure model through fades/nulls until they SET, so the unbiased power observables
   # sample the whole beam instead of only the locked stretches.
   if [ "${COAST_TO_HORIZON:-1}" != "0" ]; then ALM="$ALM --coast-to-horizon"; fi
+  # Dead-reckoned cp seeding (default ON; DEAD_RECKON=0 to disable): BRDC ephemeris + the
+  # receiver clock solved from detected sats seed CODE PHASE for every visible sat the
+  # search hasn't found -- sub-threshold sats despread on-peak with no detection needed
+  # (the search demotes to bootstrap/fallback/integrity; watch 'dead-reckon' broker lines).
+  if [ "${DEAD_RECKON:-1}" != "0" ]; then ALM="$ALM --dead-reckon --dr-constellation G"; fi
   if [ "${NARROW_SEARCH:-1}" != "0" ]; then
     # --search-margin-wide-hz = the COLD per-PRN window (pre-clock-bias), sized from the clock
     # profile's accuracy bound; the warm margin (--search-margin-hz) applies once the bias solves.
@@ -258,6 +263,7 @@ if grep -qE '^gal_track:' "$RUNCFG"; then
     GAL_ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
     GAL_ALM="$GAL_ALM --doppler-sign ${DOPPLER_SIGN:-1} --tle $GAL_TLE"
     GAL_ALM="$GAL_ALM --noise-probes ${NOISE_PROBES:-2}"
+    if [ "${DEAD_RECKON:-1}" != "0" ]; then GAL_ALM="$GAL_ALM --dead-reckon --dr-constellation E"; fi
     GAL_ALM="$GAL_ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500} --search-margin-wide-hz ${CLK_WIDE_HZ:-3000}"
   else
     echo "WARNING: gal_track present but LAT/LON unset -- Galileo require_hint search will scan NOTHING"
@@ -284,6 +290,7 @@ if grep -qE '^bds_track:' "$RUNCFG"; then
     # as clock bias and deadlocked the narrowed search for the whole constellation).
     BDS_ALM="$BDS_ALM --tle-name-filter BEIDOU-3"
     BDS_ALM="$BDS_ALM --noise-probes ${NOISE_PROBES:-2}"
+    if [ "${DEAD_RECKON:-1}" != "0" ]; then BDS_ALM="$BDS_ALM --dead-reckon --dr-constellation C"; fi
     BDS_ALM="$BDS_ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500} --search-margin-wide-hz ${CLK_WIDE_HZ:-3000}"
   else
     echo "WARNING: bds_track present but LAT/LON unset -- BeiDou require_hint search will scan NOTHING"

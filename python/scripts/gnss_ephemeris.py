@@ -237,7 +237,15 @@ def predict_all(eph, lat, lon, alt, t_utc, mask_deg=0.0):
     out = {}
     for key, recs in eph.items():
         e = best_eph(recs, t)
-        if e is None or e.get("health", 0) not in (0, 0.0):
+        if e is None:
+            continue
+        if e.get("health", 0) not in (0, 0.0) and key[0] != "C":
+            # BDS caveat: the merged-BRDC health word is B1I-referenced (SatH1) and the
+            # BDS-3 MEOs broadcasting perfectly healthy B1C routinely carry 1 there
+            # (measured 2026-07-13: C21 at 275 sigma with health=1, while only the
+            # IGSOs read 0) -- so for C the word selects nothing real; let C through
+            # and let the caller's measured-vs-predicted integrity residuals referee.
+            # G/E health words are trustworthy: keep strict.
             continue
         # light-time + Sagnac: two iterations are plenty
         tau = 0.075

@@ -47,7 +47,7 @@ def main(argv=None):
                     help="log every poll even if a PRN's deep_snr is unchanged (same combiner emit)")
     args = ap.parse_args(argv)
 
-    last = {}   # prn -> (deep_snr, deep_amplitude) of the last logged sample (dedup)
+    last = {}   # prn -> (deep_snr, deep_amplitude, t_logged) of the last logged sample (dedup)
     n = 0
     f = open(args.out, "a", buffering=1)   # line-buffered append
     print("gps_status_logger: %s -> %s (every %.1fs)" % (args.url, args.out, args.interval),
@@ -69,12 +69,16 @@ def main(argv=None):
                 da = r.get("deep_amplitude") or 0.0
                 asnr = r.get("amp_snr") or 0.0
                 # Only ACTIVE PRNs (a real deep/incoherent presence), and dedup repeat polls of the
-                # same emit (unchanged deep_snr+amplitude) -> keeps the log small.
+                # same emit (unchanged deep_snr+amplitude) -> keeps the log small. A 10 s heartbeat
+                # overrides the dedup: noise probes sit at a constant floor for hours, and a
+                # pedestal needs their rows to keep flowing (gps_cn0_map.py pedestal()).
                 if ds <= 0 and asnr <= 0 and da <= 0:
                     continue
-                if not args.no_dedup and last.get(prn) == (ds, da):
+                prev = last.get(prn)
+                if (not args.no_dedup and prev is not None
+                        and prev[:2] == (ds, da) and now - prev[2] < 10.0):
                     continue
-                last[prn] = (ds, da)
+                last[prn] = (ds, da, now)
                 rec = {"t": round(now, 3), "prn": int(prn),
                        # raw biased incoherent |A| -- with unbiased_amplitude this makes the noise
                        # power exactly recoverable offline (N = amplitude^2 - unbiased^2), the

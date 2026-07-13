@@ -369,6 +369,36 @@ def main(argv=None):
     ap.add_argument("--cl-time-adjust", type=float, default=0.0,
                     help="seconds added to the CL time-assist clock -- escape hatch for a future "
                          "non-multiple-of-1.5s GPS-UTC offset or a known host-clock bias")
+    ap.add_argument("--dead-reckon", action="store_true",
+                    help="seed CODE PHASE from broadcast ephemeris (BRDC) for every visible "
+                         "sat the search hasn't detected: predict the absolute transmit-time "
+                         "code phase, add the receiver clock solved each cycle from the "
+                         "detected sats (measured-vs-predicted circular median -- the "
+                         "gnss_deadreckon_check.py bootstrap, ~100 ns), and express it in "
+                         "the seed's Doppler currency. The search demotes to bootstrap "
+                         "(clock solve), fallback (a detection re-anchors via the normal "
+                         "seed loop) and integrity check (per-sat residuals logged); "
+                         "dead-reckoning only has to land within the DLL capture range "
+                         "(~0.4 chips; validated 0.10 chip rms 2026-07-13). Needs --almanac.")
+    ap.add_argument("--dr-constellation", default="G", choices=("G", "E", "C"),
+                    help="RINEX constellation letter for this broker's band")
+    ap.add_argument("--dr-repin-s", type=float, default=10.0,
+                    help="re-anchor a dead-reckoned (undetected, unlocked) seed from the "
+                         "model this often: fresh cp/doppler/rate together (a DR seed's "
+                         "doppler is FROZEN between pins -- currency-consistent by "
+                         "construction -- so this also bounds the doppler staleness; "
+                         "10 s * max MEO rate ~0.6 Hz/s = 6 Hz, under every band's fence)")
+    ap.add_argument("--dr-refresh-s", type=float, default=2.0,
+                    help="dead-reckon cadence (clock solve + integrity + pin checks)")
+    ap.add_argument("--dr-clock-alpha", type=float, default=0.2,
+                    help="EMA weight for the solved receiver clock (wrap-aware chips; the "
+                         "held value propagates at f_chip*(l-a) between solves)")
+    ap.add_argument("--dr-min-sats", type=int, default=2,
+                    help="detections needed for a receiver-clock solve (one sat is "
+                         "unfalsifiable -- same reasoning as --bias-min-sats)")
+    ap.add_argument("--dr-dry-run", action="store_true",
+                    help="compute + log the clock solve, integrity residuals and planned "
+                         "dead-reckoned seeds WITHOUT injecting any (validation mode)")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -402,6 +432,29 @@ def main(argv=None):
             except Exception as e:
                 _log("almanac unavailable (%s); falling back to search Doppler" % e)
                 args.almanac = False
+
+    # Dead-reckoned cp seeding: BRDC ephemeris + a search-solved receiver clock predict the
+    # code phase of every sat the search can't (yet) see. State: eph = parsed BRDC records;
+    # t0m = GPST of capture sample 0 pre-reduced mod the code period (full-GPST doubles
+    # quantize at ~0.24 chips; the reduction keeps the mod arithmetic exact, and its own
+    # constant error is COMMON to solve and seeds so it lands in the solved clock); clk =
+    # solved receiver clock (chips, mod code period) at epoch clk_t; seeded/pin = which
+    # PRNs are model-owned and when each was last re-anchored.
+    dr_state = None
+    if args.dead_reckon:
+        if not args.almanac:
+            _log("--dead-reckon needs --almanac; disabling")
+        else:
+            try:
+                import gnss_ephemeris as dr_eph_mod
+                dr_state = {"eph": None, "eph_t": 0.0, "t0m": None, "clk": None,
+                            "clk_t": 0.0, "next": 0.0, "log_next": 0.0,
+                            "pin": {}, "seeded": set()}
+                _log("dead-reckon: BRDC cp seeding armed (%s, repin %.0f s%s)"
+                     % (args.dr_constellation, args.dr_repin_s,
+                        ", DRY RUN" if args.dr_dry_run else ""))
+            except Exception as e:
+                _log("dead-reckon unavailable (%s); disabled" % e)
 
     seeds = {}       # prn -> {"doppler_hz", "code_phase_chips", ...} (consensus)
     low_hits = {}    # prn -> consecutive low-|A| poll count
@@ -587,9 +640,10 @@ def main(argv=None):
         la_samples = []   # per-sat (l-a) estimates this cycle, from sats with a good code-rate fit
         fitted = set()    # PRNs that got their own >=3-snapshot slope fit this cycle
         cl_report = []    # CL time-assist per-PRN (k, fine-time residual) log lines this cycle
-        # CL time-assist anchor: wall-clock UTC of capture sample 0 (airspy stamps it at its
-        # first USB callback; /adcstat serves it). 0.0 until the stream starts -- retry lazily.
-        if args.cl_assist and not utc0_sample0:
+        # Capture time anchor: wall-clock UTC of capture sample 0 (airspy stamps it at its
+        # first USB callback; /adcstat serves it). 0.0 until the stream starts -- retry
+        # lazily. Used by the CL time-assist and the dead-reckoned cp seeding.
+        if (args.cl_assist or dr_state is not None) and not utc0_sample0:
             try:
                 utc0_sample0 = float(
                     _get("%s/%s/adcstat" % (base, args.adc_stage)).get("utc0_sample0", 0.0))
@@ -844,7 +898,10 @@ def main(argv=None):
         for prn in list(seeds):
             if prn in probe_set:
                 continue
-            if up is not None and prn not in up:
+            if (up is not None and prn not in up
+                    and not (dr_state is not None and prn in dr_state["seeded"])):
+                # (model-owned sats are exempt: the TLE up-set mismaps some BDS birds;
+                # their BRDC elevation governs the drop, in the dead-reckon block)
                 _log("drop PRN %d (set below horizon)" % prn)
                 del seeds[prn]
                 cp_held.discard(prn)
@@ -854,7 +911,13 @@ def main(argv=None):
             if prn in best:  # re-detected -> re-anchored in the seed loop above (coast reset there)
                 continue
             # not re-detected this poll but still visible -> COAST: forecast the Doppler forward.
-            if args.almanac and prn in pred:
+            if dr_state is not None and prn in dr_state["seeded"]:
+                # model-owned (dead-reckoned) seed: its doppler is FROZEN between re-pins
+                # (each pin refreshes dop+cp+rate TOGETHER, currency-consistent); the TLE
+                # pred must not touch it -- the BDS TLE<->PRN mapping mismaps some birds
+                # (PRN 39: TLE el <5 vs BRDC el 10), so BRDC governs these sats entirely.
+                pass
+            elif args.almanac and prn in pred:
                 new_dop = pred[prn][0] + clock_bias
                 old_dop = seeds[prn].get("doppler_hz", new_dop)
                 if new_dop != old_dop and args.trim_precomp:
@@ -887,11 +950,203 @@ def main(argv=None):
                 low_hits[prn] = 0  # lock holding through the dropout -> reset coast
             else:
                 low_hits[prn] = low_hits.get(prn, 0) + 1
-                if low_hits[prn] >= coast_polls and not args.coast_to_horizon:
+                # dead-reckoned seeds are MODEL-owned: visible + predicted = keep despreading
+                # (their whole point is sats with no signal above the search threshold)
+                if (low_hits[prn] >= coast_polls and not args.coast_to_horizon
+                        and not (dr_state is not None and prn in dr_state["seeded"])):
                     _log("drop PRN %d (coast %.0fs expired, %s=%.2f)"
                          % (prn, args.coast_budget, "sig" if have_sig else "|A|", metric))
                     del seeds[prn]
                     low_hits.pop(prn, None)
+
+        # 3e. DEAD-RECKONED CODE-PHASE SEEDING (--dead-reckon): the search only exists to
+        # measure what the model already knows. BRDC ephemeris (~2 m orbits + ~5 ns sat
+        # clocks) plus the receiver clock solved from the sats we DO detect predict every
+        # other visible sat's code phase to well inside the DLL capture range (0.10 chip
+        # rms validated, gnss_deadreckon_check.py 2026-07-13) -- so seed them all:
+        # sub-threshold sats despread on-peak with no detection ever required (the
+        # sidelobe-mapping mode). The search demotes to bootstrap (clock solve), fallback
+        # (a detection re-anchors via the normal seed loop, which also removes the PRN
+        # from the model-owned set below) and integrity check (residuals logged here).
+        if (dr_state is not None and args.almanac and pred and utc0_sample0
+                and time.time() >= dr_state["next"]):
+            now_w = time.time()
+            dr_state["next"] = now_w + args.dr_refresh_s
+            t_code = CODE_LEN / args.chip_rate_hz
+            if dr_state["eph"] is None or now_w - dr_state["eph_t"] > 7200:
+                try:
+                    dr_state["eph"] = dr_eph_mod.parse_rinex_nav(dr_eph_mod.fetch_brdc())
+                    dr_state["eph_t"] = now_w
+                    dr_state["t0m"] = dr_eph_mod.gpst_of_utc(utc0_sample0) % t_code
+                    _log("dead-reckon: BRDC loaded (%d sats)" % len(dr_state["eph"]))
+                except Exception as e:
+                    _log("dead-reckon: BRDC unavailable (%s); retry in 10 min" % e)
+                    dr_state["eph_t"] = now_w - 7200 + 600
+            if dr_state["eph"]:
+                tag = args.dr_constellation
+                t_now_abs = now_w - utc0_sample0
+                la = code_bias_ema or 0.0
+                # clock drift (chips/s): EMPIRICAL from consecutive raw solves (EMA'd
+                # below), falling back to the f_chip*(l-a) model until measured -- the
+                # modeled value left a persistent EMA lag (~0.6 chips at first deploy),
+                # outside the BOC DLL capture range.
+                drift = dr_state.get("drift")
+                if drift is None:
+                    drift = args.chip_rate_hz * la
+                try:
+                    # two epochs, 4 s apart: range_rate difference -> doppler RATE (the
+                    # TLE almanac's rate is unused here -- BRDC governs model-owned sats)
+                    pd = dr_eph_mod.predict_all(
+                        dr_state["eph"], args.lat, args.lon, args.alt,
+                        datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0)
+                    pd2 = dr_eph_mod.predict_all(
+                        dr_state["eph"], args.lat, args.lon, args.alt,
+                        datetime.fromtimestamp(now_w + 4.0, tz=timezone.utc),
+                        mask_deg=-90.0)
+                except Exception as e:
+                    pd, pd2 = {}, {}
+                    _log("dead-reckon: predict failed: %s" % e)
+
+                def cp_predicted(v, t_abs):
+                    """Physical code phase (chips) of the predicted signal at capture age
+                    t_abs, EXCLUDING the receiver clock. One predict_all per cycle: the
+                    range is propagated to other epochs through range_rate (fine over the
+                    few-second detection staleness). All mod arithmetic on small numbers
+                    (t0m is the sample-0 GPST pre-reduced mod the code period)."""
+                    t_tx = (dr_state["t0m"] + t_abs
+                            - (v["range_m"] + v["range_rate_mps"] * (t_abs - t_now_abs))
+                              / dr_eph_mod.C_LIGHT
+                            + v["sat_clk_s"])
+                    return (t_tx % t_code) * args.chip_rate_hz
+
+                # -- receiver-clock solve (the bootstrap) + per-sat integrity residuals:
+                # physical cp at each detection hop (undo the sample-0 back-reference),
+                # minus the prediction, epoch-normalized to now (the offset drifts at
+                # f_chip*(l-a)); the circular median over sats is the receiver clock.
+                offs = []
+                for prn, (snr, dop, cp, ref_hop) in sorted(best.items()):
+                    v = pd.get((tag, prn))
+                    if v is None:
+                        continue
+                    t_i = ref_hop / args.hops_per_sec
+                    # The search's sample-0 back-reference subtracts BOTH the nominal code
+                    # advance (t*f_chip mod L -- the 'off' term) and the code-Doppler drift;
+                    # add BOTH back. Omitting the nominal term hid inside the solved clock
+                    # whenever all detections shared a snapshot hop (every offline check),
+                    # but across live scans it scatters by f_chip/hops_per_sec * (ref_hop
+                    # mod code-period) -- the wandering "13 chips/s clock" of the first
+                    # live deploy (2026-07-13).
+                    cp_loc = (cp + t_i * args.chip_rate_hz
+                              * (1.0 + args.code_doppler_sign * dop / args.carrier_hz)
+                              ) % CODE_LEN
+                    d_i = (cp_loc - cp_predicted(v, t_i)
+                           + drift * (t_now_abs - t_i)) % CODE_LEN
+                    offs.append((prn, d_i))
+                if len(offs) >= args.dr_min_sats:
+                    ref = offs[0][1]
+                    cen = sorted(((d - ref + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
+                                 for _, d in offs)
+                    raw = (cen[len(cen) // 2] + ref) % CODE_LEN
+                    prev_raw = dr_state.get("raw_prev")
+                    if prev_raw is not None and 0.5 < now_w - prev_raw[1] < 30.0:
+                        d_est = (((raw - prev_raw[0] + CODE_LEN / 2) % CODE_LEN)
+                                 - CODE_LEN / 2) / (now_w - prev_raw[1])
+                        dr_state["drift"] = (d_est if dr_state.get("drift") is None
+                                             else dr_state["drift"]
+                                             + 0.05 * (d_est - dr_state["drift"]))
+                    dr_state["raw_prev"] = (raw, now_w)
+                    if dr_state["clk"] is None:
+                        dr_state["clk"] = raw
+                        _log("dead-reckon: receiver clock BOOTSTRAP %.2f chips = %.3f us "
+                             "(mod %.0f ms; %d sats)"
+                             % (raw, raw / args.chip_rate_hz * 1e6, t_code * 1e3, len(offs)))
+                    else:
+                        clk = (dr_state["clk"]
+                               + drift * (now_w - dr_state["clk_t"])) % CODE_LEN
+                        step = ((raw - clk + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
+                        dr_state["clk"] = (clk + args.dr_clock_alpha * step) % CODE_LEN
+                    dr_state["clk_t"] = now_w
+                if dr_state["clk"] is not None and offs and now_w >= dr_state["log_next"]:
+                    dr_state["log_next"] = now_w + 30.0
+                    resid = ["PRN %d %+.2f%s" % (p, r, " BAD" if abs(r) > 1.0 else "")
+                             for p, d in offs
+                             for r in [((d - dr_state["clk"] + CODE_LEN / 2) % CODE_LEN)
+                                       - CODE_LEN / 2]]
+                    _log("dead-reckon clock %.2f chips (%.3f us mod %.0f ms, drift "
+                         "%+.3f chips/s); integrity: %s"
+                         % (dr_state["clk"], dr_state["clk"] / args.chip_rate_hz * 1e6,
+                            t_code * 1e3, dr_state.get("drift") or 0.0, "; ".join(resid)))
+                # -- seed / re-pin every visible, undetected, unlocked sat from the model --
+                if dr_state["clk"] is not None:
+                    clk_now = (dr_state["clk"]
+                               + drift * (now_w - dr_state["clk_t"])) % CODE_LEN
+                    planned = []
+                    for (ctag, prn), v in sorted(pd.items()):
+                        # +0.5 deg hysteresis vs the drop mask: a sat riding the mask
+                        # otherwise flickers drop->reseed every few cycles
+                        if (ctag != tag or v["el"] < args.mask_deg + 0.5 or prn in best
+                                or prn in probe_set or prn in cp_held):
+                            continue
+                        if prn in seeds and prn not in dr_state["seeded"]:
+                            continue  # search-anchored coast: not ours to touch
+                        if (prn in seeds
+                                and sig_of(status.get(prn, {})) >= args.lock_snr):
+                            continue  # sub-threshold LOCK: the DLL owns the residual now
+                        if (prn in dr_state["seeded"]
+                                and now_w - dr_state["pin"].get(prn, 0.0) < args.dr_repin_s):
+                            continue
+                        # doppler + rate from BRDC range-rate (NOT the TLE pred: the BDS
+                        # TLE<->PRN mapping mismaps some birds, and BRDC is the precision
+                        # source anyway); clock_bias still comes from the TLE-vs-measured
+                        # solve -- it's a receiver constant, common to both models.
+                        v2 = pd2.get((ctag, prn))
+                        dop_geo = -v["range_rate_mps"] / dr_eph_mod.C_LIGHT * args.carrier_hz
+                        dop_seed = args.doppler_sign * dop_geo + clock_bias
+                        drate = 0.0
+                        if v2 is not None:
+                            drate = (args.doppler_sign
+                                     * (-(v2["range_rate_mps"] - v["range_rate_mps"]) / 4.0)
+                                     / dr_eph_mod.C_LIGHT * args.carrier_hz)
+                        # inverse of cp_loc above: physical cp -> sample-0 cp0 removes the
+                        # nominal advance AND the code-Doppler drift (the seed currency)
+                        cp0 = ((cp_predicted(v, t_now_abs) + clk_now)
+                               - t_now_abs * args.chip_rate_hz
+                                 * (1.0 + args.code_doppler_sign
+                                    * dop_seed / args.carrier_hz)) % CODE_LEN
+                        if args.dr_dry_run:
+                            planned.append("PRN %d el %.0f cp0 %.1f dop %+.0f rate %+.2f"
+                                           % (prn, v["el"], cp0, dop_seed, drate))
+                            continue
+                        if prn not in seeds:
+                            _log("dead-reckon SEED PRN %d (elev %.0f, cp0 %.1f, dop %+.0f,"
+                                 " rate %+.2f)" % (prn, v["el"], cp0, dop_seed, drate))
+                        dll_trim.pop(prn, None)  # any old trim served the OLD anchor
+                        dll_last.pop(prn, None)
+                        seeds[prn] = {
+                            "doppler_hz": dop_seed, "code_phase_chips": cp0,
+                            "code_phase_rate": cp_rate_from_code_bias(
+                                dop_seed, la, args.hops_per_sec,
+                                args.chip_rate_hz, args.carrier_hz),
+                            "ref_hop": int(round(t_now_abs * args.hops_per_sec)),
+                            "doppler_rate_hz_s": drate}
+                        dr_state["seeded"].add(prn)
+                        dr_state["pin"][prn] = now_w
+                    if planned:
+                        _log("dead-reckon DRY RUN, would seed: %s" % "; ".join(planned))
+                    # model-owned sats drop on the BRDC elevation (they're exempt from
+                    # the TLE horizon drop -- see the coast loop)
+                    for prn in list(dr_state["seeded"]):
+                        v = pd.get((tag, prn))
+                        if v is None or v["el"] < args.mask_deg:
+                            _log("dead-reckon drop PRN %d (set below BRDC horizon)" % prn)
+                            seeds.pop(prn, None)
+                            low_hits.pop(prn, None)
+            # a fresh detection re-anchors via the seed loop (search = fallback); a
+            # dropped seed (set below horizon) clears the model-owned state with it
+            for prn in list(dr_state["seeded"]):
+                if prn in best or prn not in seeds:
+                    dr_state["seeded"].discard(prn)
+                    dr_state["pin"].pop(prn, None)
 
         # 3c. Delay-lock loop (R1): close the CODE loop from the combiner's window-averaged E/L
         # powers. disc = (<|E|^2>-<|L|^2>)/(<|E|^2>+<|L|^2>) ~ -4*tau at 0.5-chip spacing, where

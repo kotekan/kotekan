@@ -59,16 +59,19 @@ def main():
             if d.get("snr", 0) < 10:
                 continue
             # The detection's cp0 is a CURRENCY construct: the physical measurement,
-            # back-referenced to sample 0 through the CURRENT doppler held over the whole
-            # capture age -- per-sat errors of hundreds of chips at multi-hour ages. UNDO
-            # it: the physical code phase AT THE DETECTION HOP is
-            #   cp_local = cp0 + t_abs * f_chip * sign * dop / f_carrier   (mod L)
-            # and the prediction is evaluated at that same instant. The receiver sample
-            # clock's cumulative drift (l-a, ~ms over hours) is COMMON across sats and
+            # back-referenced to sample 0 by subtracting BOTH the nominal code advance
+            # (t*f_chip mod L, the search's 'off' term) and the Doppler code drift. UNDO
+            # BOTH: the physical code phase AT THE DETECTION HOP is
+            #   cp_local = cp0 + t_abs * f_chip * (1 + sign * dop / f_carrier)   (mod L)
+            # and the prediction is evaluated at that same instant. (The first version
+            # omitted the nominal term; it hid inside the solved clock because every
+            # detection of a scan shares the snapshot hop -- across scans it scatters by
+            # f_chip * (t_abs mod code period), the 2026-07-13 live-deploy wander.) The
+            # receiver sample clock's cumulative drift (l-a) is COMMON across sats and
             # lands in the solved clock constant, as it should.
             t_abs = d["ref_hop"] / 1e6            # hops_per_sec = 1e6 at the 20 MSPS front end
             cp_local = (d["code_phase_chips"]
-                        + t_abs * CHIP * d["doppler_hz"] / 1575.42e6) % L
+                        + t_abs * CHIP * (1.0 + d["doppler_hz"] / 1575.42e6)) % L
             t_i = datetime.fromtimestamp(utc0 + t_abs, tz=timezone.utc)
             pred = predict_all(eph, args.lat, args.lon, args.alt, t_i, mask_deg=0.0)
             if key not in pred:
