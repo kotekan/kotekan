@@ -173,7 +173,15 @@ fi
 # write -> "waiting for pipeline" forever). Create + clean whatever the config points at.
 RECDIR=$(grep -oE 'base_dir:[[:space:]]*"[^"]*"' "$RUNCFG" | head -1 | sed -E 's/.*"([^"]*)".*/\1/')
 RECDIR=${RECDIR:-/tmp/gpslive}
-mkdir -p "$RECDIR"; rm -f "$RECDIR"/* 2>/dev/null
+mkdir -p "$RECDIR"
+# AUTO-ARCHIVE, never delete (2026-07-13: a bare rm -f here silently destroyed the first
+# clean overnight beam-map run at a morning relaunch). Status logs move to a timestamped
+# soak dir; only the level_*.raw scratch recordings are cleared.
+if ls "$RECDIR"/status_log*.jsonl >/dev/null 2>&1; then
+  ARCH="$(dirname "$0")/../../captures/soaks/auto_$(date +%Y-%m-%d_%H%M%S)"
+  mkdir -p "$ARCH" && mv "$RECDIR"/status_log*.jsonl "$ARCH"/     && echo "previous status logs archived -> $ARCH"
+fi
+rm -f "$RECDIR"/level_*.raw 2>/dev/null
 echo "recording to $RECDIR"
 sleep 1
 

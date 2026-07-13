@@ -123,6 +123,13 @@ def main(argv=None):
     ap.add_argument("--dop-jump", type=float, default=5.0,
                     help="a seed-Doppler step above this (Hz) between consecutive emits marks a "
                          "RE-ANCHOR -- the code is briefly off-peak while the DLL re-trims")
+    ap.add_argument("--churn-gate", type=float, default=2.0,
+                    help="excise emits where the sat's LOCAL doppler-step rate (steps/min in "
+                         "a +-60 s window) exceeds this. State-flagged and value-blind: high "
+                         "churn marks the release/re-fit dither episodes that park BOC code "
+                         "partially off-peak for tens of minutes (2026-07-13 morning: dips "
+                         "showed 3 steps/min vs 0.6 healthy; -8 dB mean, 18x flutter). "
+                         "0 disables.")
     ap.add_argument("--reanchor-pad", type=float, default=2.0,
                     help="exclude emits within this many seconds of a re-anchor (STATE-flagged, "
                          "value-blind: no selection bias on the map)")
@@ -180,6 +187,10 @@ def main(argv=None):
             bad = np.zeros(len(o), bool)
             for tj in jumps:
                 bad |= np.abs(t[o] - tj) <= args.reanchor_pad
+            if args.churn_gate > 0 and len(jumps):
+                # local step rate: steps within +-60 s of each emit, per minute
+                rate = np.array([np.sum(np.abs(jumps - tt) <= 60.0) for tt in t[o]]) / 2.0
+                bad |= rate > args.churn_gate
             keep[o[bad]] = False
         n_cut = int((~keep).sum())
         prn, t, x, xc = prn[keep], t[keep], x[keep], xc[keep]

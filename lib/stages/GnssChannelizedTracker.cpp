@@ -313,10 +313,23 @@ void GnssChannelizedTracker::main_thread() {
                 const double f_tracked = f_ref[p] + ((_fll_gain > 0.0) ? f_track[p] : 0.0);
                 const double anchor_age =
                     (double)(window_start_hop - reacq_hop[p]) * (double)_fft_len / _sample_rate;
-                if (nco_mode
-                    && (std::isnan(f_ref[p]) || std::fabs(f_tracked - dop[p]) > _fll_reacq_hz
-                        || anchor_age > _max_anchor_age_s)) {
-                    f_ref[p] = dop[p];
+                const bool fresh_or_fence = std::isnan(f_ref[p])
+                                            || std::fabs(f_tracked - dop[p]) > _fll_reacq_hz;
+                if (nco_mode && (fresh_or_fence || anchor_age > _max_anchor_age_s)) {
+                    if (fresh_or_fence) {
+                        f_ref[p] = dop[p]; // genuine (re)acquisition: adopt the seed
+                    } else {
+                        // AGE re-pin, FREQUENCY-CONTINUOUS (2026-07-13): the old := dop reset
+                        // discarded the accumulated FF ramp (rate*age, ~12 Hz per 30 s at
+                        // MEO rates) and the broker trim re-absorbed it as a ~5 s transient
+                        // every cap period -- the GPS wave that excised 53% of emits and, on
+                        // BOC's sharp peak, the E/C dip episodes. Folding the ramp INTO f_ref
+                        // restarts it at zero with the total command unchanged: no frequency
+                        // step at all (the code-currency translation below absorbs the cp
+                        // side of the f_ref change automatically; only the unavoidable
+                        // replica PHASE re-reference remains, flagged via the reset below).
+                        f_ref[p] += -dop_rate[p] * anchor_age;
+                    }
                     f_track[p] = 0.0;
                     phi_track[p] = 0.0;
                     a_prev_ok[p] = 0;

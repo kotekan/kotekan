@@ -293,9 +293,14 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
             bool reanchored = false;
             const double anchor_age =
                 (double)(whop - S.reacq_hop[p]) * (double)S.fft_len / S.sample_rate;
-            if (std::isnan(S.f_ref[p]) || std::fabs(S.f_ref[p] - dop[p]) > S.fll_reacq_hz
-                || anchor_age > S.max_anchor_age_s) {
-                S.f_ref[p] = dop[p];
+            const bool fresh_or_fence = std::isnan(S.f_ref[p])
+                                        || std::fabs(S.f_ref[p] - dop[p]) > S.fll_reacq_hz;
+            if (fresh_or_fence || anchor_age > S.max_anchor_age_s) {
+                if (fresh_or_fence)
+                    S.f_ref[p] = dop[p]; // genuine (re)acquisition: adopt the seed
+                else // AGE re-pin: fold the FF ramp into f_ref -- frequency-continuous
+                     // (see GnssChannelizedTracker for the full story)
+                    S.f_ref[p] += -dop_rate[p] * anchor_age;
                 S.reacq_hop[p] = whop;
                 reanchored = true;
             }
