@@ -328,7 +328,7 @@ void GnssChannelizedTracker::main_thread() {
                         // step at all (the code-currency translation below absorbs the cp
                         // side of the f_ref change automatically; only the unavoidable
                         // replica PHASE re-reference remains, flagged via the reset below).
-                        f_ref[p] += -dop_rate[p] * anchor_age;
+                        f_ref[p] += dop_rate[p] * anchor_age; // PHYSICAL frame: no NCO-side negation
                     }
                     f_track[p] = 0.0;
                     phi_track[p] = 0.0;

@@ -300,7 +300,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     S.f_ref[p] = dop[p]; // genuine (re)acquisition: adopt the seed
                 else // AGE re-pin: fold the FF ramp into f_ref -- frequency-continuous
                      // (see GnssChannelizedTracker for the full story)
-                    S.f_ref[p] += -dop_rate[p] * anchor_age;
+                    S.f_ref[p] += dop_rate[p] * anchor_age; // PHYSICAL frame: no NCO-side negation
                 S.reacq_hop[p] = whop;
                 reanchored = true;
             }
