@@ -21,6 +21,7 @@
  *         (default 0.5 chip). Dumb outputs for the low-rate DLL: the broker forms the
  *         discriminator (|E|^2-|L|^2)/(|E|^2+|L|^2) from combiner-aggregated values and closes
  *         the code loop at ~Hz. The tracker itself makes NO alignment decisions.
+ *    15 dphi_cmd           -- COMMANDED carrier-phase INCREMENT, cycles (see below)
  *
  *  COMBINER record (GnssCoherentCombiner -> record/viewer; full-band, one per emit):
  *    0 PRN   1 Doppler_Hz   2 code_phase_chips
@@ -28,6 +29,32 @@
  *    9,10 UTC
  *    11 <|E|^2>  12 <|L|^2>  13 DLL discriminator  14 carrier residual (Hz, full-band
  *       cross-record phase walk -- the shared carrier loop's observable; broker closes it)
+ *    15 phase arc id        -- increments on every cycle slip / phase-continuity break; the
+ *       accumulated carrier phase itself is a DOUBLE and ships via REST get_status (adr_cycles),
+ *       not here: a float32 mantissa quantizes ~1e6 cycles of ADR to ~0.06 cycles, useless.
+ *
+ *  CARRIER PHASE (slot 15, tracker -> combiner). The tracker removes a known carrier phase
+ *  from the data: the replica's own 2*pi*f_ref*t (ABSOLUTELY anchored at sample 0) plus the
+ *  NCO's phi. The combiner measures what's left, arg(A), so the received carrier phase is
+ *      Phi_rx(t) = Phi_cmd(t) - arg(A)/2pi,   Phi_cmd = f_ref*t_abs - phi/(2*pi)  [cycles]
+ *  (both minus signs because the NCO and the despread residual live in the r2c-flipped
+ *  internal convention while f_ref is physical-signed -- see GnssCoherentCombiner for the
+ *  on-sky measurement that pinned each of them down).
+ *
+ *  Slot 15 carries the per-record INCREMENT of Phi_cmd (cycles since this PRN's previous
+ *  record), NOT Phi_cmd itself. Two reasons, both learned the hard way:
+ *    * Phi_cmd is ~1e7 cycles at soak age -- a float32 quantizes that to ~1 cycle, useless.
+ *      The obvious dodge (ship it mod 1 cycle) forces the combiner to UNWRAP, i.e. to guess
+ *      the integer part from a predicted rate. The only rate it has is the reported Doppler,
+ *      which is wrong by 2*carrier_trim -- 2 whole cycles per 10 ms B1C record at the trim
+ *      clamp. It then unwraps to the wrong integer, adopts that as its rate, and stays
+ *      self-consistently wrong forever (measured: BeiDou C24 reading exactly +99.5 Hz off,
+ *      = one cycle per 10 ms record).
+ *    * The increment is bounded and small (Doppler * record period: ~5 cycles at L1, ~50 at
+ *      B1C), so a float32 holds it to ~1e-6 cycles and NOTHING needs unwrapping. The tracker
+ *      keeps Phi_cmd continuous through f_ref re-pins (the phase-continuity fold), so the
+ *      increment stays small across those too -- which is what makes this possible at all.
+ *  0 means "no previous record for this PRN": the arc starts here.
  *
  * The monolithic ground-truth path (GpsReplicaCorrelator + gps_mono_watch.py) keeps its own
  * frozen 11-float layout and does NOT include this header. Python tools parse these constants
@@ -36,7 +63,7 @@
 
 namespace gnss {
 
-constexpr int RECORD_FLOATS = 15;  ///< float32 slots per PRN per record
+constexpr int RECORD_FLOATS = 16;  ///< float32 slots per PRN per record
 constexpr int RECORD_UTC_SLOT = 9; ///< capture-UTC double aliased at slots 9-10
 
 // Shared header slots
@@ -55,6 +82,8 @@ constexpr int REC_E_RE = 11;
 constexpr int REC_E_IM = 12;
 constexpr int REC_L_RE = 13;
 constexpr int REC_L_IM = 14;
+constexpr int REC_CPHASE = 15; ///< commanded carrier-phase INCREMENT, cycles since this
+                               ///< PRN's previous record (0 = arc start). See the header note.
 
 // Combiner-record slots
 constexpr int CMB_AMP_INCOH = 3;
@@ -67,6 +96,7 @@ constexpr int CMB_E_POW = 11;
 constexpr int CMB_L_POW = 12;
 constexpr int CMB_DLL_DISC = 13;
 constexpr int CMB_CARRIER_RESID = 14;
+constexpr int CMB_ARC = 15; ///< phase arc id: ++ on every cycle slip / continuity break
 
 } // namespace gnss
 #endif // GNSS_RECORD_HPP

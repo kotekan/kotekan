@@ -25,7 +25,7 @@ code_doppler_sign: 1.0
 doppler_margin_hz: 250000.0
 hops_per_record: 1000
 n_prn: 8
-record_floats: 15
+record_floats: 16
 acquire_snr: 8.0
 acquire_windows: 20
 doppler_min: -5500.0

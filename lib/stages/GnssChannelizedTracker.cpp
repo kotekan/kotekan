@@ -181,6 +181,16 @@ void GnssChannelizedTracker::main_thread() {
     std::vector<double> f_ref(n_prn, std::nan(""));
     std::vector<double> f_track(n_prn, 0.0);   // FLL residual-frequency estimate (Hz)
     std::vector<double> phi_track(n_prn, 0.0); // NCO accumulated carrier phase (rad)
+    // Carrier-phase continuity offset (cycles): absorbs the replica-phase step that an f_ref
+    // re-pin puts into the ABSOLUTELY-anchored commanded phase, so the exported carrier-phase
+    // observable runs continuously through re-pins instead of breaking its arc at every one.
+    std::vector<double> phi_cyc(n_prn, 0.0);  // NCO phase UNWRAPPED (cycles): the export's base.
+                                              // phi_track is the same phase WRAPPED for the
+                                              // rotation, and its wraps would otherwise inject a
+                                              // spurious +-1 cycle into every phase increment.
+    std::vector<double> phi_fix(n_prn, 0.0);
+    std::vector<double> phi_cmd_prev(n_prn, 0.0);   // previous record's commanded phase (cycles)
+    std::vector<uint8_t> phi_cmd_ok(n_prn, 0);      // ... and whether there is one
     std::vector<cf> a_prev(n_prn, cf(0.0f, 0.0f));
     std::vector<uint8_t> a_prev_ok(n_prn, 0);
     std::vector<long long> hop_prev(n_prn, 0);
@@ -266,6 +276,9 @@ void GnssChannelizedTracker::main_thread() {
                 if (!active[p]) {
                     f_ref[p] = std::nan(""); // forget the loop; re-acquire when it returns
                     a_prev_ok[p] = 0;
+                    phi_fix[p] = 0.0; // PRN gone: the phase arc breaks anyway, start clean
+                    phi_cyc[p] = 0.0;
+                    phi_cmd_ok[p] = 0;
                     continue;
                 }
 
@@ -316,6 +329,21 @@ void GnssChannelizedTracker::main_thread() {
                 const bool fresh_or_fence = std::isnan(f_ref[p])
                                             || std::fabs(f_tracked - dop[p]) > _fll_reacq_hz;
                 if (nco_mode && (fresh_or_fence || anchor_age > _max_anchor_age_s)) {
+                    // PHASE-CONTINUITY FOLD (the carrier-phase twin of the frequency fold
+                    // below). Re-pinning f_ref moves the ABSOLUTELY-ANCHORED replica, so the
+                    // commanded phase f_ref*t_abs steps by df*t_abs -- thousands of cycles at
+                    // soak age. The received phase does NOT step (the despread residual steps
+                    // back by the same amount), but arg(A) only knows it mod 1 cycle, so the
+                    // step is unrecoverable downstream: the ADR arc would break at every
+                    // re-pin (every 30 s), and short arcs are exactly what carrier-phase
+                    // levelling cannot use. Fold the step into a per-PRN offset instead --
+                    // the exported phase stays continuous through the re-pin, and the arc
+                    // survives. Same trick, same reason, as folding the FF ramp into f_ref.
+                    const double t_abs_pin =
+                        (double)window_start_hop * (double)_fft_len / _sample_rate;
+                    const double phi_before =
+                        (std::isnan(f_ref[p]) ? 0.0
+                                              : f_ref[p] * t_abs_pin - phi_cyc[p]);
                     if (fresh_or_fence) {
                         f_ref[p] = dop[p]; // genuine (re)acquisition: adopt the seed
                     } else {
@@ -332,8 +360,11 @@ void GnssChannelizedTracker::main_thread() {
                     }
                     f_track[p] = 0.0;
                     phi_track[p] = 0.0;
+                    phi_cyc[p] = 0.0;
                     a_prev_ok[p] = 0;
                     reacq_hop[p] = window_start_hop; // anchor the Doppler-rate feed-forward here
+                    // complete the fold: make the exported phase continuous across the step
+                    phi_fix[p] += phi_before - f_ref[p] * t_abs_pin;
                 }
                 const double fcar = nco_mode ? f_ref[p] : dop[p];
                 // 2nd-order carrier feed-forward -- applied in the NCO, NEVER as a replica retune.
@@ -499,6 +530,7 @@ void GnssChannelizedTracker::main_thread() {
                     if (a_prev_ok[p] && dt > 0.0) {
                         phi_track[p] += 2.0 * M_PI * f_nco * dt; // NCO (advances over gaps too)
                         phi_track[p] = std::remainder(phi_track[p], 2.0 * M_PI); // keep bounded
+                        phi_cyc[p] += f_nco * dt; // ... and UNWRAPPED, in cycles, for the export
                     }
                     const std::complex<double> rot = std::polar(1.0, -phi_track[p]);
                     const std::complex<double> g_corr = std::complex<double>(best.correlation) * rot;
@@ -518,7 +550,38 @@ void GnssChannelizedTracker::main_thread() {
                     a_prev[p] = a_corr;
                     a_prev_ok[p] = 1;
                     hop_prev[p] = window_start_hop;
-                }            }
+                }
+
+                // COMMANDED CARRIER PHASE (cycles mod 1) -- the carrier-phase observable's
+                // other half (gnssRecord.hpp): the replica's absolutely-anchored
+                // f_ref*t_abs plus the NCO's phi. The combiner adds the measured arg(A)
+                // to get the received carrier phase, so the f_ref re-pin's phase step
+                // (df*t_abs -- huge at soak age, and invisible in the reported Doppler,
+                // which is continuous by design) cancels exactly instead of slipping the
+                // arc. Non-NCO mode: phi == 0 and fcar == the per-record Doppler, same
+                // identity. mod 1 keeps float32 at ~1e-7 cycle resolution.
+                // SIGN: f_ref is PHYSICAL-signed (it comes from the seed Doppler), but the NCO
+                // phase -- like the trim and the despread residual it corrects -- lives in the
+                // r2c-flipped INTERNAL convention (the same flip as the search's
+                // det.doppler_hz = -grid). So phi enters the physical commanded phase NEGATED.
+                // Measured on sky, 2026-07-13: with phi added, every satellite's ADR rate was
+                // off by 2*(its mean NCO frequency) -- invisible on sats whose trim hovers near
+                // zero, but PRN10, whose trim sat pinned at the +100 Hz clamp, read +212 Hz off
+                // its ephemeris-predicted Doppler. One satellite at the rail exposed the sign
+                // that six near-zero ones had hidden.
+                const double t_abs_w =
+                    (double)window_start_hop * (double)_fft_len / _sample_rate;
+                const double phi_cmd_cyc =
+                    fcar_eff * t_abs_w
+                    - (nco_mode ? phi_cyc[p] : 0.0)   // UNWRAPPED NCO phase (see phi_cyc)
+                    + phi_fix[p]; // the re-pin folds (above): continuous across every step
+                // Ship the INCREMENT, not the phase: small, bounded, exactly representable in
+                // a float, and nothing downstream has to unwrap anything (gnssRecord.hpp).
+                rec[gnss::REC_CPHASE] =
+                    phi_cmd_ok[p] ? (float)(phi_cmd_cyc - phi_cmd_prev[p]) : 0.0f;
+                phi_cmd_prev[p] = phi_cmd_cyc;
+                phi_cmd_ok[p] = 1;
+            }
 
             // Stamp the window's absolute sample on the record frame: it survives
             // bufferSend/Recv (records ship back to the combiner across nodes) and lets

@@ -28,6 +28,12 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _sample_rate = config.get_default<double>(unique_name, "sample_rate", 5e6);
     const int n = (int)_prns.size();
     _phi.assign(n, 0.0);
+    _phi_fix.assign(n, 0.0);
+    _phi_cyc.assign(n, 0.0);
+    _phi_cmd_prev.assign(n, 0.0);
+    _phi_cmd_ok.assign(n, 0);
+    _fcar_prev.assign(n, 0.0);
+    _fcar_prev_ok.assign(n, 0);
     _a_prev.assign(n, {0.0, 0.0});
     _a_prev_ok.assign(n, 0);
     _wstart_prev.assign(n, 0);
@@ -75,6 +81,10 @@ void GnssGpuRecordAssemble::main_thread() {
                 const PrnCtl& c = pctl[(size_t)r * n_prn + p];
                 if (!c.run) {
                     _a_prev_ok[p] = 0;
+                    _fcar_prev_ok[p] = 0;
+                    _phi_fix[p] = 0.0; // PRN gone: the arc breaks anyway, start clean
+                    _phi_cyc[p] = 0.0;
+                    _phi_cmd_ok[p] = 0;
                     continue;
                 }
                 // Cross-channel sum over the covering mask, per correlator trial (E, P, L).
@@ -107,13 +117,31 @@ void GnssGpuRecordAssemble::main_thread() {
                 // history exactly like the tracker's in-place reset; f_nco (ctrim + ff ramp)
                 // changes the slope of phi, never jumps it.
                 if (c.reanchored) {
+                    // PHASE-CONTINUITY FOLD (see GnssChannelizedTracker): the re-pin steps the
+                    // absolutely-anchored replica phase by df*t_abs -- thousands of cycles at
+                    // soak age, which arg(A) can only report mod 1. Absorb the step so the
+                    // exported carrier phase (and hence the ADR arc) survives the re-pin.
+                    const double t_pin = (double)wstart / _sample_rate;
+                    const double before = (_fcar_prev_ok[p])
+                                              ? _fcar_prev[p] * t_pin - _phi_cyc[p]
+                                              : c.fcar * t_pin;
+                    _phi_fix[p] += before - c.fcar * t_pin;
                     _phi[p] = 0.0;
+                    _phi_cyc[p] = 0.0;
                     _a_prev_ok[p] = 0;
                 }
                 const double dt = (double)(wstart - _wstart_prev[p]) / _sample_rate;
                 if (_a_prev_ok[p] && dt > 0.0) {
                     _phi[p] += 2.0 * M_PI * c.f_nco * dt;
+                    // Keep the ROTATION phase bounded, but track the NCO phase UNWRAPPED (in
+                    // cycles) for the carrier-phase export. remainder() slides phi by whole
+                    // multiples of 2*pi, which a rotation cannot see and a mod-1 phase export
+                    // cannot see either -- but a per-record INCREMENT sees every one of them as
+                    // a spurious +-1 cycle. The NCO wraps ~f_nco times a second, so the ADR bled
+                    // about one cycle per wrap: measured as a per-satellite ADR-rate error of a
+                    // few Hz, scaling with each satellite's carrier trim (2026-07-13).
                     _phi[p] = std::remainder(_phi[p], 2.0 * M_PI);
+                    _phi_cyc[p] += c.f_nco * dt;
                 }
                 const std::complex<double> rot = std::polar(1.0, -_phi[p]);
                 const std::complex<double> g_corr = g3[1] * rot;
@@ -123,6 +151,23 @@ void GnssGpuRecordAssemble::main_thread() {
                 _a_prev[p] = (e3[1] > 0.0) ? g_corr / e3[1] : std::complex<double>(0.0, 0.0);
                 _a_prev_ok[p] = 1;
                 _wstart_prev[p] = wstart;
+
+                // COMMANDED CARRIER PHASE (cycles mod 1), the GPU twin of the CPU tracker's
+                // export -- see gnssRecord.hpp: replica f_ref*t_abs + the NCO's phi. Adding
+                // the combiner's measured arg(A) reconstructs the received carrier phase,
+                // with the re-pin's replica-phase step cancelling instead of slipping.
+                // phi enters NEGATED: f_ref is physical-signed, the NCO is in the r2c-flipped
+                // internal convention (see GnssChannelizedTracker for the on-sky measurement
+                // that settled this -- a satellite with its trim pinned at the clamp).
+                const double t_abs_w = (double)wstart / _sample_rate;
+                const double phi_cmd_cyc = c.fcar * t_abs_w - _phi_cyc[p] + _phi_fix[p];
+                // the INCREMENT (gnssRecord.hpp): bounded, float-exact, unwrap-free
+                rec[gnss::REC_CPHASE] =
+                    _phi_cmd_ok[p] ? (float)(phi_cmd_cyc - _phi_cmd_prev[p]) : 0.0f;
+                _phi_cmd_prev[p] = phi_cmd_cyc;
+                _phi_cmd_ok[p] = 1;
+                _fcar_prev[p] = c.fcar;
+                _fcar_prev_ok[p] = 1;
             }
 
             if (out_buf->metadata_pool) {

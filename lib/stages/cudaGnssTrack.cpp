@@ -322,6 +322,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
             c.f_nco = ctrim[p] + ff_hz;
             c.chan_mask = mask;
             c.energy_scale = 1.0;
+            c.fcar = fcar; // replica f_ref -> the assembler's commanded-carrier-phase export
             specs.push_back(GnssCudaDespread::Spec{p, cp_seed, S.dll_spacing, fcar,
                                                    std::move(local)});
             spec_prn.push_back(p);

@@ -56,7 +56,10 @@ struct PrnCtl {
     double f_nco;       ///< NCO slope for this record (ctrim + ff, internal convention, Hz)
     uint64_t chan_mask; ///< local covering-channel bits (for the assembler's cross-channel sum)
     double energy_scale;///< reserved (1.0)
-    uint64_t _pad1[2];
+    double fcar;        ///< replica carrier f_ref (Hz): the assembler needs it to reconstruct the
+                        ///< COMMANDED carrier phase f_ref*t_abs + phi/2pi (record slot 15). NOT
+                        ///< derivable from fcar_report, which folds out the re-pin step on purpose.
+    uint64_t _pad1;
 };
 static_assert(sizeof(PrnCtl) == 64, "PrnCtl must stay 16-byte aligned");
 

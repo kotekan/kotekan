@@ -115,6 +115,18 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_cp.assign(_n_prn, 0.0f);
     _st_dll_disc.assign(_n_prn, 0.0f);
     _st_car_resid.assign(_n_prn, 0.0f);
+    _adr_cyc.assign(_n_prn, 0.0);
+    _adr_cph_prev.assign(_n_prn, 0.0);
+    _adr_rate.assign(_n_prn, 0.0);
+    _adr_t0.assign(_n_prn, 0.0);
+    _adr_arc.assign(_n_prn, 0);
+    _adr_n.assign(_n_prn, 0);
+    _adr_ok.assign(_n_prn, 0);
+    _st_utc.assign(_n_prn, 0.0);
+    _st_adr.assign(_n_prn, 0.0);
+    _st_adr_lock.assign(_n_prn, 0.0);
+    _st_adr_arc.assign(_n_prn, 0);
+    _st_adr_n.assign(_n_prn, 0);
     _st_coh_s.assign(_n_prn, 0.0f);
     _st_deep_floor.assign(_n_prn, 0.0f);
     _st_deep_pow.assign(_n_prn, 0.0f);
@@ -213,6 +225,61 @@ void GnssCoherentCombiner::main_thread() {
                     car_S[p] += prod;
                     car_dt[p] += dt_c;
                     car_n[p] += 1;
+
+                    // ---- ACCUMULATED CARRIER PHASE (ADR), the precise ranging observable.
+                    // Phi_rx = Phi_cmd + arg(A)/2pi (gnssRecord.hpp). We accumulate it in
+                    // INCREMENTS, because both halves are ambiguous on their own and both
+                    // ambiguities die in the difference:
+                    //   * the commanded half arrives mod 1 cycle -> continue it to the
+                    //     integer nearest the reported Doppler's f*dt (a few cycles per
+                    //     record; the prediction is good to ~1e-3, the margin is 0.5)
+                    //   * the measured half is the SAME phase product the loop already
+                    //     forms, so it inherits the bit/overlay robustness: squaring folds
+                    //     the +-1 flip away and halves the unambiguous range to +-0.25
+                    //     cycles -- still ~250x the true per-record increment (the carrier
+                    //     loop holds the residual under ~1 Hz = 1e-3 cycles per ms record).
+                    // Accumulated in DOUBLE: ADR reaches ~1e6 cycles in a pass, where a
+                    // float32 mantissa quantizes to 0.06 cycles -- 1000x coarser than the
+                    // measurement. This is why ADR ships via REST, not a record slot.
+                    const double cph = ref[gnss::REC_CPHASE];
+                    if (energy <= 0.0) {
+                        _adr_ok[p] = 0; // not despread this record (inactive PRN): no phase
+                    } else if (_adr_ok[p]) {
+                        // The commanded-phase increment arrives ready-made from the tracker
+                        // (record slot 15): bounded, float-exact, NOTHING to unwrap. The
+                        // earlier mod-1-phase-plus-unwrap design is dead -- see gnssRecord.hpp
+                        // for how it silently locked BeiDou C24 onto a wrong integer.
+                        const double dcmd = cph;
+                        // dres is SUBTRACTED: arg(A) is the despread residual, which lives in
+                        // the r2c-flipped INTERNAL convention (like the NCO and the trim),
+                        // while the commanded phase above is physical. Same flip, same reason.
+                        // On-sky proof (2026-07-13): with dres added, every satellite's ADR
+                        // rate was off by 2x its MEAN uncorrected carrier residual -- which is
+                        // ~0 for a satellite whose carrier loop is working, and therefore
+                        // invisible on all of them but one. PRN10's loop was railed at the
+                        // 100 Hz trim clamp, carrying a persistent +12.9 Hz residual, and read
+                        // +24.9 Hz off its predicted Doppler: 2 x 12.9. The same railed
+                        // satellite exposed both sign conventions that six healthy ones hid.
+                        const double dres =
+                            std::arg(prod) / (2.0 * M_PI * (_carrier_pilot ? 1.0 : 2.0));
+                        _adr_cyc[p] += dcmd - dres;
+                        _adr_n[p] += 1;
+                    } else {
+                        // Arc start: the phase is ambiguous by an integer number of cycles,
+                        // so every arc begins at zero and downstream levels each arc on its
+                        // own (the standard carrier-phase ambiguity, one per arc).
+                        _adr_cyc[p] = 0.0;
+                        _adr_arc[p] += 1;
+                        _adr_t0[p] = utc_p;
+                        _adr_n[p] = 0;
+                        _adr_ok[p] = 1;
+                    }
+                } else if (car_prev_utc[p] > 0.0 || dt_c <= 0.0) {
+                    // A gap (valve drop, PRN dropped/re-seeded, records out of order) breaks
+                    // phase continuity: we cannot know how many whole cycles went by
+                    // unobserved. Break the arc -- a silent slip is far worse than an
+                    // honest one.
+                    _adr_ok[p] = 0;
                 }
                 car_prev[p] = A;
                 car_prev_utc[p] = utc_p;
@@ -368,6 +435,10 @@ void GnssCoherentCombiner::main_thread() {
                     resid_hz = dphi / (2.0 * M_PI * (car_dt[p] / car_n[p]));
                 }
                 rec[gnss::CMB_CARRIER_RESID] = (float)resid_hz;
+                // Phase arc id -- the raw capture's slip record. The accumulated phase itself
+                // is a double and ships via get_status (adr_cycles); what a float slot CAN
+                // carry usefully is "is this emit on the same unbroken arc as the last one".
+                rec[gnss::CMB_ARC] = (float)_adr_arc[p];
                 car_S[p] = {0.0, 0.0};
                 car_dt[p] = 0.0;
                 car_n[p] = 0;
@@ -579,6 +650,15 @@ void GnssCoherentCombiner::main_thread() {
                 _st_deep_pow[p] = (float)deep_pow[p];
                 _st_dll_disc[p] = rec[gnss::CMB_DLL_DISC];
                 _st_car_resid[p] = rec[gnss::CMB_CARRIER_RESID];
+                // ADR snapshot: the phase itself is a double (REST only); the record carries
+                // the arc id, which is what makes a raw capture self-describing about slips.
+                const double utc_e = *reinterpret_cast<const double*>(rec + RECORD_UTC_SLOT);
+                _st_utc[p] = utc_e;
+                _st_adr[p] = _adr_ok[p] ? _adr_cyc[p] : 0.0;
+                _st_adr_arc[p] = _adr_arc[p];
+                _st_adr_n[p] = _adr_ok[p] ? _adr_n[p] : 0;
+                _st_adr_lock[p] =
+                    (_adr_ok[p] && _adr_t0[p] > 0.0) ? (utc_e - _adr_t0[p]) : 0.0;
             }
         }
         out_buf->mark_frame_full(unique_name, out_id++);
@@ -604,7 +684,15 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"deep_floor", _st_deep_floor[p]},
                          {"deep_pow_hz", _st_deep_pow[p]},
                          {"dll_disc", _st_dll_disc[p]},
-                         {"carrier_hz_resid", _st_car_resid[p]}});
+                         {"carrier_hz_resid", _st_car_resid[p]},
+                         // Accumulated carrier phase (cycles) on the current unbroken arc,
+                         // its id, its length in records, and how long it has held (s). 0
+                         // cycles with a bumped arc id means the arc just restarted.
+                         {"utc", _st_utc[p]},
+                         {"adr_cycles", _st_adr[p]},
+                         {"adr_arc", _st_adr_arc[p]},
+                         {"adr_records", _st_adr_n[p]},
+                         {"adr_lock_s", _st_adr_lock[p]}});
     conn.send_json_reply(reply);
 }
 

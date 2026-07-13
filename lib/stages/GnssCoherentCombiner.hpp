@@ -146,6 +146,34 @@ private:
                                        ///< deep_snr ~ this value means NO coherent detection
     std::vector<float> _st_deep_pow; ///< fixed-full-window noise-debiased coherent power (Hz):
                                      ///< the map's unbiased coherent observable (mean 0 on noise)
+    // ---- Accumulated carrier phase (ADR): the precise ranging / TEC observable.
+    // Reconstructed per RECORD as Phi_cmd (tracker, record slot 15) + arg(A)/2pi, accumulated
+    // in increments so both ambiguities cancel (see the block in main_thread). Continuous
+    // across f_ref re-pins by construction; an arc BREAKS on any gap or inactive record,
+    // because unobserved whole cycles are unknowable. Each arc carries its own integer
+    // ambiguity, so each begins at zero and downstream levels it against the code phase.
+    std::vector<double> _adr_cyc;      ///< accumulated carrier phase this arc (cycles; DOUBLE --
+                                       ///< float32 would quantize ~1e6 cycles to 0.06)
+    std::vector<double> _adr_cph_prev; ///< previous record's commanded phase (cycles mod 1)
+    std::vector<double> _adr_rate;     ///< commanded-phase rate (Hz) -- the unwrap predictor. The
+                                       ///< reported Doppler errs by 2*trim, which at a 10 ms B1C
+                                       ///< record is 2 whole cycles: it would unwrap to the wrong
+                                       ///< integer and never come back.
+    std::vector<double> _adr_t0;       ///< arc start capture-UTC (lock time = utc - t0)
+    std::vector<int> _adr_arc;         ///< arc id: ++ on every continuity break (slip counter)
+    std::vector<int> _adr_n;           ///< records accumulated in this arc
+    std::vector<uint8_t> _adr_ok;      ///< phase continuity currently held
+    std::vector<double> _st_utc;       ///< CAPTURE UTC of the emit these snapshots belong to --
+                                       ///< the epoch every observable is tagged with. Wall-clock
+                                       ///< at poll time is NOT it (pipeline latency + emit
+                                       ///< cadence jitter): differencing phase against wall time
+                                       ///< injects f*dt_jitter, ~6 Hz on a 2 kHz Doppler at 0.1 s
+                                       ///< of jitter -- which is exactly what the first ADR
+                                       ///< acceptance run measured before this field existed.
+    std::vector<double> _st_adr;       ///< REST snapshots of the above, at emit
+    std::vector<double> _st_adr_lock;
+    std::vector<int> _st_adr_arc, _st_adr_n;
+
     std::vector<int> _dr_phase;   ///< dead-reckon anchor: overlay phase at _dr_utc (-1 = none)
     std::vector<double> _dr_utc;  ///< dead-reckon anchor capture-UTC (the winning rung's start)
     std::vector<int> _dr_prn;     ///< PRN the anchor belongs to (slot reassignment invalidates)

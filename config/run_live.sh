@@ -323,6 +323,28 @@ python3 python/scripts/gps_status_logger.py --url http://localhost:12048 \
 LOGPID=$!
 echo "C/N0 status log -> $RECDIR/status_log.jsonl"
 
+# OBSERVABLES RECORD (the instrument's primary data product; OBSERVABLES=0 to skip). One JSONL
+# row per satellite per band per EMIT: code phase + accumulated carrier phase (with its arc id)
+# + C/N0 + the BRDC geometry at that epoch -- raw, unlevelled, nothing subtracted. This is what
+# TEC, scintillation and precise positioning are all computed FROM, offline. One logger per
+# chain, because per-band is exactly how the geometry-free combination will consume them.
+OBSPIDS=""
+if [ "${OBSERVABLES:-1}" != "0" ]; then
+  for _o in "gps_combiner gps_search G GPS_L1CA 1023 obs_gps_l1" \
+            "gal_combiner gal_search E GAL_E1C 4092 obs_gal_e1" \
+            "bds_combiner bds_search C BDS_B1C_P 10230 obs_bds_b1c"; do
+    set -- $_o
+    grep -qE "^($1|${1#gps_}):" "$RUNCFG" || continue
+    python3 python/scripts/gnss_observables.py --url http://localhost:12048 \
+            --combiner "$1" --search "$2" --sys "$3" --band "$4" --code-length "$5" \
+            --carrier-hz "${CARRIER_HZ:-1575420000}" --chip-rate-hz 1.023e6 \
+            ${LAT:+--lat $LAT} ${LON:+--lon $LON} ${ALT:+--alt $ALT} \
+            --out "$RECDIR/$6.jsonl" > "/tmp/gpslive_$6.log" 2>&1 &
+    OBSPIDS="$OBSPIDS $!"
+    echo "observables ($4) -> $RECDIR/$6.jsonl"
+  done
+fi
+
 echo "=== watching (Ctrl-C to stop) ==="
 while true; do
   sleep 3
