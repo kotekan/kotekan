@@ -42,6 +42,9 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 
+sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(__file__)))
+from gnss_stages import resolve_stage  # noqa: E402  (gps_* <-> bare stage-name aliasing)
+
 
 def _get(url, timeout=5.0):
     with urllib.request.urlopen(url, timeout=timeout) as r:
@@ -157,12 +160,17 @@ def expand_token(tok):
 def resolve_prefix(entry, default_base):
     """Endpoint prefix (everything before /<verb>) for a list entry.
 
-    Absolute http(s) entries are used as-is; bare names hang off --rest-url.
+    Absolute http(s) entries are used as-is; bare names hang off --rest-url. Bare names
+    are ALIAS-RESOLVED against the live pipeline (gnss_stages): the tri-constellation
+    configs name the GPS chain gps_search/gps_track/gps_combiner, matching gal_*/bds_*,
+    while the older single-constellation benches still use search/track/combiner -- either
+    spelling works against either config.
     """
     entry = entry.strip()
     if entry.startswith("http://") or entry.startswith("https://"):
         return entry.rstrip("/")
-    return default_base.rstrip("/") + "/" + entry.strip("/")
+    return default_base.rstrip("/") + "/" + resolve_stage(default_base,
+                                                          entry.strip("/"))
 
 
 def parse_endpoints(csv, default_base):

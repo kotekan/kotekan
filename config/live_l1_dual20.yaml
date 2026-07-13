@@ -89,7 +89,7 @@ fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, inpu
 # candidate slots but costs only the ~10-12 visible narrow scans; PRNs swap in/out as they rise/set.
 # hint_ttl_s: a hint the broker stops refreshing (a set sat) expires after this, dropping the PRN.
 # Needs the broker's --narrow-search (run_live's almanac assist provides it).
-search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 10.0, acquire_windows: 20, require_hint: true, hint_ttl_s: 8.0 }
+gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 10.0, acquire_windows: 20, require_hint: true, hint_ttl_s: 8.0 }
 valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 # capture_utc0 > 0 -> stamp each record's UTC as capture_utc0 + window_start/sample_rate
 # (true CAPTURE time from fpga_seq), not wall-clock-at-emit. Emit time is bursty (the
@@ -118,7 +118,7 @@ valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 # ---- GPS tracking on the F0 GPU chain (docs/gnss_gpu_migration.md §6): the CPU tracker
 # saturates a core at 20 MSPS (84% in hoprate_stream, 40% frames shed); the cudaProcess
 # despread runs the same records at ~300k PRN-despreads/s. Broker contract unchanged
-# (seed_endpoint /track/set_seeds; run_live.sh derives TRK from the seed_endpoint entries --
+# (seed_endpoint /gps_track/set_seeds; run_live.sh derives TRK from the seed_endpoint entries --
 # the ^track stage-name grep alone can't see inside a cudaProcess commands: list).
 # epl frame = gnssGpuChain layout: 176 + 1024*n_prn + 1152*n_prn*n_chan (n_chan 10).
 epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 11520 * n_prn }
@@ -145,7 +145,7 @@ gputrack:
           capture_utc0: 1.0
           fll_gain: 0.0
           carrier_shared: true
-          seed_endpoint: "/track/set_seeds"
+          seed_endpoint: "/gps_track/set_seeds"
         - name: cudaOutputData
           gpu_mem: gnss_epl
           out_buf: epl_buf
@@ -154,7 +154,7 @@ assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_
 # integration_length: 1000, navwipe_bit_records: 20 -> navwipe: integrate ~1 s (50 nav bits)
 # coherently; deep |A| in slot 8. Restored to 1000 now that the Doppler-rate feed-forward removes the
 # zenith ramp (was temporarily 400 for the coherence-limit diagnostic).
-combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20 }
+gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20 }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpswipe", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- Galileo E1-C parallel chain (same channelized stream, second consumers) ----

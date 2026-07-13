@@ -175,6 +175,9 @@ export class App {
             airspy_stages: k.airspy_stages || ["airspy_input"],
             lag_align_stage: k.lag_align_stage || null,
         });
+        // Learn the pipeline's registered stage names so gps_* resolves against configs
+        // that still use the bare search/track/combiner spelling (and vice versa).
+        this.kotekan.loadStages();
 
         // GPS-only mode (lean live config, no power stream): there's no
         // waterfall/spectrum to build. ONE shared GpsFeed polls kotekan REST +
@@ -195,12 +198,12 @@ export class App {
             this.panels.push(new GpsTablePanel({
                 target: "gps_table_card", feed, has_site: g.has_site,
             }));
-            // Â(t) history for a chosen PRN, with error bars -- buffered in-browser.
-            this.layout.addWidget({mount_id: "gps_amp_card", title: "GPS Â history",
+            // Per-PRN time series (C/N₀ coh/inc, sig, coh, dop, snr) -- buffered in-browser,
+            // fed by the same GpsFeed as the sky + table.
+            this.layout.addWidget({mount_id: "gps_amp_card", title: "GNSS history",
                                    x: 0, y: 8, w: 12, h: 5, min_w: 4, min_h: 3});
             this.panels.push(new GpsAmpHistoryPanel({
-                app: this, target: "gps_amp_card",
-                combiner_stage: g.combiner_stage,
+                app: this, target: "gps_amp_card", feed,
             }));
             this.layout.restore_from_storage();
             return;

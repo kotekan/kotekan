@@ -928,12 +928,13 @@ def main():
                     help="Observer altitude (m); default env ALT, else 0.")
     gg.add_argument("--gps-mask-deg", type=float, default=5.0,
                     help="Elevation mask (deg) for the sky plot (default 5).")
-    gg.add_argument("--gps-search-stage", default="search",
-                    help="kotekan GnssChannelizedSearch stage name "
-                    "(get_detections); default 'search'.")
-    gg.add_argument("--gps-combiner-stage", default="combiner",
-                    help="kotekan GnssCoherentCombiner stage name "
-                    "(get_status); default 'combiner'.")
+    gg.add_argument("--gps-search-stage", default="gps_search",
+                    help="kotekan GnssChannelizedSearch stage name (get_detections); "
+                    "default 'gps_search' (the browser alias-resolves it to the bare "
+                    "'search' on configs that still use that spelling).")
+    gg.add_argument("--gps-combiner-stage", default="gps_combiner",
+                    help="kotekan GnssCoherentCombiner stage name (get_status); "
+                    "default 'gps_combiner' (alias-resolved to 'combiner' as above).")
     gg.add_argument("--gps-airspy-stage", default="airspy_in",
                     help="kotekan airspy stage name for the ADC noise readout "
                     "(adcstat); default 'airspy_in'.")

@@ -12,7 +12,10 @@ freely -- it's a monitoring side-log, not part of the pipeline.
 Run alongside the pipeline (run_live.sh launches it automatically). Standalone:
   python3 gps_status_logger.py --url http://localhost:12048 --out /tmp/gpswipe/status_log.jsonl
 """
-import argparse, json, sys, time, urllib.request
+import argparse, json, os, sys, time, urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from gnss_stages import resolve_stage  # noqa: E402  (gps_* <-> bare stage-name aliasing)
 
 
 def _get(url, timeout=3.0):
@@ -46,6 +49,11 @@ def main(argv=None):
     ap.add_argument("--no-dedup", action="store_true",
                     help="log every poll even if a PRN's deep_snr is unchanged (same combiner emit)")
     args = ap.parse_args(argv)
+
+    # gps_* <-> bare stage-name aliasing (gnss_stages): the tri-constellation config names
+    # the GPS chain gps_search/gps_combiner; the older benches use search/combiner.
+    args.combiner = resolve_stage(args.url, args.combiner)
+    args.search = resolve_stage(args.url, args.search)
 
     last = {}   # prn -> (deep_snr, deep_amplitude, t_logged) of the last logged sample (dedup)
     n = 0

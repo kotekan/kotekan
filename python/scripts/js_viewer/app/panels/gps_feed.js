@@ -28,8 +28,11 @@ export class GpsFeed {
     constructor({app, search_stage, combiner_stage, airspy_stage}) {
         this.app = app;
         this.airspy_stage = airspy_stage || "airspy_in";
+        // gps_* names throughout (symmetric with gal_*/bds_*); KotekanRest.resolveStage
+        // maps them onto the bare search/combiner spelling on older configs.
         this.chains = CHAINS.map(c => Object.assign({}, c, c.tag === "G"
-            ? {search: search_stage || "search", combiner: combiner_stage || "combiner"}
+            ? {search: search_stage || "gps_search",
+               combiner: combiner_stage || "gps_combiner"}
             : {search: c.tag === "E" ? "gal_search" : "bds_search",
                combiner: c.tag === "E" ? "gal_combiner" : "bds_combiner"}));
         this._listeners = [];
@@ -95,8 +98,8 @@ export class GpsFeed {
             const id = tag + prn;
             if (!sats.has(id)) sats.set(id, {
                 id, tag, prn, az: null, el: null, snr: null, detected: false,
-                amp: 0, coh: 0, deep: 0, dbi: 0, sig: 0,
-                cn0: null, dop: null, coh_s: null,
+                amp: 0, coh: 0, deep: 0, dbi: 0, sig: 0, deep_snr: 0, dr: 0,
+                cn0: null, cn0_coh: null, dop: null, coh_s: null,
             });
             return sats.get(id);
         };
@@ -130,6 +133,14 @@ export class GpsFeed {
                         : (s.amp_snr || 0);
                     r.dop = s.doppler_hz != null ? s.doppler_hz : null;
                     r.coh_s = s.coherence_s != null ? s.coherence_s : null;
+                    r.deep_snr = s.deep_snr || 0;
+                    r.dr = s.deep_records || 0;   // ladder window (records) behind this emit
+                    // COHERENT C/N0 (dB-Hz) = 10 log10(deep_snr^2 / T_coh): the deep
+                    // estimator, sqrt(T)-deep but defined only where the combiner
+                    // certified the coherence (a floored deep is rectification noise).
+                    if (r.coh_s > 0 && r.deep_snr > 0)
+                        r.cn0_coh = 20 * Math.log10(r.deep_snr)
+                                    - 10 * Math.log10(r.coh_s);
                     // Incoherent C/N0 (dB-Hz, pipeline zero-point): per-record
                     // power ratio x = u^2/(a^2-u^2), density x/t_rec -- the same
                     // estimator as gps_cn0_map.py, needing only 1 record of

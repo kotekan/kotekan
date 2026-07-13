@@ -1,68 +1,87 @@
-// GPS deep-detection history: for a PRN picked from a dropdown, a live time series of EITHER
-//   * Â  = deep_amplitude (the deep nav-wiped matched-filter amplitude), 1σ = Â/deep_snr, OR
-//   * C/N₀ = 10·log10(deep_snr² / coherence_s) dB-Hz -- the gain-independent, un-compressed
-//     signal-quality measure. Â ∝ √(C/N₀) and its absolute level tracks front-end gain, so it
-//     looks flat across the (power-controlled, hemispherically-uniform) GPS sky; C/N₀ squares the
-//     SNR back out so the real per-pass / per-satellite variation is visible. Dividing by
-//     coherence_s (the winning deep window's coherent time) keeps it stable when the auto-coherence
-//     ladder switches window length. The dB-Hz zero-point is approximate (nav-wipe processing loss),
-//     but the VARIATION is right and comparable across days/receivers.
+// GNSS per-PRN time series: pick a satellite and an observable, watch it evolve.
 //
-// Polls <combiner>/get_status on its own timer and BUFFERS the raw (time, Â, significance,
-// coherence_s) per PRN in the browser only -- tiny volume, not served forward, fresh on reload.
+// Observables (the dropdown), all straight off the shared GpsFeed so this panel and the
+// table can never disagree:
+//   * C/N₀ coh  -- 10 log10(deep_snr² / T_coh) dB-Hz: the DEEP estimator. Gain-independent
+//                  and √T-deep, but defined only where the combiner certified the coherence
+//                  (coherence_s > 0); a floored deep is nav-wipe rectification, not signal,
+//                  so those emits are GAPS here rather than points.
+//   * C/N₀ inc  -- 10 log10(x / t_rec) dB-Hz from the single-record power ratio
+//                  x = u²/(a²-u²): needs no coherence at all, so it survives where the
+//                  coherent estimator drops out. The pair together is the diagnostic --
+//                  they should agree, and the map (gps_cn0_map.py) plots both for that reason.
+//   * sig       -- combined significance (σ above noise): deep when floor-certified, else
+//                  the moment-debiased incoherent amp_snr. The lock metric.
+//   * coh       -- the auto-ladder's winning coherent window (s). Its collapses ARE the
+//                  carrier-coherence story; 0 = no rung beat its rectification floor.
+//   * dop       -- tracked Doppler (Hz). Should be a smooth orbital curve; steps are seed
+//                  re-anchors (staleness releases / escapes), the churn signature.
+//   * snr       -- SEARCH detection significance (acquire grid), independent of tracking.
+//
+// POINTS, NOT LINES: emits are irregular and gapped (a dropout is real information), so
+// connecting them draws structure that isn't in the data.
+//
+// History is buffered in-browser only (tiny, not served forward, fresh on reload).
 
-const POLL_MS = 1500;
-const MAX_PTS = 10000;      // per-PRN cap (~4 h at 1.5 s); drops oldest past this so the live
-                            // re-render stays snappy. Data is tiny; this bounds RENDER cost, not RAM.
+const MAX_PTS = 10000;      // per-PRN cap (~4 h at 1.5 s); bounds RENDER cost, not RAM
 const LN10_10 = 10 / Math.LN10;   // 10/ln10 = 4.3429; d(dB)/dx = LN10_10 / x
 
+// key -> {label, unit, fmt, zero (y-axis rangemode tozero), errs (1σ bars)}
+const MODES = {
+    cn0_coh: {label: "C/N₀ coh", axis: "C/N₀ coherent (dB-Hz)", unit: " dB-Hz", fmt: ".1f",
+              errs: true},
+    cn0:     {label: "C/N₀ inc", axis: "C/N₀ incoherent (dB-Hz)", unit: " dB-Hz", fmt: ".1f"},
+    sig:     {label: "sig",      axis: "significance (σ)", unit: "σ", fmt: ".1f", zero: true},
+    coh_s:   {label: "coh",      axis: "coherent window (s)", unit: " s", fmt: ".3f", zero: true},
+    dop:     {label: "dop",      axis: "tracked Doppler (Hz)", unit: " Hz", fmt: ".1f"},
+    snr:     {label: "snr",      axis: "search significance (σ)", unit: "σ", fmt: ".1f", zero: true},
+};
+const MODE_ORDER = ["cn0_coh", "cn0", "sig", "coh_s", "dop", "snr"];
+
 export class GpsAmpHistoryPanel {
-    constructor({app, target, combiner_stage}) {
+    constructor({app, target, feed}) {
         this.app = app;
-        this.combiner_stage = combiner_stage || "combiner";
-        this.hist = new Map();       // prn -> {t:[Date], a:[Â], sig:[σ significance], coh:[s]}
+        this.feed = feed;
+        this.hist = new Map();   // prn -> {t:[], cn0_coh:[], cn0:[], sig:[], coh_s:[], dop:[], snr:[], dr:[]}
         this.selected = null;
-        this.mode = "amp";           // "amp" (Â) | "cn0" (C/N₀ dB-Hz)
-        this._inflight = false;
-        this._dirty = false;         // new data for the selected PRN since last redraw
+        this.mode = "cn0_coh";
+        this._dirty = false;
         this._plotted = false;
-        this._maxDr = 0;             // largest deep_records seen = the converged (~1 s) window
+        this._maxDr = 0;         // largest deep_records seen = the converged (~1 s) window
 
         const root = $("#" + target);
         root.css({display: "flex", flexDirection: "column", width: "100%", height: "100%",
                   boxSizing: "border-box", fontFamily: "sans-serif", fontSize: "12px"});
 
-        // Controls: PRN dropdown + quantity toggle + live readout + clear.
         const bar = $("<div/>").css({flex: "0 0 auto", padding: "2px 4px 4px",
             display: "flex", alignItems: "center", gap: "8px"}).appendTo(root);
         $("<span/>").text("PRN").css({color: "#444"}).appendTo(bar);
         this.sel = $("<select/>").css({fontSize: "12px"}).appendTo(bar);
         this.sel.on("change", () => {
             this.selected = this.sel.val(); // constellation-tagged key ("G12"/"E25"/"C19")
-            this._plotted = false;   // force a fresh newPlot (axis rescale) on PRN switch
+            this._plotted = false;          // force a fresh newPlot (axis rescale)
             this._redraw();
         });
         this.modeSel = $("<select/>").css({fontSize: "12px"}).appendTo(bar);
-        this.modeSel.append($("<option/>").attr("value", "amp").text("Â"));
-        this.modeSel.append($("<option/>").attr("value", "cn0").text("C/N₀"));
+        for (const k of MODE_ORDER)
+            this.modeSel.append($("<option/>").attr("value", k).text(MODES[k].label));
+        this.modeSel.val(this.mode);
         this.modeSel.on("change", () => {
             this.mode = this.modeSel.val();
-            this._plotted = false;   // Â and C/N₀ live on very different y-scales -> rescale
+            this._plotted = false;          // observables live on very different y-scales
             this._redraw();
         });
         this._info = $("<span/>").css({color: "#666", marginLeft: "4px"}).appendTo(bar);
         $("<button/>").text("clear").css({fontSize: "11px", marginLeft: "auto"})
             .appendTo(bar).on("click", () => {
                 if (this.selected != null && this.hist.has(this.selected))
-                    this.hist.set(this.selected, {t: [], a: [], sig: [], coh: [], dr: []});
+                    this.hist.set(this.selected, this._blank());
                 this._plotted = false;
                 this._redraw();
             });
 
-        // Plot area.
         this.plot = $("<div/>").css({flex: "1 1 auto", minHeight: "0"}).appendTo(root)[0];
 
-        // Re-fit Plotly to the card when GridStack resizes it.
         if (window.ResizeObserver) {
             this._ro = new ResizeObserver(() => {
                 if (this._plotted && window.Plotly) window.Plotly.Plots.resize(this.plot);
@@ -70,52 +89,41 @@ export class GpsAmpHistoryPanel {
             this._ro.observe(this.plot);
         }
 
-        this._tick();
-        this._timer = setInterval(() => this._tick(), POLL_MS);
+        this.feed.on(payload => this._on_feed(payload));
     }
 
-    _tick() {
-        if (this._inflight) return;
-        this._inflight = true;
-        const k = this.app.kotekan;
-        // Tri-constellation: poll every combiner; missing stages 404 -> null -> skipped.
-        // History keys are "G12"/"E25"/"C19".
-        const chains = [["G", this.combiner_stage], ["E", "gal_combiner"], ["C", "bds_combiner"]];
-        Promise.all(chains.map(([tag, stage]) =>
-            k.stageGet(stage, "get_status")
-                .then(r => r.ok ? r.json() : null).catch(() => null)
-                .then(st => [tag, st])))
-            .then(results => {
-                this._inflight = false;
-                const now = new Date();
-                for (const [tag, status] of results) {
-                if (!Array.isArray(status)) continue;
-                for (const c of status) {
-                    const prn = c.prn ? tag + c.prn : null;
-                    if (!prn) continue;
-                    const A = c.deep_amplitude || c.unbiased_amplitude || 0;
-                    const coh = c.coherence_s || 0;
-                    // deep_snr counts only when floor-cleared (coherence_s > 0): a floored
-                    // deep (~7 sigma at the full window) is noise rectification, not signal.
-                    const sig = coh > 0 ? Math.max(c.deep_snr || 0, c.amp_snr || 0)
-                                        : (c.amp_snr || 0);
-                    if (A === 0 && sig === 0) continue;   // no despread this emit -> a gap, not a 0
-                    const dr = c.deep_records || 0;
-                    if (dr > this._maxDr) this._maxDr = dr;   // the run's converged (~1 s) window
-                    if (!this.hist.has(prn)) this.hist.set(prn, {t: [], a: [], sig: [], coh: [], dr: []});
-                    const h = this.hist.get(prn);
-                    const n = h.a.length;
-                    // Dedup: consecutive polls can catch the SAME combiner emit -> identical
-                    // floats. Skip those so the trace advances once per real emit.
-                    if (n && h.a[n - 1] === A && h.sig[n - 1] === sig) continue;
-                    h.t.push(now); h.a.push(A); h.sig.push(sig); h.coh.push(coh); h.dr.push(dr);
-                    if (h.t.length > MAX_PTS) { h.t.shift(); h.a.shift(); h.sig.shift(); h.coh.shift(); h.dr.shift(); }
-                    if (prn === this.selected) this._dirty = true;
-                }
-                }
-                this._sync_dropdown();
-                this._redraw();
-            });
+    _blank() {
+        return {t: [], cn0_coh: [], cn0: [], sig: [], coh_s: [], dop: [], snr: [], dr: []};
+    }
+
+    _on_feed({sats}) {
+        const now = new Date();
+        for (const r of sats || []) {
+            // No despread this emit -> a GAP, not a zero. (A tracked-but-silent sat still
+            // reports sig 0 with a real dop; require SOME signal-side content.)
+            if (!(r.sig > 0 || r.amp > 0 || r.cn0 != null || r.snr != null)) continue;
+            if (r.dr > this._maxDr) this._maxDr = r.dr;
+            if (!this.hist.has(r.id)) this.hist.set(r.id, this._blank());
+            const h = this.hist.get(r.id);
+            const n = h.t.length;
+            // Dedup: the poll runs faster than the combiner emits, so consecutive ticks
+            // catch the SAME record -> identical floats. Advance once per real emit.
+            if (n && h.sig[n - 1] === r.sig && h.coh_s[n - 1] === r.coh_s
+                && h.dop[n - 1] === r.dop && h.snr[n - 1] === r.snr) continue;
+            h.t.push(now);
+            h.cn0_coh.push(r.cn0_coh);   // null where the coherence wasn't certified
+            h.cn0.push(r.cn0);
+            h.sig.push(r.sig);
+            h.coh_s.push(r.coh_s);
+            h.dop.push(r.dop);
+            h.snr.push(r.snr);
+            h.dr.push(r.dr || 0);
+            if (h.t.length > MAX_PTS)
+                for (const k of Object.keys(h)) h[k].shift();
+            if (r.id === this.selected) this._dirty = true;
+        }
+        this._sync_dropdown();
+        this._redraw();
     }
 
     // Keep the dropdown in sync with the PRNs we've seen (sorted), preserving the selection.
@@ -131,12 +139,11 @@ export class GpsAmpHistoryPanel {
             this.sel.empty();
             for (const p of prns)
                 this.sel.append($("<option/>").attr("value", p).text(p));
-            // Preserve selection; else default to the PRN with the most history.
             if (this.selected != null && this.hist.has(this.selected))
                 this.sel.val(String(this.selected));
             else if (prns.length) {
                 const best = prns.reduce((m, p) =>
-                    this.hist.get(p).a.length > this.hist.get(m).a.length ? p : m, prns[0]);
+                    this.hist.get(p).t.length > this.hist.get(m).t.length ? p : m, prns[0]);
                 this.selected = best;
                 this.sel.val(String(best));
                 this._plotted = false;
@@ -147,86 +154,83 @@ export class GpsAmpHistoryPanel {
             this.sel.val(cur);
     }
 
-    // Map the buffered raw sample i to the plotted (y, 1σ) for the current mode.
-    _yval(h, i) {
-        const A = h.a[i], sig = h.sig[i], coh = h.coh[i];
-        if (this.mode === "cn0") {
-            // C/N₀ (dB-Hz) = 10 log10(deep_snr^2 / T_coh); dividing by the coherent time makes it a
-            // density (stable across ladder window changes). 1σ from the significance's ~unit std:
-            // d(dB)/d(sig) = (10/ln10)*(2/sig). coherence_s == 0 means the combiner certified NO
-            // coherent detection (no rung beat its rectification floor) -> a gap, not a value.
-            if (!(coh > 0)) return [null, 0];
-            const y = sig > 0 ? 20 * Math.log10(sig) - 10 * Math.log10(coh) : null;
-            const e = sig > 0 ? (2 * LN10_10) / sig : 0;
-            return [y, e];
-        }
-        return [A, sig > 0 ? A / sig : 0];   // Â and its noise-scale error bar
+    // 1σ error bar for sample i, where the observable has one worth drawing.
+    _err(h, i) {
+        if (this.mode !== "cn0_coh") return 0;
+        // significance has ~unit std -> d(dB)/d(sig) = (10/ln10)*(2/sig)
+        const sig = h.sig[i];
+        return sig > 0 ? (2 * LN10_10) / sig : 0;
     }
 
     _redraw() {
         if (this.selected == null || !window.Plotly) return;
         const h = this.hist.get(this.selected);
         if (!h) return;
-        const cn0 = this.mode === "cn0";
+        const M = MODES[this.mode];
+        const V = h[this.mode];
 
-        // Fresh arrays each render (Plotly.react diffs data BY REFERENCE, so reusing the in-place
-        // buffers would make it skip the redraw -- the plot would only refresh on a full newPlot).
-        // De-emphasize only LOW-SIGNIFICANCE short-window emits: near the ~7σ nav-wipe floor the
-        // auto-coherence ladder's short windows are extreme-value-inflated (spurious up-spikes),
-        // but a HIGH-significance short window is real signal -- post the 2026-07-11 code-loop fix
-        // the ladder legitimately rides 125-500 ms windows at 50-160σ, and greying those hid the
-        // true C/N₀ as "artifact". 20σ is safely above anything the floor's selection bias makes.
-        const T = h.t.slice(), Yf = new Array(h.a.length), Ys = new Array(h.a.length),
-              E = new Array(h.a.length);
+        // Fresh arrays each render (Plotly.react diffs BY REFERENCE, so reusing the
+        // in-place buffers would make it skip the redraw).
+        //
+        // De-emphasize only LOW-SIGNIFICANCE SHORT-window emits, and only for the
+        // ladder-dependent observables: near the ~7σ nav-wipe floor the short rungs are
+        // extreme-value-inflated (spurious up-spikes), but a HIGH-significance short
+        // window is real signal -- the ladder legitimately rides 125-500 ms windows at
+        // 50-160σ. The incoherent/search/Doppler observables don't come off the ladder
+        // at all, so nothing is greyed there.
+        const ladder = (this.mode === "cn0_coh" || this.mode === "sig");
         const thr = 0.6 * (this._maxDr || 0);
-        const SIG_REAL = 20;   // significance above which any window length is trusted
+        const SIG_REAL = 20;
+        const T = h.t.slice(), Yf = new Array(V.length), Ys = new Array(V.length),
+              E = new Array(V.length);
         let lastFull = -1;
-        for (let i = 0; i < h.a.length; i++) {
-            const ye = this._yval(h, i); E[i] = ye[1];
-            const isShort = this._maxDr > 0 && (h.dr[i] || 0) < thr
+        for (let i = 0; i < V.length; i++) {
+            E[i] = this._err(h, i);
+            const v = (V[i] == null) ? null : V[i];
+            const isShort = ladder && this._maxDr > 0 && (h.dr[i] || 0) < thr
                             && (h.sig[i] || 0) < SIG_REAL;
-            Yf[i] = isShort ? null : ye[0];
-            Ys[i] = isShort ? ye[0] : null;
-            if (!isShort) lastFull = i;
+            Yf[i] = isShort ? null : v;
+            Ys[i] = isShort ? v : null;
+            if (!isShort && v != null) lastFull = i;
         }
 
-        // Live readout: the latest FULL-window value (short-window emits are artifacts, not shown).
-        const n = h.a.length;
+        const n = V.length;
         if (lastFull >= 0) {
-            const sig = h.sig[lastFull], yv = this._yval(h, lastFull);
-            const tag = (lastFull !== n - 1) ? ' · <span style="color:#aaa">short win now</span>' : '';
-            if (cn0)
-                this._info.html(`C/N₀ ≈ <b>${(yv[0] ?? 0).toFixed(1)}</b> ± ${yv[1].toFixed(1)} dB-Hz`
-                    + `&nbsp;(${sig.toFixed(1)}σ)&nbsp;· ${n} pts` + tag);
-            else
-                this._info.html(`Â = <b>${h.a[lastFull].toFixed(3)}</b> ± ${yv[1].toFixed(3)}`
-                    + `&nbsp;(${sig.toFixed(1)}σ)&nbsp;· ${n} pts` + tag);
+            const v = V[lastFull], e = E[lastFull], sig = h.sig[lastFull];
+            const tag = (lastFull !== n - 1)
+                ? ' · <span style="color:#aaa">short win / no value now</span>' : '';
+            const err = M.errs && e ? ` ± ${e.toFixed(1)}` : "";
+            this._info.html(`${M.label} = <b>${v.toFixed(this.mode === "coh_s" ? 3 : 1)}</b>`
+                + `${err}${M.unit}&nbsp;(${(sig || 0).toFixed(1)}σ)&nbsp;· ${n} pts` + tag);
         } else if (n) {
-            this._info.html('<span style="color:#aaa">short-window emits only — integration converging…</span>');
+            this._info.html('<span style="color:#aaa">no certified value yet…</span>');
         } else {
             this._info.text("(no samples yet)");
         }
 
-        const unit = cn0 ? " dB-Hz" : "";
-        const fmt = cn0 ? ".1f" : ".3f";
+        // POINTS ONLY -- no connecting lines (see the header note).
         const full = {
-            x: T, y: Yf, customdata: E, type: "scatter", mode: "lines+markers",
-            line: {color: "#1f77b4", width: 1}, marker: {size: 3, color: "#1f77b4"}, connectgaps: false,
-            error_y: {type: "data", array: E, visible: true,
-                      color: "rgba(31,119,180,0.35)", thickness: 1, width: 0},
-            hovertemplate: `%{x|%H:%M:%S}<br>%{y:${fmt}} ± %{customdata:${fmt}}${unit}<extra></extra>`,
+            x: T, y: Yf, customdata: E, type: "scatter", mode: "markers",
+            marker: {size: 4, color: "#1f77b4"},
+            error_y: M.errs
+                ? {type: "data", array: E, visible: true,
+                   color: "rgba(31,119,180,0.35)", thickness: 1, width: 0}
+                : {visible: false},
+            hovertemplate: M.errs
+                ? `%{x|%H:%M:%S}<br>%{y:${M.fmt}} ± %{customdata:${M.fmt}}${M.unit}<extra></extra>`
+                : `%{x|%H:%M:%S}<br>%{y:${M.fmt}}${M.unit}<extra></extra>`,
         };
         const shortWin = {
             x: T, y: Ys, type: "scatter", mode: "markers",
-            marker: {size: 2.5, color: "rgba(150,150,150,0.45)"},
-            hovertemplate: `%{x|%H:%M:%S}<br>%{y:${fmt}}${unit} · short window, low sig<extra></extra>`,
+            marker: {size: 3, color: "rgba(150,150,150,0.45)"},
+            hovertemplate: `%{x|%H:%M:%S}<br>%{y:${M.fmt}}${M.unit} · short window, low sig<extra></extra>`,
         };
         const layout = {
-            margin: {l: 52, r: 10, t: 6, b: 28},
+            margin: {l: 56, r: 10, t: 6, b: 28},
             xaxis: {type: "date", tickfont: {size: 10}, gridcolor: "#eee"},
-            yaxis: {title: {text: cn0 ? "C/N₀ (dB-Hz, est.)" : "Â  (deep |A|)", font: {size: 11}},
-                    rangemode: cn0 ? "normal" : "tozero", tickfont: {size: 10},
-                    gridcolor: "#eee", zeroline: !cn0},
+            yaxis: {title: {text: M.axis, font: {size: 11}},
+                    rangemode: M.zero ? "tozero" : "normal", tickfont: {size: 10},
+                    gridcolor: "#eee", zeroline: !!M.zero},
             showlegend: false, paper_bgcolor: "white", plot_bgcolor: "white",
         };
         if (!this._plotted) {

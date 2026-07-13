@@ -14,7 +14,35 @@ export class KotekanRest {
     }
 
     stageUrl(stage, endpoint) {
-        return `${this.base}/${stage}/${endpoint}`;
+        return `${this.base}/${this.resolveStage(stage)}/${endpoint}`;
+    }
+
+    // gps_* <-> bare stage-name aliasing (the JS twin of python/scripts/gnss_stages.py).
+    // The tri-constellation config names the GPS chain gps_search / gps_track /
+    // gps_combiner, matching gal_*/bds_*; the older single-constellation benches still
+    // use search / track / combiner. Panels always ask for the gps_* spelling and this
+    // maps it onto whatever the running pipeline actually registered. loadStages() fills
+    // the table once at startup; until it lands (or if /endpoints fails) names pass
+    // through unchanged, which is the correct behaviour for every non-GPS stage.
+    loadStages() {
+        return fetch(`${this.base}/endpoints`)
+            .then(r => (r.ok ? r.json() : null))
+            .then(eps => {
+                if (!eps) return;
+                this._stages = new Set();
+                for (const method of ["GET", "POST"])
+                    for (const path of eps[method] || []) {
+                        const parts = path.replace(/^\//, "").split("/");
+                        if (parts.length >= 2) this._stages.add(parts[0]);
+                    }
+            })
+            .catch(() => { /* pipeline not up: pass names through */ });
+    }
+
+    resolveStage(stage) {
+        if (!this._stages || this._stages.has(stage)) return stage;
+        const alt = stage.startsWith("gps_") ? stage.slice(4) : `gps_${stage}`;
+        return this._stages.has(alt) ? alt : stage;
     }
 
     stageGet(stage, endpoint) {

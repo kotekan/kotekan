@@ -66,9 +66,13 @@ fi
 # trap is passing TRK=track to the distributed live_l1.yaml (whose trackers are track_00..11):
 # the broker POSTs to track/set_seeds, gets a 404, never seeds -> the trackers despread at
 # cp=0 -> |A| stays pinned at the noise floor (~0.13) even though the SEARCH still detects.
+# A GPU-chain tracker registers /<name>/set_seeds from its seed_endpoint, NOT from a
+# top-level stage name (the stage is the enclosing cudaProcess), so accept EITHER spelling
+# here -- checking stage names alone cried wolf on every GPU config.
 if [[ "$TRK" != *"{"* ]]; then  # skip brace ranges (the broker expands those itself)
   for _t in ${TRK//,/ }; do
-    grep -qE "^${_t}:" "$CFG" || echo "WARNING: tracker '$_t' is not a stage in $CFG -> set_seeds will 404 and |A| stays at noise. Omit TRK to auto-derive: $(grep -oE '^track[_0-9]*' "$CFG" | tr '\n' ' ')"
+    grep -qE "^${_t}:" "$CFG" || grep -qE "seed_endpoint:[[:space:]]*\"/${_t}/set_seeds\"" "$CFG" \
+      || echo "WARNING: tracker '$_t' is neither a stage nor a seed_endpoint in $CFG -> set_seeds will 404 and |A| stays at noise. Omit TRK to auto-derive: $(grep -oE '^track[_0-9]*' "$CFG" | tr '\n' ' ')"
   done
 fi
 CARRIER_HZ=$(awk '/^[[:space:]]*freq:/{printf "%.0f", $2*1e6; exit}' "$CFG")  # for the broker almanac Doppler
@@ -242,7 +246,7 @@ echo "starting broker (trackers: $TRK)..."
 # the file to reset (e.g. after a cold start, once warm). The OCXO will make l-a small + stable.
 CODE_BIAS_FILE=${CODE_BIAS_FILE:-/tmp/gps_code_bias.ppm}
 echo "signal $SIGNAL: hops/s ${HOPS_PER_SEC:-default}, chip ${CHIP_HZ:-default} Hz, code ${CODELEN:-default} chips, l-a file $CODE_BIAS_FILE"
-python3 $BROKER --detectors search --trackers "$TRK" --combiner combiner \
+python3 $BROKER --detectors gps_search --trackers "$TRK" --combiner gps_combiner \
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
         ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" \
         ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} \
@@ -314,7 +318,7 @@ fi
 # recorded level_*.raw has Â but not those). One JSONL line per active PRN per poll, wall-clock
 # stamped, alongside the raw records. Offline: captures/gps_beam_survey.py --status <this file>.
 python3 python/scripts/gps_status_logger.py --url http://localhost:12048 \
-        --combiner combiner --search search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
+        --combiner gps_combiner --search gps_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
         --out "$RECDIR/status_log.jsonl" > /tmp/gpslive_logger.log 2>&1 &
 LOGPID=$!
 echo "C/N0 status log -> $RECDIR/status_log.jsonl"

@@ -8,7 +8,8 @@
 // split into Display / Buffer / Baseline / Airspy / Control) so a stale
 // saved layout can't collide with the new defaults.
 // v6: GPS Sky card split into GNSS Sky + GNSS Detections (2026-07-12).
-const STORAGE_KEY = "airspy_viewer_layout_v6";
+// v7: GNSS history card gains the observable dropdown (C/N0 coh|inc, sig, coh, dop, snr).
+const STORAGE_KEY = "airspy_viewer_layout_v7";
 
 export class LayoutManager {
     constructor({root}) {

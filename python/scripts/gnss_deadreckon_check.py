@@ -23,9 +23,11 @@ from datetime import datetime, timezone
 sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(__file__)))
 from gnss_ephemeris import (fetch_brdc, parse_rinex_nav, predict_all, gpst_of_utc,
                             C_LIGHT, GPS_UTC_LEAP)
+from gnss_stages import resolve_stage
 
 CHIP = 1.023e6
-SEARCHES = [("G", "search", 1023, 1e-3), ("E", "gal_search", 4092, 4e-3),
+# gps_search resolves to the bare 'search' on the older single-constellation configs.
+SEARCHES = [("G", "gps_search", 1023, 1e-3), ("E", "gal_search", 4092, 4e-3),
             ("C", "bds_search", 10230, 10e-3)]
 
 
@@ -48,6 +50,7 @@ def main():
     t0 = datetime.fromtimestamp(utc0, tz=timezone.utc)
     frac_ms = {}
     for tag, stage, L, t_code in SEARCHES:
+        stage = resolve_stage(args.url, stage)
         try:
             dets = get("%s/%s/get_detections" % (args.url, stage))
         except Exception as e:
