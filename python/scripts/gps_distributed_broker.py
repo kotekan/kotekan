@@ -651,10 +651,23 @@ def main(argv=None):
                     _log("CL time-assist: capture sample-0 UTC anchor %.3f" % utc0_sample0)
             except Exception as e:
                 _log("CL time-assist: adcstat anchor unavailable (%s); retrying" % e)
+        dr_pd = (dr_state or {}).get("pd") or {}
+        dr_pd2 = (dr_state or {}).get("pd2") or {}
         for prn, (snr, dop, cp, ref_hop) in best.items():
+            v_dr = dr_pd.get((args.dr_constellation, prn)) if dr_pd else None
             if up is not None and prn not in up:
-                continue
+                # accept the detection anyway if BRDC says it's up: the TLE up-set
+                # mismaps some BDS birds (PRN 39: TLE el<5 vs BRDC el 10)
+                if v_dr is None or v_dr["el"] < args.mask_deg:
+                    continue
             seed_dop = (pred[prn][0] + clock_bias) if (args.almanac and prn in pred) else dop
+            # Dead-reckon armed: prefer the BRDC doppler for EVERY seed -- the same model
+            # that owns the undetected sats. Mixing sources stepped the seed doppler by
+            # the TLE-vs-BRDC error at every DR<->search handoff (~25 Hz on a stale TLE
+            # = the whole E1 hold fence; observed E32 RELEASE ddop -25, 2026-07-13).
+            if v_dr is not None:
+                seed_dop = (args.doppler_sign * (-v_dr["range_rate_mps"] / 299792458.0
+                                                 * args.carrier_hz) + clock_bias)
 
             # Maintain a per-PRN cp0-vs-hop history (only distinct snapshots; the search
             # holds its detection between updates) and fit the first-order code drift.
@@ -677,7 +690,15 @@ def main(argv=None):
             # applied like doppler_hz); the tracker integrates it in its NCO (never a replica
             # retune -- that walks the absolutely-anchored code/carrier off-peak) so the deep-
             # integration residual stays flat even at zenith (max Doppler acceleration).
-            if args.almanac and prn in pred:
+            v2_dr = dr_pd2.get((args.dr_constellation, prn)) if dr_pd2 else None
+            if v_dr is not None and v2_dr is not None:
+                # BRDC doppler rate (range-rate differencing over the 4 s epoch pair),
+                # same source as the doppler above
+                seed["doppler_rate_hz_s"] = (args.doppler_sign
+                                             * (-(v2_dr["range_rate_mps"]
+                                                  - v_dr["range_rate_mps"]) / 4.0)
+                                             / 299792458.0 * args.carrier_hz)
+            elif args.almanac and prn in pred:
                 seed["doppler_rate_hz_s"] = pred[prn][1]
             elif args.force_doppler_rate is not None:
                 # Replay-bench override: a recorded capture's sky is at another epoch (no almanac),
@@ -1006,6 +1027,10 @@ def main(argv=None):
                 except Exception as e:
                     pd, pd2 = {}, {}
                     _log("dead-reckon: predict failed: %s" % e)
+                if pd:
+                    # cache for the SEED loop (next cycle): BRDC doppler/rate for
+                    # search-anchored sats, so both masters share one currency
+                    dr_state["pd"], dr_state["pd2"] = pd, pd2
 
                 def cp_predicted(v, t_abs):
                     """Physical code phase (chips) of the predicted signal at capture age
