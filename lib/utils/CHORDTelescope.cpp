@@ -654,8 +654,9 @@ uint64_t CHORDTelescope::station_id_to_element_index(station_id_t st_id, Element
         el_idx = pol + dish * _num_polarizations;
     } else if (ord == ElementOrder::CHORDBeamformer) {
         el_idx = st_id;
+    } else {
+        FATAL_ERROR("Cannot handle element order {}.", ord);
     }
-    FATAL_ERROR("Cannot handle element order {}.", ord);
 
     if (el_idx >= _num_elements)
         FATAL_ERROR("station_id {:d} order {}: Element idx {:d} >= num_elements {:d}", st_id, ord,
