@@ -116,6 +116,11 @@ def main(argv=None):
                          "pedestal imprints its wander on every sat (the 2026-07-13 morning "
                          "artifact). Noise probes supply the below-horizon samples.")
     ap.add_argument("--map-mask", type=float, default=5.0, help="map elevation mask (deg)")
+    ap.add_argument("--min-prn-c", type=int, default=19,
+                    help="BeiDou signal-capability floor: B1C/B2a are BDS-3 only, so C1-C18 "
+                         "(BDS-2, which broadcasts B1I at 1561 MHz -- outside our band) carry "
+                         "no signal and any 'detection' of them is cross-correlation. Set to 1 "
+                         "to disable the filter.")
     ap.add_argument("--tbin", type=float, default=60.0, help="time-series bin (s)")
     ap.add_argument("--naz", type=int, default=48)
     ap.add_argument("--nel", type=int, default=17)
@@ -171,11 +176,43 @@ def main(argv=None):
         x = np.concatenate([q[2] for q in parts])
         xc = np.concatenate([q[3] for q in parts])
         dop = np.concatenate([q[4] for q in parts])
+        # SIGNAL CAPABILITY (2026-07-14): B1C is BDS-3 only. The BDS-2 birds (C1-C18) are real
+        # satellites, genuinely overhead, with valid ephemerides -- they just broadcast B1I at
+        # 1561 MHz, outside our band. Before the broker's dead-reckon seeder learned this, it
+        # seeded them from the model, the tracker despread noise at the predicted phase, and
+        # cross-correlation against the real B1C satellites reported 20-60 sigma at a
+        # thoroughly plausible 25-30 dB-Hz: 5.5% of every BeiDou map point was a satellite
+        # that was not transmitting. Old logs still carry those rows, so the map excludes them
+        # here too -- a beam map is exactly the wrong place to discover you mapped a ghost.
+        cap = np.ones(len(prn), bool) if tag != "C" else (prn >= args.min_prn_c)
+        if (~cap).sum():
+            print("%s: dropped %d rows from PRNs that do not broadcast this signal (< C%d)"
+                  % (tag, (~cap).sum(), args.min_prn_c))
+        prn, t, x, xc, dop = prn[cap], t[cap], x[cap], xc[cap], dop[cap]
         o = np.argsort(t)   # merged sessions must be time-ordered for the excision scan
         prn, t, x, xc, dop = prn[o], t[o], x[o], xc[o], dop[o]
         if len(x) == 0:
             print("%s: empty log(s) %s" % (tag, paths))
             continue
+        # Sky positions FIRST: the excision below must know which rows are below-horizon
+        # NOISE PROBES, because it must not touch them (see the spare-probes note there).
+        sats = load_gps_satellites(CONST[tag]["tle"] or DEFAULT_TLE_URL)
+        alt = np.full(len(prn), np.nan)
+        az = np.full(len(prn), np.nan)
+        for p_ in np.unique(prn):
+            sat = sats.get(int(p_))
+            if sat is None:
+                continue
+            sel = prn == p_
+            times = ts.from_datetimes(
+                [datetime.fromtimestamp(u, tz=timezone.utc) for u in t[sel]])
+            topo = (sat - obs).at(times).altaz()
+            alt[sel] = topo[0].degrees
+            az[sel] = topo[1].degrees
+        ok = np.isfinite(alt)
+        prn, t, x, xc, dop, alt, az = (prn[ok], t[ok], x[ok], xc[ok], dop[ok], alt[ok], az[ok])
+        low = alt < args.ped_mask
+
         # state-flagged re-anchor excision (value-blind)
         keep = np.ones(len(x), bool)
         for p in np.unique(prn):
@@ -192,25 +229,20 @@ def main(argv=None):
                 rate = np.array([np.sum(np.abs(jumps - tt) <= 60.0) for tt in t[o]]) / 2.0
                 bad |= rate > args.churn_gate
             keep[o[bad]] = False
+        # NEVER excise the below-horizon NOISE PROBES. The excision exists to drop emits whose
+        # CODE is off-peak during a re-anchor -- a probe has no peak to be off, and its samples
+        # ARE the noise we are trying to measure. Worse, probes look maximally churny by
+        # construction: the shared carrier loop has no lock gate, so on a signal-free probe it
+        # integrates pure noise into the trim, the trim random-walks to its clamp, and the
+        # REPORTED Doppler wanders with it. Measured 2026-07-14: the churn gate deleted 49075
+        # of 49075 GPS probe rows and 49088 of 49088 Galileo ones -- 100%, silently -- so the
+        # pedestal fell back to a signal-biased percentile and every C/N0 in the map inherited
+        # the bias. The calibrator was destroyed by the loop chasing noise it should never have
+        # been fed. (The broker now also skips probes in the carrier loop; this is the belt.)
+        keep |= low
         n_cut = int((~keep).sum())
-        prn, t, x, xc = prn[keep], t[keep], x[keep], xc[keep]
-        # sky positions
-        sats = load_gps_satellites(CONST[tag]["tle"] or DEFAULT_TLE_URL)
-        alt = np.full(len(prn), np.nan)
-        az = np.full(len(prn), np.nan)
-        for p in np.unique(prn):
-            sat = sats.get(int(p))
-            if sat is None:
-                continue
-            sel = prn == p
-            times = ts.from_datetimes(
-                [datetime.fromtimestamp(u, tz=timezone.utc) for u in t[sel]])
-            topo = (sat - obs).at(times).altaz()
-            alt[sel] = topo[0].degrees
-            az[sel] = topo[1].degrees
-        ok = np.isfinite(alt)
-        prn, t, x, xc, alt, az = prn[ok], t[ok], x[ok], xc[ok], alt[ok], az[ok]
-        low = alt < args.ped_mask
+        prn, t, x, xc, alt, az, low = (prn[keep], t[keep], x[keep], xc[keep],
+                                       alt[keep], az[keep], low[keep])
         t_rec = CONST[tag]["t_rec"]
         # incoherent: per-record ratio -> density (Hz)
         ped, glob, sig1, real_ped = pedestal(x, low, t, args.ped_tbin)

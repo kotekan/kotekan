@@ -390,6 +390,19 @@ def main(argv=None):
                          "(~0.4 chips; validated 0.10 chip rms 2026-07-13). Needs --almanac.")
     ap.add_argument("--dr-constellation", default="G", choices=("G", "E", "C"),
                     help="RINEX constellation letter for this broker's band")
+    ap.add_argument("--dr-min-prn", type=int, default=None,
+                    help="dead-reckon only PRNs >= this: a SIGNAL-CAPABILITY gate, not a "
+                         "visibility one. Default 19 for BeiDou (B1C/B2a are BDS-3 ONLY; the "
+                         "BDS-2 birds C1-C18 broadcast B1I at 1561 MHz, which is not even "
+                         "inside our band), 1 otherwise. The search cannot make this mistake "
+                         "-- it never detects a satellite that isn't transmitting -- but "
+                         "DEAD RECKONING CAN: it seeds from the model, and the model is happy "
+                         "to predict a code phase for a signal that does not exist. The "
+                         "tracker then despreads noise at that phase and the cross-correlation "
+                         "against real B1C satellites reports 20-60 sigma. Measured 2026-07-14: "
+                         "C11/C12/C13 produced 11309 phantom rows (5.5% of all BeiDou map "
+                         "points) at a plausible-looking 25-30 dB-Hz. A model that can invent "
+                         "a satellite needs a capability gate the search never needed.")
     ap.add_argument("--dr-repin-s", type=float, default=10.0,
                     help="re-anchor a dead-reckoned (undetected, unlocked) seed from the "
                          "model this often: fresh cp/doppler/rate together (a DR seed's "
@@ -448,6 +461,14 @@ def main(argv=None):
     # constant error is COMMON to solve and seeds so it lands in the solved clock); clk =
     # solved receiver clock (chips, mod code period) at epoch clk_t; seeded/pin = which
     # PRNs are model-owned and when each was last re-anchored.
+    # Signal capability for the dead-reckon seeder. B1C/B2a are BDS-3 only: the BDS-2 birds
+    # (C1-C18) transmit B1I at 1561 MHz, 14 MHz outside our band, so there is NOTHING to
+    # despread -- yet they are real satellites, genuinely overhead (MEO, 55 deg), with valid
+    # BRDC ephemerides. Every gate we own therefore waves them through: visible, predicted,
+    # healthy. Only capability excludes them.
+    dr_min_prn = (args.dr_min_prn if args.dr_min_prn is not None
+                  else (19 if args.dr_constellation == "C" else 1))
+
     dr_state = None
     if args.dead_reckon:
         if not args.almanac:
@@ -1115,6 +1136,12 @@ def main(argv=None):
                                + drift * (now_w - dr_state["clk_t"])) % CODE_LEN
                     planned = []
                     for (ctag, prn), v in sorted(pd.items()):
+                        # SIGNAL CAPABILITY first (see --dr-min-prn): a satellite that does
+                        # not broadcast this signal must never be seeded, however visible and
+                        # however well-predicted it is. The model will happily hand us a code
+                        # phase for a signal that isn't there.
+                        if prn < dr_min_prn:
+                            continue
                         # +0.5 deg hysteresis vs the drop mask: a sat riding the mask
                         # otherwise flickers drop->reseed every few cycles
                         if (ctag != tag or v["el"] < args.mask_deg + 0.5 or prn in best
@@ -1167,10 +1194,14 @@ def main(argv=None):
                     if planned:
                         _log("dead-reckon DRY RUN, would seed: %s" % "; ".join(planned))
                     # model-owned sats drop on the BRDC elevation (they're exempt from
-                    # the TLE horizon drop -- see the coast loop)
+                    # the TLE horizon drop -- see the coast loop), or on capability
                     for prn in list(dr_state["seeded"]):
                         v = pd.get((tag, prn))
-                        if v is None or v["el"] < args.mask_deg:
+                        if prn < dr_min_prn:
+                            _log("dead-reckon drop PRN %d (does not broadcast this signal)" % prn)
+                            seeds.pop(prn, None)
+                            low_hits.pop(prn, None)
+                        elif v is None or v["el"] < args.mask_deg:
                             _log("dead-reckon drop PRN %d (set below BRDC horizon)" % prn)
                             seeds.pop(prn, None)
                             low_hits.pop(prn, None)
@@ -1228,6 +1259,17 @@ def main(argv=None):
         if args.carrier_gain > 0.0:
             car_report = []
             for prn in list(seeds):
+                if prn in probe_set:
+                    # NOISE PROBES ARE EXEMPT. A probe is a satellite we deliberately point at
+                    # empty sky: there IS no carrier, so its "residual" is pure noise, and with
+                    # no lock gate the loop integrates that noise straight into the trim until
+                    # it random-walks to the clamp. Harmless to the probe (it measures noise
+                    # either way) -- but the trim moves the REPORTED Doppler, which made the
+                    # probes look like the churniest objects in the sky, and the beam map's
+                    # churn gate then excised 100% of them (2026-07-14). The pedestal
+                    # calibrator was being destroyed by a loop chasing noise it should never
+                    # have been fed. Nothing downstream wants a carrier trim on a probe.
+                    continue
                 rec = status.get(prn, {})
                 resid = float(rec.get("carrier_hz_resid", 0.0))
                 if resid == 0.0:
