@@ -34,6 +34,7 @@ the ~0.5 s decorrelation time. REST via stdlib urllib; visibility via skyfield
 """
 
 import argparse
+import math
 import json
 import re
 import statistics
@@ -417,6 +418,50 @@ def main(argv=None):
     ap.add_argument("--dr-min-sats", type=int, default=2,
                     help="detections needed for a receiver-clock solve (one sat is "
                          "unfalsifiable -- same reasoning as --bias-min-sats)")
+    ap.add_argument("--dop-continuous", action="store_true", default=False,
+                    help="DESIGN (b), default OFF -- IT DOES NOT WORK YET, AND THE REASON IS "
+                         "INSTRUCTIVE. Measured 2026-07-14: continuous Doppler made E/C WORSE "
+                         "than the fence+translate design (E 42.0 -> 34.9 dB-Hz, degraded "
+                         "emits 12% -> 51%; C 40.8 -> 35.6, 17% -> 48%). Freezing the seed "
+                         "Doppler was doing DOUBLE DUTY: it also kept the TRACKER's f_ref "
+                         "stable. Let the Doppler drift continuously and the tracker's OWN "
+                         "fence (fll_reacq_hz, 10 Hz at B1C) fires every 10/0.55 = 18 s -- the "
+                         "identical cadence, merely relocated into the tracker, where the "
+                         "re-pin is not translation-protected. (b) needs the tracker's f_ref "
+                         "re-pin made code- and phase-continuous FIRST. Until then the fence "
+                         "stays, and the translation on its step is what buys the +7.8 dB.\n"
+                         "Original rationale: update the seed Doppler EVERY cycle and "
+                         "currency-translate cp0 each time, instead of freezing it and taking "
+                         "a discrete step at hold_max_dop_hz. The fence was never a safety "
+                         "mechanism -- it was a GRANULARITY threshold, and the "
+                         "piecewise-constant-currency rule it enforced was a defence against a "
+                         "NOISY, search-grid Doppler. Dead reckoning made the Doppler "
+                         "model-derived and smooth, and the currency translation makes a "
+                         "Doppler update cost exactly nothing (the cp0 shift cancels the "
+                         "retroactive term by construction, so even jitter moves the code by "
+                         "ZERO). We made the defence obsolete ourselves. Resilience now comes "
+                         "from checking whether the model is RIGHT (--dr-max-eph-age-s, "
+                         "--dop-max-rate-hz, the integrity residual, a railed carrier trim) "
+                         "rather than whether it is MOVING. --no-dop-continuous restores the "
+                         "fence.")
+    ap.add_argument("--no-dop-continuous", dest="dop_continuous", action="store_false",
+                    help="restore the discrete hold_max_dop_hz fence (pre-2026-07-14)")
+    ap.add_argument("--dop-max-rate-hz", type=float, default=5.0,
+                    help="SAFETY NET (not a fence): clamp how far the seed Doppler may move in "
+                         "ONE cycle. Bounds the damage from a garbage prediction slamming the "
+                         "tracker, without imposing discrete steps. A real MEO Doppler moves "
+                         "<1 Hz per 0.2 s cycle, so this only ever fires on a bad model.")
+    ap.add_argument("--dr-max-eph-age-s", type=float, default=14400.0,
+                    help="do not trust the BRDC Doppler for a satellite whose ephemeris toe is "
+                         "older than this (4 h). Stale/absent model -> fall back to the "
+                         "search-measured Doppler. The fallback is SEAMLESS: switching Doppler "
+                         "SOURCE is just another currency translation, not a loss of lock.")
+    ap.add_argument("--dr-max-integrity-chips", type=float, default=1.0,
+                    help="demote a satellite to search-anchored when its dead-reckon integrity "
+                         "residual (measured-vs-predicted code phase, already computed every "
+                         "cycle and normally +-0.2 chips) exceeds this. THIS is the resilience "
+                         "the fence never provided: it detects a model that is WRONG, which a "
+                         "fence on Doppler MOTION cannot.")
     ap.add_argument("--dr-dry-run", action="store_true",
                     help="compute + log the clock solve, integrity residuals and planned "
                          "dead-reckoned seeds WITHOUT injecting any (validation mode)")
@@ -493,6 +538,9 @@ def main(argv=None):
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
     dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
     cp_translated = set()  # PRNs whose first currency translation has been logged (once each)
+    dop_clamped = set()    # PRNs that have tripped the one-cycle Doppler rate limit
+    dr_untrusted = {}      # prn -> reason: the model is WRONG for this sat; use the search
+    dr_bad = {}            # prn -> consecutive model-health failures (persistence, not a hair trigger)
     cp_escape = {}      # prn -> consecutive track-vs-search cp disagreements (hold referee)
     cp_escape_sign = {} # prn -> last disagreement (sign-consistency: real parks are one-signed)
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
@@ -695,7 +743,7 @@ def main(argv=None):
             # that owns the undetected sats. Mixing sources stepped the seed doppler by
             # the TLE-vs-BRDC error at every DR<->search handoff (~25 Hz on a stale TLE
             # = the whole E1 hold fence; observed E32 RELEASE ddop -25, 2026-07-13).
-            if v_dr is not None:
+            if v_dr is not None and prn not in dr_untrusted:
                 seed_dop = (args.doppler_sign * (-v_dr["range_rate_mps"] / 299792458.0
                                                  * args.carrier_hz) + clock_bias)
 
@@ -866,8 +914,21 @@ def main(argv=None):
                 else:
                     hold_miss[prn] = hold_miss.get(prn, 0) + 1
                 ddop = seed["doppler_hz"] - prev["doppler_hz"]
-                if abs(ddop) <= args.hold_max_dop_hz:
-                    # Inside the fence: the whole currency tuple rides unchanged.
+                # SAFETY NET (design (b)): bound a single cycle's Doppler move. A real MEO
+                # Doppler moves <1 Hz per 0.2 s cycle; this only fires on a bad model, and it
+                # bounds the damage rather than forbidding motion.
+                if abs(ddop) > args.dop_max_rate_hz:
+                    if prn not in dop_clamped:
+                        dop_clamped.add(prn)
+                        _log("DOP-CLAMP PRN %d: model wanted %+.1f Hz in one cycle (max %.1f)"
+                             " -- clamping. A real MEO moves <1 Hz/cycle: SUSPECT THE MODEL."
+                             % (prn, ddop, args.dop_max_rate_hz))
+                    ddop = math.copysign(args.dop_max_rate_hz, ddop)
+                    seed["doppler_hz"] = prev["doppler_hz"] + ddop
+                # DESIGN (b): translate EVERY cycle (no fence). The freeze branch survives only
+                # for --no-dop-continuous, and for the zero-motion case where it is a no-op.
+                if (not args.dop_continuous and abs(ddop) <= args.hold_max_dop_hz) or ddop == 0.0:
+                    # Currency frozen: the whole tuple rides unchanged.
                     seed["doppler_hz"] = prev["doppler_hz"]
                     seed["code_phase_chips"] = prev["code_phase_chips"]
                     seed["code_phase_rate"] = prev["code_phase_rate"]
@@ -908,12 +969,13 @@ def main(argv=None):
                     # seed["doppler_hz"] keeps its NEW value -- that is the point.
                     if prn not in cp_translated:
                         cp_translated.add(prn)
-                        _log("TRANSLATE PRN %d: dop %+.0f -> %+.0f (%+.1f Hz) -> cp0 shifted "
-                             "%+.1f chips; SAME physical code phase, anchor KEPT (was: release"
-                             " + re-anchor on the fit, the 18 s sawtooth)"
+                        _log("TRANSLATE PRN %d: dop %+.0f -> %+.0f (%+.2f Hz) -> cp0 shifted "
+                             "%+.2f chips; SAME physical code phase, anchor KEPT%s"
                              % (prn, prev["doppler_hz"], seed["doppler_hz"], ddop,
                                 -t_now * args.chip_rate_hz * args.code_doppler_sign
-                                * ddop / args.carrier_hz))
+                                * ddop / args.carrier_hz,
+                                " (continuous: every cycle, no fence)"
+                                if args.dop_continuous else ""))
                 if prn not in cp_held:
                     _log("HOLD PRN %d: seed currency frozen (amp_snr %.1f >= %.1f, dop %+.0f)"
                          % (prn, sig_of_last(status.get(prn)), args.hold_snr,
@@ -1165,6 +1227,47 @@ def main(argv=None):
                         step = ((raw - clk + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
                         dr_state["clk"] = (clk + args.dr_clock_alpha * step) % CODE_LEN
                     dr_state["clk_t"] = now_w
+                # ---- MODEL-HEALTH GATES (design (b)): the resilience the fence never gave.
+                # A fence on Doppler MOTION cannot detect a model that is simply WRONG -- a
+                # stale ephemeris, a manoeuvre, a bad orbit. These can, and they use signals we
+                # already compute every cycle:
+                #   (1) EPHEMERIS FRESHNESS -- toe age.
+                #   (2) INTEGRITY RESIDUAL -- measured-vs-predicted code phase, normally
+                #       +-0.2 chips. If it blows up, the model is lying about this satellite.
+                # A demoted satellite falls back to the SEARCH-measured Doppler, and because a
+                # Doppler-source change is just another currency translation, the fallback
+                # costs nothing: no re-anchor, no lock loss.
+                # A single bad sample must never demote a satellite, and a gate that flaps is
+                # worse than no gate: at startup the clock EMA is still converging, so the
+                # residuals legitimately sit near the threshold and the first version of this
+                # flapped UNTRUSTED/TRUSTED every few seconds (observed). Same discipline the
+                # escape referee already uses: PERSISTENCE (N consecutive) + HYSTERESIS
+                # (demote high, restore low) + do not judge at all until the clock has settled.
+                if dr_state["clk"] is not None and dr_state.get("drift") is not None:
+                    for prn_i, d_i in offs:
+                        r_i = (((d_i - dr_state["clk"] + CODE_LEN / 2.0) % CODE_LEN)
+                               - CODE_LEN / 2.0)
+                        v_i = pd.get((tag, prn_i))
+                        age_i = abs(v_i["toe_age_s"]) if v_i else 1e9
+                        why = None
+                        if age_i > args.dr_max_eph_age_s:
+                            why = "ephemeris %.1f h old" % (age_i / 3600.0)
+                        elif abs(r_i) > args.dr_max_integrity_chips:
+                            why = "integrity residual %+.2f chips" % r_i
+                        if why:
+                            dr_bad[prn_i] = dr_bad.get(prn_i, 0) + 1
+                        elif abs(r_i) < 0.5 * args.dr_max_integrity_chips:
+                            dr_bad[prn_i] = 0          # hysteresis: restore well INSIDE
+                        if (dr_bad.get(prn_i, 0) >= 3) and prn_i not in dr_untrusted:
+                            dr_untrusted[prn_i] = why
+                            _log("MODEL-UNTRUSTED PRN %d (%s, 3 consecutive) -> falling back "
+                                 "to the SEARCH-measured Doppler for this sat (seamless: a "
+                                 "source change is just another currency translation)"
+                                 % (prn_i, why))
+                        elif dr_bad.get(prn_i, 0) == 0 and prn_i in dr_untrusted:
+                            del dr_untrusted[prn_i]
+                            _log("MODEL-TRUSTED again PRN %d (integrity %+.2f chips)"
+                                 % (prn_i, r_i))
                 if dr_state["clk"] is not None and offs and now_w >= dr_state["log_next"]:
                     dr_state["log_next"] = now_w + 30.0
                     resid = ["PRN %d %+.2f%s" % (p, r, " BAD" if abs(r) > 1.0 else "")
@@ -1190,7 +1293,8 @@ def main(argv=None):
                         # +0.5 deg hysteresis vs the drop mask: a sat riding the mask
                         # otherwise flickers drop->reseed every few cycles
                         if (ctag != tag or v["el"] < args.mask_deg + 0.5 or prn in best
-                                or prn in probe_set or prn in cp_held):
+                                or prn in probe_set or prn in cp_held
+                                or prn in dr_untrusted):   # model is wrong for this sat
                             continue
                         if prn in seeds and prn not in dr_state["seeded"]:
                             continue  # search-anchored coast: not ours to touch
