@@ -1806,6 +1806,7 @@ FRB:
             in_buf: host_frb2_weights_buffer
             file_name: host_frb2_weights_buffer
 
+{% if False %}
     frb_send:
         kotekan_stage: frbNetworkSend
         in_buf: host_frb3_beams_buffer
@@ -1816,9 +1817,11 @@ FRB:
         # don't ping
         ping_dead_threshold: 0
         L1_node_ips:
-{%- for i in range(256) %}
+            - 10.8.204.11
+{%- for i in range(255) %}
             - 127.0.0.1
 {% endfor %}
+{% endif %}
 
 ################################################################################
 # output to receivers
