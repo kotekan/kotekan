@@ -273,7 +273,7 @@ if grep -qE '^gal_track:' "$RUNCFG"; then
     echo "WARNING: gal_track present but LAT/LON unset -- Galileo require_hint search will scan NOTHING"
   fi
   echo "starting GALILEO broker (gal_search/gal_track/gal_combiner, TLE group=galileo)..."
-  python3 $BROKER --detectors gal_search --trackers gal_track --combiner gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30}           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_gal.ppm           --chip-rate-hz 1.023e6 --code-length 4092           $GAL_ALM $CARG           > /tmp/gpslive_broker_gal.log 2>&1 &
+  python3 $BROKER --detectors gal_search --trackers gal_track --combiner gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30}           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_gal.ppm           --chip-rate-hz 1.023e6 --code-length 4092           ${BROKER_EXTRA:-} $GAL_ALM $CARG           > /tmp/gpslive_broker_gal.log 2>&1 &
   GALPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:12048           --combiner gal_combiner --search gal_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/gpslive_logger_gal.log 2>&1 &
   GALLOGPID=$!
@@ -304,7 +304,7 @@ if grep -qE '^bds_track:' "$RUNCFG"; then
           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_bds.ppm \
           --chip-rate-hz 1.023e6 --code-length 10230 \
-          $BDS_ALM $CARG \
+          ${BROKER_EXTRA:-} $BDS_ALM $CARG \
           > /tmp/gpslive_broker_bds.log 2>&1 &
   BDSPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:12048 \
