@@ -121,18 +121,68 @@ telescope:
     dish_grid_size_y: 12
     dish_separation_x_m: 6.300156854906823
     dish_separation_y_m: 8.500057809796308
+    # Live wiring (2026-07): 4 CRS boards (crate slots 1-4) x 8 ADCs = 32 inputs.
+    # Element order is [P][D] (CHORDBeamformer) and each cabled input is its own
+    # dish entry at pol 0, in wire order, so element index = dish_idx
+    # = (slot-1)*8 + (ADC-1). Grid position: letter = row (A: y=0, B: y=1),
+    # number-1 = x. The rack wiring table:
+    #
+    #          Slot 1   Slot 2   Slot 3   Slot 4
+    #   ADC8     B4X      B4Y      B8X      B8Y
+    #   ADC7     B3X      B3Y      B7X      B7Y
+    #   ADC6     B2X      B2Y      B6X      B6Y
+    #   ADC5     B1X      B1Y      B5X      B5Y
+    #   ADC4     A4X      A4Y      A8X      A8Y
+    #   ADC3     A3X      A3Y      A7X      A7Y
+    #   ADC2     A2X      A2Y      A6X      A6Y
+    #   ADC1     A1X      A1Y      A5X      A5Y
     dish_inputs: [
-        {dish_idx: 0,  grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01},
-        {dish_idx: 1,  grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06},
-        {dish_idx: 2,  grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07},
-        {dish_idx: 3,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI01},
-        {dish_idx: 4,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI02},
-        {dish_idx: 5,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI03},
-        {dish_idx: 6,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI04},
-        {dish_idx: 7,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI05},
-        {dish_idx: 8,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI06},
-        {dish_idx: 9,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI07},
-        {dish_idx: 10, grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI08},
+        # slot 1: X pol of A1-A4, B1-B4 (elements 0-7)
+        {dish_idx: 0,  grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A1X},
+        {dish_idx: 1,  grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: A2X},
+        {dish_idx: 2,  grid_x_idx: 2,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: A3X},
+        {dish_idx: 3,  grid_x_idx: 3,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: A4X},
+        {dish_idx: 4,  grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B1X},
+        {dish_idx: 5,  grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B2X},
+        {dish_idx: 6,  grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B3X},
+        {dish_idx: 7,  grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B4X},
+        # slot 2: Y pol of A1-A4, B1-B4 (elements 8-15)
+        {dish_idx: 8,  grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A1Y},
+        {dish_idx: 9,  grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: A2Y},
+        {dish_idx: 10, grid_x_idx: 2,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: A3Y},
+        {dish_idx: 11, grid_x_idx: 3,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: A4Y},
+        {dish_idx: 12, grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B1Y},
+        {dish_idx: 13, grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B2Y},
+        {dish_idx: 14, grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B3Y},
+        {dish_idx: 15, grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B4Y},
+        # slot 3: X pol of A5-A8, B5-B8 (elements 16-23)
+        {dish_idx: 16, grid_x_idx: 4,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: A5X},
+        {dish_idx: 17, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A6X},
+        {dish_idx: 18, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A7X},
+        {dish_idx: 19, grid_x_idx: 7,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: A8X},
+        {dish_idx: 20, grid_x_idx: 4,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B5X},
+        {dish_idx: 21, grid_x_idx: 5,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B6X},
+        {dish_idx: 22, grid_x_idx: 6,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B7X},
+        {dish_idx: 23, grid_x_idx: 7,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B8X},
+        # slot 4: Y pol of A5-A8, B5-B8 (elements 24-31)
+        {dish_idx: 24, grid_x_idx: 4,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: A5Y},
+        {dish_idx: 25, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A6Y},
+        {dish_idx: 26, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A7Y},
+        {dish_idx: 27, grid_x_idx: 7,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: A8Y},
+        {dish_idx: 28, grid_x_idx: 4,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B5Y},
+        {dish_idx: 29, grid_x_idx: 5,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B6Y},
+        {dish_idx: 30, grid_x_idx: 6,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B7Y},
+        {dish_idx: 31, grid_x_idx: 7,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: Fake     , label: B8Y},
+        # RFI monitoring antennas (not in the current wiring table; a 5th CRS
+        # board would land them on elements 32-39)
+        {dish_idx: 32, grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI01},
+        {dish_idx: 33, grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI02},
+        {dish_idx: 34, grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI03},
+        {dish_idx: 35, grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI04},
+        {dish_idx: 36, grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI05},
+        {dish_idx: 37, grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI06},
+        {dish_idx: 38, grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI07},
+        {dish_idx: 39, grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI08},
     ]
 
     require_gps: True
@@ -197,6 +247,7 @@ hdf5_N2_write_subset:
     kotekan_stage: hdf5N2Write
     cpu_affinity: [12]
     in_buf: n2_recv_subset_buffer
+    input_order: CHORDBeamformer
     base_dir: /mnt/cs00/data/kotekan_vis_files/subset/
     baseband_gain_host_info: /fpga_controller
     file_name: pipeline_test
@@ -219,6 +270,7 @@ hdf5_N2_write_full:
     kotekan_stage: hdf5N2Write
     cpu_affinity: [12]
     in_buf: n2_recv_full_buffer
+    input_order: CHORDBeamformer
     base_dir: /mnt/cs00/data/kotekan_vis_files/full/
     baseband_gain_host_info: /fpga_controller
     file_name: pipeline_test
