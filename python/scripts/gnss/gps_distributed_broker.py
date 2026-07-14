@@ -492,6 +492,7 @@ def main(argv=None):
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
     dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
+    cp_translated = set()  # PRNs whose first currency translation has been logged (once each)
     cp_escape = {}      # prn -> consecutive track-vs-search cp disagreements (hold referee)
     cp_escape_sign = {} # prn -> last disagreement (sign-consistency: real parks are one-signed)
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
@@ -850,7 +851,6 @@ def main(argv=None):
                 cp_held.discard(prn)
                 hold_miss.pop(prn, None)
             elif (prev is not None
-                    and abs(seed["doppler_hz"] - prev["doppler_hz"]) <= args.hold_max_dop_hz
                     and (sig_of_last(status.get(prn)) >= args.hold_snr
                          or (prn in cp_held and hold_miss.get(prn, 0) < 3))):
                 # PERSISTENT-loss release (2026-07-12 evening): a single blank/stale status
@@ -865,10 +865,55 @@ def main(argv=None):
                     hold_miss[prn] = 0
                 else:
                     hold_miss[prn] = hold_miss.get(prn, 0) + 1
-                seed["doppler_hz"] = prev["doppler_hz"]
-                seed["code_phase_chips"] = prev["code_phase_chips"]
-                seed["code_phase_rate"] = prev["code_phase_rate"]
-                seed["ref_hop"] = prev["ref_hop"]
+                ddop = seed["doppler_hz"] - prev["doppler_hz"]
+                if abs(ddop) <= args.hold_max_dop_hz:
+                    # Inside the fence: the whole currency tuple rides unchanged.
+                    seed["doppler_hz"] = prev["doppler_hz"]
+                    seed["code_phase_chips"] = prev["code_phase_chips"]
+                    seed["code_phase_rate"] = prev["code_phase_rate"]
+                    seed["ref_hop"] = prev["ref_hop"]
+                else:
+                    # ---- CURRENCY TRANSLATION (2026-07-14): a DOPPLER UPDATE IS NOT A LOSS
+                    # OF LOCK. The replica is anchored at sample 0, so the tracker builds the
+                    # code phase as
+                    #     cp(t) = cp0 + t*f_chip*(1 + sign*dop/f_carrier)
+                    # -- the Doppler is applied over the ENTIRE elapsed time, RETROACTIVELY.
+                    # cp0 is therefore not "the code phase": it is a coordinate that only
+                    # means anything PAIRED WITH A DOPPLER. Change dop by ddop and leave cp0
+                    # alone and the physical code jumps by t*f_chip*ddop/f_carrier -- ~20
+                    # chips for a 10 Hz fence step at an hour of run age, and the lever arm
+                    # GROWS with t.
+                    #
+                    # Historically the fence RELEASED the hold and re-anchored cp on the
+                    # search fit. The 20-chip currency jump was bookkeeping and harmless; the
+                    # damage was throwing away a good anchor and replacing it with a MEASURED
+                    # one. The fit's noise is nothing on GPS's broad triangular peak, but a
+                    # BOC(1,1) peak is ~3x sharper: measured 2026-07-14, C19 collapsed 42 ->
+                    # 20 dB-Hz and took ~5 s of DLL re-convergence, EVERY
+                    # hold_max_dop_hz/|dop_rate| = 10 Hz / 0.55 Hz/s = 18 s. ~25% of every
+                    # emit, on every locked BOC satellite, on all three constellations.
+                    #
+                    # So: keep the anchor and re-express it in the new Doppler's currency.
+                    # Pure arithmetic, no measurement, no fit noise, nothing for the deep
+                    # integration to trip over. The new slope is the BETTER one (dop is a
+                    # better estimate of the truth), so code_phase_rate is left alone -- only
+                    # the retroactive part needs absorbing.
+                    t_now = ref_hop / args.hops_per_sec
+                    seed["code_phase_chips"] = (
+                        prev["code_phase_chips"]
+                        - t_now * args.chip_rate_hz * args.code_doppler_sign
+                          * ddop / args.carrier_hz) % CODE_LEN
+                    seed["code_phase_rate"] = prev["code_phase_rate"]
+                    seed["ref_hop"] = prev["ref_hop"]
+                    # seed["doppler_hz"] keeps its NEW value -- that is the point.
+                    if prn not in cp_translated:
+                        cp_translated.add(prn)
+                        _log("TRANSLATE PRN %d: dop %+.0f -> %+.0f (%+.1f Hz) -> cp0 shifted "
+                             "%+.1f chips; SAME physical code phase, anchor KEPT (was: release"
+                             " + re-anchor on the fit, the 18 s sawtooth)"
+                             % (prn, prev["doppler_hz"], seed["doppler_hz"], ddop,
+                                -t_now * args.chip_rate_hz * args.code_doppler_sign
+                                * ddop / args.carrier_hz))
                 if prn not in cp_held:
                     _log("HOLD PRN %d: seed currency frozen (amp_snr %.1f >= %.1f, dop %+.0f)"
                          % (prn, sig_of_last(status.get(prn)), args.hold_snr,
