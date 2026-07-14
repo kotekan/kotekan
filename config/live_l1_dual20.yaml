@@ -77,11 +77,23 @@ out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_d
 airspy_in:
     kotekan_stage: airspyInput
     out_buf: input_buf
+    # PIN THE DEVICE BY SERIAL (0 / absent = "open whichever enumerates first"). Harmless with a
+    # single airspy, a coin-flip once the L2C and L5 units are plugged in -- and a silent one:
+    # the wrong board would come up, tune to 1575.42, and simply never acquire anything, which
+    # looks exactly like a bad antenna. Each band's config must name its own board.
+    # Written in HEX, exactly as airspy_info prints it -- the parser honours 0x (verified: a
+    # deliberately WRONG hex serial fails with AIRSPY_ERROR_NOT_FOUND, so it is really being
+    # read). Worth stating why that test was needed: a serial that failed to parse would come
+    # back 0, and 0 means "open any" -- which, with a single dongle plugged in, still WORKS.
+    # The pin would look correct and silently not be one. Verify a new serial by breaking it.
+    serial: 0x03A464C837525967   # L1 unit (AirSpy NOS v1.0.0-rc9)
     freq: 1575.42
     sample_bw: 10
     gain_lna: 14
     gain_mix: 15
     gain_if: 15
+    # ACTIVE antenna -- the bias tee MUST stay on for this feed (A/B confirmed). If the front end
+    # is ever swapped to a passive antenna + external LNA, this goes false.
     biast_power: true
 fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
 
