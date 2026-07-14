@@ -109,6 +109,12 @@ def main(argv=None):
                        # only differential range separates them) -- a sat away from
                        # consensus has a wrong overlay row or a false alignment.
                        "nh_phase": r.get("nh_phase"),
+                       # multipath/scintillation pair: S4 (amplitude fluctuation, thermal
+                       # floor removed) and sigma_phi (carrier-phase jitter, rad). Multipath
+                       # moves both; our two C/N0 estimators are each blind to one of them.
+                       "s4": r.get("s4"),
+                       "s4_raw": r.get("s4_raw"),
+                       "sigma_phi": r.get("sigma_phi"),
                        "deep_floor": r.get("deep_floor"),
                        "search_snr": det_snr.get(int(prn)), "adc_rms": rms}
                 f.write(json.dumps(rec, separators=(",", ":")) + "\n")

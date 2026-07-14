@@ -81,6 +81,8 @@ def main():
     ap.add_argument("--carrier-hz", type=float, default=1575.42e6)
     ap.add_argument("--chip-rate-hz", type=float, default=1.023e6)
     ap.add_argument("--code-length", type=float, default=1023.0)
+    ap.add_argument("--code-doppler-sign", type=float, default=1.0,
+                    help="must match the search stage's code_doppler_sign (CMC reconstruction)")
     ap.add_argument("--lat", type=float, default=43.968697)
     ap.add_argument("--lon", type=float, default=-79.252106)
     ap.add_argument("--alt", type=float, default=260.0)
@@ -93,6 +95,7 @@ def main():
     args.combiner = resolve_stage(args.url, args.combiner)
     args.search = resolve_stage(args.url, args.search)
     to_unix = capture_clock(args.url)   # capture clock -> unix (gnss_stages.capture_clock)
+    utc0 = 0.0                          # capture sample-0 UTC (CMC needs the absolute age)
     t_rec = args.code_length / args.chip_rate_hz
     lam = C_LIGHT / args.carrier_hz          # carrier wavelength (m/cycle)
 
@@ -111,6 +114,9 @@ def main():
         now = time.time()
         if to_unix(1.0) == 1.0:         # anchor wasn't up at startup: retry until it is
             to_unix = capture_clock(args.url)
+        if not utc0:
+            a = _get("%s/airspy_in/adcstat" % args.url) or {}
+            utc0 = float(a.get("utc0_sample0") or 0.0)
 
         if eph is None or now - eph_t > 7200:
             try:
@@ -151,6 +157,36 @@ def main():
                     except Exception:
                         v = None
                 adr = r.get("adr_cycles")
+                # ---- CMC INPUTS. cp_chips alone is NOT a range: it is the seed CURRENCY
+                # (cp0), back-referenced to sample 0 through the Doppler, so its geometry is
+                # already removed -- it drifts at the receiver clock offset while the carrier
+                # drifts at the range rate. Differencing them cancels nothing (measured: CMC
+                # in KILOMETRES). Reconstruct the PHYSICAL code phase the same way
+                # gnss_deadreckon_check does, then remove the model:
+                #     cp_phys  = cp0 + t_abs*f_chip*(1 + sign*dop/f_carrier)   (mod L)
+                #     cp_pred  = (t_tx_sv mod T_code)/T_code * L
+                #     code_resid = wrap(cp_phys - cp_pred)  -> SUB-CHIP, unambiguous, metres
+                # code_resid = c*dt_rx + I + multipath. Pair it with the carrier residual
+                #     carr_resid = -adr*lambda - range   (our ADR counts +dop, so it measures
+                #                                         MINUS range)
+                # and CMC = code_resid - carr_resid = 2I + code multipath + a per-arc constant.
+                # THAT is the deterministic multipath metric; it could not be built from the
+                # logged fields alone, which is why it is computed here, at the source.
+                code_resid_m = None
+                carr_resid_m = None
+                if v is not None and utc0 and adr is not None:
+                    t_abs = t_epoch - utc0
+                    cp_phys = ((r.get("code_phase_chips") or 0.0)
+                               + t_abs * args.chip_rate_hz
+                                 * (1.0 + args.code_doppler_sign
+                                    * (r.get("doppler_hz") or 0.0) / args.carrier_hz)
+                               ) % args.code_length
+                    t_tx = (gpst_of_utc(t_epoch) - v["range_m"] / C_LIGHT + v["sat_clk_s"])
+                    cp_pred = (t_tx % t_rec) / t_rec * args.code_length
+                    d = ((cp_phys - cp_pred + args.code_length / 2.0) % args.code_length
+                         - args.code_length / 2.0)
+                    code_resid_m = d * C_LIGHT / args.chip_rate_hz
+                    carr_resid_m = -adr * lam - v["range_m"]
                 row = {
                     "t": round(t_epoch, 4),
                     "t_gps": round(gpst_of_utc(t_epoch), 4),
@@ -167,6 +203,8 @@ def main():
                     "adr_cycles": adr,
                     "adr_m": (adr * lam) if adr is not None else None,
                     "adr_arc": arc, "adr_records": nrec,
+                    "code_resid_m": code_resid_m,     # model-removed code range (CMC input)
+                    "carr_resid_m": carr_resid_m,     # model-removed carrier range (CMC input)
                     "adr_lock_s": r.get("adr_lock_s"),
                     # --- POWER
                     "cn0_coh_dbhz": cn0_dbhz(r.get("deep_snr"), r.get("coherence_s")),
@@ -177,6 +215,9 @@ def main():
                     "doppler_hz": r.get("doppler_hz"),
                     "carrier_hz_resid": r.get("carrier_hz_resid"),
                     "nh_phase": r.get("nh_phase"),
+                    "s4": r.get("s4"),
+                    "s4_raw": r.get("s4_raw"),
+                    "sigma_phi": r.get("sigma_phi"),
                 }
                 # --- GEOMETRY (BRDC at this epoch). Receiver clock NOT removed: solving it is
                 # a downstream job, and a row that has had a model subtracted can never be

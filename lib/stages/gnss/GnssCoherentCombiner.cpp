@@ -114,6 +114,9 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_dop.assign(_n_prn, 0.0f);
     _st_cp.assign(_n_prn, 0.0f);
     _st_dll_disc.assign(_n_prn, 0.0f);
+    _st_s4.assign(_n_prn, 0.0f);
+    _st_s4_raw.assign(_n_prn, 0.0f);
+    _st_sigma_phi.assign(_n_prn, 0.0f);
     _st_car_resid.assign(_n_prn, 0.0f);
     _adr_cyc.assign(_n_prn, 0.0);
     _adr_cph_prev.assign(_n_prn, 0.0);
@@ -357,6 +360,8 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<double> amp_snr(_n_prn, 0.0);  // noise-debiased incoherent significance (REST)
         std::vector<int> nh_phase(_n_prn, -1);     // secondary-overlay alignment found (L5; -1 = n/a)
         std::vector<double> amp_dbi(_n_prn, 0.0);  // noise-debiased (unbiased) signal amplitude
+        std::vector<double> s4_raw(_n_prn, 0.0);   // amplitude scintillation index (raw)
+        std::vector<double> sigma_phi(_n_prn, 0.0);// carrier-phase jitter about the slope fit (rad)
         std::vector<double> coh_s(_n_prn, 0.0);    // measured coherence: span of the winning window
         std::vector<int> deep_rec(_n_prn, 0);      // records in the winning deep window
         std::vector<double> deep_floor(_n_prn, 0.0); // rectification floor at the reported rung
@@ -429,7 +434,7 @@ void GnssCoherentCombiner::main_thread() {
                 // configs where _navbuf isn't populated.
                 double resid_hz = 0.0;
                 if (_wipe_buffer && _navbuf[p].size() >= 16) {
-                    resid_hz = carrier_resid_hz(_navbuf[p], _navutc[p]);
+                    resid_hz = carrier_resid_hz(_navbuf[p], _navutc[p], &sigma_phi[p]);
                 } else if (car_n[p] > 0 && std::abs(car_S[p]) > 0.0) {
                     const double dphi = std::arg(car_S[p]) / (_carrier_pilot ? 1.0 : 2.0);
                     resid_hz = dphi / (2.0 * M_PI * (car_dt[p] / car_n[p]));
@@ -457,6 +462,19 @@ void GnssCoherentCombiner::main_thread() {
                 // Normalise by the H0 std of the s^2 estimator (~N/K^{1/4}) so the significance is
                 // ~1 for noise REGARDLESS of K (a stable lock threshold) and grows for real signal.
                 amp_snr[p] = noise > 1e-12 ? s2 * std::pow(Keff, 0.25) / noise : 0.0;
+                // S4, the AMPLITUDE-SCINTILLATION INDEX -- and the direct, deterministic
+                // detector of the multipath that the beam map has been eating blind. It falls
+                // straight out of the moments we already accumulate:
+                //     S4^2 = Var(|A|^2) / <|A|^2>^2
+                // Thermal noise alone produces a floor which must be subtracted -- but NOT
+                // using the moment debias above: it DEFINES `noise` as everything that is not
+                // the mean, so its implied thermal variance is identically Var, and the
+                // "debiased" S4 comes out exactly 0.0000 for every satellite. (Measured.
+                // A debias that can only ever return zero is not a debias.) The floor has to
+                // come from an INDEPENDENT estimator of the true SNR -- and we have one that
+                // is immune to amplitude modulation by construction: the COHERENT deep. It is
+                // applied further down, once deep_snr/deep_rec exist. Here: the raw index.
+                s4_raw[p] = (m2 > 1e-12) ? std::sqrt(var) / m2 : 0.0;
             }
             if (!_secondary.empty() || !_l1co.empty()) {
                 // Dataless pilot: wipe the KNOWN secondary overlay at its best-fitting alignment
@@ -649,6 +667,20 @@ void GnssCoherentCombiner::main_thread() {
                 _st_deep_floor[p] = (float)deep_floor[p];
                 _st_deep_pow[p] = (float)deep_pow[p];
                 _st_dll_disc[p] = rec[gnss::CMB_DLL_DISC];
+                // S4, thermal floor removed using the COHERENT SNR (independent of the
+                // amplitude fluctuation we are trying to measure). Per-record power SNR
+                // x = deep_snr^2 / K; a non-central chi-square with 2 dof then has
+                //     S4_thermal^2 = (1 + 2x) / (1 + x)^2
+                // and the signal's own fading is what is left over.
+                {
+                    const double K = (double)std::max(1, deep_rec[p]);
+                    const double x = (deep_snr[p] > 0.0) ? deep_snr[p] * deep_snr[p] / K : 0.0;
+                    const double s4_th2 = (1.0 + 2.0 * x) / ((1.0 + x) * (1.0 + x));
+                    const double s4r = _st_s4_raw[p];
+                    _st_s4[p] = (float)std::sqrt(std::max(0.0, s4r * s4r - s4_th2));
+                }
+                _st_s4_raw[p] = (float)s4_raw[p];
+                _st_sigma_phi[p] = (float)sigma_phi[p];
                 _st_car_resid[p] = rec[gnss::CMB_CARRIER_RESID];
                 // ADR snapshot: the phase itself is a double (REST only); the record carries
                 // the arc id, which is what makes a raw capture self-describing about slips.
@@ -684,6 +716,12 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"deep_floor", _st_deep_floor[p]},
                          {"deep_pow_hz", _st_deep_pow[p]},
                          {"dll_disc", _st_dll_disc[p]},
+                         // multipath / scintillation pair (2026-07-14): S4 = amplitude
+                         // fluctuation (thermal floor removed), sigma_phi = carrier-phase
+                         // jitter about the slope fit, radians. Multipath moves BOTH.
+                         {"s4", _st_s4[p]},
+                         {"s4_raw", _st_s4_raw[p]},
+                         {"sigma_phi", _st_sigma_phi[p]},
                          {"carrier_hz_resid", _st_car_resid[p]},
                          // Accumulated carrier phase (cycles) on the current unbroken arc,
                          // its id, its length in records, and how long it has held (s). 0
@@ -793,7 +831,8 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
 
 double
 GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& a,
-                                       const std::vector<double>& utc) const {
+                                       const std::vector<double>& utc,
+                                       double* sigma_phi_out) const {
     const int n = (int)a.size();
     if (n < 16)
         return 0.0;
@@ -865,6 +904,42 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
     if (!(std::fabs(det) > 0.0))
         return 0.0;
     const double slope = (Sw * Swtp - Swt * Swp) / det; // d(phi)/dt (rad/s)
+    const double icept = (Swtt * Swp - Swt * Swtp) / det;
+    // SIGMA_PHI (scintillation / multipath phase jitter): the weighted RMS of the SAME fit's
+    // residuals. The fit already models the carrier the loop is meant to remove, so what is
+    // left is exactly what we want -- phase that is NOT a frequency offset: multipath phase
+    // swing, scintillation, and thermal noise. Divide by `mult` to undo the bit-robust
+    // squaring and get radians on the true carrier. A second pass is needed because the
+    // accumulators above cannot yield residuals; it is O(n) on a window already in cache.
+    if (sigma_phi_out != nullptr) {
+        double phi2 = 0.0, raw_prev2 = 0.0, Sw2 = 0.0, Sr2 = 0.0;
+        bool have2 = false;
+        for (int r = 0; r < n; ++r) {
+            const double w = std::norm(a[r]);
+            if (!(w > 0.0))
+                continue;
+            const cd v = (_carrier_pilot ? a[r] : a[r] * a[r])
+                         * std::polar(1.0, -2.0 * M_PI * f_coarse * mult * (utc[r] - t0));
+            const double cur = std::arg(v);
+            if (have2) {
+                double d = cur - raw_prev2;
+                while (d > M_PI)
+                    d -= 2.0 * M_PI;
+                while (d < -M_PI)
+                    d += 2.0 * M_PI;
+                phi2 += d;
+            } else {
+                phi2 = cur;
+                have2 = true;
+            }
+            raw_prev2 = cur;
+            const double t = utc[r] - t0;
+            const double resid = phi2 - (icept + slope * t);
+            Sw2 += w;
+            Sr2 += w * resid * resid;
+        }
+        *sigma_phi_out = (Sw2 > 0.0) ? std::sqrt(Sr2 / Sw2) / mult : 0.0;
+    }
     // Total residual = the slip-free coarse stage PLUS the fine LSQ slope of what it left.
     return f_coarse + slope / mult / (2.0 * M_PI);      // -> residual carrier (Hz)
 }

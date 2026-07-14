@@ -114,8 +114,11 @@ private:
     /// made the loop noise-inject). Squares A to cancel the +-1 nav-bit pi flips (data signals);
     /// a dataless pilot (carrier_pilot) fits the raw phase. Uses capture-UTC as the time axis so
     /// valve-drop gaps don't bias the slope. Returns 0 if too short / degenerate.
+    /// @param sigma_phi_out (optional) weighted RMS of THIS fit's residuals, radians on the
+    /// true carrier -- the phase-jitter half of the multipath/scintillation pair.
     double carrier_resid_hz(const std::vector<std::complex<double>>& a,
-                            const std::vector<double>& utc) const;
+                            const std::vector<double>& utc,
+                            double* sigma_phi_out = nullptr) const;
 
     std::vector<Buffer*> in_bufs;
     Buffer* out_buf;
@@ -139,6 +142,9 @@ private:
         _st_cp;
     std::vector<int> _st_nh_phase; ///< secondary-overlay alignment found per PRN (-1 = n/a)
     std::vector<float> _st_dll_disc; ///< window-averaged DLL discriminator (broker closes the loop)
+    std::vector<float> _st_s4;       ///< amplitude scintillation index, thermal floor removed
+    std::vector<float> _st_s4_raw;   ///< ... before the debias (diagnostic)
+    std::vector<float> _st_sigma_phi;///< carrier-phase jitter about the slope fit (rad)
     std::vector<float> _st_car_resid; ///< full-band carrier residual, Hz (shared carrier loop)
     std::vector<float> _st_coh_s;  ///< measured coherence: time span of the chosen deep window (s)
                                    ///< -- 0 when NO ladder rung beat its rectification floor

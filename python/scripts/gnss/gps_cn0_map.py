@@ -116,6 +116,13 @@ def main(argv=None):
                          "pedestal imprints its wander on every sat (the 2026-07-13 morning "
                          "artifact). Noise probes supply the below-horizon samples.")
     ap.add_argument("--map-mask", type=float, default=5.0, help="map elevation mask (deg)")
+    ap.add_argument("--sys", default=None,
+                    help="constellations to map, e.g. 'E' or 'GE' (default: all present). "
+                         "A single-constellation map is often far more legible -- the site "
+                         "multipath, for instance, is unmistakable in Galileo alone, where it "
+                         "lands in the COHERENT estimator (GPS hides it in the INCOHERENT one).")
+    ap.add_argument("--suffix", default="",
+                    help="appended to the output filenames (keeps per-constellation maps apart)")
     ap.add_argument("--min-prn-c", type=int, default=19,
                     help="BeiDou signal-capability floor: B1C/B2a are BDS-3 only, so C1-C18 "
                          "(BDS-2, which broadcasts B1I at 1561 MHz -- outside our band) carry "
@@ -169,6 +176,13 @@ def main(argv=None):
     TAG, PRN, T, ALT, AZ = [], [], [], [], []
     Y, YSIG, Y2, Y2SIG = [], [], [], []
     ped_ok = {}   # tag -> below-horizon pedestal was genuine (fallback poisons cross-cal)
+    if args.sys:
+        keep = set(args.sys.upper())
+        logs = {k: v for k, v in logs.items() if k in keep}
+        if not logs:
+            print("no logs for --sys %s" % args.sys)
+            return 1
+        print("mapping constellations: %s" % ", ".join(sorted(logs)))
     for tag, paths in sorted(logs.items()):
         parts = [load(p_, tag) for p_ in paths]
         prn = np.concatenate([q[0] for q in parts])
@@ -358,7 +372,7 @@ def main(argv=None):
         ax.grid(alpha=0.3)
         ax.legend()
         fig.tight_layout()
-        f1 = os.path.join(args.outdir, "cn0_%s_vs_time.png" % suffix)
+        f1 = os.path.join(args.outdir, "cn0_%s_vs_time%s.png" % (suffix, args.suffix))
         fig.savefig(f1, dpi=110)
         plt.close(fig)
         written.append(f1)
@@ -382,7 +396,7 @@ def main(argv=None):
         ax.set_title("Elevation response, %s (blue=GPS orange=Galileo red=BeiDou)" % label)
         ax.grid(alpha=0.3)
         fig.tight_layout()
-        f2 = os.path.join(args.outdir, "cn0_%s_vs_elev.png" % suffix)
+        f2 = os.path.join(args.outdir, "cn0_%s_vs_elev%s.png" % (suffix, args.suffix))
         fig.savefig(f2, dpi=110)
         plt.close(fig)
         written.append(f2)
@@ -417,7 +431,7 @@ def main(argv=None):
                      % (label, span_h, len(set(sid))), pad=18)
         fig.colorbar(pc, ax=ax, label="C/N0 (dB-Hz, est.)", shrink=0.8, pad=0.09)
         fig.tight_layout()
-        f3 = os.path.join(args.outdir, "cn0_%s_beammap.png" % suffix)
+        f3 = os.path.join(args.outdir, "cn0_%s_beammap%s.png" % (suffix, args.suffix))
         fig.savefig(f3, dpi=120)
         plt.close(fig)
         written.append(f3)
