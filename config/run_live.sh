@@ -14,6 +14,19 @@
 set -u
 KOTEKAN=${KOTEKAN:-./build/kotekan/kotekan}
 CFG=${CFG:-config/live_l1.yaml}          # L1 lean valved distributed config
+
+# ---- PER-BAND INSTANCE KNOBS (2026-07-14) -------------------------------------------------
+# Everything below used to be hardcoded, which meant a second kotekan silently talked to the
+# FIRST one's REST server: the L2C broker would seed the L1 trackers and nothing would look
+# wrong. Each band now owns its own ports, record dir, log names and l-a file, so L1/L2C/L5
+# run side by side. Defaults are exactly the old values, so an unset environment behaves as
+# before. `config/run_band.sh l2c` sets these for you.
+#   NOTE l-a (the LO-vs-ADC code-rate offset) is a property of the DONGLE, not the band, so
+#   each airspy MUST have its own CODE_BIAS_FILE -- sharing one cross-contaminates the seeds.
+PORT=${PORT:-12048}                 # kotekan REST
+HTTP_PORT=${HTTP_PORT:-8080}        # viewer HTTP
+WS_PORT=${WS_PORT:-8539}            # viewer websocket
+TAG=${TAG:-gpslive}                 # log-file stem: /tmp/$TAG*.log
 #   CFG: live_l2c.yaml -> L2C (1227.6 MHz); live_l5.yaml -> L5 (1176.45 MHz); live_l5_wipe.yaml ->
 #        L5 Q5 pilot DEEP overlay-wipe (rolling, NH20 wiped in the combiner -> deep |A| past 1 ms);
 #        live_l1c.yaml -> L1C-P (1575.42 MHz, BOC(1,1) Block-III civil pilot, track_00..09);
@@ -122,17 +135,20 @@ if { [ "$CLK_NAME" != auto ] || [ -n "$CLK_COH_CFG" ]; } && [ -n "${CHIP_HZ:-}" 
 fi
 echo "clock profile '$CLK_NAME': accuracy ${CLK_ACC} ppm, coherence ${CLK_COH} s -> broker cold margin +-${CLK_WIDE_HZ} Hz${CLK_MAXINT:+, integ cap ${CLK_MAXINT} rec}"
 BROKER=python/scripts/gnss/gps_distributed_broker.py
-LOG=/tmp/gpslive.log
+LOG=/tmp/$TAG.log
 
 cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" "${GALPID:-}" "${GALLOGPID:-}" "${BDSPID:-}" "${BDSLOGPID:-}" 2>/dev/null
-            pkill -9 -f kotekan/kotekan 2>/dev/null
-            pkill -9 -f livebeam_server 2>/dev/null
-            pkill -9 -f gps_status_logger 2>/dev/null
+            pkill -9 -f "kotekan .*-b 0.0.0.0:$PORT" 2>/dev/null   # only THIS band's kotekan
+            pkill -9 -f "livebeam_server.*--http-port $HTTP_PORT" 2>/dev/null
+            pkill -9 -f "gps_status_logger.*localhost:$PORT" 2>/dev/null
+            pkill -9 -f "gnss_observables.*localhost:$PORT" 2>/dev/null
             [ -n "${RUNCFG:-}" ] && [ "${RUNCFG:-}" != "$CFG" ] && rm -f "$RUNCFG"
             exit 0; }
 trap cleanup INT TERM
 
-pkill -9 -f kotekan/kotekan 2>/dev/null; pkill -9 -f livebeam_server 2>/dev/null
+# Kill only THIS band's instance -- an unscoped pkill would tear down the other bands' runs.
+pkill -9 -f "kotekan .*-b 0.0.0.0:$PORT" 2>/dev/null
+pkill -9 -f "livebeam_server.*--http-port $HTTP_PORT" 2>/dev/null
 
 # Refresh the search PRN list to what's actually overhead NOW (the constellation rotates
 # ~half an orbit in ~8 h, so a hardcoded list goes stale -> zero detections). Needs
@@ -190,14 +206,14 @@ echo "recording to $RECDIR"
 sleep 1
 
 echo "starting kotekan ($CFG) -> $LOG"
-$KOTEKAN -c $RUNCFG > $LOG 2>&1 &
+$KOTEKAN -c $RUNCFG -b 0.0.0.0:$PORT > $LOG 2>&1 &
 sleep 4
-echo "front end: $(curl -s localhost:12048/airspy_in/adcstat | tr -d '\n ')"
-echo "GPS sky viewer: http://localhost:8080"
+echo "front end: $(curl -s localhost:$PORT/airspy_in/adcstat | tr -d '\n ')"
+echo "GPS sky viewer: http://localhost:$HTTP_PORT   (kotekan REST :$PORT)"
 
 # Almanac assist (predicted Doppler) when a location is given:
 #   LAT=43.66 LON=-79.40 ./config/run_live.sh
-# Watch /tmp/gpslive_broker.log for the predicted-vs-measured Doppler + clock bias.
+# Watch /tmp/${TAG}_broker.log for the predicted-vs-measured Doppler + clock bias.
 ALM=""
 if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   # --carrier-hz (from the config's freq) makes the predicted Doppler correct for whatever
@@ -244,14 +260,14 @@ echo "starting broker (trackers: $TRK)..."
 # and writes it here; a weak band (L1C) reads it at startup and seeds its pilots on-peak from cycle 1
 # instead of self-calibrating. Override with BROKER_EXTRA="--code-bias-init <ppm>" to pin a value; rm
 # the file to reset (e.g. after a cold start, once warm). The OCXO will make l-a small + stable.
-CODE_BIAS_FILE=${CODE_BIAS_FILE:-/tmp/gps_code_bias.ppm}
+CODE_BIAS_FILE=${CODE_BIAS_FILE:-/tmp/gps_code_bias_${TAG}.ppm}
 echo "signal $SIGNAL: hops/s ${HOPS_PER_SEC:-default}, chip ${CHIP_HZ:-default} Hz, code ${CODELEN:-default} chips, l-a file $CODE_BIAS_FILE"
-python3 $BROKER --detectors gps_search --trackers "$TRK" --combiner gps_combiner \
+python3 $BROKER --rest-url "http://localhost:$PORT" --detectors gps_search --trackers "$TRK" --combiner gps_combiner \
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
         ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" \
         ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} \
         ${BROKER_EXTRA:-} $ALM $CLA $CARG \
-        > /tmp/gpslive_broker.log 2>&1 &
+        > /tmp/${TAG}_broker.log 2>&1 &
 BPID=$!
 
 # ---- Second constellation: a config with a gal_track stage gets its OWN broker + logger
@@ -273,9 +289,9 @@ if grep -qE '^gal_track:' "$RUNCFG"; then
     echo "WARNING: gal_track present but LAT/LON unset -- Galileo require_hint search will scan NOTHING"
   fi
   echo "starting GALILEO broker (gal_search/gal_track/gal_combiner, TLE group=galileo)..."
-  python3 $BROKER --detectors gal_search --trackers gal_track --combiner gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30}           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_gal.ppm           --chip-rate-hz 1.023e6 --code-length 4092           ${BROKER_EXTRA:-} $GAL_ALM $CARG           > /tmp/gpslive_broker_gal.log 2>&1 &
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors gal_search --trackers gal_track --combiner gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30}           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_gal.ppm           --chip-rate-hz 1.023e6 --code-length 4092           ${BROKER_EXTRA:-} $GAL_ALM $CARG           > /tmp/${TAG}_broker_gal.log 2>&1 &
   GALPID=$!
-  python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:12048           --combiner gal_combiner --search gal_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/gpslive_logger_gal.log 2>&1 &
+  python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT           --combiner gal_combiner --search gal_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/${TAG}_logger_gal.log 2>&1 &
   GALLOGPID=$!
   echo "Galileo C/N0 status log -> $RECDIR/status_log_gal.jsonl"
 fi
@@ -300,16 +316,16 @@ if grep -qE '^bds_track:' "$RUNCFG"; then
     echo "WARNING: bds_track present but LAT/LON unset -- BeiDou require_hint search will scan NOTHING"
   fi
   echo "starting BEIDOU broker (bds_search/bds_track/bds_combiner, TLE group=beidou)..."
-  python3 $BROKER --detectors bds_search --trackers bds_track --combiner bds_combiner \
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors bds_search --trackers bds_track --combiner bds_combiner \
           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
-          ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_bds.ppm \
+          ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_bds.ppm \
           --chip-rate-hz 1.023e6 --code-length 10230 \
           ${BROKER_EXTRA:-} $BDS_ALM $CARG \
-          > /tmp/gpslive_broker_bds.log 2>&1 &
+          > /tmp/${TAG}_broker_bds.log 2>&1 &
   BDSPID=$!
-  python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:12048 \
+  python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT \
           --combiner bds_combiner --search bds_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
-          --out "$RECDIR/status_log_bds.jsonl" > /tmp/gpslive_logger_bds.log 2>&1 &
+          --out "$RECDIR/status_log_bds.jsonl" > /tmp/${TAG}_logger_bds.log 2>&1 &
   BDSLOGPID=$!
   echo "BeiDou C/N0 status log -> $RECDIR/status_log_bds.jsonl"
 fi
@@ -317,9 +333,9 @@ fi
 # Persist per-PRN C/N0 + detection stats (deep_snr/coherence_s live only in REST/the browser -- the
 # recorded level_*.raw has Â but not those). One JSONL line per active PRN per poll, wall-clock
 # stamped, alongside the raw records. Offline: captures/gps_beam_survey.py --status <this file>.
-python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:12048 \
+python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT \
         --combiner gps_combiner --search gps_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
-        --out "$RECDIR/status_log.jsonl" > /tmp/gpslive_logger.log 2>&1 &
+        --out "$RECDIR/status_log.jsonl" > /tmp/${TAG}_logger.log 2>&1 &
 LOGPID=$!
 echo "C/N0 status log -> $RECDIR/status_log.jsonl"
 
@@ -330,16 +346,28 @@ echo "C/N0 status log -> $RECDIR/status_log.jsonl"
 # chain, because per-band is exactly how the geometry-free combination will consume them.
 OBSPIDS=""
 if [ "${OBSERVABLES:-1}" != "0" ]; then
-  for _o in "gps_combiner gps_search G GPS_L1CA 1023 obs_gps_l1" \
-            "gal_combiner gal_search E GAL_E1C 4092 obs_gal_e1" \
-            "bds_combiner bds_search C BDS_B1C_P 10230 obs_bds_b1c"; do
+  # The PRIMARY chain's band comes from the CONFIG (SIGNAL/CODELEN/CHIP_HZ, derived above), not
+  # from a hardcoded L1 triple. It used to be hardcoded, so an L2C run logged its observables as
+  # "GPS_L1CA, 1023 chips, 1.023 Mcps" -- right carrier, wrong everything else, and the file was
+  # even named obs_gps_l1.jsonl. Silently wrong data is worse than no data.
+  case "${SIGNAL:-GPS_L1CA}" in
+    GPS_L2C*) _obs=obs_gps_l2c ;;
+    GPS_L5*)  _obs=obs_gps_l5  ;;
+    GPS_L1C_*) _obs=obs_gps_l1c ;;
+    *)        _obs=obs_gps_l1  ;;
+  esac
+  # gal_/bds_ ride the SAME L1 tune (1575.42) and so keep their own fixed triples; they only
+  # exist in the dual20 config and are skipped elsewhere by the grep below.
+  for _o in "gps_combiner gps_search G ${SIGNAL:-GPS_L1CA} ${CODELEN:-1023} $_obs ${CHIP_HZ:-1.023e6}" \
+            "gal_combiner gal_search E GAL_E1C 4092 obs_gal_e1 1.023e6" \
+            "bds_combiner bds_search C BDS_B1C_P 10230 obs_bds_b1c 1.023e6"; do
     set -- $_o
     grep -qE "^($1|${1#gps_}):" "$RUNCFG" || continue
-    python3 python/scripts/gnss/gnss_observables.py --url http://localhost:12048 \
+    python3 python/scripts/gnss/gnss_observables.py --url http://localhost:$PORT \
             --combiner "$1" --search "$2" --sys "$3" --band "$4" --code-length "$5" \
-            --carrier-hz "${CARRIER_HZ:-1575420000}" --chip-rate-hz 1.023e6 \
+            --carrier-hz "${CARRIER_HZ:-1575420000}" --chip-rate-hz "$7" \
             ${LAT:+--lat $LAT} ${LON:+--lon $LON} ${ALT:+--alt $ALT} \
-            --out "$RECDIR/$6.jsonl" > "/tmp/gpslive_$6.log" 2>&1 &
+            --out "$RECDIR/$6.jsonl" > "/tmp/${TAG}_$6.log" 2>&1 &
     OBSPIDS="$OBSPIDS $!"
     echo "observables ($4) -> $RECDIR/$6.jsonl"
   done
@@ -348,16 +376,16 @@ fi
 echo "=== watching (Ctrl-C to stop) ==="
 while true; do
   sleep 3
-  curl -s localhost:12048/search/get_detections 2>/dev/null | python3 -c "
+  curl -s localhost:$PORT/search/get_detections 2>/dev/null | python3 -c "
 import sys,json,urllib.request
 d=json.load(sys.stdin)
-amp=json.load(urllib.request.urlopen('http://localhost:12048/combiner/get_status'))
+amp=json.load(urllib.request.urlopen('http://localhost:$PORT/combiner/get_status'))
 # sig = detection significance (sigma above noise): deep nav-wiped SNR or the noise-debiased
 # incoherent SNR. >>1 = a real lock; ~1 = noise (the raw |A| sits at the noise floor for weak sats).
 sigf=lambda r: max(r.get('deep_snr',0) or 0, r.get('amp_snr',0) or 0)
 ampf=lambda r: r.get('deep_amplitude') or r.get('unbiased_amplitude') or 0  # unbiased Â (not the noise-biased |A|)
 top=sorted(amp,key=lambda r:-sigf(r))[:3]
-adc=json.load(urllib.request.urlopen('http://localhost:12048/airspy_in/adcstat'))
+adc=json.load(urllib.request.urlopen('http://localhost:$PORT/airspy_in/adcstat'))
 hdr='rms=%.0f rail=%.2f'%(adc['rms'],adc['railfrac'])
 if d:
     s='  DETECT: '+'; '.join('PRN%d dop%+.0f cp%.0f snr%.1f'%(x['prn'],x['doppler_hz'],x['code_phase_chips'],x['snr']) for x in sorted(d,key=lambda r:-r['snr'])[:4])

@@ -89,9 +89,12 @@ airspy_in:
     serial: 0x03A464C837525967   # L1 unit (AirSpy NOS v1.0.0-rc9)
     freq: 1575.42
     sample_bw: 10
-    gain_lna: 14
-    gain_mix: 15
-    gain_if: 15
+    # Gains dropped 14/15/15 -> 11/11/11 for the 2026-07-14 front end: a second-stage amp now
+    # sits UPSTREAM of the bias tee + splitters, so the airspy sees a much hotter input. Keith
+    # measured ADC RMS ~50 at 11/11/11. Watch railfrac: it must stay 0.
+    gain_lna: 11
+    gain_mix: 11
+    gain_if: 11
     # OFF as of the 3-airspy rework (2026-07-14): the active antenna is now powered by a
     # SEPARATE inline bias tee, not by the dongle. This must stay false on every board once the
     # feed is split -- three dongles pushing DC into a common splitter is the failure mode to

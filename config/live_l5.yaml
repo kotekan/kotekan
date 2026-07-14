@@ -11,7 +11,7 @@ telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
 
 # Let the browser GPS panel (served on :8080) reach kotekan's REST API cross-origin.
 rest_server:
-    cors_allow_origins: ["http://localhost:8080", "http://127.0.0.1:8080", "http://gx10.vdl:8080"]
+    cors_allow_origins: ["http://localhost:8082", "http://127.0.0.1:8082", "http://gx10.vdl:8082"]
 
 samples_per_data_set: 49920
 bytes_per_sample: 2
@@ -80,12 +80,19 @@ beam_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_de
 
 airspy_in:
     kotekan_stage: airspyInput
+    # Pin THIS band to ITS OWN board. Without a serial the stage opens whichever
+    # airspy enumerates first -- with three plugged in, the bands would fight over
+    # them and the loser would tune correctly and simply never acquire.
+    serial: 0x03A464C837264F67   # L5 unit
     out_buf: input_buf
     freq: 1176.45
     sample_bw: 10
-    gain_lna: 14
-    gain_mix: 15
-    gain_if: 15
+    # 11/11/11 for the 2026-07-14 front end (second-stage amp upstream of the bias
+    # tee + splitters). The other two boards may run a little hotter/colder than the
+    # L1 unit -- check adc_rms and keep railfrac at 0.
+    gain_lna: 11
+    gain_mix: 11
+    gain_if: 11
     # OFF: the active antenna is powered by a SEPARATE inline bias tee as of the 3-airspy
     # rework (2026-07-14). Three dongles pushing DC into a shared splitter is the failure
     # mode to avoid; the antenna LNA wants exactly one supply. Set true ONLY if the feed is
@@ -98,26 +105,26 @@ fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, inpu
 valve: { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 split: { kotekan_stage: GnssSubbandSplit, in_buf: chan_buf2, out_bufs: [ch_00, ch_01, ch_02, ch_03, ch_04, ch_05, ch_06, ch_07, ch_08, ch_09], subband_lo: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], subband_hi: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
 
-send_00: { kotekan_stage: bufferSend, buf: ch_00, server_ip: 127.0.0.1, server_port: 15001, drop_frames: true }
-recv_00: { kotekan_stage: bufferRecv, buf: rc_00, listen_port: 15001, num_threads: 1 }
-send_01: { kotekan_stage: bufferSend, buf: ch_01, server_ip: 127.0.0.1, server_port: 15002, drop_frames: true }
-recv_01: { kotekan_stage: bufferRecv, buf: rc_01, listen_port: 15002, num_threads: 1 }
-send_02: { kotekan_stage: bufferSend, buf: ch_02, server_ip: 127.0.0.1, server_port: 15003, drop_frames: true }
-recv_02: { kotekan_stage: bufferRecv, buf: rc_02, listen_port: 15003, num_threads: 1 }
-send_03: { kotekan_stage: bufferSend, buf: ch_03, server_ip: 127.0.0.1, server_port: 15004, drop_frames: true }
-recv_03: { kotekan_stage: bufferRecv, buf: rc_03, listen_port: 15004, num_threads: 1 }
-send_04: { kotekan_stage: bufferSend, buf: ch_04, server_ip: 127.0.0.1, server_port: 15005, drop_frames: true }
-recv_04: { kotekan_stage: bufferRecv, buf: rc_04, listen_port: 15005, num_threads: 1 }
-send_05: { kotekan_stage: bufferSend, buf: ch_05, server_ip: 127.0.0.1, server_port: 15006, drop_frames: true }
-recv_05: { kotekan_stage: bufferRecv, buf: rc_05, listen_port: 15006, num_threads: 1 }
-send_06: { kotekan_stage: bufferSend, buf: ch_06, server_ip: 127.0.0.1, server_port: 15007, drop_frames: true }
-recv_06: { kotekan_stage: bufferRecv, buf: rc_06, listen_port: 15007, num_threads: 1 }
-send_07: { kotekan_stage: bufferSend, buf: ch_07, server_ip: 127.0.0.1, server_port: 15008, drop_frames: true }
-recv_07: { kotekan_stage: bufferRecv, buf: rc_07, listen_port: 15008, num_threads: 1 }
-send_08: { kotekan_stage: bufferSend, buf: ch_08, server_ip: 127.0.0.1, server_port: 15009, drop_frames: true }
-recv_08: { kotekan_stage: bufferRecv, buf: rc_08, listen_port: 15009, num_threads: 1 }
-send_09: { kotekan_stage: bufferSend, buf: ch_09, server_ip: 127.0.0.1, server_port: 15010, drop_frames: true }
-recv_09: { kotekan_stage: bufferRecv, buf: rc_09, listen_port: 15010, num_threads: 1 }
+send_00: { kotekan_stage: bufferSend, buf: ch_00, server_ip: 127.0.0.1, server_port: 15201, drop_frames: true }
+recv_00: { kotekan_stage: bufferRecv, buf: rc_00, listen_port: 15201, num_threads: 1 }
+send_01: { kotekan_stage: bufferSend, buf: ch_01, server_ip: 127.0.0.1, server_port: 15202, drop_frames: true }
+recv_01: { kotekan_stage: bufferRecv, buf: rc_01, listen_port: 15202, num_threads: 1 }
+send_02: { kotekan_stage: bufferSend, buf: ch_02, server_ip: 127.0.0.1, server_port: 15203, drop_frames: true }
+recv_02: { kotekan_stage: bufferRecv, buf: rc_02, listen_port: 15203, num_threads: 1 }
+send_03: { kotekan_stage: bufferSend, buf: ch_03, server_ip: 127.0.0.1, server_port: 15204, drop_frames: true }
+recv_03: { kotekan_stage: bufferRecv, buf: rc_03, listen_port: 15204, num_threads: 1 }
+send_04: { kotekan_stage: bufferSend, buf: ch_04, server_ip: 127.0.0.1, server_port: 15205, drop_frames: true }
+recv_04: { kotekan_stage: bufferRecv, buf: rc_04, listen_port: 15205, num_threads: 1 }
+send_05: { kotekan_stage: bufferSend, buf: ch_05, server_ip: 127.0.0.1, server_port: 15206, drop_frames: true }
+recv_05: { kotekan_stage: bufferRecv, buf: rc_05, listen_port: 15206, num_threads: 1 }
+send_06: { kotekan_stage: bufferSend, buf: ch_06, server_ip: 127.0.0.1, server_port: 15207, drop_frames: true }
+recv_06: { kotekan_stage: bufferRecv, buf: rc_06, listen_port: 15207, num_threads: 1 }
+send_07: { kotekan_stage: bufferSend, buf: ch_07, server_ip: 127.0.0.1, server_port: 15208, drop_frames: true }
+recv_07: { kotekan_stage: bufferRecv, buf: rc_07, listen_port: 15208, num_threads: 1 }
+send_08: { kotekan_stage: bufferSend, buf: ch_08, server_ip: 127.0.0.1, server_port: 15209, drop_frames: true }
+recv_08: { kotekan_stage: bufferRecv, buf: rc_08, listen_port: 15209, num_threads: 1 }
+send_09: { kotekan_stage: bufferSend, buf: ch_09, server_ip: 127.0.0.1, server_port: 15210, drop_frames: true }
+recv_09: { kotekan_stage: bufferRecv, buf: rc_09, listen_port: 15210, num_threads: 1 }
 gather: { kotekan_stage: GnssChannelGather, in_bufs: [rc_00, rc_01, rc_02, rc_03, rc_04, rc_05, rc_06, rc_07, rc_08, rc_09], out_buf: gather_buf }
 search: { kotekan_stage: GnssChannelizedSearch, in_buf: gather_buf, channel_offset: 0, n_channels: 10, acquire_snr: 10, acquire_windows: 100, hops_per_record: 1000 }
 
@@ -132,8 +139,8 @@ track_07: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_07, out_buf: rec_0
 track_08: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_08, out_buf: rec_08, channel_offset: 8, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hops_per_record: 1000 }
 track_09: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_09, out_buf: rec_09, channel_offset: 9, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0, hops_per_record: 1000 }
 combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_00, rec_01, rec_02, rec_03, rec_04, rec_05, rec_06, rec_07, rec_08, rec_09], out_buf: out_buf, integration_length: 50, secondary_overlay: L5_NH20 }
-record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpsl5", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gps_l5", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 beamcube: { kotekan_stage: GnssBeamCube, in_bufs: [rec_00, rec_01, rec_02, rec_03, rec_04, rec_05, rec_06, rec_07, rec_08, rec_09], out_buf: beam_buf, channel0: 0, integration_length: 50 }
-beamrec: { kotekan_stage: rawFileWrite, in_buf: beam_buf, base_dir: "/tmp/gpsl5", file_name: "beam", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+beamrec: { kotekan_stage: rawFileWrite, in_buf: beam_buf, base_dir: "/tmp/gps_l5", file_name: "beam", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
-spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream' }
+spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --http-port 8082 --ws-port 8739 --kotekan-rest-port 12248' }
