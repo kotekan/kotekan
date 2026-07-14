@@ -12,7 +12,7 @@
 #     sub-carrier phase/Doppler handling the prime suspect) -> fixable, reopens L1C deep integration.
 # NB: C/A carries NAV DATA (+-1 bit / 20 ms) where L1C-P is a dataless pilot -- but the coherence
 # metric squares (arg(A^2)) so the +-1 bit is removed, same as the L1C overlay. Grab a strong sat.
-# Analyse: python3 python/scripts/gps_intgn_check.py /tmp/gpsintgn_l1ca   (+ the arg(A^2) R check).
+# Analyse: python3 python/scripts/gnss/gps_intgn_check.py /tmp/gpsintgn_l1ca   (+ the arg(A^2) R check).
 # Regenerate: GNSS_SIGNAL=L1CA INTEGRATION_LENGTH=1 SINGLE_TRACKER=1 FLL_GAIN=0.05 FLL_REACQ_HZ=5000 \
 #   FLL_LOCK_AMP=0.02 OUT_NAME=live_intgn_l1ca.yaml BASE_DIR=/tmp/gpsintgn_l1ca python3 config/gen_live_config.py
 # Run (run_live.sh CFG=this):

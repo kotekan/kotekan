@@ -11,7 +11,7 @@ KPID=$!
 sleep 6
 # Flap regime: --hold-snr 1e9 disables hold -> the seed re-fits (grid-scattered doppler)
 # every broker cycle, sub-fence steps at ~5 Hz. Shared carrier loop args = live values.
-python3 python/scripts/gps_distributed_broker.py \
+python3 python/scripts/gnss/gps_distributed_broker.py \
     --rest-url http://localhost:12070 \
     --detectors search --trackers track --combiner combiner \
     --acquire-snr 6 --interval 0.2 --coast-budget 30 \

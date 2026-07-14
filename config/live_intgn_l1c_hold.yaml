@@ -5,7 +5,7 @@
 # for the marginal-BOC deep-wipe wall (2026-06-30 findings: the noisy search re-seed + BOC-sidelobe
 # pull-in were jumping cp ~150 chips/record and randomising the per-record phase). Grab ~60 s on a
 # high GPS III sat, then compare against the fll0 (non-held) capture:
-#   python3 python/scripts/gps_l1c_wipe_check.py /tmp/gpsintgn_l1c_hold
+#   python3 python/scripts/gnss/gps_l1c_wipe_check.py /tmp/gpsintgn_l1c_hold
 # SUCCESS = the recorded code phase now holds (no ~150-chip jumps) and the deep wipe deep_snr climbs
 # above the ~3.9 floor. If the hold never engages, lower HOLD_LOCK_AMP; if it holds noise, raise it.
 # Regenerate: GNSS_SIGNAL=L1C_P INTEGRATION_LENGTH=1 FLL_GAIN=0 HOLD_LOCK_AMP=0.1 HOLD_RECORDS=5 \

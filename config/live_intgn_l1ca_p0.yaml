@@ -11,7 +11,7 @@
 # WATCH: (a) |A| -- if it drops a lot, the seed cp/cp_rate is not accurate and we need a real DLL,
 # not just pullin 0; (b) whether coherence breaks at the broker's cp re-seed cadence (~0.2 s) -- if
 # so the tracker must OWN cp (DLL with memory) and ignore re-seeds once locked. Either outcome tells
-# us exactly what the DLL must do. Analyse: python3 python/scripts/gps_intgn_check.py /tmp/gpsintgn_l1ca_p0
+# us exactly what the DLL must do. Analyse: python3 python/scripts/gnss/gps_intgn_check.py /tmp/gpsintgn_l1ca_p0
 # Regenerate: GNSS_SIGNAL=L1CA INTEGRATION_LENGTH=1 SINGLE_TRACKER=1 PULLIN_CHIPS=0 FLL_GAIN=0.05 \
 #   FLL_REACQ_HZ=5000 FLL_LOCK_AMP=0.02 OUT_NAME=live_intgn_l1ca_p0.yaml BASE_DIR=/tmp/gpsintgn_l1ca_p0 python3 config/gen_live_config.py
 # Run (run_live.sh CFG=this):

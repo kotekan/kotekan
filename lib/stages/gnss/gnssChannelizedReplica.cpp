@@ -83,7 +83,7 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
     // interleaved with a sibling. Model the COMBINED stream -- the component at its
     // tdm_phase parity, zeros where the sibling is -- so the channelized replica matches
     // the real signal's spectrum (NOT the bare 511.5 kcps component, which loses ~9-12 dB;
-    // see python/scripts/gps_l2c_subband_validate.py). comb_mult=1 -> ordinary signal.
+    // see python/scripts/gnss/gps_l2c_subband_validate.py). comb_mult=1 -> ordinary signal.
     // BOC(m,m) is modeled as an EXPANDED code, exactly like TDM: each chip becomes 2m
     // half-cycle slots of alternating sign (sine-BOC: + first) at 2m x the chip rate. This
     // replaces the old analytic per-sample sub-carrier branch so the sub-carrier lives IN

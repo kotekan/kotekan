@@ -17,7 +17,7 @@ export class KotekanRest {
         return `${this.base}/${this.resolveStage(stage)}/${endpoint}`;
     }
 
-    // gps_* <-> bare stage-name aliasing (the JS twin of python/scripts/gnss_stages.py).
+    // gps_* <-> bare stage-name aliasing (the JS twin of python/scripts/gnss/gnss_stages.py).
     // The tri-constellation config names the GPS chain gps_search / gps_track /
     // gps_combiner, matching gal_*/bds_*; the older single-constellation benches still
     // use search / track / combiner. Panels always ask for the gps_* spelling and this

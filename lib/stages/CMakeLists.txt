@@ -43,16 +43,16 @@ add_library(
     simpleAutocorr.cpp
     SampleAutocorr.cpp
     SimpleCrosscorr.cpp
-    gpsCACode.cpp
-    beidouB1CCode.cpp
-    galileoE1Code.cpp
-    gpsL1CCode.cpp
-    gpsL2CCode.cpp
-    gpsL5Code.cpp
-    GnssSubbandSplit.cpp
-    GnssCoherentCombiner.cpp
-    GnssBeamCube.cpp
-    GnssTrackState.cpp
+    gnss/gpsCACode.cpp
+    gnss/beidouB1CCode.cpp
+    gnss/galileoE1Code.cpp
+    gnss/gpsL1CCode.cpp
+    gnss/gpsL2CCode.cpp
+    gnss/gpsL5Code.cpp
+    gnss/GnssSubbandSplit.cpp
+    gnss/GnssCoherentCombiner.cpp
+    gnss/GnssBeamCube.cpp
+    gnss/GnssTrackState.cpp
     SpawnProcess.cpp
     freqSplit.cpp
     FreqSubset.cpp
@@ -131,7 +131,7 @@ add_library(
     # Julia
     $<$<BOOL:${Julia_FOUND}>:juliaHelloWorld.cpp>)
 
-target_include_directories(kotekan_stages PRIVATE .)
+target_include_directories(kotekan_stages PRIVATE . gnss)
 
 if(LIBAIRSPY_FOUND)
     target_sources(kotekan_stages PRIVATE airspyInput.cpp)
@@ -148,16 +148,16 @@ if(FFTW_FOUND)
     target_sources(
         kotekan_stages
         PRIVATE fftwEngine.cpp
-                GpsReplicaCorrelator.cpp
+                gnss/GpsReplicaCorrelator.cpp
                 pfbPrototype.cpp
-                gnssBandPlan.cpp
-                gnssChannelizedDespread.cpp
-                gnssChannelizedAcquire.cpp
-                gnssChannelizedReplica.cpp
-                GnssChannelizedTracker.cpp
-                GnssChannelizedSearch.cpp
-                GnssVoltagePeel.cpp
-                GnssChannelGather.cpp)
+                gnss/gnssBandPlan.cpp
+                gnss/gnssChannelizedDespread.cpp
+                gnss/gnssChannelizedAcquire.cpp
+                gnss/gnssChannelizedReplica.cpp
+                gnss/GnssChannelizedTracker.cpp
+                gnss/GnssChannelizedSearch.cpp
+                gnss/GnssVoltagePeel.cpp
+                gnss/GnssChannelGather.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
 endif()
@@ -252,11 +252,11 @@ endif()
 # GPU GNSS despread driver (docs/gnss_gpu_migration.md G1b): only with CUDA; defines GNSS_CUDA so
 # GnssChannelizedTracker exposes use_cuda. One-way link stages -> kotekan_cuda (kernel only).
 if(USE_CUDA)
-    target_sources(kotekan_stages PRIVATE GnssCudaDespread.cpp)
+    target_sources(kotekan_stages PRIVATE gnss/GnssCudaDespread.cpp)
     # Phase F (docs/gnss_gpu_migration.md §6): the cudaProcess tracking command + its host
     # record assembler. The command lives here (not lib/cuda) because it drives the
     # GnssCudaDespread driver -- keeps the stages -> kotekan_cuda link one-way.
-    target_sources(kotekan_stages PRIVATE cudaGnssTrack.cpp GnssGpuRecordAssemble.cpp)
+    target_sources(kotekan_stages PRIVATE gnss/cudaGnssTrack.cpp gnss/GnssGpuRecordAssemble.cpp)
     target_link_libraries(kotekan_stages PRIVATE kotekan_cuda)
     target_compile_definitions(kotekan_stages PRIVATE GNSS_CUDA=1)
 endif()

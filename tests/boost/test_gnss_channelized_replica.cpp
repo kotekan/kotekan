@@ -156,7 +156,7 @@ BOOST_AUTO_TEST_CASE(l1ca_distinct_from_l5q) {
 // L2C is TIME-MULTIPLEXED: CM and CL interleave chip-by-chip into the combined 1.023 Mcps
 // stream (CM on the even combined chips, CL on the odd). ChannelizedReplicaBank must model
 // that -- the bare 511.5 kcps component code loses ~9-12 dB vs the real interleaved signal
-// (python/scripts/gps_l2c_subband_validate.py). The tell-tale of a correct model: CM and CL
+// (python/scripts/gnss/gps_l2c_subband_validate.py). The tell-tale of a correct model: CM and CL
 // have DISJOINT combined-chip slots, so the true interleaved signal (CM+CL) despreads with the
 // CM replica to ~the same amplitude as CM alone -- the CL half lands in the CM replica's zeros
 // and doesn't bleed in. A bank that held the bare CM code (no zeros) would let CL cross-talk in.
@@ -187,7 +187,7 @@ BOOST_AUTO_TEST_CASE(l2c_cm_time_multiplexed) {
 // The hop-rate prefix-sum generator must reproduce the exact full-PFB channels() to
 // ~machine precision on the covering channels (the chip-collapse is an identity; the
 // chip-edge-in-the-filter is exact via Phi[k_hi]-Phi[k_lo-1] over integer taps). The
-// C++ analog of python/scripts/gps_hoprate_validate.py. Airspy-scale (5 MSPS, N=20,
+// C++ analog of python/scripts/gnss/gps_hoprate_validate.py. Airspy-scale (5 MSPS, N=20,
 // ~4.9 samples/chip).
 BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb) {
     const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L1CA");

@@ -86,7 +86,7 @@ HOPS_PER_SEC=$(awk '/^[[:space:]]*sample_rate:/{sr=$2} /^[[:space:]]*spectrum_le
 # config's signal:. So any band works with no per-band flags -- L1CA 1.023e6/1023, L1C_P 1.023e6/
 # 10230, L2C_CM 511.5e3/10230, L5_Q 10.23e6/10230. Unknown/absent -> broker defaults (L1 C/A).
 SIGNAL=$(awk '/^[[:space:]]*signal:/{print $2; exit}' "$CFG")
-SIGHDR="lib/stages/gnssSignal.hpp"
+SIGHDR="lib/stages/gnss/gnssSignal.hpp"
 CHIP_HZ=""; CODELEN=""
 if [ -n "${SIGNAL:-}" ] && [ -f "$SIGHDR" ]; then
   CHIP_HZ=$(awk -F, -v s="$SIGNAL" '$1 ~ ("^[[:space:]]*\"" s "\"$"){c=$3;gsub(/[^0-9.eE+-]/,"",c);print c;exit}' "$SIGHDR")
@@ -98,7 +98,7 @@ fi
 # the SAME profile to (a) cap integration_length from coherence_s and (b) hand the broker a matching
 # cold per-PRN margin. Name = CLOCK= env OR the config's clock_profile.name (default auto); explicit
 # accuracy_ppm / coherence_s in the block override the preset.
-CLKHDR="lib/stages/clockProfile.hpp"
+CLKHDR="lib/stages/gnss/clockProfile.hpp"
 _clkline=$(grep -oE '^clock_profile:[^#]*' "$CFG" | head -1)
 CLK_NAME=${CLOCK:-$(echo "$_clkline" | grep -oE 'name:[[:space:]]*[A-Za-z]+' | awk '{print $NF}')}
 CLK_NAME=${CLK_NAME:-auto}
@@ -121,7 +121,7 @@ if { [ "$CLK_NAME" != auto ] || [ -n "$CLK_COH_CFG" ]; } && [ -n "${CHIP_HZ:-}" 
   CLK_MAXINT=$(awk -v c="$CLK_COH" -v ch="$CHIP_HZ" -v cl="$CODELEN" 'BEGIN{rp=cl/ch; if(rp>0)printf "%d",int(c/rp)}')
 fi
 echo "clock profile '$CLK_NAME': accuracy ${CLK_ACC} ppm, coherence ${CLK_COH} s -> broker cold margin +-${CLK_WIDE_HZ} Hz${CLK_MAXINT:+, integ cap ${CLK_MAXINT} rec}"
-BROKER=python/scripts/gps_distributed_broker.py
+BROKER=python/scripts/gnss/gps_distributed_broker.py
 LOG=/tmp/gpslive.log
 
 cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" "${GALPID:-}" "${GALLOGPID:-}" "${BDSPID:-}" "${BDSLOGPID:-}" 2>/dev/null
@@ -146,7 +146,7 @@ if grep -qE 'require_hint:[[:space:]]*true' "$CFG"; then
 elif [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   # PID-based temp (portable: BSD/macOS mktemp rejects a .yaml suffix after the X's).
   RUNCFG="${TMPDIR:-/tmp}/live_cfg_$$.yaml"
-  if ! python3 python/scripts/gps_visible_prns.py --lat "$LAT" --lon "$LON" \
+  if ! python3 python/scripts/gnss/gps_visible_prns.py --lat "$LAT" --lon "$LON" \
          --alt "${ALT:-100}" ${SIGNAL:+--signal "$SIGNAL"} --patch "$CFG" --out "$RUNCFG"; then
     echo "PRN refresh failed (network/time?) -- using $CFG as-is"; cp "$CFG" "$RUNCFG"
   fi
@@ -275,7 +275,7 @@ if grep -qE '^gal_track:' "$RUNCFG"; then
   echo "starting GALILEO broker (gal_search/gal_track/gal_combiner, TLE group=galileo)..."
   python3 $BROKER --detectors gal_search --trackers gal_track --combiner gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30}           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_gal.ppm           --chip-rate-hz 1.023e6 --code-length 4092           $GAL_ALM $CARG           > /tmp/gpslive_broker_gal.log 2>&1 &
   GALPID=$!
-  python3 python/scripts/gps_status_logger.py --url http://localhost:12048           --combiner gal_combiner --search gal_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/gpslive_logger_gal.log 2>&1 &
+  python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:12048           --combiner gal_combiner --search gal_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/gpslive_logger_gal.log 2>&1 &
   GALLOGPID=$!
   echo "Galileo C/N0 status log -> $RECDIR/status_log_gal.jsonl"
 fi
@@ -307,7 +307,7 @@ if grep -qE '^bds_track:' "$RUNCFG"; then
           $BDS_ALM $CARG \
           > /tmp/gpslive_broker_bds.log 2>&1 &
   BDSPID=$!
-  python3 python/scripts/gps_status_logger.py --url http://localhost:12048 \
+  python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:12048 \
           --combiner bds_combiner --search bds_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
           --out "$RECDIR/status_log_bds.jsonl" > /tmp/gpslive_logger_bds.log 2>&1 &
   BDSLOGPID=$!
@@ -317,7 +317,7 @@ fi
 # Persist per-PRN C/N0 + detection stats (deep_snr/coherence_s live only in REST/the browser -- the
 # recorded level_*.raw has Â but not those). One JSONL line per active PRN per poll, wall-clock
 # stamped, alongside the raw records. Offline: captures/gps_beam_survey.py --status <this file>.
-python3 python/scripts/gps_status_logger.py --url http://localhost:12048 \
+python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:12048 \
         --combiner gps_combiner --search gps_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
         --out "$RECDIR/status_log.jsonl" > /tmp/gpslive_logger.log 2>&1 &
 LOGPID=$!
@@ -335,7 +335,7 @@ if [ "${OBSERVABLES:-1}" != "0" ]; then
             "bds_combiner bds_search C BDS_B1C_P 10230 obs_bds_b1c"; do
     set -- $_o
     grep -qE "^($1|${1#gps_}):" "$RUNCFG" || continue
-    python3 python/scripts/gnss_observables.py --url http://localhost:12048 \
+    python3 python/scripts/gnss/gnss_observables.py --url http://localhost:12048 \
             --combiner "$1" --search "$2" --sys "$3" --band "$4" --code-length "$5" \
             --carrier-hz "${CARRIER_HZ:-1575420000}" --chip-rate-hz 1.023e6 \
             ${LAT:+--lat $LAT} ${LON:+--lon $LON} ${ALT:+--alt $ALT} \

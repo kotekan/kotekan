@@ -78,7 +78,7 @@ drifts), then each hop is `~P·f_chip/channel_BW` MACs (a ~`Fs/f_chip` ≈ 313×
 **~0.01 Tflop/s/node**). Both carrier images kept; the carrier is a per-hop output
 phasor; the nav wipe is the free per-hop sign post-multiply.
 
-**Validated, and exact** (`python/scripts/gps_hoprate_validate.py`; C++
+**Validated, and exact** (`python/scripts/gnss/gps_hoprate_validate.py`; C++
 `ChannelizedReplicaBank::channels_hoprate()` + boost test `hoprate_matches_exact_pfb`):
 the per-chip form reproduces the exact full-PFB to **machine precision** (−144 dB at
 float32). The right form is the **prefix-sum**, not a φ-bank: a chip's filter

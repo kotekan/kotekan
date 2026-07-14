@@ -3,7 +3,7 @@
 # integration REFERENCE CAPTURE (the L1C analog of live_intgn_l2c.yaml). integration_length: 1
 # records EVERY per-record complex A (slots 4/5) + capture UTC raw, with NO overlay wipe -- so the
 # L1CO wipe / coherence / GPS-time phase-seed can be worked out OFFLINE before wiring it live.
-# Analyse with:  python3 python/scripts/gps_l1c_wipe_check.py /tmp/gpsintgn_l1c
+# Analyse with:  python3 python/scripts/gnss/gps_l1c_wipe_check.py /tmp/gpsintgn_l1c
 #
 # Grab ~60-120 s (>= a few 18 s L1CO overlay periods) on a pass with a HIGH GPS III satellite up
 # (only GPS III broadcasts L1C: PRN 04/11/14/18/23/28 as of 2026) -- that bright sat calibrates

@@ -10,7 +10,7 @@
 # peak, so the tracker stays realtime (fewer valve drops -> more contiguous records,
 # cleaner coherent integration). Run:  CFG=config/live_intgn.yaml TRK=track \
 #   LAT=43.968697 LON=-79.252106 ALT=260 ./config/run_live.sh   (Ctrl-C after ~60 s),
-# then:  python3 python/scripts/gps_intgn_check.py /tmp/gpsintgn
+# then:  python3 python/scripts/gnss/gps_intgn_check.py /tmp/gpsintgn
 type: config
 log_level: info
 instrument_name: airspy_gps
@@ -49,7 +49,7 @@ doppler_max: 5500.0
 # backpressures), so it just lowers the snapshot rate -- fine with the EMA-steady seed.
 doppler_step: 100.0
 # Visible PRNs change as the constellation rotates (~half an orbit in ~8 h) -- refresh
-# with: python3 python/scripts/gps_visible_prns.py  (or run_live.sh auto-updates when
+# with: python3 python/scripts/gnss/gps_visible_prns.py  (or run_live.sh auto-updates when
 # LAT/LON are set). This set was visible at the site ~2026-06-27 00:08 UTC.
 prns: [28, 32, 31, 25, 3, 10, 26, 1, 12, 13, 2]
 

@@ -89,7 +89,7 @@ the ±1 nav-bit π flip) drives `f_track`. Closed the live ~15 Hz seed wander to
 
 ## Control plane (broker)
 
-`python/scripts/gps_distributed_broker.py` — the only non-kotekan piece, touches no
+`python/scripts/gnss/gps_distributed_broker.py` — the only non-kotekan piece, touches no
 sample buffers:
 - polls `…/get_detections` → best-SNR consensus per PRN;
 - **almanac assist** (`--almanac` + `--lat/--lon`): `gps_beamtrack.predict_dopplers`
@@ -113,8 +113,8 @@ constellation rotates ~half an orbit in ~8 h.
 
 | tool | role |
 |---|---|
-| `python/scripts/gps_intgn_check.py` | reconstructs coherent vs incoherent integration vs K from the recorded per-record `A`; noise-floor (1/√K vs flat), carrier-stability fit, perfect-FLL oracle, **nav-bit wipe** (estimate bits → wipe → integrate past 20 ms), and the on-sky **nav decode**. Auto-detects `n_prn` |
-| `python/scripts/gps_nav_decode.py` | IS-GPS-200 L1 C/A decoder: (1+2) Hamming parity, TLM-preamble frame sync, HOW (TOW + subframe ID). Validated on-sky (5 subframes, marching TOW) |
+| `python/scripts/gnss/gps_intgn_check.py` | reconstructs coherent vs incoherent integration vs K from the recorded per-record `A`; noise-floor (1/√K vs flat), carrier-stability fit, perfect-FLL oracle, **nav-bit wipe** (estimate bits → wipe → integrate past 20 ms), and the on-sky **nav decode**. Auto-detects `n_prn` |
+| `python/scripts/gnss/gps_nav_decode.py` | IS-GPS-200 L1 C/A decoder: (1+2) Hamming parity, TLM-preamble frame sync, HOW (TOW + subframe ID). Validated on-sky (5 subframes, marching TOW) |
 
 Live readouts + site diagnostics:
 

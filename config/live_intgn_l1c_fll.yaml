@@ -8,7 +8,7 @@
 # it doesn't chase noise. On a STRONG Block III sat (SNR ~15) the NCO should track cleanly.
 # SUCCESS = the recorded per-record phase becomes temporally coherent (arg(A^2) R climbs toward 1,
 # WIPED coherent stops falling ~1/sqrt(K)) -> deep integration finally works.
-# Analyse: python3 python/scripts/gps_l1c_wipe_check.py /tmp/gpsintgn_l1c_fll
+# Analyse: python3 python/scripts/gnss/gps_l1c_wipe_check.py /tmp/gpsintgn_l1c_fll
 # Regenerate: GNSS_SIGNAL=L1C_P INTEGRATION_LENGTH=1 SINGLE_TRACKER=1 FLL_GAIN=0.05 \
 #   FLL_REACQ_HZ=5000 FLL_LOCK_AMP=0.02 OUT_NAME=live_intgn_l1c_fll.yaml \
 #   BASE_DIR=/tmp/gpsintgn_l1c_fll python3 config/gen_live_config.py

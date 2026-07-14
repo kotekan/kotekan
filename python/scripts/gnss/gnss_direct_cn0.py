@@ -66,7 +66,7 @@ def b1cp_code(prn):
     return (L[j] * L[(j + w) % 10243]).astype(int)
 
 def e1c_code(prn):
-    src = open("/home/lwlab/airspy_gps/kotekan/lib/stages/galileoE1Code.cpp").read()
+    src = open("/home/lwlab/airspy_gps/kotekan/lib/stages/gnss/galileoE1Code.cpp").read()
     m = re.search(r"E1C_HEX\[50\]\s*=\s*\{(.*?)\n\};", src, re.S)
     entries = re.findall(r'((?:"[0-9A-Fa-f]+"\s*)+),', m.group(1) + ",")
     hexstr = "".join(re.findall(r'"([0-9A-Fa-f]+)"', entries[prn-1]))

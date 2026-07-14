@@ -6,7 +6,7 @@ sky direction with the signal's full code processing gain, then use those gains
 to **calibrate** the array and to **remove** the satellites from the data. This
 note sketches how that maps onto CHORD's F-X system. It builds on the
 channelized GNSS pipeline in `lib/stages/Gnss*` / `gnss*` and
-`python/scripts/gps_distributed_broker.py`.
+`python/scripts/gnss/gps_distributed_broker.py`.
 
 ## In-band signals
 

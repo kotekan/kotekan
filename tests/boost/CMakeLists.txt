@@ -13,40 +13,40 @@ target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotek
 
 # Pure C/A code generator: compile the source directly so the test pulls in no
 # FFTW / libairspy dependency from kotekan_stages.
-add_executable(test_gps_ca_code test_gps_ca_code.cpp ../../lib/stages/gpsCACode.cpp)
-target_include_directories(test_gps_ca_code PRIVATE ../../lib/stages)
+add_executable(test_gps_ca_code test_gps_ca_code.cpp ../../lib/stages/gnss/gpsCACode.cpp)
+target_include_directories(test_gps_ca_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
-add_executable(test_gps_l2c_code test_gps_l2c_code.cpp ../../lib/stages/gpsL2CCode.cpp)
-target_include_directories(test_gps_l2c_code PRIVATE ../../lib/stages)
+add_executable(test_gps_l2c_code test_gps_l2c_code.cpp ../../lib/stages/gnss/gpsL2CCode.cpp)
+target_include_directories(test_gps_l2c_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
-add_executable(test_gps_l5_code test_gps_l5_code.cpp ../../lib/stages/gpsL5Code.cpp)
-target_include_directories(test_gps_l5_code PRIVATE ../../lib/stages)
+add_executable(test_gps_l5_code test_gps_l5_code.cpp ../../lib/stages/gnss/gpsL5Code.cpp)
+target_include_directories(test_gps_l5_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
-add_executable(test_gps_l1c_code test_gps_l1c_code.cpp ../../lib/stages/gpsL1CCode.cpp)
-target_include_directories(test_gps_l1c_code PRIVATE ../../lib/stages)
+add_executable(test_gps_l1c_code test_gps_l1c_code.cpp ../../lib/stages/gnss/gpsL1CCode.cpp)
+target_include_directories(test_gps_l1c_code PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
 # Pure band-plan logic: compile the source directly, no Telescope/FFTW needed.
-add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnssBandPlan.cpp)
-target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages)
+add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnss/gnssBandPlan.cpp)
+target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
 # Broker assignment logic: pure, no FFTW.
-add_executable(test_gnss_broker test_gnss_broker.cpp ../../lib/stages/gnssBroker.cpp
-                                ../../lib/stages/gnssBandPlan.cpp)
-target_include_directories(test_gnss_broker PRIVATE ../../lib/stages)
+add_executable(test_gnss_broker test_gnss_broker.cpp ../../lib/stages/gnss/gnssBroker.cpp
+                                ../../lib/stages/gnss/gnssBandPlan.cpp)
+target_include_directories(test_gnss_broker PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
 # Pure PFB core (prototype design + polyphase fold): no FFTW; the test uses a
 # reference DFT to check channel isolation against a straight-FFT channelizer.
 add_executable(test_pfb_prototype test_pfb_prototype.cpp ../../lib/stages/pfbPrototype.cpp)
-target_include_directories(test_pfb_prototype PRIVATE ../../lib/stages)
+target_include_directories(test_pfb_prototype PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
 # Channelized despread: sim signal -> PFB analysis (reference DFT) -> per-channel
 # correlate-and-sum, checked against the full-band matched filter. No FFTW.
 add_executable(
     test_gnss_channelized_despread test_gnss_channelized_despread.cpp
-    ../../lib/stages/gnssChannelizedDespread.cpp ../../lib/stages/gnssSimSignal.cpp
-    ../../lib/stages/pfbPrototype.cpp ../../lib/stages/gpsCACode.cpp
-    ../../lib/stages/gpsL5Code.cpp ../../lib/stages/gpsL1CCode.cpp)
-target_include_directories(test_gnss_channelized_despread PRIVATE ../../lib/stages)
+    ../../lib/stages/gnss/gnssChannelizedDespread.cpp ../../lib/stages/gnss/gnssSimSignal.cpp
+    ../../lib/stages/pfbPrototype.cpp ../../lib/stages/gnss/gpsCACode.cpp
+    ../../lib/stages/gnss/gpsL5Code.cpp ../../lib/stages/gnss/gpsL1CCode.cpp)
+target_include_directories(test_gnss_channelized_despread PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
 # Channelized acquisition: FFT-domain coarse correlation + cross-channel fine-lag
 # DFT + incoherent multi-window accumulation, checked against injected code
@@ -56,17 +56,17 @@ target_include_directories(test_gnss_channelized_despread PRIVATE ../../lib/stag
 if(FFTW_FOUND)
     add_executable(
         test_gnss_channelized_acquire test_gnss_channelized_acquire.cpp
-        ../../lib/stages/gnssChannelizedAcquire.cpp ../../lib/stages/pfbPrototype.cpp
-        ../../lib/stages/gpsCACode.cpp
+        ../../lib/stages/gnss/gnssChannelizedAcquire.cpp ../../lib/stages/pfbPrototype.cpp
+        ../../lib/stages/gnss/gpsCACode.cpp
         # The L2C cases drive the real ChannelizedReplicaBank (time-mux combined code) so
         # the bug hunt exercises the production replica + acquire path, not a test stand-in.
-        ../../lib/stages/gnssChannelizedReplica.cpp ../../lib/stages/gnssBandPlan.cpp
-        ../../lib/stages/gnssChannelizedDespread.cpp
-        ../../lib/stages/gpsL2CCode.cpp ../../lib/stages/gpsL5Code.cpp
-        ../../lib/stages/gpsL1CCode.cpp # replica signal_code() dispatches GPS_L1C_P
-        ../../lib/stages/galileoE1Code.cpp # + GAL_E1B/E1C memory codes
-        ../../lib/stages/beidouB1CCode.cpp) # + BDS B1C Weil codes
-    target_include_directories(test_gnss_channelized_acquire PRIVATE ../../lib/stages)
+        ../../lib/stages/gnss/gnssChannelizedReplica.cpp ../../lib/stages/gnss/gnssBandPlan.cpp
+        ../../lib/stages/gnss/gnssChannelizedDespread.cpp
+        ../../lib/stages/gnss/gpsL2CCode.cpp ../../lib/stages/gnss/gpsL5Code.cpp
+        ../../lib/stages/gnss/gpsL1CCode.cpp # replica signal_code() dispatches GPS_L1C_P
+        ../../lib/stages/gnss/galileoE1Code.cpp # + GAL_E1B/E1C memory codes
+        ../../lib/stages/gnss/beidouB1CCode.cpp) # + BDS B1C Weil codes
+    target_include_directories(test_gnss_channelized_acquire PRIVATE ../../lib/stages ../../lib/stages/gnss)
     target_include_directories(test_gnss_channelized_acquire SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_acquire PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
 
@@ -74,12 +74,12 @@ if(FFTW_FOUND)
     # checked by self / cross-PRN / cross-signal despread. Needs FFTW (r2c replica).
     add_executable(
         test_gnss_channelized_replica test_gnss_channelized_replica.cpp
-        ../../lib/stages/gnssChannelizedReplica.cpp ../../lib/stages/gnssChannelizedDespread.cpp
-        ../../lib/stages/gnssBandPlan.cpp ../../lib/stages/pfbPrototype.cpp
-        ../../lib/stages/gpsCACode.cpp ../../lib/stages/gpsL1CCode.cpp ../../lib/stages/gpsL2CCode.cpp
-        ../../lib/stages/gpsL5Code.cpp ../../lib/stages/galileoE1Code.cpp
-        ../../lib/stages/beidouB1CCode.cpp)
-    target_include_directories(test_gnss_channelized_replica PRIVATE ../../lib/stages)
+        ../../lib/stages/gnss/gnssChannelizedReplica.cpp ../../lib/stages/gnss/gnssChannelizedDespread.cpp
+        ../../lib/stages/gnss/gnssBandPlan.cpp ../../lib/stages/pfbPrototype.cpp
+        ../../lib/stages/gnss/gpsCACode.cpp ../../lib/stages/gnss/gpsL1CCode.cpp ../../lib/stages/gnss/gpsL2CCode.cpp
+        ../../lib/stages/gnss/gpsL5Code.cpp ../../lib/stages/gnss/galileoE1Code.cpp
+        ../../lib/stages/gnss/beidouB1CCode.cpp)
+    target_include_directories(test_gnss_channelized_replica PRIVATE ../../lib/stages ../../lib/stages/gnss)
     target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
 endif()

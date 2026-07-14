@@ -8,7 +8,7 @@
 # pulled in their own cp. SUCCESS = combined per-record |A| jumps ~5x on a strong Block III sat
 # (PRN 1/4/11/13/14/18/20/21/23/28). Search arm kept (seeds the tracker); beam cube dropped (one
 # combined record per PRN). If it works -> do the CHORD-faithful version (shared broker-seeded cp,
-# no per-node re-pick). Analyse: python3 python/scripts/gps_l1c_wipe_check.py /tmp/gpsintgn_l1c_single
+# no per-node re-pick). Analyse: python3 python/scripts/gnss/gps_l1c_wipe_check.py /tmp/gpsintgn_l1c_single
 # Regenerate: GNSS_SIGNAL=L1C_P INTEGRATION_LENGTH=1 FLL_GAIN=0 SINGLE_TRACKER=1 \
 #   OUT_NAME=live_intgn_l1c_single.yaml BASE_DIR=/tmp/gpsintgn_l1c_single python3 config/gen_live_config.py
 # Run (run_live.sh CFG=this):

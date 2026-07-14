@@ -27,7 +27,7 @@ pkill -9 -f build_mac/kotekan/kotekan 2>/dev/null
 RUNCFG="$CFG"
 if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   RUNCFG="${TMPDIR:-/tmp}/mono_cfg_$$.yaml"
-  python3 python/scripts/gps_visible_prns.py --lat "$LAT" --lon "$LON" \
+  python3 python/scripts/gnss/gps_visible_prns.py --lat "$LAT" --lon "$LON" \
       --alt "${ALT:-100}" --patch "$CFG" --out "$RUNCFG" \
       || { echo "PRN refresh failed -- using $CFG as-is"; cp "$CFG" "$RUNCFG"; }
 fi
@@ -40,4 +40,4 @@ $KOTEKAN -c "$RUNCFG" > "$LOG" 2>&1 &
 sleep 4
 echo "front end: $(curl -s --max-time 2 localhost:12048/airspy_in/adcstat | tr -d '\n ')"
 echo "=== monolithic SNR (Ctrl-C to stop). This is the ground truth. ==="
-python3 python/scripts/gps_mono_watch.py "$RECDIR" "${NPRN:-11}"
+python3 python/scripts/gnss/gps_mono_watch.py "$RECDIR" "${NPRN:-11}"
