@@ -176,6 +176,7 @@ def main():
                     "search_snr": det_snr.get(prn),
                     "doppler_hz": r.get("doppler_hz"),
                     "carrier_hz_resid": r.get("carrier_hz_resid"),
+                    "nh_phase": r.get("nh_phase"),
                 }
                 # --- GEOMETRY (BRDC at this epoch). Receiver clock NOT removed: solving it is
                 # a downstream job, and a row that has had a model subtracted can never be

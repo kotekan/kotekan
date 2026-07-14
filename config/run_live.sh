@@ -214,7 +214,7 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   # 2 deepest-below-horizon PRNs stay seeded as NOISE PROBES: genuine signal-free emits
   # calibrate the beam map's pedestal (the almanac gate otherwise never tracks one and
   # the GPS pedestal fell back to a signal percentile, blinding the map's low end).
-  ALM="$ALM --noise-probes ${NOISE_PROBES:-2}"
+  ALM="$ALM --noise-probes ${NOISE_PROBES:-4}"
   # Beam-map coasting (default ON; COAST_TO_HORIZON=0 to disable): visible sats coast on
   # the pure model through fades/nulls until they SET, so the unbiased power observables
   # sample the whole beam instead of only the locked stretches.
@@ -266,7 +266,7 @@ if grep -qE '^gal_track:' "$RUNCFG"; then
   if [ -n "$LAT" ] && [ -n "$LON" ]; then
     GAL_ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
     GAL_ALM="$GAL_ALM --doppler-sign ${DOPPLER_SIGN:-1} --tle $GAL_TLE"
-    GAL_ALM="$GAL_ALM --noise-probes ${NOISE_PROBES:-2}"
+    GAL_ALM="$GAL_ALM --noise-probes ${NOISE_PROBES:-4}"
     if [ "${DEAD_RECKON:-1}" != "0" ]; then GAL_ALM="$GAL_ALM --dead-reckon --dr-constellation E"; fi
     GAL_ALM="$GAL_ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500} --search-margin-wide-hz ${CLK_WIDE_HZ:-3000}"
   else
@@ -293,7 +293,7 @@ if grep -qE '^bds_track:' "$RUNCFG"; then
     # poisoned the clock-freq bias (2026-07-12: lone cross-corr 'C14' lock swallowed -1550 Hz
     # as clock bias and deadlocked the narrowed search for the whole constellation).
     BDS_ALM="$BDS_ALM --tle-name-filter BEIDOU-3"
-    BDS_ALM="$BDS_ALM --noise-probes ${NOISE_PROBES:-2}"
+    BDS_ALM="$BDS_ALM --noise-probes ${NOISE_PROBES:-4}"
     if [ "${DEAD_RECKON:-1}" != "0" ]; then BDS_ALM="$BDS_ALM --dead-reckon --dr-constellation C"; fi
     BDS_ALM="$BDS_ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500} --search-margin-wide-hz ${CLK_WIDE_HZ:-3000}"
   else

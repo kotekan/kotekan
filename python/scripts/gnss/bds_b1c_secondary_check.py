@@ -30,8 +30,15 @@ from FFT peaks.
 
 Usage: python3 bds_b1c_secondary_check.py <raw.bin> [PRN ...]
 """
-CONTROLS = {23: "deep-integrates at +1.9 dB vs mean (19k emits)",
-            25: "deep-integrates at +1.8 dB vs mean (13k emits)"}
+# Controls = sats whose OVERLAY (not just primary!) is certified by the 13.7 h map:
+# coherent-vs-incoherent residual gap ~0 over thousands of emits. C21 does NOT qualify --
+# a strong acquisition certifies only the primary code, which is how it snuck into an
+# earlier control list and confused a night's debugging.
+CONTROLS = {20: "map coh/inc gap +1.6 dB (10k emits)",
+            25: "map coh/inc gap -1.0 dB (13k emits)",
+            27: "map coh/inc gap -1.2 dB (16k emits)",
+            29: "map coh/inc gap +2.9 dB (13k emits)",
+            30: "map coh/inc gap +0.8 dB (17k emits)"}
 import os
 import re
 import sys
@@ -81,7 +88,7 @@ def replica(code, n_samp, chip_rate=1.023e6):
     return code[idx].astype(np.float32)
 
 
-def acquire(raw, prim, n_samp, rec=0, dops=None):
+def acquire(raw, prim, n_samp, rec=0, dops=None, n_win=8):
     """Doppler + code phase from ONE 10 ms record at record index `rec` (FFT correlation).
 
     The Doppler grid must be FINE (default 10 Hz): a coarse grid leaves a residual carrier
@@ -90,13 +97,19 @@ def acquire(raw, prim, n_samp, rec=0, dops=None):
     sign sequence scrambles -- which is exactly how the first version of this test managed to
     declare the KNOWN-GOOD satellites broken."""
     REPF = np.conj(np.fft.fft(replica(prim, n_samp)))
-    off = int(T_SKIP * FS) + rec * n_samp
     tt = np.arange(n_samp) / FS
     best = (-1, 0, 0)
     for dop in (np.arange(-4000, 4001, 100.0) if dops is None else dops):
-        x = raw[off:off + n_samp].astype(np.float32)
-        xb = x * np.exp(-2j * np.pi * (IF + dop) * (tt + off / FS))
-        c = np.abs(np.fft.ifft(np.fft.fft(xb.astype(np.complex64)) * REPF)) ** 2
+        # INCOHERENT SUM over several windows. A CW spur concentrates its power better
+        # than a spread signal in any SINGLE window (it captured "C21" at -1830 Hz with
+        # snr 441 while the real satellite sat at +1875), but its correlation peak lands
+        # somewhere new every window, so averaging kills it; the true peak repeats.
+        c = np.zeros(n_samp)
+        for w in range(n_win):
+            off = int(T_SKIP * FS) + (rec + w) * n_samp
+            x = raw[off:off + n_samp].astype(np.float32)
+            xb = x * np.exp(-2j * np.pi * (IF + dop) * (tt + off / FS))
+            c += np.abs(np.fft.ifft(np.fft.fft(xb.astype(np.complex64)) * REPF)) ** 2
         pk = int(np.argmax(c))
         m = np.ones(n_samp, bool)
         m[max(0, pk - 40):pk + 40] = False
@@ -117,54 +130,116 @@ def main():
     for prn in prns:
         prim, sec = b1c_codes(prn)
         snr, dop, pk = acquire(raw, prim, n_samp)
-        if snr < 3:
-            print("  C%-3d  %7.1f   (not up in this capture -- skipped)" % (prn, snr))
+        if snr < 8:
+            print("  C%-3d  %7.1f   (not meaningfully present in this capture -- skipped)"
+                  % (prn, snr))
             continue
         # refine Doppler on a 10 Hz grid (see acquire(): a coarse residual aliases the signs)
         snr, dop, pk = acquire(raw, prim, n_samp, 0,
                                np.arange(dop - 120, dop + 121, 10.0))
-        # CODE DRIFT: the chips march at chip_rate*(dop/f_carrier + receiver clock offset) --
-        # ~2 chips/s here, i.e. tens of SAMPLES over the correlation. Measure it directly
-        # (code phase now vs code phase K records later) rather than modelling it; despreading
-        # a drifting code at a fixed phase is what destroyed the first attempt.
-        # Robust slope: a BOC(1,1) autocorrelation has SIDELOBES half a chip either side of
-        # the true peak (~10 samples at 20 MSPS), so any single code-phase measurement can
-        # latch onto the wrong lobe. Two points then give a wrong drift, the code walks off
-        # over the correlation, and the satellite looks broken -- which is exactly what this
-        # test did to C21 (SNR 441!) while C25 came out at 1.000. Sample the code phase at
-        # several epochs and take the MEDIAN successive slope: one bad lobe cannot move it.
-        ks = [k for k in range(0, n_rec, max(1, n_rec // 8))][:8]
-        pks = [acquire(raw, prim, n_samp, k, np.array([dop]))[2] for k in ks]
-        slopes = []
-        for i in range(1, len(ks)):
-            d = pks[i] - pks[i - 1]
-            d -= n_samp * round(d / n_samp)       # unwrap across the record boundary
-            slopes.append(d / (ks[i] - ks[i - 1]))
-        rate = float(np.median(slopes))            # samples per record
-        rep0 = replica(prim, n_samp)
+        # ---- PERIOD-ALIGNED WINDOWS. The FFT peak at pk means the primary-code period
+        # boundary falls at sample pk of the search window -- so START each despread window
+        # THERE. A window on an arbitrary grid straddles TWO secondary chips, and the sign
+        # it recovers is the mixture's; worse, as the code drifts the mixture fraction
+        # sweeps through 1/2 where the sign is pure noise.
+        # ---- PHYSICS-DERIVED DRIFT. Never measure the drift from FFT peak positions: a
+        # BOC(1,1) correlation has -6 dB sidelobes half a chip (10 samples) either side of
+        # the peak, and one sidelobe-captured epoch poisons the slope; the walked-off code
+        # then reads as garbage signs at full acquisition SNR -- this is what condemned C21
+        # at SNR 441 while C25 sailed through at 1.000 (its slope got lucky). The code rate
+        # is DETERMINED by the refined Doppler up to the small receiver clock term:
+        # chips/s = chip_rate*(sign*dop/f_carrier + (l-a)); scan the two signs and a small
+        # (l-a) residual grid, maximizing total incoherent despread power -- the sign-free,
+        # sidelobe-free estimator -- then hand the winner to the full pass.
+        spc = FS / 1.023e6                     # samples per chip
+        base = 1.023e6 * dop / 1575.42e6 * spc * T_P   # samples per record from Doppler
         off0 = int(T_SKIP * FS)
         tt = np.arange(n_samp) / FS
-        A = np.empty(n_rec, complex)
-        for k in range(n_rec):
-            o = off0 + k * n_samp
-            x = raw[o:o + n_samp].astype(np.float32)
-            xb = x * np.exp(-2j * np.pi * (IF + dop) * (tt + o / FS))
-            A[k] = np.sum(xb * np.roll(rep0, int(round(pk + rate * k))))
-        # DEROTATE THE CARRIER PER RECORD, sign-free. A_k^2 cancels the overlay's +-1 exactly
-        # (that is the whole point of squaring), leaving 2*theta_k -- the carrier phase, which
-        # we can unwrap and halve. Fitting a straight LINE to the phase is not enough: the
-        # Doppler RATE (~0.5 Hz/s) contributes tens of radians of QUADRATIC phase over a
-        # 6 s correlation, which scrambles the signs on its own. Following the phase record by
-        # record handles any drift shape, as long as it moves slowly (it does: <12 Hz residual
-        # = <1/4 cycle per 10 ms record).
+        rep0 = replica(prim, n_samp)
+
+        def despread(rate_spr, ks):
+            out = np.empty(len(ks), complex)
+            for i, k in enumerate(ks):
+                # the RECORD STRIDE k*n_samp is the whole point -- dropping it made every
+                # 'record' re-despread the same 10 ms of data (the r=0 self-fulfilling max)
+                o = off0 + pk + k * n_samp + int(round(rate_spr * k))
+                x = raw[o:o + n_samp].astype(np.float32)
+                xb = x * np.exp(-2j * np.pi * (IF + dop) * (tt + o / FS))
+                out[i] = np.sum(xb * rep0)
+            return out
+
+        ks_probe = np.arange(0, n_rec, 10)
+        cands = [sgn * base + d * spc * T_P
+                 for sgn in (1.0, -1.0) for d in (-2.0, -1.0, 0.0, 1.0, 2.0)]  # (l-a) in chips/s
+        pwr = [float(np.sum(np.abs(despread(c, ks_probe)) ** 2)) for c in cands]
+        rate = cands[int(np.argmax(pwr))]
+        # fine refine around the winner
+        cands2 = [rate + d for d in np.linspace(-0.03, 0.03, 7)]
+        pwr2 = [float(np.sum(np.abs(despread(c, ks_probe)) ** 2)) for c in cands2]
+        rate = cands2[int(np.argmax(pwr2))]
+        A = despread(rate, np.arange(n_rec))
+        # SELF-REFINE THE CARRIER from the despread series itself: the acquisition's
+        # Doppler can settle tens of Hz off when RFI shares the refine window (the -1830
+        # spur pulled C21 to -1900, 25 Hz from its mirror truth -- and 25 Hz is exactly
+        # pi per 10 ms record, the unwrap ambiguity, which scrambles every sign while the
+        # amplitude sails through untouched). The bit-robust squared product estimates the
+        # residual unambiguously to +-1/(4*T_P) = +-25 Hz, from the data, spur-free.
+        for _ in range(2):
+            prod2 = A[1:] * np.conj(A[:-1])
+            f_res = float(np.angle(np.sum(prod2 * prod2))) / (4.0 * np.pi * T_P)
+            if abs(f_res) < 0.5:
+                break
+            dop += f_res
+            A = despread(rate, np.arange(n_rec))
+        # DEROTATE THE CARRIER PER RECORD, sign-free: A^2 cancels the overlay's +-1 exactly,
+        # leaving 2*theta -- unwrap and halve. (A LINE fit is not enough: the Doppler RATE
+        # puts tens of radians of quadratic phase across 6 s.)
         theta = np.unwrap(np.angle(A * A)) / 2.0
-        s = np.sign((A * np.exp(-1j * theta)).real).astype(np.int8)
+        s_rec = np.sign((A * np.exp(-1j * theta)).real).astype(np.int8)
+        print("        [pk=%d (frac %.2f of window), rate=%+.3f samp/rec, mean|A| ratio %.2f]"
+              % (pk, pk / n_samp, rate,
+                 float(np.mean(np.abs(A))) / (np.mean(np.abs(A[:20])) + 1e-9)))
         # correlate the RECOVERED sign sequence against OUR table, over every cyclic shift
-        ours = sec[:n_rec].astype(float)
-        best = max(abs(float(np.dot(s, np.roll(sec.astype(float), -sh)[:n_rec])) / n_rec)
+        best = max(abs(float(np.dot(s_rec, np.roll(sec.astype(float), -sh)[:n_rec])) / n_rec)
                    for sh in range(SEC_LEN))
         results[prn] = best
-        print("  C%-3d  %7.1f   corr = %.3f" % (prn, snr, best))
+        print("  C%-3d  %7.1f   corr = %.3f   (dop %+.0f)" % (prn, snr, best, dop))
+        if best < 0.6:
+            # The recovered sign sequence is DATA -- if it doesn't match this PRN's row,
+            # ask which sequence it IS. First every other row (a table row-swap), then
+            # every possible Weil phase-difference w (a wrong parameter): the truth is in
+            # the sky, and 600 clean chips identify it uniquely.
+            src = open(CPP).read()
+            Ls = legendre(3607)
+            phs, trs = _table(src, "B1CS_PH_DIFF"), _table(src, "B1CS_TRUNC")
+            row_hits = []
+            for q in range(1, 64):
+                i = np.arange(SEC_LEN)
+                j = (i + trs[q - 1] - 1) % 3607
+                sq = (Ls[j] * Ls[(j + phs[q - 1]) % 3607]).astype(float)
+                c = max(abs(float(np.dot(s_rec, np.roll(sq, -sh)[:len(s_rec)])) / len(s_rec))
+                        for sh in range(SEC_LEN))
+                if c > 0.6:
+                    row_hits.append((q, c))
+            if row_hits:
+                print("          -> recovered signs MATCH table row(s): %s  (ROW SWAP!)"
+                      % ", ".join("C%d (%.3f)" % rc for rc in row_hits))
+            else:
+                # full Weil search: W_w[i] = Ls[i]*Ls[(i+w)%3607]; FFT-correlate the
+                # recovered snippet against each w over all 3607 lags
+                n = len(s_rec)
+                bestw = (0.0, 0, 0)
+                for w in range(1, 3607):
+                    Ww = (Ls * np.roll(Ls, -w)).astype(float)
+                    W2 = np.concatenate([Ww, Ww[:n - 1]])
+                    c = np.correlate(W2, s_rec.astype(float))
+                    i = int(np.argmax(np.abs(c)))
+                    v = abs(float(c[i])) / n
+                    if v > bestw[0]:
+                        bestw = (v, w, i)
+                print("          -> best Weil phase-difference from the SKY: w=%d "
+                      "(corr %.3f at lag %d); our table says w=%d"
+                      % (bestw[1], bestw[0], bestw[2], phs[prn - 1]))
 
     # The tool does not get to render a verdict until it can reproduce the satellites we
     # already KNOW are healthy. Otherwise it is just laundering its own bugs into a finding.

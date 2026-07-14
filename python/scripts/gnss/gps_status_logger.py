@@ -104,6 +104,11 @@ def main(argv=None):
                        # the reported rung's rectification floor -- the coherent beam-map
                        # observable and its honesty certificate (gps_cn0_map.py)
                        "deep_pow_hz": r.get("deep_pow_hz"),
+                       # B1C/L1C overlay alignment phase: physics pins every healthy sat to
+                       # the FLEET CONSENSUS +-2 chips (secondaries are BDT-frame-synced;
+                       # only differential range separates them) -- a sat away from
+                       # consensus has a wrong overlay row or a false alignment.
+                       "nh_phase": r.get("nh_phase"),
                        "deep_floor": r.get("deep_floor"),
                        "search_snr": det_snr.get(int(prn)), "adc_rms": rms}
                 f.write(json.dumps(rec, separators=(",", ":")) + "\n")
