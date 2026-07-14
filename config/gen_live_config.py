@@ -278,7 +278,8 @@ L.append("""airspy_in:
     gain_mix: 15
     gain_if: 15
     biast_power: false   # antenna is externally bias-teed (2026-07-14 3-airspy rework);
-                     # never let a dongle push DC into the shared splitter
+                         # never let a dongle push DC into the shared splitter
+    dither_disable: true   # coherent multi-unit (shared GPSDO); see airspyInput reg 0x12
 fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
 # VALVE: drops a whole frame (cleanly -- fpga_seq preserved) if chan_buf2 is full, so the
 # F-engine / airspy USB callback can never block. This is the fix live_full lacked.

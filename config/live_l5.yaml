@@ -99,6 +99,12 @@ airspy_in:
     # ever back on a single dongle with no external supply (the antenna IS active -- it is
     # dead without bias from somewhere; A/B confirmed).
     biast_power: false
+    # Disable the R820T fractional-N PLL dither (reg 0x12 bit4) for COHERENT multi-unit work.
+    # All three airspys share ONE GPSDO reference; with dither ON each unit's LO takes a random
+    # fractional-N walk at every start, so the units are frequency-locked but NOT phase-coherent
+    # across restarts. Off = deterministic LO (coherent), at the cost of deterministic frac-N
+    # spurs. Needed for cross-band/interferometric use. (airspy_crosscorr.yaml uses the same.)
+    dither_disable: true
 fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
 # VALVE: drops a whole frame (cleanly -- fpga_seq preserved) if chan_buf2 is full, so the
 # F-engine / airspy USB callback can never block. This is the fix live_full lacked.
