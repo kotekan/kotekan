@@ -33,7 +33,12 @@ airspy_in:
     gain_lna: 14
     gain_mix: 15
     gain_if: 15
-    biast_power: true
+    # OFF: the active antenna is powered by a SEPARATE inline bias tee as of the 3-airspy
+    # rework (2026-07-14). Three dongles pushing DC into a shared splitter is the failure
+    # mode to avoid; the antenna LNA wants exactly one supply. Set true ONLY if the feed is
+    # ever back on a single dongle with no external supply (the antenna IS active -- it is
+    # dead without bias from somewhere; A/B confirmed).
+    biast_power: false
 # Valve: drop whole 20 ms frames cleanly if the heavy correlator falls behind, so the airspy
 # never backpressures (each surviving frame is internally contiguous -> blocks stay valid).
 valve: { kotekan_stage: Valve, in_buf: input_buf, out_buf: input_buf2 }

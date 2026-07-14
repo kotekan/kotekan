@@ -92,9 +92,13 @@ airspy_in:
     gain_lna: 14
     gain_mix: 15
     gain_if: 15
-    # ACTIVE antenna -- the bias tee MUST stay on for this feed (A/B confirmed). If the front end
-    # is ever swapped to a passive antenna + external LNA, this goes false.
-    biast_power: true
+    # OFF as of the 3-airspy rework (2026-07-14): the active antenna is now powered by a
+    # SEPARATE inline bias tee, not by the dongle. This must stay false on every board once the
+    # feed is split -- three dongles pushing DC into a common splitter is the failure mode to
+    # avoid, and the antenna LNA only wants one supply.
+    # HISTORY: this was `true`, and had to be -- the antenna is ACTIVE and is dead without bias
+    # (A/B confirmed). If the external supply is ever removed, this goes back to true.
+    biast_power: false
 fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
 
 # require_hint: scan ONLY broker-hinted (visible) PRNs, skip the rest -> the search carries all 32

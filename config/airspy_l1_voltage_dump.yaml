@@ -36,6 +36,11 @@ airspy_in:
     gain_lna: 14
     gain_mix: 15
     gain_if: 15
-    biast_power: true
+    # OFF: the active antenna is powered by a SEPARATE inline bias tee as of the 3-airspy
+    # rework (2026-07-14). Three dongles pushing DC into a shared splitter is the failure
+    # mode to avoid; the antenna LNA wants exactly one supply. Set true ONLY if the feed is
+    # ever back on a single dongle with no external supply (the antenna IS active -- it is
+    # dead without bias from somewhere; A/B confirmed).
+    biast_power: false
 
 dump: { kotekan_stage: rawFileWrite, in_buf: input_buf, base_dir: "/tmp/gpsvolt", file_name: "volt", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }

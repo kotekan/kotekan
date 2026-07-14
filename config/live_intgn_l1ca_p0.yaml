@@ -104,7 +104,12 @@ airspy_in:
     gain_lna: 14
     gain_mix: 15
     gain_if: 15
-    biast_power: true
+    # OFF: the active antenna is powered by a SEPARATE inline bias tee as of the 3-airspy
+    # rework (2026-07-14). Three dongles pushing DC into a shared splitter is the failure
+    # mode to avoid; the antenna LNA wants exactly one supply. Set true ONLY if the feed is
+    # ever back on a single dongle with no external supply (the antenna IS active -- it is
+    # dead without bias from somewhere; A/B confirmed).
+    biast_power: false
 fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
 # VALVE: drops a whole frame (cleanly -- fpga_seq preserved) if chan_buf2 is full, so the
 # F-engine / airspy USB callback can never block. This is the fix live_full lacked.

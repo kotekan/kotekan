@@ -65,7 +65,12 @@ airspy_input:
     gain_lna: 10 #0-14
     gain_mix: 10 #0-15
     gain_if: 10  #0-15
-    biast_power: true
+    # OFF: the active antenna is powered by a SEPARATE inline bias tee as of the 3-airspy
+    # rework (2026-07-14). Three dongles pushing DC into a shared splitter is the failure
+    # mode to avoid; the antenna LNA wants exactly one supply. Set true ONLY if the feed is
+    # ever back on a single dongle with no external supply (the antenna IS active -- it is
+    # dead without bias from somewhere; A/B confirmed).
+    biast_power: false
 #    serial: 0x744C60C821311C4F  # CHORD-feed dongle
 
 

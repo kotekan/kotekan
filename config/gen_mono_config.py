@@ -81,7 +81,8 @@ airspy_in:
     gain_lna: 14
     gain_mix: 15
     gain_if: 15
-    biast_power: true
+    biast_power: false   # antenna is externally bias-teed (2026-07-14 3-airspy rework);
+                     # never let a dongle push DC into the shared splitter
 # Valve: drop whole 20 ms frames cleanly if the heavy correlator falls behind, so the airspy
 # never backpressures (each surviving frame is internally contiguous -> blocks stay valid).
 valve: { kotekan_stage: Valve, in_buf: input_buf, out_buf: input_buf2 }
