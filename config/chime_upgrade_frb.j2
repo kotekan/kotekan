@@ -1759,6 +1759,7 @@ FRB:
               out_buf: host_frb3_beams_offsetscale_buffer
 
     # dump data for debugging
+{% if True %}
     dump_frb_beams:
         max_frames: 1
         upchan_U16_voltage:
@@ -1797,6 +1798,7 @@ FRB:
             input_order: CHIMEBeamformer # this makes no sense, but is required
             in_buf: host_frb2_beam_positions_buffer
             file_name: host_frb2_beam_positions_buffer
+{% endif %}
         host_frb2_weights_buffer:
             kotekan_stage: hdf5FileWrite
             base_dir: frb_weights
