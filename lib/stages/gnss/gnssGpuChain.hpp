@@ -47,7 +47,11 @@ static_assert(sizeof(FrameHdr) == 48, "FrameHdr must stay 16-byte aligned");
 /// Pass-1 control for one (record window, PRN slot): exactly what the tracker's pass-2 needs.
 struct PrnCtl {
     uint8_t run;        ///< active this window (seeded + covering channels in this subband)
-    uint8_t reanchored; ///< f_ref fence fired at this window -> assembler resets NCO/history
+    uint8_t reanchored; ///< f_ref moved at this window. 0 = no. 1 = FRESH acquisition (no phase
+                        ///< history to keep: the assembler resets the NCO and breaks the arc).
+                        ///< 2 = CONTINUOUS re-pin (fence or age): the replica phase stepped by
+                        ///< df*t_abs, and the assembler folds that step INTO the NCO so the
+                        ///< despread output never sees it. See GnssGpuRecordAssemble.
     uint16_t _pad0;
     int32_t job0;       ///< first of this PRN's 3 job rows in the results sections; -1 if !run
     float fcar_report;  ///< record slot 1 (physical-signed reported Doppler)

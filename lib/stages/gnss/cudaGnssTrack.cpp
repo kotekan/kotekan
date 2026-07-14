@@ -302,19 +302,28 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
             double cp_seed = cp[p] + cp_rate[p] * (double)(whop - ref_hop[p])
                              + 0.5 * sgn * dop_rate[p] * chip_component / fc * dt_anchor
                                    * dt_anchor;
-            bool reanchored = false;
+            uint8_t reanchored = 0;
             const double anchor_age =
                 (double)(whop - S.reacq_hop[p]) * (double)S.fft_len / S.sample_rate;
-            const bool fresh_or_fence = std::isnan(S.f_ref[p])
-                                        || std::fabs(S.f_ref[p] - dop[p]) > S.fll_reacq_hz;
-            if (fresh_or_fence || anchor_age > S.max_anchor_age_s) {
-                if (fresh_or_fence)
+            const bool fresh = std::isnan(S.f_ref[p]);
+            const bool fence = !fresh && std::fabs(S.f_ref[p] - dop[p]) > S.fll_reacq_hz;
+            if (fresh || fence || anchor_age > S.max_anchor_age_s) {
+                if (fresh) {
                     S.f_ref[p] = dop[p]; // genuine (re)acquisition: adopt the seed
-                else // AGE re-pin: fold the FF ramp into f_ref -- frequency-continuous
-                     // (see GnssChannelizedTracker for the full story)
-                    S.f_ref[p] += dop_rate[p] * anchor_age; // PHYSICAL frame: no NCO-side negation
+                    reanchored = 1;      // no phase history worth keeping
+                } else {
+                    if (fence)
+                        S.f_ref[p] = dop[p]; // the seed moved out of the fence: adopt it
+                    else // AGE re-pin: fold the FF ramp into f_ref -- frequency-continuous
+                         // (see GnssChannelizedTracker for the full story)
+                        S.f_ref[p] +=
+                            dop_rate[p] * anchor_age; // PHYSICAL frame: no NCO-side negation
+                    // Either way the ABSOLUTELY-ANCHORED replica phase just stepped by
+                    // df*t_abs. That step is FOLDABLE (an NCO absorbs any constant phase), so
+                    // the assembler folds it and the despread output stays phase-continuous.
+                    reanchored = 2;
+                }
                 S.reacq_hop[p] = whop;
-                reanchored = true;
             }
             const double fcar = S.f_ref[p];
             cp_seed += (double)whop * (double)S.fft_len / S.sample_rate * chip_component * sgn
@@ -326,7 +335,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                                  * (double)S.fft_len / S.sample_rate;
 
             c.run = 1;
-            c.reanchored = reanchored ? 1 : 0;
+            c.reanchored = reanchored;
             c.job0 = n_jobs + 3 * (int)specs.size();
             c.fcar_report = (float)(fcar - ff_hz + ctrim[p]);
             c.n_owned = (float)local.size();

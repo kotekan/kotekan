@@ -134,6 +134,14 @@ gputrack:
           in_buf: chan_buf2
           gpu_mem: gnss_chan_frame
         - name: cudaGnssTrack
+          # Re-pin the replica carrier EVERY record (0 = no anchor age at all). Safe only
+          # because the re-pin is now CONTINUOUS in both currencies: the code-phase step is
+          # translated into the new f_ref (cudaGnssTrack) and the df*t_abs carrier-phase step
+          # is folded into the NCO (GnssGpuRecordAssemble). With a stale f_ref the despread
+          # carrier drifts off the truth at dop_rate between re-pins, and the resulting
+          # WITHIN-record decoherence grows with the record length -- negligible on GPS's 1 ms
+          # but ~1 dB on B1C's 10 ms. Re-pinning every record means it never accumulates.
+          max_anchor_age_s: 0.0
           # stream 1: cudaProcess chains events PER STREAM and cudaOutputData waits only its
           # own stream's predecessor -- on the kernel stream the output copy races the work.
           cuda_stream: 1
@@ -194,6 +202,14 @@ gal_track:
           in_buf: chan_buf2
           gpu_mem: gal_chan_frame
         - name: cudaGnssTrack
+          # Re-pin the replica carrier EVERY record (0 = no anchor age at all). Safe only
+          # because the re-pin is now CONTINUOUS in both currencies: the code-phase step is
+          # translated into the new f_ref (cudaGnssTrack) and the df*t_abs carrier-phase step
+          # is folded into the NCO (GnssGpuRecordAssemble). With a stale f_ref the despread
+          # carrier drifts off the truth at dop_rate between re-pins, and the resulting
+          # WITHIN-record decoherence grows with the record length -- negligible on GPS's 1 ms
+          # but ~1 dB on B1C's 10 ms. Re-pinning every record means it never accumulates.
+          max_anchor_age_s: 0.0
           cuda_stream: 1
           gpu_mem_input: gal_chan_frame
           gpu_mem_output: gal_epl
@@ -259,6 +275,14 @@ bds_track:
           in_buf: chan_buf2
           gpu_mem: bds_chan_frame
         - name: cudaGnssTrack
+          # Re-pin the replica carrier EVERY record (0 = no anchor age at all). Safe only
+          # because the re-pin is now CONTINUOUS in both currencies: the code-phase step is
+          # translated into the new f_ref (cudaGnssTrack) and the df*t_abs carrier-phase step
+          # is folded into the NCO (GnssGpuRecordAssemble). With a stale f_ref the despread
+          # carrier drifts off the truth at dop_rate between re-pins, and the resulting
+          # WITHIN-record decoherence grows with the record length -- negligible on GPS's 1 ms
+          # but ~1 dB on B1C's 10 ms. Re-pinning every record means it never accumulates.
+          max_anchor_age_s: 0.0
           cuda_stream: 1
           gpu_mem_input: bds_chan_frame
           gpu_mem_output: bds_epl

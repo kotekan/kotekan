@@ -42,7 +42,6 @@ private:
     std::vector<double> _phi;
     std::vector<double> _phi_cyc;   ///< NCO phase, UNWRAPPED, in cycles (the export's time base;
                                     ///< _phi is the same phase wrapped for the rotation)
-    std::vector<double> _phi_fix;   ///< carrier-phase continuity offset (cycles) across f_ref re-pins
     std::vector<double> _phi_cmd_prev; ///< previous record's commanded phase (cycles)
     std::vector<uint8_t> _phi_cmd_ok;
     std::vector<double> _fcar_prev; ///< previous record's replica f_ref (to size the re-pin step)
