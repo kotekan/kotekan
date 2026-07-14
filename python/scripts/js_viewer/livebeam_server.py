@@ -1005,7 +1005,13 @@ def main():
     # import it. Only stood up when the panel is enabled, so a plain radio-
     # astronomy run doesn't pull in skyfield / fetch TLEs.
     if args._gps_enabled:
-        sys.path.insert(0, os.path.dirname(static_dir))
+        # python/scripts (parent of js_viewer) AND python/scripts/gnss -- the GNSS helpers
+        # (gps_beamtrack et al.) moved into the gnss/ subpackage on 2026-07-14 and this
+        # bare-name import is how the sky panel finds them. Missing it makes /gps_sky return
+        # {"sats": []} with an error nobody looks at, and the viewer just quietly loses the sky.
+        _scripts = os.path.dirname(static_dir)
+        sys.path.insert(0, _scripts)
+        sys.path.insert(0, os.path.join(_scripts, "gnss"))
         root.putChild(b"gps_sky",
                       GpsSkyResource(args.lat, args.lon, args.alt, args.gps_mask_deg))
         log_.info("GPS panel enabled (site lat=%s lon=%s alt=%s)",
