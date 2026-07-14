@@ -59,7 +59,19 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     // revives L2C's dead discriminator (E/L at the zero-stuffed ACF's feet).
     dll_spacing = config.get_default<double>(unique_name, "dll_spacing_chips", 0.5)
                   / (double)replica->comb_mult();
-    fll_reacq_hz = config.get_default<double>(unique_name, "fll_reacq_hz", 200.0);
+    // f_ref fence, DERIVED from the record period (0.1 cycle/record), not a constant: the
+    // replica carrier is FIXED between re-anchors, so a stale f_ref decoheres the despread
+    // WITHIN one record, and the tolerable staleness scales with that record. 100 Hz at GPS's
+    // 1 ms, 25 Hz at E1C's 4 ms, 10 Hz at B1C's 10 ms. The old fixed 200 Hz was 0.2 cycle for
+    // GPS but TWO WHOLE CYCLES at a 10 ms B1C record. (The tri-constellation config already
+    // carries the right per-chain numbers; a derived DEFAULT means the next band cannot get
+    // this wrong by omission.) Same 0.1-cycle rule as the broker's hold_max_dop_hz.
+    {
+        const double t_rec_s =
+            (double)hops_per_record * (double)fft_len / sample_rate;
+        fll_reacq_hz = config.get_default<double>(unique_name, "fll_reacq_hz",
+                                                  (t_rec_s > 0.0) ? 0.1 / t_rec_s : 200.0);
+    }
     // Cap the carrier-anchor AGE regardless of the Doppler fence: the NCO's Doppler-rate
     // feed-forward is LINEAR from the anchor, but the true rate drifts (~1.7e-4 Hz/s^2 for
     // MEO), so the accumulated quadratic carrier error is ~0.5*rate_dot*age^2 -- ~14 cycles

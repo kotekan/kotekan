@@ -95,7 +95,17 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     _dll_spacing = config.get_default<double>(unique_name, "dll_spacing_chips", 0.5)
                    / (double)_replica->comb_mult();
     _fll_gain = config.get_default<double>(unique_name, "fll_gain", 0.0);
-    _fll_reacq_hz = config.get_default<double>(unique_name, "fll_reacq_hz", 200.0);
+    // f_ref fence: the replica carrier is FIXED between re-anchors, so a stale f_ref
+    // decoheres the despread WITHIN one record. The tolerable staleness therefore scales with
+    // the RECORD PERIOD, not with a constant: 0.1 cycle per record -> 100 Hz at GPS's 1 ms,
+    // 25 Hz at E1C's 4 ms, 10 Hz at B1C's 10 ms. The old fixed 200 Hz default was 0.2 cycle
+    // for GPS (survivable) but TWO WHOLE CYCLES at a 10 ms B1C record -- total loss. The
+    // tri-constellation config already carries the right per-chain values (25/10); deriving
+    // the DEFAULT means the next band gets it right without anyone remembering to. Same
+    // reasoning, same 0.1-cycle rule, as the broker's hold_max_dop_hz.
+    const double t_rec_s = (double)_hops_per_record * (double)_fft_len / _sample_rate;
+    _fll_reacq_hz = config.get_default<double>(unique_name, "fll_reacq_hz",
+                                               (t_rec_s > 0.0) ? 0.1 / t_rec_s : 200.0);
     // Carrier-anchor age cap: see cudaGnssTrack (quadratic ff error ~0.5*rate_dot*age^2).
     _max_anchor_age_s = config.get_default<double>(unique_name, "max_anchor_age_s", 30.0);
     _fll_max_gap = config.get_default<double>(unique_name, "fll_max_gap_s", 0.005);
