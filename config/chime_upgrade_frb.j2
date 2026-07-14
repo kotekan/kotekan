@@ -21,6 +21,9 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 
+{% set using_dpdk = False %}
+{% set do_once_and_dump = True %}
+
 {% set num_polarizations = 2 %}
 {% set num_dishes = 1024 %}
 {% set num_elements = num_polarizations * num_dishes %}
@@ -128,6 +131,9 @@ updatable_config:
   enable_sk_out:
     kotekan_update_endpoint: "json"
     enabled: false
+  enable_frb_out:
+    kotekan_update_endpoint: "json"
+    enabled: false
 
 dataset_manager:
   use_dataset_broker: False
@@ -185,7 +191,7 @@ lost_samples_buffer_{{ id }}:
 # Stages
 
 # set to False on instead read data from disk
-{%- if True %}
+{%- if using_dpdk %}
 
 # This configuration assumes that the system ports are ordered in as 4x10G
 # links for each QSFP+, and that each QSFP+ port comes from exactly one iceBoard
@@ -361,6 +367,8 @@ fake_lost_samples_{{ id }}:
     out_buf: lost_samples_buffer_{{ id }}
 {% endfor %}
 
+# TODO: do these still need to exist, or are they replaced by the
+# jinja-templated shuffle above?
 #{#
 dbg_read_voltages_0:
     kotekan_stage: hdf5FileRead
@@ -517,7 +525,7 @@ baseband_merge:
 
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: host_buffer_depth
     value_type: int8
     extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
@@ -840,8 +848,6 @@ run_rfi_S012tilde:
             host_rfi_S012tilde_ringbuffer: host_rfi_S012tilde_ringbuffer
         commands:
         - name: cudaInputData
-          # TODO: Don't double-copy bf_mask
-          do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
         - name: cudaSyncInput
@@ -886,8 +892,6 @@ run_rfi_SKtilde:
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         commands:
         - name: cudaInputData
-          # TODO: Don't double-copy bf_mask
-          do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
         - name: cudaSyncInput
@@ -914,8 +918,6 @@ run_rfi_SKbar:
             host_rfi_SKbartilde_ringbuffer: host_rfi_SKbartilde_ringbuffer
         commands:
         - name: cudaInputData
-          # TODO: Don't double-copy bf_mask
-          do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
         - name: cudaSyncInput
@@ -1303,8 +1305,9 @@ FRB:
     # Buffers
 
     # Upchanneling Gains
+    # Per-frequency real multiplier for each upchannelized frequency. This is _not_
+    # the complex feed gains
     host_upchan_U16_gain_buffer:
-        # TODO: check why not element specific, is here gains == complex_phase_for_ideal_system?
         kotekan_buffer: ndarray
         num_frames: 1
         # TODO: check if factor_upchan_out was the correct 16 to use here
@@ -1342,7 +1345,7 @@ FRB:
         dimscalings: [1, 1]
         metadata_pool: main_pool
 
-    # Beamforming Phases and interpolation weights
+    # Beamforming gains at coarse frequency resolution
     host_frb1_phase_buffer:
         kotekan_buffer: ndarray
         num_frames: 1
@@ -1353,16 +1356,15 @@ FRB:
         dimscalings: [1, 1, 1]
         metadata_pool: main_pool
 
+    # Beamforming gains at upchannelized frequency resolution
     host_frb1_U16_phase_buffer:
         kotekan_buffer: ndarray
-        num_frames: 1
+        num_frames: host_buffer_depth
         value_type: float16
-        # TODO: verify that the correct variables are being used for
-        # the upchannelized frequencies
-        extents: [1, num_freq_gpu_buf * factor_upchan_out, num_elements, num_components]
-        quantity_name: "W"
-        dimnames: ["R", "Fbar", "E", "C"]
-        dimscalings: [1, factor_upchan_out, 1, 1]
+        extents: [num_freq_gpu_buf * factor_upchan_out, num_polarizations, num_dishes_y, num_dishes_x, num_components]
+        quantity_name: "W"  # also referred to as weights, hence the name
+        dimnames: ["Fbar", "P", "dishN", "dishM", "C"]
+        dimscalings: [factor_upchan_out, 1, 1, 1, 1]
         metadata_pool: main_pool
 
     host_frb2_weights_buffer:
@@ -1414,6 +1416,18 @@ FRB:
                       frb_downsampling_factor]
         metadata_pool: main_pool
 
+    host_frb3_beams_buffer_post:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        value_type: uint8
+        extents: [1, frb2_num_beams/4, upchan_U16_max_num_output_channels/64, 16,
+                  4, 4, 16, 16]
+        quantity_name: "I3"
+        dimnames: ["Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "Fbarlo16", "Ttildelo16"]
+        dimscalings: [frb_downsampling_factor * 256, 4, 64, frb_downsampling_factor * 16, 1, 16, 1,
+                      frb_downsampling_factor]
+        metadata_pool: main_pool
+
     host_frb3_beams_offsetscale_buffer:
         kotekan_buffer: ndarray
         num_frames: host_buffer_depth
@@ -1435,8 +1449,7 @@ FRB:
         upchan_gain_buffer: host_upchan_U16_gain_buffer
 
     run_upchan_U16:
-# set to True to use dummy data consiting of only 1s and 0s
-{% if False %}
+{%- if not using_dpdk %}
         cpu_0:
             kotekan_stage: testDataGenFewHot
             type: fewhot
@@ -1507,7 +1520,6 @@ FRB:
               gpu_mem: upchan_U16_gain_buffer
             - name: cudaSyncInput
             - name: cudaUpchannelizer_chime_U16
-              poison_buffers: yes
               voltage_name: xposed_voltage
               upchan_U16_gain_name: upchan_U16_gain
               upchan_U16_voltage_name: upchan_U16_voltage
@@ -1534,7 +1546,7 @@ FRB:
               output_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
               ring_buffer_size: buffer_depth * output_size
               out_buf: host_upchan_U16_voltage_buffer
-{% endif %}
+{%- endif %}
 
     # FRB 1
 
@@ -1551,7 +1563,7 @@ FRB:
           frb_gain: /updatable_config/frb_gain
 
     process_frb1_U16_phase:
-        kotekan_stage: processFeedGains
+        kotekan_stage: processFRBFeedGains
         num_local_freq: num_freq_gpu_buf
         upchan_factor: factor_upchan_out
         scaling_factor: 1.0 / 32
@@ -1575,7 +1587,6 @@ FRB:
                 host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
             commands:
             - name: cudaInputData
-              do_once: true
               in_buf: host_frb1_U16_phase_buffer
               gpu_mem: frb1_U16_phase_buffer
             - name: cudaSyncInput
@@ -1677,7 +1688,7 @@ FRB:
         array_shape: [ {{ frb2_num_beams }}, 2]
         dim_scalings: [ 1, 1 ]
         dim_name: [ "R", "X/Y" ]
-        do_once: yes
+        do_once: true
 
     run_calc_frb2_weights:
 ###
@@ -1692,7 +1703,7 @@ FRB:
 #{#
         kotekan_stage: hdf5FileRead
         input_dir: frb_weights
-        do_once: yes
+        do_once: true
         out_buf: host_frb2_weights_buffer
         file_name: host_frb2_weights_buffer
 #}#
@@ -1758,8 +1769,15 @@ FRB:
               gpu_mem: frb3_beams_offsetscale_buffer
               out_buf: host_frb3_beams_offsetscale_buffer
 
+    switch_frb_out:
+        kotekan_stage: bufferSwitch
+        in_bufs:
+          - enabled: host_frb3_beams_buffer
+        out_buf: host_frb3_beams_buffer_post
+        updatable_config: /updatable_config/enable_frb_out
+
+{%- if do_once_and_dump %}
     # dump data for debugging
-{% if True %}
     dump_frb_beams:
         max_frames: 1
         upchan_U16_voltage:
@@ -1798,13 +1816,19 @@ FRB:
             input_order: CHIMEBeamformer # this makes no sense, but is required
             in_buf: host_frb2_beam_positions_buffer
             file_name: host_frb2_beam_positions_buffer
-{% endif %}
         host_frb2_weights_buffer:
             kotekan_stage: hdf5FileWrite
             base_dir: frb_weights
             input_order: CHIMEBeamformer # this makes no sense, but is required
             in_buf: host_frb2_weights_buffer
             file_name: host_frb2_weights_buffer
+        host_frb1_U16_phase_buffer:
+            kotekan_stage: hdf5FileWrite
+            base_dir: frb_weights
+            input_order: CHIMEBeamformer # this makes no sense, but is required
+            in_buf: host_frb1_U16_phase_buffer
+            file_name: host_frb1_U16_phase_buffer
+{% endif %}
 
 {% if False %}
     frb_send:
@@ -1824,7 +1848,7 @@ FRB:
 {% endif %}
 
 ################################################################################
-# output to receivers
+# Output to receivers
 
 # this will move to the baseband receiver eventually
 write_baseband:
@@ -1836,19 +1860,21 @@ write_baseband:
     in_buf: baseband_output_buffer_merged
 
 ## Transmit baseband data to the baseband receiver
-#baseband_send:
-#  server_ip: 10.5.60.2
-#  reconnect_time: 60
-#  send_timeout: 600 # 10 minutes
-#  log_level: warn
-#  # Keep data in memory even if the receiver node is down
-#  # Baseband readout handles back pressure management
-#  drop_frames: false
-#  use_config_tracker: false # not used by legacy CHIME kotekan code
-#  baseband_send_0:
-#    kotekan_stage: bufferSend
-#    server_port: 11027
-#    buf: baseband_output_buffer_merged
+{#
+baseband_send:
+  server_ip: 10.5.60.2
+  reconnect_time: 60
+  send_timeout: 600 # 10 minutes
+  log_level: warn
+  # Keep data in memory even if the receiver node is down
+  # Baseband readout handles back pressure management
+  drop_frames: false
+  use_config_tracker: false # not used by legacy CHIME kotekan code
+  baseband_send_0:
+    kotekan_stage: bufferSend
+    server_port: 11027
+    buf: baseband_output_buffer_merged
+#}
 
 write_vis:
     kotekan_stage: VisWriter
@@ -1863,6 +1889,16 @@ write_failed_vis:
     file_type: raw
     file_length: 256
     in_buf: failed_vis_buffer_post
+
+write_frb:
+    kotekan_stage: hdf5FileWrite
+    log_level: warn
+    use_compression: false
+    base_dir: frb_beams
+    in_buf: host_frb3_beams_buffer_post
+    file_name: host_frb3_beams_buffer
+    create_single_file: true
+    input_order: CHIMEBeamformer
 
 # enable to dump sk statistics data
 {% if False %}
@@ -1923,6 +1959,9 @@ dump_rfi_SKtilde:
    create_single_file: true
    input_order: CHIMEBeamformer
 {% endif %}
+
+################################################################################
+# Additional configuration
 
 # Information for input reordering, packed as
 #   (adc_id, chan_id, correlator_input)
