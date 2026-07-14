@@ -446,7 +446,7 @@ def main(argv=None):
                          "fence.")
     ap.add_argument("--no-dop-continuous", dest="dop_continuous", action="store_false",
                     help="restore the discrete hold_max_dop_hz fence (pre-2026-07-14)")
-    ap.add_argument("--dop-max-rate-hz", type=float, default=5.0,
+    ap.add_argument("--dop-max-rate-hz", type=float, default=None,
                     help="SAFETY NET (not a fence): clamp how far the seed Doppler may move in "
                          "ONE cycle. Bounds the damage from a garbage prediction slamming the "
                          "tracker, without imposing discrete steps. A real MEO Doppler moves "
@@ -608,6 +608,16 @@ def main(argv=None):
         args.hold_max_dop_hz = 0.1 * args.chip_rate_hz / CODE_LEN
         _log("hold-max-dop-hz auto: %.1f Hz (0.1 cycle per %.0f ms record)"
              % (args.hold_max_dop_hz, 1e3 * CODE_LEN / args.chip_rate_hz))
+    if args.dop_max_rate_hz is None:
+        # The one-cycle rate limit MUST sit well above the fence. A clamp TIGHTER than the
+        # fence is a silent disaster: every legitimate fence step gets clamped back inside the
+        # fence, the freeze branch then keeps the old Doppler, and the seed Doppler NEVER
+        # UPDATES -- it goes permanently stale and the C/N0 falls all the way back to baseline.
+        # (Measured 2026-07-14 with a fixed 5 Hz clamp against B1C's 10 Hz fence. A safety net
+        # that quietly disables the mechanism it is protecting is worse than none.)
+        args.dop_max_rate_hz = max(5.0, 3.0 * args.hold_max_dop_hz)
+    _log("dop-max-rate-hz (safety net, one cycle): %.1f Hz -- fires only on a bad model"
+         % args.dop_max_rate_hz)
     # Reset the cp-fit history across a snapshot gap larger than this (re-acquisition). TIME-
     # based, not hop-based: a fixed hop count silently scales with the band's hop rate (the L1-era
     # 2e6 hops = 16 s at 125 kHz but only 2 s at the L5 front end's 1 MHz -- shorter than the L5
