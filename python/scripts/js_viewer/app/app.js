@@ -90,10 +90,18 @@ export class App {
         // pipeline mode (autocorr vs. crosscorr).
         this.layout = new LayoutManager({root: "#layout-root"});
 
-        this.socket = new Socket({app: this,
-                                  url: "ws://" + location.hostname + ":8539"});
+        // The WebSocket lives on THIS server's ws_port, which is not a fixed offset from the
+        // http_port across bands (L1 8080/8539, L2C 8081/8639). Ask the server we loaded from
+        // (same-origin /wsport) instead of hardcoding 8539 -- otherwise a non-L1 viewer connects
+        // to L1's WebSocket and inherits L1's kotekan port (12048), failing CORS against the
+        // wrong kotekan. Fall back to 8539 if the endpoint is missing (older server).
         this._wire_status_banner();
-        this.socket.connect();
+        fetch("wsport").then(r => r.ok ? r.json() : null).catch(() => null).then(cfg => {
+            const ws_port = (cfg && cfg.ws_port) || 8539;
+            this.socket = new Socket({app: this,
+                                      url: "ws://" + location.hostname + ":" + ws_port});
+            this.socket.connect();
+        });
     }
 
     // Right-column cards. The mode branch in ``apply_viewer_config`` passes

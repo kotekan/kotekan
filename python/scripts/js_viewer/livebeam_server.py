@@ -724,6 +724,28 @@ class ModeResource(resource.Resource):
         return json.dumps({"mode": mode}).encode("utf-8")
 
 
+class WsPortResource(resource.Resource):
+    """``GET /wsport`` -> ``{"ws_port": N}`` for THIS server.
+
+    The browser loads the page from one server's http_port but must open the WebSocket on the
+    SAME server's ws_port -- and http->ws is not a fixed offset across bands (L1 8080/8539,
+    L2C 8081/8639). The client used to hardcode 8539, so every non-L1 viewer connected to L1's
+    WebSocket and received L1's kotekan rest_port (12048) -> cross-origin failures against the
+    wrong kotekan. The client now fetches this (same-origin, so it hits the right server) and
+    connects to the port it returns.
+    """
+
+    isLeaf = True
+
+    def __init__(self, ws_port):
+        resource.Resource.__init__(self)
+        self.ws_port = ws_port
+
+    def render_GET(self, request):
+        request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
+        return json.dumps({"ws_port": self.ws_port}).encode("utf-8")
+
+
 class GpsSkyResource(resource.Resource):
     """``GET /gps_sky`` -> predicted GPS sky positions for the viewer's sky plot.
 
@@ -1007,6 +1029,7 @@ def main():
     # "I edited the JS but the browser ignored me" trouble during development.
     root = NoCacheFile(static_dir)
     root.putChild(b"mode", ModeResource(kotekan))
+    root.putChild(b"wsport", WsPortResource(args.ws_port))
 
     # GPS sky positions (az/el) for the live-status panel. gps_beamtrack lives
     # one dir up (python/scripts); add it to the path so the worker thread can
