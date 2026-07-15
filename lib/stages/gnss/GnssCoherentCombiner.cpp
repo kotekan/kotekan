@@ -650,6 +650,7 @@ void GnssCoherentCombiner::main_thread() {
             } else if (_navwipe_bit_records > 0) {
                 const auto& ab = _navbuf[p];
                 const auto& ub = _navutc[p];
+                const auto& hb = _navhead[p]; // head segments -> symbol-aligned bit epochs
                 // Navwipe floor GROWS with window length: nb free +-1 bit signs rectify
                 // noise to ~sqrt(2 nb / pi) sigma, plus the bit-phase selection over
                 // _navwipe_bit_records alignments (~sqrt(ln br)). The ~7 sigma "GPS deep
@@ -667,11 +668,12 @@ void GnssCoherentCombiner::main_thread() {
                      ladder(ab.size(), std::max<size_t>(4 * (size_t)_navwipe_bit_records, 64))) {
                     double snr = 0.0, amp;
                     if (len == ab.size()) {
-                        amp = navwipe_amplitude(ab, ub, &snr); // deep |A|
+                        amp = navwipe_amplitude(ab, ub, &snr, &hb); // deep |A|
                     } else {
                         const std::vector<std::complex<double>> as(ab.end() - (long)len, ab.end());
                         const std::vector<double> us(ub.end() - (long)len, ub.end());
-                        amp = navwipe_amplitude(as, us, &snr);
+                        const std::vector<std::complex<double>> hs(hb.end() - (long)len, hb.end());
+                        amp = navwipe_amplitude(as, us, &snr, &hs);
                     }
                     if (full_len == 0) { // ladder walks longest-first
                         full_amp = amp;
@@ -810,11 +812,14 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
 
 double
 GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>& a,
-                                        const std::vector<double>& utc, double* snr_out) const {
+                                        const std::vector<double>& utc, double* snr_out,
+                                        const std::vector<std::complex<double>>* head) const {
     const int br = _navwipe_bit_records;
     const int nrec = (int)a.size();
     if (br <= 0 || nrec < 2 * br)
         return 0.0;
+    if (head && (int)head->size() != nrec)
+        head = nullptr; // size mismatch (mixed-schema window): fall back to unsegmented
     using cd = std::complex<double>;
 
     // Absolute code-period index per record from capture-UTC -- a valve drop just skips an
@@ -831,16 +836,19 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
     for (int r = 0; r < nrec; ++r)
         cpi[r] = (long long)std::llround((utc[r] - utc[0]) / rec_dt);
 
-    // Per-bit coherent sums for a given epoch phase: records are sorted by cpi, so a bit is
-    // a run of equal floor((cpi+phase)/br). Returns the sums (and their summed |.| via out).
+    // Per-bit coherent sums for a given epoch phase: records are sorted by cpi, so bit indices
+    // arrive non-decreasing and a bit is a run of equal floor((period+phase)/br). SEGMENTED
+    // (head non-null): the head belongs to period cpi[r], the tail to period cpi[r]+1 -- a
+    // record straddling a bit boundary splits across the two bits instead of smearing the
+    // symbol transition through one of them (tail bit >= head bit, and the NEXT record's head
+    // bit >= this tail bit since cpi is strictly increasing, so streaming order is preserved).
     auto bit_sums = [&](int phase, std::vector<cd>* out, double* powsum) {
         cd s(0.0, 0.0);
         long long cur = 0;
         bool have = false;
         double g = 0.0;
         int nb = 0;
-        for (int r = 0; r < nrec; ++r) {
-            const long long bi = (cpi[r] + phase) / br;
+        auto enter_bit = [&](long long bi) {
             if (have && bi != cur) {
                 if (out)
                     out->push_back(s);
@@ -848,9 +856,18 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
                 ++nb;
                 s = cd(0.0, 0.0);
             }
-            s += a[r];
             cur = bi;
             have = true;
+        };
+        for (int r = 0; r < nrec; ++r) {
+            enter_bit((cpi[r] + phase) / br);
+            if (head) {
+                s += (*head)[r];
+                enter_bit((cpi[r] + 1 + phase) / br); // no-op unless the boundary crosses a bit
+                s += a[r] - (*head)[r];               // tail -> the period the record ends in
+            } else {
+                s += a[r];
+            }
         }
         if (have) {
             if (out)

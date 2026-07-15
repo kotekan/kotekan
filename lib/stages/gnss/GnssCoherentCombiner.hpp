@@ -107,8 +107,18 @@ private:
     /// @c snr_out (optional): the deep detection's significance = coherent sum / its noise std
     /// (estimated from the component orthogonal to the aligned signal). deep == this SNR times its
     /// own uncertainty, so SNR >> 1 is a real lock, ~1 is noise.
+    ///
+    /// SEGMENTED (@c head non-null): the nav/CNAV symbol boundary is code-period-aligned at the
+    /// transmitter but the record windows are hop-aligned, so it lands MID-record; a record
+    /// straddling a symbol TRANSITION cancels to |2f-1| -- for L2C CM (ONE 20 ms symbol per
+    /// record, bit_records 1) that is the same "bistable" null the overlay bands had. head[r]
+    /// (the prompt over the hops before the boundary) belongs to period cpi[r], the tail to
+    /// period cpi[r]+1, so the bit epochs are assembled from symbol-ALIGNED pieces (tail of one
+    /// record + head of the next) and nothing cancels. head == a reduces bit-exactly to the
+    /// unsegmented behaviour.
     double navwipe_amplitude(const std::vector<std::complex<double>>& a,
-                             const std::vector<double>& utc, double* snr_out = nullptr) const;
+                             const std::vector<double>& utc, double* snr_out = nullptr,
+                             const std::vector<std::complex<double>>* head = nullptr) const;
 
     /// Residual carrier frequency (Hz) from a window of per-record A, as a bit-robust phase-SLOPE
     /// fit over the whole window (long baseline -> low variance -- the clean measurement the shared
