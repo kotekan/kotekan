@@ -147,6 +147,10 @@ def main(argv=None):
                          "value-blind: no selection bias on the map)")
     ap.add_argument("--ped-tbin", type=float, default=600.0,
                     help="pedestal time bin (s), per constellation")
+    ap.add_argument("--residual", action="store_true",
+                    help="also emit a residual beam map: each cell minus the azimuthal mean of its "
+                         "elevation ring. Removes the (smooth) elevation response so the AZIMUTHAL "
+                         "structure -- site multipath fringes -- stands out (diverging colour, 0=ring mean).")
     ap.add_argument("--outdir", default=os.path.dirname(os.path.abspath(__file__)))
     args = ap.parse_args(argv)
 
@@ -439,6 +443,25 @@ def main(argv=None):
             print("map (%s): %d cells; C/N0 %.1f .. %.1f dB-Hz"
                   % (label, int(np.isfinite(grid).sum()),
                      np.nanmin(grid), np.nanmax(grid)))
+
+        # (4) RESIDUAL beam map: cell minus its elevation ring's azimuthal mean. Strips the smooth
+        # elevation response, leaving the AZIMUTHAL structure = site multipath fringes (a reflector
+        # localized in azimuth shows as a lobe here that the raw map buries under the el gradient).
+        if args.residual and np.isfinite(grid).any():
+            ring_mean = np.nanmean(grid, axis=1, keepdims=True)          # per-el-ring az mean
+            resid = grid - ring_mean
+            lim = np.nanpercentile(np.abs(resid), 98) if np.isfinite(resid).any() else 1.0
+            fig = plt.figure(figsize=(8.4, 7.5))
+            ax = fig.add_subplot(111, projection="polar")
+            ax.set_theta_zero_location("N"); ax.set_theta_direction(-1)
+            pc = ax.pcolormesh(TH, RG, np.ma.masked_invalid(resid), cmap="RdBu_r",
+                               vmin=-lim, vmax=lim, shading="flat")
+            ax.set_rlim(0, 90); ax.set_rticks([30, 60, 90]); ax.set_yticklabels(["60", "30", "0"])
+            ax.set_title("Residual %s C/N0 (cell - el-ring az mean; %.1f h)" % (label, span_h), pad=18)
+            fig.colorbar(pc, ax=ax, label="C/N0 - ring mean (dB)", shrink=0.8, pad=0.09)
+            fig.tight_layout()
+            f4 = os.path.join(args.outdir, "cn0_%s_resid%s.png" % (suffix, args.suffix))
+            fig.savefig(f4, dpi=120); plt.close(fig); written.append(f4)
         return grid
 
     g_inc = plot_observable(y, ysig, "incoherent", "inc")
