@@ -137,8 +137,19 @@ echo "clock profile '$CLK_NAME': accuracy ${CLK_ACC} ppm, coherence ${CLK_COH} s
 BROKER=python/scripts/gnss/gps_distributed_broker.py
 LOG=/tmp/$TAG.log
 
+# GRACEFUL kotekan stop. NEVER SIGKILL (-9) a kotekan that owns a GPU context: on the shared GB10
+# (gpu_id 0, both L1 and L2C), a -9 skips CUDA teardown and the abrupt context death takes DOWN
+# the OTHER band's kotekan too -- the whole run of "mysterious L1 deaths" was a -9 of the sibling
+# GPU process. SIGTERM lets kotekan release the GPU cleanly; escalate to -9 only if it hangs.
+kill_kotekan() {  # $1 = pgrep pattern (port-scoped to ONE band)
+    local pids; pids=$(pgrep -f "$1"); [ -z "$pids" ] && return
+    kill -TERM $pids 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do sleep 0.5; pgrep -f "$1" >/dev/null || return; done
+    kill -9 $pids 2>/dev/null   # last resort, only if it ignored TERM for 5 s
+}
+
 cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" "${GALPID:-}" "${GALLOGPID:-}" "${BDSPID:-}" "${BDSLOGPID:-}" 2>/dev/null
-            pkill -9 -f "kotekan .*-b 0.0.0.0:$PORT" 2>/dev/null   # only THIS band's kotekan
+            kill_kotekan "kotekan .*-b 0.0.0.0:$PORT"   # only THIS band's kotekan, GRACEFULLY
             pkill -9 -f "livebeam_server.*--http-port $HTTP_PORT" 2>/dev/null
             pkill -9 -f "gps_status_logger.*localhost:$PORT" 2>/dev/null
             pkill -9 -f "gnss_observables.*localhost:$PORT" 2>/dev/null
@@ -146,8 +157,9 @@ cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" "${GALPID:-
             exit 0; }
 trap cleanup INT TERM
 
-# Kill only THIS band's instance -- an unscoped pkill would tear down the other bands' runs.
-pkill -9 -f "kotekan .*-b 0.0.0.0:$PORT" 2>/dev/null
+# Kill only THIS band's instance -- and GRACEFULLY (see kill_kotekan): an unscoped or -9 kill would
+# tear down the other bands' runs (unscoped by pattern, -9 by GPU-context collapse).
+kill_kotekan "kotekan .*-b 0.0.0.0:$PORT"
 pkill -9 -f "livebeam_server.*--http-port $HTTP_PORT" 2>/dev/null
 
 # Refresh the search PRN list to what's actually overhead NOW (the constellation rotates
