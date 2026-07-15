@@ -54,8 +54,14 @@ def fetch_brdc(when=None, cache_dir=CACHE):
         for kind in ("S", "R"):
             name = "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, d.year, doy)
             local = os.path.join(cache_dir, name)
-            # Re-fetch the streamed 'S' file if older than 2 h (it grows through the day).
-            if os.path.exists(local) and (kind == "R" or back == 1
+            # Current-day files (back == 0) GROW through the day, so a cached copy goes stale:
+            # its newest toe ages out of best_eph's 4 h window after a few hours and predict_all
+            # returns NOTHING (measured 2026-07-15: a 10.8 h-old cache -> 0 visible sats -> the
+            # observables' el/az/range all None). Re-fetch a current-day cache older than 2 h,
+            # for BOTH kinds -- the old `kind == "R"` unconditional-cache assumed R was the final
+            # (immutable) file, but a current-day R is provisional and still growing. Yesterday's
+            # file (back == 1) IS final, so cache it unconditionally.
+            if os.path.exists(local) and (back == 1
                                           or time.time() - os.path.getmtime(local) < 7200):
                 return local
             url = ("https://igs.bkg.bund.de/root_ftp/IGS/BRDC/%04d/%03d/%s"
