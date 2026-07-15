@@ -43,7 +43,12 @@ case "$BAND" in
        EXTRA=${BROKER_EXTRA:---dop-continuous} ;;
   l2c_cpu) CFG=config/live_l2c.yaml;   PORT=12148; HTTP_PORT=8081; WS_PORT=8639
        EXTRA=${BROKER_EXTRA:-} ;;
-  l5)  CFG=config/live_l5.yaml;        PORT=12248; HTTP_PORT=8082; WS_PORT=8739
+  l5)  CFG=config/live_l5_gpu.yaml;    PORT=12248; HTTP_PORT=8082; WS_PORT=8739
+       # GPU chain is the L5 default: coherent-C/N0/ADR/S4/boundary_f observables AND the
+       # segmented despread -- L5's NH20 (one chip per 1 ms record, ~50% transitions) is
+       # fully exposed to the period-boundary null on the CPU chain (head==P compat).
+       EXTRA=${BROKER_EXTRA:---dop-continuous} ;;
+  l5_cpu) CFG=config/live_l5.yaml;     PORT=12248; HTTP_PORT=8082; WS_PORT=8739
        EXTRA=${BROKER_EXTRA:-} ;;
   *)   echo "usage: $0 {l1|l2c|l5}" >&2; exit 1 ;;
 esac
