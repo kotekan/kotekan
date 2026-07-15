@@ -583,6 +583,15 @@ void GnssChannelizedTracker::main_thread() {
                     a_prev_ok[p] = 1;
                     hop_prev[p] = window_start_hop;
                 }
+                // Head segment (gnssRecord.hpp slots 16-18): this CPU tracker does not
+                // segment the despread at the code-period boundary yet -- write PH == P,
+                // the compatibility default (tail = 0), so every segmented consumer
+                // reduces exactly to the whole-record behaviour. The GPU chain
+                // (cudaGnssTrack) segments for real; port the split here when a CPU band
+                // needs a secondary overlay (L5 NH) -- see the bistable fix, 2026-07-15.
+                rec[gnss::REC_PH_RE] = rec[3];
+                rec[gnss::REC_PH_IM] = rec[4];
+                rec[gnss::REC_PH_ENERGY] = rec[5];
 
                 // COMMANDED CARRIER PHASE (cycles mod 1) -- the carrier-phase observable's
                 // other half (gnssRecord.hpp): the replica's absolutely-anchored

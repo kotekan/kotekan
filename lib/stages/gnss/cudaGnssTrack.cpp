@@ -336,7 +336,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
 
             c.run = 1;
             c.reanchored = reanchored;
-            c.job0 = n_jobs + 3 * (int)specs.size();
+            c.job0 = n_jobs + 4 * (int)specs.size(); // E, P, L, P_HEAD per spec
             c.fcar_report = (float)(fcar - ff_hz + ctrim[p]);
             c.n_owned = (float)local.size();
             c.cp_seed = cp_seed;

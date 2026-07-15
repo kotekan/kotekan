@@ -34,6 +34,9 @@ struct DespreadJob {
     const float2* phiA;  ///< [n_chan][Lf+1] cumulative filter table, this PRN's Doppler bucket
     const float2* phiB;  ///< (float32: see the kernel's mixed-precision note)
     int n_chips;         ///< chips spanned by this bucket's filter (gather depth per hop)
+    int hop_lo;          ///< first hop this job accumulates (0 for a full-record trial)
+    int hop_hi;          ///< one past the last hop (n_hops for full; the code-period-boundary
+                         ///< hop for a P_HEAD segment trial -- see gnssRecord.hpp slots 16-18)
 };
 
 /// Batch-shared geometry.

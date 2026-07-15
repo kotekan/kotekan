@@ -35,7 +35,7 @@ signal: GPS_L2C_CM
 code_doppler_sign: 1.0
 clock_profile: { name: auto }
 n_prn: 32
-record_floats: 16
+record_floats: 20
 doppler_margin_hz: 250000.0
 acquire_snr: 8.0
 acquire_windows: 40
@@ -53,9 +53,9 @@ chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buf
 chan_buf2: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
 rec_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
 out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
-# GPU epl frame = gnssGpuChain::frame_bytes(n_prn, n_chan) = 176 + 1024*n_prn + 1152*n_prn*n_chan
-# (n_chan 10 -> 11520*n_prn). MAX_REC=16 is baked in, so the size is independent of record length.
-epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 11520 * n_prn }
+# GPU epl frame = gnssGpuChain::frame_bytes(n_prn, n_chan) = 176 + 1024*n_prn + 1536*n_prn*n_chan
+# (n_chan 10 -> 15360*n_prn). MAX_REC=16 is baked in, so the size is independent of record length.
+epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 15360 * n_prn }
 
 airspy_in:
     kotekan_stage: airspyInput

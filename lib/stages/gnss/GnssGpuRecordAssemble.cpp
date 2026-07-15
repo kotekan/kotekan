@@ -85,10 +85,11 @@ void GnssGpuRecordAssemble::main_thread() {
                     _phi_cmd_ok[p] = 0;
                     continue;
                 }
-                // Cross-channel sum over the covering mask, per correlator trial (E, P, L).
-                std::complex<double> g3[3];
-                double e3[3];
-                for (int t = 0; t < 3; ++t) {
+                // Cross-channel sum over the covering mask, per correlator trial
+                // (E, P, L, P_HEAD -- the prompt's head segment, gnssRecord.hpp slots 16-18).
+                std::complex<double> g3[4];
+                double e3[4];
+                for (int t = 0; t < 4; ++t) {
                     const size_t row = (size_t)(c.job0 + t) * n_chan;
                     std::complex<double> g(0.0, 0.0);
                     double e = 0.0;
@@ -167,6 +168,14 @@ void GnssGpuRecordAssemble::main_thread() {
                 rec[3] = (float)g_corr.real();
                 rec[4] = (float)g_corr.imag();
                 rec[5] = (float)e3[1];
+                // Head segment: SAME NCO rotation as the prompt (it is the same correlation,
+                // restricted to the hops before the code-period boundary), so head + tail
+                // reconstructs P exactly and the combiner can wipe each side with its own
+                // overlay chip.
+                const std::complex<double> gh_corr = g3[3] * rot;
+                rec[gnss::REC_PH_RE] = (float)gh_corr.real();
+                rec[gnss::REC_PH_IM] = (float)gh_corr.imag();
+                rec[gnss::REC_PH_ENERGY] = (float)e3[3];
                 _a_prev[p] = (e3[1] > 0.0) ? g_corr / e3[1] : std::complex<double>(0.0, 0.0);
                 _a_prev_ok[p] = 1;
                 _wstart_prev[p] = wstart;

@@ -138,7 +138,7 @@ int main() {
     CK(cudaMemcpy(d_phiB, phiB.data(), phiB.size() * sizeof(float2), cudaMemcpyHostToDevice));
     for (int b = 0; b < n_batch; ++b)
         jobs[b] = {cps_trials[b], cps, 1.0 / cps, wc, 0, (int)code8.size(), all_mask,
-                   d_phiA, d_phiB, filt.n_chips};
+                   d_phiA, d_phiB, filt.n_chips, 0, p.n_hops};
     CK(cudaMemcpy(d_jobs, jobs.data(), jobs.size() * sizeof(gnss_cuda::DespreadJob),
                   cudaMemcpyHostToDevice));
 

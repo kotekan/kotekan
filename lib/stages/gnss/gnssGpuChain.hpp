@@ -23,8 +23,11 @@
  *   [PrnCtl  x MAX_REC x n_prn]                        pass-1 control per (record, PRN slot)
  *   [double2 corr   x MAX_JOBS(n_prn) x n_chan]        kernel output, job-major
  *   [double  energy x MAX_JOBS(n_prn) x n_chan]
- * A "job" is one correlator trial; an active PRN contributes 3 consecutive jobs (E, P, L)
- * starting at PrnCtl::job0.
+ * A "job" is one correlator trial; an active PRN contributes 4 consecutive jobs
+ * (E, P, L, P_HEAD) starting at PrnCtl::job0. P_HEAD is the prompt restricted to the hops
+ * BEFORE the code-period boundary inside the window (gnssRecord.hpp slots 16-18): the
+ * secondary overlay flips sign at that boundary, so the combiner needs the two sides
+ * separately or straddling records cancel (the 2026-07-15 "bistable").
  */
 namespace gnss_gpu {
 
@@ -53,7 +56,7 @@ struct PrnCtl {
                         ///< df*t_abs, and the assembler folds that step INTO the NCO so the
                         ///< despread output never sees it. See GnssGpuRecordAssemble.
     uint16_t _pad0;
-    int32_t job0;       ///< first of this PRN's 3 job rows in the results sections; -1 if !run
+    int32_t job0;       ///< first of this PRN's 4 job rows (E,P,L,P_HEAD); -1 if !run
     float fcar_report;  ///< record slot 1 (physical-signed reported Doppler)
     float n_owned;      ///< record slot 6 (covering channels owned by this subband)
     double cp_seed;     ///< record slot 2 (commanded prompt code phase, chips)
@@ -68,7 +71,7 @@ struct PrnCtl {
 static_assert(sizeof(PrnCtl) == 64, "PrnCtl must stay 16-byte aligned");
 
 constexpr int max_jobs(int n_prn) {
-    return 3 * n_prn * MAX_REC;
+    return 4 * n_prn * MAX_REC; // E, P, L, P_HEAD per active PRN per record
 }
 constexpr size_t off_winstart() {
     return sizeof(FrameHdr);

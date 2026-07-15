@@ -48,7 +48,7 @@ f_offset: 5.0e6
 signal: GPS_L1CA
 code_doppler_sign: 1.0
 n_prn: 32
-record_floats: 16
+record_floats: 20
 doppler_margin_hz: 250000.0
 acquire_snr: 10.0
 acquire_windows: 20
@@ -145,8 +145,8 @@ valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 # despread runs the same records at ~300k PRN-despreads/s. Broker contract unchanged
 # (seed_endpoint /gps_track/set_seeds; run_live.sh derives TRK from the seed_endpoint entries --
 # the ^track stage-name grep alone can't see inside a cudaProcess commands: list).
-# epl frame = gnssGpuChain layout: 176 + 1024*n_prn + 1152*n_prn*n_chan (n_chan 10).
-epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 11520 * n_prn }
+# epl frame = gnssGpuChain layout: 176 + 1024*n_prn + 1536*n_prn*n_chan (n_chan 10).
+epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 15360 * n_prn }
 gputrack:
     kotekan_stage: cudaProcess
     gpu_id: 0
@@ -214,7 +214,7 @@ gal_search:
 # held sat at 4000-hop records; a stalled tracker on chan_buf2 would backpressure the GPS
 # chain too). Stage is NAMED gal_track so the broker REST prefix + run_live's auto-launch
 # grep keep working unchanged.
-gal_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * gal_n_prn + 11520 * gal_n_prn }
+gal_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * gal_n_prn + 15360 * gal_n_prn }
 gal_track:
     kotekan_stage: cudaProcess
     gpu_id: 0
@@ -274,7 +274,7 @@ gal_record: { kotekan_stage: rawFileWrite, in_buf: gal_out_buf, base_dir: "/tmp/
 bds_n_prn: 63
 bds_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: bds_n_prn * record_floats * sizeof_float }
 bds_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: bds_n_prn * record_floats * sizeof_float }
-bds_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * bds_n_prn + 11520 * bds_n_prn }
+bds_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * bds_n_prn + 15360 * bds_n_prn }
 bds_search:
     kotekan_stage: GnssChannelizedSearch
     in_buf: chan_buf

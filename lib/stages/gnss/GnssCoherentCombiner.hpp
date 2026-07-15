@@ -137,6 +137,12 @@ private:
                                     ///< keep the best -> integrate as deep as the clock coheres
     std::vector<std::vector<std::complex<double>>> _navbuf; ///< per-PRN per-record A over the window
     std::vector<std::vector<double>> _navutc;              ///< per-PRN per-record capture UTC
+    /// Per-PRN per-record HEAD-segment amplitude (prompt over the hops before the record's
+    /// code-period boundary, normalized by the TOTAL prompt energy so head + tail = A).
+    /// Feeds the SEGMENTED overlay wipe: the overlay flips sign at that boundary, so head
+    /// and tail must be wiped with adjacent chips or straddling records cancel (the
+    /// 2026-07-15 "bistable"). Parallel to _navbuf record-for-record.
+    std::vector<std::vector<std::complex<double>>> _navhead;
 
     /// Per-record phase-dump instrumentation (phase_dump_prns / phase_dump_path): for the listed
     /// PRNs append one text line per despread record -- capture-UTC, PRN, Re/Im of the full-band A,
@@ -153,6 +159,7 @@ private:
         _st_cp;
     std::vector<int> _st_nh_phase; ///< secondary-overlay alignment found per PRN (-1 = n/a)
     std::vector<float> _st_dll_disc; ///< window-averaged DLL discriminator (broker closes the loop)
+    std::vector<float> _st_head_frac; ///< boundary fraction f = <head energy>/<prompt energy>
     std::vector<float> _st_s4;       ///< amplitude scintillation index, thermal floor removed
     std::vector<float> _st_s4_raw;   ///< ... before the debias (diagnostic)
     std::vector<float> _st_sigma_phi;///< carrier-phase jitter about the slope fit (rad)

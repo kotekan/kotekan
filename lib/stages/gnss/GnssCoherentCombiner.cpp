@@ -101,6 +101,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     if (_wipe_buffer) {
         _navbuf.assign(_n_prn, {});
         _navutc.assign(_n_prn, {});
+        _navhead.assign(_n_prn, {});
     }
 
     // Per-record phase dump (debug instrumentation; see the header comment). Append mode so a
@@ -133,6 +134,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_dop.assign(_n_prn, 0.0f);
     _st_cp.assign(_n_prn, 0.0f);
     _st_dll_disc.assign(_n_prn, 0.0f);
+    _st_head_frac.assign(_n_prn, 0.0f);
     _st_s4.assign(_n_prn, 0.0f);
     _st_s4_raw.assign(_n_prn, 0.0f);
     _st_sigma_phi.assign(_n_prn, 0.0f);
@@ -180,6 +182,9 @@ void GnssCoherentCombiner::main_thread() {
     std::vector<double> acc_pow(_n_prn), acc_ar(_n_prn), acc_ai(_n_prn), acc_nchan(_n_prn);
     std::vector<double> acc_pow2(_n_prn); // <|A|^4>, for the noise-debiased incoherent significance
     std::vector<double> acc_epow(_n_prn), acc_lpow(_n_prn); // <|E|^2>, <|L|^2> for the DLL disc
+    // Boundary fraction f = <head energy>/<prompt energy>: where the code-period boundary sits
+    // inside the window (0/1 = edge, ~0.5 = the old bistable's null zone). Pure diagnostic.
+    std::vector<double> acc_he(_n_prn), acc_pe(_n_prn);
     // Shared carrier loop: vector-averaged cross-record phase product per PRN over the emit
     // window. S += (A_k conj A_{k-1})^{2|1}; at emit resid_hz = arg(S)/{2|1}/(2 pi dt_med).
     std::vector<std::complex<double>> car_S(_n_prn);
@@ -214,6 +219,7 @@ void GnssCoherentCombiner::main_thread() {
             // (the cross-channel coherent combine), then the full-band amplitude.
             double gr = 0.0, gi = 0.0, energy = 0.0, nchan = 0.0;
             double er = 0.0, ei = 0.0, e_energy = 0.0, lr = 0.0, li = 0.0, l_energy = 0.0;
+            double ghr = 0.0, ghi = 0.0, h_energy = 0.0; // prompt HEAD segment (slots 16-18)
             const float* ref = ins[0] + (size_t)p * RECORD_FLOATS; // PRN/dop/cp/UTC reference
             for (float* in : ins) {
                 const float* rec = in + (size_t)p * RECORD_FLOATS;
@@ -230,9 +236,19 @@ void GnssCoherentCombiner::main_thread() {
                 lr += rec[gnss::REC_L_RE];
                 li += rec[gnss::REC_L_IM];
                 l_energy += rec[gnss::REC_L_ENERGY];
+                // Head segment: additive across subbands like the prompt it is a piece of.
+                ghr += rec[gnss::REC_PH_RE];
+                ghi += rec[gnss::REC_PH_IM];
+                h_energy += rec[gnss::REC_PH_ENERGY];
             }
             const double ar = energy > 0.0 ? gr / energy : 0.0;
             const double ai = energy > 0.0 ? gi / energy : 0.0;
+            // Head amplitude normalized by the TOTAL prompt energy, so head + tail == A
+            // exactly and the segmented overlay wipe's units match the unsegmented one's.
+            // A tracker that doesn't segment (CPU chain) writes PH == P -> head == A,
+            // tail == 0, and every consumer reduces to the old whole-record behaviour.
+            const double ahr = energy > 0.0 ? ghr / energy : 0.0;
+            const double ahi = energy > 0.0 ? ghi / energy : 0.0;
             const double e2 = e_energy > 0.0 ? (er * er + ei * ei) / (e_energy * e_energy) : 0.0;
             const double l2 = l_energy > 0.0 ? (lr * lr + li * li) / (l_energy * l_energy) : 0.0;
 
@@ -316,15 +332,18 @@ void GnssCoherentCombiner::main_thread() {
             // commanded increment for ADR-style continuity) and the E-L code-offset signature.
             if (_phase_dump && energy > 0.0 && (int)ref[0] >= 0
                 && (int)ref[0] < (int)_phase_dump_prn.size() && _phase_dump_prn[(int)ref[0]]) {
-                std::fprintf(_phase_dump, "%.6f %d %.6e %.6e %.6e %.6e %.6f %.3f %.3f\n", utc_p,
+                std::fprintf(_phase_dump,
+                             "%.6f %d %.6e %.6e %.6e %.6e %.6f %.3f %.3f %.6e %.6e\n", utc_p,
                              (int)ref[0], ar, ai, e2, l2, (double)ref[gnss::REC_CPHASE],
-                             (double)ref[1], (double)ref[2]);
+                             (double)ref[1], (double)ref[2], ahr, ahi);
             }
             if (_rolling) { // exponential moving average (no reset; integrates indefinitely)
                 acc_pow[p] += alpha * (p2 - acc_pow[p]);
                 acc_pow2[p] += alpha * (p2 * p2 - acc_pow2[p]);
                 acc_epow[p] += alpha * (e2 - acc_epow[p]);
                 acc_lpow[p] += alpha * (l2 - acc_lpow[p]);
+                acc_he[p] += alpha * (h_energy - acc_he[p]);
+                acc_pe[p] += alpha * (energy - acc_pe[p]);
                 acc_ar[p] += alpha * (ar - acc_ar[p]);
                 acc_ai[p] += alpha * (ai - acc_ai[p]);
                 acc_nchan[p] += alpha * (nchan - acc_nchan[p]);
@@ -338,9 +357,14 @@ void GnssCoherentCombiner::main_thread() {
                     // fake significance (observed 500 sigma at |A|=0.04 on flapping CL sats).
                     _navbuf[p].emplace_back(ar, ai);
                     _navutc[p].push_back(utc_p);
+                    // Head segment (0 when the tracker doesn't segment -> h_energy 0 -> treat
+                    // the whole record as head so the segmented wipe reduces to unsegmented).
+                    _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar,
+                                             h_energy > 0.0 ? ahi : ai);
                     if ((int)_navbuf[p].size() > _integration_length) {
                         _navbuf[p].erase(_navbuf[p].begin());
                         _navutc[p].erase(_navutc[p].begin());
+                        _navhead[p].erase(_navhead[p].begin());
                     }
                 }
                 ref_prn[p] = ref[0]; // reference = the latest record (rolling has no block start)
@@ -352,6 +376,8 @@ void GnssCoherentCombiner::main_thread() {
                 acc_pow2[p] += p2 * p2;
                 acc_epow[p] += e2;
                 acc_lpow[p] += l2;
+                acc_he[p] += h_energy;
+                acc_pe[p] += energy;
                 acc_ar[p] += ar;
                 acc_ai[p] += ai;
                 acc_nchan[p] += nchan;
@@ -360,6 +386,8 @@ void GnssCoherentCombiner::main_thread() {
                     // branch comment (fake-significance pathology otherwise).
                     _navbuf[p].emplace_back(ar, ai);
                     _navutc[p].push_back(utc_p);
+                    _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar,
+                                             h_energy > 0.0 ? ahi : ai);
                 }
                 if (n_acc == 0) { // window reference from the first record of the block
                     ref_prn[p] = ref[0];
@@ -455,6 +483,9 @@ void GnssCoherentCombiner::main_thread() {
                 rec[gnss::CMB_L_POW] = (float)l_pow;
                 rec[gnss::CMB_DLL_DISC] =
                     (e_pow + l_pow) > 0.0 ? (float)((e_pow - l_pow) / (e_pow + l_pow)) : 0.0f;
+                // Boundary fraction f (diagnostic; the inv normalization cancels in the ratio).
+                rec[gnss::CMB_HEAD_FRAC] =
+                    acc_pe[p] > 0.0 ? (float)(acc_he[p] / acc_pe[p]) : 0.0f;
                 // Shared carrier observable: full-band residual carrier (Hz). The broker
                 // integrates this into carrier_trim_hz for every subband tracker -- ONE loop at
                 // full-band SNR instead of N noise-driven per-channel FLLs. PREFER a bit-robust
@@ -524,6 +555,8 @@ void GnssCoherentCombiner::main_thread() {
                 if (ov && !ov->empty()) {
                     const auto& ab = _navbuf[p];
                     const auto& ub = _navutc[p];
+                    const auto& hb = _navhead[p]; // head segments (segmented wipe: the overlay
+                                                  // flips MID-record at the period boundary)
                     // Overlay-wipe floor: best of ~n_align alignment trials of a Rayleigh
                     // sum -> noise rectifies to ~sqrt(2 ln n) sigma, window-length-free.
                     const double flr =
@@ -535,12 +568,14 @@ void GnssCoherentCombiner::main_thread() {
                     for (size_t len : ladder(ab.size(), std::max<size_t>(2 * ov->size(), 64))) {
                         gnss::OverlayWipeResult ow;
                         if (len == ab.size()) {
-                            ow = gnss::overlay_wipe(ab, ub, *ov);
+                            ow = gnss::overlay_wipe(ab, ub, *ov, &hb);
                         } else {
                             const std::vector<std::complex<double>> as(ab.end() - (long)len,
                                                                        ab.end());
                             const std::vector<double> us(ub.end() - (long)len, ub.end());
-                            ow = gnss::overlay_wipe(as, us, *ov);
+                            const std::vector<std::complex<double>> hs(hb.end() - (long)len,
+                                                                       hb.end());
+                            ow = gnss::overlay_wipe(as, us, *ov, &hs);
                         }
                         if (full_len == 0) { // ladder walks longest-first
                             full = ow;
@@ -591,7 +626,7 @@ void GnssCoherentCombiner::main_thread() {
                                 (long long)std::llround((t0f - _dr_utc[p]) / rec_dt);
                             const int L_ov = (int)ov->size();
                             const int ph = (int)(((_dr_phase[p] + steps) % L_ov + L_ov) % L_ov);
-                            const auto dw = gnss::overlay_wipe_at(ab, ub, *ov, ph);
+                            const auto dw = gnss::overlay_wipe_at(ab, ub, *ov, ph, &hb);
                             // /2: snr^2 normalizes noise PER-AXIS (1-dof); the incoherent
                             // x uses full complex (2-dof) noise power. Dividing by 2 puts
                             // deep_pow on x's C/N0-density convention EXACTLY (derivation
@@ -611,7 +646,7 @@ void GnssCoherentCombiner::main_thread() {
                         }
                     }
                 }
-                if (!_rolling) { _navbuf[p].clear(); _navutc[p].clear(); }
+                if (!_rolling) { _navbuf[p].clear(); _navutc[p].clear(); _navhead[p].clear(); }
             } else if (_navwipe_bit_records > 0) {
                 const auto& ab = _navbuf[p];
                 const auto& ub = _navutc[p];
@@ -671,11 +706,12 @@ void GnssCoherentCombiner::main_thread() {
                 if (!_rolling) { // block clears the window; rolling slides it (capped above)
                     _navbuf[p].clear();
                     _navutc[p].clear();
+                    _navhead[p].clear();
                 }
             }
             *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = ref_utc[p];
             if (!_rolling)
-                acc_pow[p] = acc_pow2[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = acc_epow[p] = acc_lpow[p] = 0.0; // block: reset
+                acc_pow[p] = acc_pow2[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = acc_epow[p] = acc_lpow[p] = acc_he[p] = acc_pe[p] = 0.0; // block: reset
         }
         if (!_rolling)
             n_acc = 0;
@@ -700,6 +736,7 @@ void GnssCoherentCombiner::main_thread() {
                 _st_deep_floor[p] = (float)deep_floor[p];
                 _st_deep_pow[p] = (float)deep_pow[p];
                 _st_dll_disc[p] = rec[gnss::CMB_DLL_DISC];
+                _st_head_frac[p] = rec[gnss::CMB_HEAD_FRAC];
                 // S4, thermal floor removed using the COHERENT SNR (independent of the
                 // amplitude fluctuation we are trying to measure). Per-record power SNR
                 // x = deep_snr^2 / K; a non-central chi-square with 2 dof then has
@@ -749,6 +786,10 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"deep_floor", _st_deep_floor[p]},
                          {"deep_pow_hz", _st_deep_pow[p]},
                          {"dll_disc", _st_dll_disc[p]},
+                         // boundary fraction f: where the code-period boundary sits inside
+                         // the despread window (segmented-wipe diagnostic; ~0.5 was the old
+                         // bistable's null zone, now harmless).
+                         {"boundary_f", _st_head_frac[p]},
                          // multipath / scintillation pair (2026-07-14): S4 = amplitude
                          // fluctuation (thermal floor removed), sigma_phi = carrier-phase
                          // jitter about the slope fit, radians. Multipath moves BOTH.

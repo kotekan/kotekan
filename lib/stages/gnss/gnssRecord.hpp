@@ -22,6 +22,19 @@
  *         discriminator (|E|^2-|L|^2)/(|E|^2+|L|^2) from combiner-aggregated values and closes
  *         the code loop at ~Hz. The tracker itself makes NO alignment decisions.
  *    15 dphi_cmd           -- COMMANDED carrier-phase INCREMENT, cycles (see below)
+ *    16 PH.re 17 PH.im 18 PH_energy  19 (reserved)
+ *      -- HEAD SEGMENT of the prompt: the same P correlation restricted to the hops BEFORE
+ *         the code-period boundary inside this window. Windows are hop-grid-aligned, not
+ *         code-period-aligned, so every record straddles one period boundary at offset
+ *         fraction f -- and the secondary overlay / nav symbol FLIPS SIGN exactly there,
+ *         mid-record. Summed blind, a record straddling a chip TRANSITION cancels to
+ *         |2f-1| (f~0.5 nulls it: the 2026-07-15 "bistable" -- E1C lost 12/25 records to
+ *         CS25's 12 transitions, B1C ~49%). With the head exported (tail = P - PH), the
+ *         combiner wipes each segment with ITS OWN overlay chip (head gets chip n, tail
+ *         chip n+1) and the cancellation never happens. PH == P means "no boundary in
+ *         this window / not segmented" (the CPU tracker's compatibility default): tail = 0
+ *         and every wipe reduces exactly to the unsegmented behaviour.
+ *         PH_energy/P_energy = f, the measured boundary fraction (free diagnostic).
  *
  *  COMBINER record (GnssCoherentCombiner -> record/viewer; full-band, one per emit):
  *    0 PRN   1 Doppler_Hz   2 code_phase_chips
@@ -63,7 +76,7 @@
 
 namespace gnss {
 
-constexpr int RECORD_FLOATS = 16;  ///< float32 slots per PRN per record
+constexpr int RECORD_FLOATS = 20;  ///< float32 slots per PRN per record
 constexpr int RECORD_UTC_SLOT = 9; ///< capture-UTC double aliased at slots 9-10
 
 // Shared header slots
@@ -84,6 +97,9 @@ constexpr int REC_L_RE = 13;
 constexpr int REC_L_IM = 14;
 constexpr int REC_CPHASE = 15; ///< commanded carrier-phase INCREMENT, cycles since this
                                ///< PRN's previous record (0 = arc start). See the header note.
+constexpr int REC_PH_RE = 16;     ///< prompt HEAD segment (hops before the code-period boundary)
+constexpr int REC_PH_IM = 17;     ///< -- see the header note; tail = P - PH
+constexpr int REC_PH_ENERGY = 18; ///< head replica energy; /P_energy = boundary fraction f
 
 // Combiner-record slots
 constexpr int CMB_AMP_INCOH = 3;
@@ -97,6 +113,9 @@ constexpr int CMB_L_POW = 12;
 constexpr int CMB_DLL_DISC = 13;
 constexpr int CMB_CARRIER_RESID = 14;
 constexpr int CMB_ARC = 15; ///< phase arc id: ++ on every cycle slip / continuity break
+constexpr int CMB_HEAD_FRAC = 16; ///< window-mean boundary fraction f = <PH_energy>/<P_energy>
+                                  ///< (0/1 = period boundary at the window edge -- benign;
+                                  ///< ~0.5 = the old bistable's null zone; now fixed, diagnostic)
 
 } // namespace gnss
 #endif // GNSS_RECORD_HPP

@@ -52,7 +52,11 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
     double2 acc = make_double2(0.0, 0.0);
     double e = 0.0;
     const bool covered = (job.chan_mask >> ci) & 1ULL; // channel in this PRN's covering set?
-    for (int mh = m; covered && mh < p.n_hops; mh += blockDim.x) {
+    // Hop range: full-record trials run [0, n_hops); a P_HEAD segment trial stops at the
+    // code-period boundary hop (host-computed) so the two sides of the secondary-overlay
+    // sign flip are never summed blind (gnssRecord.hpp slots 16-18).
+    const int hop_end = (job.hop_hi < p.n_hops) ? job.hop_hi : p.n_hops;
+    for (int mh = job.hop_lo + m; covered && mh < hop_end; mh += blockDim.x) {
         // Per-hop code phase at the hop's reference sample (absolute anchoring): DOUBLE.
         const long long n_m = p.n0 + (long long)mh * p.fft_len;
         const double C = job.cp0 + (double)n_m * job.cps;

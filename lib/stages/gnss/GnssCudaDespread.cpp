@@ -77,7 +77,7 @@ struct GnssCudaDespread::Impl {
         ck(cudaMalloc(&d_code, codes.size()), "alloc code");
         ck(cudaMemcpy(d_code, codes.data(), codes.size(), cudaMemcpyHostToDevice), "upload code");
 
-        const size_t maxb = (size_t)3 * np; // full cross-PRN batch: every slot x E/P/L
+        const size_t maxb = (size_t)4 * np; // full cross-PRN batch: every slot x E/P/L/P_HEAD
         ck(cudaMalloc(&d_data, (size_t)nc * nh * sizeof(float2)), "alloc data");
         ck(cudaMalloc(&d_jobs, maxb * sizeof(gnss_cuda::DespreadJob)), "alloc jobs");
         ck(cudaMalloc(&d_corr, maxb * nc * sizeof(double2)), "alloc corr");
@@ -187,7 +187,9 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
                                     mask,
                                     pc.d_A,
                                     pc.d_B,
-                                    pc.n_chips};
+                                    pc.n_chips,
+                                    0,
+                                    im.n_hops};
     }
     ck(cudaMemcpyAsync(im.d_jobs, im.h_jobs.data(), (size_t)nb * sizeof(gnss_cuda::DespreadJob),
                        cudaMemcpyHostToDevice, im.stream),
@@ -233,7 +235,7 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
     Impl& im = *_impl;
     if (specs.empty())
         return 0;
-    const int nb = (int)(3 * specs.size());
+    const int nb = (int)(4 * specs.size());
     const cudaStream_t st = (cudaStream_t)stream;
 
     // Same job construction as despread_batch; h_jobs staging is pageable, so the async H2D
@@ -252,7 +254,7 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
         const double trials[3] = {sp.cp_seed - sp.spacing_chips, sp.cp_seed,
                                   sp.cp_seed + sp.spacing_chips};
         for (int t = 0; t < 3; ++t)
-            im.h_jobs[3 * i + t] = {(double)im.bank.comb_mult() * trials[t],
+            im.h_jobs[4 * i + t] = {(double)im.bank.comb_mult() * trials[t],
                                     cps,
                                     1.0 / cps,
                                     wc,
@@ -261,7 +263,30 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
                                     mask,
                                     pc.d_A,
                                     pc.d_B,
-                                    pc.n_chips};
+                                    pc.n_chips,
+                                    0,
+                                    im.n_hops};
+        // Job 4 = P_HEAD: the prompt trial cut at the code-period boundary. Windows are
+        // hop-aligned, so the period boundary (where the secondary overlay flips) lands
+        // mid-window at a per-sat offset; the hop where the PROMPT's absolute code phase
+        // C = cp0 + n_m*cps crosses the next multiple of code_len splits head from tail.
+        // Hop granularity (1/n_hops of a record) is exact enough: the filter span mixes
+        // ~1 hop at the seam vs the 12/25-records-nulled failure this repairs.
+        {
+            const double cp0 = (double)im.bank.comb_mult() * sp.cp_seed;
+            const double n0 = (double)(window_start_sample + im.bank.fft_len() - 1);
+            const double C0 = cp0 + n0 * cps;
+            const double Lc = (double)im.code_len;
+            const double next_boundary = (std::floor(C0 / Lc) + 1.0) * Lc;
+            const double hops_to_b = (next_boundary - C0) / ((double)im.bank.fft_len() * cps);
+            int m_head = (int)std::ceil(hops_to_b);
+            if (m_head < 0)
+                m_head = 0;
+            if (m_head > im.n_hops)
+                m_head = im.n_hops;
+            im.h_jobs[4 * i + 3] = im.h_jobs[4 * i + 1]; // copy the P trial...
+            im.h_jobs[4 * i + 3].hop_hi = m_head;        // ...restricted to the head hops
+        }
     }
     ck(cudaMemcpyAsync(d_jobs_slot, im.h_jobs.data(), (size_t)nb * sizeof(gnss_cuda::DespreadJob),
                        cudaMemcpyHostToDevice, st),

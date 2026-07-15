@@ -70,12 +70,22 @@ struct OverlayWipeResult {
  */
 /// Selection-free overlay wipe at a GIVEN alignment (dead-reckoned by the caller):
 /// one coherent sum, no phase search -- E[snr^2] = 2 exactly under noise.
+///
+/// SEGMENTED wipe (@c head non-null): records are hop-aligned, not code-period-aligned, so
+/// each one straddles a period boundary where the overlay flips -- summed blind, a record
+/// straddling a chip TRANSITION cancels to |2f-1| (the 2026-07-15 "bistable": f~0.5 nulled
+/// 12/25 E1C records / ~49% of B1C). @c head[r] is the record's correlation over the hops
+/// BEFORE its boundary (tail = a[r] - head[r]); the wipe applies chip k to the head and
+/// chip k+1 to the tail, so nothing ever cancels. head == a (tail 0) reduces exactly to
+/// the unsegmented behaviour.
 OverlayWipeResult overlay_wipe_at(const std::vector<std::complex<double>>& a,
                                   const std::vector<double>& utc,
-                                  const std::vector<int8_t>& overlay, int phase);
+                                  const std::vector<int8_t>& overlay, int phase,
+                                  const std::vector<std::complex<double>>* head = nullptr);
 
 OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
-                               const std::vector<double>& utc, const std::vector<int8_t>& overlay);
+                               const std::vector<double>& utc, const std::vector<int8_t>& overlay,
+                               const std::vector<std::complex<double>>* head = nullptr);
 
 } // namespace gnss
 
