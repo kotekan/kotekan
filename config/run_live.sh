@@ -154,6 +154,7 @@ cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" "${GALPID:-
             pkill -9 -f "gps_status_logger.*localhost:$PORT" 2>/dev/null
             pkill -9 -f "gnss_observables.*localhost:$PORT" 2>/dev/null
             [ -n "${RUNCFG:-}" ] && [ "${RUNCFG:-}" != "$CFG" ] && rm -f "$RUNCFG"
+            [ -f "${LAUNCHPID:-}" ] && [ "$(cat "$LAUNCHPID" 2>/dev/null)" = "$$" ] && rm -f "$LAUNCHPID"
             exit 0; }
 trap cleanup INT TERM
 
@@ -161,6 +162,24 @@ trap cleanup INT TERM
 # tear down the other bands' runs (unscoped by pattern, -9 by GPU-context collapse).
 kill_kotekan "kotekan .*-b 0.0.0.0:$PORT"
 pkill -9 -f "livebeam_server.*--http-port $HTTP_PORT" 2>/dev/null
+# A previous launcher SHELL for this band must die BEFORE its trap can ever fire: a stale
+# launcher's cleanup() would pkill this run's port-scoped processes hours later. -9 on
+# purpose (skip its trap); pidfile-scoped so other bands' launchers are untouched.
+LAUNCHPID=/tmp/run_live_launcher_$PORT.pid
+if [ -f "$LAUNCHPID" ]; then
+    oldpid=$(cat "$LAUNCHPID" 2>/dev/null)
+    [ -n "$oldpid" ] && [ "$oldpid" != "$$" ] && \
+        grep -qa run_live /proc/"$oldpid"/cmdline 2>/dev/null && kill -9 "$oldpid" 2>/dev/null
+fi
+echo $$ > "$LAUNCHPID"
+# Sweep this band's ORPHANED control-plane processes. A launcher that died without its trap
+# (or whose kotekan alone was killed) leaves brokers/loggers running; a surviving broker
+# FIGHTS the new one over the same trackers -- two independent clock solves alternately
+# re-seeding every 0.2 s = intermittent per-sat carrier decoherence (the 2026-07-15 'E1C
+# bistable') -- and surviving loggers double-write the jsonl files. Port-scoped.
+pkill -9 -f "gps_distributed_broker.py.*localhost:$PORT" 2>/dev/null
+pkill -9 -f "gps_status_logger.py.*localhost:$PORT" 2>/dev/null
+pkill -9 -f "gnss_observables.py.*localhost:$PORT" 2>/dev/null
 
 # Refresh the search PRN list to what's actually overhead NOW (the constellation rotates
 # ~half an orbit in ~8 h, so a hardcoded list goes stale -> zero detections). Needs

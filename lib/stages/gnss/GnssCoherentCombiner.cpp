@@ -103,6 +103,25 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         _navutc.assign(_n_prn, {});
     }
 
+    // Per-record phase dump (debug instrumentation; see the header comment). Append mode so a
+    // relaunch extends the record rather than destroying the episode it was launched to catch.
+    const auto dump_prns =
+        config.get_default<std::vector<int>>(unique_name, "phase_dump_prns", {});
+    if (!dump_prns.empty()) {
+        const std::string dump_path = config.get_default<std::string>(
+            unique_name, "phase_dump_path", "/tmp/gnss_phase_dump.txt");
+        _phase_dump = std::fopen(dump_path.c_str(), "a");
+        if (_phase_dump) {
+            _phase_dump_prn.assign(256, false);
+            for (int prn : dump_prns)
+                if (prn >= 0 && prn < 256)
+                    _phase_dump_prn[prn] = true;
+            INFO("phase dump: {:d} PRN(s) -> {:s}", (int)dump_prns.size(), dump_path);
+        } else {
+            WARN("phase dump: cannot open {:s}; disabled", dump_path);
+        }
+    }
+
     _st_prn.assign(_n_prn, 0);
     _st_amp.assign(_n_prn, 0.0f);
     _st_coh.assign(_n_prn, 0.0f);
@@ -137,6 +156,11 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _dr_utc.assign(_n_prn, 0.0);
     _dr_prn.assign(_n_prn, -1);
     _st_deep_rec.assign(_n_prn, 0);
+}
+
+GnssCoherentCombiner::~GnssCoherentCombiner() {
+    if (_phase_dump)
+        std::fclose(_phase_dump);
 }
 
 void GnssCoherentCombiner::main_thread() {
@@ -286,6 +310,15 @@ void GnssCoherentCombiner::main_thread() {
                 }
                 car_prev[p] = A;
                 car_prev_utc[p] = utc_p;
+            }
+            // Per-record phase dump (debug): raw despread A + E/L powers, one line per record.
+            // Enough to reconstruct the intra-window phase trajectory offline (arg A, plus the
+            // commanded increment for ADR-style continuity) and the E-L code-offset signature.
+            if (_phase_dump && energy > 0.0 && (int)ref[0] >= 0
+                && (int)ref[0] < (int)_phase_dump_prn.size() && _phase_dump_prn[(int)ref[0]]) {
+                std::fprintf(_phase_dump, "%.6f %d %.6e %.6e %.6e %.6e %.6f %.3f %.3f\n", utc_p,
+                             (int)ref[0], ar, ai, e2, l2, (double)ref[gnss::REC_CPHASE],
+                             (double)ref[1], (double)ref[2]);
             }
             if (_rolling) { // exponential moving average (no reset; integrates indefinitely)
                 acc_pow[p] += alpha * (p2 - acc_pow[p]);

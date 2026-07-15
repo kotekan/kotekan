@@ -17,6 +17,7 @@
 
 #include <complex> // for complex
 #include <cstdint> // for int8_t
+#include <cstdio>  // for FILE (phase-dump instrumentation)
 #include <mutex>   // for mutex
 #include <string>  // for string
 #include <vector>  // for vector
@@ -89,6 +90,7 @@ class GnssCoherentCombiner : public kotekan::Stage {
 public:
     GnssCoherentCombiner(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& buffer_container);
+    ~GnssCoherentCombiner() override;
     void main_thread() override;
 
     static constexpr int RECORD_FLOATS = gnss::RECORD_FLOATS;     // schema: gnssRecord.hpp
@@ -135,6 +137,15 @@ private:
                                     ///< keep the best -> integrate as deep as the clock coheres
     std::vector<std::vector<std::complex<double>>> _navbuf; ///< per-PRN per-record A over the window
     std::vector<std::vector<double>> _navutc;              ///< per-PRN per-record capture UTC
+
+    /// Per-record phase-dump instrumentation (phase_dump_prns / phase_dump_path): for the listed
+    /// PRNs append one text line per despread record -- capture-UTC, PRN, Re/Im of the full-band A,
+    /// E^2/L^2 correlator powers, the commanded phase increment, and the seed dop/cp. The offline
+    /// view INSIDE a deep window that the window-integrated sigma_phi cannot give (discrete
+    /// half-cycle slips vs continuous wander, and the +-0.25-chip code-offset signature in E-L).
+    /// Empty list (the default) = disabled, zero cost.
+    std::vector<bool> _phase_dump_prn; ///< indexed by PRN number; true = dump this PRN
+    FILE* _phase_dump = nullptr;       ///< open dump file (nullptr = disabled)
 
     // Latest combined record snapshot for REST status (full-band |A| per PRN).
     std::vector<int> _st_prn;
