@@ -1,0 +1,113 @@
+---
+# GPS L2C (CM) on the GPU CHAIN -- the cudaGnssTrack despread + GnssGpuRecordAssemble +
+# GnssCoherentCombiner path, the same one live_l1_dual20.yaml runs, ported to L2C. Replaces the
+# per-channel CPU GnssChannelizedTracker of live_l2c.yaml. WHY: the GPU combiner exports the
+# coherent-C/N0 / ADR / S4 / CMC observables and carries today's NCO-fold re-pin fix, none of
+# which the old CPU chain has. The shared ChannelizedReplicaBank already zero-stuffs the CM code
+# onto the combined 1.023 Mcps stream (comb_mult 2, time_multiplexed), so the GPU despread gets
+# L2C's TDM for free -- this is a CONFIG change, no kernel change.
+#
+#   ./config/run_band.sh l2c_gpu           (or CFG=config/live_l2c_gpu.yaml via run_live.sh)
+#
+# Front end == live_l2c.yaml (proven to acquire): 1227.6 MHz, 5 MSPS real, f_offset Fs/4.
+type: config
+log_level: info
+instrument_name: airspy_gps
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+rest_server:
+    cors_allow_origins: ["http://localhost:8081", "http://127.0.0.1:8081", "http://gx10.vdl:8081"]
+
+# 49920 samples / 5 MSPS = 9.984 ms per frame (matches live_l2c). L2C records are 20 ms, so a
+# record spans ~2 frames -- the cudaGnssTrack device ring (ring_records 50) accumulates across
+# frames and emits each 5000-hop record when complete.
+samples_per_data_set: 49920
+bytes_per_sample: 2
+buffer_depth: 16
+sizeof_float: 4
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+
+spectrum_length: 10        # N=10 -> fft_len 20, channel width 250 kHz, 10 channels span 2.5 MHz
+num_taps: 4
+sample_rate: 5.0e6
+f_offset: 1.25e6           # LO on carrier, Fs/4 (same front-end model as L1)
+signal: GPS_L2C_CM
+code_doppler_sign: 1.0
+clock_profile: { name: auto }
+n_prn: 32
+record_floats: 16
+doppler_margin_hz: 250000.0
+acquire_snr: 8.0
+acquire_windows: 40
+# L2 geometric Doppler ~ 0.779 x L1 -> tighter than L1's +-5500. FINE step: the 20 ms coherent
+# integration washes out if the grid is coarser than ~50 Hz.
+doppler_min: -4500.0
+doppler_max: 4500.0
+doppler_step: 50
+prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+
+gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }
+
+input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
+chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+chan_buf2: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+rec_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+# GPU epl frame = gnssGpuChain::frame_bytes(n_prn, n_chan) = 176 + 1024*n_prn + 1152*n_prn*n_chan
+# (n_chan 10 -> 11520*n_prn). MAX_REC=16 is baked in, so the size is independent of record length.
+epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 11520 * n_prn }
+
+airspy_in:
+    kotekan_stage: airspyInput
+    out_buf: input_buf
+    serial: 0x744C60C821692F4F   # L2C unit
+    freq: 1227.6
+    sample_bw: 2.5               # airspy 2.5 MSPS mode -> 5 MSPS real
+    gain_lna: 11
+    gain_mix: 11
+    gain_if: 11
+    biast_power: false           # externally bias-teed
+    dither_disable: true         # coherent multi-unit (shared GPSDO)
+fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
+
+# require_hint: scan only broker-hinted (visible + L2C-capable) PRNs. hops_per_record 5000 = the
+# 20 ms CM period at this geometry (search needs it explicitly; the tracker derives it).
+gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 8.0, acquire_windows: 40, hops_per_record: 5000, require_hint: true, hint_ttl_s: 30.0 }
+valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
+
+gputrack:
+    kotekan_stage: cudaProcess
+    gpu_id: 0
+    num_cuda_streams: 3
+    frame_arrival_period: 0.0
+    in_buffers:  { chan_buf2: chan_buf2 }
+    out_buffers: { epl_buf: epl_buf }
+    commands:
+        - name: cudaInputData
+          in_buf: chan_buf2
+          gpu_mem: gnss_chan_frame
+        - name: cudaGnssTrack
+          signal: GPS_L2C_CM
+          max_anchor_age_s: 0.0    # re-pin every record (cheap since the NCO fold, 749d45bb)
+          cuda_stream: 1
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: gnss_epl
+          in_frame_len: samples_per_data_set * sizeof_float
+          n_channels: 10
+          channel_offset: 0
+          capture_utc0: 1.0
+          fll_gain: 0.0
+          carrier_shared: true
+          seed_endpoint: "/gps_track/set_seeds"
+        - name: cudaOutputData
+          gpu_mem: gnss_epl
+          out_buf: epl_buf
+          in_buf: ""
+assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_buf, sample_rate: 5.0e6 }
+# L2C DEEP WIPE: a 20 ms record is exactly ONE CNAV symbol, so navwipe_bit_records 1 wipes the
+# 50 sym/s data and the sum integrates past 20 ms. integration_length 200 = 4 s max buffer (the
+# auto-coherence ladder finds the knee live). Matches live_l2c.yaml.
+gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 200, navwipe_bit_records: 1 }
+record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gps_l2c_gpu", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+
+spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --http-port 8081 --ws-port 8639 --kotekan-rest-port 12148' }
