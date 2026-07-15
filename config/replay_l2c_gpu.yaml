@@ -70,7 +70,7 @@ fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, inpu
 
 # require_hint: scan only broker-hinted (visible + L2C-capable) PRNs. hops_per_record 5000 = the
 # 20 ms CM period at this geometry (search needs it explicitly; the tracker derives it).
-gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 8.0, acquire_windows: 40, hops_per_record: 5000, require_hint: true, hint_ttl_s: 30.0 }
+gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 8.0, acquire_windows: 40, hops_per_record: 5000, require_hint: false, hint_ttl_s: 30.0 }
 valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 
 gputrack:
