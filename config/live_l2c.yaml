@@ -5,7 +5,7 @@
 # Run (run_live.sh CFG=this):
 #   LAT=43.968697 LON=-79.252106 ALT=260 CFG=config/live_l2c.yaml ./config/run_live.sh
 type: config
-log_level: info
+log_level: warn
 instrument_name: airspy_gps
 telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
 
@@ -136,4 +136,4 @@ record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gps_l2c"
 beamcube: { kotekan_stage: GnssBeamCube, in_bufs: [rec_02, rec_03, rec_04, rec_05, rec_06, rec_07, rec_08], out_buf: beam_buf, channel0: 2, integration_length: 50 }
 beamrec: { kotekan_stage: rawFileWrite, in_buf: beam_buf, base_dir: "/tmp/gps_l2c", file_name: "beam", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
-spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --http-port 8081 --ws-port 8639 --kotekan-rest-port 12148' }
+spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --http-port 8081 --ws-port 8639 --kotekan-rest-port 12148 --gps-constellations G' }

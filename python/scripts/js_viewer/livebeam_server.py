@@ -746,9 +746,14 @@ class GpsSkyResource(resource.Resource):
 
     isLeaf = True
 
-    def __init__(self, lat, lon, alt, mask_deg):
+    def __init__(self, lat, lon, alt, mask_deg, consts="G,E,C"):
         resource.Resource.__init__(self)
         self.lat, self.lon, self.alt, self.mask_deg = lat, lon, alt, mask_deg
+        # Only serve the constellations this band actually tracks: L1 tri-band = G,E,C (all share
+        # 1575.42); L2C / L5 are GPS-only, so showing Galileo/BeiDou there is misleading (they are
+        # not even in this band). Filter the class table to the requested tags, order preserved.
+        want = [t.strip() for t in consts.split(",") if t.strip()]
+        self.CONSTELLATIONS = tuple(c for c in type(self).CONSTELLATIONS if c[0] in want)
         self._cache = {"ok": False, "sats": []}  # last good (or empty) result
         self._sats = None                        # cached {prn: EarthSatellite}
         self._last_compute = None                # monotonic s of last attempt
@@ -935,6 +940,9 @@ def main():
     gg.add_argument("--gps-combiner-stage", default="gps_combiner",
                     help="kotekan GnssCoherentCombiner stage name (get_status); "
                     "default 'gps_combiner' (alias-resolved to 'combiner' as above).")
+    gg.add_argument("--gps-constellations", default="G,E,C",
+                    help="constellations to show on the sky plot (G=GPS, E=Galileo, C=BeiDou). "
+                         "L1 tri-band = G,E,C; L2C/L5 are GPS-only, so pass G there.")
     gg.add_argument("--gps-airspy-stage", default="airspy_in",
                     help="kotekan airspy stage name for the ADC noise readout "
                     "(adcstat); default 'airspy_in'.")
@@ -1013,7 +1021,8 @@ def main():
         sys.path.insert(0, _scripts)
         sys.path.insert(0, os.path.join(_scripts, "gnss"))
         root.putChild(b"gps_sky",
-                      GpsSkyResource(args.lat, args.lon, args.alt, args.gps_mask_deg))
+                      GpsSkyResource(args.lat, args.lon, args.alt, args.gps_mask_deg,
+                                     args.gps_constellations))
         log_.info("GPS panel enabled (site lat=%s lon=%s alt=%s)",
                   args.lat, args.lon, args.alt)
 

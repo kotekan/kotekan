@@ -17,7 +17,7 @@
 #   LAT=43.968697 LON=-79.252106 ALT=260 CFG=config/live_l1_dual.yaml ./config/run_live.sh
 # GPS deep |A| -> /tmp/gpswipe/level_*.raw, Galileo -> /tmp/gpswipe/gal_level_*.raw.
 type: config
-log_level: info
+log_level: warn
 instrument_name: airspy_gps
 telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
 
