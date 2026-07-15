@@ -66,9 +66,9 @@ airspy_in:
     serial: 0x03A464C837264F67   # L5 unit (verify a pin by BREAKING it -- see run_band.sh)
     freq: 1176.45
     sample_bw: 10                # airspy 10 MSPS mode -> 20 MSPS real
-    gain_lna: 11
-    gain_mix: 11
-    gain_if: 11
+    gain_lna: 8
+    gain_mix: 8
+    gain_if: 8
     biast_power: false           # externally bias-teed (shared active antenna, one supply)
     dither_disable: true         # coherent multi-unit (shared GPSDO)
 fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
