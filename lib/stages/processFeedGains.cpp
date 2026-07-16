@@ -170,7 +170,7 @@ void processFeedGains::main_thread() {
 
             // check if this buffer has an available frame, using a short
             // timeout to avoid blocking, but wait (1day) until have received one data
-            timespec timeout = double_to_ts(current_time() + gains_received.at(beam_id) ? 0 : 24*3600.);
+            timespec timeout = double_to_ts(current_time() + (gains_received.at(beam_id) ? 0 : 24*3600.));
             int status = buf->wait_for_full_frame_timeout(unique_name, frame_id, timeout);
 
             if (status == 0) {
@@ -203,7 +203,7 @@ void processFeedGains::main_thread() {
         }
 
         // Check for mask updates and copy to the mask buffer
-        timespec timeout = double_to_ts(current_time() + mask_received ? 0 : 24*3600.);
+        timespec timeout = double_to_ts(current_time() + (mask_received ? 0 : 24*3600.));
         int status =
             in_mask_buf->wait_for_full_frame_timeout(unique_name, in_mask_frame_id, timeout);
         if (status == 0) {
@@ -226,7 +226,7 @@ void processFeedGains::main_thread() {
             return;
         }
 
-        assert(mask_received && std::all_of(gains_received.begin(), gains_received.end(), [](bool b){return b;}) && set_coarse_freqs_once);
+        assert(mask_received && std::all_of(gains_received.begin(), gains_received.end(), [](bool b){return b;}) && !set_coarse_freqs_once);
 
         // Set metadata from the frame desc, and other metadata
         out_buf->allocate_new_metadata_object(out_buf_frame_id);
