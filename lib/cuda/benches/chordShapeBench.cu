@@ -41,16 +41,20 @@
 // ---- 1. unpack: wire [t][(f)][p*d] 4+4b -> planar int8 re[k-major TxN per freq], im[...] ----
 // Emit TN-friendly layout for the GEMM: per freq, Re/Im as [T x N] col-major-N? We emit
 // K-MAJOR (t-fastest within a column of N): re[f][(n)*T + t] -- the "T" op side.
-__global__ void k_unpack(const unsigned char* __restrict__ wire, int8_t* __restrict__ re,
-                         int8_t* __restrict__ im, int T, int F, int N /*=P*D*/) {
+// PLANAR unpack of the COVERING CHANNELS ONLY: the GNSS sidecar never touches the other
+// freqs' bytes (they belong to cosmology). Output compact [t][fg][n], fg = covering index --
+// still zero transposes: per covering channel fg the matrix is col-major [N x T] with
+// lda = F_gnss*N, batch stride N. Both sides coalesced (contiguous N-byte runs).
+__global__ void k_unpack(const unsigned char* __restrict__ wire, const int* __restrict__ cover,
+                         int8_t* __restrict__ re, int8_t* __restrict__ im, int T, int F,
+                         int F_gnss, int N /*=P*D*/) {
     const long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
-    const long long total = (long long)T * F * N;
+    const long long total = (long long)T * F_gnss * N;
     if (i >= total) return;
-    (void)T; (void)F; (void)N;
-    const unsigned char b = wire[i];
-    // PLANAR, WIRE ORDER: out index == in index. Zero transpose -- the GEMM absorbs the layout
-    // (per-freq matrix D_f(n,t) = plane[t*F*N + f*N + n] IS col-major [N x T] with lda = F*N and
-    // batch stride N: dish-fastest on the wire == n-fastest in the matrix. The whole claim.)
+    const int n = i % N;
+    const int fg = (i / N) % F_gnss;
+    const long long t = i / ((long long)N * F_gnss);
+    const unsigned char b = wire[(t * F + cover[fg]) * N + n];
     re[i] = (int8_t)(((b >> 4) & 0x0f) - 8);
     im[i] = (int8_t)((b & 0x0f) - 8);
 }
@@ -130,7 +134,7 @@ int main() {
         {"Full",       48, 512, 2, 48, 384, 2048},
         {"Full",       48, 512, 2, 4, 384, 2048},
     };
-    printf("GNSS sidecar at CHORD node shapes: unpack(all F) + 4x int8 GEMM(F_gnss only) + repgen\n");
+    printf("GNSS sidecar at CHORD node shapes: unpack(COVERING F only) + 4x int8 GEMM + repgen\n");
     printf("%-11s %5s %4s %6s %4s %5s | %9s %9s %9s %9s | %8s %7s\n",
            "node", "F", "D", "Fgnss", "M", "T", "unpack", "gemm_i8", "gemm_f32", "repgen",
            "i8 TOPS", "GB/s");
@@ -153,13 +157,22 @@ int main() {
         CK(cudaMemset(d_rim, 1, (size_t)s.F_gnss * s.M * s.T));
 
         // 1. unpack (ALL node freqs -- the wire arrives whole)
-        struct UA { const unsigned char* w; int8_t *re, *im; int T, F, N; long long tot; } ua{
-            d_wire, d_re, d_im, s.T, s.F_node, N, wire_bytes};
+        int* d_cover;
+        CK(cudaMalloc(&d_cover, s.F_gnss * sizeof(int)));
+        {
+            std::vector<int> hc(s.F_gnss);
+            for (int f = 0; f < s.F_gnss; ++f)
+                hc[f] = (f * s.F_node) / s.F_gnss; // scattered covering channels
+            CK(cudaMemcpy(d_cover, hc.data(), s.F_gnss * sizeof(int), cudaMemcpyHostToDevice));
+        }
+        struct UA { const unsigned char* w; const int* cov; int8_t *re, *im; int T, F, Fg, N;
+                    long long tot; } ua{d_wire, d_cover, d_re, d_im, s.T, s.F_node, s.F_gnss, N,
+                                        (long long)s.T * s.F_gnss * N};
         auto unpack_fn = [](void* p) {
             auto* a = (UA*)p;
             const int blk = 256;
-            k_unpack<<<(unsigned)((a->tot + blk - 1) / blk), blk>>>(a->w, a->re, a->im, a->T,
-                                                                    a->F, a->N);
+            k_unpack<<<(unsigned)((a->tot + blk - 1) / blk), blk>>>(a->w, a->cov, a->re, a->im,
+                                                                    a->T, a->F, a->Fg, a->N);
         };
         const double t_unpack = bench_ms(20, unpack_fn, &ua);
 
@@ -167,7 +180,7 @@ int main() {
         //     C[N x M] = D[N x T] x R[T x M]: cublas col-major "TN": opA=T on the K-major D.
         struct GA { cublasHandle_t h; const int8_t *re, *im, *rre, *rim; int32_t* c;
                     int N, M, T, F, ldaFN; } ga{h, d_re, d_im, d_rre, d_rim, d_c, N, s.M, s.T,
-                                                s.F_gnss, s.F_node * N};
+                                                s.F_gnss, s.F_gnss * N};
         auto gemm_i8 = [](void* p) {
             auto* a = (GA*)p;
             const int32_t one = 1, zero = 0;
@@ -225,13 +238,13 @@ int main() {
         // derived: int8 TOPS (4 gemms x 2 ops/MAC), unpack GB/s
         const double macs = 4.0 * (double)N * s.M * s.T * s.F_gnss;
         const double tops = macs * 2.0 / (t_i8 * 1e-3) / 1e12;
-        const double gbs = (double)wire_bytes * 3.0 / (t_unpack * 1e-3) / 1e9; // r+w2
+        const double gbs = (double)s.T * s.F_gnss * N * 3.0 / (t_unpack * 1e-3) / 1e9; // r+2w, covering slice only
         printf("%-11s %5d %4d %6d %4d %5d | %7.3fms %7.3fms %7.3fms %7.3fms | %8.1f %7.0f\n",
                s.name, s.F_node, s.D, s.F_gnss, s.M, s.T, t_unpack, t_i8, t_f32, t_rep, tops,
                gbs);
         cudaFree(d_wire); cudaFree(d_re); cudaFree(d_im); cudaFree(d_rre); cudaFree(d_rim);
         cudaFree(d_c); cudaFree(d_cf); cudaFree(d_df); cudaFree(d_rf);
-        cudaFree(d_code); cudaFree(d_pA); cudaFree(d_pB); cudaFree(d_j);
+        cudaFree(d_code); cudaFree(d_pA); cudaFree(d_pB); cudaFree(d_j); cudaFree(d_cover);
     }
     printf("\nper-record costs above; real-time margin = record_period / (unpack+gemm+repgen)\n");
     printf("(record_period = T / channel_width; e.g. T=256 @ 390 kHz chan -> 0.66 ms)\n");
