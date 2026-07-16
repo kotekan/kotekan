@@ -215,6 +215,13 @@ def main():
                     "doppler_hz": r.get("doppler_hz"),
                     "carrier_hz_resid": r.get("carrier_hz_resid"),
                     "nh_phase": r.get("nh_phase"),
+                    # boundary_f: the code-period boundary's offset inside the despread window.
+                    # Pre-feab8b04 amplitude went as |2f-1|, so f~0.5 nulled the sat (the
+                    # "bistable"); the segmented despread killed that dependence. Logged so a
+                    # soak can PROVE C/N0 is independent of f (the direct regression test) --
+                    # it was REST-only before, which is exactly why the 07-15 overnight
+                    # couldn't be tested statistically.
+                    "boundary_f": r.get("boundary_f"),
                     "s4": r.get("s4"),
                     "s4_raw": r.get("s4_raw"),
                     "sigma_phi": r.get("sigma_phi"),

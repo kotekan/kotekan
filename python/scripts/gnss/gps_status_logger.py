@@ -109,6 +109,13 @@ def main(argv=None):
                        # only differential range separates them) -- a sat away from
                        # consensus has a wrong overlay row or a false alignment.
                        "nh_phase": r.get("nh_phase"),
+                       # boundary_f: where this sat's code-period boundary sits inside the
+                       # despread window (0/1 = window edge, ~0.5 = the record straddles the
+                       # secondary-overlay chip flip). Pre-feab8b04 the amplitude went as
+                       # |2f-1| and f~0.5 NULLED the sat (the "bistable"); the segmented
+                       # despread removed that, so C/N0 must now be INDEPENDENT of f -- log it
+                       # to keep proving that (and to catch any regression) over a whole soak.
+                       "boundary_f": r.get("boundary_f"),
                        # multipath/scintillation pair: S4 (amplitude fluctuation, thermal
                        # floor removed) and sigma_phi (carrier-phase jitter, rad). Multipath
                        # moves both; our two C/N0 estimators are each blind to one of them.
