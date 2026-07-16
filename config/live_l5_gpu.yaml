@@ -86,7 +86,7 @@ valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 # The RFSoC's job, in software: measure the bandpass, scale each channel's NOISE rms to
 # target_lsb (COMPLEX-sample rms; 2.1 = 1.5/component = CHORD's 4b point), freeze, demote to
 # 4+4b. Scales ride every frame's metadata; the searches stay float upstream.
-quant:  { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, target_lsb: 2.1, measure_frames: 64 }
+quant:  { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, target_lsb: 2.97, measure_frames: 64 }  # INTERIM per-comp 2.1: B1C COMPRESSES (~30 dB-Hz ceiling) at the CHORD point (complex 2.1) -- memory bds-quantizer-inflation
 
 # SHARED-INPUT tri-constellation GPU stage. All three L5 signals despread the SAME channelized
 # voltage, so ONE cudaInputData copies chan_buf2 -> gnss_chan_frame (host->device) per frame and
