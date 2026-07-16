@@ -30,15 +30,7 @@ CpuMonitor::CpuMonitor() {
 
 CpuMonitor::~CpuMonitor() {
     restServer::instance().remove_get_callback("/cpu_ult");
-
-    if (this_thread.joinable()) {
-        stop();
-        try {
-            this_thread.join();
-        } catch (std::exception& e) {
-            WARN_NON_OO("cpuMonitor: Failure when joining thread: {:s}", e.what());
-        }
-    }
+    stop();
 }
 
 void CpuMonitor::start() {
@@ -47,6 +39,15 @@ void CpuMonitor::start() {
 
 void CpuMonitor::stop() {
     stop_thread = true;
+
+    // Join the tracking thread so it cannot touch stages after they are deleted.
+    if (this_thread.joinable()) {
+        try {
+            this_thread.join();
+        } catch (std::exception& e) {
+            WARN_NON_OO("cpuMonitor: Failure when joining thread: {:s}", e.what());
+        }
+    }
 }
 
 void CpuMonitor::track_cpu() {
@@ -84,6 +85,7 @@ void CpuMonitor::track_cpu() {
         }
 
         // Read each thread stats based on tid
+        std::unique_lock<std::mutex> lock(ult_lock);
         for (auto stage : tid_list) {
             for (auto tid : stage.second) {
                 char fname[40];
@@ -150,6 +152,8 @@ void CpuMonitor::track_cpu() {
                 fclose(thread_fp);
             }
         }
+        lock.unlock();
+
         // Update cpu time
         prev_cpu_time = cpu_time;
 
@@ -167,6 +171,7 @@ void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {
         return;
     }
 
+    std::lock_guard<std::mutex> lock(ult_lock);
     for (auto& stage : ult_list) {
         nlohmann::json stage_cpu_ult = {};
         for (auto& thread : stage.second) {
