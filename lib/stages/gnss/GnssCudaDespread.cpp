@@ -27,9 +27,9 @@ struct GnssCudaDespread::Impl {
     int8_t* d_code = nullptr;                  // all PRNs' combined-stream codes, concatenated
     std::vector<int> code_offset;              // per PRN slot
     long code_len = 0;                         // combined-stream length (same for all PRNs)
-    gnss_cuda::DespreadJob* d_jobs = nullptr;  // [3]
-    double2* d_corr = nullptr;                 // [3][n_chan]
-    double* d_energy = nullptr;                // [3][n_chan]
+    gnss_cuda::DespreadJob* d_jobs = nullptr;  // [n_prn]      (one quad job per PRN slot)
+    double2* d_corr = nullptr;                 // [4*n_prn][n_chan]  (E, P, L, P_HEAD per slot)
+    double* d_energy = nullptr;                // [4*n_prn][n_chan]
 
     // Per-PRN Doppler-bucketed Phi tables on device ([n_chan][Lf+1] each, all channels).
     struct PhiCache {
@@ -77,15 +77,18 @@ struct GnssCudaDespread::Impl {
         ck(cudaMalloc(&d_code, codes.size()), "alloc code");
         ck(cudaMemcpy(d_code, codes.data(), codes.size(), cudaMemcpyHostToDevice), "upload code");
 
-        const size_t maxb = (size_t)4 * np; // full cross-PRN batch: every slot x E/P/L/P_HEAD
+        // Full cross-PRN batch. Jobs and output rows are sized SEPARATELY: one job per PRN slot
+        // emits four rows (E, P, L, P_HEAD).
+        const size_t maxs = (size_t)np;     // jobs
+        const size_t maxb = (size_t)4 * np; // output rows
         ck(cudaMalloc(&d_data, (size_t)nc * nh * sizeof(float2)), "alloc data");
-        ck(cudaMalloc(&d_jobs, maxb * sizeof(gnss_cuda::DespreadJob)), "alloc jobs");
+        ck(cudaMalloc(&d_jobs, maxs * sizeof(gnss_cuda::DespreadJob)), "alloc jobs");
         ck(cudaMalloc(&d_corr, maxb * nc * sizeof(double2)), "alloc corr");
         ck(cudaMalloc(&d_energy, maxb * nc * sizeof(double)), "alloc energy");
         ck(cudaStreamCreate(&stream), "stream");
         phi.resize(np);
         stage.resize((size_t)nc * nh);
-        h_jobs.resize(maxb);
+        h_jobs.resize(maxs);
         h_corr.resize(maxb * nc);
         h_energy.resize(maxb * nc);
     }
@@ -160,10 +163,13 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     std::vector<std::array<gnss::DespreadResult, 3>> out(specs.size());
     if (specs.empty())
         return out;
-    const int nb = (int)(3 * specs.size());
+    const int n_spec = (int)specs.size();
+    const int n_out = 4 * n_spec; // the kernel always emits the full quad
 
-    // Build the job array: one triple per spec, each carrying its PRN's Doppler-bucketed Phi
-    // tables (rebuilt+uploaded only when that sat's Doppler moved > refresh_hz).
+    // Build the job array: one quad job per spec, each carrying its PRN's Doppler-bucketed Phi
+    // tables (rebuilt+uploaded only when that sat's Doppler moved > refresh_hz). m_head = 0 --
+    // this path's contract is the plain E/P/L triple, so the head row comes back all-zero and is
+    // dropped below (the segmented despread lives on the device path, enqueue_batch_device).
     for (size_t i = 0; i < specs.size(); ++i) {
         const Spec& sp = specs[i];
         auto& pc = im.ensure_phi(sp.p, sp.doppler_hz);
@@ -175,24 +181,22 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
         for (int c : sp.covering)
             if (c >= 0 && c < im.n_chan)
                 mask |= (1ULL << c);
-        const double trials[3] = {sp.cp_seed - sp.spacing_chips, sp.cp_seed,
-                                  sp.cp_seed + sp.spacing_chips};
-        for (int t = 0; t < 3; ++t)
-            im.h_jobs[3 * i + t] = {(double)im.bank.comb_mult() * trials[t],
-                                    cps,
-                                    1.0 / cps,
-                                    wc,
-                                    im.code_offset[(size_t)sp.p],
-                                    (int)im.code_len,
-                                    mask,
-                                    pc.d_A,
-                                    pc.d_B,
-                                    pc.n_chips,
-                                    0,
-                                    im.n_hops};
+        im.h_jobs[i] = {(double)im.bank.comb_mult() * sp.cp_seed,
+                        (double)im.bank.comb_mult() * sp.spacing_chips,
+                        cps,
+                        1.0 / cps,
+                        wc,
+                        im.code_offset[(size_t)sp.p],
+                        (int)im.code_len,
+                        mask,
+                        pc.d_A,
+                        pc.d_B,
+                        pc.n_chips,
+                        0};
     }
-    ck(cudaMemcpyAsync(im.d_jobs, im.h_jobs.data(), (size_t)nb * sizeof(gnss_cuda::DespreadJob),
-                       cudaMemcpyHostToDevice, im.stream),
+    ck(cudaMemcpyAsync(im.d_jobs, im.h_jobs.data(),
+                       (size_t)n_spec * sizeof(gnss_cuda::DespreadJob), cudaMemcpyHostToDevice,
+                       im.stream),
        "jobs upload");
 
     gnss_cuda::DespreadParams par;
@@ -201,20 +205,20 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
     par.data_stride = im.n_hops; // packed per-record staging buffer
-    ck(gnss_cuda::launch_despread(im.d_data, im.d_code, im.d_jobs, nb, im.n_chan, par, im.d_corr,
-                                  im.d_energy, im.stream),
+    ck(gnss_cuda::launch_despread(im.d_data, im.d_code, im.d_jobs, n_spec, im.n_chan, par,
+                                  im.d_corr, im.d_energy, im.stream),
        "launch");
-    ck(cudaMemcpyAsync(im.h_corr.data(), im.d_corr, (size_t)nb * im.n_chan * sizeof(double2),
+    ck(cudaMemcpyAsync(im.h_corr.data(), im.d_corr, (size_t)n_out * im.n_chan * sizeof(double2),
                        cudaMemcpyDeviceToHost, im.stream),
        "corr down");
-    ck(cudaMemcpyAsync(im.h_energy.data(), im.d_energy, (size_t)nb * im.n_chan * sizeof(double),
+    ck(cudaMemcpyAsync(im.h_energy.data(), im.d_energy, (size_t)n_out * im.n_chan * sizeof(double),
                        cudaMemcpyDeviceToHost, im.stream),
        "energy down");
     ck(cudaStreamSynchronize(im.stream), "sync"); // ONE sync per record for the whole batch
 
     for (size_t i = 0; i < specs.size(); ++i)
-        for (int t = 0; t < 3; ++t) {
-            const size_t row = (size_t)(3 * i + t) * im.n_chan;
+        for (int t = 0; t < 3; ++t) { // rows 4i+0..2 = E/P/L; row 4i+3 (head) unused here
+            const size_t row = (size_t)(4 * i + t) * im.n_chan;
             std::complex<double> g(0.0, 0.0);
             double e = 0.0;
             for (int c = 0; c < im.n_chan; ++c) {
@@ -235,7 +239,7 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
     Impl& im = *_impl;
     if (specs.empty())
         return 0;
-    const int nb = (int)(4 * specs.size());
+    const int n_spec = (int)specs.size();
     const cudaStream_t st = (cudaStream_t)stream;
 
     // Same job construction as despread_batch; h_jobs staging is pageable, so the async H2D
@@ -251,45 +255,41 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
         for (int c : sp.covering)
             if (c >= 0 && c < im.n_chan)
                 mask |= (1ULL << c);
-        const double trials[3] = {sp.cp_seed - sp.spacing_chips, sp.cp_seed,
-                                  sp.cp_seed + sp.spacing_chips};
-        for (int t = 0; t < 3; ++t)
-            im.h_jobs[4 * i + t] = {(double)im.bank.comb_mult() * trials[t],
-                                    cps,
-                                    1.0 / cps,
-                                    wc,
-                                    im.code_offset[(size_t)sp.p],
-                                    (int)im.code_len,
-                                    mask,
-                                    pc.d_A,
-                                    pc.d_B,
-                                    pc.n_chips,
-                                    0,
-                                    im.n_hops};
-        // Job 4 = P_HEAD: the prompt trial cut at the code-period boundary. Windows are
+        const double cp0 = (double)im.bank.comb_mult() * sp.cp_seed;
+
+        // Output row 3 = P_HEAD: the prompt cut at the code-period boundary. Windows are
         // hop-aligned, so the period boundary (where the secondary overlay flips) lands
         // mid-window at a per-sat offset; the hop where the PROMPT's absolute code phase
         // C = cp0 + n_m*cps crosses the next multiple of code_len splits head from tail.
         // Hop granularity (1/n_hops of a record) is exact enough: the filter span mixes
         // ~1 hop at the seam vs the 12/25-records-nulled failure this repairs.
-        {
-            const double cp0 = (double)im.bank.comb_mult() * sp.cp_seed;
-            const double n0 = (double)(window_start_sample + im.bank.fft_len() - 1);
-            const double C0 = cp0 + n0 * cps;
-            const double Lc = (double)im.code_len;
-            const double next_boundary = (std::floor(C0 / Lc) + 1.0) * Lc;
-            const double hops_to_b = (next_boundary - C0) / ((double)im.bank.fft_len() * cps);
-            int m_head = (int)std::ceil(hops_to_b);
-            if (m_head < 0)
-                m_head = 0;
-            if (m_head > im.n_hops)
-                m_head = im.n_hops;
-            im.h_jobs[4 * i + 3] = im.h_jobs[4 * i + 1]; // copy the P trial...
-            im.h_jobs[4 * i + 3].hop_hi = m_head;        // ...restricted to the head hops
-        }
+        const double n0 = (double)(window_start_sample + im.bank.fft_len() - 1);
+        const double C0 = cp0 + n0 * cps;
+        const double Lc = (double)im.code_len;
+        const double next_boundary = (std::floor(C0 / Lc) + 1.0) * Lc;
+        const double hops_to_b = (next_boundary - C0) / ((double)im.bank.fft_len() * cps);
+        int m_head = (int)std::ceil(hops_to_b);
+        if (m_head < 0)
+            m_head = 0;
+        if (m_head > im.n_hops)
+            m_head = im.n_hops;
+
+        im.h_jobs[i] = {cp0,
+                        (double)im.bank.comb_mult() * sp.spacing_chips,
+                        cps,
+                        1.0 / cps,
+                        wc,
+                        im.code_offset[(size_t)sp.p],
+                        (int)im.code_len,
+                        mask,
+                        pc.d_A,
+                        pc.d_B,
+                        pc.n_chips,
+                        m_head};
     }
-    ck(cudaMemcpyAsync(d_jobs_slot, im.h_jobs.data(), (size_t)nb * sizeof(gnss_cuda::DespreadJob),
-                       cudaMemcpyHostToDevice, st),
+    ck(cudaMemcpyAsync(d_jobs_slot, im.h_jobs.data(),
+                       (size_t)n_spec * sizeof(gnss_cuda::DespreadJob), cudaMemcpyHostToDevice,
+                       st),
        "jobs upload (device batch)");
 
     gnss_cuda::DespreadParams par;
@@ -299,10 +299,10 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
     par.Lf = im.Lf;
     par.data_stride = data_stride;
     ck(gnss_cuda::launch_despread((const float2*)d_window, im.d_code,
-                                  (gnss_cuda::DespreadJob*)d_jobs_slot, nb, im.n_chan, par,
+                                  (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec, im.n_chan, par,
                                   (double2*)d_corr_out, (double*)d_energy_out, st),
        "launch (device batch)");
-    return nb;
+    return 4 * n_spec; // OUTPUT rows written (E, P, L, P_HEAD per spec) -- not the job count
 }
 
 std::array<gnss::DespreadResult, 3>

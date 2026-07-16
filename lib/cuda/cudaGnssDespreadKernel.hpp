@@ -20,11 +20,20 @@
  */
 namespace gnss_cuda {
 
-/// Per-(PRN x correlator) trial: everything that varies within a batch. Carries its own
+/// One PRN's whole correlator quad: everything that varies within a batch. Carries its own
 /// (device) Phi table pointers + filter span so ONE launch can mix PRNs from different
 /// Doppler buckets -- the G1c cross-PRN batch (one launch per record, all sats).
+///
+/// ONE JOB EMITS FOUR OUTPUT ROWS (E, P, L, P_HEAD) -- see launch_despread. The Early and Late
+/// trials are the prompt displaced by +-ds, and every correlator in the quad shares one carrier
+/// (same wc) and one data sample per hop, so the kernel generates the carrier and loads the data
+/// ONCE per (PRN, channel, hop) instead of four times. P_HEAD costs nothing beyond an extra
+/// accumulator: it is the prompt's own MAC, gated on the hop (the despread MAC measured at 0% of
+/// the kernel -- 2026-07-16 ablation).
 struct DespreadJob {
-    double cp0;          ///< code phase (COMBINED-stream chips) at absolute sample 0 reference
+    double cp0;          ///< PROMPT code phase (COMBINED-stream chips) at absolute sample 0 ref
+    double ds;           ///< Early/Late displacement from the prompt (combined-stream chips):
+                         ///< row 0 = cp0-ds, row 1 = cp0, row 2 = cp0+ds
     double cps;          ///< chips per sample incl. code Doppler: eff_chip_rate/fs*(1+sign*f/f_c)
     double inv_cps;      ///< 1/cps (tap-boundary indices via multiply, not the costly FP64 divide)
     double wc;           ///< carrier angular rate: 2*pi*(f_offset + doppler)/fs
@@ -34,9 +43,10 @@ struct DespreadJob {
     const float2* phiA;  ///< [n_chan][Lf+1] cumulative filter table, this PRN's Doppler bucket
     const float2* phiB;  ///< (float32: see the kernel's mixed-precision note)
     int n_chips;         ///< chips spanned by this bucket's filter (gather depth per hop)
-    int hop_lo;          ///< first hop this job accumulates (0 for a full-record trial)
-    int hop_hi;          ///< one past the last hop (n_hops for full; the code-period-boundary
-                         ///< hop for a P_HEAD segment trial -- see gnssRecord.hpp slots 16-18)
+    int m_head;          ///< row 3 (P_HEAD) = the PROMPT accumulated over hops [0, m_head) only:
+                         ///< the record's slice BEFORE the code-period boundary, where the
+                         ///< secondary overlay flips sign (gnssRecord.hpp slots 16-18). 0 = emit
+                         ///< an all-zero head row (the plain 3-trial contract).
 };
 
 /// Batch-shared geometry.
@@ -52,16 +62,18 @@ struct DespreadParams {
 };
 
 /**
- * Launch the fused despread.
+ * Launch the fused despread. ONE JOB IN, FOUR OUTPUT ROWS OUT: job b writes rows 4b+0..4b+3 =
+ * Early, Prompt, Late, P_HEAD. (Jobs and output rows are counted separately upstream -- see
+ * gnss_gpu::max_specs vs max_jobs -- because they no longer march together.)
  * @param data   [n_chan][n_hops] channelized voltage (device)
  * @param code   shared int8 code table (all PRNs concatenated; jobs carry offsets; device)
- * @param jobs   [n_batch] per-trial parameters incl. per-job Phi table pointers (device)
- * @param corr   out [n_batch][n_chan] complex correlations (device)
- * @param energy out [n_batch][n_chan] replica energies (device)
+ * @param jobs   [n_spec] per-PRN quad parameters incl. per-job Phi table pointers (device)
+ * @param corr   out [4*n_spec][n_chan] complex correlations (device)
+ * @param energy out [4*n_spec][n_chan] replica energies (device)
  * Cross-channel summation is left to the caller (tiny; host or follow-up kernel).
  */
 cudaError_t launch_despread(const float2* data, const int8_t* code, const DespreadJob* jobs,
-                            int n_batch, int n_chan, const DespreadParams& p, double2* corr,
+                            int n_spec, int n_chan, const DespreadParams& p, double2* corr,
                             double* energy, cudaStream_t stream);
 
 /**

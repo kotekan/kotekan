@@ -58,15 +58,18 @@ public:
     /// Phase-F (cudaProcess chain) entry: despread one record window read IN PLACE from a
     /// DEVICE-resident channel-major array (row stride @c data_stride hops -- the internal
     /// ring), on a CALLER stream, results into CALLER device buffers, NO synchronization.
-    /// @c d_jobs_slot must hold >= 3*specs.size() jobs (a per-frame arena slice: each record's
+    /// @c d_jobs_slot must hold >= specs.size() jobs (a per-frame arena slice: each record's
     /// jobs get their own slice so multiple records stay in flight). Phi-bucket rebuilds
-    /// (rare: Doppler moved > refresh_hz) still upload synchronously. Returns jobs written.
+    /// (rare: Doppler moved > refresh_hz) still upload synchronously.
+    /// JOBS AND OUTPUT ROWS DIFFER HERE: one job per spec emits FOUR rows (E, P, L, P_HEAD), and
+    /// the return value is the ROW count (4*specs.size()) -- what indexes d_corr_out/d_energy_out
+    /// and PrnCtl::job0. Advance @c d_jobs_slot by specs.size(), not by the return value.
     /// Opaque pointer types keep this header CUDA-free for the tracker include.
     int enqueue_batch_device(const void* d_window /*float2*/, int data_stride,
                              long long window_start_sample, const std::vector<Spec>& specs,
-                             void* d_jobs_slot /*gnss_cuda::DespreadJob*/,
-                             void* d_corr_out /*double2, [3*specs][n_chan]*/,
-                             void* d_energy_out /*double, [3*specs][n_chan]*/,
+                             void* d_jobs_slot /*gnss_cuda::DespreadJob, [specs]*/,
+                             void* d_corr_out /*double2, [4*specs][n_chan]*/,
+                             void* d_energy_out /*double, [4*specs][n_chan]*/,
                              void* stream /*cudaStream_t*/);
 
 private:

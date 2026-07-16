@@ -183,7 +183,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                                                      _gpu_buffer_depth, _out_frame_len);
     gnss_cuda::DespreadJob* d_jobs = (gnss_cuda::DespreadJob*)device.get_gpu_memory_array(
         _mem_jobs, pipestate.gpu_frame_id, _gpu_buffer_depth,
-        (size_t)gnss_gpu::max_jobs(S.n_prn) * sizeof(gnss_cuda::DespreadJob));
+        (size_t)gnss_gpu::max_specs(S.n_prn) * sizeof(gnss_cuda::DespreadJob));
 
     // Absolute hop of this frame from the claimed metadata (contiguous fallback without it).
     long long frame_hop = S.next_hop;
@@ -267,7 +267,10 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
     const double chip_component = S.replica->eff_chip_rate() / (double)S.replica->comb_mult();
     const double sgn = S.replica->code_doppler_sign;
     const double fc = S.replica->carrier_hz();
-    int n_rec = 0, n_jobs = 0;
+    // Jobs and output rows are counted SEPARATELY: the despread kernel takes one job per active
+    // PRN and emits four rows from it (E, P, L, P_HEAD). n_spec indexes d_jobs; n_out indexes
+    // corr/energy and is what PrnCtl::job0 / FrameHdr::n_jobs carry downstream.
+    int n_rec = 0, n_spec = 0, n_out = 0;
     while ((S.next_rec + 1) * hpr <= written && n_rec < MAX_REC) {
         const long long whop = S.hop0 + S.next_rec * hpr;
         const long long wstart = whop * (long long)S.fft_len;
@@ -336,7 +339,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
 
             c.run = 1;
             c.reanchored = reanchored;
-            c.job0 = n_jobs + 4 * (int)specs.size(); // E, P, L, P_HEAD per spec
+            c.job0 = n_out + 4 * (int)specs.size(); // E, P, L, P_HEAD rows for the spec below
             c.fcar_report = (float)(fcar - ff_hz + ctrim[p]);
             c.n_owned = (float)local.size();
             c.cp_seed = cp_seed;
@@ -350,19 +353,20 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         }
         if (!specs.empty()) {
             const float2* d_window = d_ring + (size_t)((S.next_rec * hpr) % S.ring_hops);
-            double2* d_corr =
-                (double2*)(d_out + off_corr(S.n_prn)) + (size_t)n_jobs * S.n_chan;
+            double2* d_corr = (double2*)(d_out + off_corr(S.n_prn)) + (size_t)n_out * S.n_chan;
             double* d_energy =
-                (double*)(d_out + off_energy(S.n_prn, S.n_chan)) + (size_t)n_jobs * S.n_chan;
-            n_jobs += S.despread->enqueue_batch_device(d_window, (int)S.ring_hops, wstart,
-                                                       specs, d_jobs + n_jobs, d_corr,
-                                                       d_energy, (void*)stream);
+                (double*)(d_out + off_energy(S.n_prn, S.n_chan)) + (size_t)n_out * S.n_chan;
+            // Returns ROWS (4/spec); the job arena advances by SPECS (1/spec).
+            n_out += S.despread->enqueue_batch_device(d_window, (int)S.ring_hops, wstart, specs,
+                                                      d_jobs + n_spec, d_corr, d_energy,
+                                                      (void*)stream);
+            n_spec += (int)specs.size();
         }
         ++S.next_rec;
         ++n_rec;
     }
     hdr.n_rec = n_rec;
-    hdr.n_jobs = n_jobs;
+    hdr.n_jobs = n_out;
     std::memcpy(_ctl_stage.data(), &hdr, sizeof(hdr));
     CHECK_CUDA_ERROR(cudaMemcpyAsync(d_out, _ctl_stage.data(), _ctl_stage.size(),
                                      cudaMemcpyHostToDevice, stream));

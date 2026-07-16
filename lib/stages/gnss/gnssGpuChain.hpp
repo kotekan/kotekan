@@ -23,11 +23,17 @@
  *   [PrnCtl  x MAX_REC x n_prn]                        pass-1 control per (record, PRN slot)
  *   [double2 corr   x MAX_JOBS(n_prn) x n_chan]        kernel output, job-major
  *   [double  energy x MAX_JOBS(n_prn) x n_chan]
- * A "job" is one correlator trial; an active PRN contributes 4 consecutive jobs
+ * A "job" is one correlator trial; an active PRN contributes 4 consecutive job ROWS
  * (E, P, L, P_HEAD) starting at PrnCtl::job0. P_HEAD is the prompt restricted to the hops
  * BEFORE the code-period boundary inside the window (gnssRecord.hpp slots 16-18): the
  * secondary overlay flips sign at that boundary, so the combiner needs the two sides
  * separately or straddling records cancel (the 2026-07-15 "bistable").
+ *
+ * NB a "job row" is an OUTPUT row, no longer a kernel job: since 2026-07-16 the despread kernel
+ * takes ONE job per active PRN and emits the whole quad from it (E/P/L share a carrier and a
+ * data sample; P_HEAD is the prompt's own MAC gated on the hop). Rows are what everything
+ * downstream indexes -- PrnCtl::job0, FrameHdr::n_jobs, max_jobs -- so this layout is unchanged;
+ * only the kernel's INPUT array is per-PRN, and it is sized by max_specs.
  */
 namespace gnss_gpu {
 
@@ -40,7 +46,8 @@ struct FrameHdr {
     int32_t n_rec;   ///< complete record windows despread in this frame (<= MAX_REC)
     int32_t n_prn;   ///< PRN slots (layout stride)
     int32_t n_chan;  ///< channels per job row (layout stride)
-    int32_t n_jobs;  ///< total jobs written this frame (<= 3*n_prn*n_rec)
+    int32_t n_jobs;  ///< total job ROWS written this frame (<= max_jobs(n_prn); 4 per active PRN
+                     ///< per record -- see max_specs for the kernel's job count)
     int64_t seq0;    ///< absolute sample of the input frame that triggered this output
     double utc0;     ///< capture UTC of sample 0 (the tracker's capture_utc0 convention)
     int64_t _pad[2];
@@ -70,8 +77,14 @@ struct PrnCtl {
 };
 static_assert(sizeof(PrnCtl) == 64, "PrnCtl must stay 16-byte aligned");
 
+/// Output rows (corr/energy): E, P, L, P_HEAD per active PRN per record.
 constexpr int max_jobs(int n_prn) {
-    return 4 * n_prn * MAX_REC; // E, P, L, P_HEAD per active PRN per record
+    return 4 * n_prn * MAX_REC;
+}
+/// Kernel jobs: ONE per active PRN per record -- each emits the 4 rows above. Sizes the
+/// DespreadJob arena only.
+constexpr int max_specs(int n_prn) {
+    return n_prn * MAX_REC;
 }
 constexpr size_t off_winstart() {
     return sizeof(FrameHdr);
