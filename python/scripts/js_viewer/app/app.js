@@ -27,7 +27,7 @@ import {CCERAPointingPanel}       from "./panels/ccera.js";
 import {GalaxyViewPanel}          from "./panels/galaxy.js";
 import {GpsSkyPanel}              from "./panels/gps_sky.js";
 import {GpsTablePanel}            from "./panels/gps_table.js";
-import {GpsFeed}                  from "./panels/gps_feed.js";
+import {GpsFeed, configure_chains} from "./panels/gps_feed.js";
 import {GpsAmpHistoryPanel}       from "./panels/gps_amp_history.js";
 
 
@@ -97,6 +97,9 @@ export class App {
         // wrong kotekan. Fall back to 8539 if the endpoint is missing (older server).
         this._wire_status_banner();
         fetch("wsport").then(r => r.ok ? r.json() : null).catch(() => null).then(cfg => {
+            // Adopt this band's constellation legend/colours/t_rec (L2C, L5) before the socket
+            // opens; the GPS feed re-renders on the next tick. Missing (older server) -> L1 keeps.
+            if (cfg && cfg.chains) configure_chains(cfg.chains);
             const ws_port = (cfg && cfg.ws_port) || 8539;
             this.socket = new Socket({app: this,
                                       url: "ws://" + location.hostname + ":" + ws_port});

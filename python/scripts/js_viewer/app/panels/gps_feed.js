@@ -12,11 +12,12 @@ const AMP_LOCK = 0.30;      // |A| fallback lock (only where no significance is 
 const SNR_LOCK = 3.0;       // significance (sigma above noise) for a lock
 const PREFS_KEY = "gps_viewer_prefs_v1";
 
-// Constellation identity: stage names, record period (for C/N0 = x / t_rec) and
-// the display colour (matches the matplotlib composite-map palette G/E/C =
-// blue/orange/red so plots and viewer read the same). All three share the
-// 1575.42 MHz tune; a 404 on a missing gal_/bds_ stage just skips that chain.
-export const CHAINS = [
+// Constellation identity: display name (sky legend), record period (for C/N0 = x / t_rec) and
+// the display colour (matches the matplotlib composite-map palette G/E/C = blue/orange/red so
+// plots and viewer read the same). These are the L1 DEFAULTS; the server tells us the actual
+// band via /wsport (configure_chains below) so an L2C/L5 viewer names the right signal. A 404
+// on a missing gal_/bds_ stage just skips that chain.
+export let CHAINS = [
     {tag: "G", name: "GPS L1 C/A",  t_rec: 1e-3,  color: "#4d9de0"},
     {tag: "E", name: "Galileo E1C", t_rec: 4e-3,  color: "#e8923c"},
     {tag: "C", name: "BeiDou B1C",  t_rec: 10e-3, color: "#d64550"},
@@ -24,27 +25,57 @@ export const CHAINS = [
 export const chain_color = tag =>
     (CHAINS.find(c => c.tag === tag) || {}).color || "#8a8f98";
 
+let _active_feed = null;
+// Swap the L1 default chain table for the band this viewer actually serves (delivered by the
+// server via /wsport: L2C = [GPS L2C], L5 = [GPS L5, Galileo E5a, BeiDou B2a]). Legend names,
+// colours and C/N0 t_rec all follow. Idempotent; safe to call before or after the feed exists.
+export function configure_chains(defs) {
+    if (!Array.isArray(defs) || !defs.length) return;
+    CHAINS = defs;
+    if (_active_feed) _active_feed._reconfigure();
+}
+
 export class GpsFeed {
     constructor({app, search_stage, combiner_stage, airspy_stage}) {
         this.app = app;
         this.airspy_stage = airspy_stage || "airspy_in";
-        // gps_* names throughout (symmetric with gal_*/bds_*); KotekanRest.resolveStage
-        // maps them onto the bare search/combiner spelling on older configs.
-        this.chains = CHAINS.map(c => Object.assign({}, c, c.tag === "G"
-            ? {search: search_stage || "gps_search",
-               combiner: combiner_stage || "gps_combiner"}
-            : {search: c.tag === "E" ? "gal_search" : "bds_search",
-               combiner: c.tag === "E" ? "gal_combiner" : "bds_combiner"}));
+        this._search_stage = search_stage;
+        this._combiner_stage = combiner_stage;
         this._listeners = [];
         this._inflight = false;
         this._last = {};
-        this.vis = {G: true, E: true, C: true};
-        try {
-            const p = JSON.parse(localStorage.getItem(PREFS_KEY));
-            if (p && p.vis) Object.assign(this.vis, p.vis);
-        } catch (e) { /* fresh browser */ }
+        this.vis = {};
+        this._prefs = null;
+        try { this._prefs = JSON.parse(localStorage.getItem(PREFS_KEY)); } catch (e) { /* fresh */ }
+        this.chains = this._build_chains();   // sets this.vis from the current CHAINS
+        _active_feed = this;                  // configure_chains() re-targets this instance
         this._tick();
         this._timer = setInterval(() => this._tick(), POLL_MS);
+    }
+
+    // Build the per-chain descriptors from the current module CHAINS, merging in the kotekan
+    // stage names (constant across bands: gps_/gal_/bds_). Visibility defaults ON per tag,
+    // overridden by any persisted preference. Rerun by _reconfigure when the band table swaps.
+    _build_chains() {
+        // gps_* names throughout (symmetric with gal_*/bds_*); KotekanRest.resolveStage
+        // maps them onto the bare search/combiner spelling on older configs.
+        const chains = CHAINS.map(c => Object.assign({}, c, c.tag === "G"
+            ? {search: this._search_stage || "gps_search",
+               combiner: this._combiner_stage || "gps_combiner"}
+            : {search: c.tag === "E" ? "gal_search" : "bds_search",
+               combiner: c.tag === "E" ? "gal_combiner" : "bds_combiner"}));
+        for (const c of chains)
+            if (!(c.tag in this.vis))
+                this.vis[c.tag] = (this._prefs && this._prefs.vis && c.tag in this._prefs.vis)
+                    ? !!this._prefs.vis[c.tag] : true;
+        return chains;
+    }
+
+    // The server delivered this band's chain table (configure_chains) after construction: rebuild
+    // and re-render so the legend/colours/t_rec reflect the real band instead of the L1 defaults.
+    _reconfigure() {
+        this.chains = this._build_chains();
+        this._emit();
     }
 
     on(cb) { this._listeners.push(cb); }

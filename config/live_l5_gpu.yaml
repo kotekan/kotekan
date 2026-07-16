@@ -232,4 +232,4 @@ bds_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: bds_epl_buf, out_b
 bds_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 1000, secondary_overlay: "B2A_CS100" }
 bds_record: { kotekan_stage: rawFileWrite, in_buf: bds_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "bds_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
-spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --http-port 8082 --ws-port 8739 --kotekan-rest-port 12248 --gps-constellations G,E,C' }
+spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --http-port 8082 --ws-port 8739 --kotekan-rest-port 12248 --gps-constellations G,E,C --band l5' }

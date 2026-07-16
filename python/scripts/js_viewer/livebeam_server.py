@@ -724,26 +724,49 @@ class ModeResource(resource.Resource):
         return json.dumps({"mode": mode}).encode("utf-8")
 
 
+# Per-band constellation display defs (name shown in the sky legend + record period t_rec used
+# for C/N0 = x / t_rec). tag/colour are constant across bands (G/E/C = blue/orange/red, matching
+# the matplotlib composite-map palette); only the SIGNAL name and t_rec change. The client swaps
+# its L1 defaults for these on startup (fetched via /wsport), so a non-L1 viewer's legend names
+# the right signal instead of "GPS L1 C/A / Galileo E1C / BeiDou B1C".
+BAND_CHAINS = {
+    "l1":  [{"tag": "G", "name": "GPS L1 C/A",  "t_rec": 1e-3,  "color": "#4d9de0"},
+            {"tag": "E", "name": "Galileo E1C", "t_rec": 4e-3,  "color": "#e8923c"},
+            {"tag": "C", "name": "BeiDou B1C",  "t_rec": 10e-3, "color": "#d64550"}],
+    "l2c": [{"tag": "G", "name": "GPS L2C",     "t_rec": 20e-3, "color": "#4d9de0"}],
+    "l5":  [{"tag": "G", "name": "GPS L5",      "t_rec": 1e-3,  "color": "#4d9de0"},
+            {"tag": "E", "name": "Galileo E5a", "t_rec": 1e-3,  "color": "#e8923c"},
+            {"tag": "C", "name": "BeiDou B2a",  "t_rec": 1e-3,  "color": "#d64550"}],
+}
+
+
 class WsPortResource(resource.Resource):
-    """``GET /wsport`` -> ``{"ws_port": N}`` for THIS server.
+    """``GET /wsport`` -> ``{"ws_port": N, "band": .., "chains": [..]}`` for THIS server.
 
     The browser loads the page from one server's http_port but must open the WebSocket on the
     SAME server's ws_port -- and http->ws is not a fixed offset across bands (L1 8080/8539,
     L2C 8081/8639). The client used to hardcode 8539, so every non-L1 viewer connected to L1's
     WebSocket and received L1's kotekan rest_port (12048) -> cross-origin failures against the
     wrong kotekan. The client now fetches this (same-origin, so it hits the right server) and
-    connects to the port it returns.
+    connects to the port it returns. It ALSO carries the band's constellation display defs
+    (:data:`BAND_CHAINS`, filtered to --gps-constellations) so the sky legend names the right
+    signal for this band.
     """
 
     isLeaf = True
 
-    def __init__(self, ws_port):
+    def __init__(self, ws_port, band="l1", consts="G,E,C"):
         resource.Resource.__init__(self)
         self.ws_port = ws_port
+        self.band = band
+        tags = [t.strip() for t in consts.split(",") if t.strip()]
+        table = BAND_CHAINS.get(band, BAND_CHAINS["l1"])
+        self.chains = [c for c in table if c["tag"] in tags]
 
     def render_GET(self, request):
         request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
-        return json.dumps({"ws_port": self.ws_port}).encode("utf-8")
+        return json.dumps({"ws_port": self.ws_port, "band": self.band,
+                           "chains": self.chains}).encode("utf-8")
 
 
 class GpsSkyResource(resource.Resource):
@@ -964,7 +987,12 @@ def main():
                     "default 'gps_combiner' (alias-resolved to 'combiner' as above).")
     gg.add_argument("--gps-constellations", default="G,E,C",
                     help="constellations to show on the sky plot (G=GPS, E=Galileo, C=BeiDou). "
-                         "L1 tri-band = G,E,C; L2C/L5 are GPS-only, so pass G there.")
+                         "L1 tri-band = G,E,C; L2C = G; L5 = G,E,C (E5a/B2a).")
+    gg.add_argument("--band", default="l1", choices=["l1", "l2c", "l5"],
+                    help="which frequency band this viewer serves -> the per-constellation "
+                    "legend names + record periods (t_rec for C/N0). Delivered to the client "
+                    "via /wsport so the sky legend reads the RIGHT signal (e.g. L5 shows "
+                    "'GPS L5 / Galileo E5a / BeiDou B2a', not the L1 defaults). Default l1.")
     gg.add_argument("--gps-airspy-stage", default="airspy_in",
                     help="kotekan airspy stage name for the ADC noise readout "
                     "(adcstat); default 'airspy_in'.")
@@ -1029,7 +1057,7 @@ def main():
     # "I edited the JS but the browser ignored me" trouble during development.
     root = NoCacheFile(static_dir)
     root.putChild(b"mode", ModeResource(kotekan))
-    root.putChild(b"wsport", WsPortResource(args.ws_port))
+    root.putChild(b"wsport", WsPortResource(args.ws_port, args.band, args.gps_constellations))
 
     # GPS sky positions (az/el) for the live-status panel. gps_beamtrack lives
     # one dir up (python/scripts); add it to the path so the worker thread can
