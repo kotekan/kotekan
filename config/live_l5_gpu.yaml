@@ -56,6 +56,10 @@ gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * 
 input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
 chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
 chan_buf2: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+# CHORD 4+4b voltages (GnssQuantize44 out): ONE byte per (hop, chan) complex sample = 1/8 the
+# float frame -> the H2D copy shrinks 8x. samples_per_data_set counts REAL ADC samples, so
+# bytes/frame = samples / 2.
+q_buf:     { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set / 2 }
 rec_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
 out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
 # GPU epl frame = gnssGpuChain::frame_bytes(n_prn, n_chan) = 176 + 1024*n_prn + 1536*n_prn*n_chan
@@ -79,6 +83,10 @@ fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, inpu
 # 1 ms Q5 period at this geometry (search needs it explicitly; the tracker derives it).
 gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 10.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
 valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
+# The RFSoC's job, in software: measure the bandpass, scale each channel's NOISE rms to
+# target_lsb (COMPLEX-sample rms; 2.1 = 1.5/component = CHORD's 4b point), freeze, demote to
+# 4+4b. Scales ride every frame's metadata; the searches stay float upstream.
+quant:  { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, target_lsb: 2.1, measure_frames: 64 }
 
 # SHARED-INPUT tri-constellation GPU stage. All three L5 signals despread the SAME channelized
 # voltage, so ONE cudaInputData copies chan_buf2 -> gnss_chan_frame (host->device) per frame and
@@ -98,11 +106,11 @@ gputrack:
     gpu_id: 0
     num_cuda_streams: 3
     frame_arrival_period: 0.0
-    in_buffers:  { chan_buf2: chan_buf2 }
+    in_buffers:  { q_buf: q_buf }
     out_buffers: { epl_buf: epl_buf, gal_epl_buf: gal_epl_buf, bds_epl_buf: bds_epl_buf }
     commands:
         - name: cudaInputData          # ONE host->device copy of the channelized frame
-          in_buf: chan_buf2
+          in_buf: q_buf
           gpu_mem: gnss_chan_frame
         # --- GPS L5 (Q5 pilot) ---
         - name: cudaGnssTrack
@@ -111,7 +119,8 @@ gputrack:
           cuda_stream: 1
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: gnss_epl
-          in_frame_len: samples_per_data_set * sizeof_float
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
           n_channels: 10
           channel_offset: 0
           capture_utc0: 1.0
@@ -129,7 +138,8 @@ gputrack:
           cuda_stream: 1
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: gal_epl
-          in_frame_len: samples_per_data_set * sizeof_float
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
           n_channels: 10
           channel_offset: 0
           n_prn: 36
@@ -149,7 +159,8 @@ gputrack:
           cuda_stream: 1
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: bds_epl
-          in_frame_len: samples_per_data_set * sizeof_float
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
           n_channels: 10
           channel_offset: 0
           n_prn: 63
