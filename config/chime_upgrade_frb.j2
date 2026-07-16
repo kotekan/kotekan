@@ -78,11 +78,11 @@ fpga_controller:
 # Telescope
 telescope:
   name: CHIMETelescope
-  require_gps: true
+  require_gps: false
   query_gps: true # GPS time is provided via coco
   gps_host_info: /fpga_controller
   query_frequency_map: true # Frequency map is provided via coco
-  require_frequency_map: true # Make sure we have the full frequency map
+  require_frequency_map: false # Make sure we have the full frequency map
   allow_default_frequency_map: false # Don't fall back on default map
   eop_updatable_config: /earth_rotation_data
 
@@ -338,6 +338,8 @@ dbg_read_voltages_{{ id }}:
 ##}
 
 {% set frequency_channels = [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ] %}
+#{#
+
 {% for id in range(16) %}   # num_frequencies = 16
 dbg_read_voltages_{{ id }}:
     kotekan_stage: hdf5FileReadSingleFile
@@ -358,6 +360,7 @@ fake_lost_samples_{{ id }}:
     value: 0
     name: lost_samples
     array_shape: [ 16384 ]
+    dim_scaling: [ 1 ]
     dim_name: [ T ]
     num_local_freq: 4
     manual_freq_ids:
@@ -366,6 +369,7 @@ fake_lost_samples_{{ id }}:
 {%- endfor %}
     out_buf: lost_samples_buffer_{{ id }}
 {% endfor %}
+##}
 
 # TODO: do these still need to exist, or are they replaced by the
 # jinja-templated shuffle above?
@@ -474,6 +478,37 @@ dbg_read_lostsamples_{{ id }}:
     file_name: lost_samples_buffer_{{ id }}
 {%- endfor %}
 ##}
+
+{% for id in range(16) %}   # num_frequencies = 16
+fake_voltages_{{ id }}:
+    kotekan_stage: testDataGen
+    type: const_offset
+    value: 0x88
+    array_shape: [ 1, 16384, 2048 ]
+    dim_scaling: [ 1, 1, 1 ]
+    dim_name: [ F, T , E ]
+    num_local_freq: 1
+    manual_freq_ids:
+        - {{ frequency_channels[id] }}
+    out_buf: host_voltage_buffer_{{ id }}
+{% endfor %}
+
+{% for id in range(16//4) %}   # num_frequencies = 16
+fake_lost_samples_{{ id }}:
+    kotekan_stage: testDataGen
+    type: ramp # to get uint8 as data type
+    value: 0
+    name: lost_samples
+    array_shape: [ 16384 ]
+    dim_scaling: [ 1 ]
+    dim_name: [ T ]
+    num_local_freq: 4
+    manual_freq_ids:
+{%- for f in range(4) %}
+        - {{ frequency_channels[4*id + f] }}
+{%- endfor %}
+    out_buf: lost_samples_buffer_{{ id }}
+{% endfor %}
 
 {%- endif %}
 
