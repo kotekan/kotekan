@@ -17,7 +17,43 @@
 {
 	trap;
 }
-.func gpu_report_exception
+.func gpu_report_exception1
+(
+	.param .align 8 .b8 gpu_report_exception_param_0[16],
+	.param .b64 gpu_report_exception_param_1
+)
+.noreturn
+{
+	trap;
+}
+.func gpu_report_exception2a
+(
+	.param .align 8 .b8 gpu_report_exception_param_0[16],
+	.param .b64 gpu_report_exception_param_1
+)
+.noreturn
+{
+	trap;
+}
+.func gpu_report_exception2b
+(
+	.param .align 8 .b8 gpu_report_exception_param_0[16],
+	.param .b64 gpu_report_exception_param_1
+)
+.noreturn
+{
+	trap;
+}
+.func gpu_report_exception3
+(
+	.param .align 8 .b8 gpu_report_exception_param_0[16],
+	.param .b64 gpu_report_exception_param_1
+)
+.noreturn
+{
+	trap;
+}
+.func gpu_report_exception4
 (
 	.param .align 8 .b8 gpu_report_exception_param_0[16],
 	.param .b64 gpu_report_exception_param_1
@@ -74,7 +110,7 @@ $L__BB0_2:                              // %L11
 	st.global.u32 	[%rd4], %r116;
 	add.s32 	%r117, %r108, 1;
 	setp.ne.s32 	%p2, %r117, %r109;
-	@%p2 bra 	$L__BB0_4;
+	@%p2 bra 	$L__BB0_4a;
 // %bb.3:                               // %L114
 	ld.param.u32 	%r111, [_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES2_S0_IS_Li1ELi1EES3__param_4];
 	ld.param.u32 	%r110, [_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES2_S0_IS_Li1ELi1EES3__param_3];
@@ -84,7 +120,7 @@ $L__BB0_2:                              // %L11
 	setp.eq.s32 	%p4, %r119, %r111;
 	and.pred  	%p5, %p3, %p4;
 	@%p5 bra 	$L__BB0_5;
-	bra.uni 	$L__BB0_4;
+	bra.uni 	$L__BB0_4b;
 $L__BB0_5:                              // %pass195
 	ld.param.u64 	%rd1, [_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES2_S0_IS_Li1ELi1EES3__param_5];
 	ld.param.u64 	%rd309, [_Z16xpose2048_kernel5Int32S_S_S_13CuDeviceArrayI6Int4x8Li1ELi1EES2_S0_IS_Li1ELi1EES3__param_6];
@@ -1698,7 +1734,7 @@ $L__BB0_11:                             // %pass4530
 	.param .b64 param1;
 	st.param.b64 	[param1+0], %rd220;
 	call.uni 
-	gpu_report_exception, 
+	gpu_report_exception1, 
 	(
 	param0, 
 	param1
@@ -1719,7 +1755,7 @@ $L__BB0_11:                             // %pass4530
 	// begin inline asm
 	exit;
 	// end inline asm
-$L__BB0_4:                              // %pass146
+$L__BB0_4a:                              // %pass146
 	mov.b32 	%r120, 2;
 	st.global.u32 	[%rd4], %r120;
 	mov.u64 	%rd94, exception2075;
@@ -1732,7 +1768,41 @@ $L__BB0_4:                              // %pass146
 	.param .b64 param1;
 	st.param.b64 	[param1+0], %rd95;
 	call.uni 
-	gpu_report_exception, 
+	gpu_report_exception2a, 
+	(
+	param0, 
+	param1
+	);
+	} // callseq 2
+	{ // callseq 3, 0
+	.reg .b32 temp_param_reg;
+	.param .align 8 .b8 param0[16];
+	st.param.b64 	[param0+0], %rd86;
+	st.param.b32 	[param0+8], %r107;
+	call.uni 
+	gpu_signal_exception, 
+	(
+	param0
+	);
+	} // callseq 3
+	trap; exit;
+	// begin inline asm
+	exit;
+	// end inline asm
+$L__BB0_4b:                              // %pass146
+	mov.b32 	%r120, 2;
+	st.global.u32 	[%rd4], %r120;
+	mov.u64 	%rd94, exception2075;
+	cvta.global.u64 	%rd95, %rd94;
+	{ // callseq 2, 0
+	.reg .b32 temp_param_reg;
+	.param .align 8 .b8 param0[16];
+	st.param.b64 	[param0+0], %rd86;
+	st.param.b32 	[param0+8], %r107;
+	.param .b64 param1;
+	st.param.b64 	[param1+0], %rd95;
+	call.uni 
+	gpu_report_exception2b, 
 	(
 	param0, 
 	param1
@@ -1764,7 +1834,7 @@ $L__BB0_1:                              // %L9
 	.param .b64 param1;
 	st.param.b64 	[param1+0], %rd92;
 	call.uni 
-	gpu_report_exception, 
+	gpu_report_exception3, 
 	(
 	param0, 
 	param1

@@ -344,6 +344,7 @@ cudaTranspose2048_chime::cudaTranspose2048_chime(Config& config, const std::stri
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
+            "-g",
         };
         device.build_ptx("lib/cuda/generated/Transpose2048_chime.ptx", {kernel_symbol}, opts,
                          "Transpose2048_chime_");
@@ -491,11 +492,15 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
     Tin_max_arg = Tin_min_arg + Tin_length;
     T_min_arg = mod(T_min, T_ringbuf);
     T_max_arg = T_min_arg + T_length;
+    assert(Tin_max_arg == Tin_min_arg + std::int32_t(1));
+    assert(T_min_arg == std::int32_t(16384) * Tin_min_arg);
+    assert(T_max_arg == std::int32_t(16384) * Tin_max_arg);
 
     // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
 
     // Copy inputs to device memory
 
+    Ein_buffer.check_for_poison(0x00);
     if (poison_buffers) {
         E_buffer.set_to_poison(0x00);
         info_buffer.set_to_poison(0xff);
@@ -506,9 +511,14 @@ cudaEvent_t cudaTranspose2048_chime::execute(cudaPipelineState& /*pipestate*/,
                                       CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                       shmem_bytes));
 
+    for(int i = 1 ; i < 5 ; ++i) 
+      std::cerr << "arg" << i << ": " << *(std::int32_t*)args[i] << "\n";
     const CUresult err =
         cuLaunchKernel(device.runtime_kernels[symname], blocks, 1, 1, threads_x, threads_y, 1,
                        shmem_bytes, device.getStream(cuda_stream_id), args, NULL);
+    std::cerr << "err: " << err << "\n";
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
+    std::cerr << "done\n";
 
     if (err != CUDA_SUCCESS) {
         const char* errStr;
