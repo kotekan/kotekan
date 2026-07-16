@@ -124,6 +124,8 @@ void processFeedGains::main_thread() {
 
     bool set_coarse_freqs_once = true;
 
+    std::vector<bool> gains_received(gain_buffers.size(), false);
+    bool mask_received = false;
     while (!stop_thread) {
         // Poll all possible producing buffers
         for (size_t beam_id = 0; beam_id < gain_buffers.size(); beam_id++) {
@@ -147,6 +149,7 @@ void processFeedGains::main_thread() {
                 float* frame = (float*)buf->frames.at(frame_id);
                 // copy gains into the permanent buffer and upchannelize
                 copy_upchannelize(frame, beam_id);
+                gains_received.at(beam_id) = true;
                 DEBUG("Copied upchannelized gains for beam {:d}", beam_id);
 
                 // set coarse freq metadata once
@@ -165,11 +168,18 @@ void processFeedGains::main_thread() {
                 frame_id++;
             } else if (status == -1) {
                 // thread exit signal
-                break;
+                return;
             }
         }
+
         // Check for mask updates and copy to the mask buffer
-        timespec timeout = double_to_ts(current_time());
+        timespec timeout;
+        if (!mask_received) {
+            // first frame - need to wait until we get something
+            timeout = double_to_ts(current_time() + 60 * 60 * 24);
+        } else {
+            timeout = double_to_ts(current_time());
+        }
         int status =
             in_mask_buf->wait_for_full_frame_timeout(unique_name, in_mask_frame_id, timeout);
         if (status == 0) {
@@ -177,11 +187,12 @@ void processFeedGains::main_thread() {
             uint8_t* in_mask_frame = (uint8_t*)in_mask_buf->frames.at(in_mask_frame_id);
             // copy into the permanent buffer
             std::copy_n(in_mask_frame, num_elements, mask_store_buf.begin());
+            mask_received = true;
 
             in_mask_buf->mark_frame_empty(unique_name, in_mask_frame_id);
             in_mask_frame_id++;
         } else if (status == -1) {
-            break;
+            return;
         }
 
         // Get an output buffer
@@ -190,6 +201,11 @@ void processFeedGains::main_thread() {
         if (out_frame == nullptr) {
             return;
         }
+
+        assert(
+            mask_received
+            && std::all_of(gains_received.begin(), gains_received.end(), [](bool b) { return b; })
+            && !set_coarse_freqs_once);
 
         // Set metadata from the frame desc, and other metadata
         out_buf->allocate_new_metadata_object(out_buf_frame_id);
