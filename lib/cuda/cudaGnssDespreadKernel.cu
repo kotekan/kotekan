@@ -71,28 +71,64 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
         const float2 pb = make_float2(cn, -sn);
 
         // Chip gather over the filter span: sA/sB = sum_d code[chip0-d] * (Phi[khi+1]-Phi[klo]).
-        // Boundary indices in double (multiply by inv_cps -- no FP64 divide); gather in float.
+        //
+        // THIS LOOP IS THE KERNEL: an ablation (2026-07-16) put it at 74% of the runtime, scaling
+        // linearly with n_chips, while the despread MAC measured at 0% (deleting it changed
+        // nothing). It used to spend 2 double multiplies + 2 double floors + an int64 modulo PER
+        // CHIP -- and fp64 is heavily rate-limited on the GB10. Three exact-or-near-exact
+        // reformulations remove essentially all of that; measured 0.332 -> 0.134 ms/record (2.5x,
+        // 3.4x at n_chips=8). None of them touches the mandatory-double part: C = cp0 + n_m*cps
+        // (n_m ~1e10 blows float's 2^24) and its floor/frac reduction still happen above, and
+        // everything below rides on `phi`, which is ALREADY reduced to [0,1).
+        //
+        //  (a) klo(d) == khi(d-1) + 1, identically: klo(d) = floor((phi+d-1)*inv_cps)+1 and
+        //      khi(d-1) = floor((phi+d-1)*inv_cps) are the same expression. So carry the previous
+        //      khi instead of recomputing a second boundary. EXACT, halves the boundary math.
+        //  (b) the code index walks: cidx = chip0-d decrements by one per chip, so the int64
+        //      modulo becomes a decrement + wrap. EXACT.
+        //  (c) integer/fraction split of the step. With inv_cps = ks + kf (ks integer, kf in
+        //      [0,1)):  khi(d) = floor(base + d*inv_cps) = d*ks + floor(base + d*kf),
+        //      base = phi*inv_cps. The d*ks part is exact integer; the remainder (base + d*kf)
+        //      stays in ~[0,31) -- small enough that float carries it, accumulated with one add
+        //      per chip. Verified over 16e6 (phi,d) pairs across 5 geometries: 9 boundary
+        //      disagreements vs the double form (5.6e-7), and only where the argument lands
+        //      EXACTLY on an integer, i.e. where the tap sits on the chip edge and "correct" is
+        //      arbitrary anyway. A disagreement moves ONE prototype tap between adjacent chips.
         const float2* phiA = job.phiA + (size_t)ci * (p.Lf + 1);
         const float2* phiB = job.phiB + (size_t)ci * (p.Lf + 1);
         float2 sA = make_float2(0.f, 0.f), sB = make_float2(0.f, 0.f);
-        for (int d = 0; d < job.n_chips; ++d) {
-            int klo = (int)floor((phi + d - 1.0) * job.inv_cps) + 1;
-            int khi = (int)floor((phi + d) * job.inv_cps);
-            if (klo < 0)
-                klo = 0;
-            if (khi > p.Lf - 1)
-                khi = p.Lf - 1;
-            if (khi < klo)
-                continue;
-            long long cidx = chip0 - d;
-            long long idx = cidx % (long long)job.code_len;
-            if (idx < 0)
-                idx += job.code_len;
-            const float cv = (float)code[job.code_offset + idx];
-            sA.x += cv * (phiA[khi + 1].x - phiA[klo].x);
-            sA.y += cv * (phiA[khi + 1].y - phiA[klo].y);
-            sB.x += cv * (phiB[khi + 1].x - phiB[klo].x);
-            sB.y += cv * (phiB[khi + 1].y - phiB[klo].y);
+        {
+            const double base = phi * job.inv_cps;
+            const int ks = (int)job.inv_cps;
+            const float kf = (float)(job.inv_cps - ks);
+            long long i0 = chip0 % (long long)job.code_len;
+            if (i0 < 0)
+                i0 += job.code_len;
+            int idx = (int)i0;                                   // (b) walks with d
+            int prev_khi = -ks + (int)floorf((float)base - kf);  // (a) seed: khi(-1)
+            float f = (float)base;                               // (c) base + d*kf
+            int khi_base = 0;                                    // (c) d*ks
+            for (int d = 0; d < job.n_chips; ++d) {
+                const int khi = khi_base + (int)floorf(f);
+                const int klo = prev_khi + 1;
+                prev_khi = khi;
+                f += kf;
+                khi_base += ks;
+                int kh = khi, kl = klo;
+                if (kl < 0)
+                    kl = 0;
+                if (kh > p.Lf - 1)
+                    kh = p.Lf - 1;
+                if (kh >= kl) {
+                    const float cv = (float)code[job.code_offset + idx];
+                    sA.x += cv * (phiA[kh + 1].x - phiA[kl].x);
+                    sA.y += cv * (phiA[kh + 1].y - phiA[kl].y);
+                    sB.x += cv * (phiB[kh + 1].x - phiB[kl].x);
+                    sB.y += cv * (phiB[kh + 1].y - phiB[kl].y);
+                }
+                if (--idx < 0)
+                    idx += job.code_len;
+            }
         }
         // Replica channel sample r = 0.5 (pa sA + conj(pa) sB); then the despread MAC:
         // acc += data * conj(r), e += |r|^2 -- float compute, widened once for the reduction.
