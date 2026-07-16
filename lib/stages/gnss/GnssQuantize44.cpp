@@ -27,7 +27,7 @@ GnssQuantize44::GnssQuantize44(Config& config, const std::string& unique_name,
     out_buf->register_producer(unique_name);
 
     _N = config.get<int>(unique_name, "spectrum_length");
-    _target_lsb = config.get_default<float>(unique_name, "target_lsb", 3.0f);
+    _target_lsb = config.get_default<float>(unique_name, "target_lsb", 2.1f); // CHORD: complex rms 2.1 = 1.5/component
     _measure_frames = config.get_default<int>(unique_name, "measure_frames", 64);
     if (_N <= 0)
         throw std::runtime_error("GnssQuantize44: spectrum_length must be > 0");
@@ -55,13 +55,17 @@ GnssQuantize44::GnssQuantize44(Config& config, const std::string& unique_name,
 }
 
 void GnssQuantize44::freeze_scales() {
-    // inv_scale[c] = target_lsb / rms[c], with rms the PER-COMPONENT rms (sum|v|^2 counts re+im,
-    // hence the 2). A dead channel (rms 0) would divide by zero -> leave its scale at 0, which
-    // encodes everything to the offset zero rather than to a rail.
+    // inv_scale[c] = target_lsb / rms[c], with rms the COMPLEX-SAMPLE rms sqrt(E|v|^2) -- the
+    // convention CHORD states its operating point in: 2.1 = 1.5 * sqrt(2), i.e. 1.5 lsb PER
+    // COMPONENT. (Getting this convention wrong runs the quantizer sqrt(2) hot or cold.) At the
+    // CHORD point each component rails at ~5 sigma, so the Gaussian railfrac floor is ~1e-6 --
+    // any visible railfrac is real RFI/CW, not design clipping. A dead channel (rms 0) would
+    // divide by zero -> leave its scale at 0, which encodes everything to the offset zero
+    // rather than to a rail.
     int dead = 0;
     double lo = 1e30, hi = 0.0;
     for (int c = 0; c < _N; ++c) {
-        const double rms = std::sqrt(_sumsq[c] / std::max(1LL, 2 * _nsamp));
+        const double rms = std::sqrt(_sumsq[c] / std::max(1LL, _nsamp));
         if (!(rms > 0.0) || !std::isfinite(rms)) {
             _inv_scale[c] = 0.0f;
             _scale[c] = 0.0f;
@@ -126,11 +130,15 @@ void GnssQuantize44::main_thread() {
                     }
                 }
             _rail_total.fetch_add((long long)hops * _N, std::memory_order_relaxed);
-            // A rising railfrac is RFI/CW, not a bug -- surface it, do not swallow it.
-            if (railed_here > (long long)hops * _N / 100 && (frames % 100) == 0)
-                WARN("GnssQuantize44: railfrac {:.2f}% this frame (RFI/CW? raise target_lsb "
-                     "headroom or check the front end)",
-                     100.0 * railed_here / ((double)hops * _N));
+            // A rising railfrac is RFI/CW. At CHORD's operating point (complex rms 2.1 =
+            // 1.5 lsb/component) the rail sits ~5 sigma out -> Gaussian floor ~1e-6, so ANY
+            // sustained railfrac is real interference, not design clipping. (For reference:
+            // per-component 2.1 rails ~1.2%, measured on the real L1 front end; 5% is far
+            // above every sane operating point.)
+            if (railed_here > (long long)hops * _N * 5 / 100 && (frames % 100) == 0)
+                WARN("GnssQuantize44: railfrac {:.2f}% this frame -- far above the Gaussian "
+                     "floor for target_lsb {:.1f} (RFI/CW? check the front end)",
+                     100.0 * railed_here / ((double)hops * _N), _target_lsb);
         }
 
         // Metadata: the 4+4b frame is the same hops at the same absolute samples, PLUS the

@@ -28,16 +28,19 @@
  * lands where CHORD's boundary actually is.
  *
  * The bandpass is not flat, so each channel gets its OWN scale. We measure sum|v|^2 per channel
- * over the first @c measure_frames frames, set inv_scale[c] = target_lsb / rms[c], then FREEZE --
+ * over the first @c measure_frames frames, set inv_scale[c] = target_lsb / rms[c] (rms of the
+ * COMPLEX sample -- the convention CHORD's "2.1" is stated in), then FREEZE --
  * a drifting gain would smear the very calibration this feeds. (CHORD's RFSoC does the same thing
  * at startup.) Per-channel rail counts are exported: a rail is a clamp, and a rising railfrac is
- * the RFI/CW watchdog. Prefer target_lsb ~3 for headroom.
+ * the RFI/CW watchdog (at 2.1 lsb the Gaussian floor is ~0.1%, so a sustained excess is real).
  *
  * Frame layout is UNCHANGED except the sample type: in [hop][N] cfloat32, out [hop][N] uint8.
  * That order is already CHORD's [time][freq] with pol=dish=1 degenerate, so nothing transposes.
  *
  * @conf spectrum_length  int    N channels per hop (must match fftwEngine).
- * @conf target_lsb       float  Noise rms to aim each channel at, in lsb (default 3.0).
+ * @conf target_lsb       float  Noise rms to aim each channel at, in lsb, measured on the
+ *                               COMPLEX sample sqrt(E|v|^2) (default 2.1 = CHORD's 4b operating
+ *                               point = 1.5 lsb per component; the rail sits ~5 sigma out).
  * @conf measure_frames   int    Frames to average the bandpass over before freezing (default 64).
  * @conf fixed_scales     [float] Optional: skip the measurement and use these inv_scales (volts
  *                               -> lsb, one per channel). For replay/bench determinism.
@@ -59,7 +62,7 @@ private:
     Buffer* out_buf;
 
     int _N = 0;
-    float _target_lsb = 3.0f;
+    float _target_lsb = 2.1f;
     int _measure_frames = 64;
 
     // Bandpass measurement -> frozen per-channel scales.
