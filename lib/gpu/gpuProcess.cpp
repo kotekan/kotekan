@@ -65,7 +65,8 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
 }
 
 gpuProcess::~gpuProcess() {
-    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:s}"), unique_name));
+    // unique_name starts with "/", matching the path registered in main_thread()
+    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile{:s}"), unique_name));
     for (auto& command : commands)
         for (auto& c : command)
             delete c;
