@@ -127,7 +127,7 @@ valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 # and demote to CHORD 4+4b.
 # The frozen per-channel scales ride
 # every frame's metadata (GnssChanMetadata::chan_scale); the searches stay float upstream.
-quant:  { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, target_lsb: 2.97, measure_frames: 64 }  # A/B: TEMPORARILY back at the pre-drop hot loading (per-comp 2.1) to reproduce the BDS inflation
+quant:  { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, target_lsb: 2.1, measure_frames: 64 }
 # capture_utc0 > 0 -> stamp each record's UTC as capture_utc0 + window_start/sample_rate
 # (true CAPTURE time from fpga_seq), not wall-clock-at-emit. Emit time is bursty (the
 # pipeline drains buffered frames then stalls), which corrupts the integration time axis
