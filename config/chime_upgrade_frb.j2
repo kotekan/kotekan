@@ -1361,10 +1361,10 @@ FRB:
         kotekan_buffer: ndarray
         num_frames: host_buffer_depth
         value_type: float16
-        extents: [num_freq_gpu_buf * factor_upchan_out, num_polarizations, num_dishes_y, num_dishes_x, num_components]
+        extents: [num_freq_gpu_buf * factor_upchan_out, num_polarizations, num_dishes_x, num_dishes_y, num_components]
         quantity_name: "W"  # also referred to as weights, hence the name
         dimnames: ["Fbar", "P", "dishN", "dishM", "C"]
-        dimscalings: [factor_upchan_out, 1, 1, 1, 1]
+        dimscalings: [1, 1, 1, 1, 1]
         metadata_pool: main_pool
 
     host_frb2_weights_buffer:
@@ -1447,6 +1447,7 @@ FRB:
         upchan_max_num_channels: upchan_U16_max_num_channels
         upchan_gain: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
         upchan_gain_buffer: host_upchan_U16_gain_buffer
+        metadata_buffer: host_rfi_RFImask_buffer
 
     run_upchan_U16:
 {%- if not using_dpdk %}
@@ -1584,6 +1585,7 @@ FRB:
         kotekan_stage: processFRBFeedGains
         num_local_freq: num_freq_gpu_buf
         upchan_factor: factor_upchan_out
+        frb1_swap_MN: true
         scaling_factor: 1.0 / 32
         gain_buffers:
           - host_frb1_phase_buffer
@@ -1717,6 +1719,7 @@ FRB:
         frb1_swap_MN: true # yes, this is used by FRB 2
         frb2_weights: host_frb2_weights_buffer
         num_threads: 32
+        metadata: host_rfi_RFImask_buffer
 ###
 #{#
         kotekan_stage: hdf5FileRead
