@@ -121,7 +121,19 @@ def parse_rinex_nav(path):
                  cuc=orb[4], ecc=orb[5], cus=orb[6], sqrta=orb[7],
                  toe_sow=orb[8], cic=orb[9], omega0=orb[10], cis=orb[11],
                  i0=orb[12], crc=orb[13], omega=orb[14], omegadot=orb[15],
-                 idot=orb[16], week=orb[18], health=orb[25], toc_gpst=toc_gpst)
+                 # health = BROADCAST ORBIT 6 field 2 (orb[21]): SV health (G/E) / SatH1 (C).
+                 # It was orb[25] -- field 2 of orbit line 7 -- which is a DIFFERENT quantity in
+                 # every system, and the mistake was invisible in two of the three:
+                 #   G: Fit interval  -> reads 4.0 on every healthy sat -> the strict G/E gate in
+                 #      predict_all rejected THE ENTIRE GPS CONSTELLATION (measured 2026-07-16:
+                 #      predict_all returned 0 GPS of 32 parsed, so every GPS observable row was
+                 #      logged with NO el/az/range -> no CMC, no IPP, and TEC from L1+L2C (both
+                 #      GPS!) was impossible). This is the real cause of the "el 1% populated"
+                 #      symptom that the BRDC staleness fix (6976642e) only partly addressed.
+                 #   E: blank -> 0.0 -> Galileo passed the gate BY ACCIDENT.
+                 #   C: AODC -> ~1 -> BeiDou was let through by the SatH1 exemption below, which
+                 #      was written for orb[21] all along but never actually read it.
+                 idot=orb[16], week=orb[18], health=orb[21], toc_gpst=toc_gpst)
         # toe as absolute GPST: the RINEX week field is the system's own week count --
         # GPS/GAL: GPS-aligned continuous week; BDS: BDT week (epoch 2006-01-01) + 14 s.
         if sysc in "GE":
@@ -246,12 +258,16 @@ def predict_all(eph, lat, lon, alt, t_utc, mask_deg=0.0):
         if e is None:
             continue
         if e.get("health", 0) not in (0, 0.0) and key[0] != "C":
-            # BDS caveat: the merged-BRDC health word is B1I-referenced (SatH1) and the
-            # BDS-3 MEOs broadcasting perfectly healthy B1C routinely carry 1 there
-            # (measured 2026-07-13: C21 at 275 sigma with health=1, while only the
-            # IGSOs read 0) -- so for C the word selects nothing real; let C through
-            # and let the caller's measured-vs-predicted integrity residuals referee.
-            # G/E health words are trustworthy: keep strict.
+            # BDS exemption -- KEPT, but its original rationale was an artifact and is void:
+            # it was written when health was misparsed from orb[25], which for BDS is AODC
+            # (~1 on everything). The 2026-07-13 "healthy C21 reads health=1" evidence was
+            # really "C21's AODC is 1" and proves nothing about SatH1. With the field fixed
+            # (orb[21]) BDS SatH1 reads 0.0 on 36 of 37 sats, i.e. it looks as trustworthy
+            # as G/E. Left permissive for now because a BDS-3 sat CAN legitimately carry
+            # SatH1=1 (the word is B1I-referenced) while its B1C is fine -- dropping it would
+            # silently lose that sat. The measured-vs-predicted integrity residuals referee.
+            # TODO: re-test strict-for-C on sky now that the word is real; if no healthy sat
+            # is lost, delete this exemption.
             continue
         # light-time + Sagnac: two iterations are plenty
         tau = 0.075
