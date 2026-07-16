@@ -13,6 +13,14 @@
 # Run from the repo root (the dir containing config/ and build/).
 set -u
 KOTEKAN=${KOTEKAN:-./build/kotekan/kotekan}
+# Multi-band single-instance mode (run_3band.sh): SP prefixes every stage name this launcher
+# passes to brokers/loggers (the merged config namespaces stages as l1_/l2c_/l5_), and
+# SKIP_KOTEKAN=1 makes this invocation a BROKER/LOGGER-ONLY control plane against a kotekan
+# the wrapper owns -- skipping the kotekan launch/kill, the launcher pidfile, and the
+# port-scoped orphan sweeps (all three bands share one port there; a port-scoped pkill from
+# band 2 would murder band 1's brokers).
+SP=${STAGE_PREFIX:-}
+SKIP_KOTEKAN=${SKIP_KOTEKAN:-0}
 CFG=${CFG:-config/live_l1.yaml}          # L1 lean valved distributed config
 
 # ---- PER-BAND INSTANCE KNOBS (2026-07-14) -------------------------------------------------
@@ -50,6 +58,9 @@ TRK=${TRK:-$(
 # {cp, Doppler, cp_rate(+l-a)} to /<peel>/set_seeds, so the peel reconstructs + subtracts each sat
 # on-peak. Its residual feeds search_resid (peeled sats should drop). Chain L5/L1C peels the same way.
 PEEL=$(grep -oE '^[a-z_0-9]+: \{ kotekan_stage: GnssVoltagePeel' "$CFG" | grep -oE '^[a-z_0-9]+' | tr '\n' ',' | sed 's/,$//')
+# In prefixed (merged-instance) mode the derived names are from the ORIGINAL per-band config;
+# the running stages carry the band prefix.
+[ -n "$SP" ] && TRK=$(echo "$TRK" | sed "s/[^,][^,]*/${SP}&/g")
 [ -n "$PEEL" ] && TRK="${TRK:+$TRK,}$PEEL" && echo "voltage-peel stage(s) seeded by the broker: $PEEL"
 # L2C CL pilot trackers (per-stage signal: GPS_L2C_CL): turn on the broker's time-assist -- it
 # lifts each seed's cp by k*10230 with the CL segment k computed from the capture's absolute UTC
@@ -162,11 +173,14 @@ kill_kotekan() {  # $1 = pgrep pattern (port-scoped to ONE band)
     kill -9 $pids 2>/dev/null   # last resort, only if it ignored TERM for 5 s
 }
 
-cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" "${GALPID:-}" "${GALLOGPID:-}" "${BDSPID:-}" "${BDSLOGPID:-}" 2>/dev/null
-            kill_kotekan "kotekan .*-b 0.0.0.0:$PORT"   # only THIS band's kotekan, GRACEFULLY
-            pkill -9 -f "livebeam_server.*--http-port $HTTP_PORT" 2>/dev/null
-            pkill -9 -f "gps_status_logger.*localhost:$PORT" 2>/dev/null
-            pkill -9 -f "gnss_observables.*localhost:$PORT" 2>/dev/null
+cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" "${GALPID:-}" "${GALLOGPID:-}" "${BDSPID:-}" "${BDSLOGPID:-}" ${OBSPIDS:-} 2>/dev/null
+            if [ "$SKIP_KOTEKAN" != "1" ]; then
+              kill_kotekan "kotekan .*-b 0.0.0.0:$PORT"   # only THIS band's kotekan, GRACEFULLY
+              pkill -9 -f "livebeam_server.*--http-port $HTTP_PORT" 2>/dev/null
+              # port-scoped: NEVER in merged mode (all bands share the port; PIDs above suffice)
+              pkill -9 -f "gps_status_logger.*localhost:$PORT" 2>/dev/null
+              pkill -9 -f "gnss_observables.*localhost:$PORT" 2>/dev/null
+            fi
             [ -n "${RUNCFG:-}" ] && [ "${RUNCFG:-}" != "$CFG" ] && rm -f "$RUNCFG"
             [ -f "${LAUNCHPID:-}" ] && [ "$(cat "$LAUNCHPID" 2>/dev/null)" = "$$" ] && rm -f "$LAUNCHPID"
             exit 0; }
@@ -174,12 +188,14 @@ trap cleanup INT TERM
 
 # Kill only THIS band's instance -- and GRACEFULLY (see kill_kotekan): an unscoped or -9 kill would
 # tear down the other bands' runs (unscoped by pattern, -9 by GPU-context collapse).
+if [ "$SKIP_KOTEKAN" != "1" ]; then
 kill_kotekan "kotekan .*-b 0.0.0.0:$PORT"
 pkill -9 -f "livebeam_server.*--http-port $HTTP_PORT" 2>/dev/null
+fi
 # A previous launcher SHELL for this band must die BEFORE its trap can ever fire: a stale
 # launcher's cleanup() would pkill this run's port-scoped processes hours later. -9 on
 # purpose (skip its trap); pidfile-scoped so other bands' launchers are untouched.
-LAUNCHPID=/tmp/run_live_launcher_$PORT.pid
+LAUNCHPID=/tmp/run_live_launcher_${PORT}${SP:+_$SP}.pid
 if [ -f "$LAUNCHPID" ]; then
     oldpid=$(cat "$LAUNCHPID" 2>/dev/null)
     [ -n "$oldpid" ] && [ "$oldpid" != "$$" ] && \
@@ -191,9 +207,16 @@ echo $$ > "$LAUNCHPID"
 # FIGHTS the new one over the same trackers -- two independent clock solves alternately
 # re-seeding every 0.2 s = intermittent per-sat carrier decoherence (the 2026-07-15 'E1C
 # bistable') -- and surviving loggers double-write the jsonl files. Port-scoped.
+if [ "$SKIP_KOTEKAN" != "1" ]; then
 pkill -9 -f "gps_distributed_broker.py.*localhost:$PORT" 2>/dev/null
 pkill -9 -f "gps_status_logger.py.*localhost:$PORT" 2>/dev/null
 pkill -9 -f "gnss_observables.py.*localhost:$PORT" 2>/dev/null
+else
+# merged mode: sweep only THIS band's control plane, by its prefixed stage names
+pkill -9 -f "gps_distributed_broker.py.*--detectors ${SP}gps_search" 2>/dev/null
+pkill -9 -f "gps_status_logger.py.*--combiner ${SP}" 2>/dev/null
+pkill -9 -f "gnss_observables.py.*--combiner ${SP}" 2>/dev/null
+fi
 
 # Refresh the search PRN list to what's actually overhead NOW (the constellation rotates
 # ~half an orbit in ~8 h, so a hardcoded list goes stale -> zero detections). Needs
@@ -250,10 +273,12 @@ rm -f "$RECDIR"/level_*.raw 2>/dev/null
 echo "recording to $RECDIR"
 sleep 1
 
+if [ "$SKIP_KOTEKAN" != "1" ]; then
 echo "starting kotekan ($CFG) -> $LOG"
 $KOTEKAN -c $RUNCFG -b 0.0.0.0:$PORT > $LOG 2>&1 &
 sleep 4
-echo "front end: $(curl -s localhost:$PORT/airspy_in/adcstat | tr -d '\n ')"
+fi
+echo "front end: $(curl -s localhost:$PORT/${SP}airspy_in/adcstat | tr -d '\n ')"
 echo "GPS sky viewer: http://localhost:$HTTP_PORT   (kotekan REST :$PORT)"
 
 # Almanac assist (predicted Doppler) when a location is given:
@@ -307,7 +332,7 @@ echo "starting broker (trackers: $TRK)..."
 # the file to reset (e.g. after a cold start, once warm). The OCXO will make l-a small + stable.
 CODE_BIAS_FILE=${CODE_BIAS_FILE:-/tmp/gps_code_bias_${TAG}.ppm}
 echo "signal $SIGNAL: hops/s ${HOPS_PER_SEC:-default}, chip ${CHIP_HZ:-default} Hz, code ${CODELEN:-default} chips, l-a file $CODE_BIAS_FILE"
-python3 $BROKER --rest-url "http://localhost:$PORT" --detectors gps_search --trackers "$TRK" --combiner gps_combiner \
+python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gps_search --trackers "$TRK" --combiner ${SP}gps_combiner \
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
         ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" \
         ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} \
@@ -334,9 +359,9 @@ if grep -qE '^gal_track:|seed_endpoint:[[:space:]]*"/gal_track/set_seeds"' "$RUN
     echo "WARNING: gal_track present but LAT/LON unset -- Galileo require_hint search will scan NOTHING"
   fi
   echo "starting GALILEO broker ($GAL_SIGNAL: gal_search/gal_track/gal_combiner, TLE group=galileo)..."
-  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors gal_search --trackers gal_track --combiner gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30}           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_gal.ppm           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN           ${BROKER_EXTRA:-} $GAL_ALM $CARG           > /tmp/${TAG}_broker_gal.log 2>&1 &
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gal_search --trackers ${SP}gal_track --combiner ${SP}gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30}           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_gal.ppm           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN           ${BROKER_EXTRA:-} $GAL_ALM $CARG           > /tmp/${TAG}_broker_gal.log 2>&1 &
   GALPID=$!
-  python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT           --combiner gal_combiner --search gal_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/${TAG}_logger_gal.log 2>&1 &
+  python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT           --combiner ${SP}gal_combiner --search ${SP}gal_search --airspy "${SP}$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/${TAG}_logger_gal.log 2>&1 &
   GALLOGPID=$!
   echo "Galileo C/N0 status log -> $RECDIR/status_log_gal.jsonl"
 fi
@@ -361,7 +386,7 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
     echo "WARNING: bds_track present but LAT/LON unset -- BeiDou require_hint search will scan NOTHING"
   fi
   echo "starting BEIDOU broker ($BDS_SIGNAL: bds_search/bds_track/bds_combiner, TLE group=beidou)..."
-  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors bds_search --trackers bds_track --combiner bds_combiner \
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}bds_search --trackers ${SP}bds_track --combiner ${SP}bds_combiner \
           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_bds.ppm \
           --chip-rate-hz $BDS_CHIP --code-length $BDS_CODELEN \
@@ -369,7 +394,7 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
           > /tmp/${TAG}_broker_bds.log 2>&1 &
   BDSPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT \
-          --combiner bds_combiner --search bds_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
+          --combiner ${SP}bds_combiner --search ${SP}bds_search --airspy "${SP}$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
           --out "$RECDIR/status_log_bds.jsonl" > /tmp/${TAG}_logger_bds.log 2>&1 &
   BDSLOGPID=$!
   echo "BeiDou C/N0 status log -> $RECDIR/status_log_bds.jsonl"
@@ -379,7 +404,7 @@ fi
 # recorded level_*.raw has Â but not those). One JSONL line per active PRN per poll, wall-clock
 # stamped, alongside the raw records. Offline: captures/gps_beam_survey.py --status <this file>.
 python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT \
-        --combiner gps_combiner --search gps_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
+        --combiner ${SP}gps_combiner --search ${SP}gps_search --airspy "${SP}$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
         --out "$RECDIR/status_log.jsonl" > /tmp/${TAG}_logger.log 2>&1 &
 LOGPID=$!
 echo "C/N0 status log -> $RECDIR/status_log.jsonl"
@@ -409,7 +434,7 @@ if [ "${OBSERVABLES:-1}" != "0" ]; then
     set -- $_o
     grep -qE "^($1|${1#gps_}):" "$RUNCFG" || continue
     python3 python/scripts/gnss/gnss_observables.py --url http://localhost:$PORT \
-            --combiner "$1" --search "$2" --sys "$3" --band "$4" --code-length "$5" \
+            --combiner "${SP}$1" --search "${SP}$2" --sys "$3" --band "$4" --code-length "$5" \
             --carrier-hz "${CARRIER_HZ:-1575420000}" --chip-rate-hz "$7" \
             ${LAT:+--lat $LAT} ${LON:+--lon $LON} ${ALT:+--alt $ALT} \
             --out "$RECDIR/$6.jsonl" > "/tmp/${TAG}_$6.log" 2>&1 &
