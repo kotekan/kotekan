@@ -64,7 +64,7 @@ public:
     /**
      * @brief Get tids from the current stage.
      */
-    const std::vector<pid_t>& get_tids();
+    std::vector<pid_t> get_tids();
 
 protected:
     std::atomic_bool stop_thread;
@@ -114,7 +114,11 @@ private:
     /// joined after the exit signal has been given before exiting ungracefully.
     uint32_t join_timeout;
 
-    // List of stage tids used for CPU usage tracking
+    // Lock for changing or reading the thread_list variable.
+    std::mutex thread_list_lock;
+
+    // List of stage tids used for CPU usage tracking.
+    // Written by each stage thread and read by the CPU monitor thread.
     std::vector<pid_t> thread_list;
 };
 
