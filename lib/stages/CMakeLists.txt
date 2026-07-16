@@ -46,9 +46,11 @@ add_library(
     gnss/gpsCACode.cpp
     gnss/beidouB1CCode.cpp
     gnss/galileoE1Code.cpp
+    gnss/galileoE5aCode.cpp
     gnss/gpsL1CCode.cpp
     gnss/gpsL2CCode.cpp
     gnss/gpsL5Code.cpp
+    gnss/beidouB2aCode.cpp
     gnss/GnssSubbandSplit.cpp
     gnss/GnssCoherentCombiner.cpp
     gnss/GnssBeamCube.cpp

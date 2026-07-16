@@ -160,6 +160,28 @@ inline constexpr SignalDescriptor BDS_B1C_P = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
 };
 
+/// Galileo E5a-Q (1176.45 MHz) -- the E5a dataless *pilot*: 10230-chip primary at
+/// 10.23 Mcps (1 ms, two 14-stage LFSRs), per-PRN 100-chip CS100 secondary (100 ms).
+/// SAME sky carrier as GPS L5 -- one airspy tune covers GPS/Galileo/BeiDou here.
+/// ReplicaSource: galileoE5aCode (PocketSDR-sourced tables, sky-validated 2026-07-15).
+inline constexpr SignalDescriptor GAL_E5A_Q = {
+    "GAL_E5A_Q", 1176.45e6, 10.23e6, 10230, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/100,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
+};
+
+/// BeiDou-3 B2a-pilot (1176.45 MHz) -- dataless: 10230-chip primary at 10.23 Mcps
+/// (1 ms, two 13-stage LFSRs), per-PRN 100-chip Weil-1021 secondary (100 ms).
+/// BDS-3 only (B2a not on BDS-2 -- same capability gate as B1C).
+/// ReplicaSource: beidouB2aCode (PocketSDR-sourced tables, sky-validated 2026-07-15).
+inline constexpr SignalDescriptor BDS_B2A_P = {
+    "BDS_B2A_P", 1176.45e6, 10.23e6, 10230, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/100,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
@@ -167,7 +189,7 @@ inline constexpr SignalDescriptor BDS_B1C_P = {
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
-          &GAL_E1B, &BDS_B1C_P})
+          &GAL_E1B, &BDS_B1C_P, &GAL_E5A_Q, &BDS_B2A_P})
         if (name == s->name)
             return s;
     return nullptr;

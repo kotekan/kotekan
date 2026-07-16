@@ -4,7 +4,9 @@
 #include "visUtil.hpp"      // for frameID
 
 #include "gnssChannelizedDespread.hpp" // for overlay_wipe
-#include "beidouB1CCode.hpp"           // for generate_b1cp_secondary (per-PRN B1C overlay)
+#include "beidouB1CCode.hpp"
+#include "beidouB2aCode.hpp"
+#include "galileoE5aCode.hpp"           // for generate_b1cp_secondary (per-PRN B1C overlay)
 #include "galileoE1Code.hpp"           // for E1C_CS25 (shared Galileo pilot overlay)
 #include "gpsL1CCode.hpp"              // for generate_l1co_code (per-PRN L1C-P overlay)
 #include "gpsL5Code.hpp"               // for L5_NH10/NH20 (secondary overlay sequences)
@@ -71,6 +73,22 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         _l1co.resize(63);
         for (int prn = 1; prn <= 63; ++prn) {
             const auto o = beidou::generate_b1cp_secondary(prn);
+            _l1co[(size_t)(prn - 1)].assign(o.begin(), o.end());
+        }
+    } else if (sec == "E5A_CS100") {
+        // Galileo E5a-Q pilot: PER-PRN 100-chip CS100 secondary. Same per-PRN
+        // pick-at-wipe-time path as B1C/L1CO; 100-alignment search floor
+        // ~sqrt(2 ln 100) ~ 3.0 sigma.
+        _l1co.resize(50);
+        for (int prn = 1; prn <= 50; ++prn) {
+            const auto o = galileo::e5aq_secondary(prn);
+            _l1co[(size_t)(prn - 1)].assign(o.begin(), o.end());
+        }
+    } else if (sec == "B2A_CS100") {
+        // BeiDou-3 B2a-pilot: PER-PRN 100-chip Weil secondary, same path.
+        _l1co.resize(63);
+        for (int prn = 1; prn <= 63; ++prn) {
+            const auto o = beidou::b2ap_secondary(prn);
             _l1co[(size_t)(prn - 1)].assign(o.begin(), o.end());
         }
     } else if (sec == "L1CO") {
