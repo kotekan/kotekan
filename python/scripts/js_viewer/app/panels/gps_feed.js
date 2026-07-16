@@ -60,10 +60,10 @@ export class GpsFeed {
         // gps_* names throughout (symmetric with gal_*/bds_*); KotekanRest.resolveStage
         // maps them onto the bare search/combiner spelling on older configs.
         const chains = CHAINS.map(c => Object.assign({}, c, c.tag === "G"
-            ? {search: this._search_stage || "gps_search",
-               combiner: this._combiner_stage || "gps_combiner"}
-            : {search: c.tag === "E" ? "gal_search" : "bds_search",
-               combiner: c.tag === "E" ? "gal_combiner" : "bds_combiner"}));
+            ? {search: c.search || this._search_stage || "gps_search",
+               combiner: c.combiner || this._combiner_stage || "gps_combiner"}
+            : {search: c.search || (c.tag === "E" ? "gal_search" : "bds_search"),
+               combiner: c.combiner || (c.tag === "E" ? "gal_combiner" : "bds_combiner")}));
         for (const c of chains)
             if (!(c.tag in this.vis))
                 this.vis[c.tag] = (this._prefs && this._prefs.vis && c.tag in this._prefs.vis)

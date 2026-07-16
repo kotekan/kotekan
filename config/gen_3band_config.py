@@ -132,8 +132,12 @@ def main():
             # endpoints referencing a NAMED stage were already prefixed by the name pass;
             # only prefix paths that still lack the band tag (e.g. "/gps_track/...").
             b = re.sub(rf'(seed_endpoint:\s*"/)(?!{band}_)', rf"\g<1>{band}_", b)
-            # viewers: all point at the single REST port
-            b = re.sub(r"--kotekan-rest-port \d+", f"--kotekan-rest-port {PORT}", b)
+            # viewers: all point at the single REST port, and poll band-prefixed stages
+            # (some band configs omit --kotekan-rest-port and rely on its default -> append)
+            b = re.sub(r"--kotekan-rest-port \d+",
+                       f"--kotekan-rest-port {PORT} --stage-prefix {band}_", b)
+            b = re.sub(r"(livebeam_server\.py(?:(?!--stage-prefix)[^'])*)'",
+                       rf"\1 --kotekan-rest-port {PORT} --stage-prefix {band}_'", b)
             # push down the inherited scalars into stage blocks (dict-style stages get them
             # appended as an indented block; flow-style {..} stages get them injected)
             first = b.splitlines()[0]

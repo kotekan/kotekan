@@ -755,13 +755,25 @@ class WsPortResource(resource.Resource):
 
     isLeaf = True
 
-    def __init__(self, ws_port, band="l1", consts="G,E,C"):
+    def __init__(self, ws_port, band="l1", consts="G,E,C", stage_prefix=""):
         resource.Resource.__init__(self)
         self.ws_port = ws_port
         self.band = band
         tags = [t.strip() for t in consts.split(",") if t.strip()]
         table = BAND_CHAINS.get(band, BAND_CHAINS["l1"])
-        self.chains = [c for c in table if c["tag"] in tags]
+        # EXPLICIT stage names per chain: a merged multi-band instance prefixes its stages
+        # (l1_gps_combiner) and the browser must poll those. The client falls back to its old
+        # hardcoded spellings when absent (old server / new client and vice versa both work).
+        base = {"G": ("gps_search", "gps_combiner"), "E": ("gal_search", "gal_combiner"),
+                "C": ("bds_search", "bds_combiner")}
+        self.chains = []
+        for c in table:
+            if c["tag"] not in tags:
+                continue
+            c = dict(c)
+            se, co = base[c["tag"]]
+            c["search"], c["combiner"] = stage_prefix + se, stage_prefix + co
+            self.chains.append(c)
 
     def render_GET(self, request):
         request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
@@ -993,6 +1005,10 @@ def main():
                     "legend names + record periods (t_rec for C/N0). Delivered to the client "
                     "via /wsport so the sky legend reads the RIGHT signal (e.g. L5 shows "
                     "'GPS L5 / Galileo E5a / BeiDou B2a', not the L1 defaults). Default l1.")
+    gg.add_argument("--stage-prefix", default="",
+                    help="Prefix on every kotekan GNSS stage name (merged multi-band instance: "
+                         "'l1_'/'l2c_'/'l5_'; see gen_3band_config.py). Applied to the "
+                         "search/combiner/airspy stage args AND carried per-chain in /wsport.")
     gg.add_argument("--gps-airspy-stage", default="airspy_in",
                     help="kotekan airspy stage name for the ADC noise readout "
                     "(adcstat); default 'airspy_in'.")
@@ -1002,6 +1018,10 @@ def main():
                     "GPS panel works without a full-rate diagnostic PFB. Implies "
                     "--gps.")
     args = ap.parse_args()
+    if args.stage_prefix:
+        args.gps_search_stage = args.stage_prefix + args.gps_search_stage
+        args.gps_combiner_stage = args.stage_prefix + args.gps_combiner_stage
+        args.gps_airspy_stage = args.stage_prefix + args.gps_airspy_stage
 
     # Resolve the observer site from CLI, falling back to the env that
     # run_live.sh already exports for the broker's almanac assist. The site only
@@ -1057,7 +1077,8 @@ def main():
     # "I edited the JS but the browser ignored me" trouble during development.
     root = NoCacheFile(static_dir)
     root.putChild(b"mode", ModeResource(kotekan))
-    root.putChild(b"wsport", WsPortResource(args.ws_port, args.band, args.gps_constellations))
+    root.putChild(b"wsport", WsPortResource(args.ws_port, args.band, args.gps_constellations,
+                                            args.stage_prefix))
 
     # GPS sky positions (az/el) for the live-status panel. gps_beamtrack lives
     # one dir up (python/scripts); add it to the path so the worker thread can
