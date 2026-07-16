@@ -16,10 +16,12 @@
 #include "pfbPrototype.hpp"
 
 #include <chrono>
+#include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <numeric>
 #include <vector>
 
 using cf = std::complex<float>;
@@ -297,6 +299,154 @@ int main() {
         cudaFree(d_scale);
         cudaFree(d_qc);
         cudaFree(d_qe);
+    }
+
+    // --- GEMM-despread cross-validation (the CHORD-shape path) ---
+    // The despread as A = D x R^H: per covering channel, a [1 x T] data row against [T x M]
+    // replica columns, int8 tensor GEMM (4 real gemms), batched over channels -- the exact shape
+    // chordShapeBench times at Pathfinder/Full scale. THE CLAIM GATED HERE: the GEMM computes the
+    // IDENTICAL mathematical object to the despread. So the reference is built from the SAME
+    // dequantized integers the GEMM multiplies (data nibbles x int8 replicas): int8 x int8 sums
+    // are int32-EXACT, so GEMM-vs-reference must agree to float rounding (~1e-7), gate 1e-6.
+    // The separate physics question (int8 REPLICA quantization -- deterministic, no noise to
+    // dither it) is reported against the true float reference, not gated: expect ~1e-2 relative
+    // on strong rows (~-50 dB power), well under every peel depth we use.
+    {
+        cublasHandle_t bh;
+        if (cublasCreate(&bh) != CUBLAS_STATUS_SUCCESS) {
+            printf("GEMM xval: no cublas handle -- SKIP\n");
+        } else {
+            const int M = n_out;              // 8 replica columns (2 jobs x E/P/L/HEAD)
+            const int TP = (n_hops + 3) & ~3; // int8 gemm wants k%4: zero-pad (sums unchanged)
+            // Data rows: int8 nibbles from the 4+4b bytes (reference decode), padded to [4 x TP]
+            // per channel (m=1 padded to 4 for the alignment rules; rows 1-3 zero).
+            std::vector<int8_t> hDr((size_t)n_chan * 4 * TP, 0), hDi((size_t)n_chan * 4 * TP, 0);
+            std::vector<unsigned char> qbytes((size_t)n_chan * n_hops);
+            std::vector<float> dsc(n_chan);
+            for (int c = 0; c < n_chan; ++c) {
+                double ss = 0.0;
+                for (int m = 0; m < n_hops; ++m)
+                    ss += std::norm(std::complex<double>(data_ch[c][m]));
+                const float inv = (float)(2.1 / std::sqrt(ss / n_hops)); // CHORD loading
+                dsc[c] = 1.0f / inv;
+                for (int m = 0; m < n_hops; ++m) {
+                    int railed = 0;
+                    const unsigned char b = gnss_cuda::pack_44(
+                        make_float2(data_ch[c][m].real(), data_ch[c][m].imag()), inv, &railed);
+                    qbytes[(size_t)c * n_hops + m] = b;
+                    // col-major [4 x TP], row 0: element (0,t) at [t*4]
+                    hDr[((size_t)c * TP + m) * 4] = (int8_t)(((b >> 4) & 0x0f) - 8);
+                    hDi[((size_t)c * TP + m) * 4] = (int8_t)((b & 0x0f) - 8);
+                }
+            }
+            // Replica columns: same hoprate generator as the CPU reference, quantized to int8,
+            // HEAD columns zeroed past their m_head (the segmented despread as a COLUMN SHAPE).
+            std::vector<int8_t> hRr((size_t)n_chan * M * TP, 0), hRi((size_t)n_chan * M * TP, 0);
+            std::vector<float> rsc(M);
+            for (int col = 0; col < M; ++col) {
+                const FusedTrial& ft = ftrials[col / 4];
+                const int t4 = col % 4;
+                const auto repl =
+                    bank.hoprate_stream(filt, 0, window_start, row_cp(ft, t4), dop, n_hops);
+                const int hi = row_hops(ft, t4);
+                float mx = 1e-12f;
+                for (int c = 0; c < n_chan; ++c)
+                    for (int m = 0; m < hi; ++m)
+                        mx = std::max({mx, std::fabs(repl[c][m].real()),
+                                       std::fabs(repl[c][m].imag())});
+                rsc[col] = mx / 127.0f;
+                for (int c = 0; c < n_chan; ++c)
+                    for (int m = 0; m < hi; ++m) {
+                        const size_t o = ((size_t)c * M + col) * TP + m; // [T x M] k-major
+                        hRr[o] = (int8_t)std::lrint(repl[c][m].real() / rsc[col]);
+                        hRi[o] = (int8_t)std::lrint(repl[c][m].imag() / rsc[col]);
+                    }
+            }
+            int8_t *dDr, *dDi, *dRr, *dRi;
+            int32_t* dC;
+            CK(cudaMalloc(&dDr, hDr.size()));
+            CK(cudaMalloc(&dDi, hDi.size()));
+            CK(cudaMalloc(&dRr, hRr.size()));
+            CK(cudaMalloc(&dRi, hRi.size()));
+            CK(cudaMalloc(&dC, (size_t)4 * n_chan * 4 * M * sizeof(int32_t)));
+            CK(cudaMemcpy(dDr, hDr.data(), hDr.size(), cudaMemcpyHostToDevice));
+            CK(cudaMemcpy(dDi, hDi.data(), hDi.size(), cudaMemcpyHostToDevice));
+            CK(cudaMemcpy(dRr, hRr.data(), hRr.size(), cudaMemcpyHostToDevice));
+            CK(cudaMemcpy(dRi, hRi.data(), hRi.size(), cudaMemcpyHostToDevice));
+            const int32_t one = 1, zero = 0;
+            const int8_t* As[4] = {dDr, dDi, dDi, dDr};
+            const int8_t* Bs[4] = {dRr, dRi, dRr, dRi};
+            bool gemm_ok = true;
+            for (int quad = 0; quad < 4; ++quad) {
+                auto st = cublasGemmStridedBatchedEx(
+                    bh, CUBLAS_OP_N, CUBLAS_OP_N, 4, M, TP, &one, As[quad], CUDA_R_8I, 4,
+                    (long long)4 * TP, Bs[quad], CUDA_R_8I, TP, (long long)M * TP, &zero,
+                    dC + (size_t)quad * n_chan * 4 * M, CUDA_R_32I, 4, (long long)4 * M, n_chan,
+                    CUBLAS_COMPUTE_32I, CUBLAS_GEMM_DEFAULT);
+                if (st != CUBLAS_STATUS_SUCCESS) {
+                    printf("GEMM xval: int8 gemm unsupported here (%d) -- FAIL\n", (int)st);
+                    gemm_ok = false;
+                    break;
+                }
+            }
+            if (gemm_ok) {
+                CK(cudaDeviceSynchronize());
+                std::vector<int32_t> hC((size_t)4 * n_chan * 4 * M);
+                CK(cudaMemcpy(hC.data(), dC, hC.size() * sizeof(int32_t),
+                              cudaMemcpyDeviceToHost));
+                auto cint = [&](int quad, int c, int col) {
+                    return hC[(size_t)quad * n_chan * 4 * M + ((size_t)c * M + col) * 4];
+                };
+                double max_exact = 0.0, phys_p = 0.0;
+                for (int col = 0; col < M; ++col) {
+                    std::complex<double> gg(0, 0), ee(0, 0);
+                    for (int c = 0; c < n_chan; ++c) {
+                        // GEMM result, rescaled: corr = Sum d*conj(r) * dsc[c] * rsc[col]
+                        const double s = (double)dsc[c] * rsc[col];
+                        gg += std::complex<double>(
+                            (cint(0, c, col) + cint(1, c, col)) * s,   // dr*rr + di*ri
+                            (cint(2, c, col) - cint(3, c, col)) * s);  // di*rr - dr*ri
+                        // EXACT reference from the same dequantized integers
+                        std::complex<double> e(0, 0);
+                        const int hi = row_hops(ftrials[col / 4], col % 4);
+                        for (int m = 0; m < hi; ++m) {
+                            const unsigned char b = qbytes[(size_t)c * n_hops + m];
+                            const std::complex<double> dv(
+                                (((b >> 4) & 0x0f) - 8) * (double)dsc[c],
+                                ((b & 0x0f) - 8) * (double)dsc[c]);
+                            const size_t o = ((size_t)c * M + col) * TP + m;
+                            const std::complex<double> rv(hRr[o] * (double)rsc[col],
+                                                          hRi[o] * (double)rsc[col]);
+                            e += dv * std::conj(rv);
+                        }
+                        ee += e;
+                    }
+                    const double rel =
+                        std::abs(gg - ee) / std::max(1e-30, std::abs(ee));
+                    max_exact = std::max(max_exact, rel);
+                    if (col == 1) // strong prompt: physics delta vs the true float reference
+                        phys_p = std::abs(gg
+                                          - std::accumulate(
+                                              cpu_corr.begin() + (size_t)col * n_chan,
+                                              cpu_corr.begin() + (size_t)(col + 1) * n_chan,
+                                              std::complex<double>(0, 0)))
+                                 / std::abs(gg);
+                }
+                const bool ok = max_exact < 1e-6;
+                printf("GEMM despread vs exact same-integer reference: max rel %.3e %s "
+                       "(physics delta vs float ref, strong P row: %.2e)\n",
+                       max_exact, ok ? "OK" : "FAIL", phys_p);
+                pass = pass && ok;
+            } else {
+                pass = false;
+            }
+            cudaFree(dDr);
+            cudaFree(dDi);
+            cudaFree(dRr);
+            cudaFree(dRi);
+            cudaFree(dC);
+            cublasDestroy(bh);
+        }
     }
 
     // --- Throughput bench: the REAL per-record path (GnssCudaDespread::despread_batch --
