@@ -2,6 +2,7 @@
 #define CUDA_GNSS_DESPREAD_KERNEL_HPP
 
 #include <cuda_runtime.h>
+#include <math.h> // rintf: pack_44/unpack_44 are __host__ too (host-side encode + tests)
 #include <stdint.h>
 
 /**
@@ -62,6 +63,51 @@ struct DespreadParams {
 };
 
 /**
+ * CHORD 4+4b post-PFB voltage format: ONE BYTE per complex sample, REAL in the high nibble, IMAG
+ * in the low, each a 4-bit OFFSET-ENCODED integer (stored value - 8 -> -8..+7). Zero = 0x88.
+ *
+ * WHERE THIS CONTRACT COMES FROM. In CHORD the PFB and the 4-bit quantizer are NOT in kotekan at
+ * all -- they live upstream in the RFSoC F-engine, and kotekan only ever CONSUMES 4+4b voltages
+ * off the wire. So there is no encoder in this tree to copy; the authoritative spec for what we
+ * must PRODUCE is the consumer, kotekan's own correlator reference model
+ * (lib/testing/gpuSimulate.cpp: `(b & 0x0f) - 8` imag, `((b & 0xf0) >> 4) - 8` real) -- the decode
+ * the CHIME/CHORD X-engine is validated against. Match it byte-for-byte and our fftwEngine stands
+ * in for an RFSoC: the subband ring below becomes something a real F-engine could feed directly,
+ * and our despread becomes an X-engine that could eat one. (Do NOT take
+ * lib/cuda/cudaQuantizeKernel4.cu as the model: that is the FRB *beam* quantizer -- 8
+ * TWO'S-COMPLEMENT reals per uint32 with a per-chunk scale+offset, a different format for a
+ * different product.)
+ *
+ * The ENCODER is therefore ours to write, and it has to do what the RFSoC does: the bandpass is
+ * not flat, so each channel gets its own scale, chosen to put that bin's NOISE rms at ~2-3 lsb
+ * (measured at startup -- see cudaGnssTrack's bandpass measurement). That per-bin scaling is what
+ * makes 4 bits enough. GNSS lives far below the noise, so the noise dithers the buried signal, and
+ * the quantization error -- uncorrelated with a pseudorandom replica -- averages down like thermal
+ * noise instead of biasing the correlation. Measured on real sky: < 0.2 dB C/N0 loss at 2 lsb,
+ * < 0.14 at 3 lsb (scratchpad/quant_test.py, GPS L5 / Gal E5a / BeiDou B2a). Prefer 3 lsb for RFI
+ * headroom; watch per-channel railfrac.
+ */
+__host__ __device__ inline float2 unpack_44(unsigned char b, float scale) {
+    const float re = (float)(int)((b >> 4) & 0x0f) - 8.0f; // real = HIGH nibble, offset -8
+    const float im = (float)(int)(b & 0x0f) - 8.0f;        // imag = LOW nibble, offset -8
+    return make_float2(scale * re, scale * im);
+}
+
+/// Quantize one complex sample to the 4+4b byte. @c inv_scale maps volts -> lsb; values are
+/// round-to-nearest and CLAMPED to [-8, 7] (a clamp is a rail: the caller should watch railfrac).
+__host__ __device__ inline unsigned char pack_44(float2 v, float inv_scale, int* railed) {
+    int r = (int)rintf(v.x * inv_scale);
+    int i = (int)rintf(v.y * inv_scale);
+    if (r < -8 || r > 7 || i < -8 || i > 7) {
+        if (railed)
+            *railed = 1;
+        r = r < -8 ? -8 : (r > 7 ? 7 : r);
+        i = i < -8 ? -8 : (i > 7 ? 7 : i);
+    }
+    return (unsigned char)((((r + 8) & 0x0f) << 4) | ((i + 8) & 0x0f));
+}
+
+/**
  * Launch the fused despread. ONE JOB IN, FOUR OUTPUT ROWS OUT: job b writes rows 4b+0..4b+3 =
  * Early, Prompt, Late, P_HEAD. (Jobs and output rows are counted separately upstream -- see
  * gnss_gpu::max_specs vs max_jobs -- because they no longer march together.)
@@ -75,6 +121,34 @@ struct DespreadParams {
 cudaError_t launch_despread(const float2* data, const int8_t* code, const DespreadJob* jobs,
                             int n_spec, int n_chan, const DespreadParams& p, double2* corr,
                             double* energy, cudaStream_t stream);
+
+/// As launch_despread, but reading a CHORD 4+4b ring: one byte per (channel, hop), unpacked with
+/// @c chan_scale [n_chan] (lsb -> volts, the inverse of the ingest's scale). Same kernel, same
+/// numerics, only the voltage load differs -- the demotion must not fork the despread.
+cudaError_t launch_despread_q(const unsigned char* data, const float* chan_scale,
+                              const int8_t* code, const DespreadJob* jobs, int n_spec, int n_chan,
+                              const DespreadParams& p, double2* corr, double* energy,
+                              cudaStream_t stream);
+
+/// Transpose-ingest AND quantize one hop-major fp32 frame into the channel-major 4+4b ring.
+/// @c chan_inv_scale [n_chan] maps volts -> lsb per channel (the bandpass scaling: each bin's
+/// noise rms lands at ~2-3 lsb). @c rail_count [n_chan] is incremented per clamped sample --
+/// the RFI/CW watchdog; nullptr to skip.
+cudaError_t launch_chan_ingest_q(const float2* frame, unsigned char* ring,
+                                 const float* chan_inv_scale, int n_hops_f, int n_chan,
+                                 long long ring_hops, long long write_hop,
+                                 unsigned int* rail_count, cudaStream_t stream);
+
+/// launch_ring_zero for the 4+4b ring: fills the OFFSET-ENCODED zero (0x88), not 0x00 -- 0x00
+/// decodes to (-8,-8), i.e. a full-scale DC spike where a valve drop should read silence.
+cudaError_t launch_ring_zero_q(unsigned char* ring, int n_chan, long long ring_hops,
+                               long long write_hop, long long count, cudaStream_t stream);
+
+/// Bandpass measurement: accumulate per-channel sum|v|^2 over an fp32 frame into @c sumsq
+/// [n_chan] (device, accumulated across frames; the host divides by the sample count to get each
+/// bin's rms and hence its 4+4b scale). This is the job the RFSoC does at startup in CHORD.
+cudaError_t launch_chan_power(const float2* frame, int n_hops_f, int n_chan, double* sumsq,
+                              cudaStream_t stream);
 
 /**
  * Transpose-ingest one hop-major channelized frame into the channel-major device ring

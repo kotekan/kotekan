@@ -125,7 +125,21 @@ __device__ inline void chip_gather(const gnss_cuda::DespreadJob& job, int Lf,
     }
 }
 
-__global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan][n_hops]
+// Voltage load, overloaded on the ring's sample type: fp32 complex, or the CHORD 4+4b byte with
+// its per-channel scale. Everything downstream of this line is identical, which is the point --
+// the demotion must not fork the despread.
+__device__ inline float2 load_v(const float2* __restrict__ d, size_t i,
+                                const float* __restrict__ /*chan_scale*/, int /*ci*/) {
+    return d[i];
+}
+__device__ inline float2 load_v(const unsigned char* __restrict__ d, size_t i,
+                                const float* __restrict__ chan_scale, int ci) {
+    return gnss_cuda::unpack_44(d[i], chan_scale[ci]);
+}
+
+template <typename T>
+__global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nchan][n_hops]
+                                     const float* __restrict__ chan_scale, // [nchan], 4+4b only
                                      const int8_t* __restrict__ code, // [batch-shared code table]
                                      const gnss_cuda::DespreadJob* __restrict__ jobs, // [n_spec]
                                      gnss_cuda::DespreadParams p,
@@ -166,7 +180,8 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
         const float2 pa = make_float2(cn, sn);
         const float2 pb = make_float2(cn, -sn);
 
-        const float2 dd = data[(size_t)ci * p.data_stride + mh]; // ONE load for the quad
+        // ONE load for the quad (fp32 complex, or a 4+4b byte unpacked with this channel's scale)
+        const float2 dd = load_v(data, (size_t)ci * p.data_stride + mh, chan_scale, ci);
         const bool in_head = (mh < job.m_head);
 
 #pragma unroll
@@ -235,16 +250,109 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
 
 namespace gnss_cuda {
 
+namespace {
+// Block = min(pow2 >= n_hops, 256); longer records grid-stride inside the kernel (the
+// 20 MSPS wide front end runs 1000-hop L1 / 4000-hop E1C records).
+inline int despread_block(int n_hops) {
+    int block = 1;
+    while (block < n_hops && block < 256)
+        block <<= 1;
+    return block;
+}
+} // namespace
+
 cudaError_t launch_despread(const float2* data, const int8_t* code, const DespreadJob* jobs,
                             int n_spec, int n_chan, const DespreadParams& p, double2* corr,
                             double* energy, cudaStream_t stream) {
-    // Block = min(pow2 >= n_hops, 256); longer records grid-stride inside the kernel (the
-    // 20 MSPS wide front end runs 1000-hop L1 / 4000-hop E1C records).
-    int block = 1;
-    while (block < p.n_hops && block < 256)
-        block <<= 1;
     dim3 grid(n_spec, n_chan); // one block per (PRN quad, channel) -- 4 output rows each
-    gnss_despread_kernel<<<grid, block, 0, stream>>>(data, code, jobs, p, corr, energy);
+    gnss_despread_kernel<float2>
+        <<<grid, despread_block(p.n_hops), 0, stream>>>(data, nullptr, code, jobs, p, corr, energy);
+    return cudaGetLastError();
+}
+
+cudaError_t launch_despread_q(const unsigned char* data, const float* chan_scale,
+                              const int8_t* code, const DespreadJob* jobs, int n_spec, int n_chan,
+                              const DespreadParams& p, double2* corr, double* energy,
+                              cudaStream_t stream) {
+    dim3 grid(n_spec, n_chan);
+    gnss_despread_kernel<unsigned char><<<grid, despread_block(p.n_hops), 0, stream>>>(
+        data, chan_scale, code, jobs, p, corr, energy);
+    return cudaGetLastError();
+}
+
+__global__ void gnss_chan_ingest_q_kernel(const float2* __restrict__ frame,
+                                          unsigned char* __restrict__ ring,
+                                          const float* __restrict__ chan_inv_scale, int n_hops_f,
+                                          int n_chan, long long ring_hops, long long write_hop,
+                                          unsigned int* __restrict__ rail_count) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= n_hops_f * n_chan)
+        return;
+    const int m = idx / n_chan; // hop within the frame
+    const int c = idx % n_chan; // channel (coalesced across threads: frame is hop-major)
+    int railed = 0;
+    const unsigned char b = gnss_cuda::pack_44(frame[idx], chan_inv_scale[c], &railed);
+    ring[(size_t)c * ring_hops + (size_t)((write_hop + m) % ring_hops)] = b;
+    if (railed && rail_count)
+        atomicAdd(&rail_count[c], 1u); // per-channel railfrac numerator (RFI/CW watchdog)
+}
+
+cudaError_t launch_chan_ingest_q(const float2* frame, unsigned char* ring,
+                                 const float* chan_inv_scale, int n_hops_f, int n_chan,
+                                 long long ring_hops, long long write_hop,
+                                 unsigned int* rail_count, cudaStream_t stream) {
+    const int total = n_hops_f * n_chan;
+    const int block = 256;
+    gnss_chan_ingest_q_kernel<<<(total + block - 1) / block, block, 0, stream>>>(
+        frame, ring, chan_inv_scale, n_hops_f, n_chan, ring_hops, write_hop, rail_count);
+    return cudaGetLastError();
+}
+
+__global__ void gnss_ring_zero_q_kernel(unsigned char* __restrict__ ring, int n_chan,
+                                        long long ring_hops, long long write_hop,
+                                        long long count) {
+    const long long idx = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= count * n_chan)
+        return;
+    const long long m = idx / n_chan;
+    const int c = (int)(idx % n_chan);
+    // Offset-encoded zero, NOT 0x00: 0x00 decodes to (-8, -8), a large DC spike.
+    ring[(size_t)c * ring_hops + (size_t)((write_hop + m) % ring_hops)] = 0x88;
+}
+
+cudaError_t launch_ring_zero_q(unsigned char* ring, int n_chan, long long ring_hops,
+                               long long write_hop, long long count, cudaStream_t stream) {
+    const long long total = count * n_chan;
+    const int block = 256;
+    gnss_ring_zero_q_kernel<<<(unsigned)((total + block - 1) / block), block, 0, stream>>>(
+        ring, n_chan, ring_hops, write_hop, count);
+    return cudaGetLastError();
+}
+
+__global__ void gnss_chan_power_kernel(const float2* __restrict__ frame, int n_hops_f, int n_chan,
+                                       double* __restrict__ sumsq) {
+    // One block per channel; accumulate sum|v|^2 over the frame's hops for the bandpass measure.
+    const int c = blockIdx.x;
+    double s = 0.0;
+    for (int m = threadIdx.x; m < n_hops_f; m += blockDim.x) {
+        const float2 v = frame[(size_t)m * n_chan + c];
+        s += (double)v.x * v.x + (double)v.y * v.y;
+    }
+    __shared__ double sh[256];
+    sh[threadIdx.x] = s;
+    __syncthreads();
+    for (int off = blockDim.x / 2; off > 0; off >>= 1) {
+        if (threadIdx.x < off)
+            sh[threadIdx.x] += sh[threadIdx.x + off];
+        __syncthreads();
+    }
+    if (threadIdx.x == 0)
+        sumsq[c] += sh[0]; // accumulate across frames; host divides by the sample count
+}
+
+cudaError_t launch_chan_power(const float2* frame, int n_hops_f, int n_chan, double* sumsq,
+                              cudaStream_t stream) {
+    gnss_chan_power_kernel<<<n_chan, 256, 0, stream>>>(frame, n_hops_f, n_chan, sumsq);
     return cudaGetLastError();
 }
 

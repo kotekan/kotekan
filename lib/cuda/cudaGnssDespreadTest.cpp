@@ -195,6 +195,110 @@ int main() {
     printf("%s (max relative error %.3e; %d jobs x 4 rows x %d channels x %d hops)\n",
            pass ? "PASS" : "FAIL", max_rel, n_spec, n_chan, n_hops);
 
+    // --- CHORD 4+4b codec + quantized despread path ---
+    // TWO separate claims, tested separately:
+    //  (1) our ENCODER matches kotekan's reference DECODE. In CHORD the PFB + 4b quantizer live in
+    //      the RFSoC F-engine, not here, so the only in-tree spec is the consumer:
+    //      lib/testing/gpuSimulate.cpp does `(b & 0x0f) - 8` for imag, `((b & 0xf0) >> 4) - 8` for
+    //      real. Re-implement that decode INDEPENDENTLY (not by calling unpack_44) and require it
+    //      to invert pack_44 exactly over all 256 codes + a voltage sweep. If this drifts, our
+    //      bytes stop being CHORD bytes and nothing else here would notice.
+    //  (2) the quantized DESPREAD equals the float despread on the SAME dequantized voltages, to
+    //      float precision -- i.e. launch_despread_q's only difference is the load. (The C/N0 cost
+    //      of quantizing is a separate, already-answered question: < 0.2 dB at 2 lsb on real sky,
+    //      scratchpad/quant_test.py. It is NOT testable on this synthetic window, whose signal sits
+    //      3x ABOVE the noise and would simply rail.)
+    {
+        bool qpass = true;
+        // (1) encoder vs the reference decode, over every representable code.
+        int codec_bad = 0;
+        for (int r = -8; r <= 7; ++r)
+            for (int i = -8; i <= 7; ++i) {
+                int railed = 0;
+                const unsigned char b =
+                    gnss_cuda::pack_44(make_float2((float)r, (float)i), 1.0f, &railed);
+                const int ref_i = (b & 0x0f) - 8;        // gpuSimulate.cpp, verbatim
+                const int ref_r = ((b & 0xf0) >> 4) - 8; // gpuSimulate.cpp, verbatim
+                if (ref_r != r || ref_i != i || railed)
+                    codec_bad++;
+            }
+        // Rails must clamp, not wrap: +-100 lsb has to land on the rail codes, never fold over.
+        {
+            int railed = 0;
+            const unsigned char hi = gnss_cuda::pack_44(make_float2(100.f, 100.f), 1.0f, &railed);
+            const unsigned char lo = gnss_cuda::pack_44(make_float2(-100.f, -100.f), 1.0f, &railed);
+            if (((hi & 0xf0) >> 4) - 8 != 7 || (hi & 0x0f) - 8 != 7)
+                codec_bad++;
+            if (((lo & 0xf0) >> 4) - 8 != -8 || (lo & 0x0f) - 8 != -8)
+                codec_bad++;
+            if (!railed)
+                codec_bad++; // the rail flag must fire -- it is the RFI watchdog
+        }
+        printf("4+4b codec vs gpuSimulate reference decode (256 codes + rails): %s\n",
+               codec_bad ? "FAIL" : "OK");
+        qpass = qpass && (codec_bad == 0);
+
+        // (2) quantized despread == float despread on the same dequantized voltages.
+        // Scale each channel so its rms lands at ~3 lsb, exactly as the ingest will.
+        std::vector<float> h_scale(n_chan), h_inv(n_chan);
+        for (int c = 0; c < n_chan; ++c) {
+            double ss = 0.0;
+            for (int m = 0; m < n_hops; ++m)
+                ss += std::norm(std::complex<double>(data_ch[c][m]));
+            const double rms = std::sqrt(ss / (2.0 * n_hops)); // per-component rms
+            h_inv[c] = (float)(3.0 / std::max(1e-12, rms));    // volts -> lsb
+            h_scale[c] = 1.0f / h_inv[c];                      // lsb -> volts
+        }
+        std::vector<unsigned char> q((size_t)n_chan * n_hops);
+        std::vector<float2> deq((size_t)n_chan * n_hops);
+        for (int c = 0; c < n_chan; ++c)
+            for (int m = 0; m < n_hops; ++m) {
+                const size_t k = (size_t)c * n_hops + m;
+                int railed = 0;
+                q[k] = gnss_cuda::pack_44(
+                    make_float2(data_ch[c][m].real(), data_ch[c][m].imag()), h_inv[c], &railed);
+                deq[k] = gnss_cuda::unpack_44(q[k], h_scale[c]); // what the q kernel will see
+            }
+        unsigned char* d_q;
+        float2* d_deq;
+        float* d_scale;
+        double2* d_qc;
+        double* d_qe;
+        CK(cudaMalloc(&d_q, q.size()));
+        CK(cudaMalloc(&d_deq, deq.size() * sizeof(float2)));
+        CK(cudaMalloc(&d_scale, h_scale.size() * sizeof(float)));
+        CK(cudaMalloc(&d_qc, (size_t)n_out * n_chan * sizeof(double2)));
+        CK(cudaMalloc(&d_qe, (size_t)n_out * n_chan * sizeof(double)));
+        CK(cudaMemcpy(d_q, q.data(), q.size(), cudaMemcpyHostToDevice));
+        CK(cudaMemcpy(d_deq, deq.data(), deq.size() * sizeof(float2), cudaMemcpyHostToDevice));
+        CK(cudaMemcpy(d_scale, h_scale.data(), h_scale.size() * sizeof(float),
+                      cudaMemcpyHostToDevice));
+        // float kernel on the DEQUANTIZED data = the reference for the q kernel on the bytes.
+        CK(gnss_cuda::launch_despread(d_deq, d_code, d_jobs, n_spec, n_chan, p, d_corr, d_energy,
+                                      0));
+        CK(gnss_cuda::launch_despread_q(d_q, d_scale, d_code, d_jobs, n_spec, n_chan, p, d_qc,
+                                        d_qe, 0));
+        CK(cudaDeviceSynchronize());
+        std::vector<double2> fc((size_t)n_out * n_chan), qc((size_t)n_out * n_chan);
+        CK(cudaMemcpy(fc.data(), d_corr, fc.size() * sizeof(double2), cudaMemcpyDeviceToHost));
+        CK(cudaMemcpy(qc.data(), d_qc, qc.size() * sizeof(double2), cudaMemcpyDeviceToHost));
+        double qmax = 0.0;
+        for (size_t k = 0; k < fc.size(); ++k) {
+            const std::complex<double> a(fc[k].x, fc[k].y), b(qc[k].x, qc[k].y);
+            qmax = std::max(qmax, std::abs(b - a) / std::max(1e-9, std::abs(a)));
+        }
+        printf("4+4b despread vs float despread on identical dequantized voltages: max rel %.3e "
+               "%s\n",
+               qmax, (qmax < 1e-6) ? "OK" : "FAIL");
+        qpass = qpass && (qmax < 1e-6);
+        pass = pass && qpass;
+        cudaFree(d_q);
+        cudaFree(d_deq);
+        cudaFree(d_scale);
+        cudaFree(d_qc);
+        cudaFree(d_qe);
+    }
+
     // --- Throughput bench: the REAL per-record path (GnssCudaDespread::despread_batch --
     // upload_window + one batched launch + one sync per record), full-constellation batch.
     // Reports records/s and the realtime margin vs the tracker's 1 kHz record cadence.
