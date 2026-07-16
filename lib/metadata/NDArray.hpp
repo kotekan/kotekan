@@ -124,6 +124,11 @@ public:
 
     /// Compare two NDArrays, useful to compare metadata
     bool operator==(const FrameDesc& other) const override;
+
+    /// FrameDesc JSON-serialization override (see FrameDesc::to_json).
+    nlohmann::json to_json() const override;
+    /// Reconstruct a GenericNDArray from JSON written by to_json().
+    static std::shared_ptr<const FrameDesc> from_json(const nlohmann::json& j);
 };
 
 /// A `NDArray<T,D>` is a `D`-dimensional array of type `T`. Different

@@ -3,7 +3,10 @@
 
 #include "Symbol.hpp"
 
+#include "json.hpp" // for json
+
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 
@@ -49,6 +52,24 @@ public:
     T* as() {
         return dynamic_cast<T*>(this);
     }
+
+    /// @name JSON serialization
+    /// A descriptor serializes to a self-describing JSON object carrying a
+    /// `"frame_desc_type"` discriminator; @c from_json() reads it to reconstruct
+    /// the matching subclass. Used to transmit a buffer's descriptor from
+    /// bufferSend to bufferRecv so the receiver can validate its config-declared
+    /// descriptor against the sender's. This is a one-per-connection control
+    /// message, so JSON's convenience is preferred over a compact binary form.
+    /// @{
+
+    /// Serialize this descriptor to a JSON object (includes @c frame_desc_type).
+    virtual nlohmann::json to_json() const = 0;
+
+    /// Reconstruct a descriptor from JSON written by @c to_json(). An unknown
+    /// type or invalid descriptor is fatal (FATAL_ERROR_NON_OO); malformed or
+    /// missing fields throw (nlohmann), made fatal by the caller (bufferRecv).
+    static std::shared_ptr<const FrameDesc> from_json(const nlohmann::json& j);
+    /// @}
 };
 
 } // namespace kotekan

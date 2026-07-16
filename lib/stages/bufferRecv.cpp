@@ -64,6 +64,7 @@ bufferRecv::bufferRecv(Config& config, const std::string& unique_name,
     const bool ct_enabled = ConfigTracker::instance().is_enabled();
     use_config_tracker =
         config.get_default<bool>(unique_name, "use_config_tracker", ct_enabled) && ct_enabled;
+    use_frame_desc = config.get_default<bool>(unique_name, "use_frame_desc", false);
 
     listen_port = config.get_default<uint32_t>(unique_name, "listen_port", 11024);
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
@@ -127,7 +128,14 @@ void bufferRecv::worker_thread() {
             work_queue.pop_front();
         }
         DEBUG2("Starting worker thread job, queue depth: {:d}", work_queue.size());
-        instance->internal_read_callback();
+        try {
+            instance->internal_read_callback();
+        } catch (const FatalError& e) {
+            // FATAL_ERROR already called exit_kotekan; end this worker and let
+            // the shutdown it started proceed (same handling as Stage::start).
+            ERROR("bufferRecv worker thread caught FatalError: {:s}; shutting down.", e.what());
+            return;
+        }
     }
 }
 
@@ -201,7 +209,8 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
 
     connInstance* instance =
         new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
-                         ip_str, port, read_timeout, use_config_tracker, conn_upstream_rest_port);
+                         ip_str, port, read_timeout, use_config_tracker, use_frame_desc,
+                         conn_upstream_rest_port);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -367,10 +376,11 @@ std::string bufferRecv::dot_string(const std::string& prefix) const {
 
 connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                            const std::string& client_ip, int port, struct timeval read_timeout,
-                           bool use_config_tracker, uint16_t upstream_rest_port) :
+                           bool use_config_tracker, bool use_frame_desc,
+                           uint16_t upstream_rest_port) :
     producer_name(producer_name), buf(buf), buffer_recv(buffer_recv), client_ip(client_ip),
     port(port), read_timeout(read_timeout), use_config_tracker(use_config_tracker),
-    upstream_rest_port(upstream_rest_port) {
+    use_frame_desc(use_frame_desc), upstream_rest_port(upstream_rest_port) {
 
     frame_space = buffer_malloc(buf->aligned_frame_size, buf->numa_node, buf->use_hugepages,
                                 buf->mlock_frames, false);
@@ -485,10 +495,78 @@ void connInstance::internal_read_callback() {
                         ConfigTracker::instance().getUpstreamConfigs(client_ip, upstream_rest_port);
                     }
 
-                    state = connState::metadata;
+                    state = (use_frame_desc && !frame_desc_read) ? connState::frame_desc_size
+                                                                 : connState::metadata;
                     bytes_read = 0;
                 }
 
+            } break;
+            case connState::frame_desc_size: {
+                // Sent once per connection (independent of the config tracker),
+                // only when use_frame_desc is set on both ends: a 4-byte JSON
+                // length (0 if the sender had no descriptor) then the payload.
+                n = read(fd, ((int8_t*)&frame_desc_size) + bytes_read,
+                         sizeof(frame_desc_size) - bytes_read);
+                if (n <= 0) {
+                    handle_error("reading frame_desc size", errno, n);
+                    return;
+                }
+                bytes_read += n;
+                if (bytes_read >= sizeof(frame_desc_size)) {
+                    assert(bytes_read == sizeof(frame_desc_size));
+                    // Reject an implausibly large size before allocating/reading it.
+                    // The largest legitimate descriptor is an N2 subset product_list
+                    // for the biggest array we support: num_elements up to 2048 is a
+                    // full upper triangle of ~2.1M products at ~12 JSON bytes each,
+                    // i.e. ~24 MiB. 64 MiB leaves headroom; a size past it means a
+                    // mismatched/hostile peer sending contaminated control data, so
+                    // shut down (as the malformed-descriptor case below).
+                    constexpr uint32_t MAX_FRAME_DESC_SIZE = 64u << 20; // 64 MiB
+                    if (frame_desc_size > MAX_FRAME_DESC_SIZE) {
+                        FATAL_ERROR("Received frame_desc size ({:d}) exceeds maximum ({:d}) from "
+                                    "{:s} (sender/receiver use_frame_desc mismatch or corrupt "
+                                    "stream?)",
+                                    frame_desc_size, MAX_FRAME_DESC_SIZE, client_ip);
+                    }
+                    bytes_read = 0;
+                    if (frame_desc_size == 0) {
+                        frame_desc_read = true;
+                        state = connState::metadata;
+                    } else {
+                        frame_desc_space.resize(frame_desc_size);
+                        state = connState::frame_desc;
+                    }
+                }
+            } break;
+            case connState::frame_desc: {
+                n = read(fd, frame_desc_space.data() + bytes_read, frame_desc_size - bytes_read);
+                if (n <= 0) {
+                    handle_error("reading frame_desc", errno, n);
+                    return;
+                }
+                bytes_read += n;
+                if (bytes_read >= frame_desc_size) {
+                    assert(bytes_read == frame_desc_size);
+                    // Parse and reconcile before the frame/drop decision. A
+                    // malformed descriptor is contaminated control data, so we
+                    // shut down (FATAL) rather than swallow it; a real
+                    // config-vs-received mismatch is fatal in ensure_frame_desc.
+                    // Catch parse/deserialize errors and raise FATAL_ERROR so the
+                    // failure gets a controlled shutdown, not a bare exception.
+                    std::shared_ptr<const kotekan::FrameDesc> recv_desc;
+                    try {
+                        const auto j =
+                            nlohmann::json::parse(frame_desc_space.begin(), frame_desc_space.end());
+                        recv_desc = kotekan::FrameDesc::from_json(j);
+                    } catch (const std::exception& e) {
+                        FATAL_ERROR("Failed to deserialize frame descriptor from {:s}: {:s}",
+                                    client_ip, e.what());
+                    }
+                    buf->ensure_frame_desc(recv_desc);
+                    frame_desc_read = true;
+                    state = connState::metadata;
+                    bytes_read = 0;
+                }
             } break;
             case connState::metadata:
                 n = read(fd, (void*)(metadata_space + bytes_read),
@@ -552,10 +630,10 @@ void connInstance::internal_read_callback() {
                 if (metadata)
                     metadata->set_from_bytes((char*)metadata_space, buf_frame_header.metadata_size);
 
-                // TODO: instead of reconstructing the descriptor from chordMetadata
-                // here, the sender should transmit the buffer's frame descriptor over
-                // the wire and the receiver should validate its config-declared
-                // descriptor against it.
+                // Reconstruct a descriptor from the received chordMetadata on every
+                // frame, complementing the once-per-connection wire descriptor read
+                // when use_frame_desc is set (which also covers metadata types, like
+                // N2, that carry no structural fields).
                 auto chord = std::dynamic_pointer_cast<chordMetadata>(metadata);
                 if (chord) {
                     /* new style array description */

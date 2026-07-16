@@ -205,6 +205,11 @@ else()
                 -Wl,--no-whole-archive)
 endif()
 
+# test_FrameDescSerialize - FrameDesc JSON serialization round-trip + adversarial input
+add_executable(test_FrameDescSerialize test_FrameDescSerialize.cpp)
+target_link_libraries(test_FrameDescSerialize PRIVATE libexternal kotekan_libs kotekan_utils
+                                                      kotekan_core kotekan_metadata)
+
 # test_N2Subset - tests for N2Subset stage
 add_executable(test_N2Subset test_N2Subset.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
