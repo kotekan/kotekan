@@ -204,6 +204,40 @@ CMD ["/bin/bash"]
 
 
 ##############################################################
+# INTEL IMAGE
+# This image extends the cpu image with the Intel oneAPI
+# C/C++ compilers (icx/icpx). It is a separate target (rather
+# than part of the cpu image) to keep the cpu and gpu images
+# small, i.e. build with `--target intel`.
+##############################################################
+
+FROM cpu AS intel
+
+# Add the Intel oneAPI apt repository and install the DPC++/C++
+# compilers (icx/icpx), pinned to a specific oneAPI release.
+# The gdb-oneapi debugger (~530 MB) is forced in by a hard package
+# dependency but is not needed for CI builds, so remove it in the
+# same layer to keep the image smaller.
+RUN wget -qO /usr/share/keyrings/oneapi-archive-keyring.asc \
+        https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB && \
+    echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.asc] https://apt.repos.intel.com/oneapi all main" \
+        > /etc/apt/sources.list.d/oneAPI.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends intel-oneapi-compiler-dpcpp-cpp-2026.1 && \
+    apt-get clean && apt-get autoclean && rm -rf /var/lib/apt/lists/* && \
+    rm -rf /opt/intel/oneapi/debugger
+
+# Make icx/icpx and the Intel runtime libraries available without
+# needing to source /opt/intel/oneapi/setvars.sh. The symlinks
+# keep the compilers reachable even where the image ENV is not
+# propagated (e.g. some CI step runners).
+ENV PATH="/opt/intel/oneapi/compiler/latest/bin${PATH:+:${PATH}}"
+ENV LD_LIBRARY_PATH="/opt/intel/oneapi/compiler/latest/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+RUN ln -s /opt/intel/oneapi/compiler/latest/bin/icx /usr/local/bin/icx && \
+    ln -s /opt/intel/oneapi/compiler/latest/bin/icpx /usr/local/bin/icpx
+
+
+##############################################################
 # GPU IMAGE
 # This image extends the cpu image with NVIDIA drivers and the
 # CUDA toolkit.

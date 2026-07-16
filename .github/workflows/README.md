@@ -1,6 +1,6 @@
 # GitHub Actions Workflows
 
-- `build_push_docker.yaml`: Reusable workflow that conditionally builds and publishes the CPU/GPU Docker images
+- `build_push_docker.yaml`: Reusable workflow that conditionally builds and publishes the CPU/GPU/Intel Docker images
 - `iwyu.yaml`: Manual or scheduled IWYU linter runner
 - `main.yaml`: Main CI jobs, builds Docker images and runs the kotekan tests
 - `manual_docker.yaml`: Manually trigger Docker image builds
