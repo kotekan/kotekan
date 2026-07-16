@@ -72,6 +72,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--url", default="http://localhost:12048")
+    ap.add_argument("--airspy", default="airspy_in", help="airspy stage for the capture-clock anchor (adcstat); band-prefixed in a merged instance")
     ap.add_argument("--combiner", default="gps_combiner")
     ap.add_argument("--search", default="gps_search")
     ap.add_argument("--sys", default="G", choices=("G", "E", "C"),
@@ -94,7 +95,7 @@ def main():
 
     args.combiner = resolve_stage(args.url, args.combiner)
     args.search = resolve_stage(args.url, args.search)
-    to_unix = capture_clock(args.url)   # capture clock -> unix (gnss_stages.capture_clock)
+    to_unix = capture_clock(args.url, args.airspy)  # capture clock -> unix (band-prefixed stage)
     utc0 = 0.0                          # capture sample-0 UTC (CMC needs the absolute age)
     t_rec = args.code_length / args.chip_rate_hz
     lam = C_LIGHT / args.carrier_hz          # carrier wavelength (m/cycle)
@@ -113,9 +114,9 @@ def main():
         det_snr = {int(d["prn"]): d.get("snr") for d in dets if "prn" in d}
         now = time.time()
         if to_unix(1.0) == 1.0:         # anchor wasn't up at startup: retry until it is
-            to_unix = capture_clock(args.url)
+            to_unix = capture_clock(args.url, args.airspy)
         if not utc0:
-            a = _get("%s/airspy_in/adcstat" % args.url) or {}
+            a = _get("%s/%s/adcstat" % (args.url, args.airspy)) or {}
             utc0 = float(a.get("utc0_sample0") or 0.0)
 
         if eph is None or now - eph_t > 7200:

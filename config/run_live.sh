@@ -435,6 +435,7 @@ if [ "${OBSERVABLES:-1}" != "0" ]; then
     grep -qE "^($1|${1#gps_}):" "$RUNCFG" || continue
     python3 python/scripts/gnss/gnss_observables.py --url http://localhost:$PORT \
             --combiner "${SP}$1" --search "${SP}$2" --sys "$3" --band "$4" --code-length "$5" \
+            --airspy "${SP}$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
             --carrier-hz "${CARRIER_HZ:-1575420000}" --chip-rate-hz "$7" \
             ${LAT:+--lat $LAT} ${LON:+--lon $LON} ${ALT:+--alt $ALT} \
             --out "$RECDIR/$6.jsonl" > "/tmp/${TAG}_$6.log" 2>&1 &
