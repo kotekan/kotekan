@@ -4,7 +4,9 @@
 # Run: kotekan -c this + the broker (blind search, NO almanac -> finds the recording's Dopplers).
 # ORIGINAL AUTO-GENERATED (GNSS_SIGNAL=L1CA, INTEGRATION_LENGTH=1, SINGLE_TRACKER=1, FLL_GAIN=0.05,
 # FLL_REACQ_HZ=5000, FLL_LOCK_AMP=0.02) -- C/A CONTROL for the L1C coherence question. IDENTICAL
-# processing path to live_intgn_l1c_fll.yaml (single shared-cp tracker + carrier FLL); only the
+# processing path to the L1C_P FLL variant (single shared-cp tracker + carrier FLL); only the
+# NB the live_intgn_* configs are AUTO-GENERATED on demand by the gen_live_config.py command
+# below and are deliberately NOT checked in -- do not go looking for them in config/.
 # SIGNAL changes: plain BPSK C/A instead of BOC(1,1) L1C-P. C/A is the signal we understand
 # perfectly (no BOC, no overlay), so this decides clock-vs-L1C-specific:
 #   * C/A per-record phase ALSO random  -> the wall is the receiver/clock, NOT an L1C misunderstanding.

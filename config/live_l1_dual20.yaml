@@ -1,5 +1,6 @@
 ---
-# DUAL-CONSTELLATION L1 @ 20 MSPS (WIDE front end): live_l1_dual.yaml regeared so Galileo's
+# DUAL-CONSTELLATION L1 @ 20 MSPS (WIDE front end) -- THE DEPLOYED L1 BAND (run_band.sh l1).
+# Regeared from the retired 5 MSPS dual config so Galileo's
 # BOC(1,1) spectrum FITS. At 5 MSPS/IF 1.25 the E1 lobes (carrier +-1.023 MHz, each ~2 MHz
 # null-to-null) straddle the whole band and spill past Nyquist -- measured ~11 dB below GPS
 # C/A (E25 12.7 sigma vs PRN19 161 sigma, same estimator, 07-04 capture). At 20 MSPS/IF 5 MHz
@@ -14,7 +15,8 @@
 # sees a gal_track stage). E1-C = the dataless BOC(1,1) pilot, 4 ms primary (500 hops/record
 # at this geometry), CS25 secondary handled per-record (navwipe_bit_records: 1); records are
 # 4 ms so integration_length: 250 = the same ~1 s emit cadence as GPS.
-#   LAT=43.968697 LON=-79.252106 ALT=260 CFG=config/live_l1_dual.yaml ./config/run_live.sh
+#   ./config/run_band.sh l1      (or: LAT=43.968697 LON=-79.252106 ALT=260 \
+#                                      CFG=config/live_l1_dual20.yaml ./config/run_live.sh)
 # GPS deep |A| -> /tmp/gpswipe/level_*.raw, Galileo -> /tmp/gpswipe/gal_level_*.raw.
 type: config
 log_level: warn

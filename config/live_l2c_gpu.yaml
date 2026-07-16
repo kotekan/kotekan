@@ -7,7 +7,8 @@
 # onto the combined 1.023 Mcps stream (comb_mult 2, time_multiplexed), so the GPU despread gets
 # L2C's TDM for free -- this is a CONFIG change, no kernel change.
 #
-#   ./config/run_band.sh l2c_gpu           (or CFG=config/live_l2c_gpu.yaml via run_live.sh)
+#   ./config/run_band.sh l2c                (l2c_cpu launches the old CPU chain, live_l2c.yaml;
+#                                            or CFG=config/live_l2c_gpu.yaml via run_live.sh)
 #
 # Front end == live_l2c.yaml (proven to acquire): 1227.6 MHz, 5 MSPS real, f_offset Fs/4.
 type: config
