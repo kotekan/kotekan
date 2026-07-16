@@ -73,6 +73,10 @@ gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * 
 input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
 chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
 chan_buf2: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+# CHORD 4+4b voltages (GnssQuantize44 out): ONE byte per (hop, chan) complex sample = 1/8 the
+# float frame -> the H2D copy for every GPU chain shrinks 8x. samples_per_data_set counts REAL
+# ADC samples (fft_len per hop, N complex channels out), so bytes/frame = samples / 2.
+q_buf:     { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set / 2 }
 rec_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
 out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
 
@@ -118,6 +122,11 @@ fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, inpu
 # Needs the broker's --narrow-search (run_live's almanac assist provides it).
 gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 10.0, acquire_windows: 20, require_hint: true, hint_ttl_s: 8.0 }
 valve:  { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
+# The RFSoC's job, in software: measure the bandpass (first measure_frames), scale each channel's
+# NOISE rms to target_lsb, freeze, and demote to CHORD 4+4b. The frozen per-channel scales ride
+# every frame's metadata (GnssChanMetadata::chan_scale) so the GPU despread decodes with exactly
+# the gains the bytes were encoded with. The searches stay on the float chan_buf upstream.
+quant:  { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, target_lsb: 3.0, measure_frames: 64 }
 # capture_utc0 > 0 -> stamp each record's UTC as capture_utc0 + window_start/sample_rate
 # (true CAPTURE time from fpga_seq), not wall-clock-at-emit. Emit time is bursty (the
 # pipeline drains buffered frames then stalls), which corrupts the integration time axis
@@ -154,11 +163,11 @@ gputrack:
     gpu_id: 0
     num_cuda_streams: 3
     frame_arrival_period: 0.0
-    in_buffers:  { chan_buf2: chan_buf2 }
+    in_buffers:  { q_buf: q_buf }
     out_buffers: { epl_buf: epl_buf }
     commands:
         - name: cudaInputData
-          in_buf: chan_buf2
+          in_buf: q_buf
           gpu_mem: gnss_chan_frame
         - name: cudaGnssTrack
           # Re-pin the replica carrier EVERY record (0 = no anchor age at all). Safe only
@@ -174,7 +183,8 @@ gputrack:
           cuda_stream: 1
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: gnss_epl
-          in_frame_len: samples_per_data_set * sizeof_float
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
           n_channels: 10
           channel_offset: 0
           capture_utc0: 1.0
@@ -222,11 +232,11 @@ gal_track:
     gpu_id: 0
     num_cuda_streams: 3
     frame_arrival_period: 0.0
-    in_buffers:  { chan_buf2: chan_buf2 }
+    in_buffers:  { q_buf: q_buf }
     out_buffers: { gal_epl_buf: gal_epl_buf }
     commands:
         - name: cudaInputData
-          in_buf: chan_buf2
+          in_buf: q_buf
           gpu_mem: gal_chan_frame
         - name: cudaGnssTrack
           # Re-pin the replica carrier EVERY record (0 = no anchor age at all). Safe only
@@ -240,7 +250,8 @@ gal_track:
           cuda_stream: 1
           gpu_mem_input: gal_chan_frame
           gpu_mem_output: gal_epl
-          in_frame_len: samples_per_data_set * sizeof_float
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
           n_channels: 10
           channel_offset: 0
           signal: GAL_E1C
@@ -295,11 +306,11 @@ bds_track:
     gpu_id: 0
     num_cuda_streams: 3
     frame_arrival_period: 0.0
-    in_buffers:  { chan_buf2: chan_buf2 }
+    in_buffers:  { q_buf: q_buf }
     out_buffers: { bds_epl_buf: bds_epl_buf }
     commands:
         - name: cudaInputData
-          in_buf: chan_buf2
+          in_buf: q_buf
           gpu_mem: bds_chan_frame
         - name: cudaGnssTrack
           # Re-pin the replica carrier EVERY record (0 = no anchor age at all). Safe only
@@ -313,7 +324,8 @@ bds_track:
           cuda_stream: 1
           gpu_mem_input: bds_chan_frame
           gpu_mem_output: bds_epl
-          in_frame_len: samples_per_data_set * sizeof_float
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
           n_channels: 10
           channel_offset: 0
           signal: BDS_B1C_P

@@ -122,25 +122,19 @@ cudaError_t launch_despread_q(const unsigned char* data, const float* chan_scale
                               const DespreadParams& p, double2* corr, double* energy,
                               cudaStream_t stream);
 
-/// Transpose-ingest AND quantize one hop-major fp32 frame into the channel-major 4+4b ring.
-/// @c chan_inv_scale [n_chan] maps volts -> lsb per channel (the bandpass scaling: each bin's
-/// noise rms lands at ~2-3 lsb). @c rail_count [n_chan] is incremented per clamped sample --
-/// the RFI/CW watchdog; nullptr to skip.
-cudaError_t launch_chan_ingest_q(const float2* frame, unsigned char* ring,
-                                 const float* chan_inv_scale, int n_hops_f, int n_chan,
-                                 long long ring_hops, long long write_hop,
-                                 unsigned int* rail_count, cudaStream_t stream);
+/// launch_chan_ingest for the 4+4b ring: transpose one hop-major byte frame ([hop][chan], as
+/// GnssQuantize44 emits it) into the channel-major ring. A PURE byte transpose -- quantization
+/// happens UPSTREAM on the CPU (GnssQuantize44, the RFSoC's job), where CHORD's boundary actually
+/// is; doing it there also shrinks the H2D copy 8x. The scales the bytes were encoded with arrive
+/// via GnssChanMetadata::chan_scale and feed launch_despread_q.
+cudaError_t launch_chan_ingest_q(const unsigned char* frame, unsigned char* ring, int n_hops_f,
+                                 int n_chan, long long ring_hops, long long write_hop,
+                                 cudaStream_t stream);
 
 /// launch_ring_zero for the 4+4b ring: fills the OFFSET-ENCODED zero (0x88), not 0x00 -- 0x00
 /// decodes to (-8,-8), i.e. a full-scale DC spike where a valve drop should read silence.
 cudaError_t launch_ring_zero_q(unsigned char* ring, int n_chan, long long ring_hops,
                                long long write_hop, long long count, cudaStream_t stream);
-
-/// Bandpass measurement: accumulate per-channel sum|v|^2 over an fp32 frame into @c sumsq
-/// [n_chan] (device, accumulated across frames; the host divides by the sample count to get each
-/// bin's rms and hence its 4+4b scale). This is the job the RFSoC does at startup in CHORD.
-cudaError_t launch_chan_power(const float2* frame, int n_hops_f, int n_chan, double* sumsq,
-                              cudaStream_t stream);
 
 /**
  * Transpose-ingest one hop-major channelized frame into the channel-major device ring

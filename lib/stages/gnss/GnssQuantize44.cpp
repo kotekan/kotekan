@@ -133,11 +133,16 @@ void GnssQuantize44::main_thread() {
                      100.0 * railed_here / ((double)hops * _N));
         }
 
-        // Metadata: the 4+4b frame is the same hops at the same absolute samples.
+        // Metadata: the 4+4b frame is the same hops at the same absolute samples, PLUS the
+        // scales those bytes were encoded with. The scales ride EVERY frame (empty until the
+        // freeze) so a consumer can never despread bytes against gains other than these --
+        // GnssChanMetadata explains why frame-carriage beats any side channel here.
         if (metadata_is_gnss_chan(in_buf)) {
             out_buf->allocate_new_metadata_object(out_id);
-            get_gnss_chan_metadata(out_buf, out_id)->sample_seq =
-                get_gnss_chan_metadata(in_buf, in_id)->sample_seq;
+            auto* meta = get_gnss_chan_metadata(out_buf, out_id);
+            meta->sample_seq = get_gnss_chan_metadata(in_buf, in_id)->sample_seq;
+            if (_frozen)
+                meta->chan_scale = _scale; // lsb -> volts, per channel
         }
 
         in_buf->mark_frame_empty(unique_name, in_id++);

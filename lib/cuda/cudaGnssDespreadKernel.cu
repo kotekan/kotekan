@@ -280,31 +280,24 @@ cudaError_t launch_despread_q(const unsigned char* data, const float* chan_scale
     return cudaGetLastError();
 }
 
-__global__ void gnss_chan_ingest_q_kernel(const float2* __restrict__ frame,
-                                          unsigned char* __restrict__ ring,
-                                          const float* __restrict__ chan_inv_scale, int n_hops_f,
-                                          int n_chan, long long ring_hops, long long write_hop,
-                                          unsigned int* __restrict__ rail_count) {
+__global__ void gnss_chan_ingest_q_kernel(const unsigned char* __restrict__ frame,
+                                          unsigned char* __restrict__ ring, int n_hops_f,
+                                          int n_chan, long long ring_hops, long long write_hop) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n_hops_f * n_chan)
         return;
     const int m = idx / n_chan; // hop within the frame
     const int c = idx % n_chan; // channel (coalesced across threads: frame is hop-major)
-    int railed = 0;
-    const unsigned char b = gnss_cuda::pack_44(frame[idx], chan_inv_scale[c], &railed);
-    ring[(size_t)c * ring_hops + (size_t)((write_hop + m) % ring_hops)] = b;
-    if (railed && rail_count)
-        atomicAdd(&rail_count[c], 1u); // per-channel railfrac numerator (RFI/CW watchdog)
+    ring[(size_t)c * ring_hops + (size_t)((write_hop + m) % ring_hops)] = frame[idx];
 }
 
-cudaError_t launch_chan_ingest_q(const float2* frame, unsigned char* ring,
-                                 const float* chan_inv_scale, int n_hops_f, int n_chan,
-                                 long long ring_hops, long long write_hop,
-                                 unsigned int* rail_count, cudaStream_t stream) {
+cudaError_t launch_chan_ingest_q(const unsigned char* frame, unsigned char* ring, int n_hops_f,
+                                 int n_chan, long long ring_hops, long long write_hop,
+                                 cudaStream_t stream) {
     const int total = n_hops_f * n_chan;
     const int block = 256;
     gnss_chan_ingest_q_kernel<<<(total + block - 1) / block, block, 0, stream>>>(
-        frame, ring, chan_inv_scale, n_hops_f, n_chan, ring_hops, write_hop, rail_count);
+        frame, ring, n_hops_f, n_chan, ring_hops, write_hop);
     return cudaGetLastError();
 }
 
@@ -329,32 +322,6 @@ cudaError_t launch_ring_zero_q(unsigned char* ring, int n_chan, long long ring_h
     return cudaGetLastError();
 }
 
-__global__ void gnss_chan_power_kernel(const float2* __restrict__ frame, int n_hops_f, int n_chan,
-                                       double* __restrict__ sumsq) {
-    // One block per channel; accumulate sum|v|^2 over the frame's hops for the bandpass measure.
-    const int c = blockIdx.x;
-    double s = 0.0;
-    for (int m = threadIdx.x; m < n_hops_f; m += blockDim.x) {
-        const float2 v = frame[(size_t)m * n_chan + c];
-        s += (double)v.x * v.x + (double)v.y * v.y;
-    }
-    __shared__ double sh[256];
-    sh[threadIdx.x] = s;
-    __syncthreads();
-    for (int off = blockDim.x / 2; off > 0; off >>= 1) {
-        if (threadIdx.x < off)
-            sh[threadIdx.x] += sh[threadIdx.x + off];
-        __syncthreads();
-    }
-    if (threadIdx.x == 0)
-        sumsq[c] += sh[0]; // accumulate across frames; host divides by the sample count
-}
-
-cudaError_t launch_chan_power(const float2* frame, int n_hops_f, int n_chan, double* sumsq,
-                              cudaStream_t stream) {
-    gnss_chan_power_kernel<<<n_chan, 256, 0, stream>>>(frame, n_hops_f, n_chan, sumsq);
-    return cudaGetLastError();
-}
 
 __global__ void gnss_chan_ingest_kernel(const float2* __restrict__ frame,
                                         float2* __restrict__ ring, int n_hops_f, int n_chan,

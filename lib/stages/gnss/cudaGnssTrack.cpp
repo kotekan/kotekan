@@ -85,6 +85,11 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     const int ring_records = config.get_default<int>(unique_name, "ring_records", 50);
     ring_hops = (long long)ring_records * hops_per_record;
 
+    // CHORD 4+4b input: frames arrive as one byte per (hop, chan) sample, already quantized by
+    // GnssQuantize44 (the RFSoC's job, done upstream on the CPU); the ring stays bytes and the
+    // despread decodes with the per-channel scales riding the frame metadata.
+    quantized = config.get_default<bool>(unique_name, "quantized_input", false);
+
     despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, n_chan, chan_offset,
                                                   hops_per_record, sample_rate,
                                                   replica->f_offset());
@@ -145,7 +150,9 @@ cudaGnssTrack::cudaGnssTrack(Config& config, const std::string& unique_name,
 
     cudaGnssTrackState* s = st();
     _in_frame_len = config.get<size_t>(unique_name, "in_frame_len");
-    _n_hops_frame = (int)(_in_frame_len / ((size_t)s->n_chan * 2 * sizeof(float)));
+    // Sample size follows the input format: 1 byte (4+4b) vs 8 (complex float).
+    _n_hops_frame =
+        (int)(_in_frame_len / ((size_t)s->n_chan * (s->quantized ? 1 : 2 * sizeof(float))));
     _out_frame_len = gnss_gpu::frame_bytes(s->n_prn, s->n_chan);
     _ctl_stage.resize(gnss_gpu::off_corr(s->n_prn));
 
@@ -160,7 +167,17 @@ cudaGnssTrack::cudaGnssTrack(Config& config, const std::string& unique_name,
     // the BDS chain silently degrading on the first tri-constellation night).
     _mem_ring = unique_name + "/gnss_ring";
     _mem_jobs = unique_name + "/gnss_jobs_arena";
-    device.get_gpu_memory(_mem_ring, (size_t)s->n_chan * s->ring_hops * sizeof(float2));
+    _mem_scale = unique_name + "/gnss_chan_scale";
+    const size_t samp = s->quantized ? 1 : sizeof(float2);
+    device.get_gpu_memory(_mem_ring, (size_t)s->n_chan * s->ring_hops * samp);
+    if (s->quantized) {
+        // The dequantization scales, zeroed until the quantizer's freeze arrives on metadata.
+        // Zero (not garbage) matters: warmup frames are offset-zero bytes, which decode to
+        // 0 volts under any FINITE scale -- but an uninitialized float can be NaN, and
+        // NaN * 0 = NaN would poison the correlations.
+        void* d_scale = device.get_gpu_memory(_mem_scale, (size_t)s->n_chan * sizeof(float));
+        CHECK_CUDA_ERROR(cudaMemset(d_scale, 0, (size_t)s->n_chan * sizeof(float)));
+    }
 }
 
 cudaGnssTrack::~cudaGnssTrack() = default;
@@ -175,9 +192,10 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
     cudaGnssTrackState& S = *st();
     const cudaStream_t stream = device.getStream(cuda_stream_id);
 
-    float2* d_ring = (float2*)device.get_gpu_memory(
-        _mem_ring, (size_t)S.n_chan * S.ring_hops * sizeof(float2));
-    const float2* d_frame = (const float2*)device.get_gpu_memory_array(
+    const size_t samp = S.quantized ? 1 : sizeof(float2); // ring/frame sample size (bytes)
+    char* d_ring =
+        (char*)device.get_gpu_memory(_mem_ring, (size_t)S.n_chan * S.ring_hops * samp);
+    const char* d_frame = (const char*)device.get_gpu_memory_array(
         _gpu_mem_input, pipestate.gpu_frame_id, _gpu_buffer_depth, _in_frame_len);
     char* d_out = (char*)device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id,
                                                      _gpu_buffer_depth, _out_frame_len);
@@ -191,6 +209,31 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         device.get_gpu_memory_array_metadata(_gpu_mem_input, pipestate.gpu_frame_id));
     if (meta && meta->sample_seq >= 0)
         frame_hop = meta->sample_seq / S.fft_len;
+
+    // 4+4b dequantization scales: the frame carries the gains its bytes were ENCODED with
+    // (GnssChanMetadata::chan_scale; empty during the quantizer's bandpass-measurement window,
+    // when frames are offset-zero bytes = 0 volts under any scale). Upload on change only --
+    // they freeze once at startup, so this fires ~once per run.
+    float* d_scale = nullptr;
+    if (S.quantized) {
+        d_scale = (float*)device.get_gpu_memory(_mem_scale, (size_t)S.n_chan * sizeof(float));
+        if (meta && !meta->chan_scale.empty() && meta->chan_scale != S.chan_scale_host) {
+            if ((int)meta->chan_scale.size() != S.n_chan) {
+                WARN("cudaGnssTrack: metadata carries {:d} chan scales but the frame has {:d} "
+                     "channels -- ignoring (subband-sliced scales are not supported)",
+                     (int)meta->chan_scale.size(), S.n_chan);
+            } else {
+                S.chan_scale_host = meta->chan_scale; // pageable: async H2D is host-sync on return
+                CHECK_CUDA_ERROR(cudaMemcpyAsync(d_scale, S.chan_scale_host.data(),
+                                                 (size_t)S.n_chan * sizeof(float),
+                                                 cudaMemcpyHostToDevice, stream));
+                if (!S.chan_scale_valid)
+                    INFO("cudaGnssTrack: 4+4b dequantization scales arrived (quantizer froze "
+                         "its bandpass) -- despread live from this frame");
+                S.chan_scale_valid = true;
+            }
+        }
+    }
 
     // The despread work must follow the frame's H2D copy (COPY_IN stream).
     record_start_event();
@@ -206,9 +249,10 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
     if (S.ring_init && (gap < 0 || gap > ring_capacity - _n_hops_frame))
         reset = true; // out-of-order or a pathological stall: rebase the tiling anchor
     if (reset) {
-        CHECK_CUDA_ERROR(cudaMemsetAsync(d_ring, 0,
-                                         (size_t)S.n_chan * S.ring_hops * sizeof(float2),
-                                         stream));
+        // 4+4b zero is the OFFSET code 0x88, not 0x00 (which decodes to a full-scale (-8,-8)
+        // DC spike). cudaMemset writes a byte pattern, so 0x88 fills exactly.
+        CHECK_CUDA_ERROR(cudaMemsetAsync(d_ring, S.quantized ? 0x88 : 0,
+                                         (size_t)S.n_chan * S.ring_hops * samp, stream));
         if (S.ring_init)
             WARN("cudaGnssTrack: ring rebase (gap {:d} hops) -- window tiling re-anchored",
                  gap);
@@ -218,11 +262,22 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         S.ring_init = true;
         gap = 0;
     } else if (gap > 0) {
-        CHECK_CUDA_ERROR(gnss_cuda::launch_ring_zero(d_ring, S.n_chan, S.ring_hops,
-                                                     S.next_hop - S.hop0, gap, stream));
+        if (S.quantized)
+            CHECK_CUDA_ERROR(gnss_cuda::launch_ring_zero_q((unsigned char*)d_ring, S.n_chan,
+                                                           S.ring_hops, S.next_hop - S.hop0,
+                                                           gap, stream));
+        else
+            CHECK_CUDA_ERROR(gnss_cuda::launch_ring_zero((float2*)d_ring, S.n_chan, S.ring_hops,
+                                                         S.next_hop - S.hop0, gap, stream));
     }
-    CHECK_CUDA_ERROR(gnss_cuda::launch_chan_ingest(d_frame, d_ring, _n_hops_frame, S.n_chan,
-                                                   S.ring_hops, frame_hop - S.hop0, stream));
+    if (S.quantized)
+        CHECK_CUDA_ERROR(gnss_cuda::launch_chan_ingest_q(
+            (const unsigned char*)d_frame, (unsigned char*)d_ring, _n_hops_frame, S.n_chan,
+            S.ring_hops, frame_hop - S.hop0, stream));
+    else
+        CHECK_CUDA_ERROR(gnss_cuda::launch_chan_ingest((const float2*)d_frame, (float2*)d_ring,
+                                                       _n_hops_frame, S.n_chan, S.ring_hops,
+                                                       frame_hop - S.hop0, stream));
     S.next_hop = frame_hop + _n_hops_frame;
 
     // Overflow guard: if the record backlog would exceed the ring, fast-forward (drop the
@@ -352,14 +407,17 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
             spec_prn.push_back(p);
         }
         if (!specs.empty()) {
-            const float2* d_window = d_ring + (size_t)((S.next_rec * hpr) % S.ring_hops);
+            // Window base: an ELEMENT offset into the ring row, scaled by the sample size
+            // (1 byte 4+4b / 8 bytes fp32). data_stride stays in SAMPLES either way.
+            const char* d_window = d_ring + (size_t)((S.next_rec * hpr) % S.ring_hops) * samp;
             double2* d_corr = (double2*)(d_out + off_corr(S.n_prn)) + (size_t)n_out * S.n_chan;
             double* d_energy =
                 (double*)(d_out + off_energy(S.n_prn, S.n_chan)) + (size_t)n_out * S.n_chan;
-            // Returns ROWS (4/spec); the job arena advances by SPECS (1/spec).
+            // Returns ROWS (4/spec); the job arena advances by SPECS (1/spec). d_scale non-null
+            // selects the 4+4b read path (null on the fp32 ring).
             n_out += S.despread->enqueue_batch_device(d_window, (int)S.ring_hops, wstart, specs,
                                                       d_jobs + n_spec, d_corr, d_energy,
-                                                      (void*)stream);
+                                                      (void*)stream, d_scale);
             n_spec += (int)specs.size();
         }
         ++S.next_rec;

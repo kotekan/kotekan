@@ -235,7 +235,8 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
 int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride,
                                            long long window_start_sample,
                                            const std::vector<Spec>& specs, void* d_jobs_slot,
-                                           void* d_corr_out, void* d_energy_out, void* stream) {
+                                           void* d_corr_out, void* d_energy_out, void* stream,
+                                           const void* d_chan_scale) {
     Impl& im = *_impl;
     if (specs.empty())
         return 0;
@@ -298,10 +299,19 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
     par.data_stride = data_stride;
-    ck(gnss_cuda::launch_despread((const float2*)d_window, im.d_code,
-                                  (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec, im.n_chan, par,
-                                  (double2*)d_corr_out, (double*)d_energy_out, st),
-       "launch (device batch)");
+    // d_chan_scale selects the ring's sample type: 4+4b bytes (decode with the scales the
+    // quantizer encoded with) vs fp32. Same kernel, only the voltage load differs.
+    if (d_chan_scale)
+        ck(gnss_cuda::launch_despread_q((const unsigned char*)d_window,
+                                        (const float*)d_chan_scale, im.d_code,
+                                        (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec, im.n_chan,
+                                        par, (double2*)d_corr_out, (double*)d_energy_out, st),
+           "launch q (device batch)");
+    else
+        ck(gnss_cuda::launch_despread((const float2*)d_window, im.d_code,
+                                      (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec, im.n_chan,
+                                      par, (double2*)d_corr_out, (double*)d_energy_out, st),
+           "launch (device batch)");
     return 4 * n_spec; // OUTPUT rows written (E, P, L, P_HEAD per spec) -- not the job count
 }
 

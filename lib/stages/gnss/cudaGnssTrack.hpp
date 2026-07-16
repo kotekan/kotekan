@@ -34,6 +34,14 @@ public:
     double sample_rate = 5e6, capture_utc0 = 0.0, doppler_margin_hz = 5000.0;
     double dll_spacing = 0.5, fll_reacq_hz = 200.0, max_anchor_age_s = 30.0;
     long long ring_hops = 0; ///< multiple of hops_per_record (windows never straddle the wrap)
+    bool quantized = false;  ///< input frames + device ring are CHORD 4+4b bytes (GnssQuantize44
+                             ///< upstream); scales arrive via GnssChanMetadata::chan_scale
+
+    // 4+4b dequantization scales (lsb -> volts): the last set seen on frame metadata, staged
+    // here for the async upload to the device array (pageable staging = host-synchronous on
+    // return, same pattern as the jobs). Empty until the quantizer freezes its bandpass.
+    std::vector<float> chan_scale_host;
+    bool chan_scale_valid = false; ///< device array holds chan_scale_host
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> replica;
     std::unique_ptr<GnssCudaDespread> despread;
@@ -72,10 +80,14 @@ public:
  *       spectrum_length, n_channels, channel_offset, num_taps, pfb_window, prns,
  *       hops_per_record, code_doppler_sign, dll_spacing_chips, fll_reacq_hz, capture_utc0,
  *       doppler_margin_hz), plus:
- * @conf gpu_mem_input   staged channelized frame ([n_hops_f][n_chan] complex float)
+ * @conf gpu_mem_input   staged channelized frame: [n_hops_f][n_chan] complex float, or one
+ *                       4+4b byte per sample when quantized_input is set
  * @conf gpu_mem_output  gnssGpuChain frame (frame_bytes(n_prn, n_chan))
  * @conf ring_records    device ring length in records (default 50)
  * @conf seed_endpoint   REST path for broker seeds (default "/track/set_seeds")
+ * @conf quantized_input input frames + ring are CHORD 4+4b (GnssQuantize44 upstream; the
+ *                       dequantization scales arrive on GnssChanMetadata::chan_scale).
+ *                       in_frame_len is then in BYTES = hops * n_channels. Default false.
  */
 class cudaGnssTrack : public cudaCommand {
 public:
@@ -91,7 +103,7 @@ private:
     cudaGnssTrackState* st();
 
     std::string _gpu_mem_input, _gpu_mem_output;
-    std::string _mem_ring, _mem_jobs; // stage-namespaced device allocation names
+    std::string _mem_ring, _mem_jobs, _mem_scale; // stage-namespaced device allocation names
     size_t _in_frame_len = 0, _out_frame_len = 0;
     int _n_hops_frame = 0;
 

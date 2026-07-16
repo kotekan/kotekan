@@ -65,12 +65,17 @@ public:
     /// the return value is the ROW count (4*specs.size()) -- what indexes d_corr_out/d_energy_out
     /// and PrnCtl::job0. Advance @c d_jobs_slot by specs.size(), not by the return value.
     /// Opaque pointer types keep this header CUDA-free for the tracker include.
-    int enqueue_batch_device(const void* d_window /*float2*/, int data_stride,
+    /// @c d_chan_scale selects the ring's sample type: nullptr = fp32 (d_window is float2);
+    /// non-null = CHORD 4+4b (d_window is one byte per sample, and d_chan_scale is the device
+    /// [n_chan] lsb->volts array the bytes were ENCODED with -- GnssChanMetadata::chan_scale,
+    /// uploaded by the caller). Same kernel either way; only the voltage load differs.
+    int enqueue_batch_device(const void* d_window /*float2 or uint8*/, int data_stride,
                              long long window_start_sample, const std::vector<Spec>& specs,
                              void* d_jobs_slot /*gnss_cuda::DespreadJob, [specs]*/,
                              void* d_corr_out /*double2, [4*specs][n_chan]*/,
                              void* d_energy_out /*double, [4*specs][n_chan]*/,
-                             void* stream /*cudaStream_t*/);
+                             void* stream /*cudaStream_t*/,
+                             const void* d_chan_scale = nullptr /*float, [n_chan]*/);
 
 private:
     struct Impl;
