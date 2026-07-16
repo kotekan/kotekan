@@ -104,6 +104,7 @@ public:
             FATAL_ERROR("num_threads %d must be positive", num_threads);
         frb2_beam_positions_buffer->register_consumer(unique_name);
         W2_buffer->register_producer(unique_name);
+        metadata_buffer->register_consumer(unique_name);
 
         frb2_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
             "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}, {1, 1}));
