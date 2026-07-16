@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""Geometry-free relative TEC from two bands' observables logs (arc-segmented carrier).
+
+    python3 gnss_tec.py --a /tmp/gpswipe/obs_gps_l1.jsonl --b /tmp/gps_l5_gpu/obs_gps_l5.jsonl \
+                        --out /tmp/tec_l1l5 [--since-min 600] [--sys G]
+
+THE THREE TEC WORK ITEMS, AND WHICH THIS TOOL DOES. The carrier ADR is mm-precise but each lock
+arc carries an unknown constant, so step 1 is ARC HANDLING (this tool): segment each band's
+series at adr_arc changes (and data gaps), intersect the two bands' arcs per satellite, and form
+the geometry-free combination L_gf = lam_a*ADR_a - lam_b*ADR_b on the joint arcs only. Within a
+joint arc, VARIATION of L_gf is pure dispersive delay: slant TEC change at carrier precision.
+Step 2, LEVELING (absolute TEC), shifts each arc by the arc-mean of (code_gf - carrier_gf) --
+BLOCKED until the code observable is fixed (~40 km scatter today). Step 3, DCBs, removes the
+constant inter-band hardware delays that survive leveling: satellite DCBs from gnss_dcb.py
+(published), the receiver's estimated jointly with TEC (ours spans three dongles + the anchor
+offset tau; GPSDO-constant).
+
+THE INTER-BAND RECEIVER CLOCK (our three-dongle wrinkle): each band's ADR rides its own dongle's
+clock solve, so L_gf carries a COMMON-MODE (same for every satellite) inter-band clock term --
+measured ~0.1 ppm = the two dongles' l-a difference, i.e. kilometers/hour, dwarfing TEC. Two
+honest views are produced:
+  * per-epoch across-satellite MEDIAN of the arc-relative L_gf = the common mode itself
+    (inter-band clock + median TEC drift), reported separately;
+  * each satellite MINUS that median = differential slant TEC, the science view. (A
+    single-difference vs one reference sat is the textbook form; the median is the same idea
+    robust to any one sat's arc break.)
+
+Emits <out>_tec.png (the differential view + the common mode) and <out>_arcs.json (per-arc
+stats). Reads only the observables jsonl -- run it against a LIVE soak freely.
+"""
+import argparse
+import json
+import math
+import os
+import sys
+
+C = 299792458.0
+K = 40.308e16  # m^3/s^2/TECU: iono group delay = K*TEC/f^2
+
+
+def load(path, since_s, sysid):
+    """Rows with a live ADR, newest `since_s` seconds, keyed [prn] -> time-sorted list."""
+    rows = {}
+    size = os.path.getsize(path)
+    # Tail-seek: soak files reach GBs; 400 bytes/row * rate makes ~1 MB/min/sat. Generous slice.
+    with open(path) as f:
+        f.seek(max(0, size - 512 * 1024 * 1024))
+        f.readline()
+        tmax = 0.0
+        raw = []
+        for line in f:
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if d.get("sys") != sysid or not d.get("adr_records"):
+                continue
+            raw.append(d)
+            tmax = max(tmax, d["t"])
+    for d in raw:
+        if d["t"] >= tmax - since_s:
+            rows.setdefault(d["prn"], []).append(d)
+    for v in rows.values():
+        v.sort(key=lambda r: r["t"])
+    return rows
+
+
+def arcs(series, max_gap_s):
+    """Split one band's per-sat series into continuous arcs: same adr_arc, no long gaps."""
+    out = []
+    cur = []
+    for r in series:
+        if cur and (r["adr_arc"] != cur[-1]["adr_arc"] or r["t"] - cur[-1]["t"] > max_gap_s):
+            out.append(cur)
+            cur = []
+        cur.append(r)
+    if cur:
+        out.append(cur)
+    return out
+
+
+def interp_adr(arc, t):
+    """Linear ADR at time t within an arc (None outside / across a gap)."""
+    import bisect
+    ts = [r["t"] for r in arc]
+    i = bisect.bisect_left(ts, t)
+    if i == 0 or i >= len(ts):
+        return None
+    a, b = arc[i - 1], arc[i]
+    if b["t"] - a["t"] > 3.0:
+        return None
+    w = (t - a["t"]) / (b["t"] - a["t"])
+    return a["adr_cycles"] * (1 - w) + b["adr_cycles"] * w
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--a", required=True, help="band A observables jsonl (e.g. L1)")
+    ap.add_argument("--b", required=True, help="band B observables jsonl (e.g. L5 or L2C)")
+    ap.add_argument("--sys", default="G")
+    ap.add_argument("--since-min", type=float, default=720.0)
+    ap.add_argument("--max-gap-s", type=float, default=10.0)
+    ap.add_argument("--min-arc-s", type=float, default=120.0)
+    ap.add_argument("--out", default="/tmp/tec")
+    args = ap.parse_args()
+
+    ra = load(args.a, args.since_min * 60, args.sys)
+    rb = load(args.b, args.since_min * 60, args.sys)
+    common = sorted(set(ra) & set(rb))
+    if not common:
+        sys.exit("no common satellites with ADR in the window")
+    fa = ra[common[0]][0]["carrier_hz"]
+    fb = rb[common[0]][0]["carrier_hz"]
+    lam_a, lam_b = C / fa, C / fb
+    fac = K * (1.0 / fa**2 - 1.0 / fb**2)  # m of L_gf per TECU (signed)
+    print(f"bands {fa/1e6:.2f} / {fb/1e6:.2f} MHz: {fac:+.4f} m/TECU; sats {common}")
+
+    # Joint arcs: for every (arc_a x arc_b) overlap long enough, sample band B onto band A's
+    # epochs. Everything downstream is per joint arc -- an arc break in EITHER band ends it.
+    sat_arcs = {}  # prn -> list of (ts[], gf_m[], el[])
+    for prn in common:
+        for aa in arcs(ra[prn], args.max_gap_s):
+            for bb in arcs(rb[prn], args.max_gap_s):
+                lo = max(aa[0]["t"], bb[0]["t"])
+                hi = min(aa[-1]["t"], bb[-1]["t"])
+                if hi - lo < args.min_arc_s:
+                    continue
+                ts, gf, el = [], [], []
+                for r in aa:
+                    if not (lo <= r["t"] <= hi):
+                        continue
+                    adr_b = interp_adr(bb, r["t"])
+                    if adr_b is None:
+                        continue
+                    ts.append(r["t"])
+                    gf.append(lam_a * r["adr_cycles"] - lam_b * adr_b)
+                    el.append(r.get("el"))
+                if len(ts) >= 10:
+                    sat_arcs.setdefault(prn, []).append((ts, gf, el))
+
+    if not sat_arcs:
+        sys.exit("no joint arcs long enough")
+
+    # Common-mode removal: per-epoch (1 s bins) median of ARC-RELATIVE gf across sats = the
+    # inter-band clock (+ median TEC drift). Each sat minus it = differential slant TEC.
+    from collections import defaultdict
+    binsum = defaultdict(list)
+    for prn, arcs_ in sat_arcs.items():
+        for ts, gf, _ in arcs_:
+            g0 = gf[0]
+            for t, g in zip(ts, gf):
+                binsum[round(t)].append(g - g0)
+    med = {t: sorted(v)[len(v) // 2] for t, v in binsum.items() if len(v) >= 3}
+    print(f"common-mode epochs: {len(med)}; sats with joint arcs: {sorted(sat_arcs)}")
+
+    summary = []
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(13, 8), sharex=True,
+                                       gridspec_kw={"height_ratios": [3, 1]})
+    except ImportError:
+        fig = None
+    t00 = min(min(ts) for a in sat_arcs.values() for ts, _, _ in a)
+    for prn, arcs_ in sorted(sat_arcs.items()):
+        for k, (ts, gf, el) in enumerate(arcs_):
+            g0 = gf[0]
+            rel = [(t, (g - g0) - med[round(t)]) for t, g in zip(ts, gf) if round(t) in med]
+            if len(rel) < 10:
+                continue
+            tecu = [r[1] / fac for r in rel]
+            span = rel[-1][0] - rel[0][0]
+            drift = tecu[-1] - tecu[0]
+            mean = sum(tecu) / len(tecu)
+            rms = math.sqrt(sum((x - mean) ** 2 for x in tecu) / len(tecu))
+            summary.append({"prn": prn, "arc": k, "span_s": round(span, 1),
+                            "n": len(rel), "dTEC_drift_TECU": round(drift, 3),
+                            "scatter_TECU_rms": round(rms, 3),
+                            "el_range": [el[0], el[-1]] if el[0] is not None else None})
+            if fig:
+                ax1.plot([(r[0] - t00) / 60 for r in rel], tecu, ".", ms=2,
+                         label=f"{args.sys}{prn}" if k == 0 else None)
+    if fig:
+        mts = sorted(med)
+        ax2.plot([(t - t00) / 60 for t in mts], [med[t] for t in mts], "k.", ms=1)
+        ax1.set_ylabel("differential slant TEC (TECU, arc-relative)")
+        ax1.legend(ncol=6, fontsize=8)
+        ax1.set_title(f"geometry-free carrier {fa/1e6:.0f}/{fb/1e6:.0f} MHz -- "
+                      f"arc-segmented, common-mode removed")
+        ax2.set_ylabel("common mode (m)\n[inter-band clk]")
+        ax2.set_xlabel(f"minutes since {t00:.0f}")
+        fig.tight_layout()
+        fig.savefig(args.out + "_tec.png", dpi=110)
+        print("wrote", args.out + "_tec.png")
+    json.dump(summary, open(args.out + "_arcs.json", "w"), indent=1)
+    print("wrote", args.out + "_arcs.json")
+    for s in summary:
+        print(f"  {args.sys}{s['prn']:2d} arc{s['arc']} {s['span_s']:7.0f}s n={s['n']:5d} "
+              f"drift {s['dTEC_drift_TECU']:+7.3f} TECU  scatter {s['scatter_TECU_rms']:.3f} TECU")
+
+
+if __name__ == "__main__":
+    main()
