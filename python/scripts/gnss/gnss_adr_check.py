@@ -74,6 +74,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://localhost:12048")
     ap.add_argument("--combiner", default="gps_combiner")
+    ap.add_argument("--airspy", default="airspy_in",
+                    help="airspy stage for the capture-clock anchor; band-prefixed (l5_airspy_in) "
+                         "in a merged multi-band instance")
     ap.add_argument("--sys", default="G", choices=("G", "E", "C"))
     ap.add_argument("--carrier-hz", type=float, default=1575.42e6)
     ap.add_argument("--secs", type=float, default=30.0, help="baseline over which to difference")
@@ -90,7 +93,7 @@ def main():
     carrier = args.carrier_hz
     lam = C_LIGHT / args.carrier_hz
     eph = parse_rinex_nav(fetch_brdc())
-    to_unix = capture_clock(args.url)
+    to_unix = capture_clock(args.url, args.airspy)
 
     a0 = snap(args.url, stage, args.sys, eph, args.lat, args.lon, args.alt, to_unix)
     print("baseline %.0f s on %s (%d sats with phase)..." % (args.secs, stage, len(a0)))
