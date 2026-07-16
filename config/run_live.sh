@@ -100,11 +100,25 @@ HOPS_PER_SEC=$(awk '/^[[:space:]]*sample_rate:/{sr=$2} /^[[:space:]]*spectrum_le
 # 10230, L2C_CM 511.5e3/10230, L5_Q 10.23e6/10230. Unknown/absent -> broker defaults (L1 C/A).
 SIGNAL=$(awk '/^[[:space:]]*signal:/{print $2; exit}' "$CFG")
 SIGHDR="lib/stages/gnss/gnssSignal.hpp"
-CHIP_HZ=""; CODELEN=""
-if [ -n "${SIGNAL:-}" ] && [ -f "$SIGHDR" ]; then
-  CHIP_HZ=$(awk -F, -v s="$SIGNAL" '$1 ~ ("^[[:space:]]*\"" s "\"$"){c=$3;gsub(/[^0-9.eE+-]/,"",c);print c;exit}' "$SIGHDR")
-  CODELEN=$(awk -F, -v s="$SIGNAL" '$1 ~ ("^[[:space:]]*\"" s "\"$"){l=$4;gsub(/[^0-9]/,"",l);print l;exit}' "$SIGHDR")
-fi
+# Parse chip-rate / primary-code length for a signal name straight from the C++ SignalDescriptor
+# table (single source of truth). Reused for the gal_/bds_ parallel chains below so they are no
+# longer hardwired to E1C/B1C -- an L5-band config (E5a-Q, B2a-P) derives 10.23e6/10230 the same way.
+sig_chip()    { [ -f "$SIGHDR" ] && awk -F, -v s="$1" '$1 ~ ("^[[:space:]]*\"" s "\"$"){c=$3;gsub(/[^0-9.eE+-]/,"",c);print c;exit}' "$SIGHDR"; }
+sig_codelen() { [ -f "$SIGHDR" ] && awk -F, -v s="$1" '$1 ~ ("^[[:space:]]*\"" s "\"$"){l=$4;gsub(/[^0-9]/,"",l);print l;exit}' "$SIGHDR"; }
+# The signal: inside a named search block (multi-line YAML), bounded to that block so a later
+# stage's signal can't leak in. Default = the L1-band signal (backward compat for dual20).
+blk_signal()  { awk -v b="^$1:" '$0 ~ b {f=1;next} /^[^[:space:]]/{f=0} f&&/^[[:space:]]*signal:/{print $2;exit}' "$CFG"; }
+CHIP_HZ=$(sig_chip "$SIGNAL"); CODELEN=$(sig_codelen "$SIGNAL")
+# Per-constellation signal params for the parallel gal_/bds_ chains (see the brokers below).
+# GAL_E1C -> 1.023e6/4092/obs_gal_e1 ; GAL_E5A_Q -> 10.23e6/10230/obs_gal_e5a. Likewise BDS.
+GAL_SIGNAL=$(blk_signal gal_search); GAL_SIGNAL=${GAL_SIGNAL:-GAL_E1C}
+BDS_SIGNAL=$(blk_signal bds_search); BDS_SIGNAL=${BDS_SIGNAL:-BDS_B1C_P}
+GAL_CHIP=$(sig_chip "$GAL_SIGNAL");    GAL_CHIP=${GAL_CHIP:-1.023e6}
+GAL_CODELEN=$(sig_codelen "$GAL_SIGNAL"); GAL_CODELEN=${GAL_CODELEN:-4092}
+BDS_CHIP=$(sig_chip "$BDS_SIGNAL");    BDS_CHIP=${BDS_CHIP:-1.023e6}
+BDS_CODELEN=$(sig_codelen "$BDS_SIGNAL"); BDS_CODELEN=${BDS_CODELEN:-10230}
+case "$GAL_SIGNAL" in GAL_E5A*) GAL_OBS=obs_gal_e5a ;; *) GAL_OBS=obs_gal_e1 ;; esac
+case "$BDS_SIGNAL" in BDS_B2A*) BDS_OBS=obs_bds_b2a ;; *) BDS_OBS=obs_bds_b1c ;; esac
 # --- Receiver clock profile (clockProfile.hpp is the canonical table) ---------------------------
 # One knob for clock quality across airspy TCXO ... GPSDO ... maser. The search STAGE reads
 # clock_profile from the config directly (sizes the Doppler grid from accuracy_ppm); here we resolve
@@ -319,8 +333,8 @@ if grep -qE '^gal_track:' "$RUNCFG"; then
   else
     echo "WARNING: gal_track present but LAT/LON unset -- Galileo require_hint search will scan NOTHING"
   fi
-  echo "starting GALILEO broker (gal_search/gal_track/gal_combiner, TLE group=galileo)..."
-  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors gal_search --trackers gal_track --combiner gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30}           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_gal.ppm           --chip-rate-hz 1.023e6 --code-length 4092           ${BROKER_EXTRA:-} $GAL_ALM $CARG           > /tmp/${TAG}_broker_gal.log 2>&1 &
+  echo "starting GALILEO broker ($GAL_SIGNAL: gal_search/gal_track/gal_combiner, TLE group=galileo)..."
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors gal_search --trackers gal_track --combiner gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30}           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_gal.ppm           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN           ${BROKER_EXTRA:-} $GAL_ALM $CARG           > /tmp/${TAG}_broker_gal.log 2>&1 &
   GALPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT           --combiner gal_combiner --search gal_search --airspy "$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/${TAG}_logger_gal.log 2>&1 &
   GALLOGPID=$!
@@ -346,11 +360,11 @@ if grep -qE '^bds_track:' "$RUNCFG"; then
   else
     echo "WARNING: bds_track present but LAT/LON unset -- BeiDou require_hint search will scan NOTHING"
   fi
-  echo "starting BEIDOU broker (bds_search/bds_track/bds_combiner, TLE group=beidou)..."
+  echo "starting BEIDOU broker ($BDS_SIGNAL: bds_search/bds_track/bds_combiner, TLE group=beidou)..."
   python3 $BROKER --rest-url "http://localhost:$PORT" --detectors bds_search --trackers bds_track --combiner bds_combiner \
           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} \
           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_bds.ppm \
-          --chip-rate-hz 1.023e6 --code-length 10230 \
+          --chip-rate-hz $BDS_CHIP --code-length $BDS_CODELEN \
           ${BROKER_EXTRA:-} $BDS_ALM $CARG \
           > /tmp/${TAG}_broker_bds.log 2>&1 &
   BDSPID=$!
@@ -387,11 +401,11 @@ if [ "${OBSERVABLES:-1}" != "0" ]; then
     GPS_L1C_*) _obs=obs_gps_l1c ;;
     *)        _obs=obs_gps_l1  ;;
   esac
-  # gal_/bds_ ride the SAME L1 tune (1575.42) and so keep their own fixed triples; they only
-  # exist in the dual20 config and are skipped elsewhere by the grep below.
+  # gal_/bds_ band params are DERIVED (GAL_SIGNAL/BDS_SIGNAL etc., above) so the same loop covers
+  # the L1 tune (E1C/B1C) and the L5 tune (E5a-Q/B2a-P); the grep skips whichever chain is absent.
   for _o in "gps_combiner gps_search G ${SIGNAL:-GPS_L1CA} ${CODELEN:-1023} $_obs ${CHIP_HZ:-1.023e6}" \
-            "gal_combiner gal_search E GAL_E1C 4092 obs_gal_e1 1.023e6" \
-            "bds_combiner bds_search C BDS_B1C_P 10230 obs_bds_b1c 1.023e6"; do
+            "gal_combiner gal_search E $GAL_SIGNAL $GAL_CODELEN $GAL_OBS $GAL_CHIP" \
+            "bds_combiner bds_search C $BDS_SIGNAL $BDS_CODELEN $BDS_OBS $BDS_CHIP"; do
     set -- $_o
     grep -qE "^($1|${1#gps_}):" "$RUNCFG" || continue
     python3 python/scripts/gnss/gnss_observables.py --url http://localhost:$PORT \
