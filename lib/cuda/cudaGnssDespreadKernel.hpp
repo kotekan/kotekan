@@ -1,8 +1,9 @@
 #ifndef CUDA_GNSS_DESPREAD_KERNEL_HPP
 #define CUDA_GNSS_DESPREAD_KERNEL_HPP
 
+#include "../stages/gnss/gnss44.hpp" // the ONE 4+4b codec (CUDA-free; shared with the CPU stage)
+
 #include <cuda_runtime.h>
-#include <math.h> // rintf: pack_44/unpack_44 are __host__ too (host-side encode + tests)
 #include <stdint.h>
 
 /**
@@ -87,24 +88,15 @@ struct DespreadParams {
  * < 0.14 at 3 lsb (scratchpad/quant_test.py, GPS L5 / Gal E5a / BeiDou B2a). Prefer 3 lsb for RFI
  * headroom; watch per-channel railfrac.
  */
+/// float2 wrappers over the ONE codec (../stages/gnss/gnss44.hpp -- CUDA-free so the CPU quantize
+/// stage, which must build in the non-CUDA tree, shares it). Do not re-implement either side here.
 __host__ __device__ inline float2 unpack_44(unsigned char b, float scale) {
-    const float re = (float)(int)((b >> 4) & 0x0f) - 8.0f; // real = HIGH nibble, offset -8
-    const float im = (float)(int)(b & 0x0f) - 8.0f;        // imag = LOW nibble, offset -8
-    return make_float2(scale * re, scale * im);
+    float re, im;
+    gnss44::unpack(b, scale, &re, &im);
+    return make_float2(re, im);
 }
-
-/// Quantize one complex sample to the 4+4b byte. @c inv_scale maps volts -> lsb; values are
-/// round-to-nearest and CLAMPED to [-8, 7] (a clamp is a rail: the caller should watch railfrac).
 __host__ __device__ inline unsigned char pack_44(float2 v, float inv_scale, int* railed) {
-    int r = (int)rintf(v.x * inv_scale);
-    int i = (int)rintf(v.y * inv_scale);
-    if (r < -8 || r > 7 || i < -8 || i > 7) {
-        if (railed)
-            *railed = 1;
-        r = r < -8 ? -8 : (r > 7 ? 7 : r);
-        i = i < -8 ? -8 : (i > 7 ? 7 : i);
-    }
-    return (unsigned char)((((r + 8) & 0x0f) << 4) | ((i + 8) & 0x0f));
+    return gnss44::pack(v.x, v.y, inv_scale, railed);
 }
 
 /**

@@ -317,7 +317,7 @@ __global__ void gnss_ring_zero_q_kernel(unsigned char* __restrict__ ring, int n_
     const long long m = idx / n_chan;
     const int c = (int)(idx % n_chan);
     // Offset-encoded zero, NOT 0x00: 0x00 decodes to (-8, -8), a large DC spike.
-    ring[(size_t)c * ring_hops + (size_t)((write_hop + m) % ring_hops)] = 0x88;
+    ring[(size_t)c * ring_hops + (size_t)((write_hop + m) % ring_hops)] = gnss44::ZERO;
 }
 
 cudaError_t launch_ring_zero_q(unsigned char* ring, int n_chan, long long ring_hops,
