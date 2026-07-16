@@ -321,7 +321,7 @@ BPID=$!
 # two l-a estimates should agree (a nice cross-check). E1 chips 1.023 Mcps, 4092-chip code.
 GALPID=""
 GALLOGPID=""
-if grep -qE '^gal_track:' "$RUNCFG"; then
+if grep -qE '^gal_track:|seed_endpoint:[[:space:]]*"/gal_track/set_seeds"' "$RUNCFG"; then
   GAL_TLE="https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle"
   GAL_ALM=""
   if [ -n "$LAT" ] && [ -n "$LON" ]; then
@@ -344,7 +344,7 @@ fi
 # Third constellation: BeiDou B1C (bds_* stages), same pattern as Galileo.
 BDSPID=""
 BDSLOGPID=""
-if grep -qE '^bds_track:' "$RUNCFG"; then
+if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUNCFG"; then
   BDS_TLE="https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle"
   BDS_ALM=""
   if [ -n "$LAT" ] && [ -n "$LON" ]; then
