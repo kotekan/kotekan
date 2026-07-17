@@ -418,6 +418,21 @@ def main(argv=None):
     ap.add_argument("--cl-time-adjust", type=float, default=0.0,
                     help="seconds added to the CL time-assist clock -- escape hatch for a future "
                          "non-multiple-of-1.5s GPS-UTC offset or a known host-clock bias")
+    ap.add_argument("--nh-assist", action="store_true",
+                    help="secondary-overlay TIME-ASSIST for a per-PRN-overlay pilot (B1C/E5a/B2a): "
+                         "POST each visible sat's PREDICTED absolute overlay-chip index (from "
+                         "almanac range + BeiDou/Galileo-time, one convention, the combiner "
+                         "self-calibrates the constant) to the combiner's /set_nh_hint. The weak "
+                         "sats that cannot win the combiner's L-way (1800 for B1C) alignment "
+                         "search get the geometrically-correct alignment for free. Needs --almanac; "
+                         "the combiner needs nh_assist: true. Fail-safe: a wrong hint just fails "
+                         "its floor and the blind search result stands.")
+    ap.add_argument("--nh-overlay-len", type=int, default=1800,
+                    help="secondary-overlay length in chips (B1C pilot 1800; E5a/B2a CS100 = 100)")
+    ap.add_argument("--almanac-epoch", type=float, default=0.0,
+                    help="REPLAY BENCH ONLY: unix time to evaluate the almanac at, instead of "
+                         "now() -- so a recorded capture's real sky (ranges, visibility) drives "
+                         "the seeds + nh-assist. 0 = live (use now).")
     ap.add_argument("--dead-reckon", action="store_true",
                     help="seed CODE PHASE from broadcast ephemeris (BRDC) for every visible "
                          "sat the search hasn't detected: predict the absolute transmit-time "
@@ -699,7 +714,9 @@ def main(argv=None):
             try:
                 from gps_beamtrack import predict_dopplers
                 raw = predict_dopplers(args.lat, args.lon, args.alt,
-                                       t_utc=datetime.now(tz=timezone.utc), _sats=almanac_sats,
+                                       t_utc=(datetime.fromtimestamp(args.almanac_epoch, tz=timezone.utc)
+                                              if args.almanac_epoch else datetime.now(tz=timezone.utc)),
+                                       _sats=almanac_sats,
                                        f_carrier_hz=args.carrier_hz)
                 # doppler_sign flips to the receiver's observed convention -- apply it to BOTH the
                 # Doppler and its rate so the 2nd-order feed-forward ramps the right way. (Range
@@ -709,6 +726,27 @@ def main(argv=None):
             except Exception as e:
                 _log("predict_dopplers failed: %s" % e)
             up = {p for p, v in pred.items() if v[2] >= args.mask_deg}
+            # nh TIME-ASSIST: POST each visible sat's predicted absolute overlay-chip index to the
+            # combiner. period = one primary code period (= one overlay chip); the predicted chip
+            # at transmit time t_tx = gpst(now) - range/c is round(t_tx/period) mod overlay_len.
+            # NO per-sat clock term (a ~0.1-chip effect the combiner's +-1 search + consensus
+            # absorb) and NO absolute-convention care (the combiner self-calibrates the constant
+            # from its confidently-locked sats). Differential + slowly-varying, so the exact
+            # reference instant is immaterial to <<1 chip.
+            if args.nh_assist and pred:
+                try:
+                    import gnss_ephemeris as _nh_eph
+                    period = args.code_length / args.chip_rate_hz
+                    t_ref = args.almanac_epoch or time.time()
+                    hints = [{"prn": int(p),
+                              "nh": int(round((_nh_eph.gpst_of_utc(t_ref)
+                                               - v[3] / _nh_eph.C_LIGHT) / period))
+                                    % args.nh_overlay_len}
+                             for p, v in pred.items() if v[2] >= args.mask_deg]
+                    if hints:
+                        _post("%s/set_nh_hint" % combiner, hints)
+                except Exception as e:
+                    _log("nh-assist POST failed: %s" % e)
             # Common clock-frequency bias = median(measured - predicted) over detected
             # sats. A tight residual spread confirms the sign convention; a wild spread
             # (resid ~ -2x predicted) means flip --doppler-sign.

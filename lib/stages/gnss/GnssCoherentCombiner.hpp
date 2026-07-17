@@ -213,6 +213,21 @@ private:
     std::vector<int> _dr_prn;     ///< PRN the anchor belongs to (slot reassignment invalidates)
     std::vector<int> _st_deep_rec; ///< records in the chosen deep window (= full window unless the
                                    ///< auto-coherence ladder found a shorter, more coherent one)
+
+    /// nh TIME-ASSIST (nh_assist: true). The broker (which has the almanac) POSTs, per PRN, the
+    /// PREDICTED absolute overlay-chip index from BeiDou time + range -- an emit-independent
+    /// number in the broker's own convention. Each emit we measure the convention/window offset
+    /// from the sats the blind search LOCKED CONFIDENTLY (offset = nh_found - hint, sat-independent
+    /// at one emit), then seed the deep wipe of the sats that DIDN'T clear at (hint + offset): the
+    /// weak sats that cannot win the 1800-way alignment search get the geometrically-correct
+    /// alignment for free. Purely additive: a wrong hint just fails its floor and the blind result
+    /// stands. -1 = no hint yet.
+    bool _nh_assist = false;
+    int _nh_min_refs = 3;         ///< min confidently-locked sats that must AGREE on the offset
+    std::vector<int> _nh_hint;    ///< broker's predicted absolute overlay index per PRN (-1 = none)
+    std::mutex _nh_mtx;           ///< guards _nh_hint (POST callback vs main thread)
+    void set_nh_hint_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+
     std::mutex _st_mtx;
 };
 

@@ -176,6 +176,13 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _dr_utc.assign(_n_prn, 0.0);
     _dr_prn.assign(_n_prn, -1);
     _st_deep_rec.assign(_n_prn, 0);
+
+    // nh time-assist: only meaningful for a per-PRN overlay pilot (B1C/E5a/B2a: _l1co populated),
+    // where the weak sats lose the long alignment search. Harmless (and off) for the shared-
+    // overlay / navwipe combiners.
+    _nh_assist = config.get_default<bool>(unique_name, "nh_assist", false) && !_l1co.empty();
+    _nh_min_refs = config.get_default<int>(unique_name, "nh_min_refs", 3);
+    _nh_hint.assign(_n_prn, -1);
 }
 
 GnssCoherentCombiner::~GnssCoherentCombiner() {
@@ -188,6 +195,10 @@ void GnssCoherentCombiner::main_thread() {
     kotekan::restServer::instance().register_get_callback(
         unique_name + "/get_status",
         std::bind(&GnssCoherentCombiner::get_status_callback, this, _1));
+    if (_nh_assist)
+        kotekan::restServer::instance().register_post_callback(
+            unique_name + "/set_nh_hint",
+            std::bind(&GnssCoherentCombiner::set_nh_hint_callback, this, _1, _2));
 
     std::vector<frameID> in_ids;
     for (Buffer* b : in_bufs)
@@ -664,7 +675,13 @@ void GnssCoherentCombiner::main_thread() {
                         }
                     }
                 }
-                if (!_rolling) { _navbuf[p].clear(); _navutc[p].clear(); _navhead[p].clear(); }
+                // nh_assist defers the block-mode clear: the second pass (below) still needs
+                // this window's per-record A/head to run the hinted wipe for the weak sats.
+                if (!_rolling && !_nh_assist) {
+                    _navbuf[p].clear();
+                    _navutc[p].clear();
+                    _navhead[p].clear();
+                }
             } else if (_navwipe_bit_records > 0) {
                 const auto& ab = _navbuf[p];
                 const auto& ub = _navutc[p];
@@ -736,6 +753,108 @@ void GnssCoherentCombiner::main_thread() {
         if (!_rolling)
             n_acc = 0;
 
+        // ---- nh TIME-ASSIST (second pass) ----------------------------------------------------
+        // The blind alignment search (above) needs SNR to win over 1800 trials; the weak sats
+        // lose it and never certify. Here we seed their deep wipe with the geometrically-correct
+        // alignment instead. The broker POSTs each PRN's predicted absolute overlay index (from
+        // BeiDou time + range, its own convention constant); at ONE emit the (nh_found - hint)
+        // offset is the SAME for every sat (shared window start + a shared time->index map), so we
+        // measure it from the sats the blind search locked CONFIDENTLY and apply it to the rest.
+        // Purely additive: a hinted wipe is used only if it clears its floor AND beats the blind
+        // result, so a wrong hint (or a mislocked reference outvoted by the cluster) changes
+        // nothing. Requires the deferred navbuf (block mode) still holding this window.
+        if (_nh_assist) {
+            std::lock_guard<std::mutex> lk(_nh_mtx);
+            constexpr double NH_REF_MARGIN = 3.0; // "confident" reference = deep >> its floor
+            auto hint_of = [&](int p) -> int {
+                const int prn = (int)std::lround(ref_prn[p]);
+                return (prn >= 1 && prn <= _n_prn) ? _nh_hint[prn - 1] : -1;
+            };
+            auto ovlen = [&](int p) -> int {
+                const int prn = (int)std::lround(ref_prn[p]);
+                return (prn >= 1 && prn <= (int)_l1co.size()) ? (int)_l1co[prn - 1].size() : 0;
+            };
+            // pivot on the strongest confidently-locked sat, then take the offset cluster median
+            double pivot = -1.0, best = 0.0;
+            for (int p = 0; p < _n_prn; ++p) {
+                const int L = ovlen(p), h = hint_of(p);
+                if (L <= 0 || h < 0 || coh_s[p] <= 0.0)
+                    continue;
+                if (deep_snr[p] > NH_REF_MARGIN * deep_floor[p] && deep_snr[p] > best) {
+                    best = deep_snr[p];
+                    pivot = (double)(((nh_phase[p] - h) % L + L) % L);
+                }
+            }
+            if (pivot >= 0.0) {
+                std::vector<double> cl;
+                for (int p = 0; p < _n_prn; ++p) {
+                    const int L = ovlen(p), h = hint_of(p);
+                    if (L <= 0 || h < 0 || coh_s[p] <= 0.0
+                        || deep_snr[p] <= NH_REF_MARGIN * deep_floor[p])
+                        continue;
+                    const double o = (double)(((nh_phase[p] - h) % L + L) % L);
+                    const double d = std::remainder(o - pivot, (double)L); // agree with the pivot?
+                    if (std::abs(d) <= 3.0)
+                        cl.push_back(pivot + d);
+                }
+                if ((int)cl.size() >= _nh_min_refs) {
+                    std::nth_element(cl.begin(), cl.begin() + cl.size() / 2, cl.end());
+                    const long long offset = (long long)std::llround(cl[cl.size() / 2]);
+                    for (int p = 0; p < _n_prn; ++p) {
+                        const int L = ovlen(p), h = hint_of(p), prn = (int)std::lround(ref_prn[p]);
+                        if (L <= 0 || h < 0)
+                            continue;
+                        if (deep_snr[p] > NH_REF_MARGIN * deep_floor[p] && coh_s[p] > 0.0)
+                            continue; // already confidently locked -- leave it
+                        const auto& ab = _navbuf[p];
+                        const auto& ub = _navutc[p];
+                        const auto& hb = _navhead[p];
+                        if (ab.size() < 2)
+                            continue;
+                        const auto& ov = _l1co[(size_t)(prn - 1)];
+                        const int hph0 = (int)(((h + offset) % L + L) % L);
+                        const double flr =
+                            std::sqrt(2.0 * std::log((double)std::max<size_t>(ov.size(), 2))) + 1.0;
+                        // try the hinted phase +-1 chip: the broker's hint carries no per-sat
+                        // clock (a ~0.1-chip term), and the consensus is a median, so the exact
+                        // chip can round either way. 3 trials, not 1800.
+                        gnss::OverlayWipeResult dw{};
+                        int hph = hph0;
+                        for (int dph = -1; dph <= 1; ++dph) {
+                            const int ph = ((hph0 + dph) % L + L) % L;
+                            const auto w = gnss::overlay_wipe_at(ab, ub, ov, ph, &hb);
+                            if (w.snr > dw.snr) {
+                                dw = w;
+                                hph = ph;
+                            }
+                        }
+                        if (dw.snr > FLOOR_MARGIN * flr && dw.snr > deep_snr[p]) {
+                            float* rec = out + (size_t)p * RECORD_FLOATS;
+                            rec[8] = (float)dw.amplitude;
+                            deep_snr[p] = dw.snr;
+                            nh_phase[p] = hph;
+                            deep_rec[p] = (int)ab.size();
+                            deep_floor[p] = flr;
+                            coh_s[p] = ub.back() - ub.front();
+                            const double span = ub.back() - ub.front();
+                            const double T = span * (double)ab.size() / (double)(ab.size() - 1);
+                            if (T > 0.0) // selection-free single alignment -> 2-dof debias
+                                deep_pow[p] = (dw.snr * dw.snr - 2.0) / (2.0 * T);
+                            _dr_phase[p] = hph; // seed the anchor: future emits dead-reckon it
+                            _dr_utc[p] = ub.front();
+                            _dr_prn[p] = prn;
+                        }
+                    }
+                }
+            }
+            if (!_rolling) // the deferred block-mode clear, now that the window is consumed
+                for (int p = 0; p < _n_prn; ++p) {
+                    _navbuf[p].clear();
+                    _navutc[p].clear();
+                    _navhead[p].clear();
+                }
+        }
+
         // Publish the latest full-band amplitudes for the broker's drop decisions.
         {
             std::lock_guard<std::mutex> lk(_st_mtx);
@@ -785,6 +904,26 @@ void GnssCoherentCombiner::main_thread() {
         }
         out_buf->mark_frame_full(unique_name, out_id++);
     }
+}
+
+void GnssCoherentCombiner::set_nh_hint_callback(kotekan::connectionInstance& conn,
+                                                nlohmann::json& request) {
+    // Broker POST: [{"prn":N,"nh":k}, ...] -- k = predicted absolute overlay index (broker's
+    // own convention; the per-emit consensus offset absorbs the constant). Missing/dropped PRNs
+    // keep their last hint; the deep wipe only trusts a hint whose PRN is currently active.
+    try {
+        std::lock_guard<std::mutex> lk(_nh_mtx);
+        for (const auto& s : request) {
+            const int prn = s.at("prn").get<int>();
+            const int nh = s.at("nh").get<int>();
+            if (prn >= 1 && prn <= _n_prn && nh >= 0)
+                _nh_hint[prn - 1] = nh; // keyed by PRN (these pilots' slots are PRN-1-indexed)
+        }
+    } catch (const std::exception& e) {
+        conn.send_error(e.what(), kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
 void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn) {
