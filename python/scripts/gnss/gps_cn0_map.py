@@ -67,7 +67,7 @@ def load(path, tag):
     """One constellation's status log -> (prn, t, x, x_coh, dop). x = s2/N per record
     (dimensionless); x_coh = deep_pow_hz (already a density, Hz; NaN in pre-07-12 logs)."""
     K4 = CONST[tag]["K"] ** 0.25
-    prn, t, x, xc, dop = [], [], [], [], []
+    prn, t, x, xc, dop, coh = [], [], [], [], [], []  # coh = coherence_s (the rescale's duty)
     for line in open(path):
         line = line.strip()
         if not line:
@@ -87,10 +87,10 @@ def load(path, tag):
         t.append(float(r["t"]))
         x.append(v)
         xc.append(float(pc) if pc is not None else np.nan)
+        coh.append(float(r.get("coherence_s") or 0.0))
         dop.append(r.get("doppler_hz") or 0.0)
-    n = len(prn)
     return (np.array(prn, int), np.array(t, "<f8"), np.array(x, float),
-            np.array(xc, float), np.array(dop, float))
+            np.array(xc, float), np.array(dop, float), np.array(coh, float))
 
 
 def pedestal(vals, low, t, tbin_s):
@@ -121,6 +121,18 @@ def main(argv=None):
     ap.add_argument("logs", nargs="*",
                     help="status logs as TAG=PATH (G=..., E=..., C=...); bare paths are G. "
                          "Default: every existing " + ", ".join(DEFAULT_LOGS.values()))
+    ap.add_argument("--coh-rescale", action="store_true",
+                    help="COHERENT map only: divide deep_pow_hz by the emit's coherence duty "
+                         "(coherence_s / full window), recovering the C/N0 a fully-coherent "
+                         "emit would have shown. deep_pow_hz is an honest density but is "
+                         "computed on the FULL window, so a sat that stays coherent for only "
+                         "T_coh of it sums ~T/T_coh independent chunks and reads LOW by exactly "
+                         "that factor (random-walk, not coherent, growth). Untreated this puts "
+                         "the SAME satellites in discrete bands -- the 2026-07-17 GPS trio at "
+                         "deep_records 1000/125 was the ladder, not the sky. Rescaled, the "
+                         "partially-coherent emits land on the fully-coherent ones. Emits with "
+                         "no certified coherence (coherence_s = 0) are DROPPED, not rescaled: "
+                         "their deep_pow is the noise floor and has no duty to divide by.")
     ap.add_argument("--band", default="l1", choices=sorted(BANDS),
                     help="which tune the logs are from: l1 (GPS C/A + E1C + B1C), l2c, or l5 "
                          "(L5-Q + E5a-Q + B2a-P). Sets the per-constellation signal names AND "
@@ -231,6 +243,7 @@ def main(argv=None):
         x = np.concatenate([q[2] for q in parts])
         xc = np.concatenate([q[3] for q in parts])
         dop = np.concatenate([q[4] for q in parts])
+        coh = np.concatenate([q[5] for q in parts])
         # SIGNAL CAPABILITY (2026-07-14): B1C is BDS-3 only. The BDS-2 birds (C1-C18) are real
         # satellites, genuinely overhead, with valid ephemerides -- they just broadcast B1I at
         # 1561 MHz, outside our band. Before the broker's dead-reckon seeder learned this, it
@@ -243,9 +256,9 @@ def main(argv=None):
         if (~cap).sum():
             print("%s: dropped %d rows from PRNs that do not broadcast this signal (< C%d)"
                   % (tag, (~cap).sum(), args.min_prn_c))
-        prn, t, x, xc, dop = prn[cap], t[cap], x[cap], xc[cap], dop[cap]
+        prn, t, x, xc, dop, coh = prn[cap], t[cap], x[cap], xc[cap], dop[cap], coh[cap]
         o = np.argsort(t)   # merged sessions must be time-ordered for the excision scan
-        prn, t, x, xc, dop = prn[o], t[o], x[o], xc[o], dop[o]
+        prn, t, x, xc, dop, coh = prn[o], t[o], x[o], xc[o], dop[o], coh[o]
         if len(x) == 0:
             print("%s: empty log(s) %s" % (tag, paths))
             continue
@@ -265,7 +278,8 @@ def main(argv=None):
             alt[sel] = topo[0].degrees
             az[sel] = topo[1].degrees
         ok = np.isfinite(alt)
-        prn, t, x, xc, dop, alt, az = (prn[ok], t[ok], x[ok], xc[ok], dop[ok], alt[ok], az[ok])
+        prn, t, x, xc, dop, alt, az, coh = (prn[ok], t[ok], x[ok], xc[ok], dop[ok], alt[ok],
+                                            az[ok], coh[ok])
         low = alt < args.ped_mask
 
         # state-flagged re-anchor excision (value-blind)
@@ -296,8 +310,8 @@ def main(argv=None):
         # been fed. (The broker now also skips probes in the carrier loop; this is the belt.)
         keep |= low
         n_cut = int((~keep).sum())
-        prn, t, x, xc, alt, az, low = (prn[keep], t[keep], x[keep], xc[keep],
-                                       alt[keep], az[keep], low[keep])
+        prn, t, x, xc, alt, az, low, coh = (prn[keep], t[keep], x[keep], xc[keep],
+                                            alt[keep], az[keep], low[keep], coh[keep])
         t_rec = CONST[tag]["t_rec"]
         # incoherent: per-record ratio -> density (Hz)
         ped, glob, sig1, real_ped = pedestal(x, low, t, args.ped_tbin)
@@ -309,6 +323,20 @@ def main(argv=None):
                               "" if real_ped else " (NO below-horizon sats: signal-biased "
                               "percentile fallback!)",
                               10 * np.log10(max(2 * sig1 / t_rec, 1e-9))))
+        # COHERENT RESCALE (--coh-rescale): deep_pow_hz is an honest density but is measured on
+        # the FULL window. A sat coherent for only T_coh of it sums ~T/T_coh independent chunks
+        # (random-walk, |sum|^2 ~ N*M*A^2) instead of coherently (N^2*A^2), so it reads LOW by
+        # exactly the duty T_coh/T -- which is why the same satellites appear in DISCRETE BANDS
+        # (2026-07-17: GPS at deep_records 1000/125 = 0 dB / -9 dB, one sky, two rungs).
+        # Multiplying by T/T_coh undoes it. Uncertified emits (coherence_s = 0) are dropped:
+        # their deep_pow is the noise floor, with no duty to divide by.
+        if args.coh_rescale and np.isfinite(xc).any():
+            T_win = CONST[tag]["t_rec"] * CONST[tag]["K"]
+            duty = np.where(coh > 0, coh / T_win, np.nan)
+            n_drop = int((~(duty > 0)).sum())
+            xc = xc / duty          # NaN where uncertified -> excluded downstream
+            print("%s coherent rescale: duty median %.3f, %d uncertified emits dropped"
+                  % (tag, float(np.nanmedian(duty)), n_drop))
         # coherent: deep_pow_hz is already a density (Hz)
         if np.isfinite(xc).any():
             ped2, glob2, sig2, real2 = pedestal(xc, low, t, args.ped_tbin)
