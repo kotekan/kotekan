@@ -807,6 +807,7 @@ void GnssCoherentCombiner::main_thread() {
                 if ((int)cl.size() >= _nh_min_refs) {
                     std::nth_element(cl.begin(), cl.begin() + cl.size() / 2, cl.end());
                     const long long offset = (long long)std::llround(cl[cl.size() / 2]);
+                    std::string dbg; // per-emit assist trace (INFO, cheap: one line per emit)
                     for (int p = 0; p < _n_prn; ++p) {
                         const int L = ovlen(p), h = hint_of(p), prn = (int)std::lround(ref_prn[p]);
                         if (L <= 0 || h < 0)
@@ -822,36 +823,68 @@ void GnssCoherentCombiner::main_thread() {
                         const int hph0 = (int)(((h + offset) % L + L) % L);
                         const double flr =
                             std::sqrt(2.0 * std::log((double)std::max<size_t>(ov.size(), 2))) + 1.0;
-                        // try the hinted phase +-1 chip: the broker's hint carries no per-sat
-                        // clock (a ~0.1-chip term), and the consensus is a median, so the exact
-                        // chip can round either way. 3 trials, not 1800.
+                        // Try the hinted phase +-8 chips (17 trials, not 1800; floor rises only
+                        // sqrt(2 ln 17)/sqrt(2 ln 3) ~ 1.6x over +-1). +-1 was too tight: the
+                        // hint rides the TLE range, and celestrak's BeiDou IGSO PRN labels are
+                        // WRONG for C31/C38/C39 (measured 07-17: 16-20k km = 5-7 chips off) --
+                        // the label rot already caught for C38's visibility. The consensus
+                        // offset from correctly-labelled refs is unaffected (median).
+                        //
+                        // ...AND down the same rung LADDER the blind path uses. A full-window
+                        // STRAIGHT sum decoheres as sinc(f_resid * T): the routine sub-Hz
+                        // carrier residual (C37 at -0.7 Hz, 07-17) costs x0.37 over 1 s and
+                        // pinned every hinted wipe at snr 3-6 vs floor 9.8 while the BLIND
+                        // path certified the same sats on its shorter rungs. Same physics,
+                        // same ladder.
                         gnss::OverlayWipeResult dw{};
                         int hph = hph0;
-                        for (int dph = -1; dph <= 1; ++dph) {
-                            const int ph = ((hph0 + dph) % L + L) % L;
-                            const auto w = gnss::overlay_wipe_at(ab, ub, ov, ph, &hb);
-                            if (w.snr > dw.snr) {
-                                dw = w;
-                                hph = ph;
+                        size_t dlen = ab.size();
+                        for (size_t len : ladder(ab.size(), std::max<size_t>(ov.size() / 8, 32))) {
+                            const std::vector<std::complex<double>> as(ab.end() - (long)len,
+                                                                       ab.end());
+                            const std::vector<double> us(ub.end() - (long)len, ub.end());
+                            const std::vector<std::complex<double>> hsg(hb.end() - (long)len,
+                                                                        hb.end());
+                            for (int dph = -8; dph <= 8; ++dph) {
+                                const int ph = ((hph0 + dph) % L + L) % L;
+                                const auto w = gnss::overlay_wipe_at(as, us, ov, ph, &hsg);
+                                if (w.snr > dw.snr) {
+                                    dw = w;
+                                    hph = ph;
+                                    dlen = len;
+                                }
                             }
+                        }
+                        {
+                            char b[96];
+                            snprintf(b, sizeof b, " C%d:h%d+o=%d snr%.1f/blind%.1f%s", prn,
+                                     h, hph, dw.snr, deep_snr[p],
+                                     (dw.snr > FLOOR_MARGIN * flr && dw.snr > deep_snr[p])
+                                         ? "*ADOPT" : "");
+                            dbg += b;
                         }
                         if (dw.snr > FLOOR_MARGIN * flr && dw.snr > deep_snr[p]) {
                             float* rec = out + (size_t)p * RECORD_FLOATS;
                             rec[8] = (float)dw.amplitude;
                             deep_snr[p] = dw.snr;
                             nh_phase[p] = hph;
-                            deep_rec[p] = (int)ab.size();
+                            deep_rec[p] = (int)dlen;
                             deep_floor[p] = flr;
-                            coh_s[p] = ub.back() - ub.front();
-                            const double span = ub.back() - ub.front();
-                            const double T = span * (double)ab.size() / (double)(ab.size() - 1);
-                            if (T > 0.0) // selection-free single alignment -> 2-dof debias
+                            const double t0r = ub[ub.size() - dlen];
+                            coh_s[p] = ub.back() - t0r;
+                            const double span = ub.back() - t0r;
+                            const double T = dlen > 1
+                                ? span * (double)dlen / (double)(dlen - 1) : 0.0;
+                            if (T > 0.0) // 17-trial selection, ~2-dof debias still fair
                                 deep_pow[p] = (dw.snr * dw.snr - 2.0) / (2.0 * T);
                             _dr_phase[p] = hph; // seed the anchor: future emits dead-reckon it
-                            _dr_utc[p] = ub.front();
+                            _dr_utc[p] = t0r;
                             _dr_prn[p] = prn;
                         }
                     }
+                    if (!dbg.empty())
+                        WARN("nh-assist refs={:d} off={:d}:{:s}", (int)cl.size(), (int)offset,
+                             dbg); // WARN so it clears log_level: warn (debug aid; demote later)
                 }
             }
             if (!_rolling) // the deferred block-mode clear, now that the window is consumed
