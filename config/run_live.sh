@@ -442,6 +442,7 @@ if [ "${OBSERVABLES:-1}" != "0" ]; then
             --airspy "${SP}$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
             --carrier-hz "${CARRIER_HZ:-1575420000}" --chip-rate-hz "$7" \
             ${LAT:+--lat $LAT} ${LON:+--lon $LON} ${ALT:+--alt $ALT} \
+            --interval "${OBS_INTERVAL:-2.0}" \
             --out "$RECDIR/$6.jsonl" > "/tmp/${TAG}_$6.log" 2>&1 &
     OBSPIDS="$OBSPIDS $!"
     echo "observables ($4) -> $RECDIR/$6.jsonl"
