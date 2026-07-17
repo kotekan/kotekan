@@ -97,6 +97,8 @@ void bufferBadInputs::main_thread() {
     while (!stop_thread) {
         // get an output frame
         uint8_t* out_frame = (uint8_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
+        if (out_frame == nullptr)
+            return;
 
         // Copy from the permanent buffer
         {
