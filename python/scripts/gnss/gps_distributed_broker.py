@@ -351,6 +351,46 @@ def main(argv=None):
                     help="clamp on the shared carrier trim (Hz)")
     ap.add_argument("--carrier-leak", type=float, default=0.05,
                     help="shared carrier integrator leak (same role as --dll-leak)")
+    ap.add_argument("--carrier-min-sig", type=float, default=0.0,
+                    help="HOLD the trim (skip the update) when the combiner's lock significance "
+                         "is below this (0 = old behavior). The probe exemption above, "
+                         "generalized: a FADED real satellite is the same pathology -- its "
+                         "residual is noise, and integrating it at full gain random-walks the "
+                         "trim, which drags the model phase off, which DEEPENS the fade. "
+                         "Measured 2026-07-17 on the 1176 MHz chains: a ~4 s noise-driven "
+                         "limit cycle (dip -> trim walk 1-9 Hz -> decoherence -> dip), median "
+                         "certified stretch 4 s, every dip an ADR phase break of ~8 cycles -- "
+                         "the gf-TEC floor. A held trim coasts on the almanac Doppler-rate "
+                         "feed-forward, which carries the true dynamics through the fade. "
+                         "Updates additionally require a CERTIFIED coherent window "
+                         "(coherence_s > 0): a residual measured on a decohered window is "
+                         "garbage at ANY amplitude (the sig gate alone let re-lock transition "
+                         "rows kick converged trims to the +-100 Hz rails -- E36 at 48 dB-Hz).")
+    ap.add_argument("--carrier-max-step", type=float, default=0.0,
+                    help="slew clamp on the trim, Hz per update (0 = unclamped). A healthy "
+                         "converged loop corrects 0.02-0.2 Hz per update and the clock it "
+                         "tracks is GPSDO-smooth, so any large requested step is a bad "
+                         "measurement by construction; clamping bounds the damage a single "
+                         "garbage residual can do to less than a deep window can absorb. "
+                         "Convergence from a fleet-seeded start needs only a few Hz total.")
+    ap.add_argument("--carrier-innov-hz", type=float, default=0.0,
+                    help="TRACK-mode innovation gate (0 = off): REJECT any residual larger "
+                         "than this outright. After feed-forward, a converged sat's true "
+                         "residual is sub-Hz (the trim tracks a slowly-drifting almanac-"
+                         "Doppler error); the resid estimator nevertheless emits tens-of-Hz "
+                         "values that pass certification (measured 07-17: 'certified' +40 Hz "
+                         "-- impossible for a genuinely coherent window). A slew clamp only "
+                         "slows the poisoning (E36 at 49 dB-Hz walked to 18 Hz off the fleet "
+                         "at 1 Hz/update and collapsed 20 dB); rejection stops it. Real step "
+                         "changes re-enter via re-seed -> BOOTSTRAP.")
+    ap.add_argument("--carrier-fleet-seed", action="store_true",
+                    help="initialize a new (or re-seeded) sat's trim to the MEDIAN of the "
+                         "converged fleet trims instead of 0. The converged trim is the "
+                         "chain's deterministic frac-N LO offset (same for every sat, stable "
+                         "across restarts -- e.g. the L5 chain sits ~+30 Hz), so the fleet "
+                         "median is the right prior; the carrier twin of the code-bias "
+                         "seeding above (strong sats calibrate the clock so weak ones start "
+                         "on it).")
     ap.add_argument("--force-doppler-rate", type=float, default=None,
                     help="REPLAY BENCH ONLY: attach this doppler_rate_hz_s to every seed (a "
                          "recorded capture's sky is at another epoch, so no almanac rate) to "
@@ -546,6 +586,7 @@ def main(argv=None):
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
     car_trim = {}       # prn -> persistent NCO frequency command (Hz): the shared carrier loop
     car_last = {}       # prn -> last integrated residual (dedup: one integration per emit)
+    car_locked = set()  # prns certified coherent since seed: BOOTSTRAP -> TRACK mode latch
     cp_hist = {}     # prn -> [(ref_hop, cp0, dop_det), ...] recent distinct snapshots (slope fit)
 
     def cp_to_seed_currency(pts, dop_seed):
@@ -1433,6 +1474,26 @@ def main(argv=None):
                 resid = float(rec.get("carrier_hz_resid", 0.0))
                 if resid == 0.0:
                     continue
+                # TWO-MODE LOOP. BOOTSTRAP (never certified since seed): legacy behavior --
+                # accept any residual at full gain, because at seed the trim is 0, the true
+                # residual IS the ~30 Hz clock offset, and the window cannot cohere until the
+                # trim pulls in (gating on certification here would deadlock acquisition).
+                # TRACK (certified once): a residual is only a measurement when its window
+                # was COHERENT -- gate on certification AND significance, and slew-clamp.
+                # The sig gate alone let re-lock transition rows (amp back, phase not) kick
+                # converged trims 30 Hz a shot: E36 at 48 dB-Hz visited the +-100 Hz rails.
+                coh_ok = (rec.get("coherence_s") or 0.0) > 0.0
+                sig = (max(rec.get("deep_snr") or 0.0, rec.get("amp_snr") or 0.0)
+                       if coh_ok else 0.0)
+                tracking = prn in car_locked
+                if coh_ok and sig >= args.carrier_min_sig > 0.0:
+                    car_locked.add(prn)
+                if tracking and args.carrier_min_sig > 0.0 \
+                        and (not coh_ok or sig < args.carrier_min_sig):
+                    continue  # fade: hold the trim, coast on the feed-forward
+                if tracking and args.carrier_innov_hz > 0.0 \
+                        and abs(resid) > args.carrier_innov_hz:
+                    continue  # certified-but-implausible residual: the estimator is lying
                 # Integrate each MEASUREMENT once, not each poll: the combiner emits a new
                 # residual every ~1.5 s window while this loop polls at ~5 Hz -- integrating
                 # the stale value 5-7x per measurement over-applies the gain and oscillates
@@ -1440,8 +1501,17 @@ def main(argv=None):
                 if resid == car_last.get(prn):
                     continue
                 car_last[prn] = resid
-                trim = ((1.0 - args.carrier_leak) * car_trim.get(prn, 0.0)
-                        + args.carrier_gain * resid)
+                if prn not in car_trim and args.carrier_fleet_seed:
+                    # start on the fleet's clock, not at 0: the converged trim is the chain's
+                    # deterministic frac-N LO offset, common-mode across sats
+                    fleet = sorted(car_trim.values())
+                    if len(fleet) >= 3:
+                        car_trim[prn] = fleet[len(fleet) // 2]
+                prev_trim = car_trim.get(prn, 0.0)
+                trim = (1.0 - args.carrier_leak) * prev_trim + args.carrier_gain * resid
+                if tracking and args.carrier_max_step > 0.0:
+                    trim = prev_trim + max(-args.carrier_max_step,
+                                           min(args.carrier_max_step, trim - prev_trim))
                 car_trim[prn] = max(-args.carrier_max_hz, min(args.carrier_max_hz, trim))
                 car_report.append("PRN %d resid %+.2f Hz trim %+.2f" % (prn, resid, car_trim[prn]))
             if car_report:
@@ -1449,6 +1519,7 @@ def main(argv=None):
             for k in list(car_trim):
                 if k not in seeds:
                     del car_trim[k]
+                    car_locked.discard(k)  # a re-seeded sat re-enters via BOOTSTRAP
 
         # 3b. Receiver code-rate clock offset (l-a): pool the strong sats' per-fit samples (robust
         # median), EMA-smooth it (slow -> tracks TCXO/OCXO drift), then SEED it to every sat that

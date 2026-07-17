@@ -66,7 +66,7 @@ PEEL=$(grep -oE '^[a-z_0-9]+: \{ kotekan_stage: GnssVoltagePeel' "$CFG" | grep -
 # lifts each seed's cp by k*10230 with the CL segment k computed from the capture's absolute UTC
 # anchor (airspy /adcstat utc0_sample0) + almanac range. Needs the almanac (LAT/LON).
 CLA=""
-grep -qE 'signal: GPS_L2C_CL' "$CFG" && CLA="--cl-assist --carrier-gain ${CARRIER_GAIN:-0.2}" \
+grep -qE 'signal: GPS_L2C_CL' "$CFG" && CLA="--cl-assist --carrier-gain ${CARRIER_GAIN:-0.2} --carrier-min-sig ${CARRIER_MIN_SIG:-15} --carrier-max-step ${CARRIER_MAX_STEP:-1.0} --carrier-fleet-seed" \
   && echo "L2C CL time-assist ON (k from capture UTC + almanac range) + shared carrier loop"
 # SHARED CARRIER LOOP: any config whose tracker sets carrier_shared: true runs pure feed-forward
 # (seed + almanac Doppler-rate ramp) + an NCO fed the broker's carrier_trim_hz. The combiner measures
@@ -83,8 +83,12 @@ if grep -qE 'carrier_shared:[[:space:]]*true' "$CFG" && ! grep -qE 'signal: GPS_
   # offline ladder on the raw grab proved the LO coheres to 2 s+, sqrt-T to 494 sigma).
   # 10x lower leak -> bias ~0.1 Hz worst-case; the slip-proof two-stage resid estimator
   # (GnssCoherentCombiner::carrier_resid_hz) keeps the trim from random-walking instead.
-  CARG="--carrier-gain ${CARRIER_GAIN:-0.5} --carrier-max-hz ${CARRIER_MAX_HZ:-100} --carrier-leak ${CARRIER_LEAK:-0.0005}"
-  echo "shared carrier loop ON (combiner slope-fit resid -> --carrier-gain ${CARRIER_GAIN:-0.5} -> tracker NCO)"
+  # --carrier-min-sig: HOLD the trim through fades (coast on the feed-forward). Without it a
+  # faded sat's noise residual random-walks the trim at full gain -> the model phase runs off
+  # -> deeper fade: a ~4 s limit cycle that broke ADR by ~8 cycles per dip on the 1176 MHz
+  # chains (median certified stretch 4 s; the gf-TEC floor, 2026-07-17).
+  CARG="--carrier-gain ${CARRIER_GAIN:-0.5} --carrier-max-hz ${CARRIER_MAX_HZ:-100} --carrier-leak ${CARRIER_LEAK:-0.0005} --carrier-min-sig ${CARRIER_MIN_SIG:-15} --carrier-max-step ${CARRIER_MAX_STEP:-1.0} --carrier-innov-hz ${CARRIER_INNOV_HZ:-3.0} --carrier-fleet-seed"
+  echo "shared carrier loop ON (combiner slope-fit resid -> --carrier-gain ${CARRIER_GAIN:-0.5} -> tracker NCO, min-sig ${CARRIER_MIN_SIG:-15}, max-step ${CARRIER_MAX_STEP:-1.0}, innov ${CARRIER_INNOV_HZ:-3.0}, fleet-seed)"
 fi
 # Loud warning if a requested tracker stage isn't actually in the config -- the classic
 # trap is passing TRK=track to the distributed live_l1.yaml (whose trackers are track_00..11):
