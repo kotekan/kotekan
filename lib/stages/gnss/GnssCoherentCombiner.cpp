@@ -182,6 +182,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // overlay / navwipe combiners.
     _nh_assist = config.get_default<bool>(unique_name, "nh_assist", false) && !_l1co.empty();
     _nh_min_refs = config.get_default<int>(unique_name, "nh_min_refs", 3);
+    _nh_search_chips = config.get_default<int>(unique_name, "nh_search_chips", 2);
     _nh_ref_margin = config.get_default<double>(unique_name, "nh_ref_margin", 2.0);
     _nh_hint.assign(_n_prn, -1);
 }
@@ -823,12 +824,14 @@ void GnssCoherentCombiner::main_thread() {
                         const int hph0 = (int)(((h + offset) % L + L) % L);
                         const double flr =
                             std::sqrt(2.0 * std::log((double)std::max<size_t>(ov.size(), 2))) + 1.0;
-                        // Try the hinted phase +-8 chips (17 trials, not 1800; floor rises only
-                        // sqrt(2 ln 17)/sqrt(2 ln 3) ~ 1.6x over +-1). +-1 was too tight: the
-                        // hint rides the TLE range, and celestrak's BeiDou IGSO PRN labels are
-                        // WRONG for C31/C38/C39 (measured 07-17: 16-20k km = 5-7 chips off) --
-                        // the label rot already caught for C38's visibility. The consensus
-                        // offset from correctly-labelled refs is unaffected (median).
+                        // Try the hinted phase +-nh_search_chips (default +-2 = 5 trials, not
+                        // 1800). The hint rides the broker almanac's range: with the BRDC
+                        // source (m-accurate, PRN-indexed, sat clock included) the prediction
+                        // is sub-chip, so +-2 is generous; the TLE era needed +-8 because
+                        // celestrak's BeiDou IGSO PRN labels are WRONG for C31/C38/C39
+                        // (measured 07-17: 16-20k km = 5-7 chips off). Widen via config if
+                        // ever back on the TLE fallback. The consensus offset from correctly-
+                        // labelled refs is unaffected either way (median).
                         //
                         // ...AND down the same rung LADDER the blind path uses. A full-window
                         // STRAIGHT sum decoheres as sinc(f_resid * T): the routine sub-Hz
@@ -845,7 +848,7 @@ void GnssCoherentCombiner::main_thread() {
                             const std::vector<double> us(ub.end() - (long)len, ub.end());
                             const std::vector<std::complex<double>> hsg(hb.end() - (long)len,
                                                                         hb.end());
-                            for (int dph = -8; dph <= 8; ++dph) {
+                            for (int dph = -_nh_search_chips; dph <= _nh_search_chips; ++dph) {
                                 const int ph = ((hph0 + dph) % L + L) % L;
                                 const auto w = gnss::overlay_wipe_at(as, us, ov, ph, &hsg);
                                 if (w.snr > dw.snr) {

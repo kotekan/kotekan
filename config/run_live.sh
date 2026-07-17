@@ -300,7 +300,9 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   # safe mode if the almanac --doppler-sign is still unconfirmed, since a wrong sign narrows onto
   # the wrong half and finds nothing). DOPPLER_SIGN=-1 flips the predicted-Doppler sign.
   ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
-  ALM="$ALM --doppler-sign ${DOPPLER_SIGN:-1}"
+  # --constellation: BRDC-almanac constellation gate (the default almanac source since
+  # 2026-07-17; PRN-indexed = immune to the celestrak label rot. --tle stays as fallback).
+  ALM="$ALM --constellation G --doppler-sign ${DOPPLER_SIGN:-1}"
   # 2 deepest-below-horizon PRNs stay seeded as NOISE PROBES: genuine signal-free emits
   # calibrate the beam map's pedestal (the almanac gate otherwise never tracks one and
   # the GPS pedestal fell back to a signal percentile, blinding the map's low end).
@@ -355,7 +357,7 @@ if grep -qE '^gal_track:|seed_endpoint:[[:space:]]*"/gal_track/set_seeds"' "$RUN
   GAL_ALM=""
   if [ -n "$LAT" ] && [ -n "$LON" ]; then
     GAL_ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
-    GAL_ALM="$GAL_ALM --doppler-sign ${DOPPLER_SIGN:-1} --tle $GAL_TLE"
+    GAL_ALM="$GAL_ALM --constellation E --doppler-sign ${DOPPLER_SIGN:-1} --tle $GAL_TLE"
     GAL_ALM="$GAL_ALM --noise-probes ${NOISE_PROBES:-4}"
     if [ "${DEAD_RECKON:-1}" != "0" ]; then GAL_ALM="$GAL_ALM --dead-reckon --dr-constellation E"; fi
     GAL_ALM="$GAL_ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500} --search-margin-wide-hz ${CLK_WIDE_HZ:-3000}"
@@ -378,10 +380,11 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
   BDS_ALM=""
   if [ -n "$LAT" ] && [ -n "$LON" ]; then
     BDS_ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
-    BDS_ALM="$BDS_ALM --doppler-sign ${DOPPLER_SIGN:-1} --tle $BDS_TLE"
-    # B1C is BDS-3 only: BDS-2 birds in the group TLE don't transmit it. Their predictions
-    # poisoned the clock-freq bias (2026-07-12: lone cross-corr 'C14' lock swallowed -1550 Hz
-    # as clock bias and deadlocked the narrowed search for the whole constellation).
+    BDS_ALM="$BDS_ALM --constellation C --doppler-sign ${DOPPLER_SIGN:-1} --tle $BDS_TLE"
+    # B1C is BDS-3 only: BDS-2 birds don't transmit it. Their predictions poisoned the
+    # clock-freq bias (2026-07-12: lone cross-corr 'C14' lock swallowed -1550 Hz as clock
+    # bias and deadlocked the narrowed search for the whole constellation). The BRDC
+    # almanac gates PRN >= 19 itself; the name filter covers the TLE fallback path.
     BDS_ALM="$BDS_ALM --tle-name-filter BEIDOU-3"
     BDS_ALM="$BDS_ALM --noise-probes ${NOISE_PROBES:-4}"
     if [ "${DEAD_RECKON:-1}" != "0" ]; then BDS_ALM="$BDS_ALM --dead-reckon --dr-constellation C"; fi

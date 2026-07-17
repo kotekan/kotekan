@@ -224,6 +224,11 @@ private:
     /// stands. -1 = no hint yet.
     bool _nh_assist = false;
     int _nh_min_refs = 3;         ///< min confidently-locked sats that must AGREE on the offset
+    int _nh_search_chips = 2;     ///< hinted-wipe half-width (chips) around hint+offset. +-2 is
+                                  ///< right for the BRDC almanac (m-accurate range + sat clock =
+                                  ///< sub-chip hints); the TLE era needed +-8 to survive the
+                                  ///< celestrak IGSO label rot (5-7 chips). Narrower = lower
+                                  ///< selection floor + cheaper.
     double _nh_ref_margin = 2.0;  ///< reference bar as multiple of the wipe floor (2.0 = the
                                   ///< certification gate itself; cluster agreement is the guard)
     std::vector<int> _nh_hint;    ///< broker's predicted absolute overlay index per PRN (-1 = none)

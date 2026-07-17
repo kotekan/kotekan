@@ -41,7 +41,7 @@ import statistics
 import sys
 import time
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(__file__)))
 from gnss_stages import resolve_stage  # noqa: E402  (gps_* <-> bare stage-name aliasing)
@@ -186,6 +186,51 @@ def parse_endpoints(csv, default_base):
     return prefixes
 
 
+def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
+    """BRDC-almanac analog of gps_beamtrack.predict_dopplers for ONE constellation:
+    {prn: (doppler_hz, doppler_rate_hz_s, elevation_deg, range_m, sat_clk_s)}.
+
+    Same tuple layout/sign convention as the TLE path (+Doppler = approaching), extended
+    with the broadcast SATELLITE CLOCK (the TLE class has none) -- the nh time-assist
+    convention is t_sv = t_gpst - range/c + clk (proven to 0.01 chip, c31_convention.py).
+    All elevations are returned (down to -90): the noise probes pick the deepest-BELOW-
+    horizon sats. Rate = range-rate differencing over a 4 s epoch pair, like the
+    dead-reckon block. Full-sky predict_all is ~1.2 ms, so per-cycle cost is trivial
+    (the skyfield path it replaces was heavier).
+    """
+    ge = state["mod"]
+    now = time.time()
+    if state["eph"] is None or now - state["eph_t"] > 7200.0:
+        # Current-day BRDC files GROW; fetch_brdc re-fetches a cache older than 2 h. Pass
+        # t_utc so a replay (--almanac-epoch) gets the DAY-MATCHED file -- today's file
+        # cannot predict another epoch (best_eph 4 h window).
+        try:
+            state["eph"] = ge.parse_rinex_nav(ge.fetch_brdc(t_utc))
+            state["eph_t"] = now
+            _log("brdc almanac: ephemeris refreshed (%d sats)" % len(state["eph"]))
+        except Exception as e:
+            state["eph_t"] = now - 7200.0 + 600.0  # coast on the old set, retry in 10 min
+            if state["eph"] is None:
+                raise
+            _log("brdc almanac: refresh failed (%s); coasting on the previous set "
+                 "(sats thin out as toe ages past 4 h)" % e)
+    dt = 4.0
+    pa = ge.predict_all(state["eph"], lat, lon, alt_m, t_utc, mask_deg=-90.0)
+    pb = ge.predict_all(state["eph"], lat, lon, alt_m, t_utc + timedelta(seconds=dt),
+                        mask_deg=-90.0)
+    C = 299792458.0
+    out = {}
+    for (s, prn), v in pa.items():
+        if s != sysc or prn < min_prn:
+            continue
+        dop = -v["range_rate_mps"] / C * f_carrier_hz
+        v2 = pb.get((s, prn))
+        rate = (-(v2["range_rate_mps"] - v["range_rate_mps"]) / dt / C * f_carrier_hz
+                if v2 else 0.0)
+        out[prn] = (dop, rate, v["el"], v["range_m"], v["sat_clk_s"])
+    return out
+
+
 def visible_prns(lat, lon, alt_m, mask_deg, look_ahead_s):
     """PRNs above the elevation mask now (and look_ahead_s ahead). Needs skyfield."""
     try:
@@ -285,6 +330,21 @@ def main(argv=None):
                          "clock-freq bias solved from the measured sats) instead of the coarse "
                          "search grid, and gate to visible sats. Code phase still from the search.")
     ap.add_argument("--tle", default=None, help="GPS TLE file/URL (default: Celestrak gps-ops)")
+    ap.add_argument("--almanac-source", default="brdc", choices=("brdc", "tle"),
+                    help="orbit source for the almanac assist. brdc (default) = the IGS "
+                         "broadcast-ephemeris file (gnss_ephemeris): PRN-INDEXED (immune to the "
+                         "celestrak name->PRN label rot that mislabels BeiDou IGSOs -- C31/C38/"
+                         "C39 ranges were 16-20k km off on 2026-07-17, corrupting nh hints by "
+                         "5-7 overlay chips and hiding C38's true 84-deg pass), ~m orbits vs "
+                         "TLE's ~km, includes the sat clock, and needs no skyfield. tle = the "
+                         "legacy celestrak path (also the automatic fallback when BRDC is "
+                         "unreachable at startup).")
+    ap.add_argument("--constellation", default=None, choices=("G", "E", "C"),
+                    help="constellation letter for the BRDC almanac (which file covers ALL "
+                         "systems, unlike the per-group TLE URLs). Default: --dr-constellation. "
+                         "C keeps only PRN >= 19 (BDS-3): the BDS-2 birds transmit B1I at "
+                         "1561 MHz, outside our band -- same capability cut the BEIDOU-3 "
+                         "TLE name filter encodes.")
     ap.add_argument("--carrier-hz", type=float, default=1575.42e6, help="carrier for Doppler pred")
     ap.add_argument("--doppler-sign", type=float, default=1.0,
                     help="multiply predicted Doppler (set -1 if the convention is inverted)")
@@ -530,29 +590,47 @@ def main(argv=None):
     combiner = resolve_prefix(args.combiner, base)
     gating = args.lat is not None and args.lon is not None
 
-    # Almanac assist: load the GPS constellation once (TLEs), predict per-cycle.
-    almanac_sats = None
+    # Almanac assist: BRDC (default; PRN-indexed, label-rot-proof) or the legacy TLE path.
+    almanac_sats = None       # TLE mode: {prn: EarthSatellite}
+    brdc_alm = None           # BRDC mode: {"mod", "eph", "eph_t"} for brdc_predict
+    alm_sys = args.constellation or args.dr_constellation
+    alm_min_prn = 19 if alm_sys == "C" else 1  # BDS-3 only: C1-18 = B1I, out of band
     if args.almanac:
         if not gating:
             _log("--almanac needs --lat/--lon; disabling")
             args.almanac = False
-        else:
-            try:
-                from gps_beamtrack import load_gps_satellites, predict_dopplers
-                from gps_beamtrack import DEFAULT_TLE_URL
-                almanac_sats = load_gps_satellites(args.tle or DEFAULT_TLE_URL)
-                if args.tle_name_filter:
-                    import re as _re
-                    n0 = len(almanac_sats)
-                    almanac_sats = {p: s for p, s in almanac_sats.items()
-                                    if _re.search(args.tle_name_filter, s.name or "")}
-                    _log("tle-name-filter %r: %d/%d sats kept"
-                         % (args.tle_name_filter, len(almanac_sats), n0))
-                _log("almanac: loaded %d TLEs; predicting Doppler @ (%.4f, %.4f)"
-                     % (len(almanac_sats), args.lat, args.lon))
-            except Exception as e:
-                _log("almanac unavailable (%s); falling back to search Doppler" % e)
-                args.almanac = False
+    if args.almanac and args.almanac_source == "brdc":
+        try:
+            import gnss_ephemeris as _alm_eph_mod
+            when = (datetime.fromtimestamp(args.almanac_epoch, tz=timezone.utc)
+                    if args.almanac_epoch else datetime.now(timezone.utc))
+            brdc_alm = {"mod": _alm_eph_mod,
+                        "eph": _alm_eph_mod.parse_rinex_nav(_alm_eph_mod.fetch_brdc(when)),
+                        "eph_t": time.time()}
+            n = sum(1 for k in brdc_alm["eph"] if k[0] == alm_sys and k[1] >= alm_min_prn)
+            _log("almanac: BRDC %s (%d %s sats%s) @ (%.4f, %.4f)"
+                 % (args.almanac_source, n, alm_sys,
+                    ", PRN >= %d" % alm_min_prn if alm_min_prn > 1 else "",
+                    args.lat, args.lon))
+        except Exception as e:
+            _log("BRDC almanac unavailable (%s); falling back to TLE" % e)
+    if args.almanac and brdc_alm is None:
+        try:
+            from gps_beamtrack import load_gps_satellites, predict_dopplers
+            from gps_beamtrack import DEFAULT_TLE_URL
+            almanac_sats = load_gps_satellites(args.tle or DEFAULT_TLE_URL)
+            if args.tle_name_filter:
+                import re as _re
+                n0 = len(almanac_sats)
+                almanac_sats = {p: s for p, s in almanac_sats.items()
+                                if _re.search(args.tle_name_filter, s.name or "")}
+                _log("tle-name-filter %r: %d/%d sats kept"
+                     % (args.tle_name_filter, len(almanac_sats), n0))
+            _log("almanac: loaded %d TLEs; predicting Doppler @ (%.4f, %.4f)"
+                 % (len(almanac_sats), args.lat, args.lon))
+        except Exception as e:
+            _log("almanac unavailable (%s); falling back to search Doppler" % e)
+            args.almanac = False
 
     # Dead-reckoned cp seeding: BRDC ephemeris + a search-solved receiver clock predict the
     # code phase of every sat the search can't (yet) see. State: eph = parsed BRDC records;
@@ -712,27 +790,35 @@ def main(argv=None):
         up = None
         if args.almanac:
             try:
-                from gps_beamtrack import predict_dopplers
-                raw = predict_dopplers(args.lat, args.lon, args.alt,
-                                       t_utc=(datetime.fromtimestamp(args.almanac_epoch, tz=timezone.utc)
-                                              if args.almanac_epoch else datetime.now(tz=timezone.utc)),
-                                       _sats=almanac_sats,
-                                       f_carrier_hz=args.carrier_hz)
+                t_pred = (datetime.fromtimestamp(args.almanac_epoch, tz=timezone.utc)
+                          if args.almanac_epoch else datetime.now(tz=timezone.utc))
+                if brdc_alm is not None:
+                    raw = brdc_predict(brdc_alm, args.lat, args.lon, args.alt,
+                                       alm_sys, alm_min_prn, t_pred, args.carrier_hz)
+                else:
+                    from gps_beamtrack import predict_dopplers
+                    raw = predict_dopplers(args.lat, args.lon, args.alt, t_utc=t_pred,
+                                           _sats=almanac_sats,
+                                           f_carrier_hz=args.carrier_hz)
                 # doppler_sign flips to the receiver's observed convention -- apply it to BOTH the
                 # Doppler and its rate so the 2nd-order feed-forward ramps the right way. (Range
-                # is geometry, no sign; it feeds the CL time-assist propagation delay.)
-                pred = {p: (args.doppler_sign * d, args.doppler_sign * r, e, rng)
-                        for p, (d, r, e, rng) in raw.items()}
+                # is geometry, no sign; it feeds the CL time-assist propagation delay. The 5th
+                # element -- broadcast sat clock -- is BRDC-only; the TLE path has none.)
+                pred = {p: (args.doppler_sign * v[0], args.doppler_sign * v[1], v[2], v[3],
+                            (v[4] if len(v) > 4 else 0.0))
+                        for p, v in raw.items()}
             except Exception as e:
-                _log("predict_dopplers failed: %s" % e)
+                _log("almanac predict failed: %s" % e)
             up = {p for p, v in pred.items() if v[2] >= args.mask_deg}
             # nh TIME-ASSIST: POST each visible sat's predicted absolute overlay-chip index to the
-            # combiner. period = one primary code period (= one overlay chip); the predicted chip
-            # at transmit time t_tx = gpst(now) - range/c is round(t_tx/period) mod overlay_len.
-            # NO per-sat clock term (a ~0.1-chip effect the combiner's +-1 search + consensus
-            # absorb) and NO absolute-convention care (the combiner self-calibrates the constant
-            # from its confidently-locked sats). Differential + slowly-varying, so the exact
-            # reference instant is immaterial to <<1 chip.
+            # combiner. period = one primary code period (= one overlay chip); the overlay counter
+            # runs on the SATELLITE's clock, so the predicted chip at transmit is
+            # round((gpst(now) - range/c + clk_sv)/period) mod overlay_len -- the convention
+            # proven to 0.01 chip offline (c31_convention.py). clk_sv is the 5th pred element
+            # (BRDC only; 0.0 on the TLE fallback, a <=~0.1-chip omission the consensus absorbs).
+            # NO absolute-convention care (the combiner self-calibrates the constant from its
+            # confidently-locked sats). Differential + slowly-varying, so the exact reference
+            # instant is immaterial to <<1 chip.
             if args.nh_assist and pred:
                 try:
                     import gnss_ephemeris as _nh_eph
@@ -740,7 +826,8 @@ def main(argv=None):
                     t_ref = args.almanac_epoch or time.time()
                     hints = [{"prn": int(p),
                               "nh": int(round((_nh_eph.gpst_of_utc(t_ref)
-                                               - v[3] / _nh_eph.C_LIGHT) / period))
+                                               - v[3] / _nh_eph.C_LIGHT
+                                               + (v[4] if len(v) > 4 else 0.0)) / period))
                                     % args.nh_overlay_len}
                              for p, v in pred.items() if v[2] >= args.mask_deg]
                     if hints:
