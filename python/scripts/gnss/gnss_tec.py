@@ -101,51 +101,76 @@ def interp_adr(arc, t):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--a", required=True, help="band A observables jsonl (e.g. L1)")
-    ap.add_argument("--b", required=True, help="band B observables jsonl (e.g. L5 or L2C)")
+    ap.add_argument("--a", help="band A observables jsonl (e.g. L1)")
+    ap.add_argument("--b", help="band B observables jsonl (e.g. L5 or L2C)")
     ap.add_argument("--sys", default="G")
+    ap.add_argument("--pair", action="append", default=[],
+                    help="A_PATH:B_PATH:SYS, repeatable. POOLING IS THE POINT: E1/B1C/L1 and "
+                         "E5a/B2a/L5 are the same frequency pairs on the same two dongles, so "
+                         "the inter-band clock (the common mode, ~34 m/s) is IDENTICAL across "
+                         "constellations -- pooling triples the sats constraining it and fills "
+                         "the holes where any one constellation has <3 certified sats (measured "
+                         "07-17: single-constellation coverage 19%, and every hole leaks the "
+                         "full clock rate = 264 TECU/s into every arc).")
     ap.add_argument("--since-min", type=float, default=720.0)
     ap.add_argument("--max-gap-s", type=float, default=10.0)
     ap.add_argument("--min-arc-s", type=float, default=120.0)
     ap.add_argument("--min-sig", type=float, default=20.0,
                     help="per-row lock-significance gate, BOTH bands (coasting sats export "
-                         "model+noise ADR)")
+                         "model+noise ADR; measured 07-17: phase does NOT survive a >10 s "
+                         "sub-sig fade -- rms jump 22 m at 10-20 s, km beyond -- so gated "
+                         "gaps are REAL arc breaks)")
     ap.add_argument("--out", default="/tmp/tec")
     args = ap.parse_args()
 
-    ra = load(args.a, args.since_min * 60, args.sys, args.min_sig)
-    rb = load(args.b, args.since_min * 60, args.sys, args.min_sig)
-    common = sorted(set(ra) & set(rb))
-    if not common:
-        sys.exit("no common satellites with ADR in the window")
-    fa = ra[common[0]][0]["carrier_hz"]
-    fb = rb[common[0]][0]["carrier_hz"]
-    lam_a, lam_b = C / fa, C / fb
-    fac = K * (1.0 / fa**2 - 1.0 / fb**2)  # m of L_gf per TECU (signed)
-    print(f"bands {fa/1e6:.2f} / {fb/1e6:.2f} MHz: {fac:+.4f} m/TECU; sats {common}")
+    pairs = [tuple(p.split(":")) for p in args.pair]
+    if args.a and args.b:
+        pairs.append((args.a, args.b, args.sys))
+    if not pairs:
+        sys.exit("need --pair A:B:SYS (repeatable) or --a/--b/--sys")
 
     # Joint arcs: for every (arc_a x arc_b) overlap long enough, sample band B onto band A's
     # epochs. Everything downstream is per joint arc -- an arc break in EITHER band ends it.
-    sat_arcs = {}  # prn -> list of (ts[], gf_m[], el[])
-    for prn in common:
-        for aa in arcs(ra[prn], args.max_gap_s):
-            for bb in arcs(rb[prn], args.max_gap_s):
-                lo = max(aa[0]["t"], bb[0]["t"])
-                hi = min(aa[-1]["t"], bb[-1]["t"])
-                if hi - lo < args.min_arc_s:
-                    continue
-                ts, gf, el = [], [], []
-                for r in aa:
-                    if not (lo <= r["t"] <= hi):
+    sat_arcs = {}  # (sys, prn) -> list of (ts[], gf_m[], el[])
+    fa = fb = fac = None
+    for path_a, path_b, sysid in pairs:
+        ra = load(path_a, args.since_min * 60, sysid, args.min_sig)
+        rb = load(path_b, args.since_min * 60, sysid, args.min_sig)
+        common = sorted(set(ra) & set(rb))
+        if not common:
+            print(f"{sysid}: no common satellites with ADR in the window", file=sys.stderr)
+            continue
+        pfa = ra[common[0]][0]["carrier_hz"]
+        pfb = rb[common[0]][0]["carrier_hz"]
+        if fa is None:
+            fa, fb = pfa, pfb
+            fac = K * (1.0 / fa**2 - 1.0 / fb**2)  # m of L_gf per TECU (signed)
+        elif (pfa, pfb) != (fa, fb):
+            sys.exit(f"{sysid}: bands {pfa/1e6:.2f}/{pfb/1e6:.2f} != pooled "
+                     f"{fa/1e6:.2f}/{fb/1e6:.2f} MHz -- pooling requires identical pairs")
+        lam_a, lam_b = C / pfa, C / pfb
+        print(f"{sysid}: bands {pfa/1e6:.2f} / {pfb/1e6:.2f} MHz: {fac:+.4f} m/TECU; "
+              f"sats {common}")
+        for prn in common:
+            for aa in arcs(ra[prn], args.max_gap_s):
+                for bb in arcs(rb[prn], args.max_gap_s):
+                    lo = max(aa[0]["t"], bb[0]["t"])
+                    hi = min(aa[-1]["t"], bb[-1]["t"])
+                    if hi - lo < args.min_arc_s:
                         continue
-                    adr_b = interp_adr(bb, r["t"])
-                    if adr_b is None:
-                        continue
-                    ts.append(r["t"])
-                    gf.append(lam_a * r["adr_cycles"] - lam_b * adr_b)
-                    el.append(r.get("el"))
-                if len(ts) >= 10:
-                    sat_arcs.setdefault(prn, []).append((ts, gf, el))
+                    ts, gf, el, geo = [], [], [], []
+                    for r in aa:
+                        if not (lo <= r["t"] <= hi):
+                            continue
+                        adr_b = interp_adr(bb, r["t"])
+                        if adr_b is None:
+                            continue
+                        ts.append(r["t"])
+                        gf.append(lam_a * r["adr_cycles"] - lam_b * adr_b)
+                        el.append(r.get("el"))
+                        geo.append((r.get("range_rate_mps"), r.get("range_m")))
+                    if len(ts) >= 10:
+                        sat_arcs.setdefault((sysid, prn), []).append((ts, gf, el, geo))
 
     if not sat_arcs:
         sys.exit("no joint arcs long enough")
@@ -159,21 +184,63 @@ def main():
     from collections import defaultdict
     rates = defaultdict(list)
     for prn, arcs_ in sat_arcs.items():
-        for ts, gf, _ in arcs_:
+        for ts, gf, _, _ in arcs_:
             for i in range(1, len(ts)):
                 dt = ts[i] - ts[i - 1]
                 if 0.2 < dt < 3.0:
                     rates[round(ts[i])].append((gf[i] - gf[i - 1]) / dt)
     med_rate = {t: sorted(v)[len(v) // 2] for t, v in rates.items() if len(v) >= 3}
+    if not med_rate:
+        sys.exit("no epochs with >=3 simultaneous certified sats -- no common mode")
+
+    # THE COMMON MODE MUST BE CONTINUOUS WHEREVER AN ARC IS. It accumulates at the inter-band
+    # clock rate (~34 m/s = 264 TECU/s), so any hole the integration skips leaves a permanent
+    # level error in every arc that straddles it (measured 07-17: 30 s holes -> the +-1e4 TECU
+    # arc drifts). The RATE, unlike the level, is smooth (GPSDO-disciplined frac-N clocks), so
+    # holes are bridged by smoothing/interpolating the per-second median rates (Gaussian
+    # sigma 10 s, reach 60 s) and integrating over EVERY second. Seconds with no rate bin
+    # within 60 s are declared dead: med_at -> None there, which drops those epochs from arcs
+    # -- an honest hole, not a silent flat-line.
+    # Also: evaluate AT THE EPOCH, never med[round(t)] -- the half-second grid error leaks
+    # clock at each PRN's emit-cadence offset (the 07-16 "bimodal, negating" floor, implied
+    # dt +-0.3 ms = the cadence offset, NOT a timestamp error; the logged t is us-exact).
+    keys = sorted(med_rate)
+    t_lo, t_hi = keys[0], keys[-1]
     med = {}
+    dead = set()
     acc = 0.0
-    prev = None
-    for t in sorted(med_rate):
-        if prev is not None:
-            acc += med_rate[t] * (t - prev) if t - prev <= 5 else 0.0
-        med[t] = acc
-        prev = t
-    print(f"common-mode epochs: {len(med)}; sats with joint arcs: {sorted(sat_arcs)}")
+    ki = 0
+    for t in range(t_lo, t_hi + 1):
+        while ki < len(keys) - 1 and keys[ki + 1] <= t:
+            ki += 1
+        # nearby bins (within 60 s), Gaussian-weighted rate
+        num = den = 0.0
+        j = ki
+        while j >= 0 and t - keys[j] <= 60:
+            w = math.exp(-((t - keys[j]) / 10.0) ** 2 / 2.0)
+            num += w * med_rate[keys[j]]
+            den += w
+            j -= 1
+        j = ki + 1
+        while j < len(keys) and keys[j] - t <= 60:
+            w = math.exp(-((keys[j] - t) / 10.0) ** 2 / 2.0)
+            num += w * med_rate[keys[j]]
+            den += w
+            j += 1
+        if den > 0:
+            acc += num / den
+            med[t] = acc
+        else:
+            dead.add(t)
+            med[t] = acc  # flat across a dead span; med_at refuses to serve it anyway
+    print(f"common-mode: {len(keys)} rate bins over {t_hi - t_lo}s, "
+          f"{len(dead)}s dead; sats with joint arcs: {sorted(sat_arcs)}")
+
+    def med_at(t):
+        k = math.floor(t)
+        if k < t_lo or k + 1 > t_hi or k in dead or (k + 1) in dead:
+            return None
+        return med[k] + (med[k + 1] - med[k]) * (t - k)
 
     summary = []
     try:
@@ -184,25 +251,47 @@ def main():
                                        gridspec_kw={"height_ratios": [3, 1]})
     except ImportError:
         fig = None
-    t00 = min(min(ts) for a in sat_arcs.values() for ts, _, _ in a)
-    for prn, arcs_ in sorted(sat_arcs.items()):
-        for k, (ts, gf, el) in enumerate(arcs_):
-            g0 = gf[0]
-            rel = [(t, (g - g0) - med[round(t)]) for t, g in zip(ts, gf) if round(t) in med]
-            if len(rel) < 10:
+    t00 = min(min(ts) for a in sat_arcs.values() for ts, _, _, _ in a)
+    long_arcs = []
+    for (sysid, prn), arcs_ in sorted(sat_arcs.items()):
+        for k, (ts, gf, el, geo) in enumerate(arcs_):
+            # split at dead common-mode spans: med flat-lined there, so the level on the far
+            # side is wrong by the missed clock -- the far side is a NEW arc, honestly
+            segs = [[]]
+            prev_t = None
+            for t, g, gg in zip(ts, gf, geo):
+                m = med_at(t)
+                if m is None:
+                    continue
+                if prev_t is not None and any(s in dead
+                                              for s in range(math.floor(prev_t),
+                                                             math.floor(t) + 1)):
+                    segs.append([])
+                segs[-1].append((t, g - m, gg))
+                prev_t = t
+            seg = max(segs, key=len)
+            if len(seg) < 10:
                 continue
+            g0 = seg[0][1]
+            rel = [(t, g - g0) for t, g, _ in seg]
             tecu = [r[1] / fac for r in rel]
             span = rel[-1][0] - rel[0][0]
             drift = tecu[-1] - tecu[0]
             mean = sum(tecu) / len(tecu)
             rms = math.sqrt(sum((x - mean) ** 2 for x in tecu) / len(tecu))
-            summary.append({"prn": prn, "arc": k, "span_s": round(span, 1),
+            summary.append({"sys": sysid, "prn": prn, "arc": k, "span_s": round(span, 1),
                             "n": len(rel), "dTEC_drift_TECU": round(drift, 3),
                             "scatter_TECU_rms": round(rms, 3),
                             "el_range": [el[0], el[-1]] if el[0] is not None else None})
+            if span > 1500:
+                long_arcs.append({"sys": sysid, "prn": prn, "arc": k,
+                                  "t": [round(r[0], 4) for r in rel],
+                                  "rel_m": [round(r[1], 5) for r in rel],
+                                  "rr": [g[0] for _, _, g in seg],
+                                  "rng": [g[1] for _, _, g in seg]})
             if fig:
                 ax1.plot([(r[0] - t00) / 60 for r in rel], tecu, ".", ms=2,
-                         label=f"{args.sys}{prn}" if k == 0 else None)
+                         label=f"{sysid}{prn}" if k == 0 else None)
     if fig:
         mts = sorted(med)
         ax2.plot([(t - t00) / 60 for t in mts], [med[t] for t in mts], "k.", ms=1)
@@ -217,8 +306,11 @@ def main():
         print("wrote", args.out + "_tec.png")
     json.dump(summary, open(args.out + "_arcs.json", "w"), indent=1)
     print("wrote", args.out + "_arcs.json")
+    if long_arcs:
+        json.dump(long_arcs, open(args.out + "_long.json", "w"))
+        print("wrote", args.out + "_long.json", f"({len(long_arcs)} arcs >1500s)")
     for s in summary:
-        print(f"  {args.sys}{s['prn']:2d} arc{s['arc']} {s['span_s']:7.0f}s n={s['n']:5d} "
+        print(f"  {s['sys']}{s['prn']:2d} arc{s['arc']} {s['span_s']:7.0f}s n={s['n']:5d} "
               f"drift {s['dTEC_drift_TECU']:+7.3f} TECU  scatter {s['scatter_TECU_rms']:.3f} TECU")
 
 

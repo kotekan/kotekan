@@ -420,7 +420,11 @@ def main(argv=None):
         # (1) per-sat C/N0 vs time (constellation-colored)
         fig, ax = plt.subplots(figsize=(11, 5))
         for s_ in sorted(set(sid)):
-            m = (sid == s_) & fin
+            # elevation-masked like every other panel. Unmasked, below-horizon dead-reckoned
+            # sats + probes emit at pure noise, and whether that renders is a knife-edge on the
+            # chain's pedestal (E5a's sat just above -> the 07-16 "Galileo noise floor" stripe
+            # at -4 dB-Hz; G/C's just below -> NaN-blanked): a plotting artifact either way.
+            m = (sid == s_) & fin & (alt > args.map_mask)
             if m.sum() < 20:
                 continue
             tb = ((t[m] - t0) // args.tbin).astype(int)
