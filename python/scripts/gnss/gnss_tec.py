@@ -121,6 +121,9 @@ def main():
                          "sub-sig fade -- rms jump 22 m at 10-20 s, km beyond -- so gated "
                          "gaps are REAL arc breaks)")
     ap.add_argument("--out", default="/tmp/tec")
+    ap.add_argument("--dump-series", action="store_true",
+                    help="also write <out>_series.npz: per-epoch differential TEC with sky "
+                         "position (t, sys, prn, arc, tecu, az, el) -- the TEC-movie input")
     args = ap.parse_args()
 
     pairs = [tuple(p.split(":")) for p in args.pair]
@@ -168,7 +171,8 @@ def main():
                         ts.append(r["t"])
                         gf.append(lam_a * r["adr_cycles"] - lam_b * adr_b)
                         el.append(r.get("el"))
-                        geo.append((r.get("range_rate_mps"), r.get("range_m")))
+                        geo.append((r.get("range_rate_mps"), r.get("range_m"),
+                                    r.get("az")))
                     if len(ts) >= 10:
                         sat_arcs.setdefault((sysid, prn), []).append((ts, gf, el, geo))
 
@@ -253,6 +257,7 @@ def main():
         fig = None
     t00 = min(min(ts) for a in sat_arcs.values() for ts, _, _, _ in a)
     long_arcs = []
+    series_rows = []
     for (sysid, prn), arcs_ in sorted(sat_arcs.items()):
         for k, (ts, gf, el, geo) in enumerate(arcs_):
             # split at dead common-mode spans: med flat-lined there, so the level on the far
@@ -289,6 +294,14 @@ def main():
                                   "rel_m": [round(r[1], 5) for r in rel],
                                   "rr": [g[0] for _, _, g in seg],
                                   "rng": [g[1] for _, _, g in seg]})
+            if args.dump_series:
+                # az rides geo[2]; el needs realigning to the surviving seg epochs
+                el_by_t = {t_: e_ for t_, e_ in zip(ts, el)}
+                for (t_, g_, gg_), x in zip(seg, tecu):
+                    az_ = gg_[2] if gg_[2] is not None else float("nan")
+                    el_ = el_by_t.get(t_)
+                    series_rows.append((t_, sysid, prn, k, x, az_,
+                                        el_ if el_ is not None else float("nan")))
             if fig:
                 ax1.plot([(r[0] - t00) / 60 for r in rel], tecu, ".", ms=2,
                          label=f"{sysid}{prn}" if k == 0 else None)
@@ -309,6 +322,18 @@ def main():
     if long_arcs:
         json.dump(long_arcs, open(args.out + "_long.json", "w"))
         print("wrote", args.out + "_long.json", f"({len(long_arcs)} arcs >1500s)")
+    if args.dump_series and series_rows:
+        import numpy as _np
+        t_ = _np.array([r[0] for r in series_rows])
+        sys_ = _np.array([r[1] for r in series_rows])
+        _np.savez_compressed(args.out + "_series.npz",
+                             t=t_, sys=sys_,
+                             prn=_np.array([r[2] for r in series_rows], dtype=_np.int16),
+                             arc=_np.array([r[3] for r in series_rows], dtype=_np.int32),
+                             tecu=_np.array([r[4] for r in series_rows]),
+                             az=_np.array([r[5] for r in series_rows]),
+                             el=_np.array([r[6] for r in series_rows]))
+        print("wrote", args.out + "_series.npz", f"({len(series_rows)} epochs)")
     for s in summary:
         print(f"  {s['sys']}{s['prn']:2d} arc{s['arc']} {s['span_s']:7.0f}s n={s['n']:5d} "
               f"drift {s['dTEC_drift_TECU']:+7.3f} TECU  scatter {s['scatter_TECU_rms']:.3f} TECU")
