@@ -224,6 +224,8 @@ private:
     /// stands. -1 = no hint yet.
     bool _nh_assist = false;
     int _nh_min_refs = 3;         ///< min confidently-locked sats that must AGREE on the offset
+    double _nh_ref_margin = 2.0;  ///< reference bar as multiple of the wipe floor (2.0 = the
+                                  ///< certification gate itself; cluster agreement is the guard)
     std::vector<int> _nh_hint;    ///< broker's predicted absolute overlay index per PRN (-1 = none)
     std::mutex _nh_mtx;           ///< guards _nh_hint (POST callback vs main thread)
     void set_nh_hint_callback(kotekan::connectionInstance& conn, nlohmann::json& request);

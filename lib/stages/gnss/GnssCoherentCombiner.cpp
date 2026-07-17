@@ -182,6 +182,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // overlay / navwipe combiners.
     _nh_assist = config.get_default<bool>(unique_name, "nh_assist", false) && !_l1co.empty();
     _nh_min_refs = config.get_default<int>(unique_name, "nh_min_refs", 3);
+    _nh_ref_margin = config.get_default<double>(unique_name, "nh_ref_margin", 2.0);
     _nh_hint.assign(_n_prn, -1);
 }
 
@@ -765,7 +766,13 @@ void GnssCoherentCombiner::main_thread() {
         // nothing. Requires the deferred navbuf (block mode) still holding this window.
         if (_nh_assist) {
             std::lock_guard<std::mutex> lk(_nh_mtx);
-            constexpr double NH_REF_MARGIN = 3.0; // "confident" reference = deep >> its floor
+            // "Confident" reference bar. NOT 3x floor: B1C's blind wipe (1800 trials on a
+            // 1 s window, floor ~4.9, cert gate 2x) pins even HEALTHY sats' deep_snr to a
+            // narrow band just above 2x floor -- a 3x bar left the assist DORMANT on the
+            // very signal it targets (measured 07-17: 0 qualifying emits/15 min at 3x).
+            // The real mislock protection is the >=nh_min_refs cluster agreement (+-3
+            // chips) and the fail-safe adoption, so the bar = the certification gate.
+            const double NH_REF_MARGIN = _nh_ref_margin;
             auto hint_of = [&](int p) -> int {
                 const int prn = (int)std::lround(ref_prn[p]);
                 return (prn >= 1 && prn <= _n_prn) ? _nh_hint[prn - 1] : -1;

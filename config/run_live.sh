@@ -386,6 +386,13 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
     BDS_ALM="$BDS_ALM --noise-probes ${NOISE_PROBES:-4}"
     if [ "${DEAD_RECKON:-1}" != "0" ]; then BDS_ALM="$BDS_ALM --dead-reckon --dr-constellation C"; fi
     BDS_ALM="$BDS_ALM --narrow-search --search-margin-hz ${SEARCH_MARGIN_HZ:-500} --search-margin-wide-hz ${CLK_WIDE_HZ:-3000}"
+    # nh TIME-ASSIST: if the B1C combiner opts in (nh_assist: true), the broker POSTs predicted
+    # overlay indices so the weak sats get the right alignment instead of losing the 1800-way
+    # search. B1C overlay = 1800 chips (E5a/B2a CS100 would use 100).
+    if grep -qE "^${SP}bds_combiner:.*nh_assist:[[:space:]]*true" "$RUNCFG"; then
+      BDS_ALM="$BDS_ALM --nh-assist --nh-overlay-len ${NH_OVERLAY_LEN:-1800}"
+      echo "  BeiDou nh time-assist ON (predicted overlay -> combiner /set_nh_hint)"
+    fi
   else
     echo "WARNING: bds_track present but LAT/LON unset -- BeiDou require_hint search will scan NOTHING"
   fi

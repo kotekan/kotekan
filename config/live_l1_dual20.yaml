@@ -344,7 +344,7 @@ bds_track:
 bds_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: bds_epl_buf, out_buf: bds_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] }
 # B1C pilot: deterministic per-PRN 1800-chip overlay wipe (see gal_combiner note; the
 # per-record stopgap floored deep at sqrt(2*100/pi) ~ 8 sigma while the search hit 290+).
-bds_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 100, secondary_overlay: "B1C", phase_dump_prns: [19, 22, 35], phase_dump_path: "/tmp/gpswipe/phase_dump_bds.txt" }
+bds_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 3, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 100, secondary_overlay: "B1C", phase_dump_prns: [19, 22, 35], phase_dump_path: "/tmp/gpswipe/phase_dump_bds.txt" }
 bds_record: { kotekan_stage: rawFileWrite, in_buf: bds_out_buf, base_dir: "/tmp/gpswipe", file_name: "bds_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --band l1' }
