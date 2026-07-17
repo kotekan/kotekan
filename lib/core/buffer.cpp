@@ -181,6 +181,7 @@ void GenericBuffer::send_shutdown_signal() {
 }
 
 void GenericBuffer::json_description(nlohmann::json& buf_json) {
+    buffer_lock lock(mutex);
     buf_json["consumers"];
     for (auto& cit : consumers) {
         auto& c = cit.second;
@@ -387,6 +388,7 @@ int Buffer::get_num_full_frames() {
 }
 
 void Buffer::json_description(nlohmann::json& buf_json) {
+    buffer_lock lock(mutex);
     GenericBuffer::json_description(buf_json);
     buf_json["frames"];
     for (int i = 0; i < num_frames; ++i)

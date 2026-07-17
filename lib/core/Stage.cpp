@@ -155,17 +155,20 @@ std::string Stage::dot_string(const std::string& prefix) const {
 }
 
 void Stage::register_tid(pid_t tid) {
+    std::lock_guard<std::mutex> lock(thread_list_lock);
     thread_list.push_back(tid);
 }
 
 void Stage::unregister_tid(pid_t tid) {
+    std::lock_guard<std::mutex> lock(thread_list_lock);
     auto itr = std::find(thread_list.begin(), thread_list.end(), tid);
     if (itr != thread_list.end()) {
         thread_list.erase(itr);
     }
 }
 
-const std::vector<pid_t>& Stage::get_tids() {
+std::vector<pid_t> Stage::get_tids() {
+    std::lock_guard<std::mutex> lock(thread_list_lock);
     return thread_list;
 }
 

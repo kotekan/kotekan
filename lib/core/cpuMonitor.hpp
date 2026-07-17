@@ -6,9 +6,11 @@
 #include "restServer.hpp" // for connectionInstance
 #include "visUtil.hpp"    // for StatTracker
 
+#include <atomic>      // for atomic
 #include <cstdint>     // for uint32_t, uint16_t
 #include <map>         // for map
 #include <memory>      // for shared_ptr
+#include <mutex>       // for mutex
 #include <string>      // for string
 #include <sys/types.h> // for pid_t
 #include <thread>      // for thread
@@ -69,10 +71,13 @@ public:
 
 private:
     std::thread this_thread;
-    bool stop_thread;
+    std::atomic<bool> stop_thread = false;
+    // Lock for ult_list, which is filled by the tracking thread and read
+    // by the /cpu_ult REST endpoint.
+    std::mutex ult_lock;
     std::map<std::string, std::map<pid_t, CpuStat>> ult_list; // <stage_name <tid, cpu_stats>>
     std::map<std::string, Stage*> stages;
-    uint32_t prev_cpu_time;
+    uint32_t prev_cpu_time = 0;
     uint16_t track_len = 2;
 };
 

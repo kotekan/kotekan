@@ -16,8 +16,11 @@ class cudaRechunkState : public cudaCommandState {
 public:
     cudaRechunkState(kotekan::Config& config, const std::string& unique_name,
                      kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device) :
-        cudaCommandState(config, unique_name, host_buffers, device), cols_accumulated(0) {}
+        cudaCommandState(config, unique_name, host_buffers, device), cols_accumulated(0),
+        output_id(0) {}
     int cols_accumulated;
+    /// Count of emitted output frames; indexes gpu_mem_output slots in output_async mode.
+    int output_id;
 };
 
 /**
@@ -86,7 +89,6 @@ protected:
 
 private:
     bool _output_async;
-    int output_id;
 
     size_t _cols_input;
     size_t _cols_output;

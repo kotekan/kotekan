@@ -405,13 +405,6 @@ private:
      */
     static std::string get_http_responce_code_text(const HTTP_RESPONSE& status);
 
-    /**
-     * @brief Returns the aliases map
-     *
-     * @return Alias map
-     */
-    std::map<std::string, std::string>& get_aliases();
-
     /// Map of GET callbacks
     std::map<std::string, std::function<void(connectionInstance&)>> get_callbacks;
 
