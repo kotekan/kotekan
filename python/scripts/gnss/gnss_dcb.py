@@ -34,11 +34,15 @@ DEFAULT_PAIRS = ["G:C1C-C5Q", "G:C1C-C2L", "E:C1C-C5Q", "C:C1P-C5P"]
 
 def fetch(date):
     """CAS rapid BSX for the date (falls back day by day: rapid lags ~1-2 days)."""
-    for back in range(6):
+    # The CAS product was RENAMED (~2023): CAS0OPSRAP_*_DCB.BIA.gz, formerly
+    # CAS0MGXRAP_*_DCB.BSX.gz -- same Bias-SINEX content, new name + extension. Mirrors from
+    # igs.org (Keith, 2026-07-16): gssc.esa.int is anonymous and carries mgex/dcb by year.
+    for back in range(8):
         d = date - datetime.timedelta(days=back)
         yyyy, ddd = d.strftime("%Y"), d.strftime("%j")
-        name = f"CAS0MGXRAP_{yyyy}{ddd}0000_01D_01D_DCB.BSX.gz"
-        for base in (f"https://igs.ign.fr/pub/igs/products/mgex/dcb/{yyyy}/",
+        name = f"CAS0OPSRAP_{yyyy}{ddd}0000_01D_01D_DCB.BIA.gz"
+        for base in (f"ftp://gssc.esa.int/gnss/products/mgex/dcb/{yyyy}/",
+                     f"ftp://lox.ucsd.edu/pub/products/mgex/dcb/{yyyy}/",
                      f"ftp://igs.ign.fr/pub/igs/products/mgex/dcb/{yyyy}/"):
             url = base + name
             try:
