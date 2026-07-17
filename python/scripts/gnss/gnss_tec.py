@@ -38,7 +38,7 @@ C = 299792458.0
 K = 40.308e16  # m^3/s^2/TECU: iono group delay = K*TEC/f^2
 
 
-def load(path, since_s, sysid):
+def load(path, since_s, sysid, min_sig):
     """Rows with a live ADR, newest `since_s` seconds, keyed [prn] -> time-sorted list."""
     rows = {}
     size = os.path.getsize(path)
@@ -54,6 +54,12 @@ def load(path, since_s, sysid):
             except json.JSONDecodeError:
                 continue
             if d.get("sys") != sysid or not d.get("adr_records"):
+                continue
+            # CERTIFIED LOCKS ONLY. A coasting / dead-reckoned sat still exports ADR -- the
+            # COMMANDED (model) phase plus a noise-driven arg(A) random walk that wanders
+            # KILOMETERS over hours (2026-07-17: perfectly-linear-then-random-walk gf traces;
+            # the vs-BRDC checks always passed because they gate on sig and this did not).
+            if (d.get("sig") or 0.0) < min_sig:
                 continue
             raw.append(d)
             tmax = max(tmax, d["t"])
@@ -101,11 +107,14 @@ def main():
     ap.add_argument("--since-min", type=float, default=720.0)
     ap.add_argument("--max-gap-s", type=float, default=10.0)
     ap.add_argument("--min-arc-s", type=float, default=120.0)
+    ap.add_argument("--min-sig", type=float, default=20.0,
+                    help="per-row lock-significance gate, BOTH bands (coasting sats export "
+                         "model+noise ADR)")
     ap.add_argument("--out", default="/tmp/tec")
     args = ap.parse_args()
 
-    ra = load(args.a, args.since_min * 60, args.sys)
-    rb = load(args.b, args.since_min * 60, args.sys)
+    ra = load(args.a, args.since_min * 60, args.sys, args.min_sig)
+    rb = load(args.b, args.since_min * 60, args.sys, args.min_sig)
     common = sorted(set(ra) & set(rb))
     if not common:
         sys.exit("no common satellites with ADR in the window")
@@ -141,16 +150,29 @@ def main():
     if not sat_arcs:
         sys.exit("no joint arcs long enough")
 
-    # Common-mode removal: per-epoch (1 s bins) median of ARC-RELATIVE gf across sats = the
-    # inter-band clock (+ median TEC drift). Each sat minus it = differential slant TEC.
+    # Common-mode removal IN RATE, then integrated: the inter-band clock accumulates ~34 m/s,
+    # so LEVEL-based medians break the moment arcs start at different times (each sat's
+    # arc-relative level has removed a different amount of clock -- the median then represents
+    # nobody, and per-sat residuals grow at the full clock rate; observed as "millions of TECU"
+    # on the first overnight). Rates are start-time-invariant: per 1 s bin, median across sats
+    # of d(gf)/dt = the clock rate (+ median TEC rate, slow); integrate to a common-mode level.
     from collections import defaultdict
-    binsum = defaultdict(list)
+    rates = defaultdict(list)
     for prn, arcs_ in sat_arcs.items():
         for ts, gf, _ in arcs_:
-            g0 = gf[0]
-            for t, g in zip(ts, gf):
-                binsum[round(t)].append(g - g0)
-    med = {t: sorted(v)[len(v) // 2] for t, v in binsum.items() if len(v) >= 3}
+            for i in range(1, len(ts)):
+                dt = ts[i] - ts[i - 1]
+                if 0.2 < dt < 3.0:
+                    rates[round(ts[i])].append((gf[i] - gf[i - 1]) / dt)
+    med_rate = {t: sorted(v)[len(v) // 2] for t, v in rates.items() if len(v) >= 3}
+    med = {}
+    acc = 0.0
+    prev = None
+    for t in sorted(med_rate):
+        if prev is not None:
+            acc += med_rate[t] * (t - prev) if t - prev <= 5 else 0.0
+        med[t] = acc
+        prev = t
     print(f"common-mode epochs: {len(med)}; sats with joint arcs: {sorted(sat_arcs)}")
 
     summary = []

@@ -33,19 +33,34 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # gps_beamtrack 
 # Per-constellation signal geometry (must match the live configs): record period T_rec and
 # combiner integration_length K. x = s2/N is a PER-RECORD power ratio, so cross-constellation
 # merging happens in C/N0-density units, each tag carrying its OWN pedestal/noise scale.
-CONST = {
-    "G": dict(name="GPS L1 C/A",  t_rec=1e-3,  K=1000,
-              tle=None),  # None -> gps_beamtrack.DEFAULT_TLE_URL
-    "E": dict(name="Galileo E1C", t_rec=4e-3,  K=250,
-              tle="https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle"),
-    "C": dict(name="BeiDou B1C",  t_rec=10e-3, K=100,
-              tle="https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle"),
+_TLE = {"G": None,  # None -> gps_beamtrack.DEFAULT_TLE_URL
+        "E": "https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle",
+        "C": "https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle"}
+# Per-BAND, per-constellation geometry. The band matters: the same constellation carries a
+# different signal (t_rec, integration_length K, name) on each tune, so a band-blind table
+# mislabels the plot AND mis-scales C/N0 (x = s2/N is per RECORD -> a density needs the right
+# t_rec). Mirrors livebeam_server.BAND_CHAINS / the live configs -- keep them in step.
+BANDS = {
+    "l1":  {"G": dict(name="GPS L1 C/A",   t_rec=1e-3,  K=1000),
+            "E": dict(name="Galileo E1C",  t_rec=4e-3,  K=250),
+            "C": dict(name="BeiDou B1C",   t_rec=10e-3, K=100)},
+    "l2c": {"G": dict(name="GPS L2C-CM",   t_rec=20e-3, K=200)},
+    "l5":  {"G": dict(name="GPS L5-Q",     t_rec=1e-3,  K=1000),
+            "E": dict(name="Galileo E5a-Q", t_rec=1e-3, K=1000),
+            "C": dict(name="BeiDou B2a-P", t_rec=1e-3,  K=1000)},
 }
-DEFAULT_LOGS = {  # run_live's per-constellation status logger outputs
-    "G": "/tmp/gpswipe/status_log.jsonl",
-    "E": "/tmp/gpswipe/status_log_gal.jsonl",
-    "C": "/tmp/gpswipe/status_log_bds.jsonl",
+CONST = {}  # filled from BANDS[--band] in main()
+# run_live's per-constellation status logger outputs, per band (recdir differs per band).
+BAND_LOGS = {
+    "l1":  {"G": "/tmp/gpswipe/status_log.jsonl",
+            "E": "/tmp/gpswipe/status_log_gal.jsonl",
+            "C": "/tmp/gpswipe/status_log_bds.jsonl"},
+    "l2c": {"G": "/tmp/gps_l2c_gpu/status_log.jsonl"},
+    "l5":  {"G": "/tmp/gps_l5_gpu/status_log.jsonl",
+            "E": "/tmp/gps_l5_gpu/status_log_gal.jsonl",
+            "C": "/tmp/gps_l5_gpu/status_log_bds.jsonl"},
 }
+DEFAULT_LOGS = BAND_LOGS["l1"]  # rebound in main() from --band
 
 
 def load(path, tag):
@@ -106,6 +121,11 @@ def main(argv=None):
     ap.add_argument("logs", nargs="*",
                     help="status logs as TAG=PATH (G=..., E=..., C=...); bare paths are G. "
                          "Default: every existing " + ", ".join(DEFAULT_LOGS.values()))
+    ap.add_argument("--band", default="l1", choices=sorted(BANDS),
+                    help="which tune the logs are from: l1 (GPS C/A + E1C + B1C), l2c, or l5 "
+                         "(L5-Q + E5a-Q + B2a-P). Sets the per-constellation signal names AND "
+                         "the t_rec/K used to scale C/N0 -- a band-blind run mislabels and "
+                         "mis-scales (2026-07-17).")
     ap.add_argument("--lat", type=float, default=43.968697)
     ap.add_argument("--lon", type=float, default=-79.252106)
     ap.add_argument("--alt", type=float, default=260.0)
@@ -158,18 +178,35 @@ def main(argv=None):
     # Repeat a tag to MERGE logs across nights (G=night1.jsonl G=night2.jsonl ...):
     # dwell accumulates instead of resetting per run; the per-epoch pedestal bins
     # handle the time gaps between sessions.
+    global CONST
+    CONST = BANDS[args.band]
+    band_logs = BAND_LOGS[args.band]
+    BANDLBL = args.band.upper()
+
     logs = {}
     if args.logs:
+        bare = [s for s in args.logs if "=" not in s]
+        if len(bare) > 1:
+            # Bare paths all default to G. Handing THREE bare logs (G/E/C) silently pooled three
+            # constellations into "GPS": PRNs collided (G1/E1/C1 are different birds), every sat
+            # was positioned from the GPS TLE, and the plot was labelled GPS. That produced a
+            # plausible-looking, meaningless map on 2026-07-17. Refuse it.
+            ap.error("%d bare paths given -- bare = G, so these would all pool into GPS.\n"
+                     "Tag them: %s" % (len(bare), " ".join(
+                         "%s=%s" % (t, p) for t, p in zip("GEC", bare))))
         for spec in args.logs:
             tag, _, path = spec.rpartition("=")
             tag = tag or "G"
             if tag not in CONST:
-                ap.error("unknown constellation tag %r (use G/E/C)" % tag)
+                ap.error("tag %r is not in band %r (has %s)"
+                         % (tag, args.band, "/".join(sorted(CONST))))
             logs.setdefault(tag, []).append(path)
     else:
-        logs = {tag: [p] for tag, p in DEFAULT_LOGS.items() if os.path.exists(p)}
+        logs = {tag: [p] for tag, p in band_logs.items() if os.path.exists(p)}
     if not logs:
         ap.error("no status logs found")
+    # honest title: name the constellations actually pooled, not a hardcoded "G+E+C"
+    TAGLBL = "+".join(sorted(logs)) if len(logs) > 1 else CONST[list(logs)[0]]["name"]
 
     from gps_beamtrack import load_gps_satellites, DEFAULT_TLE_URL
     from skyfield.api import load as sky_load, wgs84
@@ -214,7 +251,7 @@ def main(argv=None):
             continue
         # Sky positions FIRST: the excision below must know which rows are below-horizon
         # NOISE PROBES, because it must not touch them (see the spare-probes note there).
-        sats = load_gps_satellites(CONST[tag]["tle"] or DEFAULT_TLE_URL)
+        sats = load_gps_satellites(_TLE[tag] or DEFAULT_TLE_URL)  # TLE is per-CONSTELLATION, not per-band
         alt = np.full(len(prn), np.nan)
         az = np.full(len(prn), np.nan)
         for p_ in np.unique(prn):
@@ -371,8 +408,8 @@ def main(argv=None):
         ax.set_xlabel("hours since %s UTC"
                       % datetime.fromtimestamp(t0, tz=timezone.utc).strftime("%Y-%m-%d %H:%M"))
         ax.set_ylabel("%s C/N0 (dB-Hz, est.)" % label)
-        ax.set_title("Composite %s C/N0 (%.0f s bins) -- %.1f h, %d sats"
-                     % (label, args.tbin, span_h, len(set(sid))))
+        ax.set_title("%s: %s C/N0 (%.0f s bins) -- %.1f h, %d sats"
+                     % (BANDLBL, label, args.tbin, span_h, len(set(sid))))
         ax.grid(alpha=0.3)
         ax.legend()
         fig.tight_layout()
@@ -397,7 +434,7 @@ def main(argv=None):
                     color=tag_color[s_[0]], alpha=0.6)
         ax.set_xlabel("elevation (deg)")
         ax.set_ylabel("%s C/N0 (dB-Hz, est.)" % label)
-        ax.set_title("Elevation response, %s (blue=GPS orange=Galileo red=BeiDou)" % label)
+        ax.set_title("Elevation response, %s -- %s" % (label, BANDLBL))
         ax.grid(alpha=0.3)
         fig.tight_layout()
         f2 = os.path.join(args.outdir, "cn0_%s_vs_elev%s.png" % (suffix, args.suffix))
@@ -431,8 +468,8 @@ def main(argv=None):
         ax.set_rlim(0, 90)
         ax.set_rticks([30, 60, 90])
         ax.set_yticklabels(["60", "30", "0"])
-        ax.set_title("Composite %s C/N0 beam map (G+E+C; %.1f h, %d sats)"
-                     % (label, span_h, len(set(sid))), pad=18)
+        ax.set_title("%s: %s C/N0 beam map (%s; %.1f h, %d sats)"
+                     % (BANDLBL, label, TAGLBL, span_h, len(set(sid))), pad=18)
         fig.colorbar(pc, ax=ax, label="C/N0 (dB-Hz, est.)", shrink=0.8, pad=0.09)
         fig.tight_layout()
         f3 = os.path.join(args.outdir, "cn0_%s_beammap%s.png" % (suffix, args.suffix))

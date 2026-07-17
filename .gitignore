@@ -29,3 +29,7 @@ scratch/*
 gp.php
 gp.php*
 /build_cuda/
+
+# Data products live OUTSIDE the repo (airspy_gps/captures). A relative --outdir run from
+# inside kotekan/ used to silently create one here (2026-07-17).
+/captures/
