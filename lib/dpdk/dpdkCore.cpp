@@ -1,42 +1,41 @@
 #include "dpdkCore.hpp"
 
-#include <numa.h>                       // for numa_node_of_cpu, numa_num_configured_nodes
-#include <rte_branch_prediction.h>      // for unlikely
-#include <rte_config.h>                 // for RTE_PKTMBUF_HEADROOM
-#include <rte_eal.h>                    // for rte_eal_init
-#include <rte_errno.h>                  // for rte_strerror, per_lcore__rte_errno, rte_errno
-#include <rte_ether.h>                  // for rte_ether_addr
-#include <rte_launch.h>                 // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore
-#include <rte_lcore.h>                  // for rte_lcore_count, rte_lcore_id
-#include <rte_mbuf.h>                   // for rte_pktmbuf_free, rte_pktmbuf_init, rte_pktmbuf_p...
-#include <rte_mbuf_core.h>              // for rte_mbuf
-#include <rte_mempool.h>                // for rte_mempool_create, rte_mempool_free
-#include <rte_memzone.h>                // for rte_memzone_max_set
-#include <stdio.h>                      // for fprintf, NULL, size_t, stderr
-#include <stdlib.h>                     // for free, malloc
-#include <string.h>                     // for memset
-#include <sys/types.h>                  // for uint
-#include <unistd.h>                     // for sleep
-#include <rte_ring.h>                   // for rte_ring_create, rte_ring_dequeue_burst
-#include <cinttypes>                    // for uint32_t, uint16_t, int32_t, uint8_t
-#include <functional>                   // for bind, function
-#include <set>                          // for set
-#include <stdexcept>                    // for runtime_error
-#include <vector>                       // for vector
+#include <functional>              // for bind, function
+#include <numa.h>                  // for numa_node_of_cpu, numa_num_configured_nodes
+#include <rte_branch_prediction.h> // for unlikely
+#include <rte_config.h>            // for RTE_PKTMBUF_HEADROOM
+#include <rte_eal.h>               // for rte_eal_init
+#include <rte_errno.h>             // for rte_strerror, per_lcore__rte_errno, rte_errno
+#include <rte_ether.h>             // for rte_ether_addr
+#include <rte_launch.h>            // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore
+#include <rte_lcore.h>             // for rte_lcore_count, rte_lcore_id
+#include <rte_mbuf.h>              // for rte_pktmbuf_free, rte_pktmbuf_init, rte_pktmbuf_p...
+#include <rte_mbuf_core.h>         // for rte_mbuf
+#include <rte_mempool.h>           // for rte_mempool_create, rte_mempool_free
+#include <rte_memzone.h>           // for rte_memzone_max_set
+#include <rte_ring.h>              // for rte_ring_create, rte_ring_dequeue_burst
+#include <set>                     // for set
+#include <stdexcept>               // for runtime_error
+#include <stdio.h>                 // for fprintf, NULL, size_t, stderr
+#include <stdlib.h>                // for free, malloc
+#include <string.h>                // for memset
+#include <sys/types.h>             // for uint
+#include <unistd.h>                // for sleep
+#include <vector>                  // for vector
 
-// cinttypes needed by some CentOS systems.
-#include "Config.hpp"                   // for Config
-#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
-#include "captureHandler.hpp"           // for captureHandler
-#include "crs16BoardCaptureWorker.hpp"  // for crs16BoardCaptureWorker
-#include "crs16BoardDistributor.hpp"    // for crs16BoardDistributor
-#include "crs1BoardCaptureWorker.hpp"   // for crs1BoardCaptureWorker
-#include "crs1BoardDistributor.hpp"     // for crs1BoardDistributor
-#include "iceBoardShuffle.hpp"          // for iceBoardShuffle
-#include "iceBoardStandard.hpp"         // for iceBoardStandard
-#include "iceBoardVDIF.hpp"             // for iceBoardVDIF
-#include "fmt.hpp"                      // for format, compile_string_to_view, fmt, format_string
-#include "json.hpp"                     // for basic_json, json, iter_impl
+#include "Config.hpp"                  // for Config
+#include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
+#include "captureHandler.hpp"          // for captureHandler
+#include "crs16BoardCaptureWorker.hpp" // for crs16BoardCaptureWorker
+#include "crs16BoardDistributor.hpp"   // for crs16BoardDistributor
+#include "crs1BoardCaptureWorker.hpp"  // for crs1BoardCaptureWorker
+#include "crs1BoardDistributor.hpp"    // for crs1BoardDistributor
+#include "iceBoardShuffle.hpp"         // for iceBoardShuffle
+#include "iceBoardStandard.hpp"        // for iceBoardStandard
+#include "iceBoardVDIF.hpp"            // for iceBoardVDIF
+
+#include "fmt.hpp"  // for format, compile_string_to_view, fmt, format_string
+#include "json.hpp" // for basic_json, json, iter_impl
 
 using nlohmann::json;
 using std::string;
@@ -52,7 +51,17 @@ REGISTER_KOTEKAN_STAGE(dpdkCore);
 static bool __eal_initalized = false;
 
 dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&dpdkCore::main_thread, this)) {
+    Stage(config, unique_name, buffer_container, std::bind(&dpdkCore::main_thread, this)),
+    nic_rx_packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_nic_rx_packets_total", unique_name, {"port"})),
+    nic_rx_missed_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_nic_rx_missed_total", unique_name, {"port"})),
+    nic_rx_errors_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_nic_rx_errors_total", unique_name, {"port"})),
+    nic_rx_nombuf_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_nic_rx_nombuf_total", unique_name, {"port"})),
+    nic_link_up_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_nic_link_up", unique_name, {"port"})) {
 
     uint32_t num_mbufs = config.get_default<uint32_t>(unique_name, "num_mbufs", 1024);
     const uint32_t mbuf_cache_size =
@@ -76,6 +85,10 @@ dpdkCore::dpdkCore(Config& config, const string& unique_name, bufferContainer& b
     dpdk_init(lcore_cpu_map, main_lcore_cpu);
 
     num_system_ports = rte_eth_dev_count_avail();
+
+    // Storage for the per-port NIC hardware stats and link state polling.
+    last_eth_stats.resize(num_system_ports);
+    link_is_up.resize(num_system_ports, false);
 
     // This default works well for ICE boards,
     // but we might change this to something more genertic
@@ -367,11 +380,72 @@ void dpdkCore::main_thread() {
                 handlers[i]->update_stats();
         }
 
-        // TODO Check port status
+        // Poll the NIC hardware counters and link state for each port.
+        update_port_stats();
     }
 
     // Wait for the lcores to join
     rte_eal_mp_wait_lcore();
+}
+
+void dpdkCore::update_port_stats() {
+
+    for (uint32_t port = 0; port < num_system_ports; ++port) {
+        if (handlers[port] == nullptr)
+            continue;
+
+        // Check the link state (without blocking on the PHY).
+        struct rte_eth_link link;
+        if (rte_eth_link_get_nowait(port, &link) == 0) {
+            const bool up = (link.link_status == RTE_ETH_LINK_UP);
+            if (up != link_is_up[port]) {
+                if (up) {
+                    INFO("Port {:d}: link is UP at {:d} Mbps", port, link.link_speed);
+                } else {
+                    ERROR("Port {:d}: link went DOWN! The NIC, cable, or switch port may have "
+                          "reset.",
+                          port);
+                }
+                link_is_up[port] = up;
+            }
+        }
+
+        // Read the NIC hardware counters.
+        struct rte_eth_stats stats;
+        if (rte_eth_stats_get(port, &stats) != 0)
+            continue;
+
+        // imissed counts packets that arrived at the NIC but were dropped because
+        // the rx ring was full, i.e. the lcore didn't service this port fast enough.
+        const uint64_t missed_delta = stats.imissed - last_eth_stats[port].imissed;
+        if (missed_delta > 0) {
+            WARN("Port {:d}: NIC dropped {:d} packets since the last poll (~1s) because the rx "
+                 "ring was full (lcore stalled or too slow); total missed: {:d}",
+                 port, missed_delta, stats.imissed);
+        }
+
+        const uint64_t error_delta = stats.ierrors - last_eth_stats[port].ierrors;
+        if (error_delta > 0) {
+            WARN("Port {:d}: NIC reported {:d} rx errors since the last poll (~1s); total: {:d}",
+                 port, error_delta, stats.ierrors);
+        }
+
+        const uint64_t nombuf_delta = stats.rx_nombuf - last_eth_stats[port].rx_nombuf;
+        if (nombuf_delta > 0) {
+            WARN("Port {:d}: {:d} rx mbuf allocation failures since the last poll (~1s); "
+                 "increase num_mbufs; total: {:d}",
+                 port, nombuf_delta, stats.rx_nombuf);
+        }
+
+        std::vector<std::string> port_label = {to_string(port)};
+        nic_rx_packets_total_metric.labels(port_label).set(stats.ipackets);
+        nic_rx_missed_total_metric.labels(port_label).set(stats.imissed);
+        nic_rx_errors_total_metric.labels(port_label).set(stats.ierrors);
+        nic_rx_nombuf_total_metric.labels(port_label).set(stats.rx_nombuf);
+        nic_link_up_metric.labels(port_label).set(link_is_up[port] ? 1 : 0);
+
+        last_eth_stats[port] = stats;
+    }
 }
 
 dpdkCore::~dpdkCore() {
