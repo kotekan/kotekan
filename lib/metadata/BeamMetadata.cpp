@@ -1,6 +1,7 @@
 #include "BeamMetadata.hpp"
 
 #include <assert.h>           // for assert
+#include <cstring>            // for memset
 #include <json.hpp>           // for json
 #include <memory>             // for allocator, shared_ptr, dynamic_pointer_cast, __shared_ptr_a...
 #include <string>             // for basic_string
@@ -54,6 +55,8 @@ size_t BeamMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t l
 size_t BeamMetadata::serialize(char* bytes) {
     size_t sz = get_serialized_size();
     BeamMetadataFormat* fmt = reinterpret_cast<BeamMetadataFormat*>(bytes);
+    // Zero first so struct padding is not written out uninitialized
+    memset(bytes, 0, sz);
     fmt->fpga_seq_start = fpga_seq_start;
     fmt->ctime = ctime;
     fmt->nfreq = static_cast<int>(coarse_freq.size());

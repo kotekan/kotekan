@@ -222,6 +222,11 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
     instance->event_read = event_read;
     instance->fd = fd;
 
+    {
+        std::lock_guard<mutex> lock(instance_list_lock);
+        instance_list.push_back(instance);
+    }
+
     event_add(instance->event_read, &read_timeout);
 }
 
@@ -262,6 +267,7 @@ void bufferRecv::main_thread() {
         return;
     }
     base = event_base_new_with_config(ev_config);
+    event_config_free(ev_config);
     if (!base) {
         FATAL_ERROR("Failed to create libevent base");
         return;
@@ -347,6 +353,25 @@ void bufferRecv::main_thread() {
             t.join();
         }
     }
+
+    // Delete connection instances still open; they are otherwise only
+    // deleted on connection close or errors.
+    while (true) {
+        connInstance* instance;
+        {
+            std::lock_guard<mutex> lock(instance_list_lock);
+            if (instance_list.empty())
+                break;
+            instance = instance_list.front();
+        }
+        // The destructor removes the instance from instance_list.
+        delete instance;
+    }
+
+    event_free(listener_event);
+    event_free(timer_event);
+    event_base_free(base);
+    close(listener);
 }
 
 int bufferRecv::get_next_frame() {
@@ -394,6 +419,14 @@ connInstance::connInstance(const std::string& producer_name, Buffer* buf, buffer
 
 connInstance::~connInstance() {
     DEBUG("Closing FD");
+    {
+        std::lock_guard<std::mutex> lock(buffer_recv->instance_list_lock);
+        auto it = std::find(buffer_recv->instance_list.begin(),
+                            buffer_recv->instance_list.end(), this);
+        if (it != buffer_recv->instance_list.end()) {
+            buffer_recv->instance_list.erase(it);
+        }
+    }
     close(fd);
     event_free(event_read);
     buffer_free(frame_space, buf->aligned_frame_size, buf->use_hugepages);

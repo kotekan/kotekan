@@ -62,30 +62,30 @@ public:
     nlohmann::json to_json() override;
 
     /// The FPGA sequence number of the integration frame
-    uint64_t fpga_seq_start;
+    uint64_t fpga_seq_start = 0;
     /// The ctime of the integration frame
-    timespec ctime;
+    timespec ctime = {};
     /// Nominal length of the frame in FPGA ticks
-    uint64_t fpga_seq_length;
+    uint64_t fpga_seq_length = 0;
     /// Amount of data that actually went into the frame (in FPGA ticks)
-    uint64_t fpga_seq_total;
+    uint64_t fpga_seq_total = 0;
     /// The number of FPGA frames flagged as containing RFI. NOTE: This value
     /// might contain overlap with lost samples, as that counts missing samples
     /// as well as RFI. For renormalization this value should NOT be used, use
     /// lost samples (= @c fpga_seq_length - @c fpga_seq_total) instead.
-    uint64_t rfi_total;
+    uint64_t rfi_total = 0;
 
     /// ID of the frequency bin
-    freq_id_t freq_id;
+    freq_id_t freq_id = 0;
     /// ID of the dataset
     dset_id_t dataset_id;
 
     /// Number of elements for data in buffer
-    uint32_t num_elements;
+    uint32_t num_elements = 0;
     /// Number of products for data in buffer
-    uint32_t num_prod;
+    uint32_t num_prod = 0;
     /// Number of eigenvectors and values calculated
-    uint32_t num_ev;
+    uint32_t num_ev = 0;
 };
 
 /**
