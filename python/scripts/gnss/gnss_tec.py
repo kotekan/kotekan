@@ -55,11 +55,20 @@ def load(path, since_s, sysid, min_sig):
                 continue
             if d.get("sys") != sysid or not d.get("adr_records"):
                 continue
-            # CERTIFIED LOCKS ONLY. A coasting / dead-reckoned sat still exports ADR -- the
-            # COMMANDED (model) phase plus a noise-driven arg(A) random walk that wanders
-            # KILOMETERS over hours (2026-07-17: perfectly-linear-then-random-walk gf traces;
-            # the vs-BRDC checks always passed because they gate on sig and this did not).
-            if (d.get("sig") or 0.0) < min_sig:
+            # CERTIFIED-COHERENT LOCKS ONLY -- gate on coherence_s > 0, NOT sig. Two reasons,
+            # both measured 2026-07-17:
+            #  * COASTING sats export a COMMANDED phase + a noise-driven arg(A) random walk
+            #    (km/hr); they carry coherence_s = 0 (the deep never cleared its floor), so this
+            #    gate excludes them exactly as the old sig gate intended.
+            #  * sig = max(deep_snr, amp_snr) includes the INCOHERENT amplitude, which NULLS as
+            #    |2f-1| every time the code-period boundary drifts through mid-record (the BOC/
+            #    overlay pilots: E1C/B1C/E5a/B2a/L5). At that null sig dips below any threshold
+            #    for ~20% of each boundary cycle -- yet the ADR ARC is 100% CONTINUOUS through it
+            #    (arc-breaks 0.0/100 vs boundary_f; carrier + segmented-deep sail through). The
+            #    old sig gate DROPPED those rows, punching >10 s holes that arcs() then split on,
+            #    fracturing hour-long arcs into 2 s stubs -- the entire "certification flicker"
+            #    was this metric artifact, not a lock loss. coherence_s > 0 keeps them.
+            if not ((d.get("coherence_s") or 0.0) > 0.0):
                 continue
             raw.append(d)
             tmax = max(tmax, d["t"])
