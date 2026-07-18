@@ -21,6 +21,12 @@ KOTEKAN=${KOTEKAN:-./build_cuda/kotekan/kotekan}
 export LAT=${LAT:-43.968697} LON=${LON:--79.252106} ALT=${ALT:-260}
 LOG=/tmp/gps_3band.log
 
+# Output dirs for the rawFileWrite record stages + phase dumps. A reboot wipes /tmp and a
+# missing dir KILLS kotekan at stage construction ("Cannot open file" on the first record
+# file) -- measured 2026-07-18 post-outage: every launch died before the airspys even
+# opened, masquerading as a pipeline problem. The launcher owns its output dirs.
+mkdir -p /tmp/gpswipe /tmp/gps_l2c_gpu /tmp/gps_l5_gpu /tmp/gnss_run
+
 # Bands: original config (parsed by run_live for all derived quantities), stage prefix, TAG
 # (log stems + l-a code-bias files -- SAME TAGs as run_band.sh so the converged per-dongle l-a
 # estimates carry over), and the viewer HTTP/WS ports (must match the merged config's spawns).
