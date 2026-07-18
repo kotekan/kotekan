@@ -517,7 +517,9 @@ int32_t dpdkCore::port_init(uint8_t port, uint32_t lcore_id) {
 
     // Prime the stats baseline so the first poll in update_port_stats() reports
     // deltas relative to now rather than the port's cumulative pre-start counters.
-    rte_eth_stats_get(port, &last_eth_stats[port]);
+    if (rte_eth_stats_get(port, &last_eth_stats[port]) != 0)
+        WARN("Port {:d}: could not read initial NIC stats; first stats poll may over-report deltas",
+             port);
 
     // Report the port MAC address.
     // TODO record the MAC address for export to JSON
