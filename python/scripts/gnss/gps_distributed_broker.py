@@ -300,6 +300,15 @@ def main(argv=None):
                          "sharp-ACF (BOC) power discriminator has stable FALSE equilibria "
                          "~0.75 chips out (prompt -12 dB) that the hold would otherwise "
                          "servo forever while the search sees the true peak.")
+    ap.add_argument("--escape-amp-veto", type=float, default=100.0,
+                    help="VETO a hold-escape while the held track's incoherent amp_snr exceeds "
+                         "this ABSOLUTE value. Physics: the false lobes the escape exists to "
+                         "catch sit at prompt -12 dB, so a hold despreading at full amplitude "
+                         "CANNOT be on one -- an accusing fit is wrong by construction "
+                         "(2026-07-18: the phantom-sloped L2C fit dragged healthy 200-800-amp "
+                         "holds off-peak every ~60 s; the strongest observed sats' false lobes "
+                         "read <~50). amp_snr ONLY, never deep (deep stays coherent ON the "
+                         "wrong lobe -- the C34 signature). 0 disables the veto.")
     ap.add_argument("--hold-snr", type=float, default=8.0,
                     help="incoherent amp_snr above which a tracked PRN's cp anchor is FROZEN "
                          "(hold-on-lock: DLL owns the sub-chip residual; fit re-anchors only on "
@@ -688,8 +697,20 @@ def main(argv=None):
     car_locked = set()  # prns certified coherent since seed: BOOTSTRAP -> TRACK mode latch
     cp_hist = {}     # prn -> [(ref_hop, cp0, dop_det), ...] recent distinct snapshots (slope fit)
 
-    def cp_to_seed_currency(pts, dop_seed):
+    def cp_to_seed_currency(pts, dop_seed, dop_rate=0.0):
         """Re-express search cp0 points in the CURRENT seed's Doppler currency.
+
+        dop_rate (Hz/s, 2026-07-18): subtract the KNOWN sky-doppler curvature from each
+        point, in LOCAL baseline coordinates (t_i - t_anchor, anchored at the latest point):
+        -0.5*k*dop_rate*dt^2, k = chip*sgn/fc. Without it, the drift of the true doppler
+        across the fit baseline leaves a quadratic whose LS slope reads as a phantom (l-a)
+        of chip*|dop_rate|*T/(2*fc) -- measured +0.0157 ppm per Hz/s on L2C (T=33 s), the
+        per-sat spread of the +0.022 ppm phantom that railed the L2C DLL.
+        ⚠️ Do NOT instead re-project per-point at a drifting dop model: (dd_i - dop_model(t_i))
+        rides the ABSOLUTE t_abs multiplier, so a 4e-4 Hz/s model error becomes a 3 ppm slope
+        poison at t_abs 10^4 s (measured, 2026-07-18 v2 shadow broker: fits exploded +0.5 to
+        +3.1 ppm). The scalar dop_seed is constant per call precisely so t_abs cancels in the
+        slope; only the LOCAL dt^2 term (bounded by T^2, ~0.1 chip) is safe to correct.
 
         The search anchors cp0 to absolute sample 0 through its own measured Doppler:
         cp0 = cp_local - t_abs*f_chip*(sign*dop_det/f_carrier). That projection multiplies
@@ -706,10 +727,14 @@ def main(argv=None):
         (l-a = slope/f_chip): dop_seed tracks the true Doppler to ~Hz, so the geometry
         stays fed-forward, minus the noise."""
         out = []
+        h_anchor = pts[-1][0] if pts else 0
         for hh, cc, dd in pts:
             t_abs = hh / args.hops_per_sec
             corr = t_abs * args.chip_rate_hz * (args.code_doppler_sign
                                                 * (dd - dop_seed) / args.carrier_hz)
+            dt = (hh - h_anchor) / args.hops_per_sec
+            corr -= (0.5 * args.chip_rate_hz * args.code_doppler_sign
+                     * dop_rate / args.carrier_hz * dt * dt)
             out.append((hh, (cc + corr) % CODE_LEN))
         return out
 
@@ -991,7 +1016,10 @@ def main(argv=None):
                 # Replay-bench override: a recorded capture's sky is at another epoch (no almanac),
                 # so inject a known rate into every seed to exercise the NCO feed-forward offline.
                 seed["doppler_rate_hz_s"] = args.force_doppler_rate
-            fit = fit_cp_rate(cp_to_seed_currency(h, seed_dop), CODE_LEN)
+            fit = fit_cp_rate(
+                cp_to_seed_currency(h, seed_dop,
+                                    float(seed.get("doppler_rate_hz_s", 0.0) or 0.0)),
+                CODE_LEN)
             if fit is not None:
                 rate, h0, cp_ref = fit
                 seed["code_phase_rate"] = rate
@@ -1090,8 +1118,13 @@ def main(argv=None):
             # in 2.7 h and each one re-anchored the seed (the churn behind the GPS "wobble").
             fit_trusted = (fit is not None and len(h) >= 6
                            and snr >= 2.0 * args.acquire_snr)
+            # AMP VETO (see --escape-amp-veto): a full-amplitude hold is on the main peak
+            # by construction -- refuse the fit's accusation rather than drag it off.
+            amp_now = float((status.get(prn) or {}).get("amp_snr", 0) or 0)
+            amp_veto = (args.escape_amp_veto > 0.0
+                        and amp_now > args.escape_amp_veto)
             if (cp_err is not None and abs(cp_err) > args.hold_max_cp_err
-                    and fit_trusted):
+                    and fit_trusted and not amp_veto):
                 n_prev = cp_escape.get(prn, 0)
                 same_sign = (n_prev == 0) or (cp_err * cp_escape_sign.get(prn, 0.0) > 0)
                 cp_escape[prn] = n_prev + 1 if same_sign else 1
