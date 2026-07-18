@@ -929,7 +929,24 @@ def main(argv=None):
             # a ~exact-doppler_step jump here is the smoking gun for a grid/quantization
             # slip upstream (the hint-anchored search grid was one such; fixed same day).
             _prev_sd = seeds.get(prn, {}).get("doppler_hz")
-            if _prev_sd is not None and abs(seed_dop - _prev_sd) > 10.0:
+            if _prev_sd is None and args.almanac and clock_bias_ema is None:
+                # BIAS-UNSOLVED FIRST-SEED GUARD (2026-07-18): a first seed sent before the
+                # clock-freq bias solves carries the FULL dongle offset (~150 Hz at L1,
+                # measured: PRN 5 first seed 1146.5 vs det 974.1 at bias +0.0). A strong sat
+                # can lock and enter hold-freeze on that wrong currency within seconds --
+                # the startup race behind the stochastic diseased-node births (rails at
+                # first seeding, fleet-dependent). Detections don't need seeds, so holding
+                # off costs ~2 s of acquisition and delays nothing else: the bias solves
+                # from the same detections this cycle already collected.
+                continue
+            if _prev_sd is None:
+                # FIRST seed: full attribution (the rail onsets coincide with first seeding,
+                # and a first seed has no previous value for the step tripwire to fire on).
+                _log("PRN %d FIRST SEED dop %.1f (src=%s, det=%.1f, pred=%s, bias %+.1f, trim %+.1f)"
+                     % (prn, seed_dop, _dop_src, dop,
+                        ("%.1f" % (pred[prn][0])) if (args.almanac and prn in pred) else "n/a",
+                        clock_bias, car_trim.get(prn, 0.0)))
+            elif abs(seed_dop - _prev_sd) > 10.0:
                 _log("PRN %d SEED DOP STEP %+.1f Hz (%.1f -> %.1f, src=%s, det=%.1f)"
                      % (prn, seed_dop - _prev_sd, _prev_sd, seed_dop, _dop_src, dop))
 
