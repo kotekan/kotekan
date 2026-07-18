@@ -50,15 +50,17 @@ basebandApiManager::basebandReadoutRegistry::operator[](const uint32_t& key) { /
     return readout_map[key];
 }
 
+std::unique_lock<std::mutex> basebandApiManager::basebandReadoutRegistry::lock() {
+    return std::unique_lock<std::mutex>(map_lock);
+}
+
 basebandApiManager::basebandReadoutRegistry::iterator
 basebandApiManager::basebandReadoutRegistry::begin() noexcept {
-    std::lock_guard<std::mutex> lock(map_lock);
     return readout_map.begin();
 }
 
 basebandApiManager::basebandReadoutRegistry::iterator
 basebandApiManager::basebandReadoutRegistry::end() noexcept {
-    std::lock_guard<std::mutex> lock(map_lock);
     return readout_map.end();
 }
 
@@ -137,6 +139,7 @@ void basebandApiManager::status_callback_all(connectionInstance& conn) {
     }
 
     // If there isn't an event_id given, then return all the events
+    auto registry_lock = readout_registry.lock();
     for (auto& element : readout_registry) {
         uint32_t freq_id = element.first;
         auto& readout_manager = element.second;
@@ -155,6 +158,7 @@ void basebandApiManager::status_callback_single_event(const uint64_t event_id,
                                                       connectionInstance& conn) {
     std::vector<json> event_status;
 
+    auto registry_lock = readout_registry.lock();
     for (auto& element : readout_registry) {
         uint32_t freq_id = element.first;
         auto& readout_manager = element.second;
@@ -224,6 +228,7 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
         const double dm_error = request["dm_error"];
 
         json response = json::object({});
+        auto registry_lock = readout_registry.lock();
         for (auto& element : readout_registry) {
             const uint32_t freq_id = element.first;
             auto& readout_entry = element.second;
