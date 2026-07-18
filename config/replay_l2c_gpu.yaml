@@ -93,7 +93,7 @@ gputrack:
           in_frame_len: samples_per_data_set * sizeof_float
           n_channels: 10
           channel_offset: 0
-          capture_utc0: 1.0
+          capture_utc0: 1784395225.06   # l2c_5msps_2026-07-18.bin sample-0 UTC (mtime - 120 s)
           fll_gain: 0.0
           carrier_shared: true
           seed_endpoint: "/gps_track/set_seeds"

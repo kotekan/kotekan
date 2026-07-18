@@ -68,7 +68,7 @@ def window(raw, n0, dop):
 def cm_acquire(raw, off, prn, nwin=20):
     """Coarse+fine Doppler and cp (CM chips) via incoherent FFT correlation over nwin windows."""
     cm = l2c_code(CM_INIT[prn - 1], CMLEN)
-    rep = cm[(np.arange(NW) * CHIP / FS % CMLEN).astype(np.int64)]
+    rep = cm[(np.arange(NW) * CHIP / FS % CMLEN).astype(np.int64) % CMLEN]
     crep = np.conj(np.fft.fft(rep))
 
     def acc(dop, n_start, n):
@@ -88,7 +88,7 @@ def cm_acquire(raw, off, prn, nwin=20):
 def cp_at(raw, off, prn, dop, n_start, nwin=20):
     """cp (CM chips) measured at a later block -- for the linear code-drift fit."""
     cm = l2c_code(CM_INIT[prn - 1], CMLEN)
-    rep = cm[(np.arange(NW) * CHIP / FS % CMLEN).astype(np.int64)]
+    rep = cm[(np.arange(NW) * CHIP / FS % CMLEN).astype(np.int64) % CMLEN]
     crep = np.conj(np.fft.fft(rep))
     p = np.zeros(NW)
     for i in range(nwin):
@@ -129,14 +129,14 @@ def main():
             c = np.empty(nref, np.complex128)
             for i in range(nref):
                 cp_i = cp0 + drift * (i * NW / FS)
-                idx = ((chipidx - cp_i) % CMLEN).astype(np.int64)
+                idx = ((chipidx - cp_i) % CMLEN).astype(np.int64) % CMLEN
                 c[i] = np.dot(window(raw, off + i * NW, dop), cm[idx])
             dphi = np.angle((c[1:] * np.conj(c[:-1])) ** 2) / 2.0
             dop += np.median(dphi) / (2 * np.pi * (NW / FS))
         ctrl = np.empty(nref, np.complex128)
         for i in range(nref):
             cp_i = cp0 + drift * (i * NW / FS)
-            idc = ((chipidx - cp_i - 500.0) % CMLEN).astype(np.int64)   # 500 chips off-peak
+            idc = ((chipidx - cp_i - 500.0) % CMLEN).astype(np.int64) % CMLEN   # 500 chips off-peak
             ctrl[i] = np.dot(window(raw, off + i * NW, dop), cm[idc])
         print("  carrier refined: dop %+.2f Hz   CM direct-despread check: on/off-peak = %.1f"
               % (dop, np.abs(c).mean() / np.abs(ctrl).mean()))
@@ -151,7 +151,7 @@ def main():
         for i in range(nwin):
             cp_i = cp0 + drift * (i * NW / FS)                     # received-code phase, CM chips
             for k in range(75):
-                idx = ((chipidx - cp_i + (k + i) * CMLEN) % CLLEN).astype(np.int64)
+                idx = ((chipidx - cp_i + (k + i) * CMLEN) % CLLEN).astype(np.int64) % CLLEN
                 P[k] += np.abs(np.dot(w[i], cl[idx])) ** 2
         k_best = int(P.argmax())
         others = np.delete(P, k_best)
@@ -175,8 +175,8 @@ def main():
             t_i = i * NW / FS
             cp_i = cp0 + drift * t_i
             wi = window(raw, off + i * NW, dop)
-            idx = ((chipidx - cp_i + ((k_best + i) % 75) * CMLEN) % CLLEN).astype(np.int64)
-            idb = ((chipidx - cp_i + ((k_best + 37 + i) % 75) * CMLEN) % CLLEN).astype(np.int64)
+            idx = ((chipidx - cp_i + ((k_best + i) % 75) * CMLEN) % CLLEN).astype(np.int64) % CLLEN
+            idb = ((chipidx - cp_i + ((k_best + 37 + i) % 75) * CMLEN) % CLLEN).astype(np.int64) % CLLEN
             c_all[i] = np.dot(wi, cl[idx])
             c_bad[i] = np.dot(wi, cl[idb])
         scale = np.abs(c_all).mean()                               # per-window amplitude scale

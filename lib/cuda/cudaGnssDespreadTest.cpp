@@ -36,15 +36,26 @@ using cf = std::complex<float>;
         }                                                                                          \
     } while (0)
 
-int main() {
-    // L1 C/A at the GX10 front-end geometry (5 MSPS real, N=20 channels, 4-tap hamming PFB).
+int main(int argc, char** argv) {
+    // Default: L1 C/A at the GX10 front-end geometry (5 MSPS real, N=20 channels, 4-tap hamming
+    // PFB). Optional argv: [signal_name] [N] -- e.g. `cuda_gnss_despread_test GPS_L2C_CM 10`
+    // runs the TDM (zero-stuffed comb) signal at the live L2C geometry (5000-hop records), the
+    // case that validated the GPU despread during the 2026-07-18 L2C zero-cert hunt. The GPU
+    // side below is fully signal-generic (bank-driven), mirroring GnssCudaDespread's job
+    // construction -- it was L1CA-hardcoded before, which made non-L1 runs vacuous.
     const double fs = 5.0e6, f_off = 1.25e6;
-    const int N = 20, taps = 4;
+    const int N = (argc > 2) ? atoi(argv[2]) : 20;
+    const int taps = 4;
     const int prn = 19;
-    const double dop = -2900.0, cp_true = 517.25;
+    const double dop = -2900.0;
     const long long window_start = 40LL * 125 * 3600; // an "aged" absolute anchor (~1 hr of hops)
 
-    const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L1CA");
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name(argc > 1 ? argv[1] : "GPS_L1CA");
+    if (!sig) {
+        fprintf(stderr, "unknown signal %s\n", argv[1]);
+        return 2;
+    }
+    const double cp_true = (sig->code_length > 1023) ? 5170.25 : 517.25;
     gnss::ChannelizedReplicaBank bank(*sig, fs, f_off, N, taps, dsp::window_from_string("hamming"),
                                       {prn});
     const int n_hops = bank.repl_period_hops(); // 125 @ L1/5MSPS
@@ -107,11 +118,15 @@ int main() {
     const int Lf = fft_len * taps;
     const int n_spec = (int)ftrials.size(); // kernel jobs
     const int n_out = 4 * n_spec;           // output rows (E, P, L, P_HEAD per job)
-    const double cps = sig->chip_rate_hz / fs * (1.0 + dop / sig->carrier_hz); // comb_mult=1 (L1CA)
+    // Signal-generic, mirroring GnssCudaDespread's job construction: COMBINED-stream chip rate
+    // and code table (zero-stuffed for TDM), cp/spacing scaled by comb_mult below.
+    const int comb = bank.comb_mult();
+    const double cps =
+        bank.eff_chip_rate() / fs * (1.0 + bank.code_doppler_sign * dop / sig->carrier_hz);
     const double wc = 2.0 * M_PI * (f_off + dop) / fs;
 
-    auto code = gps::generate_ca_code(prn); // +-1, 1023 chips
-    std::vector<int8_t> code8(code.begin(), code.end());
+    const auto& fcode = bank.full_code(0); // slot 0 == our PRN
+    std::vector<int8_t> code8(fcode.begin(), fcode.end());
 
     std::vector<float2> phiA((size_t)n_chan * (Lf + 1)), phiB((size_t)n_chan * (Lf + 1));
     for (int c = 0; c < n_chan; ++c)
@@ -153,10 +168,11 @@ int main() {
     CK(cudaMemcpy(d_code, code8.data(), code8.size(), cudaMemcpyHostToDevice));
     CK(cudaMemcpy(d_phiA, phiA.data(), phiA.size() * sizeof(float2), cudaMemcpyHostToDevice));
     CK(cudaMemcpy(d_phiB, phiB.data(), phiB.size() * sizeof(float2), cudaMemcpyHostToDevice));
-    for (int b = 0; b < n_spec; ++b) // comb_mult = 1 for L1CA, so ds = spacing directly
-        jobs[b] = {ftrials[b].cp_prompt, spacing,   cps,           1.0 / cps,
-                   wc,                   0,         (int)code8.size(), all_mask,
-                   d_phiA,               d_phiB,    filt.n_chips,  ftrials[b].m_head};
+    for (int b = 0; b < n_spec; ++b) // component -> combined chips, as production does
+        jobs[b] = {(double)comb * ftrials[b].cp_prompt, (double)comb * spacing,
+                   cps,           1.0 / cps,
+                   wc,            0,         (int)code8.size(), all_mask,
+                   d_phiA,        d_phiB,    filt.n_chips,  ftrials[b].m_head};
     CK(cudaMemcpy(d_jobs, jobs.data(), jobs.size() * sizeof(gnss_cuda::DespreadJob),
                   cudaMemcpyHostToDevice));
 

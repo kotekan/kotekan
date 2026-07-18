@@ -36,6 +36,7 @@ the ~0.5 s decorrelation time. REST via stdlib urllib; visibility via skyfield
 import argparse
 import math
 import json
+import os
 import re
 import statistics
 import sys
@@ -396,6 +397,11 @@ def main(argv=None):
                     help="warm-start the receiver code-rate clock offset (l-a) in PPM, e.g. from a prior "
                          "strong-signal (L1 C/A) run -- so a weak band (L1C) seeds on-peak from cycle 1 "
                          "instead of self-calibrating. Live samples still refine it if any sats fit.")
+    ap.add_argument("--code-bias-force", type=float, default=None,
+                    help="DIAGNOSTIC: pin the (l-a) code-rate clock offset to this PPM -- the "
+                         "live fit/EMA still runs and logs (so the fit stays observable) but the "
+                         "SEEDED rate uses this value only. 2026-07-18: built to test the L2C "
+                         "phantom-l-a hypothesis (fit says +0.022 ppm, air truth says 0.000).")
     ap.add_argument("--code-bias-file", type=str, default=None,
                     help="persist the converged (l-a) ppm here: read at startup (unless --code-bias-init "
                          "is set) and rewritten each update, so the offset carries across runs/bands")
@@ -1345,7 +1351,8 @@ def main(argv=None):
             if dr_state["eph"]:
                 tag = args.dr_constellation
                 t_now_abs = now_w - utc0_sample0
-                la = code_bias_ema or 0.0
+                la = (args.code_bias_force * 1e-6 if args.code_bias_force is not None
+                      else (code_bias_ema or 0.0))
                 # clock drift (chips/s): EMPIRICAL from consecutive raw solves (EMA'd
                 # below), falling back to the f_chip*(l-a) model until measured -- the
                 # modeled value left a persistent EMA lag (~0.6 chips at first deploy),
@@ -1691,7 +1698,9 @@ def main(argv=None):
                             f.write("%.4f\n" % (code_bias_ema * 1e6))
                     except Exception:
                         pass
-        if code_bias_ema is not None:
+        cb_to_seed = (args.code_bias_force * 1e-6 if args.code_bias_force is not None
+                      else code_bias_ema)
+        if cb_to_seed is not None:
             n_seeded = 0
             for prn, seed in seeds.items():
                 # ALL sats (fitted included): l-a is common to the receiver, so the smooth pooled
@@ -1703,12 +1712,13 @@ def main(argv=None):
                 if prn in cp_held:
                     continue
                 seed["code_phase_rate"] = cp_rate_from_code_bias(
-                    seed["doppler_hz"], code_bias_ema, args.hops_per_sec,
+                    seed["doppler_hz"], cb_to_seed, args.hops_per_sec,
                     args.chip_rate_hz, args.carrier_hz)
                 n_seeded += 1
             if n_seeded:
-                _log("seeded code rate from (l-a) %+.3f ppm -> %d sat(s)"
-                     % (code_bias_ema * 1e6, n_seeded))
+                _log("seeded code rate from (l-a) %+.3f ppm%s -> %d sat(s)"
+                     % (cb_to_seed * 1e6,
+                        " [FORCED]" if args.code_bias_force is not None else "", n_seeded))
 
         # 4. push consensus seeds to every tracker (DLL trim applied at POST time only)
         payload = []
@@ -1719,6 +1729,10 @@ def main(argv=None):
             if car_trim.get(prn):
                 d["carrier_trim_hz"] = car_trim[prn]
             payload.append(d)
+        if os.environ.get("GNSS_SEED_DEBUG"):
+            for d in payload:
+                if str(d["prn"]) in os.environ["GNSS_SEED_DEBUG"].split(","):
+                    _log("SEEDDBG %s" % json.dumps(d, sort_keys=True))
         ok = 0
         for t_ep in trackers:
             try:
