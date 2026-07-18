@@ -41,7 +41,7 @@ samples_per_data_set: 199680
 bytes_per_sample: 2
 buffer_depth: 16
 sizeof_float: 4
-cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]  # 14-19 = private airspy-input pairs (USB isolation, 2026-07-18)
 
 spectrum_length: 10
 num_taps: 4
@@ -81,6 +81,7 @@ rec_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_d
 out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
 
 airspy_in:
+    cpu_affinity: [14, 15]
     kotekan_stage: airspyInput
     out_buf: input_buf
     # PIN THE DEVICE BY SERIAL (0 / absent = "open whichever enumerates first"). Harmless with a
@@ -200,7 +201,7 @@ assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_
 # integration_length: 1000, navwipe_bit_records: 20 -> navwipe: integrate ~1 s (50 nav bits)
 # coherently; deep |A| in slot 8. Restored to 1000 now that the Doppler-rate feed-forward removes the
 # zenith ramp (was temporarily 400 for the coherence-limit diagnostic).
-gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20 }
+gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20, phase_dump_prns: [6, 11, 19, 21, 22], phase_dump_path: "/tmp/gpswipe/phase_dump_gps.txt" }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpswipe", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- Galileo E1-C parallel chain (same channelized stream, second consumers) ----

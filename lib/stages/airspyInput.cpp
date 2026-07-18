@@ -104,6 +104,12 @@ void airspyInput::adcstat_callback(kotekan::connectionInstance& conn) {
     reply["railfrac"] = adcrailfrac;
     // Absolute-time anchor for the CL time-assist (0.0 until the first producer callback).
     reply["utc0_sample0"] = _utc0_sample0.load(std::memory_order_relaxed);
+    // Stream integrity: cumulative REAL samples (delivered + accounted gaps), cumulative
+    // libairspy FIFO drops, and drop episodes. Fraction = samples_dropped / samples_total.
+    // The producer accounts every drop as a clean sample_seq gap, so these are exact.
+    reply["samples_total"] = _samples_total.load(std::memory_order_relaxed);
+    reply["samples_dropped"] = _samples_dropped.load(std::memory_order_relaxed);
+    reply["drop_events"] = _drop_events.load(std::memory_order_relaxed);
     adcstat_ready = false;
     lock.unlock();
 
@@ -252,6 +258,9 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
     // code phase. (Only meaningful when the buffer carries GNSS metadata; harmless otherwise.)
     if (transfer->dropped_samples > 0) {
         _samples_seq += (int64_t)transfer->dropped_samples;
+        _samples_dropped.fetch_add((uint64_t)transfer->dropped_samples,
+                                   std::memory_order_relaxed);
+        _drop_events.fetch_add(1, std::memory_order_relaxed);
         if (frame_loc != 0) { // discard the straddling partial frame; refill it post-gap
             frame_loc = 0;
             _frame_seq0 = _samples_seq;
@@ -361,6 +370,8 @@ void airspyInput::airspy_producer(airspy_transfer_t* transfer) {
             frame_ptr = nullptr; // release: next iteration fetches a fresh frame
         }
     }
+    // Publish the true sample index for lock-free /adcstat reads (once per transfer).
+    _samples_total.store((uint64_t)_samples_seq, std::memory_order_relaxed);
     pthread_mutex_unlock(&recv_busy);
 }
 

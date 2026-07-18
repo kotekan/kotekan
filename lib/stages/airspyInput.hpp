@@ -119,6 +119,13 @@ private:
     /// search/tracker absolute-hop referencing handles it) instead of silent counter divergence.
     /// On a drop the partial frame is abandoned so no frame straddles the gap.
     int64_t _samples_seq = 0; ///< running true sample index (received + dropped)
+    /// Stream-integrity counters, exposed via /adcstat (drop fraction = dropped/total).
+    /// The producer already ACCOUNTS drops (clean sample_seq gaps); these make the rate
+    /// a standing metric instead of a grep through WARN logs. Atomics: the REST thread
+    /// reads them against the producer's writes.
+    std::atomic<uint64_t> _samples_total{0};   ///< mirror of _samples_seq for lock-free reads
+    std::atomic<uint64_t> _samples_dropped{0}; ///< cumulative libairspy FIFO drops (samples)
+    std::atomic<uint64_t> _drop_events{0};     ///< number of distinct drop episodes
     int64_t _frame_seq0 = 0;  ///< true sample index of the current frame's first sample
     /// Wall-clock UTC (unix seconds) of TRUE sample 0, anchored at the first producer callback
     /// (~ms accuracy: USB delivery latency; the tiny alignment lag is ignored). 0 = not yet

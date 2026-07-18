@@ -27,7 +27,7 @@ samples_per_data_set: 49920
 bytes_per_sample: 2
 buffer_depth: 16
 sizeof_float: 4
-cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]  # 14-19 = private airspy-input pairs (USB isolation, 2026-07-18)
 
 spectrum_length: 10        # N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS
 num_taps: 4
@@ -67,6 +67,7 @@ out_buf:   { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_d
 epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 15360 * n_prn }
 
 airspy_in:
+    cpu_affinity: [18, 19]
     kotekan_stage: airspyInput
     out_buf: input_buf
     serial: 0x03A464C837264F67   # L5 unit (verify a pin by BREAKING it -- see run_band.sh)
