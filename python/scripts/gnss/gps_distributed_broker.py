@@ -458,6 +458,22 @@ def main(argv=None):
                          "slows the poisoning (E36 at 49 dB-Hz walked to 18 Hz off the fleet "
                          "at 1 Hz/update and collapsed 20 dB); rejection stops it. Real step "
                          "changes re-enter via re-seed -> BOOTSTRAP.")
+    ap.add_argument("--carrier-refade", type=int, default=10,
+                    help="TRACK-mode DEMOTION: after this many consecutive gated residuals "
+                         "(fade-hold or innovation-reject) while the sat is still PRESENT "
+                         "(amp_snr >= --hold-snr), drop it back to BOOTSTRAP so the loop "
+                         "re-acquires at full gain (0 = never). Without this the two TRACK "
+                         "gates form an ABSORBING state: a seed-doppler step (un-precomped "
+                         "hold release / escape re-anchor) leaves a residual above the "
+                         "innovation gate, decoherence turns off coh_ok, and the sat parks "
+                         "carrier-dead with a perfectly measurable residual forever -- "
+                         "measured 2026-07-18 on B1C: C20 latched at -6.2 Hz for 40 min at "
+                         "full amp while deep sat on the floor; the strongest (fastest-"
+                         "slewing) sats latch first, the weak ones never certify into TRACK "
+                         "and self-heal, inverting the fleet. The presence bar keeps a "
+                         "genuinely faded sat coasting on the feed-forward (the pathology "
+                         "--carrier-min-sig exists for); the innov gate's designed escape "
+                         "('re-seed -> BOOTSTRAP') never fires for a held strong sat.")
     ap.add_argument("--carrier-fleet-seed", action="store_true",
                     help="initialize a new (or re-seeded) sat's trim to the MEDIAN of the "
                          "converged fleet trims instead of 0. The converged trim is the "
@@ -531,7 +547,7 @@ def main(argv=None):
                          "to predict a code phase for a signal that does not exist. The "
                          "tracker then despreads noise at that phase and the cross-correlation "
                          "against real B1C satellites reports 20-60 sigma. Measured 2026-07-14: "
-                         "C11/C12/C13 produced 11309 phantom rows (5.5% of all BeiDou map "
+                         "C11/C12/C13 produced 11309 phantom rows (5.5%% of all BeiDou map "
                          "points) at a plausible-looking 25-30 dB-Hz. A model that can invent "
                          "a satellite needs a capability gate the search never needed.")
     ap.add_argument("--dr-repin-s", type=float, default=10.0,
@@ -552,7 +568,7 @@ def main(argv=None):
                     help="DESIGN (b), default OFF -- IT DOES NOT WORK YET, AND THE REASON IS "
                          "INSTRUCTIVE. Measured 2026-07-14: continuous Doppler made E/C WORSE "
                          "than the fence+translate design (E 42.0 -> 34.9 dB-Hz, degraded "
-                         "emits 12% -> 51%; C 40.8 -> 35.6, 17% -> 48%). Freezing the seed "
+                         "emits 12%% -> 51%%; C 40.8 -> 35.6, 17%% -> 48%%). Freezing the seed "
                          "Doppler was doing DOUBLE DUTY: it also kept the TRACKER's f_ref "
                          "stable. Let the Doppler drift continuously and the tracker's OWN "
                          "fence (fll_reacq_hz, 10 Hz at B1C) fires every 10/0.55 = 18 s -- the "
@@ -693,8 +709,9 @@ def main(argv=None):
     cp_escape_sign = {} # prn -> last disagreement (sign-consistency: real parks are one-signed)
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
     car_trim = {}       # prn -> persistent NCO frequency command (Hz): the shared carrier loop
-    car_last = {}       # prn -> last integrated residual (dedup: one integration per emit)
+    car_last = {}       # prn -> last SEEN residual (dedup: one gate-check/integration per emit)
     car_locked = set()  # prns certified coherent since seed: BOOTSTRAP -> TRACK mode latch
+    car_fade = {}       # prn -> consecutive TRACK-mode gated emits (--carrier-refade demotion)
     cp_hist = {}     # prn -> [(ref_hop, cp0, dop_det), ...] recent distinct snapshots (slope fit)
 
     def cp_to_seed_currency(pts, dop_seed, dop_rate=0.0):
@@ -1147,6 +1164,15 @@ def main(argv=None):
                 dll_last.pop(prn, None)
                 cp_held.discard(prn)
                 hold_miss.pop(prn, None)
+                # The re-anchor refreshes the seed doppler next cycle = an NCO f_ref step
+                # the TRACK-mode trim was not built for (same latch as the hold release,
+                # and it bypasses that branch because cp_held is discarded HERE): demote
+                # to BOOTSTRAP so the carrier re-pulls instead of parking off-frequency.
+                if not args.trim_precomp and prn in car_locked:
+                    car_locked.discard(prn)
+                    car_fade.pop(prn, None)
+                    _log("CARRIER REACQ PRN %d: escape re-anchor (no precomp) -> "
+                         "BOOTSTRAP re-pull" % prn)
             elif (prev is not None
                     and (sig_of_last(status.get(prn)) >= args.hold_snr
                          or (prn in cp_held and hold_miss.get(prn, 0) < 3))):
@@ -1232,9 +1258,23 @@ def main(argv=None):
                 cp_held.add(prn)
             else:
                 if prn in cp_held:
+                    ddop_rel = (seed["doppler_hz"] - prev["doppler_hz"]) if prev else 0.0
                     _log("RELEASE PRN %d: seed currency unfrozen (amp_snr %.1f, ddop %+.0f)"
-                         % (prn, sig_of_last(status.get(prn)),
-                            (seed["doppler_hz"] - prev["doppler_hz"]) if prev else 0.0))
+                         % (prn, sig_of_last(status.get(prn)), ddop_rel))
+                    # The release STEPS the tracker's f_ref by ddop while the TRACK-mode trim
+                    # still carries the hold-era compensation -> instant residual ~ -ddop,
+                    # which the coh/innovation gates then latch permanently (measured
+                    # 2026-07-18: C20 parked at -6.2 Hz for 40 min at full amp; the fastest-
+                    # slewing = STRONGEST sats accumulate the biggest ddop and latch first).
+                    # --trim-precomp would cancel the step arithmetically but its first
+                    # deploy correlated with an E/C collapse (2a5f6ef6, unvalidated). The
+                    # safe fix: the broker KNOWS the NCO stepped -- demote to BOOTSTRAP and
+                    # let the loop re-pull the trim at full gain (seconds, no arithmetic).
+                    if not args.trim_precomp and abs(ddop_rel) > 1.0 and prn in car_locked:
+                        car_locked.discard(prn)
+                        car_fade.pop(prn, None)
+                        _log("CARRIER REACQ PRN %d: hold released with dop step %+.1f Hz "
+                             "(no precomp) -> BOOTSTRAP re-pull" % (prn, ddop_rel))
                 cp_held.discard(prn)
                 hold_miss.pop(prn, None)
             # TRIM PRE-COMPENSATION (2026-07-12 night): the NCO trim holds (f_true - f_ref);
@@ -1681,25 +1721,44 @@ def main(argv=None):
                 # was COHERENT -- gate on certification AND significance, and slew-clamp.
                 # The sig gate alone let re-lock transition rows (amp back, phase not) kick
                 # converged trims 30 Hz a shot: E36 at 48 dB-Hz visited the +-100 Hz rails.
+                # Dedup FIRST -- at most one gate-check + integration per fresh emit: the
+                # combiner emits a new residual every ~1.5 s window while this loop polls at
+                # ~5 Hz; integrating a stale value 5-7x over-applies the gain and oscillates
+                # (observed +-20 Hz swings), and the --carrier-refade counter below must
+                # count EMITS, not polls. A changed value marks a fresh emit.
+                if resid == car_last.get(prn):
+                    continue
+                car_last[prn] = resid
                 coh_ok = (rec.get("coherence_s") or 0.0) > 0.0
                 sig = (max(rec.get("deep_snr") or 0.0, rec.get("amp_snr") or 0.0)
                        if coh_ok else 0.0)
                 tracking = prn in car_locked
                 if coh_ok and sig >= args.carrier_min_sig > 0.0:
                     car_locked.add(prn)
-                if tracking and args.carrier_min_sig > 0.0 \
-                        and (not coh_ok or sig < args.carrier_min_sig):
-                    continue  # fade: hold the trim, coast on the feed-forward
-                if tracking and args.carrier_innov_hz > 0.0 \
+                gated = (tracking and args.carrier_min_sig > 0.0
+                         and (not coh_ok or sig < args.carrier_min_sig))
+                if not gated and tracking and args.carrier_innov_hz > 0.0 \
                         and abs(resid) > args.carrier_innov_hz:
-                    continue  # certified-but-implausible residual: the estimator is lying
-                # Integrate each MEASUREMENT once, not each poll: the combiner emits a new
-                # residual every ~1.5 s window while this loop polls at ~5 Hz -- integrating
-                # the stale value 5-7x per measurement over-applies the gain and oscillates
-                # (observed +-20 Hz swings). A changed value marks a fresh emit.
-                if resid == car_last.get(prn):
-                    continue
-                car_last[prn] = resid
+                    gated = True  # certified-but-implausible residual: the estimator is lying
+                if gated:
+                    # --carrier-refade: the two gates otherwise form an ABSORBING state for a
+                    # sat whose NCO really stepped (hold release / escape re-anchor without
+                    # trim precomp): coherence never returns while the residual exceeds the
+                    # innovation gate, so the trim can never unwind. Sustained gating WITH
+                    # the sat still present = carrier genuinely lost, not a fade: demote to
+                    # BOOTSTRAP and let the next residual re-pull at full gain (seconds).
+                    # A genuinely faded sat (amp below the hold bar) keeps coasting on the
+                    # feed-forward -- the pathology --carrier-min-sig exists to protect.
+                    present = (rec.get("amp_snr") or 0.0) >= args.hold_snr
+                    car_fade[prn] = car_fade.get(prn, 0) + 1 if present else 0
+                    if args.carrier_refade > 0 and car_fade.get(prn, 0) >= args.carrier_refade:
+                        car_locked.discard(prn)
+                        car_fade.pop(prn, None)
+                        _log("CARRIER REACQ PRN %d: %d consecutive gated emits at full amp "
+                             "(last resid %+.2f Hz) -> BOOTSTRAP re-pull"
+                             % (prn, args.carrier_refade, resid))
+                    continue  # this emit stays held: coast on the feed-forward
+                car_fade.pop(prn, None)
                 if prn not in car_trim and args.carrier_fleet_seed:
                     # start on the fleet's clock, not at 0: the converged trim is the chain's
                     # deterministic frac-N LO offset, common-mode across sats
@@ -1719,6 +1778,7 @@ def main(argv=None):
                 if k not in seeds:
                     del car_trim[k]
                     car_locked.discard(k)  # a re-seeded sat re-enters via BOOTSTRAP
+                    car_fade.pop(k, None)
 
         # 3b. Receiver code-rate clock offset (l-a): pool the strong sats' per-fit samples (robust
         # median), EMA-smooth it (slow -> tracks TCXO/OCXO drift), then SEED it to every sat that
