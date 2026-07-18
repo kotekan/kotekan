@@ -177,8 +177,9 @@ void lostSamplesToN2Counts::main_thread() {
             DEBUG("Waiting on full lost_samples frame from buffer {:d}.", fouter);
             uint8_t* lost_samples_frame =
                 (uint8_t*)lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_frame_id);
+            // Shutdown mid-loop: exit without publishing the partial counts frame
             if (lost_samples_frame == nullptr)
-                break;
+                return;
 
             // Collect science metadata from lost samples
             const auto lost_samples_meta =
