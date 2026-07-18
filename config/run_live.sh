@@ -392,7 +392,11 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
     # nh TIME-ASSIST: if the B1C combiner opts in (nh_assist: true), the broker POSTs predicted
     # overlay indices so the weak sats get the right alignment instead of losing the 1800-way
     # search. B1C overlay = 1800 chips (E5a/B2a CS100 would use 100).
-    if grep -qE "^${SP}bds_combiner:.*nh_assist:[[:space:]]*true" "$RUNCFG"; then
+    # RUNCFG is the per-band SOURCE config whose stage names are UNPREFIXED (gen_3band_config
+    # adds ${SP} only in the merged file) -- so match with-or-without the prefix. Requiring
+    # the prefix silently dropped --nh-assist for every 3-band launch (found 2026-07-18: the
+    # C20/C23 off-grid overlay mislocks the assist had fixed on 07-17 were back all soak).
+    if grep -qE "^(${SP})?bds_combiner:.*nh_assist:[[:space:]]*true" "$RUNCFG"; then
       BDS_ALM="$BDS_ALM --nh-assist --nh-overlay-len ${NH_OVERLAY_LEN:-1800}"
       echo "  BeiDou nh time-assist ON (predicted overlay -> combiner /set_nh_hint)"
     fi
