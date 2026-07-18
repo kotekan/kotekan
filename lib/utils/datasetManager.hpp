@@ -475,12 +475,13 @@ inline const T* datasetManager::dataset_state(dset_id_t dset) {
 
         // Check if we have that state already
         const datasetState* state = nullptr;
-        try {
-            state = _states.at(state_id).get();
-            return (const T*)state;
-        } catch (std::out_of_range& e) {
-            DEBUG_NON_OO("datasetManager: requested state {} not known locally.", state_id);
+        {
+            std::lock_guard<std::mutex> slock(_lock_states);
+            auto find = _states.find(state_id);
+            if (find != _states.end())
+                return (const T*)find->second.get();
         }
+        DEBUG_NON_OO("datasetManager: requested state {} not known locally.", state_id);
 
         if (_use_broker) {
             // Request the state from the broker.
@@ -514,9 +515,11 @@ datasetManager::add_state(std::unique_ptr<T>&& state,
 
     state_id_t hash = hash_state(*state);
 
+    std::lock_guard<std::mutex> slock(_lock_states);
+
     // check if there is a hash collision
-    if (_states.find(hash) != _states.end()) {
-        auto find = _states.find(hash);
+    auto find = _states.find(hash);
+    if (find != _states.end()) {
         if (!state->equals(*(find->second))) {
             // FIXME: hash collision. make the value a vector and store same
             // hash entries? This would mean the state/dset has to be sent
@@ -527,7 +530,6 @@ datasetManager::add_state(std::unique_ptr<T>&& state,
         }
     } else {
         // insert the new state
-        std::lock_guard<std::mutex> slock(_lock_states);
         if (!_states.insert(std::pair<state_id_t, std::unique_ptr<T>>(hash, std::move(state)))
                  .second) {
             DEBUG_NON_OO("datasetManager: a state with hash {} is already registered locally.",
