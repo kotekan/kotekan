@@ -298,6 +298,7 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
     double max_wait_time = 1.;
     double min_wait_time = _samples_per_data_set * fpga_period_s;
     bool advance_info = false;
+    bool data_ready = false;
 
     while (!stop_thread) {
         int64_t frame_fpga_seq = -1;
@@ -352,11 +353,14 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
             if (advance_info) {
                 INFO("Done waiting for dump data for {:d}.", event_id);
             }
+            data_ready = true;
             break;
         }
         unlock_range(dump_start_frame, dump_end_frame);
     }
-    if (stop_thread) {
+    // Once the frame range is locked for the dump, hand it to `extract_data`
+    // even if a shutdown just started: it releases the locks on all paths.
+    if (!data_ready) {
         return basebandDumpData::Status::Cancelled;
     } else if (dump_start_frame >= dump_end_frame) {
         // Trigger was too late and missed the data. Return an empty dataset.
@@ -425,8 +429,8 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     // simple stop extracting data and release all the input frames.
     bool stop_extract = false;
 
-    for (int frame_index = data.dump_start_frame; !stop_thread && frame_index < data.dump_end_frame;
-         frame_index++) {
+    int frame_index = data.dump_start_frame;
+    for (; !stop_thread && frame_index < data.dump_end_frame; frame_index++) {
 
         if (stop_extract) {
             frame_dropped_counter.inc();
@@ -531,7 +535,9 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
         frame_sent_counter.inc();
     }
 
-    unlock_range(data.dump_start_frame, data.dump_end_frame);
+    // Frames the loop got to were already unlocked there; release the rest if
+    // the loop was cut short by a shutdown.
+    unlock_range(frame_index, data.dump_end_frame);
 
     if (stop_thread) {
         return basebandDumpData::Status::Cancelled;
