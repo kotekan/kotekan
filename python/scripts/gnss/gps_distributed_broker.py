@@ -914,14 +914,24 @@ def main(argv=None):
                 # mismaps some BDS birds (PRN 39: TLE el<5 vs BRDC el 10)
                 if v_dr is None or v_dr["el"] < args.mask_deg:
                     continue
+            _dop_src = "pred" if (args.almanac and prn in pred) else "DET(grid)"
             seed_dop = (pred[prn][0] + clock_bias) if (args.almanac and prn in pred) else dop
             # Dead-reckon armed: prefer the BRDC doppler for EVERY seed -- the same model
             # that owns the undetected sats. Mixing sources stepped the seed doppler by
             # the TLE-vs-BRDC error at every DR<->search handoff (~25 Hz on a stale TLE
             # = the whole E1 hold fence; observed E32 RELEASE ddop -25, 2026-07-13).
             if v_dr is not None and prn not in dr_untrusted:
+                _dop_src = "dr"
                 seed_dop = (args.doppler_sign * (-v_dr["range_rate_mps"] / 299792458.0
                                                  * args.carrier_hz) + clock_bias)
+            # SEED-STEP ATTRIBUTION (2026-07-18, the one-grid-step NCO disease): any seed
+            # doppler step > 10 Hz vs the sat's previous seed is loud, with its source --
+            # a ~exact-doppler_step jump here is the smoking gun for a grid/quantization
+            # slip upstream (the hint-anchored search grid was one such; fixed same day).
+            _prev_sd = seeds.get(prn, {}).get("doppler_hz")
+            if _prev_sd is not None and abs(seed_dop - _prev_sd) > 10.0:
+                _log("PRN %d SEED DOP STEP %+.1f Hz (%.1f -> %.1f, src=%s, det=%.1f)"
+                     % (prn, seed_dop - _prev_sd, _prev_sd, seed_dop, _dop_src, dop))
 
             # Maintain a per-PRN cp0-vs-hop history (only distinct snapshots; the search
             # holds its detection between updates) and fit the first-order code drift.

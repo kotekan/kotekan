@@ -168,7 +168,18 @@ void GnssChannelizedSearch::search_snapshot() {
             if (hh.valid && (_hint_ttl_s <= 0.0 || steady_s() - hh.t_recv < _hint_ttl_s)) {
                 hinted = true;
                 const double c = -hh.doppler, m = std::max(0.0, hh.margin);
-                for (double f = c - m; f <= c + m + 1e-6; f += _doppler_step)
+                // Anchor the hinted window to the ABSOLUTE Doppler grid (integer multiples
+                // of _doppler_step), NOT to the hint. A hint-anchored (sliding-origin) grid
+                // made the reported dop a function of the hint's continuous drift: a static
+                // peak's detection could hop a full bin between scans, and a re-seed then
+                // retuned the NCO exactly one grid step off truth. Measured 2026-07-18
+                // (G6, t=371 in the 3-band leg): seed DOP STEP +100.0 with the matching
+                // -24.03-chip currency translation, records rotating at +100.000 Hz after
+                // -- the railed-sat / L2C-B1C sinc-null disease (one step x T_rec = 1 cycle
+                // kills 20/10 ms records outright). The blind grid always had a fixed
+                // origin; this restores the same property to the narrowed scan.
+                const double lo = std::ceil((c - m) / _doppler_step) * _doppler_step;
+                for (double f = lo; f <= c + m + 1e-6; f += _doppler_step)
                     pgrid.push_back(f);
             }
         }
