@@ -977,6 +977,13 @@ def main(argv=None):
                      % (prn, seed_dop, _dop_src, dop,
                         ("%.1f" % (pred[prn][0])) if (args.almanac and prn in pred) else "n/a",
                         clock_bias, car_trim.get(prn, 0.0)))
+            elif abs(seed_dop - _prev_sd) > 10.0 and prn in cp_held:
+                # HELD sat: the candidate walks while the emitted tuple stays frozen /
+                # translated -- this "step" is never applied as-is, and logging it every
+                # cycle flooded the logs (195k lines on L1 GPS in 3 h, 2026-07-18). The
+                # tripwire's purpose (grid/quantization slips on LIVE seeds) is served by
+                # the un-held branch below.
+                pass
             elif abs(seed_dop - _prev_sd) > 10.0:
                 _log("PRN %d SEED DOP STEP %+.1f Hz (%.1f -> %.1f, src=%s, det=%.1f)"
                      % (prn, seed_dop - _prev_sd, _prev_sd, seed_dop, _dop_src, dop))
