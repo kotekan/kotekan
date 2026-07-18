@@ -14,10 +14,21 @@ LOG=/tmp/night_batch_${STAMP}.log
 exec >> "$LOG" 2>&1
 echo "=== night batch $STAMP ==="
 
-# 1. stop the node (TERM the launcher shell; NEVER -9 a kotekan sharing the GPU)
-PID=$(pgrep -f "bash.*run_3band[.]sh" | head -1 || true)
-if [ -n "${PID:-}" ]; then
-    kill -TERM "$PID"
+# 1. stop the node via bandctl (pidfile group-TERM; NEVER -9 a kotekan sharing the GPU).
+# Pre-bandctl this pattern-killed the launcher, which left bandctl's pidfile stale and the
+# relaunched node UNMANAGED (2026-07-18 morning: bandctl status lied, recovery needed a
+# manual pgid hunt). Stop whichever band is up; fall back to the old pattern-kill only if
+# no pidfile matches (e.g. a hand-launched node).
+STOPPED_BAND=""
+for band in 3band l1 l2c l5; do
+    if [ -f /tmp/gnss_run/$band.pgid ] && kill -0 -- -"$(cat /tmp/gnss_run/$band.pgid)" 2>/dev/null; then
+        "$KOT/config/bandctl.sh" stop $band && STOPPED_BAND=$band
+        break
+    fi
+done
+if [ -z "$STOPPED_BAND" ]; then
+    PID=$(pgrep -f "bash.*run_3band[.]sh" | head -1 || true)
+    [ -n "${PID:-}" ] && kill -TERM "$PID"
     for i in $(seq 1 30); do pgrep -f "kotekan.*live_3band" >/dev/null || break; sleep 2; done
 fi
 pgrep -f "kotekan.*live_3band" >/dev/null && { echo "kotekan would not stop; ABORT (no grab)"; exit 1; }
@@ -46,8 +57,9 @@ for f in /tmp/gpswipe/obs_*.jsonl /tmp/gpswipe/status_log*.jsonl \
 done
 nohup gzip "$ARC"/*.jsonl > /dev/null 2>&1 &
 
-# 3. relaunch the node
-cd "$KOT"
-nohup bash config/run_3band.sh > /tmp/run_3band_launch_${STAMP}.log 2>&1 &
-sleep 45
-pgrep -f "kotekan.*live_3band" >/dev/null && echo "node relaunched OK" || echo "RELAUNCH FAILED -- check /tmp/run_3band_launch_${STAMP}.log"
+# 3. relaunch the node under bandctl (records the pgid; the morning session manages it
+# with bandctl status/stop instead of hunting the process tree). Relaunch the SAME band
+# we stopped (default 3band).
+"$KOT/config/bandctl.sh" start "${STOPPED_BAND:-3band}" \
+    && echo "node relaunched OK under bandctl (${STOPPED_BAND:-3band})" \
+    || echo "RELAUNCH FAILED -- check /tmp/gnss_run/${STOPPED_BAND:-3band}.log"

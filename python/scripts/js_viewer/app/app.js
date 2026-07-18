@@ -29,6 +29,7 @@ import {GpsSkyPanel}              from "./panels/gps_sky.js";
 import {GpsTablePanel}            from "./panels/gps_table.js";
 import {GpsFeed, configure_chains} from "./panels/gps_feed.js";
 import {GpsAmpHistoryPanel}       from "./panels/gps_amp_history.js";
+import {AirspyStatsPanel}         from "./panels/airspy_stats.js";
 
 
 function default_state() {
@@ -216,6 +217,11 @@ export class App {
             this.panels.push(new GpsAmpHistoryPanel({
                 app: this, target: "gps_amp_card", feed,
             }));
+            // Stream health: ADC rms / rail% / drop rate from the adcstat the feed
+            // already polls (no extra kotekan load; counters need the 07-18 build).
+            this.layout.addWidget({mount_id: "airspy_stats_card", title: "Airspy stream",
+                                   x: 0, y: 13, w: 12, h: 2, min_w: 4, min_h: 2});
+            this.panels.push(new AirspyStatsPanel({target: "airspy_stats_card", feed}));
             this.layout.restore_from_storage();
             return;
         }
