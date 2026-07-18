@@ -344,7 +344,6 @@ uint8_t* Buffer::wait_for_full_frame(const std::string& consumer_name, const int
     full_cond.wait(lock, [&]() { return (is_full[ID] && !con.is_done[ID]) || shutdown_signal; });
     DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting done.", consumer_name, ID);
     assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
-    lock.unlock();
 
     if (shutdown_signal)
         return nullptr;
@@ -366,7 +365,6 @@ int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
     DEBUG2("wait_for_full_frame_timeout({:s}[{:d}]): waiting done.", name, ID);
     if (st)
         assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
-    lock.unlock();
 
     if (shutdown_signal)
         return -1;
@@ -653,7 +651,6 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
     DEBUG2("wait_for_empty_frame({:s}[{:d}]): waiting done.", producer_name, ID);
     assert((!is_full[ID] && !pro->is_done[ID]) || shutdown_signal);
     assert(!((is_full[ID] || pro->is_done[ID]) && !shutdown_signal));
-    lock.unlock();
 
     if (shutdown_signal)
         return nullptr;
