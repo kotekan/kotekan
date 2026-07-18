@@ -53,8 +53,11 @@ bufferBadInputs::~bufferBadInputs() {}
 bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
     DEBUG("update_bad_inputs_callback(): Update to bad inputs list.");
 
-    // Get the next output frame
+    // Get the next output frame; a null frame means kotekan is shutting
+    // down, so drop the update rather than failing it (which would FATAL).
     uint8_t* host_mask = (uint8_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
+    if (host_mask == nullptr)
+        return true;
     // Reset the mask (1 == good)
     std::memset(host_mask, 1U, num_elements);
 
