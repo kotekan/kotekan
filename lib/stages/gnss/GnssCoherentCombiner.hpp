@@ -143,6 +143,19 @@ private:
     std::vector<std::vector<int8_t>> _l1co; ///< per-PRN L1C-P overlays (index prn-1, 1..32); empty if unused
     bool _wipe_buffer = false;      ///< buffer per-record A for a deep wipe (navwipe or overlay)
     bool _carrier_pilot;            ///< pilot: unsquared phase product (no bits; 2x range)
+    /// Raw (unsquared) phase treatment is only valid for a TRULY dataless pilot. An overlay
+    /// pilot (B1C L1CO, E1C CS25, E5a/B2a CS100, L5 NH) still carries +-1 secondary chips in
+    /// the PRE-WIPE navbuf records, which scramble a raw-phase fit exactly like nav bits:
+    /// stage-1 pair products pick up random signs (coarse f biased to ~0) and stage-2 phases
+    /// jump by pi. Measured 2026-07-17: the combiner reported C22's residual as 0.00-0.02 Hz
+    /// while the true record-stream residual was +0.93 Hz -- the carrier loop was OPEN below
+    /// a few Hz for every overlay pilot, leaving each sat's residual parked at seed error and
+    /// certification waiting on LO-drift luck (the "45-min B1C bootstrap" + cert flicker).
+    /// Squaring cancels +-1 overlay chips exactly as it cancels nav bits; 2x phase noise is
+    /// the same price every data signal already pays.
+    bool carrier_raw() const {
+        return _carrier_pilot && _secondary.empty() && _l1co.empty();
+    }
     bool _auto_coherence;           ///< deep wipe over an octave ladder of trailing sub-windows,
                                     ///< keep the best -> integrate as deep as the clock coheres
     std::vector<std::vector<std::complex<double>>> _navbuf; ///< per-PRN per-record A over the window

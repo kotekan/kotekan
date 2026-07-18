@@ -294,7 +294,7 @@ void GnssCoherentCombiner::main_thread() {
                 const double dt_c = utc_p - car_prev_utc[p];
                 if (car_prev_utc[p] > 0.0 && dt_c > 0.0 && dt_c < 0.050) {
                     std::complex<double> prod = A * std::conj(car_prev[p]);
-                    if (!_carrier_pilot)
+                    if (!carrier_raw()) // squared: cancels nav bits AND unwiped overlay chips
                         prod *= prod;
                     car_S[p] += prod;
                     car_dt[p] += dt_c;
@@ -335,7 +335,7 @@ void GnssCoherentCombiner::main_thread() {
                         // +24.9 Hz off its predicted Doppler: 2 x 12.9. The same railed
                         // satellite exposed both sign conventions that six healthy ones hid.
                         const double dres =
-                            std::arg(prod) / (2.0 * M_PI * (_carrier_pilot ? 1.0 : 2.0));
+                            std::arg(prod) / (2.0 * M_PI * (carrier_raw() ? 1.0 : 2.0));
                         _adr_cyc[p] += dcmd - dres;
                         _adr_n[p] += 1;
                     } else {
@@ -531,7 +531,7 @@ void GnssCoherentCombiner::main_thread() {
                 if (_wipe_buffer && _navbuf[p].size() >= 16) {
                     resid_hz = carrier_resid_hz(_navbuf[p], _navutc[p], &sigma_phi[p]);
                 } else if (car_n[p] > 0 && std::abs(car_S[p]) > 0.0) {
-                    const double dphi = std::arg(car_S[p]) / (_carrier_pilot ? 1.0 : 2.0);
+                    const double dphi = std::arg(car_S[p]) / (carrier_raw() ? 1.0 : 2.0);
                     resid_hz = dphi / (2.0 * M_PI * (car_dt[p] / car_n[p]));
                 }
                 rec[gnss::CMB_CARRIER_RESID] = (float)resid_hz;
@@ -1140,7 +1140,9 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
     //   Stage 2 -- demodulate by the coarse frequency, then the weighted (|A|^2) LSQ of the
     //   sequentially-unwrapped phase vs CAPTURE-UTC (uneven gaps contribute their true span).
     //   Post-demod the true slope is ~0, so steps sit deep inside +-pi and cannot slip.
-    const double mult = _carrier_pilot ? 1.0 : 2.0; // squared phase advances at mult * the carrier
+    // Raw phase ONLY for a truly dataless pilot -- an overlay pilot's pre-wipe records still
+    // carry +-1 secondary chips, which scramble raw-phase fits like nav bits (see carrier_raw()).
+    const double mult = carrier_raw() ? 1.0 : 2.0; // squared phase advances at mult * the carrier
     // Stage 1: coarse f over pairs L records apart. L=4 trades variance against unambiguous
     // range: +-1/(2*L*dt*mult) (+-62 Hz at 1 ms data records) covers any post-seed residual.
     const int L = 4;
@@ -1151,8 +1153,8 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
         const double w = std::norm(a[r]) * std::norm(a[r - L]);
         if (!(w > 0.0))
             continue;
-        const cd vr = _carrier_pilot ? a[r] : a[r] * a[r];
-        const cd vp = _carrier_pilot ? a[r - L] : a[r - L] * a[r - L];
+        const cd vr = carrier_raw() ? a[r] : a[r] * a[r];
+        const cd vp = carrier_raw() ? a[r - L] : a[r - L] * a[r - L];
         pair_sum += w * vr * std::conj(vp);
         dt_sum += utc[r] - utc[r - L];
         ++n_pair;
@@ -1169,7 +1171,7 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
         const double w = std::norm(a[r]); // |A|^2
         if (!(w > 0.0))
             continue;
-        const cd v = (_carrier_pilot ? a[r] : a[r] * a[r])
+        const cd v = (carrier_raw() ? a[r] : a[r] * a[r])
                      * std::polar(1.0, -2.0 * M_PI * f_coarse * mult * (utc[r] - t0));
         const double cur = std::arg(v); // (-pi, pi]
         if (have) {
@@ -1209,7 +1211,7 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
             const double w = std::norm(a[r]);
             if (!(w > 0.0))
                 continue;
-            const cd v = (_carrier_pilot ? a[r] : a[r] * a[r])
+            const cd v = (carrier_raw() ? a[r] : a[r] * a[r])
                          * std::polar(1.0, -2.0 * M_PI * f_coarse * mult * (utc[r] - t0));
             const double cur = std::arg(v);
             if (have2) {
