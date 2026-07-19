@@ -458,6 +458,20 @@ def main(argv=None):
                          "slows the poisoning (E36 at 49 dB-Hz walked to 18 Hz off the fleet "
                          "at 1 Hz/update and collapsed 20 dB); rejection stops it. Real step "
                          "changes re-enter via re-seed -> BOOTSTRAP.")
+    ap.add_argument("--carrier-alias-hz", type=float, default=25.0,
+                    help="ALIAS ESCAPE threshold (0 = off): the combiner's residual "
+                         "estimator (squared product across records) is ambiguous mod "
+                         "1/(2*T_rec) -- +-25 Hz at 10 ms records -- so an NCO parked "
+                         "beyond +-1/(4*T_rec) reads as a SMALL residual and every resid-"
+                         "driven path (TRACK, BOOTSTRAP, --carrier-refade) converges to "
+                         "the ALIAS, a stable false equilibrium. Measured 2026-07-18: "
+                         "C20's NCO 47 Hz off the sky, resid reading +1.15, amp crushed "
+                         "by intra-record rotation, parked 43 min. The search DETECTION "
+                         "Doppler is alias-free: when a fresh strong detection disagrees "
+                         "with the tracker's effective NCO by more than this while the "
+                         "window is decohered, step the trim by the difference and re-"
+                         "enter BOOTSTRAP. Set <= 1/(4*T_rec) for the chain's record "
+                         "length (25 for 10 ms; L5's 1 ms records tolerate the default).")
     ap.add_argument("--carrier-refade", type=int, default=10,
                     help="TRACK-mode DEMOTION: after this many consecutive gated residuals "
                          "(fade-hold or innovation-reject) while the sat is still PRESENT "
@@ -712,6 +726,8 @@ def main(argv=None):
     car_last = {}       # prn -> last SEEN residual (dedup: one gate-check/integration per emit)
     car_locked = set()  # prns certified coherent since seed: BOOTSTRAP -> TRACK mode latch
     car_fade = {}       # prn -> consecutive TRACK-mode gated emits (--carrier-refade demotion)
+    det_fresh = {}      # prn -> (ref_hop, walltime) of the last NEW detection (alias escape)
+    car_alias_t = {}    # prn -> last alias-escape fire time (cooldown)
     cp_hist = {}     # prn -> [(ref_hop, cp0, dop_det), ...] recent distinct snapshots (slope fit)
 
     def cp_to_seed_currency(pts, dop_seed, dop_rate=0.0):
@@ -830,6 +846,12 @@ def main(argv=None):
                 if prn not in best or snr > best[prn][0]:
                     best[prn] = (snr, float(d["doppler_hz"]), float(d["code_phase_chips"]),
                                  int(d.get("ref_hop", 0)))
+        for _p, _b in best.items():
+            # A detection is FRESH when its ref_hop advanced (the stage re-detected it,
+            # not a stale REST snapshot) -- the alias escape below must never act on a
+            # stale Doppler: at 0.4 Hz/s slew, 100 s of staleness fakes a 40 Hz mismatch.
+            if det_fresh.get(_p, (None,))[0] != _b[3]:
+                det_fresh[_p] = (_b[3], t0)
 
         # 2. orbit-predicted Doppler + visibility (almanac assist), else plain gate
         pred = {}          # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]
@@ -1710,6 +1732,37 @@ def main(argv=None):
                     # have been fed. Nothing downstream wants a carrier trim on a probe.
                     continue
                 rec = status.get(prn, {})
+                # +-ALIAS ESCAPE (before any resid logic -- the resid is the thing that lies
+                # here): the residual estimator is ambiguous mod 1/(2*T_rec), so an NCO
+                # parked beyond +-1/(4*T_rec) reads as a SMALL residual and every resid-
+                # driven path converges to the ALIAS (C20 2026-07-18: NCO 47 Hz off, resid
+                # +1.15, 43 min parked). The DETECTION Doppler is alias-free; a fresh strong
+                # detection disagreeing with the effective NCO by more than the limit while
+                # the window is decohered is a measured alias capture: step the trim by the
+                # difference and re-enter BOOTSTRAP. Freshness-gated (ref_hop advanced
+                # within 10 s), strength-gated (2x acquire), cooldown 10 s, clamp intact.
+                if args.carrier_alias_hz > 0.0 and prn in best:
+                    _fr = det_fresh.get(prn)
+                    _nco = float(rec.get("doppler_hz", 0.0) or 0.0)
+                    _mism = best[prn][1] - _nco
+                    if (_fr is not None and t0 - _fr[1] < 10.0
+                            and best[prn][0] >= 2.0 * args.acquire_snr
+                            and not ((rec.get("coherence_s") or 0.0) > 0.0)
+                            and _nco != 0.0
+                            and abs(_mism) > args.carrier_alias_hz
+                            and t0 - car_alias_t.get(prn, 0.0) > 10.0):
+                        car_alias_t[prn] = t0
+                        car_trim[prn] = max(-args.carrier_max_hz,
+                                            min(args.carrier_max_hz,
+                                                car_trim.get(prn, 0.0) + _mism))
+                        car_locked.discard(prn)
+                        car_fade.pop(prn, None)
+                        _log("CARRIER ALIAS REACQ PRN %d: NCO %+.1f vs detection %+.1f "
+                             "(%+.1f Hz, beyond the +-%.0f Hz resid range) -> trim stepped "
+                             "to %+.1f, BOOTSTRAP re-pull"
+                             % (prn, _nco, best[prn][1], _mism, args.carrier_alias_hz,
+                                car_trim[prn]))
+                        continue
                 resid = float(rec.get("carrier_hz_resid", 0.0))
                 if resid == 0.0:
                     continue
