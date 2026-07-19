@@ -62,7 +62,11 @@ def _post(url, payload, timeout=5.0):
 
 
 def _log(msg):
-    print("[broker] %s" % msg, file=sys.stderr, flush=True)
+    # Timestamped (2026-07-19): every autopsy this week had to reconstruct event times by
+    # correlating line numbers against the status stream -- the 07-18 carrier-latch hunt
+    # lost an hour to it. Wall-clock, subsecond: cheap, greppable, sortable.
+    print("[broker %s] %s" % (datetime.now().strftime("%H:%M:%S.%f")[:-3], msg),
+          file=sys.stderr, flush=True)
 
 
 _log_rl_last = {}
@@ -312,13 +316,26 @@ def main(argv=None):
                          "locked -- the primary, noise-relative lock metric (vs the noise-biased |A|; "
                          "noise sits at ~1, a real lock at >>3)")
     ap.add_argument("--trim-precomp", action="store_true",
-                    help="EXPERIMENTAL (2026-07-12 night, default OFF pending bench "
-                         "validation): pre-shift the carrier trim by -ddop at seed-doppler "
-                         "steps and currency-translate coasted cp on forecast updates. "
-                         "First on-sky deploy correlated with an E/C carrier collapse on "
-                         "high-flap-rate sats (deep med 1-4 at healthy amp; GPS unaffected) "
-                         "-- suspected sign/reference error; validate on the replay bench "
-                         "before re-enabling.")
+                    help="LEGACY MASTER SWITCH: equivalent to --trim-precomp-carrier orig "
+                         "+ --trim-precomp-coast. Kept for the 2026-07-12 flag contract; "
+                         "prefer the split flags below (the 07-19 bench showed the two "
+                         "compensations must be judged separately).")
+    ap.add_argument("--trim-precomp-carrier", choices=["off", "orig", "flip"],
+                    default="off",
+                    help="CARRIER pre-shift at seed-doppler steps (hold release / coast "
+                         "forecast update): 'orig' = trim += (prev - new) (the 2026-07-12 "
+                         "derivation), 'flip' = trim += (new - prev) (the sign implied by "
+                         "the 07-18 live measurement resid ~ +ddop after un-precomped "
+                         "releases). BOTH are under bench adjudication -- the 07-19 single-"
+                         "leg A/Bs each looked worse than 'off', but those legs also "
+                         "toggled the coast-cp translation (the old master switch gated "
+                         "both) and carry ~20%% per-leg variance: use the matrix leg set.")
+    ap.add_argument("--trim-precomp-coast", action="store_true",
+                    help="COAST CP CURRENCY TRANSLATION on forecast dop updates (the "
+                         "2026-07-12 'why long coasts silently lost the code peak' fix): "
+                         "re-express the coasted cp0 in the new dop's currency instead of "
+                         "the legacy raw dop overwrite. Independent of the carrier "
+                         "pre-shift; judged separately on the bench.")
     ap.add_argument("--coast-to-horizon", action="store_true",
                     help="never drop a visible sat for low signal -- coast on the pure model "
                          "(almanac doppler + pooled code rate, currency-corrected) until it "
@@ -698,6 +715,10 @@ def main(argv=None):
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
+    if args.trim_precomp:  # legacy master switch -> the split flags
+        if args.trim_precomp_carrier == "off":
+            args.trim_precomp_carrier = "orig"
+        args.trim_precomp_coast = True
 
     base = args.rest_url.rstrip("/")
     detectors = parse_endpoints(args.detectors, base)
@@ -1279,7 +1300,7 @@ def main(argv=None):
                 # the TRACK-mode trim was not built for (same latch as the hold release,
                 # and it bypasses that branch because cp_held is discarded HERE): demote
                 # to BOOTSTRAP so the carrier re-pulls instead of parking off-frequency.
-                if not args.trim_precomp and prn in car_locked:
+                if args.trim_precomp_carrier == "off" and prn in car_locked:
                     car_locked.discard(prn)
                     car_fade.pop(prn, None)
                     _log("CARRIER REACQ PRN %d: escape re-anchor (no precomp) -> "
@@ -1381,7 +1402,8 @@ def main(argv=None):
                     # deploy correlated with an E/C collapse (2a5f6ef6, unvalidated). The
                     # safe fix: the broker KNOWS the NCO stepped -- demote to BOOTSTRAP and
                     # let the loop re-pull the trim at full gain (seconds, no arithmetic).
-                    if not args.trim_precomp and abs(ddop_rel) > 1.0 and prn in car_locked:
+                    if (args.trim_precomp_carrier == "off" and abs(ddop_rel) > 1.0
+                            and prn in car_locked):
                         car_locked.discard(prn)
                         car_fade.pop(prn, None)
                         _log("CARRIER REACQ PRN %d: hold released with dop step %+.1f Hz "
@@ -1394,8 +1416,12 @@ def main(argv=None):
             # forced the loop to re-absorb the step from scratch: a ~10 Hz-residual,
             # several-emit transient synchronized across sats (observed as constellation-
             # wide coh-0 waves every ~200 s). Pre-shifting the trim makes the step seamless.
-            if args.trim_precomp and prev is not None and prn in car_trim:
+            if args.trim_precomp_carrier != "off" and prev is not None and prn in car_trim:
                 dstep = prev.get("doppler_hz", 0.0) - seed.get("doppler_hz", 0.0)
+                if args.trim_precomp_carrier == "flip":
+                    # the sign implied by the 07-18 live measurement (resid ~ +ddop after
+                    # an un-precomped release, loop correction trim += resid)
+                    dstep = -dstep
                 if dstep != 0.0:
                     car_trim[prn] = max(-args.carrier_max_hz,
                                         min(args.carrier_max_hz, car_trim[prn] + dstep))
@@ -1516,7 +1542,7 @@ def main(argv=None):
             elif args.almanac and prn in pred:
                 new_dop = pred[prn][0] + clock_bias
                 old_dop = seeds[prn].get("doppler_hz", new_dop)
-                if new_dop != old_dop and args.trim_precomp:
+                if new_dop != old_dop and args.trim_precomp_coast:
                     # CURRENCY-CORRECT the coast (2026-07-12 evening): cp0 is meaningful only
                     # in its doppler's currency -- updating the forecast dop WITHOUT
                     # re-expressing cp walks the despread by t_abs*f_chip*ddop/f_c, chips/Hz
@@ -1529,10 +1555,12 @@ def main(argv=None):
                         + t_abs * args.chip_rate_hz * args.code_doppler_sign
                           * (old_dop - new_dop) / args.carrier_hz) % CODE_LEN
                     seeds[prn]["doppler_hz"] = new_dop
-                    if prn in car_trim:  # trim pre-compensation, same as the seed loop
+                    if prn in car_trim and args.trim_precomp_carrier != "off":
+                        _cd = ((old_dop - new_dop)
+                               if args.trim_precomp_carrier == "orig"
+                               else (new_dop - old_dop))
                         car_trim[prn] = max(-args.carrier_max_hz,
-                                            min(args.carrier_max_hz,
-                                                car_trim[prn] + (old_dop - new_dop)))
+                                            min(args.carrier_max_hz, car_trim[prn] + _cd))
                 elif new_dop != old_dop:
                     seeds[prn]["doppler_hz"] = new_dop  # legacy coast update (no translation)
                 if "doppler_rate_hz_s" in seeds[prn]:
