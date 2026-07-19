@@ -33,7 +33,7 @@ mkdir -p /tmp/gpswipe /tmp/gps_l2c_gpu /tmp/gps_l5_gpu /tmp/gnss_run
 BANDS="l1 l2c l5"
 cfg_of()  { case "$1" in l1) echo config/live_l1_dual20.yaml;; l2c) echo config/live_l2c_gpu.yaml;; l5) echo config/live_l5_gpu.yaml;; esac; }
 http_of() { case "$1" in l1) echo 8080;; l2c) echo 8081;; l5) echo 8082;; esac; }
-ws_of()   { case "$1" in l1) echo 8539;; l2c) echo 8639;; l5) echo 8739;; esac; }
+# (viewer WS ports are baked into each config's spawn_pyviewer exec -- no env plumbing)
 
 # ---- teardown of anything stale (we own the whole box's GNSS control plane here) ----
 # Graceful kotekan stop -- NEVER -9 first (GPU-context death would take siblings down; here
@@ -108,7 +108,7 @@ for b in $BANDS; do
     # whole launch line dies (measured 2026-07-19: the l2c control plane silently never
     # started). An empty literal assignment is harmless (run_live's :+ guard skips it).
     SKIP_KOTEKAN=1 STAGE_PREFIX=${b}_ PORT=$PORT TAG=gps_${b} \
-        CFG=$(cfg_of $b) HTTP_PORT=$(http_of $b) WS_PORT=$(ws_of $b) \
+        CFG=$(cfg_of $b) HTTP_PORT=$(http_of $b) \
         TRIM_PRECOMP_CARRIER=$TPC \
         bash config/run_live.sh > /tmp/gps_${b}_ctl.log 2>&1 &
     SUBPIDS="$SUBPIDS $!"

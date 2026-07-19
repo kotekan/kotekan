@@ -385,8 +385,6 @@ def main(argv=None):
                          "fade doesn't lose the lock. The code prediction stays good for ~tens of s "
                          "on a free-running TCXO; raise it with a disciplined clock (OCXO). |A| "
                          "recovering resets the coast; setting below the horizon drops immediately.")
-    ap.add_argument("--drop-hits", type=int, default=8,
-                    help="(superseded by --coast-budget) old consecutive-low-|A|-polls drop count")
     ap.add_argument("--lat", type=float, help="receiver latitude (enables gating)")
     ap.add_argument("--lon", type=float, help="receiver longitude")
     ap.add_argument("--alt", type=float, default=0.0, help="receiver altitude, m")
@@ -666,17 +664,20 @@ def main(argv=None):
                     help="detections needed for a receiver-clock solve (one sat is "
                          "unfalsifiable -- same reasoning as --bias-min-sats)")
     ap.add_argument("--dop-continuous", action="store_true", default=False,
-                    help="DESIGN (b), default OFF -- IT DOES NOT WORK YET, AND THE REASON IS "
-                         "INSTRUCTIVE. Measured 2026-07-14: continuous Doppler made E/C WORSE "
-                         "than the fence+translate design (E 42.0 -> 34.9 dB-Hz, degraded "
-                         "emits 12%% -> 51%%; C 40.8 -> 35.6, 17%% -> 48%%). Freezing the seed "
-                         "Doppler was doing DOUBLE DUTY: it also kept the TRACKER's f_ref "
-                         "stable. Let the Doppler drift continuously and the tracker's OWN "
-                         "fence (fll_reacq_hz, 10 Hz at B1C) fires every 10/0.55 = 18 s -- the "
-                         "identical cadence, merely relocated into the tracker, where the "
-                         "re-pin is not translation-protected. (b) needs the tracker's f_ref "
-                         "re-pin made code- and phase-continuous FIRST. Until then the fence "
-                         "stays, and the translation on its step is what buys the +7.8 dB.\n"
+                    help="DESIGN (b): update the seed Doppler every cycle (model-primary "
+                         "seeding) and currency-translate cp0 on every update. VALIDATED "
+                         "2026-07-19 (A/B replay legs, 17:37 capture): B1C parity-or-better "
+                         "(coh duty up on every sat, C37 63->79/100, reacq 2->1) and GPS "
+                         "better (RELEASE 9->0, CARRIER REACQ 6->1, coh duty up 4/6 sats). "
+                         "History: the 2026-07-14 attempt measured E/C WORSE (E 42.0 -> 34.9 "
+                         "dB-Hz) because the tracker's f_ref re-pin was not yet code- and "
+                         "phase-continuous -- freezing the seed was double-dutying as f_ref "
+                         "stabilization. The 07-14 NCO phase fold (reanchored==2) plus "
+                         "max_anchor_age_s 0 completed the primitive; the fence became "
+                         "moot (f_ref rate-follows the model, seed steps vanished). "
+                         "run_band.sh made this the single-band default; the run_3band "
+                         "transition silently dropped it (fleet ran frozen 07-18/19 -- the "
+                         "release/escape churn era). Fleet default restored 2026-07-19.\n"
                          "Original rationale: update the seed Doppler EVERY cycle and "
                          "currency-translate cp0 each time, instead of freezing it and taking "
                          "a discrete step at hold_max_dop_hz. The fence was never a safety "

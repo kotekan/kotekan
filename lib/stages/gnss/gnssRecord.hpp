@@ -22,7 +22,7 @@
  *         discriminator (|E|^2-|L|^2)/(|E|^2+|L|^2) from combiner-aggregated values and closes
  *         the code loop at ~Hz. The tracker itself makes NO alignment decisions.
  *    15 dphi_cmd           -- COMMANDED carrier-phase INCREMENT, cycles (see below)
- *    16 PH.re 17 PH.im 18 PH_energy  19 (reserved)
+ *    16 PH.re 17 PH.im 18 PH_energy  19 trim_inc (REC_TRIM_INC, commanded-trim increment)
  *      -- HEAD SEGMENT of the prompt: the same P correlation restricted to the hops BEFORE
  *         the code-period boundary inside this window. Windows are hop-grid-aligned, not
  *         code-period-aligned, so every record straddles one period boundary at offset

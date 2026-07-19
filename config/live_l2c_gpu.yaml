@@ -106,7 +106,9 @@ gputrack:
           # RELEASE/CARRIER-STEP class). With max_anchor_age 0 the per-record fold keeps
           # f_ref current against slew, so the fence only needs to catch LARGE seed steps:
           # 12 Hz lets the routine <=10 Hz steps ride the code-currency translation
-          # seamlessly (B1C's 25 Hz fence is why B1C healed and L2C didn't).
+          # seamlessly (the 07-19 audit corrected the attribution here: 25 Hz is E1C's
+          # fence, B1C's is 10 Hz -- the healed bands were the ones whose fence exceeded
+          # their seed-step size; largely moot under --dop-continuous, where seeds slew).
           fll_reacq_hz: 12.0
           cuda_stream: 1
           gpu_mem_input: gnss_chan_frame

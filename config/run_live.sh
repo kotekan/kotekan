@@ -33,7 +33,6 @@ CFG=${CFG:-config/live_l1.yaml}          # L1 lean valved distributed config
 #   each airspy MUST have its own CODE_BIAS_FILE -- sharing one cross-contaminates the seeds.
 PORT=${PORT:-12048}                 # kotekan REST
 HTTP_PORT=${HTTP_PORT:-8080}        # viewer HTTP
-WS_PORT=${WS_PORT:-8539}            # viewer websocket
 TAG=${TAG:-gpslive}                 # log-file stem: /tmp/$TAG*.log
 #   CFG: live_l2c.yaml -> L2C (1227.6 MHz); live_l5.yaml -> L5 (1176.45 MHz); live_l5_wipe.yaml ->
 #        L5 Q5 pilot DEEP overlay-wipe (rolling, NH20 wiped in the combiner -> deep |A| past 1 ms);
