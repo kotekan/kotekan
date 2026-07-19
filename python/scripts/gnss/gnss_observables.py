@@ -158,6 +158,7 @@ def main():
                     except Exception:
                         v = None
                 adr = r.get("adr_cycles")
+                trim = r.get("trim_cycles")
                 # ---- CMC INPUTS. cp_chips alone is NOT a range: it is the seed CURRENCY
                 # (cp0), back-referenced to sample 0 through the Doppler, so its geometry is
                 # already removed -- it drifts at the receiver clock offset while the carrier
@@ -202,6 +203,7 @@ def main():
                     # --- PHASE: cycles on THIS arc (0 at an arc start). Ambiguous by an
                     # integer; arc id is what tells you when the ambiguity changed.
                     "adr_cycles": adr,
+                    "trim_cycles": trim,
                     "adr_m": (adr * lam) if adr is not None else None,
                     "adr_arc": arc, "adr_records": nrec,
                     "code_resid_m": code_resid_m,     # model-removed code range (CMC input)

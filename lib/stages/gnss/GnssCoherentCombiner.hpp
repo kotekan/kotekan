@@ -199,6 +199,9 @@ private:
     // across f_ref re-pins by construction; an arc BREAKS on any gap or inactive record,
     // because unobserved whole cycles are unknowable. Each arc carries its own integer
     // ambiguity, so each begins at zero and downstream levels it against the code phase.
+    std::vector<double> _trim_cyc;     ///< commanded-trim integral this arc (cycles; slot 19 --
+                                       ///< same arc lifecycle as _adr_cyc so downstream can
+                                       ///< subtract exactly; docs/adr_trim_subtraction.md)
     std::vector<double> _adr_cyc;      ///< accumulated carrier phase this arc (cycles; DOUBLE --
                                        ///< float32 would quantize ~1e6 cycles to 0.06)
     std::vector<double> _adr_cph_prev; ///< previous record's commanded phase (cycles mod 1)
@@ -218,6 +221,7 @@ private:
                                        ///< of jitter -- which is exactly what the first ADR
                                        ///< acceptance run measured before this field existed.
     std::vector<double> _st_adr;       ///< REST snapshots of the above, at emit
+    std::vector<double> _st_trim;      ///< REST snapshot of _trim_cyc, at emit
     std::vector<double> _st_adr_lock;
     std::vector<int> _st_adr_arc, _st_adr_n;
 

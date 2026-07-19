@@ -57,7 +57,11 @@ def load_obs(path, t_cut, min_sig):
             continue
         if (d.get("sig") or 0) < min_sig:
             continue
-        out.setdefault(d["prn"], {})[round(d["t"], 1)] = d["adr_cycles"]
+        # v2 (slot-19 export): the combiner ships the commanded-trim integral on the
+        # SAME arc as the ADR -- subtract exactly, no journal timing error. Rows
+        # without it (old brokers/logs) fall back to the journal path downstream.
+        out.setdefault(d["prn"], {})[round(d["t"], 1)] = (
+            d["adr_cycles"], d.get("trim_cycles"))
     return out
 
 
@@ -144,11 +148,16 @@ def main():
                 common = sorted(set(oa[prn]) & set(ob[prn]))
                 if len(common) < 10:
                     continue
-                ya = [oa[prn][t] for t in common]
-                yb = [ob[prn][t] for t in common]
+                ya = [oa[prn][t][0] for t in common]
+                yb = [ob[prn][t][0] for t in common]
                 if sign_a:
-                    ca = trim_cycles_at(ta_j, prn, common)
-                    cb = trim_cycles_at(tb_j, prn, common)
+                    ea = [oa[prn][t][1] for t in common]
+                    eb = [ob[prn][t][1] for t in common]
+                    if all(v is not None for v in ea + eb):
+                        ca, cb = ea, eb          # exact per-arc export (v2)
+                    else:
+                        ca = trim_cycles_at(ta_j, prn, common)
+                        cb = trim_cycles_at(tb_j, prn, common)
                     ya = [y - sign_a * c for y, c in zip(ya, ca)]
                     yb = [y - sign_a * c for y, c in zip(yb, cb)]
                 gf = [(lam_a * a - lam_b * b) / fac for a, b in zip(ya, yb)]  # TECU

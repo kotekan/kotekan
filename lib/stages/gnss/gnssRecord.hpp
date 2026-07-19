@@ -100,6 +100,17 @@ constexpr int REC_CPHASE = 15; ///< commanded carrier-phase INCREMENT, cycles si
 constexpr int REC_PH_RE = 16;     ///< prompt HEAD segment (hops before the code-period boundary)
 constexpr int REC_PH_IM = 17;     ///< -- see the header note; tail = P - PH
 constexpr int REC_PH_ENERGY = 18; ///< head replica energy; /P_energy = boundary fraction f
+constexpr int REC_TRIM_INC = 19;  ///< commanded carrier-TRIM phase increment, cycles since this
+                                  ///< PRN's previous record (0 = arc start / not written).
+                                  ///< The broker-commanded ctrim component of f_nco only --
+                                  ///< reconstructed in the assembler as
+                                  ///< (f_nco + fcar_report - fcar)/2 -- integrated so the
+                                  ///< combiner can carry trim_cycles beside adr_cycles and
+                                  ///< downstream TEC can subtract the KNOWN loop transients
+                                  ///< from the ADR exactly (docs/adr_trim_subtraction.md; the
+                                  ///< broker-log journal's +-1 s timing error becomes exact).
+                                  ///< Bounded (trim <= clamp 100 Hz x t_rec) = float32-exact,
+                                  ///< the same increment design as slot 15.
 
 // Combiner-record slots
 constexpr int CMB_AMP_INCOH = 3;
