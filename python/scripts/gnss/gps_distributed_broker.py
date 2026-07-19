@@ -458,20 +458,24 @@ def main(argv=None):
                          "slows the poisoning (E36 at 49 dB-Hz walked to 18 Hz off the fleet "
                          "at 1 Hz/update and collapsed 20 dB); rejection stops it. Real step "
                          "changes re-enter via re-seed -> BOOTSTRAP.")
-    ap.add_argument("--carrier-alias-hz", type=float, default=25.0,
-                    help="ALIAS ESCAPE threshold (0 = off): the combiner's residual "
-                         "estimator (squared product across records) is ambiguous mod "
-                         "1/(2*T_rec) -- +-25 Hz at 10 ms records -- so an NCO parked "
-                         "beyond +-1/(4*T_rec) reads as a SMALL residual and every resid-"
-                         "driven path (TRACK, BOOTSTRAP, --carrier-refade) converges to "
-                         "the ALIAS, a stable false equilibrium. Measured 2026-07-18: "
-                         "C20's NCO 47 Hz off the sky, resid reading +1.15, amp crushed "
-                         "by intra-record rotation, parked 43 min. The search DETECTION "
-                         "Doppler is alias-free: when a fresh strong detection disagrees "
-                         "with the tracker's effective NCO by more than this while the "
-                         "window is decohered, step the trim by the difference and re-"
-                         "enter BOOTSTRAP. Set <= 1/(4*T_rec) for the chain's record "
-                         "length (25 for 10 ms; L5's 1 ms records tolerate the default).")
+    ap.add_argument("--carrier-alias-hz", type=float, default=0.0,
+                    help="ALIAS ESCAPE threshold -- DEFAULT OFF; DO NOT ENABLE AS BUILT. "
+                         "The idea: the resid estimator is ambiguous mod 1/(2*T_rec) "
+                         "(+-25 Hz at 10 ms records), so an NCO parked beyond +-1/(4*T_rec) "
+                         "reads as a SMALL residual and every resid-driven path converges "
+                         "to the ALIAS (C20 2026-07-18: NCO ~47 Hz off, resid +1.15, "
+                         "parked 43 min); compare the alias-free DETECTION Doppler to the "
+                         "NCO and step the trim by the difference. THE FIRST LIVE DEPLOY "
+                         "KILLED THE FLEET IN 15 MIN (2026-07-18 ~21:45): the detection "
+                         "Doppler is QUANTIZED to tens of Hz (C36 read a -60 'mismatch' "
+                         "while 98%% coherent), and the decohered gate passes during the "
+                         "ordinary few-second blips -- so it stepped HEALTHY trims by the "
+                         "quantization error, CAUSED the decoherence it was testing for, "
+                         "then walked the trims to the clamp (C36 -99). A working redesign "
+                         "needs an accurate reference (BRDC pred + fleet clock bias, "
+                         "~+-10 Hz) AND sustained-decoherence persistence (>=30 s) -- or "
+                         "should trigger the existing full re-seed lifecycle (whose dop "
+                         "blend is already accurate) instead of trimming raw det dop.")
     ap.add_argument("--carrier-refade", type=int, default=10,
                     help="TRACK-mode DEMOTION: after this many consecutive gated residuals "
                          "(fade-hold or innovation-reject) while the sat is still PRESENT "
