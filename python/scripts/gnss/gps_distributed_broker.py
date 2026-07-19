@@ -812,6 +812,7 @@ def main(argv=None):
     dr_bad = {}            # prn -> consecutive model-health failures (persistence, not a hair trigger)
     cp_escape = {}      # prn -> consecutive track-vs-search cp disagreements (hold referee)
     cp_escape_sign = {} # prn -> last disagreement (sign-consistency: real parks are one-signed)
+    cp_err_hist = {}      # prn -> last 9 cp_err samples (median gate: noise cannot sustain it)
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
     car_trim = {}       # prn -> persistent NCO frequency command (Hz): the shared carrier loop
     car_last = {}       # prn -> last SEEN residual (dedup: one gate-check/integration per emit)
@@ -1264,6 +1265,16 @@ def main(argv=None):
                             * (prev["doppler_hz"] - seed["doppler_hz"]) / args.carrier_hz)
                 cp_err = ((seed["code_phase_chips"] - cp_prev - dll_trim.get(prn, 0.0)
                            + CODE_LEN / 2.0) % CODE_LEN) - CODE_LEN / 2.0
+                # MEDIAN GATE (2026-07-19): the per-detection cp noise is 0.03-0.5 chips
+                # (per-sat conditions -- multipath/BOC refine; measured same-instrument at
+                # t_abs 100 s AND 27000 s, i.e. FLAT in run age: the earlier 'growth law'
+                # was the logged cp_ref coordinate wobbling with dop_seed x t_abs, which
+                # the currency translation above cancels in cp_err by construction). The
+                # 5-consecutive-sign rule alone still lets a noisy-conditions sat sustain
+                # a false accusation; a 9-sample median cannot be dragged over the bar by
+                # single-point noise, only by a persistent physical walk.
+                cp_err_hist.setdefault(prn, []).append(cp_err)
+                del cp_err_hist[prn][:-9]
             # Count only SIGN-CONSISTENT disagreements: a real wrong-lobe park is
             # one-signed; search-fit noise on a weak sat alternates (first deploy:
             # weak GPS sats escaped every minute on -0.5/+1.3/-0.5 flip-flops, and
@@ -1279,8 +1290,11 @@ def main(argv=None):
             amp_now = float((status.get(prn) or {}).get("amp_snr", 0) or 0)
             amp_veto = (args.escape_amp_veto > 0.0
                         and amp_now > args.escape_amp_veto)
+            cp_err_med_ok = (cp_err is not None and len(cp_err_hist.get(prn, [])) >= 5
+                             and abs(statistics.median(cp_err_hist[prn]))
+                             > args.hold_max_cp_err)
             if (cp_err is not None and abs(cp_err) > args.hold_max_cp_err
-                    and fit_trusted and not amp_veto):
+                    and cp_err_med_ok and fit_trusted and not amp_veto):
                 n_prev = cp_escape.get(prn, 0)
                 same_sign = (n_prev == 0) or (cp_err * cp_escape_sign.get(prn, 0.0) > 0)
                 cp_escape[prn] = n_prev + 1 if same_sign else 1
@@ -1292,6 +1306,7 @@ def main(argv=None):
                      " sign-consistent) -> release hold + DLL trim, re-anchor on the fit"
                      % (prn, cp_err))
                 cp_escape[prn] = 0
+                cp_err_hist.pop(prn, None)
                 dll_trim.pop(prn, None)
                 dll_last.pop(prn, None)
                 cp_held.discard(prn)
@@ -1513,6 +1528,7 @@ def main(argv=None):
                     cp_held.discard(prn)
                     hold_miss.pop(prn, None)
                     cp_escape.pop(prn, None)
+                    cp_err_hist.pop(prn, None)
             for k in list(wd_birth):
                 if k not in seeds:   # any unseeding path re-stamps birth on re-entry
                     wd_birth.pop(k, None)
@@ -1972,9 +1988,20 @@ def main(argv=None):
                     # innovation gate, so the trim can never unwind. Sustained gating WITH
                     # the sat still present = carrier genuinely lost, not a fade: demote to
                     # BOOTSTRAP and let the next residual re-pull at full gain (seconds).
-                    # A genuinely faded sat (amp below the hold bar) keeps coasting on the
+                    # A genuinely faded sat (no amp AND no detection) keeps coasting on the
                     # feed-forward -- the pathology --carrier-min-sig exists to protect.
-                    present = (rec.get("amp_snr") or 0.0) >= args.hold_snr
+                    # Presence = amp OR a fresh strong detection (2026-07-19): the amp-only
+                    # bar left WEAK-chain sats (L2C at cn0 27-31: amp 5-20, under the
+                    # hold bar while decohered) latched with a STANDING sub-innovation
+                    # residual (~2 Hz measured: kills 1-s deep windows, too small for the
+                    # innov gate, coherence gate holds the trim, refade never fired) --
+                    # the C20 absorbing state one level down. The search still sees these
+                    # sats fine; det presence is the same test the watchdog trusts.
+                    _df = det_fresh.get(prn)
+                    present = ((rec.get("amp_snr") or 0.0) >= args.hold_snr
+                               or (_df is not None and t0 - _df[1] < 10.0
+                                   and prn in best
+                                   and best[prn][0] >= 2.0 * args.acquire_snr))
                     car_fade[prn] = car_fade.get(prn, 0) + 1 if present else 0
                     if args.carrier_refade > 0 and car_fade.get(prn, 0) >= args.carrier_refade:
                         car_locked.discard(prn)
