@@ -99,9 +99,13 @@ for b in $BANDS; do
     # (2026-07-19): release resid steps med +4.7 -> ~0 Hz. Other bands stay off pending
     # their own per-band verification (the trial venue was L2C's 5 Hz fence).
     TPC=""; [ "$b" = "l2c" ] && TPC=flip
+    # NOTE the literal VAR=$TPC prefix: a ${TPC:+VAR=$TPC} expansion is NOT an assignment
+    # prefix post-expansion -- bash executes it as a command ("command not found") and the
+    # whole launch line dies (measured 2026-07-19: the l2c control plane silently never
+    # started). An empty literal assignment is harmless (run_live's :+ guard skips it).
     SKIP_KOTEKAN=1 STAGE_PREFIX=${b}_ PORT=$PORT TAG=gps_${b} \
         CFG=$(cfg_of $b) HTTP_PORT=$(http_of $b) WS_PORT=$(ws_of $b) \
-        ${TPC:+TRIM_PRECOMP_CARRIER=$TPC} \
+        TRIM_PRECOMP_CARRIER=$TPC \
         bash config/run_live.sh > /tmp/gps_${b}_ctl.log 2>&1 &
     SUBPIDS="$SUBPIDS $!"
     echo "  $b control plane up (brokers/loggers; log /tmp/gps_${b}_ctl.log)"
