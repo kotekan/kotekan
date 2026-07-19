@@ -278,7 +278,7 @@ bds_search:
     acquire_snr: 7.0
     acquire_windows: 12
     doppler_step: 50.0
-    require_hint: false
+    require_hint: true
     hint_ttl_s: 20.0
 bds_track:
     kotekan_stage: cudaProcess
