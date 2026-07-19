@@ -61,7 +61,7 @@ def load_obs(path, t_cut, min_sig):
         # SAME arc as the ADR -- subtract exactly, no journal timing error. Rows
         # without it (old brokers/logs) fall back to the journal path downstream.
         out.setdefault(d["prn"], {})[round(d["t"], 1)] = (
-            d["adr_cycles"], d.get("trim_cycles"))
+            d["adr_cycles"], d.get("trim_cycles"), d.get("adr_arc"))
     return out
 
 
@@ -145,24 +145,61 @@ def main():
         for sign_a in (0, 1, -1):        # 0 = raw (no subtraction)
             tot = []
             for prn in set(oa) & set(ob):
-                common = sorted(set(oa[prn]) & set(ob[prn]))
-                if len(common) < 10:
+                common_all = sorted(set(oa[prn]) & set(ob[prn]))
+                if len(common_all) < 10:
                     continue
-                ya = [oa[prn][t][0] for t in common]
-                yb = [ob[prn][t][0] for t in common]
-                if sign_a:
-                    ea = [oa[prn][t][1] for t in common]
-                    eb = [ob[prn][t][1] for t in common]
-                    if all(v is not None for v in ea + eb):
-                        ca, cb = ea, eb          # exact per-arc export (v2)
-                    else:
-                        ca = trim_cycles_at(ta_j, prn, common)
-                        cb = trim_cycles_at(tb_j, prn, common)
-                    ya = [y - sign_a * c for y, c in zip(ya, ca)]
-                    yb = [y - sign_a * c for y, c in zip(yb, cb)]
-                gf = [(lam_a * a - lam_b * b) / fac for a, b in zip(ya, yb)]  # TECU
-                tot += [r for r, n, s in arc_scatter(common, gf, args.max_gap_s,
-                                                     args.min_arc_s)]
+                # Split on COMBINER arc changes on either band (B1C's overlay re-anchors
+                # reset adr/trim mid-time-arc; subtracting a resetting counter across the
+                # boundary injects a step -- measured 2026-07-19: the C pair's subtraction
+                # went 3.8 -> 75 TECU until this split). Then treat each piece separately.
+                pieces, cur = [], []
+                prev_arcs = None
+                for t in common_all:
+                    arcs = (oa[prn][t][2], ob[prn][t][2])
+                    if prev_arcs is not None and arcs != prev_arcs and cur:
+                        pieces.append(cur)
+                        cur = []
+                    cur.append(t)
+                    prev_arcs = arcs
+                if cur:
+                    pieces.append(cur)
+                common = None  # (guard: the loop below iterates pieces)
+                for common in pieces:
+                    if len(common) < 10:
+                        continue
+                    ya = [oa[prn][t][0] for t in common]
+                    yb = [ob[prn][t][0] for t in common]
+                    if sign_a:
+                        ea = [oa[prn][t][1] for t in common]
+                        eb = [ob[prn][t][1] for t in common]
+                        if all(v is not None for v in ea + eb):
+                            ca, cb = ea, eb          # exact per-arc export (v2)
+                        else:
+                            ca = trim_cycles_at(ta_j, prn, common)
+                            cb = trim_cycles_at(tb_j, prn, common)
+                        # HIGH-PASS the trim (docs/adr_trim_subtraction.md): a STANDING
+                        # trim slope is the loop absorbing real per-sat carrier content
+                        # (young-chain model error, some iono rate) -- the raw gf's own
+                        # detrend already handles it, and re-subtracting it injects
+                        # independent inter-band noise (measured: the C pair went
+                        # 12 -> 121 TECU under full subtraction). Only the trim's
+                        # deviations from its per-piece line (the TRANSIENTS -- steps,
+                        # re-pulls, walks) contaminate detrended arcs: subtract those.
+                        def hp(vals):
+                            n = len(vals)
+                            mt = sum(common) / n
+                            mv = sum(vals) / n
+                            den = sum((t - mt) ** 2 for t in common) or 1.0
+                            sl = sum((t - mt) * (v - mv)
+                                     for t, v in zip(common, vals)) / den
+                            return [v - (mv + sl * (t - mt))
+                                    for t, v in zip(common, vals)]
+                        ca, cb = hp(ca), hp(cb)
+                        ya = [y - sign_a * c for y, c in zip(ya, ca)]
+                        yb = [y - sign_a * c for y, c in zip(yb, cb)]
+                    gf = [(lam_a * a - lam_b * b) / fac for a, b in zip(ya, yb)]  # TECU
+                    tot += [r for r, n, s in arc_scatter(common, gf, args.max_gap_s,
+                                                         args.min_arc_s)]
             results[sign_a] = tot
         def fmt(v):
             return ("%d arcs, scatter med %.2f p90 %.2f TECU"

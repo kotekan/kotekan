@@ -119,8 +119,25 @@ print("\nCENSUS (%d deaths):" % len(census))
 hist = {}
 for _, _, cls, *_ in census:
     hist[cls] = hist.get(cls, 0) + 1
+# COINCIDENCE CORRECTION for the event-proximity classes: with per-sat event rates of
+# ~1/40 s and a +-window catchment, a random death lands near an event ~2*window*rate
+# of the time -- the raw class count is inflated by that accidental rate. Report the
+# expected-by-chance count beside each proximity class.
+span = (max(c[0] for c in census) - min(c[0] for c in census)) if len(census) > 1 else 1.0
+ev_hist = {}
+for _, kind, _ in events:
+    ev_hist[kind] = ev_hist.get(kind, 0) + 1
+n_sats = len(set(c[1] for c in census)) or 1
 for cls, n in sorted(hist.items(), key=lambda kv: -kv[1]):
-    print("  %-12s %4d  (%d%%)" % (cls, n, 100 * n // max(1, len(census))))
+    kind_map = {"RELEASE": "RELEASE", "ESCAPE": "ESCAPE",
+                "REACQ": "CARRIER REACQ", "WATCHDOG": "WATCHDOG RESEED"}
+    note = ""
+    if cls in kind_map and span > 0:
+        rate = ev_hist.get(kind_map[cls], 0) / span / n_sats   # per sat-second
+        p_acc = min(1.0, 2.0 * args.window * rate)
+        exp = p_acc * len(census)
+        note = "  [expect ~%.0f by chance -> excess %d]" % (exp, max(0, n - exp))
+    print("  %-12s %4d  (%d%%)%s" % (cls, n, 100 * n // max(1, len(census)), note))
 unk = [c for c in census if c[2] == "UNKNOWN"]
 if unk:
     print("UNKNOWNS (autopsy targets): %s"
