@@ -95,10 +95,14 @@ done
 
 # ---- three control planes against the one instance ----
 for b in $BANDS; do
-    # L2C only: carrier trim pre-shift 'flip' -- bench matrix + 198-event live trial
-    # (2026-07-19): release resid steps med +4.7 -> ~0 Hz. Other bands stay off pending
-    # their own per-band verification (the trial venue was L2C's 5 Hz fence).
-    TPC=""; [ "$b" = "l2c" ] && TPC=flip
+    # NO band gets the carrier trim pre-shift by default (2026-07-19 afternoon): carB
+    # (flip) was validated IN the 5 Hz-fence regime, where every release re-pins f_ref
+    # and the pre-shift cancels that step. The fence widening (df354a66) removed the
+    # re-pin for <=10 Hz steps, so the pre-shift became the DISTURBANCE it used to
+    # cancel: per-sat trims ratcheted negative to the clamp within minutes (measured
+    # live: -42/-78/-99 at persistent +1..2 Hz resids). Fence-only is the fix for the
+    # release-step disease; carB stays available for 5 Hz-fence configs via the env.
+    TPC=""
     # NOTE the literal VAR=$TPC prefix: a ${TPC:+VAR=$TPC} expansion is NOT an assignment
     # prefix post-expansion -- bash executes it as a command ("command not found") and the
     # whole launch line dies (measured 2026-07-19: the l2c control plane silently never
