@@ -315,27 +315,11 @@ def main(argv=None):
                     help="detection significance (sigma above noise) above which a sat counts as "
                          "locked -- the primary, noise-relative lock metric (vs the noise-biased |A|; "
                          "noise sits at ~1, a real lock at >>3)")
-    ap.add_argument("--trim-precomp", action="store_true",
-                    help="LEGACY MASTER SWITCH: equivalent to --trim-precomp-carrier orig "
-                         "+ --trim-precomp-coast. Kept for the 2026-07-12 flag contract; "
-                         "prefer the split flags below (the 07-19 bench showed the two "
-                         "compensations must be judged separately).")
-    ap.add_argument("--trim-precomp-carrier", choices=["off", "orig", "flip"],
-                    default="off",
-                    help="CARRIER pre-shift at seed-doppler steps (hold release / coast "
-                         "forecast update): 'orig' = trim += (prev - new) (the 2026-07-12 "
-                         "derivation), 'flip' = trim += (new - prev) (the sign implied by "
-                         "the 07-18 live measurement resid ~ +ddop after un-precomped "
-                         "releases). BOTH are under bench adjudication -- the 07-19 single-"
-                         "leg A/Bs each looked worse than 'off', but those legs also "
-                         "toggled the coast-cp translation (the old master switch gated "
-                         "both) and carry ~20%% per-leg variance: use the matrix leg set.")
-    ap.add_argument("--trim-precomp-coast", action="store_true",
-                    help="COAST CP CURRENCY TRANSLATION on forecast dop updates (the "
-                         "2026-07-12 'why long coasts silently lost the code peak' fix): "
-                         "re-express the coasted cp0 in the new dop's currency instead of "
-                         "the legacy raw dop overwrite. Independent of the carrier "
-                         "pre-shift; judged separately on the bench.")
+    # (--trim-precomp / --trim-precomp-carrier / --trim-precomp-coast DELETED, 07-19 audit
+    #  A4: the carrier pre-shift was bench-rejected in both signs -- the BOOTSTRAP re-pull
+    #  owns step recovery, and under --dop-continuous steps no longer occur; the coast cp
+    #  currency translation became unconditional -- it is the same algebra as the hold-path
+    #  TRANSLATE, and the flag's OFF default was shipping the known-bad legacy overwrite.)
     ap.add_argument("--coast-to-horizon", action="store_true",
                     help="never drop a visible sat for low signal -- coast on the pure model "
                          "(almanac doppler + pooled code rate, currency-corrected) until it "
@@ -513,26 +497,11 @@ def main(argv=None):
                          "slows the poisoning (E36 at 49 dB-Hz walked to 18 Hz off the fleet "
                          "at 1 Hz/update and collapsed 20 dB); rejection stops it. Real step "
                          "changes re-enter via re-seed -> BOOTSTRAP.")
-    ap.add_argument("--carrier-alias-hz", type=float, default=0.0,
-                    help="ALIAS ESCAPE v2 threshold (0 = off, the default -- enable "
-                         "per-chain deliberately): the resid estimator is ambiguous mod "
-                         "1/(2*T_rec) (+-25 Hz at 10 ms records), so an NCO parked beyond "
-                         "+-1/(4*T_rec) reads as a SMALL residual and every resid-driven "
-                         "path converges to the ALIAS (C20 2026-07-18: parked 43 min at "
-                         "full search strength). When the NCO disagrees with the BRDC "
-                         "prediction + measured fleet clock bias by more than this while "
-                         "the sat has been decohered >= --carrier-alias-s with a fresh "
-                         "strong detection present, step the trim by the difference and "
-                         "re-enter BOOTSTRAP. Set to ~1/(4*T_rec) but comfortably above "
-                         "the pred+bias error (~+-15 Hz): 25 fits 10 ms records. "
-                         "HISTORY: v1 (8208dba6) trusted the raw detection Doppler (per-"
-                         "sat errors of tens of Hz) and fired on momentary blips -- it "
-                         "killed the fleet in 15 min (069e8770). v2's gates exist because "
-                         "of that; do not loosen them casually.")
-    ap.add_argument("--carrier-alias-s", type=float, default=30.0,
-                    help="alias escape: required SUSTAINED decoherence (seconds without a "
-                         "single coherent emit) before a fire. The ordinary escape/re-pin "
-                         "blips are 2-15 s; a true alias capture lasts minutes.")
+    # (ALIAS ESCAPE v1/v2 DELETED, 07-19 audit A4. v1 killed the fleet in 15 min
+    #  (8208dba6/069e8770); v2 shipped gated-off and never armed. Its two jobs are owned
+    #  by surviving mechanisms: a stale/aliased f_ref offset is snapped by the TIGHT
+    #  tracker fence (fll_reacq_hz ~15 Hz, free under --dop-continuous), and a walked/
+    #  aliased TRIM latch is the watchdog's lifecycle rescue below.)
     ap.add_argument("--watchdog-s", type=float, default=0.0,
                     help="TRACK WATCHDOG (0 = off): a sat with a fresh detection at "
                          ">= --watchdog-det-snr that has ZERO coherent emits for this many "
@@ -716,10 +685,6 @@ def main(argv=None):
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
-    if args.trim_precomp:  # legacy master switch -> the split flags
-        if args.trim_precomp_carrier == "off":
-            args.trim_precomp_carrier = "orig"
-        args.trim_precomp_coast = True
 
     base = args.rest_url.rstrip("/")
     detectors = parse_endpoints(args.detectors, base)
@@ -820,7 +785,6 @@ def main(argv=None):
     car_locked = set()  # prns certified coherent since seed: BOOTSTRAP -> TRACK mode latch
     car_fade = {}       # prn -> consecutive TRACK-mode gated emits (--carrier-refade demotion)
     det_fresh = {}      # prn -> (ref_hop, walltime) of the last NEW detection (alias escape)
-    car_coh_t = {}      # prn -> last coherent walltime (alias escape's sustained-decoherence clock)
     wd_birth = {}       # prn -> when it entered seeds (track-watchdog judgment window)
     wd_coh_t = {}       # prn -> last coherent walltime (track-watchdog's own clock)
     _trim_force = {}    # BENCH-ONLY fault injection ("20:-60" = PRN 20 at -60 Hz): applied
@@ -1316,11 +1280,10 @@ def main(argv=None):
                 # the TRACK-mode trim was not built for (same latch as the hold release,
                 # and it bypasses that branch because cp_held is discarded HERE): demote
                 # to BOOTSTRAP so the carrier re-pulls instead of parking off-frequency.
-                if args.trim_precomp_carrier == "off" and prn in car_locked:
+                if prn in car_locked:
                     car_locked.discard(prn)
                     car_fade.pop(prn, None)
-                    _log("CARRIER REACQ PRN %d: escape re-anchor (no precomp) -> "
-                         "BOOTSTRAP re-pull" % prn)
+                    _log("CARRIER REACQ PRN %d: escape re-anchor -> BOOTSTRAP re-pull" % prn)
             elif (prev is not None
                     and (sig_of_last(status.get(prn)) >= args.hold_snr
                          or (prn in cp_held and hold_miss.get(prn, 0) < 3))):
@@ -1409,38 +1372,21 @@ def main(argv=None):
                     ddop_rel = (seed["doppler_hz"] - prev["doppler_hz"]) if prev else 0.0
                     _log("RELEASE PRN %d: seed currency unfrozen (amp_snr %.1f, ddop %+.0f)"
                          % (prn, sig_of_last(status.get(prn)), ddop_rel))
-                    # The release STEPS the tracker's f_ref by ddop while the TRACK-mode trim
-                    # still carries the hold-era compensation -> instant residual ~ -ddop,
-                    # which the coh/innovation gates then latch permanently (measured
-                    # 2026-07-18: C20 parked at -6.2 Hz for 40 min at full amp; the fastest-
-                    # slewing = STRONGEST sats accumulate the biggest ddop and latch first).
-                    # --trim-precomp would cancel the step arithmetically but its first
-                    # deploy correlated with an E/C collapse (2a5f6ef6, unvalidated). The
-                    # safe fix: the broker KNOWS the NCO stepped -- demote to BOOTSTRAP and
-                    # let the loop re-pull the trim at full gain (seconds, no arithmetic).
-                    if (args.trim_precomp_carrier == "off" and abs(ddop_rel) > 1.0
-                            and prn in car_locked):
+                    # A release used to STEP the tracker's f_ref by ddop while the TRACK-mode
+                    # trim carried the hold-era compensation -> instant residual ~ -ddop,
+                    # latched by the coh/innovation gates (C20 parked at -6.2 Hz for 40 min,
+                    # 2026-07-18). The arithmetic pre-shift (--trim-precomp-carrier) was
+                    # bench-rejected in both signs and DELETED (07-19 audit A4); the safe
+                    # rescuer below stands: the broker KNOWS the NCO stepped -- demote to
+                    # BOOTSTRAP and re-pull the trim at full gain (seconds, no arithmetic).
+                    # Under --dop-continuous ddop_rel is ~0 and this never fires.
+                    if abs(ddop_rel) > 1.0 and prn in car_locked:
                         car_locked.discard(prn)
                         car_fade.pop(prn, None)
                         _log("CARRIER REACQ PRN %d: hold released with dop step %+.1f Hz "
-                             "(no precomp) -> BOOTSTRAP re-pull" % (prn, ddop_rel))
+                             "-> BOOTSTRAP re-pull" % (prn, ddop_rel))
                 cp_held.discard(prn)
                 hold_miss.pop(prn, None)
-            # TRIM PRE-COMPENSATION (2026-07-12 night): the NCO trim holds (f_true - f_ref);
-            # when the seed doppler (= the tracker's f_ref) steps by ddop, the required trim
-            # shifts by exactly -ddop. Un-compensated, every 100 Hz GPS staleness release
-            # forced the loop to re-absorb the step from scratch: a ~10 Hz-residual,
-            # several-emit transient synchronized across sats (observed as constellation-
-            # wide coh-0 waves every ~200 s). Pre-shifting the trim makes the step seamless.
-            if args.trim_precomp_carrier != "off" and prev is not None and prn in car_trim:
-                dstep = prev.get("doppler_hz", 0.0) - seed.get("doppler_hz", 0.0)
-                if args.trim_precomp_carrier == "flip":
-                    # the sign implied by the 07-18 live measurement (resid ~ +ddop after
-                    # an un-precomped release, loop correction trim += resid)
-                    dstep = -dstep
-                if dstep != 0.0:
-                    car_trim[prn] = max(-args.carrier_max_hz,
-                                        min(args.carrier_max_hz, car_trim[prn] + dstep))
             seeds[prn] = seed
             low_hits[prn] = 0
 
@@ -1559,27 +1505,23 @@ def main(argv=None):
             elif args.almanac and prn in pred:
                 new_dop = pred[prn][0] + clock_bias
                 old_dop = seeds[prn].get("doppler_hz", new_dop)
-                if new_dop != old_dop and args.trim_precomp_coast:
-                    # CURRENCY-CORRECT the coast (2026-07-12 evening): cp0 is meaningful only
-                    # in its doppler's currency -- updating the forecast dop WITHOUT
-                    # re-expressing cp walks the despread by t_abs*f_chip*ddop/f_c, chips/Hz
-                    # at soak age (the exact t_abs lever the code-currency rule forbids;
-                    # this is why long coasts silently lost the code peak). Same
-                    # translation as cp_to_seed_currency, at the seed's ref_hop.
+                if new_dop != old_dop:
+                    # CURRENCY-CORRECT the coast, UNCONDITIONALLY (2026-07-19 audit A4): cp0
+                    # is meaningful only in its doppler's currency -- updating the forecast
+                    # dop WITHOUT re-expressing cp walks the despread by t_abs*f_chip*ddop/
+                    # f_c chips at soak age (the t_abs lever the code-currency rule forbids;
+                    # why long coasts silently lost the code peak). Same algebra as the
+                    # hold-path TRANSLATE, which the dop-continuous A/B legs validated; the
+                    # old --trim-precomp-coast gate (OFF in prod) was shipping the known-bad
+                    # legacy raw-dop overwrite. The carrier pre-shift that used to ride here
+                    # is gone with the trim-precomp flags (bench-rejected; the BOOTSTRAP
+                    # re-pull owns step recovery).
                     t_abs = seeds[prn].get("ref_hop", 0) / args.hops_per_sec
                     seeds[prn]["code_phase_chips"] = (
                         seeds[prn].get("code_phase_chips", 0.0)
                         + t_abs * args.chip_rate_hz * args.code_doppler_sign
                           * (old_dop - new_dop) / args.carrier_hz) % CODE_LEN
                     seeds[prn]["doppler_hz"] = new_dop
-                    if prn in car_trim and args.trim_precomp_carrier != "off":
-                        _cd = ((old_dop - new_dop)
-                               if args.trim_precomp_carrier == "orig"
-                               else (new_dop - old_dop))
-                        car_trim[prn] = max(-args.carrier_max_hz,
-                                            min(args.carrier_max_hz, car_trim[prn] + _cd))
-                elif new_dop != old_dop:
-                    seeds[prn]["doppler_hz"] = new_dop  # legacy coast update (no translation)
                 if "doppler_rate_hz_s" in seeds[prn]:
                     seeds[prn]["doppler_rate_hz_s"] = pred[prn][1]
             rec = status.get(prn, {})
@@ -1909,49 +1851,12 @@ def main(argv=None):
                     # have been fed. Nothing downstream wants a carrier trim on a probe.
                     continue
                 rec = status.get(prn, {})
-                # +-ALIAS ESCAPE v2 (before any resid logic -- the resid is the thing that
-                # lies here): the residual estimator is ambiguous mod 1/(2*T_rec), so an
-                # NCO parked beyond +-1/(4*T_rec) reads as a SMALL residual and every
-                # resid-driven path converges to the ALIAS (C20 2026-07-18: parked 43 min
-                # at full search strength). v1 (8208dba6) trusted the raw DETECTION dop and
-                # gated on momentary decoherence -- but det dop carries per-sat errors of
-                # tens of Hz (C36 read -60 while 98% coherent), so it stepped healthy trims
-                # during ordinary blips and killed the fleet in 15 min (069e8770). v2:
-                #  - reference = BRDC prediction + MEASURED fleet clock bias (~+-15 Hz,
-                #    alias-free); never fires before the bias EMA exists (the 0.0
-                #    placeholder is ~150 Hz wrong on this chain = every sat false-fires);
-                #  - SUSTAINED decoherence (>= --carrier-alias-s), not a blip;
-                #  - the fresh strong detection is only a PRESENCE proof (dop untrusted);
-                #  - firing resets the episode clock (re-fire needs another full episode),
-                #    and each step lands the NCO within the reference error < the resid
-                #    range, where BOOTSTRAP finishes the pull.
-                if (rec.get("coherence_s") or 0.0) > 0.0:
-                    car_coh_t[prn] = t0
-                else:
-                    car_coh_t.setdefault(prn, t0)
-                if (args.carrier_alias_hz > 0.0 and clock_bias_ema is not None
-                        and prn in pred and prn in best):
-                    _fr = det_fresh.get(prn)
-                    _nco = float(rec.get("doppler_hz", 0.0) or 0.0)
-                    _ref = pred[prn][0] + clock_bias
-                    _mism = _ref - _nco
-                    if (_fr is not None and t0 - _fr[1] < 10.0
-                            and best[prn][0] >= 2.0 * args.acquire_snr
-                            and t0 - car_coh_t.get(prn, t0) > args.carrier_alias_s
-                            and _nco != 0.0
-                            and abs(_mism) > args.carrier_alias_hz):
-                        car_coh_t[prn] = t0
-                        car_trim[prn] = max(-args.carrier_max_hz,
-                                            min(args.carrier_max_hz,
-                                                car_trim.get(prn, 0.0) + _mism))
-                        car_locked.discard(prn)
-                        car_fade.pop(prn, None)
-                        _log("CARRIER ALIAS REACQ PRN %d: NCO %+.1f vs pred+bias %+.1f "
-                             "(%+.1f Hz beyond +-%.0f; decohered >%.0fs, det snr %.0f) "
-                             "-> trim stepped to %+.1f, BOOTSTRAP"
-                             % (prn, _nco, _ref, _mism, args.carrier_alias_hz,
-                                args.carrier_alias_s, best[prn][0], car_trim[prn]))
-                        continue
+                # (ALIAS ESCAPE v1/v2 lived here until the 07-19 audit A4. The alias-capture
+                #  disease it targeted -- resid estimator ambiguous mod 1/(2*T_rec), NCO
+                #  parked on the alias for 40+ min -- is owned by two surviving mechanisms:
+                #  a stale f_ref offset is snapped by the tight tracker fence (free under
+                #  --dop-continuous), and a walked trim latch is the watchdog's lifecycle
+                #  rescue. v1's fleet-kill postmortem lives in git history at 069e8770.)
                 resid = float(rec.get("carrier_hz_resid", 0.0))
                 if resid == 0.0:
                     continue

@@ -348,7 +348,6 @@ python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gps_search 
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} --adc-stage "${SP}airspy_in" \
         ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" \
         ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} ${CPERR:+--hold-max-cp-err $CPERR} \
-        ${TRIM_PRECOMP_CARRIER:+--trim-precomp-carrier $TRIM_PRECOMP_CARRIER} \
         ${BROKER_EXTRA:-} $ALM $CLA $CARG \
         > /tmp/${TAG}_broker.log 2>&1 &
 BPID=$!

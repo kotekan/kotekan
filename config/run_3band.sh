@@ -95,28 +95,20 @@ done
 
 # ---- three control planes against the one instance ----
 for b in $BANDS; do
-    # NO band gets the carrier trim pre-shift by default (2026-07-19 afternoon): carB
-    # (flip) was validated IN the 5 Hz-fence regime, where every release re-pins f_ref
-    # and the pre-shift cancels that step. The fence widening (df354a66) removed the
-    # re-pin for <=10 Hz steps, so the pre-shift became the DISTURBANCE it used to
-    # cancel: per-sat trims ratcheted negative to the clamp within minutes (measured
-    # live: -42/-78/-99 at persistent +1..2 Hz resids). Fence-only is the fix for the
-    # release-step disease; carB stays available for 5 Hz-fence configs via the env.
-    TPC=""
-    # NOTE the literal VAR=$TPC prefix: a ${TPC:+VAR=$TPC} expansion is NOT an assignment
-    # prefix post-expansion -- bash executes it as a command ("command not found") and the
-    # whole launch line dies (measured 2026-07-19: the l2c control plane silently never
-    # started). An empty literal assignment is harmless (run_live's :+ guard skips it).
+    # (the carrier trim pre-shift env (TPC/TRIM_PRECOMP_CARRIER) is gone -- the broker
+    # flags were deleted in the 07-19 audit A4 after the bench rejected both signs; the
+    # BOOTSTRAP re-pull owns step recovery and --dop-continuous removes the steps.)
     # Model-primary seeding fleet-wide (2026-07-19 eve): --dop-continuous was already the
     # run_band.sh single-band default; the 3band transition silently dropped it and the
     # fleet ran frozen-seed for two days (the release/escape churn era -- see
     # docs/gnss_architecture_audit_2026-07-19.md). A/B replay legs + the 18:15 live L5
-    # flip validate it (coh duty 78->87%, RELEASE 9->0 on the GPS leg). Same literal-
-    # assignment rule as TPC above.
+    # flip validate it (coh duty 78->87%, RELEASE 9->0 on the GPS leg). NOTE the literal
+    # BROKER_EXTRA=$BX prefix: a ${X:+VAR=v} expansion is NOT an assignment post-expansion
+    # (bash executes it as a command and the launch line dies -- measured 07-19 am).
     BX="${BROKER_EXTRA:---dop-continuous}"
     SKIP_KOTEKAN=1 STAGE_PREFIX=${b}_ PORT=$PORT TAG=gps_${b} \
         CFG=$(cfg_of $b) HTTP_PORT=$(http_of $b) \
-        TRIM_PRECOMP_CARRIER=$TPC BROKER_EXTRA=$BX \
+        BROKER_EXTRA=$BX \
         bash config/run_live.sh > /tmp/gps_${b}_ctl.log 2>&1 &
     SUBPIDS="$SUBPIDS $!"
     echo "  $b control plane up (brokers/loggers; log /tmp/gps_${b}_ctl.log)"
