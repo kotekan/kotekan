@@ -408,6 +408,8 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} --adc-stage "${SP}airspy_in" \
           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_bds.ppm \
           --chip-rate-hz $BDS_CHIP --code-length $BDS_CODELEN \
+          --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
+          --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
           ${BROKER_EXTRA:-} $BDS_ALM $CARG \
           > /tmp/${TAG}_broker_bds.log 2>&1 &
   BDSPID=$!

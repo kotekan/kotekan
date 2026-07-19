@@ -478,6 +478,30 @@ def main(argv=None):
                     help="alias escape: required SUSTAINED decoherence (seconds without a "
                          "single coherent emit) before a fire. The ordinary escape/re-pin "
                          "blips are 2-15 s; a true alias capture lasts minutes.")
+    ap.add_argument("--watchdog-s", type=float, default=0.0,
+                    help="TRACK WATCHDOG (0 = off): a sat with a fresh detection at "
+                         ">= --watchdog-det-snr that has ZERO coherent emits for this many "
+                         "seconds (and has been seeded at least that long) is dropped from "
+                         "seeds entirely -- the full re-seed lifecycle (fresh dop blend, "
+                         "fleet trim prior, tracker state reset via the active[] gap) is "
+                         "the only rescue that fixes every cause (aliased NCO, walked "
+                         "trim, poisoned anchor) without guessing which one it is. The "
+                         "2026-07-18 targeted-correction attempts (trim-step v1/v2) both "
+                         "guessed and both lost; the lifecycle rescue never did.")
+    ap.add_argument("--watchdog-det-snr", type=float, default=50.0,
+                    help="watchdog presence bar: only judge sats the search currently "
+                         "sees at this significance -- a sat this strong that cannot "
+                         "cohere is broken by definition; weak sats legitimately take "
+                         "minutes and must never be churned by the watchdog.")
+    ap.add_argument("--carrier-det-gate-s", type=float, default=0.0,
+                    help="BOOTSTRAP walk gate (0 = off): in BOOTSTRAP mode, integrate a "
+                         "residual only if a fresh detection exists within this many "
+                         "seconds. A never-detected (almanac-only) or long-undetected seed "
+                         "has no signal for the estimator: its 'residual' is noise, and "
+                         "integrating it random-walks the trim to the clamp (C40 walked to "
+                         "-42 Hz over the 07-18 evening; the E36 innovation gate protects "
+                         "only TRACK mode). Held trims coast on the fleet prior + Doppler-"
+                         "rate feed-forward, which is the better model anyway.")
     ap.add_argument("--carrier-refade", type=int, default=10,
                     help="TRACK-mode DEMOTION: after this many consecutive gated residuals "
                          "(fade-hold or innovation-reject) while the sat is still PRESENT "
@@ -734,6 +758,19 @@ def main(argv=None):
     car_fade = {}       # prn -> consecutive TRACK-mode gated emits (--carrier-refade demotion)
     det_fresh = {}      # prn -> (ref_hop, walltime) of the last NEW detection (alias escape)
     car_coh_t = {}      # prn -> last coherent walltime (alias escape's sustained-decoherence clock)
+    wd_birth = {}       # prn -> when it entered seeds (track-watchdog judgment window)
+    wd_coh_t = {}       # prn -> last coherent walltime (track-watchdog's own clock)
+    _trim_force = {}    # BENCH-ONLY fault injection ("20:-60" = PRN 20 at -60 Hz): applied
+    for _spec in os.environ.get("GNSS_TRIM_FORCE", "").split(","):
+        # when the PRN is first SEEDED (a startup preload would be swept by the not-in-
+        # seeds trim cleanup before the sat ever seeds). Reproduces the alias-capture
+        # regime on the replay bench: BOOTSTRAP itself converges a -60 Hz NCO error to
+        # the -50 Hz alias (the estimator reads the error mod 1/(2*T_rec)).
+        if ":" in _spec:
+            _p, _v = _spec.split(":")
+            _trim_force[int(_p)] = float(_v)
+            _log("TRIM FORCE (bench): PRN %s armed, car_trim %+.1f Hz at first seed"
+                 % (_p, float(_v)))
     cp_hist = {}     # prn -> [(ref_hop, cp0, dop_det), ...] recent distinct snapshots (slope fit)
 
     def cp_to_seed_currency(pts, dop_seed, dop_rate=0.0):
@@ -1369,6 +1406,45 @@ def main(argv=None):
                                 args.chip_rate_hz, args.carrier_hz),
                             "ref_hop": 0,
                             "doppler_rate_hz_s": pred[p][1]}
+        # TRACK WATCHDOG (--watchdog-s, default off): a sat the SEARCH sees STRONGLY that
+        # has not produced a single coherent emit for this long is broken, whatever the
+        # cause -- aliased NCO (the resid estimator cannot see past +-1/(4*T_rec)), a
+        # noise-walked BOOTSTRAP trim, a poisoned anchor. Every targeted correction tried
+        # on 2026-07-18 (trim-step v1 8208dba6, v2 ce47509e) guessed the cause and lost;
+        # the one rescue that always worked was the full re-seed lifecycle (C20, 19:54).
+        # So: drop the sat from seeds entirely. Next cycle it re-enters as a FIRST SEED --
+        # fresh det/dr dop blend, fleet-median trim, and the tracker's f_ref/phase state
+        # resets via the one-cycle active[] gap. The det-snr bar keeps genuinely weak sats
+        # (legitimately slow to cohere) out of reach; the seed-age bar gives a full window
+        # before judging; firing re-stamps birth, so re-fires need a whole new window.
+        if args.watchdog_s > 0.0:
+            for prn in list(seeds):
+                if prn in probe_set:
+                    continue
+                wd_birth.setdefault(prn, t0)
+                _r = status.get(prn) or {}
+                if (_r.get("coherence_s") or 0.0) > 0.0:
+                    wd_coh_t[prn] = t0
+                else:
+                    wd_coh_t.setdefault(prn, t0)
+                _fr = det_fresh.get(prn)
+                if (t0 - wd_birth[prn] > args.watchdog_s
+                        and t0 - wd_coh_t.get(prn, t0) > args.watchdog_s
+                        and _fr is not None and t0 - _fr[1] < 10.0
+                        and prn in best and best[prn][0] >= args.watchdog_det_snr):
+                    _log("WATCHDOG RESEED PRN %d: det snr %.0f but ZERO coherent emits "
+                         "for >%.0f s -> drop + fresh seed (tracker state resets via "
+                         "the active-list gap)" % (prn, best[prn][0], args.watchdog_s))
+                    del seeds[prn]
+                    dll_trim.pop(prn, None)
+                    dll_last.pop(prn, None)
+                    cp_held.discard(prn)
+                    hold_miss.pop(prn, None)
+                    cp_escape.pop(prn, None)
+            for k in list(wd_birth):
+                if k not in seeds:   # any unseeding path re-stamps birth on re-entry
+                    wd_birth.pop(k, None)
+                    wd_coh_t.pop(k, None)
         for prn in list(seeds):
             if prn in probe_set:
                 continue
@@ -1724,6 +1800,10 @@ def main(argv=None):
         # amplitude gates would exclude exactly the weak-band cases this loop exists for);
         # the clamp bounds any noise walk.
         if args.carrier_gain > 0.0:
+            for _p in [p for p in _trim_force if p in seeds]:
+                car_trim[_p] = _trim_force.pop(_p)
+                _log("TRIM FORCE (bench): PRN %d car_trim POISONED to %+.1f Hz"
+                     % (_p, car_trim[_p]))
             car_report = []
             for prn in list(seeds):
                 if prn in probe_set:
@@ -1830,6 +1910,13 @@ def main(argv=None):
                              % (prn, args.carrier_refade, resid))
                     continue  # this emit stays held: coast on the feed-forward
                 car_fade.pop(prn, None)
+                if not tracking and args.carrier_det_gate_s > 0.0:
+                    # BOOTSTRAP WALK GATE: no fresh detection = no evidence the estimator
+                    # has a signal to measure; its residual is noise and integrating it
+                    # random-walks the trim (see --carrier-det-gate-s). Hold and coast.
+                    _fr = det_fresh.get(prn)
+                    if _fr is None or t0 - _fr[1] > args.carrier_det_gate_s:
+                        continue
                 if prn not in car_trim and args.carrier_fleet_seed:
                     # start on the fleet's clock, not at 0: the converged trim is the chain's
                     # deterministic frac-N LO offset, common-mode across sats
