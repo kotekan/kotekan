@@ -78,6 +78,8 @@ std::vector<gpuCommand*> cudaProcess::create_command(const std::string& cmd_name
 void cudaProcess::queue_commands(int gpu_frame_counter) {
     std::vector<cudaEvent_t> events;
     events.resize(device->get_num_streams(), nullptr);
+    if (join_events.size() < (size_t)_gpu_buffer_depth)
+        join_events.resize(_gpu_buffer_depth, nullptr);
     cudaEvent_t final_event = nullptr;
 
     int icommand = gpu_frame_counter % _gpu_buffer_depth;
@@ -98,8 +100,31 @@ void cudaProcess::queue_commands(int gpu_frame_counter) {
             }
         }
     }
-    // Wait on the very last event from the last command.
-    // TODO, this should wait on the last event from every stream!
+    // Frame completion must wait on the last event from EVERY stream (the old
+    // last-command-only signal was the long-standing TODO here): with parallel
+    // per-stream command chains (e.g. the unified L1 tracker, three cudaGnssTrack+
+    // output pairs on streams 1-3), the final command finishes first on ITS stream
+    // while siblings are still running -- downstream then consumed half-written
+    // frames (measured 2026-07-19: gal/bds epl frames with n_prn 0). Join: make
+    // stream 0 wait each stream's last event, record one event there, signal that.
+    {
+        cudaStream_t s0 = device->getStream(0);
+        bool multi = false;
+        for (size_t i = 1; i < events.size(); ++i)
+            if (events[i] != nullptr && events[i] != final_event)
+                multi = true;
+        if (multi) {
+            for (size_t i = 0; i < events.size(); ++i)
+                if (events[i] != nullptr)
+                    CHECK_CUDA_ERROR(cudaStreamWaitEvent(s0, events[i], 0));
+            if (join_events[icommand] != nullptr)
+                CHECK_CUDA_ERROR(cudaEventDestroy(join_events[icommand]));
+            CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&join_events[icommand],
+                                                      cudaEventDisableTiming));
+            CHECK_CUDA_ERROR(cudaEventRecord(join_events[icommand], s0));
+            final_event = join_events[icommand];
+        }
+    }
     final_signals[icommand]->set_signal(final_event);
     DEBUG2("Commands executed.");
 }

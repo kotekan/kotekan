@@ -48,6 +48,12 @@ public:
     gpuEventContainer* create_signal() override;
     void queue_commands(int gpu_frame_counter) override;
 
+private:
+    /// per-frame-slot join events for multi-stream command chains (see queue_commands:
+    /// frame completion must wait on every stream's last event, not just the last
+    /// command's). Destroyed lazily on slot reuse.
+    std::vector<cudaEvent_t> join_events;
+
     void register_host_memory(Buffer* host_buffer) override;
 
     std::shared_ptr<cudaDeviceInterface> device;
