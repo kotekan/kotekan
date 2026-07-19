@@ -245,6 +245,30 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
         rate = (-(v2["range_rate_mps"] - v["range_rate_mps"]) / dt / C * f_carrier_hz
                 if v2 else 0.0)
         out[prn] = (dop, rate, v["el"], v["range_m"], v["sat_clk_s"])
+    # PREDICTION-COLLAPSE GUARD (2026-07-19): the daily BRDC's C/E nav records can LAG the
+    # GPS ones by hours, so an entire constellation's newest toe crosses best_eph's window
+    # at ONE instant -- measured 11:59:57Z: 13 seeded sats dropped 'set below horizon' in
+    # one cycle (incl. C31 at el 70) and the hint-gated search went DARK for the remainder
+    # of the 2 h refresh period. If the predicted-sat count collapses below half its
+    # running peak: force an early re-fetch (the CDN file has usually grown past the gap
+    # by then; retry at 10 min if not) and BRIDGE with the last good prediction set --
+    # a coasted el is drop-gate-grade for hours, and a stale dop hint degrades the search
+    # no worse than the no-hint darkness it replaces.
+    peak = state.get("peak_n", 0)
+    if len(out) >= peak:
+        state["peak_n"] = peak = len(out)
+    if peak >= 4 and len(out) < 0.5 * peak:
+        if now - state.get("collapse_refetch_t", 0.0) > 600.0:
+            state["collapse_refetch_t"] = now
+            state["eph_t"] = now - 7201.0  # re-fetch on the next cycle
+            _log("brdc almanac: PREDICTION COLLAPSE (%d of peak %d sats in the eph "
+                 "window) -> early refresh forced; bridging on the last good set"
+                 % (len(out), peak))
+        lg = state.get("last_good")
+        if lg:
+            return lg
+    else:
+        state["last_good"] = out
     return out
 
 
