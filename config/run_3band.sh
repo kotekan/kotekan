@@ -95,8 +95,13 @@ done
 
 # ---- three control planes against the one instance ----
 for b in $BANDS; do
+    # L2C only: carrier trim pre-shift 'flip' -- bench matrix + 198-event live trial
+    # (2026-07-19): release resid steps med +4.7 -> ~0 Hz. Other bands stay off pending
+    # their own per-band verification (the trial venue was L2C's 5 Hz fence).
+    TPC=""; [ "$b" = "l2c" ] && TPC=flip
     SKIP_KOTEKAN=1 STAGE_PREFIX=${b}_ PORT=$PORT TAG=gps_${b} \
         CFG=$(cfg_of $b) HTTP_PORT=$(http_of $b) WS_PORT=$(ws_of $b) \
+        ${TPC:+TRIM_PRECOMP_CARRIER=$TPC} \
         bash config/run_live.sh > /tmp/gps_${b}_ctl.log 2>&1 &
     SUBPIDS="$SUBPIDS $!"
     echo "  $b control plane up (brokers/loggers; log /tmp/gps_${b}_ctl.log)"
