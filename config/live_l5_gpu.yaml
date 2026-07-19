@@ -116,7 +116,8 @@ gputrack:
         # --- GPS L5 (Q5 pilot) ---
         - name: cudaGnssTrack
           signal: GPS_L5_Q
-          max_anchor_age_s: 0.0    # re-pin every record (cheap since the NCO fold, 749d45bb)
+          max_anchor_age_s: 0.0
+          fll_reacq_hz: 15.0  # tight snap-to-model fence (audit rec B; free under dop-continuous; alias limit 250 Hz at 1 ms)
           cuda_stream: 1
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: gnss_epl
@@ -136,6 +137,7 @@ gputrack:
         - name: cudaGnssTrack
           signal: GAL_E5A_Q
           max_anchor_age_s: 0.0
+          fll_reacq_hz: 15.0  # tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)
           cuda_stream: 1
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: gal_epl
@@ -157,6 +159,7 @@ gputrack:
         - name: cudaGnssTrack
           signal: BDS_B2A_P
           max_anchor_age_s: 0.0
+          fll_reacq_hz: 15.0  # tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)
           cuda_stream: 1
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: bds_epl

@@ -185,6 +185,15 @@ gputrack:
           # WITHIN-record decoherence grows with the record length -- negligible on GPS's 1 ms
           # but ~1 dB on B1C's 10 ms. Re-pinning every record means it never accumulates.
           max_anchor_age_s: 0.0
+          # TIGHT fence (audit rec B, 2026-07-19 eve): under --dop-continuous a fence
+          # adoption is translation-protected and phase-folded = FREE, so the fence's job
+          # inverts -- it is no longer a guard against dangerous seed steps but a cheap
+          # "snap f_ref to the model" that kills stale offsets. Measured need: L1 PRN
+          # 10/32 carried fence-era f_ref offsets of ~-94 Hz (trims pinned at +94, resid
+          # 0) that the default 100 Hz fence could never see. 15 Hz clears routine model
+          # error (~1-2 Hz) and the +-3 Hz innovation gate; each band stays below its
+          # bit-robust FLL alias limit 1/(4*t_rec).
+          fll_reacq_hz: 15.0
           # stream 1: cudaProcess chains events PER STREAM and cudaOutputData waits only its
           # own stream's predecessor -- on the kernel stream the output copy races the work.
           cuda_stream: 1
@@ -222,7 +231,7 @@ gputrack:
           signal: GAL_E1C
           # fence at 0.1 cycle per 4 ms record: the GPS-scale 200 Hz lets the pinned replica
           # carrier go stale enough to decohere the record despread (see broker hold-max note)
-          fll_reacq_hz: 25.0
+          fll_reacq_hz: 15.0  # tight snap-to-model fence (rec B; free under dop-continuous; alias limit 62 Hz at 4 ms)
           n_prn: 36
           prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
           capture_utc0: 1.0
@@ -251,7 +260,7 @@ gputrack:
           n_channels: 10
           channel_offset: 0
           signal: BDS_B1C_P
-          fll_reacq_hz: 10.0  # 0.1 cycle per 10 ms record (see gal_track note)
+          fll_reacq_hz: 15.0  # tight snap-to-model fence (rec B; alias limit 25 Hz at 10 ms)
           n_prn: 63
           prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
           capture_utc0: 1.0
