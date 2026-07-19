@@ -119,7 +119,7 @@ def main():
                          "the inter-band clock (the common mode, ~34 m/s) is IDENTICAL across "
                          "constellations -- pooling triples the sats constraining it and fills "
                          "the holes where any one constellation has <3 certified sats (measured "
-                         "07-17: single-constellation coverage 19%, and every hole leaks the "
+                         "07-17: single-constellation coverage 19%%, and every hole leaks the "
                          "full clock rate = 264 TECU/s into every arc).")
     ap.add_argument("--since-min", type=float, default=720.0)
     ap.add_argument("--max-gap-s", type=float, default=10.0)
