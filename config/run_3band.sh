@@ -107,9 +107,16 @@ for b in $BANDS; do
     # prefix post-expansion -- bash executes it as a command ("command not found") and the
     # whole launch line dies (measured 2026-07-19: the l2c control plane silently never
     # started). An empty literal assignment is harmless (run_live's :+ guard skips it).
+    # Model-primary seeding fleet-wide (2026-07-19 eve): --dop-continuous was already the
+    # run_band.sh single-band default; the 3band transition silently dropped it and the
+    # fleet ran frozen-seed for two days (the release/escape churn era -- see
+    # docs/gnss_architecture_audit_2026-07-19.md). A/B replay legs + the 18:15 live L5
+    # flip validate it (coh duty 78->87%, RELEASE 9->0 on the GPS leg). Same literal-
+    # assignment rule as TPC above.
+    BX="${BROKER_EXTRA:---dop-continuous}"
     SKIP_KOTEKAN=1 STAGE_PREFIX=${b}_ PORT=$PORT TAG=gps_${b} \
         CFG=$(cfg_of $b) HTTP_PORT=$(http_of $b) \
-        TRIM_PRECOMP_CARRIER=$TPC \
+        TRIM_PRECOMP_CARRIER=$TPC BROKER_EXTRA=$BX \
         bash config/run_live.sh > /tmp/gps_${b}_ctl.log 2>&1 &
     SUBPIDS="$SUBPIDS $!"
     echo "  $b control plane up (brokers/loggers; log /tmp/gps_${b}_ctl.log)"
