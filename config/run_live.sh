@@ -133,6 +133,13 @@ BDS_CHIP=$(sig_chip "$BDS_SIGNAL");    BDS_CHIP=${BDS_CHIP:-1.023e6}
 BDS_CODELEN=$(sig_codelen "$BDS_SIGNAL"); BDS_CODELEN=${BDS_CODELEN:-10230}
 case "$GAL_SIGNAL" in GAL_E5A*) GAL_OBS=obs_gal_e5a ;; *) GAL_OBS=obs_gal_e1 ;; esac
 case "$BDS_SIGNAL" in BDS_B2A*) BDS_OBS=obs_bds_b2a ;; *) BDS_OBS=obs_bds_b1c ;; esac
+# Escape-referee threshold, CHIP-SCALED (2026-07-19 census): the broker default 0.4 chips is
+# calibrated in L1-scale chips. Detection-timing noise is constant in TIME, so in CHIPS it
+# scales with chip rate -- at 10.23 Mcps (L5/E5a/B2a) the same fit noise reads 10x more chips
+# and the referee yanked healthy sats every ~20 s (l5_gps: 149 escapes/12 min, all strong
+# sats; collapsed to ~0 with the scaled threshold). 0.4 chips per 1.023 Mcps of chip rate.
+cperr_of() { awk -v c="$1" 'BEGIN{printf "%.2f", 0.4*c/1.023e6}'; }
+CPERR=$(cperr_of "$CHIP_HZ"); GAL_CPERR=$(cperr_of "$GAL_CHIP"); BDS_CPERR=$(cperr_of "$BDS_CHIP")
 # --- Receiver clock profile (clockProfile.hpp is the canonical table) ---------------------------
 # One knob for clock quality across airspy TCXO ... GPSDO ... maser. The search STAGE reads
 # clock_profile from the config directly (sizes the Doppler grid from accuracy_ppm); here we resolve
@@ -340,7 +347,7 @@ echo "signal $SIGNAL: hops/s ${HOPS_PER_SEC:-default}, chip ${CHIP_HZ:-default} 
 python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gps_search --trackers "$TRK" --combiner ${SP}gps_combiner \
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} --adc-stage "${SP}airspy_in" \
         ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" \
-        ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} \
+        ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} ${CPERR:+--hold-max-cp-err $CPERR} \
         ${TRIM_PRECOMP_CARRIER:+--trim-precomp-carrier $TRIM_PRECOMP_CARRIER} \
         ${BROKER_EXTRA:-} $ALM $CLA $CARG \
         > /tmp/${TAG}_broker.log 2>&1 &
@@ -365,7 +372,7 @@ if grep -qE '^gal_track:|seed_endpoint:[[:space:]]*"/gal_track/set_seeds"' "$RUN
     echo "WARNING: gal_track present but LAT/LON unset -- Galileo require_hint search will scan NOTHING"
   fi
   echo "starting GALILEO broker ($GAL_SIGNAL: gal_search/gal_track/gal_combiner, TLE group=galileo)..."
-  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gal_search --trackers ${SP}gal_track --combiner ${SP}gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} --adc-stage "${SP}airspy_in"           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_gal.ppm           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN           ${BROKER_EXTRA:-} $GAL_ALM $CARG           > /tmp/${TAG}_broker_gal.log 2>&1 &
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gal_search --trackers ${SP}gal_track --combiner ${SP}gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} --adc-stage "${SP}airspy_in"           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_gal.ppm           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN --hold-max-cp-err $GAL_CPERR           ${BROKER_EXTRA:-} $GAL_ALM $CARG           > /tmp/${TAG}_broker_gal.log 2>&1 &
   GALPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT           --combiner ${SP}gal_combiner --search ${SP}gal_search --airspy "${SP}$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/${TAG}_logger_gal.log 2>&1 &
   GALLOGPID=$!
@@ -407,7 +414,7 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
   python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}bds_search --trackers ${SP}bds_track --combiner ${SP}bds_combiner \
           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} --adc-stage "${SP}airspy_in" \
           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_bds.ppm \
-          --chip-rate-hz $BDS_CHIP --code-length $BDS_CODELEN \
+          --chip-rate-hz $BDS_CHIP --code-length $BDS_CODELEN --hold-max-cp-err $BDS_CPERR \
           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
           --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
           ${BROKER_EXTRA:-} $BDS_ALM $CARG \
