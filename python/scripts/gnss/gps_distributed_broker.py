@@ -65,6 +65,22 @@ def _log(msg):
     print("[broker] %s" % msg, file=sys.stderr, flush=True)
 
 
+_log_rl_last = {}
+
+
+def _log_rl(key, msg, every_s=10.0):
+    """Rate-limited _log for PER-CYCLE state lines (meas/pred, cp-fit, clock, active...):
+    at the 0.2 s poll cadence they were ~25-30 MB/h per broker (~5 GB/day fleet-wide,
+    measured 2026-07-19) while carrying ~50x duplicate content. One line per key per
+    every_s keeps the journal readable and the history dense enough for every autopsy
+    this project has actually run (the 07-18 hunts used >=1 s granularity). EVENT lines
+    (HOLD/RELEASE/ESCAPE/REACQ/WATCHDOG/TRANSLATE/fits-changed...) stay unlimited."""
+    now = time.time()
+    if now - _log_rl_last.get(key, 0.0) >= every_s:
+        _log_rl_last[key] = now
+        _log(msg)
+
+
 def fit_cp_rate(hist, code_len):
     """Least-squares fit cp0 vs capture hop -> (rate chips/hop, hop_ref, cp_ref).
 
@@ -967,15 +983,18 @@ def main(argv=None):
                 clock_bias = clock_bias_ema
             for p in sorted(best):
                 if p in pred:
-                    _log("PRN %d: meas %+.0f  pred %+.0f  resid %+.0f Hz (elev %.0f)"
-                         % (p, best[p][1], pred[p][0], best[p][1] - pred[p][0], pred[p][2]))
+                    _log_rl("meas-%d" % p,
+                            "PRN %d: meas %+.0f  pred %+.0f  resid %+.0f Hz (elev %.0f)"
+                            % (p, best[p][1], pred[p][0], best[p][1] - pred[p][0], pred[p][2]))
             if len(resid) >= args.bias_min_sats:
-                _log("clock-freq bias %+.0f Hz (raw %+.0f, %d sats, EMA a=%.2f) -> seeding "
-                     "predicted Doppler" % (clock_bias, raw_bias, len(resid), args.bias_alpha))
+                _log_rl("clkbias",
+                        "clock-freq bias %+.0f Hz (raw %+.0f, %d sats, EMA a=%.2f) -> seeding "
+                        "predicted Doppler" % (clock_bias, raw_bias, len(resid), args.bias_alpha))
             elif resid:
-                _log("clock-freq bias %s (%d sat < --bias-min-sats %d: residual not trusted)"
-                     % ("held %+.0f Hz" % clock_bias if clock_bias_ema is not None
-                        else "UNSOLVED (wide margins)", len(resid), args.bias_min_sats))
+                _log_rl("clkbias",
+                        "clock-freq bias %s (%d sat < --bias-min-sats %d: residual not trusted)"
+                        % ("held %+.0f Hz" % clock_bias if clock_bias_ema is not None
+                           else "UNSOLVED (wide margins)", len(resid), args.bias_min_sats))
         elif gating:
             up = visible_prns(args.lat, args.lon, args.alt, args.mask_deg, 0.0)
 
@@ -996,10 +1015,11 @@ def main(argv=None):
                     pushed += 1
                 except Exception as e:
                     _log("set_doppler_hints %s failed: %s" % (d_ep, e))
-            _log("narrowed search: %d hints +-%d Hz (%s) -> %d/%d detectors"
-                 % (len(hints), int(margin),
-                    "bias solved" if clock_bias_ema is not None else "pre-solve wide",
-                    pushed, len(detectors)))
+            _log_rl("narrow",
+                    "narrowed search: %d hints +-%d Hz (%s) -> %d/%d detectors"
+                    % (len(hints), int(margin),
+                       "bias solved" if clock_bias_ema is not None else "pre-solve wide",
+                       pushed, len(detectors)))
 
         # refresh / add consensus seeds: code phase from the search, Doppler from the
         # orbit prediction when available (precise enough for coherent integration),
@@ -1125,8 +1145,10 @@ def main(argv=None):
                 # within its ~1 s window (the 2026-07-07 L1 deep decay). Bound to --code-bias-max.
                 if snr >= args.acquire_snr and abs(la) < args.code_bias_max * 1e-6:
                     la_samples.append(la)
-                _log("PRN %d cp-fit: %.2f chips @ hop %d, slope %+.3f chips/s (%d pts, l-a %+.3f ppm)"
-                     % (prn, cp_ref, h0, rate * args.hops_per_sec, len(h), la * 1e6))
+                _log_rl("cpfit-%d" % prn,
+                        "PRN %d cp-fit: %.2f chips @ hop %d, slope %+.3f chips/s "
+                        "(%d pts, l-a %+.3f ppm)"
+                        % (prn, cp_ref, h0, rate * args.hops_per_sec, len(h), la * 1e6))
             # L2C CL TIME-ASSIST: the trackers despread the CL pilot, whose absolute code phase
             # is cp_CL = cp_CM + k*10230 with k the CL segment index -- COMPUTED, not searched.
             # CL's 1.5 s epoch is locked to GPS time in Z-count (1.5 s) units, and GPS-UTC (18 s)
@@ -1948,8 +1970,11 @@ def main(argv=None):
             if abs(raw_cb) < args.code_bias_max * 1e-6:
                 code_bias_ema = (raw_cb if code_bias_ema is None
                                  else code_bias_ema + args.code_bias_alpha * (raw_cb - code_bias_ema))
-                _log("code-rate clock offset (l-a) %+.3f ppm (raw %+.3f, %d fitted sats, EMA a=%.2f)"
-                     % (code_bias_ema * 1e6, raw_cb * 1e6, len(la_samples), args.code_bias_alpha))
+                _log_rl("la-pool",
+                        "code-rate clock offset (l-a) %+.3f ppm (raw %+.3f, %d fitted "
+                        "sats, EMA a=%.2f)"
+                        % (code_bias_ema * 1e6, raw_cb * 1e6, len(la_samples),
+                           args.code_bias_alpha))
                 if args.code_bias_file:
                     try:
                         with open(args.code_bias_file, "w") as f:
@@ -1974,7 +1999,7 @@ def main(argv=None):
                     args.chip_rate_hz, args.carrier_hz)
                 n_seeded += 1
             if n_seeded:
-                _log("seeded code rate from (l-a) %+.3f ppm%s -> %d sat(s)"
+                _log_rl("la-seed", "seeded code rate from (l-a) %+.3f ppm%s -> %d sat(s)"
                      % (cb_to_seed * 1e6,
                         " [FORCED]" if args.code_bias_force is not None else "", n_seeded))
 
@@ -1998,7 +2023,7 @@ def main(argv=None):
                 ok += 1
             except Exception as e:
                 _log("set_seeds %s failed: %s" % (t_ep, e))
-        _log("active=%s (%d); seeded %d/%d trackers" % (sorted(seeds), len(seeds), ok, len(trackers)))
+        _log_rl("active", "active=%s (%d); seeded %d/%d trackers" % (sorted(seeds), len(seeds), ok, len(trackers)))
         if cl_report:
             _log("CL assist: " + "; ".join(cl_report))
 
