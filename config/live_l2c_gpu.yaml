@@ -99,6 +99,15 @@ gputrack:
         - name: cudaGnssTrack
           signal: GPS_L2C_CM
           max_anchor_age_s: 0.0    # re-pin every record (cheap since the NCO fold, 749d45bb)
+          # 2026-07-19 flap census: the DEFAULT fence (0.1 cyc/rec = 5 Hz at 20 ms records)
+          # is exactly the size of every hold-release dop step, so each release tripped a
+          # tracker re-pin whose FLL/deep reset costs "one deep window" -- which at L2C's
+          # weak-signal integration needs is the WHOLE stretch (54% of censused deaths were
+          # RELEASE/CARRIER-STEP class). With max_anchor_age 0 the per-record fold keeps
+          # f_ref current against slew, so the fence only needs to catch LARGE seed steps:
+          # 12 Hz lets the routine <=10 Hz steps ride the code-currency translation
+          # seamlessly (B1C's 25 Hz fence is why B1C healed and L2C didn't).
+          fll_reacq_hz: 12.0
           cuda_stream: 1
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: gnss_epl
