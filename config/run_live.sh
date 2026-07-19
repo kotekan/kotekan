@@ -137,8 +137,13 @@ case "$BDS_SIGNAL" in BDS_B2A*) BDS_OBS=obs_bds_b2a ;; *) BDS_OBS=obs_bds_b1c ;;
 # calibrated in L1-scale chips. Detection-timing noise is constant in TIME, so in CHIPS it
 # scales with chip rate -- at 10.23 Mcps (L5/E5a/B2a) the same fit noise reads 10x more chips
 # and the referee yanked healthy sats every ~20 s (l5_gps: 149 escapes/12 min, all strong
-# sats; collapsed to ~0 with the scaled threshold). 0.4 chips per 1.023 Mcps of chip rate.
-cperr_of() { awk -v c="$1" 'BEGIN{printf "%.2f", 0.4*c/1.023e6}'; }
+# sats). Coefficient 1.2 (not 0.4): the measured search-fit scatter is ~+-1 us on BOTH L1
+# (0.4-1 chip, 35 yanks/h at the old 0.4) and L5 (+-9 chips, SIGN-FLIPPING within seconds =
+# reference noise, not track drift), so the threshold must clear ~1 us everywhere. True
+# mislocks (cross-correlation peaks) sit tens of chips off and are still caught. FOLLOW-UP:
+# reference the referee against the BRDC integrity residual (+-0.2 chips) instead of the
+# search fit -- 'check the model is RIGHT', per the 07-19 audit.
+cperr_of() { awk -v c="$1" 'BEGIN{printf "%.2f", 1.2*c/1.023e6}'; }
 CPERR=$(cperr_of "$CHIP_HZ"); GAL_CPERR=$(cperr_of "$GAL_CHIP"); BDS_CPERR=$(cperr_of "$BDS_CHIP")
 # --- Receiver clock profile (clockProfile.hpp is the canonical table) ---------------------------
 # One knob for clock quality across airspy TCXO ... GPSDO ... maser. The search STAGE reads
