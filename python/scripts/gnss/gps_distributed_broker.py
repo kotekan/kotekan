@@ -455,6 +455,22 @@ def main(argv=None):
                     help="spreading-code length (chips) for cp0 unwrap/fit (L1 C/A = 1023)")
     ap.add_argument("--hops-per-sec", type=float, default=125000.0,
                     help="F-engine hops/s (Fs/fft_len) -- cp slope chips/s log + the code clock-bias estimate")
+    ap.add_argument("--det-alias-fold", type=int, default=1,
+                    help="fold detection Doppler onto the model+bias reference within the "
+                         "record-alias quantum 1/(2*t_rec) before the cp-fit/seed path "
+                         "(NOT the bias EMA). Kills the alias-mixture fit chatter (L2C "
+                         "25 Hz) and the coherent-but-weak zombie births (B1C 50 Hz, "
+                         "C21/C42 2026-07-20). Active only with the bias solved and not "
+                         "stale, and only within 3.5 quanta of the model. 0 disables.")
+    ap.add_argument("--watchdog-weak-sig", type=float, default=30.0,
+                    help="WEAK-TRACK RESEED bar: a sat the search sees at full det snr "
+                         "(>= --watchdog-det-snr) whose TRACK significance stays under "
+                         "this for a whole --watchdog-s window is a coherent-but-weak "
+                         "zombie (correlating ~20 dB off-peak; nonzero coherence evades "
+                         "the zero-coherence watchdog, correct cp evades the referee, "
+                         "folded resid evades refade -- the C21/C42 class). Healthy weak "
+                         "chains are exempt via the det bar (their dets are weak too). "
+                         "0 disables.")
     ap.add_argument("--chip-rate-hz", type=float, default=1.023e6,
                     help="spreading chip rate (L1 C/A 1.023e6) -- for the code-rate clock-bias estimate")
     ap.add_argument("--code-doppler-sign", type=float, default=1.0,
@@ -824,6 +840,7 @@ def main(argv=None):
     det_fresh = {}      # prn -> (ref_hop, walltime) of the last NEW detection (alias escape)
     wd_birth = {}       # prn -> when it entered seeds (track-watchdog judgment window)
     wd_coh_t = {}       # prn -> last coherent walltime (track-watchdog's own clock)
+    wd_strong_t = {}    # prn -> last time track sig cleared --watchdog-weak-sig (zombie ref)
     _trim_force = {}    # BENCH-ONLY fault injection ("20:-60" = PRN 20 at -60 Hz): applied
     for _spec in os.environ.get("GNSS_TRIM_FORCE", "").split(","):
         # when the PRN is first SEEDED (a startup preload would be swept by the not-in-
@@ -932,6 +949,10 @@ def main(argv=None):
                                    # birth-stamped so warm-start gets a full grace window)
     bias_stale = False             # solved-but-unmeasured for > --bias-stale-s
     CODE_LEN = float(args.code_length)
+    # Search-Doppler record-alias quantum, 1/(2*t_rec): see the DETECTION ALIAS FOLD
+    # in the seeding loop. 500 Hz on the 1 ms bands (never confused), 125 E1C, 50 B1C,
+    # 25 L2C -- the alias-severity ranking that matches where zombie births appear.
+    Q_ALIAS_HZ = 0.5 * args.chip_rate_hz / CODE_LEN
     if args.hold_max_dop_hz is None:
         args.hold_max_dop_hz = 0.1 * args.chip_rate_hz / CODE_LEN
         _log("hold-max-dop-hz auto: %.1f Hz (0.1 cycle per %.0f ms record)"
@@ -1167,6 +1188,27 @@ def main(argv=None):
         dr_pd = (dr_state or {}).get("pd") or {}
         dr_pd2 = (dr_state or {}).get("pd2") or {}
         for prn, (snr, dop, cp, ref_hop) in best.items():
+            # DETECTION ALIAS FOLD (2026-07-20): the search's Doppler estimate is ambiguous
+            # mod 1/(2*t_rec) -- 25 Hz on L2C's 20 ms records, 50 Hz B1C, 125 Hz E1C. A
+            # detection riding an alias bin poisons everything the t_abs currency lever
+            # touches: the cp-fit history mixes alias modes (the fit-jitter churn root, l-a
+            # chattering +-0.05 ppm live) and cp_to_seed_currency applies a K*t_abs*ddop
+            # shift that lands the seed cp essentially anywhere mod the code (the B1C
+            # coherent-but-20-dB-weak zombie births, C21/C42 2026-07-20 am). Fold the det
+            # dop onto the model+bias reference for the FIT/SEED PATH ONLY -- `best` stays
+            # raw upstream where the bias EMA measures it (folding there would bound the
+            # resid within +-q/2 and blind the clock-walk tracking of the unlock night).
+            if (args.det_alias_fold and args.almanac and prn in pred
+                    and clock_bias_ema is not None and not bias_stale):
+                _aref = pred[prn][0] + clock_bias
+                _k = round((dop - _aref) / Q_ALIAS_HZ)
+                if _k != 0 and abs(dop - _aref) < 3.5 * Q_ALIAS_HZ:
+                    _log_rl("afold-%d" % prn,
+                            "ALIAS FOLD PRN %d: det dop %+.1f = model %+.1f %+d bin(s) of "
+                            "%.0f Hz -> %+.1f for cp/fit/seed"
+                            % (prn, dop, _aref, _k, Q_ALIAS_HZ, dop - _k * Q_ALIAS_HZ),
+                            every_s=30.0)
+                    dop = dop - _k * Q_ALIAS_HZ
             v_dr = dr_pd.get((args.dr_constellation, prn)) if dr_pd else None
             if up is not None and prn not in up:
                 # accept the detection anyway if BRDC says it's up: the TLE up-set
@@ -1619,15 +1661,36 @@ def main(argv=None):
                 _railed = (args.carrier_max_hz > 0.0
                            and abs(car_trim.get(prn, 0.0)) >= 0.95 * args.carrier_max_hz)
                 _det_bar = (2.0 * args.acquire_snr if _railed else args.watchdog_det_snr)
+                _reseed = None
                 if (t0 - wd_birth[prn] > args.watchdog_s
                         and t0 - wd_coh_t.get(prn, t0) > args.watchdog_s
                         and _fr is not None and t0 - _fr[1] < 10.0
                         and prn in best and best[prn][0] >= _det_bar):
-                    _log("WATCHDOG RESEED PRN %d: det snr %.0f but ZERO coherent emits "
-                         "for >%.0f s%s -> drop + fresh seed (tracker state resets via "
-                         "the active-list gap)"
-                         % (prn, best[prn][0], args.watchdog_s,
-                            " (trim RAILED %+.0f Hz)" % car_trim[prn] if _railed else ""))
+                    _reseed = ("det snr %.0f but ZERO coherent emits for >%.0f s%s"
+                               % (best[prn][0], args.watchdog_s,
+                                  " (trim RAILED %+.0f Hz)" % car_trim[prn]
+                                  if _railed else ""))
+                # WEAK-TRACK RESEED (2026-07-20): the coherent-but-weak zombie -- track
+                # correlating ~20 dB off-peak with just enough coherence to hide from the
+                # zero-coherence test above (C21/C42: sig 11-18 vs det snr strong, 70 min,
+                # every rescuer blind). Judge track significance against the det bar:
+                # strong det + persistently floor-level track = broken by construction.
+                _tsig = max(_r.get("deep_snr") or 0.0, _r.get("amp_snr") or 0.0)
+                if (args.watchdog_weak_sig > 0.0
+                        and _fr is not None and t0 - _fr[1] < 10.0
+                        and prn in best and best[prn][0] >= args.watchdog_det_snr):
+                    if _tsig >= args.watchdog_weak_sig:
+                        wd_strong_t[prn] = t0
+                    elif (_reseed is None
+                          and t0 - wd_birth[prn] > args.watchdog_s
+                          and t0 - wd_strong_t.get(prn, wd_birth[prn]) > args.watchdog_s):
+                        _reseed = ("det snr %.0f but track sig %.0f < %.0f for >%.0f s "
+                                   "(coherence %.2f -- WEAK-TRACK zombie)"
+                                   % (best[prn][0], _tsig, args.watchdog_weak_sig,
+                                      args.watchdog_s, _r.get("coherence_s") or 0.0))
+                if _reseed is not None:
+                    _log("WATCHDOG RESEED PRN %d: %s -> drop + fresh seed (tracker "
+                         "state resets via the active-list gap)" % (prn, _reseed))
                     del seeds[prn]
                     dll_trim.pop(prn, None)
                     dll_last.pop(prn, None)
@@ -1639,6 +1702,7 @@ def main(argv=None):
                 if k not in seeds:   # any unseeding path re-stamps birth on re-entry
                     wd_birth.pop(k, None)
                     wd_coh_t.pop(k, None)
+                    wd_strong_t.pop(k, None)
         for prn in list(seeds):
             if prn in probe_set:
                 continue
