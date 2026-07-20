@@ -1284,8 +1284,19 @@ def main(argv=None):
                     car_locked.discard(prn)
                     car_fade.pop(prn, None)
                     _log("CARRIER REACQ PRN %d: escape re-anchor -> BOOTSTRAP re-pull" % prn)
+            # HOLD ADMISSION REQUIRES FIT MATURITY (2026-07-19 eve, the Tier-3 burn-in fix):
+            # a birth-window anchor (wide margins, unsolved bias, <6-point fit) can be chips
+            # wrong, and granting it hold protection created the zombie cohorts that made
+            # every relaunch take 5-20 min to heal (or forever, pre-watchdog: the L2C 18%
+            # mornings). Until the sat's own cp fit is trusted -- the SAME predicate the
+            # escape referee requires before it may accuse a track -- the seed keeps riding
+            # the maturing fit (the weak-sat path, measured born-clean tonight), which is
+            # self-correcting. Only a mature anchor earns protection; expected burn-in
+            # collapses to the fit-maturation time (~6 search snapshots, ~60-80 s).
+            # Already-held sats are unaffected (the cp_held alternative below).
             elif (prev is not None
-                    and (sig_of_last(status.get(prn)) >= args.hold_snr
+                    and ((sig_of_last(status.get(prn)) >= args.hold_snr
+                          and (prn in cp_held or fit_trusted))
                          or (prn in cp_held and hold_miss.get(prn, 0) < 3))):
                 # PERSISTENT-loss release (2026-07-12 evening): a single blank/stale status
                 # read (sig 0.0 -- a poll racing the emit, a slow combiner cycle) used to
