@@ -261,3 +261,25 @@ phase-dump gating.
   dead-reckoning — those are the model's honest backstops, not clock-era scar tissue.
 - Don't tune more per-band rescuer parameters (watchdog thresholds, refade counts, escape
   filters) before A/B — that's the tree-level work this audit argues against.
+
+---
+
+## Addendum (same day, late evening): execution dispositions
+
+Recs A, B, D and most of E shipped the same day (commit chain `e253afcd..546d30df`);
+see git log for the per-change evidence. Dispositions for the E items that are
+deliberately NOT code changes:
+
+- **DLL-integrates-on-held vs l−a-skips-held**: judged CONSISTENT by design, not a bug.
+  Hold freezes the anchor and the DLL owns the sub-chip residual (that IS the design);
+  the l−a pool skips held sats because their cp points are anchor-derived, not measured.
+- **`--cl-assist` launch trigger**: dormant, not broken — it greps for `GPS_L2C_CL`
+  configs, none of which are currently deployed. Correct behavior if CL returns.
+- **`carrier_shared:` config key**: NOT dead — the C++ ignores it but `run_live.sh`
+  keys the shared-carrier-loop flags off it. Documented here so nobody deletes it.
+- **Dead decorative keys (tracker `n_prn`, combiner `prns`) + phase-dump gating +
+  `clock_profile: gpsdo` in the yamls**: deferred to the rec-C generator merge, where
+  they become table fields (editing the yamls mid-build would break the generator's
+  structural-diff-equivalence criterion).
+- **Escape-referee → BRDC-integrity reference, L5-GPS ramp, L2C fit-curvature,
+  per-record-length fit-maturity scaling**: the standing follow-up queue.
