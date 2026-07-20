@@ -16,6 +16,11 @@ set -u
 cd "$(dirname "$0")/.."
 
 PORT=${PORT:-12048}
+# rec D (2026-07-19): the receiver IS GPSDO-disciplined -- resolve run_live's derived margins
+# (CLK_WIDE_HZ etc.) from the gpsdo profile (0.06 ppm) instead of the 2.0 ppm cold default.
+# (The C++ search stage still reads clock_profile from the yamls; that part rides the config
+# generator so the generated files and this env stay in one place.)
+export CLOCK=${CLOCK:-gpsdo}
 CFG3=config/live_3band.yaml
 KOTEKAN=${KOTEKAN:-./build_cuda/kotekan/kotekan}
 export LAT=${LAT:-43.968697} LON=${LON:--79.252106} ALT=${ALT:-260}

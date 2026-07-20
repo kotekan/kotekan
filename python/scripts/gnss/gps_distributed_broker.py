@@ -42,6 +42,8 @@ import statistics
 import sys
 import time
 import urllib.request
+
+C_LIGHT = 299792458.0  # m/s (audit rec E: was inlined at four sites)
 from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(__file__)))
@@ -239,7 +241,7 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     pa = ge.predict_all(state["eph"], lat, lon, alt_m, t_utc, mask_deg=-90.0)
     pb = ge.predict_all(state["eph"], lat, lon, alt_m, t_utc + timedelta(seconds=dt),
                         mask_deg=-90.0)
-    C = 299792458.0
+    C = C_LIGHT
     out = {}
     for (s, prn), v in pa.items():
         if s != sysc or prn < min_prn:
@@ -406,6 +408,17 @@ def main(argv=None):
     ap.add_argument("--search-margin-wide-hz", type=float, default=3000.0,
                     help="wider search half-window BEFORE the bias is solved (covers the unknown "
                          "TCXO offset; shrinks to --search-margin-hz once a few sats pin the clock)")
+    ap.add_argument("--clock-bias-file", default=None,
+                    help="persist the solved carrier clock-frequency bias (Hz, plain text) "
+                         "across runs, and warm-start from it: the bias is then SOLVED from "
+                         "cycle 1 (narrow margins, seeding enabled immediately). Audit rec D: "
+                         "on the GPSDO this is a per-chain constant, not an estimate.")
+    ap.add_argument("--clock-bias-alarm-hz", type=float, default=10.0,
+                    help="CLOCK DRIFT ALARM bar: loud log if the live bias EMA departs the "
+                         "warm-start calibration by more than this (GPSDO unlock / thermal "
+                         "event -- hardware news, not something to silently absorb)")
+    ap.add_argument("--code-bias-alarm-ppm", type=float, default=0.05,
+                    help="same alarm for the code-rate clock (l-a) vs its warm-start value")
     ap.add_argument("--bias-alpha", type=float, default=0.05,
                     help="EMA weight for the clock-freq bias (smaller = steadier seed Doppler; "
                          "~0.05 => few-second time constant, dithers out the 500 Hz grid)")
@@ -871,6 +884,26 @@ def main(argv=None):
             _log("code-rate clock offset loaded %+.3f ppm from %s" % (code_bias_ema * 1e6, args.code_bias_file))
         except Exception:
             pass
+    # CLOCK -> CALIBRATION + ALARMS (2026-07-19 audit rec D): the two receiver-clock loops
+    # were built for a 2.6 ppm wandering TCXO; on the GPSDO they track flat constants
+    # (measured all day: per-chain bias -152/-18/+30 Hz +-3, l-a 0.02-0.10 ppm). Warm-start
+    # the carrier bias from its persisted file exactly like l-a -- this marks the bias
+    # SOLVED from cycle 1, so the first-seed gate opens and the search margins start NARROW
+    # (most of the remaining Tier-2 burn-in). The EMAs keep running purely as MONITORS: a
+    # drift beyond the alarm bar means real hardware news (GPSDO unlock, thermal event),
+    # not something to silently absorb.
+    clock_bias_cal = None  # startup calibration value, Hz (drift-alarm reference)
+    if args.clock_bias_file:
+        try:
+            with open(args.clock_bias_file) as f:
+                clock_bias_ema = float(f.read().strip())
+            clock_bias_cal = clock_bias_ema
+            _log("clock-freq bias warm-started %+.1f Hz from %s (margins narrow, seeding "
+                 "enabled from cycle 1)" % (clock_bias_ema, args.clock_bias_file))
+        except Exception:
+            pass
+    code_bias_cal = code_bias_ema  # l-a calibration reference (None if cold)
+    _clk_persist_t = [0.0]         # last clock-bias-file write (10 s rate limit)
     CODE_LEN = float(args.code_length)
     if args.hold_max_dop_hz is None:
         args.hold_max_dop_hz = 0.1 * args.chip_rate_hz / CODE_LEN
@@ -992,6 +1025,21 @@ def main(argv=None):
                 clock_bias_ema = (raw_bias if clock_bias_ema is None
                                   else clock_bias_ema + args.bias_alpha * (raw_bias - clock_bias_ema))
                 clock_bias = clock_bias_ema
+                # rec D: persist (10 s rate limit) + drift alarm vs the warm-start calibration
+                if args.clock_bias_file and t0 - _clk_persist_t[0] > 10.0:
+                    _clk_persist_t[0] = t0
+                    try:
+                        with open(args.clock_bias_file, "w") as f:
+                            f.write("%.2f\n" % clock_bias_ema)
+                    except Exception:
+                        pass
+                if (clock_bias_cal is not None
+                        and abs(clock_bias_ema - clock_bias_cal) > args.clock_bias_alarm_hz):
+                    _log_rl("clkalarm",
+                            "CLOCK DRIFT ALARM: carrier bias %+.1f Hz vs calibration %+.1f "
+                            "(|d| > %.0f Hz) -- GPSDO unlock / thermal event? INVESTIGATE"
+                            % (clock_bias_ema, clock_bias_cal, args.clock_bias_alarm_hz),
+                            every_s=60.0)
             for p in sorted(best):
                 if p in pred:
                     _log_rl("meas-%d" % p,
@@ -1066,7 +1114,7 @@ def main(argv=None):
             # = the whole E1 hold fence; observed E32 RELEASE ddop -25, 2026-07-13).
             if v_dr is not None and prn not in dr_untrusted:
                 _dop_src = "dr"
-                seed_dop = (args.doppler_sign * (-v_dr["range_rate_mps"] / 299792458.0
+                seed_dop = (args.doppler_sign * (-v_dr["range_rate_mps"] / C_LIGHT
                                                  * args.carrier_hz) + clock_bias)
             # SEED-STEP ATTRIBUTION (2026-07-18, the one-grid-step NCO disease): any seed
             # doppler step > 10 Hz vs the sat's previous seed is loud, with its source --
@@ -1129,7 +1177,7 @@ def main(argv=None):
                 seed["doppler_rate_hz_s"] = (args.doppler_sign
                                              * (-(v2_dr["range_rate_mps"]
                                                   - v_dr["range_rate_mps"]) / 4.0)
-                                             / 299792458.0 * args.carrier_hz)
+                                             / C_LIGHT * args.carrier_hz)
             elif args.almanac and prn in pred:
                 seed["doppler_rate_hz_s"] = pred[prn][1]
             elif args.force_doppler_rate is not None:
@@ -1172,7 +1220,7 @@ def main(argv=None):
             # residual MEASURES the anchor+host-clock error). Second-order cp0/range drift keeps
             # this valid for ~hour-long runs.
             if args.cl_assist and utc0_sample0 and args.almanac and prn in pred:
-                tau = pred[prn][3] / 299792458.0
+                tau = pred[prn][3] / C_LIGHT
                 cl_chips = (((utc0_sample0 - tau + args.cl_time_adjust) % 1.5)
                             * args.chip_rate_hz)
                 cp_cm = seed["code_phase_chips"]
@@ -1966,6 +2014,13 @@ def main(argv=None):
             if abs(raw_cb) < args.code_bias_max * 1e-6:
                 code_bias_ema = (raw_cb if code_bias_ema is None
                                  else code_bias_ema + args.code_bias_alpha * (raw_cb - code_bias_ema))
+                if (code_bias_cal is not None
+                        and abs(code_bias_ema - code_bias_cal) > args.code_bias_alarm_ppm * 1e-6):
+                    _log_rl("laalarm",
+                            "CLOCK DRIFT ALARM: l-a %+.3f ppm vs calibration %+.3f "
+                            "(|d| > %.2f ppm) -- dongle clock news, INVESTIGATE"
+                            % (code_bias_ema * 1e6, code_bias_cal * 1e6,
+                               args.code_bias_alarm_ppm), every_s=60.0)
                 _log_rl("la-pool",
                         "code-rate clock offset (l-a) %+.3f ppm (raw %+.3f, %d fitted "
                         "sats, EMA a=%.2f)"
