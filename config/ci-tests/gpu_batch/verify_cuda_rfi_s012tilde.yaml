@@ -26,13 +26,21 @@ num_local_freq: 4
 
 rfi_downsampling_factor: 256
 
+updatable_config:
+    bad_inputs:
+        kotekan_update_endpoint: json
+        # yamlfix:off
+        bad_inputs: [3, 12, 46, 47, 48, 84, 99, 107, 120]
+        # yamlfix:on
+        start_time: 1535048997.
+        update_id: "initial_flags"
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata
     num_metadata_objects: 20 * buffer_depth
 
 # Buffers
-
 host_bf_mask_buffer:
     kotekan_buffer: ndarray
     num_frames: buffer_depth
@@ -84,15 +92,11 @@ gen_rfi_s012:
     num_frames: 2*buffer_depth  # Must be at least what check_data expects
     meta_time_downsample_factor: rfi_downsampling_factor
 
-gen_bf_mask:
-    type: random8
-    kotekan_stage: testDataGen
+set_bf_mask:
+    kotekan_stage: bufferBadInputs
+    updatable_config:
+        bad_inputs: /updatable_config/bad_inputs
     out_buf: host_bf_mask_buffer
-    name: "bf_mask"
-    array_shape: [2, 64]
-    dim_name: ["P", "D"]
-    dim_scaling: [1, 1]
-    num_frames: 2 * buffer_depth
 
 run_send_rfi_s012:
     gpu_0:
