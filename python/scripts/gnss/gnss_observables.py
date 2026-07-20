@@ -240,9 +240,15 @@ def main():
                                 "eph_age_s": round(v["toe_age_s"], 1)})
                 f.write(json.dumps(row, separators=(",", ":")) + "\n")
                 n += 1
-        dt = args.interval - (time.time() - t0)
-        if dt > 0:
-            time.sleep(dt)
+        # PHASE-LOCK the cadence to the wall-clock interval grid (2026-07-19): dTEC pairing
+        # intersects epochs EXACTLY across bands, and free-running loops land on arbitrary
+        # per-process phases -- measured tonight: the L1 and L2C loggers both ran 2 s
+        # cadences on OPPOSITE second parity, so the G:L1xL2C pair had literally zero
+        # common epochs all day while L1xL5 worked by parity luck. Sleeping to the next
+        # multiple of the interval puts every band's logger on one shared grid.
+        now = time.time()
+        dt = args.interval - (now % args.interval)
+        time.sleep(dt if dt > 0.05 else dt + args.interval)
 
 
 if __name__ == "__main__":
