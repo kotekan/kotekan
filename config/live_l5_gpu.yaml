@@ -54,7 +54,7 @@ code_doppler_sign: 1.0
 n_prn: 32
 record_floats: 20
 doppler_margin_hz: 250000.0
-acquire_snr: 10.0
+acquire_snr: 8.0
 acquire_windows: 100
 # L5 geometric Doppler ~ 0.747 x L1 (GPSDO-trimmed range, signal-aware-search
 # 2026-07-04). +-5000 (was 4500): the bring-up bench saw E5a E11 railed at its -4000
@@ -114,7 +114,7 @@ fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, inpu
 # require_hint: scan only broker-hinted (visible + L5-capable) PRNs.
 # hops_per_record 1000 = the 1 ms Q5 period at this geometry (search needs it
 # explicitly; the tracker derives it).
-gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 10.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
 valve: { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 quant: { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, target_lsb: 2.1, measure_frames: 64 }  # the RFSoC's job in software: noise rms -> target_lsb, freeze, demote to CHORD 4+4b (2.1 point, cold soak closed 07-19)
 

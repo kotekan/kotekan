@@ -448,7 +448,13 @@ bands:
         seed_endpoint: /gps_track/set_seeds
         record_name: level
         search:
-          params: { acquire_snr: 10.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          # acquire_snr 10 -> 8 (2026-07-20 EXPERIMENT, Keith-approved overnight soak):
+          # the L5-GPS population analysis put the missing low-el IIF sats exactly AT the
+          # bar (PRN 9 det snr maxed 12 vs bar 10; PRNs 3/8/27/32 at zero dets while 45+ dB
+          # on L1) -- and E5a/B2a, the healthy same-band siblings, already run at 8. Match
+          # them. Success = previously-zero-det IIF sats detected+coherent; failure =
+          # false-det noise on this chain only (broker gate 6 + watchdog bound it).
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
           note: |
             require_hint: scan only broker-hinted (visible + L5-capable) PRNs.
             hops_per_record 1000 = the 1 ms Q5 period at this geometry (search needs it
