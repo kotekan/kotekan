@@ -63,7 +63,13 @@ def parse_blocks(text):
 def scalar_value(blocks, key):
     for k, b in blocks:
         if k == key:
-            return b.split(":", 1)[1].split("#")[0].strip()
+            # FIRST LINE of the block only (a scalar's block carries any comment lines
+            # that follow it), then strip the trailing comment on " #" (space-hash --
+            # a bare '#' split would truncate a quoted value containing one; the old
+            # bare split only worked because it also happened to eat the comment LINES,
+            # which the splitlines() now handles explicitly).
+            v = b.split(":", 1)[1].splitlines()[0]
+            return v.split(" #")[0].strip()
     return None
 
 
@@ -149,7 +155,12 @@ def main():
                 # command relies on finding the key at the stage level.
                 lines0 = b.splitlines()
                 if lines0[0].partition(" #")[0].rstrip().endswith("}"):
-                    body_keys = set(re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*:", lines0[0]))
+                    # key scan on the COMMENT-STRIPPED head: a trailing "# prns: inherited"
+                    # note would otherwise register 'prns' as a body key and silently
+                    # suppress that key's inheritance push (the fence-didn't-propagate
+                    # failure class, via a comment)
+                    body_keys = set(re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*:",
+                                               lines0[0].partition(" #")[0]))
                 else:
                     body_keys = set(m.group(1) for ln in lines0
                                     for m in [re.match(r"^    ([A-Za-z_][A-Za-z0-9_]*)\s*:", ln)]
