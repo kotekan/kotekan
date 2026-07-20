@@ -1682,7 +1682,12 @@ def main(argv=None):
                     if _tsig >= args.watchdog_weak_sig:
                         wd_strong_t[prn] = t0
                     elif (_reseed is None
-                          and t0 - wd_birth[prn] > args.watchdog_s
+                          # 3x birth grace (2026-07-20 13:12 soak): a reseed resets the
+                          # deep ladder and sig takes 60-120 s to rebuild past the bar, so
+                          # a 1x window re-fired on its own aftermath -- metronomic churn
+                          # on healthy ramping sats (E3 at 50 dB-Hz reseeded 3x at birth).
+                          # A real zombie (70 min) doesn't care about a 135 s judgment.
+                          and t0 - wd_birth[prn] > 3.0 * args.watchdog_s
                           and t0 - wd_strong_t.get(prn, wd_birth[prn]) > args.watchdog_s):
                         _reseed = ("det snr %.0f but track sig %.0f < %.0f for >%.0f s "
                                    "(coherence %.2f -- WEAK-TRACK zombie)"
