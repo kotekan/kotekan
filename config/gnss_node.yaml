@@ -32,7 +32,10 @@ shared:
   log_level: warn
   instrument_name: airspy_gps
   telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
-  clock_profile: { name: auto }
+  # rec D yaml side (2026-07-20): the receiver IS GPSDO-disciplined -- auto's cold-start
+  # margins defended against a 2.6 ppm TCXO that no longer exists. run_3band.sh has
+  # exported CLOCK=gpsdo for the control plane since 07-19; this makes the C++ side match.
+  clock_profile: { name: gpsdo }
 
   bytes_per_sample: 2
   buffer_depth: 16
@@ -208,8 +211,10 @@ bands:
           # DIVERGENT (audit): acquire_snr 10/8/10 and acquire_windows 20/40/100 across the
           # three bands' GPS chains; brokers hardcode --acquire-snr 6, so the config gate
           # never reaches the broker (two gates, one imaginary).
-          # DIVERGENT (audit): hint_ttl_s 8.0 here vs 20.0 for gal/bds in this same file.
-          params: { acquire_snr: 10.0, acquire_windows: 20, require_hint: true, hint_ttl_s: 8.0 }
+          # hint_ttl_s UNIFIED to 20 (2026-07-20, was 8 -- accidental divergence vs gal/bds):
+          # in require_hint mode an expired hint stops the sat's scan entirely, so the TTL
+          # is really "how long search survives a broker stall" -- 20 s of margin, uniform.
+          params: { acquire_snr: 10.0, acquire_windows: 20, require_hint: true, hint_ttl_s: 20.0 }
           note: |
             require_hint: scan ONLY broker-hinted (visible) PRNs -> all 32 candidate slots
             but only the ~10-12 visible narrow scans; PRNs swap in/out as they rise/set.
@@ -226,7 +231,11 @@ bands:
             routine model error (~1-2 Hz) + the +-3 Hz innovation gate; alias limit
             1/(4*t_rec) = 250 Hz at 1 ms.
         combiner:
-          params: { integration_length: 1000, navwipe_bit_records: 20, phase_dump_prns: [6, 11, 19, 21, 22], phase_dump_path: "/tmp/gpswipe/phase_dump_gps.txt" }
+          # phase dumps REMOVED (2026-07-20): the three L1 dumps wrote 52 GB of diagnostic
+          # text into /tmp/gpswipe (35/13/4.5 GB) with no live consumer -- they were the
+          # sigma-phi/multipath forensics tap. Re-add phase_dump_prns/phase_dump_path HERE
+          # deliberately when that analysis resumes.
+          params: { integration_length: 1000, navwipe_bit_records: 20 }
           note: |
             integration_length 1000, navwipe_bit_records 20 -> navwipe: integrate ~1 s
             (50 nav bits) coherently; deep |A| in slot 8. (Restored to 1000 once the
@@ -256,7 +265,7 @@ bands:
           fll_reacq_hz: 15.0
           note_inline: "tight snap-to-model fence (rec B; free under dop-continuous; alias limit 62 Hz at 4 ms)"
         combiner:
-          params: { n_prn: 36, prns: RANGE, integration_length: 250, secondary_overlay: E1_CS25, phase_dump_prns: [4, 10, 12, 18, 19, 28, 29, 33], phase_dump_path: "/tmp/gpswipe/phase_dump_gal.txt" }
+          params: { n_prn: 36, prns: RANGE, integration_length: 250, secondary_overlay: E1_CS25 }
           note: |
             E1-C is a PURE PILOT once CS25 is wiped deterministically (secondary_overlay) --
             the deep integrates fully coherently with NO per-record sign freedom. (The old
@@ -284,7 +293,7 @@ bands:
         combiner:
           # DIVERGENT (audit): bds combiners carry no prns list while gal combiners do
           # (both inherit correctly; kept as-is).
-          params: { nh_assist: true, nh_min_refs: 3, n_prn: 63, integration_length: 100, secondary_overlay: B1C, phase_dump_prns: [19, 22, 35, 36, 40], phase_dump_path: "/tmp/gpswipe/phase_dump_bds.txt" }
+          params: { nh_assist: true, nh_min_refs: 3, n_prn: 63, integration_length: 100, secondary_overlay: B1C }
           note: |
             B1C pilot: deterministic per-PRN 1800-chip overlay wipe (the per-record stopgap
             floored deep at sqrt(2*100/pi) ~ 8 sigma while the search hit 290+).
@@ -405,13 +414,15 @@ bands:
       gain: 8
     doppler_min: -5000.0
     doppler_max: 5000.0
-    doppler_step: 250
+    doppler_step: 100
     doppler_note: |
       L5 geometric Doppler ~ 0.747 x L1 (GPSDO-trimmed range, signal-aware-search
       2026-07-04). +-5000 (was 4500): the bring-up bench saw E5a E11 railed at its -4000
-      search edge, so give the cold fallback margin; clock_profile: auto supersedes this
-      live anyway.
-      DIVERGENT (audit): doppler_step 250 vs L1's 100 on identical 1 ms record geometry.
+      search edge, so give the cold fallback margin; clock_profile supersedes this live.
+      doppler_step UNIFIED to L1's 100 (2026-07-20, was 250 -- accidental divergence on
+      identical 1 ms record geometry): the L1 note's grid-residual argument applies
+      verbatim, and L5's weak-sat population is exactly where +-125 Hz of grid residual
+      hurts most. Search is async/lossy, so the cost is snapshot rate, not backpressure.
     prns_note: |
       Full constellation: require_hint + the broker's band-capability filter (L5 = IIF and
       later; drops IIR/IIR-M false detects like PRN17) select the real transmitters.

@@ -555,6 +555,14 @@ def main(argv=None):
                          "-42 Hz over the 07-18 evening; the E36 innovation gate protects "
                          "only TRACK mode). Held trims coast on the fleet prior + Doppler-"
                          "rate feed-forward, which is the better model anyway.")
+    ap.add_argument("--refade-flicker-s", type=float, default=30.0,
+                    help="suppress the --carrier-refade demotion when the residual is SUB-"
+                         "innovation AND the sat cohered within this many seconds: that is "
+                         "certification-bar sig flicker (settled-era E1/B1C: ~700 no-op "
+                         "re-pulls/3 h at |resid| ~1.7 Hz), not a stepped NCO. A STANDING "
+                         "decoherence (the L2C C20 absorbing state, dark for minutes at a "
+                         "sub-gate resid) still demotes after the window. Needs the track "
+                         "watchdog on for coherence timestamps; 0 disables the guard.")
     ap.add_argument("--carrier-refade", type=int, default=10,
                     help="TRACK-mode DEMOTION: after this many consecutive gated residuals "
                          "(fade-hold or innovation-reject) while the sat is still PRESENT "
@@ -2065,7 +2073,19 @@ def main(argv=None):
                                    and prn in best
                                    and best[prn][0] >= 2.0 * args.acquire_snr))
                     car_fade[prn] = car_fade.get(prn, 0) + 1 if present else 0
-                    if args.carrier_refade > 0 and car_fade.get(prn, 0) >= args.carrier_refade:
+                    # FLICKER GUARD (2026-07-20): a SUB-innovation residual on a sat that
+                    # cohered seconds ago is certification-bar sig flicker, not a stepped
+                    # NCO -- the re-pull has nothing to pull (settled-era E1/B1C: ~700
+                    # REACQs/3 h at mean |resid| 1.7 Hz, all no-ops). Suppress the demotion
+                    # for those; a STANDING decoherence (the L2C C20 absorbing state:
+                    # sub-gate resid, dark for minutes) still demotes once the sat has been
+                    # incoherent longer than the window. Inactive when the watchdog is off
+                    # (wd_coh_t empty -> old behavior).
+                    _flicker = (args.refade_flicker_s > 0.0
+                                and abs(resid) < args.carrier_innov_hz
+                                and t0 - wd_coh_t.get(prn, 0.0) < args.refade_flicker_s)
+                    if (args.carrier_refade > 0 and not _flicker
+                            and car_fade.get(prn, 0) >= args.carrier_refade):
                         car_locked.discard(prn)
                         car_fade.pop(prn, None)
                         _log("CARRIER REACQ PRN %d: %d consecutive gated emits at full amp "

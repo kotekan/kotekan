@@ -27,7 +27,7 @@ rest_server:
 # estimate narrows it live (override tcxo|ocxo|gpsdo|rubidium|maser or pin accuracy_ppm /
 # coherence_s; canonical table clockProfile.hpp). When present it supersedes the legacy
 # doppler_min/max below (kept as a fallback).
-clock_profile: { name: auto }
+clock_profile: { name: gpsdo }
 
 # 49920 samples / 5 MSPS = 9.984 ms per frame (matches live_l2c). L2C records are 20 ms,
 # so a record spans ~2 frames -- the cudaGnssTrack device ring (ring_records 50)
