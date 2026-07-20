@@ -841,6 +841,9 @@ def main(argv=None):
     wd_birth = {}       # prn -> when it entered seeds (track-watchdog judgment window)
     wd_coh_t = {}       # prn -> last coherent walltime (track-watchdog's own clock)
     wd_strong_t = {}    # prn -> last time track sig cleared --watchdog-weak-sig (zombie ref)
+    wd_weak_n = {}      # prn -> consecutive weak-track fires (exponential backoff; survives
+                        # reseeds BY DESIGN -- the backoff exists to remember failed rescues;
+                        # cleared only when the sat clears the weak bar)
     _trim_force = {}    # BENCH-ONLY fault injection ("20:-60" = PRN 20 at -60 Hz): applied
     for _spec in os.environ.get("GNSS_TRIM_FORCE", "").split(","):
         # when the PRN is first SEEDED (a startup preload would be swept by the not-in-
@@ -1702,18 +1705,30 @@ def main(argv=None):
                         and prn in best and best[prn][0] >= args.watchdog_det_snr):
                     if _tsig >= args.watchdog_weak_sig:
                         wd_strong_t[prn] = t0
+                        wd_weak_n.pop(prn, None)  # cleared the bar -> backoff resets
                     elif (_reseed is None
                           # 3x birth grace (2026-07-20 13:12 soak): a reseed resets the
                           # deep ladder and sig takes 60-120 s to rebuild past the bar, so
                           # a 1x window re-fired on its own aftermath -- metronomic churn
                           # on healthy ramping sats (E3 at 50 dB-Hz reseeded 3x at birth).
                           # A real zombie (70 min) doesn't care about a 135 s judgment.
-                          and t0 - wd_birth[prn] > 3.0 * args.watchdog_s
+                          # EXPONENTIAL BACKOFF (14:05 soak): track sig alone cannot
+                          # separate a zombie from a LEGIT-WEAK sat (E1 PRN 8: 29 dB-Hz,
+                          # det snr 112 -- det snr barely scales with C/N0 on E1, so the
+                          # weak-det exemption fails there) and the bar churned weak sats
+                          # at exactly grace cadence. A real zombie is cured by fire #1;
+                          # a sat that fires AGAIN earns doubled grace each time (135 s ->
+                          # 270 -> 540 -> ... capped 16x), so persistent-weak sats are
+                          # left alone while one-shot rescues stay fast.
+                          and t0 - wd_birth[prn] > (3.0 * args.watchdog_s
+                                                    * (2 ** min(wd_weak_n.get(prn, 0), 4)))
                           and t0 - wd_strong_t.get(prn, wd_birth[prn]) > args.watchdog_s):
+                        wd_weak_n[prn] = wd_weak_n.get(prn, 0) + 1
                         _reseed = ("det snr %.0f but track sig %.0f < %.0f for >%.0f s "
-                                   "(coherence %.2f -- WEAK-TRACK zombie)"
+                                   "(coherence %.2f, fire #%d -- WEAK-TRACK zombie)"
                                    % (best[prn][0], _tsig, args.watchdog_weak_sig,
-                                      args.watchdog_s, _r.get("coherence_s") or 0.0))
+                                      args.watchdog_s, _r.get("coherence_s") or 0.0,
+                                      wd_weak_n[prn]))
                 if _reseed is not None:
                     _log("WATCHDOG RESEED PRN %d: %s -> drop + fresh seed (tracker "
                          "state resets via the active-list gap)" % (prn, _reseed))
