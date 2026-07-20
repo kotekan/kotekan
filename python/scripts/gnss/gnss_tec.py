@@ -68,7 +68,18 @@ def load(path, since_s, sysid, min_sig):
             #    old sig gate DROPPED those rows, punching >10 s holes that arcs() then split on,
             #    fracturing hour-long arcs into 2 s stubs -- the entire "certification flicker"
             #    was this metric artifact, not a lock loss. coherence_s > 0 keeps them.
-            if not ((d.get("coherence_s") or 0.0) > 0.0):
+            # Row admission: ADR CONTINUITY (adr_lock_s > 0), not instantaneous coherence.
+            # coherence_s flickers 0 between deep windows on long-window chains (L2C's 4-s
+            # window: only ~32% of rows carry coherence_s > 0 while adr_lock_s > 0 on 99.7%
+            # -- measured 2026-07-20 PRN 5; the row gate fractured every joint arc and the
+            # movie died with "no joint arcs long enough"). The COASTING-sat trap this gate
+            # existed for (commanded phase + noise walk, coherence_s = 0 the WHOLE arc) is
+            # handled at ARC level below: an arc with zero coherent rows is dropped. Rows
+            # without adr_lock_s (old logs) fall back to the coherence_s row gate.
+            if "adr_lock_s" in d:
+                if not ((d.get("adr_lock_s") or 0.0) > 0.0):
+                    continue
+            elif not ((d.get("coherence_s") or 0.0) > 0.0):
                 continue
             raw.append(d)
             tmax = max(tmax, d["t"])
@@ -80,8 +91,16 @@ def load(path, since_s, sysid, min_sig):
     return rows
 
 
-def arcs(series, max_gap_s):
-    """Split one band's per-sat series into continuous arcs: same adr_arc, no long gaps."""
+def arcs(series, max_gap_s, coh_bridge_s=30.0):
+    """Split one band's per-sat series into continuous arcs: same adr_arc, no long gaps.
+    CERTIFICATION is coherent-supported: rows survive only within coh_bridge_s of a
+    coherence_s>0 row. That BRIDGES the seconds-long incoherent nulls between deep
+    windows (L2C's 4-s window flickers coherence_s on ~1/3 of rows while the ADR sails
+    through -- the 07-17 lesson) but DROPS coasting stretches (commanded phase + noise
+    walk, minutes-to-hours with zero coherent rows -- admitting one such 9700-s stretch
+    put 18000-TECU scatter arcs into the movie, measured 2026-07-20). Trimming creates
+    gaps, so arcs re-split on max_gap_s after the mask."""
+    import bisect
     out = []
     cur = []
     for r in series:
@@ -91,7 +110,28 @@ def arcs(series, max_gap_s):
         cur.append(r)
     if cur:
         out.append(cur)
-    return out
+    trimmed = []
+    for a in out:
+        coh_ts = [r["t"] for r in a if (r.get("coherence_s") or 0.0) > 0.0]
+        if not coh_ts:
+            continue  # pure coast: no certified lock anywhere in the arc
+        cur = []
+        for r in a:
+            i = bisect.bisect_left(coh_ts, r["t"])
+            near = min((abs(coh_ts[j] - r["t"]) for j in (i - 1, i) if 0 <= j < len(coh_ts)),
+                       default=1e9)
+            if near > coh_bridge_s:
+                if cur:
+                    trimmed.append(cur)
+                    cur = []
+                continue
+            if cur and r["t"] - cur[-1]["t"] > max_gap_s:
+                trimmed.append(cur)
+                cur = []
+            cur.append(r)
+        if cur:
+            trimmed.append(cur)
+    return trimmed
 
 
 def interp_adr(arc, t):
@@ -102,7 +142,12 @@ def interp_adr(arc, t):
     if i == 0 or i >= len(ts):
         return None
     a, b = arc[i - 1], arc[i]
-    if b["t"] - a["t"] > 3.0:
+    # Neighbor cap 5 s: covers the slowest logger cadence (L2C emits every 4 s, matched to
+    # its 4-s integration window -- the old 3.0 cap rejected EVERY epoch of every L1xL2C
+    # joint arc, measured 2026-07-20). Interp curvature error across 4 s is ~1 cycle
+    # (<~2 TECU on the L1/L2C pair) -- fine; across anything longer it is not, so gaps
+    # beyond a cadence still return None and end the joint arc.
+    if b["t"] - a["t"] > 5.0:
         return None
     w = (t - a["t"]) / (b["t"] - a["t"])
     return a["adr_cycles"] * (1 - w) + b["adr_cycles"] * w
