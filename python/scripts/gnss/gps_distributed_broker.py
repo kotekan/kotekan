@@ -419,6 +419,15 @@ def main(argv=None):
                          "event -- hardware news, not something to silently absorb)")
     ap.add_argument("--code-bias-alarm-ppm", type=float, default=0.05,
                     help="same alarm for the code-rate clock (l-a) vs its warm-start value")
+    ap.add_argument("--bias-stale-s", type=float, default=300.0,
+                    help="STALE-BIAS RESCUE: if the solved bias EMA has gone this long without "
+                         "a multi-sat measurement, widen the search margins and RE-SOLVE from "
+                         "the next detections (snap to the fresh median, recalibrate, persist). "
+                         "Closes the 2026-07-20 lockout: a GPSDO unlock walked the EMA -2 ppm, "
+                         "every lock died, and the EMA latched mid-walk -- hints then sat kHz "
+                         "off truth at narrow margins with nothing left to update them. The "
+                         "held value still centers the (wide) hints and seeds, so a healthy "
+                         "chain that merely has a sparse sky loses nothing. 0 disables.")
     ap.add_argument("--fit-maturity-span-s", type=float, default=30.0,
                     help="cp-fit HISTORY SPAN required before the fit is trusted (escape "
                          "referee + hold admission). 30 s makes the code-Doppler quadratic "
@@ -911,6 +920,9 @@ def main(argv=None):
             pass
     code_bias_cal = code_bias_ema  # l-a calibration reference (None if cold)
     _clk_persist_t = [0.0]         # last clock-bias-file write (10 s rate limit)
+    _bias_meas_t = time.time()     # last multi-sat bias measurement (stale-rescue clock;
+                                   # birth-stamped so warm-start gets a full grace window)
+    bias_stale = False             # solved-but-unmeasured for > --bias-stale-s
     CODE_LEN = float(args.code_length)
     if args.hold_max_dop_hz is None:
         args.hold_max_dop_hz = 0.1 * args.chip_rate_hz / CODE_LEN
@@ -967,6 +979,17 @@ def main(argv=None):
         pred = {}          # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]
         # Hold the last smoothed bias through detection dropouts (the TCXO didn't move).
         clock_bias = clock_bias_ema if clock_bias_ema is not None else 0.0
+        # STALE-BIAS RESCUE (--bias-stale-s): a solved bias nobody has measured for minutes
+        # is a LIABILITY, not a constant -- if it latched away from truth (mid-walk during
+        # the 2026-07-20 GPSDO unlock) the narrow hints it centers are what PREVENT the
+        # measurements that would fix it. Widen and re-solve; hold the value for seeding.
+        bias_stale = (args.bias_stale_s > 0.0 and clock_bias_ema is not None
+                      and t0 - _bias_meas_t > args.bias_stale_s)
+        if bias_stale:
+            _log_rl("clkstale",
+                    "CLOCK BIAS STALE: no multi-sat measurement for %.0f s (holding %+.0f Hz "
+                    "for seeding) -- margins WIDE until re-solved"
+                    % (t0 - _bias_meas_t, clock_bias), every_s=60.0)
         up = None
         if args.almanac:
             try:
@@ -1029,19 +1052,45 @@ def main(argv=None):
                 # below the gate the EMA holds its last multi-sat value (or stays unsolved
                 # -> margins stay WIDE, which is exactly what lets more sats in).
                 raw_bias = statistics.median(resid)
-                clock_bias_ema = (raw_bias if clock_bias_ema is None
-                                  else clock_bias_ema + args.bias_alpha * (raw_bias - clock_bias_ema))
+                if clock_bias_ema is None or bias_stale:
+                    # First solve, or stale-rescue re-solve: SNAP to the fresh median. An
+                    # EMA crawl (a=0.05) from a mid-walk latch kHz off truth would spend
+                    # minutes converging through exactly the hint region it just vacated.
+                    if bias_stale:
+                        _log("CLOCK BIAS RE-SOLVED %+.1f Hz after %.0f s stale (held %+.1f)"
+                             % (raw_bias, t0 - _bias_meas_t, clock_bias_ema))
+                        if (clock_bias_cal is not None
+                                and abs(raw_bias - clock_bias_cal) > args.clock_bias_alarm_hz):
+                            _log("CLOCK BIAS RECALIBRATED %+.1f -> %+.1f Hz -- hardware "
+                                 "news (GPSDO re-settled?); new warm-start reference"
+                                 % (clock_bias_cal, raw_bias))
+                        clock_bias_cal = raw_bias
+                        bias_stale = False
+                    clock_bias_ema = raw_bias
+                else:
+                    clock_bias_ema += args.bias_alpha * (raw_bias - clock_bias_ema)
+                _bias_meas_t = t0
                 clock_bias = clock_bias_ema
-                # rec D: persist (10 s rate limit) + drift alarm vs the warm-start calibration
-                if args.clock_bias_file and t0 - _clk_persist_t[0] > 10.0:
+                alarming = (clock_bias_cal is not None
+                            and abs(clock_bias_ema - clock_bias_cal) > args.clock_bias_alarm_hz)
+                # rec D persist (10 s rate limit). The file is a CALIBRATION, not an EMA
+                # mirror -- NEVER overwrite it while the live bias is in alarm (2026-07-20:
+                # the GPSDO free-run walk was faithfully persisted all the way to -2 ppm
+                # and poisoned the next warm-start kHz off truth). Cold start: the first
+                # persist doubles as the calibration stamp.
+                if (args.clock_bias_file and not alarming
+                        and t0 - _clk_persist_t[0] > 10.0):
                     _clk_persist_t[0] = t0
+                    if clock_bias_cal is None:
+                        clock_bias_cal = clock_bias_ema
+                        _log("clock-freq bias calibrated %+.1f Hz (cold start) -> %s"
+                             % (clock_bias_ema, args.clock_bias_file))
                     try:
                         with open(args.clock_bias_file, "w") as f:
                             f.write("%.2f\n" % clock_bias_ema)
                     except Exception:
                         pass
-                if (clock_bias_cal is not None
-                        and abs(clock_bias_ema - clock_bias_cal) > args.clock_bias_alarm_hz):
+                if alarming:
                     _log_rl("clkalarm",
                             "CLOCK DRIFT ALARM: carrier bias %+.1f Hz vs calibration %+.1f "
                             "(|d| > %.0f Hz) -- GPSDO unlock / thermal event? INVESTIGATE"
@@ -1070,7 +1119,8 @@ def main(argv=None):
         # is WIDE until the common clock-freq bias is solved (the geometric Doppler is then offset
         # by the unknown TCXO), NARROW once a few sats pin it. Sent for all predicted+visible sats.
         if args.narrow_search and args.almanac and pred:
-            margin = (args.search_margin_hz if clock_bias_ema is not None
+            margin = (args.search_margin_hz
+                      if clock_bias_ema is not None and not bias_stale
                       else args.search_margin_wide_hz)
             hints = [dict(prn=p, doppler_hz=pred[p][0] + clock_bias, margin_hz=margin)
                      for p in sorted(pred) if (up is None or p in up)]
@@ -1084,7 +1134,9 @@ def main(argv=None):
             _log_rl("narrow",
                     "narrowed search: %d hints +-%d Hz (%s) -> %d/%d detectors"
                     % (len(hints), int(margin),
-                       "bias solved" if clock_bias_ema is not None else "pre-solve wide",
+                       ("bias solved" if clock_bias_ema is not None and not bias_stale
+                        else "bias STALE, wide re-solve" if clock_bias_ema is not None
+                        else "pre-solve wide"),
                        pushed, len(detectors)))
 
         # refresh / add consensus seeds: code phase from the search, Doppler from the
@@ -1548,13 +1600,26 @@ def main(argv=None):
                 else:
                     wd_coh_t.setdefault(prn, t0)
                 _fr = det_fresh.get(prn)
+                # TRIM-RAIL RESCUE (2026-07-20): a trim parked at the +-carrier-max-hz rail
+                # is pathology by construction -- converged trims are a few Hz around the
+                # chain's common LO offset, and a railed loop plus the tracker fence can
+                # self-sustain an NCO alias (E1: 4 ms records = 125 Hz ambiguity; the GPSDO
+                # walk railed every trim at +100 and the fleet sat incoherent for 4 h while
+                # the det bar (100) hid them from this watchdog at E1's det snr ~45). The
+                # rail IS the evidence, so a railed sat is judged at the ordinary presence
+                # bar (2x acquire) instead of the strong det bar.
+                _railed = (args.carrier_max_hz > 0.0
+                           and abs(car_trim.get(prn, 0.0)) >= 0.95 * args.carrier_max_hz)
+                _det_bar = (2.0 * args.acquire_snr if _railed else args.watchdog_det_snr)
                 if (t0 - wd_birth[prn] > args.watchdog_s
                         and t0 - wd_coh_t.get(prn, t0) > args.watchdog_s
                         and _fr is not None and t0 - _fr[1] < 10.0
-                        and prn in best and best[prn][0] >= args.watchdog_det_snr):
+                        and prn in best and best[prn][0] >= _det_bar):
                     _log("WATCHDOG RESEED PRN %d: det snr %.0f but ZERO coherent emits "
-                         "for >%.0f s -> drop + fresh seed (tracker state resets via "
-                         "the active-list gap)" % (prn, best[prn][0], args.watchdog_s))
+                         "for >%.0f s%s -> drop + fresh seed (tracker state resets via "
+                         "the active-list gap)"
+                         % (prn, best[prn][0], args.watchdog_s,
+                            " (trim RAILED %+.0f Hz)" % car_trim[prn] if _railed else ""))
                     del seeds[prn]
                     dll_trim.pop(prn, None)
                     dll_last.pop(prn, None)

@@ -42,7 +42,7 @@ C_L = 299792458.0
 K_TEC = 40.308e16
 
 
-def load_obs(path, t_cut, min_sig):
+def load_obs(path, t_cut, min_sig, t1=None):
     out = {}
     try:
         f = open(path)
@@ -54,6 +54,8 @@ def load_obs(path, t_cut, min_sig):
         except Exception:
             continue
         if d.get("t", 0) < t_cut or d.get("adr_cycles") is None:
+            continue
+        if t1 is not None and d.get("t", 0) > t1:
             continue
         if (d.get("sig") or 0) < min_sig:
             continue
@@ -122,6 +124,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pair", action="append", default=[])
     ap.add_argument("--since", default=None)
+    ap.add_argument("--t0", type=float, default=None,
+                    help="absolute unix-epoch window start (overrides --since; forensics "
+                         "on past eras, which the today-anchored --since cannot select)")
+    ap.add_argument("--t1", type=float, default=None,
+                    help="absolute unix-epoch window end (default: no upper bound)")
     ap.add_argument("--min-sig", type=float, default=15.0)
     ap.add_argument("--max-gap-s", type=float, default=10.0)
     ap.add_argument("--min-arc-s", type=float, default=60.0)
@@ -131,6 +138,8 @@ def main():
         hh, mm = args.since.split(":")
         day0 = datetime.combine(date.today(), datetime.min.time()).timestamp()
         t_cut = day0 + int(hh) * 3600 + int(mm) * 60
+    if args.t0 is not None:
+        t_cut = args.t0
 
     for name in (args.pair or list(PAIRS)):
         if name not in PAIRS:
@@ -139,7 +148,8 @@ def main():
         sysid, fa, freq_a, fb, freq_b, log_a, log_b = PAIRS[name]
         lam_a, lam_b = C_L / freq_a, C_L / freq_b
         fac = abs(K_TEC * (1.0 / freq_a ** 2 - 1.0 / freq_b ** 2))  # m per TECU
-        oa, ob = load_obs(fa, t_cut, args.min_sig), load_obs(fb, t_cut, args.min_sig)
+        oa, ob = (load_obs(fa, t_cut, args.min_sig, args.t1),
+                  load_obs(fb, t_cut, args.min_sig, args.t1))
         ta_j, tb_j = load_trims(log_a, t_cut), load_trims(log_b, t_cut)
         results = {}
         for sign_a in (0, 1, -1):        # 0 = raw (no subtraction)
