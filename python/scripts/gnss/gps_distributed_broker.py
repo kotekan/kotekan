@@ -456,12 +456,14 @@ def main(argv=None):
     ap.add_argument("--hops-per-sec", type=float, default=125000.0,
                     help="F-engine hops/s (Fs/fft_len) -- cp slope chips/s log + the code clock-bias estimate")
     ap.add_argument("--det-alias-fold", type=int, default=1,
-                    help="fold detection Doppler onto the model+bias reference within the "
-                         "record-alias quantum 1/(2*t_rec) before the cp-fit/seed path "
-                         "(NOT the bias EMA). Kills the alias-mixture fit chatter (L2C "
-                         "25 Hz) and the coherent-but-weak zombie births (B1C 50 Hz, "
-                         "C21/C42 2026-07-20). Active only with the bias solved and not "
-                         "stale, and only within 3.5 quanta of the model. 0 disables.")
+                    help="ALIAS-BIN CENSUS (diagnostic only): log detections whose Doppler "
+                         "sits a record-alias quantum 1/(2*t_rec) off the model+bias "
+                         "reference (25 Hz L2C, 50 Hz B1C). The v1 of this flag FOLDED the "
+                         "dop before the cp currency conversion -- WRONG: the search "
+                         "back-projects cp0 with the same reported dop, so the round trip "
+                         "is exact for any bin, and folding broke the cancellation by "
+                         "K*t_abs*k*q (12-57 chip candidates on held L2C sats, caught by "
+                         "the track-vs-model monitor within the hour). 0 silences the log.")
     ap.add_argument("--watchdog-weak-sig", type=float, default=30.0,
                     help="WEAK-TRACK RESEED bar: a sat the search sees at full det snr "
                          "(>= --watchdog-det-snr) whose TRACK significance stays under "
@@ -1191,27 +1193,30 @@ def main(argv=None):
         dr_pd = (dr_state or {}).get("pd") or {}
         dr_pd2 = (dr_state or {}).get("pd2") or {}
         for prn, (snr, dop, cp, ref_hop) in best.items():
-            # DETECTION ALIAS FOLD (2026-07-20): the search's Doppler estimate is ambiguous
-            # mod 1/(2*t_rec) -- 25 Hz on L2C's 20 ms records, 50 Hz B1C, 125 Hz E1C. A
-            # detection riding an alias bin poisons everything the t_abs currency lever
-            # touches: the cp-fit history mixes alias modes (the fit-jitter churn root, l-a
-            # chattering +-0.05 ppm live) and cp_to_seed_currency applies a K*t_abs*ddop
-            # shift that lands the seed cp essentially anywhere mod the code (the B1C
-            # coherent-but-20-dB-weak zombie births, C21/C42 2026-07-20 am). Fold the det
-            # dop onto the model+bias reference for the FIT/SEED PATH ONLY -- `best` stays
-            # raw upstream where the bias EMA measures it (folding there would bound the
-            # resid within +-q/2 and blind the clock-walk tracking of the unlock night).
+            # DETECTION ALIAS CENSUS (2026-07-20; was briefly a FOLD, corrected same day):
+            # the search's Doppler estimate is ambiguous mod 1/(2*t_rec) -- 25 Hz on L2C's
+            # 20 ms records, 50 Hz B1C. An alias-bin detection is HARMLESS to the cp
+            # bookkeeping: the search back-projects cp0 to sample 0 with the SAME reported
+            # dop (GnssChannelizedSearch: det.doppler_hz and the drift term share one
+            # variable), and cp_to_seed_currency adds that projection back with the same
+            # numbers -- the round trip is exact whatever bin the dop rode. The v1 fold
+            # REPLACED dop before the currency conversion, breaking exactly that
+            # cancellation by K*t_abs*k*q: the TRACK-vs-MODEL monitor caught held-sat
+            # candidates 12-57 chips off their healthy tracks within the hour (L2C
+            # 18/23/32, 15:20) -- and a candidate that wrong silently DISABLES the escape
+            # referee (sign-flipping cp_err never sustains 5 consecutive). So: measure,
+            # never modify. The census still maps which chains/sats ride alias bins (the
+            # B1C zombie-birth investigation continues on that data).
             if (args.det_alias_fold and args.almanac and prn in pred
                     and clock_bias_ema is not None and not bias_stale):
                 _aref = pred[prn][0] + clock_bias
                 _k = round((dop - _aref) / Q_ALIAS_HZ)
                 if _k != 0 and abs(dop - _aref) < 3.5 * Q_ALIAS_HZ:
                     _log_rl("afold-%d" % prn,
-                            "ALIAS FOLD PRN %d: det dop %+.1f = model %+.1f %+d bin(s) of "
-                            "%.0f Hz -> %+.1f for cp/fit/seed"
-                            % (prn, dop, _aref, _k, Q_ALIAS_HZ, dop - _k * Q_ALIAS_HZ),
+                            "ALIAS BIN PRN %d: det dop %+.1f = model %+.1f %+d bin(s) of "
+                            "%.0f Hz (census only; cp round-trip is exact)"
+                            % (prn, dop, _aref, _k, Q_ALIAS_HZ),
                             every_s=30.0)
-                    dop = dop - _k * Q_ALIAS_HZ
             v_dr = dr_pd.get((args.dr_constellation, prn)) if dr_pd else None
             if up is not None and prn not in up:
                 # accept the detection anyway if BRDC says it's up: the TLE up-set
