@@ -353,9 +353,18 @@ python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gps_search 
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} --adc-stage "${SP}airspy_in" \
         ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" \
         ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} ${CPERR:+--hold-max-cp-err $CPERR} \
+        --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
+        --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
         ${BROKER_EXTRA:-} $ALM $CLA $CARG \
         > /tmp/${TAG}_broker.log 2>&1 &
 BPID=$!
+# WATCHDOG NOW FLEET-WIDE (was BeiDou-only until 2026-07-19 eve): the L2C duty timeline
+# exposed the cost of the gap -- zombie-anchor cohorts (strong detection, chips-off-peak
+# despread, zero coherence) form in the birth/wide-margin window, are then PROTECTED
+# indefinitely by hold + the escape amp-veto, and only cleared by accidental relaunches
+# (every 07-19 'config improvement' was really the relaunch clearing a cohort: duty
+# 18->41->62->74% at each restart, then 38% again after the next birth). The watchdog's
+# lifecycle rescue is the designed answer; nothing about it is BeiDou-specific.
 
 # ---- Second constellation: a config with a gal_track stage gets its OWN broker + logger
 # (Galileo E1 shares the L1 tune; the stages are parallel consumers of the same channelized
@@ -376,7 +385,7 @@ if grep -qE '^gal_track:|seed_endpoint:[[:space:]]*"/gal_track/set_seeds"' "$RUN
     echo "WARNING: gal_track present but LAT/LON unset -- Galileo require_hint search will scan NOTHING"
   fi
   echo "starting GALILEO broker ($GAL_SIGNAL: gal_search/gal_track/gal_combiner, TLE group=galileo)..."
-  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gal_search --trackers ${SP}gal_track --combiner ${SP}gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} --adc-stage "${SP}airspy_in"           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_gal.ppm           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN --hold-max-cp-err $GAL_CPERR           ${BROKER_EXTRA:-} $GAL_ALM $CARG           > /tmp/${TAG}_broker_gal.log 2>&1 &
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gal_search --trackers ${SP}gal_track --combiner ${SP}gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-30} --adc-stage "${SP}airspy_in"           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_gal.ppm           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN --hold-max-cp-err $GAL_CPERR           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10}           ${BROKER_EXTRA:-} $GAL_ALM $CARG           > /tmp/${TAG}_broker_gal.log 2>&1 &
   GALPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT           --combiner ${SP}gal_combiner --search ${SP}gal_search --airspy "${SP}$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/${TAG}_logger_gal.log 2>&1 &
   GALLOGPID=$!
