@@ -1461,6 +1461,27 @@ def main(argv=None):
                     car_locked.discard(prn)
                     car_fade.pop(prn, None)
                     _log("CARRIER REACQ PRN %d: escape re-anchor -> BOOTSTRAP re-pull" % prn)
+            # TRACK-vs-MODEL MONITOR (2026-07-20, log-only; audit follow-up census): the
+            # referee's reference is the search FIT; the model-referenced track residual
+            # is r_i - cp_err (search-vs-model minus search-vs-track, same chip units).
+            # Log when the MODEL says the track is past the escape bar -- especially when
+            # the fit-referenced referee stays quiet (veto / immature fit): those are the
+            # cases an upgraded model-referenced referee would catch. Decide on enforcement
+            # from this census, not from theory (the referee has bitten guessers before).
+            if (cp_err is not None and dr_state is not None and dr_state.get("integ")):
+                _iv2 = dr_state["integ"].get(prn)
+                if _iv2 is not None and t0 - _iv2[1] < 10.0:
+                    _tm = _iv2[0] - cp_err
+                    if abs(_tm) > args.hold_max_cp_err:
+                        _log_rl("tvm-%d" % prn,
+                                "TRACK-vs-MODEL PRN %d: %+.2f chips past the escape bar "
+                                "(fit-ref cp_err %+.2f, integ %+.2f; fit-referee %s) -- "
+                                "monitor only"
+                                % (prn, _tm, cp_err, _iv2[0],
+                                   "AMP-VETOED" if amp_veto else
+                                   "INTEG-VETOED" if integ_veto else
+                                   "fit-untrusted" if not fit_trusted else "active"),
+                                every_s=120.0)
             # HOLD ADMISSION REQUIRES FIT MATURITY (2026-07-19 eve, the Tier-3 burn-in fix):
             # a birth-window anchor (wide margins, unsolved bias, <6-point fit) can be chips
             # wrong, and granting it hold protection created the zombie cohorts that made
