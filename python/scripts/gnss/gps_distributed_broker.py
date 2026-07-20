@@ -1296,18 +1296,38 @@ def main(argv=None):
             # track -- >=6 history points (fit noise ~ per-fix/sqrt(n)) and a solid current
             # detection (2x the acquire gate). Ungated, weak-sat fit noise drove 627 escapes
             # in 2.7 h and each one re-anchored the seed (the churn behind the GPS "wobble").
+            # + FIT SPAN >= 30 s (2026-07-19 eve): point COUNT is not maturity -- L2C's
+            # snapshots arrive fast enough that 6 points span ~13 s, over which the code-
+            # Doppler QUADRATIC is unresolvable, so the fit carries the curvature-bias class
+            # (the birth zombies the watchdog had to keep cleaning). A 30 s floor makes the
+            # curvature term observable on every chain; on L1 (6 points ~ 60-80 s) it is a
+            # no-op. This gate feeds BOTH the escape referee and hold admission.
+            fit_span_s = ((h[-1][0] - h[0][0]) / args.hops_per_sec) if len(h) >= 2 else 0.0
             fit_trusted = (fit is not None and len(h) >= 6
+                           and fit_span_s >= 30.0
                            and snr >= 2.0 * args.acquire_snr)
             # AMP VETO (see --escape-amp-veto): a full-amplitude hold is on the main peak
             # by construction -- refuse the fit's accusation rather than drag it off.
             amp_now = float((status.get(prn) or {}).get("amp_snr", 0) or 0)
             amp_veto = (args.escape_amp_veto > 0.0
                         and amp_now > args.escape_amp_veto)
+            # INTEGRITY VETO (2026-07-19 eve, audit follow-up): never re-anchor onto a fit
+            # the BRDC model itself disputes. The dead-reckon machinery already computes a
+            # per-sat integrity residual (search-vs-model, solved clock removed, normally
+            # +-0.2 chips): if a FRESH residual says the search's own position is off by
+            # more than the escape bar, the fit is the suspect, not the track.
+            integ_veto = False
+            if dr_state is not None and dr_state.get("integ"):
+                _iv = dr_state["integ"].get(prn)
+                if (_iv is not None and t0 - _iv[1] < 10.0
+                        and abs(_iv[0]) > args.hold_max_cp_err):
+                    integ_veto = True
             cp_err_med_ok = (cp_err is not None and len(cp_err_hist.get(prn, [])) >= 5
                              and abs(statistics.median(cp_err_hist[prn]))
                              > args.hold_max_cp_err)
             if (cp_err is not None and abs(cp_err) > args.hold_max_cp_err
-                    and cp_err_med_ok and fit_trusted and not amp_veto):
+                    and cp_err_med_ok and fit_trusted and not amp_veto
+                    and not integ_veto):
                 n_prev = cp_escape.get(prn, 0)
                 same_sign = (n_prev == 0) or (cp_err * cp_escape_sign.get(prn, 0.0) > 0)
                 cp_escape[prn] = n_prev + 1 if same_sign else 1
@@ -1689,6 +1709,7 @@ def main(argv=None):
                     d_i = (cp_loc - cp_predicted(v, t_i)
                            + drift * (t_now_abs - t_i)) % CODE_LEN
                     offs.append((prn, d_i))
+                dr_state["offs_t"] = now_w  # freshness stamp for the referee's integrity veto
                 if len(offs) >= args.dr_min_sats:
                     ref = offs[0][1]
                     cen = sorted(((d - ref + CODE_LEN / 2) % CODE_LEN) - CODE_LEN / 2
@@ -1730,9 +1751,13 @@ def main(argv=None):
                 # escape referee already uses: PERSISTENCE (N consecutive) + HYSTERESIS
                 # (demote high, restore low) + do not judge at all until the clock has settled.
                 if dr_state["clk"] is not None and dr_state.get("drift") is not None:
+                    dr_state.setdefault("integ", {})
                     for prn_i, d_i in offs:
                         r_i = (((d_i - dr_state["clk"] + CODE_LEN / 2.0) % CODE_LEN)
                                - CODE_LEN / 2.0)
+                        # exported for the escape referee's integrity veto (chips, this
+                        # chain's code; search-vs-model with the solved clock removed)
+                        dr_state["integ"][prn_i] = (r_i, now_w)
                         v_i = pd.get((tag, prn_i))
                         age_i = abs(v_i["toe_age_s"]) if v_i else 1e9
                         why = None
