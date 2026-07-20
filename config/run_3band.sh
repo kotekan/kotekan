@@ -87,6 +87,7 @@ cleanup() {
 trap cleanup INT TERM
 
 # ---- regenerate + launch the merged instance ----
+python3 config/gen_band_config.py --out-dir config || { echo "band-config generation FAILED"; exit 1; }
 python3 config/gen_3band_config.py || { echo "config generation FAILED"; exit 1; }
 echo "starting the merged kotekan ($CFG3) -> $LOG"
 $KOTEKAN -c $CFG3 -b 0.0.0.0:$PORT > $LOG 2>&1 &

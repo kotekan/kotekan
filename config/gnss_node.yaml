@@ -1,0 +1,489 @@
+---
+# =============================================================================================
+# gnss_node.yaml -- THE SINGLE SOURCE OF TRUTH for the three live band configs (audit rec C).
+#
+#   config/gen_band_config.py reads THIS file and emits live_l1_dual20.yaml /
+#   live_l2c_gpu.yaml / live_l5_gpu.yaml (default --out-dir config/generated/).
+#   gen_3band_config.py then merges those three into live_3band.yaml, unchanged.
+#
+#   POLICY: hand-editing a generated live_*.yaml is a bug. Edit THIS table, regenerate,
+#   and `gen_band_config.py --check` must report an empty structural diff before deploy.
+#
+# Organization:
+#   shared:  scalars + prose identical across all bands (buffer geometry, quantizer point,
+#            clock profile, CORS hosts, viewer exec prefix, tracker invariants).
+#   bands:   per-band front-end facts (airspy serial/freq/gains/affinity, sample geometry,
+#            ports, record dir, GPU stream layout) + `chains`, one row per constellation
+#            signal (search / tracker / combiner / record parameters).
+#   notes:   comment text the generator re-attaches to the emitted files. `*_note` fields
+#            elsewhere are per-item comments. Comments never affect the structural diff.
+#
+# Values below are BYTE-FAITHFUL to the 2026-07-19 hand files, including known-accidental
+# divergences -- those are kept as-is and flagged "# DIVERGENT (audit): ...". Fixing one is
+# a deliberate one-line edit HERE (it then propagates to every chain that shares the row),
+# never a per-file patch: this table exists because an nh-assist flag was silently dropped
+# from one launch and a fence fix landed on 1 of 4 trackers.
+#
+# Numbers-as-strings ("20.0e6", serial hex): kept as strings so the generator emits the
+# exact original token (PyYAML would mangle them; kotekan parses them downstream).
+# =============================================================================================
+
+shared:
+  log_level: warn
+  instrument_name: airspy_gps
+  telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+  clock_profile: { name: auto }
+
+  bytes_per_sample: 2
+  buffer_depth: 16
+  sizeof_float: 4
+  cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+  cpu_affinity_note: "14-19 = private airspy-input pairs (USB isolation, 2026-07-18)"
+
+  spectrum_length: 10
+  num_taps: 4
+  code_doppler_sign: 1.0
+  n_channels: 10
+  channel_offset: 0
+  record_floats: 20
+  doppler_margin_hz: 250000.0
+
+  # CHORD 4+4b point: noise rms scaled to 2.1 LSB (1.5/component). 07-17/19: the cold-soak
+  # A/B closed -- 2.1 runs at full strength fleet-wide; the 2.97 interim is dead.
+  target_lsb: 2.1
+  measure_frames: 64
+
+  # Tracker invariants (every cudaGnssTrack command on every band):
+  max_anchor_age_s: 0.0        # re-pin every record (cheap since the NCO fold, 749d45bb)
+  capture_utc0: 1.0
+  fll_gain: 0.0                # pure feed-forward; the shared carrier loop owns fine carrier
+  carrier_shared: true
+  quantized_input: true
+
+  # rawFileWrite rollover policy (all record stages):
+  num_frames_per_file: 1000000
+  exit_after_n_files: 1000000
+
+  cors_hosts: [localhost, 127.0.0.1, gx10.vdl]
+  viewer_exec_prefix: "${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream"
+
+  # Buffer frame-size expressions (kotekan-isms, parsed downstream -- NEVER evaluated here).
+  # {np} is the chain's n_prn variable name (n_prn / gal_n_prn / bds_n_prn).
+  expr:
+    input_frame: "samples_per_data_set * bytes_per_sample"
+    chan_frame: "samples_per_data_set * sizeof_float"
+    q_frame: "samples_per_data_set / 2"
+    rec_frame: "{np} * record_floats * sizeof_float"
+    epl_frame: "176 + 1024 * {np} + 15360 * {np}"
+    metadata_objects: "8 * buffer_depth"
+    in_frame_len: "samples_per_data_set / 2"
+
+  notes:
+    cors: |
+      Let the browser GPS panel (served on the band's http port) reach kotekan's REST API
+      cross-origin -- WITHOUT this the viewer can't poll combiner/get_status or
+      search/get_detections, so every sat shows unlocked even while the CLI watcher sees
+      them fine.
+    clock_profile: |
+      Receiver clock quality -> sizes the carrier-Doppler search (accuracy) + the coherent-
+      integration ceiling (stability). name: auto starts wide; the broker's clock-bias
+      estimate narrows it live (override tcxo|ocxo|gpsdo|rubidium|maser or pin accuracy_ppm /
+      coherence_s; canonical table clockProfile.hpp). When present it supersedes the legacy
+      doppler_min/max below (kept as a fallback).
+    q_buf: |
+      CHORD 4+4b voltages (GnssQuantize44 out): ONE byte per (hop, chan) complex sample = 1/8
+      the float frame -> the H2D copy shrinks 8x. samples_per_data_set counts REAL ADC
+      samples (fft_len per hop, N complex channels out), so bytes/frame = samples / 2.
+    epl_buf: |
+      GPU epl frame = gnssGpuChain::frame_bytes(n_prn, n_chan) = 176 + 1024*n_prn +
+      1536*n_prn*n_chan (n_chan 10 -> 15360*n_prn). MAX_REC=16 is baked in, so the size is
+      independent of record length.
+    quant_inline: "the RFSoC's job in software: noise rms -> target_lsb, freeze, demote to CHORD 4+4b (2.1 point, cold soak closed 07-19)"
+    serial_pin: |
+      PIN THE DEVICE BY SERIAL (0 / absent = "open whichever enumerates first" -- a silent
+      coin-flip with three dongles plugged in: the wrong board tunes, never acquires, looks
+      like a bad antenna). Written in HEX exactly as airspy_info prints it. THE TRAP: a
+      serial that fails to parse becomes 0 = "open any", which still WORKS with one dongle
+      -- verify a new pin by BREAKING it (a wrong serial must fail AIRSPY_ERROR_NOT_FOUND).
+    biast: |
+      OFF as of the 3-airspy rework (2026-07-14): the ACTIVE antenna is powered by a
+      SEPARATE inline bias tee, not the dongle. Three dongles pushing DC into a common
+      splitter is the failure mode to avoid. HISTORY: this was `true` and had to be (antenna
+      dead without bias, A/B confirmed) -- if the external supply is removed, back to true.
+    dither: |
+      Disable the R820T fractional-N PLL dither (reg 0x12 bit4) for COHERENT multi-unit
+      work: all three airspys share ONE GPSDO, dither off = deterministic LO across restarts
+      (phase-coherent), at the cost of deterministic frac-N spurs.
+    re_pin: |
+      max_anchor_age_s 0 = re-pin the replica carrier EVERY record. Safe only because the
+      re-pin is CONTINUOUS in both currencies: the code-phase step is translated into the
+      new f_ref (cudaGnssTrack) and the df*t_abs carrier-phase step is folded into the NCO
+      (GnssGpuRecordAssemble). A stale f_ref drifts off truth at dop_rate between re-pins --
+      negligible on 1 ms records, ~1 dB on B1C's 10 ms.
+    quantized_inline: "4+4b ring; scales via GnssChanMetadata::chan_scale"
+    carrier_loop: |
+      SHARED CARRIER LOOP (2026-07-08): tracker runs PURE FEED-FORWARD (fll_gain 0 -> seed +
+      almanac Doppler-rate ramp) + an NCO applying the broker's carrier_trim_hz. The
+      COMBINER measures the residual as a bit-robust phase-slope fit; the broker integrates
+      it at low bandwidth (--carrier-gain) -> residual <1 Hz -> the deep coheres 1 s+.
+      run_live.sh auto-enables the loop for any carrier_shared config.
+
+# =============================================================================================
+# PER-BAND TABLE. chains[0] is always the primary GPS chain (unprefixed stage names,
+# top-level signal/n_prn inheritance); later rows get gal_/bds_ prefixes.
+# =============================================================================================
+bands:
+
+  l1:
+    out_file: live_l1_dual20.yaml
+    header: |
+      DUAL-CONSTELLATION L1 @ 20 MSPS (WIDE front end) -- THE DEPLOYED L1 BAND (run_band.sh l1).
+      Regeared from the retired 5 MSPS dual config so Galileo's BOC(1,1) spectrum FITS: at
+      20 MSPS/IF 5 MHz both E1 lobes + the CBOC component sit fully in-band (+3-5 dB, above the
+      search gate; at 5 MSPS they straddled Nyquist, ~11 dB down). N=10 (fft_len 20 divides both
+      the 20000-sample GPS ms and the 80000-sample E1 4 ms: records = 1000 / 4000 / 10000 hops).
+      GPS L1 C/A, Galileo E1-C and BeiDou B1C share the SAME sky carrier (1575.42 MHz), so one
+      airspy tune + one F-engine feed all three: the gal_/bds_ stages are second consumers of
+      the same channelized buffers. Each constellation gets its own search/tracker/combiner/
+      record + its OWN broker instance (run_live.sh auto-launches them).
+        ./config/run_band.sh l1      (or: LAT=.. LON=.. ALT=.. CFG=config/live_l1_dual20.yaml
+                                          ./config/run_live.sh)
+      GPS deep |A| -> /tmp/gpswipe/level_*.raw, Galileo -> gal_level_*, BeiDou -> bds_level_*.
+    http_port: 8080
+    kotekan_rest_port: 12048     # launch-time fact (run_band.sh); baked into viewer_args below
+    samples_per_data_set: 199680
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS"
+    airspy:
+      cpu_affinity: [14, 15]
+      serial: "0x03A464C837525967"
+      serial_note: "L1 unit (AirSpy NOS v1.0.0-rc9)"
+      freq: 1575.42
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real"
+      gain: 11
+      gain_note: |
+        Gains dropped 14/15/15 -> 11/11/11 for the 2026-07-14 front end: a second-stage amp
+        now sits UPSTREAM of the bias tee + splitters, so the airspy sees a much hotter
+        input. Keith measured ADC RMS ~50 at 11/11/11. Watch railfrac: it must stay 0.
+    doppler_min: -5500.0
+    doppler_max: 5500.0
+    doppler_step: 100.0
+    doppler_note: |
+      100 Hz (was 500): with few sats the clock-bias estimate degenerates to one sat's
+      grid-quantized Doppler, so the seed inherits +-grid/2 of steady residual carrier
+      (was +-250 Hz -> killed coherence past ~5 ms). Finer grid -> +-50 Hz residual ->
+      ~10 ms coherence. Costs search compute, but the search is async/lossy (never
+      backpressures), so it just lowers the snapshot rate.
+      DIVERGENT (audit): 100 here vs 250 on L5 -- identical 1 ms record geometry.
+    prns_note: |
+      require_hint mode: the search carries a slot for the WHOLE constellation but only
+      scans the ones the broker flags visible (hints), so the active set follows the sky as
+      PRNs rise/set. run_live.sh skips its visible-PRN patch when require_hint is set (this
+      full list survives). n_prn matches.
+    num_cuda_streams: 4
+    per_chain_streams: true      # trackers on streams 1/2/3, stream-matched outputs
+    gputrack_note: |
+      UNIFIED L1 GPU PROCESS (2026-07-19): one cudaProcess, ONE q_buf upload, three
+      cudaGnssTrack commands on streams 1/2/3, three stream-matched outputs. Needs the
+      cudaProcess multi-stream completion join (same-day framework fix): without it the
+      frame signal fired when the LAST command's stream finished and downstream read
+      half-written sibling frames. Bench-validated (merged3 leg: certs at baseline).
+      DIVERGENT (audit): per-chain streams here vs all-on-stream-1 serial layout on L5.
+    record_dir: /tmp/gpswipe
+    viewer_args: "--band l1"
+    chains:
+
+      - constellation: gps
+        signal: GPS_L1CA
+        # DIVERGENT (audit): the L1 GPS tracker command inherits signal/n_prn/prns from the
+        # top level (no explicit keys) while every other tracker sets signal explicitly.
+        tracker_signal_explicit: false
+        n_prn: 32
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        search:
+          # DIVERGENT (audit): acquire_snr 10/8/10 and acquire_windows 20/40/100 across the
+          # three bands' GPS chains; brokers hardcode --acquire-snr 6, so the config gate
+          # never reaches the broker (two gates, one imaginary).
+          # DIVERGENT (audit): hint_ttl_s 8.0 here vs 20.0 for gal/bds in this same file.
+          params: { acquire_snr: 10.0, acquire_windows: 20, require_hint: true, hint_ttl_s: 8.0 }
+          note: |
+            require_hint: scan ONLY broker-hinted (visible) PRNs -> all 32 candidate slots
+            but only the ~10-12 visible narrow scans; PRNs swap in/out as they rise/set.
+            hint_ttl_s: a hint the broker stops refreshing (a set sat) expires, dropping the
+            PRN. Needs the broker's --narrow-search (run_live's almanac assist provides it).
+        tracker:
+          fll_reacq_hz: 15.0
+          note: |
+            TIGHT fence (audit rec B, 2026-07-19 eve): under --dop-continuous a fence
+            adoption is translation-protected and phase-folded = FREE, so the fence's job
+            inverts -- no longer a guard against dangerous seed steps but a cheap "snap
+            f_ref to the model" that kills stale offsets (L1 saw 10/32 PRNs carrying ~-94 Hz
+            fence-era f_ref fossils the default 100 Hz fence could never see). 15 Hz clears
+            routine model error (~1-2 Hz) + the +-3 Hz innovation gate; alias limit
+            1/(4*t_rec) = 250 Hz at 1 ms.
+        combiner:
+          params: { integration_length: 1000, navwipe_bit_records: 20, phase_dump_prns: [6, 11, 19, 21, 22], phase_dump_path: "/tmp/gpswipe/phase_dump_gps.txt" }
+          note: |
+            integration_length 1000, navwipe_bit_records 20 -> navwipe: integrate ~1 s
+            (50 nav bits) coherently; deep |A| in slot 8. (Restored to 1000 once the
+            Doppler-rate feed-forward removed the zenith ramp.)
+
+      - constellation: gal
+        signal: GAL_E1C
+        tracker_signal_explicit: true
+        n_prn: 36
+        seed_endpoint: /gal_track/set_seeds
+        record_name: gal_level
+        section_note: |
+          ---- Galileo E1-C parallel chain (same channelized stream, second consumers) ----
+          E1-C = the dataless BOC(1,1) pilot, 4 ms primary (4000 hops/record), CS25
+          secondary wiped deterministically (secondary_overlay). Tracking on the shared GPU
+          process (the CPU tracker burned 90% of a core on ONE held sat at 4000-hop
+          records). Stage names keep the gal_ prefix so the broker REST prefix +
+          run_live's auto-launch keep working unchanged.
+        search:
+          params: { acquire_snr: 7.0, acquire_windows: 60, require_hint: true, hint_ttl_s: 20.0 }
+          note: |
+            E1-C budget vs GPS C/A: pilot -3 dB, band truncation ~-2.5 dB, Interplex
+            alpha/sqrt2 -1.3 dB => strongest sats ~6-7 dB below GPS equivalents. 4 ms
+            windows recover +3 dB/window; deepen the incoherent stack + lower the gate to
+            compensate (the drop-tolerant snapshot makes long windows safe).
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "tight snap-to-model fence (rec B; free under dop-continuous; alias limit 62 Hz at 4 ms)"
+        combiner:
+          params: { n_prn: 36, prns: RANGE, integration_length: 250, secondary_overlay: E1_CS25, phase_dump_prns: [4, 10, 12, 18, 19, 28, 29, 33], phase_dump_path: "/tmp/gpswipe/phase_dump_gal.txt" }
+          note: |
+            E1-C is a PURE PILOT once CS25 is wiped deterministically (secondary_overlay) --
+            the deep integrates fully coherently with NO per-record sign freedom. (The old
+            per-record stopgap navwipe_bit_records 1 capped deep at the sqrt(2N/pi)
+            rectification floor ~13-16 sigma.) integration_length 250 x 4 ms = 1 s, matching
+            the GPS emit cadence.
+
+      - constellation: bds
+        signal: BDS_B1C_P
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /bds_track/set_seeds
+        record_name: bds_level
+        section_note: |
+          ---- BeiDou-3 B1C parallel chain (third constellation, same 1575.42 tune). B1C
+          records are 10 ms (10000 hops) -> search doppler_step 50 (10 ms coherent bins),
+          combiner integration_length 100 = 1 s, deterministic per-PRN 1800-chip overlay
+          wipe. BDS-2 sats don't broadcast B1C; require_hint scans them but they simply
+          never detect.
+        search:
+          params: { acquire_snr: 7.0, acquire_windows: 12, doppler_step: 50.0, require_hint: true, hint_ttl_s: 20.0 }
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "tight snap-to-model fence (rec B; alias limit 25 Hz at 10 ms)"
+        combiner:
+          # DIVERGENT (audit): bds combiners carry no prns list while gal combiners do
+          # (both inherit correctly; kept as-is).
+          params: { nh_assist: true, nh_min_refs: 3, n_prn: 63, integration_length: 100, secondary_overlay: B1C, phase_dump_prns: [19, 22, 35, 36, 40], phase_dump_path: "/tmp/gpswipe/phase_dump_bds.txt" }
+          note: |
+            B1C pilot: deterministic per-PRN 1800-chip overlay wipe (the per-record stopgap
+            floored deep at sqrt(2*100/pi) ~ 8 sigma while the search hit 290+).
+            nh_assist: fleet-grid overlay time assist -- THIS is the flag the 07-18 launch
+            silently dropped (e1eba7a2); it is generated now and cannot be dropped again.
+
+  l2c:
+    out_file: live_l2c_gpu.yaml
+    header: |
+      GPS L2C (CM) on the GPU CHAIN -- cudaGnssTrack despread + GnssGpuRecordAssemble +
+      GnssCoherentCombiner, the same path live_l1_dual20.yaml runs, ported to L2C. Replaces
+      the per-channel CPU GnssChannelizedTracker of live_l2c.yaml: the GPU combiner exports
+      the coherent-C/N0 / ADR / S4 / CMC observables and carries the NCO-fold re-pin fix.
+      The shared ChannelizedReplicaBank zero-stuffs the CM code onto the combined 1.023 Mcps
+      stream (comb_mult 2, time_multiplexed), so the GPU despread gets L2C's TDM for free.
+        ./config/run_band.sh l2c        (l2c_cpu launches the old CPU chain, live_l2c.yaml)
+      Front end == live_l2c.yaml (proven to acquire): 1227.6 MHz, 5 MSPS real, f_offset Fs/4.
+    http_port: 8081
+    kotekan_rest_port: 12148
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 5 MSPS = 9.984 ms per frame (matches live_l2c). L2C records are 20 ms,
+      so a record spans ~2 frames -- the cudaGnssTrack device ring (ring_records 50)
+      accumulates across frames and emits each 5000-hop record when complete.
+    sample_rate: "5.0e6"
+    f_offset: "1.25e6"
+    f_offset_note: "LO on carrier, Fs/4 (same front-end model as L1)"
+    spectrum_note: "N=10 -> fft_len 20, channel width 250 kHz, 10 channels span 2.5 MHz"
+    airspy:
+      cpu_affinity: [16, 17]
+      serial: "0x744C60C821692F4F"
+      serial_note: "L2C unit"
+      freq: 1227.6
+      sample_bw: 2.5
+      sample_bw_note: "airspy 2.5 MSPS mode -> 5 MSPS real"
+      gain: 11
+    doppler_min: -4500.0
+    doppler_max: 4500.0
+    doppler_step: 50
+    doppler_note: |
+      L2 geometric Doppler ~ 0.779 x L1 -> tighter than L1's +-5500. FINE step: the 20 ms
+      coherent integration washes out if the grid is coarser than ~50 Hz.
+    num_cuda_streams: 3
+    per_chain_streams: false
+    record_dir: /tmp/gps_l2c_gpu
+    viewer_args: "--http-port 8081 --ws-port 8639 --kotekan-rest-port 12148 --gps-constellations G --band l2c"
+    chains:
+
+      - constellation: gps
+        signal: GPS_L2C_CM
+        tracker_signal_explicit: true
+        n_prn: 32
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 40, hops_per_record: 5000, require_hint: true, hint_ttl_s: 30.0 }
+          note: |
+            require_hint: scan only broker-hinted (visible + L2C-capable) PRNs.
+            hops_per_record 5000 = the 20 ms CM period at this geometry (search needs it
+            explicitly; the tracker derives it).
+        tracker:
+          fll_reacq_hz: 12.0
+          note: |
+            2026-07-19 flap census: the DEFAULT fence (0.1 cyc/rec = 5 Hz at 20 ms records)
+            is exactly the size of every hold-release dop step, so each release tripped a
+            tracker re-pin whose FLL/deep reset costs "one deep window" -- at L2C's weak-
+            signal integration needs, the WHOLE stretch (54% of censused deaths were
+            RELEASE/CARRIER-STEP class). With max_anchor_age 0 the per-record fold keeps
+            f_ref current against slew, so the fence only needs to catch LARGE seed steps:
+            12 Hz lets the routine <=10 Hz steps ride the code-currency translation
+            seamlessly. (12 vs the fleet's 15 is deliberate -- L2C's 20 ms records put the
+            bit-robust FLL alias limit at 12.5 Hz.)
+        combiner:
+          params: { integration_length: 200, navwipe_bit_records: 1 }
+          note: |
+            L2C DEEP WIPE: a 20 ms record is exactly ONE CNAV symbol, so navwipe_bit_records
+            1 wipes the 50 sym/s data and the sum integrates past 20 ms. integration_length
+            200 = 4 s max buffer (the auto-coherence ladder finds the knee live).
+            DIVERGENT (audit): 4 s window here vs ~1 s everywhere else.
+
+  l5:
+    out_file: live_l5_gpu.yaml
+    header: |
+      GPS L5 (Q5 pilot) on the GPU CHAIN -- cudaGnssTrack + GnssGpuRecordAssemble +
+      GnssCoherentCombiner, the live_l2c_gpu.yaml pattern on live_l5.yaml's 20 MSPS front end
+      (3rd airspy). WHY the GPU chain: (1) the coherent-C/N0 / ADR / S4 / boundary_f
+      observables + the NCO-fold re-pin fix; (2) THE SEGMENTED DESPREAD (feab8b04): L5's
+      NH20 secondary is one +-1 chip per 1 ms record with ~50% transitions -- the CPU
+      tracker's head==P default would leave L5 fully exposed to the bistable null; the GPU
+      chain segments for real and the NH overlay wipe handles any boundary offset f.
+      TRI-CONSTELLATION at 1176.45: GPS L5 + Galileo E5a-Q + BeiDou B2a-pilot share this ONE
+      airspy tune + F-engine feed. ALL THREE signals are 10230 chips @ 10.23 Mcps = 1 ms
+      records -- identical geometry, so the chains are near-copies (only n_prn, signal,
+      secondary_overlay, prns, record name differ). Both new pilots carry a per-PRN 100-chip
+      secondary (E5A_CS100 / B2A_CS100) -> deterministic overlay wipe, SEGMENTED from day
+      one. Codes: galileoE5aCode / beidouB2aCode (31ab238f, bit-exact + sky-validated).
+        ./config/run_band.sh l5            (l5_cpu still launches the old CPU chain)
+      Front end == live_l5.yaml (proven geometry): 1176.45 MHz, 20 MSPS real, f_offset Fs/4,
+      fft_len 20 -> 1 MHz hops, 10 channels span the lower 10 MHz of the L5 mainlobe.
+    http_port: 8082
+    kotekan_rest_port: 12248
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 20 MSPS = 2.496 ms per frame. L5 records are 1 ms (one 10230-chip Q5
+      period at 10.23 Mcps), so ~2.5 records complete per frame -- well inside MAX_REC=16.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4 (same front-end model as L1/L2C)"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS"
+    airspy:
+      cpu_affinity: [18, 19]
+      serial: "0x03A464C837264F67"
+      serial_note: "L5 unit (verify a pin by BREAKING it -- see run_band.sh)"
+      freq: 1176.45
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real"
+      # DIVERGENT (audit): 8/8/8 vs 11/11/11 on L1/L2C -- unexplained drift, kept as-is.
+      gain: 8
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 250
+    doppler_note: |
+      L5 geometric Doppler ~ 0.747 x L1 (GPSDO-trimmed range, signal-aware-search
+      2026-07-04). +-5000 (was 4500): the bring-up bench saw E5a E11 railed at its -4000
+      search edge, so give the cold fallback margin; clock_profile: auto supersedes this
+      live anyway.
+      DIVERGENT (audit): doppler_step 250 vs L1's 100 on identical 1 ms record geometry.
+    prns_note: |
+      Full constellation: require_hint + the broker's band-capability filter (L5 = IIF and
+      later; drops IIR/IIR-M false detects like PRN17) select the real transmitters.
+    num_cuda_streams: 3
+    per_chain_streams: false
+    gputrack_note: |
+      SHARED-INPUT tri-constellation GPU stage. All three L5 signals despread the SAME
+      channelized voltage, so ONE cudaInputData copies q_buf -> gnss_chan_frame per frame
+      and all three cudaGnssTrack commands read it (previously 3 stages = 3x the H2D
+      traffic on the GB10's bandwidth-limited unified memory). Sequencing: cudaInputData
+      runs on stream 0 (COPY_IN default); every cudaGnssTrack waits the shared input event;
+      trackers + outputs run serially on stream 1 -- the proven single-chain ordering. The
+      trackers keep their own seed_endpoints so the per-constellation brokers are unchanged
+      (run_live detects them by seed_endpoint, not a top-level gal_track:/bds_track: stage).
+    record_dir: /tmp/gps_l5_gpu
+    viewer_args: "--http-port 8082 --ws-port 8739 --kotekan-rest-port 12248 --gps-constellations G,E,C --band l5"
+    chains:
+
+      - constellation: gps
+        signal: GPS_L5_Q
+        tracker_signal_explicit: true
+        n_prn: 32
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        search:
+          params: { acquire_snr: 10.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          note: |
+            require_hint: scan only broker-hinted (visible + L5-capable) PRNs.
+            hops_per_record 1000 = the 1 ms Q5 period at this geometry (search needs it
+            explicitly; the tracker derives it).
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous; alias limit 250 Hz at 1 ms)"
+        combiner:
+          params: { integration_length: 1000, secondary_overlay: L5_NH20 }
+          note: |
+            L5 DEEP WIPE: Q5 is a dataless pilot under the KNOWN NH20 overlay (one +-1 chip
+            per 1 ms record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-
+            period boundary. integration_length 1000 = 1 s max buffer (the auto-coherence
+            ladder finds the knee live).
+
+      - constellation: gal
+        signal: GAL_E5A_Q
+        tracker_signal_explicit: true
+        n_prn: 36
+        seed_endpoint: /gal_track/set_seeds
+        record_name: gal_level
+        section_note: |
+          ---- Galileo E5a-Q parallel chain (dataless pilot, PRN 1..36) ----
+          Tracked by the shared-input gputrack above (its own cudaProcess stage was
+          removed); gal_epl_buf is still the tracker output, written by gputrack's
+          cudaOutputData.
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)"
+        combiner:
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5A_CS100 }
+
+      - constellation: bds
+        signal: BDS_B2A_P
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /bds_track/set_seeds
+        record_name: bds_level
+        section_note: |
+          ---- BeiDou-3 B2a-pilot parallel chain (dataless pilot, PRN 1..63; BDS-3 only) ----
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)"
+        combiner:
+          params: { n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100 }
