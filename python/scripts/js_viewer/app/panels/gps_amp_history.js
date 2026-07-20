@@ -38,6 +38,21 @@ const MODES = {
 };
 const MODE_ORDER = ["cn0_coh", "cn0", "sig", "coh_s", "dop", "snr"];
 
+// ICD minimum received power per TRACKED COMPONENT, as a C/N₀ floor with
+// N₀ = −204 dBW/Hz (290 K, lossless front end): C/N₀_min = P_min(dBW) + 204.
+// Component powers: IS-GPS-200 (L1 C/A −158.5; L2C composite −160 → CM half −163),
+// IS-GPS-705 (Q5 −157.9), Galileo OS SIS ICD (E1 total −157.25 → E1C pilot half
+// −160.3; E5a total −155.25 → Q pilot half −158.3), BDS-3 ICDs, MEO values (B1C
+// total −158.5 → pilot 3/4 −159.75; B2a total −155.5 → pilot half −158.5; IGSO
+// sats spec 1.8 dB lower). A healthy strong sat should sit AT or ABOVE the line
+// (specs are minima at 5° elevation); sitting 10+ dB under it at high elevation
+// is a chain pathology, not geometry.
+const CN0_BASELINE = {
+    l1:  {G: 45.5, E: 43.7, C: 44.2},
+    l2c: {G: 41.0},
+    l5:  {G: 46.1, E: 45.7, C: 45.5},
+};
+
 export class GpsAmpHistoryPanel {
     constructor({app, target, feed}) {
         this.app = app;
@@ -233,6 +248,25 @@ export class GpsAmpHistoryPanel {
                     gridcolor: "#eee", zeroline: !!M.zero},
             showlegend: false, paper_bgcolor: "white", plot_bgcolor: "white",
         };
+        // Absolute reference: the ICD-minimum C/N₀ for this band + constellation
+        // (dashed line, C/N₀ modes only). Baseline is per tracked component -- see
+        // CN0_BASELINE for the power bookkeeping and sources.
+        if (this.mode === "cn0_coh" || this.mode === "cn0") {
+            const band = (this.app && this.app.gps_band) || "l1";
+            const sys = String(this.selected)[0];
+            const base = (CN0_BASELINE[band] || {})[sys];
+            if (base != null) {
+                layout.shapes = [{type: "line", xref: "paper", x0: 0, x1: 1,
+                                  yref: "y", y0: base, y1: base,
+                                  line: {color: "rgba(200,60,60,0.55)", width: 1,
+                                         dash: "dash"}}];
+                layout.annotations = [{xref: "paper", x: 1, xanchor: "right",
+                                       yref: "y", y: base, yanchor: "bottom",
+                                       text: `ICD min ${base.toFixed(1)} dB-Hz (290 K)`,
+                                       showarrow: false,
+                                       font: {size: 9, color: "rgba(200,60,60,0.8)"}}];
+            }
+        }
         if (!this._plotted) {
             window.Plotly.newPlot(this.plot, [full, shortWin], layout,
                 {displayModeBar: false, responsive: true});

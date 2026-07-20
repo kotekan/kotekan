@@ -101,6 +101,9 @@ export class App {
             // Adopt this band's constellation legend/colours/t_rec (L2C, L5) before the socket
             // opens; the GPS feed re-renders on the next tick. Missing (older server) -> L1 keeps.
             if (cfg && cfg.chains) configure_chains(cfg.chains);
+            // Band tag ("l1"|"l2c"|"l5") -- the history panel keys its ICD C/N0
+            // baseline off this + the selected sat's constellation letter.
+            if (cfg && cfg.band) this.gps_band = cfg.band;
             const ws_port = (cfg && cfg.ws_port) || 8539;
             this.socket = new Socket({app: this,
                                       url: "ws://" + location.hostname + ":" + ws_port});
