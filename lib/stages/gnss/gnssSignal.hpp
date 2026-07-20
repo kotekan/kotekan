@@ -49,7 +49,11 @@ struct SignalDescriptor {
 
     bool pilot;              ///< dataless component (modulation fully known)?
     double nav_symbol_s;     ///< data symbol period (post-FEC); 0 for pilot
-    int secondary_length;    ///< overlay/secondary code length in primary periods; 0 if none
+    int secondary_length;    ///< overlay/secondary code length in primary periods; 0 if none.
+                             ///< DOCUMENTATION: the runtime overlay chips come from the
+                             ///< gnssOverlay.hpp registry (which cross-checks this field at
+                             ///< combiner init); consumers must not branch on it for per-PRN
+                             ///< overlays (the bank's single-sequence slot can't carry them)
 
     bool time_multiplexed;   ///< component chip-interleaved with a sibling (L2C CM/CL)
     int tdm_phase;           ///< which combined-chip parity carries this code (0=even, 1=odd);
@@ -75,11 +79,12 @@ inline constexpr SignalDescriptor GPS_L1CA = {
 
 /// GPS L1C-P (1575.42 MHz, modernized civil) -- the dataless *pilot*: 10230-chip Weil code at
 /// 1.023 Mcps (10 ms), BOC(1,1). ReplicaSource: gpsL1CCode (Legendre + Weil + 7-chip insertion).
-/// secondary_length 0 for now -- the 1800-symbol L1CO overlay generator is a follow-on.
+/// The 1800-symbol PER-PRN L1CO overlay (18 s) is wiped by the combiner via the
+/// gnssOverlay.hpp registry ("L1CO"); secondary_length documents its length only.
 inline constexpr SignalDescriptor GPS_L1C_P = {
     "GPS_L1C_P", 1575.42e6, 1.023e6, 10230, 10e-3,
     Modulation::BOC, 1, 1, // BOC(1,1)
-    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/1800,
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
 };
 
@@ -150,13 +155,14 @@ inline constexpr SignalDescriptor GAL_E1B = {
 /// BeiDou-3 B1C pilot (1575.42 MHz -- the SAME carrier as GPS L1 / Galileo E1): 10230-chip
 /// Weil code at 1.023 Mcps (10 ms), transmitted QMBOC(6,1,4/33), modeled BOC(1,1) (the
 /// 4/33-power BOC(6,1) part is in quadrature -- negligible loss). Dataless pilot; the
-/// 1800-chip PER-PRN overlay is left to the combiner's per-record wipe (secondary_length 0
-/// here: the bank's single-sequence overlay slot can't carry per-PRN codes yet).
+/// 1800-chip PER-PRN overlay is wiped by the combiner via the gnssOverlay.hpp registry
+/// ("B1C"); secondary_length documents its length only (the bank's single-sequence overlay
+/// slot can't carry per-PRN codes, and its name ladder deliberately skips this signal).
 /// ReplicaSource: beidouB1CCode (Legendre/Weil, algorithmic). BDS-3 only, PRN 19..63 mostly.
 inline constexpr SignalDescriptor BDS_B1C_P = {
     "BDS_B1C_P", 1575.42e6, 1.023e6, 10230, 10e-3,
     Modulation::BOC, 1, 1, // BOC(1,1)
-    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/1800,
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
 };
 

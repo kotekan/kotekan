@@ -4,12 +4,7 @@
 #include "visUtil.hpp"      // for frameID
 
 #include "gnssChannelizedDespread.hpp" // for overlay_wipe
-#include "beidouB1CCode.hpp"
-#include "beidouB2aCode.hpp"
-#include "galileoE5aCode.hpp"           // for generate_b1cp_secondary (per-PRN B1C overlay)
-#include "galileoE1Code.hpp"           // for E1C_CS25 (shared Galileo pilot overlay)
-#include "gpsL1CCode.hpp"              // for generate_l1co_code (per-PRN L1C-P overlay)
-#include "gpsL5Code.hpp"               // for L5_NH10/NH20 (secondary overlay sequences)
+#include "gnssOverlay.hpp"             // for overlay_by_name (the secondary-overlay registry)
 
 #include "json.hpp"   // for json
 #include <algorithm> // for max
@@ -50,58 +45,24 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // by searching its alignment, instead of the squaring nav-bit estimate. Mutually exclusive
     // with navwipe_bit_records (a pilot has no nav bit). Both buffer the per-record A.
     const std::string sec = config.get_default<std::string>(unique_name, "secondary_overlay", "");
-    if (sec == "L5_NH20")
-        _secondary.assign(gps::L5_NH20.begin(), gps::L5_NH20.end());
-    else if (sec == "L5_NH10")
-        _secondary.assign(gps::L5_NH10.begin(), gps::L5_NH10.end());
-    else if (sec == "COHERENT")
-        // Dataless pilot with NO overlay at all (L2C CL: the 1.5 s code is the only modulation
-        // and records are consecutive segments of it, phase-continuous by construction): a
-        // length-1 all-ones "overlay" turns overlay_wipe into a plain gap-robust coherent sum
-        // with the same SNR estimate and auto-coherence ladder -- deep coherent integration
-        // with no bit estimate and no alignment search.
-        _secondary.assign(1, (int8_t)1);
-    else if (sec == "E1_CS25")
-        // Galileo E1-C pilot: the 25-chip CS25 secondary, SAME sequence for every satellite
-        // (like the L5 NH overlays, just longer). One chip per 4 ms primary period; the
-        // 25-phase alignment search is well-determined within a 250-record (1 s) window.
-        _secondary.assign(galileo::E1C_CS25.begin(), galileo::E1C_CS25.end());
-    else if (sec == "B1C") {
-        // BeiDou-3 B1C pilot: PER-PRN 1800-chip Weil overlay -- structurally identical to
-        // L1CO (same length, same per-PRN pick-at-wipe-time), reusing its cache/selection
-        // path. Alignment floor ~sqrt(2 ln 1800) ~ 3.9 sigma, same caveat as L1CO.
-        _l1co.resize(63);
-        for (int prn = 1; prn <= 63; ++prn) {
-            const auto o = beidou::generate_b1cp_secondary(prn);
-            _l1co[(size_t)(prn - 1)].assign(o.begin(), o.end());
+    // TABLE-DRIVEN dispatch (gnssOverlay.cpp): one registry row per known name carries the
+    // overlay's shape and generator, so adding a signal means adding a row, not a branch.
+    // Per-signal commentary (search floors, the COHERENT length-1 trick, ...) lives with
+    // the rows. An unknown (or empty) name keeps the historical fall-through: no overlay.
+    if (const gnss::OverlayDescriptor* ov = gnss::overlay_by_name(sec)) {
+        if (ov->per_prn) {
+            // Per-PRN overlays (B1C/E5a/B2a/L1CO): cache the whole PRN range here and pick
+            // by the slot's current PRN at wipe time (the search re-assigns channels).
+            _l1co.resize((size_t)ov->n_prn);
+            for (int prn = 1; prn <= ov->n_prn; ++prn)
+                _l1co[(size_t)(prn - 1)] = ov->generate(prn);
+        } else {
+            _secondary = ov->generate(0);
         }
-    } else if (sec == "E5A_CS100") {
-        // Galileo E5a-Q pilot: PER-PRN 100-chip CS100 secondary. Same per-PRN
-        // pick-at-wipe-time path as B1C/L1CO; 100-alignment search floor
-        // ~sqrt(2 ln 100) ~ 3.0 sigma.
-        _l1co.resize(50);
-        for (int prn = 1; prn <= 50; ++prn) {
-            const auto o = galileo::e5aq_secondary(prn);
-            _l1co[(size_t)(prn - 1)].assign(o.begin(), o.end());
-        }
-    } else if (sec == "B2A_CS100") {
-        // BeiDou-3 B2a-pilot: PER-PRN 100-chip Weil secondary, same path.
-        _l1co.resize(63);
-        for (int prn = 1; prn <= 63; ++prn) {
-            const auto o = beidou::b2ap_secondary(prn);
-            _l1co[(size_t)(prn - 1)].assign(o.begin(), o.end());
-        }
-    } else if (sec == "L1CO") {
-        // L1C-P overlay is PER-PRN (not one shared NH sequence), so cache all 32 here and pick
-        // by the slot's current PRN at wipe time. NOTE: it is 1800 symbols long (vs NH20's 20),
-        // so the overlay_wipe phase search is only well-determined once the integration window
-        // holds a comparable number of records -- run this with a LONG rolling integration and
-        // read the deep_snr against a higher floor (~sqrt(2 ln 1800) ~ 3.9 sigma, vs NH20's 2.4).
-        _l1co.resize(32);
-        for (int prn = 1; prn <= 32; ++prn) {
-            const auto o = gps::generate_l1co_code(prn);
-            _l1co[(size_t)(prn - 1)].assign(o.begin(), o.end());
-        }
+        // Documentary cross-check: the SignalDescriptor secondary_length fields must agree
+        // with the registry (they change nothing at runtime -- this keeps them honest).
+        for (const std::string& msg : gnss::overlay_registry_check())
+            WARN("overlay registry/descriptor mismatch: {:s}", msg);
     }
     _wipe_buffer = (_navwipe_bit_records > 0 || !_secondary.empty() || !_l1co.empty());
     // Auto-coherence (default ON, the clock_profile philosophy: automatic unless overridden):

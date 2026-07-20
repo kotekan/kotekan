@@ -132,7 +132,10 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
     // Secondary (Neuman-Hofman) overlay: one +-1 chip per primary period (NH10 on L5 I5,
     // NH20 on L5 Q5). Applied per period in channels()/hoprate_stream so a multi-period
     // coherent integration of the dataless Q5 pilot doesn't decorrelate at the 1 ms primary
-    // rollover. Empty (no-op) for signals without a secondary code (L1 C/A, L2C).
+    // rollover. Empty (no-op) for signals without a secondary code (L1 C/A, L2C). The name
+    // list is SHARED-sequence signals only: per-PRN overlays (B1C, L1CO -- their descriptor
+    // secondary_length documents them too) fall through empty and stay a combiner-side wipe
+    // (gnssOverlay.hpp), since this single-sequence slot can't carry per-PRN codes.
     if (_sig.secondary_length > 0) {
         const std::string name(_sig.name);
         if (name == "GPS_L5_Q")
