@@ -279,9 +279,11 @@ def main():
     t0, t1 = d["t"].min(), d["t"].max()
     n_frames = int((t1 - t0) / args.frame_s)
     if absolute:
-        vlo, vhi = np.percentile(x, [2, 98])
-        pad = 0.15 * (vhi - vlo + 1e-6)
-        vmin_, vmax = max(0.0, vlo - pad), vhi + pad
+        # Anchor the scale at ZERO TECU: the colormap then reads as absolute fraction
+        # (a wiggle of X TECU on a Y-TECU field is visibly X/Y of the ramp), instead of
+        # a stretched slice that exaggerates structure.
+        vhi = np.percentile(x, 98)
+        vmin_, vmax = 0.0, vhi * 1.15
     else:
         vmax = args.vmax or max(np.percentile(np.abs(x), 95), 1e-3)
         vmin_ = -vmax
