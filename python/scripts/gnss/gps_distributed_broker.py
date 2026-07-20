@@ -419,6 +419,13 @@ def main(argv=None):
                          "event -- hardware news, not something to silently absorb)")
     ap.add_argument("--code-bias-alarm-ppm", type=float, default=0.05,
                     help="same alarm for the code-rate clock (l-a) vs its warm-start value")
+    ap.add_argument("--fit-maturity-span-s", type=float, default=30.0,
+                    help="cp-fit HISTORY SPAN required before the fit is trusted (escape "
+                         "referee + hold admission). 30 s makes the code-Doppler quadratic "
+                         "observable on every chain. BENCH NOTE (2026-07-19): 100-s replay "
+                         "legs cannot afford 30 s of maturity + overlay consensus -- short "
+                         "legs go bimodal on B1C deep (some sats never sync, deep ~15 vs "
+                         "220). Benches pass ~10; the A/B verdict discipline requires it.")
     ap.add_argument("--bias-alpha", type=float, default=0.05,
                     help="EMA weight for the clock-freq bias (smaller = steadier seed Doppler; "
                          "~0.05 => few-second time constant, dithers out the 500 Hz grid)")
@@ -1304,7 +1311,7 @@ def main(argv=None):
             # no-op. This gate feeds BOTH the escape referee and hold admission.
             fit_span_s = ((h[-1][0] - h[0][0]) / args.hops_per_sec) if len(h) >= 2 else 0.0
             fit_trusted = (fit is not None and len(h) >= 6
-                           and fit_span_s >= 30.0
+                           and fit_span_s >= args.fit_maturity_span_s
                            and snr >= 2.0 * args.acquire_snr)
             # AMP VETO (see --escape-amp-veto): a full-amplitude hold is on the main peak
             # by construction -- refuse the fit's accusation rather than drag it off.
