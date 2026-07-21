@@ -330,11 +330,15 @@ bands:
           fll_reacq_hz: 15.0
           note_inline: "tight snap-to-model fence (rec B; free under dop-continuous; alias limit 25 Hz at 10 ms)"
         combiner:
-          params: { n_prn: 32, integration_length: 100, secondary_overlay: L1CO }
+          params: { nh_assist: true, nh_min_refs: 3, n_prn: 32, integration_length: 100, secondary_overlay: L1CO }
           note: |
             L1C-P: deterministic per-PRN 1800-symbol L1CO overlay wipe (same code path as B1C).
             integration_length 100 x 10 ms = 1 s. The ADR de-rotates the L1CO overlay (plain
             product, no squaring) -- the clean-band confirmation of the 2026-07-21 overlay fix.
+            nh_assist REQUIRED (like B1C): the 1800-symbol overlay is ambiguous over the 100-symbol
+            window, so the blind alignment search flickers (nh_phase jumps every emit, deep_snr
+            collapses 300->1->200). The broker's predicted L1CO phase (from GPST+range) pins it;
+            the combiner self-calibrates the convention constant from confidently-locked sats.
 
   l2c:
     out_file: live_l2c_gpu.yaml

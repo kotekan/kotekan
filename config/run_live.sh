@@ -458,6 +458,15 @@ if grep -qE '^l1c_track:|seed_endpoint:[[:space:]]*"/l1c_track/set_seeds"' "$RUN
   L1C_CHIP=$(sig_chip "$L1C_SIGNAL");     L1C_CHIP=${L1C_CHIP:-1.023e6}
   L1C_CODELEN=$(sig_codelen "$L1C_SIGNAL"); L1C_CODELEN=${L1C_CODELEN:-10230}
   L1C_CPERR=$(cperr_of "$L1C_CHIP")
+  # nh TIME-ASSIST (like B1C): the 1800-symbol L1CO overlay is ambiguous over the 1 s window, so
+  # the blind alignment search flickers -- the broker POSTs the predicted overlay index (period =
+  # code_length/chip_rate = 10 ms, len 1800) and the combiner pins its wipe there. Same convention
+  # path as B1C; the combiner self-calibrates the constant from confidently-locked sats.
+  L1C_NH=""
+  if grep -qE "^(${SP})?l1c_combiner:.*nh_assist:[[:space:]]*true" "$RUNCFG"; then
+    L1C_NH="--nh-assist --nh-overlay-len ${NH_OVERLAY_LEN:-1800}"
+    echo "  GPS-L1C nh time-assist ON (predicted L1CO overlay -> combiner /set_nh_hint)"
+  fi
   { [ -z "$LAT" ] || [ -z "$LON" ]; } && echo "WARNING: l1c_track present but LAT/LON unset -- L1C require_hint search will scan NOTHING"
   echo "starting GPS-L1C broker ($L1C_SIGNAL: l1c_search/l1c_track/l1c_combiner, constellation G, chip $L1C_CHIP code $L1C_CODELEN)..."
   python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}l1c_search --trackers ${SP}l1c_track --combiner ${SP}l1c_combiner \
@@ -466,7 +475,7 @@ if grep -qE '^l1c_track:|seed_endpoint:[[:space:]]*"/l1c_track/set_seeds"' "$RUN
           --chip-rate-hz $L1C_CHIP --code-length $L1C_CODELEN --hold-max-cp-err $L1C_CPERR \
           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
           --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
-          ${BROKER_EXTRA:-} $ALM $CARG \
+          ${BROKER_EXTRA:-} $ALM $CARG $L1C_NH \
           > /tmp/${TAG}_broker_l1c.log 2>&1 &
   L1CPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT \
