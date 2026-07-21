@@ -9,7 +9,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata, CHO...
 #include "div.hpp"             // for div_noremainder
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
 #include "metadata.hpp"        // for metadataObject
 
 #include "fmt.hpp" // for compile_string_to_view
@@ -72,18 +72,18 @@ void gpuSimulateRFIS012tilde::main_thread() {
     frameID in_rfi_s012_frame_id(in_rfi_s012_buf);
     frameID out_rfi_s012tilde_frame_id(out_rfi_s012tilde_buf);
 
-    // BF mask (for now) is not updated in time. Only read once.
-    uint8_t* bf_mask =
-        (uint8_t*)in_bf_mask_buf->wait_for_full_frame(unique_name, in_bf_mask_frame_id);
-    if (bf_mask == nullptr)
-        return;
-
-    for (int64_t e = 0; e < _num_elements; e++) {
-        INFO("BF[{:03d}]: {:08b}", e, bf_mask[e]);
-    }
-
     while (!stop_thread) {
-        // Grab in/out buffers
+        // Grab in/out buffers. The GPU pipeline uploads a bf_mask frame per S012 frame
+        // (cudaInputData without do_once), so consume them in lockstep.
+        uint8_t* bf_mask =
+            (uint8_t*)in_bf_mask_buf->wait_for_full_frame(unique_name, in_bf_mask_frame_id);
+        if (bf_mask == nullptr)
+            break;
+
+        for (int64_t e = 0; e < _num_elements; e++) {
+            DEBUG("BF[{:03d}]: {:08b}", e, bf_mask[e]);
+        }
+
         uint64_t* rfi_s012 =
             (uint64_t*)in_rfi_s012_buf->wait_for_full_frame(unique_name, in_rfi_s012_frame_id);
         if (rfi_s012 == nullptr)
@@ -164,10 +164,8 @@ void gpuSimulateRFIS012tilde::main_thread() {
              in_bf_mask_buf->buffer_name, in_bf_mask_frame_id, in_rfi_s012_buf->buffer_name,
              in_rfi_s012_frame_id, out_rfi_s012tilde_buf->buffer_name, out_rfi_s012tilde_frame_id);
 
+        in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id++);
         in_rfi_s012_buf->mark_frame_empty(unique_name, in_rfi_s012_frame_id++);
         out_rfi_s012tilde_buf->mark_frame_full(unique_name, out_rfi_s012tilde_frame_id++);
     }
-
-    // Only release the bf_mask when we're done.
-    in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id);
 }
