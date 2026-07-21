@@ -533,7 +533,7 @@ void N2Accumulate::main_thread() {
                     continue;
                 }
 
-                // Third: accum RFI samples
+                // Third: accum RFI sampes
                 _n_rfi_samples_in_vis[f] += rficounts_t0[f] + rficounts_t1[f];
 
                 // Fourth: Normalization - accum the remaining good ticks.

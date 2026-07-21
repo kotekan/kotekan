@@ -14,6 +14,7 @@
 #include <assert.h>    // for assert
 #include <cstring>     // for size_t, memset
 #include <memory>      // for __shared_ptr_access, shared_ptr
+#include <optional>    // for optional
 #include <stdexcept>   // for runtime_error
 #include <visUtil.hpp> // for frameID, modulo
 
@@ -171,8 +172,10 @@ void ProcessPacketMask::main_thread() {
     frameID voltage_frame_id(voltage_buf);
     frameID combined_bitmap_frame_id(combined_receipt_bitmap_buf);
     frameID pl_mask_frame_id(pl_mask_buf);
-    // frameID needs a valid buffer even if rfi_mask_frame_id is never used.
-    frameID rfi_mask_frame_id(rfi_mask_buf != nullptr ? rfi_mask_buf : pl_mask_buf);
+    // Only tracked when the optional rfi_mask_buf is configured.
+    std::optional<frameID> rfi_mask_frame_id;
+    if (rfi_mask_buf)
+        rfi_mask_frame_id.emplace(rfi_mask_buf);
     std::vector<frameID> bitmap_frame_ids;
     for (auto* buf : receipt_bitmap_bufs) {
         bitmap_frame_ids.emplace_back(buf);
@@ -202,7 +205,7 @@ void ProcessPacketMask::main_thread() {
         // Wait for rfi_mask frame
         if (rfi_mask_buf) {
             uint8_t* rfi_mask_frame =
-                rfi_mask_buf->wait_for_empty_frame(unique_name, rfi_mask_frame_id);
+                rfi_mask_buf->wait_for_empty_frame(unique_name, *rfi_mask_frame_id);
             if (rfi_mask_frame == nullptr)
                 break;
         }
@@ -377,8 +380,8 @@ void ProcessPacketMask::main_thread() {
 
         // Set metadata for rfi_mask_buf
         if (rfi_mask_buf) {
-            rfi_mask_buf->allocate_new_metadata_object(rfi_mask_frame_id);
-            auto rfi_mask_meta = get_chord_metadata(rfi_mask_buf, rfi_mask_frame_id);
+            rfi_mask_buf->allocate_new_metadata_object(*rfi_mask_frame_id);
+            auto rfi_mask_meta = get_chord_metadata(rfi_mask_buf, *rfi_mask_frame_id);
 
             rfi_mask_meta->set_fpga_seq_num(
                 get_chord_metadata(voltage_buf, voltage_frame_id)->get_fpga_seq_num());
@@ -409,8 +412,8 @@ void ProcessPacketMask::main_thread() {
         pl_mask_frame_id++;
 
         if (rfi_mask_buf) {
-            rfi_mask_buf->mark_frame_full(unique_name, rfi_mask_frame_id);
-            rfi_mask_frame_id++;
+            rfi_mask_buf->mark_frame_full(unique_name, *rfi_mask_frame_id);
+            (*rfi_mask_frame_id)++;
         }
 
         for (size_t i = 0; i < receipt_bitmap_bufs.size(); i++) {
