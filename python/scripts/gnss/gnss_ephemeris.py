@@ -71,9 +71,99 @@ def _brdc_sources(year, doy, name):
     return srcs
 
 
+# Well-run IGS stations to borrow FRESH ephemeris from (per-station hourly mixed-nav) when the
+# merged daily BRDC is stale -- e.g. during a BKG/IGS outage the merged product's own toe's can
+# freeze hours back while individual stations keep decoding the live broadcast. Broadcast
+# ephemeris is receiver-independent, so any station that tracked a sat carries that sat's current
+# ephemeris; a handful of geographically-spread stations covers the visible set.
+_HOURLY_STATIONS = ["ALGO00CAN", "AL2H00CAN", "NRC100CAN", "STJO00CAN", "USN700USA", "BRUX00BEL"]
+
+
+def _rinex_newest_epoch(path):
+    """Newest broadcast epoch (UTC datetime) in a gzipped RINEX-3 nav file, or None. RINEX-3
+    nav epoch lines are 'SYS PRN YYYY MM DD HH MM SS ...' (SYS in G/E/C)."""
+    import gzip
+    newest = None
+    try:
+        with gzip.open(path, "rt", errors="replace") as f:
+            for line in f:
+                if len(line) > 23 and line[0] in "GEC" and line[1:3].isdigit() \
+                        and line[4:8].strip().isdigit():
+                    try:
+                        e = datetime(int(line[4:8]), int(line[9:11]), int(line[12:14]),
+                                     int(line[15:17]), int(line[18:20]), tzinfo=timezone.utc)
+                    except Exception:
+                        continue
+                    if newest is None or e > newest:
+                        newest = e
+    except Exception:
+        return None
+    return newest
+
+
+def _fetch_station_hourly(when, cache_dir, token):
+    """MERGE several IGS stations' hourly mixed-nav (CDDIS, token) into one fresh nav file --
+    a fallback for a stale merged daily. One station is unreliable (a given hour it may carry
+    Galileo/BeiDou but no fresh GPS), so union a handful for full-constellation coverage: keep
+    one header, concatenate every station's record block. Walks back hours until a set exists.
+    Returns cache_dir/hourly_MN.rnx.gz or None."""
+    if not token:
+        return None
+    import gzip
+    for dh in (0, 1, 2, 3):
+        h = when - timedelta(hours=dh)
+        doy = h.timetuple().tm_yday
+        header, bodies = None, []
+        for st in _HOURLY_STATIONS:
+            name = "%s_R_%04d%03d%02d00_01H_MN.rnx.gz" % (st, h.year, doy, h.hour)
+            url = ("https://cddis.nasa.gov/archive/gnss/data/hourly/%04d/%03d/%02d/%s"
+                   % (h.year, doy, h.hour, name))
+            try:
+                req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    raw = r.read()
+                if raw[:2] != b"\x1f\x8b":
+                    continue
+                txt = gzip.decompress(raw).decode("ascii", "replace")
+            except Exception:
+                continue
+            k = txt.find("END OF HEADER")
+            if k < 0:
+                continue
+            eoh = txt.find("\n", k) + 1
+            if header is None:
+                header = txt[:eoh]
+            bodies.append(txt[eoh:])
+            if len(bodies) >= 4:  # enough stations for full-constellation coverage
+                break
+        if header and bodies:
+            local = os.path.join(cache_dir, "hourly_MN.rnx.gz")
+            with gzip.open(local, "wt") as f:
+                f.write(header + "".join(bodies))
+            return local
+    return None
+
+
 def fetch_brdc(when=None, cache_dir=CACHE):
-    """Fetch (with cache) the IGS multi-GNSS broadcast nav file for `when` (default now).
-    Tries today's streamed file then falls back a day (files appear with some latency)."""
+    """The IGS multi-GNSS broadcast nav file for `when` (default now). Returns the merged daily
+    BRDC (BKG, or CDDIS with a token); but if that merged file is STALE (its newest epoch > 2.5 h
+    old -- a frozen product during an outage), borrow a fresher per-station hourly file instead."""
+    when = when or datetime.now(timezone.utc)
+    result = _fetch_brdc_merged(when, cache_dir)
+    tok = _earthdata_token()
+    if tok:
+        ne = _rinex_newest_epoch(result)
+        if ne is None or (when - ne).total_seconds() > 9000.0:  # merged frozen > 2.5 h
+            hourly = _fetch_station_hourly(when, cache_dir, tok)
+            if hourly:
+                hne = _rinex_newest_epoch(hourly)
+                if hne is not None and (ne is None or hne > ne):
+                    return hourly
+    return result
+
+
+def _fetch_brdc_merged(when=None, cache_dir=CACHE):
+    """The merged daily BRDC file for `when` (BKG first, CDDIS-with-token fallback)."""
     os.makedirs(cache_dir, exist_ok=True)
     when = when or datetime.now(timezone.utc)
     # Process each DAY fully -- fresh cache, then (re-)download, then a STALE same-day cache --
