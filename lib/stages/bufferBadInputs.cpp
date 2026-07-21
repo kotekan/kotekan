@@ -8,7 +8,7 @@
 #include "buffer.hpp"         // for Buffer
 #include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
 #include "configUpdater.hpp"  // for configUpdater
-#include "kotekanLogging.hpp" // for DEBUG, ERROR
+#include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
 
 #include <algorithm>  // for count, fill
 #include <exception>  // for exception
@@ -105,15 +105,10 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
 bufferBadInputs::~bufferBadInputs() {}
 
 bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
-    DEBUG("update_bad_inputs_callback(): Update to bad inputs list.");
+    INFO("update_bad_inputs_callback(): Received update to bad inputs list.");
 
     // hold lock for the entire update
     std::lock_guard<std::mutex> lock(mtx);
-
-    // Reset the mask (1 == good, non-array dishes always masked)
-    input_mask = baseline_mask;
-
-    bool all_valid = true;
 
     try {
         bad_inputs = json["bad_inputs"].get<std::vector<int>>();
@@ -122,21 +117,27 @@ bool bufferBadInputs::update_bad_inputs_callback(nlohmann::json& json) {
         return false;
     }
 
-    // Add current bad input to the mask
+    // validate all inputs before changing the mask
     for (int element : bad_inputs) {
-        if (element < (int)num_elements && element >= 0) {
-            input_mask[reorder[element]] = 0;
-        } else {
-            ERROR("Got input with invalid index: {:d}", element);
-            all_valid = false;
+        if (element >= (int)num_elements || element < 0) {
+            ERROR("Received input with invalid index: {:d}", element);
+            return false;
         }
+    }
+
+    // Reset the mask (1 == good, non-array dishes always masked)
+    input_mask = baseline_mask;
+
+    // now update the mask
+    for (int element : bad_inputs) {
+        input_mask[reorder[element]] = 0;
     }
 
     num_bad_inputs = std::count(input_mask.begin(), input_mask.end(), 0u);
 
     DEBUG("update_bad_inputs_callback(): Bad inputs reordered and buffered.");
 
-    return all_valid;
+    return true;
 }
 
 void bufferBadInputs::main_thread() {
