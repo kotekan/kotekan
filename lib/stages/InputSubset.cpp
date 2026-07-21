@@ -1,23 +1,22 @@
 #include "InputSubset.hpp"
 
-#include "Config.hpp"          // for Config
-#include "Hash.hpp"            // for Hash, operator<, operator!=, operator==
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for datasetManager, dset_id_t, fingerprint_t
-#include "datasetState.hpp"    // for inputState, prodState, stackState
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN
-#include "visBuffer.hpp"       // for VisFrameView, VisField
-#include "visUtil.hpp"         // for input_ctype, prod_ctype, frameID, modulo
+#include <stddef.h>             // for size_t
+#include <complex>              // for complex
+#include <functional>           // for bind, function
+#include <utility>              // for pair
 
-#include "fmt.hpp"      // for compile_string_to_view, format
-#include "gsl-lite.hpp" // for span
-
-#include <complex>    // for complex
-#include <functional> // for bind, function
-#include <stddef.h>   // for size_t
-#include <utility>    // for pair
+#include "Config.hpp"           // for Config
+#include "Hash.hpp"             // for Hash, operator<, operator!=, operator==
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "datasetManager.hpp"   // for datasetManager, dset_id_t, fingerprint_t
+#include "datasetState.hpp"     // for inputState, prodState, stackState
+#include "kotekanLogging.hpp"   // for FATAL_ERROR, WARN
+#include "visBuffer.hpp"        // for VisFrameView, VisField
+#include "visUtil.hpp"          // for input_ctype, prod_ctype, frameID, modulo
+#include "fmt.hpp"              // for compile_string_to_view, format
+#include "gsl-lite.hpp"         // for span
 
 
 using kotekan::bufferContainer;

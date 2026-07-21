@@ -1,20 +1,19 @@
 #include "cudaDeviceInterface.hpp"
 
-#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h" // for cudaEventCreate, cudaEventRecord, cudaMemcpyAsync, cudaStr...
-#include "kotekanLogging.hpp" // for FATAL_ERROR, INFO, DEBUG2
+#include <assert.h>            // for assert
+#include <cuda.h>              // for cuGetErrorString, cuModuleGetFunction, cuModuleLoadDataEx
+#include <nvPTXCompiler.h>     // for NVPTXCOMPILE_SUCCESS, nvPTXCompilerCompile, nvPTXCompilerC...
+#include <nvrtc.h>             // for nvrtcGetErrorString, NVRTC_SUCCESS, nvrtcCompileProgram
+#include <stdio.h>             // for fclose, fopen, fread, fseek, ftell, rewind, FILE, SEEK_END
+#include <stdlib.h>            // for free, malloc
+#include <mutex>               // for mutex, lock_guard
+#include <stdexcept>           // for runtime_error
+#include <utility>             // for pair
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <assert.h>        // for assert
-#include <cuda.h>          // for cuGetErrorString, cuModuleGetFunction, cuModuleLoadDataEx
-#include <mutex>           // for mutex, lock_guard
-#include <nvPTXCompiler.h> // for NVPTXCOMPILE_SUCCESS, nvPTXCompilerCompile, nvPTXCompilerC...
-#include <nvrtc.h>         // for nvrtcGetErrorString, NVRTC_SUCCESS, nvrtcCompileProgram
-#include <stdexcept>       // for runtime_error
-#include <stdio.h>         // for fclose, fopen, fread, fseek, ftell, rewind, FILE, SEEK_END
-#include <stdlib.h>        // for free, malloc
-#include <utility>         // for pair
+#include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h"  // for cudaEventCreate, cudaEventRecord, cudaMemcpyAsync, cudaStr...
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, DEBUG2
+#include "fmt.hpp"             // for compile_string_to_view
 
 using kotekan::Config;
 

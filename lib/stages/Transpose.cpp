@@ -1,27 +1,26 @@
 #include "Transpose.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for Hash, operator==, operator!=, operator<
-#include "SystemInterface.hpp"   // for get_hostname, get_username
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "dataset.hpp"           // for dataset
-#include "datasetManager.hpp"    // for dset_id_t, datasetManager
-#include "datasetState.hpp"      // for metadataState
-#include "errors.h"              // for ReturnCode, exit_kotekan
-#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, INFO, DEBUG2, ERROR
-#include "prometheusMetrics.hpp" // for Metrics, Counter
-#include "version.h"             // for get_git_commit_hash
+#include <stdint.h>               // for uint32_t, uint64_t
+#include <json.hpp>               // for basic_json
+#include <algorithm>              // for copy
+#include <functional>             // for bind, function
+#include <future>                 // for async, future, future_status
+#include <map>                    // for map
+#include <stdexcept>              // for out_of_range
 
-#include "fmt.hpp" // for compile_string_to_view, format, format_string
-
-#include <algorithm>  // for copy
-#include <functional> // for bind, function
-#include <future>     // for async, future, future_status
-#include <json.hpp>   // for basic_json
-#include <map>        // for map
-#include <stdexcept>  // for out_of_range
-#include <stdint.h>   // for uint32_t, uint64_t
+#include "Config.hpp"             // for Config
+#include "Hash.hpp"               // for Hash, operator==, operator!=, operator<
+#include "SystemInterface.hpp"    // for get_hostname, get_username
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "dataset.hpp"            // for dataset
+#include "datasetManager.hpp"     // for dset_id_t, datasetManager
+#include "datasetState.hpp"       // for metadataState
+#include "errors.h"               // for ReturnCode, exit_kotekan
+#include "kotekanLogging.hpp"     // for DEBUG, FATAL_ERROR, INFO, DEBUG2, ERROR
+#include "prometheusMetrics.hpp"  // for Metrics, Counter
+#include "version.h"              // for get_git_commit_hash
+#include "fmt.hpp"                // for compile_string_to_view, format, format_string
 
 
 using kotekan::bufferContainer;

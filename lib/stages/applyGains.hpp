@@ -18,15 +18,15 @@
 #include <atomic>             // for atomic
 #include <condition_variable> // for condition_variable
 #include <ctime>              // for timespec, size_t
-#include <map>                // for map
-#include <mutex>              // for mutex
-#include <optional>           // for optional
-#include <shared_mutex>       // for shared_mutex
-#include <stdint.h>           // for uint32_t, uint64_t
-#include <string>             // for string
-#include <tuple>              // for tuple
-#include <utility>            // for pair
-#include <vector>             // for vector
+#include <map>          // for map
+#include <mutex>        // for mutex
+#include <optional>     // for optional
+#include <shared_mutex> // for shared_mutex
+#include <stdint.h>     // for uint32_t, uint64_t
+#include <string>       // for string
+#include <tuple>        // for tuple
+#include <utility>      // for pair
+#include <vector>       // for vector
 
 /**
  * @class applyGains

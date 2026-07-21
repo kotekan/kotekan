@@ -7,16 +7,16 @@
 #ifndef AIRSPY_ALIGN_HPP
 #define AIRSPY_ALIGN_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "restServer.hpp"      // for connectionInstance
+#include <stdint.h>             // for uint32_t
+#include <condition_variable>   // for condition_variable
+#include <mutex>                // for mutex
+#include <string>               // for string
 
-#include <condition_variable> // for condition_variable
-#include <mutex>              // for mutex
-#include <stdint.h>           // for uint32_t
-#include <string>             // for string
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "restServer.hpp"       // for connectionInstance
 
 /**
  * @class AirspyAlign

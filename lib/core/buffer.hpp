@@ -539,7 +539,7 @@ public:
      * descriptor is (already) attached to the buffer and conforms to their
      * requirements. This fatals if no descriptor has been attached -- i.e. the
      * buffer was not declared with a described type.
-     *
+     * 
      * Called with no argument it performs only the existence check: the idiom
      * for a stage that then reads the descriptor with @c get_frame_desc<T>() or
      * @c require_frame_desc<T>() and hand-validates the specific fields it

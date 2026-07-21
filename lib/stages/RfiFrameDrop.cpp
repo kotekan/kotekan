@@ -1,33 +1,32 @@
 #include "RfiFrameDrop.hpp"
 
-#include "Config.hpp"            // for Config
-#include "Hash.hpp"              // for Hash, operator!=
-#include "Stage.hpp"             // for Stage
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "chordMetadata.hpp"     // for get_chord_metadata, chordMetadata
-#include "configUpdater.hpp"     // for configUpdater
-#include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
-#include "kotekanLogging.hpp"    // for WARN, INFO, DEBUG, DEBUG2
-#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily
-#include "visUtil.hpp"           // for frameID, modulo
+#include <assert.h>               // for assert
+#include <stdint.h>               // for int64_t, uint32_t, uint8_t
+#include <json.hpp>               // for json, basic_json, iter_impl
+#include <algorithm>              // for equal, copy
+#include <cmath>                  // for fabs, sqrt
+#include <cstring>                // for memcpy
+#include <functional>             // for function, bind, _1
+#include <map>                    // for map
+#include <memory>                 // for __shared_ptr_access, shared_ptr
+#include <stdexcept>              // for runtime_error
+#include <string>                 // for basic_string, allocator, to_string, operator<, string
+#include <tuple>                  // for tie, tuple
+#include <utility>                // for pair
 
-#include "fmt.hpp" // for compile_string_to_view, format, fmt
-
-#include <algorithm>  // for equal, copy
-#include <assert.h>   // for assert
-#include <cmath>      // for fabs, sqrt
-#include <cstring>    // for memcpy
-#include <functional> // for function, bind, _1
-#include <json.hpp>   // for json, basic_json, iter_impl
-#include <map>        // for map
-#include <memory>     // for __shared_ptr_access, shared_ptr
-#include <stdexcept>  // for runtime_error
-#include <stdint.h>   // for int64_t, uint32_t, uint8_t
-#include <string>     // for basic_string, allocator, to_string, operator<, string
-#include <tuple>      // for tie, tuple
-#include <utility>    // for pair
+#include "Config.hpp"             // for Config
+#include "Hash.hpp"               // for Hash, operator!=
+#include "Stage.hpp"              // for Stage
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"             // for Buffer
+#include "bufferContainer.hpp"    // for bufferContainer
+#include "chordMetadata.hpp"      // for get_chord_metadata, chordMetadata
+#include "configUpdater.hpp"      // for configUpdater
+#include "datasetManager.hpp"     // for dset_id_t, datasetManager, state_id_t
+#include "kotekanLogging.hpp"     // for WARN, INFO, DEBUG, DEBUG2
+#include "prometheusMetrics.hpp"  // for Counter, Metrics, MetricFamily
+#include "visUtil.hpp"            // for frameID, modulo
+#include "fmt.hpp"                // for compile_string_to_view, format, fmt
 
 
 using kotekan::bufferContainer;

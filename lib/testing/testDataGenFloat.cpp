@@ -52,8 +52,7 @@ testDataGenFloat::testDataGenFloat(Config& config, const std::string& unique_nam
 
     _value_type = kotekan::string_to_type(
         config.get_default<std::string>(unique_name, "value_type", "float32"));
-    if (!(_value_type == kotekan::float16 || _value_type == kotekan::float32
-          || _value_type == kotekan::float64)) {
+    if(!(_value_type == kotekan::float16 || _value_type == kotekan::float32 || _value_type == kotekan::float64)) {
         FATAL_ERROR(
             "value_type must be on of {:s}, {:s}, or {:s}, but got {:s}",
             kotekan::type_to_string(kotekan::float16), kotekan::type_to_string(kotekan::float32),

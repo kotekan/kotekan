@@ -1,17 +1,17 @@
 #ifndef N2FRAME_TO_VISFRAME_HPP
 #define N2FRAME_TO_VISFRAME_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "datasetManager.hpp"  // for datasetManager, state_id_t
-#include "visUtil.hpp"         // for freq_ctype, input_ctype, prod_ctype
+#include <stdint.h>             // for uint32_t
+#include <string>               // for string, basic_string
+#include <vector>               // for vector
+#include <utility>              // for pair
 
-#include <stdint.h> // for uint32_t
-#include <string>   // for string, basic_string
-#include <utility>  // for pair
-#include <vector>   // for vector
+#include "Config.hpp"           // for Config
+#include "Stage.hpp"            // for Stage
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "datasetManager.hpp"   // for datasetManager, state_id_t
+#include "visUtil.hpp"          // for freq_ctype, input_ctype, prod_ctype
 
 /**
  * @brief Translates a N2FrameView buffer to a VisFrameView buffer by complex

@@ -11,10 +11,10 @@
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <cmath>      // for sqrt, abs
-#include <cstdint>    // for int32_t, uint32_t
-#include <cstring>    // for memset, size_t
-#include <functional> // for bind, function
+#include <cmath>       // for sqrt, abs
+#include <cstdint>     // for int32_t, uint32_t
+#include <cstring>     // for memset, size_t
+#include <functional>  // for bind, function
 #ifdef __AVX2__
 #include <immintrin.h> // for __m256, _mm256_div_ps, _mm256_loadu_ps, _mm256_set1_ps
 #endif

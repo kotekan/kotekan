@@ -1,27 +1,27 @@
 #ifndef KOTEKAN_STAGES_HDF5_N2_WRITE_HPP
 #define KOTEKAN_STAGES_HDF5_N2_WRITE_HPP
 
-#include "Config.hpp"            // for Config
-#include "N2Layout.hpp"          // for N2Layout
-#include "Stage.hpp"             // for Stage
-#include "Telescope.hpp"         // for ElementOrder
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "prometheusMetrics.hpp" // for Gauge, MetricFamily, Counter
+#include <N2FrameView.hpp>              // for N2FrameView
+#include <N2Util.hpp>                   // for cfloat
+#include <highfive/H5File.hpp>          // for File
+#include <H5public.h>                   // for hsize_t
+#include <stddef.h>                     // for size_t
+#include <highfive/H5DataType.hpp>      // for DataType
+#include <highfive/H5PropertyList.hpp>  // for DataSetCreateProps
+#include <map>                          // for map
+#include <memory>                       // for unique_ptr
+#include <optional>                     // for optional, nullopt
+#include <string>                       // for string, basic_string
+#include <vector>                       // for vector
+#include <cstdint>                      // for uint64_t, int64_t, int32_t, uint16_t, uint8_t
 
-#include <H5public.h>                  // for hsize_t
-#include <N2FrameView.hpp>             // for N2FrameView
-#include <N2Util.hpp>                  // for cfloat
-#include <cstdint>                     // for uint64_t, int64_t, int32_t, uint16_t, uint8_t
-#include <highfive/H5DataType.hpp>     // for DataType
-#include <highfive/H5File.hpp>         // for File
-#include <highfive/H5PropertyList.hpp> // for DataSetCreateProps
-#include <map>                         // for map
-#include <memory>                      // for unique_ptr
-#include <optional>                    // for optional, nullopt
-#include <stddef.h>                    // for size_t
-#include <string>                      // for string, basic_string
-#include <vector>                      // for vector
+#include "Config.hpp"                   // for Config
+#include "Stage.hpp"                    // for Stage
+#include "Telescope.hpp"                // for ElementOrder
+#include "buffer.hpp"                   // for Buffer
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "prometheusMetrics.hpp"        // for Gauge, MetricFamily, Counter
+#include "N2Layout.hpp"                 // for N2Layout
 
 /**
  * @class N2FileData
@@ -164,8 +164,7 @@ public:
     enum class AddFrameStatus { Success, OutOfBounds, Duplicate, MetadataMismatch };
 
     N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameView& fv,
-               const double open_wall_s_, const uint64_t abs_file_idx_,
-               const ElementOrder input_order_, const size_t blocksize_f_,
+               const double open_wall_s_, const uint64_t abs_file_idx_, const ElementOrder input_order_, const size_t blocksize_f_,
                const size_t blocksize_p_, const size_t blocksize_t_, const std::string compression_,
                const size_t compression_level_, const bool use_bitshuffle_,
                const std::string base_dir_, const std::string baseband_gain_file_,
@@ -367,8 +366,8 @@ private:
     const std::uint64_t _blocksize_p;
     const std::uint64_t _blocksize_t;
     const std::uint64_t
-        _late_frame_grace_seconds;   /// Grace period in seconds for late frames (default: 60)
-    const int _max_frames;           /// Stop writing after this many frames (-1 = unlimited)
+        _late_frame_grace_seconds; /// Grace period in seconds for late frames (default: 60)
+    const int _max_frames;         /// Stop writing after this many frames (-1 = unlimited)
     const ElementOrder _input_order; /// The element ordering in input buffers.
 
     Buffer* const _buffer;

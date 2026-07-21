@@ -1,15 +1,26 @@
 #include "Config.hpp"          // for Config
+#include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType
+#include "DataType.hpp"        // for DataType
+#include "N2Util.hpp"          // for frameID, modulo
 #include "N2Util.hpp"          // for frameID, modulo
 #include "NDArray.hpp"         // for GenericNDArray, Config
 #include "Stage.hpp"           // for Stage
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "div.hpp"             // for div_noremainder
 #include "div.hpp"             // for div_noremainder
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
 
+#include "fmt.hpp" // for compile_string_to_view
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <functional> // for bind, function, placeholders

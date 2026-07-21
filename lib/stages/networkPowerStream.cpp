@@ -1,26 +1,25 @@
 #include "networkPowerStream.hpp"
 
-#include "Config.hpp"          // for Config
-#include "NDArray.hpp"         // for GenericNDArray
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp" // for make_power_corr_desc
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for ERROR, INFO
+#include <arpa/inet.h>          // for htons, inet_addr, inet_aton
+#include <netinet/in.h>         // for sockaddr_in, IPPROTO_TCP, IPPROTO_UDP, in_addr
+#include <stdlib.h>             // for free, malloc
+#include <string.h>             // for memcpy, memset
+#include <sys/socket.h>         // for send, AF_INET, socket, MSG_NOSIGNAL, connect, sendto, set...
+#include <sys/time.h>           // for timeval, gettimeofday
+#include <sys/types.h>          // for uint
+#include <unistd.h>             // for close
+#include <functional>           // for bind, function
+#include <string>               // for allocator, basic_string, operator==, char_traits, string
+#include <memory>               // for shared_ptr
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <arpa/inet.h>  // for htons, inet_addr, inet_aton
-#include <functional>   // for bind, function
-#include <memory>       // for shared_ptr
-#include <netinet/in.h> // for sockaddr_in, IPPROTO_TCP, IPPROTO_UDP, in_addr
-#include <stdlib.h>     // for free, malloc
-#include <string.h>     // for memcpy, memset
-#include <string>       // for allocator, basic_string, operator==, char_traits, string
-#include <sys/socket.h> // for send, AF_INET, socket, MSG_NOSIGNAL, connect, sendto, set...
-#include <sys/time.h>   // for timeval, gettimeofday
-#include <sys/types.h>  // for uint
-#include <unistd.h>     // for close
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"  // for make_power_corr_desc
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for ERROR, INFO
+#include "fmt.hpp"              // for compile_string_to_view
+#include "NDArray.hpp"          // for GenericNDArray
 
 #ifndef MSG_NOSIGNAL
 // macOS uses SO_NOSIGPIPE on the socket instead (set up below); make sendto() portable.

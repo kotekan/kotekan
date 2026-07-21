@@ -1,22 +1,21 @@
 #include "fullPacketDump.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for ERROR, INFO
-#include "restServer.hpp"      // for HTTP_RESPONSE, connectionInstance, restServer
+#include <errno.h>              // for errno
+#include <fcntl.h>              // for open, O_CREAT, O_WRONLY
+#include <stdio.h>              // for snprintf, size_t
+#include <stdlib.h>             // for exit, free, malloc
+#include <string.h>             // for memcpy
+#include <unistd.h>             // for close, gethostname, sleep, write, ssize_t
+#include <json.hpp>             // for json
+#include <functional>           // for bind, function, _1, _2
 
-#include "fmt.hpp" // for compile_string_to_view, format, fmt
-
-#include <errno.h>    // for errno
-#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
-#include <functional> // for bind, function, _1, _2
-#include <json.hpp>   // for json
-#include <stdio.h>    // for snprintf, size_t
-#include <stdlib.h>   // for exit, free, malloc
-#include <string.h>   // for memcpy
-#include <unistd.h>   // for close, gethostname, sleep, write, ssize_t
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for ERROR, INFO
+#include "restServer.hpp"       // for HTTP_RESPONSE, connectionInstance, restServer
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
 
 
 #define MAX_NUM_PACKETS 100

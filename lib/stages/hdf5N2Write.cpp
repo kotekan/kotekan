@@ -1,75 +1,74 @@
 #include "hdf5N2Write.hpp"
 
-#include "CHORDTelescope.hpp" // for CHORDTelescope, dishInputFields
-#include "H5Support.hpp"      // for create_datatype
-#include "N2FrameDesc.hpp"    // for N2FrameDesc
-#include "N2Util.hpp"         // for freq_ctype, frameID, modulo, cfloat
-#include "Telescope.hpp"      // for Telescope, freq_id_t
-#include "geoUtil.hpp"        // for mat3x3d_t
-#include "hdf5Files.hpp"      // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
-#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
-#include "restClient.hpp"     // for restClient
-#include "timeUtil.hpp"       // for EOP
-#include "util.h"             // for mkdir_p
-#include "visUtil.hpp"        // for cfloat
-
-#include "fmt.hpp"          // for compile_string_to_view, format, format_...
-#include "json.hpp"         // for basic_json, json, iter_impl
-#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
-
-#include <H5Opublic.h>       // for H5Ocopy
-#include <N2FrameView.hpp>   // for N2FrameView
-#include <Stage.hpp>         // for Stage
-#include <StageFactory.hpp>  // for REGISTER_KOTEKAN_STAGE
-#include <algorithm>         // for equal, min, copy, max
-#include <array>             // for array, operator!=
-#include <atomic>            // for __atomic_base, atomic
-#include <cassert>           // for assert
-#include <cfloat>            // for DBL_MAX
-#include <chrono>            // for duration, duration_cast, operator-, sys...
-#include <cmath>             // for fabs
-#include <complex>           // for complex
-#include <configTracker.hpp> // for ConfigTracker
-#include <cstdint>           // for uint64_t, int64_t, int32_t, uint16_t
-#include <cstdio>            // for size_t, rename
-#include <cstdlib>           // for llabs
-#include <cstring>           // for strerror
-#include <ctime>             // for timespec, gmtime, gmtime_r, time_t, tm
-#include <errno.h>           // for errno
-#include <errors.h>          // for exit_kotekan, ReturnCode
-#include <exception>         // for exception
-#include <filesystem>        // for path, exists, directory_iterator, begin
+#include <N2FrameView.hpp>                        // for N2FrameView
+#include <Stage.hpp>                              // for Stage
+#include <StageFactory.hpp>                       // for REGISTER_KOTEKAN_STAGE
+#include <configTracker.hpp>                      // for ConfigTracker
+#include <errno.h>                                // for errno
+#include <errors.h>                               // for exit_kotekan, ReturnCode
+#include <highfive/H5DataSet.hpp>                 // for DataSet, AnnotateTraits::createAttribute
+#include <highfive/H5DataSpace.hpp>               // for DataSpace, DataSpace::DataSpace, DataSp...
+#include <highfive/H5DataType.hpp>                // for create_datatype, DataType
+#include <highfive/H5Exception.hpp>               // for Exception
+#include <highfive/H5File.hpp>                    // for File, NodeTraits::getDataSet, File::File
+#include <highfive/H5Object.hpp>                  // for hsize_t, Object::getId, herr_t, H5Z_FLA...
+#include <highfive/H5PropertyList.hpp>            // for DataSetCreateProps, Chunking, Deflate
+#include <highfive/bits/H5PropertyList_misc.hpp>  // for PropertyList::_initializeIfNeeded, Prop...
+#include <prometheusMetrics.hpp>                  // for Gauge, Counter, Metrics, MetricFamily
+#include <waitingForMaxFrames.hpp>                // for waiting_for_max_frames
+#include <H5Opublic.h>                            // for H5Ocopy
 #include <fmt/ranges.h> // IWYU pragma: keep      // needed to fmt::format std::vector in log macros
-#include <fstream>      // for basic_ostream, operator<<, basic_ios
-#include <functional>   // for function
-#include <gsl-lite.hpp> // for span
-#include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::createAttribute
-#include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::DataSpace, DataSp...
-#include <highfive/H5DataType.hpp>               // for create_datatype, DataType
-#include <highfive/H5Exception.hpp>              // for Exception
-#include <highfive/H5File.hpp>                   // for File, NodeTraits::getDataSet, File::File
-#include <highfive/H5Group.hpp>                  // for Group
-#include <highfive/H5Object.hpp>                 // for hsize_t, Object::getId, herr_t, H5Z_FLA...
-#include <highfive/H5PropertyList.hpp>           // for DataSetCreateProps, Chunking, Deflate
-#include <highfive/H5Selection.hpp>              // for Selection, SliceTraits::write, SliceTra...
-#include <highfive/bits/H5Attribute_misc.hpp>    // for Attribute::read, Attribute::write
-#include <highfive/bits/H5PropertyList_misc.hpp> // for PropertyList::_initializeIfNeeded, Prop...
-#include <highfive/bits/H5Selection_misc.hpp>    // for Selection::getSpace, Selection::getData...
-#include <iomanip>                               // for operator<<, put_time, setfill, setw
-#include <iterator>                              // for istreambuf_iterator, operator!=
-#include <limits>                                // for numeric_limits
-#include <map>                                   // for map, _Rb_tree_iterator, operator!=
-#include <memory>                                // for allocator, unique_ptr, make_unique, __s...
-#include <optional>                              // for optional, nullopt, operator!=
-#include <prometheusMetrics.hpp>                 // for Gauge, Counter, Metrics, MetricFamily
-#include <sstream>                               // for basic_ostringstream
-#include <stdexcept>                             // for runtime_error
-#include <string>                                // for basic_string, operator+, char_traits
-#include <system_error>                          // for error_code
-#include <type_traits>                           // for false_type, true_type, void_t
-#include <utility>                               // for pair, move
-#include <vector>                                // for vector, operator!=
-#include <waitingForMaxFrames.hpp>               // for waiting_for_max_frames
+#include <gsl-lite.hpp>                           // for span
+#include <highfive/H5Group.hpp>                   // for Group
+#include <highfive/H5Selection.hpp>               // for Selection, SliceTraits::write, SliceTra...
+#include <highfive/bits/H5Attribute_misc.hpp>     // for Attribute::read, Attribute::write
+#include <highfive/bits/H5Selection_misc.hpp>     // for Selection::getSpace, Selection::getData...
+#include <algorithm>                              // for equal, min, copy, max
+#include <cassert>                                // for assert
+#include <cfloat>                                 // for DBL_MAX
+#include <chrono>                                 // for duration, duration_cast, operator-, sys...
+#include <complex>                                // for complex
+#include <cstdint>                                // for uint64_t, int64_t, int32_t, uint16_t
+#include <cstdio>                                 // for size_t, rename
+#include <cstdlib>                                // for llabs
+#include <cstring>                                // for strerror
+#include <ctime>                                  // for timespec, gmtime, gmtime_r, time_t, tm
+#include <filesystem>                             // for path, exists, directory_iterator, begin
+#include <fstream>                                // for basic_ostream, operator<<, basic_ios
+#include <iomanip>                                // for operator<<, put_time, setfill, setw
+#include <map>                                    // for map, _Rb_tree_iterator, operator!=
+#include <memory>                                 // for allocator, unique_ptr, make_unique, __s...
+#include <optional>                               // for optional, nullopt, operator!=
+#include <sstream>                                // for basic_ostringstream
+#include <stdexcept>                              // for runtime_error
+#include <string>                                 // for basic_string, operator+, char_traits
+#include <type_traits>                            // for false_type, true_type, void_t
+#include <utility>                                // for pair, move
+#include <vector>                                 // for vector, operator!=
+#include <array>                                  // for array, operator!=
+#include <atomic>                                 // for __atomic_base, atomic
+#include <cmath>                                  // for fabs
+#include <exception>                              // for exception
+#include <functional>                             // for function
+#include <iterator>                               // for istreambuf_iterator, operator!=
+#include <limits>                                 // for numeric_limits
+#include <system_error>                           // for error_code
+
+#include "H5Support.hpp"                          // for create_datatype
+#include "Telescope.hpp"                          // for Telescope, freq_id_t
+#include "restClient.hpp"                         // for restClient
+#include "util.h"                                 // for mkdir_p
+#include "json.hpp"                               // for basic_json, json, iter_impl
+#include "CHORDTelescope.hpp"                     // for CHORDTelescope, dishInputFields
+#include "N2FrameDesc.hpp"                        // for N2FrameDesc
+#include "N2Util.hpp"                             // for freq_ctype, frameID, modulo, cfloat
+#include "fmt.hpp"                                // for compile_string_to_view, format, format_...
+#include "geoUtil.hpp"                            // for mat3x3d_t
+#include "hdf5Files.hpp"                          // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
+#include "jsonMetadata.hpp"                       // for MAX_NUM_RFI_THRESHOLDS
+#include "kotekanLogging.hpp"                     // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
+#include "timeUtil.hpp"                           // for EOP
+#include "visUtil.hpp"                            // for cfloat
 
 using namespace HighFive;
 
@@ -201,7 +200,7 @@ void N2FileData::_check_create_attribute(HighFive::File& file, const std::string
         }
         return;
     }
-
+    
     // Attribute doesn't exist. Create & write it, let HighFive infer the data space.
     file.createAttribute(name, value);
 }
@@ -346,10 +345,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "grid_size_y", telescope.get_grid_size_y());
         _check_create_attribute(*file, "feed_separation_x_m", telescope.get_feed_separation_x_m());
         _check_create_attribute(*file, "feed_separation_y_m", telescope.get_feed_separation_y_m());
-        _check_create_attribute(*file, "main_array_grid_indices",
-                                telescope.get_main_array_grid_indices(num_elements, input_order));
-        _check_create_attribute(*file, "feed_positions_m",
-                                telescope.get_feed_positions_m(num_elements, input_order));
+        _check_create_attribute(*file, "main_array_grid_indices", telescope.get_main_array_grid_indices(num_elements, input_order));
+        _check_create_attribute(*file, "feed_positions_m", telescope.get_feed_positions_m(num_elements, input_order));
         _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
         _check_create_attribute(*file, "num_dishes", telescope.get_num_dishes());
         _check_create_attribute(*file, "num_file_f",
@@ -631,14 +628,13 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
 }
 
 N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameView& fv,
-                       const double open_wall_s_, const uint64_t abs_file_idx_,
-                       const ElementOrder input_order_, const size_t blocksize_f_,
-                       const size_t blocksize_p_, const size_t blocksize_t_,
-                       const std::string compression_, const size_t compression_level_,
-                       const bool use_bitshuffle_, const std::string base_dir_,
-                       const std::string baseband_gain_file_, const int baseband_gain_update_idx_) :
-    num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev),
-    input_order(input_order_),
+                       const double open_wall_s_, const uint64_t abs_file_idx_, const ElementOrder input_order_,
+                       const size_t blocksize_f_, const size_t blocksize_p_,
+                       const size_t blocksize_t_, const std::string compression_,
+                       const size_t compression_level_, const bool use_bitshuffle_,
+                       const std::string base_dir_, const std::string baseband_gain_file_,
+                       const int baseband_gain_update_idx_) :
+    num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev), input_order(input_order_),
     num_file_f(Telescope::instance().cast<CHORDTelescope>().num_science_freqs()),
     num_file_t(num_file_t_), file_mode(file_mode_), blocksize_f(blocksize_f_),
     blocksize_p(blocksize_p_), blocksize_t(blocksize_t_), compression(compression_),
@@ -1465,9 +1461,9 @@ void hdf5N2Write::main_thread() {
         } else {
             // Create N2FileData for file (also looks for .partial)
             auto N2FileData_obj = std::make_unique<N2FileData>(
-                N2FileData::CHORD, _num_file_t, fv, frame_recv_time, abs_file_idx, _input_order,
-                _blocksize_f, _blocksize_p, _blocksize_t, _compression, _compression_level,
-                _use_bitshuffle, _base_dir, _baseband_gain_file, _baseband_gain_update_idx);
+                N2FileData::CHORD, _num_file_t, fv, frame_recv_time, abs_file_idx, _input_order, _blocksize_f,
+                _blocksize_p, _blocksize_t, _compression, _compression_level, _use_bitshuffle,
+                _base_dir, _baseband_gain_file, _baseband_gain_update_idx);
 
             filedata.emplace(abs_file_idx, std::move(N2FileData_obj));
             N2FileData_ptr = filedata.find(abs_file_idx)->second.get();

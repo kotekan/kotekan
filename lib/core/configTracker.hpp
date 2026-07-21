@@ -38,39 +38,38 @@
 #ifndef CONFIGTRACKER_H
 #define CONFIGTRACKER_H
 
-#include "Config.hpp"            // for Config
-#include "kotekanLogging.hpp"    // for FATAL_ERROR_NON_OO, DEBUG_NON_OO, INFO_NON_OO
-#include "prometheusMetrics.hpp" // for Gauge, Counter, Metrics, MetricFamily
-#include "restClient.hpp"        // for restClient
-#include "restServer.hpp"        // for connectionInstance, restServer, HTTP_RESPONSE
+#include <arpa/inet.h>            // for inet_pton, inet_ntop
+#include <errno.h>                // for errno
+#include <netdb.h>                // for gai_strerror, addrinfo, freeaddrinfo, getaddrinfo
+#include <netinet/in.h>           // for sockaddr_in, INET_ADDRSTRLEN
+#include <openssl/md5.h>          // for MD5, MD5_DIGEST_LENGTH
+#include <stdint.h>               // for uint16_t
+#include <string.h>               // for strerror
+#include <sys/socket.h>           // for AF_INET, SOCK_STREAM
+#include <sys/stat.h>             // for stat, S_ISDIR
+#include <chrono>                 // for duration, duration_cast, steady_clock
+#include <cstdio>                 // for remove, rename, size_t
+#include <exception>              // for exception
+#include <fstream>                // for basic_ostream, operator<<, basic_ofstream, stringstream
+#include <functional>             // for bind, _1, function
+#include <iomanip>                // for operator<<, setfill, setw
+#include <map>                    // for map, operator!=, _Rb_tree_iterator, _Rb_tree_const_iter...
+#include <mutex>                  // for mutex, lock_guard
+#include <optional>               // for optional
+#include <sstream>                // for basic_stringstream, basic_ostringstream
+#include <string>                 // for basic_string, allocator, string, char_traits, operator==
+#include <tuple>                  // for tuple, tie, operator<
+#include <utility>                // for pair
+#include <vector>                 // for vector
+#include <algorithm>              // for equal
 
-#include "fmt.hpp"  // for compile_string_to_view
-#include "json.hpp" // for json, json_ref, iter_impl, iteration_proxy_value, basic...
-
-#include <algorithm>     // for equal
-#include <arpa/inet.h>   // for inet_pton, inet_ntop
-#include <chrono>        // for duration, duration_cast, steady_clock
-#include <cstdio>        // for remove, rename, size_t
-#include <errno.h>       // for errno
-#include <exception>     // for exception
-#include <fstream>       // for basic_ostream, operator<<, basic_ofstream, stringstream
-#include <functional>    // for bind, _1, function
-#include <iomanip>       // for operator<<, setfill, setw
-#include <map>           // for map, operator!=, _Rb_tree_iterator, _Rb_tree_const_iter...
-#include <mutex>         // for mutex, lock_guard
-#include <netdb.h>       // for gai_strerror, addrinfo, freeaddrinfo, getaddrinfo
-#include <netinet/in.h>  // for sockaddr_in, INET_ADDRSTRLEN
-#include <openssl/md5.h> // for MD5, MD5_DIGEST_LENGTH
-#include <optional>      // for optional
-#include <sstream>       // for basic_stringstream, basic_ostringstream
-#include <stdint.h>      // for uint16_t
-#include <string.h>      // for strerror
-#include <string>        // for basic_string, allocator, string, char_traits, operator==
-#include <sys/socket.h>  // for AF_INET, SOCK_STREAM
-#include <sys/stat.h>    // for stat, S_ISDIR
-#include <tuple>         // for tuple, tie, operator<
-#include <utility>       // for pair
-#include <vector>        // for vector
+#include "Config.hpp"             // for Config
+#include "kotekanLogging.hpp"     // for FATAL_ERROR_NON_OO, DEBUG_NON_OO, INFO_NON_OO
+#include "prometheusMetrics.hpp"  // for Gauge, Counter, Metrics, MetricFamily
+#include "restClient.hpp"         // for restClient
+#include "restServer.hpp"         // for connectionInstance, restServer, HTTP_RESPONSE
+#include "fmt.hpp"                // for compile_string_to_view
+#include "json.hpp"               // for json, json_ref, iter_impl, iteration_proxy_value, basic...
 
 namespace kotekan {
 

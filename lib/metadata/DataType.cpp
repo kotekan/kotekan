@@ -1,7 +1,7 @@
 #include <DataType.hpp>
-#include <json.hpp>      // for json, basic_json
-#include <unordered_map> // for unordered_map, operator==, _Node_iterator_base
-#include <utility>       // for pair
+#include <json.hpp>       // for json, basic_json
+#include <unordered_map>  // for unordered_map, operator==, _Node_iterator_base
+#include <utility>        // for pair
 
 namespace kotekan {
 

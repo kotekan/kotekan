@@ -7,11 +7,11 @@
 #define N2_FRINGE_STOP_HPP
 
 #include "Config.hpp"
-#include "Stage.hpp"     // for Stage
-#include "Telescope.hpp" // for ElementOrder
+#include "Stage.hpp"           // for Stage
+#include "Telescope.hpp"       // for ElementOrder
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
-#include "geoUtil.hpp" // for vec3d_t
+#include "geoUtil.hpp"         // for vec3d_t
 
 #include <stddef.h> // for size_t
 #include <string>   // for string

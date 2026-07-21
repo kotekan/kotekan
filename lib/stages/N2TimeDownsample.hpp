@@ -74,7 +74,7 @@ private:
 
     // Whether to apply fringestopping phases.
     bool do_fringestop;
-
+    
     // Feed positions in grid frame
     std::vector<vec3d_t> feed_positions_m;
 

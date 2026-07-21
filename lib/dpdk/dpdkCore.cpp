@@ -1,43 +1,42 @@
 #include "dpdkCore.hpp"
 
-#include <cinttypes>               // for uint32_t, uint16_t, int32_t, uint8_t
-#include <functional>              // for bind, function
-#include <numa.h>                  // for numa_node_of_cpu, numa_num_configured_nodes
-#include <rte_branch_prediction.h> // for unlikely
-#include <rte_config.h>            // for RTE_PKTMBUF_HEADROOM
-#include <rte_eal.h>               // for rte_eal_init
-#include <rte_errno.h>             // for rte_strerror, per_lcore__rte_errno, rte_errno
-#include <rte_ether.h>             // for rte_ether_addr
-#include <rte_launch.h>            // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore
-#include <rte_lcore.h>             // for rte_lcore_count, rte_lcore_id
-#include <rte_mbuf.h>              // for rte_pktmbuf_free, rte_pktmbuf_init, rte_pktmbuf_p...
-#include <rte_mbuf_core.h>         // for rte_mbuf
-#include <rte_mempool.h>           // for rte_mempool_create, rte_mempool_free
-#include <rte_memzone.h>           // for rte_memzone_max_set
-#include <rte_ring.h>              // for rte_ring_create, rte_ring_dequeue_burst
-#include <set>                     // for set
-#include <stdexcept>               // for runtime_error
-#include <stdio.h>                 // for fprintf, NULL, size_t, stderr
-#include <stdlib.h>                // for free, malloc
-#include <string.h>                // for memset
-#include <sys/types.h>             // for uint
-#include <unistd.h>                // for sleep
-#include <vector>                  // for vector
+#include <numa.h>                       // for numa_node_of_cpu, numa_num_configured_nodes
+#include <rte_branch_prediction.h>      // for unlikely
+#include <rte_config.h>                 // for RTE_PKTMBUF_HEADROOM
+#include <rte_eal.h>                    // for rte_eal_init
+#include <rte_errno.h>                  // for rte_strerror, per_lcore__rte_errno, rte_errno
+#include <rte_ether.h>                  // for rte_ether_addr
+#include <rte_launch.h>                 // for rte_eal_mp_remote_launch, rte_eal_mp_wait_lcore
+#include <rte_lcore.h>                  // for rte_lcore_count, rte_lcore_id
+#include <rte_mbuf.h>                   // for rte_pktmbuf_free, rte_pktmbuf_init, rte_pktmbuf_p...
+#include <rte_mbuf_core.h>              // for rte_mbuf
+#include <rte_mempool.h>                // for rte_mempool_create, rte_mempool_free
+#include <rte_memzone.h>                // for rte_memzone_max_set
+#include <stdio.h>                      // for fprintf, NULL, size_t, stderr
+#include <stdlib.h>                     // for free, malloc
+#include <string.h>                     // for memset
+#include <sys/types.h>                  // for uint
+#include <unistd.h>                     // for sleep
+#include <rte_ring.h>                   // for rte_ring_create, rte_ring_dequeue_burst
+#include <cinttypes>                    // for uint32_t, uint16_t, int32_t, uint8_t
+#include <functional>                   // for bind, function
+#include <set>                          // for set
+#include <stdexcept>                    // for runtime_error
+#include <vector>                       // for vector
 
 // cinttypes needed by some CentOS systems.
-#include "Config.hpp"                  // for Config
-#include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
-#include "captureHandler.hpp"          // for captureHandler
-#include "crs16BoardCaptureWorker.hpp" // for crs16BoardCaptureWorker
-#include "crs16BoardDistributor.hpp"   // for crs16BoardDistributor
-#include "crs1BoardCaptureWorker.hpp"  // for crs1BoardCaptureWorker
-#include "crs1BoardDistributor.hpp"    // for crs1BoardDistributor
-#include "iceBoardShuffle.hpp"         // for iceBoardShuffle
-#include "iceBoardStandard.hpp"        // for iceBoardStandard
-#include "iceBoardVDIF.hpp"            // for iceBoardVDIF
-
-#include "fmt.hpp"  // for format, compile_string_to_view, fmt, format_string
-#include "json.hpp" // for basic_json, json, iter_impl
+#include "Config.hpp"                   // for Config
+#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
+#include "captureHandler.hpp"           // for captureHandler
+#include "crs16BoardCaptureWorker.hpp"  // for crs16BoardCaptureWorker
+#include "crs16BoardDistributor.hpp"    // for crs16BoardDistributor
+#include "crs1BoardCaptureWorker.hpp"   // for crs1BoardCaptureWorker
+#include "crs1BoardDistributor.hpp"     // for crs1BoardDistributor
+#include "iceBoardShuffle.hpp"          // for iceBoardShuffle
+#include "iceBoardStandard.hpp"         // for iceBoardStandard
+#include "iceBoardVDIF.hpp"             // for iceBoardVDIF
+#include "fmt.hpp"                      // for format, compile_string_to_view, fmt, format_string
+#include "json.hpp"                     // for basic_json, json, iter_impl
 
 using nlohmann::json;
 using std::string;

@@ -1,9 +1,9 @@
 #include "N2Layout.hpp"
 
-#include "fmt.hpp" // for format, format_string
+#include <json.hpp>   // for operator==, basic_json, json
+#include <stdexcept>  // for runtime_error
 
-#include <json.hpp>  // for operator==, basic_json, json
-#include <stdexcept> // for runtime_error
+#include "fmt.hpp"    // for format, format_string
 
 void to_json(nlohmann::json& j, const N2Layout& l) {
     switch (l) {

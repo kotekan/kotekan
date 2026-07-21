@@ -7,22 +7,21 @@
 #ifndef N2BUFFER_HPP
 #define N2BUFFER_HPP
 
-#include "FrameView.hpp"   // for FrameView
-#include "N2FrameDesc.hpp" // for N2EigenMethod, N2Field, N2FrameDesc, n2frame_layout_t
-#include "N2Layout.hpp"    // for N2Layout
-#include "N2Metadata.hpp"  // for N2Metadata
-#include "N2Util.hpp"      // for cfloat
-#include "buffer.hpp"      // for Buffer
-#include "dataset.hpp"     // for dset_id_t
+#include <stddef.h>          // for size_t
+#include <stdint.h>          // for uint64_t, uint32_t, int32_t, uint8_t
+#include <memory>            // for shared_ptr
+#include <set>               // for set
+#include <array>             // for array
 
-#include "gsl-lite.hpp"     // for span
-#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
-
-#include <array>    // for array
-#include <memory>   // for shared_ptr
-#include <set>      // for set
-#include <stddef.h> // for size_t
-#include <stdint.h> // for uint64_t, uint32_t, int32_t, uint8_t
+#include "FrameView.hpp"     // for FrameView
+#include "N2FrameDesc.hpp"   // for N2EigenMethod, N2Field, N2FrameDesc, n2frame_layout_t
+#include "N2Metadata.hpp"    // for N2Metadata
+#include "N2Util.hpp"        // for cfloat
+#include "buffer.hpp"        // for Buffer
+#include "gsl-lite.hpp"      // for span
+#include "N2Layout.hpp"      // for N2Layout
+#include "dataset.hpp"       // for dset_id_t
+#include "jsonMetadata.hpp"  // for MAX_NUM_RFI_THRESHOLDS
 
 using kotekan::N2EigenMethod;
 using kotekan::N2Field;

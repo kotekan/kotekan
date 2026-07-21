@@ -1,23 +1,22 @@
 #include "SampleAutocorr.hpp"
 
-#include "Config.hpp"          // for Config
-#include "NDArray.hpp"         // for GenericNDArray
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp" // for make_fengine_desc
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "kotekanLogging.hpp"  // for INFO
-#include "restServer.hpp"      // for HTTP_RESPONSE, connectionInstance, restServer
+#include <stdlib.h>             // for calloc, free
+#include <string.h>             // for memset
+#include <json.hpp>             // for json, basic_json
+#include <condition_variable>   // for condition_variable
+#include <functional>           // for bind, function, _1, _2
+#include <mutex>                // for mutex, unique_lock, lock_guard
+#include <memory>               // for shared_ptr
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <condition_variable> // for condition_variable
-#include <functional>         // for bind, function, _1, _2
-#include <json.hpp>           // for json, basic_json
-#include <memory>             // for shared_ptr
-#include <mutex>              // for mutex, unique_lock, lock_guard
-#include <stdlib.h>           // for calloc, free
-#include <string.h>           // for memset
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"  // for make_fengine_desc
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "kotekanLogging.hpp"   // for INFO
+#include "restServer.hpp"       // for HTTP_RESPONSE, connectionInstance, restServer
+#include "NDArray.hpp"          // for GenericNDArray
+#include "fmt.hpp"              // for compile_string_to_view
 
 using kotekan::bufferContainer;
 using kotekan::Config;

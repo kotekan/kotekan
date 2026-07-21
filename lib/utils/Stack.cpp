@@ -1,22 +1,21 @@
 #include "Stack.hpp"
 
-#include "visUtil.hpp" // for rstack_ctype, prod_ctype, input_ctype
+#include <stdlib.h>     // for abs
+#include <math.h>       // for abs
+#include <algorithm>    // for sort, transform
+#include <cstdint>      // for uint32_t, int8_t, int16_t
+#include <functional>   // for bind, _1
+#include <iterator>     // for back_insert_iterator, begin, end, back_inserter
+#include <numeric>      // for iota
+#include <ostream>      // for basic_ostream
+#include <stdexcept>    // for invalid_argument
+#include <string>       // for operator<<
+#include <tuple>        // for tuple, make_tuple, operator!=, operator<
+#include <utility>      // for pair
+#include <vector>       // for vector
 
-#include "fmt.hpp" // for compile_string_to_view, format, fmt
-
-#include <algorithm>  // for sort, transform
-#include <cstdint>    // for uint32_t, int8_t, int16_t
-#include <functional> // for bind, _1
-#include <iterator>   // for back_insert_iterator, begin, end, back_inserter
-#include <math.h>     // for abs
-#include <numeric>    // for iota
-#include <ostream>    // for basic_ostream
-#include <stdexcept>  // for invalid_argument
-#include <stdlib.h>   // for abs
-#include <string>     // for operator<<
-#include <tuple>      // for tuple, make_tuple, operator!=, operator<
-#include <utility>    // for pair
-#include <vector>     // for vector
+#include "visUtil.hpp"  // for rstack_ctype, prod_ctype, input_ctype
+#include "fmt.hpp"      // for compile_string_to_view, format, fmt
 
 using namespace std::placeholders;
 

@@ -116,7 +116,7 @@ BOOST_AUTO_TEST_CASE(test_fulluppertri_to_autocorrelations) {
     Buffer out_buf(num_frames, out_frame_size, pool, out_buf_name, "N2", 0, false, false,
                    std::vector<int>{}, true);
     out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_ev, out_num_prod,
-                                                            N2Layout::Autocorrelations));
+                                                         N2Layout::Autocorrelations));
 
     // Create buffer container
     bufferContainer bc;
@@ -215,8 +215,8 @@ BOOST_AUTO_TEST_CASE(test_fulluppertri_to_general_subset) {
         N2FrameDesc::calculate_frame_size(num_elements, num_ev, product_list.size());
     Buffer out_buf(num_frames, out_frame_size, pool, out_buf_name, "N2", 0, false, false,
                    std::vector<int>{}, true);
-    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(
-        num_elements, num_ev, product_list.size(), N2Layout::GeneralSubset, product_list));
+    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_ev, product_list.size(),
+                                                         N2Layout::GeneralSubset, product_list));
 
     // Create buffer container
     bufferContainer bc;
@@ -377,8 +377,8 @@ BOOST_AUTO_TEST_CASE(test_have_inputs_subset) {
         N2FrameDesc::calculate_frame_size(num_elements, num_ev, product_list.size());
     Buffer out_buf(num_frames, out_frame_size, pool, out_buf_name, "N2", 0, false, false,
                    std::vector<int>{}, true);
-    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(
-        num_elements, num_ev, product_list.size(), N2Layout::InputORMasked, product_list));
+    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_ev, product_list.size(),
+                                                         N2Layout::InputORMasked, product_list));
 
     // Create buffer container
     bufferContainer bc;
@@ -459,8 +459,8 @@ BOOST_AUTO_TEST_CASE(test_only_inputs_subset) {
         N2FrameDesc::calculate_frame_size(num_elements, num_ev, product_list.size());
     Buffer out_buf(num_frames, out_frame_size, pool, out_buf_name, "N2", 0, false, false,
                    std::vector<int>{}, true);
-    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(
-        num_elements, num_ev, product_list.size(), N2Layout::InputANDMasked, product_list));
+    out_buf.ensure_frame_desc(std::make_shared<N2FrameDesc>(num_elements, num_ev, product_list.size(),
+                                                         N2Layout::InputANDMasked, product_list));
 
     // Create buffer container
     bufferContainer bc;

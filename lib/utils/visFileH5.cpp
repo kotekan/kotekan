@@ -1,39 +1,38 @@
 
 #include "visFileH5.hpp"
 
-#include "H5Support.hpp"      // for create_datatype
-#include "datasetManager.hpp" // for datasetManager, dset_id_t
-#include "datasetState.hpp"   // for eigenvalueState, freqState, inputState
-#include "visBuffer.hpp"      // for VisFrameView
-#include "visUtil.hpp"        // for time_ctype, cfloat, freq_ctype, input_c...
+#include <errno.h>                                // for errno
+#include <fcntl.h>                                // for sync_file_range, SYNC_FILE_RANGE_WRITE
+#include <highfive/H5Attribute.hpp>               // for Attribute, Attribute::write, Attribute:...
+#include <highfive/H5DataSet.hpp>                 // for DataSet, H5Dget_offset, DataSet::resize
+#include <highfive/H5DataSpace.hpp>               // for DataSpace, DataSpace::From, DataSpace::...
+#include <highfive/H5DataType.hpp>                // for create_datatype, DataType
+#include <highfive/H5File.hpp>                    // for File, NodeTraits::createDataSet, File::...
+#include <highfive/H5Group.hpp>                   // for Group
+#include <highfive/H5Object.hpp>                  // for Object::getId, hsize_t
+#include <highfive/H5PropertyList.hpp>            // for PropertyType, RawPropertyList, Chunking
+#include <highfive/H5Selection.hpp>               // for Selection, SliceTraits::write, SliceTra...
+#include <highfive/bits/H5PropertyList_misc.hpp>  // for PropertyList::_initializeIfNeeded, RawP...
+#include <highfive/bits/H5Selection_misc.hpp>     // for Selection::getDataType, Selection::getM...
+#include <string.h>                               // for strerror
+#include <sys/stat.h>                             // for fstat, stat
+#include <unistd.h>                               // for pwrite, TEMP_FAILURE_RETRY
+#include <complex>                                // for complex
+#include <cstdio>                                 // for remove
+#include <future>                                 // for async, future
+#include <numeric>                                // for iota
+#include <stdexcept>                              // for runtime_error
+#include <tuple>                                  // for tuple, make_tuple, get
+#include <utility>                                // for pair
+#include <algorithm>                              // for copy, fill_n, max
 
-#include "fmt.hpp"      // for format, compile_string_to_view, fmt
-#include "gsl-lite.hpp" // for span
-
-#include <algorithm>                             // for copy, fill_n, max
-#include <complex>                               // for complex
-#include <cstdio>                                // for remove
-#include <errno.h>                               // for errno
-#include <fcntl.h>                               // for sync_file_range, SYNC_FILE_RANGE_WRITE
-#include <future>                                // for async, future
-#include <highfive/H5Attribute.hpp>              // for Attribute, Attribute::write, Attribute:...
-#include <highfive/H5DataSet.hpp>                // for DataSet, H5Dget_offset, DataSet::resize
-#include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::From, DataSpace::...
-#include <highfive/H5DataType.hpp>               // for create_datatype, DataType
-#include <highfive/H5File.hpp>                   // for File, NodeTraits::createDataSet, File::...
-#include <highfive/H5Group.hpp>                  // for Group
-#include <highfive/H5Object.hpp>                 // for Object::getId, hsize_t
-#include <highfive/H5PropertyList.hpp>           // for PropertyType, RawPropertyList, Chunking
-#include <highfive/H5Selection.hpp>              // for Selection, SliceTraits::write, SliceTra...
-#include <highfive/bits/H5PropertyList_misc.hpp> // for PropertyList::_initializeIfNeeded, RawP...
-#include <highfive/bits/H5Selection_misc.hpp>    // for Selection::getDataType, Selection::getM...
-#include <numeric>                               // for iota
-#include <stdexcept>                             // for runtime_error
-#include <string.h>                              // for strerror
-#include <sys/stat.h>                            // for fstat, stat
-#include <tuple>                                 // for tuple, make_tuple, get
-#include <unistd.h>                              // for pwrite, TEMP_FAILURE_RETRY
-#include <utility>                               // for pair
+#include "H5Support.hpp"                          // for create_datatype
+#include "datasetManager.hpp"                     // for datasetManager, dset_id_t
+#include "datasetState.hpp"                       // for eigenvalueState, freqState, inputState
+#include "visBuffer.hpp"                          // for VisFrameView
+#include "visUtil.hpp"                            // for time_ctype, cfloat, freq_ctype, input_c...
+#include "fmt.hpp"                                // for format, compile_string_to_view, fmt
+#include "gsl-lite.hpp"                           // for span
 
 using namespace HighFive;
 

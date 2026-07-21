@@ -1,20 +1,20 @@
 #ifndef N2_FRAME_DESC_HPP
 #define N2_FRAME_DESC_HPP
 
-#include "Config.hpp"    // for Config
-#include "FrameDesc.hpp" // for FrameDesc
-#include "N2Layout.hpp"  // for N2Layout
-#include "N2Util.hpp"    // for prod_ctype
-#include "Symbol.hpp"    // for Symbol
+#include <stddef.h>       // for size_t
+#include <stdint.h>       // for uint32_t, int32_t, uint16_t
+#include <algorithm>      // for max
+#include <map>            // for map, operator!=, _Rb_tree_const_iterator
+#include <utility>        // for pair
+#include <vector>         // for vector
+#include <iosfwd>         // for ostream
+#include <string>         // for string
 
-#include <algorithm> // for max
-#include <iosfwd>    // for ostream
-#include <map>       // for map, operator!=, _Rb_tree_const_iterator
-#include <stddef.h>  // for size_t
-#include <stdint.h>  // for uint32_t, int32_t, uint16_t
-#include <string>    // for string
-#include <utility>   // for pair
-#include <vector>    // for vector
+#include "Config.hpp"     // for Config
+#include "FrameDesc.hpp"  // for FrameDesc
+#include "N2Layout.hpp"   // for N2Layout
+#include "N2Util.hpp"     // for prod_ctype
+#include "Symbol.hpp"     // for Symbol
 
 namespace kotekan {
 

@@ -18,13 +18,13 @@
 #include <condition_variable> // for condition_variable
 #include <cstdint>            // for uint32_t, uint64_t
 #include <functional>         // for function
-#include <map>                // for map
-#include <mutex>              // for mutex
-#include <string>             // for string
-#include <thread>             // for thread
-#include <tuple>              // for tuple
-#include <utility>            // for pair
-#include <vector>             // for vector
+#include <map>        // for map
+#include <mutex>      // for mutex
+#include <string>     // for string
+#include <thread>     // for thread
+#include <tuple>      // for tuple
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 /**
  * @brief Compress visibility data by stacking together equivalent baselines.

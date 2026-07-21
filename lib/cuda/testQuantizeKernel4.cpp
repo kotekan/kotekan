@@ -1,29 +1,28 @@
 // Test 4-bit FRB beam quantizer for CHORD
 
-#include "Config.hpp"              // for Config
-#include "DataType.hpp"            // for int4x2_t, float16_t
-#include "Stage.hpp"               // for Stage
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
-#include "bufferContainer.hpp"     // for bufferContainer
-#include "cudaQuantizeKernel4.hpp" // for cpu_quantize4, gpu_quantize4
-#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "cuda_fp16.h"             // for __half, __half::operator float
-#include "cuda_runtime.h"          // for cudaMalloc
-#include "cuda_runtime_api.h"      // for cudaMemcpy
-#include "driver_types.h"          // for cudaMemcpyKind
-#include "errors.h"                // for TEST_PASSED
-#include "kotekanLogging.hpp"      // for FATAL_ERROR, INFO
+#include <algorithm>                // for fill, fill_n
+#include <cassert>                  // for assert
+#include <cfloat>                   // for FLT_MAX
+#include <cmath>                    // for fabs, isfinite, fmax, isnan, fmin, sqrt
+#include <cstdlib>                  // for abort
+#include <string>                   // for allocator, string
+#include <vector>                   // for vector
+#include <functional>               // for function
 
-#include "fmt.hpp" // for compile_string_to_view
-
-#include <algorithm>  // for fill, fill_n
-#include <cassert>    // for assert
-#include <cfloat>     // for FLT_MAX
-#include <cmath>      // for fabs, isfinite, fmax, isnan, fmin, sqrt
-#include <cstdlib>    // for abort
-#include <functional> // for function
-#include <string>     // for allocator, string
-#include <vector>     // for vector
+#include "Config.hpp"               // for Config
+#include "DataType.hpp"             // for int4x2_t, float16_t
+#include "Stage.hpp"                // for Stage
+#include "StageFactory.hpp"         // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp"      // for bufferContainer
+#include "cudaQuantizeKernel4.hpp"  // for cpu_quantize4, gpu_quantize4
+#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
+#include "cuda_fp16.h"              // for __half, __half::operator float
+#include "cuda_runtime.h"           // for cudaMalloc
+#include "cuda_runtime_api.h"       // for cudaMemcpy
+#include "driver_types.h"           // for cudaMemcpyKind
+#include "errors.h"                 // for TEST_PASSED
+#include "fmt.hpp"                  // for compile_string_to_view
+#include "kotekanLogging.hpp"       // for FATAL_ERROR, INFO
 
 class testQuantizeKernel4 : public kotekan::Stage {
 public:

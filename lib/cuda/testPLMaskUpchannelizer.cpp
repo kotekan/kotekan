@@ -2,15 +2,15 @@
 // reference on the same made-up data and compares them bit-for-bit. This tests the kernel only; it
 // does NOT exercise the kotekan ring-buffer / pipeline integration. Modeled on testQuantizeKernel8.
 
-#include "Config.hpp"                  // for Config
-#include "Stage.hpp"                   // for Stage
-#include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
-#include "bufferContainer.hpp"         // for bufferContainer
-#include "cudaPLMaskUpchannelizer.hpp" // for launch_upchannelize_pl_mask, cpu_upchannelize_pl_mask
-#include "cudaUtils.hpp"               // for CHECK_CUDA_ERROR
-#include "cuda_runtime.h"              // for cudaMalloc, cudaMemcpy, ...
-#include "errors.h"                    // for TEST_PASSED
-#include "kotekanLogging.hpp"          // for FATAL_ERROR, INFO
+#include "Config.hpp"                   // for Config
+#include "Stage.hpp"                    // for Stage
+#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "cudaPLMaskUpchannelizer.hpp"  // for launch_upchannelize_pl_mask, cpu_upchannelize_pl_mask
+#include "cudaUtils.hpp"                // for CHECK_CUDA_ERROR
+#include "cuda_runtime.h"               // for cudaMalloc, cudaMemcpy, ...
+#include "errors.h"                     // for TEST_PASSED
+#include "kotekanLogging.hpp"           // for FATAL_ERROR, INFO
 
 #include <cstddef>    // for ptrdiff_t
 #include <cstdint>    // for uint64_t
@@ -38,9 +38,8 @@ public:
 
         std::mt19937_64 rng(0x9e3779b97f4a7c15ULL);
 
-        // Inner (fast) element count per frequency, a power of two (= num_polarizations *
-        // num_dishes/8). Kept small here (real configs are larger) so the naive CPU oracle stays
-        // cheap.
+        // Inner (fast) element count per frequency, a power of two (= num_polarizations * num_dishes/8).
+        // Kept small here (real configs are larger) so the naive CPU oracle stays cheap.
         const ptrdiff_t num_elements = 4;
 
         // Run one test case: invent input [size_in][num_frequencies][num_elements], run GPU + CPU,
@@ -59,10 +58,8 @@ public:
                 FATAL_ERROR("test misconfigured: num_out_words {} > size_out {}", num_out_words,
                             size_out);
 
-            const ptrdiff_t n_inner =
-                ptrdiff_t(Fmax - Fmin) * num_elements; // inner positions written
-            const ptrdiff_t out_stride =
-                num_frequencies_out * num_elements; // output per-row stride
+            const ptrdiff_t n_inner = ptrdiff_t(Fmax - Fmin) * num_elements; // inner positions written
+            const ptrdiff_t out_stride = num_frequencies_out * num_elements; // output per-row stride
             const ptrdiff_t in_count = size_in * num_frequencies * num_elements;
             const ptrdiff_t out_count = size_out * out_stride;
 
@@ -82,8 +79,8 @@ public:
             uint64_t* d_out = nullptr;
             CHECK_CUDA_ERROR(cudaMalloc(&d_in, in_count * sizeof(uint64_t)));
             CHECK_CUDA_ERROR(cudaMalloc(&d_out, out_count * sizeof(uint64_t)));
-            CHECK_CUDA_ERROR(
-                cudaMemcpy(d_in, h_in.data(), in_count * sizeof(uint64_t), cudaMemcpyHostToDevice));
+            CHECK_CUDA_ERROR(cudaMemcpy(d_in, h_in.data(), in_count * sizeof(uint64_t),
+                                        cudaMemcpyHostToDevice));
             CHECK_CUDA_ERROR(cudaMemset(d_out, 0, out_count * sizeof(uint64_t)));
 
             launch_upchannelize_pl_mask(d_out, d_in, num_elements, num_frequencies,
@@ -122,15 +119,14 @@ public:
 
         // Test cases: every U; a couple of frequency sub-ranges (full, and an offset/over-allocated
         // one); an offset geometry and one that forces an output-ring wrap; two bit densities.
-        // Data dimensions are deliberately small so the naive CPU oracle stays cheap; this
-        // preserves full logical coverage (the exhaustive cross-product is covered by an off-line
-        // host test against the same CPU reference).
+        // Data dimensions are deliberately small so the naive CPU oracle stays cheap; this preserves
+        // full logical coverage (the exhaustive cross-product is covered by an off-line host test
+        // against the same CPU reference).
         const int factors[] = {2, 4, 8, 16, 32, 64, 128};
         // {num_frequencies_in, Fmin, Fmax, num_frequencies_out}
         const ptrdiff_t ranges[][4] = {
-            {8, 0, 8, 8}, // full range, output not over-allocated
-            {9, 2, 6,
-             16}, // offset interior, non-power-of-2 nfreq_in; over-allocated (writes 4 of 16)
+            {8, 0, 8, 8},   // full range, output not over-allocated
+            {9, 2, 6, 16},  // offset interior, non-power-of-2 nfreq_in; over-allocated (writes 4 of 16)
         };
         // {size_in, pos_in, size_out, pos_out}
         const ptrdiff_t geoms[][4] = {

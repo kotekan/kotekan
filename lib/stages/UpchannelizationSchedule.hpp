@@ -1,15 +1,15 @@
 #ifndef UPCHANNELIZATION_SCHEDULE_H
 #define UPCHANNELIZATION_SCHEDULE_H
 
-#include "Config.hpp"         // for Config
-#include "kotekanLogging.hpp" // for kotekanLogging
+#include <assert.h>            // for assert
+#include <map>                 // for map
+#include <set>                 // for set
+#include <string>              // for basic_string, string
+#include <vector>              // for vector
+#include <cstddef>             // for size_t
 
-#include <assert.h> // for assert
-#include <cstddef>  // for size_t
-#include <map>      // for map
-#include <set>      // for set
-#include <string>   // for basic_string, string
-#include <vector>   // for vector
+#include "Config.hpp"          // for Config
+#include "kotekanLogging.hpp"  // for kotekanLogging
 
 class UpchannelizationSchedule : kotekan::kotekanLogging {
     // Some terminology:

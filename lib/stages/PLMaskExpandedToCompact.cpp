@@ -1,6 +1,8 @@
 #include "PLMaskExpandedToCompact.hpp"
 
 #include "Config.hpp"   // for Config
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for DataType
 #include "DataType.hpp" // for DataType
 #include "NDArray.hpp"
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE

@@ -1,29 +1,28 @@
 #include "gpuProcess.hpp"
 
-#include "Config.hpp"             // for Config
-#include "gpuCommand.hpp"         // for gpuCommand, gpuCommandType
-#include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
-#include "gpuEventContainer.hpp"  // for gpuEventContainer
-#include "kotekanLogging.hpp"     // for DEBUG2, INFO
-#include "restServer.hpp"         // for restServer, connectionInstance
-#include "util.h"                 // for e_time
-#include "visUtil.hpp"            // for StatTracker
+#include <assert.h>                // for assert
+#include <pthread.h>               // for pthread_setaffinity_np
+#include <sched.h>                 // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <sys/types.h>             // for uint
+#include <cmath>                   // for isnan
+#include <functional>              // for bind, ref, function, _1
+#include <map>                     // for operator!=, map, _Rb_tree_const_iterator, _Rb_tree_ite...
+#include <memory>                  // for __shared_ptr_access, shared_ptr
+#include <set>                     // for set
+#include <sstream>                 // for basic_ostringstream, basic_ostream, ostringstream
+#include <tuple>                   // for get, tuple
+#include <utility>                 // for pair
 
-#include "fmt.hpp"  // for format, compile_string_to_view, format_string, fmt
-#include "json.hpp" // for json_ref, basic_json, json, iter_impl
-
-#include <assert.h>    // for assert
-#include <cmath>       // for isnan
-#include <functional>  // for bind, ref, function, _1
-#include <map>         // for operator!=, map, _Rb_tree_const_iterator, _Rb_tree_ite...
-#include <memory>      // for __shared_ptr_access, shared_ptr
-#include <pthread.h>   // for pthread_setaffinity_np
-#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <set>         // for set
-#include <sstream>     // for basic_ostringstream, basic_ostream, ostringstream
-#include <sys/types.h> // for uint
-#include <tuple>       // for get, tuple
-#include <utility>     // for pair
+#include "Config.hpp"              // for Config
+#include "gpuCommand.hpp"          // for gpuCommand, gpuCommandType
+#include "gpuDeviceInterface.hpp"  // for gpuDeviceInterface
+#include "gpuEventContainer.hpp"   // for gpuEventContainer
+#include "kotekanLogging.hpp"      // for DEBUG2, INFO
+#include "restServer.hpp"          // for restServer, connectionInstance
+#include "util.h"                  // for e_time
+#include "visUtil.hpp"             // for StatTracker
+#include "fmt.hpp"                 // for format, compile_string_to_view, format_string, fmt
+#include "json.hpp"                // for json_ref, basic_json, json, iter_impl
 
 using kotekan::bufferContainer;
 using kotekan::Config;

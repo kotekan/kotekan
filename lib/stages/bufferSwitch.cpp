@@ -1,22 +1,21 @@
 #include "bufferSwitch.hpp"
 
-#include "Config.hpp"          // for Config
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "configUpdater.hpp"   // for configUpdater
-#include "kotekanLogging.hpp"  // for WARN
-#include "visUtil.hpp"         // for frameID
+#include <exception>            // for exception
+#include <functional>           // for bind, _1, function
+#include <stdexcept>            // for runtime_error
+#include <tuple>                // for tuple, get
+#include <utility>              // for pair
+#include <vector>               // for vector
 
-#include "fmt.hpp"  // for compile_string_to_view, format, fmt
-#include "json.hpp" // for basic_json, json, iter_impl
-
-#include <exception>  // for exception
-#include <functional> // for bind, _1, function
-#include <stdexcept>  // for runtime_error
-#include <tuple>      // for tuple, get
-#include <utility>    // for pair
-#include <vector>     // for vector
+#include "Config.hpp"           // for Config
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "configUpdater.hpp"    // for configUpdater
+#include "kotekanLogging.hpp"   // for WARN
+#include "visUtil.hpp"          // for frameID
+#include "fmt.hpp"              // for compile_string_to_view, format, fmt
+#include "json.hpp"             // for basic_json, json, iter_impl
 
 using nlohmann::json;
 using namespace std::placeholders;

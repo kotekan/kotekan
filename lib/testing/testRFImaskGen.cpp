@@ -66,7 +66,7 @@ class testRFImaskGen : public Stage {
 public:
     testRFImaskGen(Config& config, const std::string& unique_name,
                    bufferContainer& buffer_container);
-    ~testRFImaskGen(){};
+    ~testRFImaskGen() {};
     void main_thread() override;
 
 private:

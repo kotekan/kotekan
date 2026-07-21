@@ -1,6 +1,6 @@
 #include <Symbol.hpp>
-#include <json.hpp>  // for json, basic_json
-#include <stdexcept> // for invalid_argument
+#include <json.hpp>   // for json, basic_json
+#include <stdexcept>  // for invalid_argument
 
 namespace kotekan {
 
