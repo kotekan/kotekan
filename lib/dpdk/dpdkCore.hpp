@@ -14,22 +14,23 @@
 // break with "templates must have C++ linkage".
 extern "C" {
 // IWYU pragma: begin_keep
-#include <rte_ethdev.h>         // for rte_eth_conf
-#include <rte_ring_core.h>      // for rte_ring
+#include <rte_ethdev.h>    // for rte_eth_conf
+#include <rte_ring_core.h> // for rte_ring
 // cinttypes needed by some CentOS systems.
-#include <cinttypes>            // for uint32_t, int32_t, uint8_t
+#include <cinttypes> // for uint32_t, int32_t, uint8_t
 // IWYU pragma: end_keep
 }
 
-#include <atomic>               // for atomic
-#include <string>               // for string, allocator, basic_string
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for kotekanLogging
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for kotekanLogging
-#include "fmt.hpp"              // for format
+#include "fmt.hpp" // for format
+
+#include <atomic> // for atomic
+#include <string> // for string, allocator, basic_string
+#include <vector> // for vector
 
 /**
  * @brief Abstract object for processing packets that come from a given NIC port

@@ -26,8 +26,9 @@
 //     uint64 pl_mask_exp_U[ringbuf_size_out_64][num_frequencies_out][num_elements]   (output)
 //
 // This processes input frequency channels [Fmin, Fmax) and writes them to output channels
-// [0, Fmax-Fmin). The output buffer may over-allocate frequencies (num_frequencies_out >= Fmax-Fmin);
-// the unwritten channels are left untouched. Logical input row `r` lives at physical row
+// [0, Fmax-Fmin). The output buffer may over-allocate frequencies (num_frequencies_out >=
+// Fmax-Fmin); the unwritten channels are left untouched. Logical input row `r` lives at physical
+// row
 // `(ringbuf_pos_in_64 + r) % ringbuf_size_in_64`; likewise for the output.
 //
 //   pl_mask_exp_U      - output buffer (upchannelized mask)
@@ -48,12 +49,13 @@ void launch_upchannelize_pl_mask(std::uint64_t* pl_mask_exp_U, const std::uint64
                                  std::ptrdiff_t num_elements, std::ptrdiff_t num_frequencies_in,
                                  std::ptrdiff_t num_frequencies_out, int Fmin, int Fmax,
                                  std::ptrdiff_t num_times_64, std::ptrdiff_t ringbuf_size_in_64,
-                                 std::ptrdiff_t ringbuf_pos_in_64, std::ptrdiff_t ringbuf_size_out_64,
+                                 std::ptrdiff_t ringbuf_pos_in_64,
+                                 std::ptrdiff_t ringbuf_size_out_64,
                                  std::ptrdiff_t ringbuf_pos_out_64, int U, cudaStream_t stream);
 
 // CPU reference for `launch_upchannelize_pl_mask` (same arguments, minus the CUDA stream). This is
-// the slow, straightforward, "obviously correct" version used to validate the GPU kernel; if the GPU
-// kernel disagrees with it, the GPU kernel is wrong.
+// the slow, straightforward, "obviously correct" version used to validate the GPU kernel; if the
+// GPU kernel disagrees with it, the GPU kernel is wrong.
 void cpu_upchannelize_pl_mask(std::uint64_t* pl_mask_exp_U, const std::uint64_t* pl_mask_exp,
                               std::ptrdiff_t num_elements, std::ptrdiff_t num_frequencies_in,
                               std::ptrdiff_t num_frequencies_out, int Fmin, int Fmax,

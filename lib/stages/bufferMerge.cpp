@@ -1,19 +1,20 @@
 #include "bufferMerge.hpp"
 
-#include <assert.h>             // for assert
-#include <cstring>              // for memcpy
-#include <functional>           // for bind, function
-#include <stdexcept>            // for invalid_argument, runtime_error
-#include <memory>               // for shared_ptr
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO, DEBUG2, FATAL_ERROR
+#include "visUtil.hpp"         // for frameID, current_time, double_to_ts, modulo
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for INFO, DEBUG2, FATAL_ERROR
-#include "visUtil.hpp"          // for frameID, current_time, double_to_ts, modulo
-#include "fmt.hpp"              // for compile_string_to_view, format, fmt
-#include "json.hpp"             // for json, basic_json, iter_impl
+#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "json.hpp" // for json, basic_json, iter_impl
+
+#include <assert.h>   // for assert
+#include <cstring>    // for memcpy
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr
+#include <stdexcept>  // for invalid_argument, runtime_error
 
 using nlohmann::json;
 

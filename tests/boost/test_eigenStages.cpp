@@ -352,8 +352,7 @@ BOOST_AUTO_TEST_CASE(eigenVisIter_vis_buffers) {
 // The test verifies that both pipelines complete and that each one's
 // eigendecomposition results match the single-pipeline tolerances.
 static std::pair<EigenResults, EigenResults>
-run_n2_pipeline_pair(const EigenStageTestParams& params_a,
-                     const EigenStageTestParams& params_b) {
+run_n2_pipeline_pair(const EigenStageTestParams& params_a, const EigenStageTestParams& params_b) {
     ensure_fakevis_patterns_registered();
     ensure_n2metadata_registered();
     BOOST_REQUIRE_EQUAL(params_a.num_elements, params_b.num_elements);
@@ -429,23 +428,22 @@ run_n2_pipeline_pair(const EigenStageTestParams& params_a,
     datasetManager::instance(conf);
 
     // Shared buffer metadata; both pipelines have the same shape.
-    const size_t num_prod = kotekan::N2FrameDesc::get_num_prod(
-        params_a.num_elements, N2Layout::FullUpperTri);
-    const size_t frame_size = kotekan::N2FrameDesc::calculate_frame_size(
-        params_a.num_elements, params_a.num_ev, num_prod);
-    auto pool = metadataPool::create(
-        2 * params_a.total_frames + 8, sizeof(N2Metadata), "n2_pool", "N2Metadata");
-    auto n2_desc = std::make_shared<kotekan::N2FrameDesc>(
-        params_a.num_elements, params_a.num_ev, num_prod, N2Layout::FullUpperTri);
+    const size_t num_prod =
+        kotekan::N2FrameDesc::get_num_prod(params_a.num_elements, N2Layout::FullUpperTri);
+    const size_t frame_size = kotekan::N2FrameDesc::calculate_frame_size(params_a.num_elements,
+                                                                         params_a.num_ev, num_prod);
+    auto pool = metadataPool::create(2 * params_a.total_frames + 8, sizeof(N2Metadata), "n2_pool",
+                                     "N2Metadata");
+    auto n2_desc = std::make_shared<kotekan::N2FrameDesc>(params_a.num_elements, params_a.num_ev,
+                                                          num_prod, N2Layout::FullUpperTri);
 
     kotekan::bufferContainer bc;
     for (auto& s : sides) {
-        s.in_buf = std::make_unique<Buffer>(
-            s.params.total_frames, frame_size, pool, s.in_buf_name, "N2", 0,
-            false, false, std::vector<int>{}, true);
-        s.out_buf = std::make_unique<Buffer>(
-            s.params.total_frames, frame_size, pool, s.out_buf_name, "N2", 0,
-            false, false, std::vector<int>{}, true);
+        s.in_buf = std::make_unique<Buffer>(s.params.total_frames, frame_size, pool, s.in_buf_name,
+                                            "N2", 0, false, false, std::vector<int>{}, true);
+        s.out_buf =
+            std::make_unique<Buffer>(s.params.total_frames, frame_size, pool, s.out_buf_name, "N2",
+                                     0, false, false, std::vector<int>{}, true);
         s.in_buf->ensure_frame_desc(n2_desc);
         s.out_buf->ensure_frame_desc(n2_desc);
         bc.add_buffer(s.in_buf_name, s.in_buf.get());
@@ -455,16 +453,17 @@ run_n2_pipeline_pair(const EigenStageTestParams& params_a,
     }
 
     for (auto& s : sides) {
-        s.eigen_stage =
-            std::make_unique<EigenN2Iter>(conf, "/" + s.eigen_name, bc);
+        s.eigen_stage = std::make_unique<EigenN2Iter>(conf, "/" + s.eigen_name, bc);
         s.fake_stage = std::make_unique<FakeN2>(conf, "/" + s.fake_name, bc);
     }
 
     // Start everything before waiting so both eigen stages spin up before
     // either has finished its frames — this is what reliably causes both
     // stages to be inside Blaze SMP code at the same time.
-    for (auto& s : sides) s.eigen_stage->start();
-    for (auto& s : sides) s.fake_stage->start();
+    for (auto& s : sides)
+        s.eigen_stage->start();
+    for (auto& s : sides)
+        s.fake_stage->start();
 
     auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
     auto done = [&]() {
@@ -504,16 +503,17 @@ run_n2_pipeline_pair(const EigenStageTestParams& params_a,
         for (size_t f = 0; f < p.total_frames; ++f) {
             N2FrameView fv(&out, f);
             r.eval0.push_back(fv.eval[0]);
-            if (p.num_ev > 1) r.eval1.push_back(fv.eval[1]);
+            if (p.num_ev > 1)
+                r.eval1.push_back(fv.eval[1]);
             r.erms.push_back(fv.erms);
             std::vector<std::complex<float>> evec(fv.num_elements);
-            for (size_t i = 0; i < fv.num_elements; ++i) evec[i] = fv.evec[i];
+            for (size_t i = 0; i < fv.num_elements; ++i)
+                evec[i] = fv.evec[i];
             r.evec0.emplace_back(std::move(evec));
         }
         return r;
     };
-    return {collect(*sides[0].out_buf, params_a),
-            collect(*sides[1].out_buf, params_b)};
+    return {collect(*sides[0].out_buf, params_a), collect(*sides[1].out_buf, params_b)};
 }
 
 BOOST_AUTO_TEST_CASE(eigenN2Iter_concurrent_pipelines) {

@@ -66,7 +66,7 @@ class testLostCountsGen : public Stage {
 public:
     testLostCountsGen(Config& config, const std::string& unique_name,
                       bufferContainer& buffer_container);
-    ~testLostCountsGen() {};
+    ~testLostCountsGen(){};
     void main_thread() override;
 
 private:

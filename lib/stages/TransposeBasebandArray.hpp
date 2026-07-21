@@ -1,14 +1,14 @@
 #ifndef TRANSPOSE_BASEBAND_ARRAY_HPP
 #define TRANSPOSE_BASEBAND_ARRAY_HPP
 
-#include <stddef.h>             // for size_t
-#include <cstdint>              // for uint8_t, uint32_t
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
+#include <cstdint>  // for uint8_t, uint32_t
+#include <stddef.h> // for size_t
+#include <string>   // for string
 
 /**
  * @class TransposeBasebandArray

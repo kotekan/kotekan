@@ -280,7 +280,7 @@ public:
             }
             (*(DataSetCreateProps*)&props).add(Chunking(chunk_dims));
 
-            if(use_compression) {
+            if (use_compression) {
                 // // Enable compression
                 // constexpr int blosc_compression_level = 9;
                 // const std::vector<unsigned int> blosc_flags{
@@ -296,8 +296,8 @@ public:
                     BITSHUFFLE_COMPRESS_ZSTD,
                     bitshuffle_compression_level,
                 };
-                props.add(H5Pset_filter, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY, bitshuffle_flags.size(),
-                          bitshuffle_flags.data());
+                props.add(H5Pset_filter, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
+                          bitshuffle_flags.size(), bitshuffle_flags.data());
             }
 
             // Create dataset
