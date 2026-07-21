@@ -48,28 +48,34 @@ def fetch_brdc(when=None, cache_dir=CACHE):
     Tries today's streamed file then falls back a day (files appear with some latency)."""
     os.makedirs(cache_dir, exist_ok=True)
     when = when or datetime.now(timezone.utc)
-    newest = None  # freshest existing cache, used as a last-good fallback (see the raise)
+    # Process each DAY fully -- fresh cache, then (re-)download, then a STALE same-day cache --
+    # BEFORE falling back to the previous day. This ordering is load-bearing: a current-day
+    # file predicts even hours stale (its toe's still bracket "now"), but YESTERDAY's file
+    # predicts NOTHING today (all toe's > best_eph's 4 h window -> predict_all returns 0 ->
+    # the broker seeds/hints nothing -> the require_hint search goes dark on every band).
+    # The old code returned a cached yesterday file (back==1) UNCONDITIONALLY the moment a
+    # current-day re-fetch failed, handing the broker a dead-on-arrival ephemeris during a
+    # BRDC-server outage (2026-07-21: whole node stopped acquiring while today's valid file
+    # sat one line up in the cache). Fix: only fall to the previous day when THIS day yields
+    # nothing at all -- not merely because its re-download failed.
     for back in (0, 1):
         d = when - timedelta(days=back)
         doy = d.timetuple().tm_yday
+        locals_ = []
         for kind in ("S", "R"):
             name = "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, d.year, doy)
-            local = os.path.join(cache_dir, name)
-            if os.path.exists(local) and (newest is None
-                                          or os.path.getmtime(local) > os.path.getmtime(newest)):
-                newest = local
-            # Current-day files (back == 0) GROW through the day, so a cached copy goes stale:
-            # its newest toe ages out of best_eph's 4 h window after a few hours and predict_all
-            # returns NOTHING (measured 2026-07-15: a 10.8 h-old cache -> 0 visible sats -> the
-            # observables' el/az/range all None). Re-fetch a current-day cache older than 2 h,
-            # for BOTH kinds -- the old `kind == "R"` unconditional-cache assumed R was the final
-            # (immutable) file, but a current-day R is provisional and still growing. Yesterday's
-            # file (back == 1) IS final, so cache it unconditionally.
+            locals_.append(os.path.join(cache_dir, name))
+        # 1) a FRESH current-day cache (< 2 h) or ANY cached previous-day file (final/immutable)
+        #    is usable as-is, no network needed.
+        for local in locals_:
             if os.path.exists(local) and (back == 1
                                           or time.time() - os.path.getmtime(local) < 7200):
                 return local
+        # 2) (re-)download this day (current-day files GROW through the day, so refresh a stale
+        #    cache to pull the newest toe's).
+        for local in locals_:
             url = ("https://igs.bkg.bund.de/root_ftp/IGS/BRDC/%04d/%03d/%s"
-                   % (d.year, doy, name))
+                   % (d.year, doy, os.path.basename(local)))
             try:
                 with urllib.request.urlopen(url, timeout=30) as r:
                     data = r.read()
@@ -77,12 +83,12 @@ def fetch_brdc(when=None, cache_dir=CACHE):
                 return local
             except Exception:
                 continue
-    # Every download failed. A STALE cache beats None: a geometry caller with a widened
-    # toe window still gets az/el from it, and the retry keeps trying for fresh data.
-    # (2026-07-20: a transient outage that raised here left a logger geometry-blind for
-    # hours -- eph stayed None while good data sat one directory over.)
-    if newest is not None:
-        return newest
+        # 3) download failed but a STALE same-day cache exists -> use it (still predicts) rather
+        #    than falling to the previous day's dead-for-today ephemeris.
+        for local in locals_:
+            if os.path.exists(local):
+                return local
+        # nothing for this day at all -> fall back to the previous day (early-UTC-morning case).
     raise RuntimeError("no BRDC file reachable (network?) and no cache")
 
 
