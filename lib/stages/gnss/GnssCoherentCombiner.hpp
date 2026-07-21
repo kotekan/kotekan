@@ -156,6 +156,17 @@ private:
     bool carrier_raw() const {
         return _carrier_pilot && _secondary.empty() && _l1co.empty();
     }
+    /// Overlay chip sequence for a PRN: the per-PRN table (B1C/E5a/B2a/L1CO) if populated,
+    /// else the shared secondary (L5 NH); nullptr when this combiner wipes no known overlay
+    /// (data signals / navwipe). The ADR path uses it to de-rotate the overlay LINEARLY (a
+    /// plain cross-record product) instead of squaring it away -- squaring doubles the
+    /// carrier-phase noise and, at the low per-record SNR of the 1 ms L5-band records, is the
+    /// L5-leg TEC scatter (see docs/tec_error_budget). Same dispatch as the emit-time wipe.
+    const std::vector<int8_t>* overlay_for(int prn) const {
+        if (!_l1co.empty())
+            return (prn >= 1 && prn <= (int)_l1co.size()) ? &_l1co[(size_t)(prn - 1)] : nullptr;
+        return _secondary.empty() ? nullptr : &_secondary;
+    }
     bool _auto_coherence;           ///< deep wipe over an octave ladder of trailing sub-windows,
                                     ///< keep the best -> integrate as deep as the clock coheres
     std::vector<std::vector<std::complex<double>>> _navbuf; ///< per-PRN per-record A over the window
@@ -228,6 +239,15 @@ private:
     std::vector<int> _dr_phase;   ///< dead-reckon anchor: overlay phase at _dr_utc (-1 = none)
     std::vector<double> _dr_utc;  ///< dead-reckon anchor capture-UTC (the winning rung's start)
     std::vector<int> _dr_prn;     ///< PRN the anchor belongs to (slot reassignment invalidates)
+    std::vector<double> _dr_rec_dt; ///< record period (s) measured at the anchor emit -- projects
+                                    ///< the overlay chip index of any LATER record so the ADR path
+                                    ///< can de-rotate the overlay per-record (accumulation time,
+                                    ///< before the next emit's alignment search). 0 = no anchor yet.
+    // ADR overlay-wipe path: the previous record's overlay-corrected (de-rotated) amplitude,
+    // so consecutive records form a PLAIN product (no squaring). Reduces to the squared path
+    // whenever no anchor is available (arc start before the first locked emit, or a re-seed).
+    std::vector<std::complex<double>> _adr_vprev;
+    std::vector<uint8_t> _adr_vprev_ok; ///< _adr_vprev is valid + continuous with this record
     std::vector<int> _st_deep_rec; ///< records in the chosen deep window (= full window unless the
                                    ///< auto-coherence ladder found a shorter, more coherent one)
 

@@ -138,6 +138,9 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _dr_phase.assign(_n_prn, -1);
     _dr_utc.assign(_n_prn, 0.0);
     _dr_prn.assign(_n_prn, -1);
+    _dr_rec_dt.assign(_n_prn, 0.0);
+    _adr_vprev.assign(_n_prn, std::complex<double>(0.0, 0.0));
+    _adr_vprev_ok.assign(_n_prn, 0);
     _st_deep_rec.assign(_n_prn, 0);
 
     // nh time-assist: only meaningful for a per-PRN overlay pilot (B1C/E5a/B2a: _l1co populated),
@@ -255,6 +258,36 @@ void GnssCoherentCombiner::main_thread() {
                 // would alias the product). Squared for data signals, plain for pilots.
                 const std::complex<double> A(ar, ai);
                 const double dt_c = utc_p - car_prev_utc[p];
+                // ADR overlay-wipe (the L5-leg TEC fix): for an overlay pilot with a LOCKED
+                // alignment, de-rotate the KNOWN secondary linearly rather than squaring it
+                // away. The dead-reckon anchor (_dr_phase at _dr_utc, chip/period) projects
+                // this record's absolute overlay index; the wipe is SEGMENTED at the code-
+                // period boundary inside the record (head chip k, tail chip k+1 -- same
+                // convention as overlay_wipe), so straddling records don't cancel. The
+                // resulting v is overlay-free, and consecutive v form a PLAIN cross-record
+                // product for the ADR increment: no squaring, no 2x phase-noise / low-SNR
+                // noise-fold that made the L5-band ADR ~44x noisier than L2C. Until the first
+                // locked emit pins the anchor (or after a re-seed), v_ok is false and the ADR
+                // falls back to the squared product below.
+                const int prn_p = (int)std::lround(ref[0]);
+                const std::vector<int8_t>* ov_adr = overlay_for(prn_p);
+                bool v_ok = false;
+                std::complex<double> v_cur(0.0, 0.0);
+                if (ov_adr && !ov_adr->empty() && energy > 0.0 && _dr_phase[p] >= 0
+                    && _dr_rec_dt[p] > 0.0 && _dr_prn[p] == prn_p) {
+                    const int L_ov = (int)ov_adr->size();
+                    const long long idx =
+                        (long long)std::llround((utc_p - _dr_utc[p]) / _dr_rec_dt[p]);
+                    const int k = (int)(((_dr_phase[p] + idx) % L_ov + L_ov) % L_ov);
+                    const double c0 = (double)(*ov_adr)[(size_t)k];
+                    const double c1 = (double)(*ov_adr)[(size_t)((k + 1) % L_ov)];
+                    // head (ahr/ahi) belongs to chip k, tail (A - head) to chip k+1; a tracker
+                    // that doesn't segment writes head == A (tail 0) -> whole-record de-rotate.
+                    const std::complex<double> H =
+                        h_energy > 0.0 ? std::complex<double>(ahr, ahi) : A;
+                    v_cur = H * c0 + (A - H) * c1;
+                    v_ok = true;
+                }
                 if (car_prev_utc[p] > 0.0 && dt_c > 0.0 && dt_c < 0.050) {
                     std::complex<double> prod = A * std::conj(car_prev[p]);
                     if (!carrier_raw()) // squared: cancels nav bits AND unwiped overlay chips
@@ -297,8 +330,16 @@ void GnssCoherentCombiner::main_thread() {
                         // 100 Hz trim clamp, carrying a persistent +12.9 Hz residual, and read
                         // +24.9 Hz off its predicted Doppler: 2 x 12.9. The same railed
                         // satellite exposed both sign conventions that six healthy ones hid.
-                        const double dres =
-                            std::arg(prod) / (2.0 * M_PI * (carrier_raw() ? 1.0 : 2.0));
+                        double dres;
+                        if (v_ok && _adr_vprev_ok[p]) {
+                            // Overlay wiped LINEARLY: the plain product of two overlay-free
+                            // records -> arg is the pure carrier increment, /1 (not /2). Same
+                            // r2c flip / subtraction convention as the squared branch below.
+                            const std::complex<double> vprod = v_cur * std::conj(_adr_vprev[p]);
+                            dres = std::arg(vprod) / (2.0 * M_PI);
+                        } else {
+                            dres = std::arg(prod) / (2.0 * M_PI * (carrier_raw() ? 1.0 : 2.0));
+                        }
                         _adr_cyc[p] += dcmd - dres;
                         // The commanded-trim increment (slot 19) rides the SAME arc
                         // lifecycle as the ADR it contaminates, so downstream can subtract
@@ -325,6 +366,12 @@ void GnssCoherentCombiner::main_thread() {
                 }
                 car_prev[p] = A;
                 car_prev_utc[p] = utc_p;
+                // Carry this record's overlay-corrected amplitude to the next record as the ADR
+                // wipe's previous. The dt_c gate + _adr_ok above enforce continuity, so the
+                // plain product only ever spans two contiguous records (a gap zeroes _adr_ok,
+                // routing the next record through arc-start, which skips the product).
+                _adr_vprev[p] = v_cur;
+                _adr_vprev_ok[p] = v_ok ? 1 : 0;
             }
             // Per-record phase dump (debug): raw despread A + E/L powers, one line per record.
             // Enough to reconstruct the intra-window phase trajectory offline (arg A, plus the
@@ -610,8 +657,13 @@ void GnssCoherentCombiner::main_thread() {
                         _dr_phase[p] = nh_phase[p];
                         _dr_utc[p] = ub[ub.size() - (size_t)deep_rec[p]];
                         _dr_prn[p] = (int)std::lround(ref_prn[p]);
+                        // Record period over the winning window (UTC-exact) -> the ADR wipe
+                        // projects any later record's overlay chip index from this anchor.
+                        _dr_rec_dt[p] = deep_rec[p] > 1
+                            ? (ub.back() - _dr_utc[p]) / (double)(deep_rec[p] - 1) : 0.0;
                     } else if (_dr_prn[p] != (int)std::lround(ref_prn[p])) {
                         _dr_phase[p] = -1; // slot reassigned to another sat: anchor invalid
+                        _dr_rec_dt[p] = 0.0;
                     }
                     if (full_len > 1 && ub.size() >= full_len) {
                         const double t0f = ub[ub.size() - full_len];
@@ -851,6 +903,8 @@ void GnssCoherentCombiner::main_thread() {
                             _dr_phase[p] = hph; // seed the anchor: future emits dead-reckon it
                             _dr_utc[p] = t0r;
                             _dr_prn[p] = prn;
+                            _dr_rec_dt[p] =
+                                dlen > 1 ? span / (double)(dlen - 1) : 0.0; // for the ADR wipe
                         }
                     }
                     if (!dbg.empty())
