@@ -147,7 +147,7 @@ void bufferBadInputs::main_thread() {
         // get an output frame; a null frame means kotekan is shutting down
         uint8_t* out_frame = (uint8_t*)out_buf->wait_for_empty_frame(unique_name, frame_id);
         if (out_frame == nullptr)
-            break;
+            return;
 
         // Copy from the permanent buffer
         uint64_t frame_num_bad_inputs;
