@@ -53,18 +53,52 @@ def load_obs(path, t_cut, min_sig, t1=None):
             d = json.loads(line)
         except Exception:
             continue
-        if d.get("t", 0) < t_cut or d.get("adr_cycles") is None:
+        t = d.get("t", 0)
+        if t < t_cut or d.get("adr_cycles") is None:
             continue
-        if t1 is not None and d.get("t", 0) > t1:
+        if t1 is not None and t > t1:
             continue
         if (d.get("sig") or 0) < min_sig:
             continue
-        # v2 (slot-19 export): the combiner ships the commanded-trim integral on the
-        # SAME arc as the ADR -- subtract exactly, no journal timing error. Rows
-        # without it (old brokers/logs) fall back to the journal path downstream.
-        out.setdefault(d["prn"], {})[round(d["t"], 1)] = (
-            d["adr_cycles"], d.get("trim_cycles"), d.get("adr_arc"))
+        # Keep the TRUE (unrounded) capture time + this band's Doppler: the two bands'
+        # airspys start independently, so their emit-epoch grids are offset by a sub-second
+        # constant (measured 2026-07-20: L2C at frac .92 vs L1/L5 .00 -> ZERO exact common
+        # epochs -> the flagship G:L1xL2C read "no arcs"). We resample band B onto band A's
+        # true epochs Doppler-aware downstream, so exact alignment is no longer required.
+        # v2 (slot-19 export): trim_cycles is the commanded-trim integral on the SAME arc.
+        out.setdefault(d["prn"], []).append(
+            (t, d["adr_cycles"], d.get("trim_cycles"), d.get("adr_arc"),
+             d.get("doppler_hz") or 0.0))
+    for v in out.values():
+        v.sort()
     return out
+
+
+def resample(pts, t, max_gap):
+    """Doppler-aware ADR (+trim, arc) of a band at an arbitrary time t. pts = sorted
+    (t, adr, trim, arc, dop). The carrier phase is dominated by the Doppler ramp, so we
+    integrate the (linearly-varying) Doppler for the model phase and linearly interpolate
+    ONLY the small model-removed residual: a sub-second inter-band epoch offset then costs
+    ~jerk*dt^3 (sub-milliTECU) instead of the naive-linear Doppler*dt (tens of TECU -- an
+    offset pair read 71 TECU under plain ADR interpolation). None outside a bracket or
+    across a gap > max_gap. arc/trim are taken from the nearer endpoint (arc is an integer
+    id -- never interpolate it)."""
+    import bisect
+    ts = [p[0] for p in pts]
+    j = bisect.bisect_right(ts, t) - 1
+    if j < 0 or j + 1 >= len(pts):
+        return None
+    t0, a0, _tr0, _ar0, d0 = pts[j]
+    t1_, a1, _tr1, _ar1, d1 = pts[j + 1]
+    span = t1_ - t0
+    if span <= 0 or span > max_gap:
+        return None
+    dt = t - t0
+    phi = d0 * dt + 0.5 * (d1 - d0) * dt * dt / span         # model carrier phase (cycles)
+    resid_end = a1 - a0 - 0.5 * (d0 + d1) * span             # model-removed residual at t1
+    adr = a0 + phi + resid_end * (dt / span)
+    near = j if dt <= span / 2 else j + 1
+    return adr, pts[near][2], pts[near][3]
 
 
 def load_trims(log, t_cut):
@@ -151,37 +185,47 @@ def main():
         oa, ob = (load_obs(fa, t_cut, args.min_sig, args.t1),
                   load_obs(fb, t_cut, args.min_sig, args.t1))
         ta_j, tb_j = load_trims(log_a, t_cut), load_trims(log_b, t_cut)
+        # Resample band B onto band A's TRUE epochs (Doppler-aware), ONCE per pair.
+        # rows: (t_a, adr_a, trim_a, arc_a, adr_b, trim_b, arc_b)
+        paired = {}
+        for prn in set(oa) & set(ob):
+            rows = []
+            for (t_a, adr_a, tr_a, ar_a, _d) in oa[prn]:
+                rb = resample(ob[prn], t_a, args.max_gap_s)
+                if rb is None:
+                    continue
+                rows.append((t_a, adr_a, tr_a, ar_a) + rb)
+            if len(rows) >= 10:
+                paired[prn] = rows
+
         results = {}
         for sign_a in (0, 1, -1):        # 0 = raw (no subtraction)
             tot = []
-            for prn in set(oa) & set(ob):
-                common_all = sorted(set(oa[prn]) & set(ob[prn]))
-                if len(common_all) < 10:
-                    continue
+            for prn, rows in paired.items():
                 # Split on COMBINER arc changes on either band (B1C's overlay re-anchors
                 # reset adr/trim mid-time-arc; subtracting a resetting counter across the
                 # boundary injects a step -- measured 2026-07-19: the C pair's subtraction
                 # went 3.8 -> 75 TECU until this split). Then treat each piece separately.
                 pieces, cur = [], []
                 prev_arcs = None
-                for t in common_all:
-                    arcs = (oa[prn][t][2], ob[prn][t][2])
+                for r in rows:
+                    arcs = (r[3], r[6])
                     if prev_arcs is not None and arcs != prev_arcs and cur:
                         pieces.append(cur)
                         cur = []
-                    cur.append(t)
+                    cur.append(r)
                     prev_arcs = arcs
                 if cur:
                     pieces.append(cur)
-                common = None  # (guard: the loop below iterates pieces)
-                for common in pieces:
-                    if len(common) < 10:
+                for piece in pieces:
+                    if len(piece) < 10:
                         continue
-                    ya = [oa[prn][t][0] for t in common]
-                    yb = [ob[prn][t][0] for t in common]
+                    common = [r[0] for r in piece]
+                    ya = [r[1] for r in piece]
+                    yb = [r[4] for r in piece]
                     if sign_a:
-                        ea = [oa[prn][t][1] for t in common]
-                        eb = [ob[prn][t][1] for t in common]
+                        ea = [r[2] for r in piece]
+                        eb = [r[5] for r in piece]
                         if all(v is not None for v in ea + eb):
                             ca, cb = ea, eb          # exact per-arc export (v2)
                         else:
