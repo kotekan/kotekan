@@ -175,6 +175,8 @@ def tracker_cmd(sh, chain, stream, per_chain_streams, first):
                  c=sh["notes"]["re_pin"] if first else None))
     cmd.append(E("fll_reacq_hz", trk["fll_reacq_hz"],
                  c=trk.get("note"), i=trk.get("note_inline")))
+    if "max_cover_bins" in trk:  # diagnostic channel-width trim (see cudaGnssTrack.hpp)
+        cmd.append(E("max_cover_bins", trk["max_cover_bins"], i=trk.get("max_cover_note")))
     cmd.append(E("cuda_stream", stream))
     cmd.append(E("gpu_mem_input", "gnss_chan_frame"))
     cmd.append(E("gpu_mem_output", gm_out))

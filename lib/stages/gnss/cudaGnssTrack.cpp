@@ -28,6 +28,8 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     const double f_offset = config.get_default<double>(unique_name, "f_offset", 0.0);
     capture_utc0 = config.get_default<double>(unique_name, "capture_utc0", 0.0);
     doppler_margin_hz = config.get_default<double>(unique_name, "doppler_margin_hz", 5000.0);
+    f_offset_hz = f_offset;
+    max_cover_bins = config.get_default<int>(unique_name, "max_cover_bins", 0);
     const int N = config.get<int>(unique_name, "spectrum_length");
     fft_len = 2 * N;
     chan_offset = config.get_default<int>(unique_name, "channel_offset", 0);
@@ -340,7 +342,20 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 continue;
             }
             // Covering channels at the seed Doppler (GLOBAL ids -> this subband's local set).
-            const auto cover = S.replica->covering_bins(dop[p], S.doppler_margin_hz);
+            auto cover = S.replica->covering_bins(dop[p], S.doppler_margin_hz);
+            // DIAGNOSTIC channel-width trim (max_cover_bins, 2026-07-21): keep only the N
+            // covering channels nearest the carrier IF -- the narrow-despread A/B for the
+            // L5-band ADR wander (wide 10.23 Mcps chains wander 20-50x vs the narrow chains
+            // at the SAME 1 ms record rate; this tests the cross-channel combining width).
+            if (S.max_cover_bins > 0 && (int)cover.size() > S.max_cover_bins) {
+                const double bin_w = S.sample_rate / (double)S.fft_len;
+                std::sort(cover.begin(), cover.end(), [&](int a, int b) {
+                    return std::fabs(a * bin_w - S.f_offset_hz)
+                           < std::fabs(b * bin_w - S.f_offset_hz);
+                });
+                cover.resize((size_t)S.max_cover_bins);
+                std::sort(cover.begin(), cover.end()); // restore natural channel order
+            }
             std::vector<int> local;
             uint64_t mask = 0;
             for (int ch : cover)

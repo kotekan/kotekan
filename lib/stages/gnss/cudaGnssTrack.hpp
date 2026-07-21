@@ -33,6 +33,10 @@ public:
     int n_prn = 0, n_chan = 0, chan_offset = 0, fft_len = 0, hops_per_record = 0;
     double sample_rate = 5e6, capture_utc0 = 0.0, doppler_margin_hz = 5000.0;
     double dll_spacing = 0.5, fll_reacq_hz = 200.0, max_anchor_age_s = 30.0;
+    double f_offset_hz = 0.0; ///< carrier IF (bin-distance reference for max_cover_bins)
+    int max_cover_bins = 0;   ///< DIAGNOSTIC (2026-07-21, L5 ADR-wander channel-width A/B):
+                              ///< despread on only the N covering channels nearest the
+                              ///< carrier. 0 (default) = the full covering set.
     long long ring_hops = 0; ///< multiple of hops_per_record (windows never straddle the wrap)
     bool quantized = false;  ///< input frames + device ring are CHORD 4+4b bytes (GnssQuantize44
                              ///< upstream); scales arrive via GnssChanMetadata::chan_scale

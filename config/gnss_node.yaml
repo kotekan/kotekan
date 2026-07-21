@@ -508,6 +508,12 @@ bands:
         tracker:
           fll_reacq_hz: 15.0
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous; alias limit 250 Hz at 1 ms)"
+          # DIAGNOSTIC (2026-07-21, ADR-wander channel-width A/B): despread GPS-L5 on only
+          # the 5 covering channels nearest the carrier (of ~10; symmetric about the IF bin)
+          # -- the narrow-signal geometry of the clean chains (C/A 2-3 ch, BOC 4-5 ch) at
+          # L5's chip rate. Costs ~2-3 dB C/N0. E5a/B2a stay FULL-width as in-capture
+          # controls. REMOVE with the phase_dump keys.
+          max_cover_bins: 5
         combiner:
           # phase_dump (2026-07-21, BOUNDED to 4 strong PRNs ~1.4 GB/h, unlike the 52 GB
           # all-PRN L1 dumps removed 07-20): per-record forensics for the L5-band ADR wander
