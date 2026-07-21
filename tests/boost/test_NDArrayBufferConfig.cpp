@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE "test_NDArrayBufferConfig"
 
 #include <boost/test/included/unit_test.hpp>
+#include <csignal>   // for signal, SIG_IGN, SIGTERM
 #include <cstddef>   // for ptrdiff_t, size_t
 #include <map>       // for map
 #include <memory>    // for shared_ptr
@@ -23,6 +24,16 @@ using kotekan::GenericNDArray;
 using kotekan::Symbol;
 
 using json = nlohmann::json;
+
+// NDArray descriptor validation failures are fatal: FATAL_ERROR_NON_OO signals
+// kotekan shutdown (SIGTERM) before throwing FatalError. Ignore the signal so
+// the tests observe the throw instead of being terminated.
+struct IgnoreSigterm {
+    IgnoreSigterm() {
+        std::signal(SIGTERM, SIG_IGN);
+    }
+};
+BOOST_GLOBAL_FIXTURE(IgnoreSigterm);
 
 // Config::eval evaluates numbers and expression strings in a config scope.
 BOOST_AUTO_TEST_CASE(config_eval) {

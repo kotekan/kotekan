@@ -12,12 +12,9 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: INFO
 
-num_gpus: 1
 buffer_depth: 4
 cpu_affinity: [0]
-sizeof_float: 4
 sizeof_int: 4
-sizeof_long: 8
 
 # For faster CHORD testing, we're using...
 samples_per_data_set: 1024
@@ -126,3 +123,4 @@ check_pl_counts_data:
     max_num_errors_logged: 384
     num_frames_to_test: 2*buffer_depth
     check_metadata: true
+log_config_usage: fatal_error

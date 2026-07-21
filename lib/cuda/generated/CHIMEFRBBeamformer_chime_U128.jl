@@ -3,7 +3,7 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1337 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1325 =#
         info = 1
         info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 1), 1), 8), 32)) + 0) + 0x01] =
             info
@@ -11,7 +11,7 @@
             0i32 ≤ Tbarmin < 512 && (
                 Tbarmin ≤ Tbarmax < 1024 && (
                     (Tbarmax - Tbarmin) % 128 == 0i32 &&
-                    (0i32 ≤ Ttildemin < 4 && (Ttildemin ≤ Ttildemax < 8 && Ttildemax - Ttildemin == (Tbarmax - Tbarmin) ÷ 128))
+                    (0i32 ≤ Ttildemin < 80 && (Ttildemin ≤ Ttildemax < 160 && Ttildemax - Ttildemin == (Tbarmax - Tbarmin) ÷ 128))
                 )
             )
         )
@@ -184,14 +184,6 @@
                 Γ2_dish2_0_dish5_0.im,
                 Γ2_dish2_1_dish5_0.re,
                 Γ2_dish2_1_dish5_0.im,
-                Γ2_dish2_1_dish5_0.re,
-                Γ2_dish2_0_dish5_0.im,
-                Γ2_dish2_0_dish5_0.re,
-                Γ2_dish2_1_dish5_0.im,
-                Γ2_dish2_1_dish5_0.re,
-                Γ2_dish2_0_dish5_1.im,
-                Γ2_dish2_0_dish5_1.re,
-                Γ2_dish2_1_dish5_1.im,
                 Γ2_dish2_0_dish5_1.re,
                 Γ2_dish2_0_dish5_1.im,
                 Γ2_dish2_1_dish5_1.re,
@@ -400,17 +392,7 @@
             q = beamp3 * (8i32) + beamp4 * (16i32) + beamp5 * (32i32)
             Γ4_dish2_0 = cispi(((q * n_dish2_0) % (512i32)) * Float32(2 / 512))
             Γ4_dish2_1 = cispi(((q * n_dish2_1) % (512i32)) * Float32(2 / 512))
-            (
-                Γ4_dish2_0.re,
-                Γ4_dish2_0.im,
-                Γ4_dish2_1.re,
-                Γ4_dish2_1.im,
-                Γ4_dish2_1.re,
-                Γ4_dish2_0.im,
-                Γ4_dish2_0.re,
-                Γ4_dish2_1.im,
-                Γ4_dish2_1.re,
-            )
+            (Γ4_dish2_0.re, Γ4_dish2_0.im, Γ4_dish2_1.re, Γ4_dish2_1.im)
         end
         Γ4_cplx_0_beamP0 = Float16x2(Γ4_dish2_0_cplx_0, Γ4_dish2_1_cplx_0)
         Γ4_cplx_0_beamP1 = Float16x2(Γ4_dish2_0_cplx_0, Γ4_dish2_1_cplx_0)
@@ -587,7 +569,7 @@
         W_dish5 = W_memory[IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 4), 2), 1), 1), 2), 1024), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 4), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 4), 2), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 2), 2), 64), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 8), 2), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 16), 2), 8), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 2), 128), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(5::Int32, 1), 8), 1)), 1), 1024), 1)) + 0x01]
         W_dish6 = W_memory[IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 4), 2), 1), 1), 2), 1024), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 4), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 4), 2), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 2), 2), 64), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 8), 2), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 16), 2), 8), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 2), 128), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(6::Int32, 1), 8), 1)), 1), 1024), 1)) + 0x01]
         W_dish7 = W_memory[IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 4), 2), 1), 1), 2), 1024), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 4), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 4), 2), 32), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 2), 2), 64), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 8), 2), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 16), 2), 8), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 2), 128), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(7::Int32, 1), 8), 1)), 1), 1024), 1)) + 0x01]
-        for time_outer in 0:128:511
+        for time_outer in 0:128:10239
             Tbarmin + time_outer ≥ Tbarmax && break
             I_beamQ0 = zero(Float16x2)
             I_beamQ1 = zero(Float16x2)
@@ -719,20 +701,20 @@
                                                 IndexSpaces.mul(
                                                     IndexSpaces.imod(
                                                         IndexSpaces.idiv(
+                                                            IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 10240), 128
+                                                        ),
+                                                        80,
+                                                    ),
+                                                    128,
+                                                ),
+                                                IndexSpaces.mul(
+                                                    IndexSpaces.imod(
+                                                        IndexSpaces.idiv(
                                                             IndexSpaces.assume_inrange(time_inner::Int32, 0, 1, 128), 1
                                                         ),
                                                         128,
                                                     ),
                                                     1,
-                                                ),
-                                                IndexSpaces.mul(
-                                                    IndexSpaces.imod(
-                                                        IndexSpaces.idiv(
-                                                            IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 512), 128
-                                                        ),
-                                                        4,
-                                                    ),
-                                                    128,
                                                 ),
                                             ),
                                             1,
@@ -1903,43 +1885,43 @@
             end
             I_memory[let
                 offset = 4194304 * Ttildemin
-                length = 16777216
-                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 512), 128), 4), 128), 128), 4), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(0::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
+                length = 335544320
+                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 10240), 128), 80), 128), 128), 80), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(0::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
             end + 0x01] = I_beamQ0
             I_memory[let
                 offset = 4194304 * Ttildemin
-                length = 16777216
-                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 512), 128), 4), 128), 128), 4), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(1::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
+                length = 335544320
+                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 10240), 128), 80), 128), 128), 80), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(1::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
             end + 0x01] = I_beamQ1
             I_memory[let
                 offset = 4194304 * Ttildemin
-                length = 16777216
-                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 512), 128), 4), 128), 128), 4), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(2::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
+                length = 335544320
+                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 10240), 128), 80), 128), 128), 80), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(2::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
             end + 0x01] = I_beamQ2
             I_memory[let
                 offset = 4194304 * Ttildemin
-                length = 16777216
-                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 512), 128), 4), 128), 128), 4), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(3::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
+                length = 335544320
+                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 10240), 128), 80), 128), 128), 80), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(3::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
             end + 0x01] = I_beamQ3
             I_memory[let
                 offset = 4194304 * Ttildemin
-                length = 16777216
-                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 512), 128), 4), 128), 128), 4), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(4::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
+                length = 335544320
+                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 10240), 128), 80), 128), 128), 80), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(4::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
             end + 0x01] = I_beamQ4
             I_memory[let
                 offset = 4194304 * Ttildemin
-                length = 16777216
-                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 512), 128), 4), 128), 128), 4), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(5::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
+                length = 335544320
+                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 10240), 128), 80), 128), 128), 80), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(5::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
             end + 0x01] = I_beamQ5
             I_memory[let
                 offset = 4194304 * Ttildemin
-                length = 16777216
-                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 512), 128), 4), 128), 128), 4), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(6::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
+                length = 335544320
+                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 10240), 128), 80), 128), 128), 80), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(6::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
             end + 0x01] = I_beamQ6
             I_memory[let
                 offset = 4194304 * Ttildemin
-                length = 16777216
-                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 512), 128), 4), 128), 128), 4), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(7::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
+                length = 335544320
+                mod((IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(time_outer::Int32, 0, 128, 10240), 128), 80), 128), 128), 80), 4194304), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 2048), 1), 2048), 1), 1), 2048), 2048), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(7::Int32, 1), 8), 1), 1), 8), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 16), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 2)), 2), 256), 1)) + 0) + offset, length)
             end + 0x01] = I_beamQ7
         end
         info = 0

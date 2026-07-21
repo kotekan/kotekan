@@ -237,6 +237,10 @@ if("${_requested_omp}" STREQUAL "AUTO" OR "${_requested_omp}" STREQUAL "ON")
         if(OpenMP_EXE_LINKER_FLAGS)
             string(APPEND CMAKE_EXE_LINKER_FLAGS " ${OpenMP_EXE_LINKER_FLAGS}")
         endif()
+        # Apple Clang does not set EXE_LINKER_FLAGS; link libomp explicitly.
+        if(APPLE AND OpenMP_omp_LIBRARY)
+            string(APPEND CMAKE_EXE_LINKER_FLAGS " ${OpenMP_omp_LIBRARY}")
+        endif()
 
         if("${_requested_omp}" STREQUAL "AUTO")
             set(_ktk_omp_reason "auto-detected")

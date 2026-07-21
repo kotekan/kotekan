@@ -1,30 +1,31 @@
 #include "CHIMETelescope.hpp"
 
-#include <exception>           // for exception
-#include <stdexcept>           // for runtime_error
-#include <utility>             // for pair
-#include <vector>              // for vector
+#include "ICETelescope.hpp"   // for ice_stream_id_t, ice_encode_stream_id, ice_extract_stream_id
+#include "Telescope.hpp"      // for stream_t, Telescope, REGISTER_TELESCOPE, _factory_aliasTel...
+#include "geoUtil.hpp"        // for GeoFrame
+#include "kotekanLogging.hpp" // for ERROR, INFO, WARN, DEBUG2, FATAL_ERROR_NON_OO
+#include "restClient.hpp"     // for restClient
 
-#include "ICETelescope.hpp"    // for ice_stream_id_t, ice_encode_stream_id, ice_extract_stream_id
-#include "Telescope.hpp"       // for stream_t, Telescope, REGISTER_TELESCOPE, _factory_aliasTel...
-#include "geoUtil.hpp"         // for GeoFrame
-#include "kotekanLogging.hpp"  // for ERROR, INFO, WARN, DEBUG2, FATAL_ERROR_NON_OO
-#include "restClient.hpp"      // for restClient
-#include "fmt.hpp"             // for compile_string_to_view, format, format_string
-#include "json.hpp"            // for json, json_ref, basic_json, input_adapter
+#include "fmt.hpp"  // for compile_string_to_view, format, format_string
+#include "json.hpp" // for json, json_ref, basic_json, input_adapter
+
+#include <exception> // for exception
+#include <stdexcept> // for runtime_error
+#include <utility>   // for pair
+#include <vector>    // for vector
 
 REGISTER_TELESCOPE(CHIMETelescope, "CHIMETelescope");
 
 CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string& path) :
     ICETelescope(config.get<uint64_t>(path, "num_polarizations"),
-            config.get<uint64_t>(path, "num_dishes"),
-            config.get_default<uint64_t>(path, "num_cylinders", 4),
-            config.get_default<double>(path, "feed_sep_EW", 22.0),
-            config.get_default<double>(path, "feed_sep_NS", 0.3048),
-            path, config.get<std::string>(path, "log_level"),
-             config.get_default<bool>(path, "require_eop", false),
-             config.get_default<std::string>(path, "eop_updatable_config", ""),
-             grid_frame_from_config(config, path)) {
+                 config.get<uint64_t>(path, "num_dishes"),
+                 config.get_default<uint64_t>(path, "num_cylinders", 4),
+                 config.get_default<double>(path, "feed_sep_EW", 22.0),
+                 config.get_default<double>(path, "feed_sep_NS", 0.3048), path,
+                 config.get<std::string>(path, "log_level"),
+                 config.get_default<bool>(path, "require_eop", false),
+                 config.get_default<std::string>(path, "eop_updatable_config", ""),
+                 grid_frame_from_config(config, path)) {
     INFO("Building CHIMETelescope");
 
     // This is always 1 for CHIME
@@ -81,18 +82,19 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
     }
 
     if (_num_dishes % _num_cylinders != 0)
-        FATAL_ERROR("num_cylinders {:d} does not divide num_dishes {:d}", _num_cylinders, _num_dishes);
+        FATAL_ERROR("num_cylinders {:d} does not divide num_dishes {:d}", _num_cylinders,
+                    _num_dishes);
 
     const auto input_tuple = ICETelescope::parse_reorder_default(config, path, _num_elements);
     _input_reorder = std::get<0>(input_tuple);
     _input_map = std::get<1>(input_tuple);
     if (_input_reorder.size() != _num_elements) {
         FATAL_ERROR("input_reorder has size {:d}, should be num_elements = {:d}",
-                _input_reorder.size(), _num_elements);
+                    _input_reorder.size(), _num_elements);
     }
     if (_input_reorder.size() != _num_elements) {
         FATAL_ERROR("input_map (from input_reorder) has size {:d}, should be num_elements = {:d}",
-                _input_map.size(), _num_elements);
+                    _input_map.size(), _num_elements);
     }
 
     _correlator_stations = invert_reorder_table(_input_reorder);
@@ -100,7 +102,8 @@ CHIMETelescope::CHIMETelescope(const kotekan::Config& config, const std::string&
     _feed_positions_2d = config.get_default<std::vector<vec2d_t>>(path, "feed_positions", {});
 
     if (_feed_positions_2d.size() > 0 && _feed_positions_2d.size() != _num_dishes)
-        FATAL_ERROR("feed_positions has size {:d}, should be num_dishes {:d}", _feed_positions_2d.size(), _num_dishes);
+        FATAL_ERROR("feed_positions has size {:d}, should be num_dishes {:d}",
+                    _feed_positions_2d.size(), _num_dishes);
 }
 
 nlohmann::json CHIMETelescope::fetch_frequency_map(const std::string& host, const uint32_t port,
@@ -111,7 +114,7 @@ nlohmann::json CHIMETelescope::fetch_frequency_map(const std::string& host, cons
         restClient::instance().make_request_blocking(path, {{"format", "s:b"}}, host, port, 0, 30);
 
     if (!reply.first) {
-        WARN("Failed to get frequency map from {:s}:{:d}{:s}");
+        WARN("Failed to get frequency map from {:s}:{:d}{:s}", host, port, path);
         return nlohmann::json();
     }
 

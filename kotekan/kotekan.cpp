@@ -415,6 +415,16 @@ void start_new_kotekan_mode(Config& config, bool dump_config) {
 
     if (dump_config)
         config.dump_config();
+
+    // When enabled, record which config leaf items get read (and by which
+    // path) so a usage summary can be logged at shutdown (see ~kotekanMode).
+    // The level (bool or "info"/"warn"/"error"/"fatal_error") sets the report
+    // severity; "fatal_error" fails kotekan if anything went unused. Turned on
+    // here, before any values are read, so the summary is complete.
+    if (config.exists("/", "log_config_usage"))
+        config.set_usage_report_level(
+            Config::parse_usage_report_level(config.get_value("/", "log_config_usage")));
+
     update_log_levels(config);
 
     request_backtraces(config.get_default<std::vector<std::string>>("/", "trap_signals", {}));

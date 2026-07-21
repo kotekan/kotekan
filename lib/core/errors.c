@@ -7,10 +7,8 @@
 // Default values for log levels.
 int _global_log_level = 3;
 int __enable_syslog = 1;
-const int __max_log_msg_len = 1024;
-
 enum ReturnCode __status_code = CLEAN_EXIT;
-char __err_msg[1024] = "not set";
+char __err_msg[MAX_LOG_MSG_LEN] = "not set";
 
 static pthread_mutex_t status_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -20,8 +18,8 @@ void internal_logging_f(int log, const char* format, ...) {
     if (__enable_syslog == 1) {
         (void)vsyslog(log, format, args);
     } else {
-        char log_buf[__max_log_msg_len];
-        (void)vsnprintf(log_buf, __max_log_msg_len, format, args);
+        char log_buf[MAX_LOG_MSG_LEN];
+        (void)vsnprintf(log_buf, MAX_LOG_MSG_LEN, format, args);
         fprintf(stderr, "%s: %s\n", get_log_level_string(log), log_buf);
     }
     va_end(args);
@@ -98,7 +96,7 @@ void set_error_message_f(const char* format, ...) {
     va_list args;
     va_start(args, format);
     pthread_mutex_lock(&status_mutex);
-    (void)vsnprintf(__err_msg, __max_log_msg_len, format, args);
+    (void)vsnprintf(__err_msg, MAX_LOG_MSG_LEN, format, args);
     pthread_mutex_unlock(&status_mutex);
     va_end(args);
 }

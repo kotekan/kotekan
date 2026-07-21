@@ -15,7 +15,10 @@ diag_global_params = {
     "dataset_manager": {"use_dataset_broker": False},
 }
 
-diag_stage_params = {"stack_type": "diagonal"}
+# Run with many compress threads (more than the buffer depth) to reliably
+# exercise the multi-threaded path; this guards against the frame hand-off race
+# that duplicated output frames.
+diag_stage_params = {"stack_type": "diagonal", "num_threads": 16}
 
 smallchime_global_params = {
     "num_elements": 128,

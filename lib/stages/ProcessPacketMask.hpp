@@ -31,6 +31,11 @@
  *    @buffer_format uint64_t pl_mask[T/64][F][E/8] where T=time_long*time_short, F=num_frequency,
  * E=element_long*element_short
  *    @buffer_metadata chordMetadata
+ * @buffer rfi_mask_buf Optional output buffer for a dummy RFI mask. The frame data is
+ * not written, only metadata is set; frames replay whatever they contain at startup.
+ * Omit to skip producing the mask (e.g. when the GPU-computed RFI mask is used).
+ *    @buffer_format uint1x8 RFImask[T/1024][F][128]
+ *    @buffer_metadata chordMetadata
  *
  * @conf time_long      Int. Number of long time samples per frame.
  * @conf num_frequency  Int. Number of frequency bins.

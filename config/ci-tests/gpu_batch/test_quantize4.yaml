@@ -11,3 +11,4 @@ num_dishes: 512
 
 test_quantize_kernel_4:
     kotekan_stage: testQuantizeKernel4
+log_config_usage: fatal_error

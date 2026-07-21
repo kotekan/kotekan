@@ -8,6 +8,7 @@
 #define PROCESS_FEED_GAINS_HPP
 
 #include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for float16_t
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -48,6 +49,8 @@ using std::vector;
  * @conf   num_beams                             Int. Number of beams with unique gain files
  * @conf   num_local_freq                        Int. Number of frequencies per node
  * @conf   upchan_factor                         Int. Frequency upchannelization factor.
+ * @conf   num_components                        Int. Number of gain components. Should be either
+ *                                                   1 (real) or 2 (real/imag).
  *
  * @author Liam Gray
  *
@@ -70,11 +73,11 @@ private:
 
     /// Implement logic to upchannelize a single fine frequency, given a coarse frequency.
     /// Default will just duplicate the coarse frequency gain `N` times.
-    virtual void copy_upchannelize_f(const float* src_f, float* dst_f, size_t fid);
+    virtual void copy_upchannelize_f(const float* src_f, float16_t* dst_f, size_t fid);
 
     /// Create a frame desc for the output buffer. Default creates a frame desc
-    /// containing [beam, freq, subfreq, element, ReIm] axes.
-    virtual void ensure_frame_desc(Buffer* buf);
+    /// containing [beam, freq, element, ReIm] axes.
+    virtual void set_frame_desc(Buffer* buf);
 
     std::vector<Buffer*> gain_buffers;
     Buffer* in_mask_buf;
@@ -88,13 +91,23 @@ private:
     uint32_t num_local_freq;
     /// Frequency upchannelization factor
     uint32_t upchan_factor;
+    /// Number of components
+    uint32_t num_components;
 
     /// Number of elements in the output buffer
     uint32_t out_num_values;
 
+    /// Fixed scaling factor
+    float scaling_factor;
+
     /// Fixed buffers used to hold gains separately from the kotekan buffers
-    std::vector<float> gain_store_buf;
+    std::vector<float16_t> gain_store_buf;
     std::vector<uint8_t> mask_store_buf;
+
+    /// Store gain upchannelization factors
+    std::vector<int> freq_upchan_factor;
+    std::vector<int> freq_upchan_index;
+    std::vector<int> coarse_freq;
 };
 
 

@@ -39,7 +39,10 @@ global_params = {
     },
     "wait": False,
     "sleep_before": 2.0,
-    "num_threads": 4,
+    # Run applyGains with many worker threads (more than the buffer depth) to
+    # reliably exercise the multi-threaded apply path; this is a regression
+    # guard against the frame hand-off race that duplicated output frames.
+    "num_threads": 16,
     "dataset_manager": {"use_dataset_broker": False},
 }
 

@@ -2,9 +2,12 @@
 #include "nt_memset.h"
 
 #include <assert.h>    // for assert
-#include <immintrin.h> // for _mm256_stream_si256, __m256i, _mm256_set1_epi8
 #include <stdint.h>    // for uintptr_t, uint8_t
 #include <stdlib.h>    // for size_t
+#include <string.h>    // for memset
+#if defined(__x86_64__) || defined(__i386__)
+#include <immintrin.h> // for _mm256_stream_si256, __m256i, _mm256_set1_epi8
+#endif
 
 // TODO In theory this will work with AVX and not require AVX2, check this.
 

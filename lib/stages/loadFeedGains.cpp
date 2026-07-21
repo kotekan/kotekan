@@ -89,7 +89,7 @@ loadFeedGains::loadFeedGains(Config& config, const std::string& unique_name,
             "gain",
             {static_cast<ptrdiff_t>(num_local_freq), static_cast<ptrdiff_t>(num_elements),
              static_cast<ptrdiff_t>(2)},
-            {"F", "E", "ReIm"}, {1, 1, 1}));
+            {"F", "E", "C"}, {1, 1, 1}));
     }
 
     // Set up callbacks for each beam_id

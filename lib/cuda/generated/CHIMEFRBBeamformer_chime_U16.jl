@@ -3,7 +3,7 @@
 # Do not modify this file, your changes will be lost.
 
 @fastmath @inbounds(
-    begin #= /home/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1337 =#
+    begin #= /home/eschnett/src/kotekan/julia/kernels/chimefrb.jl:1325 =#
         info = 1
         info_memory[(IndexSpaces.add(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_blockidx()::Int32, 0, 256), 1), 256), 1), 1), 256), 256), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_threadidx()::Int32, 0, 32), 1), 32), 1), 1), 32), 1), IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.mul(IndexSpaces.imod(IndexSpaces.idiv(IndexSpaces.assume_inrange(IndexSpaces.cuda_warpidx()::Int32, 0, 8), 1), 8), 1), 1), 8), 32)) + 0) + 0x01] =
             info
@@ -186,14 +186,6 @@
                 Γ2_dish2_0_dish5_0.im,
                 Γ2_dish2_1_dish5_0.re,
                 Γ2_dish2_1_dish5_0.im,
-                Γ2_dish2_1_dish5_0.re,
-                Γ2_dish2_0_dish5_0.im,
-                Γ2_dish2_0_dish5_0.re,
-                Γ2_dish2_1_dish5_0.im,
-                Γ2_dish2_1_dish5_0.re,
-                Γ2_dish2_0_dish5_1.im,
-                Γ2_dish2_0_dish5_1.re,
-                Γ2_dish2_1_dish5_1.im,
                 Γ2_dish2_0_dish5_1.re,
                 Γ2_dish2_0_dish5_1.im,
                 Γ2_dish2_1_dish5_1.re,
@@ -402,17 +394,7 @@
             q = beamp3 * (8i32) + beamp4 * (16i32) + beamp5 * (32i32)
             Γ4_dish2_0 = cispi(((q * n_dish2_0) % (512i32)) * Float32(2 / 512))
             Γ4_dish2_1 = cispi(((q * n_dish2_1) % (512i32)) * Float32(2 / 512))
-            (
-                Γ4_dish2_0.re,
-                Γ4_dish2_0.im,
-                Γ4_dish2_1.re,
-                Γ4_dish2_1.im,
-                Γ4_dish2_1.re,
-                Γ4_dish2_0.im,
-                Γ4_dish2_0.re,
-                Γ4_dish2_1.im,
-                Γ4_dish2_1.re,
-            )
+            (Γ4_dish2_0.re, Γ4_dish2_0.im, Γ4_dish2_1.re, Γ4_dish2_1.im)
         end
         Γ4_cplx_0_beamP0 = Float16x2(Γ4_dish2_0_cplx_0, Γ4_dish2_1_cplx_0)
         Γ4_cplx_0_beamP1 = Float16x2(Γ4_dish2_0_cplx_0, Γ4_dish2_1_cplx_0)

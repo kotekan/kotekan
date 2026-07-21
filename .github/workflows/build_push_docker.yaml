@@ -23,6 +23,7 @@ env:
   REGISTRY: ghcr.io
   CPU_IMG: "ghcr.io/${{ github.repository }}/kotekan-2404-cpu"
   GPU_IMG: "ghcr.io/${{ github.repository }}/kotekan-2404"
+  INTEL_IMG: "ghcr.io/${{ github.repository }}/kotekan-2404-intel"
 
 on:
   workflow_call:
@@ -37,6 +38,9 @@ on:
       docker_gpu_img_name:
         description: "Full GPU image name (including tag) built or selected by this workflow"
         value: ${{ jobs.build-push-docker.outputs.docker_gpu_img_name }}
+      docker_intel_img_name:
+        description: "Full Intel-compiler image name (including tag) built or selected by this workflow"
+        value: ${{ jobs.build-push-docker.outputs.docker_intel_img_name }}
 
 jobs:
 
@@ -48,6 +52,7 @@ jobs:
     outputs:
       docker_cpu_img_name: ${{ steps.docker_img.outputs.cpu_img_name }}
       docker_gpu_img_name: ${{ steps.docker_img.outputs.gpu_img_name }}
+      docker_intel_img_name: ${{ steps.docker_img.outputs.intel_img_name }}
 
     steps:
       - uses: actions/checkout@v6
@@ -157,6 +162,7 @@ jobs:
 
           CPU_IMAGE_TAG="${CPU_IMG}:${tag}"
           GPU_IMAGE_TAG="${GPU_IMG}:${tag}"
+          INTEL_IMAGE_TAG="${INTEL_IMG}:${tag}"
 
           # As a last check, ensure images actually exist in the registry.
           # If they don't, force a rebuild (only for real GitHub runs, not act).
@@ -174,6 +180,11 @@ jobs:
               missing=1
             fi
 
+            if ! docker manifest inspect "$INTEL_IMAGE_TAG" >/dev/null 2>&1; then
+              echo "Intel image $INTEL_IMAGE_TAG not found in registry."
+              missing=1
+            fi
+
             if [[ "$missing" -eq 1 ]]; then
               echo "One or more images missing; forcing docker rebuild."
               needs_build=1
@@ -185,9 +196,11 @@ jobs:
           echo "docker_build=$needs_build"   >> "$GITHUB_OUTPUT"
           echo "cpu_img_name=$CPU_IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "gpu_img_name=$GPU_IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "intel_img_name=$INTEL_IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
           echo "CPU image: $CPU_IMAGE_TAG"
           echo "GPU image: $GPU_IMAGE_TAG"
+          echo "Intel image: $INTEL_IMAGE_TAG"
           echo "docker_build=$needs_build"
 
       - name: Output environment and variable details
@@ -207,6 +220,8 @@ jobs:
           echo "Used docker CPU image name: ${{ steps.docker_img.outputs.cpu_img_name }}"
           echo "Docker GPU image base: $GPU_IMG"
           echo "Used docker GPU image name: ${{ steps.docker_img.outputs.gpu_img_name }}"
+          echo "Docker Intel image base: $INTEL_IMG"
+          echo "Used docker Intel image name: ${{ steps.docker_img.outputs.intel_img_name }}"
           echo "docker_build: ${{ steps.docker_img.outputs.docker_build }}"
           echo "ACT: ${ACT:-}"
 
@@ -228,6 +243,19 @@ jobs:
           file: tools/docker/24.04/Dockerfile
           target: cpu
           tags: ${{ steps.docker_img.outputs.cpu_img_name }}
+          push: ${{ env.ACT == '' }} # true on GitHub, false under act
+          load: ${{ env.ACT != '' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Intel (target=intel) image
+        if: steps.docker_img.outputs.docker_build == '1'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: tools/docker/24.04/Dockerfile
+          target: intel
+          tags: ${{ steps.docker_img.outputs.intel_img_name }}
           push: ${{ env.ACT == '' }} # true on GitHub, false under act
           load: ${{ env.ACT != '' }}
           cache-from: type=gha

@@ -114,6 +114,10 @@ rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are goo
 rfi_feed_averaged_min_good_frac: {{ 0.25 * rfi_num_good_feeds / (2 * num_dishes) }}   # = 0.01171875 -> threshold 384
 rfi_mu_min: 2.0       # Minimum accepted average signal (|E|^2)  Kendrick's RFI Notes recommends 2.0
 rfi_mu_max: 50.0      # Maximum accepted average signal (|E|^2)  Kendrick's RFI Notes recommends 50.0
+# Disable first-stage (GPU, SK-based) RFI excision: cudaRFISKtilde produces an all-good RFImask,
+# so no samples are excised in the correlator. The SKtilde statistics are still computed, so
+# second-stage excision (RfiFrameMask -> N2Accumulate) keeps working.
+rfi_first_stage_excision_enabled: false
 
 num_times: samples_per_data_set  # New N2K needs this.
 num_polarizations: 2
@@ -287,27 +291,6 @@ packet_receipt_bitmap_buffers:
         kotekan_buffer: standard
         numa_node: 1
 
-# These are the dummy RFI masks produced by ProcessPacketMask (rfi_mask_buf).
-# uint1x8 "RFImask" [samples_per_data_set/1024, num_local_freq, 128] {T8hi128, F, T8lo128}.
-host_rfi_RFImask_dummy_buffer:
-    kotekan_buffer: ndarray
-    num_frames: host_side_buffer_depth
-    value_type: uint1x8
-    extents: [samples_per_data_set / 1024, num_local_freq, 128]
-    zero_new_frames: true
-    zero_value: 0xFF
-    metadata_pool: main_pool
-
-host_rfi_RFImask_dummy_buffer_1:
-    kotekan_buffer: ndarray
-    num_frames: host_side_buffer_depth
-    value_type: uint1x8
-    extents: [samples_per_data_set / 1024, num_local_freq, 128]
-    zero_new_frames: true
-    zero_value: 0xFF
-    numa_node: 1
-    metadata_pool: main_pool
-
 # Note this is the expanded version of the pl_mask, produced by ProcessPacketMask (pl_mask_buf).
 # It will be compressed to the normal PL mask before being sent to the GPU.
 # uint1x8 "pl_mask_exp" [samples_per_data_set/64, num_local_freq, 2, num_elements/8/2, 8]
@@ -365,7 +348,7 @@ host_rfi_sktilde_buffer_1:
     numa_node: 1
 
 # This is the RFI Mask recieved from the GPU, that was applied to produce n2k_correlation & n2k_counts.
-# It may contain either the dummy DPDK-generated mask or the real mask computed by SKtilde.
+# It contains the mask computed by SKtilde (all-good if rfi_first_stage_excision_enabled is false).
 # GPU output (cudaCopyFromRingbuffer of rfi_RFImask) and consumed by RfiMaskSum:
 # uint1x8 "RFImask" [samples_per_data_set/1024, num_local_freq, 128] {T8hi128, F, T8lo128}.
 host_rfi_RFImask_buffer:
@@ -622,18 +605,6 @@ host_rfi_sktilde_ringbuffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
-host_rfi_RFImask_dummy_ringbuffer:
-    kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * num_local_freq * samples_per_data_set / 8
-    metadata_pool: main_pool
-
-host_rfi_RFImask_dummy_ringbuffer_1:
-    kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * num_local_freq * samples_per_data_set / 8
-    metadata_pool: main_pool
-    numa_node: 1
-
-
 # Stages
 
 ##  Packet capture from the F-engine ##
@@ -722,7 +693,6 @@ process_packet_mask_0:
         - packet_receipt_bitmap_buffer_1
     combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_0
     pl_mask_buf: host_pl_mask_exp_buffer
-    rfi_mask_buf: host_rfi_RFImask_dummy_buffer
     num_frequency: num_local_freq
     num_source_ids: num_crs_boards
     # Update this as we add more CRS (F-engine) boards 
@@ -737,7 +707,6 @@ process_packet_mask_1:
         - packet_receipt_bitmap_buffer_3
     combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_1
     pl_mask_buf: host_pl_mask_exp_buffer_1
-    rfi_mask_buf: host_rfi_RFImask_dummy_buffer_1
     num_frequency: num_local_freq
     num_source_ids: num_crs_boards
     # Update this as we add more CRS (F-engine) boards 
@@ -838,41 +807,6 @@ run_send_voltage:
           signal_buf: host_voltage_ringbuffer_out
           gpu_mem_output: voltage_buffer
 
-# Copy the dummy RFI mask to the RFI mask on the GPU
-# To activate the 1st stage RFI excision, do not run this stage! Instead make sure the
-# SKtilde stage produces the RFI mask and places it in the host_rfi_RFImask_buffer
-# run_send_rfi_RFImask_dummy:
-#     gpu_0:
-#         kotekan_stage: cudaProcess
-#         gpu_id: 0
-#         cpu_affinity: [12, 13, 14]
-#         in_buffers:
-#             host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer
-#         out_buffers:
-#             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
-#         commands:
-#         - name: cudaCopyToRingbuffer
-#           input_size: num_local_freq * samples_per_data_set / 8
-#           ring_buffer_size: buffer_depth * input_size
-#           in_buf: host_rfi_RFImask_buffer_in
-#           signal_buf: host_rfi_RFImask_ringbuffer_out
-#           gpu_mem_output: rfi_RFImask_buffer
-#     gpu_1:
-#         kotekan_stage: cudaProcess
-#         gpu_id: 1
-#         cpu_affinity: [25, 26, 27]
-#         in_buffers:
-#             host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer_1
-#         out_buffers:
-#             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer_1
-#         commands:
-#         - name: cudaCopyToRingbuffer
-#           input_size: num_local_freq * samples_per_data_set / 8
-#           ring_buffer_size: buffer_depth * input_size
-#           in_buf: host_rfi_RFImask_buffer_in
-#           signal_buf: host_rfi_RFImask_ringbuffer_out
-#           gpu_mem_output: rfi_RFImask_buffer
-
 run_send_pl_mask:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -940,9 +874,8 @@ run_rfi_s012:
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
 
 # This stage produces SK statistics averaged over all input elements and the RFI mask.
-# If the pipeline is using the dummy DPDK-produced RFI mask, then this stage needs to direct its
-# mask to "_dummy" buffers.  If the pipeline is using this RFI mask, then the buffers should
-# *not* contain "_dummy", and the DPDK-produced mask should not be sent to the GPU.
+# When rfi_first_stage_excision_enabled is false, the mask is written as all-good (no excision)
+# but the SK statistics are still computed for second-stage excision.
 run_rfi_sktilde:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -1022,8 +955,8 @@ run_recv_rfi_sktilde:
           out_buf: host_rfi_sktilde_buffer_out
 
 # This copies the RFI Mask that was used in N2K kernels back out to the CPU into the
-# host_rfi_RFImask_buffer. It may contain either the DPDK-produced dummy mask or the
-# SKtilde-produced real mask.
+# host_rfi_RFImask_buffer. It contains the SKtilde-produced mask (all-good if
+# rfi_first_stage_excision_enabled is false).
 run_recv_rfi_RFImask:
     gpu_0:
         kotekan_stage: cudaProcess

@@ -390,7 +390,7 @@ private:
      * based on its absolute frame index and the configured
      * number of time frames per file.
      */
-    std::uint64_t _get_abs_file_idx(const N2FrameView& fv) const;
+    size_t _get_abs_file_idx(const N2FrameView& fv) const;
 
     /**
      * @brief Finalize a file: close and rename from .partial to final name.

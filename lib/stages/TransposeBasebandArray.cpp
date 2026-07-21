@@ -1,22 +1,14 @@
 #include "TransposeBasebandArray.hpp"
 
-#include "Config.hpp"   // for Config
-#include "Config.hpp"   // for Config
-#include "DataType.hpp" // for DataType
-#include "DataType.hpp" // for DataType
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType
 #include "NDArray.hpp"
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
-#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
 #include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
 
-#include "fmt.hpp" // for compile_string_to_view, format, fmt
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
 #include <cstring>     // for memcpy, memset
@@ -24,7 +16,9 @@
 #include <stdexcept>   // for runtime_error
 #include <vector>      // for vector
 #include <visUtil.hpp> // for frameID, modulo
+#if defined(__x86_64__) || defined(__i386__)
 #include <xmmintrin.h> // for _mm_sfence, _MM_HINT_T0, _mm_prefetch
+#endif
 
 #ifdef __AVX512F__
 #include <immintrin.h> // for __m512i, _mm512_stream_si512, _mm512_set1_epi8, _mm512_se...

@@ -14,6 +14,7 @@
 #include <assert.h>    // for assert
 #include <cstring>     // for size_t, memset
 #include <memory>      // for __shared_ptr_access, shared_ptr
+#include <optional>    // for optional
 #include <stdexcept>   // for runtime_error
 #include <visUtil.hpp> // for frameID, modulo
 
@@ -37,8 +38,11 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
     // The RFI mask here is just a hack to avoid running the actual RFI kernels
     // It just replays a mask of whatever is in the frames at startup
     // (This should be set to 0xff as the "zeroing" value.)
-    rfi_mask_buf = get_buffer("rfi_mask_buf");
-    rfi_mask_buf->register_producer(unique_name);
+    // Optional: pipelines using the GPU-computed RFI mask can omit this buffer.
+    rfi_mask_buf =
+        config.exists(unique_name, "rfi_mask_buf") ? get_buffer("rfi_mask_buf") : nullptr;
+    if (rfi_mask_buf)
+        rfi_mask_buf->register_producer(unique_name);
 
     // Get the array of receipt bitmap buffer names and register as consumer on each
     std::vector<std::string> receipt_bitmap_buf_names =
@@ -139,17 +143,19 @@ STAGE_CONSTRUCTOR(ProcessPacketMask) {
 
     // Validate rfi_mask buffer size
     // rfi_mask shape: uint8_t [T/1024][F][128] where T = time_long * time_short
-    size_t expected_rfi_mask_size = (T / 1024) * num_frequency * 128 * sizeof(uint8_t);
-    if (rfi_mask_buf->frame_size != expected_rfi_mask_size) {
-        throw std::runtime_error(
-            fmt::format(fmt("ProcessPacketMask: rfi_mask_buf frame size ({:d}) does not match "
-                            "expected size ({:d}) for shape [T/1024={:d}][F={:d}][128]"),
-                        rfi_mask_buf->frame_size, expected_rfi_mask_size, T / 1024, num_frequency));
-    }
+    if (rfi_mask_buf) {
+        size_t expected_rfi_mask_size = (T / 1024) * num_frequency * 128 * sizeof(uint8_t);
+        if (rfi_mask_buf->frame_size != expected_rfi_mask_size) {
+            throw std::runtime_error(fmt::format(
+                fmt("ProcessPacketMask: rfi_mask_buf frame size ({:d}) does not match "
+                    "expected size ({:d}) for shape [T/1024={:d}][F={:d}][128]"),
+                rfi_mask_buf->frame_size, expected_rfi_mask_size, T / 1024, num_frequency));
+        }
 
-    rfi_mask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
-        kotekan::uint1x8, "RFImask", {time_long * time_short / 1024, num_frequency, 128},
-        {"T8hi128", "F", "T8lo128"}, {1024, 1, 8}));
+        rfi_mask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+            kotekan::uint1x8, "RFImask", {time_long * time_short / 1024, num_frequency, 128},
+            {"T8hi128", "F", "T8lo128"}, {1024, 1, 8}));
+    }
 
     INFO("ProcessPacketMask: Initialized with {:d} receipt bitmap buffers",
          receipt_bitmap_bufs.size());
@@ -166,7 +172,10 @@ void ProcessPacketMask::main_thread() {
     frameID voltage_frame_id(voltage_buf);
     frameID combined_bitmap_frame_id(combined_receipt_bitmap_buf);
     frameID pl_mask_frame_id(pl_mask_buf);
-    frameID rfi_mask_frame_id(rfi_mask_buf);
+    // Only tracked when the optional rfi_mask_buf is configured.
+    std::optional<frameID> rfi_mask_frame_id;
+    if (rfi_mask_buf)
+        rfi_mask_frame_id.emplace(rfi_mask_buf);
     std::vector<frameID> bitmap_frame_ids;
     for (auto* buf : receipt_bitmap_bufs) {
         bitmap_frame_ids.emplace_back(buf);
@@ -194,10 +203,12 @@ void ProcessPacketMask::main_thread() {
             break;
 
         // Wait for rfi_mask frame
-        uint8_t* rfi_mask_frame =
-            rfi_mask_buf->wait_for_empty_frame(unique_name, rfi_mask_frame_id);
-        if (rfi_mask_frame == nullptr)
-            break;
+        if (rfi_mask_buf) {
+            uint8_t* rfi_mask_frame =
+                rfi_mask_buf->wait_for_empty_frame(unique_name, *rfi_mask_frame_id);
+            if (rfi_mask_frame == nullptr)
+                break;
+        }
 
         // Wait for all receipt bitmap frames
         std::vector<uint8_t*> bitmap_frames;
@@ -368,25 +379,27 @@ void ProcessPacketMask::main_thread() {
         pl_mask_meta->set_time_downsampling_fpga(64);
 
         // Set metadata for rfi_mask_buf
-        rfi_mask_buf->allocate_new_metadata_object(rfi_mask_frame_id);
-        auto rfi_mask_meta = get_chord_metadata(rfi_mask_buf, rfi_mask_frame_id);
+        if (rfi_mask_buf) {
+            rfi_mask_buf->allocate_new_metadata_object(*rfi_mask_frame_id);
+            auto rfi_mask_meta = get_chord_metadata(rfi_mask_buf, *rfi_mask_frame_id);
 
-        rfi_mask_meta->set_fpga_seq_num(
-            get_chord_metadata(voltage_buf, voltage_frame_id)->get_fpga_seq_num());
-        rfi_mask_meta->type = kotekan::uint1x8;
-        rfi_mask_meta->dims = 3;
-        rfi_mask_meta->set_array_dimension(0, time_long * time_short / 1024, "T8hi128", 1024);
-        rfi_mask_meta->set_array_dimension(1, num_frequency, "F", 1);
-        rfi_mask_meta->set_array_dimension(2, 128, "T8lo128", 8);
-        rfi_mask_meta->set_name("RFImask");
+            rfi_mask_meta->set_fpga_seq_num(
+                get_chord_metadata(voltage_buf, voltage_frame_id)->get_fpga_seq_num());
+            rfi_mask_meta->type = kotekan::uint1x8;
+            rfi_mask_meta->dims = 3;
+            rfi_mask_meta->set_array_dimension(0, time_long * time_short / 1024, "T8hi128", 1024);
+            rfi_mask_meta->set_array_dimension(1, num_frequency, "F", 1);
+            rfi_mask_meta->set_array_dimension(2, 128, "T8lo128", 8);
+            rfi_mask_meta->set_name("RFImask");
 
-        rfi_mask_meta->set_strides_simple();
+            rfi_mask_meta->set_strides_simple();
 
-        rfi_mask_meta->set_coarse_freq(
-            get_chord_metadata(voltage_buf, voltage_frame_id)->get_coarse_freq());
-        rfi_mask_meta->set_freq_upchan_factor(
-            get_chord_metadata(voltage_buf, voltage_frame_id)->get_freq_upchan_factor());
-        rfi_mask_meta->set_time_downsampling_fpga(1024);
+            rfi_mask_meta->set_coarse_freq(
+                get_chord_metadata(voltage_buf, voltage_frame_id)->get_coarse_freq());
+            rfi_mask_meta->set_freq_upchan_factor(
+                get_chord_metadata(voltage_buf, voltage_frame_id)->get_freq_upchan_factor());
+            rfi_mask_meta->set_time_downsampling_fpga(1024);
+        }
 
         // Mark frames as empty
         voltage_buf->mark_frame_empty(unique_name, voltage_frame_id);
@@ -398,8 +411,10 @@ void ProcessPacketMask::main_thread() {
         pl_mask_buf->mark_frame_full(unique_name, pl_mask_frame_id);
         pl_mask_frame_id++;
 
-        rfi_mask_buf->mark_frame_full(unique_name, rfi_mask_frame_id);
-        rfi_mask_frame_id++;
+        if (rfi_mask_buf) {
+            rfi_mask_buf->mark_frame_full(unique_name, *rfi_mask_frame_id);
+            (*rfi_mask_frame_id)++;
+        }
 
         for (size_t i = 0; i < receipt_bitmap_bufs.size(); i++) {
             receipt_bitmap_bufs[i]->mark_frame_empty(unique_name, bitmap_frame_ids[i]);

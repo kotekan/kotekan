@@ -489,6 +489,9 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         meta->dim[0] = 1;
         meta->dim[1] = out_bufs[i]->frame_size / sample_size;
         meta->dim[2] = sample_size;
+        meta->dim_scaling[0] = 1;
+        meta->dim_scaling[1] = 1;
+        meta->dim_scaling[2] = 1;
         meta->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */
@@ -540,6 +543,7 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
     std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
     meta->dim[0] = lost_samples_buf->frame_size; // One byte per time sample
+    meta->dim_scaling[0] = 1;
     meta->dims = 1;
     std::strncpy(meta->name, "lost_samples", sizeof meta->name);
     meta->set_strides_simple();
@@ -656,16 +660,19 @@ inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf* mbuf) {
     const int flag_len = 4; // 32-bits = 4 bytes
     const int rounding_factor = 2;
 
-    // Go to the last part of the packet
-    // Note this assumes that the footer doesn't cross two mbuf
-    // segment, but based on the packet design this should never happen.
+#ifndef NDEBUG
+    uint32_t previous_segment_sizes = 0;
+#endif
     while (mbuf->next != nullptr) {
+#ifndef NDEBUG
+        previous_segment_sizes += mbuf->data_len;
+#endif
         mbuf = mbuf->next;
     }
 
     int cur_mbuf_len = mbuf->data_len;
-    assert(cur_mbuf_len >= flag_len);
-    assert(2048 * 2 + cur_mbuf_len - flag_len - rounding_factor
+    assert(cur_mbuf_len >= flag_len + rounding_factor);
+    assert(previous_segment_sizes + cur_mbuf_len - flag_len - rounding_factor
            == 4922); // Make sure the flag address is correct.
     const uint8_t* mbuf_data =
         rte_pktmbuf_mtod_offset(mbuf, uint8_t*, cur_mbuf_len - flag_len - rounding_factor);

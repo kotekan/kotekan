@@ -3,8 +3,8 @@
  * @brief Contains Metadata class.
  */
 
-#ifndef METADATA_HPP
-#define METADATA_HPP
+#ifndef NDMETADATA_HPP
+#define NDMETADATA_HPP
 
 #include <cstddef>          // for size_t
 #include <cstdint>          // for int64_t

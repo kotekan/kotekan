@@ -17,7 +17,6 @@
 num_dishes_x: 16
 num_dishes_y: 16
 num_dishes: 256     # TODO: 128
-input_order: CHORDBeamformer
 
 # Telescope
 
@@ -51,6 +50,11 @@ telescope:
       label: HIRAX-{{"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[y]}}{{"{:02d}".format(x+1)}}
 {%   endfor %}
 {% endfor %}
+
+    sampling_rate_MHz: adc_frequency / 1.0e+6
+    fft_length: num_samples_per_frame
+    min_science_freq_MHz: 1025 * adc_frequency / num_samples_per_frame / 1.0e+6
+    max_science_freq_MHz: 2048 * adc_frequency / num_samples_per_frame / 1.0e+6
 
 ################################################################################
 

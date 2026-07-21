@@ -43,9 +43,11 @@ U::Integer
 
 const F̄ = F_per_U[U] * U
 
+# We use U = 128 for HFB beams: downsample to the max, and have a larger output buffer to allow for more downsampling
+const is_hfb = U == 128
+const Tds_hfb = idiv(T ÷ 4, U)
 const Tbar = T ÷ U
-# We use U = 128 for HFB beams; downsample to the max
-const Tds = U < 128 ? idiv(Tds_U1, U) : Tbar ÷ 4
+const Tds = is_hfb ? Tds_hfb : idiv(Tds_U1, U)
 
 const Fbar_W = F̄
 const Fbar = U == 1 ? F : F̄
@@ -69,10 +71,9 @@ else
     @assert false
 end
 
-# # U = 128 requires a lot of much memory; reduce Ttilde
-# const Ttilde = U < 128 ? 4 * 256 : 4 * 64
 # We use U = 128 for HFB beams; downsample to the max
-const Ttilde = U < 128 ? 4 * 256 : 4 * 1
+const output_size_scale = is_hfb ? 20 : 1
+const Ttilde = (is_hfb ? 4 * 1 : 4 * 256) * output_size_scale
 
 const output_gain = 1 / (8 * Tds) #TODO   1 / (2 * Tds)
 
@@ -435,14 +436,6 @@ function make_chimefrb_kernel()
                     Γ2_dish2_0_dish5_0.im,
                     Γ2_dish2_1_dish5_0.re,
                     Γ2_dish2_1_dish5_0.im,
-                    Γ2_dish2_1_dish5_0.re,
-                    Γ2_dish2_0_dish5_0.im,
-                    Γ2_dish2_0_dish5_0.re,
-                    Γ2_dish2_1_dish5_0.im,
-                    Γ2_dish2_1_dish5_0.re,
-                    Γ2_dish2_0_dish5_1.im,
-                    Γ2_dish2_0_dish5_1.re,
-                    Γ2_dish2_1_dish5_1.im,
                     Γ2_dish2_0_dish5_1.re,
                     Γ2_dish2_0_dish5_1.im,
                     Γ2_dish2_1_dish5_1.re,
@@ -593,11 +586,6 @@ function make_chimefrb_kernel()
                     Γ4_dish2_0.im,
                     Γ4_dish2_1.re,
                     Γ4_dish2_1.im,
-                    Γ4_dish2_1.re,
-                    Γ4_dish2_0.im,
-                    Γ4_dish2_0.re,
-                    Γ4_dish2_1.im,
-                    Γ4_dish2_1.re,
                 )
             end
         end,
@@ -1556,7 +1544,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             end
         end
         if error_count > 0
-            println("*** SELF-TEST FAILED: $(error_count) mismatches ***")
+            error("*** SELF-TEST FAILED: $(error_count) mismatches ***")
         else
             println("Self-test passed.")
         end
@@ -1772,7 +1760,7 @@ function fix_ptx_kernel()
                         Dict("label" => "beamP", "length" => 2 * M, "dimscaling" => 1),
                         Dict("label" => "beamQ", "length" => 2 * N, "dimscaling" => 1),
                         Dict("label" => "Fbar", "length" => Fbar, "dimscaling" => 1),
-                        Dict("label" => "Ttilde", "length" => Ttilde, "dimscaling" => Tds_U1),
+                        Dict("label" => "Ttilde", "length" => Ttilde, "dimscaling" => Tds * U),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
@@ -1810,8 +1798,8 @@ if CUDA.functional()
     end
     fix_ptx_kernel()
 
-    # # Self-test (compares the kernel against a CPU reference beamformer)
-    # main(; run_selftest=true)
+    # Self-test (compares the kernel against a CPU reference beamformer)
+    main(; run_selftest=true)
 
     # # Run benchmark
     # main(; nruns=100)

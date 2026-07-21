@@ -23,7 +23,9 @@
 #include <functional> // for function
 #include <iomanip>    // for operator<<, setfill, setw
 #include <memory>     // for allocator, shared_ptr, __shared_ptr_access
-#include <omp.h>      // for omp_get_wtime
+#ifdef WITH_OMP
+#include <omp.h> // for omp_get_wtime
+#endif
 #include <sstream>    // for basic_ostream, operator<<, basic_ostrin...
 #include <string>     // for basic_string, char_traits, string, oper...
 #include <unistd.h>   // for gethostname, sleep
@@ -107,7 +109,7 @@ public:
         double time_sum = 0.0;
         double time_sum2 = 0.0;
 
-        double time0 = omp_get_wtime();
+        double time0 = current_time();
 
         for (int frame_index = 0;; ++frame_index) {
             const int frame_id = frame_index % buffer->num_frames;
@@ -123,7 +125,7 @@ public:
             if (!frame)
                 return;
 
-            double time1 = omp_get_wtime();
+            double time1 = current_time();
             // Skip the first few iterations to avoid the startup overhead
             if (frame_index > out_frame_first) {
                 double time = time1 - time0;

@@ -15,7 +15,9 @@
 #include <exception>           // for exception
 #include <limits>              // for numeric_limits
 #include <list>                // for list
+#include <map>                 // for map
 #include <regex>               // for regex, regex_match, cmatch, sregex_token_iterator
+#include <set>                 // for set
 #include <stdexcept>           // for runtime_error
 #include <string>              // for basic_string, operator==, string, char_traits, allocator
 #include <type_traits>         // for is_arithmetic, is_integral, enable_if, is_same, conditional
@@ -265,9 +267,91 @@ public:
      */
     void dump_config() const;
 
+    /**
+     * @brief Severity of the config-usage report logged at shutdown, and
+     *        whether unused items are treated as an error.
+     *
+     * Selected from the top-level @c log_config_usage config value (see
+     * @c parse_usage_report_level()).
+     */
+    enum class UsageReportLevel {
+        off,   ///< Disabled (default): no tracking, no report.
+        info,  ///< Track; log the summary at INFO.
+        warn,  ///< Track; log the summary at WARN if any item was unused.
+        error, ///< Track; log the summary at ERROR if any item was unused.
+        fatal, ///< Track; fail kotekan (non-zero exit) if any item was unused.
+    };
+
+    /**
+     * @brief Set the config-usage report level (and thereby enable or disable
+     *        access tracking).
+     *
+     * Any level other than @c off records every leaf value returned by
+     * @c get_value(), together with the base path (typically a stage's unique
+     * name) that requested it. Branch (object) reads are not recorded; only
+     * leaf values count as "used". @c log_access_summary() then reports which
+     * items were and were not used, at the severity given here.
+     *
+     * Intended to be set once at startup, before any values are read, so the
+     * summary covers all framework and stage accesses.
+     */
+    void set_usage_report_level(UsageReportLevel level);
+
+    /**
+     * @brief Parse a @c log_config_usage config value into a UsageReportLevel.
+     *
+     * Accepts a boolean (@c false -> off, @c true -> info) or a string
+     * ("off"/"none", "info"/"true", "warn", "error", "fatal"/"fatal_error",
+     * case-insensitive).
+     *
+     * @throws std::runtime_error on any other value.
+     */
+    static UsageReportLevel parse_usage_report_level(const nlohmann::json& value);
+
+    /**
+     * @brief Log a summary of which config leaf items were accessed and which
+     *        were not, listing for each used item the base paths (stages) that
+     *        accessed it.
+     *
+     * The summary is logged at the level set via @c set_usage_report_level():
+     * @c info always logs at INFO; @c warn / @c error escalate to that
+     * severity when any item went unused; @c fatal additionally fails kotekan
+     * (non-zero exit) when any item went unused. Does nothing if tracking is
+     * @c off.
+     */
+    void log_access_summary() const;
+
 private:
     /// Internal json object
     nlohmann::json _json;
+
+    /// Config-usage report level (see @c set_usage_report_level()). Tracking is
+    /// active for any level other than @c off. Set once at startup before
+    /// stages run, so reads of it need no locking.
+    UsageReportLevel _usage_report_level = UsageReportLevel::off;
+
+    /// Resolved JSON pointer of each accessed leaf -> the base paths (stages)
+    /// that requested it. Only populated while tracking is active.
+    mutable std::map<std::string, std::set<std::string>> _accessed;
+
+    /// Record an access of the value at resolved @c path, requested from
+    /// @c base_path. If @c value is an object the caller fetched a whole block
+    /// (e.g. gpuProcess reading its @c in_buffers map), so every descendant
+    /// leaf is recorded; otherwise @c path itself is recorded. Called by
+    /// @c get_value() when tracking is enabled.
+    void record_access(const std::string& path, const nlohmann::json& value,
+                       const std::string& base_path) const;
+
+    /// Recursive worker for @c record_access(); caller must hold the access lock.
+    void record_access_locked(const std::string& path, const nlohmann::json& value,
+                              const std::string& base_path) const;
+
+    /// Append the JSON pointer of every leaf (non-object) node reachable from
+    /// @c j (built under @c path) to @c leaves. Skips framework markers and
+    /// configUpdater-managed (@c kotekan_update_endpoint) blocks, which are not
+    /// read through get(). Helper for @c log_access_summary().
+    void collect_leaf_paths(const nlohmann::json& j, const std::string& path,
+                            std::vector<std::string>& leaves) const;
 
     /**
      * @brief Finds all values with key "name". Searches the given json.

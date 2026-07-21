@@ -30,7 +30,6 @@ class calcBBPhase : public kotekan::Stage {
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
     const int num_frequencies = config.get<int>(unique_name, "num_frequencies");
     const int num_times = config.get<int>(unique_name, "num_times");
-    const ElementOrder input_order = config.get<ElementOrder>(unique_name, "input_order");
     const int num_elements = num_dishes * num_polarizations;
 
     const std::vector<int> frequency_channels =
@@ -96,7 +95,8 @@ public:
         const Telescope& telescope = Telescope::instance();
 
         // Get dish positions (in the Telescope's GRID frame in meters).
-        std::vector<vec3d_t> feed_pos_m = telescope.get_feed_positions_m(num_elements, input_order);
+        std::vector<vec3d_t> feed_pos_m =
+            telescope.get_feed_positions_m(num_elements, telescope.fiducial_element_order());
         assert(std::ptrdiff_t(feed_pos_m.size()) == num_elements);
 
         // Get frequencies
