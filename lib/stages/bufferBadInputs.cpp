@@ -35,8 +35,8 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
     // mask. The defaults preserve the original CHIME behaviour (flags are
     // broadcast in cylinder order, the mask is in beamformer order); CHORD
     // sends and masks in the same [P][D] order, so both are CHORDBeamformer.
-    auto input_order = config.get_default<ElementOrder>(unique_name, "input_order",
-                                                        ElementOrder::CHIMECylinder);
+    auto input_order =
+        config.get_default<ElementOrder>(unique_name, "input_order", ElementOrder::CHIMECylinder);
     auto output_order = config.get_default<ElementOrder>(unique_name, "output_order",
                                                          ElementOrder::CHIMEBeamformer);
 

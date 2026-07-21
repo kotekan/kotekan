@@ -341,8 +341,8 @@ private:
  * @conf    log_level           string. Optional log level for this telescope instance.
  *
  * @author Geoffrey Ryan
- * 
- * @details 
+ *
+ * @details
  * 2024/10/25: Initial version copied from ICETelescope. Frequency logic
  *              stripped out. GR
  * 2025/11/10: Required frequency logic re-added (no stream_t behaviour). Dish input table

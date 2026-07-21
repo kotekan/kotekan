@@ -420,8 +420,8 @@ connInstance::~connInstance() {
     DEBUG("Closing FD");
     {
         std::lock_guard<std::mutex> lock(buffer_recv->instance_list_lock);
-        auto it = std::find(buffer_recv->instance_list.begin(),
-                            buffer_recv->instance_list.end(), this);
+        auto it =
+            std::find(buffer_recv->instance_list.begin(), buffer_recv->instance_list.end(), this);
         if (it != buffer_recv->instance_list.end()) {
             buffer_recv->instance_list.erase(it);
         }

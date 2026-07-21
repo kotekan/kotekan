@@ -1,34 +1,35 @@
 #include "restServer.hpp"
 
-#include <arpa/inet.h>              // for inet_pton, ntohs
-#include <assert.h>                 // for assert
-#include <event2/buffer.h>          // for evbuffer_add, evbuffer_peek, iovec, evbuffer_iovec
-#include <event2/event.h>           // for event_add, event_base_dispatch, event_base_free, even...
-#include <event2/http.h>            // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
-#include <event2/keyvalq_struct.h>  // for evkeyvalq, evkeyval
-#include <event2/thread.h>          // for evthread_use_pthreads
-#include <evhttp.h>                 // for evhttp_request
-#include <netdb.h>                  // for addrinfo, freeaddrinfo, gai_strerror, getaddrinfo
-#include <netinet/in.h>             // for sockaddr_in, IPPROTO_IPV6, IPV6_V6ONLY
-#include <pthread.h>                // for pthread_setaffinity_np, pthread_setname_np
-#include <sched.h>                  // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdlib.h>                 // for exit, free, malloc
-#include <sys/socket.h>             // for setsockopt, bind, getsockname, shutdown, socket, AF_INET
-#include <sys/time.h>               // for timeval
-#include <unistd.h>                 // for close
-#include <json.hpp>                 // for json_ref, basic_json, input_adapter, iter_impl, json
-#include <cstring>                  // for memset
-#include <exception>                // for exception
-#include <mutex>                    // for unique_lock
-#include <shared_mutex>             // for shared_lock, shared_timed_mutex
-#include <stdexcept>                // for runtime_error
-#include <string>                   // for basic_string, string, allocator, operator!=, operator<
-#include <utility>                  // for pair
-#include <vector>                   // for vector
+#include "Config.hpp"         // for Config
+#include "kotekanLogging.hpp" // for ERROR_NON_OO, FatalError, DEBUG_NON_OO, WARN_NON_OO
 
-#include "Config.hpp"               // for Config
-#include "kotekanLogging.hpp"       // for ERROR_NON_OO, FatalError, DEBUG_NON_OO, WARN_NON_OO
-#include "fmt.hpp"                  // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <arpa/inet.h>             // for inet_pton, ntohs
+#include <assert.h>                // for assert
+#include <cstring>                 // for memset
+#include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_iovec
+#include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
+#include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
+#include <event2/keyvalq_struct.h> // for evkeyvalq, evkeyval
+#include <event2/thread.h>         // for evthread_use_pthreads
+#include <evhttp.h>                // for evhttp_request
+#include <exception>               // for exception
+#include <json.hpp>                // for json_ref, basic_json, input_adapter, iter_impl, json
+#include <mutex>                   // for unique_lock
+#include <netdb.h>                 // for addrinfo, freeaddrinfo, gai_strerror, getaddrinfo
+#include <netinet/in.h>            // for sockaddr_in, IPPROTO_IPV6, IPV6_V6ONLY
+#include <pthread.h>               // for pthread_setaffinity_np, pthread_setname_np
+#include <sched.h>                 // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <shared_mutex>            // for shared_lock, shared_timed_mutex
+#include <stdexcept>               // for runtime_error
+#include <stdlib.h>                // for exit, free, malloc
+#include <string>                  // for basic_string, string, allocator, operator!=, operator<
+#include <sys/socket.h>            // for setsockopt, bind, getsockname, shutdown, socket, AF_INET
+#include <sys/time.h>              // for timeval
+#include <unistd.h>                // for close
+#include <utility>                 // for pair
+#include <vector>                  // for vector
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 #endif
@@ -279,8 +280,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
             conn.send_error("Fatal error while handling request", HTTP_RESPONSE::INTERNAL_ERROR);
         } catch (const std::exception& e) {
             ERROR_NON_OO("restServer: GET endpoint {:s} threw exception: {:s}", url, e.what());
-            conn.send_error("Internal error while handling request",
-                            HTTP_RESPONSE::INTERNAL_ERROR);
+            conn.send_error("Internal error while handling request", HTTP_RESPONSE::INTERNAL_ERROR);
         }
         return;
     }
@@ -314,8 +314,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
             conn.send_error("Fatal error while handling request", HTTP_RESPONSE::INTERNAL_ERROR);
         } catch (const std::exception& e) {
             ERROR_NON_OO("restServer: POST endpoint {:s} threw exception: {:s}", url, e.what());
-            conn.send_error("Internal error while handling request",
-                            HTTP_RESPONSE::INTERNAL_ERROR);
+            conn.send_error("Internal error while handling request", HTTP_RESPONSE::INTERNAL_ERROR);
         }
         return;
     }
