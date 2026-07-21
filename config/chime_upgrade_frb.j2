@@ -342,13 +342,20 @@ dbg_read_voltages_{{ id }}:
 {%- endfor %}
 ##}
 
-{% set frequency_channels = [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ] %}
 #{#
+{% set frequency_channels = [ 58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978 ] %}
+#}#
+
+# for side lobe testing
+###
+{% set frequency_channels = [ 0, 64, 128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960 ] %}
+###
 
 {% for id in range(16) %}   # num_frequencies = 16
 dbg_read_voltages_{{ id }}:
     kotekan_stage: hdf5FileReadSingleFile
-    input_dir: fengine-data
+    input_dir: fengine-data/{{id}}
+    #input_dir: fengine-data
     # this is both (up to .h5) the name of the file and the name of the dataset
     # in the file
     file_name: voltage
@@ -374,7 +381,7 @@ fake_lost_samples_{{ id }}:
 {%- endfor %}
     out_buf: lost_samples_buffer_{{ id }}
 {% endfor %}
-##}
+###
 
 # TODO: do these still need to exist, or are they replaced by the
 # jinja-templated shuffle above?
@@ -484,6 +491,7 @@ dbg_read_lostsamples_{{ id }}:
 {%- endfor %}
 ##}
 
+#{#
 {% for id in range(16) %}   # num_frequencies = 16
 fake_voltages_{{ id }}:
     kotekan_stage: testDataGen
@@ -514,6 +522,7 @@ fake_lost_samples_{{ id }}:
 {%- endfor %}
     out_buf: lost_samples_buffer_{{ id }}
 {% endfor %}
+#}#
 
 {%- endif %}
 
@@ -1721,8 +1730,10 @@ FRB:
 # direction sine in the normal vector sin(angle-from-zenith-towards-x), equally spaced for CHIME
 {%- for ns in range(frb2_num_beams_y) %}
 {%- for ew in range(frb2_num_beams_x) %}
-          - {{ sin_achromatic_beam_angles_EW[ew] }}
-          - {{ (ns - 127)*1.73205080756888/256 }}
+          - 0. #{# sin_achromatic_beam_angles_EW[ew] #}
+          #- {# (ns - 127)*1.73205080756888/256 #}
+          # puts one beam at exactly 30deg
+          - {{ 0.4 + 0.2 * (ew*256 + ns)/1024 }}
 {%- endfor %}
 {%- endfor %}
         name: frb2_beam_positions
