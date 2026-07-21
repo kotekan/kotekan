@@ -136,20 +136,24 @@ def trim_cycles_at(series, prn, ts):
     return out
 
 
-def arc_scatter(ts, ys, max_gap, min_len):
-    """split on gaps, linear-detrend each arc, return per-arc rms list"""
+def arc_scatter(ts, ys, max_gap, min_len, order=1):
+    """split on gaps, detrend each arc (order 1 = linear, 2 = quadratic), return per-arc
+    rms list. order=2 removes the arc's CURVATURE too -- a diagnostic: if the scatter
+    collapses from order 1 to 2, the 'noise' was uncancelled 2nd-order (differential
+    Doppler-rate / timing), not real high-frequency phase noise."""
+    import numpy as np
     res = []
     i0 = 0
     for i in range(1, len(ts) + 1):
         if i == len(ts) or ts[i] - ts[i - 1] > max_gap:
             if ts[i - 1] - ts[i0] >= min_len:
-                seg_t, seg_y = ts[i0:i], ys[i0:i]
+                seg_t = np.array(ts[i0:i], float)
+                seg_y = np.array(ys[i0:i], float)
                 n = len(seg_t)
-                mt, my = sum(seg_t) / n, sum(seg_y) / n
-                den = sum((t - mt) ** 2 for t in seg_t) or 1.0
-                sl = sum((t - mt) * (y - my) for t, y in zip(seg_t, seg_y)) / den
-                r = [y - (my + sl * (t - mt)) for t, y in zip(seg_t, seg_y)]
-                res.append(((sum(x * x for x in r) / n) ** 0.5, n, seg_t[-1] - seg_t[0]))
+                if n > order:
+                    x = seg_t - seg_t[0]
+                    r = seg_y - np.polyval(np.polyfit(x, seg_y, order), x)
+                    res.append((float(np.sqrt(np.mean(r * r))), n, float(seg_t[-1] - seg_t[0])))
             i0 = i
     return res
 
@@ -166,6 +170,16 @@ def main():
     ap.add_argument("--min-sig", type=float, default=15.0)
     ap.add_argument("--max-gap-s", type=float, default=10.0)
     ap.add_argument("--min-arc-s", type=float, default=60.0)
+    ap.add_argument("--detrend-order", type=int, default=1,
+                    help="per-arc detrend order: 1 = linear (default), 2 = quadratic. "
+                         "Order 2 removes arc curvature -- if the scatter collapses 1->2, "
+                         "the 'noise' was uncancelled 2nd-order (differential Doppler-rate / "
+                         "resample-timing), not real phase noise.")
+    ap.add_argument("--root", default=None,
+                    help="read a ROTATED archive instead of live /tmp: replaces the '/tmp' "
+                         "prefix of the obs/log paths with this dir (e.g. a "
+                         "gnss_archive/run_<ts>/ that preserves the gpswipe/gps_l2c_gpu/"
+                         "gps_l5_gpu subdirs). broker logs live under broker_logs/ there.")
     args = ap.parse_args()
     t_cut = 0.0
     if args.since:
@@ -180,6 +194,14 @@ def main():
             print("unknown pair %s" % name)
             continue
         sysid, fa, freq_a, fb, freq_b, log_a, log_b = PAIRS[name]
+        if args.root:  # redirect live /tmp paths into a rotated archive
+            import os
+            def _re(p):
+                q = p.replace("/tmp", args.root, 1)
+                if "broker" in os.path.basename(q):  # logs archived under broker_logs/
+                    q = os.path.join(args.root, "broker_logs", os.path.basename(q))
+                return q
+            fa, fb, log_a, log_b = _re(fa), _re(fb), _re(log_a), _re(log_b)
         lam_a, lam_b = C_L / freq_a, C_L / freq_b
         fac = abs(K_TEC * (1.0 / freq_a ** 2 - 1.0 / freq_b ** 2))  # m per TECU
         oa, ob = (load_obs(fa, t_cut, args.min_sig, args.t1),
@@ -253,7 +275,7 @@ def main():
                         yb = [y - sign_a * c for y, c in zip(yb, cb)]
                     gf = [(lam_a * a - lam_b * b) / fac for a, b in zip(ya, yb)]  # TECU
                     tot += [r for r, n, s in arc_scatter(common, gf, args.max_gap_s,
-                                                         args.min_arc_s)]
+                                                         args.min_arc_s, args.detrend_order)]
             results[sign_a] = tot
         def fmt(v):
             return ("%d arcs, scatter med %.2f p90 %.2f TECU"
