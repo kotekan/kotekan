@@ -330,7 +330,9 @@ bands:
           fll_reacq_hz: 15.0
           note_inline: "tight snap-to-model fence (rec B; free under dop-continuous; alias limit 25 Hz at 10 ms)"
         combiner:
-          params: { nh_assist: true, nh_min_refs: 3, n_prn: 32, integration_length: 100, secondary_overlay: L1CO }
+          # phase_dump: 10 ms records -> 100 Hz/PRN, trivial volume; clean-band overlay-pilot
+          # control for the L5 ADR-wander forensics (see the l5 gps combiner note). REMOVE with it.
+          params: { nh_assist: true, nh_min_refs: 3, n_prn: 32, integration_length: 100, secondary_overlay: L1CO, phase_dump_prns: [18, 23], phase_dump_path: /tmp/gpswipe/phase_dump_l1c.txt }
           note: |
             L1C-P: deterministic per-PRN 1800-symbol L1CO overlay wipe (same code path as B1C).
             integration_length 100 x 10 ms = 1 s. The ADR de-rotates the L1CO overlay (plain
@@ -407,7 +409,9 @@ bands:
             seamlessly. (12 vs the fleet's 15 is deliberate -- L2C's 20 ms records put the
             bit-robust FLL alias limit at 12.5 Hz.)
         combiner:
-          params: { integration_length: 200, navwipe_bit_records: 1 }
+          # phase_dump: 20 ms records -> 50 Hz/PRN, trivial volume; clean-reference control
+          # for the L5 ADR-wander forensics (see the l5 gps combiner note). REMOVE with it.
+          params: { integration_length: 200, navwipe_bit_records: 1, phase_dump_prns: [18, 23, 24], phase_dump_path: /tmp/gps_l2c_gpu/phase_dump_l2c.txt }
           note: |
             L2C DEEP WIPE: a 20 ms record is exactly ONE CNAV symbol, so navwipe_bit_records
             1 wipes the 50 sym/s data and the sum integrates past 20 ms. integration_length
@@ -505,7 +509,11 @@ bands:
           fll_reacq_hz: 15.0
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous; alias limit 250 Hz at 1 ms)"
         combiner:
-          params: { integration_length: 1000, secondary_overlay: L5_NH20 }
+          # phase_dump (2026-07-21, BOUNDED to 4 strong PRNs ~1.4 GB/h, unlike the 52 GB
+          # all-PRN L1 dumps removed 07-20): per-record forensics for the L5-band ADR wander
+          # -- splits the dcmd (commanded/bookkeeping) vs dres (measured) halves offline.
+          # REMOVE when the wander is closed.
+          params: { integration_length: 1000, secondary_overlay: L5_NH20, phase_dump_prns: [18, 23, 24, 32], phase_dump_path: /tmp/gps_l5_gpu/phase_dump_gps_l5.txt }
           note: |
             L5 DEEP WIPE: Q5 is a dataless pilot under the KNOWN NH20 overlay (one +-1 chip
             per 1 ms record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-

@@ -209,7 +209,7 @@ assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_
 # per 1 ms record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-
 # period boundary. integration_length 1000 = 1 s max buffer (the auto-coherence
 # ladder finds the knee live).
-gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, secondary_overlay: L5_NH20 }
+gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, secondary_overlay: L5_NH20, phase_dump_prns: [18, 23, 24, 32], phase_dump_path: "/tmp/gps_l5_gpu/phase_dump_gps_l5.txt" }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- Galileo E5a-Q parallel chain (dataless pilot, PRN 1..36) ----
