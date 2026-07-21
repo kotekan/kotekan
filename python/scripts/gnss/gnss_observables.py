@@ -87,6 +87,12 @@ def main():
     ap.add_argument("--lat", type=float, default=43.968697)
     ap.add_argument("--lon", type=float, default=-79.252106)
     ap.add_argument("--alt", type=float, default=260.0)
+    ap.add_argument("--eph-geom-window-s", type=float, default=21600.0,
+                    help="toe validity window for GEOMETRY (az/el/range). Wider than the "
+                         "4 h dead-reckon default so a stale-in-memory or offline ephemeris "
+                         "still yields az/el through an overnight network gap (Keplerian "
+                         "propagation is sub-degree for many hours). toe_age_s is logged per "
+                         "row so precision consumers can still gate on freshness.")
     ap.add_argument("--interval", type=float, default=1.0,
                     help="poll period (s); rows are written once per COMBINER EMIT (deduped "
                          "on the arc/record counters), so polling faster than the emit is free")
@@ -100,7 +106,7 @@ def main():
     t_rec = args.code_length / args.chip_rate_hz
     lam = C_LIGHT / args.carrier_hz          # carrier wavelength (m/cycle)
 
-    eph, eph_t = None, 0.0
+    eph, eph_t, eph_probe_t = None, 0.0, 0.0
     last = {}   # prn -> (adr_arc, adr_records) of the last row written (emit dedup)
     n = 0
     f = open(args.out, "a", buffering=1)
@@ -119,10 +125,28 @@ def main():
             a = _get("%s/%s/adcstat" % (args.url, args.airspy)) or {}
             utc0 = float(a.get("utc0_sample0") or 0.0)
 
-        if eph is None or now - eph_t > 7200:
+        # STALE-GEOMETRY PROBE (2026-07-20): a loaded eph whose newest toe has aged past the
+        # window yields ZERO sats -> az/el/range silently vanish, and the plain 2 h timer
+        # would leave it that way for up to 2 h (measured: L1-GPS ran 4 h geometry-blind
+        # while fresh BRDC sat in the cache). Probe once every 5 min; an empty predict for
+        # THIS constellation forces a re-fetch now.
+        stale_geom = False
+        if eph is not None and now - eph_probe_t > 300.0:
+            eph_probe_t = now
+            try:
+                probe = predict_all(eph, args.lat, args.lon, args.alt,
+                                    datetime.fromtimestamp(now, tz=timezone.utc),
+                                    mask_deg=-90.0, max_age=args.eph_geom_window_s)
+                stale_geom = not any(k[0] == args.sys for k in probe)
+            except Exception:
+                stale_geom = True
+        if eph is None or now - eph_t > 7200 or stale_geom:
             try:
                 eph = parse_rinex_nav(fetch_brdc())
                 eph_t = now
+                if stale_geom:
+                    print("BRDC geometry was stale for %s; re-fetched" % args.sys,
+                          file=sys.stderr)
             except Exception as e:
                 print("BRDC unavailable (%s); geometry omitted" % e, file=sys.stderr)
                 eph_t = now - 7200 + 600
@@ -154,7 +178,8 @@ def main():
                     try:
                         v = predict_all(eph, args.lat, args.lon, args.alt,
                                         datetime.fromtimestamp(t_epoch, tz=timezone.utc),
-                                        mask_deg=-90.0).get((args.sys, prn))
+                                        mask_deg=-90.0,
+                                        max_age=args.eph_geom_window_s).get((args.sys, prn))
                     except Exception:
                         v = None
                 adr = r.get("adr_cycles")

@@ -48,12 +48,16 @@ def fetch_brdc(when=None, cache_dir=CACHE):
     Tries today's streamed file then falls back a day (files appear with some latency)."""
     os.makedirs(cache_dir, exist_ok=True)
     when = when or datetime.now(timezone.utc)
+    newest = None  # freshest existing cache, used as a last-good fallback (see the raise)
     for back in (0, 1):
         d = when - timedelta(days=back)
         doy = d.timetuple().tm_yday
         for kind in ("S", "R"):
             name = "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, d.year, doy)
             local = os.path.join(cache_dir, name)
+            if os.path.exists(local) and (newest is None
+                                          or os.path.getmtime(local) > os.path.getmtime(newest)):
+                newest = local
             # Current-day files (back == 0) GROW through the day, so a cached copy goes stale:
             # its newest toe ages out of best_eph's 4 h window after a few hours and predict_all
             # returns NOTHING (measured 2026-07-15: a 10.8 h-old cache -> 0 visible sats -> the
@@ -73,7 +77,13 @@ def fetch_brdc(when=None, cache_dir=CACHE):
                 return local
             except Exception:
                 continue
-    raise RuntimeError("no BRDC file reachable (network?)")
+    # Every download failed. A STALE cache beats None: a geometry caller with a widened
+    # toe window still gets az/el from it, and the retry keeps trying for fresh data.
+    # (2026-07-20: a transient outage that raised here left a logger geometry-blind for
+    # hours -- eph stayed None while good data sat one directory over.)
+    if newest is not None:
+        return newest
+    raise RuntimeError("no BRDC file reachable (network?) and no cache")
 
 
 def _f(s):
@@ -246,15 +256,22 @@ def best_eph(records, t_gpst, max_age=14400.0):
     return min(cand, key=lambda e: abs(t_gpst - e["toe_gpst"])) if cand else None
 
 
-def predict_all(eph, lat, lon, alt, t_utc, mask_deg=0.0):
+def predict_all(eph, lat, lon, alt, t_utc, mask_deg=0.0, max_age=14400.0):
     """Per visible sat: az/el, geometric range (m) with Earth-rotation (Sagnac)
     correction, range-rate (m/s), sat clock (s). Receiver clock NOT included --
-    solving it from measured-vs-predicted IS the time bootstrap."""
+    solving it from measured-vs-predicted IS the time bootstrap.
+
+    max_age (s) is the toe validity window (default 4 h). GEOMETRY-only callers
+    (observables az/el/range for the sky map / mapping factor) can widen it so a
+    stale-in-memory or offline-cached ephemeris still yields az/el through a network
+    gap -- Keplerian propagation is sub-degree/few-km for many hours past toe. The
+    precise-clock callers (dead-reckon) keep the tight default; toe_age_s is per-sat
+    so a consumer can still gate on freshness."""
     t = gpst_of_utc(t_utc)
     rx = _ecef_of_llh(lat, lon, alt)
     out = {}
     for key, recs in eph.items():
-        e = best_eph(recs, t)
+        e = best_eph(recs, t, max_age)
         if e is None:
             continue
         if e.get("health", 0) not in (0, 0.0) and key[0] != "C":
