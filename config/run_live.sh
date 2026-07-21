@@ -48,10 +48,12 @@ TAG=${TAG:-gpslive}                 # log-file stem: /tmp/$TAG*.log
 # can't see it) -- collect those first; the stage-name grep remains for the CPU configs.
 # 2026-07-12: the stage-name-only grep launched the GPS broker of live_l1_dual20.yaml with
 # ZERO trackers -- seeds never POSTed, GPS tracking silently dead while search looked normal.
-# Skip the gal_/bds_ constellations: their own broker sections below seed them.
+# Skip the gal_/bds_/l1c_ constellations: their own broker sections below seed them (l1c_ is
+# GPS-constellation but a SEPARATE chain/signal -- if left in, the C/A broker POSTs 1023-chip
+# seeds to the 10230-chip L1C tracker; see the L1C broker block below).
 TRK=${TRK:-$(
   { grep -oE 'seed_endpoint:[[:space:]]*"/[a-z_0-9]+/set_seeds"' "$CFG" \
-      | sed -E 's|.*"/([a-z_0-9]+)/set_seeds"|\1|' | grep -vE '^(gal|bds)_';
+      | sed -E 's|.*"/([a-z_0-9]+)/set_seeds"|\1|' | grep -vE '^(gal|bds|l1c)_';
     grep -oE '^track[_0-9]*' "$CFG"; } | sort -u | tr '\n' ',' | sed 's/,$//')}
 # Also hand any GnssVoltagePeel stage to the broker's --trackers: it POSTs the same consensus seeds
 # {cp, Doppler, cp_rate(+l-a)} to /<peel>/set_seeds, so the peel reconstructs + subtracts each sat
@@ -188,7 +190,7 @@ kill_kotekan() {  # $1 = pgrep pattern (port-scoped to ONE band)
     kill -9 $pids 2>/dev/null   # last resort, only if it ignored TERM for 5 s
 }
 
-cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" "${GALPID:-}" "${GALLOGPID:-}" "${BDSPID:-}" "${BDSLOGPID:-}" ${OBSPIDS:-} 2>/dev/null
+cleanup() { echo; echo "stopping..."; kill "${BPID:-}" "${LOGPID:-}" "${GALPID:-}" "${GALLOGPID:-}" "${BDSPID:-}" "${BDSLOGPID:-}" "${L1CPID:-}" "${L1CLOGPID:-}" ${OBSPIDS:-} 2>/dev/null
             if [ "$SKIP_KOTEKAN" != "1" ]; then
               kill_kotekan "kotekan .*-b 0.0.0.0:$PORT"   # only THIS band's kotekan, GRACEFULLY
               pkill -9 -f "livebeam_server.*--http-port $HTTP_PORT" 2>/dev/null
@@ -443,6 +445,37 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
   echo "BeiDou C/N0 status log -> $RECDIR/status_log_bds.jsonl"
 fi
 
+# Fourth chain: GPS L1C-P (l1c_* stages). GPS constellation (shares C/A's ephemeris/almanac,
+# constellation G, PRNs 1-32) but a SEPARATE signal -- a 10230-chip BOC(1,1) pilot under the
+# per-PRN 1800-symbol L1CO overlay. Its OWN broker + bias files + obs so it never cross-seeds
+# the C/A chain (its 10230-chip code needs different cp params than C/A's 1023). Reuses the GPS
+# $ALM (constellation G, same birds). Added 2026-07-21 as the clean-L1-band overlay-pilot
+# ADR/TEC comparison for the overlay-wipe de-rotation fix (isolates the wipe math from the L5 leg).
+L1CPID=""
+L1CLOGPID=""
+if grep -qE '^l1c_track:|seed_endpoint:[[:space:]]*"/l1c_track/set_seeds"' "$RUNCFG"; then
+  L1C_SIGNAL=$(blk_signal l1c_search); L1C_SIGNAL=${L1C_SIGNAL:-GPS_L1C_P}
+  L1C_CHIP=$(sig_chip "$L1C_SIGNAL");     L1C_CHIP=${L1C_CHIP:-1.023e6}
+  L1C_CODELEN=$(sig_codelen "$L1C_SIGNAL"); L1C_CODELEN=${L1C_CODELEN:-10230}
+  L1C_CPERR=$(cperr_of "$L1C_CHIP")
+  { [ -z "$LAT" ] || [ -z "$LON" ]; } && echo "WARNING: l1c_track present but LAT/LON unset -- L1C require_hint search will scan NOTHING"
+  echo "starting GPS-L1C broker ($L1C_SIGNAL: l1c_search/l1c_track/l1c_combiner, constellation G, chip $L1C_CHIP code $L1C_CODELEN)..."
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}l1c_search --trackers ${SP}l1c_track --combiner ${SP}l1c_combiner \
+          --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in" \
+          ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file /tmp/gps_code_bias_${TAG}_l1c.ppm --clock-bias-file /tmp/gps_clock_bias_${TAG}_l1c.hz \
+          --chip-rate-hz $L1C_CHIP --code-length $L1C_CODELEN --hold-max-cp-err $L1C_CPERR \
+          --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
+          --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
+          ${BROKER_EXTRA:-} $ALM $CARG \
+          > /tmp/${TAG}_broker_l1c.log 2>&1 &
+  L1CPID=$!
+  python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT \
+          --combiner ${SP}l1c_combiner --search ${SP}l1c_search --airspy "${SP}$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')" \
+          --out "$RECDIR/status_log_l1c.jsonl" > /tmp/${TAG}_logger_l1c.log 2>&1 &
+  L1CLOGPID=$!
+  echo "GPS-L1C C/N0 status log -> $RECDIR/status_log_l1c.jsonl"
+fi
+
 # Persist per-PRN C/N0 + detection stats (deep_snr/coherence_s live only in REST/the browser -- the
 # recorded level_*.raw has Â but not those). One JSONL line per active PRN per poll, wall-clock
 # stamped, alongside the raw records. Offline: captures/gps_beam_survey.py --status <this file>.
@@ -473,7 +506,8 @@ if [ "${OBSERVABLES:-1}" != "0" ]; then
   # the L1 tune (E1C/B1C) and the L5 tune (E5a-Q/B2a-P); the grep skips whichever chain is absent.
   for _o in "gps_combiner gps_search G ${SIGNAL:-GPS_L1CA} ${CODELEN:-1023} $_obs ${CHIP_HZ:-1.023e6}" \
             "gal_combiner gal_search E $GAL_SIGNAL $GAL_CODELEN $GAL_OBS $GAL_CHIP" \
-            "bds_combiner bds_search C $BDS_SIGNAL $BDS_CODELEN $BDS_OBS $BDS_CHIP"; do
+            "bds_combiner bds_search C $BDS_SIGNAL $BDS_CODELEN $BDS_OBS $BDS_CHIP" \
+            "l1c_combiner l1c_search G ${L1C_SIGNAL:-GPS_L1C_P} ${L1C_CODELEN:-10230} obs_gps_l1c ${L1C_CHIP:-1.023e6}"; do
     set -- $_o
     grep -qE "^($1|${1#gps_}):" "$RUNCFG" || continue
     python3 python/scripts/gnss/gnss_observables.py --url http://localhost:$PORT \

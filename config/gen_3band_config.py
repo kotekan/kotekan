@@ -38,7 +38,7 @@ INHERIT = ["samples_per_data_set", "bytes_per_sample", "buffer_depth", "sizeof_f
            "spectrum_length", "num_taps", "sample_rate", "f_offset", "signal",
            "code_doppler_sign", "n_prn", "record_floats", "doppler_margin_hz", "acquire_snr",
            "acquire_windows", "doppler_min", "doppler_max", "doppler_step", "prns", "gal_n_prn",
-           "bds_n_prn"]
+           "bds_n_prn", "l1c_n_prn"]
 # Keys emitted once, from the first band.
 SHARED = ["type", "log_level", "instrument_name", "telescope", "cpu_affinity", "clock_profile"]
 

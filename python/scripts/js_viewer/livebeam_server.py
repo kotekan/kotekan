@@ -732,7 +732,11 @@ class ModeResource(resource.Resource):
 BAND_CHAINS = {
     "l1":  [{"tag": "G", "name": "GPS L1 C/A",  "t_rec": 1e-3,  "color": "#4d9de0"},
             {"tag": "E", "name": "Galileo E1C", "t_rec": 4e-3,  "color": "#e8923c"},
-            {"tag": "C", "name": "BeiDou B1C",  "t_rec": 10e-3, "color": "#d64550"}],
+            {"tag": "C", "name": "BeiDou B1C",  "t_rec": 10e-3, "color": "#d64550"},
+            # GPS L1C-P (4th L1 chain): constellation G / PRNs 1-32 like C/A, so it needs a
+            # DISTINCT viewer tag "L" (the series key is tag+prn) backed by explicit l1c_ stages
+            # in WsPortResource.base -- reusing "G" would merge it into the C/A series.
+            {"tag": "L", "name": "GPS L1C",     "t_rec": 10e-3, "color": "#6fbf73"}],
     "l2c": [{"tag": "G", "name": "GPS L2C",     "t_rec": 20e-3, "color": "#4d9de0"}],
     "l5":  [{"tag": "G", "name": "GPS L5",      "t_rec": 1e-3,  "color": "#4d9de0"},
             {"tag": "E", "name": "Galileo E5a", "t_rec": 1e-3,  "color": "#e8923c"},
@@ -765,7 +769,8 @@ class WsPortResource(resource.Resource):
         # (l1_gps_combiner) and the browser must poll those. The client falls back to its old
         # hardcoded spellings when absent (old server / new client and vice versa both work).
         base = {"G": ("gps_search", "gps_combiner"), "E": ("gal_search", "gal_combiner"),
-                "C": ("bds_search", "bds_combiner")}
+                "C": ("bds_search", "bds_combiner"),
+                "L": ("l1c_search", "l1c_combiner")}  # GPS L1C-P: 4th L1 chain, synthetic tag
         self.chains = []
         for c in table:
             if c["tag"] not in tags:
@@ -830,6 +835,7 @@ class GpsSkyResource(resource.Resource):
         ("G", None),        # None -> gps_beamtrack.DEFAULT_TLE_URL (gps-ops)
         ("E", "https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle"),
         ("C", "https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle"),
+        ("L", None),        # GPS L1C-P: same GPS birds (gps-ops TLE) as "G", distinct viewer tag
     )
 
     def _compute(self):
