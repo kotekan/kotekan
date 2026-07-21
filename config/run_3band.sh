@@ -64,6 +64,43 @@ pkill -9 -f "[g]nss_observables.py" 2>/dev/null
 pkill -9 -f "[l]ivebeam_server.py" 2>/dev/null
 sleep 1
 
+# ---- AUTO-ROTATE the prior run's capture (2026-07-21) ----
+# The rawFileWrite record stages write ONE growing *_level_0000000.raw per band; a fresh
+# kotekan OVERWRITES it, and the obs/status loggers would otherwise APPEND across runs
+# (mixing pre/post-relaunch data in one file). Before launching, move the prior run's data
+# aside to a timestamped dir so every relaunch preserves it -- essential for A/B tests
+# (e.g. the airspy L1<->L5 swap) where the old capture IS the comparison baseline. Same
+# filesystem (/tmp and /home are both nvme0n1p2), so `mv` is instant regardless of size.
+# Runs AFTER teardown (nothing is writing) and BEFORE the launch. Skips a fresh boot
+# (nothing to rotate). Override the destination root with ROTATE_ROOT; disable with
+# ROTATE_ROOT=none.
+ROTATE_ROOT=${ROTATE_ROOT:-/home/lwlab/gnss_archive}
+if [ "$ROTATE_ROOT" != "none" ]; then
+    stamp="run_$(date +%Y-%m-%d_%H%M%S)"
+    dst="$ROTATE_ROOT/$stamp"
+    rotated=0
+    for d in /tmp/gpswipe /tmp/gps_l2c_gpu /tmp/gps_l5_gpu; do
+        bn=$(basename "$d")
+        # per-pattern (a compound `ls a b c` returns non-zero if ANY glob is empty, which
+        # skipped record-LESS dirs like l2c -- fixed 2026-07-21 same session). compgen -G
+        # tests one glob at a time.
+        for pat in '*.raw' 'obs_*.jsonl' 'status_log*.jsonl'; do
+            compgen -G "$d/$pat" >/dev/null || continue
+            mkdir -p "$dst/$bn"
+            mv $d/$pat "$dst/$bn/" 2>/dev/null && rotated=1
+        done
+    done
+    if ls /tmp/gps_*_broker*.log >/dev/null 2>&1; then
+        mkdir -p "$dst/broker_logs"; mv /tmp/gps_*_broker*.log "$dst/broker_logs/" 2>/dev/null; rotated=1
+    fi
+    if [ "$rotated" = 1 ]; then
+        echo "$(date -Iseconds)  rotated by run_3band.sh launch" > "$dst/ROTATED"
+        echo "rotated prior run -> $dst"
+    else
+        rmdir "$dst" 2>/dev/null   # fresh boot: nothing was there
+    fi
+fi
+
 # ---- our own pidfile + cleanup ----
 LAUNCHPID=/tmp/run_3band_launcher.pid
 if [ -f "$LAUNCHPID" ]; then
