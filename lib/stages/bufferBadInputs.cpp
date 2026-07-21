@@ -47,6 +47,9 @@ bufferBadInputs::bufferBadInputs(Config& config_, const std::string& unique_name
     // reorder[output_idx] = input_idx;
     reorder.resize(num_elements);
 
+    // initialize the mask (1 == good)
+    input_mask = std::vector<uint8_t>(num_elements, 1u);
+
     const Telescope& tel = Telescope::instance();
 
     if (input_order == output_order) {
