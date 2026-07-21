@@ -1,9 +1,10 @@
 #include "NDArray.hpp"
 
-#include "Config.hpp"    // for Config
-#include "DataType.hpp"  // for DataType, GetType_t, operator<<
-#include "FrameDesc.hpp" // for FrameDesc
-#include "Symbol.hpp"    // for Symbol, operator<<, operator!=, operator==
+#include "Config.hpp"         // for Config
+#include "DataType.hpp"       // for DataType, GetType_t, operator<<
+#include "FrameDesc.hpp"      // for FrameDesc
+#include "Symbol.hpp"         // for Symbol, operator<<, operator!=, operator==
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
 
 #include <cassert>     // for assert
 #include <cstring>     // for memcmp
@@ -31,6 +32,47 @@ std::string format_vector(const std::vector<T>& vec) {
     return buf.str();
 }
 
+// Validate the structural fields and labels of an NDArray descriptor. A bad
+// descriptor is unrecoverable (frames would be mis-sized downstream), so any
+// problem is fatal (FATAL_ERROR_NON_OO, with `context` in the message). Shared
+// by from_config and the JSON deserializer (for descriptors received over
+// bufferRecv), so both paths enforce the same rules.
+void validate_ndarray_fields(DataType value_datatype, const std::string& value_type_name,
+                             const std::vector<std::ptrdiff_t>& extents,
+                             const std::vector<Symbol>& dimnames,
+                             const std::vector<std::ptrdiff_t>& dimscalings,
+                             const std::string& context) {
+    if (value_datatype == unknown_type)
+        FATAL_ERROR_NON_OO("GenericNDArray ({:s}): unknown value_type '{:s}'", context,
+                           value_type_name);
+    if (extents.empty() || extents.size() > GenericNDArray::max_rank)
+        FATAL_ERROR_NON_OO("GenericNDArray ({:s}): rank {:d} is outside [1, {:d}]", context,
+                           extents.size(), GenericNDArray::max_rank);
+    for (std::size_t d = 0; d < extents.size(); ++d)
+        if (extents[d] <= 0)
+            FATAL_ERROR_NON_OO("GenericNDArray ({:s}): extent {:d} of dimension {:d} is not "
+                               "positive",
+                               context, extents[d], d);
+    if (dimnames.size() != extents.size())
+        FATAL_ERROR_NON_OO("GenericNDArray ({:s}): dimnames count {:d} does not match rank {:d}",
+                           context, dimnames.size(), extents.size());
+    // Only set (non-empty) labels can collide; unset labels are filled in later.
+    for (std::size_t d = 0; d < dimnames.size(); ++d)
+        for (std::size_t d1 = 0; d1 < d; ++d1)
+            if (dimnames[d].valid() && dimnames[d] == dimnames[d1])
+                FATAL_ERROR_NON_OO("GenericNDArray ({:s}): duplicate dimname '{:s}'", context,
+                                   dimnames[d]);
+    if (dimscalings.size() != extents.size())
+        FATAL_ERROR_NON_OO("GenericNDArray ({:s}): dimscalings count {:d} does not match rank "
+                           "{:d}",
+                           context, dimscalings.size(), extents.size());
+    for (std::size_t d = 0; d < dimscalings.size(); ++d)
+        if (dimscalings[d] <= 0)
+            FATAL_ERROR_NON_OO("GenericNDArray ({:s}): dimscaling {:d} of dimension {:d} is not "
+                               "positive",
+                               context, dimscalings[d], d);
+}
+
 } // namespace
 
 void GenericNDArray::output_framedesc(std::ostream& os) const {
@@ -45,6 +87,36 @@ void GenericNDArray::output_framedesc(std::ostream& os) const {
        << "    dimnames:        " << format_vector(get_dimnames()) << "\n"
        << "    dimscalings:     " << format_vector(get_dimscalings()) << "\n"
        << "    strides:         " << format_vector(get_strides()) << "\n";
+}
+
+nlohmann::json GenericNDArray::to_json() const {
+    nlohmann::json j;
+    j["frame_desc_type"] = "ndarray";
+    j["value_type"] = type_to_string(get_value_datatype());
+    j["extents"] = get_extents();
+    j["quantity_name"] = get_quantity_name();
+    j["dimnames"] = get_dimnames();
+    j["dimscalings"] = get_dimscalings();
+    return j;
+}
+
+std::shared_ptr<const FrameDesc> GenericNDArray::from_json(const nlohmann::json& j) {
+    const std::string type_name = j.at("value_type").get<std::string>();
+    const DataType value_datatype = string_to_type(type_name);
+
+    const auto extents = j.at("extents").get<std::vector<std::ptrdiff_t>>();
+
+    const Symbol quantity_name = j.at("quantity_name").get<Symbol>();
+
+    const auto dimnames = j.at("dimnames").get<std::vector<Symbol>>();
+
+    const auto dimscalings = j.at("dimscalings").get<std::vector<std::ptrdiff_t>>();
+
+    // Full validation, including bounding the rank; describe() then resolves the
+    // runtime datatype/rank into a concrete NDArray.
+    validate_ndarray_fields(value_datatype, type_name, extents, dimnames, dimscalings,
+                            "received frame descriptor");
+    return describe(value_datatype, quantity_name, extents, dimnames, dimscalings);
 }
 
 // this templated function implemets a reurives 2D loop calling itself until
@@ -94,9 +166,6 @@ std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config
                                                             const std::string& location) {
     const std::string type_name = config.get<std::string>(location, "value_type");
     const DataType value_datatype = string_to_type(type_name);
-    if (value_datatype == unknown_type)
-        throw std::runtime_error(fmt::format(
-            fmt("GenericNDArray: unknown value_type '{:s}' in path {:s}"), type_name, location));
 
     // `quantity_name` and `dimnames` are semantic labels: they are
     // OPTIONAL in config. When omitted, the descriptor is left with
@@ -115,16 +184,6 @@ std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config
     for (const auto& extent : extents_json)
         extents.push_back(config.eval<std::ptrdiff_t>(location, extent));
 
-    if (extents.empty() || extents.size() > max_rank)
-        throw std::runtime_error(
-            fmt::format(fmt("GenericNDArray: rank {:d} is outside [1, {:d}] in path {:s}"),
-                        extents.size(), max_rank, location));
-    for (std::size_t d = 0; d < extents.size(); ++d)
-        if (extents[d] <= 0)
-            throw std::runtime_error(fmt::format(
-                fmt("GenericNDArray: extent {:d} of dimension {:d} is not positive in path {:s}"),
-                extents[d], d, location));
-
     const auto dimname_strings =
         config.get_default<std::vector<std::string>>(location, "dimnames", {});
     std::vector<Symbol> dimnames;
@@ -132,20 +191,9 @@ std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config
         // Labels omitted: leave one unset (empty) label per axis for a stage to fill.
         dimnames.assign(extents.size(), Symbol(""));
     } else {
-        if (dimname_strings.size() != extents.size())
-            throw std::runtime_error(fmt::format(
-                fmt("GenericNDArray: extents size ({:d}) does not match dimnames size ({:d}) in "
-                    "path {:s}"),
-                extents.size(), dimname_strings.size(), location));
         dimnames.reserve(dimname_strings.size());
         for (const auto& dimname : dimname_strings)
             dimnames.emplace_back(dimname);
-        for (std::size_t d = 0; d < dimnames.size(); ++d)
-            for (std::size_t d1 = 0; d1 < d; ++d1)
-                if (dimnames[d] == dimnames[d1])
-                    throw std::runtime_error(
-                        fmt::format(fmt("GenericNDArray: duplicate dimname '{:s}' in path {:s}"),
-                                    std::string(dimnames[d]), location));
     }
 
     // `dimscalings` is an optional structural label like `dimnames`: when
@@ -159,22 +207,13 @@ std::shared_ptr<GenericNDArray> GenericNDArray::from_config(const Config& config
         // Scalings omitted: default each axis to 1.
         dimscalings.assign(extents.size(), 1);
     } else {
-        if (dimscalings_json.size() != extents.size())
-            throw std::runtime_error(fmt::format(
-                fmt("GenericNDArray: extents size ({:d}) does not match dimscalings size ({:d}) in "
-                    "path {:s}"),
-                extents.size(), dimscalings_json.size(), location));
         dimscalings.reserve(dimscalings_json.size());
         for (const auto& dimscaling : dimscalings_json)
             dimscalings.push_back(config.eval<std::ptrdiff_t>(location, dimscaling));
-        for (std::size_t d = 0; d < dimscalings.size(); ++d)
-            if (dimscalings[d] <= 0)
-                throw std::runtime_error(
-                    fmt::format(fmt("GenericNDArray: dimscaling {:d} of dimension "
-                                    "{:d} is not positive in path {:s}"),
-                                dimscalings[d], d, location));
     }
 
+    validate_ndarray_fields(value_datatype, type_name, extents, dimnames, dimscalings,
+                            fmt::format(fmt("path {:s}"), location));
     return describe(value_datatype, quantity_name, extents, dimnames, dimscalings);
 }
 

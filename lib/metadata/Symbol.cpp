@@ -41,14 +41,22 @@ std::string Symbol::get_string() const {
 }
 
 std::ostream& operator<<(std::ostream& os, Symbol sym) {
-    return os << sym.get_c_string();
+    // An unset (invalid) Symbol has no string; render it as empty rather than
+    // streaming the null get_c_string().
+    return os << (sym.valid() ? sym.get_c_string() : "");
 }
 
+// An unset (invalid) Symbol serializes as JSON `null`: it keeps a deliberately
+// unset label distinguishable from a set one and round-trips (an empty string
+// is itself an invalid Symbol). get_string() would otherwise throw on invalid.
 void to_json(nlohmann::json& j, const Symbol& s) {
-    j = s.get_string();
+    if (s.valid())
+        j = s.get_string();
+    else
+        j = nullptr;
 }
 
 void from_json(const nlohmann::json& j, Symbol& s) {
-    s = j.get<std::string>();
+    s = j.is_null() ? Symbol() : Symbol(j.get<std::string>());
 }
 } // namespace kotekan

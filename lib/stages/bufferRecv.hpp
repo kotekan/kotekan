@@ -142,6 +142,14 @@ private:
     /// Whether to use the config tracker
     bool use_config_tracker;
 
+    /// Expect a serialized frame descriptor on the wire. Not negotiated: it must
+    /// be set identically on the sending bufferSend (like use_config_tracker). A
+    /// mismatch desynchronizes the stream: set here but not on the sender is
+    /// caught by the descriptor size/parse checks (fatal); set on the sender but
+    /// not here misreads the descriptor bytes as metadata and is only caught at
+    /// the next frame header, after one corrupted frame.
+    bool use_frame_desc;
+
     static void read_callback(evutil_socket_t fd, short what, void* arg);
     static void accept_connection(evutil_socket_t listener, short event, void* arg);
 
@@ -212,7 +220,7 @@ private:
 /**
  * @brief List of valid states for a connection to be in.
  */
-enum class connState { header, metadata, frame, finished };
+enum class connState { header, frame_desc_size, frame_desc, metadata, frame, finished };
 
 /**
  * @brief Args passed to the accept new connection call back function
@@ -249,7 +257,7 @@ public:
     /// Constructor
     connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                  const std::string& client_ip, int port, struct timeval read_timeout,
-                 bool use_config_tracker, uint16_t upstream_rest_port);
+                 bool use_config_tracker, bool use_frame_desc, uint16_t upstream_rest_port);
 
     /// Destructor
     ~connInstance();
@@ -315,6 +323,19 @@ public:
 
     /// Whether to use the config tracker
     const bool use_config_tracker;
+
+    /// Whether to expect a serialized frame descriptor on the wire
+    const bool use_frame_desc;
+
+    /// Set once the frame descriptor has been read on this connection; the sender
+    /// transmits it only on the first frame, so later frames skip the read.
+    bool frame_desc_read = false;
+
+    /// Size in bytes of the frame descriptor (0 if the sender had none)
+    uint32_t frame_desc_size = 0;
+
+    /// Scratch buffer for the received serialized frame descriptor
+    std::vector<char> frame_desc_space;
 
     /// Upstream REST port for this connection (may override stage default)
     uint16_t upstream_rest_port;
