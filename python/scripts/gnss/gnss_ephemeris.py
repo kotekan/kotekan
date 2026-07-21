@@ -43,6 +43,34 @@ F_REL = -4.442807633e-10     # relativistic clock coefficient (s/sqrt(m))
 CACHE = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
 
 
+def _earthdata_token():
+    """Earthdata bearer token for the CDDIS BRDC mirror, from $EARTHDATA_TOKEN or
+    <cache>/.earthdata_token (chmod 600, never committed). None -> CDDIS is skipped."""
+    t = os.environ.get("EARTHDATA_TOKEN")
+    if t and t.strip():
+        return t.strip()
+    try:
+        with open(os.path.join(CACHE, ".earthdata_token")) as f:
+            return f.read().strip() or None
+    except Exception:
+        return None
+
+
+def _brdc_sources(year, doy, name):
+    """Ordered (url, headers) mirrors for one daily BRDC file:
+      1. BKG (igs.bkg.bund.de) -- the historical no-auth source.
+      2. CDDIS (cddis.nasa.gov) with an Earthdata bearer token -- a fallback for when BKG is
+         unreachable (2026-07-21: igs.bkg.bund.de went down and the node lost all ephemeris).
+    CDDIS accepts `Authorization: Bearer <token>` directly on the archive URL (a valid token
+    returns the file, an invalid one 401s), so no cookie/redirect handling is needed."""
+    srcs = [("https://igs.bkg.bund.de/root_ftp/IGS/BRDC/%04d/%03d/%s" % (year, doy, name), {})]
+    tok = _earthdata_token()
+    if tok:
+        srcs.append(("https://cddis.nasa.gov/archive/gnss/data/daily/%04d/brdc/%s" % (year, name),
+                     {"Authorization": "Bearer " + tok}))
+    return srcs
+
+
 def fetch_brdc(when=None, cache_dir=CACHE):
     """Fetch (with cache) the IGS multi-GNSS broadcast nav file for `when` (default now).
     Tries today's streamed file then falls back a day (files appear with some latency)."""
@@ -72,17 +100,22 @@ def fetch_brdc(when=None, cache_dir=CACHE):
                                           or time.time() - os.path.getmtime(local) < 7200):
                 return local
         # 2) (re-)download this day (current-day files GROW through the day, so refresh a stale
-        #    cache to pull the newest toe's).
+        #    cache to pull the newest toe's). Try each mirror (BKG, then CDDIS if a token exists);
+        #    a valid BRDC is gzip, so reject anything without the gzip magic (an auth/error page
+        #    served as 200 must never be cached as if it were ephemeris).
         for local in locals_:
-            url = ("https://igs.bkg.bund.de/root_ftp/IGS/BRDC/%04d/%03d/%s"
-                   % (d.year, doy, os.path.basename(local)))
-            try:
-                with urllib.request.urlopen(url, timeout=30) as r:
-                    data = r.read()
-                open(local, "wb").write(data)
-                return local
-            except Exception:
-                continue
+            name = os.path.basename(local)
+            for url, headers in _brdc_sources(d.year, doy, name):
+                try:
+                    req = urllib.request.Request(url, headers=headers)
+                    with urllib.request.urlopen(req, timeout=30) as r:
+                        data = r.read()
+                    if data[:2] != b"\x1f\x8b":
+                        continue  # not gzip (login/error page) -> try the next mirror
+                    open(local, "wb").write(data)
+                    return local
+                except Exception:
+                    continue
         # 3) download failed but a STALE same-day cache exists -> use it (still predicts) rather
         #    than falling to the previous day's dead-for-today ephemeris.
         for local in locals_:
