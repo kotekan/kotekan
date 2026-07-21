@@ -1,0 +1,114 @@
+---
+# CLOCK-DISTRIBUTION TEST (2026-07-21): cross-correlate two airspys at ONE tuning.
+# Shared antenna via splitter -> identical RF into both. Coherent (GPSDO-distributed) clocks
+# -> a sharp lag peak / high |AB*| coherence. Broken distribution -> the relative phase spins,
+# |integrated AB*| -> 0, no peak. Copy of Keith's airspy_crosscorr.yaml with our L1+L5 serials,
+# freq on GPS L1 (strong common signal so a null cannot be "no signal"), dither disabled on BOTH
+# airspyInput stages.
+type: config
+log_level: info
+instrument_name: airspy
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+rest_server:
+    cors_allow_origins:
+        - "http://localhost:8080"
+        - "http://127.0.0.1:8080"
+
+samples_per_data_set: 32768
+bytes_per_sample: 2
+buffer_depth: 10
+cpu_affinity: [4, 5, 6, 7]
+num_elements: 2
+one: 1
+two: 2
+sizeof_float: 4
+
+input_bufA:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * bytes_per_sample
+
+input_bufB:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * bytes_per_sample
+
+sample_bw: 2.5 #MHz, must be float
+freq: 1575.42   #MHz -- GPS L1 (strong common signal off the shared antenna)
+gain_lna: 14 #0-14
+gain_mix: 15 #0-15
+gain_if: 15  #0-15
+biast_power: false
+dither_disable: true
+
+airspy_inputA:
+    kotekan_stage: airspyInput
+    out_buf: input_bufA
+    serial: 0x03A464C837525967   # L1 unit
+    dither_disable: true
+
+airspy_inputB:
+    kotekan_stage: airspyInput
+    out_buf: input_bufB
+    serial: 0x03A464C837264F67   # L5 unit
+    dither_disable: true
+
+lag_align:
+    kotekan_stage: AirspyAlign
+    in_bufA: input_bufA
+    in_bufB: input_bufB
+    lag_window: 1048576
+
+spectrum_length: 1024
+integration_length: 1024
+
+post_fengine_bufA:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * sizeof_float
+post_fengine_bufB:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * sizeof_float
+
+spectrum_output:
+    fengineA:
+        kotekan_stage: fftwEngine
+        input_type: real
+        in_buf: input_bufA
+        out_buf: post_fengine_bufA
+
+    fengineB:
+        kotekan_stage: fftwEngine
+        input_type: real
+        in_buf: input_bufB
+        out_buf: post_fengine_bufB
+
+correlation_output:
+    post_corr_buf:
+        kotekan_buffer: standard
+        metadata_pool: none
+        num_frames: buffer_depth
+        frame_size: ( spectrum_length + one ) * 4 * sizeof_float
+
+    xengine:
+        kotekan_stage: SimpleCrosscorr
+        in_bufA: post_fengine_bufA
+        in_bufB: post_fengine_bufB
+        out_buf: post_corr_buf
+
+    power_stream:
+        kotekan_stage: networkPowerStream
+        num_elements: 4
+        num_freq: spectrum_length
+        power_integration_length: integration_length
+        samples_per_data_set: integration_length
+        destination_port: 23401
+        destination_ip: "127.0.0.1"
+        destination_protocol: TCP
+        in_buf: post_corr_buf
