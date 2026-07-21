@@ -7,13 +7,13 @@
 #ifndef SIMPLE_CROSSCORR_HPP
 #define SIMPLE_CROSSCORR_HPP
 
-#include <stdint.h>             // for uint32_t
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
+#include <stdint.h> // for uint32_t
+#include <string>   // for string
 
 /**
  * @class SimpleCrosscorr

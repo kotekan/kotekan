@@ -1,12 +1,4 @@
-#include <driver_types.h>          // for cudaEvent_t
-#include <algorithm>               // for min
-#include <array>                   // for array
-#include <cstddef>                 // for ptrdiff_t
-#include <cstdint>                 // for uint64_t
-#include <functional>              // for function
-#include <memory>                  // for shared_ptr
-#include <string>                  // for string
-#include <vector>                  // for vector
+#include "cudaPLMaskUpchannelizer.hpp" // for launch_upchannelize_pl_mask
 
 #include "Config.hpp"              // for Config
 #include "DataType.hpp"            // for uint1x8_t
@@ -16,11 +8,21 @@
 #include "chordMetadata.hpp"       // for chordMetadata
 #include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
-#include "cudaPLMaskUpchannelizer.hpp" // for launch_upchannelize_pl_mask
 #include "div.hpp"                 // for div_ceil, div_noremainder, round_down
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
-#include "fmt.hpp"                 // for compile_string_to_view
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>      // for min
+#include <array>          // for array
+#include <cstddef>        // for ptrdiff_t
+#include <cstdint>        // for uint64_t
+#include <driver_types.h> // for cudaEvent_t
+#include <functional>     // for function
+#include <memory>         // for shared_ptr
+#include <string>         // for string
+#include <vector>         // for vector
 
 using kotekan::div_ceil;
 using kotekan::div_noremainder;
@@ -45,7 +47,8 @@ using kotekan::round_down;
  *   @gpu_mem_type         @c uint1x8
  *   @gpu_mem_dim_name     [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
  *   @gpu_mem_dim_scaling  [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
- *   @gpu_mem_shape        [@c buffer_depth * num_times / 64][@c num_frequencies][@c num_polarizations]
+ *   @gpu_mem_shape        [@c buffer_depth * num_times / 64][@c num_frequencies][@c
+ * num_polarizations]
  *                         [@c num_dishes / 8][@c 64 / 8]
  *   @gpu_mem_metadata     @c chordMetadata
  * @gpu_mem Output upchannelized expanded PL mask
@@ -55,10 +58,12 @@ using kotekan::round_down;
  *   @gpu_mem_dim_name     [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
  *   @gpu_mem_dim_scaling  [@c Thi64][@c F][@c P][@c D8][@c Tlo64]
  *   @gpu_mem_shape        [@c buffer_depth * num_times / (64 * upchannelization_factor)]
- *                         [@c num_frequencies_out][@c num_polarizations][@c num_dishes / 8][@c 64 / 8]
+ *                         [@c num_frequencies_out][@c num_polarizations][@c num_dishes / 8][@c 64 /
+ * 8]
  *   @gpu_mem_metadata     @c chordMetadata
  * @conf  buffer_depth                         Int.  The number of GPU frames used for pipelining.
- * @conf  num_times                            Int.  Number of time samples per frame (input cadence).
+ * @conf  num_times                            Int.  Number of time samples per frame (input
+ * cadence).
  * @conf  num_frequencies                      Int.  Number of (input) frequencies on this node.
  * @conf  num_frequencies_out                  Int.  Output frequency count (total available; the
  *                                                   buffer may over-allocate, only Fmax-Fmin used).
@@ -126,8 +131,7 @@ cudaPLMaskUpchannelizer::cudaPLMaskUpchannelizer(kotekan::Config& config,
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
     upchannelization_factor(config.get<int>(unique_name, "upchannelization_factor")),
-    Fmin(config.get<int>(unique_name, "Fmin")),
-    Fmax(config.get<int>(unique_name, "Fmax")),
+    Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")),
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
     // Buffer names
     expanded_pl_mask_name(config.get<std::string>(unique_name, "expanded_pl_mask_name")),
@@ -167,7 +171,8 @@ cudaPLMaskUpchannelizer::cudaPLMaskUpchannelizer(kotekan::Config& config,
     if (in_size <= 0 || (in_size & (in_size - 1)) != 0)
         FATAL_ERROR("pl_expanded_mask ring size {:d} is not a power of two", in_size);
     if (out_size <= 0 || (out_size & (out_size - 1)) != 0)
-        FATAL_ERROR("pl_upchannelized_expanded_mask ring size {:d} is not a power of two", out_size);
+        FATAL_ERROR("pl_upchannelized_expanded_mask ring size {:d} is not a power of two",
+                    out_size);
 
     pl_expanded_mask.register_consumer();
     pl_upchannelized_expanded_mask.register_producer();
@@ -242,16 +247,16 @@ cudaEvent_t cudaPLMaskUpchannelizer::execute(cudaPipelineState& /*pipestate*/,
     // Number of input rows to consume (excludes the look-ahead); the kernel produces
     // num_times_64 / U output rows.
     const std::ptrdiff_t num_times_64 = pl_expanded_mask.get_read_claimed().size();
-    // Inner (fast) dimension as `uint64` elements: P * (D/8). Each such element packs the 64 "Tlo64"
-    // time bits; the frequency axis (read range [Fmin, Fmax)) is handled separately.
+    // Inner (fast) dimension as `uint64` elements: P * (D/8). Each such element packs the 64
+    // "Tlo64" time bits; the frequency axis (read range [Fmin, Fmax)) is handled separately.
     const std::ptrdiff_t num_elements =
         std::ptrdiff_t(num_polarizations) * div_noremainder(num_dishes, 8);
 
-    launch_upchannelize_pl_mask(
-        reinterpret_cast<std::uint64_t*>(out_memory),
-        reinterpret_cast<const std::uint64_t*>(in_memory), num_elements, num_frequencies,
-        num_frequencies_out, Fmin, Fmax, num_times_64, size_in, pos_in, size_out, pos_out,
-        upchannelization_factor, device.getStream(cuda_stream_id));
+    launch_upchannelize_pl_mask(reinterpret_cast<std::uint64_t*>(out_memory),
+                                reinterpret_cast<const std::uint64_t*>(in_memory), num_elements,
+                                num_frequencies, num_frequencies_out, Fmin, Fmax, num_times_64,
+                                size_in, pos_in, size_out, pos_out, upchannelization_factor,
+                                device.getStream(cuda_stream_id));
 
     return record_end_event();
 }

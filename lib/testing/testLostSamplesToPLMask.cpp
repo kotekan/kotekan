@@ -2,8 +2,8 @@
 
 #include "Config.hpp" // for Config
 #include "Hash.hpp"
-#include "NDMetadata.hpp"      // for GenericNDArray
 #include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
+#include "NDMetadata.hpp"      // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer

@@ -11,40 +11,41 @@
 #ifndef VIS_UTIL_HPP
 #define VIS_UTIL_HPP
 
-#include <algorithm>      // for copy, max
-#include <array>          // for array
-#include <chrono>         // for system_clock
-#include <complex>        // for complex, imag, real
-#include <cstdint>        // for uint32_t, int8_t, uint16_t, int64_t, uint64_t, uint8_t, int32_t
-#include <cstdlib>        // for size_t, div
-#include <iterator>       // for pair
+#include "Config.hpp"    // for Config
+#include "DataType.hpp"  // for KOTEKAN_FLOAT16, float16_t
+#include "Telescope.hpp" // for stream_t
+#include "buffer.hpp"    // for Buffer
+#include "div.hpp"       // for div_ceil, num_triangle_blocks
 
-#include "Config.hpp"     // for Config
-#include "DataType.hpp"   // for KOTEKAN_FLOAT16, float16_t
-#include "Telescope.hpp"  // for stream_t
-#include "buffer.hpp"     // for Buffer
-#include "div.hpp"        // for div_ceil, num_triangle_blocks
-#include "fmt.hpp"        // for appender, format, format_string, formatter, format_context
-#include "gsl-lite.hpp"   // for span
-#include "json.hpp"       // for json, value_t
+#include "fmt.hpp"      // for appender, format, format_string, formatter, format_context
+#include "gsl-lite.hpp" // for span
+#include "json.hpp"     // for json, value_t
+
+#include <algorithm> // for copy, max
+#include <array>     // for array
+#include <chrono>    // for system_clock
+#include <complex>   // for complex, imag, real
+#include <cstdint>   // for uint32_t, int8_t, uint16_t, int64_t, uint64_t, uint8_t, int32_t
+#include <cstdlib>   // for size_t, div
+#include <iterator>  // for pair
 #ifdef WITH_CUDA
-#include <cuda_fp16.h>    // for __half::operator float
+#include <cuda_fp16.h> // for __half::operator float
 #endif
-#include <math.h>         // for fmod, cosf, sinf, M_PI
-#include <sys/time.h>     // for timeval, gettimeofday, CLOCK_REALTIME
-#include <sys/types.h>    // for suseconds_t
-#include <time.h>         // for timespec, clock_gettime, time_t
-#include <deque>          // for deque
-#include <functional>     // for function
-#include <iosfwd>         // for ostream
-#include <map>            // for map
-#include <memory>         // for allocator, unique_ptr
-#include <mutex>          // for recursive_mutex
-#include <string>         // for string, basic_string
-#include <tuple>          // for tuple, tie
-#include <type_traits>    // for enable_if_t, is_integral, make_unsigned
-#include <utility>        // for pair
-#include <vector>         // for vector
+#include <deque>       // for deque
+#include <functional>  // for function
+#include <iosfwd>      // for ostream
+#include <map>         // for map
+#include <math.h>      // for fmod, cosf, sinf, M_PI
+#include <memory>      // for allocator, unique_ptr
+#include <mutex>       // for recursive_mutex
+#include <string>      // for string, basic_string
+#include <sys/time.h>  // for timeval, gettimeofday, CLOCK_REALTIME
+#include <sys/types.h> // for suseconds_t
+#include <time.h>      // for timespec, clock_gettime, time_t
+#include <tuple>       // for tuple, tie
+#include <type_traits> // for enable_if_t, is_integral, make_unsigned
+#include <utility>     // for pair
+#include <vector>      // for vector
 
 /// Define an alias for the single precision complex type
 using cfloat = typename std::complex<float>;
@@ -811,10 +812,10 @@ public:
     /**
      * @brief Create a new modular number.
      **/
-    modulo(Tu n) : _n(n) {};
+    modulo(Tu n) : _n(n){};
 
     // Default constructor
-    modulo() : modulo(0) {};
+    modulo() : modulo(0){};
 
     /// Assignment of a number into the modular number.
     modulo<T>& operator=(const T& i) {

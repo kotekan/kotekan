@@ -1,20 +1,12 @@
 #include "Config.hpp" // for Config
-#include "Config.hpp" // for Config
 #include "NDArray.hpp"
 #include "Stage.hpp"           // for Stage
-#include "Stage.hpp"           // for Stage
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
-#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
-#include "kotekanLogging.hpp"  // for DEBUG
 #include "kotekanLogging.hpp"  // for DEBUG
 
-#include "fmt.hpp" // for compile_string_to_view, format
 #include "fmt.hpp" // for compile_string_to_view, format
 
 #include <cassert>    // for assert

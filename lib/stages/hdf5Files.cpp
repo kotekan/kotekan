@@ -1,10 +1,11 @@
 #include "hdf5Files.hpp"
 
-#include <cstdint>       // for uint8_t, int64_t, int16_t, int32_t, int8_t, uint16_t, uint32_t
-#include <stdexcept>     // for runtime_error
+#include "DataType.hpp" // for DataType, float16_t
 
-#include "DataType.hpp"  // for DataType, float16_t
-#include "fmt.hpp"       // for format, format_string
+#include "fmt.hpp" // for format, format_string
+
+#include <cstdint>   // for uint8_t, int64_t, int16_t, int32_t, int8_t, uint16_t, uint32_t
+#include <stdexcept> // for runtime_error
 
 namespace hdf5 {
 

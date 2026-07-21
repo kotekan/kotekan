@@ -7,16 +7,17 @@
 #ifndef BUFFER_BAD_INPUT_DATA
 #define BUFFER_BAD_INPUT_DATA
 
-#include <stddef.h>             // for size_t
-#include <string>               // for string
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "N2Util.hpp"          // for frameID
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "N2Util.hpp"           // for frameID
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "json.hpp"             // for json
+#include "json.hpp" // for json
+
+#include <stddef.h> // for size_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class bufferBadInputs

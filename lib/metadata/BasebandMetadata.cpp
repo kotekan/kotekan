@@ -1,11 +1,11 @@
 #include "BasebandMetadata.hpp"
 
-#include <assert.h>     // for assert
-#include <json.hpp>     // for json
-#include <memory>       // for allocator, shared_ptr, dynamic_pointer_cast, __shared_ptr_access
-#include <string>       // for basic_string
+#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
 
-#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
+#include <assert.h> // for assert
+#include <json.hpp> // for json
+#include <memory>   // for allocator, shared_ptr, dynamic_pointer_cast, __shared_ptr_access
+#include <string>   // for basic_string
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, BasebandMetadata);
 
