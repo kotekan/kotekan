@@ -1,14 +1,15 @@
 #include "tx_utils.hpp"
 
-#include <stdlib.h>            // for malloc, size_t
-#include <time.h>              // for timespec
-#include <unistd.h>            // for gethostname
-#include <stdio.h>             // for sscanf
-#include <cstring>             // for strlen
-#include <stdexcept>           // for runtime_error
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
 
-#include "kotekanLogging.hpp"  // for FATAL_ERROR_NON_OO
-#include "fmt.hpp"             // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <cstring>   // for strlen
+#include <stdexcept> // for runtime_error
+#include <stdio.h>   // for sscanf
+#include <stdlib.h>  // for malloc, size_t
+#include <time.h>    // for timespec
+#include <unistd.h>  // for gethostname
 
 void parse_chime_host_name(int& my_rack, int& my_node, int& my_nos, int& my_node_id) {
     int rack = 0, node = 0, nos = 0;

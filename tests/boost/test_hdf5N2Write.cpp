@@ -283,7 +283,7 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_add_frame_single_slot) {
     auto pool = metadataPool::create(1, sizeof(N2Metadata), "test_pool", "N2Metadata");
     Buffer buf(1, frame_size, pool, "n2buf", "N2", 1, false, false, std::vector<int>{}, true);
     buf.ensure_frame_desc(std::make_shared<kotekan::N2FrameDesc>(num_input, num_ev, num_prod,
-                                                              N2Layout::FullUpperTri));
+                                                                 N2Layout::FullUpperTri));
 
     buf.allocate_new_metadata_object(0);
     auto meta = get_N2_metadata(&buf, 0);
@@ -361,7 +361,7 @@ BOOST_AUTO_TEST_CASE(test_visfiledata_era_and_fraction_guards) {
     auto pool = metadataPool::create(2, sizeof(N2Metadata), "pool_guard", "N2Metadata");
     Buffer buf(2, frame_size, pool, "n2buf_guard", "N2", 1, false, false, std::vector<int>{}, true);
     buf.ensure_frame_desc(std::make_shared<kotekan::N2FrameDesc>(num_input, num_ev, num_prod,
-                                                              N2Layout::FullUpperTri));
+                                                                 N2Layout::FullUpperTri));
 
     // Prepare frame view and two metadata instances for the same (f,t)
     for (int idx = 0; idx < 2; ++idx)
@@ -859,10 +859,10 @@ BOOST_AUTO_TEST_CASE(test_writer_timeout_finalize_zero_threshold) {
     const size_t num_ev = 2;
     const size_t nfreq = 3;
     const uint64_t num_file_t = 2;
-    auto conf = make_writer_config(
-        unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
-        /*input_order*/ ElementOrder::CHORDBeamformer, 0 /*bs_f*/, 0 /*bs_p*/,
-        0 /*bs_t*/, 0 /*late_frame_grace_seconds*/, 1'000'000'000ULL, TEST_GAINS_FILE);
+    auto conf = make_writer_config(unique_name, in_buf_name, base_dir, file_name, false, num_file_t,
+                                   /*input_order*/ ElementOrder::CHORDBeamformer, 0 /*bs_f*/,
+                                   0 /*bs_p*/, 0 /*bs_t*/, 0 /*late_frame_grace_seconds*/,
+                                   1'000'000'000ULL, TEST_GAINS_FILE);
     set_file_num_t(conf, unique_name, num_file_t);
 
     const size_t frame_size = N2FrameDesc::calculate_frame_size(

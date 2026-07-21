@@ -1,16 +1,17 @@
 #include "restInspectFrame.hpp"
 
-#include <stdlib.h>             // for free, malloc, size_t
-#include <string.h>             // for memcpy
-#include <functional>           // for bind, function, _1
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for CHECK_MEM, WARN
+#include "restServer.hpp"      // for restServer, connectionInstance
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for CHECK_MEM, WARN
-#include "restServer.hpp"       // for restServer, connectionInstance
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function, _1
+#include <stdlib.h>   // for free, malloc, size_t
+#include <string.h>   // for memcpy
 
 
 using kotekan::bufferContainer;

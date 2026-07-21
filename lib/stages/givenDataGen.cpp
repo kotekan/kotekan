@@ -90,10 +90,11 @@ void givenDataGen::main_thread() {
         const bool is_complex = kotekan::type_to_string(_datatype)[0] == 'c';
         if (!(is_float + is_int == 1)) {
             FATAL_ERROR("Unexpected data type: {:s} which is not either int or float",
-                  kotekan::type_to_string(_datatype));
+                        kotekan::type_to_string(_datatype));
         }
         if (is_complex) {
-            FATAL_ERROR("Cannot currently handle complex type: {:s}", kotekan::type_to_string(_datatype));
+            FATAL_ERROR("Cannot currently handle complex type: {:s}",
+                        kotekan::type_to_string(_datatype));
         }
         for (size_t i = 0; i < _values.size(); ++i) {
             assert((i + 1) * type_size <= _out_buf->frame_size && "Out of bounds access");
@@ -116,7 +117,8 @@ void givenDataGen::main_thread() {
                         std::memcpy(frame + i * type_size, &dval, type_size);
                     } break;
                     default:
-                        FATAL_ERROR("Unexpected data type: {:s}", kotekan::type_to_string(_datatype));
+                        FATAL_ERROR("Unexpected data type: {:s}",
+                                    kotekan::type_to_string(_datatype));
                         break;
                 }
             } else if (is_int) {

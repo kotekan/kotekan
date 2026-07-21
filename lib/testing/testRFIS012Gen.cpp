@@ -71,7 +71,7 @@ class testRFIS012Gen : public kotekan::Stage {
 public:
     testRFIS012Gen(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& buffer_container);
-    ~testRFIS012Gen() {};
+    ~testRFIS012Gen(){};
     void main_thread() override;
 
 private:

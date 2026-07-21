@@ -7,7 +7,8 @@
 #include "N2Util.hpp"      // for N2::prod_ctype
 #include "NDArray.hpp"     // for GenericNDArray
 #include "Symbol.hpp"      // for Symbol
-#include "json.hpp"        // for json
+
+#include "json.hpp" // for json
 
 #include <boost/test/included/unit_test.hpp>
 #include <csignal>

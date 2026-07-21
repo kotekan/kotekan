@@ -3,9 +3,9 @@
 #include "CHORDTelescope.hpp"
 #include "Config.hpp"
 #include "Telescope.hpp"
-#include "geoUtil.hpp"
 #include "configUpdater.hpp"
 #include "errors.h" // _global_log_level
+#include "geoUtil.hpp"
 #include "restServer.hpp"
 #include "timeUtil.hpp"
 
@@ -153,8 +153,8 @@ void check_close_vec3d(const std::array<double, 3>& v1, const std::array<double,
 /*
  * @brief   helper to calculate cirs -> itrs conversion
  */
-std::array<double, 3> cirs_to_itrs(std::array<double, 3> v,
-                                   double ERA_deg, double xp_as, double yp_as) {
+std::array<double, 3> cirs_to_itrs(std::array<double, 3> v, double ERA_deg, double xp_as,
+                                   double yp_as) {
     double ERA = M_PI * ERA_deg / 180.0;
     double xp = M_PI * xp_as / (3600 * 180.0);
     double yp = M_PI * yp_as / (3600 * 180.0);
@@ -169,8 +169,8 @@ std::array<double, 3> cirs_to_itrs(std::array<double, 3> v,
 /*
  * @brief   helper to calculate itrs -> cirs conversion
  */
-std::array<double, 3> itrs_to_cirs(std::array<double, 3> v,
-                                   double ERA_deg, double xp_as, double yp_as) {
+std::array<double, 3> itrs_to_cirs(std::array<double, 3> v, double ERA_deg, double xp_as,
+                                   double yp_as) {
     double ERA = M_PI * ERA_deg / 180.0;
     double xp = M_PI * xp_as / (3600 * 180.0);
     double yp = M_PI * yp_as / (3600 * 180.0);
@@ -405,18 +405,19 @@ BOOST_AUTO_TEST_CASE(_dish_grid_population) {
     json_config["dish_inputs"] = std::vector<dishInfo>({d5, d0, d2, d1});
     const CHORDTelescope& tel = get_telescope(json_config);
 
-    std::vector<grid_idx_2d_t> grid_indices = tel.get_main_array_grid_indices(16, ElementOrder::CHORDBeamformer);
+    std::vector<grid_idx_2d_t> grid_indices =
+        tel.get_main_array_grid_indices(16, ElementOrder::CHORDBeamformer);
 
     for (int p = 0; p < 2; p++) {
-        grid_idx_2d_t g0 = grid_indices.at(0 + 8*p);
-        grid_idx_2d_t g1 = grid_indices.at(1 + 8*p);
-        grid_idx_2d_t g2 = grid_indices.at(2 + 8*p);
-        grid_idx_2d_t g3 = grid_indices.at(3 + 8*p);
-        grid_idx_2d_t g4 = grid_indices.at(4 + 8*p);
-        grid_idx_2d_t g5 = grid_indices.at(5 + 8*p);
-        grid_idx_2d_t g6 = grid_indices.at(6 + 8*p);
-        grid_idx_2d_t g7 = grid_indices.at(7 + 8*p);
-    
+        grid_idx_2d_t g0 = grid_indices.at(0 + 8 * p);
+        grid_idx_2d_t g1 = grid_indices.at(1 + 8 * p);
+        grid_idx_2d_t g2 = grid_indices.at(2 + 8 * p);
+        grid_idx_2d_t g3 = grid_indices.at(3 + 8 * p);
+        grid_idx_2d_t g4 = grid_indices.at(4 + 8 * p);
+        grid_idx_2d_t g5 = grid_indices.at(5 + 8 * p);
+        grid_idx_2d_t g6 = grid_indices.at(6 + 8 * p);
+        grid_idx_2d_t g7 = grid_indices.at(7 + 8 * p);
+
         BOOST_CHECK_EQUAL(g0.at(0), d0.grid_x_idx);
         BOOST_CHECK_EQUAL(g0.at(1), d0.grid_y_idx);
         BOOST_CHECK_EQUAL(g1.at(0), d1.grid_x_idx);
@@ -1094,7 +1095,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     float test_phase_val = 2 * M_PI * w_e * t * cos(dec);
 
-    std::vector<float> test_phases({0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val});
+    std::vector<float> test_phases(
+        {0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel = get_telescope(json_config);
 
@@ -1104,8 +1106,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     for (int i = 0; i < 8; i++) {
         check_close_float(std::norm(tel_phases.at(i)), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()), test_phases.at(i), 1.0e-8,
-                          1.0e-5, "tel_phase1", "test_phase1");
+        check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()),
+                          test_phases.at(i), 1.0e-8, 1.0e-5, "tel_phase1", "test_phase1");
     }
 
     // Position the array at a different latitude (tests that we're converting
@@ -1116,7 +1118,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     json_config["telescope"]["dish_coelev_deg"] = target_dec_deg - tel_lat_deg;
 
     test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI / 180);
-    std::vector<double> test_phases2({0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val});
+    std::vector<double> test_phases2(
+        {0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel2 = get_telescope(json_config);
     feed_pos_m = tel2.get_feed_positions_m(8, ElementOrder::CHORDBeamformer);
@@ -1124,8 +1127,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     for (int i = 0; i < 8; i++) {
         check_close_float(std::norm(tel_phases.at(i)), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()), test_phases2.at(i),
-                          1.0e-7, 1.0e-5, "tel_phase2", "test_phase2");
+        check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()),
+                          test_phases2.at(i), 1.0e-7, 1.0e-5, "tel_phase2", "test_phase2");
     }
 
     // Rotate the dish orientation (tests that we're converting dish -> topo coords)
@@ -1136,7 +1139,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     json_config["telescope"]["dish_coelev_deg"] = target_dec_deg - tel_lat_deg - deflection_deg;
 
     test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI / 180);
-    std::vector<double> test_phases3({0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val});
+    std::vector<double> test_phases3(
+        {0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val, 0.0, test_phase_val});
 
     const CHORDTelescope& tel3 = get_telescope(json_config);
     feed_pos_m = tel3.get_feed_positions_m(8, ElementOrder::CHORDBeamformer);
@@ -1144,8 +1148,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     for (int i = 0; i < 8; i++) {
         check_close_float(std::norm(tel_phases.at(i)), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()), test_phases3.at(i),
-                          1.0e-7, 1.0e-5, "tel_phase3", "test_phase3");
+        check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()),
+                          test_phases3.at(i), 1.0e-7, 1.0e-5, "tel_phase3", "test_phase3");
     }
 
     // Rotate the grid orientation (tests that we've converting tel -> topo
@@ -1157,7 +1161,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
     json_config["telescope"]["grid_y_axis"] = {-1.0, 0.0, 0.0};
 
     test_phase_val = 2 * M_PI * w_e * t * cos(target_dec_deg * M_PI / 180);
-    std::vector<double> test_phases4({0.0, 0.0, -test_phase_val, -test_phase_val, 0.0, 0.0, -test_phase_val, -test_phase_val});
+    std::vector<double> test_phases4(
+        {0.0, 0.0, -test_phase_val, -test_phase_val, 0.0, 0.0, -test_phase_val, -test_phase_val});
 
     const CHORDTelescope& tel4 = get_telescope(json_config);
     feed_pos_m = tel4.get_feed_positions_m(8, ElementOrder::CHORDBeamformer);
@@ -1165,8 +1170,8 @@ BOOST_AUTO_TEST_CASE(_fringestop_phases_1d) {
 
     for (int i = 0; i < 8; i++) {
         check_close_float(std::norm(tel_phases.at(i)), 1.0, 1.0e-12, 1.0e-12, "|e^i*phase|", "1");
-        check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()), test_phases4.at(i),
-                          1.0e-7, 1.0e-5, "tel_phase4", "test_phase4");
+        check_close_float(atan2(tel_phases.at(i).imag(), tel_phases.at(i).real()),
+                          test_phases4.at(i), 1.0e-7, 1.0e-5, "tel_phase4", "test_phase4");
     }
 }
 

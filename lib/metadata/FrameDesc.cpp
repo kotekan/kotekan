@@ -1,10 +1,10 @@
 #include "FrameDesc.hpp"
 
-#include <string> // for string
-
 #include "N2FrameDesc.hpp"    // for N2FrameDesc
 #include "NDArray.hpp"        // for GenericNDArray
 #include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
+
+#include <string> // for string
 
 namespace kotekan {
 

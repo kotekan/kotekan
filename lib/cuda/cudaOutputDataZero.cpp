@@ -1,12 +1,13 @@
 #include "cudaOutputDataZero.hpp"
 
-#include <stdlib.h>            // for free, malloc
-#include <string.h>            // for memset
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaHostRegister, cudaMemcpyAsync
+#include "gpuCommand.hpp"     // for gpuCommandType
 
-#include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h"  // for cudaHostRegister, cudaMemcpyAsync
-#include "gpuCommand.hpp"      // for gpuCommandType
-#include "fmt.hpp"             // for format
+#include "fmt.hpp" // for format
+
+#include <stdlib.h> // for free, malloc
+#include <string.h> // for memset
 
 using kotekan::bufferContainer;
 using kotekan::Config;
