@@ -22,6 +22,7 @@ type: config
 log_level: info
 
 {% set using_dpdk = False %}
+{% set fake_upchan_voltage = False %}
 {% set do_once_and_dump = True %}
 
 {% set num_polarizations = 2 %}
@@ -1485,7 +1486,7 @@ FRB:
         metadata_buffer: host_rfi_RFImask_buffer
 
     run_upchan_U16:
-{%- if not using_dpdk %}
+{%- if fake_upchan_voltage %}
         cpu_0:
             kotekan_stage: testDataGenFewHot
             type: fewhot
