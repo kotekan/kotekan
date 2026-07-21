@@ -1596,7 +1596,7 @@ FRB:
         beamformer_type: "frb"
         filename_template: "quick_gains_%04d_reordered.bin"
         num_local_freq: num_freq_gpu_buf
-        default_gains: [1.0, 1.0]
+        default_gains: [1.0, 0.0] # 1.0 + 0.0j ie unit gain
         gain_buffers:
           - host_frb1_phase_buffer
         in_buf: host_rfi_RFImask_buffer
