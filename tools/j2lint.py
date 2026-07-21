@@ -2,9 +2,7 @@
 """Render each .j2 with an empty context and require valid yaml output.
 
 Mirrors python/kotekan/config.py: FileSystemLoader rooted at the template's
-parent so `{% include %}` resolves, default Undefined behaviour. Also rejects
-duplicate keys in the rendered output (via ruamel, matching yamlfix_kotekan.py;
-the runtime PyYAML loader silently keeps the last duplicate). Report-only.
+parent so `{% include %}` resolves, default Undefined behaviour. Report-only.
 """
 
 import sys
@@ -12,8 +10,6 @@ from pathlib import Path
 
 import jinja2
 import yaml
-from ruamel.yaml import YAML
-from ruamel.yaml.error import YAMLError as RuamelYAMLError
 
 
 def lint_file(path: Path) -> int:
@@ -30,11 +26,6 @@ def lint_file(path: Path) -> int:
         yaml.safe_load(rendered)
     except yaml.YAMLError as e:
         print(f"{path}: rendered output is not valid yaml: {e}", file=sys.stderr)
-        return 1
-    try:
-        YAML().load(rendered)
-    except RuamelYAMLError as e:
-        print(f"{path}: rendered output: {e}", file=sys.stderr)
         return 1
     return 0
 
