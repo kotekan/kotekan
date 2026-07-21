@@ -1105,31 +1105,46 @@ def main(argv=None):
                     clock_bias_ema += args.bias_alpha * (raw_bias - clock_bias_ema)
                 _bias_meas_t = t0
                 clock_bias = clock_bias_ema
+                # `alarming` (TIGHT bar) gates the PERSIST only -- conservative: never write a
+                # walking bias to the cal file (the 2026-07-20 GPSDO-walk-poisoning guard).
                 alarming = (clock_bias_cal is not None
                             and abs(clock_bias_ema - clock_bias_cal) > args.clock_bias_alarm_hz)
                 # rec D persist (10 s rate limit). The file is a CALIBRATION, not an EMA
                 # mirror -- NEVER overwrite it while the live bias is in alarm (2026-07-20:
                 # the GPSDO free-run walk was faithfully persisted all the way to -2 ppm
-                # and poisoned the next warm-start kHz off truth). Cold start: the first
-                # persist doubles as the calibration stamp.
+                # and poisoned the next warm-start kHz off truth).
                 if (args.clock_bias_file and not alarming
                         and t0 - _clk_persist_t[0] > 10.0):
                     _clk_persist_t[0] = t0
-                    if clock_bias_cal is None:
+                    # COLD CAL STAMP -- wait for a TRUSTWORTHY sat count. A cal stamped from a
+                    # noisy 1-2 sat first solve lands far from the settled bias and then cries
+                    # wolf forever (2026-07-21: L5 cold-solved +75 with 2 sats, settled to -5
+                    # -> a phantom 80 Hz "drift" alarmed all morning). No stamp yet = no alarm
+                    # yet, which is correct: a chain with <3 sats has no trustworthy reference.
+                    if clock_bias_cal is None and len(resid) >= max(args.bias_min_sats + 1, 3):
                         clock_bias_cal = clock_bias_ema
-                        _log("clock-freq bias calibrated %+.1f Hz (cold start) -> %s"
-                             % (clock_bias_ema, args.clock_bias_file))
-                    try:
-                        with open(args.clock_bias_file, "w") as f:
-                            f.write("%.2f\n" % clock_bias_ema)
-                    except Exception:
-                        pass
-                if alarming:
-                    _log_rl("clkalarm",
-                            "CLOCK DRIFT ALARM: carrier bias %+.1f Hz vs calibration %+.1f "
-                            "(|d| > %.0f Hz) -- GPSDO unlock / thermal event? INVESTIGATE"
-                            % (clock_bias_ema, clock_bias_cal, args.clock_bias_alarm_hz),
-                            every_s=60.0)
+                        _log("clock-freq bias calibrated %+.1f Hz (%d sats, cold start) -> %s"
+                             % (clock_bias_ema, len(resid), args.clock_bias_file))
+                    if clock_bias_cal is not None:
+                        try:
+                            with open(args.clock_bias_file, "w") as f:
+                                f.write("%.2f\n" % clock_bias_ema)
+                        except Exception:
+                            pass
+                # ALARM LOG on a SAT-SCALED bar: the median-of-residuals noise is ~1/sqrt(n),
+                # so the fixed bar (tuned for strong chains) cried wolf on the weak-sat chains
+                # (L5/E5a/B2a ~730 false alarms/night 2026-07-20 while the strong chains were
+                # silent -- and a fleet-wide GPSDO event hits ALL chains, so a weak chain's
+                # solo alarm is almost always noise). Widen it below 5 sats; a real event is
+                # large + sustained so it still trips. Persist above keeps the TIGHT bar.
+                if clock_bias_cal is not None:
+                    _abar = args.clock_bias_alarm_hz * max(1.0, (5.0 / max(len(resid), 1)) ** 0.5)
+                    if abs(clock_bias_ema - clock_bias_cal) > _abar:
+                        _log_rl("clkalarm",
+                                "CLOCK DRIFT ALARM: carrier bias %+.1f Hz vs calibration %+.1f "
+                                "(|d| > %.0f Hz, %d sats) -- GPSDO unlock / thermal event? INVESTIGATE"
+                                % (clock_bias_ema, clock_bias_cal, _abar, len(resid)),
+                                every_s=60.0)
             for p in sorted(best):
                 if p in pred:
                     _log_rl("meas-%d" % p,
@@ -2241,13 +2256,17 @@ def main(argv=None):
             if abs(raw_cb) < args.code_bias_max * 1e-6:
                 code_bias_ema = (raw_cb if code_bias_ema is None
                                  else code_bias_ema + args.code_bias_alpha * (raw_cb - code_bias_ema))
+                # SAT-SCALED bar, same rationale as the carrier-bias alarm above (few-fit
+                # chains' l-a median is ~1/sqrt(n) noisy; the fixed bar cried wolf on the
+                # weak chains 2026-07-20). A real dongle-clock event is large + sustained.
+                _labar = args.code_bias_alarm_ppm * max(1.0, (5.0 / max(len(la_samples), 1)) ** 0.5)
                 if (code_bias_cal is not None
-                        and abs(code_bias_ema - code_bias_cal) > args.code_bias_alarm_ppm * 1e-6):
+                        and abs(code_bias_ema - code_bias_cal) > _labar * 1e-6):
                     _log_rl("laalarm",
                             "CLOCK DRIFT ALARM: l-a %+.3f ppm vs calibration %+.3f "
-                            "(|d| > %.2f ppm) -- dongle clock news, INVESTIGATE"
+                            "(|d| > %.2f ppm, %d fits) -- dongle clock news, INVESTIGATE"
                             % (code_bias_ema * 1e6, code_bias_cal * 1e6,
-                               args.code_bias_alarm_ppm), every_s=60.0)
+                               _labar, len(la_samples)), every_s=60.0)
                 _log_rl("la-pool",
                         "code-rate clock offset (l-a) %+.3f ppm (raw %+.3f, %d fitted "
                         "sats, EMA a=%.2f)"
