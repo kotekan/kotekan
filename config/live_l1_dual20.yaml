@@ -89,7 +89,7 @@ airspy_in:
     # like a bad antenna). Written in HEX exactly as airspy_info prints it. THE TRAP: a
     # serial that fails to parse becomes 0 = "open any", which still WORKS with one dongle
     # -- verify a new pin by BREAKING it (a wrong serial must fail AIRSPY_ERROR_NOT_FOUND).
-    serial: 0x03A464C837264F67  # SWAPPED 2026-07-21 (L1<->L5 hardware-attribution exp): this L1 BAND is now served by the former L5 unit 0x..264F67. To revert: restore 0x..525967 here + 0x..264F67 on L5. The strong former-L1 unit (0x..525967) moved to the L5 band to retire hardware as the L5-leg TEC-noise cause -- see tec-error-budget-l5-leg memory.
+    serial: 0x03A464C837525967  # L1 unit (AirSpy NOS v1.0.0-rc9). [REVERTED 2026-07-21 from the L1<->L5 hardware-attribution swap: the swap RETIRED hardware -- L5-leg TEC noise stayed ~25-66 TECU on the strong dongle and L5 single-band ADR was ~15-25x L2C on BOTH dongles, so the noise is L5-signal PROCESSING (overlay wipe), not this unit. See tec-error-budget-l5-leg.]
     freq: 1575.42
     sample_bw: 10  # airspy 10 MSPS mode -> 20 MSPS real
     # Gains dropped 14/15/15 -> 11/11/11 for the 2026-07-14 front end: a second-stage amp
