@@ -76,8 +76,6 @@ config_tracker:
     upstream_fetch_retries: 2
     upstream_fetch_timeout_seconds: 10
 
-numa_node: 0
-
 num_gpus: 0
 buffer_depth: 4
 
@@ -185,7 +183,7 @@ n2_pool:
 
 n2_recv_subset_buffer:
     kotekan_buffer: N2
-    num_elements: 8
+    num_elements: 32
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
