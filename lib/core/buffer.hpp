@@ -482,6 +482,34 @@ public:
     int get_num_full_frames();
 
     /**
+     * @brief Copies the data and metadata of the most recently filled frame
+     *        that is still full, without taking part in the producer/consumer
+     *        protocol.
+     *
+     * Intended for inspection/debugging (e.g. the REST `/buffer/<name>/frame`
+     * endpoint): the caller does not need to be a registered consumer, and
+     * calling this never consumes or delays frames. The buffer lock is held
+     * for the duration of the copy, which prevents the frame from being
+     * recycled mid-copy, but also blocks producer/consumer state changes on
+     * this buffer for the length of the memcpy -- avoid calling this at high
+     * rates on buffers with large frames. On buffers with deferred frame
+     * zeroing (@c zero_frames) the copy may observe a frame that is
+     * concurrently being zeroed, since the zeroing thread writes frame data
+     * without holding the buffer lock.
+     *
+     * @param[out] data_out Resized to the copy length and filled with the
+     *                      leading bytes of the frame.
+     * @param[in] max_len Maximum number of bytes of frame data to copy; the
+     *                    copy length is min(max_len, frame_size).
+     * @param[out] metadata_out Set to the frame's metadata object, or nullptr
+     *                          if the frame has none.
+     * @return The frame ID that was copied, or -1 if the buffer currently
+     *         contains no full frame.
+     */
+    int peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_len,
+                               std::shared_ptr<metadataObject>& metadata_out);
+
+    /**
      * @brief Swaps the provided frame of memory with the internal frame
      *        given by @c frame_id
      *
@@ -736,6 +764,14 @@ public:
      * A false at index I means the frame at index I is not full, true means it is full.
      */
     std::vector<bool> is_full;
+
+    /**
+     * @brief The index of the frame most recently marked full, or -1 if no
+     * frame has been filled yet. Frames fill in ring order, so scanning
+     * backwards from here finds the newest still-full frame; used by
+     * @c peek_newest_full_frame().
+     */
+    int last_frame_filled = -1;
 
     /// The last time a frame was marked as full (used for arrival rate)
     double last_arrival_time;
