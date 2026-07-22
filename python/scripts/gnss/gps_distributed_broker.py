@@ -413,6 +413,20 @@ def main(argv=None):
                          "across runs, and warm-start from it: the bias is then SOLVED from "
                          "cycle 1 (narrow margins, seeding enabled immediately). Audit rec D: "
                          "on the GPSDO this is a per-chain constant, not an estimate.")
+    ap.add_argument("--clock-bias-siblings", nargs="*", default=None,
+                    help="BAND-SHARED bias (2026-07-22): the other chains' --clock-bias-file "
+                         "paths on the SAME band. All chains of a band despread the SAME "
+                         "carrier frequency through ONE LO, so the clock-freq bias is one "
+                         "physical number measured independently per chain; a chain with 2 "
+                         "tracked sats estimates it at +-30 Hz swing (measured: the L5-GPS "
+                         "bias wandered -16..+44 Hz in 70 s while L1-GPS sat at -152 +-1 Hz "
+                         "with 5 sats), and that swing feeds EVERY seed's predicted Doppler "
+                         "-> fence re-pins -> the 30-45 s NCO kick cycle that decoheres the "
+                         "chain. Fusing the siblings' persisted estimates (sat-count "
+                         "weighted, <60 s fresh) gives each chain the band's full sat count "
+                         "(~8-10) -- an identifiability fix, not a tuning knob. Chains in "
+                         "drift-alarm stop persisting, so poisoned estimates go quiet "
+                         "automatically.")
     ap.add_argument("--clock-bias-alarm-hz", type=float, default=10.0,
                     help="CLOCK DRIFT ALARM bar: loud log if the live bias EMA departs the "
                          "warm-start calibration by more than this (GPSDO unlock / thermal "
@@ -935,6 +949,7 @@ def main(argv=None):
             return max(amp, float(rec.get("deep_snr", 0) or 0))
         return amp
     clock_bias_ema = None  # smoothed common clock-frequency bias (slow TCXO drift), Hz
+    n_sib = 0              # sibling sat count folded into the last bias fusion (log only)
     code_bias_ema = None   # smoothed receiver code-rate clock offset (l-a), dimensionless (~2.6 ppm airspy)
     if args.code_bias_init is not None:
         code_bias_ema = args.code_bias_init * 1e-6
@@ -958,7 +973,9 @@ def main(argv=None):
     if args.clock_bias_file:
         try:
             with open(args.clock_bias_file) as f:
-                clock_bias_ema = float(f.read().strip())
+                # format: "<bias_hz> [n_sats] [unix_ts]" -- extended for --clock-bias-siblings;
+                # the extra fields are ignored here (warm-start wants only the value).
+                clock_bias_ema = float(f.read().split()[0])
             clock_bias_cal = clock_bias_ema
             _log("clock-freq bias warm-started %+.1f Hz from %s (margins narrow, seeding "
                  "enabled from cycle 1)" % (clock_bias_ema, args.clock_bias_file))
@@ -1102,6 +1119,28 @@ def main(argv=None):
                 # below the gate the EMA holds its last multi-sat value (or stays unsolved
                 # -> margins stay WIDE, which is exactly what lets more sats in).
                 raw_bias = statistics.median(resid)
+                # BAND-SHARED bias fusion (--clock-bias-siblings): one LO, one number --
+                # fold the sibling chains' persisted estimates in, sat-count weighted.
+                # A 2-sat chain then rides the band's ~10-sat consensus instead of its own
+                # unidentifiable median (see the arg help for the measured pathology).
+                n_sib = 0
+                if args.clock_bias_siblings:
+                    acc_w = float(len(resid))
+                    acc_b = raw_bias * acc_w
+                    for _sp in args.clock_bias_siblings:
+                        try:
+                            _parts = open(_sp).read().split()
+                            _b = float(_parts[0])
+                            _n = int(_parts[1]) if len(_parts) > 1 else 1
+                            _ts = float(_parts[2]) if len(_parts) > 2 else 0.0
+                        except Exception:
+                            continue
+                        if t0 - _ts < 60.0 and _n >= 1:
+                            acc_b += _b * _n
+                            acc_w += _n
+                            n_sib += _n
+                    if n_sib:
+                        raw_bias = acc_b / acc_w
                 if clock_bias_ema is None or bias_stale:
                     # First solve, or stale-rescue re-solve: SNAP to the fresh median. An
                     # EMA crawl (a=0.05) from a mid-walk latch kHz off truth would spend
@@ -1144,7 +1183,9 @@ def main(argv=None):
                     if clock_bias_cal is not None:
                         try:
                             with open(args.clock_bias_file, "w") as f:
-                                f.write("%.2f\n" % clock_bias_ema)
+                                # value + sat count + timestamp: siblings weight by count
+                                # and ignore stale entries (--clock-bias-siblings).
+                                f.write("%.2f %d %.2f\n" % (clock_bias_ema, len(resid), t0))
                         except Exception:
                             pass
                 # ALARM LOG on a SAT-SCALED bar: the median-of-residuals noise is ~1/sqrt(n),
@@ -1168,8 +1209,9 @@ def main(argv=None):
                             % (p, best[p][1], pred[p][0], best[p][1] - pred[p][0], pred[p][2]))
             if len(resid) >= args.bias_min_sats:
                 _log_rl("clkbias",
-                        "clock-freq bias %+.0f Hz (raw %+.0f, %d sats, EMA a=%.2f) -> seeding "
-                        "predicted Doppler" % (clock_bias, raw_bias, len(resid), args.bias_alpha))
+                        "clock-freq bias %+.0f Hz (raw %+.0f, %d sats + %d sib, EMA a=%.2f) "
+                        "-> seeding predicted Doppler"
+                        % (clock_bias, raw_bias, len(resid), n_sib, args.bias_alpha))
             elif resid:
                 _log_rl("clkbias",
                         "clock-freq bias %s (%d sat < --bias-min-sats %d: residual not trusted)"
