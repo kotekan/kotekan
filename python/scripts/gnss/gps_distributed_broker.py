@@ -688,6 +688,17 @@ def main(argv=None):
                          "(~0.4 chips; validated 0.10 chip rms 2026-07-13). Needs --almanac.")
     ap.add_argument("--dr-constellation", default="G", choices=("G", "E", "C"),
                     help="RINEX constellation letter for this broker's band")
+    ap.add_argument("--signal-capability", default=None,
+                    help="restrict ALL seeds + hints to GPS PRNs whose satellite block actually "
+                         "broadcasts this signal (GPS_L1C_P -> Block III; GPS_L5_Q -> IIF+; "
+                         "GPS_L2C_CM -> IIR-M+). The GENERAL form of --dr-min-prn: that numeric "
+                         "cutoff only works for BDS-2's contiguous low PRNs; GPS III sats are "
+                         "interspersed among IIF/IIR (4/11/14/18/20/21/23/28) so no cutoff can "
+                         "express 'L1C only'. Read ONCE at startup from the live Celestrak block "
+                         "names (gps_beamtrack.signal_capable_prns); on fetch failure or empty "
+                         "result the filter is DISABLED with a warning (phantoms return, but the "
+                         "chain lives -- better than killing L1C during a network outage). GPS "
+                         "only; E/C constellations use --tle-name-filter instead.")
     ap.add_argument("--dr-min-prn", type=int, default=None,
                     help="dead-reckon only PRNs >= this: a SIGNAL-CAPABILITY gate, not a "
                          "visibility one. Default 19 for BeiDou (B1C/B2a are BDS-3 ONLY; the "
@@ -831,6 +842,24 @@ def main(argv=None):
     # healthy. Only capability excludes them.
     dr_min_prn = (args.dr_min_prn if args.dr_min_prn is not None
                   else (19 if args.dr_constellation == "C" else 1))
+
+    # Signal-capability PRN gate (--signal-capability): the general block filter, fetched once.
+    # Empty/failed lookup -> None (disabled) so a network hiccup can't dark the chain.
+    _capable = None
+    if args.signal_capability and args.constellation == "G":
+        try:
+            import gps_beamtrack as _bt
+            _cap = _bt.signal_capable_prns(args.signal_capability)
+            if _cap:
+                _capable = _cap
+                _log("signal-capability %s: seeds+hints restricted to %d block-capable PRNs %s"
+                     % (args.signal_capability, len(_capable), sorted(_capable)))
+            else:
+                _log("signal-capability %s: block lookup returned EMPTY -> filter DISABLED"
+                     % args.signal_capability)
+        except Exception as _e:
+            _log("signal-capability %s: block lookup FAILED (%s) -> filter DISABLED"
+                 % (args.signal_capability, _e))
 
     dr_state = None
     if args.dead_reckon:
@@ -1099,7 +1128,8 @@ def main(argv=None):
                                                - v[3] / _nh_eph.C_LIGHT
                                                + (v[4] if len(v) > 4 else 0.0)) / period))
                                     % args.nh_overlay_len}
-                             for p, v in pred.items() if v[2] >= args.mask_deg]
+                             for p, v in pred.items() if v[2] >= args.mask_deg
+                             and (_capable is None or p in _capable)]
                     if hints:
                         _post("%s/set_nh_hint" % combiner, hints)
                 except Exception as e:
@@ -1230,7 +1260,8 @@ def main(argv=None):
                       if clock_bias_ema is not None and not bias_stale
                       else args.search_margin_wide_hz)
             hints = [dict(prn=p, doppler_hz=pred[p][0] + clock_bias, margin_hz=margin)
-                     for p in sorted(pred) if (up is None or p in up)]
+                     for p in sorted(pred) if (up is None or p in up)
+                     and (_capable is None or p in _capable)]
             pushed = 0
             for d_ep in detectors:
                 try:
@@ -2058,12 +2089,14 @@ def main(argv=None):
                                + drift * (now_w - dr_state["clk_t"])) % CODE_LEN
                     planned = []
                     for (ctag, prn), v in sorted(pd.items()):
-                        # SIGNAL CAPABILITY first (see --dr-min-prn): a satellite that does
-                        # not broadcast this signal must never be seeded, however visible and
-                        # however well-predicted it is. The model will happily hand us a code
-                        # phase for a signal that isn't there.
+                        # SIGNAL CAPABILITY first (see --dr-min-prn / --signal-capability): a
+                        # satellite that does not broadcast this signal must never be seeded,
+                        # however visible and however well-predicted it is. The model will
+                        # happily hand us a code phase for a signal that isn't there.
                         if prn < dr_min_prn:
                             continue
+                        if _capable is not None and prn not in _capable:
+                            continue  # block does not carry this signal (GPS L1C/L5/L2C)
                         # +0.5 deg hysteresis vs the drop mask: a sat riding the mask
                         # otherwise flickers drop->reseed every few cycles
                         if (ctag != tag or v["el"] < args.mask_deg + 0.5 or prn in best
@@ -2120,7 +2153,7 @@ def main(argv=None):
                     # the TLE horizon drop -- see the coast loop), or on capability
                     for prn in list(dr_state["seeded"]):
                         v = pd.get((tag, prn))
-                        if prn < dr_min_prn:
+                        if prn < dr_min_prn or (_capable is not None and prn not in _capable):
                             _log("dead-reckon drop PRN %d (does not broadcast this signal)" % prn)
                             seeds.pop(prn, None)
                             low_hits.pop(prn, None)

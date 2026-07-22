@@ -330,7 +330,13 @@ bands:
           fll_reacq_hz: 15.0
           note_inline: "tight snap-to-model fence (rec B; free under dop-continuous; alias limit 25 Hz at 10 ms)"
         combiner:
-          params: { nh_assist: true, nh_min_refs: 3, n_prn: 32, integration_length: 100, secondary_overlay: L1CO }
+          # nh_min_refs 2 (2026-07-22): the overlay convention is pinned per-emit from a
+          # cluster of >=nh_min_refs sats agreeing on (nh_found - hint). L1C's constellation
+          # is tiny (~6 Block-III sats total, ~3-4 overhead, rarely 3 strongly locked at
+          # once), so 3 starved the calibration -> the real III sats flickered (jumping
+          # nh_phase, blank coherent despite strong search sig). 2 agreeing to +-3 is still
+          # strong mislock protection for a small constellation. (B1C keeps 3: BDS-3 has ~24.)
+          params: { nh_assist: true, nh_min_refs: 2, n_prn: 32, integration_length: 100, secondary_overlay: L1CO }
           note: |
             L1C-P: deterministic per-PRN 1800-symbol L1CO overlay wipe (same code path as B1C).
             integration_length 100 x 10 ms = 1 s. The ADR de-rotates the L1CO overlay (plain

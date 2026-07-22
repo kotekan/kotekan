@@ -359,6 +359,11 @@ CLOCK_BIAS_FILE=${CLOCK_BIAS_FILE:-/tmp/gps_clock_bias_${TAG}.hz}
 # a 2-sat chain then rides the band's ~10-sat consensus instead of its own swinging
 # median (the L5 NCO-kick root, measured -16..+44 Hz in 70 s vs L1's steady -152).
 # Nonexistent sibling files (band without that chain) are skipped harmlessly.
+# SIGNAL-CAPABILITY gate (2026-07-22): seed/hint only the GPS blocks that transmit this
+# band's modernized signal (L2C -> IIR-M+, L5 -> IIF+, L1C -> III). The BeiDou-3 phantom fix
+# was a numeric PRN cutoff (--dr-min-prn) that can't express GPS's interspersed III sats.
+# L1 C/A is on every sat -> no gate (and no risk of excluding a sat missing from the TLE).
+case "$SIGNAL" in *L1CA*|*L1_CA*) SIG_CAP="";; *) SIG_CAP="--signal-capability $SIGNAL";; esac
 CBP=/tmp/gps_clock_bias_${TAG}
 SIB_GPS="--clock-bias-siblings ${CBP}_gal.hz ${CBP}_bds.hz ${CBP}_l1c.hz"
 SIB_GAL="--clock-bias-siblings ${CBP}.hz ${CBP}_bds.hz ${CBP}_l1c.hz"
@@ -371,7 +376,7 @@ python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gps_search 
         ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} ${CPERR:+--hold-max-cp-err $CPERR} \
         --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
         --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
-        ${BROKER_EXTRA:-} $ALM $CLA $CARG \
+        ${BROKER_EXTRA:-} $ALM $CLA $CARG $SIG_CAP \
         > /tmp/${TAG}_broker.log 2>&1 &
 BPID=$!
 # WATCHDOG NOW FLEET-WIDE (was BeiDou-only until 2026-07-19 eve): the L2C duty timeline
@@ -486,7 +491,7 @@ if grep -qE '^l1c_track:|seed_endpoint:[[:space:]]*"/l1c_track/set_seeds"' "$RUN
           --chip-rate-hz $L1C_CHIP --code-length $L1C_CODELEN --hold-max-cp-err $L1C_CPERR \
           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
           --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
-          ${BROKER_EXTRA:-} $ALM $CARG $L1C_NH \
+          ${BROKER_EXTRA:-} $ALM $CARG $L1C_NH --signal-capability ${L1C_SIGNAL:-GPS_L1C_P} \
           > /tmp/${TAG}_broker_l1c.log 2>&1 &
   L1CPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT \
