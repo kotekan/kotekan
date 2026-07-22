@@ -88,10 +88,17 @@ export class GpsTablePanel {
         // jumble the list with flickering '--' rows; if the sky feed is down (not ok) fall
         // back to showing them, so a geometry outage never blanks the whole list.
         const sky_ok = !!(sky && sky.ok);
-        const shown = sats.filter(r => vis[r.tag] && (r.active || r.el != null)
-                                       && !(sky_ok && r.active && r.el == null));
+        // A sat is shown if it is above the horizon (real, visible) or actively tracked. HIDE
+        // actively-tracked rows the authoritative BRDC sky places BELOW the horizon -- those are
+        // noise probes / false locks. Transition-safe: catches both the server's real negative
+        // elevation (el < 0) and, before the /gps_sky floor change is live, the masked-out null.
+        // Fall back to showing them if the sky feed is down, so an outage never blanks the list.
+        const below = r => sky_ok && r.active && (r.el == null || r.el < 0);
+        const shown = sats.filter(r => vis[r.tag]
+                                       && (r.active || (r.el != null && r.el >= 0))
+                                       && !below(r));
         const locked = shown.filter(r => r.active);
-        const visible = shown.filter(r => r.el != null).length;
+        const visible = shown.filter(r => r.el != null && r.el >= 0).length;
 
         // Status line + constellation toggle chips.
         let sky_state;

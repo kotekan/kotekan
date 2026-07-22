@@ -114,6 +114,14 @@ WS_STUCK_PAUSED_S = 30
 # the cached result, so the Twisted reactor never blocks on orbit propagation.
 SKY_REFRESH_S = 5.0
 
+# /gps_sky reports geometry down to this elevation (deg) rather than masking at the display
+# mask, so a BELOW-HORIZON tracked PRN (e.g. a --noise-probe, seeded deep-below to measure the
+# noise floor) carries its REAL negative elevation instead of collapsing to null. That lets the
+# viewer tell "below horizon / probe" (el < 0) apart from "geometry momentarily missing" (el ==
+# null) unambiguously. -90 => every computable sat; consumers apply their own display threshold
+# (the response still carries `mask_deg`, the display mask, separately).
+SKY_REPORT_FLOOR_DEG = -90.0
+
 
 # Mode is decided by the number of visibility streams in the kotekan handshake.
 MODE_BY_NVIS = {1: "autocorr", 4: "crosscorr"}
@@ -822,6 +830,8 @@ class GpsSkyResource(resource.Resource):
         self._sats = None                        # cached {prn: EarthSatellite} (TLE fallback)
         self._eph = None                         # cached parsed BRDC {(sys,prn):[recs]}
         self._eph_t = None                       # monotonic s of last BRDC parse
+        self._l1c_capable = None                 # cached set of L1C-capable PRNs (GPS III)
+        self._l1c_capable_t = None               # monotonic s of last capability fetch
         self._last_compute = None                # monotonic s of last attempt
         self._refreshing = False
 
@@ -858,6 +868,26 @@ class GpsSkyResource(resource.Resource):
             return {"ok": True, "sats": sats, "src": "brdc"}
         return {"ok": True, "sats": self._tle_skypos(), "src": "tle"}
 
+    def _l1c_capable_set(self):
+        """Cached set of PRNs whose GPS block actually broadcasts L1C (GPS III), from the live
+        Celestrak block names -- so the 'L' (L1C) sky layer shows only birds that can transmit it,
+        not every visible GPS sat (older blocks would sit silent, looking like failed L1C locks).
+        None on failure / unknown => no filter (show all GPS under L, the prior behavior)."""
+        if (self._l1c_capable_t is not None
+                and (time.monotonic() - self._l1c_capable_t) < 3600.0):
+            return self._l1c_capable
+        try:
+            import gps_beamtrack as bt
+            caps = bt.signal_capable_prns("GPS_L1C_P")
+            # signal_capable_prns returns ALL PRNs when the signal is unknown / on every sat;
+            # a near-full set carries no information, so treat it as "don't filter".
+            self._l1c_capable = set(caps) if caps and len(caps) < 32 else None
+        except Exception as e:
+            log_.warning("gps_sky: L1C capability set unavailable (%s); showing all GPS under L", e)
+            self._l1c_capable = None
+        self._l1c_capable_t = time.monotonic()
+        return self._l1c_capable
+
     def _brdc_skypos(self, want):
         """Sky positions from the broadcast ephemeris, or None if the BRDC is unavailable.
 
@@ -876,21 +906,25 @@ class GpsSkyResource(resource.Resource):
                                      and math.degrees(r[-1]["i0"]) < 5.0)}
                 self._eph_t = time.monotonic()
             pred = ge.predict_all(self._eph, self.lat, self.lon, self.alt,
-                                  datetime.now(timezone.utc), mask_deg=self.mask_deg)
+                                  datetime.now(timezone.utc), mask_deg=SKY_REPORT_FLOOR_DEG)
         except Exception as e:
             log_.warning("gps_sky: BRDC geometry unavailable (%s); falling back to TLE", e)
             return None
         if not pred:
             return None
+        cap_L = self._l1c_capable_set()
         sats = []
         for tag in want:
             sysc = self._TAG_SYS.get(tag)
             if not sysc:
                 continue
             for (s, p), v in sorted(pred.items()):
-                if s == sysc:
-                    sats.append({"prn": p, "const": tag,
-                                 "az": round(v["az"], 2), "el": round(v["el"], 2)})
+                if s != sysc:
+                    continue
+                if tag == "L" and cap_L is not None and p not in cap_L:
+                    continue  # 'L' = L1C: only GPS III birds actually transmit it
+                sats.append({"prn": p, "const": tag,
+                             "az": round(v["az"], 2), "el": round(v["el"], 2)})
         return sats
 
     def _tle_skypos(self):
@@ -904,11 +938,13 @@ class GpsSkyResource(resource.Resource):
                     self._sats[tag] = load_gps_satellites(url or DEFAULT_TLE_URL)
                 except Exception as e:
                     log_.warning("gps_sky: %s TLEs unavailable: %s", tag, e)
+        cap_L = self._l1c_capable_set()
         sats = []
         for tag, by_prn in self._sats.items():
             pos = predict_skypos(self.lat, self.lon, self.alt, _sats=by_prn)
             sats += [{"prn": p, "const": tag, "az": round(az, 2), "el": round(el, 2)}
-                     for p, (az, el) in sorted(pos.items()) if el >= self.mask_deg]
+                     for p, (az, el) in sorted(pos.items()) if el >= self.mask_deg
+                     and not (tag == "L" and cap_L is not None and p not in cap_L)]
         return sats
 
     def _kick_refresh(self):

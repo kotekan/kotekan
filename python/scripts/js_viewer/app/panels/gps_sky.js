@@ -97,6 +97,7 @@ export class GpsSkyPanel {
         for (const r of sats) {
             if (!vis[r.tag]) continue;
             if (r.az == null || r.el == null) continue;   // no orbit fix -> table only
+            if (r.el < 0) continue;   // below the horizon (e.g. a noise probe) -> off the plot
             const cc = chain_color(r.tag);
             const {x, y} = project(r.az, r.el);
             // Compact symbols (user request 2026-07-12): ~35% smaller than v1 so dense
