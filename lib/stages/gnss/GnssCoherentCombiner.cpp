@@ -344,24 +344,19 @@ void GnssCoherentCombiner::main_thread() {
                             if (_adr_blk_prev_ok[p]
                                 && (utc_p - _adr_blk_prev_utc[p])
                                        < 2.5 * (double)_adr_smooth * dt_c) {
-                                const double raw =
+                                // RAW block product, deliberately MEMORYLESS (v3). The v2
+                                // rate-predicted EMA unwrap was retracted after a 45-min
+                                // soak read 67-726 m (r=+0.87 with loop residual): the L5
+                                // loop residuals WANDER (the saga's flicker-FM), and every
+                                // truth-crossing of +-0.5 cyc from the drifting prediction
+                                // locked the unwrap onto the wrong branch -- the same
+                                // wrong-integer absorbing state the slot-15 design note
+                                // documents. Memoryless raw errors stay BOUNDED per event;
+                                // K=10's +-50 Hz margin covers every observed residual
+                                // median (<=27 Hz; only >50 Hz excursions can fold).
+                                const double dres_blk =
                                     std::arg(_adr_blk_v[p] * std::conj(_adr_blk_prev[p]))
                                     / (2.0 * M_PI);
-                                // Rate-predicted unwrap (see hpp): steady residuals beyond
-                                // +-0.5 cyc/block are unwrapped around the EMA rate. The
-                                // EMA seeds from the first RAW product, which K=10's
-                                // +-50 Hz margin keeps unaliased for every observed loop
-                                // residual (13-25 Hz standing on the worst sats).
-                                double dres_blk = raw;
-                                if (_adr_blk_rate_ok[p]) {
-                                    double dd = raw - _adr_blk_rate[p];
-                                    dd -= std::round(dd);
-                                    dres_blk = _adr_blk_rate[p] + dd;
-                                    _adr_blk_rate[p] += 0.2 * (dres_blk - _adr_blk_rate[p]);
-                                } else {
-                                    _adr_blk_rate[p] = raw;
-                                    _adr_blk_rate_ok[p] = 1;
-                                }
                                 _adr_cyc[p] += _adr_blk_dcmd[p] - dres_blk;
                             }
                             else
