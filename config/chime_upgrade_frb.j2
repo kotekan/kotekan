@@ -21,9 +21,9 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: info
 
-{% set using_dpdk = False %}
+{% set using_dpdk = True %}
 {% set fake_upchan_voltage = False %}
-{% set do_once_and_dump = True %}
+{% set do_once_and_dump = False %}
 
 {% set num_polarizations = 2 %}
 {% set num_dishes = 1024 %}
@@ -244,73 +244,42 @@ dpdk:
   # 666, 698, 730, 738, 826, 898, 906, 978, 58, 66, 818, 962, 234, 746, 802, 954
   # such that theyr are ordered
   # it will mess up the lost_samples_buffer_X arrays
+{% set shuffled_host_buffers = [ 3, 4, 5, 6, 10, 11, 12, 15, 0, 1, 9, 14, 2, 7, 8, 13 ] %}
 {%- for id in range(4) %}
     - dpdk_handler: iceBoardShuffle
       link_group: 0
       link_group_subid: {{ id }}
       out_bufs:
-      ###
-        - host_voltage_buffer_3
-        - host_voltage_buffer_4
-        - host_voltage_buffer_5
-        - host_voltage_buffer_6
-      ###
-      #{#
       {% for i in range(0,4) %}
-        - host_voltage_buffer_{{ i }}
+        - host_voltage_buffer_{{ shuffled_host_buffers[i] }}
       {% endfor %}
-      #}#
       lost_samples_buf: lost_samples_buffer_0
 
     - dpdk_handler: iceBoardShuffle
       link_group: 1
       link_group_subid: {{ id }}
       out_bufs:
-      ###
-        - host_voltage_buffer_10
-        - host_voltage_buffer_11
-        - host_voltage_buffer_12
-        - host_voltage_buffer_15
-      ###
-      #{#
       {% for i in range(4,8) %}
-        - host_voltage_buffer_{{ i }}
+        - host_voltage_buffer_{{ shuffled_host_buffers[i] }}
       {% endfor %}
-      #}#
       lost_samples_buf: lost_samples_buffer_1
 
     - dpdk_handler: iceBoardShuffle
       link_group: 2
       link_group_subid: {{ id }}
       out_bufs:
-      ###
-        - host_voltage_buffer_0
-        - host_voltage_buffer_1
-        - host_voltage_buffer_9
-        - host_voltage_buffer_14
-      ###
-      #{#
       {% for i in range(8,12) %}
-        - host_voltage_buffer_{{ i }}
+        - host_voltage_buffer_{{ shuffled_host_buffers[i] }}
       {% endfor %}
-      #}#
       lost_samples_buf: lost_samples_buffer_2
 
     - dpdk_handler: iceBoardShuffle
       link_group: 3
       link_group_subid: {{ id }}
       out_bufs:
-      ###
-        - host_voltage_buffer_2
-        - host_voltage_buffer_7
-        - host_voltage_buffer_8
-        - host_voltage_buffer_13
-      ###
-      #{#
       {% for i in range(12,16) %}
-        - host_voltage_buffer_{{ i }}
+        - host_voltage_buffer_{{ shuffled_host_buffers[i] }}
       {% endfor %}
-      #}#
       lost_samples_buf: lost_samples_buffer_3
 {%- endfor %}
 
@@ -318,10 +287,10 @@ dpdk:
 zero_samples:
   duplicate_ls_buffer: False
 {%- for id in range(num_freq_gpu_buf) %}
-  zero_{{ id }}:
+  zero_{{ shuffled_host_buffers[id] }}:
     kotekan_stage: zeroSamples
     lost_samples_buf: lost_samples_buffer_{{ id // 4 }}
-    out_buf: host_voltage_buffer_{{ id }}
+    out_buf: host_voltage_buffer_{{ shuffled_host_buffers[id] }}
 {%- endfor %}
 
 {%- else %}
@@ -376,104 +345,15 @@ fake_lost_samples_{{ id }}:
 {% endfor %}
 ##}
 
-# TODO: do these still need to exist, or are they replaced by the
-# jinja-templated shuffle above?
+# read from individual files, one per buffer
 #{#
-dbg_read_voltages_0:
+{% for id in range(16) %}
+dbg_read_voltages_{{ id }}:
     kotekan_stage: hdf5FileRead
     input_dir: debug-data
-    out_buf: host_voltage_buffer_0
-    file_name: host_voltage_buffer_0
-
-dbg_read_voltages_1:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_1
-    file_name: host_voltage_buffer_8
-
-dbg_read_voltages_2:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_2
-    file_name: host_voltage_buffer_12
-
-dbg_read_voltages_3:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_3
-    file_name: host_voltage_buffer_13
-
-dbg_read_voltages_4:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_4
-    file_name: host_voltage_buffer_9
-
-dbg_read_voltages_5:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_5
-    file_name: host_voltage_buffer_4
-
-dbg_read_voltages_6:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_6
-    file_name: host_voltage_buffer_1
-
-dbg_read_voltages_7:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_7
-    file_name: host_voltage_buffer_2
-
-dbg_read_voltages_8:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_8
-    file_name: host_voltage_buffer_14
-
-dbg_read_voltages_9:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_9
-    file_name: host_voltage_buffer_10
-
-dbg_read_voltages_10:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_10
-    file_name: host_voltage_buffer_15
-
-dbg_read_voltages_11:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_11
-    file_name: host_voltage_buffer_11
-
-dbg_read_voltages_12:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_12
-    file_name: host_voltage_buffer_5
-
-dbg_read_voltages_13:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_13
-    file_name: host_voltage_buffer_6
-
-dbg_read_voltages_14:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_14
-    file_name: host_voltage_buffer_7
-
-dbg_read_voltages_15:
-    kotekan_stage: hdf5FileRead
-    input_dir: debug-data
-    out_buf: host_voltage_buffer_15
-    file_name: host_voltage_buffer_3
+    out_buf: host_voltage_buffer_{{ id }}
+    file_name: host_voltage_buffer_{{ id }}
+{% endfor $}
 
 {%- for id in range(4) %}
 dbg_read_lostsamples_{{ id }}:
@@ -596,6 +476,9 @@ lostSamplesToPLMask:
     # num_polarizations: num_polarizations # set via a global
     pl_mask_buf: host_pl_mask_buffer
     lost_samples_buffers:
+    # TODO: this wrong for shuffled_host_buffers not being trivial since the
+    # C++ code assumes a fixed relation betwene the lost_samples buffers and
+    # the host voltage buffers, which is no longer true
 {%- for id in range(num_freq_gpu_buf // 4) %}
       - lost_samples_buffer_{{ id }}
 {%- endfor %}
@@ -1136,6 +1019,9 @@ run_n2k_counts:
         # num_elements: num_elements
         rfi_mask_buf: host_rfi_RFImask_buffer
         lost_samples_buffers:
+        # TODO: this likely is wrong for non-trivial shuffled_host_buffers
+        # since it assumes a fixed relation between lost_samples and
+        # host_voltage buffers
 {%- for id in range(num_freq_gpu_buf // 4) %}
         - lost_samples_buffer_{{ id }}
 {%- endfor %}
@@ -1271,6 +1157,8 @@ eigencalc:
     krylov: 2
     subspace: 1
     # Masking config from chime science run
+    # TODO: these are (Roland assumes) in CHIME cylinder order but data is in
+    # CHIME beamformer order (after xpose2048)
     diagonal_bands_filled: [ [0, 30], [251, 262] ]
     exclude_inputs: [  46,   84,  107,  136,  142,  256,  257,  319,  348,  357,  369,
                       370,  453,  550,  551,  579,  638,  688,  739,  742,  768,  784,
@@ -1568,6 +1456,7 @@ FRB:
               Fmax: upchan_U16_max_channel
             - name: cudaSyncOutput
 
+#{# for debugging only
     run_recv_upchan_U16_voltage:
         gpu_0:
             kotekan_stage: cudaProcess
@@ -1587,6 +1476,7 @@ FRB:
               output_size: num_dishes * num_polarizations * (upchan_U16_max_num_channels * factor_upchan_out) * (samples_per_data_set / factor_upchan_out)
               ring_buffer_size: buffer_depth * output_size
               out_buf: host_upchan_U16_voltage_buffer
+#}#
 {%- endif %}
 
     # FRB 1
@@ -1821,7 +1711,6 @@ FRB:
 
 {%- if do_once_and_dump %}
     # dump data for debugging
-{% if True %}
     dump_frb_beams:
         max_frames: 1
         upchan_U16_voltage:
@@ -1860,7 +1749,6 @@ FRB:
             input_order: CHIMEBeamformer # this makes no sense, but is required
             in_buf: host_frb2_beam_positions_buffer
             file_name: host_frb2_beam_positions_buffer
-{% endif %}
         host_frb2_weights_buffer:
             kotekan_stage: hdf5FileWrite
             base_dir: frb_weights
@@ -1873,7 +1761,7 @@ FRB:
             input_order: CHIMEBeamformer # this makes no sense, but is required
             in_buf: host_frb1_U16_phase_buffer
             file_name: host_frb1_U16_phase_buffer
-{%- endif %}
+{% endif %}
 
 {% if False %}
     frb_send:
@@ -1905,7 +1793,7 @@ write_baseband:
     in_buf: baseband_output_buffer_merged
 
 ## Transmit baseband data to the baseband receiver
-{#
+#{#
 baseband_send:
   server_ip: 10.5.60.2
   reconnect_time: 60
@@ -1919,7 +1807,7 @@ baseband_send:
     kotekan_stage: bufferSend
     server_port: 11027
     buf: baseband_output_buffer_merged
-#}
+#}#
 
 write_vis:
     kotekan_stage: VisWriter
