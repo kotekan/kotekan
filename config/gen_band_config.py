@@ -355,7 +355,9 @@ def build_band(node, band_id):
         add(prefix + "assemble",
             {"kotekan_stage": "GnssGpuRecordAssemble", "in_buf": prefix + "epl_buf",
              "out_buf": prefix + "rec_buf", "sample_rate": Raw(band["sample_rate"]),
-             "prns": prn_list(c["n_prn"])})
+             "prns": prn_list(c["n_prn"]),
+             **{k: (dq(v) if k == "chan_dump_path" else v)
+                for k, v in c.get("assemble", {}).items()}})
         add(prefix + "combiner", combiner_stage(c, prefix), c=c["combiner"].get("note"))
         add(prefix + "record", record_stage(band, c, prefix))
         doc.append(SPACER)

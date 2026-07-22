@@ -563,5 +563,12 @@ bands:
         tracker:
           fll_reacq_hz: 15.0
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)"
+        assemble:
+          # DIAGNOSTIC (2026-07-21 overnight, L5 ADR-wander VALIDATION): second-constellation
+          # per-channel dump (B2a C33, CS100 overlay family) to confirm the fold-walk verdict
+          # beyond G26/NH20. REMOVE with the other dump keys when the fix lands.
+          chan_dump_prn: 33
+          chan_dump_decim: 10
+          chan_dump_path: /tmp/gps_l5_gpu/chan_phase_dump_c33.txt
         combiner:
           params: { n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100 }
