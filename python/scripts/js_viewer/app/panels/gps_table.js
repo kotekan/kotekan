@@ -81,7 +81,15 @@ export class GpsTablePanel {
     }
 
     _render({sats, sky, adc, vis, chains}) {
-        const shown = sats.filter(r => vis[r.tag] && (r.active || r.el != null));
+        // Below-horizon "locked" PRNs are noise probes (--noise-probes) or false locks:
+        // kotekan runs a correlator on them so they report active, but the authoritative
+        // BRDC sky -- which now covers the full constellation -- does not place them above
+        // the horizon (el stays null). Hide them when the geometry is valid so they don't
+        // jumble the list with flickering '--' rows; if the sky feed is down (not ok) fall
+        // back to showing them, so a geometry outage never blanks the whole list.
+        const sky_ok = !!(sky && sky.ok);
+        const shown = sats.filter(r => vis[r.tag] && (r.active || r.el != null)
+                                       && !(sky_ok && r.active && r.el == null));
         const locked = shown.filter(r => r.active);
         const visible = shown.filter(r => r.el != null).length;
 
