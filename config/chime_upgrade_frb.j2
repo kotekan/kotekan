@@ -1372,6 +1372,17 @@ FRB:
         dimscalings: [frb_downsampling_factor * 256, 4, 64, frb_downsampling_factor * 16, 1, 16, 1]
         metadata_pool: main_pool
 
+    host_frb3_beams_offsetscale_buffer_post:
+        kotekan_buffer: ndarray
+        num_frames: host_buffer_depth
+        # the output is quantized in chunks of `frb_chunk_size`
+        value_type: float16
+        extents: [1, frb2_num_beams/4, upchan_U16_max_num_output_channels/64, 16, 4, 4, 2]
+        quantity_name: "I3_offsetscale"
+        dimnames: ["Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "offset/scale"]
+        dimscalings: [frb_downsampling_factor * 256, 4, 64, frb_downsampling_factor * 16, 1, 16, 1]
+        metadata_pool: main_pool
+
     # Stages
 
     run_set_upchan_U16_gain:
@@ -1714,6 +1725,12 @@ FRB:
           - enabled: host_frb3_beams_buffer
         out_buf: host_frb3_beams_buffer_post
         updatable_config: /updatable_config/enable_frb_out
+    switch_frb_offsetscale_out:
+        kotekan_stage: bufferSwitch
+        in_bufs:
+          - enabled: host_frb3_beams_offsetscale_buffer
+        out_buf: host_frb3_beams_offsetscale_buffer_post
+        updatable_config: /updatable_config/enable_frb_out
 
 {%- if do_once_and_dump %}
     # dump data for debugging
@@ -1836,6 +1853,15 @@ write_frb:
     base_dir: frb_beams
     in_buf: host_frb3_beams_buffer_post
     file_name: host_frb3_beams_buffer
+    create_single_file: true
+    input_order: CHIMEBeamformer
+write_frb_offsetscale:
+    kotekan_stage: hdf5FileWrite
+    log_level: warn
+    use_compression: false
+    base_dir: frb_beams
+    in_buf: host_frb3_beams_offsetscale_buffer_post
+    file_name: host_frb3_offsetscale_buffer
     create_single_file: true
     input_order: CHIMEBeamformer
 
