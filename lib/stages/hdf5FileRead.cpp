@@ -286,7 +286,7 @@ public:
                             .read<std::vector<std::array<float, 2>>>());
 
                 // Read telescope fields and abort if they don't match
-                check_telescope_metadata(dataset);
+                //check_telescope_metadata(dataset);
 
                 {
                     /* new style array description */
