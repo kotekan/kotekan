@@ -2189,6 +2189,7 @@ def main(argv=None):
                     car_locked.add(prn)
                 gated = (tracking and args.carrier_min_sig > 0.0
                          and (not coh_ok or sig < args.carrier_min_sig))
+                fade_gated = gated  # incoherent/weak: the resid estimator is NOT trusted
                 if not gated and tracking and args.carrier_innov_hz > 0.0 \
                         and abs(resid) > args.carrier_innov_hz:
                     gated = True  # certified-but-implausible residual: the estimator is lying
@@ -2199,7 +2200,14 @@ def main(argv=None):
                     # skipping the refade demotion + BOOTSTRAP round-trip (~30 s) that
                     # otherwise dominates kick-prone chains' duty cycle. Memoryless beyond
                     # the agreement window; >=10 s between accepts per sat.
-                    if args.carrier_step_accept > 0:
+                    # v2 tightening (2026-07-22 10:5x): the first deployment fired on
+                    # FADE-gated sats at 1.5-3.5 Hz "agreements" (788 accepts/36 min,
+                    # REACQ rate DOUBLED) -- an incoherent sat's residuals can agree on
+                    # garbage, and integrating them kicks the NCO. Escape ONLY the case
+                    # it was designed for: the innovation-gated deadlock (coherent,
+                    # certified-sig sat frozen at |resid| > innov), and the agreed median
+                    # must itself EXCEED the innovation gate.
+                    if args.carrier_step_accept > 0 and not fade_gated:
                         hist = car_step_hist.setdefault(prn, [])
                         hist.append((t0, resid))
                         del hist[:-args.carrier_step_accept]
@@ -2209,7 +2217,7 @@ def main(argv=None):
                                 and t0 - car_step_t.get(prn, 0.0) >= 10.0):
                             vals = sorted(r for _, r in hist)
                             med = vals[len(vals) // 2]
-                            if vals[-1] - vals[0] < band and abs(med) > band / 2.0:
+                            if vals[-1] - vals[0] < band and abs(med) > band:
                                 prev_trim = car_trim.get(prn, 0.0)
                                 car_trim[prn] = max(-args.carrier_max_hz,
                                                     min(args.carrier_max_hz,
