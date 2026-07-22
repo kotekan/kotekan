@@ -572,6 +572,7 @@ void gpuSimulateRFISK::main_thread() {
              out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
 
         in_rfi_s012_buf->mark_frame_empty(unique_name, in_rfi_s012_frame_id++);
+        in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id++);
         out_rfi_sk_buf->mark_frame_full(unique_name, out_rfi_sk_frame_id++);
         out_rfi_sktilde_buf->mark_frame_full(unique_name, out_rfi_sktilde_frame_id++);
         out_rfi_mask_buf->mark_frame_full(unique_name, out_rfi_mask_frame_id++);
@@ -584,7 +585,8 @@ double gpuSimulateRFISK::get_bias(double x, double y) {
     // index of bin in bias table containing x, unless x is near the end
     // of the bin. Leaves at least 1 free bin to the left and at least two
     // free bins to the right.
-    uint64_t bin_idx = std::clamp(static_cast<uint64_t>((x - _xmin) / dx), uint64_t{1}, _bias_nx - 3);
+    uint64_t bin_idx =
+        std::clamp(static_cast<uint64_t>((x - _xmin) / dx), uint64_t{1}, _bias_nx - 3);
     // Index of first bin (or first table point) in the reconstruction.
     // Probably one to the left of where the sample point is.
     uint64_t i0 = bin_idx - 1;
@@ -615,7 +617,8 @@ double gpuSimulateRFISK::get_sigma(double x, uint64_t s0) {
     // index of bin in sigma table containing x, unless x is near the end
     // of the bin. Leaves at least 1 free bin to the left and at least two
     // free bins to the right.
-    uint64_t bin_idx = std::clamp(static_cast<uint64_t>((x - _xmin) / dx), uint64_t{1}, _sigma_nx - 3);
+    uint64_t bin_idx =
+        std::clamp(static_cast<uint64_t>((x - _xmin) / dx), uint64_t{1}, _sigma_nx - 3);
     // Index of first bin (or first table point) in the reconstruction.
     // Probably one to the left of where the sample point is.
     uint64_t i0 = bin_idx - 1;
