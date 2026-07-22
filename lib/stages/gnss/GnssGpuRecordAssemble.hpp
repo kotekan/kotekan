@@ -30,6 +30,7 @@ class GnssGpuRecordAssemble : public kotekan::Stage {
 public:
     GnssGpuRecordAssemble(kotekan::Config& config, const std::string& unique_name,
                           kotekan::bufferContainer& buffer_container);
+    ~GnssGpuRecordAssemble() override;
     void main_thread() override;
 
 private:
@@ -49,6 +50,18 @@ private:
     std::vector<std::complex<double>> _a_prev;
     std::vector<uint8_t> _a_prev_ok;
     std::vector<int64_t> _wstart_prev;
+
+    /// Per-channel PROMPT-phase dump (chan_dump_prn / chan_dump_decim / chan_dump_path):
+    /// DIAGNOSTIC (2026-07-21, L5 ADR-wander): the channel-width A/B showed the wander
+    /// amplitude depends on the despread channel set (narrow 5-ch = 5-6x WORSE than the
+    /// full 10) -> the mechanism lives in the per-channel phases the cross-channel sum
+    /// normally hides. For the one listed PRN, every decim-th record writes one line per
+    /// covering channel: "utc ch corr_re corr_im energy" (raw, pre-NCO-rotation -- the
+    /// cross-channel RELATIVE phases are the observable). ~60 KB/s at 100 Hz x 10 ch.
+    int _chan_dump_prn = -1;   ///< PRN number to dump (-1 = disabled)
+    int _chan_dump_decim = 10; ///< dump every Nth record of that PRN
+    long long _chan_dump_ctr = 0;
+    FILE* _chan_dump = nullptr;
 };
 
 #endif

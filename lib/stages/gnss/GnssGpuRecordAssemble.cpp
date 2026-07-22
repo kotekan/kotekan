@@ -6,8 +6,10 @@
 #include "gnssGpuChain.hpp"
 #include "gnssRecord.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 using kotekan::bufferContainer;
@@ -26,6 +28,14 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     out_buf->register_producer(unique_name);
     _prns = config.get<std::vector<int>>(unique_name, "prns");
     _sample_rate = config.get_default<double>(unique_name, "sample_rate", 5e6);
+    // Per-channel prompt-phase dump (see the hpp note; diagnostic, default off).
+    _chan_dump_prn = config.get_default<int>(unique_name, "chan_dump_prn", -1);
+    _chan_dump_decim = std::max(1, config.get_default<int>(unique_name, "chan_dump_decim", 10));
+    if (_chan_dump_prn >= 0) {
+        const std::string path = config.get_default<std::string>(
+            unique_name, "chan_dump_path", "/tmp/gnss_chan_phase_dump.txt");
+        _chan_dump = std::fopen(path.c_str(), "a");
+    }
     const int n = (int)_prns.size();
     _phi.assign(n, 0.0);
     _phi_cyc.assign(n, 0.0);
@@ -36,6 +46,11 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     _a_prev.assign(n, {0.0, 0.0});
     _a_prev_ok.assign(n, 0);
     _wstart_prev.assign(n, 0);
+}
+
+GnssGpuRecordAssemble::~GnssGpuRecordAssemble() {
+    if (_chan_dump)
+        std::fclose(_chan_dump);
 }
 
 void GnssGpuRecordAssemble::main_thread() {
@@ -101,6 +116,17 @@ void GnssGpuRecordAssemble::main_thread() {
                         }
                     g3[t] = g;
                     e3[t] = e;
+                }
+                // Per-channel PROMPT dump (diagnostic, see hpp): raw pre-rotation per-channel
+                // correlations -- the cross-channel relative phases are the observable.
+                if (_chan_dump && _prns[p] == _chan_dump_prn
+                    && (++_chan_dump_ctr % _chan_dump_decim) == 0) {
+                    const size_t prow = (size_t)(c.job0 + 1) * n_chan; // trial 1 = PROMPT
+                    for (int ch = 0; ch < n_chan; ++ch)
+                        if ((c.chan_mask >> ch) & 1ULL)
+                            std::fprintf(_chan_dump, "%.6f %d %.6e %.6e %.6e\n", utc, ch,
+                                         corr[2 * (prow + ch)], corr[2 * (prow + ch) + 1],
+                                         energy[prow + ch]);
                 }
                 rec[1] = c.fcar_report;
                 rec[2] = (float)c.cp_seed;

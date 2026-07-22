@@ -337,7 +337,9 @@ def build_band(node, band_id):
     gt.append(E("commands", cmds))
     add("gputrack", gt, c=band.get("gputrack_note"))
     add("assemble", {"kotekan_stage": "GnssGpuRecordAssemble", "in_buf": "epl_buf",
-                     "out_buf": "rec_buf", "sample_rate": Raw(band["sample_rate"])})
+                     "out_buf": "rec_buf", "sample_rate": Raw(band["sample_rate"]),
+                     **{k: (dq(v) if k == "chan_dump_path" else v)
+                        for k, v in prim.get("assemble", {}).items()}})
     add("gps_combiner", combiner_stage(prim, ""), c=prim["combiner"].get("note"))
     add("record", record_stage(band, prim, ""))
     doc.append(SPACER)

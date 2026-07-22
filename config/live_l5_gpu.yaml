@@ -204,7 +204,7 @@ gputrack:
           gpu_mem: bds_epl
           out_buf: bds_epl_buf
           in_buf: ""
-assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_buf, sample_rate: 20.0e6 }
+assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_buf, sample_rate: 20.0e6, chan_dump_prn: 26, chan_dump_decim: 10, chan_dump_path: "/tmp/gps_l5_gpu/chan_phase_dump_g26.txt" }
 # L5 DEEP WIPE: Q5 is a dataless pilot under the KNOWN NH20 overlay (one +-1 chip
 # per 1 ms record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-
 # period boundary. integration_length 1000 = 1 s max buffer (the auto-coherence
