@@ -549,19 +549,21 @@ def main(argv=None):
                          "garbage residual can do to less than a deep window can absorb. "
                          "Convergence from a fleet-seeded start needs only a few Hz total.")
     ap.add_argument("--carrier-step-accept", type=int, default=0,
-                    help="PERSISTENCE ESCAPE (0 = off): accept a gated residual in TRACK "
-                         "mode, at full --carrier-gain (no slew clamp), once this many "
-                         "consecutive fresh gated emits agree (spread < max(2 Hz, innov)). "
-                         "One garbage residual is a glitch (the innov gate's job); N "
-                         "CONSISTENT large residuals are a real NCO/seed step (fence "
-                         "re-pins, hold-release doppler steps: the L5-band chains take "
-                         "+-14-32 Hz kicks every ~30-45 s). Without this the loop's only "
-                         "escape is the 10-emit refade demotion + BOOTSTRAP round-trip, so "
-                         "kick-prone chains live mid-cycle at 13-27 Hz median residual "
-                         "(measured 2026-07-22). Deliberately MEMORYLESS beyond the "
-                         "N-sample agreement window -- the smoothed-ADR v2 retraction "
-                         "showed what a predictive corrector does when the reference "
-                         "wanders. Min 10 s between accepts per sat.")
+                    help="EXPLAIN-APPLY-VERIFY hypothesis stage (0 = off): M = this many "
+                         "consecutive fresh GATED residuals that agree (spread < max(2 Hz, "
+                         "innov)). For a PRESENT-but-gated sat, when the agreed median is "
+                         "also large enough to EXPLAIN the decoherence (>= ~1/(2*T_emit) = "
+                         "0.5 Hz), the observables close on one story -- 'the NCO is off by "
+                         "med' -- and the FULL correction is applied ONCE, entering a "
+                         "VERIFY window: coherence returns / residual collapses within 3 "
+                         "emits, or the hypothesis is REVERTED, the sat escalated to a "
+                         "BOOTSTRAP re-acquire, and hypotheses locked out 60 s. The "
+                         "coherent-state innovation gate is untouched (it is a physics "
+                         "bound: a cohering sat cannot carry a multi-Hz residual). The "
+                         "closed verify loop is what the two retracted open-loop escapes "
+                         "lacked: a wrong correction costs one bounded, reverted step. "
+                         "Type specimen: C19 2026-07-22, parked at +3.03 Hz / full amp / "
+                         "dark for minutes while every gate held.")
     ap.add_argument("--carrier-innov-hz", type=float, default=0.0,
                     help="TRACK-mode innovation gate (0 = off): REJECT any residual larger "
                          "than this outright. After feed-forward, a converged sat's true "
@@ -897,7 +899,17 @@ def main(argv=None):
     car_locked = set()  # prns certified coherent since seed: BOOTSTRAP -> TRACK mode latch
     car_fade = {}       # prn -> consecutive TRACK-mode gated emits (--carrier-refade demotion)
     car_step_hist = {}  # prn -> [(t, resid)] recent GATED residuals (--carrier-step-accept)
-    car_step_t = {}     # prn -> last step-accept time (rate limit)
+    car_step_t = {}     # prn -> last step-accept time (rate limit / refute lockout)
+    car_verify = {}     # prn -> {prev_trim, emits}: an applied step hypothesis under VERIFY
+    # EXPLAIN-APPLY-VERIFY constants (2026-07-22, the robust replacement for gate tuning):
+    # a residual can only be blamed for a sat's decoherence if it is big enough to null the
+    # coherent window -- |resid| >= ~1/(2*T_emit) = 0.5 Hz at the 1 s emits every overlay
+    # chain runs (L2C's 4 s window makes 0.5 conservative there: only delays acceptance).
+    # Below this bar a stable residual does NOT explain a dark sat, and the carrier loop is
+    # the wrong tool (that is the refade/watchdog's territory: nh misalignment, zombie
+    # anchors). VERIFY_EMITS bounds the hypothesis: heal within 3 emits or be reverted.
+    CARRIER_EXPLAIN_HZ = 0.5
+    CARRIER_VERIFY_EMITS = 3
     det_fresh = {}      # prn -> (ref_hop, walltime) of the last NEW detection (alias escape)
     wd_birth = {}       # prn -> when it entered seeds (track-watchdog judgment window)
     wd_coh_t = {}       # prn -> last coherent walltime (track-watchdog's own clock)
@@ -2257,6 +2269,34 @@ def main(argv=None):
                     continue
                 car_last[prn] = resid
                 coh_ok = (rec.get("coherence_s") or 0.0) > 0.0
+                # ---- VERIFYING: an applied step hypothesis is judged by OUTCOME ----
+                # (explain-apply-verify, 2026-07-22): a trim correction is a falsifiable
+                # hypothesis -- either coherence returns / the residual collapses within
+                # CARRIER_VERIFY_EMITS, or it was WRONG and is reverted + escalated to a
+                # full re-acquire. This bounded closed loop is exactly what the two
+                # retracted open-loop escapes (v2 EMA unwrap, loose step-accept) were
+                # missing: a wrong correction costs one reverted step, never compounds.
+                if prn in car_verify:
+                    v = car_verify[prn]
+                    v["emits"] += 1
+                    if coh_ok or abs(resid) < CARRIER_EXPLAIN_HZ:
+                        del car_verify[prn]
+                        car_fade.pop(prn, None)
+                        _log("CARRIER STEP VERIFIED PRN %d: healed in %d emit(s) "
+                             "(coh=%s, resid %+.2f Hz)" % (prn, v["emits"], coh_ok, resid))
+                        # fall through: this emit integrates normally below
+                    elif v["emits"] >= CARRIER_VERIFY_EMITS:
+                        car_trim[prn] = v["prev_trim"]  # revert the refuted hypothesis
+                        del car_verify[prn]
+                        car_locked.discard(prn)         # escalate: BOOTSTRAP re-acquire
+                        car_step_t[prn] = t0 + 50.0     # ~60 s hypothesis lockout
+                        car_fade.pop(prn, None)
+                        _log("CARRIER STEP REFUTED PRN %d: no heal after %d emits (resid "
+                             "%+.2f Hz) -> trim reverted to %+.2f, BOOTSTRAP re-pull"
+                             % (prn, CARRIER_VERIFY_EMITS, resid, v["prev_trim"]))
+                        continue
+                    else:
+                        continue  # verdict pending: hold, no further corrections
                 sig = (max(rec.get("deep_snr") or 0.0, rec.get("amp_snr") or 0.0)
                        if coh_ok else 0.0)
                 tracking = prn in car_locked
@@ -2269,20 +2309,27 @@ def main(argv=None):
                         and abs(resid) > args.carrier_innov_hz:
                     gated = True  # certified-but-implausible residual: the estimator is lying
                 if gated:
-                    # PERSISTENCE ESCAPE (--carrier-step-accept, 2026-07-22): N consecutive
-                    # fresh gated residuals that AGREE are a real NCO/seed step, not an
-                    # estimator glitch -- accept the median at full gain in TRACK mode,
-                    # skipping the refade demotion + BOOTSTRAP round-trip (~30 s) that
-                    # otherwise dominates kick-prone chains' duty cycle. Memoryless beyond
-                    # the agreement window; >=10 s between accepts per sat.
-                    # v2 tightening (2026-07-22 10:5x): the first deployment fired on
-                    # FADE-gated sats at 1.5-3.5 Hz "agreements" (788 accepts/36 min,
-                    # REACQ rate DOUBLED) -- an incoherent sat's residuals can agree on
-                    # garbage, and integrating them kicks the NCO. Escape ONLY the case
-                    # it was designed for: the innovation-gated deadlock (coherent,
-                    # certified-sig sat frozen at |resid| > innov), and the agreed median
-                    # must itself EXCEED the innovation gate.
-                    if args.carrier_step_accept > 0 and not fade_gated:
+                    # Presence first (shared by the hypothesis stage AND refade below):
+                    # amp OR a fresh strong detection -- see the refade note.
+                    _df = det_fresh.get(prn)
+                    present = ((rec.get("amp_snr") or 0.0) >= args.hold_snr
+                               or (_df is not None and t0 - _df[1] < 10.0
+                                   and prn in best
+                                   and best[prn][0] >= 2.0 * args.acquire_snr))
+                    # ---- STRONG-INCOHERENT HYPOTHESIS (explain-apply-verify) ----
+                    # The innovation gate above is COHERENT physics (a cohering sat cannot
+                    # carry a multi-Hz residual, so such a reading is a lie). An INCOHERENT
+                    # sat has no such bound -- and when the observables close on one story
+                    # (signal PRESENT + M consecutive residuals AGREE + the agreed value is
+                    # big enough to EXPLAIN the decoherence), the residual is the
+                    # explanation, not a lie (type specimen C19 2026-07-22: full amp, dark,
+                    # parked at +3.03 Hz for minutes while every gate held). Apply the FULL
+                    # agreed correction ONCE and enter VERIFYING (top of loop): heal within
+                    # 3 emits or be reverted + escalated. Applies to BOTH gate flavors --
+                    # the verify stage is what makes fade-gated acceptance safe (the loose
+                    # v1 escape lacked it and churned the fleet; a wrong hypothesis now
+                    # costs one reverted step + a 60 s lockout).
+                    if args.carrier_step_accept > 0 and present:
                         hist = car_step_hist.setdefault(prn, [])
                         hist.append((t0, resid))
                         del hist[:-args.carrier_step_accept]
@@ -2292,18 +2339,21 @@ def main(argv=None):
                                 and t0 - car_step_t.get(prn, 0.0) >= 10.0):
                             vals = sorted(r for _, r in hist)
                             med = vals[len(vals) // 2]
-                            if vals[-1] - vals[0] < band and abs(med) > band:
+                            if (vals[-1] - vals[0] < band
+                                    and abs(med) >= CARRIER_EXPLAIN_HZ):
                                 prev_trim = car_trim.get(prn, 0.0)
                                 car_trim[prn] = max(-args.carrier_max_hz,
                                                     min(args.carrier_max_hz,
-                                                        prev_trim + args.carrier_gain * med))
+                                                        prev_trim + med))
                                 car_step_t[prn] = t0
                                 car_step_hist[prn] = []
-                                car_fade.pop(prn, None)
-                                _log("CARRIER STEP ACCEPT PRN %d: %d agreeing gated resids "
-                                     "(med %+.2f Hz, spread %.2f) -> trim %+.2f"
+                                car_verify[prn] = {"prev_trim": prev_trim, "emits": 0}
+                                _log("CARRIER STEP HYPOTHESIS PRN %d: %d agreeing gated "
+                                     "resids (med %+.2f Hz, spread %.2f) -> trim %+.2f, "
+                                     "VERIFYING (heal in %d emits or revert)"
                                      % (prn, args.carrier_step_accept, med,
-                                        vals[-1] - vals[0], car_trim[prn]))
+                                        vals[-1] - vals[0], car_trim[prn],
+                                        CARRIER_VERIFY_EMITS))
                                 continue
                     # --carrier-refade: the two gates otherwise form an ABSORBING state for a
                     # sat whose NCO really stepped (hold release / escape re-anchor without
@@ -2320,11 +2370,8 @@ def main(argv=None):
                     # innov gate, coherence gate holds the trim, refade never fired) --
                     # the C20 absorbing state one level down. The search still sees these
                     # sats fine; det presence is the same test the watchdog trusts.
-                    _df = det_fresh.get(prn)
-                    present = ((rec.get("amp_snr") or 0.0) >= args.hold_snr
-                               or (_df is not None and t0 - _df[1] < 10.0
-                                   and prn in best
-                                   and best[prn][0] >= 2.0 * args.acquire_snr))
+                    # (`present` computed at the top of the gated branch, shared with the
+                    # hypothesis stage.)
                     car_fade[prn] = car_fade.get(prn, 0) + 1 if present else 0
                     # FLICKER GUARD (2026-07-20): a SUB-innovation residual on a sat that
                     # cohered seconds ago is certification-bar sig flicker, not a stepped
@@ -2373,6 +2420,8 @@ def main(argv=None):
                 if k not in seeds:
                     del car_trim[k]
                     car_locked.discard(k)  # a re-seeded sat re-enters via BOOTSTRAP
+                    car_verify.pop(k, None)  # a dropped sat's hypothesis dies with it
+                    car_step_hist.pop(k, None)
                     car_fade.pop(k, None)
 
         # 3b. Receiver code-rate clock offset (l-a): pool the strong sats' per-fit samples (robust
