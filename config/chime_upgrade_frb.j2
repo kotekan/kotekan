@@ -1225,7 +1225,7 @@ FRB:
     frb1_num_beams_P: 2 * num_dishes_y
     frb1_num_beams_Q: 2 * num_dishes_x
 
-    {%- set frb2_num_beams_x = 1 %}
+    {%- set frb2_num_beams_x = 4 %}
     {%- set frb2_num_beams_y = 256 %}
     {%- set frb2_num_beams = frb2_num_beams_x * frb2_num_beams_y %}
     frb2_num_beams_x: {{ frb2_num_beams_x }}
@@ -1611,17 +1611,11 @@ FRB:
         ] %}
         values:
 # direction sine in the normal vector sin(angle-from-zenith-towards-x), equally spaced for CHIME
-#{#
 {%- for ns in range(frb2_num_beams_y) %}
 {%- for ew in range(frb2_num_beams_x) %}
           - {{ sin_achromatic_beam_angles_EW[ew] }}
           - {{ (ns - 127)*1.73205080756888/256 }}
 {%- endfor %}
-{%- endfor %}
-#}#
-{%- for ns in range(frb2_num_beams_y) %}
-          - 0.
-          - {{ (ns - 127)*1.73205080756888/256 }}
 {%- endfor %}
         name: frb2_beam_positions
         datatype: float32
