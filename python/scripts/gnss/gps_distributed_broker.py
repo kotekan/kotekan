@@ -534,6 +534,20 @@ def main(argv=None):
                          "measurement by construction; clamping bounds the damage a single "
                          "garbage residual can do to less than a deep window can absorb. "
                          "Convergence from a fleet-seeded start needs only a few Hz total.")
+    ap.add_argument("--carrier-step-accept", type=int, default=0,
+                    help="PERSISTENCE ESCAPE (0 = off): accept a gated residual in TRACK "
+                         "mode, at full --carrier-gain (no slew clamp), once this many "
+                         "consecutive fresh gated emits agree (spread < max(2 Hz, innov)). "
+                         "One garbage residual is a glitch (the innov gate's job); N "
+                         "CONSISTENT large residuals are a real NCO/seed step (fence "
+                         "re-pins, hold-release doppler steps: the L5-band chains take "
+                         "+-14-32 Hz kicks every ~30-45 s). Without this the loop's only "
+                         "escape is the 10-emit refade demotion + BOOTSTRAP round-trip, so "
+                         "kick-prone chains live mid-cycle at 13-27 Hz median residual "
+                         "(measured 2026-07-22). Deliberately MEMORYLESS beyond the "
+                         "N-sample agreement window -- the smoothed-ADR v2 retraction "
+                         "showed what a predictive corrector does when the reference "
+                         "wanders. Min 10 s between accepts per sat.")
     ap.add_argument("--carrier-innov-hz", type=float, default=0.0,
                     help="TRACK-mode innovation gate (0 = off): REJECT any residual larger "
                          "than this outright. After feed-forward, a converged sat's true "
@@ -839,6 +853,8 @@ def main(argv=None):
     car_last = {}       # prn -> last SEEN residual (dedup: one gate-check/integration per emit)
     car_locked = set()  # prns certified coherent since seed: BOOTSTRAP -> TRACK mode latch
     car_fade = {}       # prn -> consecutive TRACK-mode gated emits (--carrier-refade demotion)
+    car_step_hist = {}  # prn -> [(t, resid)] recent GATED residuals (--carrier-step-accept)
+    car_step_t = {}     # prn -> last step-accept time (rate limit)
     det_fresh = {}      # prn -> (ref_hop, walltime) of the last NEW detection (alias escape)
     wd_birth = {}       # prn -> when it entered seeds (track-watchdog judgment window)
     wd_coh_t = {}       # prn -> last coherent walltime (track-watchdog's own clock)
@@ -2177,6 +2193,35 @@ def main(argv=None):
                         and abs(resid) > args.carrier_innov_hz:
                     gated = True  # certified-but-implausible residual: the estimator is lying
                 if gated:
+                    # PERSISTENCE ESCAPE (--carrier-step-accept, 2026-07-22): N consecutive
+                    # fresh gated residuals that AGREE are a real NCO/seed step, not an
+                    # estimator glitch -- accept the median at full gain in TRACK mode,
+                    # skipping the refade demotion + BOOTSTRAP round-trip (~30 s) that
+                    # otherwise dominates kick-prone chains' duty cycle. Memoryless beyond
+                    # the agreement window; >=10 s between accepts per sat.
+                    if args.carrier_step_accept > 0:
+                        hist = car_step_hist.setdefault(prn, [])
+                        hist.append((t0, resid))
+                        del hist[:-args.carrier_step_accept]
+                        band = max(2.0, args.carrier_innov_hz)
+                        if (len(hist) >= args.carrier_step_accept
+                                and t0 - hist[0][0] < 30.0
+                                and t0 - car_step_t.get(prn, 0.0) >= 10.0):
+                            vals = sorted(r for _, r in hist)
+                            med = vals[len(vals) // 2]
+                            if vals[-1] - vals[0] < band and abs(med) > band / 2.0:
+                                prev_trim = car_trim.get(prn, 0.0)
+                                car_trim[prn] = max(-args.carrier_max_hz,
+                                                    min(args.carrier_max_hz,
+                                                        prev_trim + args.carrier_gain * med))
+                                car_step_t[prn] = t0
+                                car_step_hist[prn] = []
+                                car_fade.pop(prn, None)
+                                _log("CARRIER STEP ACCEPT PRN %d: %d agreeing gated resids "
+                                     "(med %+.2f Hz, spread %.2f) -> trim %+.2f"
+                                     % (prn, args.carrier_step_accept, med,
+                                        vals[-1] - vals[0], car_trim[prn]))
+                                continue
                     # --carrier-refade: the two gates otherwise form an ABSORBING state for a
                     # sat whose NCO really stepped (hold release / escape re-anchor without
                     # trim precomp): coherence never returns while the residual exceeds the
@@ -2218,6 +2263,7 @@ def main(argv=None):
                              % (prn, args.carrier_refade, resid))
                     continue  # this emit stays held: coast on the feed-forward
                 car_fade.pop(prn, None)
+                car_step_hist.pop(prn, None)  # ungated emit: gated-run agreement is stale
                 if not tracking and args.carrier_det_gate_s > 0.0:
                     # BOOTSTRAP WALK GATE: no fresh detection = no evidence the estimator
                     # has a signal to measure; its residual is noise and integrating it

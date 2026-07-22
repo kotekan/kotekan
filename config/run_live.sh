@@ -88,7 +88,7 @@ if grep -qE 'carrier_shared:[[:space:]]*true' "$CFG" && ! grep -qE 'signal: GPS_
   # faded sat's noise residual random-walks the trim at full gain -> the model phase runs off
   # -> deeper fade: a ~4 s limit cycle that broke ADR by ~8 cycles per dip on the 1176 MHz
   # chains (median certified stretch 4 s; the gf-TEC floor, 2026-07-17).
-  CARG="--carrier-gain ${CARRIER_GAIN:-0.5} --carrier-max-hz ${CARRIER_MAX_HZ:-100} --carrier-leak ${CARRIER_LEAK:-0.0005} --carrier-min-sig ${CARRIER_MIN_SIG:-15} --carrier-max-step ${CARRIER_MAX_STEP:-1.0} --carrier-innov-hz ${CARRIER_INNOV_HZ:-3.0} --carrier-fleet-seed"
+  CARG="--carrier-gain ${CARRIER_GAIN:-0.5} --carrier-max-hz ${CARRIER_MAX_HZ:-100} --carrier-leak ${CARRIER_LEAK:-0.0005} --carrier-min-sig ${CARRIER_MIN_SIG:-15} --carrier-max-step ${CARRIER_MAX_STEP:-1.0} --carrier-innov-hz ${CARRIER_INNOV_HZ:-3.0} --carrier-step-accept ${CARRIER_STEP_ACCEPT:-3} --carrier-fleet-seed"
   echo "shared carrier loop ON (combiner slope-fit resid -> --carrier-gain ${CARRIER_GAIN:-0.5} -> tracker NCO, min-sig ${CARRIER_MIN_SIG:-15}, max-step ${CARRIER_MAX_STEP:-1.0}, innov ${CARRIER_INNOV_HZ:-3.0}, fleet-seed)"
 fi
 # Loud warning if a requested tracker stage isn't actually in the config -- the classic
