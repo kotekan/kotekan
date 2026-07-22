@@ -524,7 +524,12 @@ bands:
           # all-PRN L1 dumps removed 07-20): per-record forensics for the L5-band ADR wander
           # -- splits the dcmd (commanded/bookkeeping) vs dres (measured) halves offline.
           # REMOVE when the wander is closed.
-          params: { integration_length: 1000, secondary_overlay: L5_NH20, phase_dump_prns: [18, 23, 24, 32], phase_dump_path: /tmp/gps_l5_gpu/phase_dump_gps_l5.txt }
+          # adr_smooth_records 20 (2026-07-22, the FOLD-WALK FIX): ADR increment from the
+          # cross-product of 20-record de-rotated block vectors instead of per-1ms-record
+          # products. The per-record product folds (+-0.5 cyc) at low instantaneous |A| and
+          # random-walks: measured live 26.5 m vs 0.26 m in the same records' smoothed phase
+          # (G26 8.9h; C33 8.6h cross-constellation: 8.7 vs 0.24 m). K=20 = one NH20 period.
+          params: { integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 20, phase_dump_prns: [18, 23, 24, 32], phase_dump_path: /tmp/gps_l5_gpu/phase_dump_gps_l5.txt }
           note: |
             L5 DEEP WIPE: Q5 is a dataless pilot under the KNOWN NH20 overlay (one +-1 chip
             per 1 ms record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-
@@ -548,7 +553,7 @@ bands:
           fll_reacq_hz: 15.0
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)"
         combiner:
-          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5A_CS100 }
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5A_CS100, adr_smooth_records: 20 }
 
       - constellation: bds
         signal: BDS_B2A_P
@@ -571,4 +576,4 @@ bands:
           chan_dump_decim: 10
           chan_dump_path: /tmp/gps_l5_gpu/chan_phase_dump_c33.txt
         combiner:
-          params: { n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100 }
+          params: { n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100, adr_smooth_records: 20 }

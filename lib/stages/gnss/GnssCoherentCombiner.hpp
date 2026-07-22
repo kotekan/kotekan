@@ -248,6 +248,23 @@ private:
     // whenever no anchor is available (arc start before the first locked emit, or a re-seed).
     std::vector<std::complex<double>> _adr_vprev;
     std::vector<uint8_t> _adr_vprev_ok; ///< _adr_vprev is valid + continuous with this record
+
+    /// K-RECORD SMOOTHED-VECTOR ADR (adr_smooth_records, 2026-07-22: the fold-walk fix).
+    /// The per-1ms-record cross-record product folds (+-0.5-cycle ambiguity) during low-|A|
+    /// records and random-walks the ADR: measured 26.5 m live vs 1.17 m in the same records'
+    /// smoothed phase (G26, then C33 8h cross-constellation confirm; ratio 37-84x). With
+    /// _adr_smooth = K > 1 (overlay pilots with a live anchor only), de-rotated records
+    /// accumulate into K-record block vectors and the ADR increment comes from the
+    /// cross-BLOCK product: noise folds need ~sqrt(K) more phase noise, while the residual-
+    /// frequency fold margin (+-0.5 cyc per K records) stays >= 25 Hz at K=20 -- above the
+    /// 17 Hz worst-case transient. Anchor loss / gaps break the arc honestly (no mode mixing).
+    int _adr_smooth = 1; ///< records per ADR block (1 = legacy per-record product)
+    std::vector<std::complex<double>> _adr_blk_v;   ///< current block's de-rotated vector sum
+    std::vector<double> _adr_blk_dcmd;              ///< commanded-phase sum since last block close
+    std::vector<int> _adr_blk_n;                    ///< records in the current block
+    std::vector<std::complex<double>> _adr_blk_prev; ///< previous closed block vector
+    std::vector<uint8_t> _adr_blk_prev_ok;
+    std::vector<double> _adr_blk_prev_utc;
     std::vector<int> _st_deep_rec; ///< records in the chosen deep window (= full window unless the
                                    ///< auto-coherence ladder found a shorter, more coherent one)
 

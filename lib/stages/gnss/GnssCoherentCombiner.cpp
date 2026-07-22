@@ -141,6 +141,13 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _dr_rec_dt.assign(_n_prn, 0.0);
     _adr_vprev.assign(_n_prn, std::complex<double>(0.0, 0.0));
     _adr_vprev_ok.assign(_n_prn, 0);
+    _adr_smooth = std::max(1, config.get_default<int>(unique_name, "adr_smooth_records", 1));
+    _adr_blk_v.assign(_n_prn, std::complex<double>(0.0, 0.0));
+    _adr_blk_dcmd.assign(_n_prn, 0.0);
+    _adr_blk_n.assign(_n_prn, 0);
+    _adr_blk_prev.assign(_n_prn, std::complex<double>(0.0, 0.0));
+    _adr_blk_prev_ok.assign(_n_prn, 0);
+    _adr_blk_prev_utc.assign(_n_prn, 0.0);
     _st_deep_rec.assign(_n_prn, 0);
 
     // nh time-assist: only meaningful for a per-PRN overlay pilot (B1C/E5a/B2a: _l1co populated),
@@ -312,8 +319,55 @@ void GnssCoherentCombiner::main_thread() {
                     // float32 mantissa quantizes to 0.06 cycles -- 1000x coarser than the
                     // measurement. This is why ADR ships via REST, not a record slot.
                     const double cph = ref[gnss::REC_CPHASE];
+                    // K-record smoothed-block mode (the fold-walk fix, see the hpp note):
+                    // overlay pilots with a live de-rotation anchor accumulate block vectors
+                    // and take the cross-BLOCK product. Requires the anchor for EVERY record
+                    // (an unanchored record would re-inject the overlay into the block sum),
+                    // so anchor loss breaks the arc -- honest, like a gap.
+                    const bool smooth_mode =
+                        _adr_smooth > 1 && ov_adr && !ov_adr->empty();
                     if (energy <= 0.0) {
                         _adr_ok[p] = 0; // not despread this record (inactive PRN): no phase
+                    } else if (smooth_mode && !v_ok) {
+                        _adr_ok[p] = 0; // anchor lost/absent: no de-rotated vector to block
+                        _adr_blk_prev_ok[p] = 0;
+                        _adr_blk_n[p] = 0;
+                    } else if (smooth_mode && _adr_ok[p]) {
+                        _adr_blk_dcmd[p] += cph;
+                        _trim_cyc[p] += ref[gnss::REC_TRIM_INC];
+                        _adr_blk_v[p] += v_cur;
+                        _adr_n[p] += 1;
+                        if (++_adr_blk_n[p] >= _adr_smooth) {
+                            if (_adr_blk_prev_ok[p]
+                                && (utc_p - _adr_blk_prev_utc[p])
+                                       < 2.5 * (double)_adr_smooth * dt_c) {
+                                const double dres_blk =
+                                    std::arg(_adr_blk_v[p] * std::conj(_adr_blk_prev[p]))
+                                    / (2.0 * M_PI);
+                                _adr_cyc[p] += _adr_blk_dcmd[p] - dres_blk;
+                            }
+                            // else: the arc's FIRST block -- its dcmd only sets the
+                            // (arbitrary, per-arc-ambiguous) origin; dropping it is a
+                            // constant offset, not a discontinuity.
+                            _adr_blk_prev[p] = _adr_blk_v[p];
+                            _adr_blk_prev_ok[p] = 1;
+                            _adr_blk_prev_utc[p] = utc_p;
+                            _adr_blk_v[p] = std::complex<double>(0.0, 0.0);
+                            _adr_blk_dcmd[p] = 0.0;
+                            _adr_blk_n[p] = 0;
+                        }
+                    } else if (smooth_mode) {
+                        // Arc start, smoothed mode (v_ok is true here): seed the first block.
+                        _adr_cyc[p] = 0.0;
+                        _trim_cyc[p] = 0.0;
+                        _adr_arc[p] += 1;
+                        _adr_t0[p] = utc_p;
+                        _adr_n[p] = 0;
+                        _adr_ok[p] = 1;
+                        _adr_blk_v[p] = v_cur;
+                        _adr_blk_dcmd[p] = 0.0;
+                        _adr_blk_n[p] = 1;
+                        _adr_blk_prev_ok[p] = 0;
                     } else if (_adr_ok[p]) {
                         // The commanded-phase increment arrives ready-made from the tracker
                         // (record slot 15): bounded, float-exact, NOTHING to unwrap. The
@@ -363,6 +417,8 @@ void GnssCoherentCombiner::main_thread() {
                     // unobserved. Break the arc -- a silent slip is far worse than an
                     // honest one.
                     _adr_ok[p] = 0;
+                    _adr_blk_prev_ok[p] = 0; // block continuity broken with the arc
+                    _adr_blk_n[p] = 0;
                 }
                 car_prev[p] = A;
                 car_prev_utc[p] = utc_p;
