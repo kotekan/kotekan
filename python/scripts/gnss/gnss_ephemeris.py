@@ -110,6 +110,12 @@ def _fetch_station_hourly(when, cache_dir, token):
     if not token:
         return None
     import gzip
+    # Cache-gate: hourly station files update ~hourly, and fetch_brdc now includes this in EVERY
+    # merge (not just during a daily outage), so reuse a recent local rather than re-pulling a
+    # handful of station files each call. 30 min keeps it fresh without hammering CDDIS.
+    local = os.path.join(cache_dir, "hourly_MN.rnx.gz")
+    if os.path.exists(local) and time.time() - os.path.getmtime(local) < 1800:
+        return local
     for dh in (0, 1, 2, 3):
         h = when - timedelta(hours=dh)
         doy = h.timetuple().tm_yday
@@ -144,22 +150,58 @@ def _fetch_station_hourly(when, cache_dir, token):
     return None
 
 
+def _try_refresh_daily(kind, year, doy, cache_dir, tok):
+    """Best-effort fetch of ONE daily-BRDC variant for the per-PRN merge -- S (CDDIS super-sled,
+    widest coverage) or R (BKG). Reuses a <2 h cache, else re-downloads via the same mirror list
+    as the primary (_brdc_sources routes each variant to whoever serves it). Returns its cached
+    path or None; never raises. This is what guarantees the FRESH variant reaches the merge even
+    when the primary fetch returned the frozen one -- the BKG-froze-at-08:00 / CDDIS-fresh case."""
+    name = "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz" % (kind, year, doy)
+    local = os.path.join(cache_dir, name)
+    if os.path.exists(local) and time.time() - os.path.getmtime(local) < 7200:
+        return local
+    for url, headers in _brdc_sources(year, doy, name):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = r.read()
+            if data[:2] != b"\x1f\x8b":
+                continue  # not gzip (login/error/404 page) -> next mirror
+            open(local, "wb").write(data)
+            return local
+        except Exception:
+            continue
+    return local if os.path.exists(local) else None
+
+
 def fetch_brdc(when=None, cache_dir=CACHE):
-    """The IGS multi-GNSS broadcast nav file for `when` (default now). Returns the merged daily
-    BRDC (BKG, or CDDIS with a token); but if that merged file is STALE (its newest epoch > 2.5 h
-    old -- a frozen product during an outage), borrow a fresher per-station hourly file instead."""
+    """Ordered list of currently-available BRDC nav-source files (best-first). parse_rinex_nav
+    merges them PER-PRN (freshest toe per PRN wins, union of records), so no single frozen
+    product can starve a PRN another source carries fresh.
+
+    Historically this returned one path chosen by a fragile single-file fallback: prefer the
+    merged daily, and only if IT was globally stale (>2.5 h) borrow the station-hourly instead.
+    That failed on a PARTIAL freeze -- 2026-07-22 BKG's daily froze at 08:00 UTC, so the code
+    dropped to the station-hourly, which carries only a thin ~18-PRN BeiDou set and has no C39 at
+    all, while the CDDIS daily (fresh C39 to 16:00) sat unused in cache -> C31/C39 showed 'el --'
+    despite strong tracking. Now every source contributes and the merge picks each PRN's freshest
+    record. Callers all do parse_rinex_nav(fetch_brdc()), which accepts a list transparently."""
     when = when or datetime.now(timezone.utc)
-    result = _fetch_brdc_merged(when, cache_dir)
+    primary = _fetch_brdc_merged(when, cache_dir)   # authoritative daily (keeps prev-day safety)
+    srcs = [primary]
     tok = _earthdata_token()
-    if tok:
-        ne = _rinex_newest_epoch(result)
-        if ne is None or (when - ne).total_seconds() > 9000.0:  # merged frozen > 2.5 h
-            hourly = _fetch_station_hourly(when, cache_dir, tok)
-            if hourly:
-                hne = _rinex_newest_epoch(hourly)
-                if hne is not None and (ne is None or hne > ne):
-                    return hourly
-    return result
+    doy = when.timetuple().tm_yday
+    # Both daily variants (S first = widest), then the station-hourly -- each best-effort and
+    # cache-gated, so a failure just leaves `primary` and never blocks. A stale/frozen variant is
+    # harmless: its older toe's simply lose the per-PRN freshest-toe selection.
+    for kind in ("S", "R"):
+        p = _try_refresh_daily(kind, when.year, doy, cache_dir, tok)
+        if p and p not in srcs:
+            srcs.append(p)
+    hourly = _fetch_station_hourly(when, cache_dir, tok)
+    if hourly and hourly not in srcs:
+        srcs.append(hourly)
+    return srcs
 
 
 def _fetch_brdc_merged(when=None, cache_dir=CACHE):
@@ -221,8 +263,34 @@ def _f(s):
     return float(s) if s else 0.0
 
 
-def parse_rinex_nav(path):
-    """RINEX 3 mixed nav -> {(sys, prn): [eph dicts sorted by toe_gpst]}. G/E/C only."""
+def parse_rinex_nav(paths):
+    """RINEX 3 mixed nav -> {(sys, prn): [eph dicts sorted by toe_gpst]}. G/E/C only.
+
+    `paths` is a single path OR a list of paths (fetch_brdc returns a list). A list is merged
+    PER-PRN: the union of every source's records, deduped by toe, so the freshest valid
+    ephemeris for each PRN is available no matter which source carries it. This is what lets a
+    frozen daily product (BKG stuck at 08:00 UTC) be transparently backfilled by a sibling
+    source (the CDDIS daily, or the station-hourly merge) that still has the sat -- the root of
+    the C31/C39 'el --' gap: C39 was absent from the sparse hourly the old single-file fallback
+    picked, but present fresh in the CDDIS daily sitting unused in cache. sources are passed
+    best-first, so a daily's record wins an identical-toe tie over the same record elsewhere."""
+    if isinstance(paths, (list, tuple)):
+        merged = {}
+        for p in paths:
+            try:
+                one = _parse_rinex_nav_file(p)
+            except Exception:
+                continue
+            for key, recs in one.items():
+                b = merged.setdefault(key, {})
+                for e in recs:
+                    b.setdefault(round(e["toe_gpst"], 3), e)  # first (best) source wins same toe
+        return {k: sorted(v.values(), key=lambda e: e["toe_gpst"]) for k, v in merged.items()}
+    return _parse_rinex_nav_file(paths)
+
+
+def _parse_rinex_nav_file(path):
+    """Parse ONE RINEX 3 mixed-nav file -> {(sys, prn): [eph dicts sorted by toe_gpst]}."""
     op = gzip.open if path.endswith(".gz") else open
     with op(path, "rt", errors="replace") as f:
         lines = f.readlines()
