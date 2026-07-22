@@ -33,6 +33,7 @@ this server before kotekan starts streaming.
 import argparse
 import json
 import logging
+import math
 import os
 import select
 import signal
@@ -40,6 +41,7 @@ import socket
 import struct
 import sys
 import time
+from datetime import datetime, timezone
 
 import numpy as np
 from autobahn.twisted.websocket import WebSocketServerFactory, WebSocketServerProtocol
@@ -817,9 +819,15 @@ class GpsSkyResource(resource.Resource):
         want = [t.strip() for t in consts.split(",") if t.strip()]
         self.CONSTELLATIONS = tuple(c for c in type(self).CONSTELLATIONS if c[0] in want)
         self._cache = {"ok": False, "sats": []}  # last good (or empty) result
-        self._sats = None                        # cached {prn: EarthSatellite}
+        self._sats = None                        # cached {prn: EarthSatellite} (TLE fallback)
+        self._eph = None                         # cached parsed BRDC {(sys,prn):[recs]}
+        self._eph_t = None                       # monotonic s of last BRDC parse
         self._last_compute = None                # monotonic s of last attempt
         self._refreshing = False
+
+    # Viewer tag -> ephemeris system letter. 'L' (GPS L1C) is the same GPS birds as 'G',
+    # so it reuses the GPS positions; there is no separate 'L' system in the ephemeris.
+    _TAG_SYS = {"G": "G", "E": "E", "C": "C", "L": "G"}
 
     def _need_refresh(self):
         if self.lat is None or self.lon is None:
@@ -839,7 +847,54 @@ class GpsSkyResource(resource.Resource):
     )
 
     def _compute(self):
-        """Runs in a worker thread: load TLEs once per constellation, propagate, mask."""
+        """Runs in a worker thread. PRIMARY: broadcast-ephemeris (BRDC) geometry via predict_all
+        -- the SAME source the tracker uses, so the sky plot agrees with what we actually lock,
+        and it is PRN-intrinsic (no fragile TLE name->PRN mapping, which had mis-placed BeiDou
+        MEOs C31/C39 below the horizon while we were tracking them at +17/+27 deg). FALLBACK:
+        Celestrak TLE + skyfield, used only when the BRDC is unavailable (offline / parse fail)."""
+        want = [c[0] for c in self.CONSTELLATIONS]
+        sats = self._brdc_skypos(want)
+        if sats is not None:
+            return {"ok": True, "sats": sats, "src": "brdc"}
+        return {"ok": True, "sats": self._tle_skypos(), "src": "tle"}
+
+    def _brdc_skypos(self, want):
+        """Sky positions from the broadcast ephemeris, or None if the BRDC is unavailable.
+
+        The parsed ephemeris is cached ~15 min (fetch_brdc is itself cache-gated), but positions
+        still update every refresh because predict_all is re-evaluated at the current time."""
+        try:
+            import gnss_ephemeris as ge
+            if (self._eph is None or self._eph_t is None
+                    or (time.monotonic() - self._eph_t) > 900.0):
+                raw = ge.parse_rinex_nav(ge.fetch_brdc(datetime.now(timezone.utc)))
+                # Drop BeiDou GEO (i<5 deg): predict_all's plain Kepler does NOT apply the ICD
+                # -5 deg GEO rotation, so their positions are untrustworthy (a mis-propagated GEO
+                # could land above the horizon as a phantom). IGSO/MEO propagate correctly.
+                self._eph = {k: r for k, r in raw.items()
+                             if not (k[0] == "C" and r
+                                     and math.degrees(r[-1]["i0"]) < 5.0)}
+                self._eph_t = time.monotonic()
+            pred = ge.predict_all(self._eph, self.lat, self.lon, self.alt,
+                                  datetime.now(timezone.utc), mask_deg=self.mask_deg)
+        except Exception as e:
+            log_.warning("gps_sky: BRDC geometry unavailable (%s); falling back to TLE", e)
+            return None
+        if not pred:
+            return None
+        sats = []
+        for tag in want:
+            sysc = self._TAG_SYS.get(tag)
+            if not sysc:
+                continue
+            for (s, p), v in sorted(pred.items()):
+                if s == sysc:
+                    sats.append({"prn": p, "const": tag,
+                                 "az": round(v["az"], 2), "el": round(v["el"], 2)})
+        return sats
+
+    def _tle_skypos(self):
+        """Fallback sky positions from Celestrak TLE + skyfield propagation."""
         from gps_beamtrack import (DEFAULT_TLE_URL, load_gps_satellites,
                                    predict_skypos)
         if self._sats is None:
@@ -854,7 +909,7 @@ class GpsSkyResource(resource.Resource):
             pos = predict_skypos(self.lat, self.lon, self.alt, _sats=by_prn)
             sats += [{"prn": p, "const": tag, "az": round(az, 2), "el": round(el, 2)}
                      for p, (az, el) in sorted(pos.items()) if el >= self.mask_deg]
-        return {"ok": True, "sats": sats}
+        return sats
 
     def _kick_refresh(self):
         if self._refreshing:
