@@ -12,6 +12,11 @@ REST endpoints
 - ``/version`` (GET) – version/build info.
 - ``/endpoints`` (GET) – list all registered endpoints (including aliases).
 - ``/metrics`` (GET) – Prometheus-format metrics (buffers, stages, broker errors, etc.).
+- ``/buffers`` (GET) – per-buffer status: frame fullness, frame size, last arrival time.
+- ``/pipeline_dot`` (GET) – the running pipeline graph in graphviz ``dot`` format.
+- ``/buffer/<name>/frame`` (GET) – copy of the newest full frame in buffer ``<name>`` as JSON:
+  base64 ``data``, the frame's metadata, and the buffer's frame descriptor. ``?len=N`` limits
+  the number of data bytes returned; ``len=0`` returns metadata only.
 - Per-stage endpoints live under the stage ``unique_name`` (e.g., ``/<stage>/control``).
 
 Example:

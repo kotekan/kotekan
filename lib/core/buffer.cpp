@@ -1,5 +1,6 @@
 #include "buffer.hpp"
 
+#include <algorithm>  // for min
 #include <assert.h>   // for assert
 #include <chrono>     // for duration, operator+, nanoseconds, seconds, system_clock
 #include <errno.h>    // for errno
@@ -385,6 +386,33 @@ int Buffer::get_num_full_frames() {
     return numFull;
 }
 
+int Buffer::peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_len,
+                                   std::shared_ptr<metadataObject>& metadata_out) {
+    buffer_lock lock(mutex);
+
+    if (last_frame_filled < 0)
+        return -1;
+
+    // Frames fill in ring order, so the first full frame found scanning
+    // backwards from the last filled position is the newest one.
+    int ID = -1;
+    for (int i = 0; i < num_frames; ++i) {
+        const int candidate = (last_frame_filled - i + num_frames) % num_frames;
+        if (is_full[candidate]) {
+            ID = candidate;
+            break;
+        }
+    }
+    if (ID == -1)
+        return -1;
+
+    const size_t copy_len = std::min(max_len, frame_size);
+    data_out.resize(copy_len);
+    memcpy(data_out.data(), frames[ID], copy_len);
+    metadata_out = metadata[ID];
+    return ID;
+}
+
 void Buffer::json_description(nlohmann::json& buf_json) {
     buffer_lock lock(mutex);
     GenericBuffer::json_description(buf_json);
@@ -518,6 +546,7 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
         if (private_producers_done(ID)) {
             private_reset_producers(ID);
             is_full[ID] = true;
+            last_frame_filled = ID;
             last_arrival_time = e_time();
             set_full = true;
 

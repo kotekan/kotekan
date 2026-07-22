@@ -1,17 +1,20 @@
 #include "kotekanMode.hpp"
 
 #include "Config.hpp"            // for Config
+#include "FrameDesc.hpp"         // for FrameDesc
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for StageFactory
 #include "Telescope.hpp"         // for Telescope
-#include "buffer.hpp"            // for StageInfo, GenericBuffer
+#include "buffer.hpp"            // for StageInfo, Buffer, GenericBuffer
 #include "bufferFactory.hpp"     // for bufferFactory
 #include "configTracker.hpp"     // for ConfigTracker
 #include "configUpdater.hpp"     // for configUpdater
 #include "datasetManager.hpp"    // for datasetManager
 #include "kotekanLogging.hpp"    // for INFO_NON_OO, FATAL_ERROR_NON_OO
 #include "kotekanTrackers.hpp"   // for KotekanTrackers
+#include "metadata.hpp"          // for metadataObject
 #include "metadataFactory.hpp"   // for metadataFactory
+#include "modp_b64.hpp"          // for modp_b64_encode, modp_b64_encode_len, MODP_B64_ERROR
 #include "prometheusMetrics.hpp" // for Metrics
 #include "restServer.hpp"        // for restServer, connectionInstance
 #include "version.h"             // for get_cmake_build_options, get_git_branch, get_git_commit...
@@ -21,9 +24,12 @@
 
 #include <exception>  // for exception
 #include <functional> // for bind, function, _1
-#include <stdint.h>   // for uint16_t
-#include <string>     // for basic_string, string
-#include <utility>    // for pair
+#include <limits>     // for numeric_limits
+#include <memory>     // for shared_ptr
+#include <stdint.h>   // for uint8_t, uint16_t
+#include <string>     // for basic_string, string, stoll
+#include <utility>    // for pair, move
+#include <vector>     // for vector
 
 using namespace std::placeholders;
 
@@ -57,6 +63,8 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/config");
     restServer::instance().remove_get_callback("/buffers");
     restServer::instance().remove_get_callback("/pipeline_dot");
+    for (auto const& endpoint : frame_peek_endpoints)
+        restServer::instance().remove_get_callback(endpoint);
     restServer::instance().remove_all_aliases();
 
     KotekanTrackers::instance().set_kotekan_mode_ptr(nullptr);
@@ -158,6 +166,19 @@ void kotekanMode::initalize_stages() {
 
     restServer::instance().register_get_callback(
         "/pipeline_dot", std::bind(&kotekanMode::pipeline_dot_graph_callback, this, _1));
+
+    // Register frame-peek endpoints for every frame-holding buffer, so the
+    // newest full frame in any buffer can be inspected without config changes.
+    for (auto& buf : buffer_container.get_buffer_map()) {
+        Buffer* frame_buf = dynamic_cast<Buffer*>(buf.second);
+        if (frame_buf == nullptr)
+            continue;
+
+        std::string endpoint = fmt::format(fmt("/buffer/{:s}/frame"), buf.first);
+        restServer::instance().register_get_callback(
+            endpoint, std::bind(&kotekanMode::buffer_frame_callback, this, frame_buf, _1));
+        frame_peek_endpoints.push_back(endpoint);
+    }
 }
 
 void kotekanMode::join() {
@@ -242,6 +263,60 @@ void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
 
     dot += "}\n";
     conn.send_text_reply(dot);
+}
+
+void kotekanMode::buffer_frame_callback(Buffer* buf, connectionInstance& conn) {
+    // Optional `len` query parameter: absent means copy the whole frame,
+    // `len=0` requests metadata only.
+    size_t max_len = std::numeric_limits<size_t>::max();
+    auto query = conn.get_query();
+    auto len_arg = query.find("len");
+    if (len_arg != query.end()) {
+        try {
+            size_t pos = 0;
+            const long long parsed = std::stoll(len_arg->second, &pos);
+            if (pos != len_arg->second.size() || parsed < 0)
+                throw std::invalid_argument("not a non-negative integer");
+            max_len = (size_t)parsed;
+        } catch (const std::exception&) {
+            conn.send_error("'len' query parameter must be a non-negative integer",
+                            HTTP_RESPONSE::BAD_REQUEST);
+            return;
+        }
+    }
+
+    std::vector<uint8_t> data;
+    std::shared_ptr<metadataObject> frame_metadata;
+    const int frame_id = buf->peek_newest_full_frame(data, max_len, frame_metadata);
+    if (frame_id < 0) {
+        conn.send_error(
+            fmt::format(fmt("no full frame currently in buffer {:s}, try again"), buf->buffer_name),
+            HTTP_RESPONSE::REQUEST_FAILED);
+        return;
+    }
+
+    nlohmann::json reply;
+    reply["buffer"] = buf->buffer_name;
+    reply["frame_id"] = frame_id;
+    reply["frame_size"] = buf->frame_size;
+    reply["data_length"] = data.size();
+    reply["metadata"] = frame_metadata ? frame_metadata->to_json() : nlohmann::json();
+    auto frame_desc = buf->get_frame_desc();
+    reply["frame_desc"] = frame_desc ? frame_desc->to_json() : nlohmann::json();
+    if (!data.empty()) {
+        std::string encoded(modp_b64_encode_len(data.size()), '\0');
+        const size_t enc_len =
+            modp_b64_encode(&encoded[0], reinterpret_cast<const char*>(data.data()), data.size());
+        if (enc_len == MODP_B64_ERROR) {
+            conn.send_error("base64 encoding of frame data failed", HTTP_RESPONSE::INTERNAL_ERROR);
+            return;
+        }
+        // Trim the encode-buffer allocation down to the actual encoded length.
+        encoded.resize((data.size() + 2) / 3 * 4);
+        reply["data"] = std::move(encoded);
+        reply["encoding"] = "base64";
+    }
+    conn.send_json_reply(reply);
 }
 
 } // namespace kotekan

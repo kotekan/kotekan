@@ -3,7 +3,7 @@
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
-#include "buffer.hpp"          // for GenericBuffer
+#include "buffer.hpp"          // for Buffer, GenericBuffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "metadata.hpp"        // for metadataPool
 #include "restServer.hpp"      // for connectionInstance
@@ -16,6 +16,7 @@
 #include <map>    // for map
 #include <memory> // for shared_ptr
 #include <string> // for string
+#include <vector> // for vector
 
 // doxygen wants the namespace to be documented somewhere
 /*!
@@ -58,6 +59,18 @@ public:
     /// HTTP callback that dumps the current pipeline graph in `dot` format.
     void pipeline_dot_graph_callback(connectionInstance& conn);
 
+    /**
+     * @brief HTTP callback serving a copy of the newest full frame in @c buf.
+     *
+     * Registered at `GET /buffer/<name>/frame` for every frame-holding buffer.
+     * Replies with a JSON object containing the frame's metadata, the buffer's
+     * frame descriptor (when attached), and the leading frame bytes base64
+     * encoded under `data`. The optional `len` query parameter caps the number
+     * of data bytes included; `len=0` returns metadata only, and no `len`
+     * returns the whole frame.
+     */
+    void buffer_frame_callback(Buffer* buf, connectionInstance& conn);
+
 private:
     Config& config;
     bufferContainer buffer_container;
@@ -69,6 +82,10 @@ private:
     std::map<std::string, std::shared_ptr<metadataPool>> metadata_pools;
 
     std::map<std::string, GenericBuffer*> buffers;
+
+    /// Frame-peek endpoints registered in initalize_stages(), removed on
+    /// destruction.
+    std::vector<std::string> frame_peek_endpoints;
 };
 
 } // namespace kotekan

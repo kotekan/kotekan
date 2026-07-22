@@ -36,6 +36,23 @@ target_link_libraries(test_dataset_manager PRIVATE libexternal kotekan_libs kote
 add_executable(test_ringbuffer test_ringbuffer.cpp)
 target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
+# test_buffer_peek - non-consuming newest-full-frame peek used by the /buffer/<name>/frame endpoints
+add_executable(test_buffer_peek test_buffer_peek.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(test_buffer_peek PRIVATE libexternal kotekan_libs kotekan_utils
+                                                   kotekan_core -Wl,-all_load kotekan_metadata)
+else()
+    target_link_libraries(
+        test_buffer_peek
+        PRIVATE libexternal
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+
 # test_fmt
 add_executable(test_fmt test_fmt.cpp)
 # target_link_libraries(test_fmt PRIVATE libexternal kotekan_utils)
