@@ -209,7 +209,7 @@ assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_
 # per 1 ms record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-
 # period boundary. integration_length 1000 = 1 s max buffer (the auto-coherence
 # ladder finds the knee live).
-gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, secondary_overlay: L5_NH20, phase_dump_prns: [18, 23, 24, 32], phase_dump_path: "/tmp/gps_l5_gpu/phase_dump_gps_l5.txt" }
+gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 20, phase_dump_prns: [18, 23, 24, 32], phase_dump_path: "/tmp/gps_l5_gpu/phase_dump_gps_l5.txt" }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- Galileo E5a-Q parallel chain (dataless pilot, PRN 1..36) ----
@@ -234,7 +234,7 @@ gal_search:
     require_hint: true
     hint_ttl_s: 30.0
 gal_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: gal_epl_buf, out_buf: gal_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36] }
-gal_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [gal_rec_buf], out_buf: gal_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 1000, secondary_overlay: E5A_CS100 }
+gal_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [gal_rec_buf], out_buf: gal_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 1000, secondary_overlay: E5A_CS100, adr_smooth_records: 20 }
 gal_record: { kotekan_stage: rawFileWrite, in_buf: gal_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "gal_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- BeiDou-3 B2a-pilot parallel chain (dataless pilot, PRN 1..63; BDS-3 only) ----
@@ -256,7 +256,7 @@ bds_search:
     require_hint: true
     hint_ttl_s: 30.0
 bds_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: bds_epl_buf, out_buf: bds_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], chan_dump_prn: 33, chan_dump_decim: 10, chan_dump_path: "/tmp/gps_l5_gpu/chan_phase_dump_c33.txt" }
-bds_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100 }
+bds_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100, adr_smooth_records: 20 }
 bds_record: { kotekan_stage: rawFileWrite, in_buf: bds_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "bds_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --http-port 8082 --ws-port 8739 --kotekan-rest-port 12248 --gps-constellations G,E,C --band l5' }

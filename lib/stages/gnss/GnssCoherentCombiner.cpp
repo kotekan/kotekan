@@ -148,6 +148,8 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _adr_blk_prev.assign(_n_prn, std::complex<double>(0.0, 0.0));
     _adr_blk_prev_ok.assign(_n_prn, 0);
     _adr_blk_prev_utc.assign(_n_prn, 0.0);
+    _adr_blk_rate.assign(_n_prn, 0.0);
+    _adr_blk_rate_ok.assign(_n_prn, 0);
     _st_deep_rec.assign(_n_prn, 0);
 
     // nh time-assist: only meaningful for a per-PRN overlay pilot (B1C/E5a/B2a: _l1co populated),
@@ -331,6 +333,7 @@ void GnssCoherentCombiner::main_thread() {
                     } else if (smooth_mode && !v_ok) {
                         _adr_ok[p] = 0; // anchor lost/absent: no de-rotated vector to block
                         _adr_blk_prev_ok[p] = 0;
+                        _adr_blk_rate_ok[p] = 0;
                         _adr_blk_n[p] = 0;
                     } else if (smooth_mode && _adr_ok[p]) {
                         _adr_blk_dcmd[p] += cph;
@@ -341,14 +344,31 @@ void GnssCoherentCombiner::main_thread() {
                             if (_adr_blk_prev_ok[p]
                                 && (utc_p - _adr_blk_prev_utc[p])
                                        < 2.5 * (double)_adr_smooth * dt_c) {
-                                const double dres_blk =
+                                const double raw =
                                     std::arg(_adr_blk_v[p] * std::conj(_adr_blk_prev[p]))
                                     / (2.0 * M_PI);
+                                // Rate-predicted unwrap (see hpp): steady residuals beyond
+                                // +-0.5 cyc/block are unwrapped around the EMA rate. The
+                                // EMA seeds from the first RAW product, which K=10's
+                                // +-50 Hz margin keeps unaliased for every observed loop
+                                // residual (13-25 Hz standing on the worst sats).
+                                double dres_blk = raw;
+                                if (_adr_blk_rate_ok[p]) {
+                                    double dd = raw - _adr_blk_rate[p];
+                                    dd -= std::round(dd);
+                                    dres_blk = _adr_blk_rate[p] + dd;
+                                    _adr_blk_rate[p] += 0.2 * (dres_blk - _adr_blk_rate[p]);
+                                } else {
+                                    _adr_blk_rate[p] = raw;
+                                    _adr_blk_rate_ok[p] = 1;
+                                }
                                 _adr_cyc[p] += _adr_blk_dcmd[p] - dres_blk;
                             }
-                            // else: the arc's FIRST block -- its dcmd only sets the
-                            // (arbitrary, per-arc-ambiguous) origin; dropping it is a
-                            // constant offset, not a discontinuity.
+                            else
+                                _adr_blk_rate_ok[p] = 0; // no product -> rate not continuous
+                            // (no-product case = the arc's FIRST block -- its dcmd only sets
+                            // the arbitrary, per-arc-ambiguous origin; dropping it is a
+                            // constant offset, not a discontinuity.)
                             _adr_blk_prev[p] = _adr_blk_v[p];
                             _adr_blk_prev_ok[p] = 1;
                             _adr_blk_prev_utc[p] = utc_p;
@@ -368,6 +388,7 @@ void GnssCoherentCombiner::main_thread() {
                         _adr_blk_dcmd[p] = 0.0;
                         _adr_blk_n[p] = 1;
                         _adr_blk_prev_ok[p] = 0;
+                        _adr_blk_rate_ok[p] = 0;
                     } else if (_adr_ok[p]) {
                         // The commanded-phase increment arrives ready-made from the tracker
                         // (record slot 15): bounded, float-exact, NOTHING to unwrap. The
@@ -418,6 +439,7 @@ void GnssCoherentCombiner::main_thread() {
                     // honest one.
                     _adr_ok[p] = 0;
                     _adr_blk_prev_ok[p] = 0; // block continuity broken with the arc
+                    _adr_blk_rate_ok[p] = 0;
                     _adr_blk_n[p] = 0;
                 }
                 car_prev[p] = A;

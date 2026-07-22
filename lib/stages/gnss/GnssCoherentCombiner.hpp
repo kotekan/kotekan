@@ -265,6 +265,14 @@ private:
     std::vector<std::complex<double>> _adr_blk_prev; ///< previous closed block vector
     std::vector<uint8_t> _adr_blk_prev_ok;
     std::vector<double> _adr_blk_prev_utc;
+    /// Rate-predicted block unwrap (v2, 2026-07-22 morning): the first soak showed the raw
+    /// block product's +-0.5-cycle-per-block margin (+-25 Hz at K=20) is EXCEEDED by the
+    /// standing 13-25 Hz carrier residuals some L5-band sats carry (strong sats included --
+    /// a loop-health question, not SNR). Unwrapping each block product around an EMA of the
+    /// recent block rate tolerates any STEADY residual; only a rate CHANGE > half a cycle
+    /// per block between consecutive blocks (~>2500 Hz/s at K=10) could still fold.
+    std::vector<double> _adr_blk_rate; ///< EMA of the block-to-block residual step (cycles)
+    std::vector<uint8_t> _adr_blk_rate_ok;
     std::vector<int> _st_deep_rec; ///< records in the chosen deep window (= full window unless the
                                    ///< auto-coherence ladder found a shorter, more coherent one)
 
