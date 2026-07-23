@@ -230,6 +230,18 @@ def main():
     ap.add_argument("--lon", type=float, default=-79.252106)
     ap.add_argument("--video", default="tec_sky.mp4")
     ap.add_argument("--fps", type=int, default=10)
+    ap.add_argument("--max-hold-s", type=float, default=0.0,
+                    help="bridge per-sat dropouts: if a sat has no measurement in the frame "
+                         "window but its samples bracket the frame time by <= this gap, linearly "
+                         "interpolate its position+TEC to the frame (0=off). Kills the flicker "
+                         "from tracks briefly dropping/re-acquiring; only sensible in --ionex "
+                         "absolute mode, where arcs share one GIM level so bridging is continuous. "
+                         "NOTE the window already bridges gaps <= window_s, so use hold > window_s.")
+    ap.add_argument("--smooth-frames", type=int, default=1,
+                    help="temporal smoothing: display a trailing nanmean of the last N rendered "
+                         "fields (1=off). Damps the frame-to-frame RBF jump when a sat "
+                         "appears/disappears -- the dominant flicker once dropouts are bridged. "
+                         "Safe for absolute VTEC (slowly varying); N=3 ~ 3 min at frame_s=60.")
     args = ap.parse_args()
 
     d = load_series(args.series)
@@ -292,26 +304,49 @@ def main():
     GX, GY = np.meshgrid(g, g)
     horizon = GX**2 + GY**2 <= 1.0
     from datetime import datetime, timezone
-    print(f"{n_frames} frames, {len(x)} epochs, vmax {vmax:.2f} TECU")
+    # Per-sat time-sorted (t, value, sky-x, sky-y) for window-median + short-gap bridging. sky_xy
+    # is precomputed per measurement so the hold interpolates CARTESIAN sky position (no azimuth
+    # wraparound) and TEC together.
+    _pxall, _pyall = sky_xy(d["az"], d["el"])
+    _satid = np.char.add(d["sys"].astype(str), d["prn"].astype(str))
+    sat_series = {}
+    for sid in np.unique(_satid):
+        mm = _satid == sid
+        tt = d["t"][mm]
+        o = np.argsort(tt)
+        sat_series[sid] = (tt[o], x[mm][o], _pxall[mm][o], _pyall[mm][o],
+                           str(d["sys"][mm][0]), int(d["prn"][mm][0]))
+    print(f"{n_frames} frames, {len(x)} epochs, vmax {vmax:.2f} TECU"
+          + (f", max-hold {args.max_hold_s:.0f}s" if args.max_hold_s > 0 else ""))
     written = 0
+    import collections
+    import warnings
+    zbuf = collections.deque(maxlen=max(1, args.smooth_frames))  # trailing fields for --smooth-frames
     for fi in range(n_frames):
         tc = t0 + (fi + 0.5) * args.frame_s
-        m = np.abs(d["t"] - tc) <= args.window_s / 2
-        if m.sum() < 8:
-            continue
-        # one point per sat: median over the window (kills per-epoch noise)
+        # one point per sat: median over the frame window, OR (if the sat dropped out but its
+        # samples bracket tc within --max-hold-s) a linear bridge so the patch doesn't flicker.
         pts, vals, labs = [], [], []
-        for s_ in np.unique(d["sys"][m]):
-            for p_ in np.unique(d["prn"][m & (d["sys"] == s_)]):
-                mm = m & (d["sys"] == s_) & (d["prn"] == p_)
-                px, py = sky_xy(np.median(d["az"][mm]), np.median(d["el"][mm]))
-                pts.append((px, py))
-                vals.append(np.median(x[mm]))
+        half = args.window_s / 2
+        for sid, (tt, xx, pxs, pys, s_, p_) in sat_series.items():
+            lo = np.searchsorted(tt, tc - half)
+            hi = np.searchsorted(tt, tc + half)
+            if hi > lo:  # in-window: median (kills per-epoch noise)
+                pts.append((np.median(pxs[lo:hi]), np.median(pys[lo:hi])))
+                vals.append(np.median(xx[lo:hi]))
                 labs.append(f"{s_}{p_}")
-        pts = np.array(pts)
-        vals = np.array(vals)
+            elif args.max_hold_s > 0:  # bridge a short dropout by interpolating to tc
+                i = np.searchsorted(tt, tc)
+                if 0 < i < len(tt) and (tt[i] - tt[i - 1]) <= args.max_hold_s:
+                    f = (tc - tt[i - 1]) / (tt[i] - tt[i - 1])
+                    pts.append((pxs[i - 1] + f * (pxs[i] - pxs[i - 1]),
+                                pys[i - 1] + f * (pys[i] - pys[i - 1])))
+                    vals.append(xx[i - 1] + f * (xx[i] - xx[i - 1]))
+                    labs.append(f"{s_}{p_}")
         if len(pts) < 4:
             continue
+        pts = np.array(pts)
+        vals = np.array(vals)
         if not absolute:
             vals = vals - np.median(vals)   # arc-relative levels are arbitrary; the
                                             # frame's spatial median is the honest zero
@@ -324,9 +359,19 @@ def main():
         dist = np.min(np.sqrt((GX[..., None] - pts[:, 0])**2
                               + (GY[..., None] - pts[:, 1])**2), axis=-1)
         Z[(dist > args.mask_deg / 90.0) | ~horizon] = np.nan
+        # temporal smoothing: trailing nanmean of the last N fields -> the displayed field damps
+        # the RBF jump when a sat enters/leaves. Per-pixel nanmean so a briefly-uncovered pixel
+        # holds its recent value instead of blinking out.
+        zbuf.append(Z)
+        if len(zbuf) > 1:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)  # all-NaN pixels -> NaN
+                Zdisp = np.nanmean(np.stack(zbuf), axis=0)
+        else:
+            Zdisp = Z
 
         fig, ax = plt.subplots(figsize=(7.2, 7.6))
-        im = ax.pcolormesh(GX, GY, Z, cmap="viridis" if absolute else "RdBu_r",
+        im = ax.pcolormesh(GX, GY, Zdisp, cmap="viridis" if absolute else "RdBu_r",
                            vmin=vmin_, vmax=vmax, shading="auto")
         th = np.linspace(0, 2 * np.pi, 361)
         for el_ring in (0, 30, 60):
