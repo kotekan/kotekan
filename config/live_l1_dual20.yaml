@@ -301,7 +301,7 @@ bds_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: bds_epl_buf, out_b
 # floored deep at sqrt(2*100/pi) ~ 8 sigma while the search hit 290+).
 # nh_assist: fleet-grid overlay time assist -- THIS is the flag the 07-18 launch
 # silently dropped (e1eba7a2); it is generated now and cannot be dropped again.
-bds_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 3, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 100, secondary_overlay: B1C }
+bds_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 3, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 100, secondary_overlay: B1C, phase_dump_prns: [19, 21, 22, 34, 36, 39], phase_dump_path: "/tmp/gpswipe/phase_dump_bds.txt" }
 bds_record: { kotekan_stage: rawFileWrite, in_buf: bds_out_buf, base_dir: "/tmp/gpswipe", file_name: "bds_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- GPS L1C-P parallel chain (4th L1 constellation, same 1575.42 tune) ----
