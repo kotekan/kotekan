@@ -1228,7 +1228,7 @@ FRB:
     frb1_num_beams_P: 2 * num_dishes_y
     frb1_num_beams_Q: 2 * num_dishes_x
 
-    {%- set frb2_num_beams_x = 4 %}
+    {%- set frb2_num_beams_x = 1 %}
     {%- set frb2_num_beams_y = 256 %}
     {%- set frb2_num_beams = frb2_num_beams_x * frb2_num_beams_y %}
     frb2_num_beams_x: {{ frb2_num_beams_x }}
@@ -1636,10 +1636,8 @@ FRB:
         values:
 # direction sine in the normal vector sin(angle-from-zenith-towards-x), equally spaced for CHIME
 {%- for ns in range(frb2_num_beams_y) %}
-{%- for ew in range(frb2_num_beams_x) %}
-          - {{ sin_achromatic_beam_angles_EW[ew] }}
+          - 0.0
           - {{ (ns - 127)*1.73205080756888/256 }}
-{%- endfor %}
 {%- endfor %}
         name: frb2_beam_positions
         datatype: float32
@@ -1700,6 +1698,7 @@ FRB:
               frb1_beams_name: frb1_beams
               frb2_weights_name: frb2_weights
               frb2_beams_name: frb2_beams
+#{#
             - name: cudaQuantize8 # TODOL use "CHIME" variant
               # the output is quantized in chunks of `frb_chunk_size`
               num_beams: frb2_num_beams
@@ -1708,6 +1707,7 @@ FRB:
               gpu_mem_input: frb2_beams
               gpu_mem_output: frb3_beams
               gpu_mem_offsetscale: frb3_beams_offsetscale
+#}#
             - name: cudaSyncOutput
 #{# for debugging only
             - name: cudaCopyFromRingbuffer
@@ -1722,12 +1722,14 @@ FRB:
               # TODO: Don't do this in production
               gpu_mem: frb2_beams_buffer
               out_buf: host_frb2_beams_buffer
+#{#
             - name: cudaOutputData
               gpu_mem: frb3_beams_buffer
               out_buf: host_frb3_beams_buffer
             - name: cudaOutputData
               gpu_mem: frb3_beams_offsetscale_buffer
               out_buf: host_frb3_beams_offsetscale_buffer
+#}#
 
     switch_frb_out:
         kotekan_stage: bufferSwitch
@@ -1863,6 +1865,7 @@ write_failed_vis:
     file_length: 256
     in_buf: failed_vis_buffer_post
 
+#{#
 write_frb:
     kotekan_stage: hdf5FileWrite
     log_level: warn
@@ -1881,10 +1884,11 @@ write_frb_offsetscale:
     file_name: host_frb3_offsetscale_buffer
     create_single_file: true
     input_order: CHIMEBeamformer
+#}#
 
 write_frb2:
     kotekan_stage: hdf5FileWrite
-    log_level: warn
+    log_level: info
     use_compression: false
     base_dir: frb_beams
     in_buf: host_frb2_beams_buffer_post
