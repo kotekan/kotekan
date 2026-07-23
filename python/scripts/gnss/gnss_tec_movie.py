@@ -56,6 +56,16 @@ def sky_xy(az, el):
     return np.sin(a) * r, np.cos(a) * r
 
 
+def _in_hull(grid, pts):
+    """Boolean: which grid points fall inside the convex hull of pts (for --voronoi masking).
+    Delaunay.find_simplex >= 0 iff the point is inside the triangulated hull."""
+    from scipy.spatial import Delaunay
+    try:
+        return Delaunay(pts).find_simplex(grid) >= 0
+    except Exception:  # degenerate (collinear) point set
+        return np.zeros(len(grid), dtype=bool)
+
+
 
 # ---------------- IONEX (absolute leveling) ----------------
 
@@ -242,6 +252,11 @@ def main():
                          "fields (1=off). Damps the frame-to-frame RBF jump when a sat "
                          "appears/disappears -- the dominant flicker once dropouts are bridged. "
                          "Safe for absolute VTEC (slowly varying); N=3 ~ 3 min at frame_s=60.")
+    ap.add_argument("--voronoi", action="store_true",
+                    help="render nearest-satellite (Voronoi) cells over the covered sky (convex "
+                         "hull of the sat points) instead of RBF discs. Each pixel takes its "
+                         "nearest sat's TEC -> the whole covered dome is tiled; with "
+                         "--smooth-frames the moving cell boundaries blend into gradients.")
     args = ap.parse_args()
 
     d = load_series(args.series)
@@ -285,7 +300,7 @@ def main():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib import cm
-    from scipy.interpolate import RBFInterpolator
+    from scipy.interpolate import RBFInterpolator, NearestNDInterpolator
 
     os.makedirs(args.outdir, exist_ok=True)
     t0, t1 = d["t"].min(), d["t"].max()
@@ -350,15 +365,27 @@ def main():
         if not absolute:
             vals = vals - np.median(vals)   # arc-relative levels are arbitrary; the
                                             # frame's spatial median is the honest zero
-        try:
-            rbf = RBFInterpolator(pts, vals, kernel="linear", smoothing=1e-2)
-            Z = rbf(np.column_stack([GX.ravel(), GY.ravel()])).reshape(GX.shape)
-        except Exception:
-            continue
-        # mask: no data invented far from measurements
-        dist = np.min(np.sqrt((GX[..., None] - pts[:, 0])**2
-                              + (GY[..., None] - pts[:, 1])**2), axis=-1)
-        Z[(dist > args.mask_deg / 90.0) | ~horizon] = np.nan
+        grid = np.column_stack([GX.ravel(), GY.ravel()])
+        if args.voronoi:
+            # Nearest-satellite (Voronoi) tiling, masked to the convex hull of the sat points so
+            # we tile the COVERED sky, not empty dome. Temporal --smooth-frames then blends the
+            # moving cell boundaries (a pixel that flips A->B between frames nanmeans to a gradient).
+            try:
+                Z = NearestNDInterpolator(pts, vals)(grid).reshape(GX.shape)
+            except Exception:
+                continue
+            inside = _in_hull(grid, pts).reshape(GX.shape) if len(pts) >= 3 else np.ones_like(horizon)
+            Z[~inside | ~horizon] = np.nan
+        else:
+            try:
+                rbf = RBFInterpolator(pts, vals, kernel="linear", smoothing=1e-2)
+                Z = rbf(grid).reshape(GX.shape)
+            except Exception:
+                continue
+            # mask: no data invented far from measurements
+            dist = np.min(np.sqrt((GX[..., None] - pts[:, 0])**2
+                                  + (GY[..., None] - pts[:, 1])**2), axis=-1)
+            Z[(dist > args.mask_deg / 90.0) | ~horizon] = np.nan
         # temporal smoothing: trailing nanmean of the last N fields -> the displayed field damps
         # the RBF jump when a sat enters/leaves. Per-pixel nanmean so a briefly-uncovered pixel
         # holds its recent value instead of blinking out.
