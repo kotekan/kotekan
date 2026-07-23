@@ -128,9 +128,13 @@ private:
     /// valve-drop gaps don't bias the slope. Returns 0 if too short / degenerate.
     /// @param sigma_phi_out (optional) weighted RMS of THIS fit's residuals, radians on the
     /// true carrier -- the phase-jitter half of the multipath/scintillation pair.
+    /// @param prewiped the records are ALREADY overlay-free (the caller passes _navwipe = the
+    /// de-rotated v_cur stream), so fit the RAW phase (mult 1, no squaring) exactly as for a
+    /// dataless pilot -- half the phase noise AND no |2f-1| straddle null at boundary_f=0.5.
     double carrier_resid_hz(const std::vector<std::complex<double>>& a,
                             const std::vector<double>& utc,
-                            double* sigma_phi_out = nullptr) const;
+                            double* sigma_phi_out = nullptr,
+                            bool prewiped = false) const;
 
     std::vector<Buffer*> in_bufs;
     Buffer* out_buf;
@@ -177,6 +181,12 @@ private:
     /// and tail must be wiped with adjacent chips or straddling records cancel (the
     /// 2026-07-15 "bistable"). Parallel to _navbuf record-for-record.
     std::vector<std::vector<std::complex<double>>> _navhead;
+    /// Per-PRN per-record OVERLAY-WIPED amplitude v_cur (segmented de-rotation; overlay-free at
+    /// full amplitude for any boundary_f), or 0 for records with no live anchor. Parallel to
+    /// _navbuf. Feeds the carrier-residual fit LINEARLY (prewiped) so the shared carrier loop no
+    /// longer squares the raw A -- which cancels at boundary_f=0.5 and drove the loop open there,
+    /// scrambling the whole window's phase (2026-07-22 B1C bf=0.5 deep-null root cause).
+    std::vector<std::vector<std::complex<double>>> _navwipe;
 
     /// Per-record phase-dump instrumentation (phase_dump_prns / phase_dump_path): for the listed
     /// PRNs append one text line per despread record -- capture-UTC, PRN, Re/Im of the full-band A,

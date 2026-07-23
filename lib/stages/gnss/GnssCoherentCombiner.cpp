@@ -81,6 +81,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         _navbuf.assign(_n_prn, {});
         _navutc.assign(_n_prn, {});
         _navhead.assign(_n_prn, {});
+        _navwipe.assign(_n_prn, {});
     }
 
     // Per-record phase dump (debug instrumentation; see the header comment). Append mode so a
@@ -258,45 +259,54 @@ void GnssCoherentCombiner::main_thread() {
             const double e2 = e_energy > 0.0 ? (er * er + ei * ei) / (e_energy * e_energy) : 0.0;
             const double l2 = l_energy > 0.0 ? (lr * lr + li * li) / (l_energy * l_energy) : 0.0;
 
-            // Accumulate over time: incoherent power (|A|^2) + its square (|A|^4, for the noise
-            // debias) + coherent complex (A).
             const double utc_p = *reinterpret_cast<const double*>(ref + RECORD_UTC_SLOT);
-            const double p2 = ar * ar + ai * ai;
+            const std::complex<double> A(ar, ai);
+            // Overlay-wiped record v_cur: for an overlay pilot with a LOCKED dead-reckon anchor
+            // (_dr_phase at _dr_utc), de-rotate the KNOWN secondary LINEARLY -- SEGMENTED at the
+            // code-period boundary inside the record (head chip k, tail chip k+1, same convention
+            // as overlay_wipe), so straddling records DON'T cancel. The result is overlay-free at
+            // full amplitude for any boundary_f. Hoisted above p2 (2026-07-22) because it now feeds
+            // THREE straddle-immune consumers: the incoherent power (p2 below), the carrier residual
+            // fit (emit), and the ADR increment. Until an anchor is pinned (or after a re-seed),
+            // v_ok is false and each consumer falls back to its raw/segment form.
+            const int prn_p = (int)std::lround(ref[0]);
+            const std::vector<int8_t>* ov_adr = overlay_for(prn_p);
+            bool v_ok = false;
+            std::complex<double> v_cur(0.0, 0.0);
+            if (ov_adr && !ov_adr->empty() && energy > 0.0 && _dr_phase[p] >= 0
+                && _dr_rec_dt[p] > 0.0 && _dr_prn[p] == prn_p) {
+                const int L_ov = (int)ov_adr->size();
+                const long long idx =
+                    (long long)std::llround((utc_p - _dr_utc[p]) / _dr_rec_dt[p]);
+                const int k = (int)(((_dr_phase[p] + idx) % L_ov + L_ov) % L_ov);
+                const double c0 = (double)(*ov_adr)[(size_t)k];
+                const double c1 = (double)(*ov_adr)[(size_t)((k + 1) % L_ov)];
+                // head (ahr/ahi) belongs to chip k, tail (A - head) to chip k+1; a tracker
+                // that doesn't segment writes head == A (tail 0) -> whole-record de-rotate.
+                const std::complex<double> H =
+                    h_energy > 0.0 ? std::complex<double>(ahr, ahi) : A;
+                v_cur = H * c0 + (A - H) * c1;
+                v_ok = true;
+            }
+            // Incoherent power (|A|^2 + |A|^4 moments -> noise-debiased amp_snr / s4). Straddle-
+            // immune: the overlay-wiped |v_cur|^2 (full signal at any boundary_f) when anchored;
+            // else the segment-power sum |head|^2 + |tail|^2, immune to the overlay SIGN so no
+            // |2f-1| null (only a mild f^2+(1-f)^2 factor); else raw |A|^2. Was |A|^2, which nulls
+            // at boundary_f=0.5 -> the moment debias booked the full/null bimodality as noise and
+            // collapsed amp_snr/s4 (hence sig-gate flapping + drops) at every straddle.
+            double p2;
+            if (v_ok) {
+                p2 = std::norm(v_cur);
+            } else if (h_energy > 0.0) {
+                const std::complex<double> H(ahr, ahi);
+                p2 = std::norm(H) + std::norm(A - H);
+            } else {
+                p2 = ar * ar + ai * ai;
+            }
             {
                 // Full-band carrier phase walk vs the previous record (gap-gated: a valve drop
                 // would alias the product). Squared for data signals, plain for pilots.
-                const std::complex<double> A(ar, ai);
                 const double dt_c = utc_p - car_prev_utc[p];
-                // ADR overlay-wipe (the L5-leg TEC fix): for an overlay pilot with a LOCKED
-                // alignment, de-rotate the KNOWN secondary linearly rather than squaring it
-                // away. The dead-reckon anchor (_dr_phase at _dr_utc, chip/period) projects
-                // this record's absolute overlay index; the wipe is SEGMENTED at the code-
-                // period boundary inside the record (head chip k, tail chip k+1 -- same
-                // convention as overlay_wipe), so straddling records don't cancel. The
-                // resulting v is overlay-free, and consecutive v form a PLAIN cross-record
-                // product for the ADR increment: no squaring, no 2x phase-noise / low-SNR
-                // noise-fold that made the L5-band ADR ~44x noisier than L2C. Until the first
-                // locked emit pins the anchor (or after a re-seed), v_ok is false and the ADR
-                // falls back to the squared product below.
-                const int prn_p = (int)std::lround(ref[0]);
-                const std::vector<int8_t>* ov_adr = overlay_for(prn_p);
-                bool v_ok = false;
-                std::complex<double> v_cur(0.0, 0.0);
-                if (ov_adr && !ov_adr->empty() && energy > 0.0 && _dr_phase[p] >= 0
-                    && _dr_rec_dt[p] > 0.0 && _dr_prn[p] == prn_p) {
-                    const int L_ov = (int)ov_adr->size();
-                    const long long idx =
-                        (long long)std::llround((utc_p - _dr_utc[p]) / _dr_rec_dt[p]);
-                    const int k = (int)(((_dr_phase[p] + idx) % L_ov + L_ov) % L_ov);
-                    const double c0 = (double)(*ov_adr)[(size_t)k];
-                    const double c1 = (double)(*ov_adr)[(size_t)((k + 1) % L_ov)];
-                    // head (ahr/ahi) belongs to chip k, tail (A - head) to chip k+1; a tracker
-                    // that doesn't segment writes head == A (tail 0) -> whole-record de-rotate.
-                    const std::complex<double> H =
-                        h_energy > 0.0 ? std::complex<double>(ahr, ahi) : A;
-                    v_cur = H * c0 + (A - H) * c1;
-                    v_ok = true;
-                }
                 if (car_prev_utc[p] > 0.0 && dt_c > 0.0 && dt_c < 0.050) {
                     std::complex<double> prod = A * std::conj(car_prev[p]);
                     if (!carrier_raw()) // squared: cancels nav bits AND unwiped overlay chips
@@ -480,10 +490,14 @@ void GnssCoherentCombiner::main_thread() {
                     // the whole record as head so the segmented wipe reduces to unsegmented).
                     _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar,
                                              h_energy > 0.0 ? ahi : ai);
+                    // Overlay-wiped record for the LINEAR carrier fit; 0 when unanchored (the fit
+                    // skips zero-norm records) so no un-wiped overlay pollutes it.
+                    _navwipe[p].push_back(v_ok ? v_cur : std::complex<double>(0.0, 0.0));
                     if ((int)_navbuf[p].size() > _integration_length) {
                         _navbuf[p].erase(_navbuf[p].begin());
                         _navutc[p].erase(_navutc[p].begin());
                         _navhead[p].erase(_navhead[p].begin());
+                        _navwipe[p].erase(_navwipe[p].begin());
                     }
                 }
                 ref_prn[p] = ref[0]; // reference = the latest record (rolling has no block start)
@@ -507,6 +521,7 @@ void GnssCoherentCombiner::main_thread() {
                     _navutc[p].push_back(utc_p);
                     _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar,
                                              h_energy > 0.0 ? ahi : ai);
+                    _navwipe[p].push_back(v_ok ? v_cur : std::complex<double>(0.0, 0.0));
                 }
                 if (n_acc == 0) { // window reference from the first record of the block
                     ref_prn[p] = ref[0];
@@ -617,7 +632,19 @@ void GnssCoherentCombiner::main_thread() {
                 // configs where _navbuf isn't populated.
                 double resid_hz = 0.0;
                 if (_wipe_buffer && _navbuf[p].size() >= 16) {
-                    resid_hz = carrier_resid_hz(_navbuf[p], _navutc[p], &sigma_phi[p]);
+                    // Overlay pilots: fit the LINEAR overlay-wiped stream (_navwipe) so the loop
+                    // never squares the raw A -- which cancels at boundary_f=0.5 and drove the
+                    // loop open there (2026-07-22 root cause). Count the anchored (non-zero) wiped
+                    // records; fall back to the squared raw fit if too few are anchored -- data
+                    // signals + the pre-anchor bootstrap have _navwipe all-zero (no overlay), so
+                    // they take the raw path exactly as before.
+                    size_t nw = 0;
+                    for (const auto& z : _navwipe[p])
+                        if (std::norm(z) > 0.0)
+                            ++nw;
+                    resid_hz = (nw >= 16)
+                        ? carrier_resid_hz(_navwipe[p], _navutc[p], &sigma_phi[p], /*prewiped=*/true)
+                        : carrier_resid_hz(_navbuf[p], _navutc[p], &sigma_phi[p]);
                 } else if (car_n[p] > 0 && std::abs(car_S[p]) > 0.0) {
                     const double dphi = std::arg(car_S[p]) / (carrier_raw() ? 1.0 : 2.0);
                     resid_hz = dphi / (2.0 * M_PI * (car_dt[p] / car_n[p]));
@@ -776,6 +803,7 @@ void GnssCoherentCombiner::main_thread() {
                     _navbuf[p].clear();
                     _navutc[p].clear();
                     _navhead[p].clear();
+                    _navwipe[p].clear();
                 }
             } else if (_navwipe_bit_records > 0) {
                 const auto& ab = _navbuf[p];
@@ -839,6 +867,7 @@ void GnssCoherentCombiner::main_thread() {
                     _navbuf[p].clear();
                     _navutc[p].clear();
                     _navhead[p].clear();
+                    _navwipe[p].clear();
                 }
             }
             *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = ref_utc[p];
@@ -990,6 +1019,7 @@ void GnssCoherentCombiner::main_thread() {
                     _navbuf[p].clear();
                     _navutc[p].clear();
                     _navhead[p].clear();
+                    _navwipe[p].clear();
                 }
         }
 
@@ -1223,7 +1253,7 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
 double
 GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& a,
                                        const std::vector<double>& utc,
-                                       double* sigma_phi_out) const {
+                                       double* sigma_phi_out, bool prewiped) const {
     const int n = (int)a.size();
     if (n < 16)
         return 0.0;
@@ -1242,7 +1272,12 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
     //   Post-demod the true slope is ~0, so steps sit deep inside +-pi and cannot slip.
     // Raw phase ONLY for a truly dataless pilot -- an overlay pilot's pre-wipe records still
     // carry +-1 secondary chips, which scramble raw-phase fits like nav bits (see carrier_raw()).
-    const double mult = carrier_raw() ? 1.0 : 2.0; // squared phase advances at mult * the carrier
+    // SQUARE to cancel the +-1 flips ONLY when the stream still carries them: a data signal's nav
+    // bits, or an overlay pilot's un-wiped secondary chips. A truly dataless pilot (carrier_raw)
+    // or an already-overlay-wiped stream (prewiped) fits the raw phase -- mult 1, half the noise,
+    // and no |2f-1| straddle null.
+    const bool sq = !carrier_raw() && !prewiped;
+    const double mult = sq ? 2.0 : 1.0; // squared phase advances at mult * the carrier
     // Stage 1: coarse f over pairs L records apart. L=4 trades variance against unambiguous
     // range: +-1/(2*L*dt*mult) (+-62 Hz at 1 ms data records) covers any post-seed residual.
     const int L = 4;
@@ -1253,8 +1288,8 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
         const double w = std::norm(a[r]) * std::norm(a[r - L]);
         if (!(w > 0.0))
             continue;
-        const cd vr = carrier_raw() ? a[r] : a[r] * a[r];
-        const cd vp = carrier_raw() ? a[r - L] : a[r - L] * a[r - L];
+        const cd vr = sq ? a[r] * a[r] : a[r];
+        const cd vp = sq ? a[r - L] * a[r - L] : a[r - L];
         pair_sum += w * vr * std::conj(vp);
         dt_sum += utc[r] - utc[r - L];
         ++n_pair;
@@ -1271,7 +1306,7 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
         const double w = std::norm(a[r]); // |A|^2
         if (!(w > 0.0))
             continue;
-        const cd v = (carrier_raw() ? a[r] : a[r] * a[r])
+        const cd v = (sq ? a[r] * a[r] : a[r])
                      * std::polar(1.0, -2.0 * M_PI * f_coarse * mult * (utc[r] - t0));
         const double cur = std::arg(v); // (-pi, pi]
         if (have) {
@@ -1311,7 +1346,7 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
             const double w = std::norm(a[r]);
             if (!(w > 0.0))
                 continue;
-            const cd v = (carrier_raw() ? a[r] : a[r] * a[r])
+            const cd v = (sq ? a[r] * a[r] : a[r])
                          * std::polar(1.0, -2.0 * M_PI * f_coarse * mult * (utc[r] - t0));
             const double cur = std::arg(v);
             if (have2) {
