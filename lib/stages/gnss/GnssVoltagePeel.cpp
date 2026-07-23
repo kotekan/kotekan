@@ -339,13 +339,18 @@ void GnssVoltagePeel::main_thread() {
                         a_prev_ok[p] = 0;
                         gain_ema[p] = cf(0.0f, 0.0f);
                     }
-                    // KNOWN model phase relative to f_ref. The f_ref*t linear term is folded into the
-                    // (f_ref - fcar) factor; any residual constant/linear error is absorbed by the
-                    // EMA / FLL. (f_ref - fcar)*t bridges the absolute-anchor jump at each broker dop
-                    // refresh; 0.5*drate*(t-t_anchor)^2 is the ramp curvature the FLL used to lag.
+                    // KNOWN model phase relative to f_ref. (fcar - f_ref)*t bridges the absolute-
+                    // anchor jump at each broker dop refresh; 0.5*drate*(t-t_anchor)^2 is the ramp
+                    // curvature the FLL used to lag. Any residual constant/linear error is absorbed
+                    // by the EMA / FLL.
+                    // SIGN: the despread residual lives in the r2c-flipped INTERNAL convention --
+                    // gnssRecord.hpp gives arg(A) = 2*pi*(fcar*t_abs - Phi_rx), so the MODEL side
+                    // enters NEGATED relative to the naive (Phi_rx - fcar*t). Same trap the tracker
+                    // documents when it negates doppler_rate_hz_s on entry (355e7636). Hence
+                    // (fcar - f_ref)*t and MINUS 0.5*drate*dtau^2.
                     const double dtau = t - t_anchor[p];
                     const double corr = 2.0 * M_PI
-                                        * ((f_ref[p] - fcar) * t + 0.5 * dop_rate[p] * dtau * dtau);
+                                        * ((fcar - f_ref[p]) * t - 0.5 * dop_rate[p] * dtau * dtau);
                     const double dt =
                         a_prev_ok[p] ? (double)(window_start_hop - hop_prev[p]) * dt_hop : 0.0;
                     if (a_prev_ok[p] && dt > 0.0) {
