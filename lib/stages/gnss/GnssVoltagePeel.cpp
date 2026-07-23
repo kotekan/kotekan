@@ -70,6 +70,8 @@ GnssVoltagePeel::GnssVoltagePeel(Config& config, const std::string& unique_name,
     seed("code_phase_chips", _code_phase);
     _code_phase_rate.assign(n_prn, 0.0);
     seed("code_phase_rate", _code_phase_rate); // chips/hop; usually broker-set, config for offline tests
+    _doppler_rate.assign(n_prn, 0.0);
+    seed("doppler_rate_hz_s", _doppler_rate); // Hz/s; broker-set (v2 FF), config for offline tests
     _ref_hop.assign(n_prn, 0);
     _pre_amp.assign(n_prn, 0.0);
     _post_amp.assign(n_prn, 0.0);
@@ -112,6 +114,7 @@ void GnssVoltagePeel::set_seeds_callback(kotekan::connectionInstance& conn,
                     _doppler[i] = s.at("doppler_hz").get<double>();
                     _code_phase[i] = s.at("code_phase_chips").get<double>();
                     _code_phase_rate[i] = s.value("code_phase_rate", 0.0);
+                    _doppler_rate[i] = s.value("doppler_rate_hz_s", 0.0);
                     _ref_hop[i] = s.value("ref_hop", (long long)0);
                     _active[i] = 1;
                 }
@@ -154,6 +157,7 @@ void GnssVoltagePeel::main_thread() {
     // sign + FLL NCO carry the fast nav-bit/overlay and carrier phase, so only the SLOW dish gain is
     // averaged -> the subtracted gain's noise (hence the peel self-noise) drops ~sqrt(EMA window).
     std::vector<double> f_ref(n_prn, std::nan(""));
+    std::vector<double> t_anchor(n_prn, 0.0);  ///< abs time (s) f_ref was pinned; ramp integrates from here
     std::vector<double> f_track(n_prn, 0.0);
     std::vector<double> phi_track(n_prn, 0.0);
     std::vector<cf> a_prev(n_prn, cf(0.0f, 0.0f));
@@ -191,7 +195,7 @@ void GnssVoltagePeel::main_thread() {
             const long long window_start = window_start_hop * (long long)_fft_len;
 
             // Snapshot the (REST-updatable) seeds for this window.
-            std::vector<double> dop, cp, cp_rate;
+            std::vector<double> dop, cp, cp_rate, dop_rate;
             std::vector<long long> ref_hop;
             std::vector<uint8_t> active;
             {
@@ -199,6 +203,7 @@ void GnssVoltagePeel::main_thread() {
                 dop = _doppler;
                 cp = _code_phase;
                 cp_rate = _code_phase_rate;
+                dop_rate = _doppler_rate;
                 ref_hop = _ref_hop;
                 active = _active;
             }
@@ -310,64 +315,83 @@ void GnssVoltagePeel::main_thread() {
                 const double dphi_code = 2.0 * M_PI * (_f_offset + fcar) * best_off
                                          / _replica->chip_rate_hz();
 
-                // Gain to subtract. v1: the raw per-record despread (noisy -> ~3 dB self-noise).
-                // v2 (fll_gain>0 / gain_alpha>0): FLL-track the residual carrier phase, derotate the
-                // gain, EMA the SLOW (de-bitted) gain, re-apply the bit + carrier phase -> the gain
-                // noise averages down so much less noise is subtracted back along R (deeper peel).
-                cf a_use = (cf)best.amplitude;
-                // v2 smoothing only for the degenerate single-segment window (cp ~ 0): across a
-                // period boundary the smoothed gain would need overlay-aware sign handling
-                // (dead-reckoned secondary phase) -- follow-up; segmented windows subtract the
-                // raw per-segment gains (v1-style; self-noise ~2 dof/window).
-                if (segs.size() == 1 && (_fll_gain > 0.0 || _gain_alpha > 0.0)) {
+                // Gain(s) to subtract, PER SEGMENT. v1 (fll_gain==0 && gain_alpha==0): the raw
+                // per-segment despread (noisy -> ~3 dB self-noise, no cross-record averaging).
+                // v2: reference each segment's gain to a fixed per-PRN f_ref by removing the KNOWN
+                // model carrier phase -- the broker dop-refresh's absolute-anchor jump (f_ref-fcar)*t
+                // AND the Doppler-rate ramp 0.5*drate*(t-t_anchor)^2 -- so the FLL/EMA see only the
+                // small UNMODELED residual (no rate-lag, coherent across broker polls). A decision-
+                // directed sign folds the per-segment overlay flip, so BOTH segments feed ONE slow
+                // gain EMA: the gain-estimate noise (hence the subtracted self-noise) drops
+                // ~sqrt(window). Runs on ALL windows now (the old segs==1 gate left v2 INERT on-sky,
+                // since every streaming window straddles the period boundary). The replica is
+                // regenerated per window at fcar, so unlike the tracker no fence/re-anchor is needed
+                // -- the analytic corr bridges the cross-window gain phase. See diag/peel_ff_harness.py.
+                std::vector<cf> a_sub_seg(segs.size());
+                if (_fll_gain > 0.0 || _gain_alpha > 0.0) {
                     using cd = std::complex<double>;
+                    const double t = (double)window_start_hop * dt_hop; // absolute time (s)
                     if (std::isnan(f_ref[p])) {
                         f_ref[p] = fcar;
+                        t_anchor[p] = t;
                         f_track[p] = 0.0;
                         phi_track[p] = 0.0;
                         a_prev_ok[p] = 0;
                         gain_ema[p] = cf(0.0f, 0.0f);
                     }
+                    // KNOWN model phase relative to f_ref. The f_ref*t linear term is folded into the
+                    // (f_ref - fcar) factor; any residual constant/linear error is absorbed by the
+                    // EMA / FLL. (f_ref - fcar)*t bridges the absolute-anchor jump at each broker dop
+                    // refresh; 0.5*drate*(t-t_anchor)^2 is the ramp curvature the FLL used to lag.
+                    const double dtau = t - t_anchor[p];
+                    const double corr = 2.0 * M_PI
+                                        * ((f_ref[p] - fcar) * t + 0.5 * dop_rate[p] * dtau * dtau);
                     const double dt =
                         a_prev_ok[p] ? (double)(window_start_hop - hop_prev[p]) * dt_hop : 0.0;
                     if (a_prev_ok[p] && dt > 0.0) {
                         phi_track[p] += 2.0 * M_PI * f_track[p] * dt;
                         phi_track[p] = std::remainder(phi_track[p], 2.0 * M_PI);
                     }
-                    const cd a_raw = cd(best.amplitude) * std::polar(1.0, -dphi_code); // -> smooth cp ref
-                    const cd a_corr = a_raw * std::polar(1.0, -phi_track[p]);          // derotated
+                    // Total derotation to the smooth common-reference frame (model + pull-in + FLL).
+                    const double derot = corr + dphi_code + phi_track[p];
+                    // FLL from the head segment's common-reference gain (sign-blind -- it squares).
+                    const cd a_head = cd(best.amplitude) * std::polar(1.0, -derot);
                     if (_fll_gain > 0.0 && a_prev_ok[p] && dt > 0.0 && dt <= _fll_max_gap
-                        && std::abs(a_corr) > _fll_lock_amp && std::abs(a_prev[p]) > _fll_lock_amp) {
-                        const cd prod = a_corr * std::conj(cd(a_prev[p]));
+                        && std::abs(a_head) > _fll_lock_amp && std::abs(a_prev[p]) > _fll_lock_amp) {
+                        const cd prod = a_head * std::conj(cd(a_prev[p]));
                         f_track[p] += _fll_gain * std::arg(prod * prod) / 2.0 / (2.0 * M_PI * dt);
                     }
-                    a_prev[p] = (cf)a_corr;
+                    a_prev[p] = (cf)a_head;
                     a_prev_ok[p] = 1;
                     hop_prev[p] = window_start_hop;
-                    cd a_smooth = a_corr;
-                    if (_gain_alpha > 0.0 && std::abs(a_corr) > _fll_lock_amp) {
-                        // decision-directed sign vs the running gain (nav bit / NH overlay / pilot=+1)
-                        const double sign =
-                            (std::abs(gain_ema[p]) == 0.0f
-                             || std::real(a_corr * std::conj(cd(gain_ema[p]))) >= 0.0)
-                                ? 1.0
-                                : -1.0;
-                        const cd g_deb = a_corr * sign;
-                        gain_ema[p] = (std::abs(gain_ema[p]) == 0.0f)
-                                          ? (cf)g_deb
-                                          : (cf)((1.0 - _gain_alpha) * cd(gain_ema[p])
-                                                 + _gain_alpha * g_deb);
-                        a_smooth = cd(gain_ema[p]) * sign; // smoothed gain, bit re-applied
+                    // Per segment: common-reference, decision-directed sign into ONE EMA, re-apply.
+                    for (size_t si = 0; si < segs.size(); ++si) {
+                        const cd a_ref = cd(best_gain[si]) * std::polar(1.0, -derot);
+                        cd a_smooth = a_ref;
+                        if (_gain_alpha > 0.0 && std::abs(a_ref) > _fll_lock_amp) {
+                            const double sign =
+                                (std::abs(gain_ema[p]) == 0.0f
+                                 || std::real(a_ref * std::conj(cd(gain_ema[p]))) >= 0.0)
+                                    ? 1.0
+                                    : -1.0;
+                            const cd g_deb = a_ref * sign;
+                            gain_ema[p] = (std::abs(gain_ema[p]) == 0.0f)
+                                              ? (cf)g_deb
+                                              : (cf)((1.0 - _gain_alpha) * cd(gain_ema[p])
+                                                     + _gain_alpha * g_deb);
+                            a_smooth = cd(gain_ema[p]) * sign; // smoothed gain, overlay sign re-applied
+                        }
+                        a_sub_seg[si] = (cf)(a_smooth * std::polar(1.0, derot)); // back to best_repl frame
                     }
-                    // back to the model frame AND to best_cp (re-apply the code-delay phase) so the
-                    // subtraction matches best_repl.
-                    a_use = (cf)(a_smooth * std::polar(1.0, phi_track[p] + dphi_code));
+                } else {
+                    for (size_t si = 0; si < segs.size(); ++si)
+                        a_sub_seg[si] = (cf)best_gain[si]; // v1: raw per-segment gain
                 }
 
                 // SUBTRACT the gain(s)*R from the residual over the covering channels --
                 // per segment, so a sign flip at the period boundary is peeled exactly.
                 for (size_t si = 0; si < segs.size(); ++si) {
-                    const cf a_s = (segs.size() == 1) ? a_use : (cf)best_gain[si];
+                    const cf a_s = a_sub_seg[si];
                     for (size_t ci = 0; ci < owned.size(); ++ci) {
                         const int local = owned[ci] - _chan_offset;
                         for (int m = segs[si].first; m < segs[si].second; ++m)

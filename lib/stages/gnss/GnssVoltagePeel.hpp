@@ -103,6 +103,9 @@ private:
     std::vector<double> _doppler;
     std::vector<double> _code_phase;
     std::vector<double> _code_phase_rate; ///< chips/hop, from the broker (folds in the l-a clock bias)
+    std::vector<double> _doppler_rate;    ///< Hz/s, from the broker: 2nd-order carrier feed-forward
+                                          ///< for the v2 smooth-gain (removes the zenith Doppler ramp
+                                          ///< that otherwise decoheres the EMA). See main_thread.
     std::vector<long long> _ref_hop;
     std::vector<uint8_t> _active;
     std::mutex _seed_mtx;
