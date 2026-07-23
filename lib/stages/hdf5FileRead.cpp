@@ -150,7 +150,7 @@ public:
             auto attr = node.getAttribute("feed_positions_m");
             auto space = attr.getSpace();
             auto dims = space.getDimensions(); // {N, 3}
-            assert(dims.size() == 3);
+            assert(dims.size() == 2);
             assert(dims.at(1) == 3);
             std::vector<std::array<double, 3>> feed_positions_m(dims.at(0));
             attr.read_raw(reinterpret_cast<double*>(feed_positions_m.data()));
