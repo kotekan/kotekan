@@ -131,6 +131,7 @@ export class GpsFeed {
                 id, tag, prn, az: null, el: null, snr: null, detected: false,
                 amp: 0, coh: 0, deep: 0, dbi: 0, sig: 0, deep_snr: 0, dr: 0,
                 cn0: null, cn0_coh: null, dop: null, coh_s: null,
+                peel_db: null, peel_bound: false,
             });
             return sats.get(id);
         };
@@ -180,6 +181,20 @@ export class GpsFeed {
                     if (a > u && u > 0) {
                         const x = (u * u) / (a * a - u * u);
                         r.cn0 = 10 * Math.log10(x / c.t_rec);
+                    }
+                    // PEEL DEPTH (dB) = 20 log10(deep / peel_deep): the fused voltage
+                    // peel's achieved suppression (docs/gnss_voltage_peel_live.md).
+                    // Valid ONLY when the PRIMARY deep cleared its rectification floor
+                    // (else both numerator and denominator are floor junk -- the exact
+                    // trap the 07-24 "13.1 dB" retraction came from). If the RESIDUAL
+                    // deep is at the floor, the depth is a LOWER BOUND (rendered "≥").
+                    // Rows without peel_deep (chains that don't peel) stay null -> "—".
+                    const pdeep = s.peel_deep || 0, psnr = s.peel_deep_snr || 0;
+                    const dfl = s.deep_floor || 0;
+                    if (pdeep > 0 && r.deep > 0 && dfl > 0
+                        && (s.deep_snr || 0) > 1.1 * dfl) {
+                        r.peel_db = 20 * Math.log10(r.deep / pdeep);
+                        r.peel_bound = psnr <= 1.1 * dfl;
                     }
                 }
         }

@@ -37,6 +37,11 @@ const COLS = [
           + "noise, deep nav-wiped when available): >>1 real, ~1 noise"},
     {key: "coh_s", label: "coh", align: "right", dir: -1,
      tip: "coherent window the deep integration held (s, auto-ladder winner)"},
+    {key: "peel_db", label: "peel", align: "right", dir: -1,
+     tip: "fused voltage-peel depth (dB, deep/residual-deep): how much of this "
+          + "sat's signal the peel removed from the voltage. ≥ = residual at the "
+          + "combiner floor (true depth deeper). — = chain not peeling / no valid "
+          + "deep lock"},
     {key: "dop",  label: "dop",  align: "right", dir: -1,
      tip: "tracked Doppler (Hz, receiver convention -- matches broker logs)"},
 ];
@@ -159,6 +164,9 @@ export class GpsTablePanel {
                 cn0: r.cn0 != null ? r.cn0.toFixed(1) : "—",
                 sig,
                 coh_s: r.coh_s != null && r.coh_s > 0 ? r.coh_s.toFixed(2) : "—",
+                peel_db: r.peel_db != null
+                    ? (r.peel_bound ? "≥" : "") + r.peel_db.toFixed(1)
+                    : "—",
                 dop: r.dop != null ? r.dop.toFixed(0) : "—",
             };
             return `<tr style="${r.active ? "" : "color:#8a929b;"}">`

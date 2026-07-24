@@ -223,6 +223,17 @@ bands:
             but only the ~10-12 visible narrow scans; PRNs swap in/out as they rise/set.
             hint_ttl_s: a hint the broker stops refreshing (a set sat) expires, dropping the
             PRN. Needs the broker's --narrow-search (run_live's almanac assist provides it).
+        # VOLTAGE PEEL (2026-07-24, docs/gnss_voltage_peel_live.md): the fused CHORD-path-B
+        # peel, GPS L1CA ONLY. The records still carry the FULL correlation (analytic add-back
+        # on the device), so the broker/viewer/TEC see nothing new except slots 20-23 (the
+        # residual) and the combiner's peel_deep/peel_deep_snr. NOT enabled on the pilot
+        # chains (E1C/B1C/L1C): the gain loop's overlay-sign predictor carries "same as last",
+        # which is wrong ~50% of records on a per-record overlay -- their residual would be
+        # junk (tracking unharmed, but 2x GPU for nothing). Pilot overlay wiring + broker
+        # nav-bit prediction (the ~11 -> >=26-35 dB unlock on data signals) are P7.
+        # epl_frame: 6 output rows/spec instead of 4 (rows 4/5 = the residual prompt + head):
+        # corr/energy grow 1.5x -> (16+8)*6*16*10 = 23040 per PRN, vs 15360 unpeeled.
+        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
         tracker:
           fll_reacq_hz: 15.0
           note: |
@@ -233,16 +244,25 @@ bands:
             fence-era f_ref fossils the default 100 Hz fence could never see). 15 Hz clears
             routine model error (~1-2 Hz) + the +-3 Hz innovation gate; alias limit
             1/(4*t_rec) = 250 Hz at 1 ms.
+          params_note_inline: "fused voltage peel (see the chain note above)"
+          params:
+            peel: true
+            peel_gain_alpha: 0.01       # ~100-record (0.1 s) FF gain average
+            peel_warmup_records: 100    # subtract only once the gain has converged
+            peel_fll_gain: 0.05         # residual-carrier FLL (idles ~0 with ctrim closed)
         combiner:
           # phase dumps REMOVED (2026-07-20): the three L1 dumps wrote 52 GB of diagnostic
           # text into /tmp/gpswipe (35/13/4.5 GB) with no live consumer -- they were the
           # sigma-phi/multipath forensics tap. Re-add phase_dump_prns/phase_dump_path HERE
           # deliberately when that analysis resumes.
-          params: { integration_length: 1000, navwipe_bit_records: 20 }
+          params: { integration_length: 1000, navwipe_bit_records: 20, peel_depth: true }
           note: |
             integration_length 1000, navwipe_bit_records 20 -> navwipe: integrate ~1 s
             (50 nav bits) coherently; deep |A| in slot 8. (Restored to 1000 once the
             Doppler-rate feed-forward removed the zenith ramp.)
+            peel_depth: deep-integrate the peel residual (slots 20-23) beside the prompt ->
+            peel_deep / peel_deep_snr on REST; depth_db = 20*log10(deep/peel_deep), valid
+            only when deep_snr AND peel_deep_snr clear deep_floor.
 
       - constellation: gal
         signal: GAL_E1C

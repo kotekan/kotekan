@@ -191,6 +191,11 @@ def tracker_cmd(sh, chain, stream, per_chain_streams, first):
     cmd.append(E("fll_gain", sh["fll_gain"]))
     cmd.append(E("carrier_shared", sh["carrier_shared"]))
     cmd.append(E("seed_endpoint", dq(chain["seed_endpoint"])))
+    # Generic per-chain tracker extras (tracker: params: {...}) -- the peel knobs arrived this
+    # way (2026-07-24) and the next chain-specific cudaGnssTrack key should too, instead of
+    # growing another special case above.
+    for k, v in trk.get("params", {}).items():
+        cmd.append(E(k, v, i=trk.get("params_note_inline") if k == "peel" else None))
 
     out = Block([E("name", "cudaOutputData")])
     if per_chain_streams:
@@ -284,7 +289,8 @@ def build_band(node, band_id):
     add("q_buf", std_buf("gnss_pool", sh["expr"]["q_frame"]), c=sh["notes"]["q_buf"])
     add("rec_buf", std_buf("none", sh["expr"]["rec_frame"].format(np="n_prn")))
     add("out_buf", std_buf("none", sh["expr"]["rec_frame"].format(np="n_prn")))
-    add("epl_buf", std_buf("none", sh["expr"]["epl_frame"].format(np="n_prn")),
+    add("epl_buf",
+        std_buf("none", prim.get("epl_frame", sh["expr"]["epl_frame"]).format(np="n_prn")),
         c=sh["notes"]["epl_buf"])
     doc.append(SPACER)
 
@@ -350,7 +356,8 @@ def build_band(node, band_id):
         add(npv, c["n_prn"], c=c.get("section_note"))
         add(prefix + "rec_buf", std_buf("none", sh["expr"]["rec_frame"].format(np=npv)))
         add(prefix + "out_buf", std_buf("none", sh["expr"]["rec_frame"].format(np=npv)))
-        add(prefix + "epl_buf", std_buf("none", sh["expr"]["epl_frame"].format(np=npv)))
+        add(prefix + "epl_buf",
+            std_buf("none", c.get("epl_frame", sh["expr"]["epl_frame"]).format(np=npv)))
         add(prefix + "search", search_stage(sh, c), c=c["search"].get("note"))
         add(prefix + "assemble",
             {"kotekan_stage": "GnssGpuRecordAssemble", "in_buf": prefix + "epl_buf",

@@ -78,7 +78,7 @@ out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_dep
 # GPU epl frame = gnssGpuChain::frame_bytes(n_prn, n_chan) = 176 + 1024*n_prn +
 # 1536*n_prn*n_chan (n_chan 10 -> 15360*n_prn). MAX_REC=16 is baked in, so the size is
 # independent of record length.
-epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 15360 * n_prn }
+epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 23040 * n_prn }
 
 airspy_in:
     cpu_affinity: [14, 15]
@@ -161,6 +161,10 @@ gputrack:
           fll_gain: 0.0
           carrier_shared: true
           seed_endpoint: "/gps_track/set_seeds"
+          peel: true    # fused voltage peel (see the chain note above)
+          peel_gain_alpha: 0.01
+          peel_warmup_records: 100
+          peel_fll_gain: 0.05
         - name: cudaOutputData
           cuda_stream: 1
           gpu_mem: gnss_epl
@@ -236,7 +240,10 @@ assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_
 # integration_length 1000, navwipe_bit_records 20 -> navwipe: integrate ~1 s
 # (50 nav bits) coherently; deep |A| in slot 8. (Restored to 1000 once the
 # Doppler-rate feed-forward removed the zenith ramp.)
-gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20 }
+# peel_depth: deep-integrate the peel residual (slots 20-23) beside the prompt ->
+# peel_deep / peel_deep_snr on REST; depth_db = 20*log10(deep/peel_deep), valid
+# only when deep_snr AND peel_deep_snr clear deep_floor.
+gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20, peel_depth: true }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpswipe", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- Galileo E1-C parallel chain (same channelized stream, second consumers) ----
