@@ -66,6 +66,15 @@ public:
     bool peel = false;         ///< subtract each seeded PRN's waveform before the despread
     double peel_alpha = 0.01;  ///< LMS/EMA rate on the DEROTATED gain (~1/alpha records)
     double peel_min_amp = 0.0; ///< |a| gate: below this the PRN is not peeled at all
+    /// GAIN-QUALITY GATE (amplitude SNR of the AVERAGED gain). The peel removes a*R and
+    /// leaves (a - a_hat)*R, so the residual is |e|/|a| = 1/SNR of the gain ESTIMATE: at
+    /// SNR 1 the peel does nothing, and BELOW 1 it ADDS power. Measured live 2026-07-24 with
+    /// no gate (peel_min_amp 0): 21 of 44 sats sat at |resid|/|full| ~1.57, i.e. the peel was
+    /// making the band DIRTIER on half the constellation -- the exact opposite of the point.
+    /// Peel only where the gain is good enough to help by a real margin.
+    double peel_min_gain_snr = 3.0;
+    std::vector<double> gain_p2; ///< [n_prn] EMA of the per-record gain POWER (signal+noise);
+                                 ///< with |EMA gain|^2 it separates the two -> the SNR above
     int peel_warmup = 100;     ///< gain updates before a PRN's gain is trusted enough to subtract
 
     /// Feed-forward gain per (PRN, channel), in the NCO-DEROTATED frame -- which is where it is

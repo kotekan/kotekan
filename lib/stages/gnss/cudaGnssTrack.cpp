@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdio>
+#include <limits>
 #include <set>
 
 using kotekan::bufferContainer;
@@ -115,12 +116,14 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     // Averaging much longer runs into the receiver's carrier coherence instead.
     peel_alpha = config.get_default<double>(unique_name, "peel_gain_alpha", 0.01);
     peel_min_amp = config.get_default<double>(unique_name, "peel_min_amp", 0.0);
+    peel_min_gain_snr = config.get_default<double>(unique_name, "peel_min_gain_snr", 3.0);
     peel_warmup = config.get_default<int>(unique_name, "peel_warmup_records", 100);
     peel_fll_gain = config.get_default<double>(unique_name, "peel_fll_gain", 0.05);
     peel_tag = signal + "@" + unique_name;
     if (peel) {
         gain.assign((size_t)n_prn * n_chan, std::complex<float>(0.f, 0.f));
         gain_n.assign(n_prn, 0);
+        gain_p2.assign(n_prn, 0.0);
         gain_sign.assign(n_prn, 1.0);
         nav_bits.assign(n_prn, {});
         peel_f_track.assign(n_prn, 0.0);
@@ -395,6 +398,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     sgn_obs = (!have_ref || (dh + dt_) >= 0.0) ? 1.0 : -1.0;
                 }
 
+                double rec_p2 = 0.0; // this record's total gain power (signal + noise)
                 for (int c = 0; c < S.n_chan; ++c) {
                     const double e = S.mir_energy[rowP + c];
                     if (!(e > 0.0))
@@ -415,6 +419,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                                 * sgn_obs;
                     }
                     const std::complex<double> a_d = (a_num / e) * derot_t;
+                    rec_p2 += std::norm(a_d);
                     std::complex<float>& g = S.gain[(size_t)p * S.n_chan + c];
                     g = (S.gain_n[p] == 0)
                             ? (std::complex<float>)a_d
@@ -422,6 +427,9 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                                                         * std::complex<double>(g)
                                                     + S.peel_alpha * a_d);
                 }
+                S.gain_p2[p] = (S.gain_n[p] == 0)
+                                   ? rec_p2
+                                   : (1.0 - S.peel_alpha) * S.gain_p2[p] + S.peel_alpha * rec_p2;
                 if (!have_bits)
                     S.gain_sign[p] = sgn_obs; // fallback prediction for the next records
                 if (S.gain_n[p] < 1000000)
@@ -671,6 +679,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     // yet depth stuck at ~0 dB, because the bench re-seeds churned re-acqs faster
                     // than the ~100-record EMA could re-cohere). Relearn from this arc.
                     S.gain_n[p] = 0;
+                    S.gain_p2[p] = 0.0;
                     for (int ci = 0; ci < S.n_chan; ++ci)
                         S.gain[(size_t)p * S.n_chan + ci] = std::complex<float>(0.f, 0.f);
                     S.peel_f_track[p] = 0.0; // the FLL restarts with the arc
@@ -763,7 +772,19 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                         ah[(size_t)ci] = (std::complex<float>)(g * rot * sh);
                         at[(size_t)ci] = (std::complex<float>)(g * rot * stl);
                     }
-                    if (std::sqrt(amp2) > S.peel_min_amp)
+                    // GAIN-QUALITY GATE. Peeling with gain a_hat = a + e leaves e*R, so
+                    // |resid|/|full| = |e|/|a| = 1/SNR(a_hat): at SNR 1 the peel is a no-op and
+                    // BELOW 1 it makes the band dirtier. Estimate that SNR from what the EMA
+                    // already knows -- coherent power |<a>|^2 vs total per-record power
+                    // <|a|^2>; their difference is the per-record noise, and the EMA suppresses
+                    // it by alpha/(2-alpha). Only peel with real margin (default SNR 3 = the
+                    // residual is 1/3 of the signal, ~9.5 dB).
+                    const double a_eff = S.peel_alpha / (2.0 - S.peel_alpha);
+                    const double noise_rec = std::max(0.0, S.gain_p2[p] - amp2);
+                    const double snr_gain = (noise_rec * a_eff > 0.0)
+                                                ? std::sqrt(amp2 / (noise_rec * a_eff))
+                                                : std::numeric_limits<double>::infinity();
+                    if (std::sqrt(amp2) > S.peel_min_amp && snr_gain > S.peel_min_gain_snr)
                         pspecs.push_back(
                             GnssCudaDespread::PeelSpec{p, cp_seed, fcar, local, ah, at});
                 }
@@ -905,13 +926,17 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         // |resid|/|full| per PRN, from the records themselves: the number the depth SHOULD
         // reflect. ~0 = peeling hard, ~1 = subtracting nothing.
         std::string ratios;
+        int n_hurt = 0;
         for (int p = 0; p < S.n_prn; ++p)
-            if (active[p] && S.peel_ratio[p] >= 0.0)
+            if (active[p] && S.peel_ratio[p] >= 0.0) {
                 ratios += fmt::format(" {:d}:{:.2f}", S.prns[p], S.peel_ratio[p]);
+                if (S.peel_ratio[p] > 1.05)
+                    ++n_hurt;
+            }
         WARN("peel[{:s}]: {:d}/{:d} past warmup; strongest PRN{:d} |g|={:.3g} n={:d} "
-             "fll={:+.2f}Hz; NOT-PEELING:{:s}; resid/full:{:s}",
+             "fll={:+.2f}Hz; HURTING={:d}; NOT-PEELING:{:s}; resid/full:{:s}",
              S.peel_tag, npeel, nact, gmax_p, gmax, gmax_n,
-             (gi >= 0) ? S.peel_f_track[gi] : 0.0, lag.empty() ? " none" : lag,
+             (gi >= 0) ? S.peel_f_track[gi] : 0.0, n_hurt, lag.empty() ? " none" : lag,
              ratios.empty() ? " -" : ratios);
     }
 
