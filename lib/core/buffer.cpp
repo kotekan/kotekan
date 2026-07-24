@@ -8,7 +8,7 @@
 #include <pthread.h>  // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
 #include <sched.h>    // for CPU_SET, CPU_ZERO, cpu_set_t
 #include <sstream>    // for ostringstream
-#include <stdexcept>  // for runtime_error
+#include <stdexcept>  // for runtime_error, invalid_argument
 #include <stdlib.h>   // for free, malloc
 #include <string.h>   // for strerror, memset, memcpy
 #include <sys/mman.h> // for mlock, mmap, munmap, MAP_FAILED
@@ -413,6 +413,16 @@ int Buffer::peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_le
     return ID;
 }
 
+void Buffer::enable_peek_hold() {
+    buffer_lock lock(mutex);
+    if (num_frames < 2)
+        throw std::invalid_argument(
+            fmt::format(fmt("peek_hold on buffer {:s} requires num_frames >= 2: with a single "
+                            "frame the producer would deadlock waiting for the held frame"),
+                        buffer_name));
+    peek_hold_enabled = true;
+}
+
 void Buffer::json_description(nlohmann::json& buf_json) {
     buffer_lock lock(mutex);
     GenericBuffer::json_description(buf_json);
@@ -422,6 +432,9 @@ void Buffer::json_description(nlohmann::json& buf_json) {
     buf_json["num_full_frame"] = get_num_full_frames();
     buf_json["frame_size"] = frame_size;
     buf_json["last_frame_arrival_time"] = last_arrival_time;
+    // Lets /buffers consumers see which buffers keep their newest frame
+    // peekable (and that one "full" frame at idle is the hold, not backlog).
+    buf_json["peek_hold"] = peek_hold_enabled;
 }
 
 std::string Buffer::get_dot_node_label() {
@@ -539,6 +552,7 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
 
     bool set_full = false;
     bool set_empty = false;
+    bool release_empty = false;
     {
         buffer_lock lock(mutex);
 
@@ -550,14 +564,29 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
             last_arrival_time = e_time();
             set_full = true;
 
+            // peek_hold: a newer frame is now full, so run the previously
+            // held frame's deferred empty transition. last_frame_filled
+            // has moved on, so private_mark_frame_empty() won't re-defer.
+            if (hold_deferred_id >= 0 && hold_deferred_id != ID) {
+                const int held = hold_deferred_id;
+                hold_deferred_id = -1;
+                release_empty = private_mark_frame_empty(held);
+            }
+
             // If there are no consumers registered then we can just mark the buffer empty
             if (private_consumers_done(ID)) {
-                DEBUG("No consumers are registered on {:s} dropping data in frame {:d}...",
-                      buffer_name, ID);
-                is_full[ID] = false;
-                metadata[ID].reset();
-                set_empty = true;
-                private_reset_consumers(ID);
+                if (peek_hold_enabled) {
+                    // peek_hold: keep the frame full until the next fill
+                    // instead of dropping it on the floor.
+                    hold_deferred_id = ID;
+                } else {
+                    DEBUG("No consumers are registered on {:s} dropping data in frame {:d}...",
+                          buffer_name, ID);
+                    is_full[ID] = false;
+                    metadata[ID].reset();
+                    set_empty = true;
+                    private_reset_consumers(ID);
+                }
             }
         }
     }
@@ -565,6 +594,12 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
     // Signal consumer
     if (set_full)
         full_cond.notify_all();
+
+    // Signal any producer waiting to refill the frame just released from
+    // its peek_hold (with multiple producers, one can already be asleep in
+    // wait_for_empty_frame on it).
+    if (release_empty)
+        empty_cond.notify_all();
 
     // Signal producer
     if (set_empty) {
@@ -636,6 +671,15 @@ void Buffer::mark_frame_empty(const std::string& consumer_name, const int ID) {
 }
 
 bool Buffer::private_mark_frame_empty(const int ID) {
+    // peek_hold: never empty the newest full frame -- defer its transition
+    // until a newer frame is marked full, so it stays available (data and
+    // metadata) to peek_newest_full_frame(). Covers every route here: the
+    // last-consumer path and consumer unregistration.
+    if (peek_hold_enabled && ID == last_frame_filled) {
+        hold_deferred_id = ID;
+        return false;
+    }
+
     bool broadcast = false;
     if (_zero_frames) {
         pthread_t zero_t;
