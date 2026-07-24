@@ -2511,11 +2511,19 @@ def main(argv=None):
                 d["code_phase_chips"] = d["code_phase_chips"] + dll_trim[prn]
             if car_trim.get(prn):
                 d["carrier_trim_hz"] = car_trim[prn]
-            if navbits is not None:
+            # Peel sign source. PILOTS (P7b): the combiner publishes bit_pred directly --
+            # its secondary overlay is DETERMINISTIC, so the chips are projected from the
+            # pinned dead-reckon anchor with no decode and no round trip; forward verbatim.
+            # DATA signals (P7a): the LNAV predictor's output. bit_pred wins where both
+            # exist (a known overlay beats a decoded guess).
+            _row = status.get(prn) or {}
+            if _row.get("bit_pred", {}).get("bits"):
+                d["nav_bits"] = _row["bit_pred"]
+            elif navbits is not None:
                 # Predict from the freshest capture-clock UTC this PRN has reported: the
                 # tracker consumes by ITS record UTC (same capture clock), so wall-clock
                 # never enters. 4 s horizon >> the ~1 s status staleness + push cadence.
-                _utc = (status.get(prn) or {}).get("utc")
+                _utc = _row.get("utc")
                 if _utc:
                     nb = navbits.predict(prn, float(_utc), horizon_s=4.0)
                     if nb is not None:

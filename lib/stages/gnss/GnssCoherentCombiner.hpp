@@ -221,6 +221,22 @@ private:
     /// broker can LNAV-decode and predict future bits for the peel. Config `bit_export: true`.
     bool _bit_export = false;
     std::vector<NavObs> _st_nav_obs; ///< last emit's observations per PRN (under _st_mtx)
+
+    /// P7b PILOT OVERLAY PREDICTION. A pilot's secondary overlay (E1C CS25 / B1C / L1C-O /
+    /// L5 NH) is DETERMINISTIC -- no decode needed, unlike LNAV. Once the dead-reckon anchor
+    /// is pinned (_dr_phase/_dr_utc/_dr_rec_dt: the same anchor the ADR wipe projects from),
+    /// every future chip is knowable, so the combiner can emit PREDICTIONS directly in the
+    /// tracker's nav_bits format and the broker just forwards them -- the peel's sign source
+    /// with ZERO new tracker code and no LNAV round trip. One chip per primary period, so
+    /// bit_s == the record period and the chip boundary IS the code-period boundary the peel
+    /// splits head/tail at.
+    struct BitPred {
+        double utc0 = 0.0;         ///< start UTC of bits[0]'s primary period
+        double bit_s = 0.0;        ///< chip duration = record period
+        std::vector<int8_t> bits;  ///< +-1 overlay chips
+    };
+    std::vector<BitPred> _st_bit_pred;
+    double _bit_pred_horizon_s = 4.0;
     std::vector<std::vector<std::complex<double>>> _navbuf_res;  ///< residual prompt A per record
     std::vector<std::vector<std::complex<double>>> _navhead_res; ///< residual head segment
 

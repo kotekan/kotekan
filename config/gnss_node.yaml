@@ -287,11 +287,21 @@ bands:
             alpha/sqrt2 -1.3 dB => strongest sats ~6-7 dB below GPS equivalents. 4 ms
             windows recover +3 dB/window; deepen the incoherent stack + lower the gate to
             compensate (the drop-tolerant snapshot makes long windows safe).
+        # VOLTAGE PEEL (P7b): pilot chain. Its secondary overlay is DETERMINISTIC, so
+        # the combiner publishes bit_pred (projected from the pinned dead-reckon
+        # anchor) and the broker forwards it as the peel's sign source -- no LNAV
+        # decode, no round trip. 6 output rows/spec like the GPS chain.
+        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
         tracker:
           fll_reacq_hz: 15.0
+          params:
+            peel: true
+            peel_gain_alpha: 0.01
+            peel_warmup_records: 100
+            peel_fll_gain: 0.05
           note_inline: "tight snap-to-model fence (rec B; free under dop-continuous; alias limit 62 Hz at 4 ms)"
         combiner:
-          params: { n_prn: 36, prns: RANGE, integration_length: 250, secondary_overlay: E1_CS25 }
+          params: { n_prn: 36, prns: RANGE, integration_length: 250, secondary_overlay: E1_CS25, peel_depth: true, bit_export: true}
           note: |
             E1-C is a PURE PILOT once CS25 is wiped deterministically (secondary_overlay) --
             the deep integrates fully coherently with NO per-record sign freedom. (The old
@@ -313,8 +323,18 @@ bands:
           never detect.
         search:
           params: { acquire_snr: 7.0, acquire_windows: 12, doppler_step: 50.0, require_hint: true, hint_ttl_s: 20.0 }
+        # VOLTAGE PEEL (P7b): pilot chain. Its secondary overlay is DETERMINISTIC, so
+        # the combiner publishes bit_pred (projected from the pinned dead-reckon
+        # anchor) and the broker forwards it as the peel's sign source -- no LNAV
+        # decode, no round trip. 6 output rows/spec like the GPS chain.
+        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
         tracker:
           fll_reacq_hz: 15.0
+          params:
+            peel: true
+            peel_gain_alpha: 0.01
+            peel_warmup_records: 100
+            peel_fll_gain: 0.05
           note_inline: "tight snap-to-model fence (rec B; alias limit 25 Hz at 10 ms)"
         combiner:
           # DIVERGENT (audit): bds combiners carry no prns list while gal combiners do
@@ -324,7 +344,7 @@ bands:
           # controls away from 0.5. Offline: run the real overlay_wipe on the dumped (a, head)
           # records to localize the fault (tracker head data vs combiner bookkeeping). Remove
           # once the null is explained (see memory: b1c bf=0.5 deep-null).
-          params: { nh_assist: true, nh_min_refs: 3, n_prn: 63, integration_length: 100, secondary_overlay: B1C, phase_dump_prns: [19, 21, 22, 34, 36, 39], phase_dump_path: /tmp/gpswipe/phase_dump_bds.txt }
+          params: { nh_assist: true, nh_min_refs: 3, n_prn: 63, integration_length: 100, secondary_overlay: B1C, phase_dump_prns: [19, 21, 22, 34, 36, 39], phase_dump_path: /tmp/gpswipe/phase_dump_bds.txt, peel_depth: true, bit_export: true}
           note: |
             B1C pilot: deterministic per-PRN 1800-chip overlay wipe (the per-record stopgap
             floored deep at sqrt(2*100/pi) ~ 8 sigma while the search hit 290+).
@@ -354,8 +374,18 @@ bands:
             BOC(1,1) pilot, 10 ms records -> doppler_step 50 (10 ms coherent bins, as B1C);
             acquire_windows 20 to deepen the incoherent stack (L1C-P: pilot -3 dB + band/BOC
             truncation, so the strongest sats sit a few dB below C/A equivalents).
+        # VOLTAGE PEEL (P7b): pilot chain. Its secondary overlay is DETERMINISTIC, so
+        # the combiner publishes bit_pred (projected from the pinned dead-reckon
+        # anchor) and the broker forwards it as the peel's sign source -- no LNAV
+        # decode, no round trip. 6 output rows/spec like the GPS chain.
+        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
         tracker:
           fll_reacq_hz: 15.0
+          params:
+            peel: true
+            peel_gain_alpha: 0.01
+            peel_warmup_records: 100
+            peel_fll_gain: 0.05
           note_inline: "tight snap-to-model fence (rec B; free under dop-continuous; alias limit 25 Hz at 10 ms)"
         combiner:
           # nh_min_refs 2 (2026-07-22): the overlay convention is pinned per-emit from a
@@ -364,7 +394,7 @@ bands:
           # once), so 3 starved the calibration -> the real III sats flickered (jumping
           # nh_phase, blank coherent despite strong search sig). 2 agreeing to +-3 is still
           # strong mislock protection for a small constellation. (B1C keeps 3: BDS-3 has ~24.)
-          params: { nh_assist: true, nh_min_refs: 2, n_prn: 32, integration_length: 100, secondary_overlay: L1CO }
+          params: { nh_assist: true, nh_min_refs: 2, n_prn: 32, integration_length: 100, secondary_overlay: L1CO, peel_depth: true, bit_export: true}
           note: |
             L1C-P: deterministic per-PRN 1800-symbol L1CO overlay wipe (same code path as B1C).
             integration_length 100 x 10 ms = 1 s. The ADR de-rotates the L1CO overlay (plain

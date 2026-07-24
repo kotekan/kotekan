@@ -107,8 +107,11 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // must configure whatever deep path it uses (navwipe_bit_records for GPS L1CA).
     _peel_depth = config.get_default<bool>(unique_name, "peel_depth", false);
     _bit_export = config.get_default<bool>(unique_name, "bit_export", false);
-    if (_bit_export)
+    _bit_pred_horizon_s = config.get_default<double>(unique_name, "bit_pred_horizon_s", 4.0);
+    if (_bit_export) {
         _st_nav_obs.assign(_n_prn, {});
+        _st_bit_pred.assign(_n_prn, {});
+    }
     if (_peel_depth) {
         _navbuf_res.assign(_n_prn, {});
         _navhead_res.assign(_n_prn, {});
@@ -1149,6 +1152,35 @@ void GnssCoherentCombiner::main_thread() {
                 _st_peel_deep_snr[p] = (float)peel_rsnr[p];
                 if (_bit_export)
                     _st_nav_obs[p] = std::move(nav_obs[p]);
+                // P7b: a pilot's overlay is deterministic -- project the pinned dead-reckon
+                // anchor forward and publish the chips the peel should subtract with. Same
+                // projection the ADR wipe uses (idx from UTC, chip = phase+idx mod L), so the
+                // two can never disagree about which chip a record carries.
+                if (_bit_export) {
+                    BitPred bp;
+                    const int prn_e = (int)std::lround(rec[0]);
+                    const std::vector<int8_t>* ov = overlay_for(prn_e);
+                    const double t_e = ref_utc[p];
+                    if (ov && !ov->empty() && _dr_phase[p] >= 0 && _dr_rec_dt[p] > 0.0
+                        && _dr_prn[p] == prn_e && t_e > 0.0) {
+                        const int L_ov = (int)ov->size();
+                        const double dt_r = _dr_rec_dt[p];
+                        // start at the first primary period at/after this emit
+                        const long long i0 =
+                            (long long)std::ceil((t_e - _dr_utc[p]) / dt_r);
+                        const int n = (int)std::ceil(_bit_pred_horizon_s / dt_r) + 2;
+                        bp.utc0 = _dr_utc[p] + (double)i0 * dt_r;
+                        bp.bit_s = dt_r;
+                        bp.bits.reserve((size_t)n);
+                        for (int j = 0; j < n; ++j) {
+                            const long long k = _dr_phase[p] + i0 + j;
+                            const int kk = (int)(((k % L_ov) + L_ov) % L_ov);
+                            const int8_t c = (*ov)[(size_t)kk];
+                            bp.bits.push_back(c >= 0 ? (int8_t)1 : (int8_t)-1);
+                        }
+                    }
+                    _st_bit_pred[p] = std::move(bp);
+                }
                 _st_dll_disc[p] = rec[gnss::CMB_DLL_DISC];
                 _st_head_frac[p] = rec[gnss::CMB_HEAD_FRAC];
                 // S4, thermal floor removed using the COHERENT SNR (independent of the
@@ -1257,6 +1289,17 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
     // the broker's LNAV stitcher consumes these (see NavObs for the timing convention).
     if (_bit_export)
         for (int p = 0; p < _n_prn; ++p) {
+            // Pilot chains publish PREDICTIONS (deterministic overlay -- the broker forwards
+            // them straight into nav_bits); data chains publish OBSERVATIONS for LNAV decode.
+            const BitPred& bp = _st_bit_pred[(size_t)p];
+            if (!bp.bits.empty()) {
+                nlohmann::json pb = nlohmann::json::array();
+                for (int8_t c : bp.bits)
+                    pb.push_back((int)c);
+                reply[(size_t)p]["bit_pred"] = {{"utc0", bp.utc0},
+                                                {"bit_s", bp.bit_s},
+                                                {"bits", pb}};
+            }
             const NavObs& o = _st_nav_obs[(size_t)p];
             if (o.bits.empty())
                 continue;

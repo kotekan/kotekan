@@ -78,7 +78,7 @@ out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_dep
 # GPU epl frame = gnssGpuChain::frame_bytes(n_prn, n_chan) = 176 + 1024*n_prn +
 # 1536*n_prn*n_chan (n_chan 10 -> 15360*n_prn). MAX_REC=16 is baked in, so the size is
 # independent of record length.
-epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 15360 * n_prn }
+epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 23040 * n_prn }
 
 airspy_in:
     cpu_affinity: [14, 15]
@@ -161,6 +161,10 @@ gputrack:
           fll_gain: 0.0
           carrier_shared: true
           seed_endpoint: "/gps_track/set_seeds"
+          peel: true    # fused voltage peel (see the chain note above)
+          peel_gain_alpha: 0.01
+          peel_warmup_records: 100
+          peel_fll_gain: 0.05
         - name: cudaOutputData
           cuda_stream: 1
           gpu_mem: gnss_epl
@@ -183,6 +187,10 @@ gputrack:
           fll_gain: 0.0
           carrier_shared: true
           seed_endpoint: "/gal_track/set_seeds"
+          peel: true
+          peel_gain_alpha: 0.01
+          peel_warmup_records: 100
+          peel_fll_gain: 0.05
         - name: cudaOutputData
           cuda_stream: 2
           gpu_mem: gal_epl
@@ -205,6 +213,10 @@ gputrack:
           fll_gain: 0.0
           carrier_shared: true
           seed_endpoint: "/bds_track/set_seeds"
+          peel: true
+          peel_gain_alpha: 0.01
+          peel_warmup_records: 100
+          peel_fll_gain: 0.05
         - name: cudaOutputData
           cuda_stream: 3
           gpu_mem: bds_epl
@@ -227,6 +239,10 @@ gputrack:
           fll_gain: 0.0
           carrier_shared: true
           seed_endpoint: "/l1c_track/set_seeds"
+          peel: true
+          peel_gain_alpha: 0.01
+          peel_warmup_records: 100
+          peel_fll_gain: 0.05
         - name: cudaOutputData
           cuda_stream: 4
           gpu_mem: l1c_epl
@@ -236,7 +252,13 @@ assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_
 # integration_length 1000, navwipe_bit_records 20 -> navwipe: integrate ~1 s
 # (50 nav bits) coherently; deep |A| in slot 8. (Restored to 1000 once the
 # Doppler-rate feed-forward removed the zenith ramp.)
-gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20 }
+# peel_depth: deep-integrate the peel residual (slots 20-23) beside the prompt ->
+# peel_deep / peel_deep_snr on REST; depth_db = 20*log10(deep/peel_deep), valid
+# only when deep_snr AND peel_deep_snr clear deep_floor.
+# bit_export: publish the navwipe's per-bit sign decisions (nav_obs) for the
+# broker's LNAV decode-and-predict -> predicted nav_bits back to the tracker =
+# the peel's sign source (P7a; removes the ~11 dB sign-lag depth ceiling).
+gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20, peel_depth: true, bit_export: true }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpswipe", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- Galileo E1-C parallel chain (same channelized stream, second consumers) ----
@@ -248,7 +270,7 @@ record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpswipe"
 gal_n_prn: 36
 gal_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: gal_n_prn * record_floats * sizeof_float }
 gal_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: gal_n_prn * record_floats * sizeof_float }
-gal_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * gal_n_prn + 15360 * gal_n_prn }
+gal_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * gal_n_prn + 23040 * gal_n_prn }
 # E1-C budget vs GPS C/A: pilot -3 dB, band truncation ~-2.5 dB, Interplex
 # alpha/sqrt2 -1.3 dB => strongest sats ~6-7 dB below GPS equivalents. 4 ms
 # windows recover +3 dB/window; deepen the incoherent stack + lower the gate to
@@ -271,7 +293,7 @@ gal_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: gal_epl_buf, out_b
 # per-record stopgap navwipe_bit_records 1 capped deep at the sqrt(2N/pi)
 # rectification floor ~13-16 sigma.) integration_length 250 x 4 ms = 1 s, matching
 # the GPS emit cadence.
-gal_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [gal_rec_buf], out_buf: gal_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 250, secondary_overlay: E1_CS25 }
+gal_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [gal_rec_buf], out_buf: gal_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 250, secondary_overlay: E1_CS25, peel_depth: true, bit_export: true }
 gal_record: { kotekan_stage: rawFileWrite, in_buf: gal_out_buf, base_dir: "/tmp/gpswipe", file_name: "gal_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- BeiDou-3 B1C parallel chain (third constellation, same 1575.42 tune). B1C
@@ -282,7 +304,7 @@ gal_record: { kotekan_stage: rawFileWrite, in_buf: gal_out_buf, base_dir: "/tmp/
 bds_n_prn: 63
 bds_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: bds_n_prn * record_floats * sizeof_float }
 bds_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: bds_n_prn * record_floats * sizeof_float }
-bds_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * bds_n_prn + 15360 * bds_n_prn }
+bds_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * bds_n_prn + 23040 * bds_n_prn }
 bds_search:
     kotekan_stage: GnssChannelizedSearch
     in_buf: chan_buf
@@ -301,7 +323,7 @@ bds_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: bds_epl_buf, out_b
 # floored deep at sqrt(2*100/pi) ~ 8 sigma while the search hit 290+).
 # nh_assist: fleet-grid overlay time assist -- THIS is the flag the 07-18 launch
 # silently dropped (e1eba7a2); it is generated now and cannot be dropped again.
-bds_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 3, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 100, secondary_overlay: B1C, phase_dump_prns: [19, 21, 22, 34, 36, 39], phase_dump_path: "/tmp/gpswipe/phase_dump_bds.txt" }
+bds_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 3, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 100, secondary_overlay: B1C, phase_dump_prns: [19, 21, 22, 34, 36, 39], phase_dump_path: "/tmp/gpswipe/phase_dump_bds.txt", peel_depth: true, bit_export: true }
 bds_record: { kotekan_stage: rawFileWrite, in_buf: bds_out_buf, base_dir: "/tmp/gpswipe", file_name: "bds_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- GPS L1C-P parallel chain (4th L1 constellation, same 1575.42 tune) ----
@@ -317,7 +339,7 @@ bds_record: { kotekan_stage: rawFileWrite, in_buf: bds_out_buf, base_dir: "/tmp/
 l1c_n_prn: 32
 l1c_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: l1c_n_prn * record_floats * sizeof_float }
 l1c_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: l1c_n_prn * record_floats * sizeof_float }
-l1c_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * l1c_n_prn + 15360 * l1c_n_prn }
+l1c_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * l1c_n_prn + 23040 * l1c_n_prn }
 # BOC(1,1) pilot, 10 ms records -> doppler_step 50 (10 ms coherent bins, as B1C);
 # acquire_windows 20 to deepen the incoherent stack (L1C-P: pilot -3 dB + band/BOC
 # truncation, so the strongest sats sit a few dB below C/A equivalents).
@@ -342,7 +364,7 @@ l1c_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l1c_epl_buf, out_b
 # window, so the blind alignment search flickers (nh_phase jumps every emit, deep_snr
 # collapses 300->1->200). The broker's predicted L1CO phase (from GPST+range) pins it;
 # the combiner self-calibrates the convention constant from confidently-locked sats.
-l1c_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 2, in_bufs: [l1c_rec_buf], out_buf: l1c_out_buf, n_prn: 32, integration_length: 100, secondary_overlay: L1CO }
+l1c_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 2, in_bufs: [l1c_rec_buf], out_buf: l1c_out_buf, n_prn: 32, integration_length: 100, secondary_overlay: L1CO, peel_depth: true, bit_export: true }
 l1c_record: { kotekan_stage: rawFileWrite, in_buf: l1c_out_buf, base_dir: "/tmp/gpswipe", file_name: "l1c_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --band l1 --gps-constellations G,E,C,L' }
