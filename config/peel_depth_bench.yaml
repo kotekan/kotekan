@@ -1,0 +1,90 @@
+---
+# PEEL DEPTH BENCH -- the CALIBRATED estimator.
+#
+# WHY: measuring peel depth from GnssChannelizedSearch snr is INVALID. That snr is a grid
+# peak-to-noise DETECTION statistic, not a depth measurement, and it does not scale consistently
+# with acquire_windows: on identical configs, base read ~61 / resid ~43-48 at aw=500 but ~67-70 /
+# ~2-7 at aw=100 (both directions backwards), and the variant RANKING flipped between the two
+# (2026-07-23). Depths quoted from those runs are artifacts of the detection threshold.
+#
+# INSTEAD: run the SAME instrument the live system trusts -- tracker -> GnssCoherentCombiner -->
+# deep COHERENT integration -- on the baseline AND on the residual, and take the ratio:
+#     depth_dB = 20*log10(deep_snr_base / deep_snr_resid)
+# (the T_coh term in cn0_coh = 20log10(deep_snr) - 10log10(coherence_s) cancels in the ratio).
+# deep_floor tells you when the residual has bottomed out, so "residual at floor -> depth > X dB"
+# is reportable honestly instead of silently censored.
+#
+# Also note: despreading the residual with the SAME replica the peel subtracted is DEGENERATE --
+# for v1 the per-record projection is removed exactly, giving 0 residual and infinite apparent
+# depth (this is why the peel's own get_status peel_db is unusable). The combiner chain here
+# re-tracks the residual independently, which is the whole point.
+#
+# Seeds come from diag/peel_bench_broker.py (peel AND both trackers). Run:
+#   kotekan -c config/peel_depth_bench.yaml -b 0.0.0.0:12060
+#   peel_bench_broker.py --url http://localhost:12060 --prns 10,32 \
+#       --doppler-rate "10:-0.147,32:-0.418" --peel peel --trackers track_base,track_peel
+type: config
+log_level: info
+instrument_name: airspy_gps
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+samples_per_data_set: 199680
+bytes_per_sample: 2
+sizeof_float: 4
+buffer_depth: 16
+spectrum_length: 10
+sample_rate: 20.0e6
+f_offset: 5.0e6
+num_taps: 4
+signal: GPS_L1CA
+code_doppler_sign: 1.0
+doppler_margin_hz: 250000.0
+hops_per_record: 1000
+n_prn: 32
+record_floats: 20
+cpu_affinity: [0, 1, 2, 3]
+
+gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }
+
+input_buf: { kotekan_buffer: standard, metadata_pool: none,      num_frames: buffer_depth, frame_size: samples_per_data_set * bytes_per_sample }
+chan_buf:  { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: buffer_depth, frame_size: samples_per_data_set * sizeof_float }
+resid_buf: { kotekan_buffer: standard, metadata_pool: gnss_pool, num_frames: 48, frame_size: hops_per_record * 10 * 8 }
+rec_base:  { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+rec_peel:  { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+out_base:  { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+out_peel:  { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: n_prn * record_floats * sizeof_float }
+
+read_in:
+    kotekan_stage: rawFileRead
+    buf: input_buf
+    base_dir: "/tmp/gpsin_l1_1737"
+    file_name: "gpsin"
+    file_ext: "raw"
+    end_interrupt: true
+fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, input_type: real, pfb_window: hamming }
+
+# search only supplies the broker with detections to build seeds from -- NOT the depth metric.
+search_base: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 8, acquire_windows: 20, prns: [10, 32, 31, 23, 25, 28] }
+
+peel:
+    kotekan_stage: GnssVoltagePeel
+    in_buf: chan_buf
+    out_buf: resid_buf
+    channel_offset: 0
+    n_channels: 10
+    prns: [10, 32]
+    doppler_hz: [-1904.0, 362.0]
+    code_phase_chips: [546.90, 738.71]
+    code_phase_rate: [1.3537e-7, 9.152e-8]
+    doppler_rate_hz_s: [-0.147, -0.418]
+    pullin_chips: 0.0        # REQUIRED 0 when smoothing (per-record re-pick wrecks the phase track)
+    pullin_step: 0.25
+    fll_gain: 0.05
+    gain_alpha: 0.15
+    fll_lock_amp: 0.0
+
+# ---- the calibrated depth instrument: identical chains on baseline and residual ----
+track_base: { kotekan_stage: GnssChannelizedTracker, in_buf: chan_buf,  out_buf: rec_base, channel_offset: 0, n_channels: 10, pullin_chips: 1.0, pullin_step: 0.5, fll_gain: 0.03, fll_lock_amp: 0, hops_per_record: 1000, prns: [10, 32] }
+track_peel: { kotekan_stage: GnssChannelizedTracker, in_buf: resid_buf, out_buf: rec_peel, channel_offset: 0, n_channels: 10, pullin_chips: 1.0, pullin_step: 0.5, fll_gain: 0.03, fll_lock_amp: 0, hops_per_record: 1000, prns: [10, 32] }
+comb_base:  { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_base], out_buf: out_base, integration_length: 1000, navwipe_bit_records: 20 }
+comb_peel:  { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_peel], out_buf: out_peel, integration_length: 1000, navwipe_bit_records: 20 }

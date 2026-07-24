@@ -70,6 +70,10 @@ def main():
     ap.add_argument("--url", default="http://localhost:12060", help="bench kotekan REST base")
     ap.add_argument("--search", default="search_base", help="stage name of the BASELINE search")
     ap.add_argument("--peel", default="peel", help="stage name of the GnssVoltagePeel")
+    ap.add_argument("--trackers", default="",
+                    help="comma-separated GnssChannelizedTracker stage names to seed as well "
+                         "(e.g. 'track_base,track_peel' for the depth bench -- they take the same "
+                         "set_seeds payload). Empty = peel only.")
     ap.add_argument("--prns", required=True, help="comma-separated PRNs the peel is configured for")
     ap.add_argument("--interval", type=float, default=1.0, help="seed push period (s) = dop refresh rate")
     ap.add_argument("--duration", type=float, default=0.0, help="stop after this many s (0 = forever)")
@@ -97,13 +101,17 @@ def main():
             drate_cfg[int(k)] = float(v)
     dt_hop = (2.0 * args.spectrum_length) / args.sample_rate  # seconds per hop
     det_url = "%s/%s/get_detections" % (args.url.rstrip("/"), args.search.strip("/"))
-    seed_url = "%s/%s/set_seeds" % (args.url.rstrip("/"), args.peel.strip("/"))
+    seed_urls = ["%s/%s/set_seeds" % (args.url.rstrip("/"), args.peel.strip("/"))]
+    for t in args.trackers.split(","):
+        if t.strip():
+            seed_urls.append("%s/%s/set_seeds" % (args.url.rstrip("/"), t.strip().strip("/")))
 
     hist = {p: [] for p in prns}   # prn -> [(ref_hop, doppler_hz, cp_unwrapped)]
     t0 = time.time()
     n_push = 0
     print("bench-broker: %s -> %s | prns=%s interval=%.2fs dt_hop=%.3g s"
-          % (det_url, seed_url, prns, args.interval, dt_hop), flush=True)
+          % (det_url, ",".join(u.rsplit("/", 2)[-2] for u in seed_urls), prns,
+             args.interval, dt_hop), flush=True)
 
     while True:
         if args.duration > 0 and (time.time() - t0) >= args.duration:
@@ -165,11 +173,14 @@ def main():
             if args.dry_run:
                 print("  [dry] push #%d: %s" % (n_push, desc), flush=True)
             else:
-                try:
-                    _post(seed_url, seeds)
-                    print("  push #%d: %s" % (n_push, desc), flush=True)
-                except Exception as e:
-                    print("  seed push failed (%s)" % e, flush=True)
+                bad = []
+                for u in seed_urls:
+                    try:
+                        _post(u, seeds)
+                    except Exception as e:
+                        bad.append("%s (%s)" % (u.rsplit("/", 2)[-2], e))
+                print("  push #%d: %s%s" % (n_push, desc,
+                                            ("  FAILED:" + ",".join(bad)) if bad else ""), flush=True)
         time.sleep(args.interval)
 
     print("bench-broker: done (%d pushes)" % n_push, flush=True)
