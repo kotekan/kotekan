@@ -50,12 +50,8 @@ static void consume_frame(Buffer& buf, int id) {
 BOOST_AUTO_TEST_CASE(peek_newest_full_frame) {
     __enable_syslog = 0;
 
-    json json_config = json::parse(
-        R"({"type": "config", "log_level": "info", "main_pool": {"kotekan_metadata_pool": "chordMetadata", "num_metadata_objects": 10}})");
     Config config;
-    config.update_config(json_config);
-    kotekan::metadataFactory mfac(config);
-    std::shared_ptr<metadataPool> pool = mfac.build_pools()["main_pool"];
+    std::shared_ptr<metadataPool> pool = make_pool(config);
     BOOST_REQUIRE(pool != nullptr);
 
     const size_t frame_size = 16;

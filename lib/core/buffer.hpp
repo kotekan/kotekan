@@ -335,7 +335,7 @@ protected:
  *
  * Note that if no consumer is registered for on a buffer, then it will drop
  * the frames and log an INFO statement to notify the user that the data
- * is being dropped.
+ * is being dropped (unless @c peek_hold keeps the newest frame).
  *
  * @conf frame_size The size of the individual ring frames in bytes
  * @conf num_frames The buffer depth of size of the ring
@@ -343,6 +343,9 @@ protected:
  * @conf numa_node The NUMA domain to mbind the memory into.  Default: 1
  * @conf use_hugepages Allocate 2MB huge pages for the frames. Default: false
  * @conf mlock_frames Lock the frame pages with mlock Default: true
+ * @conf peek_hold Keep the newest full frame peekable by deferring its empty
+ *                 transition until the next frame is marked full; see
+ *                 @c enable_peek_hold(). Requires num_frames >= 2. Default: false
  *
  * See metadata.h for more information on metadata pools
  *
