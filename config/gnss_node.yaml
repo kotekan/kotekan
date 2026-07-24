@@ -48,7 +48,7 @@ shared:
   code_doppler_sign: 1.0
   n_channels: 10
   channel_offset: 0
-  record_floats: 20
+  record_floats: 24
   doppler_margin_hz: 250000.0
 
   # CHORD 4+4b point: noise rms scaled to 2.1 LSB (1.5/component). 07-17/19: the cold-soak

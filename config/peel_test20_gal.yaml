@@ -58,8 +58,10 @@ peel:
     code_phase_rate: [8.7e-8]
     pullin_chips: 1.5
     pullin_step: 0.25
-    fll_gain: 0.05
-    gain_alpha: 0.15
-    fll_lock_amp: 0.0   # v2: FLL + derotated smooth-gain (phase-corrected for the pull-in delay)
+    # v1 (raw per-segment gain) -- see the note in peel_test20.yaml: the v2 knobs were paired
+    # with pullin_chips 1.5, which the GnssVoltagePeel header forbids when smoothing.
+    fll_gain: 0.0
+    gain_alpha: 0.0
+    fll_lock_amp: 0.0
 
 search_peel: { kotekan_stage: GnssChannelizedSearch, in_buf: resid_buf, channel_offset: 0, n_channels: 10, acquire_snr: 8, acquire_windows: 20, prns: [23, 33, 8], doppler_min: -4000, doppler_max: 4000, doppler_step: 100, acquire_snr: 7, acquire_windows: 12 }

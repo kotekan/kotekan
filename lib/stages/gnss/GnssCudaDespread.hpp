@@ -69,13 +69,52 @@ public:
     /// non-null = CHORD 4+4b (d_window is one byte per sample, and d_chan_scale is the device
     /// [n_chan] lsb->volts array the bytes were ENCODED with -- GnssChanMetadata::chan_scale,
     /// uploaded by the caller). Same kernel either way; only the voltage load differs.
+    /// @c d_xcorr_out, when non-null, additionally receives the reference cross-correlations the
+    /// analytic peel add-back needs: [4*specs][n_chan] double2, rows 4i+0/1 = <R_P,R_E>/<R_P,R_L>
+    /// over the window and 4i+2/3 the same restricted to the head segment. Costs nothing when
+    /// null (the accumulators are a template parameter and compile away).
     int enqueue_batch_device(const void* d_window /*float2 or uint8*/, int data_stride,
                              long long window_start_sample, const std::vector<Spec>& specs,
                              void* d_jobs_slot /*gnss_cuda::DespreadJob, [specs]*/,
                              void* d_corr_out /*double2, [4*specs][n_chan]*/,
                              void* d_energy_out /*double, [4*specs][n_chan]*/,
                              void* stream /*cudaStream_t*/,
-                             const void* d_chan_scale = nullptr /*float, [n_chan]*/);
+                             const void* d_chan_scale = nullptr /*float, [n_chan]*/,
+                             void* d_xcorr_out = nullptr /*double2, [4*specs][n_chan]*/);
+
+    /// One PRN's VOLTAGE PEEL request (docs/gnss_voltage_peel_live.md).
+    ///
+    /// The gains are FEED-FORWARD -- a slow EMA of previously tracked gain, carried forward, NOT
+    /// fitted to this window -- and PER LOCAL CHANNEL, which is free (the despread already
+    /// reports per channel) and absorbs the receiver bandpass that a single combined gain cannot.
+    /// A ZERO gain means "do not peel this (PRN, channel)": the voltage passes through untouched,
+    /// which is how an unconverged or dropped-lock satellite is gated out.
+    ///
+    /// Two gains because the window straddles a code-period boundary and the overlay/nav symbol
+    /// flips sign exactly there. The boundary hop is NOT passed in -- it is derived from the same
+    /// expression the despread's P_HEAD row uses, so the two cannot disagree.
+    struct PeelSpec {
+        int p;                                   ///< PRN slot
+        double cp_seed;                          ///< commanded prompt code phase (chips)
+        double doppler_hz;                       ///< replica carrier (the tracker's f_ref)
+        std::vector<int> covering;               ///< local channel indices in the covering set
+        std::vector<std::complex<float>> a_head; ///< [n_chan] gain before the boundary
+        std::vector<std::complex<float>> a_tail; ///< [n_chan] gain at/after the boundary
+    };
+
+    /// Peel every spec's prompt waveform out of one record window, on a CALLER stream into a
+    /// CALLER device buffer, NO synchronization -- the twin of @ref enqueue_batch_device, and
+    /// meant to be enqueued immediately before it so the despread reads the residual.
+    /// @c d_pjobs_slot >= specs.size() PeelJob; @c d_gain_slot >= 2*specs.size()*n_chan float2.
+    /// @c d_resid_out is [n_chan][n_hops] float2, PACKED -- pass data_stride = n_hops to the
+    /// following despread. Returns the job count.
+    int enqueue_peel_device(const void* d_window /*float2 or uint8*/, int data_stride,
+                            long long window_start_sample, const std::vector<PeelSpec>& specs,
+                            void* d_pjobs_slot /*gnss_cuda::PeelJob, [specs]*/,
+                            void* d_gain_slot /*float2, [2*specs][n_chan]*/,
+                            void* d_resid_out /*float2, [n_chan][n_hops]*/,
+                            void* stream /*cudaStream_t*/,
+                            const void* d_chan_scale = nullptr /*float, [n_chan]*/);
 
 private:
     struct Impl;

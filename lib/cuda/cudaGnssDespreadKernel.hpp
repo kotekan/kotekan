@@ -51,6 +51,41 @@ struct DespreadJob {
                          ///< an all-zero head row (the plain 3-trial contract).
 };
 
+/// One PRN's PEEL: reconstruct the PROMPT waveform and subtract it from the voltage.
+///
+/// A cut-down @ref DespreadJob -- no @c ds (E/L are correlation taps, there is no signal at
+/// +-1/2 chip to remove) -- plus the complex gain to subtract. Everything else is identical, and
+/// deliberately so: the peel and the despread MUST generate bit-identical replicas, or the
+/// analytic add-back (docs/gnss_voltage_peel_live.md) stops being exact.
+///
+/// THE GAIN IS FEED-FORWARD. It comes from a slow EMA of previous records' tracked gain, carried
+/// forward one GPU frame, NOT from a despread of this window. That is what buys the single pass,
+/// makes the add-back exact for any gain, and leaves the residual a HONEST depth metric (a gain
+/// fitted in-window subtracts its own noise back along R, and the residual reads ~0 = infinite
+/// depth -- the degeneracy that makes GnssVoltagePeel's own peel_db unusable).
+///
+/// TWO GAINS, NOT ONE. The window straddles a code-period boundary at hop @c m_head, and every
+/// overlay/nav sign flip our signals have lives exactly there. One gain per window models a
+/// sign-flipping signal with a constant and removes almost nothing (2026-07-12: B1C peeled 0.9 dB
+/// that way). @c a_head applies to hops [0, m_head), @c a_tail to [m_head, n_hops) -- the same
+/// boundary the despread's P_HEAD row uses, computed ONCE on the host and shared.
+struct PeelJob {
+    double cp0;         ///< PROMPT code phase (COMBINED-stream chips) at absolute sample 0 ref
+    double cps;         ///< chips per sample incl. code Doppler (== DespreadJob::cps)
+    double inv_cps;     ///< 1/cps
+    double wc;          ///< carrier angular rate 2*pi*(f_offset + doppler)/fs
+    int code_offset;    ///< offset into the shared code table
+    int code_len;       ///< combined-stream code length (chips)
+    uint64_t chan_mask; ///< bit ci set = channel ci is in this PRN's covering set
+    const float2* phiA; ///< cumulative filter tables, this PRN's Doppler bucket (as DespreadJob)
+    const float2* phiB;
+    int n_chips;        ///< chips spanned by this bucket's filter
+    int m_head;         ///< code-period boundary hop: a_head below it, a_tail at and above it.
+                        ///< 0 = no boundary in this window -> a_tail applies throughout.
+    const float2* a_head; ///< [n_chan] gain to subtract, hops [0, m_head)
+    const float2* a_tail; ///< [n_chan] gain to subtract, hops [m_head, n_hops)
+};
+
 /// Batch-shared geometry.
 struct DespreadParams {
     long long n0; ///< absolute sample index of the window's first hop reference (+fft_len-1)
@@ -110,9 +145,22 @@ __host__ __device__ inline unsigned char pack_44(float2 v, float inv_scale, int*
  * @param energy out [4*n_spec][n_chan] replica energies (device)
  * Cross-channel summation is left to the caller (tiny; host or follow-up kernel).
  */
+/// @param xcorr optional out [4*n_spec][n_chan] reference CROSS-correlations for the analytic
+///        peel add-back: rows 4b+0/1 = <R_P, R_E> / <R_P, R_L> over the whole window, rows
+///        4b+2/3 = the same restricted to hops [0, m_head). nullptr = do not compute -- the extra
+///        accumulators then compile away entirely, so the un-peeled chains pay nothing.
+///        The head-restricted pair is what keeps the add-back exact in a window where the
+///        overlay/nav symbol flips at the code-period boundary and the peel therefore subtracted
+///        two DIFFERENT gains:  V[k] = V'[k] + a_head*<R_P 1_head,R_k> + a_tail*(whole-head).
+///        WHY THESE AND NOT THE ANALYTIC TRIANGLE: the add-back V_full[k] = V'[k] + a*<R_P, R_k>
+///        needs the code-triangle value AS THE PFB RENDERS IT, not the textbook 0.5 at 1/2 chip.
+///        Substituting 0.5 leaves an E/L asymmetry in the residual that the DLL reads as a code
+///        error whose SIGN tracks the true error -- i.e. the loop pushes the wrong way. The
+///        prompt and the E/L replicas are both in registers at the same hop, so this is one MAC.
+///        (<R_P,R_P> and <R_PH,R_P> are just energy rows 1 and 3; they are not duplicated here.)
 cudaError_t launch_despread(const float2* data, const int8_t* code, const DespreadJob* jobs,
                             int n_spec, int n_chan, const DespreadParams& p, double2* corr,
-                            double* energy, cudaStream_t stream);
+                            double* energy, cudaStream_t stream, double2* xcorr = nullptr);
 
 /// As launch_despread, but reading a CHORD 4+4b ring: one byte per (channel, hop), unpacked with
 /// @c chan_scale [n_chan] (lsb -> volts, the inverse of the ingest's scale). Same kernel, same
@@ -120,7 +168,37 @@ cudaError_t launch_despread(const float2* data, const int8_t* code, const Despre
 cudaError_t launch_despread_q(const unsigned char* data, const float* chan_scale,
                               const int8_t* code, const DespreadJob* jobs, int n_spec, int n_chan,
                               const DespreadParams& p, double2* corr, double* energy,
-                              cudaStream_t stream);
+                              cudaStream_t stream, double2* xcorr = nullptr);
+
+/**
+ * VOLTAGE PEEL: resid[ci][m] = voltage(ci, m) - sum_jobs a_{job,seg,ci} * R_job(ci, m).
+ *
+ * The fused peel of docs/gnss_voltage_peel_live.md, and CHORD path B's "subtract a e^{jphi} R as
+ * each X_i streams to registers" made literal: one load of the voltage, every seeded PRN's prompt
+ * replica removed, one store of the residual. Reuses the despread kernel's chip gather verbatim,
+ * so the subtracted waveform is bit-identical to the one the despread correlates against.
+ *
+ * SIMULTANEOUS, NOT SUCCESSIVE. The CPU GnssVoltagePeel peels PRNs one after another off a
+ * running residual, because its gain is fitted in-window and would otherwise see the other sats'
+ * cross-talk. A feed-forward gain does not depend on the data at all, so the subtractions are
+ * independent and commute -- which is what lets every PRN be handled inside one thread's loop
+ * with no atomics and no ordering.
+ *
+ * @param data   the voltage: [n_chan][data_stride] float2, or 4+4b bytes with @c chan_scale.
+ *               Pointer is at the WINDOW start (as launch_despread expects).
+ * @param jobs   [n_job] per-PRN peel parameters (device)
+ * @param resid  out [n_chan][n_hops] float2, PACKED (stride n_hops) -- the despread then reads it
+ *               with data_stride = n_hops. FLOAT2, NEVER 4+4b: a 30 dB correction is far below
+ *               one lsb of the CHORD ring, so re-quantizing the residual would erase the peel.
+ * Channels with no job covering them are copied through unchanged.
+ */
+cudaError_t launch_peel(const float2* data, const int8_t* code, const PeelJob* jobs, int n_job,
+                        int n_chan, const DespreadParams& p, float2* resid, cudaStream_t stream);
+
+/// As launch_peel, reading the CHORD 4+4b ring (dequantized with @c chan_scale on load).
+cudaError_t launch_peel_q(const unsigned char* data, const float* chan_scale, const int8_t* code,
+                          const PeelJob* jobs, int n_job, int n_chan, const DespreadParams& p,
+                          float2* resid, cudaStream_t stream);
 
 /// launch_chan_ingest for the 4+4b ring: transpose one hop-major byte frame ([hop][chan], as
 /// GnssQuantize44 emits it) into the channel-major ring. A PURE byte transpose -- quantization

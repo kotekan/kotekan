@@ -213,6 +213,210 @@ int main(int argc, char** argv) {
     printf("%s (max relative error %.3e; %d jobs x 4 rows x %d channels x %d hops)\n",
            pass ? "PASS" : "FAIL", max_rel, n_spec, n_chan, n_hops);
 
+    // ===================== VOLTAGE PEEL + ANALYTIC ADD-BACK (path B) =====================
+    // docs/gnss_voltage_peel_live.md. Three claims, checked in order, all against the SAME
+    // replica the despread above correlates with -- which is the point of testing them here
+    // rather than in a separate program: the add-back is only exact if the waveform the peel
+    // subtracts and the reference the despread correlates are the same object.
+    //
+    //   (1) turning the cross-terms ON does not perturb corr/energy. The kernel had to reorder
+    //       its trials to {P, E, L} so the prompt replica is live when E/L are formed; that
+    //       reorder must be a numerical no-op.
+    //   (2) the cross-terms <R_P, R_E> / <R_P, R_L> (whole and head-restricted) match a CPU
+    //       reference. These are the PFB's true code-triangle values -- the reason the add-back
+    //       must not use the textbook 0.5.
+    //   (3) THE IDENTITY: despread the peeled voltage, add back a*<R_P,R_k>, and recover the
+    //       un-peeled correlation -- for a gain that is deliberately WRONG (and sign-flipped
+    //       across the code-period boundary), because the identity holds for any gain.
+    {
+        printf("\n-- voltage peel (path B) --\n");
+        const int m_head_peel = ftrials[0].m_head; // 40 of 125: a real boundary mid-record
+        const int n_x = 4 * n_spec;                // xcorr rows per job: E, L, E|head, L|head
+
+        // ---- (1)+(2): re-run the despread with cross-terms enabled ----
+        double2* d_xcorr;
+        CK(cudaMalloc(&d_xcorr, (size_t)n_x * n_chan * sizeof(double2)));
+        CK(gnss_cuda::launch_despread(d_data, d_code, d_jobs, n_spec, n_chan, p, d_corr, d_energy,
+                                      0, d_xcorr));
+        CK(cudaDeviceSynchronize());
+        std::vector<double2> g_corr_xc((size_t)n_out * n_chan), g_x((size_t)n_x * n_chan);
+        std::vector<double> g_energy_xc((size_t)n_out * n_chan);
+        CK(cudaMemcpy(g_corr_xc.data(), d_corr, g_corr_xc.size() * sizeof(double2),
+                      cudaMemcpyDeviceToHost));
+        CK(cudaMemcpy(g_energy_xc.data(), d_energy, g_energy_xc.size() * sizeof(double),
+                      cudaMemcpyDeviceToHost));
+        CK(cudaMemcpy(g_x.data(), d_xcorr, g_x.size() * sizeof(double2), cudaMemcpyDeviceToHost));
+
+        double max_reorder = 0.0;
+        for (size_t i = 0; i < g_corr_xc.size(); ++i) {
+            const std::complex<double> a(g_corr[i].x, g_corr[i].y), b(g_corr_xc[i].x,
+                                                                     g_corr_xc[i].y);
+            max_reorder = std::max(max_reorder, std::abs(b - a) / std::max(1e-30, std::abs(a)));
+            max_reorder = std::max(max_reorder, std::fabs(g_energy_xc[i] - g_energy[i])
+                                                    / std::max(1e-30, g_energy[i]));
+        }
+        printf("trial reorder {E,P,L} -> {P,E,L} perturbs corr/energy by %.3e %s\n", max_reorder,
+               (max_reorder < 1e-12) ? "OK" : "FAIL");
+        pass = pass && (max_reorder < 1e-12);
+
+        // CPU cross-terms: <R_P, R_k> = sum_hop r_P conj(r_k), whole window and head-restricted.
+        double max_xc = 0.0;
+        for (int b = 0; b < n_spec; ++b) {
+            const auto rP = bank.hoprate_stream(filt, 0, window_start, ftrials[b].cp_prompt, dop,
+                                                n_hops);
+            for (int k = 0; k < 2; ++k) { // 0 = Early, 1 = Late
+                const double cpk = ftrials[b].cp_prompt + (k == 0 ? -spacing : spacing);
+                const auto rk = bank.hoprate_stream(filt, 0, window_start, cpk, dop, n_hops);
+                for (int half = 0; half < 2; ++half) { // 0 = whole window, 1 = head only
+                    const int hi = half ? m_head_peel : n_hops;
+                    std::complex<double> cx(0.0, 0.0), gx(0.0, 0.0);
+                    for (int c = 0; c < n_chan; ++c) {
+                        for (int m = 0; m < hi; ++m)
+                            cx += std::complex<double>(rP[c][m])
+                                  * std::conj(std::complex<double>(rk[c][m]));
+                        const size_t row = (size_t)(4 * b + k + 2 * half) * n_chan + c;
+                        gx += std::complex<double>(g_x[row].x, g_x[row].y);
+                    }
+                    // job 1 has m_head 0, so its head rows are legitimately zero
+                    if (half && ftrials[b].m_head == 0)
+                        continue;
+                    const double rel = std::abs(gx - cx) / std::max(1e-30, std::abs(cx));
+                    max_xc = std::max(max_xc, rel);
+                }
+            }
+        }
+        printf("reference cross-terms <R_P,R_E>/<R_P,R_L> (whole + head): max rel %.3e %s\n",
+               max_xc, (max_xc < 1e-5) ? "OK" : "FAIL");
+        pass = pass && (max_xc < 1e-5);
+
+        // ---- the peel itself ----
+        // A deliberately WRONG gain, sign-FLIPPED across the boundary: |a| is not the true
+        // amplitude and its phase is arbitrary. Both are on purpose -- a feed-forward gain is
+        // never exactly right, and the add-back must not care. The flip exercises the two-segment
+        // path (one gain across a sign flip is the 2026-07-12 "peels 0.9 dB" failure).
+        std::vector<float2> gains((size_t)2 * n_chan);
+        for (int c = 0; c < n_chan; ++c) {
+            const double ph = 0.37 * c + 0.11;
+            const float re = (float)(2.4 * std::cos(ph)), im = (float)(2.4 * std::sin(ph));
+            gains[c] = make_float2(re, im);                    // head
+            gains[n_chan + c] = make_float2(-re, -im);         // tail: the overlay flipped
+        }
+        float2* d_gain;
+        float2* d_resid;
+        gnss_cuda::PeelJob* d_pjobs;
+        CK(cudaMalloc(&d_gain, gains.size() * sizeof(float2)));
+        CK(cudaMalloc(&d_resid, (size_t)n_chan * n_hops * sizeof(float2)));
+        CK(cudaMalloc(&d_pjobs, sizeof(gnss_cuda::PeelJob)));
+        CK(cudaMemcpy(d_gain, gains.data(), gains.size() * sizeof(float2),
+                      cudaMemcpyHostToDevice));
+        gnss_cuda::PeelJob pj{(double)comb * ftrials[0].cp_prompt,
+                              cps,
+                              1.0 / cps,
+                              wc,
+                              0,
+                              (int)code8.size(),
+                              all_mask,
+                              d_phiA,
+                              d_phiB,
+                              filt.n_chips,
+                              m_head_peel,
+                              d_gain,
+                              d_gain + n_chan};
+        CK(cudaMemcpy(d_pjobs, &pj, sizeof(pj), cudaMemcpyHostToDevice));
+        CK(gnss_cuda::launch_peel(d_data, d_code, d_pjobs, 1, n_chan, p, d_resid, 0));
+        CK(cudaDeviceSynchronize());
+        std::vector<float2> g_resid((size_t)n_chan * n_hops);
+        CK(cudaMemcpy(g_resid.data(), d_resid, g_resid.size() * sizeof(float2),
+                      cudaMemcpyDeviceToHost));
+
+        // CPU residual: data - a_seg * R_P, sample by sample.
+        const auto rP0 =
+            bank.hoprate_stream(filt, 0, window_start, ftrials[0].cp_prompt, dop, n_hops);
+        double max_res = 0.0, res_scale = 0.0;
+        for (int c = 0; c < n_chan; ++c)
+            for (int m = 0; m < n_hops; ++m) {
+                const std::complex<double> a =
+                    (m < m_head_peel)
+                        ? std::complex<double>(gains[c].x, gains[c].y)
+                        : std::complex<double>(gains[n_chan + c].x, gains[n_chan + c].y);
+                const std::complex<double> want =
+                    std::complex<double>(data_ch[c][m]) - a * std::complex<double>(rP0[c][m]);
+                const std::complex<double> got(g_resid[(size_t)c * n_hops + m].x,
+                                               g_resid[(size_t)c * n_hops + m].y);
+                max_res = std::max(max_res, std::abs(got - want));
+                res_scale = std::max(res_scale, std::abs(want));
+            }
+        const double res_rel = max_res / std::max(1e-30, res_scale);
+        printf("peel residual vs CPU (per-sample, %d chan x %d hops, 2 gain segments): "
+               "max rel %.3e %s\n",
+               n_chan, n_hops, res_rel, (res_rel < 1e-5) ? "OK" : "FAIL");
+        pass = pass && (res_rel < 1e-5);
+
+        // ---- THE ADD-BACK IDENTITY ----
+        // Despread the residual with the SAME job, then restore the peel's known contribution:
+        //     V[k] = V'[k] + a_head*<R_P 1_head, R_k> + a_tail*(<R_P,R_k> - <R_P 1_head,R_k>)
+        // and compare against the un-peeled correlation. This is the whole design in one number.
+        gnss_cuda::DespreadParams pr = p;
+        pr.data_stride = n_hops; // the residual is packed
+        double2* d_corr_r;
+        double* d_energy_r;
+        CK(cudaMalloc(&d_corr_r, (size_t)4 * n_chan * sizeof(double2)));
+        CK(cudaMalloc(&d_energy_r, (size_t)4 * n_chan * sizeof(double)));
+        CK(gnss_cuda::launch_despread(d_resid, d_code, d_jobs, 1, n_chan, pr, d_corr_r,
+                                      d_energy_r, 0));
+        CK(cudaDeviceSynchronize());
+        std::vector<double2> r_corr((size_t)4 * n_chan);
+        CK(cudaMemcpy(r_corr.data(), d_corr_r, r_corr.size() * sizeof(double2),
+                      cudaMemcpyDeviceToHost));
+
+        double max_ab = 0.0;
+        for (int t = 0; t < 4; ++t) { // E, P, L, P_HEAD
+            std::complex<double> vfull(0.0, 0.0), vtrue(0.0, 0.0);
+            for (int c = 0; c < n_chan; ++c) {
+                const std::complex<double> ah(gains[c].x, gains[c].y),
+                    at(gains[n_chan + c].x, gains[n_chan + c].y);
+                std::complex<double> xw(0.0, 0.0), xh(0.0, 0.0); // <R_P,R_t> whole / head
+                if (t == 0 || t == 2) {
+                    const int k = (t == 0) ? 0 : 1;
+                    const size_t rw = (size_t)k * n_chan + c, rh = (size_t)(k + 2) * n_chan + c;
+                    xw = std::complex<double>(g_x[rw].x, g_x[rw].y);
+                    xh = std::complex<double>(g_x[rh].x, g_x[rh].y);
+                } else if (t == 1) { // <R_P,R_P> = energy rows 1 (whole) and 3 (head)
+                    xw = g_energy_xc[(size_t)1 * n_chan + c];
+                    xh = g_energy_xc[(size_t)3 * n_chan + c];
+                } else { // R_PH is R_P on the head: whole == head == E_head, tail contributes 0
+                    xw = g_energy_xc[(size_t)3 * n_chan + c];
+                    xh = xw;
+                }
+                const std::complex<double> vres(r_corr[(size_t)t * n_chan + c].x,
+                                                r_corr[(size_t)t * n_chan + c].y);
+                vfull += vres + ah * xh + at * (xw - xh);
+                vtrue += std::complex<double>(g_corr_xc[(size_t)t * n_chan + c].x,
+                                              g_corr_xc[(size_t)t * n_chan + c].y);
+            }
+            const double rel = std::abs(vfull - vtrue) / std::max(1e-30, std::abs(vtrue));
+            max_ab = std::max(max_ab, rel);
+            printf("  add-back %-4s: |V_full|=%12.4f  |V_unpeeled|=%12.4f  rel %.3e %s\n",
+                   row_name[t], std::abs(vfull), std::abs(vtrue), rel, (rel < 1e-5) ? "OK" : "FAIL");
+        }
+        printf("ADD-BACK IDENTITY: max rel %.3e %s  (gain deliberately wrong + sign-flipped -- "
+               "the identity does not depend on it)\n",
+               max_ab, (max_ab < 1e-5) ? "OK" : "FAIL");
+        pass = pass && (max_ab < 1e-5);
+
+        CK(cudaFree(d_xcorr));
+        CK(cudaFree(d_gain));
+        CK(cudaFree(d_resid));
+        CK(cudaFree(d_pjobs));
+        CK(cudaFree(d_corr_r));
+        CK(cudaFree(d_energy_r));
+        // restore the XC-off correlations for anything downstream that reuses d_corr/d_energy
+        CK(cudaMemcpy(d_corr, g_corr.data(), g_corr.size() * sizeof(double2),
+                      cudaMemcpyHostToDevice));
+        CK(cudaMemcpy(d_energy, g_energy.data(), g_energy.size() * sizeof(double),
+                      cudaMemcpyHostToDevice));
+    }
+
     // --- CHORD 4+4b codec + quantized despread path ---
     // TWO separate claims, tested separately:
     //  (1) our ENCODER matches kotekan's reference DECODE. In CHORD the PFB + 4b quantizer live in
@@ -548,6 +752,48 @@ int main(int argc, char** argv) {
             printf("   ^ PRODUCTION path (E/P/L/P_HEAD, 4 rows/spec, the GPU chain's mix): "
                    "%6.0f rec/s (%.1fx realtime @1kHz)\n",
                    NREC / pdt, NREC / pdt / 1000.0);
+
+            // ...and the SAME path with the voltage peel in front of it: peel -> despread the
+            // residual (+ the add-back cross-terms). This is what the peeled chain actually
+            // costs per record, and it is the number that gates enabling it live.
+            {
+                std::vector<GnssCudaDespread::PeelSpec> pspecs(bench_prn);
+                for (int q = 0; q < bench_prn; ++q) {
+                    pspecs[q] = {q, specs[q].cp_seed, specs[q].doppler_hz, allch,
+                                 std::vector<std::complex<float>>((size_t)bN, {0.3f, 0.1f}),
+                                 std::vector<std::complex<float>>((size_t)bN, {-0.3f, -0.1f})};
+                }
+                gnss_cuda::PeelJob* d_pj = nullptr;
+                float2 *d_gain = nullptr, *d_res = nullptr;
+                double2* d_xc = nullptr;
+                CK(cudaMalloc(&d_pj, (size_t)bench_prn * sizeof(gnss_cuda::PeelJob)));
+                CK(cudaMalloc(&d_gain, (size_t)2 * bench_prn * bN * sizeof(float2)));
+                CK(cudaMalloc(&d_res, (size_t)bN * bn_hops * sizeof(float2)));
+                CK(cudaMalloc(&d_xc, (size_t)4 * bench_prn * bN * sizeof(double2)));
+                (void)gpu.enqueue_peel_device(d_win, bn_hops, window_start, pspecs, d_pj, d_gain,
+                                              d_res, st);
+                (void)gpu.enqueue_batch_device(d_res, bn_hops, window_start, specs, d_j, d_c, d_e,
+                                               st, nullptr, d_xc);
+                CK(cudaStreamSynchronize(st)); // warm-up
+                const auto q0 = std::chrono::steady_clock::now();
+                for (int r = 0; r < NREC; ++r) {
+                    const long long ws = window_start + (long long)r * bn_hops * bfft_len;
+                    (void)gpu.enqueue_peel_device(d_win, bn_hops, ws, pspecs, d_pj, d_gain, d_res,
+                                                  st);
+                    (void)gpu.enqueue_batch_device(d_res, bn_hops, ws, specs, d_j, d_c, d_e, st,
+                                                   nullptr, d_xc);
+                    CK(cudaStreamSynchronize(st));
+                }
+                const double qdt =
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - q0).count();
+                printf("   ^ PEELED path (peel -> despread residual + add-back cross-terms): "
+                       "%6.0f rec/s (%.1fx realtime @1kHz, %.2fx the un-peeled cost)\n",
+                       NREC / qdt, NREC / qdt / 1000.0, qdt / pdt);
+                cudaFree(d_pj);
+                cudaFree(d_gain);
+                cudaFree(d_res);
+                cudaFree(d_xc);
+            }
             cudaFree(d_win);
             cudaFree(d_j);
             cudaFree(d_c);

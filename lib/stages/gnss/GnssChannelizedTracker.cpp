@@ -66,6 +66,18 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
         return;
     }
     const int n_prn = (int)_prns.size();
+    // The record WIDTH is a C++ constant (gnssRecord.hpp) but the frame is sized in yaml as
+    // n_prn * record_floats * sizeof_float, and nothing links the two. A config left behind on a
+    // schema bump under-sizes the frame and this stage writes past its end -- silent memory
+    // corruption. Die at construction instead.
+    const size_t rec_bytes_need = (size_t)n_prn * RECORD_FLOATS * sizeof(float);
+    if ((size_t)out_buf->frame_size < rec_bytes_need) {
+        FATAL_ERROR("GnssChannelizedTracker: out_buf frame {:d} B < {:d} PRN x {:d} floats "
+                    "({:d} B). Bump 'record_floats' in the config to {:d}.",
+                    (size_t)out_buf->frame_size, n_prn, RECORD_FLOATS, rec_bytes_need,
+                    RECORD_FLOATS);
+        return;
+    }
 
     auto seed = [&](const std::string& key, std::vector<double>& out) {
         const auto v = config.get_default<std::vector<double>>(unique_name, key, {});

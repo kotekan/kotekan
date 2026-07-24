@@ -63,8 +63,10 @@ __device__ inline float2 cmulf(float2 a, float2 b) {
 ///   sA/sB = sum_d code[chip0-d] * (Phi{A,B}[khi+1] - Phi{A,B}[klo]),  chip0 = floor(C).
 /// @c ks / @c kf are the integer/fraction split of job.inv_cps, hoisted by the caller (they are
 /// invariant across hops AND across the E/P/L trials, which share a Doppler).
-__device__ inline void chip_gather(const gnss_cuda::DespreadJob& job, int Lf,
-                                   const int8_t* __restrict__ code,
+/// Takes the four code-table scalars directly rather than a job struct, so the despread
+/// (DespreadJob) and the peel (PeelJob) can share it without one pretending to be the other.
+__device__ inline void chip_gather(double job_inv_cps, int job_code_offset, int job_code_len,
+                                   int job_n_chips, int Lf, const int8_t* __restrict__ code,
                                    const float2* __restrict__ phiA,
                                    const float2* __restrict__ phiB, int ks, float kf, double C,
                                    float2& sA, float2& sB) {
@@ -94,15 +96,15 @@ __device__ inline void chip_gather(const gnss_cuda::DespreadJob& job, int Lf,
     //      disagreements vs the double form (5.6e-7), and only where the argument lands
     //      EXACTLY on an integer, i.e. where the tap sits on the chip edge and "correct" is
     //      arbitrary anyway. A disagreement moves ONE prototype tap between adjacent chips.
-    const double base = phi * job.inv_cps;
-    long long i0 = chip0 % (long long)job.code_len;
+    const double base = phi * job_inv_cps;
+    long long i0 = chip0 % (long long)job_code_len;
     if (i0 < 0)
-        i0 += job.code_len;
+        i0 += job_code_len;
     int idx = (int)i0;                                  // (b) walks with d
     int prev_khi = -ks + (int)floorf((float)base - kf); // (a) seed: khi(-1)
     float f = (float)base;                              // (c) base + d*kf
     int khi_base = 0;                                   // (c) d*ks
-    for (int d = 0; d < job.n_chips; ++d) {
+    for (int d = 0; d < job_n_chips; ++d) {
         const int khi = khi_base + (int)floorf(f);
         const int klo = prev_khi + 1;
         prev_khi = khi;
@@ -114,14 +116,14 @@ __device__ inline void chip_gather(const gnss_cuda::DespreadJob& job, int Lf,
         if (kh > Lf - 1)
             kh = Lf - 1;
         if (kh >= kl) {
-            const float cv = (float)code[job.code_offset + idx];
+            const float cv = (float)code[job_code_offset + idx];
             sA.x += cv * (phiA[kh + 1].x - phiA[kl].x);
             sA.y += cv * (phiA[kh + 1].y - phiA[kl].y);
             sB.x += cv * (phiB[kh + 1].x - phiB[kl].x);
             sB.y += cv * (phiB[kh + 1].y - phiB[kl].y);
         }
         if (--idx < 0)
-            idx += job.code_len;
+            idx += job_code_len;
     }
 }
 
@@ -137,14 +139,15 @@ __device__ inline float2 load_v(const unsigned char* __restrict__ d, size_t i,
     return gnss_cuda::unpack_44(d[i], chan_scale[ci]);
 }
 
-template <typename T>
+template <typename T, bool XC>
 __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nchan][n_hops]
                                      const float* __restrict__ chan_scale, // [nchan], 4+4b only
                                      const int8_t* __restrict__ code, // [batch-shared code table]
                                      const gnss_cuda::DespreadJob* __restrict__ jobs, // [n_spec]
                                      gnss_cuda::DespreadParams p,
-                                     double2* __restrict__ corr,    // [4*n_spec][nchan]
-                                     double* __restrict__ energy) { // [4*n_spec][nchan]
+                                     double2* __restrict__ corr,   // [4*n_spec][nchan]
+                                     double* __restrict__ energy,  // [4*n_spec][nchan]
+                                     double2* __restrict__ xcorr) { // [2*n_spec][nchan], XC only
     const int b = blockIdx.x;  // spec: one PRN's E/P/L/P_HEAD quad
     const int ci = blockIdx.y; // covering channel
     const int m = threadIdx.x; // hop lane: handles hops m, m+blockDim, ... (grid-stride over
@@ -155,6 +158,18 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
     // acc/e rows: 0 = Early, 1 = Prompt, 2 = Late, 3 = P_HEAD (the prompt over [0, m_head)).
     double2 acc[4] = {{0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}};
     double e[4] = {0.0, 0.0, 0.0, 0.0};
+    // Reference cross-correlations for the analytic peel add-back (XC only; when XC is false
+    // these and their reduction compile away completely).
+    //   0 = <R_P, R_E>          1 = <R_P, R_L>            (whole window)
+    //   2 = <R_P, R_E>|head     3 = <R_P, R_L>|head       (hops [0, m_head) only)
+    // The head-restricted pair exists because the peel subtracts a DIFFERENT gain either side of
+    // the code-period boundary (the overlay/nav sign flips there). The add-back is then
+    //   V_full[k] = V'[k] + a_head*<R_P 1_head, R_k> + a_tail*<R_P 1_tail, R_k>,
+    // and the tail term is (whole - head). With one gain the two collapse to the whole-window
+    // value, so this only costs anything in windows that actually straddle a flip -- and in those
+    // windows it is the difference between an exact add-back and a biased DLL. Like P_HEAD, it
+    // rides along on the replicas already in registers.
+    double2 xc[4] = {{0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}};
     const bool covered = (job.chan_mask >> ci) & 1ULL; // channel in this PRN's covering set?
 
     // Hoisted out of the hop loop: invariant in BOTH mh and the trial index.
@@ -184,11 +199,19 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
         const float2 dd = load_v(data, (size_t)ci * p.data_stride + mh, chan_scale, ci);
         const bool in_head = (mh < job.m_head);
 
+        // TRIAL ORDER {P, E, L}, not {E, P, L}. The prompt replica has to be in hand when the
+        // Early/Late ones are formed, so <R_P, R_E> / <R_P, R_L> can be accumulated without a
+        // second gather. Accumulator indices are unchanged, so every output row keeps its meaning
+        // -- only the order the three are computed in moved. (Numerically a no-op: the three
+        // trials are independent, and each accumulator sums the same terms in the same per-hop
+        // order as before.)
+        float2 r_P = make_float2(0.f, 0.f);
 #pragma unroll
-        for (int t = 0; t < 3; ++t) { // t = 0/1/2 -> cp0-ds / cp0 / cp0+ds
+        for (int tt = 0; tt < 3; ++tt) {
+            const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2; // -> cp0 / cp0-ds / cp0+ds
             float2 sA, sB;
-            chip_gather(job, p.Lf, code, phiA, phiB, ks, kf, C_P + (double)(t - 1) * job.ds, sA,
-                        sB);
+            chip_gather(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code, phiA,
+                        phiB, ks, kf, C_P + (double)(t - 1) * job.ds, sA, sB);
             // Replica channel sample r = 0.5 (pa sA + conj(pa) sB); then the despread MAC:
             // acc += data * conj(r), e += |r|^2 -- float compute, widened once for the reduction.
             const float2 t1 = cmulf(pa, sA);
@@ -206,6 +229,27 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
                 acc[3].x += re;
                 acc[3].y += im;
                 e[3] += ee;
+            }
+            if (XC) {
+                // t == 1 is stashed for the other two; its own value <R_P,R_P> = |R_P|^2 is
+                // energy row 1 already, so it is not stored again.
+                if (t == 1) {
+                    r_P = r;
+                } else {
+                    const int x = (t == 0) ? 0 : 1; // 0 = Early, 1 = Late
+                    // <R_P, R_t> = sum_hop r_P conj(r_t) -- the SAME <a,b> = sum a conj(b) the
+                    // despread uses for <X, R_k>, and in the SAME order as the add-back formula
+                    // V[k] = V'[k] + a*<R_P, R_k>. Accumulating <R_t, R_P> instead would be the
+                    // conjugate and every consumer would owe a conj() nobody remembers.
+                    const double xre = (double)(r_P.x * r.x + r_P.y * r.y);
+                    const double xim = (double)(r_P.y * r.x - r_P.x * r.y);
+                    xc[x].x += xre;
+                    xc[x].y += xim;
+                    if (in_head) { // head-restricted twin, rows 2/3 -- one predicated add
+                        xc[x + 2].x += xre;
+                        xc[x + 2].y += xim;
+                    }
+                }
             }
         }
     }
@@ -244,6 +288,26 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
             energy[(size_t)(4 * b + j) * gridDim.y + ci] = sh_e[0];
         }
     }
+
+    // Reference cross-correlations, same tree over the same shared arrays (sh_e unused here).
+    if (XC) {
+#pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            __syncthreads();
+            sh_re[m] = xc[j].x;
+            sh_im[m] = xc[j].y;
+            __syncthreads();
+            for (int off = blockDim.x / 2; off > 0; off >>= 1) {
+                if (m < off) {
+                    sh_re[m] += sh_re[m + off];
+                    sh_im[m] += sh_im[m + off];
+                }
+                __syncthreads();
+            }
+            if (m == 0)
+                xcorr[(size_t)(4 * b + j) * gridDim.y + ci] = make_double2(sh_re[0], sh_im[0]);
+        }
+    }
 }
 
 } // namespace
@@ -263,20 +327,169 @@ inline int despread_block(int n_hops) {
 
 cudaError_t launch_despread(const float2* data, const int8_t* code, const DespreadJob* jobs,
                             int n_spec, int n_chan, const DespreadParams& p, double2* corr,
-                            double* energy, cudaStream_t stream) {
+                            double* energy, cudaStream_t stream, double2* xcorr) {
     dim3 grid(n_spec, n_chan); // one block per (PRN quad, channel) -- 4 output rows each
-    gnss_despread_kernel<float2>
-        <<<grid, despread_block(p.n_hops), 0, stream>>>(data, nullptr, code, jobs, p, corr, energy);
+    // XC is a TEMPLATE parameter, not a runtime flag: with it false the cross-term accumulators
+    // and their reduction disappear at compile time, so the chains that do not peel keep their
+    // register count (the fusion win is register-sensitive -- see the hops-per-thread note above).
+    if (xcorr != nullptr)
+        gnss_despread_kernel<float2, true><<<grid, despread_block(p.n_hops), 0, stream>>>(
+            data, nullptr, code, jobs, p, corr, energy, xcorr);
+    else
+        gnss_despread_kernel<float2, false><<<grid, despread_block(p.n_hops), 0, stream>>>(
+            data, nullptr, code, jobs, p, corr, energy, nullptr);
     return cudaGetLastError();
 }
 
 cudaError_t launch_despread_q(const unsigned char* data, const float* chan_scale,
                               const int8_t* code, const DespreadJob* jobs, int n_spec, int n_chan,
                               const DespreadParams& p, double2* corr, double* energy,
-                              cudaStream_t stream) {
+                              cudaStream_t stream, double2* xcorr) {
     dim3 grid(n_spec, n_chan);
-    gnss_despread_kernel<unsigned char><<<grid, despread_block(p.n_hops), 0, stream>>>(
-        data, chan_scale, code, jobs, p, corr, energy);
+    if (xcorr != nullptr)
+        gnss_despread_kernel<unsigned char, true><<<grid, despread_block(p.n_hops), 0, stream>>>(
+            data, chan_scale, code, jobs, p, corr, energy, xcorr);
+    else
+        gnss_despread_kernel<unsigned char, false><<<grid, despread_block(p.n_hops), 0, stream>>>(
+            data, chan_scale, code, jobs, p, corr, energy, nullptr);
+    return cudaGetLastError();
+}
+
+} // namespace gnss_cuda
+
+namespace {
+
+/**
+ * THE VOLTAGE PEEL. One thread owns one (channel, hop) output sample: load the voltage once,
+ * subtract every seeded PRN's prompt replica, store the residual once.
+ *
+ * Grid is (hop tile, channel) -- the TRANSPOSE of the despread's (PRN, channel), because there is
+ * no reduction here: the output is a voltage, not a correlation. Every PRN is handled inside the
+ * thread, which is what makes the accumulation deterministic and atomic-free. That is only legal
+ * because the gains are FEED-FORWARD: they do not depend on the data, so the subtractions commute
+ * and there is no successive-peel ordering to respect (unlike the CPU GnssVoltagePeel, whose
+ * in-window gain fit must see the other sats already removed).
+ *
+ * The replica is generated by the SAME chip_gather as the despread, from the same Phi tables and
+ * the same double-precision absolute code phase. That is a correctness requirement, not tidiness:
+ * the analytic add-back downstream assumes the subtracted waveform and the correlated reference
+ * are the same object.
+ */
+/// Hops each thread owns. ⚠️ ONE IS OPTIMAL HERE -- the OPPOSITE of the despread kernel above,
+/// and the hops-per-thread note at the top of this file does NOT transfer. Measured 2026-07-24,
+/// 32 PRN x 10 chan x 1000 hops, as a multiple of the un-peeled despread cost:
+///     H = 1 -> 2.08x     H = 2 -> 2.35x     H = 4 -> 2.73x     H = 8 -> 3.58x
+/// Strictly monotonic, so this was swept rather than reasoned about -- the first attempt shipped
+/// H = 4 on the (wrong) theory that the peel was latency-bound the way the despread is.
+///
+/// WHY IT INVERTS. The despread gains from extra hops because it has something to AMORTIZE WITHIN
+/// a hop: one carrier phasor and one voltage load feed THREE chip gathers (E/P/L). The peel has
+/// exactly one gather per hop and nothing to share it with, so extra hops buy no reuse -- they
+/// only add live state (v[H] plus the unrolled gather chains), and the register pressure costs
+/// occupancy, which is what was hiding the fp64 fmod latency to begin with.
+///
+/// Left as a knob because it is one line and the next geometry (a wider band, a longer record, a
+/// GPU with a different register file) could move the optimum. Re-sweep, do not assume.
+#define GNSS_PEEL_HOPS_PER_THREAD 1
+
+template <typename T>
+__global__ void gnss_peel_kernel(const T* __restrict__ data,           // [nchan][data_stride]
+                                 const float* __restrict__ chan_scale, // [nchan], 4+4b only
+                                 const int8_t* __restrict__ code,
+                                 const gnss_cuda::PeelJob* __restrict__ jobs, // [n_job]
+                                 int n_job, gnss_cuda::DespreadParams p,
+                                 float2* __restrict__ resid) { // [nchan][n_hops], PACKED
+    constexpr int H = GNSS_PEEL_HOPS_PER_THREAD;
+    const int ci = blockIdx.y;
+    // Thread's hops are STRIDED by blockDim.x, not consecutive, so each of the H loads and stores
+    // stays coalesced across the warp.
+    const int base = blockIdx.x * blockDim.x * H + threadIdx.x;
+
+    float2 v[H];
+    bool act[H];
+#pragma unroll
+    for (int t = 0; t < H; ++t) {
+        const int mh = base + t * (int)blockDim.x;
+        act[t] = (mh < p.n_hops);
+        if (act[t])
+            v[t] = load_v(data, (size_t)ci * p.data_stride + mh, chan_scale, ci);
+    }
+
+    for (int b = 0; b < n_job; ++b) {
+        const gnss_cuda::PeelJob job = jobs[b];
+        if (!((job.chan_mask >> ci) & 1ULL))
+            continue; // carrier not in this channel: nothing of this PRN to remove here
+        // Per-segment gain, hoisted: m_head is the code-period boundary the despread's P_HEAD row
+        // uses -- shared, never re-derived. Below it the overlay/nav symbol has one sign, at and
+        // above it possibly the other; one gain across the pair would model a sign flip with a
+        // constant and remove almost nothing.
+        const float2 ah = job.a_head[ci];
+        const float2 at = job.a_tail[ci];
+        if (ah.x == 0.f && ah.y == 0.f && at.x == 0.f && at.y == 0.f)
+            continue; // not converged / gated off for this PRN-channel: pass the voltage through
+        const int ks = (int)job.inv_cps;
+        const float kf = (float)(job.inv_cps - ks);
+        const float2* const phiA = job.phiA + (size_t)ci * (p.Lf + 1);
+        const float2* const phiB = job.phiB + (size_t)ci * (p.Lf + 1);
+
+#pragma unroll
+        for (int t = 0; t < H; ++t) {
+            if (!act[t])
+                continue;
+            const int mh = base + t * (int)blockDim.x;
+            const long long n_m = p.n0 + (long long)mh * p.fft_len;
+            const double C_P = job.cp0 + (double)n_m * job.cps;
+            const double ang = fmod(job.wc * (double)n_m, 2.0 * M_PI);
+            float sn, cn;
+            sincosf((float)ang, &sn, &cn);
+            const float2 pa = make_float2(cn, sn);
+            const float2 pb = make_float2(cn, -sn);
+            float2 sA, sB;
+            chip_gather(job.inv_cps, job.code_offset, job.code_len, job.n_chips, p.Lf, code, phiA,
+                        phiB, ks, kf, C_P, sA, sB);
+            const float2 t1 = cmulf(pa, sA);
+            const float2 t2 = cmulf(pb, sB);
+            const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
+            const float2 a = (mh < job.m_head) ? ah : at;
+            v[t].x -= a.x * r.x - a.y * r.y; // v -= a * r
+            v[t].y -= a.x * r.y + a.y * r.x;
+        }
+    }
+
+#pragma unroll
+    for (int t = 0; t < H; ++t)
+        if (act[t])
+            resid[(size_t)ci * p.n_hops + base + t * (int)blockDim.x] = v[t];
+}
+
+} // namespace
+
+namespace gnss_cuda {
+
+namespace {
+inline int peel_block(int n_hops) {
+    return (n_hops < 256 * GNSS_PEEL_HOPS_PER_THREAD) ? 64 : 256;
+}
+inline dim3 peel_grid(int n_hops, int block, int n_chan) {
+    const int per_block = block * GNSS_PEEL_HOPS_PER_THREAD;
+    return dim3((unsigned)((n_hops + per_block - 1) / per_block), (unsigned)n_chan);
+}
+} // namespace
+
+cudaError_t launch_peel(const float2* data, const int8_t* code, const PeelJob* jobs, int n_job,
+                        int n_chan, const DespreadParams& p, float2* resid, cudaStream_t stream) {
+    const int block = peel_block(p.n_hops);
+    gnss_peel_kernel<float2><<<peel_grid(p.n_hops, block, n_chan), block, 0, stream>>>(
+        data, nullptr, code, jobs, n_job, p, resid);
+    return cudaGetLastError();
+}
+
+cudaError_t launch_peel_q(const unsigned char* data, const float* chan_scale, const int8_t* code,
+                          const PeelJob* jobs, int n_job, int n_chan, const DespreadParams& p,
+                          float2* resid, cudaStream_t stream) {
+    const int block = peel_block(p.n_hops);
+    gnss_peel_kernel<unsigned char><<<peel_grid(p.n_hops, block, n_chan), block, 0, stream>>>(
+        data, chan_scale, code, jobs, n_job, p, resid);
     return cudaGetLastError();
 }
 

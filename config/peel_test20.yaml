@@ -61,8 +61,15 @@ peel:
     code_phase_rate: [8.7e-8, 8.7e-8]
     pullin_chips: 1.5
     pullin_step: 0.25
-    fll_gain: 0.05
-    gain_alpha: 0.15
-    fll_lock_amp: 0.0   # v2: FLL + derotated smooth-gain (phase-corrected for the pull-in delay)
+    # v1 (raw per-segment gain). The v2 smooth-gain knobs are OFF: the 2026-07-23 removal of the
+    # `segs.size()==1` gate made them active for the first time on streaming windows, and this
+    # config paired them with pullin_chips 1.5 -- the combination the GnssVoltagePeel header
+    # forbids (a per-record re-pick jumps the carrier phase and wrecks the phase track). The
+    # calibrated twin-chain bench separated no variant anyway (all floor the instrument at
+    # >=26-35 dB), so v1 is the honest reference. Live depth comes from the FUSED feed-forward
+    # peel instead -- docs/gnss_voltage_peel_live.md.
+    fll_gain: 0.0
+    gain_alpha: 0.0
+    fll_lock_amp: 0.0
 
 search_peel: { kotekan_stage: GnssChannelizedSearch, in_buf: resid_buf, channel_offset: 0, n_channels: 10, acquire_snr: 8, acquire_windows: 20, prns: [6, 11, 21, 5, 12, 19] }

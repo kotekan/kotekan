@@ -37,6 +37,17 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         _chan_dump = std::fopen(path.c_str(), "a");
     }
     const int n = (int)_prns.size();
+    // Record width is a C++ constant; the frame is sized in yaml (n_prn * record_floats *
+    // sizeof_float) with nothing linking the two. A stale config under-sizes the frame and this
+    // stage writes past its end -- die at construction rather than corrupt memory.
+    const size_t rec_bytes_need = (size_t)n * gnss::RECORD_FLOATS * sizeof(float);
+    if ((size_t)out_buf->frame_size < rec_bytes_need) {
+        FATAL_ERROR("GnssGpuRecordAssemble: out_buf frame {:d} B < {:d} PRN x {:d} floats "
+                    "({:d} B). Bump 'record_floats' in the config to {:d}.",
+                    (size_t)out_buf->frame_size, n, gnss::RECORD_FLOATS, rec_bytes_need,
+                    gnss::RECORD_FLOATS);
+        return;
+    }
     _phi.assign(n, 0.0);
     _phi_cyc.assign(n, 0.0);
     _phi_cmd_prev.assign(n, 0.0);

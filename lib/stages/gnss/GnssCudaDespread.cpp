@@ -47,6 +47,8 @@ struct GnssCudaDespread::Impl {
     std::vector<gnss_cuda::DespreadJob> h_jobs;
     std::vector<double2> h_corr;
     std::vector<double> h_energy;
+    std::vector<gnss_cuda::PeelJob> h_pjobs; // peel staging (pageable: H2D is host-sync on return)
+    std::vector<float2> h_gains;             // [job][head|tail][chan]
 
     Impl(gnss::ChannelizedReplicaBank& b, int np, int nc, int coff, int nh, double fs_, double fo,
          double rh) :
@@ -105,6 +107,40 @@ struct GnssCudaDespread::Impl {
             cudaFree(pc.d_A);
             cudaFree(pc.d_B);
         }
+    }
+
+    /// THE code-period boundary hop for a window: where the PROMPT's absolute code phase
+    /// C = cp0 + n_m*cps crosses the next multiple of code_len. Head is [0, m_head), tail the
+    /// rest, and the secondary overlay / nav symbol flips sign exactly there.
+    ///
+    /// SINGLE SOURCE, deliberately. The despread cuts its P_HEAD row here and the peel switches
+    /// gains here; if the two ever computed it separately and drifted by a hop, the analytic
+    /// add-back would stop being exact in precisely the windows that matter (the ones with a
+    /// flip) and the error would look like a small unexplained depth loss.
+    /// Hop granularity is exact enough: the filter span mixes ~1 hop at the seam, versus the
+    /// 12/25-records-nulled failure that segmenting repairs at all.
+    int m_head_for(double cp0, double cps, long long window_start_sample) const {
+        const double n0 = (double)(window_start_sample + bank.fft_len() - 1);
+        const double C0 = cp0 + n0 * cps;
+        const double Lc = (double)code_len;
+        const double next_boundary = (std::floor(C0 / Lc) + 1.0) * Lc;
+        const double hops_to_b = (next_boundary - C0) / ((double)bank.fft_len() * cps);
+        int m = (int)std::ceil(hops_to_b);
+        if (m < 0)
+            m = 0;
+        if (m > n_hops)
+            m = n_hops;
+        return m;
+    }
+
+    /// chips per sample including the code Doppler, and the carrier angular rate -- the two
+    /// derived quantities every job (despread or peel) needs from a Doppler.
+    double cps_for(double doppler_hz) const {
+        return bank.eff_chip_rate() / fs
+               * (1.0 + bank.code_doppler_sign * doppler_hz / bank.carrier_hz());
+    }
+    double wc_for(double doppler_hz) const {
+        return 2.0 * M_PI * (f_off + doppler_hz) / fs;
     }
 
     // (Re)build PRN p's Phi bucket at this Doppler if it moved more than refresh_hz.
@@ -236,7 +272,7 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
                                            long long window_start_sample,
                                            const std::vector<Spec>& specs, void* d_jobs_slot,
                                            void* d_corr_out, void* d_energy_out, void* stream,
-                                           const void* d_chan_scale) {
+                                           const void* d_chan_scale, void* d_xcorr_out) {
     Impl& im = *_impl;
     if (specs.empty())
         return 0;
@@ -258,22 +294,9 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
                 mask |= (1ULL << c);
         const double cp0 = (double)im.bank.comb_mult() * sp.cp_seed;
 
-        // Output row 3 = P_HEAD: the prompt cut at the code-period boundary. Windows are
-        // hop-aligned, so the period boundary (where the secondary overlay flips) lands
-        // mid-window at a per-sat offset; the hop where the PROMPT's absolute code phase
-        // C = cp0 + n_m*cps crosses the next multiple of code_len splits head from tail.
-        // Hop granularity (1/n_hops of a record) is exact enough: the filter span mixes
-        // ~1 hop at the seam vs the 12/25-records-nulled failure this repairs.
-        const double n0 = (double)(window_start_sample + im.bank.fft_len() - 1);
-        const double C0 = cp0 + n0 * cps;
-        const double Lc = (double)im.code_len;
-        const double next_boundary = (std::floor(C0 / Lc) + 1.0) * Lc;
-        const double hops_to_b = (next_boundary - C0) / ((double)im.bank.fft_len() * cps);
-        int m_head = (int)std::ceil(hops_to_b);
-        if (m_head < 0)
-            m_head = 0;
-        if (m_head > im.n_hops)
-            m_head = im.n_hops;
+        // Output row 3 = P_HEAD: the prompt cut at the code-period boundary (Impl::m_head_for --
+        // shared with the peel, which switches gains at the same hop).
+        const int m_head = im.m_head_for(cp0, cps, window_start_sample);
 
         im.h_jobs[i] = {cp0,
                         (double)im.bank.comb_mult() * sp.spacing_chips,
@@ -305,14 +328,94 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
         ck(gnss_cuda::launch_despread_q((const unsigned char*)d_window,
                                         (const float*)d_chan_scale, im.d_code,
                                         (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec, im.n_chan,
-                                        par, (double2*)d_corr_out, (double*)d_energy_out, st),
+                                        par, (double2*)d_corr_out, (double*)d_energy_out, st,
+                                        (double2*)d_xcorr_out),
            "launch q (device batch)");
     else
         ck(gnss_cuda::launch_despread((const float2*)d_window, im.d_code,
                                       (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec, im.n_chan,
-                                      par, (double2*)d_corr_out, (double*)d_energy_out, st),
+                                      par, (double2*)d_corr_out, (double*)d_energy_out, st,
+                                      (double2*)d_xcorr_out),
            "launch (device batch)");
     return 4 * n_spec; // OUTPUT rows written (E, P, L, P_HEAD per spec) -- not the job count
+}
+
+int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
+                                          long long window_start_sample,
+                                          const std::vector<PeelSpec>& specs, void* d_pjobs_slot,
+                                          void* d_gain_slot, void* d_resid_out, void* stream,
+                                          const void* d_chan_scale) {
+    Impl& im = *_impl;
+    const cudaStream_t st = (cudaStream_t)stream;
+    const int n_job = (int)specs.size();
+
+    // Zero jobs still has to run: the residual buffer must be FILLED (a straight copy of the
+    // voltage), not left holding the previous record. The despread downstream reads it either
+    // way, so "no PRN converged yet" must mean "un-peeled voltage", never "stale window".
+    im.h_pjobs.resize((size_t)n_job);
+    im.h_gains.assign((size_t)2 * n_job * im.n_chan, make_float2(0.f, 0.f));
+    for (int i = 0; i < n_job; ++i) {
+        const PeelSpec& sp = specs[(size_t)i];
+        auto& pc = im.ensure_phi(sp.p, sp.doppler_hz);
+        const double cps = im.cps_for(sp.doppler_hz);
+        const double cp0 = (double)im.bank.comb_mult() * sp.cp_seed;
+        uint64_t mask = 0;
+        for (int c : sp.covering)
+            if (c >= 0 && c < im.n_chan)
+                mask |= (1ULL << c);
+        // Gains land in the arena as [job][head|tail][chan]; the job points at its two rows.
+        float2* const g_head = (float2*)d_gain_slot + (size_t)(2 * i) * im.n_chan;
+        float2* const g_tail = (float2*)d_gain_slot + (size_t)(2 * i + 1) * im.n_chan;
+        for (int c = 0; c < im.n_chan; ++c) {
+            const bool own = (mask >> c) & 1ULL;
+            const auto ah = (own && c < (int)sp.a_head.size()) ? sp.a_head[(size_t)c]
+                                                               : std::complex<float>(0.f, 0.f);
+            const auto at = (own && c < (int)sp.a_tail.size()) ? sp.a_tail[(size_t)c]
+                                                               : std::complex<float>(0.f, 0.f);
+            im.h_gains[(size_t)(2 * i) * im.n_chan + c] = make_float2(ah.real(), ah.imag());
+            im.h_gains[(size_t)(2 * i + 1) * im.n_chan + c] = make_float2(at.real(), at.imag());
+        }
+        im.h_pjobs[(size_t)i] = {cp0,
+                                 cps,
+                                 1.0 / cps,
+                                 im.wc_for(sp.doppler_hz),
+                                 im.code_offset[(size_t)sp.p],
+                                 (int)im.code_len,
+                                 mask,
+                                 pc.d_A,
+                                 pc.d_B,
+                                 pc.n_chips,
+                                 im.m_head_for(cp0, cps, window_start_sample), // SHARED with P_HEAD
+                                 g_head,
+                                 g_tail};
+    }
+    if (n_job > 0) {
+        ck(cudaMemcpyAsync(d_gain_slot, im.h_gains.data(), im.h_gains.size() * sizeof(float2),
+                           cudaMemcpyHostToDevice, st),
+           "gains upload (peel)");
+        ck(cudaMemcpyAsync(d_pjobs_slot, im.h_pjobs.data(),
+                           (size_t)n_job * sizeof(gnss_cuda::PeelJob), cudaMemcpyHostToDevice,
+                           st),
+           "peel jobs upload");
+    }
+
+    gnss_cuda::DespreadParams par;
+    par.n0 = window_start_sample + im.bank.fft_len() - 1; // same per-hop reference as the despread
+    par.fft_len = im.bank.fft_len();
+    par.n_hops = im.n_hops;
+    par.Lf = im.Lf;
+    par.data_stride = data_stride;
+    if (d_chan_scale)
+        ck(gnss_cuda::launch_peel_q((const unsigned char*)d_window, (const float*)d_chan_scale,
+                                    im.d_code, (gnss_cuda::PeelJob*)d_pjobs_slot, n_job,
+                                    im.n_chan, par, (float2*)d_resid_out, st),
+           "launch peel q");
+    else
+        ck(gnss_cuda::launch_peel((const float2*)d_window, im.d_code,
+                                  (gnss_cuda::PeelJob*)d_pjobs_slot, n_job, im.n_chan, par,
+                                  (float2*)d_resid_out, st),
+           "launch peel");
+    return n_job;
 }
 
 std::array<gnss::DespreadResult, 3>

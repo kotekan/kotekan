@@ -41,7 +41,7 @@ code_doppler_sign: 1.0
 doppler_margin_hz: 250000.0
 hops_per_record: 1000
 n_prn: 32
-record_floats: 20
+record_floats: 24
 cpu_affinity: [0, 1, 2, 3]
 
 gnss_pool: { kotekan_metadata_pool: GnssChanMetadata, num_metadata_objects: 8 * buffer_depth }
@@ -77,10 +77,13 @@ peel:
     code_phase_chips: [546.90, 738.71]
     code_phase_rate: [1.3537e-7, 9.152e-8]
     doppler_rate_hz_s: [-0.147, -0.418]
-    pullin_chips: 0.0        # REQUIRED 0 when smoothing (per-record re-pick wrecks the phase track)
-    pullin_step: 0.25
-    fll_gain: 0.05
-    gain_alpha: 0.15
+    pullin_chips: 0.0        # rely on the bench broker's continuous cp (a per-record re-pick
+                             # jumps the carrier phase; REQUIRED 0 if the v2 knobs are ever re-armed)
+    # v1 (raw per-segment gain) = the measured reference. The twin-chain instrument below could not
+    # separate v1 from any v2 variant -- all three floor it at >=26-35 dB -- so smoothing is off
+    # until there is a lower residual floor to discriminate against.
+    fll_gain: 0.0
+    gain_alpha: 0.0
     fll_lock_amp: 0.0
 
 # ---- the calibrated depth instrument: identical chains on baseline and residual ----

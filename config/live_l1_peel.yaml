@@ -28,7 +28,7 @@ f_offset: 1.25e6
 signal: GPS_L1CA
 code_doppler_sign: 1.0
 n_prn: 11
-record_floats: 20
+record_floats: 24
 doppler_margin_hz: 250000.0
 acquire_snr: 10
 acquire_windows: 20
@@ -133,9 +133,11 @@ gather: { kotekan_stage: GnssChannelGather, in_bufs: [rc_00, rc_01, rc_02, rc_03
 search: { kotekan_stage: GnssChannelizedSearch, in_buf: gather_buf, channel_offset: 0, n_channels: 12, acquire_snr: 10, acquire_windows: 20 }
 # GNSS VOLTAGE PEEL: reconstruct + subtract each broker-seeded PRN from the (post-valve) voltage and
 # emit the residual; a second search on it should show the PEELED sats' SNR collapse while others hold.
-# pullin 0 -> the broker's continuous cp keeps the code on-peak (add a small pullin if it reads off-peak);
-# fll_gain + gain_alpha = the v2 derotated smooth-gain (deeper peel, lower self-noise).
-peel: { kotekan_stage: GnssVoltagePeel, in_buf: chan_buf2, out_buf: resid_buf, channel_offset: 0, n_channels: 12, pullin_chips: 0, fll_gain: 0.05, gain_alpha: 0.15, fll_lock_amp: 0.0 }
+# pullin 0 -> the broker's continuous cp keeps the code on-peak (add a small pullin if it reads off-peak).
+# v2 smooth-gain knobs OFF (fll_gain/gain_alpha 0 = v1): no variant beat v1 on the calibrated bench.
+# SUPERSEDED for live use by the FUSED peel inside cudaGnssTrack (docs/gnss_voltage_peel_live.md) --
+# this CPU side-arm remains the offline reference and the numerical cross-check.
+peel: { kotekan_stage: GnssVoltagePeel, in_buf: chan_buf2, out_buf: resid_buf, channel_offset: 0, n_channels: 12, pullin_chips: 0, fll_gain: 0.0, gain_alpha: 0.0, fll_lock_amp: 0.0 }
 search_resid: { kotekan_stage: GnssChannelizedSearch, in_buf: resid_buf, channel_offset: 0, n_channels: 12, acquire_snr: 10, acquire_windows: 20 }
 
 track_00: { kotekan_stage: GnssChannelizedTracker, in_buf: ch_00, out_buf: rec_00, channel_offset: 0, n_channels: 1, pullin_chips: 1.0, pullin_step: 0.5, capture_utc0: 1.0, fll_gain: 0.03, fll_lock_amp: 0 }

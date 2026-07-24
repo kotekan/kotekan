@@ -35,6 +35,22 @@
  *         this window / not segmented" (the CPU tracker's compatibility default): tail = 0
  *         and every wipe reduces exactly to the unsegmented behaviour.
  *         PH_energy/P_energy = f, the measured boundary fraction (free diagnostic).
+ *    20 RES.re 21 RES.im  22 RES_PH.re 23 RES_PH.im
+ *      -- PEEL RESIDUAL prompt (and its head segment): the SAME prompt correlation, taken on
+ *         the voltage AFTER this PRN's own reconstructed waveform was subtracted
+ *         (docs/gnss_voltage_peel_live.md). Slots 3/4/16/17 continue to carry the FULL
+ *         (un-peeled) correlation -- the fused peel adds its own known contribution back in
+ *         closed form, exactly, so every existing consumer is untouched. These slots are the
+ *         NEW product: 20*log10(|P| / |RES|) is the achieved peel depth, and it is honest
+ *         per-record because the subtracted gain is FEED-FORWARD, i.e. statistically
+ *         independent of this record's noise. (A gain fitted IN-window subtracts its own
+ *         noise back along R and the residual reads ~0 = infinite depth -- the degeneracy
+ *         that makes GnssVoltagePeel's own peel_db unusable.)
+ *         Energies are shared with the prompt (same replica), so none are duplicated.
+ *         The HEAD slots are REQUIRED, not decorative: the residual carries the same overlay
+ *         sign flip at the code-period boundary, so a blind deep integration of RES cancels
+ *         to |2f-1| exactly like the prompt did before the 2026-07-15 segmentation fix.
+ *         All four are ZERO when no peel ran -- the compatibility default.
  *
  *  COMBINER record (GnssCoherentCombiner -> record/viewer; full-band, one per emit):
  *    0 PRN   1 Doppler_Hz   2 code_phase_chips
@@ -42,6 +58,9 @@
  *    9,10 UTC
  *    11 <|E|^2>  12 <|L|^2>  13 DLL discriminator  14 carrier residual (Hz, full-band
  *       cross-record phase walk -- the shared carrier loop's observable; broker closes it)
+ *    17 deep |A| of the PEEL RESIDUAL  18 incoherent |A| of the peel residual
+ *       -- the same two estimators as slots 8 and 3, run on the residual prompt (slots 20-23).
+ *          peel depth (dB) = 20*log10(CMB_DEEP / CMB_PEEL_DEEP). Zero when no peel ran.
  *    15 phase arc id        -- increments on every cycle slip / phase-continuity break; the
  *       accumulated carrier phase itself is a DOUBLE and ships via REST get_status (adr_cycles),
  *       not here: a float32 mantissa quantizes ~1e6 cycles of ADR to ~0.06 cycles, useless.
@@ -76,7 +95,16 @@
 
 namespace gnss {
 
-constexpr int RECORD_FLOATS = 20;  ///< float32 slots per PRN per record
+/// float32 slots per PRN per record.
+///
+/// ⚠️ This is ALSO a yaml constant: every record buffer is sized `n_prn * record_floats *
+/// sizeof_float`, and NOTHING reads this header to check that. Bumping it means bumping
+/// `record_floats:` in `config/gnss_node.yaml` (the generator source) and re-running the
+/// generators, plus the hand-maintained bench configs. A config left behind under-sizes the
+/// frame and the producers write past the end of it -- so the record producers now assert the
+/// frame is big enough at construction (see GnssChannelizedTracker / GnssGpuRecordAssemble /
+/// GnssCoherentCombiner) and die loudly instead of corrupting memory.
+constexpr int RECORD_FLOATS = 24;
 constexpr int RECORD_UTC_SLOT = 9; ///< capture-UTC double aliased at slots 9-10
 
 // Shared header slots
@@ -111,6 +139,12 @@ constexpr int REC_TRIM_INC = 19;  ///< commanded carrier-TRIM phase increment, c
                                   ///< broker-log journal's +-1 s timing error becomes exact).
                                   ///< Bounded (trim <= clamp 100 Hz x t_rec) = float32-exact,
                                   ///< the same increment design as slot 15.
+constexpr int REC_RES_RE = 20;    ///< PEEL RESIDUAL prompt correlation -- the prompt despread on
+constexpr int REC_RES_IM = 21;    ///< the voltage after this PRN's waveform was subtracted.
+constexpr int REC_RES_PH_RE = 22; ///< residual prompt HEAD segment (same boundary as REC_PH_*);
+constexpr int REC_RES_PH_IM = 23; ///< required, or the residual's deep integration self-cancels.
+                                  ///< All four zero = no peel ran. Energies are the prompt's
+                                  ///< (same replica). See the header note + the peel design doc.
 
 // Combiner-record slots
 constexpr int CMB_AMP_INCOH = 3;
@@ -127,6 +161,10 @@ constexpr int CMB_ARC = 15; ///< phase arc id: ++ on every cycle slip / continui
 constexpr int CMB_HEAD_FRAC = 16; ///< window-mean boundary fraction f = <PH_energy>/<P_energy>
                                   ///< (0/1 = period boundary at the window edge -- benign;
                                   ///< ~0.5 = the old bistable's null zone; now fixed, diagnostic)
+constexpr int CMB_PEEL_DEEP = 17; ///< deep |A| of the PEEL RESIDUAL (the CMB_DEEP estimator run on
+                                  ///< slots 20-23) -> depth_dB = 20*log10(CMB_DEEP/CMB_PEEL_DEEP)
+constexpr int CMB_PEEL_INCOH = 18;///< incoherent |A| of the peel residual (the CMB_AMP_INCOH twin).
+                                  ///< Both zero when no peel ran.
 
 } // namespace gnss
 #endif // GNSS_RECORD_HPP

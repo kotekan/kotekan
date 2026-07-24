@@ -32,6 +32,25 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _n_prn = config.get_default<int>(unique_name, "n_prn", 0);
     if (_n_prn <= 0 && !in_bufs.empty())
         _n_prn = in_bufs[0]->frame_size / (int)sizeof(float) / RECORD_FLOATS;
+    // Record width is a C++ constant; the frames are sized in yaml (n_prn * record_floats *
+    // sizeof_float) with nothing linking the two. A stale config under-sizes them -- and here it
+    // is doubly nasty, because the inference above would then silently compute the WRONG n_prn.
+    {
+        const size_t need = (size_t)_n_prn * RECORD_FLOATS * sizeof(float);
+        for (Buffer* b : in_bufs)
+            if ((size_t)b->frame_size < need) {
+                FATAL_ERROR("GnssCoherentCombiner: input frame {:d} B < {:d} PRN x {:d} floats "
+                            "({:d} B). Bump 'record_floats' in the config to {:d}.",
+                            (size_t)b->frame_size, _n_prn, RECORD_FLOATS, need, RECORD_FLOATS);
+                return;
+            }
+        if ((size_t)out_buf->frame_size < need) {
+            FATAL_ERROR("GnssCoherentCombiner: out_buf frame {:d} B < {:d} PRN x {:d} floats "
+                        "({:d} B). Bump 'record_floats' in the config to {:d}.",
+                        (size_t)out_buf->frame_size, _n_prn, RECORD_FLOATS, need, RECORD_FLOATS);
+            return;
+        }
+    }
 
     _integration_length = std::max(1, config.get_default<int>(unique_name, "integration_length", 1));
     const std::string mode = config.get_default<std::string>(unique_name, "integration_mode", "block");

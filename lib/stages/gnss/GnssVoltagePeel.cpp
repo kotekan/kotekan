@@ -89,6 +89,13 @@ GnssVoltagePeel::GnssVoltagePeel(Config& config, const std::string& unique_name,
     _pullin_chips = config.get_default<double>(unique_name, "pullin_chips", 0.5);
     _pullin_step = config.get_default<double>(unique_name, "pullin_step", 0.25);
     _fll_gain = config.get_default<double>(unique_name, "fll_gain", 0.0);
+    // DEFAULT 0 = v1 (raw per-segment gain) -- the true old on-sky behaviour. The 2026-07-23
+    // removal of the `segs.size()==1` gate made this knob ACTIVE for the first time on streaming
+    // windows (every one of which straddles the period boundary), so configs carrying a nonzero
+    // gain_alpha silently changed path. The calibrated twin-chain bench could not separate v1 from
+    // any v2 variant -- all three floor the instrument at >=26-35 dB -- so there is no measured
+    // reason to prefer smoothing here. The fused live peel gets its gain feed-forward instead
+    // (docs/gnss_voltage_peel_live.md); this stage is now the offline reference.
     _gain_alpha = config.get_default<double>(unique_name, "gain_alpha", 0.0);
     _fll_lock_amp = config.get_default<double>(unique_name, "fll_lock_amp", 0.0);
     _fll_max_gap = config.get_default<double>(unique_name, "fll_max_gap_s", 0.005);
