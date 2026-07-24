@@ -90,6 +90,20 @@ def main():
     ap.add_argument("--raw-doppler", action="store_true",
                     help="push the latest raw detection Doppler instead of the smoothed trajectory "
                          "(diagnostic: injects the search's ~20 Hz grid jitter into fcar)")
+    ap.add_argument("--carrier-loop", default="",
+                    help="combiner stage name (e.g. 'gps_combiner') to close a SHARED CARRIER "
+                         "LOOP against: poll its carrier_hz_resid per PRN, integrate a trim, and "
+                         "push carrier_trim_hz with the seeds -- the minimal mirror of "
+                         "gps_distributed_broker's loop. WITHOUT this the GPU chain "
+                         "(carrier_shared, fll_gain 0 by contract) has NO fine carrier at all: "
+                         "deep coherence collapses to the shortest ladder rung, deep_snr pins at "
+                         "the rectification floor on EVERY chain, and any depth measured from "
+                         "deep amplitudes is a ratio of floor junk (measured 2026-07-24 -- "
+                         "carr_resid 12-55 Hz, coherence_s stuck at 0.124 s, baseline and peeled "
+                         "alike). Empty = off (the historical behaviour).")
+    ap.add_argument("--trim-gain", type=float, default=0.4,
+                    help="carrier-loop integrator gain per poll (on the measured residual Hz)")
+    ap.add_argument("--trim-clamp", type=float, default=100.0, help="|trim| clamp (Hz)")
     ap.add_argument("--dry-run", action="store_true", help="log seeds, do not POST")
     args = ap.parse_args()
 
@@ -107,6 +121,11 @@ def main():
             seed_urls.append("%s/%s/set_seeds" % (args.url.rstrip("/"), t.strip().strip("/")))
 
     hist = {p: [] for p in prns}   # prn -> [(ref_hop, doppler_hz, cp_unwrapped)]
+    trim = {p: 0.0 for p in prns}  # prn -> integrated carrier trim (Hz), --carrier-loop
+    trim_last = {}                 # prn -> last integrated residual (dedup on changed value)
+    locked_once = set()            # prns that have EVER cohered (bootstrap -> track mode)
+    comb_url = ("%s/%s/get_status" % (args.url.rstrip("/"), args.carrier_loop.strip("/"))
+                if args.carrier_loop else "")
     t0 = time.time()
     n_push = 0
     print("bench-broker: %s -> %s | prns=%s interval=%.2fs dt_hop=%.3g s"
@@ -124,6 +143,46 @@ def main():
             continue
 
         by_prn = {int(d["prn"]): d for d in dets if int(d["prn"]) in hist}
+
+        # Shared carrier loop: integrate the combiner's measured residual into the trim. The
+        # residual is reported in the INTERNAL (r2c-flipped) convention like the trim itself, so
+        # the sign is a straight accumulate (the same convention the real broker uses). Gated on
+        # a sane magnitude -- an unlocked sat's "residual" is fit noise.
+        if comb_url:
+            try:
+                for r in _get(comb_url):
+                    p = int(r.get("prn", -1))
+                    if p in trim:
+                        resid = float(r.get("carrier_hz_resid", 0.0) or 0.0)
+                        # Dedup on changed value, exactly like the real broker: the combiner
+                        # emits a fresh residual every ~1 s window while this loop polls at the
+                        # push cadence -- integrating the SAME emit repeatedly over-applies the
+                        # gain and oscillates (measured: settled at ~1 Hz p-p instead of
+                        # converging; the real broker's comment reports +-20 Hz swings from the
+                        # same mistake at its 5 Hz poll rate).
+                        if not (0.0 < abs(resid) < 60.0) or resid == trim_last.get(p):
+                            continue
+                        trim_last[p] = resid
+                        # TWO-MODE, the real broker's shape in miniature. BOOTSTRAP (never
+                        # cohered): full gain -- the true residual IS the seed error and gating
+                        # would deadlock. TRACK (cohered once): innovation-gate + slew-clamp.
+                        # The squared-phase residual fit is ambiguous mod 1/(2*T_window) (+-2 Hz
+                        # at the 0.25 s rung), and integrating an ALIASED measurement at full
+                        # gain is positive feedback: measured 2026-07-24, the loop pulled in,
+                        # deep-locked at 103 sigma / 0.5 s coherence, then walked the NCO off at
+                        # ~1.5 Hz/s to +15 Hz -- the broker comment's "alias-capture disease"
+                        # reproduced in one bench run. Gate + clamp is its minimal cure.
+                        if (r.get("coherence_s") or 0.0) > 0.0:
+                            locked_once.add(p)
+                        if p in locked_once and abs(resid) > 3.0:
+                            continue  # innovation gate: an aliased/garbage fit, not a measurement
+                        step = args.trim_gain * resid
+                        step = max(-2.0, min(2.0, step))  # slew clamp (Hz per update)
+                        trim[p] += step
+                        trim[p] = max(-args.trim_clamp, min(args.trim_clamp, trim[p]))
+            except Exception as e:
+                print("  carrier-loop poll failed (%s)" % e, flush=True)
+
         seeds = []
         for prn in prns:
             d = by_prn.get(prn)
@@ -162,6 +221,7 @@ def main():
                 "code_phase_chips": cp % args.code_length,
                 "code_phase_rate": cprate,
                 "doppler_rate_hz_s": drate,
+                "carrier_trim_hz": trim.get(prn, 0.0),
                 "ref_hop": int(ref_hop),
             })
 

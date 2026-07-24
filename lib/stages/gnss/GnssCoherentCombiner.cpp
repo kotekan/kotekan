@@ -168,6 +168,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_deep_pow.assign(_n_prn, 0.0f);
     _st_peel_deep.assign(_n_prn, 0.0f);
     _st_peel_incoh.assign(_n_prn, 0.0f);
+    _st_peel_deep_snr.assign(_n_prn, 0.0f);
     _dr_phase.assign(_n_prn, -1);
     _dr_utc.assign(_n_prn, 0.0);
     _dr_prn.assign(_n_prn, -1);
@@ -627,6 +628,7 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<double> coh_s(_n_prn, 0.0);    // measured coherence: span of the winning window
         std::vector<int> deep_rec(_n_prn, 0);      // records in the winning deep window
         std::vector<double> deep_floor(_n_prn, 0.0); // rectification floor at the reported rung
+        std::vector<double> peel_rsnr(_n_prn, 0.0);  // residual deep significance (peel_depth)
         // FIXED-WINDOW, noise-debiased coherent power (Hz) for the beam map: the coherent
         // twin of the incoherent x = s^2/N. Computed from the FULL window's wipe every emit
         // -- NO ladder, NO detection gate, so a pixel average over emits is UNBIASED at
@@ -941,6 +943,7 @@ void GnssCoherentCombiner::main_thread() {
                     const double ramp = navwipe_amplitude(_navbuf_res[p], _navutc[p], &rsnr,
                                                           &_navhead_res[p]);
                     rec[gnss::CMB_PEEL_DEEP] = (float)ramp;
+                    peel_rsnr[p] = rsnr;
                     // Incoherent residual amplitude: RMS of the per-record |A_res|, the phase-blind
                     // twin of CMB_AMP_INCOH. Cheap and always defined even when the coherent deep
                     // is at floor.
@@ -1135,6 +1138,7 @@ void GnssCoherentCombiner::main_thread() {
                 _st_deep_pow[p] = (float)deep_pow[p];
                 _st_peel_deep[p] = rec[gnss::CMB_PEEL_DEEP];
                 _st_peel_incoh[p] = rec[gnss::CMB_PEEL_INCOH];
+                _st_peel_deep_snr[p] = (float)peel_rsnr[p];
                 _st_dll_disc[p] = rec[gnss::CMB_DLL_DISC];
                 _st_head_frac[p] = rec[gnss::CMB_HEAD_FRAC];
                 // S4, thermal floor removed using the COHERENT SNR (independent of the
@@ -1211,6 +1215,10 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          // 0 when this chain does not peel. At the combiner floor -> a LOWER BOUND.
                          {"peel_deep", _st_peel_deep[p]},
                          {"peel_incoh", _st_peel_incoh[p]},
+                         // The residual deep's SIGNIFICANCE: compare THIS against deep_floor for
+                         // the at-floor / lower-bound decision (peel_deep is an amplitude and
+                         // deep_floor a significance -- comparing those is a units error).
+                         {"peel_deep_snr", _st_peel_deep_snr[p]},
                          {"dll_disc", _st_dll_disc[p]},
                          // boundary fraction f: where the code-period boundary sits inside
                          // the despread window (segmented-wipe diagnostic; ~0.5 was the old

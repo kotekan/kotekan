@@ -226,6 +226,9 @@ private:
     std::vector<float> _st_peel_deep;  ///< deep |A| of the PEEL RESIDUAL (0 when not peeling):
                                        ///< peel_depth_db = 20*log10(deep_amplitude/peel_deep)
     std::vector<float> _st_peel_incoh; ///< incoherent |A| of the peel residual
+    std::vector<float> _st_peel_deep_snr; ///< the residual deep's SIGNIFICANCE -- compare against
+                                          ///< deep_floor (same units) for the at-floor test;
+                                          ///< peel_deep vs deep_floor is a UNITS ERROR
     // ---- Accumulated carrier phase (ADR): the precise ranging / TEC observable.
     // Reconstructed per RECORD as Phi_cmd (tracker, record slot 15) + arg(A)/2pi, accumulated
     // in increments so both ambiguities cancel (see the block in main_thread). Continuous

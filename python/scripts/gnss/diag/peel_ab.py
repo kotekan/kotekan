@@ -81,6 +81,8 @@ def main():
             if pk > 0:
                 acc[p]["peel"].append(float(pk))
             acc[p]["floor"].append(float(r.get("deep_floor", 0.0) or 0.0))
+            acc[p].setdefault("rsnr", []).append(float(r.get("peel_deep_snr", 0.0) or 0.0))
+            acc[p].setdefault("dsnr", []).append(float(r.get("deep_snr", 0.0) or 0.0))
             b = base.get(p)
             if b and (b.get("deep_amplitude", 0.0) or 0.0) > 0:
                 acc[p]["base"].append(float(b["deep_amplitude"]))
@@ -97,8 +99,14 @@ def main():
             print("  %3d   (no deep samples)" % p)
             continue
         md = statistics.median(a["deep"])
-        floored = a["peel"] and statistics.median(a["peel"]) <= (
-            statistics.median(a["floor"]) * 1.05 if a["floor"] else 0.0)
+        # At-floor tests in SIGNIFICANCE units (peel_deep_snr / deep_snr vs deep_floor): an
+        # amplitude-vs-floor comparison is a units error. ALSO: if the PRIMARY deep is itself
+        # at floor, the whole depth ratio is floor junk (no carrier loop / no lock) -- flag it.
+        flr = statistics.median(a["floor"]) if a["floor"] else 0.0
+        rs = statistics.median(a.get("rsnr", [0.0]))
+        ds = statistics.median(a.get("dsnr", [0.0]))
+        primary_floored = flr > 0 and ds <= 1.10 * flr
+        floored = flr > 0 and rs <= 1.10 * flr
         note = ""
         if not a["peel"]:
             mp = float("nan")
@@ -107,7 +115,9 @@ def main():
         else:
             mp = statistics.median(a["peel"])
             depth = 20.0 * math.log10(md / mp) if mp > 0 else float("inf")
-            if floored:
+            if primary_floored:
+                note = "PRIMARY AT FLOOR -> depth INVALID (no deep lock; close the carrier loop)"
+            elif floored:
                 note = "resid AT FLOOR -> depth is a LOWER BOUND"
         line = "  %3d   %8.4f   %9.5f   %7.2f   %s" % (p, md, mp, depth, note)
         if ub:
