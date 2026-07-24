@@ -265,8 +265,8 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
         // reads all four unconditionally.
         if (j == 3 && job.m_head == 0) {
             if (m == 0) {
-                corr[(size_t)(4 * b + 3) * gridDim.y + ci] = make_double2(0.0, 0.0);
-                energy[(size_t)(4 * b + 3) * gridDim.y + ci] = 0.0;
+                corr[(size_t)(p.out_rows_spec * b + 3) * gridDim.y + ci] = make_double2(0.0, 0.0);
+                energy[(size_t)(p.out_rows_spec * b + 3) * gridDim.y + ci] = 0.0;
             }
             break;
         }
@@ -284,8 +284,8 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
             __syncthreads();
         }
         if (m == 0) {
-            corr[(size_t)(4 * b + j) * gridDim.y + ci] = make_double2(sh_re[0], sh_im[0]);
-            energy[(size_t)(4 * b + j) * gridDim.y + ci] = sh_e[0];
+            corr[(size_t)(p.out_rows_spec * b + j) * gridDim.y + ci] = make_double2(sh_re[0], sh_im[0]);
+            energy[(size_t)(p.out_rows_spec * b + j) * gridDim.y + ci] = sh_e[0];
         }
     }
 
@@ -490,6 +490,77 @@ cudaError_t launch_peel_q(const unsigned char* data, const float* chan_scale, co
     const int block = peel_block(p.n_hops);
     gnss_peel_kernel<unsigned char><<<peel_grid(p.n_hops, block, n_chan), block, 0, stream>>>(
         data, chan_scale, code, jobs, n_job, p, resid);
+    return cudaGetLastError();
+}
+
+} // namespace gnss_cuda
+
+namespace {
+
+/// One thread per (spec, channel). See launch_peel_addback for the identity and why it is exact.
+__global__ void gnss_peel_addback_kernel(double2* __restrict__ corr,
+                                         const double* __restrict__ energy,
+                                         const double2* __restrict__ xcorr,
+                                         const float2* __restrict__ gains, int n_spec, int n_chan,
+                                         int rows_spec) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= n_spec * n_chan)
+        return;
+    const int b = idx / n_chan;  // spec
+    const int ci = idx % n_chan; // channel
+
+    const size_t r0 = (size_t)(rows_spec * b) * n_chan + ci; // row 0 (E) of this spec/channel
+    const size_t x0 = (size_t)(4 * b) * n_chan + ci;         // xcorr row 0 of this spec/channel
+
+    const double2 ah = make_double2(gains[(size_t)(2 * b) * n_chan + ci].x,
+                                    gains[(size_t)(2 * b) * n_chan + ci].y);
+    const double2 at = make_double2(gains[(size_t)(2 * b + 1) * n_chan + ci].x,
+                                    gains[(size_t)(2 * b + 1) * n_chan + ci].y);
+
+    // <R_P,R_P> over the window and over the head: the prompt's own energies, already computed.
+    const double eP = energy[r0 + (size_t)1 * n_chan];
+    const double eH = energy[r0 + (size_t)3 * n_chan];
+
+    // PRESERVE the residual BEFORE overwriting rows 1 and 3 -- rows 4/5 are the peel observable.
+    corr[r0 + (size_t)4 * n_chan] = corr[r0 + (size_t)1 * n_chan];
+    corr[r0 + (size_t)5 * n_chan] = corr[r0 + (size_t)3 * n_chan];
+
+#pragma unroll
+    for (int t = 0; t < 4; ++t) {
+        // <R_P, R_t>, whole window (xw) and head-restricted (xh).
+        double2 xw, xh;
+        if (t == 0 || t == 2) { // Early / Late: measured cross-terms
+            const int k = (t == 0) ? 0 : 1;
+            xw = xcorr[x0 + (size_t)k * n_chan];
+            xh = xcorr[x0 + (size_t)(k + 2) * n_chan];
+        } else if (t == 1) { // Prompt: <R_P,R_P> is the energy
+            xw = make_double2(eP, 0.0);
+            xh = make_double2(eH, 0.0);
+        } else { // P_HEAD: R_PH is R_P on the head, so head == whole == eH and the tail adds 0
+            xw = make_double2(eH, 0.0);
+            xh = xw;
+        }
+        const double2 xt = make_double2(xw.x - xh.x, xw.y - xh.y); // tail share
+        double2 v = corr[r0 + (size_t)t * n_chan];
+        v.x += ah.x * xh.x - ah.y * xh.y + at.x * xt.x - at.y * xt.y;
+        v.y += ah.x * xh.y + ah.y * xh.x + at.x * xt.y + at.y * xt.x;
+        corr[r0 + (size_t)t * n_chan] = v;
+    }
+}
+
+} // namespace
+
+namespace gnss_cuda {
+
+cudaError_t launch_peel_addback(double2* corr, const double* energy, const double2* xcorr,
+                                const float2* gains, int n_spec, int n_chan, int rows_spec,
+                                cudaStream_t stream) {
+    const int total = n_spec * n_chan;
+    if (total <= 0)
+        return cudaSuccess;
+    const int block = 128;
+    gnss_peel_addback_kernel<<<(total + block - 1) / block, block, 0, stream>>>(
+        corr, energy, xcorr, gains, n_spec, n_chan, rows_spec);
     return cudaGetLastError();
 }
 

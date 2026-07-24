@@ -92,6 +92,10 @@ struct DespreadParams {
     int fft_len;  ///< samples per hop
     int n_hops;   ///< hops per record (<=256)
     int Lf;       ///< filter length fft_len*num_taps (Phi tables have Lf+1 entries)
+    int out_rows_spec = 4; ///< OUTPUT rows per spec in corr/energy. 4 normally; 6 when the frame
+                           ///< also carries the peel residual rows, so the despread writes its
+                           ///< E/P/L/P_HEAD into the same stride the add-back and the assembler
+                           ///< use. (xcorr keeps its own stride of 4 -- it is scratch, not frame.)
     int data_stride; ///< row stride (hops) of the [n_chan][*] data array: n_hops for a packed
                      ///< per-record staging buffer, or the ring length when a window is read in
                      ///< place from the device ring (phase F: ring_hops is a multiple of n_hops,
@@ -199,6 +203,32 @@ cudaError_t launch_peel(const float2* data, const int8_t* code, const PeelJob* j
 cudaError_t launch_peel_q(const unsigned char* data, const float* chan_scale, const int8_t* code,
                           const PeelJob* jobs, int n_job, int n_chan, const DespreadParams& p,
                           float2* resid, cudaStream_t stream);
+
+/**
+ * THE ANALYTIC ADD-BACK, in place, right after a despread that ran on the peel residual.
+ *
+ *     V[k] = V'[k] + a_head*<R_P 1_head, R_k> + a_tail*(<R_P, R_k> - <R_P 1_head, R_k>)
+ *
+ * Rows 0-3 (E, P, L, P_HEAD) arrive holding V' and leave holding V -- the FULL, un-peeled
+ * correlation -- so the assembler, combiner, broker, viewer and TEC chain never learn that a peel
+ * happened. The residual they would otherwise lose is preserved first, into rows 4 and 5
+ * (gnssRecord.hpp slots 20-23), where it becomes the peel-depth observable.
+ *
+ * Exact for ANY gain, because on this block one side is the known reference: the peel's
+ * contribution to <X, R_k> is data-INDEPENDENT. A wrong (even sign-flipped) feed-forward gain
+ * therefore costs residual depth and nothing else -- the tracking loop is untouched.
+ *
+ * Runs on the host side of the pipeline's cadence but on the GPU: it is O(n_spec x n_chan) with
+ * no gathers, far too small to be worth a device->host round trip.
+ *
+ * @param corr    in/out [rows_spec*n_spec][n_chan], rows_spec = gnss_gpu::ROWS_PEEL
+ * @param energy  in     same layout: row 1 = <R_P,R_P>, row 3 = <R_P,R_P>|head
+ * @param xcorr   in     [4*n_spec][n_chan] from launch_despread: <R_P,R_E>, <R_P,R_L>, + head
+ * @param gains   in     [2*n_spec][n_chan] float2, exactly what launch_peel subtracted
+ */
+cudaError_t launch_peel_addback(double2* corr, const double* energy, const double2* xcorr,
+                                const float2* gains, int n_spec, int n_chan, int rows_spec,
+                                cudaStream_t stream);
 
 /// launch_chan_ingest for the 4+4b ring: transpose one hop-major byte frame ([hop][chan], as
 /// GnssQuantize44 emits it) into the channel-major ring. A PURE byte transpose -- quantization

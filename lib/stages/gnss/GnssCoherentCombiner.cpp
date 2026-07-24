@@ -102,6 +102,17 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         _navhead.assign(_n_prn, {});
         _navwipe.assign(_n_prn, {});
     }
+    // PEEL DEPTH: buffer the residual prompt (record slots 20-23) and run the SAME deep estimator
+    // on it at emit. Requires the wipe buffer (the deep estimator's machinery), so a peel chain
+    // must configure whatever deep path it uses (navwipe_bit_records for GPS L1CA).
+    _peel_depth = config.get_default<bool>(unique_name, "peel_depth", false);
+    if (_peel_depth) {
+        _navbuf_res.assign(_n_prn, {});
+        _navhead_res.assign(_n_prn, {});
+        if (!_wipe_buffer)
+            WARN("GnssCoherentCombiner: peel_depth set but no deep-wipe path configured "
+                 "(navwipe_bit_records / secondary_overlay) -- peel depth will read 0");
+    }
 
     // Per-record phase dump (debug instrumentation; see the header comment). Append mode so a
     // relaunch extends the record rather than destroying the episode it was launched to catch.
@@ -155,6 +166,8 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_coh_s.assign(_n_prn, 0.0f);
     _st_deep_floor.assign(_n_prn, 0.0f);
     _st_deep_pow.assign(_n_prn, 0.0f);
+    _st_peel_deep.assign(_n_prn, 0.0f);
+    _st_peel_incoh.assign(_n_prn, 0.0f);
     _dr_phase.assign(_n_prn, -1);
     _dr_utc.assign(_n_prn, 0.0);
     _dr_prn.assign(_n_prn, -1);
@@ -512,11 +525,28 @@ void GnssCoherentCombiner::main_thread() {
                     // Overlay-wiped record for the LINEAR carrier fit; 0 when unanchored (the fit
                     // skips zero-norm records) so no un-wiped overlay pollutes it.
                     _navwipe[p].push_back(v_ok ? v_cur : std::complex<double>(0.0, 0.0));
+                    if (_peel_depth) { // residual prompt, same slide (see the block-mode note)
+                        double rr = 0.0, ri = 0.0, rhr = 0.0, rhi = 0.0;
+                        for (float* in2 : ins) {
+                            const float* rc = in2 + (size_t)p * RECORD_FLOATS;
+                            rr += rc[gnss::REC_RES_RE];
+                            ri += rc[gnss::REC_RES_IM];
+                            rhr += rc[gnss::REC_RES_PH_RE];
+                            rhi += rc[gnss::REC_RES_PH_IM];
+                        }
+                        _navbuf_res[p].emplace_back(rr / energy, ri / energy);
+                        _navhead_res[p].emplace_back(h_energy > 0.0 ? rhr / energy : rr / energy,
+                                                     h_energy > 0.0 ? rhi / energy : ri / energy);
+                    }
                     if ((int)_navbuf[p].size() > _integration_length) {
                         _navbuf[p].erase(_navbuf[p].begin());
                         _navutc[p].erase(_navutc[p].begin());
                         _navhead[p].erase(_navhead[p].begin());
                         _navwipe[p].erase(_navwipe[p].begin());
+                        if (_peel_depth) {
+                            _navbuf_res[p].erase(_navbuf_res[p].begin());
+                            _navhead_res[p].erase(_navhead_res[p].begin());
+                        }
                     }
                 }
                 ref_prn[p] = ref[0]; // reference = the latest record (rolling has no block start)
@@ -541,6 +571,24 @@ void GnssCoherentCombiner::main_thread() {
                     _navhead[p].emplace_back(h_energy > 0.0 ? ahr : ar,
                                              h_energy > 0.0 ? ahi : ai);
                     _navwipe[p].push_back(v_ok ? v_cur : std::complex<double>(0.0, 0.0));
+                    if (_peel_depth) {
+                        // Residual prompt (slots 20-23), normalized by the SAME prompt energy so
+                        // it lives in the same |A| units as _navbuf -- the depth ratio is then a
+                        // pure dB with no scale to track. The residual head belongs to the same
+                        // code-period segment as the prompt head, so the deep estimator's overlay
+                        // wipe applies unchanged.
+                        double rr = 0.0, ri = 0.0, rhr = 0.0, rhi = 0.0;
+                        for (float* in2 : ins) {
+                            const float* rc = in2 + (size_t)p * RECORD_FLOATS;
+                            rr += rc[gnss::REC_RES_RE];
+                            ri += rc[gnss::REC_RES_IM];
+                            rhr += rc[gnss::REC_RES_PH_RE];
+                            rhi += rc[gnss::REC_RES_PH_IM];
+                        }
+                        _navbuf_res[p].emplace_back(rr / energy, ri / energy);
+                        _navhead_res[p].emplace_back(h_energy > 0.0 ? rhr / energy : rr / energy,
+                                                     h_energy > 0.0 ? rhi / energy : ri / energy);
+                    }
                 }
                 if (n_acc == 0) { // window reference from the first record of the block
                     ref_prn[p] = ref[0];
@@ -882,11 +930,35 @@ void GnssCoherentCombiner::main_thread() {
                     if (T > 0.0) // /2: same 1-dof -> 2-dof convention as the overlay path
                         deep_pow[p] = (full_snr * full_snr - (flr0 * flr0 + 1.0)) / (2.0 * T);
                 }
+                // PEEL DEPTH: the SAME navwipe deep, on the residual buffer, over the FULL window.
+                // No ladder -- a healthy residual sits at the rectification floor, and a ladder
+                // would just pick the noisiest short rung. deep(residual) vs deep(prompt) = the
+                // suppression; when the residual is at floor the depth is a LOWER BOUND, which the
+                // consumer reads off deep_floor exactly as diag/peel_depth.py does offline.
+                if (_peel_depth && _navbuf_res[p].size() == _navutc[p].size()
+                    && !_navbuf_res[p].empty()) {
+                    double rsnr = 0.0;
+                    const double ramp = navwipe_amplitude(_navbuf_res[p], _navutc[p], &rsnr,
+                                                          &_navhead_res[p]);
+                    rec[gnss::CMB_PEEL_DEEP] = (float)ramp;
+                    // Incoherent residual amplitude: RMS of the per-record |A_res|, the phase-blind
+                    // twin of CMB_AMP_INCOH. Cheap and always defined even when the coherent deep
+                    // is at floor.
+                    double s2 = 0.0;
+                    for (const auto& v : _navbuf_res[p])
+                        s2 += std::norm(v);
+                    rec[gnss::CMB_PEEL_INCOH] =
+                        (float)std::sqrt(s2 / (double)_navbuf_res[p].size());
+                }
                 if (!_rolling) { // block clears the window; rolling slides it (capped above)
                     _navbuf[p].clear();
                     _navutc[p].clear();
                     _navhead[p].clear();
                     _navwipe[p].clear();
+                    if (_peel_depth) {
+                        _navbuf_res[p].clear();
+                        _navhead_res[p].clear();
+                    }
                 }
             }
             *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = ref_utc[p];
@@ -1061,6 +1133,8 @@ void GnssCoherentCombiner::main_thread() {
                 _st_deep_rec[p] = deep_rec[p];
                 _st_deep_floor[p] = (float)deep_floor[p];
                 _st_deep_pow[p] = (float)deep_pow[p];
+                _st_peel_deep[p] = rec[gnss::CMB_PEEL_DEEP];
+                _st_peel_incoh[p] = rec[gnss::CMB_PEEL_INCOH];
                 _st_dll_disc[p] = rec[gnss::CMB_DLL_DISC];
                 _st_head_frac[p] = rec[gnss::CMB_HEAD_FRAC];
                 // S4, thermal floor removed using the COHERENT SNR (independent of the
@@ -1132,6 +1206,11 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"deep_records", _st_deep_rec[p]},
                          {"deep_floor", _st_deep_floor[p]},
                          {"deep_pow_hz", _st_deep_pow[p]},
+                         // PEEL DEPTH (docs/gnss_voltage_peel_live.md): deep/incoherent |A| of the
+                         // voltage-peel RESIDUAL. depth_db = 20*log10(deep_amplitude/peel_deep);
+                         // 0 when this chain does not peel. At the combiner floor -> a LOWER BOUND.
+                         {"peel_deep", _st_peel_deep[p]},
+                         {"peel_incoh", _st_peel_incoh[p]},
                          {"dll_disc", _st_dll_disc[p]},
                          // boundary fraction f: where the code-period boundary sits inside
                          // the despread window (segmented-wipe diagnostic; ~0.5 was the old

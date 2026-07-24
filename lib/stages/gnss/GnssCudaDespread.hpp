@@ -80,7 +80,8 @@ public:
                              void* d_energy_out /*double, [4*specs][n_chan]*/,
                              void* stream /*cudaStream_t*/,
                              const void* d_chan_scale = nullptr /*float, [n_chan]*/,
-                             void* d_xcorr_out = nullptr /*double2, [4*specs][n_chan]*/);
+                             void* d_xcorr_out = nullptr /*double2, [4*specs][n_chan]*/,
+                             int rows_spec = 4 /*corr/energy row stride per spec*/);
 
     /// One PRN's VOLTAGE PEEL request (docs/gnss_voltage_peel_live.md).
     ///

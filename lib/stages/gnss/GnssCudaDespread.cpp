@@ -272,7 +272,8 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
                                            long long window_start_sample,
                                            const std::vector<Spec>& specs, void* d_jobs_slot,
                                            void* d_corr_out, void* d_energy_out, void* stream,
-                                           const void* d_chan_scale, void* d_xcorr_out) {
+                                           const void* d_chan_scale, void* d_xcorr_out,
+                                           int rows_spec) {
     Impl& im = *_impl;
     if (specs.empty())
         return 0;
@@ -322,6 +323,7 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
     par.data_stride = data_stride;
+    par.out_rows_spec = rows_spec; // 6 when the frame also carries the peel residual rows
     // d_chan_scale selects the ring's sample type: 4+4b bytes (decode with the scales the
     // quantizer encoded with) vs fp32. Same kernel, only the voltage load differs.
     if (d_chan_scale)
@@ -337,7 +339,9 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
                                       par, (double2*)d_corr_out, (double*)d_energy_out, st,
                                       (double2*)d_xcorr_out),
            "launch (device batch)");
-    return 4 * n_spec; // OUTPUT rows written (E, P, L, P_HEAD per spec) -- not the job count
+    // OUTPUT rows RESERVED per spec -- not the job count, and not the rows actually written
+    // (with rows_spec 6 the despread fills 0-3 and the add-back fills 4-5).
+    return rows_spec * n_spec;
 }
 
 int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,

@@ -187,6 +187,15 @@ private:
     /// longer squares the raw A -- which cancels at boundary_f=0.5 and drove the loop open there,
     /// scrambling the whole window's phase (2026-07-22 B1C bf=0.5 deep-null root cause).
     std::vector<std::vector<std::complex<double>>> _navwipe;
+    /// PEEL DEPTH (docs/gnss_voltage_peel_live.md). When the tracker peels, records carry a
+    /// residual prompt (slots 20-23) beside the full correlation. Buffer it exactly like _navbuf/
+    /// _navhead and run the SAME deep estimator on it at emit -> CMB_PEEL_DEEP; the ratio
+    /// 20*log10(CMB_DEEP/CMB_PEEL_DEEP) is the achieved depth, and it is honest because the peel's
+    /// gain was feed-forward. Gated on _peel_depth (config): only the peeling chain pays the
+    /// second deep integration. Parallel to _navbuf record-for-record.
+    bool _peel_depth = false;
+    std::vector<std::vector<std::complex<double>>> _navbuf_res;  ///< residual prompt A per record
+    std::vector<std::vector<std::complex<double>>> _navhead_res; ///< residual head segment
 
     /// Per-record phase-dump instrumentation (phase_dump_prns / phase_dump_path): for the listed
     /// PRNs append one text line per despread record -- capture-UTC, PRN, Re/Im of the full-band A,
@@ -214,6 +223,9 @@ private:
                                        ///< deep_snr ~ this value means NO coherent detection
     std::vector<float> _st_deep_pow; ///< fixed-full-window noise-debiased coherent power (Hz):
                                      ///< the map's unbiased coherent observable (mean 0 on noise)
+    std::vector<float> _st_peel_deep;  ///< deep |A| of the PEEL RESIDUAL (0 when not peeling):
+                                       ///< peel_depth_db = 20*log10(deep_amplitude/peel_deep)
+    std::vector<float> _st_peel_incoh; ///< incoherent |A| of the peel residual
     // ---- Accumulated carrier phase (ADR): the precise ranging / TEC observable.
     // Reconstructed per RECORD as Phi_cmd (tracker, record slot 15) + arg(A)/2pi, accumulated
     // in increments so both ambiguities cancel (see the block in main_thread). Continuous

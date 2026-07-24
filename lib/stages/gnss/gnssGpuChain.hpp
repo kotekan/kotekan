@@ -46,13 +46,32 @@ struct FrameHdr {
     int32_t n_rec;   ///< complete record windows despread in this frame (<= MAX_REC)
     int32_t n_prn;   ///< PRN slots (layout stride)
     int32_t n_chan;  ///< channels per job row (layout stride)
-    int32_t n_jobs;  ///< total job ROWS written this frame (<= max_jobs(n_prn); 4 per active PRN
-                     ///< per record -- see max_specs for the kernel's job count)
+    int32_t n_jobs;  ///< total job ROWS written this frame (<= max_jobs(n_prn, n_rows_spec);
+                     ///< n_rows_spec per active PRN per record -- see max_specs for the kernel's
+                     ///< job count)
     int64_t seq0;    ///< absolute sample of the input frame that triggered this output
     double utc0;     ///< capture UTC of sample 0 (the tracker's capture_utc0 convention)
-    int64_t _pad[2];
+    int32_t n_rows_spec; ///< OUTPUT rows per active PRN per record: 4 (E, P, L, P_HEAD) normally,
+                         ///< 6 when the chain peels -- rows 4/5 are then the PEEL RESIDUAL prompt
+                         ///< and its head segment (gnssRecord.hpp slots 20-23). RUNTIME, not a
+                         ///< constant, so a chain that does not peel keeps the smaller frame
+                         ///< instead of every chain paying for one that does. 0 from an old
+                         ///< writer reads as 4.
+    int32_t _pad0;
+    int64_t _pad1;
 };
 static_assert(sizeof(FrameHdr) == 48, "FrameHdr must stay 16-byte aligned");
+
+/// Output rows per active PRN per record, with and without the peel.
+constexpr int ROWS_PLAIN = 4; ///< E, P, L, P_HEAD
+constexpr int ROWS_PEEL = 6;  ///< ... + residual P, residual P_HEAD
+/// Row indices within a spec's block (add to PrnCtl::job0).
+constexpr int ROW_E = 0;
+constexpr int ROW_P = 1;
+constexpr int ROW_L = 2;
+constexpr int ROW_PH = 3;
+constexpr int ROW_RES_P = 4;  ///< peel only
+constexpr int ROW_RES_PH = 5; ///< peel only
 
 /// Pass-1 control for one (record window, PRN slot): exactly what the tracker's pass-2 needs.
 struct PrnCtl {
@@ -77,11 +96,11 @@ struct PrnCtl {
 };
 static_assert(sizeof(PrnCtl) == 64, "PrnCtl must stay 16-byte aligned");
 
-/// Output rows (corr/energy): E, P, L, P_HEAD per active PRN per record.
-constexpr int max_jobs(int n_prn) {
-    return 4 * n_prn * MAX_REC;
+/// Output rows (corr/energy) per frame: @c rows_spec per active PRN per record.
+constexpr int max_jobs(int n_prn, int rows_spec = ROWS_PLAIN) {
+    return rows_spec * n_prn * MAX_REC;
 }
-/// Kernel jobs: ONE per active PRN per record -- each emits the 4 rows above. Sizes the
+/// Kernel jobs: ONE per active PRN per record -- each emits the rows above. Sizes the
 /// DespreadJob arena only.
 constexpr int max_specs(int n_prn) {
     return n_prn * MAX_REC;
@@ -95,12 +114,13 @@ constexpr size_t off_prnctl() {
 constexpr size_t off_corr(int n_prn) {
     return off_prnctl() + sizeof(PrnCtl) * MAX_REC * n_prn;
 }
-constexpr size_t off_energy(int n_prn, int n_chan) {
-    return off_corr(n_prn) + sizeof(double) * 2 * max_jobs(n_prn) * n_chan;
+constexpr size_t off_energy(int n_prn, int n_chan, int rows_spec = ROWS_PLAIN) {
+    return off_corr(n_prn) + sizeof(double) * 2 * max_jobs(n_prn, rows_spec) * n_chan;
 }
 /// Total frame size -- the yaml epl buffer's frame_size must equal this (asserted at runtime).
-constexpr size_t frame_bytes(int n_prn, int n_chan) {
-    return off_energy(n_prn, n_chan) + sizeof(double) * max_jobs(n_prn) * n_chan;
+constexpr size_t frame_bytes(int n_prn, int n_chan, int rows_spec = ROWS_PLAIN) {
+    return off_energy(n_prn, n_chan, rows_spec)
+           + sizeof(double) * max_jobs(n_prn, rows_spec) * n_chan;
 }
 
 } // namespace gnss_gpu

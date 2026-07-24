@@ -9,6 +9,7 @@
 #include "gnssChannelizedReplica.hpp"
 #include "restServer.hpp"
 
+#include <complex>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -60,6 +61,72 @@ public:
     std::vector<double> f_ref;         ///< pinned replica carrier per PRN (NaN = unset)
     std::vector<long long> reacq_hop;  ///< ff_hz ramp anchor per PRN
 
+    // ---- VOLTAGE PEEL (docs/gnss_voltage_peel_live.md) ----
+    bool peel = false;         ///< subtract each seeded PRN's waveform before the despread
+    double peel_alpha = 0.01;  ///< LMS/EMA rate on the DEROTATED gain (~1/alpha records)
+    double peel_min_amp = 0.0; ///< |a| gate: below this the PRN is not peeled at all
+    int peel_warmup = 100;     ///< gain updates before a PRN's gain is trusted enough to subtract
+
+    /// Feed-forward gain per (PRN, channel), in the NCO-DEROTATED frame -- which is where it is
+    /// SLOWLY VARYING, and therefore where averaging is legitimate. Per channel because it costs
+    /// nothing (the despread already reports per channel) and it absorbs the receiver bandpass,
+    /// which is not in the replica and which a single combined gain cannot represent.
+    std::vector<std::complex<float>> gain; ///< [n_prn][n_chan]
+    std::vector<int> gain_n;               ///< updates so far, per PRN (vs peel_warmup)
+    /// Last MEASURED overlay/nav sign, per PRN, and the prediction used for the next record.
+    /// The EMA above is DE-BITTED (the sign is divided out before averaging), so the sign has to
+    /// be carried separately and re-applied at subtraction time. Predicting "same as last" is
+    /// exact for a pilot and right ~19 records in 20 on GPS nav data.
+    std::vector<double> gain_sign;         ///< [n_prn], +-1
+
+    /// NCO phase MIRROR. The gain is averaged derotated but must be subtracted in the replica
+    /// frame, so the peel needs this record's NCO phase -- the same integration
+    /// GnssGpuRecordAssemble runs (re-pin fold included). Deliberately duplicated rather than
+    /// plumbed across stages: every input (f_nco, fcar, reanchored, wstart) is computed HERE in
+    /// pass 1, and a REST/shared-state hop would add a frame of latency to a per-record quantity.
+    /// ⚠️ If the assembler's NCO integration changes, change this with it.
+    std::vector<double> phi_nco;     ///< [n_prn] radians, wrapped
+    std::vector<double> fcar_prev;   ///< [n_prn] previous record's replica f_ref (re-pin fold)
+    std::vector<uint8_t> nco_ok;     ///< [n_prn] phase history valid
+    std::vector<long long> wstart_prev_p; ///< [n_prn] previous record's window start (sample)
+
+    /// PEEL FLL: the NCO mirror above carries only the COMMANDED carrier (ctrim + the ramp FF).
+    /// The residual (true - commanded) is ~0.01 Hz once the broker's shared carrier loop is
+    /// closed, but Hz-level before it converges -- and at Hz-level the gain EMA averages a
+    /// ROTATING phasor: the magnitude survives at reduced scale while the phase lags ~90 deg, so
+    /// the subtraction removes the right amount at the wrong angle, i.e. ~nothing (measured
+    /// 2026-07-24 on the broker-less bench: |g| converged and stable, depth pinned at 0 dB).
+    /// Track the residual with a per-PRN FLL on the record-to-record phase of the gain
+    /// measurements (bit-robust squared discriminator, the codebase's standard), integrate it
+    /// into the derotation, and the EMA sees a stationary phasor again. On the live node with
+    /// ctrim closed this loop idles near zero; on a bench (or during broker convergence) it is
+    /// what makes the peel work at all. Same design as the CPU peel v2's f_track/phi_track.
+    double peel_fll_gain = 0.05;
+    std::vector<double> peel_f_track;   ///< [n_prn] residual carrier (Hz, derotated frame)
+    std::vector<double> peel_phi_track; ///< [n_prn] integrated FLL phase (rad, wrapped)
+    std::vector<std::complex<double>> peel_a_prev; ///< [n_prn] previous FLL-frame gain measurement
+    std::vector<uint8_t> peel_prev_ok;             ///< [n_prn] discriminator history valid
+    std::vector<long long> peel_prev_wstart;       ///< [n_prn] sample of the last gain update
+
+    /// What the PREVIOUS frame's peel actually subtracted, so the next gain update can undo it
+    /// exactly. Storing it beats recomputing: by update time the EMA has moved on.
+    struct PeelUsed {
+        uint8_t run = 0;
+        int job0 = -1;
+        double phi = 0.0;      ///< the NCO-mirror phase this record was peeled/measured at
+        long long wstart = 0;  ///< window start (sample) -- the FLL's time axis
+    };
+    std::vector<PeelUsed> used;                 ///< [MAX_REC][n_prn]
+    std::vector<int> used_prn;                  ///< [MAX_REC*n_prn] -> PRN slot, parallel to used
+    int used_n_rec = 0;
+    std::vector<double2> mir_corr;   ///< host mirror of the previous frame's corr rows
+    std::vector<double> mir_energy;  ///< ... and energies
+    int mir_rows = 0;
+    int mir_rows_spec = 0;
+    cudaEvent_t mir_evt = nullptr;   ///< signals the mirror D2H is complete
+    bool mir_pending = false;
+    long long _peel_diag_ctr = 0; ///< throttles the per-record full-vs-residual diag
+
     // Device ring bookkeeping (the ring memory itself is a named GPU allocation).
     bool ring_init = false;
     long long hop0 = 0;      ///< absolute hop of ring position 0 (window tiling anchor)
@@ -108,12 +175,17 @@ private:
 
     std::string _gpu_mem_input, _gpu_mem_output;
     std::string _mem_ring, _mem_jobs, _mem_scale; // stage-namespaced device allocation names
+    // Peel scratch, per frame (never leaves the GPU): the float2 residual window, the peel jobs,
+    // the gains actually subtracted, and the reference cross-terms the add-back consumes.
+    std::string _mem_resid, _mem_pjobs, _mem_gain, _mem_xcorr;
+    int _rows_spec = 4; // gnss_gpu::ROWS_PLAIN, or ROWS_PEEL when this chain peels
     size_t _in_frame_len = 0, _out_frame_len = 0;
     int _n_hops_frame = 0;
 
     // Host staging for the control block (pageable: the async H2D is host-synchronous on
     // return, so per-instance reuse is safe).
     std::vector<char> _ctl_stage;
+    long long _peel_dbg_ctr = 0; ///< throttles the peel INFO log
 };
 
 #endif

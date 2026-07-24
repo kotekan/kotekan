@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <cstdio>
 #include <set>
 
 using kotekan::bufferContainer;
@@ -106,6 +107,40 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     f_ref.assign(n_prn, std::nan(""));
     reacq_hop.assign(n_prn, 0);
 
+    // ---- voltage peel (docs/gnss_voltage_peel_live.md) ----
+    peel = config.get_default<bool>(unique_name, "peel", false);
+    // alpha sets the gain-averaging window in RECORDS. The peel depth is limited by the gain
+    // estimate's noise, which falls as ~sqrt(1/alpha): a per-record gain is ~18 dB SNR at L1, so
+    // alpha 0.01 (~100 records, 0.1 s) buys ~20 dB and lands near the prototype's ~35 dB ceiling.
+    // Averaging much longer runs into the receiver's carrier coherence instead.
+    peel_alpha = config.get_default<double>(unique_name, "peel_gain_alpha", 0.01);
+    peel_min_amp = config.get_default<double>(unique_name, "peel_min_amp", 0.0);
+    peel_warmup = config.get_default<int>(unique_name, "peel_warmup_records", 100);
+    peel_fll_gain = config.get_default<double>(unique_name, "peel_fll_gain", 0.05);
+    if (peel) {
+        gain.assign((size_t)n_prn * n_chan, std::complex<float>(0.f, 0.f));
+        gain_n.assign(n_prn, 0);
+        gain_sign.assign(n_prn, 1.0);
+        peel_f_track.assign(n_prn, 0.0);
+        peel_phi_track.assign(n_prn, 0.0);
+        peel_a_prev.assign(n_prn, std::complex<double>(0.0, 0.0));
+        peel_prev_ok.assign(n_prn, 0);
+        peel_prev_wstart.assign(n_prn, 0);
+        phi_nco.assign(n_prn, 0.0);
+        fcar_prev.assign(n_prn, 0.0);
+        nco_ok.assign(n_prn, 0);
+        wstart_prev_p.assign(n_prn, 0);
+        used.assign((size_t)gnss_gpu::MAX_REC * n_prn, PeelUsed{});
+        used_prn.assign((size_t)gnss_gpu::MAX_REC * n_prn, -1);
+        const size_t rows = (size_t)gnss_gpu::max_jobs(n_prn, gnss_gpu::ROWS_PEEL);
+        mir_corr.assign(rows * n_chan, double2{0.0, 0.0});
+        mir_energy.assign(rows * n_chan, 0.0);
+        INFO("cudaGnssTrack: VOLTAGE PEEL enabled (alpha {:.4f} ~ {:.0f} records, warmup {:d}, "
+             "min_amp {:.3g}) -- records carry the FULL correlation via the analytic add-back, "
+             "plus the residual in slots 20-23",
+             peel_alpha, (peel_alpha > 0) ? 1.0 / peel_alpha : 0.0, peel_warmup, peel_min_amp);
+    }
+
     // Broker seed contract == GnssChannelizedTracker::set_seeds_callback.
     const std::string ep =
         config.get_default<std::string>(unique_name, "seed_endpoint", "/track/set_seeds");
@@ -114,7 +149,10 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         ep, std::bind(&cudaGnssTrackState::set_seeds_callback, this, _1, _2));
 }
 
-cudaGnssTrackState::~cudaGnssTrackState() = default;
+cudaGnssTrackState::~cudaGnssTrackState() {
+    if (mir_evt)
+        cudaEventDestroy(mir_evt);
+}
 
 void cudaGnssTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
                                             nlohmann::json& request) {
@@ -155,7 +193,8 @@ cudaGnssTrack::cudaGnssTrack(Config& config, const std::string& unique_name,
     // Sample size follows the input format: 1 byte (4+4b) vs 8 (complex float).
     _n_hops_frame =
         (int)(_in_frame_len / ((size_t)s->n_chan * (s->quantized ? 1 : 2 * sizeof(float))));
-    _out_frame_len = gnss_gpu::frame_bytes(s->n_prn, s->n_chan);
+    _rows_spec = s->peel ? gnss_gpu::ROWS_PEEL : gnss_gpu::ROWS_PLAIN;
+    _out_frame_len = gnss_gpu::frame_bytes(s->n_prn, s->n_chan, _rows_spec);
     _ctl_stage.resize(gnss_gpu::off_corr(s->n_prn));
 
     gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
@@ -179,6 +218,26 @@ cudaGnssTrack::cudaGnssTrack(Config& config, const std::string& unique_name,
         // NaN * 0 = NaN would poison the correlations.
         void* d_scale = device.get_gpu_memory(_mem_scale, (size_t)s->n_chan * sizeof(float));
         CHECK_CUDA_ERROR(cudaMemset(d_scale, 0, (size_t)s->n_chan * sizeof(float)));
+    }
+    if (s->peel) {
+        // Peel scratch. The residual is ONE record window, FLOAT2 -- shared across the frame's
+        // records because the peel and the despread that consumes it are enqueued back-to-back on
+        // the same (ordered) stream, so record k+1 cannot overwrite what record k is still
+        // reading. Names are stage-namespaced for the same reason the ring is: the device memory
+        // registry is shared across every cudaProcess on the GPU.
+        _mem_resid = unique_name + "/gnss_peel_resid";
+        _mem_pjobs = unique_name + "/gnss_peel_jobs";
+        _mem_gain = unique_name + "/gnss_peel_gain";
+        _mem_xcorr = unique_name + "/gnss_peel_xcorr";
+        device.get_gpu_memory(_mem_resid, (size_t)s->n_chan * s->hops_per_record * sizeof(float2));
+        device.get_gpu_memory(_mem_pjobs,
+                              (size_t)gnss_gpu::max_specs(s->n_prn) * sizeof(gnss_cuda::PeelJob));
+        device.get_gpu_memory(_mem_gain,
+                              (size_t)2 * gnss_gpu::max_specs(s->n_prn) * s->n_chan
+                                  * sizeof(float2));
+        device.get_gpu_memory(_mem_xcorr,
+                              (size_t)4 * gnss_gpu::max_specs(s->n_prn) * s->n_chan
+                                  * sizeof(double2));
     }
 }
 
@@ -204,6 +263,116 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
     gnss_cuda::DespreadJob* d_jobs = (gnss_cuda::DespreadJob*)device.get_gpu_memory_array(
         _mem_jobs, pipestate.gpu_frame_id, _gpu_buffer_depth,
         (size_t)gnss_gpu::max_specs(S.n_prn) * sizeof(gnss_cuda::DespreadJob));
+
+    // ---- PEEL: fold the PREVIOUS frame's measurements into the feed-forward gain.
+    // The mirror D2H was enqueued at the end of that frame, so by now it is long done -- the
+    // sync is a formality that costs nothing and makes the ordering explicit rather than assumed.
+    if (S.peel && S.mir_pending) {
+        CHECK_CUDA_ERROR(cudaEventSynchronize(S.mir_evt));
+        S.mir_pending = false;
+        for (int r = 0; r < S.used_n_rec; ++r)
+            for (int i = 0; i < S.n_prn; ++i) {
+                const size_t u = (size_t)r * S.n_prn + i;
+                const cudaGnssTrackState::PeelUsed& pu = S.used[u];
+                const int p = S.used_prn[u];
+                if (!pu.run || p < 0)
+                    continue;
+                // Rows are already ADDED BACK on the device, so row P holds the FULL correlation
+                // -- the gain loop sees the same quantity it would without any peel, which is
+                // what keeps it from chasing its own subtraction.
+                const size_t rowP = (size_t)(pu.job0 + gnss_gpu::ROW_P) * S.n_chan;
+                const size_t rowH = (size_t)(pu.job0 + gnss_gpu::ROW_PH) * S.n_chan;
+                const std::complex<double> derot = std::polar(1.0, -pu.phi);
+
+
+
+                // OVERLAY SIGN. The correlation carries the record's nav symbol / secondary chip,
+                // and averaging across a flip cancels it. Two things follow:
+                //  * de-bit before averaging (decision-directed against the running gain), and
+                //  * SKIP records whose head and tail disagree -- the whole-record prompt then
+                //    partially cancels to |2f-1| and its gain is not a measurement of anything.
+                //    That is ~1 record in 20 on GPS nav data and never on a pilot.
+                // PEEL FLL (see the hpp note): the NCO mirror carries only the COMMANDED carrier;
+                // the residual (true - commanded) rotates the derotated gain, and at Hz-level the
+                // EMA would average a rotating phasor into a lagged, shrunken gain that subtracts
+                // at the wrong angle. Advance phi_track by the tracked residual over the gap, fold
+                // it into the derotation, and drive f_track with the bit-robust squared
+                // discriminator on consecutive cross-channel gain measurements.
+                const double dt_fll =
+                    S.peel_prev_ok[p]
+                        ? (double)(pu.wstart - S.peel_prev_wstart[p]) / S.sample_rate
+                        : 0.0;
+                if (S.peel_prev_ok[p] && dt_fll > 0.0)
+                    S.peel_phi_track[p] = std::remainder(
+                        S.peel_phi_track[p] + 2.0 * M_PI * S.peel_f_track[p] * dt_fll,
+                        2.0 * M_PI);
+                // Total derotation for this record: NCO mirror + FLL.
+                const std::complex<double> derot_t =
+                    derot * std::polar(1.0, -S.peel_phi_track[p]);
+
+                std::complex<double> sum_h(0.0, 0.0), sum_t(0.0, 0.0), sum_ref(0.0, 0.0);
+                for (int c = 0; c < S.n_chan; ++c) {
+                    const double eH = S.mir_energy[rowH + c];
+                    const double eT = S.mir_energy[rowP + c] - eH;
+                    if (eH > 0.0)
+                        sum_h += std::complex<double>(S.mir_corr[rowH + c].x,
+                                                      S.mir_corr[rowH + c].y);
+                    if (eT > 0.0)
+                        sum_t += std::complex<double>(S.mir_corr[rowP + c].x - S.mir_corr[rowH + c].x,
+                                                      S.mir_corr[rowP + c].y - S.mir_corr[rowH + c].y);
+                    sum_ref += std::complex<double>(S.gain[(size_t)p * S.n_chan + c]);
+                }
+                // FLL discriminator on the FLL-frame cross-channel measurement (sign-blind: the
+                // product is squared, so the +-1 nav flips between consecutive records cancel).
+                const std::complex<double> a_fll = (sum_h + sum_t) * derot_t;
+                if (S.peel_prev_ok[p] && dt_fll > 0.0 && dt_fll < 0.02 && std::abs(a_fll) > 0.0
+                    && std::abs(S.peel_a_prev[p]) > 0.0) {
+                    const std::complex<double> prod = a_fll * std::conj(S.peel_a_prev[p]);
+                    S.peel_f_track[p] +=
+                        S.peel_fll_gain * std::arg(prod * prod) / 2.0 / (2.0 * M_PI * dt_fll);
+                }
+                S.peel_a_prev[p] = a_fll;
+                S.peel_prev_ok[p] = 1;
+                S.peel_prev_wstart[p] = pu.wstart;
+
+                // Signs relative to the running gain (cross-channel sums: best available SNR).
+                const std::complex<double> ref = sum_ref / derot_t; // gain -> replica frame
+                const double dh = std::real(sum_h * std::conj(ref));
+                const double dt_ = std::real(sum_t * std::conj(ref));
+                const bool have_ref = (S.gain_n[p] > 0) && std::abs(ref) > 0.0;
+                const bool split = have_ref && std::abs(sum_h) > 0.0 && std::abs(sum_t) > 0.0
+                                   && ((dh > 0.0) != (dt_ > 0.0));
+                if (split)
+                    continue; // straddles a flip: not a usable gain measurement
+                const double sgn_obs = (!have_ref || (dh + dt_) >= 0.0) ? 1.0 : -1.0;
+
+                for (int c = 0; c < S.n_chan; ++c) {
+                    const double e = S.mir_energy[rowP + c];
+                    if (!(e > 0.0))
+                        continue; // channel not in this PRN's covering set this record
+                    const std::complex<double> a_repl(S.mir_corr[rowP + c].x / e,
+                                                      S.mir_corr[rowP + c].y / e);
+                    // Average in the DEROTATED (NCO + FLL) frame, where the gain is slowly
+                    // varying, and DE-BITTED, so only the slow dish gain is averaged. The carrier
+                    // and the overlay sign are re-applied at subtraction time.
+                    const std::complex<double> a_d = a_repl * derot_t * sgn_obs;
+                    std::complex<float>& g = S.gain[(size_t)p * S.n_chan + c];
+                    g = (S.gain_n[p] == 0)
+                            ? (std::complex<float>)a_d
+                            : (std::complex<float>)((1.0 - S.peel_alpha)
+                                                        * std::complex<double>(g)
+                                                    + S.peel_alpha * a_d);
+                }
+                S.gain_sign[p] = sgn_obs; // carried forward as the next records' prediction
+                if (S.gain_n[p] < 1000000)
+                    ++S.gain_n[p];
+            }
+        S.used_n_rec = 0;
+    }
+    if (S.peel) {
+        std::fill(S.used.begin(), S.used.end(), cudaGnssTrackState::PeelUsed{});
+        std::fill(S.used_prn.begin(), S.used_prn.end(), -1);
+    }
 
     // Absolute hop of this frame from the claimed metadata (contiguous fallback without it).
     long long frame_hop = S.next_hop;
@@ -334,6 +503,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         winstart[n_rec] = wstart;
         std::vector<GnssCudaDespread::Spec> specs;
         std::vector<int> spec_prn;
+        std::vector<GnssCudaDespread::PeelSpec> pspecs;
         for (int p = 0; p < S.n_prn; ++p) {
             PrnCtl& c = pctl[(size_t)n_rec * S.n_prn + p];
             c.job0 = -1;
@@ -409,7 +579,9 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
 
             c.run = 1;
             c.reanchored = reanchored;
-            c.job0 = n_out + 4 * (int)specs.size(); // E, P, L, P_HEAD rows for the spec below
+            // Row block for the spec pushed below. Stride is 6 when this chain peels (the two
+            // extra rows are the residual prompt + its head), else 4.
+            c.job0 = n_out + _rows_spec * (int)specs.size();
             c.fcar_report = (float)(fcar - ff_hz + ctrim[p]);
             c.n_owned = (float)local.size();
             c.cp_seed = cp_seed;
@@ -417,6 +589,92 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
             c.chan_mask = mask;
             c.energy_scale = 1.0;
             c.fcar = fcar; // replica f_ref -> the assembler's commanded-carrier-phase export
+            // ---- PEEL: mirror the NCO phase, then hand the peel this record's gain.
+            if (S.peel) {
+                // NCO MIRROR -- the same integration GnssGpuRecordAssemble runs, on the same
+                // inputs. The gain is AVERAGED derotated (where it is slow) but must be
+                // SUBTRACTED in the replica frame, so the peel needs this record's phase, and it
+                // needs it now rather than a frame late. ⚠️ Keep in step with the assembler.
+                double& phi = S.phi_nco[p];
+                if (reanchored == 1 || (reanchored == 2 && !S.nco_ok[p])) {
+                    phi = 0.0; // fresh acquisition: no phase history worth keeping
+                    S.nco_ok[p] = 0;
+                    // ...and RESET the gain. The EMA'd gain is coherent only relative to a
+                    // continuous phi: its stored phase is (absolute signal phase - phi) at the
+                    // records that built it. A fresh re-acq restarts phi from 0 against a NEW
+                    // absolute reference (new f_ref pin, new t_reacq), so the old gain's phase no
+                    // longer matches this arc -- subtracting it removes the right MAGNITUDE at the
+                    // wrong PHASE, i.e. nothing cancels (measured 2026-07-24: |g| converged fine
+                    // yet depth stuck at ~0 dB, because the bench re-seeds churned re-acqs faster
+                    // than the ~100-record EMA could re-cohere). Relearn from this arc.
+                    S.gain_n[p] = 0;
+                    for (int ci = 0; ci < S.n_chan; ++ci)
+                        S.gain[(size_t)p * S.n_chan + ci] = std::complex<float>(0.f, 0.f);
+                    S.peel_f_track[p] = 0.0; // the FLL restarts with the arc
+                    S.peel_phi_track[p] = 0.0;
+                    S.peel_prev_ok[p] = 0;
+                } else if (reanchored == 2) {
+                    // Phase-continuous re-pin: the absolutely-anchored replica just stepped by
+                    // df*t_abs, and an NCO absorbs a constant phase. Fold it, exactly as the
+                    // assembler does, or the peel and the despread disagree about the frame.
+                    const double t_pin = (double)wstart / S.sample_rate;
+                    phi = std::remainder(phi
+                                             + 2.0 * M_PI * (fcar - S.fcar_prev[p]) * t_pin,
+                                         2.0 * M_PI);
+                }
+                const double dts = (double)(wstart - S.wstart_prev_p[p]) / S.sample_rate;
+                if (S.nco_ok[p] && dts > 0.0)
+                    phi = std::remainder(phi + 2.0 * M_PI * c.f_nco * dts, 2.0 * M_PI);
+                S.nco_ok[p] = 1;
+                S.wstart_prev_p[p] = wstart;
+                S.fcar_prev[p] = fcar;
+
+                // MEASURE this PRN's gain every record, ALWAYS -- that is how it converges past
+                // the warmup gate below. (The first cut gated the measurement on the SUBTRACT
+                // decision, which gated on gain_n >= warmup: a deadlock where the gain never
+                // climbed because it was never measured until it had already converged.) The
+                // measurement reads the FULL correlation the assembler adds back, so it does not
+                // depend on whether we peel this record.
+                const size_t u = (size_t)n_rec * S.n_prn + p;
+                S.used[u].run = 1;
+                S.used[u].job0 = c.job0;
+                S.used[u].phi = phi;
+                S.used[u].wstart = wstart;
+                S.used_prn[u] = p;
+
+                // SUBTRACT only once the gain has actually converged: an unconverged gain adds
+                // noise where it should remove signal, and it would corrupt the residual that is
+                // supposed to MEASURE the peel.
+                if (S.gain_n[p] >= S.peel_warmup) {
+                    // derotated -> replica frame: the NCO mirror + the FLL's tracked residual,
+                    // extrapolated from its last update to THIS record (the measurements trail by
+                    // one GPU frame; at Hz-level residuals that is a few percent of a cycle).
+                    const double dt_x =
+                        S.peel_prev_ok[p]
+                            ? (double)(wstart - S.peel_prev_wstart[p]) / S.sample_rate
+                            : 0.0;
+                    const double phi_fll =
+                        S.peel_phi_track[p] + 2.0 * M_PI * S.peel_f_track[p] * dt_x;
+                    const std::complex<double> rot = std::polar(1.0, phi + phi_fll);
+                    std::vector<std::complex<float>> a(S.n_chan, {0.f, 0.f});
+                    double amp2 = 0.0;
+                    for (int ci = 0; ci < S.n_chan; ++ci) {
+                        if (!((mask >> ci) & 1ULL))
+                            continue;
+                        const std::complex<double> g(S.gain[(size_t)p * S.n_chan + ci]);
+                        amp2 += std::norm(g);
+                        a[(size_t)ci] = (std::complex<float>)(g * rot * (double)S.gain_sign[p]);
+                    }
+                    if (std::sqrt(amp2) > S.peel_min_amp)
+                        // ONE predicted overlay sign for both segments (S.gain_sign, carried from
+                        // the last measurement). Right for a pilot always, and for GPS nav data
+                        // whenever the record does not straddle a bit edge -- ~19 records in 20.
+                        // When it is wrong the residual for that record is ~2x the signal instead
+                        // of ~0, and NOTHING else: the add-back is exact for any gain, so the
+                        // tracking record is unharmed. Broker bit prediction is the real fix.
+                        pspecs.push_back(GnssCudaDespread::PeelSpec{p, cp_seed, fcar, local, a, a});
+                }
+            }
             specs.push_back(GnssCudaDespread::Spec{p, cp_seed, S.dll_spacing, fcar,
                                                    std::move(local)});
             spec_prn.push_back(p);
@@ -425,14 +683,64 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
             // Window base: an ELEMENT offset into the ring row, scaled by the sample size
             // (1 byte 4+4b / 8 bytes fp32). data_stride stays in SAMPLES either way.
             const char* d_window = d_ring + (size_t)((S.next_rec * hpr) % S.ring_hops) * samp;
+            // off_energy MUST carry _rows_spec: the energy array sits after the corr array, whose
+            // size grows with rows/spec. Passing the default (4) here while the frame is sized and
+            // read at 6 rows misaligns every energy the assembler reads -> the deep integration
+            // (which normalizes by the prompt energy) silently reads garbage and never locks.
             double2* d_corr = (double2*)(d_out + off_corr(S.n_prn)) + (size_t)n_out * S.n_chan;
-            double* d_energy =
-                (double*)(d_out + off_energy(S.n_prn, S.n_chan)) + (size_t)n_out * S.n_chan;
-            // Returns ROWS (4/spec); the job arena advances by SPECS (1/spec). d_scale non-null
-            // selects the 4+4b read path (null on the fp32 ring).
-            n_out += S.despread->enqueue_batch_device(d_window, (int)S.ring_hops, wstart, specs,
-                                                      d_jobs + n_spec, d_corr, d_energy,
-                                                      (void*)stream, d_scale);
+            double* d_energy = (double*)(d_out + off_energy(S.n_prn, S.n_chan, _rows_spec))
+                               + (size_t)n_out * S.n_chan;
+            // Returns ROWS (rows_spec/spec); the job arena advances by SPECS (1/spec). d_scale
+            // non-null selects the 4+4b read path (null on the fp32 ring).
+            if (!S.peel) {
+                n_out += S.despread->enqueue_batch_device(d_window, (int)S.ring_hops, wstart,
+                                                          specs, d_jobs + n_spec, d_corr,
+                                                          d_energy, (void*)stream, d_scale);
+            } else {
+                // PEEL -> DESPREAD THE RESIDUAL -> ADD BACK, all on this stream, in order.
+                // The residual is a single shared window buffer, which is safe precisely BECAUSE
+                // the three are stream-ordered: record k+1's peel cannot start before record k's
+                // despread has finished reading it.
+                float2* d_resid = (float2*)device.get_gpu_memory(
+                    _mem_resid, (size_t)S.n_chan * S.hops_per_record * sizeof(float2));
+                gnss_cuda::PeelJob* d_pjobs = (gnss_cuda::PeelJob*)device.get_gpu_memory(
+                    _mem_pjobs, (size_t)max_specs(S.n_prn) * sizeof(gnss_cuda::PeelJob));
+                float2* d_gain = (float2*)device.get_gpu_memory(
+                    _mem_gain, (size_t)2 * max_specs(S.n_prn) * S.n_chan * sizeof(float2));
+                double2* d_xcorr = (double2*)device.get_gpu_memory(
+                    _mem_xcorr, (size_t)4 * max_specs(S.n_prn) * S.n_chan * sizeof(double2));
+
+                // pspecs is a SUBSET of specs (only PRNs whose gain has converged), but the peel
+                // gains are indexed by PEEL job, not by spec -- so the add-back needs the gains
+                // laid out per SPEC. Re-expand: unconverged PRNs get a zero gain, which the
+                // add-back adds back as zero, i.e. exactly the un-peeled correlation.
+                std::vector<GnssCudaDespread::PeelSpec> full;
+                full.reserve(specs.size());
+                for (size_t i = 0; i < specs.size(); ++i) {
+                    const int pp = spec_prn[i];
+                    auto it = std::find_if(pspecs.begin(), pspecs.end(),
+                                           [&](const GnssCudaDespread::PeelSpec& q) {
+                                               return q.p == pp;
+                                           });
+                    if (it != pspecs.end())
+                        full.push_back(*it);
+                    else
+                        full.push_back(GnssCudaDespread::PeelSpec{
+                            pp, specs[i].cp_seed, specs[i].doppler_hz, specs[i].covering,
+                            std::vector<std::complex<float>>((size_t)S.n_chan, {0.f, 0.f}),
+                            std::vector<std::complex<float>>((size_t)S.n_chan, {0.f, 0.f})});
+                }
+                S.despread->enqueue_peel_device(d_window, (int)S.ring_hops, wstart, full, d_pjobs,
+                                                d_gain, d_resid, (void*)stream, d_scale);
+                // The residual is fp32 and PACKED -- stride n_hops, no chan_scale.
+                n_out += S.despread->enqueue_batch_device(
+                    d_resid, S.hops_per_record, wstart, specs, d_jobs + n_spec, d_corr, d_energy,
+                    (void*)stream, nullptr, d_xcorr, gnss_gpu::ROWS_PEEL);
+                // Rows 0-3 leave holding the FULL un-peeled correlation; 4-5 hold the residual.
+                CHECK_CUDA_ERROR(gnss_cuda::launch_peel_addback(
+                    d_corr, d_energy, d_xcorr, d_gain, (int)specs.size(), S.n_chan,
+                    gnss_gpu::ROWS_PEEL, stream));
+            }
             n_spec += (int)specs.size();
         }
         ++S.next_rec;
@@ -440,9 +748,64 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
     }
     hdr.n_rec = n_rec;
     hdr.n_jobs = n_out;
+    hdr.n_rows_spec = _rows_spec;
     std::memcpy(_ctl_stage.data(), &hdr, sizeof(hdr));
     CHECK_CUDA_ERROR(cudaMemcpyAsync(d_out, _ctl_stage.data(), _ctl_stage.size(),
                                      cudaMemcpyHostToDevice, stream));
+
+    // ---- PEEL: mirror this frame's (added-back) correlations back to the host, so the NEXT
+    // frame can fold them into the feed-forward gain. Self-contained on purpose: everything the
+    // gain loop needs is computed in this stage, so there is no cross-stage plumbing and no REST
+    // hop, and the staleness is one frame (~10 ms at L1) of a quasi-static quantity.
+    if (S.peel && n_out > 0) {
+        if (!S.mir_evt)
+            CHECK_CUDA_ERROR(cudaEventCreateWithFlags(&S.mir_evt, cudaEventDisableTiming));
+        const double* d_energy_base = (const double*)(d_out + off_energy(S.n_prn, S.n_chan,
+                                                                        _rows_spec));
+        const double2* d_corr_base = (const double2*)(d_out + off_corr(S.n_prn));
+        const size_t n = (size_t)n_out * S.n_chan;
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(S.mir_corr.data(), d_corr_base, n * sizeof(double2),
+                                         cudaMemcpyDeviceToHost, stream));
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(S.mir_energy.data(), d_energy_base, n * sizeof(double),
+                                         cudaMemcpyDeviceToHost, stream));
+        CHECK_CUDA_ERROR(cudaEventRecord(S.mir_evt, stream));
+        S.mir_rows = n_out;
+        S.mir_rows_spec = _rows_spec;
+        S.used_n_rec = n_rec;
+        S.mir_pending = true;
+    }
+
+    // Throttled peel health line (~every 10 s at L1 frame rates): PRNs past warmup, the
+    // strongest converged gain, and its FLL-tracked residual carrier. The residual carrier is
+    // the live tell -- near zero when the broker's ctrim is closed, Hz-level otherwise (where
+    // only the peel FLL keeps the gain coherent; see the hpp note).
+    if (S.peel && ++_peel_dbg_ctr % 1000 == 0) {
+        int npeel = 0, nact = 0, gmax_n = 0, gmax_p = -1;
+        double gmax = 0.0;
+        for (int p = 0; p < S.n_prn; ++p) {
+            if (!active[p])
+                continue;
+            ++nact;
+            double a2 = 0.0;
+            for (int c = 0; c < S.n_chan; ++c)
+                a2 += std::norm(S.gain[(size_t)p * S.n_chan + c]);
+            if (std::sqrt(a2) > gmax) {
+                gmax = std::sqrt(a2);
+                gmax_n = S.gain_n[p];
+                gmax_p = S.prns[p];
+            }
+        }
+        for (int p = 0; p < S.n_prn; ++p)
+            if (active[p] && S.gain_n[p] >= S.peel_warmup)
+                ++npeel;
+        int gi = -1;
+        for (int p = 0; p < S.n_prn; ++p)
+            if (S.prns[p] == gmax_p)
+                gi = p;
+        INFO("peel: {:d}/{:d} PRNs past warmup; strongest PRN{:d} |g|={:.3g} n={:d} "
+             "fll_resid={:+.2f} Hz",
+             npeel, nact, gmax_p, gmax, gmax_n, (gi >= 0) ? S.peel_f_track[gi] : 0.0);
+    }
 
     return record_end_event();
 }

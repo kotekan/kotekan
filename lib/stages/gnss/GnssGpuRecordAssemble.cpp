@@ -81,10 +81,14 @@ void GnssGpuRecordAssemble::main_thread() {
             return;
         }
         const int n_chan = hdr.n_chan;
+        // Output rows per spec: 4 normally, 6 when the writer peels (rows 4/5 = the peel
+        // residual). 0 means a writer that predates the field -- read it as 4.
+        const int n_rows_spec = (hdr.n_rows_spec > 0) ? hdr.n_rows_spec : ROWS_PLAIN;
         const int64_t* winstart = (const int64_t*)(in + off_winstart());
         const PrnCtl* pctl = (const PrnCtl*)(in + off_prnctl());
         const double* corr = (const double*)(in + off_corr(n_prn));      // double2 rows
-        const double* energy = (const double*)(in + off_energy(n_prn, n_chan));
+        const double* energy =
+            (const double*)(in + off_energy(n_prn, n_chan, n_rows_spec));
 
         for (int r = 0; r < hdr.n_rec && !stop_thread; ++r) {
             float* out = (float*)out_buf->wait_for_empty_frame(unique_name, frame_out);
@@ -112,10 +116,18 @@ void GnssGpuRecordAssemble::main_thread() {
                     continue;
                 }
                 // Cross-channel sum over the covering mask, per correlator trial
-                // (E, P, L, P_HEAD -- the prompt's head segment, gnssRecord.hpp slots 16-18).
-                std::complex<double> g3[4];
-                double e3[4];
-                for (int t = 0; t < 4; ++t) {
+                // (E, P, L, P_HEAD -- the prompt's head segment, gnssRecord.hpp slots 16-18),
+                // plus, when the chain peels, the residual prompt and its head (rows 4/5 ->
+                // gnssRecord.hpp slots 20-23). PrnCtl::job0 already carries the per-spec row
+                // stride, so indexing is job0 + t either way.
+                //
+                // NB rows 0-3 hold the FULL, un-peeled correlation even when peeling: the
+                // analytic add-back was applied on the device (docs/gnss_voltage_peel_live.md).
+                // That is what leaves everything below this stage -- combiner, broker, viewer,
+                // TEC -- unable to tell whether a peel happened.
+                std::complex<double> g3[6];
+                double e3[6];
+                for (int t = 0; t < n_rows_spec; ++t) {
                     const size_t row = (size_t)(c.job0 + t) * n_chan;
                     std::complex<double> g(0.0, 0.0);
                     double e = 0.0;
@@ -221,6 +233,19 @@ void GnssGpuRecordAssemble::main_thread() {
                 rec[gnss::REC_PH_RE] = (float)gh_corr.real();
                 rec[gnss::REC_PH_IM] = (float)gh_corr.imag();
                 rec[gnss::REC_PH_ENERGY] = (float)e3[3];
+                // PEEL RESIDUAL (slots 20-23): the same prompt correlation taken on the voltage
+                // after this PRN's own waveform was subtracted, and its head segment. SAME NCO
+                // rotation as the prompt -- it is the same correlation, so the combiner can
+                // deep-integrate it with the same per-segment overlay wipe. Left at zero when the
+                // chain does not peel, which every existing consumer already reads as "absent".
+                if (n_rows_spec > ROW_RES_PH) {
+                    const std::complex<double> gr = g3[ROW_RES_P] * rot;
+                    const std::complex<double> grh = g3[ROW_RES_PH] * rot;
+                    rec[gnss::REC_RES_RE] = (float)gr.real();
+                    rec[gnss::REC_RES_IM] = (float)gr.imag();
+                    rec[gnss::REC_RES_PH_RE] = (float)grh.real();
+                    rec[gnss::REC_RES_PH_IM] = (float)grh.imag();
+                }
                 _a_prev[p] = (e3[1] > 0.0) ? g_corr / e3[1] : std::complex<double>(0.0, 0.0);
                 _a_prev_ok[p] = 1;
                 _wstart_prev[p] = wstart;
