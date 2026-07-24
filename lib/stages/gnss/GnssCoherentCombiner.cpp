@@ -814,6 +814,25 @@ void GnssCoherentCombiner::main_thread() {
                             cleared = true;
                         }
                     }
+                    // PEEL DEPTH on the OVERLAY path (P7b). The navwipe branch has its own
+                    // copy; a pilot's deep uses overlay_wipe instead, so the residual must be
+                    // measured the SAME way or the ratio compares two different estimators.
+                    // Full window, no ladder (a healthy residual sits at the floor, and a
+                    // ladder would cherry-pick the noisiest rung) and at the SAME overlay
+                    // phase the prompt just won with, so both sides are wiped identically.
+                    if (_peel_depth && !_navbuf_res[p].empty()
+                        && _navbuf_res[p].size() == _navutc[p].size() && full_len > 0) {
+                        const int ph_use = (nh_phase[p] >= 0) ? nh_phase[p] : full.phase;
+                        const auto rw = gnss::overlay_wipe_at(_navbuf_res[p], ub, *ov, ph_use,
+                                                              &_navhead_res[p]);
+                        rec[gnss::CMB_PEEL_DEEP] = (float)rw.amplitude;
+                        peel_rsnr[p] = rw.snr;
+                        double s2 = 0.0;
+                        for (const auto& v : _navbuf_res[p])
+                            s2 += std::norm(v);
+                        rec[gnss::CMB_PEEL_INCOH] =
+                            (float)std::sqrt(s2 / (double)_navbuf_res[p].size());
+                    }
                     if (!cleared && full_len > 0) {
                         rec[8] = (float)full.amplitude;
                         deep_snr[p] = full.snr;
@@ -880,6 +899,10 @@ void GnssCoherentCombiner::main_thread() {
                     _navutc[p].clear();
                     _navhead[p].clear();
                     _navwipe[p].clear();
+                    if (_peel_depth) {
+                        _navbuf_res[p].clear();
+                        _navhead_res[p].clear();
+                    }
                 }
             } else if (_navwipe_bit_records > 0) {
                 const auto& ab = _navbuf[p];
