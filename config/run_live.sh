@@ -286,7 +286,13 @@ if ls "$RECDIR"/status_log*.jsonl >/dev/null 2>&1; then
   ARCH="$(dirname "$0")/../../captures/soaks/auto_$(date +%Y-%m-%d_%H%M%S)"
   mkdir -p "$ARCH" && mv "$RECDIR"/status_log*.jsonl "$ARCH"/     && echo "previous status logs archived -> $ARCH"
 fi
-rm -f "$RECDIR"/level_*.raw 2>/dev/null
+# ...and clear the level_*.raw scratch ONLY when this script owns the kotekan. In
+# SKIP_KOTEKAN mode (run_3band's per-band control-plane invocations) the merged kotekan is
+# ALREADY RUNNING with these files open: the rm unlinks a LIVE output and every GPS-chain
+# record from then on silently vanishes into a deleted inode. (Found 2026-07-24 -- this had
+# eaten the L1 GPS level archive since the 07-22 launch; gal_/bds_/l1c_level survived only
+# because the glob anchors at 'level_'. 318 MB salvaged via /proc/<pid>/fd.)
+[ "$SKIP_KOTEKAN" != "1" ] && rm -f "$RECDIR"/level_*.raw 2>/dev/null
 echo "recording to $RECDIR"
 sleep 1
 
