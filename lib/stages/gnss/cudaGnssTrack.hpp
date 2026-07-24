@@ -114,6 +114,13 @@ public:
     /// what makes the peel work at all. Same design as the CPU peel v2's f_track/phi_track.
     double peel_fll_gain = 0.05;
     std::string peel_tag;      ///< chain identity for the health line (multi-chain node)
+    /// GROUND TRUTH per PRN: EMA of |residual|/|full| measured on the SAME record, straight
+    /// from the mirrored despread rows. 0 = perfect cancellation, 1 = nothing subtracted.
+    /// Independent of the combiner's deep estimators, so it separates "the kernel is not
+    /// subtracting" from "the depth measurement is wrong" -- the exact ambiguity that cost
+    /// two wrong theories on 2026-07-24.
+    std::vector<double> peel_ratio;
+    std::vector<int> peel_ratio_n;
     std::vector<double> peel_f_track;   ///< [n_prn] residual carrier (Hz, derotated frame)
     std::vector<double> peel_phi_track; ///< [n_prn] integrated FLL phase (rad, wrapped)
     std::vector<std::complex<double>> peel_a_prev; ///< [n_prn] previous FLL-frame gain measurement

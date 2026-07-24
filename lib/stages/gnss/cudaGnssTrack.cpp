@@ -128,6 +128,8 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         peel_a_prev.assign(n_prn, std::complex<double>(0.0, 0.0));
         peel_prev_ok.assign(n_prn, 0);
         peel_prev_wstart.assign(n_prn, 0);
+        peel_ratio.assign(n_prn, -1.0);
+        peel_ratio_n.assign(n_prn, 0);
         phi_nco.assign(n_prn, 0.0);
         fcar_prev.assign(n_prn, 0.0);
         nco_ok.assign(n_prn, 0);
@@ -300,6 +302,22 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 // what keeps it from chasing its own subtraction.
                 const size_t rowP = (size_t)(pu.job0 + gnss_gpu::ROW_P) * S.n_chan;
                 const size_t rowH = (size_t)(pu.job0 + gnss_gpu::ROW_PH) * S.n_chan;
+                if (S.mir_rows_spec > gnss_gpu::ROW_RES_P) { // ground-truth cancellation ratio
+                    const size_t rowR = (size_t)(pu.job0 + gnss_gpu::ROW_RES_P) * S.n_chan;
+                    std::complex<double> fu(0.0, 0.0), re(0.0, 0.0);
+                    for (int c = 0; c < S.n_chan; ++c) {
+                        fu += std::complex<double>(S.mir_corr[rowP + c].x, S.mir_corr[rowP + c].y);
+                        re += std::complex<double>(S.mir_corr[rowR + c].x, S.mir_corr[rowR + c].y);
+                    }
+                    if (std::abs(fu) > 0.0) {
+                        const double r = std::abs(re) / std::abs(fu);
+                        S.peel_ratio[p] = (S.peel_ratio_n[p] == 0)
+                                              ? r
+                                              : 0.98 * S.peel_ratio[p] + 0.02 * r;
+                        if (S.peel_ratio_n[p] < 1000000)
+                            ++S.peel_ratio_n[p];
+                    }
+                }
                 const std::complex<double> derot = std::polar(1.0, -pu.phi);
 
 
@@ -884,10 +902,17 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         for (int p = 0; p < S.n_prn; ++p)
             if (active[p] && S.gain_n[p] < S.peel_warmup)
                 lag += fmt::format(" {:d}(n{:d})", S.prns[p], S.gain_n[p]);
+        // |resid|/|full| per PRN, from the records themselves: the number the depth SHOULD
+        // reflect. ~0 = peeling hard, ~1 = subtracting nothing.
+        std::string ratios;
+        for (int p = 0; p < S.n_prn; ++p)
+            if (active[p] && S.peel_ratio[p] >= 0.0)
+                ratios += fmt::format(" {:d}:{:.2f}", S.prns[p], S.peel_ratio[p]);
         WARN("peel[{:s}]: {:d}/{:d} past warmup; strongest PRN{:d} |g|={:.3g} n={:d} "
-             "fll={:+.2f}Hz; NOT-PEELING:{:s}",
+             "fll={:+.2f}Hz; NOT-PEELING:{:s}; resid/full:{:s}",
              S.peel_tag, npeel, nact, gmax_p, gmax, gmax_n,
-             (gi >= 0) ? S.peel_f_track[gi] : 0.0, lag.empty() ? " none" : lag);
+             (gi >= 0) ? S.peel_f_track[gi] : 0.0, lag.empty() ? " none" : lag,
+             ratios.empty() ? " -" : ratios);
     }
 
     return record_end_event();
