@@ -814,31 +814,40 @@ void GnssCoherentCombiner::main_thread() {
                             cleared = true;
                         }
                     }
-                    // PEEL DEPTH on the OVERLAY path (P7b). The navwipe branch has its own
-                    // copy; a pilot's deep uses overlay_wipe instead, so the residual must be
-                    // measured the SAME way or the ratio compares two different estimators.
-                    // Full window, no ladder (a healthy residual sits at the floor, and a
-                    // ladder would cherry-pick the noisiest rung) and at the SAME overlay
-                    // phase the prompt just won with, so both sides are wiped identically.
-                    if (_peel_depth && !_navbuf_res[p].empty()
-                        && _navbuf_res[p].size() == _navutc[p].size() && full_len > 0) {
-                        const int ph_use = (nh_phase[p] >= 0) ? nh_phase[p] : full.phase;
-                        const auto rw = gnss::overlay_wipe_at(_navbuf_res[p], ub, *ov, ph_use,
-                                                              &_navhead_res[p]);
-                        rec[gnss::CMB_PEEL_DEEP] = (float)rw.amplitude;
-                        peel_rsnr[p] = rw.snr;
-                        double s2 = 0.0;
-                        for (const auto& v : _navbuf_res[p])
-                            s2 += std::norm(v);
-                        rec[gnss::CMB_PEEL_INCOH] =
-                            (float)std::sqrt(s2 / (double)_navbuf_res[p].size());
-                    }
                     if (!cleared && full_len > 0) {
                         rec[8] = (float)full.amplitude;
                         deep_snr[p] = full.snr;
                         nh_phase[p] = full.phase;
                         deep_rec[p] = (int)full_len;
                         coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
+                    }
+                    // PEEL DEPTH on the OVERLAY path (P7b). A pilot's deep uses overlay_wipe,
+                    // so the residual must be measured the SAME way -- and, critically, on the
+                    // SAME TRAILING WINDOW AND PHASE the prompt just won with. overlay_wipe_at
+                    // takes `phase` relative to the START of the array it is given, so feeding
+                    // the FULL window a phase that belongs to a shorter winning rung
+                    // misaligns the residual wipe by (N - len) mod L chips -- and a misaligned
+                    // wipe does not cohere, which INFLATES the reported depth. (Measured
+                    // 2026-07-24: that is what produced the first >=47 dB pilot readings.)
+                    // Same window, same phase, same estimator = an honest ratio.
+                    if (_peel_depth && deep_rec[p] > 0 && nh_phase[p] >= 0
+                        && _navbuf_res[p].size() == _navutc[p].size()
+                        && _navhead_res[p].size() == _navbuf_res[p].size()
+                        && (size_t)deep_rec[p] <= _navbuf_res[p].size()) {
+                        const size_t len = (size_t)deep_rec[p];
+                        const std::vector<std::complex<double>> rs(
+                            _navbuf_res[p].end() - (long)len, _navbuf_res[p].end());
+                        const std::vector<double> us(ub.end() - (long)len, ub.end());
+                        const std::vector<std::complex<double>> hs(
+                            _navhead_res[p].end() - (long)len, _navhead_res[p].end());
+                        const auto rw =
+                            gnss::overlay_wipe_at(rs, us, *ov, nh_phase[p], &hs);
+                        rec[gnss::CMB_PEEL_DEEP] = (float)rw.amplitude;
+                        peel_rsnr[p] = rw.snr;
+                        double s2 = 0.0;
+                        for (const auto& v : rs)
+                            s2 += std::norm(v);
+                        rec[gnss::CMB_PEEL_INCOH] = (float)std::sqrt(s2 / (double)len);
                     }
                     // DEAD-RECKON ANCHOR (selection-free coherent power): a floor-cleared
                     // win pins the overlay alignment at a capture-UTC; it advances one chip
@@ -971,21 +980,35 @@ void GnssCoherentCombiner::main_thread() {
                 // would just pick the noisiest short rung. deep(residual) vs deep(prompt) = the
                 // suppression; when the residual is at floor the depth is a LOWER BOUND, which the
                 // consumer reads off deep_floor exactly as diag/peel_depth.py does offline.
-                if (_peel_depth && _navbuf_res[p].size() == _navutc[p].size()
-                    && !_navbuf_res[p].empty()) {
+                // Measure the residual on the SAME TRAILING WINDOW the prompt's ladder won
+                // with (deep_rec), not the full buffer: the two are normalized per-record but
+                // a different integration length is a different estimator, and the ratio has
+                // to compare like with like. (navwipe_amplitude re-runs its own bit sync, so
+                // unlike the overlay path there is no phase to carry across -- only the
+                // length.) Falls back to the full window when no rung was recorded.
+                if (_peel_depth && !_navbuf_res[p].empty()
+                    && _navbuf_res[p].size() == _navutc[p].size()
+                    && _navhead_res[p].size() == _navbuf_res[p].size()) {
+                    const size_t len =
+                        (deep_rec[p] > 0 && (size_t)deep_rec[p] <= _navbuf_res[p].size())
+                            ? (size_t)deep_rec[p]
+                            : _navbuf_res[p].size();
+                    const std::vector<std::complex<double>> rs(
+                        _navbuf_res[p].end() - (long)len, _navbuf_res[p].end());
+                    const std::vector<double> us(_navutc[p].end() - (long)len,
+                                                 _navutc[p].end());
+                    const std::vector<std::complex<double>> hs(
+                        _navhead_res[p].end() - (long)len, _navhead_res[p].end());
                     double rsnr = 0.0;
-                    const double ramp = navwipe_amplitude(_navbuf_res[p], _navutc[p], &rsnr,
-                                                          &_navhead_res[p]);
+                    const double ramp = navwipe_amplitude(rs, us, &rsnr, &hs);
                     rec[gnss::CMB_PEEL_DEEP] = (float)ramp;
                     peel_rsnr[p] = rsnr;
-                    // Incoherent residual amplitude: RMS of the per-record |A_res|, the phase-blind
-                    // twin of CMB_AMP_INCOH. Cheap and always defined even when the coherent deep
-                    // is at floor.
+                    // Incoherent residual amplitude: RMS of the per-record |A_res|, the
+                    // phase-blind twin of CMB_AMP_INCOH -- always defined, even at floor.
                     double s2 = 0.0;
-                    for (const auto& v : _navbuf_res[p])
+                    for (const auto& v : rs)
                         s2 += std::norm(v);
-                    rec[gnss::CMB_PEEL_INCOH] =
-                        (float)std::sqrt(s2 / (double)_navbuf_res[p].size());
+                    rec[gnss::CMB_PEEL_INCOH] = (float)std::sqrt(s2 / (double)len);
                 }
                 if (!_rolling) { // block clears the window; rolling slides it (capped above)
                     _navbuf[p].clear();
