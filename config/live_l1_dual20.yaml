@@ -243,7 +243,10 @@ assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_
 # peel_depth: deep-integrate the peel residual (slots 20-23) beside the prompt ->
 # peel_deep / peel_deep_snr on REST; depth_db = 20*log10(deep/peel_deep), valid
 # only when deep_snr AND peel_deep_snr clear deep_floor.
-gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20, peel_depth: true }
+# bit_export: publish the navwipe's per-bit sign decisions (nav_obs) for the
+# broker's LNAV decode-and-predict -> predicted nav_bits back to the tracker =
+# the peel's sign source (P7a; removes the ~11 dB sign-lag depth ceiling).
+gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, navwipe_bit_records: 20, peel_depth: true, bit_export: true }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gpswipe", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- Galileo E1-C parallel chain (same channelized stream, second consumers) ----

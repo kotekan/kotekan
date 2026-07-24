@@ -116,9 +116,32 @@ private:
     /// period cpi[r]+1, so the bit epochs are assembled from symbol-ALIGNED pieces (tail of one
     /// record + head of the next) and nothing cancels. head == a reduces bit-exactly to the
     /// unsegmented behaviour.
+    /// Per-bit observations from one navwipe evaluation, for the broker's LNAV
+    /// decode-and-predict (docs/gnss_voltage_peel_live.md P7a). The bit at index @c bi covers
+    /// code periods [bi*br - phase, (bi+1)*br - phase) relative to @c utc_ref, i.e. its start
+    /// UTC is utc_ref + (bi*br - phase)*rec_dt. Gaps in the record stream simply skip indices
+    /// -- the pairs are honest about which bits were actually observed. The sign is the SAME
+    /// +-1 the deep wipe applies; its global polarity is arbitrary (the LNAV parity/framing
+    /// decode is polarity-independent, and the peel locks its gain to whatever frame the
+    /// prediction uses), so no polarity convention is promised here.
+    struct NavObs {
+        double utc_ref = 0.0; ///< capture UTC of the window's first record
+        double rec_dt = 0.0;  ///< median record period (s) -- the code-period duration
+        int phase = 0;        ///< winning bit-phase (0..br-1)
+        int br = 0;           ///< records per bit
+        double rot_re = 1.0;  ///< the emit's polarity-resolving phasor (rot = e^{-i*theta0}):
+        double rot_im = 0.0;  ///< each emit's global +-1 is arbitrary INDEPENDENTLY (the
+                              ///< squaring estimate), but theta0 tracks the carrier, which IS
+                              ///< continuous across emits at a certified lock -- the broker
+                              ///< chains chunk polarity by phasor continuity, then VERIFIES by
+                              ///< LNAV parity (and repairs by boundary-flip search).
+        std::vector<std::pair<long long, int8_t>> bits; ///< (bit index, +-1 sign)
+    };
+
     double navwipe_amplitude(const std::vector<std::complex<double>>& a,
                              const std::vector<double>& utc, double* snr_out = nullptr,
-                             const std::vector<std::complex<double>>* head = nullptr) const;
+                             const std::vector<std::complex<double>>* head = nullptr,
+                             NavObs* obs = nullptr) const;
 
     /// Residual carrier frequency (Hz) from a window of per-record A, as a bit-robust phase-SLOPE
     /// fit over the whole window (long baseline -> low variance -- the clean measurement the shared
@@ -194,6 +217,10 @@ private:
     /// gain was feed-forward. Gated on _peel_depth (config): only the peeling chain pays the
     /// second deep integration. Parallel to _navbuf record-for-record.
     bool _peel_depth = false;
+    /// P7a: export the navwipe's per-bit sign decisions via get_status ("nav_obs"), so the
+    /// broker can LNAV-decode and predict future bits for the peel. Config `bit_export: true`.
+    bool _bit_export = false;
+    std::vector<NavObs> _st_nav_obs; ///< last emit's observations per PRN (under _st_mtx)
     std::vector<std::vector<std::complex<double>>> _navbuf_res;  ///< residual prompt A per record
     std::vector<std::vector<std::complex<double>>> _navhead_res; ///< residual head segment
 

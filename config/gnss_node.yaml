@@ -255,7 +255,7 @@ bands:
           # text into /tmp/gpswipe (35/13/4.5 GB) with no live consumer -- they were the
           # sigma-phi/multipath forensics tap. Re-add phase_dump_prns/phase_dump_path HERE
           # deliberately when that analysis resumes.
-          params: { integration_length: 1000, navwipe_bit_records: 20, peel_depth: true }
+          params: { integration_length: 1000, navwipe_bit_records: 20, peel_depth: true, bit_export: true }
           note: |
             integration_length 1000, navwipe_bit_records 20 -> navwipe: integrate ~1 s
             (50 nav bits) coherently; deep |A| in slot 8. (Restored to 1000 once the
@@ -263,6 +263,9 @@ bands:
             peel_depth: deep-integrate the peel residual (slots 20-23) beside the prompt ->
             peel_deep / peel_deep_snr on REST; depth_db = 20*log10(deep/peel_deep), valid
             only when deep_snr AND peel_deep_snr clear deep_floor.
+            bit_export: publish the navwipe's per-bit sign decisions (nav_obs) for the
+            broker's LNAV decode-and-predict -> predicted nav_bits back to the tracker =
+            the peel's sign source (P7a; removes the ~11 dB sign-lag depth ceiling).
 
       - constellation: gal
         signal: GAL_E1C

@@ -778,6 +778,11 @@ def main(argv=None):
     ap.add_argument("--dr-dry-run", action="store_true",
                     help="compute + log the clock solve, integrity residuals and planned "
                          "dead-reckoned seeds WITHOUT injecting any (validation mode)")
+    ap.add_argument("--nav-bits", type=int, default=1,
+                    help="LNAV decode-and-predict from the combiner's nav_obs export "
+                         "(bit_export: true), pushed as nav_bits with each seed row -- the "
+                         "fused peel's sign source (P7a: ~11 -> >=26-35 dB). Self-gating: "
+                         "chains whose combiner exports no nav_obs are untouched. 0 = off.")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -882,6 +887,8 @@ def main(argv=None):
     seeds = {}       # prn -> {"doppler_hz", "code_phase_chips", ...} (consensus)
     low_hits = {}    # prn -> consecutive low-|A| poll count
     status = {}      # prn -> last combiner get_status record (previous cycle; lock gate below)
+    navbits = None   # LNAV decode-and-predict (P7a); created lazily on the first nav_obs row
+    navbits_log_t = 0.0
     cp_held = set()  # PRNs whose cp anchor is FROZEN this cycle (locked -> DLL owns the residual)
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
@@ -1736,6 +1743,24 @@ def main(argv=None):
         except Exception as e:
             status = {}
             _log("get_status failed: %s" % e)
+        # P7a nav-bit predictor: fold in this cycle's bit observations (rows carry nav_obs
+        # only when the combiner runs bit_export, so non-GPS chains skip this for free).
+        if args.nav_bits:
+            for _p, _r in status.items():
+                if "nav_obs" in _r:
+                    if navbits is None:
+                        from navbit_predictor import LnavPredictor
+                        navbits = LnavPredictor(log=_log)
+                        _log("nav-bit predictor armed (combiner exports nav_obs)")
+                    navbits.ingest(_p, _r["nav_obs"])
+            if navbits is not None and time.time() - navbits_log_t > 60.0:
+                navbits_log_t = time.time()
+                for _p in sorted(navbits._p):
+                    h = navbits.health(_p)
+                    if h and h["synced"]:
+                        _log("navbit PRN %d: %d sf decoded, %d pages, predict-mismatch %s"
+                             % (_p, h["decoded_sf"], h["pages"],
+                                ("%.4f" % h["mismatch"]) if h["mismatch"] is not None else "n/a"))
         # Lock metric: the detection SIGNIFICANCE (sigma above noise) -- the deep nav-wiped SNR when
         # available, else the noise-debiased incoherent SNR -- not the raw |A|. The incoherent |A| is
         # biased by the noise floor (~the floor for weak sats), so judging "still locked" by |A| >
@@ -2486,6 +2511,15 @@ def main(argv=None):
                 d["code_phase_chips"] = d["code_phase_chips"] + dll_trim[prn]
             if car_trim.get(prn):
                 d["carrier_trim_hz"] = car_trim[prn]
+            if navbits is not None:
+                # Predict from the freshest capture-clock UTC this PRN has reported: the
+                # tracker consumes by ITS record UTC (same capture clock), so wall-clock
+                # never enters. 4 s horizon >> the ~1 s status staleness + push cadence.
+                _utc = (status.get(prn) or {}).get("utc")
+                if _utc:
+                    nb = navbits.predict(prn, float(_utc), horizon_s=4.0)
+                    if nb is not None:
+                        d["nav_bits"] = nb
             payload.append(d)
         if os.environ.get("GNSS_SEED_DEBUG"):
             for d in payload:

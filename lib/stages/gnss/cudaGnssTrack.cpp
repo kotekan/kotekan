@@ -121,6 +121,7 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         gain.assign((size_t)n_prn * n_chan, std::complex<float>(0.f, 0.f));
         gain_n.assign(n_prn, 0);
         gain_sign.assign(n_prn, 1.0);
+        nav_bits.assign(n_prn, {});
         peel_f_track.assign(n_prn, 0.0);
         peel_phi_track.assign(n_prn, 0.0);
         peel_a_prev.assign(n_prn, std::complex<double>(0.0, 0.0));
@@ -169,6 +170,22 @@ void cudaGnssTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
                     dop_rate[i] = s.value("doppler_rate_hz_s", 0.0);
                     ctrim[i] = s.value("carrier_trim_hz", 0.0);
                     ref_hop[i] = s.value("ref_hop", (long long)0);
+                    // P7a predicted nav bits (optional): +-1 per 20 ms bit, 0 = unknown.
+                    if (peel && s.contains("nav_bits")) {
+                        try {
+                            const auto& nb = s.at("nav_bits");
+                            NavBits t;
+                            t.utc0 = nb.at("utc0").get<double>();
+                            t.bit_s = nb.value("bit_s", 0.02);
+                            for (const auto& b : nb.at("bits"))
+                                t.bits.push_back((int8_t)b.get<int>());
+                            if (t.bit_s > 0.0 && !t.bits.empty())
+                                nav_bits[i] = std::move(t);
+                        } catch (const std::exception&) {
+                            // malformed nav_bits: keep the previous table (harmless -- stale
+                            // tables age out via the lookup's freshness guard)
+                        }
+                    }
                     active[i] = 1;
                 }
         }
@@ -324,7 +341,10 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 }
                 // FLL discriminator on the FLL-frame cross-channel measurement (sign-blind: the
                 // product is squared, so the +-1 nav flips between consecutive records cancel).
-                const std::complex<double> a_fll = (sum_h + sum_t) * derot_t;
+                const std::complex<double> a_fll =
+                    (pu.s_head != 0 && pu.s_tail != 0)
+                        ? (sum_h * (double)pu.s_head + sum_t * (double)pu.s_tail) * derot_t
+                        : (sum_h + sum_t) * derot_t;
                 if (S.peel_prev_ok[p] && dt_fll > 0.0 && dt_fll < 0.02 && std::abs(a_fll) > 0.0
                     && std::abs(S.peel_a_prev[p]) > 0.0) {
                     const std::complex<double> prod = a_fll * std::conj(S.peel_a_prev[p]);
@@ -335,27 +355,47 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 S.peel_prev_ok[p] = 1;
                 S.peel_prev_wstart[p] = pu.wstart;
 
-                // Signs relative to the running gain (cross-channel sums: best available SNR).
-                const std::complex<double> ref = sum_ref / derot_t; // gain -> replica frame
-                const double dh = std::real(sum_h * std::conj(ref));
-                const double dt_ = std::real(sum_t * std::conj(ref));
-                const bool have_ref = (S.gain_n[p] > 0) && std::abs(ref) > 0.0;
-                const bool split = have_ref && std::abs(sum_h) > 0.0 && std::abs(sum_t) > 0.0
-                                   && ((dh > 0.0) != (dt_ > 0.0));
-                if (split)
-                    continue; // straddles a flip: not a usable gain measurement
-                const double sgn_obs = (!have_ref || (dh + dt_) >= 0.0) ? 1.0 : -1.0;
+                // De-bit for the EMA. With PREDICTED signs (pu.s_head/s_tail): per-segment,
+                // per-channel -- a record straddling a KNOWN flip is a fully usable
+                // measurement, so the old straddle skip does not apply, and the gain's
+                // polarity locks to the prediction's frame. Without them: the
+                // decision-directed fallback (cross-channel sign vs the running gain,
+                // straddles skipped), exactly the old behaviour.
+                const bool have_bits = (pu.s_head != 0 && pu.s_tail != 0);
+                double sgn_obs = 1.0;
+                if (!have_bits) {
+                    // Signs relative to the running gain (cross-channel: best available SNR).
+                    const std::complex<double> ref = sum_ref / derot_t; // gain -> replica frame
+                    const double dh = std::real(sum_h * std::conj(ref));
+                    const double dt_ = std::real(sum_t * std::conj(ref));
+                    const bool have_ref = (S.gain_n[p] > 0) && std::abs(ref) > 0.0;
+                    const bool split = have_ref && std::abs(sum_h) > 0.0
+                                       && std::abs(sum_t) > 0.0 && ((dh > 0.0) != (dt_ > 0.0));
+                    if (split)
+                        continue; // straddles an UNKNOWN flip: not a usable measurement
+                    sgn_obs = (!have_ref || (dh + dt_) >= 0.0) ? 1.0 : -1.0;
+                }
 
                 for (int c = 0; c < S.n_chan; ++c) {
                     const double e = S.mir_energy[rowP + c];
                     if (!(e > 0.0))
                         continue; // channel not in this PRN's covering set this record
-                    const std::complex<double> a_repl(S.mir_corr[rowP + c].x / e,
-                                                      S.mir_corr[rowP + c].y / e);
                     // Average in the DEROTATED (NCO + FLL) frame, where the gain is slowly
-                    // varying, and DE-BITTED, so only the slow dish gain is averaged. The carrier
-                    // and the overlay sign are re-applied at subtraction time.
-                    const std::complex<double> a_d = a_repl * derot_t * sgn_obs;
+                    // varying, and DE-BITTED, so only the slow dish gain is averaged. The
+                    // carrier and the bit signs are re-applied at subtraction time.
+                    std::complex<double> a_num;
+                    if (have_bits) {
+                        const std::complex<double> hd(S.mir_corr[rowH + c].x,
+                                                      S.mir_corr[rowH + c].y);
+                        const std::complex<double> pp(S.mir_corr[rowP + c].x,
+                                                      S.mir_corr[rowP + c].y);
+                        a_num = hd * (double)pu.s_head + (pp - hd) * (double)pu.s_tail;
+                    } else {
+                        a_num = std::complex<double>(S.mir_corr[rowP + c].x,
+                                                     S.mir_corr[rowP + c].y)
+                                * sgn_obs;
+                    }
+                    const std::complex<double> a_d = (a_num / e) * derot_t;
                     std::complex<float>& g = S.gain[(size_t)p * S.n_chan + c];
                     g = (S.gain_n[p] == 0)
                             ? (std::complex<float>)a_d
@@ -363,7 +403,8 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                                                         * std::complex<double>(g)
                                                     + S.peel_alpha * a_d);
                 }
-                S.gain_sign[p] = sgn_obs; // carried forward as the next records' prediction
+                if (!have_bits)
+                    S.gain_sign[p] = sgn_obs; // fallback prediction for the next records
                 if (S.gain_n[p] < 1000000)
                     ++S.gain_n[p];
             }
@@ -478,6 +519,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
     std::vector<double> dop, cp, cp_rate, dop_rate, ctrim;
     std::vector<long long> ref_hop;
     std::vector<uint8_t> active;
+    std::vector<cudaGnssTrackState::NavBits> navb;
     {
         std::lock_guard<std::mutex> lk(S.seed_mtx);
         dop = S.dop;
@@ -487,6 +529,8 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         ctrim = S.ctrim;
         ref_hop = S.ref_hop;
         active = S.active;
+        if (S.peel)
+            navb = S.nav_bits;
     }
 
     const double L = (double)S.replica->code_length();
@@ -635,8 +679,33 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 // climbed because it was never measured until it had already converged.) The
                 // measurement reads the FULL correlation the assembler adds back, so it does not
                 // depend on whether we peel this record.
+                // P7a predicted bit signs for this window's head/tail code periods. The
+                // boundary sits (L - cp_seed)/L of a record after the window start (the same
+                // convention as the peel's m_head); sample the bit table half a period either
+                // side of it so edge rounding can never pick the wrong bit. 0 = unknown ->
+                // the decision-directed fallback below (and in the next frame's measurement).
+                int8_t s_head = 0, s_tail = 0;
+                if (p < (int)navb.size() && !navb[p].bits.empty() && S.capture_utc0 > 0.0) {
+                    const cudaGnssTrackState::NavBits& nb = navb[p];
+                    const double t_rec =
+                        (double)S.hops_per_record * (double)S.fft_len / S.sample_rate;
+                    const double utc_w = S.capture_utc0 + (double)wstart / S.sample_rate;
+                    const double t_b = utc_w + (L - cp_seed) / L * t_rec;
+                    auto bit_at = [&](double t) -> int8_t {
+                        const double x = (t - nb.utc0) / nb.bit_s;
+                        if (x < 0.0)
+                            return 0;
+                        const size_t k = (size_t)x;
+                        return (k < nb.bits.size()) ? nb.bits[k] : 0; // past horizon = unknown
+                    };
+                    s_head = bit_at(t_b - 0.5 * t_rec);
+                    s_tail = bit_at(t_b + 0.5 * t_rec);
+                }
+
                 const size_t u = (size_t)n_rec * S.n_prn + p;
                 S.used[u].run = 1;
+                S.used[u].s_head = s_head;
+                S.used[u].s_tail = s_tail;
                 S.used[u].job0 = c.job0;
                 S.used[u].phi = phi;
                 S.used[u].wstart = wstart;
@@ -656,23 +725,28 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     const double phi_fll =
                         S.peel_phi_track[p] + 2.0 * M_PI * S.peel_f_track[p] * dt_x;
                     const std::complex<double> rot = std::polar(1.0, phi + phi_fll);
-                    std::vector<std::complex<float>> a(S.n_chan, {0.f, 0.f});
+                    // Segment signs: the PREDICTED bits when both are known (removes the
+                    // one-frame sign lag -- the ~11 dB depth ceiling on data signals); else
+                    // the decision-directed gain_sign for both segments (the old behaviour:
+                    // right ~19 records in 20, and a wrong sign costs only that record's
+                    // residual -- the add-back is exact for any gain).
+                    const bool have_bits = (s_head != 0 && s_tail != 0);
+                    const double sh = have_bits ? (double)s_head : S.gain_sign[p];
+                    const double stl = have_bits ? (double)s_tail : S.gain_sign[p];
+                    std::vector<std::complex<float>> ah(S.n_chan, {0.f, 0.f});
+                    std::vector<std::complex<float>> at(S.n_chan, {0.f, 0.f});
                     double amp2 = 0.0;
                     for (int ci = 0; ci < S.n_chan; ++ci) {
                         if (!((mask >> ci) & 1ULL))
                             continue;
                         const std::complex<double> g(S.gain[(size_t)p * S.n_chan + ci]);
                         amp2 += std::norm(g);
-                        a[(size_t)ci] = (std::complex<float>)(g * rot * (double)S.gain_sign[p]);
+                        ah[(size_t)ci] = (std::complex<float>)(g * rot * sh);
+                        at[(size_t)ci] = (std::complex<float>)(g * rot * stl);
                     }
                     if (std::sqrt(amp2) > S.peel_min_amp)
-                        // ONE predicted overlay sign for both segments (S.gain_sign, carried from
-                        // the last measurement). Right for a pilot always, and for GPS nav data
-                        // whenever the record does not straddle a bit edge -- ~19 records in 20.
-                        // When it is wrong the residual for that record is ~2x the signal instead
-                        // of ~0, and NOTHING else: the add-back is exact for any gain, so the
-                        // tracking record is unharmed. Broker bit prediction is the real fix.
-                        pspecs.push_back(GnssCudaDespread::PeelSpec{p, cp_seed, fcar, local, a, a});
+                        pspecs.push_back(
+                            GnssCudaDespread::PeelSpec{p, cp_seed, fcar, local, ah, at});
                 }
             }
             specs.push_back(GnssCudaDespread::Spec{p, cp_seed, S.dll_spacing, fcar,

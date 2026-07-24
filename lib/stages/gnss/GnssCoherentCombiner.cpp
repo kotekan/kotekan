@@ -106,6 +106,9 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // on it at emit. Requires the wipe buffer (the deep estimator's machinery), so a peel chain
     // must configure whatever deep path it uses (navwipe_bit_records for GPS L1CA).
     _peel_depth = config.get_default<bool>(unique_name, "peel_depth", false);
+    _bit_export = config.get_default<bool>(unique_name, "bit_export", false);
+    if (_bit_export)
+        _st_nav_obs.assign(_n_prn, {});
     if (_peel_depth) {
         _navbuf_res.assign(_n_prn, {});
         _navhead_res.assign(_n_prn, {});
@@ -629,6 +632,7 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<int> deep_rec(_n_prn, 0);      // records in the winning deep window
         std::vector<double> deep_floor(_n_prn, 0.0); // rectification floor at the reported rung
         std::vector<double> peel_rsnr(_n_prn, 0.0);  // residual deep significance (peel_depth)
+        std::vector<NavObs> nav_obs(_bit_export ? _n_prn : 0); // full-window bit decisions (P7a)
         // FIXED-WINDOW, noise-debiased coherent power (Hz) for the beam map: the coherent
         // twin of the incoherent x = s^2/N. Computed from the FULL window's wipe every emit
         // -- NO ladder, NO detection gate, so a pixel average over emits is UNBIASED at
@@ -895,7 +899,11 @@ void GnssCoherentCombiner::main_thread() {
                      ladder(ab.size(), std::max<size_t>(4 * (size_t)_navwipe_bit_records, 64))) {
                     double snr = 0.0, amp;
                     if (len == ab.size()) {
-                        amp = navwipe_amplitude(ab, ub, &snr, &hb); // deep |A|
+                        // Full window: also export the per-bit decisions (nav_obs) when asked --
+                        // the longest rung sees every bit in the window, which is what the
+                        // broker's LNAV stitcher wants.
+                        amp = navwipe_amplitude(ab, ub, &snr, &hb,
+                                                _bit_export ? &nav_obs[p] : nullptr);
                     } else {
                         const std::vector<std::complex<double>> as(ab.end() - (long)len, ab.end());
                         const std::vector<double> us(ub.end() - (long)len, ub.end());
@@ -1139,6 +1147,8 @@ void GnssCoherentCombiner::main_thread() {
                 _st_peel_deep[p] = rec[gnss::CMB_PEEL_DEEP];
                 _st_peel_incoh[p] = rec[gnss::CMB_PEEL_INCOH];
                 _st_peel_deep_snr[p] = (float)peel_rsnr[p];
+                if (_bit_export)
+                    _st_nav_obs[p] = std::move(nav_obs[p]);
                 _st_dll_disc[p] = rec[gnss::CMB_DLL_DISC];
                 _st_head_frac[p] = rec[gnss::CMB_HEAD_FRAC];
                 // S4, thermal floor removed using the COHERENT SNR (independent of the
@@ -1243,13 +1253,32 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"adr_arc", _st_adr_arc[p]},
                          {"adr_records", _st_adr_n[p]},
                          {"adr_lock_s", _st_adr_lock[p]}});
+    // P7a nav_obs: the last emit's per-bit sign decisions, only on rows that have any --
+    // the broker's LNAV stitcher consumes these (see NavObs for the timing convention).
+    if (_bit_export)
+        for (int p = 0; p < _n_prn; ++p) {
+            const NavObs& o = _st_nav_obs[(size_t)p];
+            if (o.bits.empty())
+                continue;
+            nlohmann::json bits = nlohmann::json::array();
+            for (const auto& b : o.bits)
+                bits.push_back({b.first, (int)b.second});
+            reply[(size_t)p]["nav_obs"] = {{"utc_ref", o.utc_ref},
+                                           {"rec_dt", o.rec_dt},
+                                           {"phase", o.phase},
+                                           {"br", o.br},
+                                           {"rot_re", o.rot_re},
+                                           {"rot_im", o.rot_im},
+                                           {"bits", bits}};
+        }
     conn.send_json_reply(reply);
 }
 
 double
 GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>& a,
                                         const std::vector<double>& utc, double* snr_out,
-                                        const std::vector<std::complex<double>>* head) const {
+                                        const std::vector<std::complex<double>>* head,
+                                        NavObs* obs) const {
     const int br = _navwipe_bit_records;
     const int nrec = (int)a.size();
     if (br <= 0 || nrec < 2 * br)
@@ -1278,7 +1307,8 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
     // record straddling a bit boundary splits across the two bits instead of smearing the
     // symbol transition through one of them (tail bit >= head bit, and the NEXT record's head
     // bit >= this tail bit since cpi is strictly increasing, so streaming order is preserved).
-    auto bit_sums = [&](int phase, std::vector<cd>* out, double* powsum) {
+    auto bit_sums = [&](int phase, std::vector<cd>* out, double* powsum,
+                        std::vector<long long>* out_bi = nullptr) {
         cd s(0.0, 0.0);
         long long cur = 0;
         bool have = false;
@@ -1288,6 +1318,8 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
             if (have && bi != cur) {
                 if (out)
                     out->push_back(s);
+                if (out_bi)
+                    out_bi->push_back(cur); // which bit that sum belonged to (gap-honest)
                 g += std::abs(s);
                 ++nb;
                 s = cd(0.0, 0.0);
@@ -1308,6 +1340,8 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
         if (have) {
             if (out)
                 out->push_back(s);
+            if (out_bi)
+                out_bi->push_back(cur);
             g += std::abs(s);
             ++nb;
         }
@@ -1327,7 +1361,8 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
         }
     }
     std::vector<cd> s;
-    bit_sums(best_phase, &s, nullptr);
+    std::vector<long long> s_bi;
+    bit_sums(best_phase, &s, nullptr, obs ? &s_bi : nullptr);
     if (s.size() < 2)
         return 0.0;
 
@@ -1341,10 +1376,24 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
     const cd rot = std::polar(1.0, -0.5 * std::arg(sumsq));
     cd deep(0.0, 0.0);
     double noise2 = 0.0; // sum of squared orthogonal (noise) components, one per bit
-    for (const cd& v : s) {
+    if (obs) { // export the per-bit decisions the wipe is about to apply (P7a nav_obs)
+        obs->utc_ref = utc[0];
+        obs->rec_dt = rec_dt;
+        obs->phase = best_phase;
+        obs->br = br;
+        obs->rot_re = std::real(rot);
+        obs->rot_im = std::imag(rot);
+        obs->bits.clear();
+        obs->bits.reserve(s.size());
+    }
+    for (size_t bi = 0; bi < s.size(); ++bi) {
+        const cd& v = s[bi];
         const cd vr = v * rot; // align the signal onto the real axis
-        deep += (std::real(vr) >= 0.0 ? 1.0 : -1.0) * v;
+        const double sgn = std::real(vr) >= 0.0 ? 1.0 : -1.0;
+        deep += sgn * v;
         noise2 += std::imag(vr) * std::imag(vr);
+        if (obs && bi < s_bi.size())
+            obs->bits.emplace_back(s_bi[bi], (int8_t)(sgn > 0 ? 1 : -1));
     }
     const int nb = (int)s.size();
     const double sigma_bit = std::sqrt(noise2 / (double)nb);    // per-bit noise (1 axis)

@@ -73,6 +73,16 @@ public:
     /// which is not in the replica and which a single combined gain cannot represent.
     std::vector<std::complex<float>> gain; ///< [n_prn][n_chan]
     std::vector<int> gain_n;               ///< updates so far, per PRN (vs peel_warmup)
+    /// P7a PREDICTED NAV BITS (broker nav_bits, from the LNAV decode-and-predict): the +-1
+    /// sign per 20 ms bit on the capture clock, utc0-anchored. 0 = unknown -> the
+    /// decision-directed fallback below. Replaces the one-frame-stale gain_sign wherever
+    /// known -- the removal of the ~11 dB sign-lag depth ceiling on data signals.
+    struct NavBits {
+        double utc0 = 0.0, bit_s = 0.02;
+        std::vector<int8_t> bits;
+    };
+    std::vector<NavBits> nav_bits; ///< [n_prn], seed-updated under seed_mtx
+
     /// Last MEASURED overlay/nav sign, per PRN, and the prediction used for the next record.
     /// The EMA above is DE-BITTED (the sign is divided out before averaging), so the sign has to
     /// be carried separately and re-applied at subtraction time. Predicting "same as last" is
@@ -112,6 +122,8 @@ public:
     /// exactly. Storing it beats recomputing: by update time the EMA has moved on.
     struct PeelUsed {
         uint8_t run = 0;
+        int8_t s_head = 0;     ///< predicted bit sign used for the head segment (0 = none:
+        int8_t s_tail = 0;     ///< the decision-directed fallback measured this record)
         int job0 = -1;
         double phi = 0.0;      ///< the NCO-mirror phase this record was peeled/measured at
         long long wstart = 0;  ///< window start (sample) -- the FLL's time axis
