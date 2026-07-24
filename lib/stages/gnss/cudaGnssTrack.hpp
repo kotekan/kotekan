@@ -10,6 +10,7 @@
 #include "restServer.hpp"
 
 #include <complex>
+#include <string>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -112,6 +113,7 @@ public:
     /// ctrim closed this loop idles near zero; on a bench (or during broker convergence) it is
     /// what makes the peel work at all. Same design as the CPU peel v2's f_track/phi_track.
     double peel_fll_gain = 0.05;
+    std::string peel_tag;      ///< chain identity for the health line (multi-chain node)
     std::vector<double> peel_f_track;   ///< [n_prn] residual carrier (Hz, derotated frame)
     std::vector<double> peel_phi_track; ///< [n_prn] integrated FLL phase (rad, wrapped)
     std::vector<std::complex<double>> peel_a_prev; ///< [n_prn] previous FLL-frame gain measurement

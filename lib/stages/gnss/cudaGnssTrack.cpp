@@ -117,6 +117,7 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     peel_min_amp = config.get_default<double>(unique_name, "peel_min_amp", 0.0);
     peel_warmup = config.get_default<int>(unique_name, "peel_warmup_records", 100);
     peel_fll_gain = config.get_default<double>(unique_name, "peel_fll_gain", 0.05);
+    peel_tag = signal + "@" + unique_name;
     if (peel) {
         gain.assign((size_t)n_prn * n_chan, std::complex<float>(0.f, 0.f));
         gain_n.assign(n_prn, 0);
@@ -876,9 +877,17 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         for (int p = 0; p < S.n_prn; ++p)
             if (S.prns[p] == gmax_p)
                 gi = p;
-        INFO("peel: {:d}/{:d} PRNs past warmup; strongest PRN{:d} |g|={:.3g} n={:d} "
-             "fll_resid={:+.2f} Hz",
-             npeel, nact, gmax_p, gmax, gmax_n, (gi >= 0) ? S.peel_f_track[gi] : 0.0);
+        // Which active PRNs are NOT yet subtracting, and how far along their gain is -- the
+        // direct answer to "why is this PRN's depth 0 dB". WARN so it clears the node's
+        // log_level: warn (debug aid while the peel beds in; demote to INFO later).
+        std::string lag;
+        for (int p = 0; p < S.n_prn; ++p)
+            if (active[p] && S.gain_n[p] < S.peel_warmup)
+                lag += fmt::format(" {:d}(n{:d})", S.prns[p], S.gain_n[p]);
+        WARN("peel[{:s}]: {:d}/{:d} past warmup; strongest PRN{:d} |g|={:.3g} n={:d} "
+             "fll={:+.2f}Hz; NOT-PEELING:{:s}",
+             S.peel_tag, npeel, nact, gmax_p, gmax, gmax_n,
+             (gi >= 0) ? S.peel_f_track[gi] : 0.0, lag.empty() ? " none" : lag);
     }
 
     return record_end_event();
