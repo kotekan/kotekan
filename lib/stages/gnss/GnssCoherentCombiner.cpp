@@ -1148,6 +1148,15 @@ void GnssCoherentCombiner::main_thread() {
                     _navutc[p].clear();
                     _navhead[p].clear();
                     _navwipe[p].clear();
+                    // The residual rides the SAME window and must be cleared with it. Missing
+                    // this desynced the two on the nh-assist chains (B1C/L1C, whose clear is
+                    // deferred to here): _navbuf_res kept growing while _navbuf reset, the
+                    // size guard in the depth block then skipped every emit, and the pilots
+                    // peeled with no instrument reporting it (2026-07-24).
+                    if (_peel_depth) {
+                        _navbuf_res[p].clear();
+                        _navhead_res[p].clear();
+                    }
                 }
         }
 
