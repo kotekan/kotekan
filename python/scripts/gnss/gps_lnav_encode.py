@@ -49,6 +49,27 @@ def ura_index(metres):
     return 15
 
 
+def select_eph(recs, t_gps, fit_h=4.0):
+    """The ephemeris record the satellite is BROADCASTING at GPS time `t_gps`.
+
+    ⚠️ THIS IS NOT "the newest record", and getting it wrong silently produces confidently
+    WRONG bits -- the known-mask cannot catch it, because the bits are known, just not the ones
+    on the air. Measured 2026-07-25: the same verification run scored 100.0000% and then
+    74.1038% with no code change at all, purely because BRDC refreshed underneath it.
+
+    GPS places toe at the CENTRE of the fit interval, so the broadcast record's toe is up to
+    fit/2 in the FUTURE. Hence: newest record whose window has already opened. Measured against
+    air on 6 satellites, 113,820 bits:
+        newest overall          74.1038%   (what recs[-1] does -- wrong)
+        min |t - toe|           69.4544%   (nearest toe -- also wrong)
+        newest, toe-1h <= t     69.4544%
+        newest, toe-2h <= t    100.0000%   <-- this
+    """
+    lead = 0.5 * fit_h * 3600.0
+    started = [r for r in recs if r["toe_gpst"] - lead <= t_gps]
+    return max(started, key=lambda r: r["toe_gpst"]) if started else recs[0]
+
+
 def _u(val, nbits):
     """Unsigned integer -> nbits MSB-first."""
     v = int(round(val)) & ((1 << nbits) - 1)
@@ -275,8 +296,7 @@ def _check(navobs_path):
             if sfid not in ENCODERS or sfid in seen:
                 continue
             seen.add(sfid)
-            # the ephemeris record whose toe brackets this observation
-            e = recs[-1]
+            e = select_eph(recs, (tow - 1) * 6.0 + int(recs[-1]["week"]) * 604800.0)
             enc = ENCODERS[sfid](e)
             for wi in EPH_WORDS[sfid]:
                 n = PARTIAL.get((sfid, wi), 24)
@@ -350,11 +370,12 @@ def _verify(navobs_path):
         if len(run) < 620:
             continue
         ba = np.array([(1 - m[s]) // 2 for s in run], dtype=np.int8)
-        e = recs[-1]
         acc = {True: [0, 0, 0], False: [0, 0, 0]}
         for i, tow, sfid in frame_sync(ba):
             if sfid not in ENCODERS or i + 300 > len(ba):
                 continue
+            # the record actually on the air at this subframe's transmit time
+            e = select_eph(recs, (tow - 1) * 6.0 + int(recs[-1]["week"]) * 604800.0)
             D29s = int(ba[i - 2]) if i >= 2 else 0
             D30s = int(ba[i - 1]) if i >= 1 else 0
             _, ok, _, _, _, _ = decode_subframe(ba, i, D29s, D30s)
