@@ -778,6 +778,14 @@ def main(argv=None):
     ap.add_argument("--dr-dry-run", action="store_true",
                     help="compute + log the clock solve, integrity residuals and planned "
                          "dead-reckoned seeds WITHOUT injecting any (validation mode)")
+    ap.add_argument("--nav-bits-brdc", type=int, default=0,
+                    help="CONSTRUCT nav bits from BRDC for satellites that never sync "
+                         "(navbit_brdc.BrdcLnavSource). DEFAULT OFF: first live trial "
+                         "2026-07-25 collapsed the GPS chain to 0/14 peeling with every PRN on "
+                         "`nobits` and every gain reset -- the 30 s tables make the seed POST "
+                         "~14.5k numbers and the whole seed push appears to stop landing. The "
+                         "bit CONTENT is validated (113820/113820 offline, hold-one-out 100%); "
+                         "it is the transport that needs sizing before this goes back on.")
     ap.add_argument("--nav-bits", type=int, default=1,
                     help="LNAV decode-and-predict from the combiner's nav_obs export "
                          "(bit_export: true), pushed as nav_bits with each seed row -- the "
@@ -1763,7 +1771,8 @@ def main(argv=None):
             # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
             # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
             # source when their encoders exist.
-            if navbits is not None and alm_sys == "G" and brdc_alm is not None and pred:
+            if (args.nav_bits_brdc and navbits is not None and alm_sys == "G"
+                    and brdc_alm is not None and pred):
                 if navbrdc is None:
                     from navbit_brdc import BrdcLnavSource
                     navbrdc = BrdcLnavSource(log=_log)
@@ -2550,6 +2559,7 @@ def main(argv=None):
 
         # 4. push consensus seeds to every tracker (DLL trim applied at POST time only)
         payload = []
+        bit_src, bit_known = {}, {}
         for prn, v in sorted(seeds.items()):
             d = dict(prn=prn, **v)
             if dll_trim.get(prn):
@@ -2562,8 +2572,10 @@ def main(argv=None):
             # DATA signals (P7a): the LNAV predictor's output. bit_pred wins where both
             # exist (a known overlay beats a decoded guess).
             _row = status.get(prn) or {}
+            _bsrc = "none"
             if _row.get("bit_pred", {}).get("bits"):
                 d["nav_bits"] = _row["bit_pred"]
+                _bsrc = "pred"
             elif navbits is not None:
                 # Predict from the freshest capture-clock UTC this PRN has reported: the
                 # tracker consumes by ITS record UTC (same capture clock), so wall-clock
@@ -2583,9 +2595,22 @@ def main(argv=None):
                         # spans the 18 s of sf1-3, so every push carries usable bits. Costs
                         # 1500 int8 per PRN.
                         nb = navbrdc.predict(prn, float(_utc), horizon_s=30.0)
+                        _bsrc = "brdc" if nb is not None else "none"
+                    elif nb is not None:
+                        _bsrc = "lnav"
                     if nb is not None:
                         d["nav_bits"] = nb
+                        _bsrc = _bsrc if _bsrc != "none" else "lnav"
+            bit_src[_bsrc] = bit_src.get(_bsrc, 0) + 1
+            if _bsrc != "none":
+                bit_known[_bsrc] = bit_known.get(_bsrc, 0) + sum(
+                    1 for b in d["nav_bits"]["bits"] if b)
             payload.append(d)
+        # WHERE THE PEEL'S SIGNS ACTUALLY CAME FROM this cycle. Without this the only symptom
+        # of a source that silently supplies nothing is `nobits` in a health line 10 s later on
+        # a different process, which is what made the 30 s-horizon bug hard to see.
+        _log_rl("bitsrc", "nav_bits by source: %s; known bits: %s"
+                % (dict(sorted(bit_src.items())), dict(sorted(bit_known.items()))))
         if os.environ.get("GNSS_SEED_DEBUG"):
             for d in payload:
                 if str(d["prn"]) in os.environ["GNSS_SEED_DEBUG"].split(","):
