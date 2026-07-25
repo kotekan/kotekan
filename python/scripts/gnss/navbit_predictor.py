@@ -67,6 +67,12 @@ REPAIR_MIN_S = 30.0      # min seconds between polarity-repair searches per PRN.
                          # assignment; the real cause is bit errors), so it mostly burns CPU on
                          # satellites it cannot rescue. A sat that has not synced in minutes can
                          # wait another 30 s.
+TRY_EVERY_BITS = 150     # only attempt sync/decode once per ~3 s of NEW bits per PRN. It was
+                         # run on EVERY ingest, and the broker re-ingests the same emit ~5x
+                         # (polls at 5 Hz; the combiner refreshes nav_obs ~1 Hz) with no dedup,
+                         # so the work was ~25x oversubscribed: 34 ms x 15 PRNs x 5 Hz = 2.5
+                         # core-seconds per second against a 1-core process. Subframes arrive
+                         # every 6 s and the scan window holds 60 s, so nothing is missed.
 REPAIR_WIN = 1000        # repair searches only the TRAILING bits: syncing needs just
                          # SYNC_MIN_BITS consistent ones, and the freshest are both sufficient
                          # and likeliest to belong to the current arc. Searching the whole run
@@ -91,6 +97,9 @@ class _PrnState:
                                  # quasi-static; only the TOW field changes per subframe)
         self.n_decoded = 0
         self.repair_t = 0.0      # last polarity-repair attempt (rate limit, see REPAIR_MIN_S)
+        self.last_obs = None     # (utc_ref, phase) of the last emit folded in -- the broker
+                                 # re-polls the same one several times over
+        self.try_slot = None     # newest slot at the last sync attempt (see TRY_EVERY_BITS)
         self.n_pred_checked = 0  # prediction-health counters (bits compared / mismatched)
         self.n_pred_wrong = 0
 
@@ -117,6 +126,11 @@ class LnavPredictor:
             return
         if rec_dt <= 0 or br <= 0 or not pairs:
             return
+        # Same emit as last time? The broker polls faster than the combiner emits.
+        key = (utc_ref, phase, br)
+        if key == st.last_obs:
+            return
+        st.last_obs = key
         st.bit_s = br * rec_dt
         # Polarity chaining: theta0 = -arg(rot), reduced mod pi. An odd pi-step vs the last
         # emit means this emit's global sign is flipped relative to it.
@@ -142,7 +156,11 @@ class LnavPredictor:
         if len(st.hist) > HIST_MAX_SLOTS:
             cut = max(st.hist) - HIST_MAX_SLOTS
             st.hist = {k: v for k, v in st.hist.items() if k >= cut}
-        self._try_sync(prn, st)
+        newest = max(st.hist) if st.hist else None
+        if newest is not None and (st.try_slot is None
+                                   or newest - st.try_slot >= TRY_EVERY_BITS):
+            st.try_slot = newest
+            self._try_sync(prn, st)
 
     # ---------------- sync + decode ----------------
     def _contig_run(self, st):
