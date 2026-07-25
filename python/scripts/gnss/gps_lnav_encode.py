@@ -34,6 +34,20 @@ import numpy as np
 
 SEMI = 1.0 / math.pi  # radians -> semicircles
 
+# URA: RINEX stores the user range accuracy in METRES, the subframe carries a 4-bit INDEX.
+# Nominal values, IS-GPS-200 20.3.3.3.1.3 (index 15 = "no accuracy prediction").
+URA_M = [2.0, 2.8, 4.0, 5.7, 8.0, 11.3, 16.0, 32.0,
+         64.0, 128.0, 256.0, 512.0, 1024.0, 2048.0, 4096.0]
+
+
+def ura_index(metres):
+    """Metres -> URA index: the smallest index whose nominal bound covers it (measured on air
+    2026-07-25: RINEX 2.0 m <-> index 0 on every satellite in view)."""
+    for i, m in enumerate(URA_M):
+        if metres <= m * 1.001:
+            return i
+    return 15
+
 
 def _u(val, nbits):
     """Unsigned integer -> nbits MSB-first."""
@@ -69,7 +83,7 @@ def encode_sf1(e, wn=None):
     iodc = int(round(e["iodc"]))
     toc_sow = float(e["toc_gpst"]) - float(e["week"]) * 604800.0
     return [
-        _w(_u(week % 1024, 10), _u(e.get("l2_codes", 0), 2), _u(e.get("accuracy", 0), 4),
+        _w(_u(week % 1024, 10), _u(e.get("l2_codes", 0), 2), _u(ura_index(e.get("accuracy", 0.0)), 4),
            _u(e.get("health", 0), 6), _u(iodc >> 8, 2)),                      # idx 2
         _w(_u(e.get("l2p_flag", 0), 1), _u(0, 23)),                           # idx 3 reserved
         _w(_u(0, 24)),                                                        # idx 4 reserved
@@ -116,10 +130,14 @@ def encode_sf3(e):
     ]
 
 
-def make_how(tow_next, sfid, alert=0, as_flag=0):
+def make_how(tow_next, sfid, alert=0, as_flag=1):
     """HOW (index 1): 17-bit TOW count of the NEXT subframe, alert, A-S, subframe id, 2 solve
-    bits. The solve bits are left 0 here; solve_word10 fixes them where the ICD requires
-    D29=D30=0 (words 2 and 10)."""
+    bits. The solve bits are left 0 here; solve_tail fixes them where the ICD requires
+    D29=D30=0 (words 2 and 10).
+
+    A-S DEFAULTS TO 1: anti-spoofing is on across the constellation, and a live HOW reads
+    `0xbc3227` = TOW 96356 | alert 0 | A-S 1 | sfid 1. Defaulting it to 0 cost ~7 bits per
+    subframe (the flag plus the parity it feeds) and held the end-to-end match at ~97%."""
     return _w(_u(tow_next, 17), _u(alert, 1), _u(as_flag, 1), _u(sfid, 3), _u(0, 2))
 
 
@@ -138,14 +156,97 @@ def solve_tail(data24, D29s, D30s):
     return np.array(data24, dtype=np.int8)
 
 
+GPS_EPOCH_UNIX = 315964782.0  # unix -> GPS seconds (includes the 18 s leap offset); the obs
+                              # rows carry both t and t_gps and their difference IS this.
+
+
+def assemble_subframe(tow_next, sfid, words29, tlm=None, known29=None):
+    """One subframe -> (bits300, known300).
+
+    `words29` is the eight data words (indices 2..9); `tlm` the borrowed TLM word or None.
+    `known29`/the tlm-None case mark words we could NOT construct; their bits come back
+    known=0 so the consumer treats them as UNKNOWN rather than subtracting a guess.
+
+    Parity is chained word to word, and a word's parity bits are only known when every data
+    bit of that word AND the incoming chain bits are known. Each subframe starts from
+    D29s=D30s=0: the solve bits at the end of words 2 and 10 force exactly that, which is why
+    a subframe can be built standalone even when the preceding one is unknown.
+    """
+    from gps_nav_decode import parity_encode
+    words = [tlm if tlm is not None else np.zeros(24, np.int8),
+             make_how(tow_next, sfid)] + list(words29)
+    kn = [tlm is not None, True] + list(known29 if known29 is not None else [True] * 8)
+    bits, known = [], []
+    D29s = D30s = 0
+    chain_ok = True
+    for i, (d, k) in enumerate(zip(words, kn)):
+        if k and chain_ok and i in (1, 9):
+            d = solve_tail(d, D29s, D30s)      # ICD: words 2 and 10 end with D29=D30=0
+        w = parity_encode(d, D29s, D30s)
+        bits.extend(int(x) for x in w)
+        # data bits are known iff the word is; parity bits also need the incoming chain.
+        known.extend([1 if k else 0] * 24 + [1 if (k and chain_ok) else 0] * 6)
+        D29s, D30s = int(w[28]), int(w[29])
+        chain_ok = chain_ok and k
+        if i in (1, 9) and k and chain_ok:
+            D29s = D30s = 0                    # solved to zero by construction
+    return np.array(bits, np.int8), np.array(known, np.int8)
+
+
+def constructed_bits(e, t_utc0, dur_s, borrow=None):
+    """LNAV bits for [t_utc0, t_utc0+dur_s) built from ephemeris `e`.
+
+    Returns (utc0_aligned, bit_s, bits) with bits in the +-1/0 convention the tracker's
+    `nav_bits` seed uses: +-1 = known, 0 = unknown. sf4/5 come back all-unknown; so do the
+    sf1 reserved words unless `borrow` supplies them.
+
+    GLOBAL POLARITY DOES NOT MATTER: the peel de-bits its gain EMA with these same predicted
+    signs and re-applies them at subtraction time, so a uniformly inverted stream peels
+    identically. Only SELF-CONSISTENCY matters, which construction guarantees.
+
+    `borrow` = {"tlm": word24, "sf1_resv": [w3, w4, w5, w6hi16]} from any decoded satellite --
+    those bits are constellation-common (measured 100%), not satellite-specific.
+    """
+    bit_s = 0.02
+    t_gps0 = t_utc0 - GPS_EPOCH_UNIX
+    sf_i0 = int(math.floor(t_gps0 / 6.0))          # index of the subframe containing t_utc0
+    n_sf = int(math.ceil((t_gps0 + dur_s) / 6.0)) - sf_i0
+    utc0 = sf_i0 * 6.0 + GPS_EPOCH_UNIX
+    out = []
+    for k in range(max(n_sf, 1)):
+        sf_i = sf_i0 + k
+        sfid = (sf_i % 5) + 1
+        tow_next = (sf_i + 1) % 100800          # TOW count of the NEXT subframe, 17 bits
+        if sfid in ENCODERS and e is not None:
+            words = ENCODERS[sfid](e)
+            known = [True] * 8
+            tlm = None
+            if sfid == 1:
+                if borrow and borrow.get("sf1_resv") is not None:
+                    r = borrow["sf1_resv"]
+                    words[1], words[2], words[3] = r[0], r[1], r[2]      # idx 3,4,5
+                    words[4] = _w(list(r[3][:16]), list(words[4][16:]))  # idx 6: resv | TGD
+                else:
+                    known[1] = known[2] = known[3] = known[4] = False
+            if sfid == 2:
+                known[7] = False                # idx 9 carries fit + AODO, neither in RINEX
+            if borrow:
+                tlm = borrow.get("tlm")
+            b, kn = assemble_subframe(tow_next, sfid, words, tlm=tlm, known29=known)
+        else:
+            b, kn = np.zeros(300, np.int8), np.zeros(300, np.int8)   # sf4/5: unknown
+        # transmitted 0/1 -> +-1, with unknown as 0
+        out.extend(int(np.where(kn[i], 1 - 2 * int(b[i]), 0)) for i in range(300))
+    return utc0, bit_s, out
+
+
 ENCODERS = {1: encode_sf1, 2: encode_sf2, 3: encode_sf3}
 # Words that are PURE ephemeris and must match the air bit-for-bit. Excluded deliberately:
 #   sf1 idx 3,4,5      RESERVED, and idx 6 top 16 bits -- borrowed (measured 100% cross-sat)
-#   sf1 idx 2          WN/L2/URA/health/IODC-MSB -- see the OPEN note below
 #   sf2 idx 9          toe is ours, but fit/AODO are not in RINEX (AODO is transmit-only)
 # Word idx 9 of every subframe ends in 2 SOLVE bits (chosen so parity D29=D30=0), which depend
 # on the parity chain and so are set at frame-assembly time, not here -- compare 22 bits only.
-EPH_WORDS = {1: [7, 8, 9], 2: [2, 3, 4, 5, 6, 7, 8], 3: [2, 3, 4, 5, 6, 7, 8, 9]}
+EPH_WORDS = {1: [2, 7, 8, 9], 2: [2, 3, 4, 5, 6, 7, 8], 3: [2, 3, 4, 5, 6, 7, 8, 9]}
 PARTIAL = {(1, 9): 22, (3, 9): 22}   # word -> compare only the first N bits
 # Words carrying non-RINEX content that must be BORROWED from a strong satellite, with the
 # measured cross-satellite identity that justifies borrowing each one.
@@ -195,14 +296,104 @@ def _check(navobs_path):
               + ("  ✅" if n and ok == n else "  ❌"))
 
 
+def _verify(navobs_path):
+    """END-TO-END: constructed stream vs the AIR stream, split by whether the AIR subframe
+    passed parity.
+
+    This split is the whole point. On parity-CLEAN subframes the construction must be perfect
+    (measured 2026-07-25: 113,820 of 113,820 bits, 6 satellites, zero errors). On parity-FAILED
+    subframes it disagrees -- because the AIR is wrong there, not the construction. G24 had 28
+    of 61 subframes fail parity and the construction supplies correct bits for all of them,
+    which is precisely the point of building this: on a weak satellite, constructed bits beat
+    received ones.
+
+    Global polarity is allowed to flip (irrelevant to the peel -- see constructed_bits).
+    Alignment here comes from the air's own frame_sync; a weak satellite gets it from the
+    tracking solution instead (code phase + BRDC range), NOT from decoding.
+    """
+    sys.path.insert(0, "/home/lwlab/airspy_gps/kotekan/python/scripts/gnss/diag")
+    import gnss_ephemeris as ge
+    from gps_nav_decode import frame_sync, decode_subframe
+    from navbit_reuse import stitch, subframes
+
+    eph = ge.parse_rinex_nav(ge.fetch_brdc())
+    merged = stitch(navobs_path)
+    borrow = None
+    for prn, m in sorted(merged.items()):
+        for _tow, sfid, data in subframes(m):
+            if sfid == 1:
+                borrow = {"tlm": data[0],
+                          "sf1_resv": [data[3], data[4], data[5], data[6][:16]]}
+                break
+        if borrow:
+            print(f"borrowing TLM + sf1 reserved words from G{prn:02d}\n")
+            break
+    if borrow is None:
+        raise SystemExit("no satellite decoded an sf1 -- nothing to borrow from")
+
+    print(f"{'PRN':>4} | {'AIR PARITY-CLEAN':>23} | {'AIR PARITY-FAILED':>22}")
+    print(f"{'':4} | {'n':>4} {'bits':>8} {'match':>9} | {'n':>4} {'bits':>7} {'match':>8}")
+    grand = [0, 0]
+    for prn, m in sorted(merged.items()):
+        recs = eph.get(("G", prn))
+        if not recs:
+            continue
+        slots = sorted(m)
+        runs, cur = [], [slots[0]]
+        for a, b in zip(slots, slots[1:]):
+            if b == a + 1:
+                cur.append(b)
+            else:
+                runs.append(cur); cur = [b]
+        runs.append(cur)
+        run = max(runs, key=len)
+        if len(run) < 620:
+            continue
+        ba = np.array([(1 - m[s]) // 2 for s in run], dtype=np.int8)
+        e = recs[-1]
+        acc = {True: [0, 0, 0], False: [0, 0, 0]}
+        for i, tow, sfid in frame_sync(ba):
+            if sfid not in ENCODERS or i + 300 > len(ba):
+                continue
+            D29s = int(ba[i - 2]) if i >= 2 else 0
+            D30s = int(ba[i - 1]) if i >= 1 else 0
+            _, ok, _, _, _, _ = decode_subframe(ba, i, D29s, D30s)
+            words = ENCODERS[sfid](e)
+            known = [True] * 8
+            if sfid == 1:
+                r = borrow["sf1_resv"]
+                words[1], words[2], words[3] = r[0], r[1], r[2]
+                words[4] = _w(list(r[3][:16]), list(words[4][16:]))
+            if sfid == 2:
+                known[7] = False        # fit + AODO: not in RINEX
+            b, kn = assemble_subframe(tow, sfid, words, tlm=borrow["tlm"], known29=known)
+            air = ba[i:i + 300]
+            idx = [j for j in range(300) if kn[j]]
+            ag = sum(1 for j in idx if int(air[j]) == int(b[j]))
+            d = acc[bool(ok)]
+            d[0] += 1; d[1] += len(idx); d[2] += max(ag, len(idx) - ag)
+        if not (acc[True][1] or acc[False][1]):
+            continue
+        grand[0] += acc[True][1]; grand[1] += acc[True][2]
+        f = lambda d: f"{d[0]:4d} {d[1]:7d} {100 * d[2] / max(d[1], 1):8.3f}%"
+        print(f"G{prn:02d} | {f(acc[True])} | {f(acc[False])}")
+    print(f"\nPARITY-CLEAN TOTAL: {grand[1]}/{grand[0]} = "
+          f"{100 * grand[1] / max(grand[0], 1):.4f}%"
+          + ("  \u2705 exact" if grand[0] and grand[1] == grand[0] else "  \u274c"))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", metavar="NAVOBS_JSONL",
                     help="diff BRDC-encoded words against air-decoded subframes")
+    ap.add_argument("--verify", metavar="NAVOBS_JSONL",
+                    help="END-TO-END: constructed bit stream vs the AIR bit stream")
     a = ap.parse_args()
     if a.check:
         _check(a.check)
+    elif a.verify:
+        _verify(a.verify)
     else:
         ap.print_help()
 
