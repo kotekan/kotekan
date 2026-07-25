@@ -183,19 +183,33 @@ cudaGnssTrackState::~cudaGnssTrackState() {
 
 void cudaGnssTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
                                             nlohmann::json& request) {
+    // PARSE FIRST, LOCK LAST. The old version held seed_mtx across the whole parse -- including
+    // the per-bit loop over every PRN's table -- while pass 1 takes that same mutex EVERY GPU
+    // frame to snapshot the seeds. A large payload therefore stalled the tracker directly.
+    // Nothing here needs the lock: build the update locally, then swap it in.
+    struct Upd {
+        int i;
+        double dop, cp, cp_rate, dop_rate, ctrim;
+        long long ref_hop;
+        bool has_bits;
+        NavBits bits;
+    };
+    std::vector<Upd> upd;
+    int bad_bits = 0;
     try {
-        std::lock_guard<std::mutex> lk(seed_mtx);
-        std::fill(active.begin(), active.end(), (uint8_t)0); // list is authoritative
+        upd.reserve(request.size());
         for (const auto& s : request) {
             const int prn = s.at("prn").get<int>();
             for (int i = 0; i < n_prn; ++i)
                 if (prns[i] == prn) {
-                    dop[i] = s.at("doppler_hz").get<double>();
-                    cp[i] = s.at("code_phase_chips").get<double>();
-                    cp_rate[i] = s.value("code_phase_rate", 0.0);
-                    dop_rate[i] = s.value("doppler_rate_hz_s", 0.0);
-                    ctrim[i] = s.value("carrier_trim_hz", 0.0);
-                    ref_hop[i] = s.value("ref_hop", (long long)0);
+                    Upd u{};
+                    u.i = i;
+                    u.dop = s.at("doppler_hz").get<double>();
+                    u.cp = s.at("code_phase_chips").get<double>();
+                    u.cp_rate = s.value("code_phase_rate", 0.0);
+                    u.dop_rate = s.value("doppler_rate_hz_s", 0.0);
+                    u.ctrim = s.value("carrier_trim_hz", 0.0);
+                    u.ref_hop = s.value("ref_hop", (long long)0);
                     // P7a predicted nav bits (optional): +-1 per 20 ms bit, 0 = unknown.
                     if (peel && s.contains("nav_bits")) {
                         try {
@@ -203,18 +217,42 @@ void cudaGnssTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
                             NavBits t;
                             t.utc0 = nb.at("utc0").get<double>();
                             t.bit_s = nb.value("bit_s", 0.02);
-                            for (const auto& b : nb.at("bits"))
+                            const auto& arr = nb.at("bits");
+                            t.bits.reserve(arr.size());
+                            for (const auto& b : arr)
                                 t.bits.push_back((int8_t)b.get<int>());
-                            if (t.bit_s > 0.0 && !t.bits.empty())
-                                nav_bits[i] = std::move(t);
+                            if (t.bit_s > 0.0 && !t.bits.empty()) {
+                                u.bits = std::move(t);
+                                u.has_bits = true;
+                            } else
+                                ++bad_bits;
                         } catch (const std::exception&) {
-                            // malformed nav_bits: keep the previous table (harmless -- stale
-                            // tables age out via the lookup's freshness guard)
+                            // COUNTED, not swallowed -- see nav_bits_bad in the header. The
+                            // previous table is still kept (it ages out via the lookup's
+                            // freshness guard), but the health line now says it happened.
+                            ++bad_bits;
                         }
                     }
-                    active[i] = 1;
+                    upd.push_back(std::move(u));
                 }
         }
+        {
+            std::lock_guard<std::mutex> lk(seed_mtx);
+            std::fill(active.begin(), active.end(), (uint8_t)0); // list is authoritative
+            for (auto& u : upd) {
+                dop[u.i] = u.dop;
+                cp[u.i] = u.cp;
+                cp_rate[u.i] = u.cp_rate;
+                dop_rate[u.i] = u.dop_rate;
+                ctrim[u.i] = u.ctrim;
+                ref_hop[u.i] = u.ref_hop;
+                if (u.has_bits)
+                    nav_bits[u.i] = std::move(u.bits);
+                active[u.i] = 1;
+            }
+        }
+        if (bad_bits)
+            nav_bits_bad.fetch_add(bad_bits, std::memory_order_relaxed);
     } catch (const std::exception& e) {
         conn.send_error(e.what(), kotekan::HTTP_RESPONSE::BAD_REQUEST);
         return;
@@ -1032,9 +1070,11 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     ++n_hurt;
             }
         WARN("peel[{:s}]: {:d}/{:d} past warmup; strongest PRN{:d} |g|={:.3g} n={:d} "
-             "fll={:+.2f}Hz; HURTING={:d}; AT-FLOOR={:d}; NOT-PEELING:{:s}; resid/full/floor:{:s}",
+             "fll={:+.2f}Hz; HURTING={:d}; AT-FLOOR={:d}; NAVBITS-BAD={:d}; "
+             "NOT-PEELING:{:s}; resid/full/floor:{:s}",
              S.peel_tag, npeel, nact, gmax_p, gmax, gmax_n,
              (gi >= 0) ? S.peel_f_track[gi] : 0.0, n_hurt, n_floor,
+             S.nav_bits_bad.exchange(0, std::memory_order_relaxed),
              lag.empty() ? " none" : lag, ratios.empty() ? " -" : ratios);
     }
 

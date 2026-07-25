@@ -9,6 +9,7 @@
 #include "gnssChannelizedReplica.hpp"
 #include "restServer.hpp"
 
+#include <atomic>
 #include <complex>
 #include <string>
 #include <memory>
@@ -125,6 +126,13 @@ public:
         std::vector<int8_t> bits;
     };
     std::vector<NavBits> nav_bits; ///< [n_prn], seed-updated under seed_mtx
+    /// Rows whose nav_bits failed to parse, since the last health line. This used to be
+    /// swallowed in silence ("keep the previous table"), and on 2026-07-25 that cost a live
+    /// debugging session: the constructed-bit source took every GPS PRN to `nobits` at once --
+    /// including the decoded ones that never used it -- while the broker reported a clean
+    /// `seeded 1/1 trackers` and the POST returned 200. A silent catch on a path that feeds
+    /// SIGNS to a subtracter is not harmless; it is exactly where a fault hides.
+    std::atomic<int> nav_bits_bad{0};
 
     /// Last MEASURED overlay/nav sign, per PRN, and the prediction used for the next record.
     /// The EMA above is DE-BITTED (the sign is divided out before averaging), so the sign has to
