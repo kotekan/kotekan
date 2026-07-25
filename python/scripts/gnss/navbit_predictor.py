@@ -32,6 +32,7 @@ polarity-scrambled emits, must sync and predict the next frame exactly for subfr
 import math
 import os
 import sys
+import time
 
 import numpy as np
 
@@ -58,6 +59,18 @@ def encode_subframe_trimmed(data_words):
 
 BIT_S = 0.020            # nominal LNAV bit (s, capture clock)
 SYNC_MIN_BITS = 620      # ~2 subframes + slack before attempting frame_sync
+SCAN_MAX_BITS = 3000     # 60 s: the newest bits are the only ones that can hold an undecoded
+                         # subframe, and rescanning the whole history was the broker's hot spot
+REPAIR_MIN_S = 30.0      # min seconds between polarity-repair searches per PRN. Deliberately
+                         # long: this is a LOW-YIELD recovery path -- the polarity-chain theory
+                         # was REFUTED as the sync blocker (weak sats fail under EVERY polarity
+                         # assignment; the real cause is bit errors), so it mostly burns CPU on
+                         # satellites it cannot rescue. A sat that has not synced in minutes can
+                         # wait another 30 s.
+REPAIR_WIN = 1000        # repair searches only the TRAILING bits: syncing needs just
+                         # SYNC_MIN_BITS consistent ones, and the freshest are both sufficient
+                         # and likeliest to belong to the current arc. Searching the whole run
+                         # cost ~1.6 s an attempt for no extra reach.
 HIST_MAX_SLOTS = 64000   # ~21 min of bit history (covers one 12.5 min supercycle + slack)
 SF_BITS = 300
 
@@ -77,6 +90,7 @@ class _PrnState:
         self.how = {}            # sfid -> word-2 data template (alert/AS flags are
                                  # quasi-static; only the TOW field changes per subframe)
         self.n_decoded = 0
+        self.repair_t = 0.0      # last polarity-repair attempt (rate limit, see REPAIR_MIN_S)
         self.n_pred_checked = 0  # prediction-health counters (bits compared / mismatched)
         self.n_pred_wrong = 0
 
@@ -122,24 +136,38 @@ class LnavPredictor:
             slot = int(round(utc_bit / st.bit_s))
             st.hist[slot] = sg * st.pol
             st.utc_anchor = (slot, utc_bit)
-        # bound the history
+        # Bound the history. Slots only ever increase, so the cut point is a subtraction --
+        # the old sorted(st.hist)[...] re-sorted up to 64k keys on EVERY ingest once the
+        # history saturated, which is exactly when the node has been up long enough to care.
         if len(st.hist) > HIST_MAX_SLOTS:
-            cut = sorted(st.hist)[len(st.hist) - HIST_MAX_SLOTS]
+            cut = max(st.hist) - HIST_MAX_SLOTS
             st.hist = {k: v for k, v in st.hist.items() if k >= cut}
         self._try_sync(prn, st)
 
     # ---------------- sync + decode ----------------
     def _contig_run(self, st):
-        """Longest trailing contiguous slot run (start_slot, bits +-1 list)."""
+        """Trailing contiguous slot run (start_slot, bits +-1 list), capped at SCAN_MAX_BITS.
+
+        TWO COSTS REMOVED (measured 2026-07-25; the L1 GPS broker sat at 61% CPU where every
+        other broker was ~5%, and it is the only one running this):
+          * the old version did `sorted(st.hist)` -- up to 64k keys -- on EVERY ingest of EVERY
+            PRN, synced or not. Walking back from max() with dict probes is O(run), no sort.
+          * it then handed the WHOLE run to frame_sync, which is a Python per-bit loop:
+            113 ms at 10k bits, 726 ms at the 64k cap, per ingest, per satellite.
+        Nothing needs the full 21 min rescanned -- only the newest bits can hold an undecoded
+        subframe, and at a 0.2 s cycle a 60 s window is re-examined ~300 times over. Sync is
+        unaffected (SYNC_MIN_BITS is 620, far inside the window) and the anchor it produces is
+        fresher, which is strictly better.
+        """
         if not st.hist:
             return None
-        slots = sorted(st.hist)
-        end = len(slots)
-        start = end - 1
-        while start > 0 and slots[start - 1] == slots[start] - 1:
+        end = max(st.hist)
+        start = end
+        n = 1
+        while n < SCAN_MAX_BITS and (start - 1) in st.hist:
             start -= 1
-        run = slots[start:end]
-        return run[0], [st.hist[s] for s in run]
+            n += 1
+        return start, [st.hist[s] for s in range(start, end + 1)]
 
     def _try_sync(self, prn, st):
         run = self._contig_run(st)
@@ -151,19 +179,33 @@ class LnavPredictor:
         if not hits:
             # Parity disagreed: likely one wrong polarity-chain link inside the run. Repair
             # search: flip the suffix at each emit-boundary-sized step until parity syncs.
-            # (Cheap: ~run/50 candidates, each one frame_sync over <= HIST slots.)
+            # RATE-LIMITED: this is a RECOVERY path, but it ran on every ingest of every PRN
+            # that never syncs -- i.e. hardest on the weak satellites it least often helps
+            # (measured 57.5 ms/ingest each, against a 0.2 s cycle shared by ~6 of them).
+            # Retrying a few seconds later costs nothing: the bits are still there.
+            now = time.time()
+            if now - st.repair_t < REPAIR_MIN_S:
+                return
+            st.repair_t = now
             n = len(bits01)
-            for cut in range(50, n - SYNC_MIN_BITS + 1, 50):
-                cand = bits01.copy()
+            base = max(0, n - REPAIR_WIN)          # search the trailing window only
+            tail = bits01[base:]
+            win = len(tail)
+            for cut in range(50, win - SYNC_MIN_BITS + 1, 50):
+                cand = tail.copy()
                 cand[cut:] ^= 1
                 hits = frame_sync(cand)
                 if hits:
-                    self._log("navbit PRN %d: polarity chain repaired at bit %d" % (prn, cut))
-                    for s in range(slot0 + cut, slot0 + n):
+                    self._log("navbit PRN %d: polarity chain repaired at bit %d"
+                              % (prn, base + cut))
+                    for s in range(slot0 + base + cut, slot0 + n):
                         if s in st.hist:
                             st.hist[s] = -st.hist[s]
                     st.pol = -st.pol  # future emits chain off the repaired suffix
+                    # continue with the repaired TAIL: slot0 moves with it so the decode
+                    # below and st.sync stay in absolute slots.
                     bits01 = cand
+                    slot0 = slot0 + base
                     break
             if not hits:
                 return
