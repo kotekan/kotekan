@@ -2577,7 +2577,12 @@ def main(argv=None):
                         # tracking geometry (range + sat clock) plus the common clock offset
                         # calibrated off a satellite that DID sync -- never from decoding,
                         # which is precisely what this satellite cannot do.
-                        nb = navbrdc.predict(prn, float(_utc), horizon_s=4.0)
+                        # 30 s, not the decoder's 4 s: only sf1-3 are constructible, so a 4 s
+                        # window that lands inside sf4/5 is entirely unknown, predict() returns
+                        # None, and the PRN reads `nobits` forever. A full frame (30 s) always
+                        # spans the 18 s of sf1-3, so every push carries usable bits. Costs
+                        # 1500 int8 per PRN.
+                        nb = navbrdc.predict(prn, float(_utc), horizon_s=30.0)
                     if nb is not None:
                         d["nav_bits"] = nb
             payload.append(d)

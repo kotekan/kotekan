@@ -177,14 +177,26 @@ class BrdcLnavSource:
         nb = self.predict(prn, t0, horizon_s=min(span, 60.0))
         if nb is None:
             return None
+        # Score in SUBFRAME-SIZED BLOCKS, each at its better polarity. A single global polarity
+        # is the wrong instrument here: st.hist carries the predictor's CHAINED polarity, which
+        # can flip mid-history (that is why _try_sync has a suffix-flip repair search), so one
+        # flip inside the window drags a perfect construction down to 50-67% -- measured live
+        # 2026-07-25 at 53-67% on satellites that score 100% offline. Blocks confine a flip to
+        # the block it happens in. Global polarity remains free either way: the peel de-bits
+        # and re-applies with the same signs, so only self-consistency matters.
         n = ag = 0
+        blk_n = blk_ag = 0
         for j, b in enumerate(nb["bits"]):
+            if j and j % SF_BITS == 0:
+                n += blk_n; ag += max(blk_ag, blk_n - blk_ag)
+                blk_n = blk_ag = 0
             if b == 0:
                 continue
             slot = aslot + int(round((nb["utc0"] + j * nb["bit_s"] - autc) / st.bit_s))
             v = st.hist.get(slot)
             if v is None:
                 continue
-            n += 1
-            ag += int(v == b)
-        return (n, max(ag, n - ag)) if n else None   # polarity-blind, as the peel is
+            blk_n += 1
+            blk_ag += int(v == b)
+        n += blk_n; ag += max(blk_ag, blk_n - blk_ag)
+        return (n, ag) if n else None
