@@ -92,22 +92,10 @@ public:
     /// Estimating the SNR per channel therefore understates it by that factor -- it made the
     /// gate ~3x too strict at n_chan=10 and made the reported floor read ABOVE ratios it was
     /// supposed to bound (impossible; that is how the bug surfaced, 2026-07-24). So track the
-    /// SUMMED correlation C = sum_c a_c*E_c in its own EMA, already in the space the ratio
-    /// lives in. <|C|^2> is signal power PLUS per-record noise power; the noise term below
-    /// separates them (signal = <|C|^2> - sigma^2).
-    std::vector<double> gain_sum_p2;             ///< [n_prn] EMA of |C|^2 (signal + noise)
-    /// Per-record noise from SUCCESSIVE DIFFERENCES: sigma^2 = <|C_k - C_{k-1}|^2>/2.
-    /// The obvious estimator -- <|C|^2> - |<C>|^2 -- uses a COHERENT mean, so any slow wander
-    /// of the summed gain phasor shrinks |<C>| below |C| and is then counted TWICE: once
-    /// deflating the signal term, once inflating the noise term. Measured 2026-07-25 over an
-    /// 8h45m soak, that pushed the floor above the residual it is supposed to bound --
-    /// `peel_ratio/floor` reached 0.35 and sat at a median of 0.90 on GPS, where a
-    /// thermal-limited residual cannot go below 0.886 (Rayleigh mean of complex noise).
-    /// A difference cancels anything slowly-varying, signal phase included, so this term is
-    /// immune to the drift; it DOES retain fast record-to-record rotation, which genuinely
-    /// limits what the subtraction can achieve and belongs in the floor.
-    std::vector<std::complex<double>> gain_sum_prev; ///< [n_prn] previous record's C
-    std::vector<double> gain_dvar;                   ///< [n_prn] EMA of |dC|^2/2 = sigma^2
+    /// SUMMED correlation C = sum_c a_c*E_c in its own EMA pair: |<C>| is the signal and
+    /// <|C|^2>-|<C>|^2 the noise, both already in the space the ratio lives in.
+    std::vector<std::complex<double>> gain_sum;  ///< [n_prn] EMA of C
+    std::vector<double> gain_sum_p2;             ///< [n_prn] EMA of |C|^2
     int peel_warmup = 100;     ///< gain updates before a PRN's gain is trusted enough to subtract
 
     /// Feed-forward gain per (PRN, channel), in the NCO-DEROTATED frame -- which is where it is
@@ -155,13 +143,6 @@ public:
     /// ctrim closed this loop idles near zero; on a bench (or during broker convergence) it is
     /// what makes the peel work at all. Same design as the CPU peel v2's f_track/phi_track.
     double peel_fll_gain = 0.05;
-    /// Alias-capture guards for the loop above. The squared discriminator determines the
-    /// residual only modulo 1/(2*dt_rec), so without a bound the integrator walks the alias
-    /// ladder (measured to 19 kHz overnight). 10 Hz sits far inside the first rung on every
-    /// live chain (BDS/L1C 50, GAL 125, GPS 500 Hz) and far above the real residual
-    /// (~0.01 Hz with ctrim closed, Hz-level while the broker converges).
-    double peel_fll_max_hz = 10.0;
-    double peel_fll_max_slew_hz = 2.0; ///< per-update step limit (bench cure, e20bc755)
     std::string peel_tag;      ///< chain identity for the health line (multi-chain node)
     /// GROUND TRUTH per PRN: EMA of |residual|/|full| measured on the SAME record, straight
     /// from the mirrored despread rows. 0 = perfect cancellation, 1 = nothing subtracted.

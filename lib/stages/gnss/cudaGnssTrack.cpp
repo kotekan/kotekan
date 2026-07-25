@@ -17,18 +17,6 @@ using kotekan::Config;
 
 REGISTER_CUDA_COMMAND_WITH_STATE(cudaGnssTrack, cudaGnssTrackState);
 
-/// Split a PRN's summed-gain statistics into (signal power, per-record noise power), the two
-/// numbers both the peel gate and the depth floor are built from. Kept in one place because
-/// they MUST agree: a gate stricter than the floor it publishes silently rejects satellites the
-/// health line then reports as peelable. False while the difference estimator is unseeded.
-static bool peel_gain_split(const cudaGnssTrackState& S, int p, double& sig2, double& noise) {
-    if (S.gain_dvar[p] < 0.0)
-        return false;
-    noise = S.gain_dvar[p];
-    sig2 = std::max(0.0, S.gain_sum_p2[p] - noise);
-    return true;
-}
-
 cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique_name,
                                        bufferContainer& host_buffers,
                                        cudaDeviceInterface& device) :
@@ -132,17 +120,13 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     peel_warmup = config.get_default<int>(unique_name, "peel_warmup_records", 100);
     peel_require_bits = config.get_default<bool>(unique_name, "peel_require_bits", true);
     peel_fll_gain = config.get_default<double>(unique_name, "peel_fll_gain", 0.05);
-    peel_fll_max_hz = config.get_default<double>(unique_name, "peel_fll_max_hz", 10.0);
-    peel_fll_max_slew_hz =
-        config.get_default<double>(unique_name, "peel_fll_max_slew_hz", 2.0);
     peel_tag = signal + "@" + unique_name;
     if (peel) {
         gain.assign((size_t)n_prn * n_chan, std::complex<float>(0.f, 0.f));
         gain_n.assign(n_prn, 0);
         gain_p2.assign(n_prn, 0.0);
+        gain_sum.assign(n_prn, std::complex<double>(0.0, 0.0));
         gain_sum_p2.assign(n_prn, 0.0);
-        gain_sum_prev.assign(n_prn, std::complex<double>(0.0, 0.0));
-        gain_dvar.assign(n_prn, -1.0);
         gain_sign.assign(n_prn, 1.0);
         nav_bits.assign(n_prn, {});
         peel_f_track.assign(n_prn, 0.0);
@@ -390,25 +374,8 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 if (S.peel_prev_ok[p] && dt_fll > 0.0 && dt_fll < 0.02 && std::abs(a_fll) > 0.0
                     && std::abs(S.peel_a_prev[p]) > 0.0) {
                     const std::complex<double> prod = a_fll * std::conj(S.peel_a_prev[p]);
-                    // ALIAS CAPTURE. The squared discriminator only determines f modulo
-                    // 1/(2*dt) -- every multiple of that is an equally good solution, so an
-                    // unbounded integrator random-walks out along the ladder and parks on one.
-                    // Measured 2026-07-25 over an 8h45m soak: 99% of |f_track|>1 Hz values sit
-                    // within 5% of a multiple of this chain's 1/(2*T_code) (GPS 500, GAL 125,
-                    // BDS/L1C 50 Hz), reaching 19 kHz. EVEN multiples are whole cycles per
-                    // record and turn out to be harmless -- the record-boundary phase advances
-                    // by exactly 2pi -- which is why the damage is modest on GPS/GAL/BDS
-                    // (~100% even) and real on L1C (19% ODD -> pi per record -> the EMA
-                    // averages +g,-g,+g and collapses: ratio 0.42 vs 0.15, floor 0.37 vs 0.08).
-                    // The residual this loop exists to track is ~0.01 Hz with ctrim closed and
-                    // "Hz-level" during convergence, so bound it well inside the first rung:
-                    // a solution beyond the clamp is an alias, never physics.
-                    const double step =
+                    S.peel_f_track[p] +=
                         S.peel_fll_gain * std::arg(prod * prod) / 2.0 / (2.0 * M_PI * dt_fll);
-                    const double slew = S.peel_fll_max_slew_hz;
-                    S.peel_f_track[p] += std::max(-slew, std::min(slew, step));
-                    S.peel_f_track[p] = std::max(-S.peel_fll_max_hz,
-                                                 std::min(S.peel_fll_max_hz, S.peel_f_track[p]));
                 }
                 S.peel_a_prev[p] = a_fll;
                 S.peel_prev_ok[p] = 1;
@@ -470,20 +437,13 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                                    ? rec_p2
                                    : (1.0 - S.peel_alpha) * S.gain_p2[p] + S.peel_alpha * rec_p2;
                 if (S.gain_n[p] == 0) {
+                    S.gain_sum[p] = csum;
                     S.gain_sum_p2[p] = std::norm(csum);
-                    S.gain_dvar[p] = -1.0; // no previous record yet -- seeded on the next one
                 } else {
+                    S.gain_sum[p] = (1.0 - S.peel_alpha) * S.gain_sum[p] + S.peel_alpha * csum;
                     S.gain_sum_p2[p] = (1.0 - S.peel_alpha) * S.gain_sum_p2[p]
                                        + S.peel_alpha * std::norm(csum);
-                    // sigma^2 = <|dC|^2>/2 (see the hpp note): phase-drift-immune, unlike
-                    // <|C|^2> - |<C>|^2, which double-counts the drift.
-                    const double d2 = 0.5 * std::norm(csum - S.gain_sum_prev[p]);
-                    S.gain_dvar[p] = (S.gain_dvar[p] < 0.0)
-                                         ? d2
-                                         : (1.0 - S.peel_alpha) * S.gain_dvar[p]
-                                               + S.peel_alpha * d2;
                 }
-                S.gain_sum_prev[p] = csum;
                 if (!have_bits)
                     S.gain_sign[p] = sgn_obs; // fallback prediction for the next records
                 if (S.gain_n[p] < 1000000)
@@ -734,8 +694,8 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     // than the ~100-record EMA could re-cohere). Relearn from this arc.
                     S.gain_n[p] = 0;
                     S.gain_p2[p] = 0.0;
+                    S.gain_sum[p] = std::complex<double>(0.0, 0.0);
                     S.gain_sum_p2[p] = 0.0;
-                    S.gain_dvar[p] = -1.0; // the difference estimator restarts with the arc too
                     for (int ci = 0; ci < S.n_chan; ++ci)
                         S.gain[(size_t)p * S.n_chan + ci] = std::complex<float>(0.f, 0.f);
                     S.peel_f_track[p] = 0.0; // the FLL restarts with the arc
@@ -841,9 +801,9 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                         // that matters is the coherent channel sum, so a per-channel SNR
                         // understates it by ~sqrt(n_chan) and made this gate ~3x too strict.
                         const double a_eff = S.peel_alpha / (2.0 - S.peel_alpha);
-                        double sig2 = 0.0, noise_rec = 0.0;
-                        const bool split = peel_gain_split(S, p, sig2, noise_rec);
-                        const double snr_gain = (split && noise_rec * a_eff > 0.0)
+                        const double sig2 = std::norm(S.gain_sum[p]);
+                        const double noise_rec = std::max(0.0, S.gain_sum_p2[p] - sig2);
+                        const double snr_gain = (noise_rec * a_eff > 0.0)
                                                     ? std::sqrt(sig2 / (noise_rec * a_eff))
                                                     : std::numeric_limits<double>::infinity();
                         if (!(std::sqrt(amp2) > S.peel_min_amp))
@@ -1012,17 +972,13 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         // Computed in the SUMMED space (gain_sum), the same space peel_ratio lives in -- a
         // per-channel estimate understates the SNR by ~sqrt(n_chan) and printed floors ABOVE
         // the ratios they were meant to bound (impossible, which is how it was caught).
-        // THE INVARIANT TO CHECK THIS AGAINST: a thermal-limited residual cannot land below
-        // 0.886*floor (Rayleigh mean of complex noise), so a population of ratio/floor with
-        // real weight under 0.886 means the FLOOR is wrong, not the peel. That is what caught
-        // the coherent-mean estimator on 2026-07-25 (min 0.35, GPS median 0.90).
         std::string ratios;
         int n_hurt = 0, n_floor = 0;
         for (int p = 0; p < S.n_prn; ++p)
             if (active[p] && S.peel_ratio[p] >= 0.0) {
-                double sig2 = 0.0, nz = 0.0;
-                const bool split = peel_gain_split(S, p, sig2, nz);
-                const double flr = (split && sig2 > 0.0) ? std::sqrt(nz / sig2) : 0.0;
+                const double a2 = std::norm(S.gain_sum[p]);
+                const double nz = std::max(0.0, S.gain_sum_p2[p] - a2);
+                const double flr = (a2 > 0.0) ? std::sqrt(nz / a2) : 0.0;
                 const bool at_floor = (flr > 0.0 && S.peel_ratio[p] <= 1.3 * flr);
                 if (at_floor)
                     ++n_floor;
