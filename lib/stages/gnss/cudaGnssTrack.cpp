@@ -125,6 +125,8 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         gain.assign((size_t)n_prn * n_chan, std::complex<float>(0.f, 0.f));
         gain_n.assign(n_prn, 0);
         gain_p2.assign(n_prn, 0.0);
+        gain_sum.assign(n_prn, std::complex<double>(0.0, 0.0));
+        gain_sum_p2.assign(n_prn, 0.0);
         gain_sign.assign(n_prn, 1.0);
         nav_bits.assign(n_prn, {});
         peel_f_track.assign(n_prn, 0.0);
@@ -401,6 +403,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 }
 
                 double rec_p2 = 0.0; // this record's total gain power (signal + noise)
+                std::complex<double> csum(0.0, 0.0); // C = sum_c a_c*E_c, the ratio's own space
                 for (int c = 0; c < S.n_chan; ++c) {
                     const double e = S.mir_energy[rowP + c];
                     if (!(e > 0.0))
@@ -422,6 +425,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     }
                     const std::complex<double> a_d = (a_num / e) * derot_t;
                     rec_p2 += std::norm(a_d);
+                    csum += a_d * e; // undo the per-channel normalisation: raw, summed
                     std::complex<float>& g = S.gain[(size_t)p * S.n_chan + c];
                     g = (S.gain_n[p] == 0)
                             ? (std::complex<float>)a_d
@@ -432,6 +436,14 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 S.gain_p2[p] = (S.gain_n[p] == 0)
                                    ? rec_p2
                                    : (1.0 - S.peel_alpha) * S.gain_p2[p] + S.peel_alpha * rec_p2;
+                if (S.gain_n[p] == 0) {
+                    S.gain_sum[p] = csum;
+                    S.gain_sum_p2[p] = std::norm(csum);
+                } else {
+                    S.gain_sum[p] = (1.0 - S.peel_alpha) * S.gain_sum[p] + S.peel_alpha * csum;
+                    S.gain_sum_p2[p] = (1.0 - S.peel_alpha) * S.gain_sum_p2[p]
+                                       + S.peel_alpha * std::norm(csum);
+                }
                 if (!have_bits)
                     S.gain_sign[p] = sgn_obs; // fallback prediction for the next records
                 if (S.gain_n[p] < 1000000)
@@ -682,6 +694,8 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     // than the ~100-record EMA could re-cohere). Relearn from this arc.
                     S.gain_n[p] = 0;
                     S.gain_p2[p] = 0.0;
+                    S.gain_sum[p] = std::complex<double>(0.0, 0.0);
+                    S.gain_sum_p2[p] = 0.0;
                     for (int ci = 0; ci < S.n_chan; ++ci)
                         S.gain[(size_t)p * S.n_chan + ci] = std::complex<float>(0.f, 0.f);
                     S.peel_f_track[p] = 0.0; // the FLL restarts with the arc
@@ -783,10 +797,14 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                         // suppresses it by alpha/(2-alpha). Only peel with real margin (default
                         // SNR 3 = the residual is 1/3 of the signal, ~9.5 dB). NOTE this gate
                         // sees RANDOM gain error only; systematic sign error is the gate above.
+                        // Measured in the SUMMED space (gain_sum), not per channel: the residual
+                        // that matters is the coherent channel sum, so a per-channel SNR
+                        // understates it by ~sqrt(n_chan) and made this gate ~3x too strict.
                         const double a_eff = S.peel_alpha / (2.0 - S.peel_alpha);
-                        const double noise_rec = std::max(0.0, S.gain_p2[p] - amp2);
+                        const double sig2 = std::norm(S.gain_sum[p]);
+                        const double noise_rec = std::max(0.0, S.gain_sum_p2[p] - sig2);
                         const double snr_gain = (noise_rec * a_eff > 0.0)
-                                                    ? std::sqrt(amp2 / (noise_rec * a_eff))
+                                                    ? std::sqrt(sig2 / (noise_rec * a_eff))
                                                     : std::numeric_limits<double>::infinity();
                         if (!(std::sqrt(amp2) > S.peel_min_amp))
                             S.peel_skip[p] = cudaGnssTrackState::PK_AMP;
@@ -951,21 +969,15 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         // NOTE this is a BEST-CASE floor: it assumes the un-cancelled part is pure thermal
         // noise, so any systematic (code/carrier model error, quantizer, PFB cross-terms)
         // raises the true achievable floor above it. Printed ratio/floor, "*" = at floor.
-        // ⚠️ KNOWN MIS-NORMALIZED, DO NOT TRUST THE ABSOLUTE VALUE YET (2026-07-24): this
-        // averages PER CHANNEL (sum of |a_c|^2 / var per channel) while peel_ratio sums the
-        // channels COHERENTLY, which buys the ratio ~sqrt(n_chan) against noise that this
-        // does not model -- so the printed floor is HIGH by roughly that factor. Live it
-        // reads 3-5x above measured ratios with n_chan=10 (sqrt = 3.2), i.e. the shape is
-        // right and the scale is not. Recompute in the SAME summed space as the ratio
-        // (sqrt(sum_c var(n_c)) / |sum_c a_c E_c|) before drawing any depth conclusion.
+        // Computed in the SUMMED space (gain_sum), the same space peel_ratio lives in -- a
+        // per-channel estimate understates the SNR by ~sqrt(n_chan) and printed floors ABOVE
+        // the ratios they were meant to bound (impossible, which is how it was caught).
         std::string ratios;
         int n_hurt = 0, n_floor = 0;
         for (int p = 0; p < S.n_prn; ++p)
             if (active[p] && S.peel_ratio[p] >= 0.0) {
-                double a2 = 0.0;
-                for (int c = 0; c < S.n_chan; ++c)
-                    a2 += std::norm(S.gain[(size_t)p * S.n_chan + c]);
-                const double nz = std::max(0.0, S.gain_p2[p] - a2);
+                const double a2 = std::norm(S.gain_sum[p]);
+                const double nz = std::max(0.0, S.gain_sum_p2[p] - a2);
                 const double flr = (a2 > 0.0) ? std::sqrt(nz / a2) : 0.0;
                 const bool at_floor = (flr > 0.0 && S.peel_ratio[p] <= 1.3 * flr);
                 if (at_floor)

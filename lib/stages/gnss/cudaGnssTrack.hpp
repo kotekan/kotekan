@@ -87,6 +87,15 @@ public:
     bool peel_require_bits = true;
     std::vector<double> gain_p2; ///< [n_prn] EMA of the per-record gain POWER (signal+noise);
                                  ///< with |EMA gain|^2 it separates the two -> the SNR above
+    /// ...but that pair is PER-CHANNEL, and both the subtraction residual and peel_ratio are
+    /// COHERENT SUMS over channels, which buy ~sqrt(n_chan) against (independent) channel noise.
+    /// Estimating the SNR per channel therefore understates it by that factor -- it made the
+    /// gate ~3x too strict at n_chan=10 and made the reported floor read ABOVE ratios it was
+    /// supposed to bound (impossible; that is how the bug surfaced, 2026-07-24). So track the
+    /// SUMMED correlation C = sum_c a_c*E_c in its own EMA pair: |<C>| is the signal and
+    /// <|C|^2>-|<C>|^2 the noise, both already in the space the ratio lives in.
+    std::vector<std::complex<double>> gain_sum;  ///< [n_prn] EMA of C
+    std::vector<double> gain_sum_p2;             ///< [n_prn] EMA of |C|^2
     int peel_warmup = 100;     ///< gain updates before a PRN's gain is trusted enough to subtract
 
     /// Feed-forward gain per (PRN, channel), in the NCO-DEROTATED frame -- which is where it is
