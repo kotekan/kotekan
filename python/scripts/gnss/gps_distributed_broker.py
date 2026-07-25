@@ -1757,10 +1757,17 @@ def main(argv=None):
                 navbits_log_t = time.time()
                 for _p in sorted(navbits._p):
                     h = navbits.health(_p)
-                    if h and h["synced"]:
+                    if not h:
+                        continue
+                    if h["synced"]:
                         _log("navbit PRN %d: %d sf decoded, %d pages, predict-mismatch %s"
                              % (_p, h["decoded_sf"], h["pages"],
                                 ("%.4f" % h["mismatch"]) if h["mismatch"] is not None else "n/a"))
+                    else:
+                        # NOT synced == this PRN is NOT peeled (peel_require_bits). Say so, with
+                        # the reason: contiguous run vs total history vs what sync needs.
+                        _log("navbit PRN %d: NO SYNC (contig run %d/%d, hist %d) -> not peeled"
+                             % (_p, h["run"], h["need"], h["hist"]))
         # Lock metric: the detection SIGNIFICANCE (sigma above noise) -- the deep nav-wiped SNR when
         # available, else the noise-debiased incoherent SNR -- not the raw |A|. The incoherent |A| is
         # biased by the noise floor (~the floor for weak sats), so judging "still locked" by |A| >

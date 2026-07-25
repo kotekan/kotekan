@@ -73,6 +73,18 @@ public:
     /// making the band DIRTIER on half the constellation -- the exact opposite of the point.
     /// Peel only where the gain is good enough to help by a real margin.
     double peel_min_gain_snr = 3.0;
+    /// SIGN-QUALITY GATE -- the gate above CANNOT see this failure. Measured live 2026-07-24:
+    /// on GPS L1CA the gain-SNR gate rejected NOBODY, yet 6 of 12 sats sat at |resid|/|full|
+    /// 1.3-2.2 (adding power), split perfectly by whether the broker had a nav-bit prediction:
+    ///   predicted {3,16,26,28,29,31,32} -> 0.15-0.4     no prediction {4,14,15,20,22,25} -> >1.3
+    /// The reason it is invisible: the gain is measured DE-BITTED by each record's OWN observed
+    /// sign, so it is clean and high-SNR either way; the damage is done at SUBTRACTION time by a
+    /// sign that is one GPU frame (~10 records) stale and therefore uncorrelated with the 20 ms
+    /// bit. A variance gate sees random error, not systematic sign error. The old claim that
+    /// "same as last" is right ~19 records in 20 assumed a ONE-RECORD lag; at a one-FRAME lag it
+    /// is worse than a coin flip (ratio >1 means anti-correlated). So: no prediction, no
+    /// subtraction. Pilots are unaffected -- their overlay is deterministic and always predicted.
+    bool peel_require_bits = true;
     std::vector<double> gain_p2; ///< [n_prn] EMA of the per-record gain POWER (signal+noise);
                                  ///< with |EMA gain|^2 it separates the two -> the SNR above
     int peel_warmup = 100;     ///< gain updates before a PRN's gain is trusted enough to subtract
@@ -130,6 +142,11 @@ public:
     /// two wrong theories on 2026-07-24.
     std::vector<double> peel_ratio;
     std::vector<int> peel_ratio_n;
+    /// Why each active PRN is NOT subtracting this record, so the health line can answer it
+    /// directly. (The old line reported only warmup lag under "NOT-PEELING", which read as
+    /// "nothing is being skipped" while the SNR gate was silently rejecting a third of the sky.)
+    enum PeelSkip : uint8_t { PK_PEELING = 0, PK_WARMUP, PK_SNR, PK_NOBITS, PK_AMP };
+    std::vector<uint8_t> peel_skip;
     std::vector<double> peel_f_track;   ///< [n_prn] residual carrier (Hz, derotated frame)
     std::vector<double> peel_phi_track; ///< [n_prn] integrated FLL phase (rad, wrapped)
     std::vector<std::complex<double>> peel_a_prev; ///< [n_prn] previous FLL-frame gain measurement

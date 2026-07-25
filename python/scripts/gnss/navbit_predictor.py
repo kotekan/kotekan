@@ -254,8 +254,14 @@ class LnavPredictor:
         st = self._p.get(prn)
         if st is None:
             return None
+        # run/hist diagnose the UNSYNCED case, which is the one that costs peel depth: sync needs
+        # SYNC_MIN_BITS *contiguous* slots, so a PRN can accumulate plenty of bits and still never
+        # sync if its stream is gappy (every gap truncates the trailing run). run << hist == gaps;
+        # run ~ hist but < SYNC_MIN_BITS == simply not enough history yet.
+        run = self._contig_run(st)
         return {"synced": st.sync is not None, "decoded_sf": st.n_decoded,
-                "pages": len(st.pages),
+                "pages": len(st.pages), "run": len(run[1]) if run else 0,
+                "hist": len(st.hist), "need": SYNC_MIN_BITS,
                 "mismatch": (st.n_pred_wrong / st.n_pred_checked)
                 if st.n_pred_checked else None}
 
