@@ -191,10 +191,19 @@ export class GpsFeed {
                     // Rows without peel_deep (chains that don't peel) stay null -> "—".
                     const pdeep = s.peel_deep || 0, psnr = s.peel_deep_snr || 0;
                     const dfl = s.deep_floor || 0;
-                    if (pdeep > 0 && r.deep > 0 && dfl > 0
-                        && (s.deep_snr || 0) > 1.1 * dfl) {
-                        r.peel_db = 20 * Math.log10(r.deep / pdeep);
+                    const dsnr = s.deep_snr || 0;
+                    if (pdeep > 0 && r.deep > 0 && dfl > 0 && dsnr > 1.1 * dfl) {
                         r.peel_bound = psnr <= 1.1 * dfl;
+                        // AT FLOOR the residual amplitude is NOT a measurement -- it is
+                        // whatever the noise realization happened to sum to, with no lower
+                        // limit, so 20log10(deep/pdeep) is unbounded junk (it read >=61 dB
+                        // on 2026-07-24 where the real detection limit was ~39). The honest
+                        // bound is the DETECTION LIMIT: we see the full signal at deep_snr
+                        // sigma and cannot see anything below deep_floor sigma, so the
+                        // residual is at least their ratio down. Both are significances, so
+                        // the ratio is unit-clean.
+                        r.peel_db = r.peel_bound ? 20 * Math.log10(dsnr / dfl)
+                                                 : 20 * Math.log10(r.deep / pdeep);
                     }
                 }
         }
