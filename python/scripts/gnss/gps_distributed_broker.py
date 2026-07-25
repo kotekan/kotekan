@@ -889,6 +889,12 @@ def main(argv=None):
     status = {}      # prn -> last combiner get_status record (previous cycle; lock gate below)
     navbits = None   # LNAV decode-and-predict (P7a); created lazily on the first nav_obs row
     navbits_log_t = 0.0
+    # CONSTRUCTED bits for satellites too weak to decode (2026-07-25). The decoder above needs
+    # 620 contiguous parity-clean bits, which is exactly what a weak satellite cannot give; this
+    # one needs no decode at all, because subframes 1-3 ARE the ephemeris and BRDC has it for
+    # every satellite in the sky. Same predict() contract, so it is simply a lower-priority
+    # source in the chain below.
+    navbrdc = None
     cp_held = set()  # PRNs whose cp anchor is FROZEN this cycle (locked -> DLL owns the residual)
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
@@ -1753,6 +1759,19 @@ def main(argv=None):
                         navbits = LnavPredictor(log=_log)
                         _log("nav-bit predictor armed (combiner exports nav_obs)")
                     navbits.ingest(_p, _r["nav_obs"])
+            # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
+            # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
+            # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
+            # source when their encoders exist.
+            if navbits is not None and alm_sys == "G" and brdc_alm is not None and pred:
+                if navbrdc is None:
+                    from navbit_brdc import BrdcLnavSource
+                    navbrdc = BrdcLnavSource(log=_log)
+                    _log("constructed-bit source armed (BRDC LNAV, un-synced PRNs)")
+                try:
+                    navbrdc.update(brdc_alm["eph"], pred, navbits)
+                except Exception as e:
+                    _log("navbrdc update failed: %s" % e)
             if navbits is not None and time.time() - navbits_log_t > 60.0:
                 navbits_log_t = time.time()
                 for _p in sorted(navbits._p):
@@ -1766,8 +1785,27 @@ def main(argv=None):
                     else:
                         # NOT synced == this PRN is NOT peeled (peel_require_bits). Say so, with
                         # the reason: contiguous run vs total history vs what sync needs.
-                        _log("navbit PRN %d: NO SYNC (contig run %d/%d, hist %d) -> not peeled"
-                             % (_p, h["run"], h["need"], h["hist"]))
+                        _log("navbit PRN %d: NO SYNC (contig run %d/%d, hist %d)%s"
+                             % (_p, h["run"], h["need"], h["hist"],
+                                " -> CONSTRUCTED from BRDC"
+                                if (navbrdc is not None and navbrdc.ready())
+                                else " -> not peeled"))
+                if navbrdc is not None:
+                    # The calibration IS the trust boundary: a bad offset makes every
+                    # constructed bit confidently wrong, so state it every cycle. `verify`
+                    # scores constructed bits against a SYNCED satellite's own received bits
+                    # -- the live form of the offline 113820/113820 test.
+                    if navbrdc.ready():
+                        chk = []
+                        for _p in sorted(navbits._p):
+                            r = navbrdc.verify(_p, navbits)
+                            if r and r[0] >= 200:
+                                chk.append("%d:%.1f%%" % (_p, 100.0 * r[1] / r[0]))
+                        _log("navbrdc: offset %.6f s, spread %.2f ms, %d cal sats; "
+                             "verify %s" % (navbrdc.offset, (navbrdc.spread or 0.0) * 1e3,
+                                            navbrdc.n_cal, " ".join(chk) or "n/a"))
+                    else:
+                        _log("navbrdc: NOT ready (%s)" % navbrdc.why_not())
         # Lock metric: the detection SIGNIFICANCE (sigma above noise) -- the deep nav-wiped SNR when
         # available, else the noise-debiased incoherent SNR -- not the raw |A|. The incoherent |A| is
         # biased by the noise floor (~the floor for weak sats), so judging "still locked" by |A| >
@@ -2533,6 +2571,13 @@ def main(argv=None):
                 _utc = _row.get("utc")
                 if _utc:
                     nb = navbits.predict(prn, float(_utc), horizon_s=4.0)
+                    if nb is None and navbrdc is not None:
+                        # CONSTRUCTED fallback: this PRN never synced, so the decoder has
+                        # nothing. Bits come from BRDC instead; alignment comes from the
+                        # tracking geometry (range + sat clock) plus the common clock offset
+                        # calibrated off a satellite that DID sync -- never from decoding,
+                        # which is precisely what this satellite cannot do.
+                        nb = navbrdc.predict(prn, float(_utc), horizon_s=4.0)
                     if nb is not None:
                         d["nav_bits"] = nb
             payload.append(d)
