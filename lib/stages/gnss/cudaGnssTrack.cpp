@@ -942,19 +942,44 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
         }
         // |resid|/|full| per PRN, from the records themselves: the number the depth SHOULD
         // reflect. ~0 = peeling hard, ~1 = subtracting nothing.
+        // ...paired with the FLOOR that ratio could possibly reach. With a perfect gain the
+        // residual is just this record's thermal noise, so |resid|/|full| -> 1/SNR_rec, and
+        // SNR_rec is exactly what the gain EMA already separates: |<a>|^2 vs <|a|^2>. Without
+        // this, a small ratio is unreadable -- "0.10" is 20 dB of peeling if the floor is 0.01
+        // and NOTHING if the floor is 0.10. (Every depth error on 2026-07-24 was an unmeasured
+        // floor reported as a measurement; this is that discipline made per-PRN and continuous.)
+        // NOTE this is a BEST-CASE floor: it assumes the un-cancelled part is pure thermal
+        // noise, so any systematic (code/carrier model error, quantizer, PFB cross-terms)
+        // raises the true achievable floor above it. Printed ratio/floor, "*" = at floor.
+        // ⚠️ KNOWN MIS-NORMALIZED, DO NOT TRUST THE ABSOLUTE VALUE YET (2026-07-24): this
+        // averages PER CHANNEL (sum of |a_c|^2 / var per channel) while peel_ratio sums the
+        // channels COHERENTLY, which buys the ratio ~sqrt(n_chan) against noise that this
+        // does not model -- so the printed floor is HIGH by roughly that factor. Live it
+        // reads 3-5x above measured ratios with n_chan=10 (sqrt = 3.2), i.e. the shape is
+        // right and the scale is not. Recompute in the SAME summed space as the ratio
+        // (sqrt(sum_c var(n_c)) / |sum_c a_c E_c|) before drawing any depth conclusion.
         std::string ratios;
-        int n_hurt = 0;
+        int n_hurt = 0, n_floor = 0;
         for (int p = 0; p < S.n_prn; ++p)
             if (active[p] && S.peel_ratio[p] >= 0.0) {
-                ratios += fmt::format(" {:d}:{:.2f}", S.prns[p], S.peel_ratio[p]);
+                double a2 = 0.0;
+                for (int c = 0; c < S.n_chan; ++c)
+                    a2 += std::norm(S.gain[(size_t)p * S.n_chan + c]);
+                const double nz = std::max(0.0, S.gain_p2[p] - a2);
+                const double flr = (a2 > 0.0) ? std::sqrt(nz / a2) : 0.0;
+                const bool at_floor = (flr > 0.0 && S.peel_ratio[p] <= 1.3 * flr);
+                if (at_floor)
+                    ++n_floor;
+                ratios += fmt::format(" {:d}:{:.2f}/{:.2f}{:s}", S.prns[p], S.peel_ratio[p], flr,
+                                      at_floor ? "*" : "");
                 if (S.peel_ratio[p] > 1.05)
                     ++n_hurt;
             }
         WARN("peel[{:s}]: {:d}/{:d} past warmup; strongest PRN{:d} |g|={:.3g} n={:d} "
-             "fll={:+.2f}Hz; HURTING={:d}; NOT-PEELING:{:s}; resid/full:{:s}",
+             "fll={:+.2f}Hz; HURTING={:d}; AT-FLOOR={:d}; NOT-PEELING:{:s}; resid/full/floor:{:s}",
              S.peel_tag, npeel, nact, gmax_p, gmax, gmax_n,
-             (gi >= 0) ? S.peel_f_track[gi] : 0.0, n_hurt, lag.empty() ? " none" : lag,
-             ratios.empty() ? " -" : ratios);
+             (gi >= 0) ? S.peel_f_track[gi] : 0.0, n_hurt, n_floor,
+             lag.empty() ? " none" : lag, ratios.empty() ? " -" : ratios);
     }
 
     return record_end_event();
