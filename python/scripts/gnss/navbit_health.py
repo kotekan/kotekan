@@ -142,7 +142,14 @@ class BitAgreement:
         """One line for the broker log; empty when there is nothing scored yet."""
         if not self.rate:
             return ""
-        parts = ["%d:%.0f%%%s" % (p, 100 * r, "*" if p in self.bad else "")
-                 for p, r in sorted(self.rate.items())]
-        return "navbit-health: %s (* = vetoed; %d veto(es) applied)" % (
-            " ".join(parts), self.n_veto)
+        # Show the SAMPLE COUNT, not just the rate. A PRN below MIN_BITS returns "unknown" and
+        # cannot veto anything, which in a rate-only line is indistinguishable from a healthy
+        # 100% -- the same "silence is not success" trap that had a segfaulted node reported as
+        # clean on 2026-07-25. `?` marks a PRN that is not yet entitled to an opinion.
+        parts = []
+        for p, r in sorted(self.rate.items()):
+            v = self.verdict(p)
+            parts.append("%d:%.0f%%/%d%s" % (p, 100 * r, self.n.get(p, 0),
+                                             "*" if v == "bad" else ("?" if v == "unknown" else "")))
+        return "navbit-health: %s (rate/n; * vetoed, ? below %d samples; %d veto(es))" % (
+            " ".join(parts), MIN_BITS, self.n_veto)
