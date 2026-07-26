@@ -125,13 +125,19 @@ class BrdcLnavSource:
             self.borrow = borrow                     # sticky: survives losing every sync
 
     def ready(self):
+        # n_cal >= 2: a single calibrating satellite has NO cross-check -- at startup its own
+        # sync can be half-baked and the whole clock offset lands wrong, which shifts every
+        # constructed table and scored 64-76% against the air (2026-07-26, the fossilized
+        # startup transient that first exposed the absorbing-veto flaw). Two sats must agree.
         return (self.offset is not None and self.borrow is not None
-                and self.week is not None
-                and (self.n_cal < 2 or self.spread <= MAX_OFFSET_SPREAD_S))
+                and self.week is not None and self.n_cal >= 2
+                and self.spread <= MAX_OFFSET_SPREAD_S)
 
     def why_not(self):
         if self.offset is None:
             return "no synced satellite to calibrate the clock offset"
+        if self.n_cal < 2:
+            return "only one calibrating satellite (no cross-check on the clock offset)"
         if self.borrow is None:
             return "no decoded sf1 to borrow the reserved words from"
         if self.n_cal >= 2 and self.spread > MAX_OFFSET_SPREAD_S:

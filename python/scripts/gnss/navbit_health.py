@@ -59,25 +59,35 @@ class BitAgreement:
         self.n = {}         # (prn, source) -> bits compared (cumulative)
         self.bad = set()    # (prn, source) pairs currently vetoed
         self.n_veto = 0     # vetoes applied since the last report
-        self._last = {}     # prn -> (source, table) last PUBLISHED (what to score against)
+        self._last = {}     # (prn, source) -> table last GENERATED (shipped OR shadow)
 
     def remember(self, prn, nb, source="?"):
-        """Stash the table being published for this PRN, to score next cycle's observations.
-        `source` names the producer ("pred"/"lnav"/"brdc"), so a veto can (a) name its culprit
-        and (b) apply to the (prn, source) PAIR -- a bad decoded table must not condemn a good
-        constructed one for the same satellite, and vice versa."""
+        """Stash a source's latest table for this PRN -- SHIPPED or SHADOW -- to score against
+        next cycle's observations.
+
+        ⚠️ SHADOW TABLES ARE WHAT MAKES RECOVERY REACHABLE. The first design scored only the
+        SHIPPED table; a vetoed source stopped shipping, so its score froze at the veto-time
+        value and the recovery threshold was UNREACHABLE -- the veto was an absorbing state.
+        Measured live 2026-07-26: brdc tables fossilized at 64-76% (a startup-calibration
+        transient) while the same construction scored 367/367 bits against the air offline.
+        Now every source's candidate table is remembered and scored each cycle, shipped or
+        not: a vetoed source keeps being measured and recovers on merit, and the fallback's
+        quality is KNOWN BEFORE the chain switches to it."""
         if nb and nb.get("bits"):
-            self._last[prn] = (source, nb)
+            self._last[(prn, source)] = nb
 
     # ---- ingest ------------------------------------------------------------------------
     def score(self, prn, nav_obs, deep_snr):
         """Fold one emit's observed bits into this PRN's agreement EMA, against the table we
         last PUBLISHED. No-op when the satellite is too weak for a disagreement to mean
         anything (see MIN_SNR), or when we have published nothing yet."""
-        src_nb = self._last.get(prn)
-        if not src_nb or not nav_obs or (deep_snr or 0.0) < MIN_SNR:
+        if not nav_obs or (deep_snr or 0.0) < MIN_SNR:
             return
-        source, nb = src_nb
+        for (p_, source), nb in list(self._last.items()):
+            if p_ == prn:
+                self._score_one(prn, source, nb, nav_obs)
+
+    def _score_one(self, prn, source, nb, nav_obs):
         bits = nav_obs.get("bits")
         if not bits:
             return

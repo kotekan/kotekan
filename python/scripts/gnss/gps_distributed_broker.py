@@ -2602,9 +2602,14 @@ def main(argv=None):
                 # never enters. 4 s horizon >> the ~1 s status staleness + push cadence.
                 _utc = _row.get("utc")
                 if _utc:
-                    nb = (navbits.predict(prn, float(_utc), horizon_s=4.0)
-                          if _src_ok("lnav") else None)
-                    if nb is None and navbrdc is not None and _src_ok("brdc"):
+                    nb_lnav = navbits.predict(prn, float(_utc), horizon_s=4.0)
+                    nb_brdc = (navbrdc.predict(prn, float(_utc), horizon_s=30.0)
+                               if navbrdc is not None else None)
+                    if navhealth is not None:      # shadow-remember BOTH candidates
+                        navhealth.remember(prn, nb_lnav, "lnav")
+                        navhealth.remember(prn, nb_brdc, "brdc")
+                    nb = nb_lnav if (nb_lnav is not None and _src_ok("lnav")) else None
+                    if nb is None and _src_ok("brdc"):
                         # CONSTRUCTED fallback: this PRN never synced, so the decoder has
                         # nothing. Bits come from BRDC instead; alignment comes from the
                         # tracking geometry (range + sat clock) plus the common clock offset
@@ -2615,7 +2620,7 @@ def main(argv=None):
                         # None, and the PRN reads `nobits` forever. A full frame (30 s) always
                         # spans the 18 s of sf1-3, so every push carries usable bits. Costs
                         # 1500 int8 per PRN.
-                        nb = navbrdc.predict(prn, float(_utc), horizon_s=30.0)
+                        nb = nb_brdc
                         _bsrc = "brdc" if nb is not None else "none"
                     elif nb is not None:
                         _bsrc = "lnav"
