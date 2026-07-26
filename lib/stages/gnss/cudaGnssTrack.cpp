@@ -1005,9 +1005,21 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                         const double a_eff = S.peel_alpha / (2.0 - S.peel_alpha);
                         double sig2 = 0.0, noise_rec = 0.0;
                         const bool split = peel_gain_split(S, p, sig2, noise_rec);
+                        // FAIL CLOSED. This used to default to INFINITY when the noise estimate
+                        // was unavailable -- i.e. a safety gate that waved the satellite through
+                        // precisely when it knew nothing. gain_dvar is set to -1 by every
+                        // re-anchor reset, so the window is not rare: after each re-acquisition
+                        // the peel subtracted using a gain no one had validated. Found
+                        // 2026-07-26 while asking why the gate failed to reject BELOW-HORIZON
+                        // noise probes (el -84..-52 deg, no signal at all) that had just been
+                        // handed constructed nav bits; they sailed past a gate whose whole job
+                        // is to answer "is this gain good enough to subtract with".
+                        // Not peeling is always safe -- the peel is an optimisation, and the
+                        // add-back keeps the tracking products exact either way. So: no noise
+                        // estimate, no subtraction.
                         const double snr_gain = (split && noise_rec * a_eff > 0.0)
                                                     ? std::sqrt(sig2 / (noise_rec * a_eff))
-                                                    : std::numeric_limits<double>::infinity();
+                                                    : 0.0;
                         if (!(std::sqrt(amp2) > S.peel_min_amp))
                             S.peel_skip[p] = cudaGnssTrackState::PK_AMP;
                         else if (!(snr_gain > S.peel_min_gain_snr))
