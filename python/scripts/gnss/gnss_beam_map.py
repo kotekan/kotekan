@@ -286,10 +286,51 @@ def cmd_movie(args):
     # One frame per --step of DATA time, but only for steps that actually contain
     # samples: the record has multi-hour gaps (restarts, BRDC lapses) and holding a
     # frozen frame through them would be most of the movie.
-    bins = np.floor((t - t[0]) / args.step).astype(np.int64)
-    edges = np.searchsorted(bins, np.unique(bins))
-    edges = np.append(edges, len(t))
+    #
+    # SPEED RAMP (--ramp-s): a multi-day record at a fixed cadence is mostly a slow
+    # crawl once the sky is full, so the step DOUBLES every --ramp-s seconds of VIDEO
+    # (1x, 2x, 4x, ... up to --ramp-max). Tiers are counted in RENDERED frames, not
+    # elapsed data time, so gap-skipping cannot smear the tier boundaries -- the
+    # viewer really does get --ramp-s seconds at each speed.
+    fps = float(args.fps)
+    per_tier = max(1, int(round(args.ramp_s * fps))) if args.ramp_s > 0 else 0
+    edge_t, spans = [float(t[0])], []
+    cur, k = float(t[0]), 0
+    tend = float(t[-1])
+    while cur < tend:
+        tier = min(k // per_tier, args.ramp_max) if per_tier else 0
+        width = args.step * (2.0 ** tier)
+        nxt = cur + width
+        lo = int(np.searchsorted(t, cur, "left"))
+        hi = int(np.searchsorted(t, nxt, "left"))
+        if hi > lo:                       # frame has samples: spend one
+            edge_t.append(nxt)
+            spans.append(width)
+            k += 1
+            cur = nxt
+        else:                             # empty: jump the gap without spending a frame
+            if lo >= len(t):
+                break
+            cur = float(t[lo])
+    edges = np.searchsorted(t, np.array(edge_t), "left")
+    edges[-1] = len(t)
     n_frames = len(edges) - 1
+
+    # Per-sample DWELL: a "sample" is one obs row, i.e. one combiner emit that the
+    # logger kept, so the time it represents is the per-PRN cadence -- NOT the run
+    # length and not the coherent integration. Median of the per-PRN inter-sample
+    # gaps (robust to restarts, which inject huge single gaps), so the header can say
+    # what the sample count is WORTH in integration time.
+    dts = []
+    for key in set(zip(P["tag"], P["prn"])):
+        sel = (P["tag"] == key[0]) & (P["prn"] == key[1])
+        tt = t[sel]
+        if len(tt) > 8:
+            d = np.diff(tt)
+            d = d[(d > 0) & (d < 60.0)]   # drop restart gaps
+            if len(d):
+                dts.append(np.median(d))
+    dwell = float(np.median(dts)) if dts else float("nan")
 
     n_acc, s1_acc = np.zeros(12 * NSIDE ** 2, np.int64), np.zeros(12 * NSIDE ** 2)
     # A per-frame autoscale would make the colour scale crawl as the map fills, so
@@ -342,9 +383,15 @@ def cmd_movie(args):
                         color="white", fontsize=7,
                         path_effects=[pe.withStroke(linewidth=1.6, foreground="black")])
             when = np.datetime64(int(t_now), "s")
+            # Integration = samples x per-sample dwell (see `dwell` above), plus the
+            # current playback speed so the ramp is legible rather than mysterious.
+            n_s = int(n_acc.sum())
+            integ = n_s * dwell / 3600.0
+            speed = spans[k] / args.step if k < len(spans) else 1.0
             _sky_axes(ax, f"{args.title}\n{str(when).replace('T', ' ')} UTC   "
-                          f"{int(n_acc.sum())} samples   "
-                          f"{100.0 * m.sum() / n_vis:.0f}% of sky pixels hit")
+                          f"{n_s} samples x {dwell:.1f}s = {integ:.1f} h integrated   "
+                          f"{100.0 * m.sum() / n_vis:.0f}% of sky   "
+                          f"[{speed:.0f}x]")
             fig.savefig(os.path.join(tmp, f"f{k:05d}.png"))
             if k % 100 == 0:
                 print(f"  frame {k}/{n_frames}", flush=True)
@@ -359,7 +406,9 @@ def cmd_movie(args):
             os.remove(f)
         os.rmdir(tmp)
     print(f"{args.out}: {n_frames} frames from {P['n_files']} transits "
-          f"({len(t)} samples), {n_frames / args.fps:.0f} s")
+          f"({len(t)} samples, dwell {dwell:.1f}s -> {len(t) * dwell / 3600.0:.1f} h), "
+          f"{n_frames / args.fps:.0f} s video, "
+          f"data span {(t[-1] - t[0]) / 3600.0:.1f} h")
 
 
 def main():
@@ -400,6 +449,11 @@ def main():
     p.add_argument("--step", type=float, default=60.0, help="data seconds per frame")
     p.add_argument("--tail", type=float, default=1800.0, help="trail length, seconds")
     p.add_argument("--fps", type=int, default=30)
+    p.add_argument("--ramp-s", type=float, default=15.0,
+                   help="VIDEO seconds at each speed tier before the step doubles "
+                        "(0 = constant cadence)")
+    p.add_argument("--ramp-max", type=int, default=2,
+                   help="max doublings (2 = 1x, 2x, 4x)")
     p.add_argument("--vmin", type=float, default=None)
     p.add_argument("--vmax", type=float, default=None)
     p.add_argument("--npx", type=int, default=700)
