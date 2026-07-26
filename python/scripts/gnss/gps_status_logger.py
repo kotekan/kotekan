@@ -74,6 +74,7 @@ def main(argv=None):
                 if not prn:
                     continue
                 ds = r.get("deep_snr") or 0.0
+                pk = r.get("peel_deep_snr") or 0.0   # peel moves independently of deep
                 da = r.get("deep_amplitude") or 0.0
                 asnr = r.get("amp_snr") or 0.0
                 # Only ACTIVE PRNs (a real deep/incoherent presence), and dedup repeat polls of the
@@ -83,10 +84,14 @@ def main(argv=None):
                 if ds <= 0 and asnr <= 0 and da <= 0:
                     continue
                 prev = last.get(prn)
+                # NB the dedup key carries peel_deep_snr too: the peel residual moves
+                # INDEPENDENTLY of deep (that is the entire point of measuring it), so keying on
+                # (deep_snr, deep_amplitude) alone would silently drop exactly the samples that
+                # make a depth-vs-time series interesting.
                 if (not args.no_dedup and prev is not None
-                        and prev[:2] == (ds, da) and now - prev[2] < 10.0):
+                        and prev[:3] == (ds, da, pk) and now - prev[3] < 10.0):
                     continue
-                last[prn] = (ds, da, now)
+                last[prn] = (ds, da, pk, now)
                 rec = {"t": round(now, 3), "prn": int(prn),
                        # raw biased incoherent |A| -- with unbiased_amplitude this makes the noise
                        # power exactly recoverable offline (N = amplitude^2 - unbiased^2), the
@@ -123,6 +128,24 @@ def main(argv=None):
                        "s4_raw": r.get("s4_raw"),
                        "sigma_phi": r.get("sigma_phi"),
                        "deep_floor": r.get("deep_floor"),
+                       # VOLTAGE PEEL (P7b) -- the residual after subtraction, measured by the
+                       # SAME estimator on the SAME window/phase as `deep_amplitude`, so the
+                       # ratio is honest. Until 2026-07-26 this lived ONLY in REST and the
+                       # browser: a couple of hours of G29 showing clear periodic structure was
+                       # unanalysable because nothing persisted it, and the fallback (the peel
+                       # health line) samples at 9.984 s against a 30 s GPS frame -- 3.005x,
+                       # which aliases the frame into a ~104 MINUTE beat and would manufacture
+                       # exactly the slow periodicity one is trying to measure.
+                       #
+                       # DEPTH IS DERIVED, NOT STORED: 20*log10(deep_amplitude/peel_deep), and
+                       # it is a BOUND (>=) whenever peel_deep_snr sits at the detection floor,
+                       # because a residual at the floor is not a measurement. Log the parts and
+                       # let the analysis decide -- storing a single "depth" column would bake
+                       # in the at-floor ambiguity that has already produced two retracted
+                       # claims (>=61 dB and >=47 dB readings, both floor junk).
+                       "peel_deep": r.get("peel_deep"),
+                       "peel_deep_snr": r.get("peel_deep_snr"),
+                       "peel_incoh": r.get("peel_incoh"),
                        "search_snr": det_snr.get(int(prn)), "adc_rms": rms}
                 f.write(json.dumps(rec, separators=(",", ":")) + "\n")
                 n += 1
