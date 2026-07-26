@@ -226,6 +226,27 @@ public:
     /// tested the combiner's published table, NOT what cudaGnssTrack's bit_at() lookup actually
     /// applied -- which is where an indexing error would bite. This closes that gap.
     std::vector<double> pres_c1, pres_c2;
+    /// SAME <cos d>, SPLIT by whether the APPLIED head/tail chips agree. This is the off-by-one
+    /// test that needs no ground truth. An index shifted by one applies (c[j-1], c[j]) where the
+    /// truth is (c[j], c[j+1]), so:
+    ///   * applied head == tail  -> the head sign is RIGHT (only the tail can be wrong)
+    ///   * applied head != tail  -> the applied head is INVERTED outright
+    /// A real off-by-one therefore reads clean on the first and badly degraded on the second.
+    /// Any fault that does not care about chip boundaries reads the SAME on both.
+    /// pres_fdiff is the mix (fraction of records whose applied pair straddles), ~0.5 on a
+    /// balanced overlay and ~0.05 on 20 ms GPS nav data -- which is itself the check that the
+    /// pilot/data asymmetry is what the indexing story predicts.
+    std::vector<double> pres_same, pres_diff, pres_fdiff;
+    /// ...and the ORTHOGONAL split: <cos d> by the VALUE of the applied head chip (+1 vs -1).
+    /// The straddle test above conditions on whether NEIGHBOURING chips differ, which is
+    /// independent of what the chip IS -- so it cannot see an overlay applied an even/odd
+    /// number of times. If the sign is being applied once too many (or once too few), the
+    /// residual sign is simply c[j] itself: bimodal 0/pi, flipping on ~50% of records, and
+    /// invariant to straddles -- exactly the "pure sign" class (GAL 8, BDS 21/42, L1C 21:
+    /// q ~ 0.5, <cos 2d> 0.70-0.84, straddle test flat). Then:
+    ///   <cos d | +1> ~ +1 and <cos d | -1> ~ -1  -> the overlay is DOUBLE-APPLIED (or omitted)
+    ///   both equal                               -> the sign is not the discriminator
+    std::vector<double> pres_pos, pres_neg;
     /// Why each active PRN is NOT subtracting this record, so the health line can answer it
     /// directly. (The old line reported only warmup lag under "NOT-PEELING", which read as
     /// "nothing is being skipped" while the SNR gate was silently rejecting a third of the sky.)

@@ -159,6 +159,11 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         pres_ok.assign(n_prn, 0);
         pres_c1.assign(n_prn, 0.0);
         pres_c2.assign(n_prn, 0.0);
+        pres_same.assign(n_prn, 0.0);
+        pres_diff.assign(n_prn, 0.0);
+        pres_fdiff.assign(n_prn, 0.0);
+        pres_pos.assign(n_prn, 0.0);
+        pres_neg.assign(n_prn, 0.0);
         peel_skip.assign(n_prn, PK_WARMUP);
         phi_nco.assign(n_prn, 0.0);
         fcar_prev.assign(n_prn, 0.0);
@@ -556,6 +561,25 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                                    + S.peel_alpha * std::cos(d);
                     S.pres_c2[p] = (1.0 - S.peel_alpha) * S.pres_c2[p]
                                    + S.peel_alpha * std::cos(2.0 * d);
+                    // OFF-BY-ONE TEST (see pres_same/pres_diff in the hpp): condition the same
+                    // residual on whether the APPLIED head/tail chips straddle a flip.
+                    const bool straddle = (pu.s_head != pu.s_tail);
+                    S.pres_fdiff[p] = (1.0 - S.peel_alpha) * S.pres_fdiff[p]
+                                      + S.peel_alpha * (straddle ? 1.0 : 0.0);
+                    if (straddle)
+                        S.pres_diff[p] = (1.0 - S.peel_alpha) * S.pres_diff[p]
+                                         + S.peel_alpha * std::cos(d);
+                    else
+                        S.pres_same[p] = (1.0 - S.peel_alpha) * S.pres_same[p]
+                                         + S.peel_alpha * std::cos(d);
+                    // ORTHOGONAL to the straddle test: split by the chip's VALUE, which is what
+                    // an even/odd overlay application would key on (see pres_pos in the hpp).
+                    if (pu.s_head > 0)
+                        S.pres_pos[p] = (1.0 - S.peel_alpha) * S.pres_pos[p]
+                                        + S.peel_alpha * std::cos(d);
+                    else if (pu.s_head < 0)
+                        S.pres_neg[p] = (1.0 - S.peel_alpha) * S.pres_neg[p]
+                                        + S.peel_alpha * std::cos(d);
                     S.pres_prev[p] = d;
                     S.pres_ok[p] = 1;
                 }
@@ -1184,11 +1208,12 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 const double prms = (S.pres2[p] >= 0.0) ? DEG * std::sqrt(S.pres2[p]) : -1.0;
                 const double drms = S.pres_ok[p] ? DEG * std::sqrt(S.pres_d2[p]) : -1.0;
                 ratios += fmt::format(
-                    " {:d}:{:.2f}/{:.2f}{:s}i{:.2f}g{:.2f}p{:.0f}d{:.0f}c{:+.2f}/{:+.2f}f{:+.2f}"
-                    "n{:d}",
+                    " {:d}:{:.2f}/{:.2f}{:s}i{:.2f}g{:.2f}p{:.0f}d{:.0f}c{:+.2f}/{:+.2f}"
+                    "s{:+.2f}/{:+.2f}x{:.2f}v{:+.2f}/{:+.2f}f{:+.2f}n{:d}",
                     S.prns[p], S.peel_ratio[p], flr, at_floor ? "*" : "", S.peel_ratio_ic[p],
-                    gcoh, prms, drms, S.pres_c1[p], S.pres_c2[p], S.peel_f_track[p],
-                    S.gain_n[p]);
+                    gcoh, prms, drms, S.pres_c1[p], S.pres_c2[p], S.pres_same[p],
+                    S.pres_diff[p], S.pres_fdiff[p], S.pres_pos[p], S.pres_neg[p],
+                    S.peel_f_track[p], S.gain_n[p]);
                 if (S.peel_ratio[p] > 1.05)
                     ++n_hurt;
             }
