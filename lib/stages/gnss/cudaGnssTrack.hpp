@@ -261,6 +261,22 @@ public:
     /// of the value split and in the "agree" bin of the straddle split, so both read flat no
     /// matter how bad it is. Conditioning on the applied sign cannot see a MISSING one.
     std::vector<double> pres_fzero;
+    /// <cos d> split by the TRACKER'S OWN boundary fraction bf = (L - cp_seed)/L at that
+    /// record -- the direct test of the TABLE-SEMANTICS theory (2026-07-26):
+    ///
+    ///   bit_pred's grid is RECORD-INDEXED (table[j] = head-chip of record j; the chip's true
+    ///   time span is [start_j-(1-bf)dt, start_j+bf dt]), but bit_at() reads it as
+    ///   TIME-DOMAIN ("chip covering time t") -- correct for the GPS LNAV tables whose utc0
+    ///   is a true bit edge, WRONG for bit_pred: the head sample t_b - dt/2 lands in the
+    ///   previous cell whenever bf < 0.5. The dominant error term is then the NEXT straddle,
+    ///   which neither the value split nor the applied-pair straddle split can see -- why
+    ///   both read flat. Every other link is now measured-good (content, absolute phase,
+    ///   self-consistency, transport, lookup arithmetic), so the semantics is what is left.
+    ///
+    ///   b<lo>/<hi>: <cos d | bf<0.5> / <cos d | bf>=0.5>.  lo << hi -> confirmed (head-chip
+    ///   convention); lo >> hi -> the mirror convention; equal -> theory dead. NB judge on
+    ///   pilot chains only; GPS LNAV tables are time-domain and should read equal.
+    std::vector<double> pres_blo, pres_bhi;
     /// Why each active PRN is NOT subtracting this record, so the health line can answer it
     /// directly. (The old line reported only warmup lag under "NOT-PEELING", which read as
     /// "nothing is being skipped" while the SNR gate was silently rejecting a third of the sky.)
@@ -281,6 +297,8 @@ public:
         int job0 = -1;
         double phi = 0.0;      ///< the NCO-mirror phase this record was peeled/measured at
         long long wstart = 0;  ///< window start (sample) -- the FLL's time axis
+        float bf = -1.f;       ///< boundary fraction (L - cp_seed)/L at this record, for the
+                               ///< table-semantics split (pres_blo/pres_bhi)
     };
     std::vector<PeelUsed> used;                 ///< [MAX_REC][n_prn]
     std::vector<int> used_prn;                  ///< [MAX_REC*n_prn] -> PRN slot, parallel to used

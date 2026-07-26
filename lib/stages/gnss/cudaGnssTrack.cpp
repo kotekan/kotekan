@@ -165,6 +165,8 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         pres_pos.assign(n_prn, 0.0);
         pres_neg.assign(n_prn, 0.0);
         pres_fzero.assign(n_prn, 0.0);
+        pres_blo.assign(n_prn, 0.0);
+        pres_bhi.assign(n_prn, 0.0);
         peel_skip.assign(n_prn, PK_WARMUP);
         phi_nco.assign(n_prn, 0.0);
         fcar_prev.assign(n_prn, 0.0);
@@ -576,6 +578,17 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     else
                         S.pres_same[p] = (1.0 - S.peel_alpha) * S.pres_same[p]
                                          + S.peel_alpha * std::cos(d);
+                    // TABLE-SEMANTICS split: the tracker's OWN bf at this record (see
+                    // pres_blo in the hpp). Record-grid table read as time-domain predicts
+                    // the low-bf bin inverted/decohered while the high-bf bin stays clean.
+                    if (pu.bf >= 0.f) {
+                        if (pu.bf < 0.5f)
+                            S.pres_blo[p] = (1.0 - S.peel_alpha) * S.pres_blo[p]
+                                            + S.peel_alpha * std::cos(d);
+                        else
+                            S.pres_bhi[p] = (1.0 - S.peel_alpha) * S.pres_bhi[p]
+                                            + S.peel_alpha * std::cos(d);
+                    }
                     // ORTHOGONAL to the straddle test: split by the chip's VALUE, which is what
                     // an even/odd overlay application would key on (see pres_pos in the hpp).
                     if (pu.s_head > 0)
@@ -941,6 +954,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 S.used[u].job0 = c.job0;
                 S.used[u].phi = phi;
                 S.used[u].wstart = wstart;
+                S.used[u].bf = (float)((L - cp_seed) / L);
                 S.used_prn[u] = p;
 
                 // SUBTRACT only once the gain has actually converged: an unconverged gain adds
@@ -1213,11 +1227,12 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 const double drms = S.pres_ok[p] ? DEG * std::sqrt(S.pres_d2[p]) : -1.0;
                 ratios += fmt::format(
                     " {:d}:{:.2f}/{:.2f}{:s}i{:.2f}g{:.2f}p{:.0f}d{:.0f}c{:+.2f}/{:+.2f}"
-                    "s{:+.2f}/{:+.2f}x{:.2f}v{:+.2f}/{:+.2f}z{:.2f}f{:+.2f}n{:d}",
+                    "s{:+.2f}/{:+.2f}x{:.2f}v{:+.2f}/{:+.2f}z{:.2f}b{:+.2f}/{:+.2f}f{:+.2f}n{:d}",
                     S.prns[p], S.peel_ratio[p], flr, at_floor ? "*" : "", S.peel_ratio_ic[p],
                     gcoh, prms, drms, S.pres_c1[p], S.pres_c2[p], S.pres_same[p],
                     S.pres_diff[p], S.pres_fdiff[p], S.pres_pos[p], S.pres_neg[p],
-                    S.pres_fzero[p], S.peel_f_track[p], S.gain_n[p]);
+                    S.pres_fzero[p], S.pres_blo[p], S.pres_bhi[p],
+                    S.peel_f_track[p], S.gain_n[p]);
                 if (S.peel_ratio[p] > 1.05)
                     ++n_hurt;
             }

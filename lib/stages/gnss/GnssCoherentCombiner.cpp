@@ -1216,15 +1216,41 @@ void GnssCoherentCombiner::main_thread() {
                     const int prn_e = (int)std::lround(rec[0]);
                     const std::vector<int8_t>* ov = overlay_for(prn_e);
                     const double t_e = ref_utc[p];
+                    // STALE-ANCHOR GATE (2026-07-26). Without `cleared` the anchor is never
+                    // re-pinned AND never expires, so a weak/setting sat keeps publishing
+                    // chips from an anchor that has slipped -- measured live: BDS 23 at -180
+                    // chips, GAL 21 at -5.4, all with deep_snr ~0. Wrong-but-confident bits
+                    // are the one failure this path must not produce (they subtract at the
+                    // WRONG SIGN half the time); no fresh pin, no publication -- the tracker
+                    // then reads `nobits` and simply does not subtract, which is the safe
+                    // direction. Healthy sats re-pin every cleared emit (~1 s), so 60 s is
+                    // generous for real locks and far below the ~17-30 min half-chip slip.
+                    const bool anchor_fresh = (t_e - _dr_utc[p]) < 60.0;
                     if (ov && !ov->empty() && _dr_phase[p] >= 0 && _dr_rec_dt[p] > 0.0
-                        && _dr_prn[p] == prn_e && t_e > 0.0) {
+                        && _dr_prn[p] == prn_e && t_e > 0.0 && anchor_fresh) {
                         const int L_ov = (int)ov->size();
                         const double dt_r = _dr_rec_dt[p];
                         // start at the first primary period at/after this emit
                         const long long i0 =
                             (long long)std::ceil((t_e - _dr_utc[p]) / dt_r);
                         const int n = (int)std::ceil(_bit_pred_horizon_s / dt_r) + 2;
-                        bp.utc0 = _dr_utc[p] + (double)i0 * dt_r;
+                        // TABLE SEMANTICS (2026-07-26): cell j is the HEAD chip of record
+                        // i0+j, whose true time span is [start - (1-bf)*dt, start + bf*dt] --
+                        // NOT [start, start+dt]. The tracker's bit_at() reads the table as
+                        // TIME-DOMAIN ("the chip covering capture time t", correct for the
+                        // GPS LNAV tables whose utc0 is a true bit edge), so publishing raw
+                        // record-start times made the head lookup land one cell early
+                        // whenever bf < 0.5. Measured live with <cos d> split by the
+                        // tracker's own bf: pilots at bf<0.5 were 6/6 BROKEN -- including
+                        // sats whose tables verify absolutely correct against the known
+                        // per-SV sequences and BRDC geometry (+-0.5 chip) -- while the GPS
+                        // control chain read clean in BOTH bins. Shifting utc0 by
+                        // -(1-bf)*dt makes every cell span its chip's true extent; the
+                        // tracker's mid-period samples then index m (head) and m+1 (tail)
+                        // EXACTLY, bf-free, with half-a-record of margin either side.
+                        const double bf_e =
+                            std::min(1.0, std::max(0.0, (double)rec[gnss::CMB_HEAD_FRAC]));
+                        bp.utc0 = _dr_utc[p] + (double)i0 * dt_r - (1.0 - bf_e) * dt_r;
                         bp.bit_s = dt_r;
                         bp.bits.reserve((size_t)n);
                         for (int j = 0; j < n; ++j) {
