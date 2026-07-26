@@ -1810,9 +1810,10 @@ def main(argv=None):
                             r = navbrdc.verify(_p, navbits)
                             if r and r[0] >= 200:
                                 chk.append("%d:%.1f%%" % (_p, 100.0 * r[1] / r[0]))
-                        _log("navbrdc: offset %.6f s, spread %.2f ms, %d cal sats; "
-                             "verify %s" % (navbrdc.offset, (navbrdc.spread or 0.0) * 1e3,
-                                            navbrdc.n_cal, " ".join(chk) or "n/a"))
+                        _log("navbrdc: offset %.6f s, spread %.2f ms, %d cal sats "
+                             "(%d outliers dropped); verify %s"
+                             % (navbrdc.offset, (navbrdc.spread or 0.0) * 1e3,
+                                navbrdc.n_cal, navbrdc.n_rej, " ".join(chk) or "n/a"))
                     else:
                         _log("navbrdc: NOT ready (%s)" % navbrdc.why_not())
         # Lock metric: the detection SIGNIFICANCE (sigma above noise) -- the deep nav-wiped SNR when

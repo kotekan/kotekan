@@ -43,6 +43,10 @@ SF_S = 6.0
 # few ms the subframe/bit indexing is at risk, and wrong-but-confident bits are the one
 # failure this whole path must not produce (see gps_lnav_encode.select_eph).
 MAX_OFFSET_SPREAD_S = 0.002
+# A calibrating satellite further than this from the median is discarded before the spread is
+# judged. Half a bit: beyond it the satellite's own sync is suspect, and its offset would be
+# indexing a different 20 ms slot anyway.
+OUTLIER_S = 0.010
 
 
 class BrdcLnavSource:
@@ -53,6 +57,7 @@ class BrdcLnavSource:
         self.offset = None        # capture-clock UTC minus GPS seconds-of-week
         self.spread = None        # disagreement between calibrating satellites (s)
         self.n_cal = 0
+        self.n_rej = 0            # calibrating sats discarded as outliers (see OUTLIER_S)
         self.borrow = None        # constellation-common words (TLM + sf1 reserved)
         self.week = None
         self._eph = None
@@ -87,11 +92,22 @@ class BrdcLnavSource:
                           "sf1_resv": [w[3], w[4], w[5], np.asarray(w[6])[:16]]}
         if not offs:
             self.offset, self.spread, self.n_cal = None, None, 0
+            self.n_rej = 0
             return
         offs.sort()
-        self.offset = offs[len(offs) // 2]          # median: robust to one bad sync
-        self.spread = offs[-1] - offs[0]
-        self.n_cal = len(offs)
+        med = offs[len(offs) // 2]                  # median: robust to a bad sync
+        # ...and the GATE has to be as robust as the estimator. Gating on max-min meant ONE
+        # satellite whose sync sat a bit off disabled the whole source: measured live
+        # 2026-07-25, spread read 19.1 ms (~one bit period) across 8 satellites and refused to
+        # emit, having been 0.31-0.90 ms minutes earlier. Drop the outliers, then judge the
+        # survivors -- one satellite should not be able to veto seven that agree.
+        keep = [o for o in offs if abs(o - med) <= OUTLIER_S]
+        self.n_rej = len(offs) - len(keep)
+        if not keep:
+            keep = offs
+        self.offset = keep[len(keep) // 2]
+        self.spread = keep[-1] - keep[0]
+        self.n_cal = len(keep)
         if borrow is not None:
             self.borrow = borrow                     # sticky: survives losing every sync
 
@@ -106,7 +122,8 @@ class BrdcLnavSource:
         if self.borrow is None:
             return "no decoded sf1 to borrow the reserved words from"
         if self.n_cal >= 2 and self.spread > MAX_OFFSET_SPREAD_S:
-            return f"offset spread {self.spread * 1e3:.1f} ms across {self.n_cal} sats"
+            return (f"offset spread {self.spread * 1e3:.1f} ms across {self.n_cal} sats"
+                    f" ({self.n_rej} outliers already dropped)")
         return ""
 
     # ---- the supplier contract ---------------------------------------------------------
