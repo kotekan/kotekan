@@ -58,6 +58,7 @@ class BrdcLnavSource:
         self.spread = None        # disagreement between calibrating satellites (s)
         self.n_cal = 0
         self.n_rej = 0            # calibrating sats discarded as outliers (see OUTLIER_S)
+        self.n_ambig = 0          # PRNs refused for ambiguous ephemeris (rival toe)
         self.borrow = None        # constellation-common words (TLM + sf1 reserved)
         self.week = None
         self._eph = None
@@ -152,6 +153,14 @@ class BrdcLnavSource:
                 continue
             t_gps = T * SF_S + self.week * 604800.0
             e = L.select_eph(recs, t_gps)
+            # AMBIGUOUS EPHEMERIS -> refuse (see gps_lnav_encode.eph_ambiguous). A rival record
+            # at effectively the same toe means we cannot know which data set is on air, and a
+            # satellite needing constructed bits is one we cannot decode to find out. Wrong-
+            # record bits are CONFIDENTLY wrong and would be subtracted at the wrong sign on
+            # ~40% of records; no bits merely means no subtraction.
+            if L.eph_ambiguous(recs, e):
+                self.n_ambig += 1
+                return None
             words = L.ENCODERS[sfid](e)
             known = [True] * 8
             if sfid == 1:

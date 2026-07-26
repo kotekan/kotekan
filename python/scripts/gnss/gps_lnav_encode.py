@@ -49,6 +49,35 @@ def ura_index(metres):
     return 15
 
 
+def eph_ambiguous(recs, sel, tol_s=120.0):
+    """Is `sel` indistinguishable from a RIVAL record we could equally have chosen?
+
+    Measured live 2026-07-26. Our BRDC is a MERGE of the daily file and an hourly one, and the
+    hourly can carry a second record for the same epoch: G15 had toe 15:59:44 (IODE 41) AND
+    16:00:00 (IODE 102), 16 s apart, both genuine (different af0, different delta-n).
+    select_eph takes the newest and got IODE 102; the satellite was broadcasting IODE 41,
+    decoded straight off the air from sf2 word 3. Hold-one-out on that satellite read 65.56%
+    while every IODE-matched satellite read 93.7-100.00% -- a perfect split, and exactly the
+    "confidently wrong bits" failure select_eph's docstring warns about.
+
+    A 16 s toe difference is NOTHING for geometry (same orbit, range/Doppler identical to
+    nanoseconds) -- which is why this never showed up in tracking. It is everything for BIT
+    CONSTRUCTION, where iode/toe/af0 are literally encoded into the words.
+
+    We cannot tell which rival is on air without decoding, and a satellite that needs
+    constructed bits is by definition one we cannot decode. So the honest answer is to refuse:
+    ambiguity -> no bits -> the tracker reads `nobits` and does not subtract. Fails SAFE, the
+    same discipline as the combiner's stale-anchor gate.
+    """
+    si = sel.get("iode")
+    for r in recs:
+        if r is sel:
+            continue
+        if abs(r["toe_gpst"] - sel["toe_gpst"]) <= tol_s and r.get("iode") != si:
+            return True
+    return False
+
+
 def select_eph(recs, t_gps, fit_h=4.0):
     """The ephemeris record the satellite is BROADCASTING at GPS time `t_gps`.
 
