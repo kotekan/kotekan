@@ -691,6 +691,8 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
             c.job0 = -1;
             if (!active[p]) {
                 S.f_ref[p] = std::nan(""); // forget the loop; re-acquire when it returns
+                if (S.peel)
+                    S.nco_ok[p] = 0; // gap: break the mirror's arc (see below)
                 continue;
             }
             // Covering channels at the seed Doppler (GLOBAL ids -> this subband's local set).
@@ -715,8 +717,20 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     local.push_back(ch - S.chan_offset);
                     mask |= (1ULL << (ch - S.chan_offset));
                 }
-            if (local.empty())
-                continue; // carrier not in this subband
+            if (local.empty()) {
+                // Carrier not in this subband. THIS IS A GAP, and the NCO mirror below must
+                // break its arc here exactly as GnssGpuRecordAssemble does -- see the fix note
+                // at the mirror. Falling through with nco_ok still set made the mirror
+                // integrate ACROSS the gap while the assembler skips it, and the two then run
+                // permanently out of step.
+                // ⚠️ GUARDED: every peel vector (nco_ok included) is allocated only under
+                // `if (peel)`, so on a non-peeling chain it is EMPTY and an unguarded write
+                // here is out-of-bounds -- it segfaulted the whole 3-band node at launch on
+                // 2026-07-25, and the launcher still printed "node running".
+                if (S.peel)
+                    S.nco_ok[p] = 0;
+                continue;
+            }
 
             // Pass-1 control -- verbatim port of GnssChannelizedTracker (see its comments for
             // the full physics): linear cp extrapolation + QUADRATIC code-Doppler FF, the
@@ -777,6 +791,22 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 // inputs. The gain is AVERAGED derotated (where it is slow) but must be
                 // SUBTRACTED in the replica frame, so the peel needs this record's phase, and it
                 // needs it now rather than a frame late. ⚠️ Keep in step with the assembler.
+                //
+                // ⚠️⚠️ AND THAT INCLUDES THE GAPS (fixed 2026-07-25). On a record where the PRN
+                // does not run, the assembler clears _a_prev_ok/_fcar_prev_ok and `continue`s
+                // WITHOUT advancing _wstart_prev, so when the PRN returns its dt spans the whole
+                // gap and the integration is SKIPPED -- _phi carries across unchanged. This
+                // mirror used to be reached only on running records, so nco_ok stayed 1 and it
+                // INTEGRATED that same gap: every gap injected 2*pi*f_nco*t_gap of error, and
+                // the two never resynced (both keep integrating from now-different values).
+                // Because gaps recur, each one contributes a DIFFERENT arbitrary angle, so the
+                // ~100-record gain EMA averaged phasors that no longer share a frame and
+                // collapsed toward zero -- measured as gain coherence 0.00-0.02 on the failing
+                // satellites vs 0.33-0.95 on the working ones, with |resid|/|full| = 1 -
+                // sqrt(gcoh) to a mean error of 0.10 across 22 sats. Tracking never noticed,
+                // because the assembler is the authority and is self-consistent; only the
+                // mirror was wrong, which is why deep_snr sat at 200+ on sats peeling 0.0 dB.
+                // The gaps are now cleared at both `continue`s above.
                 double& phi = S.phi_nco[p];
                 if (reanchored == 1 || (reanchored == 2 && !S.nco_ok[p])) {
                     phi = 0.0; // fresh acquisition: no phase history worth keeping
