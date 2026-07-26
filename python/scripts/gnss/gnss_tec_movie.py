@@ -252,6 +252,10 @@ def main():
                          "fields (1=off). Damps the frame-to-frame RBF jump when a sat "
                          "appears/disappears -- the dominant flicker once dropouts are bridged. "
                          "Safe for absolute VTEC (slowly varying); N=3 ~ 3 min at frame_s=60.")
+    ap.add_argument("--sky-pad", type=float, default=6.0,
+                    help="a dome pixel counts as GNSS-ACCESSIBLE if some satellite passed "
+                         "within this many degrees of it at any time in the series "
+                         "(--voronoi tiles the whole accessible region, not the per-frame hull)")
     ap.add_argument("--voronoi", action="store_true",
                     help="render nearest-satellite (Voronoi) cells over the covered sky (convex "
                          "hull of the sat points) instead of RBF discs. Each pixel takes its "
@@ -323,6 +327,42 @@ def main():
     # is precomputed per measurement so the hold interpolates CARTESIAN sky position (no azimuth
     # wraparound) and TEC together.
     _pxall, _pyall = sky_xy(d["az"], d["el"])
+    # ---- ACCESSIBLE-SKY MASK (Voronoi tiling target), computed ONCE from every sample.
+    # "Everything except the cap where nothing ever goes": a pixel is accessible if some
+    # satellite passed within --sky-pad degrees of it AT ANY TIME in the series. That is an
+    # empirical statement of the site+constellation geometry (44 N, ~55 deg inclinations ->
+    # a permanent hole toward the pole) and needs no orbital modelling. Using the series' own
+    # full extent also guarantees the mask can never claim sky the run did not actually see.
+    _keep_all = d["el"] >= args.el_mask
+    if _keep_all.sum() >= 3:
+        _ax, _ay = _pxall[_keep_all], _pyall[_keep_all]
+        from scipy.spatial import cKDTree
+        _d2, _ = cKDTree(np.column_stack([_ax, _ay])).query(
+            np.column_stack([GX.ravel(), GY.ravel()]), k=1)
+        ACCESS = (_d2.reshape(GX.shape) <= args.sky_pad / 90.0)
+        # A raw union-of-discs is RAGGED where passes are sparse (low elevation especially):
+        # holes between adjacent tracks and stray blobs off the main region. Those are
+        # SAMPLING artifacts, not geometry, and on a filled map the eye reads them as
+        # structure. Close the small gaps, then keep only the largest connected component --
+        # the accessible sky is one simply-connected region (a horseshoe open toward the pole
+        # at this latitude), so anything detached is noise.
+        try:
+            from scipy import ndimage as _ndi
+            _rad = max(1, int(round(args.sky_pad / 90.0 * (GX.shape[0] - 1) / 2.0)))
+            _yy, _xx = np.ogrid[-_rad:_rad + 1, -_rad:_rad + 1]
+            _disc = (_xx ** 2 + _yy ** 2) <= _rad ** 2
+            ACCESS = _ndi.binary_closing(ACCESS, structure=_disc)
+            _lab, _n = _ndi.label(ACCESS)
+            if _n > 1:
+                _sz = _ndi.sum(ACCESS, _lab, range(1, _n + 1))
+                ACCESS = _lab == (1 + int(np.argmax(_sz)))
+        except Exception as _e:
+            print(f"accessible-mask smoothing skipped: {_e}")
+    else:
+        ACCESS = np.ones_like(horizon)
+    print(f"accessible sky: {100.0 * (ACCESS & horizon).sum() / horizon.sum():.1f}% of the "
+          f"dome above {args.el_mask:.0f} deg elevation "
+          f"(pad {args.sky_pad:.0f} deg, from {int(_keep_all.sum())} samples)")
     _satid = np.char.add(d["sys"].astype(str), d["prn"].astype(str))
     sat_series = {}
     for sid in np.unique(_satid):
@@ -374,8 +414,17 @@ def main():
                 Z = NearestNDInterpolator(pts, vals)(grid).reshape(GX.shape)
             except Exception:
                 continue
-            inside = _in_hull(grid, pts).reshape(GX.shape) if len(pts) >= 3 else np.ones_like(horizon)
-            Z[~inside | ~horizon] = np.nan
+            # Tile the ENTIRE GNSS-ACCESSIBLE SKY, not the current frame's convex hull.
+            # The hull shrinks and lurches as satellites rise and set, so the map kept
+            # re-cropping itself and the eye read the CROP as structure. The accessible
+            # region is a fixed property of the site + constellation geometry (at 44 N with
+            # ~55 deg inclinations there is a permanent northern cap no satellite reaches),
+            # so it is computed ONCE from every sample in the series (ACCESS) and applied to
+            # every frame. Cells therefore extrapolate outward to the edge of reachable sky.
+            # ⚠️ That IS extrapolation: a pixel far from any current satellite shows its
+            # nearest neighbour's value, not a measurement -- honest for a Voronoi map, but
+            # the further from a sat marker, the softer the claim.
+            Z[~ACCESS | ~horizon] = np.nan
         else:
             try:
                 rbf = RBFInterpolator(pts, vals, kernel="linear", smoothing=1e-2)
@@ -436,7 +485,12 @@ def main():
         written += 1
     print(f"wrote {written} frames -> {args.outdir}")
     if written > 3:
-        out = os.path.join(args.outdir, args.video)
+        # Absolute --video paths are honoured as given; bare names land in --outdir.
+        # (os.path.join silently produced outdir/data/beam/... for an absolute-looking
+        # relative path and ffmpeg failed AFTER all frames were rendered.)
+        out = (args.video if os.path.isabs(args.video)
+               else os.path.join(args.outdir, args.video))
+        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(args.fps),
                         "-i", os.path.join(args.outdir, "frame_%05d.png"),
                         "-pix_fmt", "yuv420p", "-vf",
