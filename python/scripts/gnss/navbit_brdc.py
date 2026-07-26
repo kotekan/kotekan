@@ -47,6 +47,15 @@ MAX_OFFSET_SPREAD_S = 0.002
 # judged. Half a bit: beyond it the satellite's own sync is suspect, and its offset would be
 # indexing a different 20 ms slot anyway.
 OUTLIER_S = 0.010
+# Never construct bits for a satellite that is not actually UP. Measured live 2026-07-26: the
+# broker seeds below-horizon PRNs as noise probes (--noise-probes), and handing them bits
+# satisfied peel_require_bits, so the SNR gate stopped rejecting them (NOT-PEELING went to
+# `none`) and the peel started "removing" satellites that were not there -- pure noise
+# injection. GPS went HURTING 0-1 -> 7-8, i.e. 7-8 sats ADDING power to the band, which is the
+# exact opposite of the peel's purpose. Elevations of the offenders: -84, -75, -72, -52 deg.
+# 5 deg rather than 0: it matches the project's standard analysis filter, and a sat within a
+# few degrees of the horizon has no usable gain to measure anyway.
+MASK_DEG = 5.0
 
 
 class BrdcLnavSource:
@@ -59,6 +68,7 @@ class BrdcLnavSource:
         self.n_cal = 0
         self.n_rej = 0            # calibrating sats discarded as outliers (see OUTLIER_S)
         self.n_ambig = 0          # PRNs refused for ambiguous ephemeris (rival toe)
+        self.n_masked = 0         # PRNs refused for being below MASK_DEG
         self.borrow = None        # constellation-common words (TLM + sf1 reserved)
         self.week = None
         self._eph = None
@@ -136,6 +146,9 @@ class BrdcLnavSource:
         g = (self._geom or {}).get(prn)
         recs = (self._eph or {}).get(("G", prn))
         if not g or not recs:
+            return None
+        if g[2] < MASK_DEG:          # below the mask: not up, nothing to peel (see MASK_DEG)
+            self.n_masked += 1
             return None
         # rx_capture(T) = T*6 + range/c - clk + offset  ->  invert for the subframe index
         delay = g[3] / C_MPS - g[4]
