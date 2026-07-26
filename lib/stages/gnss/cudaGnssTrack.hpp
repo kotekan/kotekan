@@ -247,6 +247,20 @@ public:
     ///   <cos d | +1> ~ +1 and <cos d | -1> ~ -1  -> the overlay is DOUBLE-APPLIED (or omitted)
     ///   both equal                               -> the sign is not the discriminator
     std::vector<double> pres_pos, pres_neg;
+    /// Fraction of gain-measurement records that had NO predicted sign (s_head or s_tail == 0)
+    /// and therefore fell back to the DECISION-DIRECTED sgn_obs.
+    ///
+    /// WHY THIS IS THE ONE THAT MATTERS (2026-07-26). peel_require_bits gates the SUBTRACTION
+    /// on have_bits, but the gain MEASUREMENT above runs either way -- without bits it takes
+    /// its sign from the running gain. Once that gain is decohered the decision is a coin
+    /// flip, which decoheres it further: a self-reinforcing loop whose residual is bimodal
+    /// 0/pi and uncorrelated with the overlay, matching the "pure sign" class exactly
+    /// (sigma_phi 0.027-0.065 rad on those same sats, so the RAW correlation is pristine and
+    /// the flips are manufactured inside the peel).
+    /// ⚠️ It is also the blind spot of the two splits above: s_head == 0 lands in NEITHER bin
+    /// of the value split and in the "agree" bin of the straddle split, so both read flat no
+    /// matter how bad it is. Conditioning on the applied sign cannot see a MISSING one.
+    std::vector<double> pres_fzero;
     /// Why each active PRN is NOT subtracting this record, so the health line can answer it
     /// directly. (The old line reported only warmup lag under "NOT-PEELING", which read as
     /// "nothing is being skipped" while the SNR gate was silently rejecting a third of the sky.)
