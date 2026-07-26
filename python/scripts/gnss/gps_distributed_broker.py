@@ -2650,6 +2650,8 @@ def main(argv=None):
             _rep = navhealth.report()
             if _rep:
                 _log_rl("navhealth", _rep)
+        if navbits is not None:
+            _log_rl("fleet", navbits.fleet.stats())
         if os.environ.get("GNSS_SEED_DEBUG"):
             for d in payload:
                 if str(d["prn"]) in os.environ["GNSS_SEED_DEBUG"].split(","):

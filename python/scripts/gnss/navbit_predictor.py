@@ -82,6 +82,77 @@ HIST_MAX_SLOTS = 64000   # ~21 min of bit history (covers one 12.5 min supercycl
 SF_BITS = 300
 
 
+
+class FleetPages:
+    """Cross-satellite sf4/5 page store: Layer 2 of the nav-bit supply.
+
+    GPS subframe 4/5 pages are UPLOADED almanac data and are ~79% word-identical across the
+    constellation at matched TOW (measured 2026-07-25) -- but not ~100%, because satellites
+    carry uploads of different vintages. So no single donor can be trusted; a word is taken
+    only when >= MIN_DONORS satellites agree BIT-FOR-BIT (unanimity; measured yield 66.5% of
+    sf4/5 data words, stable at 2/3/4 donors).
+
+    THE PARITY CHAIN IS THE HARD CONSTRAINT. Transmitted bits of word w+1 are
+    data(w+1) XOR D30(w): an unknown word breaks the chain, so every later word in that
+    subframe is untransmittable EVEN IF its data is known -- consumers must zero from the
+    first unknown word onward (`prefix_mask`). 66% of WORDS is therefore NOT 66% of bits;
+    the realized bit yield is measured, not assumed. (Words 1-2, TLM+HOW, are always known:
+    the chain re-seeds to D29=D30=0 at every subframe boundary by the ICD trim.)
+
+    Prize, measured 2026-07-26: the sf4/5 hole costs 3.3 dB of peel depth 40% of the time.
+    Wrong-word risk is bounded by navbit_health (published-vs-air veto per PRN/source).
+    """
+
+    MIN_DONORS = 2
+
+    def __init__(self):
+        self.votes = {}     # (sfid, page) -> {prn: [10x24 int8 words]}
+        self.n_fill = 0     # subframes served (cumulative)
+        self.n_word = 0     # words served (cumulative)
+
+    def offer(self, prn, sfid, page, data):
+        """A freshly DECODED page from a synced satellite (10x24 parity-clean words)."""
+        self.votes.setdefault((sfid, page), {})[prn] = [
+            np.array(d, dtype=np.int8).copy() for d in data]
+
+    def lookup(self, sfid, page):
+        """(words[10], known[10]) by unanimity over donors, or None if no donors.
+        Words 0-1 (TLM/HOW) are the CALLER's job -- TLM is constellation-common and HOW is
+        computed per TOW -- so only data words 2-9 are voted here."""
+        donors = self.votes.get((sfid, page))
+        if not donors or len(donors) < self.MIN_DONORS:
+            return None
+        words = [np.zeros(24, dtype=np.int8) for _ in range(10)]
+        known = [False] * 10
+        for w in range(2, 10):
+            vals = {}
+            for d in donors.values():
+                vals.setdefault(bytes(bytearray(int(b) & 1 for b in d[w])), []).append(d[w])
+            if len(vals) == 1 and len(donors) >= self.MIN_DONORS:
+                words[w] = np.array(next(iter(vals.values()))[0], dtype=np.int8)
+                known[w] = True
+        if not any(known[2:]):
+            return None
+        return words, known
+
+    @staticmethod
+    def prefix_mask(known):
+        """known[10] -> the CHAIN-VALID prefix: True up to (excluding) the first unknown
+        word; everything after an unknown word is untransmittable (see class docstring)."""
+        out = [False] * 10
+        for w in range(10):
+            if not known[w]:
+                break
+            out[w] = True
+        return out
+
+    def stats(self):
+        pages = len(self.votes)
+        sats = len({p for d in self.votes.values() for p in d})
+        return ("fleet-pages: %d pages from %d sats; served %d subframes / %d words"
+                % (pages, sats, self.n_fill, self.n_word))
+
+
 class _PrnState:
     def __init__(self):
         self.hist = {}           # slot -> +-1 (chained polarity applied)
@@ -108,7 +179,8 @@ class _PrnState:
 class LnavPredictor:
     """Per-PRN LNAV stitch/sync/predict. Thread-compat: call from one poll loop."""
 
-    def __init__(self, log=None):
+    def __init__(self, log=None, fleet=None):
+        self.fleet = fleet if fleet is not None else FleetPages()
         self._p = {}
         self._log = log or (lambda m: None)
 
@@ -257,6 +329,7 @@ class LnavPredictor:
                 st.sf_data[sfid] = data
             else:
                 st.pages[(sfid, tow % 125)] = data
+                self.fleet.offer(prn, sfid, tow % 125, data)
             st.n_decoded += 1
 
     # ---------------- predict ----------------
@@ -268,10 +341,22 @@ class LnavPredictor:
         else:
             data = st.pages.get((sfid, tow % 125))
             unknown_tail = data is None
+            fleet_known = None
             if data is None and sfid in st.tlm and sfid in st.how:
-                # Page unseen: TLM + HOW are still exact -- the HOW template carries the
-                # quasi-static alert/AS flags from a previous decode, TOW is set below.
+                # Page unseen by THIS satellite: TLM + HOW are still exact (the HOW template
+                # carries the quasi-static alert/AS flags; TOW is set below), and the FLEET
+                # may know the data words -- unanimity across other satellites' decodes of
+                # the same supercycle page (Layer 2; see FleetPages).
                 data = [st.tlm[sfid], st.how[sfid]] + [np.zeros(24, dtype=np.int8)] * 8
+                fl = self.fleet.lookup(sfid, tow % 125)
+                if fl is not None:
+                    fw, fk = fl
+                    fleet_known = [True, True] + fk[2:]
+                    for w in range(2, 10):
+                        if fk[w]:
+                            data[w] = fw[w]
+                    self.fleet.n_fill += 1
+                    self.fleet.n_word += sum(fk[2:])
         if data is None:
             return None
         data = [np.array(d, dtype=np.int8).copy() for d in data]
@@ -279,7 +364,17 @@ class LnavPredictor:
         bits01 = encode_subframe_trimmed(data)  # ICD trim: chain resets at every subframe
         out = (1 - 2 * bits01.astype(int)).astype(np.int8)
         if unknown_tail:
-            out[60:] = 0  # words 3-10 unknown (only TLM+HOW predicted)
+            if fleet_known is None:
+                out[60:] = 0  # words 3-10 unknown (only TLM+HOW predicted)
+            else:
+                # Fleet-filled: emit only the CHAIN-VALID prefix. Transmitted bits of word
+                # w+1 depend on D30 of word w, so the first unknown word ends what can be
+                # emitted -- a known word after a gap is real data but untransmittable.
+                pm = FleetPages.prefix_mask(fleet_known)
+                for w in range(10):
+                    if not pm[w]:
+                        out[30 * w:] = 0
+                        break
         return out
 
     def predict(self, prn, utc_now, horizon_s=4.0):

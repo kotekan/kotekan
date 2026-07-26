@@ -73,12 +73,14 @@ class BrdcLnavSource:
         self.week = None
         self._eph = None
         self._geom = None
+        self._fleet = None        # FleetPages (Layer 2): cross-sat sf4/5 words, set by update()
 
     # ---- per-cycle refresh -------------------------------------------------------------
     def update(self, eph, geom, predictor):
         """Recalibrate from the decoder's synced satellites. `geom` is brdc_predict's
         {prn: (dop, rate, el, range_m, sat_clk_s)}."""
         self._eph, self._geom = eph, geom
+        self._fleet = getattr(predictor, "fleet", None)
         offs = []
         borrow = None
         for prn, st in getattr(predictor, "_p", {}).items():
@@ -162,7 +164,27 @@ class BrdcLnavSource:
             T = sf0 + k
             sfid = (T % 5) + 1
             if sfid not in L.ENCODERS:
-                out.extend([0] * SF_BITS)            # sf4/5: not constructible
+                # sf4/5: not constructible from BRDC -- but the FLEET may know this
+                # supercycle page (Layer 2: unanimity across other satellites' decodes).
+                # TLM is borrowed (constellation-common), HOW is computed for this TOW, and
+                # only the CHAIN-VALID prefix is emitted: an unknown word breaks the D30
+                # chain, so later words are untransmittable even when their data is known.
+                fl = self._fleet.lookup(sfid, (T + 1) % 125) if self._fleet else None
+                if fl is None:
+                    out.extend([0] * SF_BITS)
+                    continue
+                fw, fk = fl
+                # assemble_subframe takes the EIGHT data words (TLM via kwarg, HOW from
+                # tow_next); fleet arrays are 10-slot with 0-1 = TLM/HOW placeholders.
+                pm10 = self._fleet.prefix_mask([True, True] + fk[2:])
+                known8 = [fk[w] and pm10[w] for w in range(2, 10)]
+                bits, kn = L.assemble_subframe(T + 1, sfid, fw[2:],
+                                               tlm=self.borrow["tlm"], known29=known8)
+                sf = [int(1 - 2 * int(bits[i])) if (kn[i] and pm10[i // 30]) else 0
+                      for i in range(SF_BITS)]
+                self._fleet.n_fill += 1
+                self._fleet.n_word += sum(fk[2:])
+                out.extend(sf)
                 continue
             t_gps = T * SF_S + self.week * 604800.0
             e = L.select_eph(recs, t_gps)
