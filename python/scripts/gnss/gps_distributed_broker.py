@@ -903,6 +903,7 @@ def main(argv=None):
     # every satellite in the sky. Same predict() contract, so it is simply a lower-priority
     # source in the chain below.
     navbrdc = None
+    navhealth = None  # continuous predicted-vs-air agreement monitor (navbit_health)
     cp_held = set()  # PRNs whose cp anchor is FROZEN this cycle (locked -> DLL owns the residual)
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
@@ -1767,6 +1768,14 @@ def main(argv=None):
                         navbits = LnavPredictor(log=_log)
                         _log("nav-bit predictor armed (combiner exports nav_obs)")
                     navbits.ingest(_p, _r["nav_obs"])
+                    # ...and ask the question no single gate was asking continuously: did the
+                    # bits we PUBLISHED last cycle actually match the ones coming out of the
+                    # sky? Scored only where the satellite is strong enough that a disagreement
+                    # means OUR bits are wrong rather than the air reading being wrong.
+                    if navhealth is None:
+                        from navbit_health import BitAgreement
+                        navhealth = BitAgreement(log=_log)
+                    navhealth.score(_p, _r["nav_obs"], _r.get("deep_snr"))
             # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
             # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
             # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
@@ -2602,6 +2611,16 @@ def main(argv=None):
                     if nb is not None:
                         d["nav_bits"] = nb
                         _bsrc = _bsrc if _bsrc != "none" else "lnav"
+            # VETO: a source that does not match the air for this satellite must not feed the
+            # subtracter. Wrong bits are worse than no bits -- no bits means no subtraction,
+            # wrong bits mean subtracting at the wrong sign on ~40% of records (measured
+            # 2026-07-26: HURTING 0-1 -> 7-8). Then remember what we are about to publish, so
+            # next cycle's observations score THIS table rather than a re-derived one.
+            if "nav_bits" in d and navhealth is not None and navhealth.veto(prn):
+                d.pop("nav_bits")
+                _bsrc = "vetoed"
+            elif "nav_bits" in d and navhealth is not None:
+                navhealth.remember(prn, d["nav_bits"])
             bit_src[_bsrc] = bit_src.get(_bsrc, 0) + 1
             if _bsrc != "none":
                 bit_known[_bsrc] = bit_known.get(_bsrc, 0) + sum(
@@ -2612,6 +2631,10 @@ def main(argv=None):
         # a different process, which is what made the 30 s-horizon bug hard to see.
         _log_rl("bitsrc", "nav_bits by source: %s; known bits: %s"
                 % (dict(sorted(bit_src.items())), dict(sorted(bit_known.items()))))
+        if navhealth is not None:
+            _rep = navhealth.report()
+            if _rep:
+                _log_rl("navhealth", _rep)
         if os.environ.get("GNSS_SEED_DEBUG"):
             for d in payload:
                 if str(d["prn"]) in os.environ["GNSS_SEED_DEBUG"].split(","):
