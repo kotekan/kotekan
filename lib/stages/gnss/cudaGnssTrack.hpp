@@ -212,6 +212,20 @@ public:
     /// these against.
     std::vector<double> pres2, pres_d2, pres_prev;
     std::vector<uint8_t> pres_ok;
+    /// ⚠️ pres2 ALONE CANNOT NAME THE FAULT. A wrong bit/overlay sign is a phase error of
+    /// exactly pi, so it lands in the same RMS bucket as genuine phase scatter: uniform random
+    /// phase gives RMS 104 deg, a 50/50 sign flip gives 127 deg, a ~35% flip gives ~105 deg --
+    /// and the flat population measured 105. Three different faults, one number. These two
+    /// separate them, because cos(2d) is BLIND to a pi flip and sensitive to everything else:
+    ///     <cos d>   <cos 2d>
+    ///        0          0      -> uniform random PHASE (the derotation is wrong)
+    ///      1-2q         1      -> SIGN flips on a fraction q of records (the bits are wrong),
+    ///                            phase otherwise clean
+    ///     small       middling -> both, or a phase error that is neither
+    /// Sign was "cleared" earlier by checking bit_pred CONTENT against BRDC geometry, but that
+    /// tested the combiner's published table, NOT what cudaGnssTrack's bit_at() lookup actually
+    /// applied -- which is where an indexing error would bite. This closes that gap.
+    std::vector<double> pres_c1, pres_c2;
     /// Why each active PRN is NOT subtracting this record, so the health line can answer it
     /// directly. (The old line reported only warmup lag under "NOT-PEELING", which read as
     /// "nothing is being skipped" while the SNR gate was silently rejecting a third of the sky.)

@@ -157,6 +157,8 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         pres_d2.assign(n_prn, 0.0);
         pres_prev.assign(n_prn, 0.0);
         pres_ok.assign(n_prn, 0);
+        pres_c1.assign(n_prn, 0.0);
+        pres_c2.assign(n_prn, 0.0);
         peel_skip.assign(n_prn, PK_WARMUP);
         phi_nco.assign(n_prn, 0.0);
         fcar_prev.assign(n_prn, 0.0);
@@ -547,6 +549,13 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                         S.pres_d2[p] =
                             (1.0 - S.peel_alpha) * S.pres_d2[p] + S.peel_alpha * dd * dd;
                     }
+                    // SIGN vs PHASE (see pres_c1/pres_c2 in the hpp): cos(2d) is blind to a
+                    // pi flip, so <cos 2d> ~ 1 means the BITS are wrong and <cos 2d> ~ 0 means
+                    // the PHASE is genuinely scattered. pres2 alone conflates the two.
+                    S.pres_c1[p] = (1.0 - S.peel_alpha) * S.pres_c1[p]
+                                   + S.peel_alpha * std::cos(d);
+                    S.pres_c2[p] = (1.0 - S.peel_alpha) * S.pres_c2[p]
+                                   + S.peel_alpha * std::cos(2.0 * d);
                     S.pres_prev[p] = d;
                     S.pres_ok[p] = 1;
                 }
@@ -1174,11 +1183,12 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 const double DEG = 180.0 / M_PI;
                 const double prms = (S.pres2[p] >= 0.0) ? DEG * std::sqrt(S.pres2[p]) : -1.0;
                 const double drms = S.pres_ok[p] ? DEG * std::sqrt(S.pres_d2[p]) : -1.0;
-                ratios +=
-                    fmt::format(" {:d}:{:.2f}/{:.2f}{:s}i{:.2f}g{:.2f}p{:.0f}d{:.0f}f{:+.2f}n{:d}",
-                                S.prns[p], S.peel_ratio[p], flr, at_floor ? "*" : "",
-                                S.peel_ratio_ic[p], gcoh, prms, drms, S.peel_f_track[p],
-                                S.gain_n[p]);
+                ratios += fmt::format(
+                    " {:d}:{:.2f}/{:.2f}{:s}i{:.2f}g{:.2f}p{:.0f}d{:.0f}c{:+.2f}/{:+.2f}f{:+.2f}"
+                    "n{:d}",
+                    S.prns[p], S.peel_ratio[p], flr, at_floor ? "*" : "", S.peel_ratio_ic[p],
+                    gcoh, prms, drms, S.pres_c1[p], S.pres_c2[p], S.peel_f_track[p],
+                    S.gain_n[p]);
                 if (S.peel_ratio[p] > 1.05)
                     ++n_hurt;
             }
