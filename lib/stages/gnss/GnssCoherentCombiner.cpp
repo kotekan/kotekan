@@ -111,9 +111,14 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     if (_bit_export) {
         _st_nav_obs.assign(_n_prn, {});
         _st_bit_pred.assign(_n_prn, {});
-        _bp_veto.assign(_n_prn, 0);
-        _bp_agree.assign(_n_prn, 1);
     }
+    // UNCONDITIONAL: the agreement flag is WRITTEN in the wipe section, which runs on every
+    // overlay chain regardless of bit_export -- allocating these under the guard segfaulted
+    // the whole node at launch on the L5/L2C combiners (2026-07-26), the exact disease the
+    // tracker's peel vectors had the day before (nco_ok, also launch-fatal). Rule: allocate
+    // where the WRITER runs, not where the consumer is configured.
+    _bp_veto.assign(_n_prn, 0);
+    _bp_agree.assign(_n_prn, 1);
     if (_peel_depth) {
         _navbuf_res.assign(_n_prn, {});
         _navhead_res.assign(_n_prn, {});
