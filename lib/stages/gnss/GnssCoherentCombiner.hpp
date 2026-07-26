@@ -254,6 +254,11 @@ private:
     std::vector<float> _st_amp, _st_coh, _st_deep, _st_deep_snr, _st_amp_snr, _st_amp_dbi, _st_dop,
         _st_cp;
     std::vector<int> _st_nh_phase; ///< secondary-overlay alignment found per PRN (-1 = n/a)
+    /// bit_pred publications suppressed because the anchor's projected phase disagreed with
+    /// this emit's SEARCHED phase (the pilot-side agreement gate; see the bit_pred block).
+    /// Cumulative per PRN; exported as "bp_veto" so the broker/viewer can see a source that
+    /// is being continuously refused rather than mistaking silence for health.
+    std::vector<int> _bp_veto;
     std::vector<float> _st_dll_disc; ///< window-averaged DLL discriminator (broker closes the loop)
     std::vector<float> _st_head_frac; ///< boundary fraction f = <head energy>/<prompt energy>
     std::vector<float> _st_s4;       ///< amplitude scintillation index, thermal floor removed

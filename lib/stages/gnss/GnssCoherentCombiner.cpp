@@ -111,6 +111,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     if (_bit_export) {
         _st_nav_obs.assign(_n_prn, {});
         _st_bit_pred.assign(_n_prn, {});
+        _bp_veto.assign(_n_prn, 0);
     }
     if (_peel_depth) {
         _navbuf_res.assign(_n_prn, {});
@@ -1226,8 +1227,37 @@ void GnssCoherentCombiner::main_thread() {
                     // direction. Healthy sats re-pin every cleared emit (~1 s), so 60 s is
                     // generous for real locks and far below the ~17-30 min half-chip slip.
                     const bool anchor_fresh = (t_e - _dr_utc[p]) < 60.0;
+                    // AGREEMENT GATE (pilot half of navbit-health, 2026-07-26). The searched
+                    // wipe re-finds the TRUE overlay phase every emit (nh_phase, full window
+                    // when not cleared); the anchor's projection is what bit_pred publishes.
+                    // When both exist and the search had real SNR, they must agree exactly --
+                    // an integer-chip mismatch means the anchor is WRONG NOW, and the age
+                    // gate cannot see it: a marginal sat can clear rarely, pin a bad phase on
+                    // one weak win, then publish confidently for the full 60 s. This is the
+                    // same question the broker's navbit_health asks on GPS (do the published
+                    // bits match the sky?), asked where pilots can answer it: nav_obs does
+                    // not exist on the overlay path, but nh_phase does, and it IS the air.
+                    // Fail closed: disagree -> publish nothing this emit.
+                    bool anchor_agrees = true;
+                    if (_dr_phase[p] >= 0 && _dr_rec_dt[p] > 0.0 && deep_rec[p] > 0
+                        && nh_phase[p] >= 0 && ov && !ov->empty() && t_e > 0.0
+                        && deep_snr[p] > FLOOR_MARGIN * deep_floor[p]) {
+                        const int L_ov = (int)ov->size();
+                        // rung start reconstructed from the emit time: records are uniform
+                        // on the capture clock (fixed sample count), t_e is the last record
+                        const double t0w =
+                            t_e - (double)(deep_rec[p] - 1) * _dr_rec_dt[p];
+                        const long long stp =
+                            (long long)std::llround((t0w - _dr_utc[p]) / _dr_rec_dt[p]);
+                        const int proj = (int)(((_dr_phase[p] + stp) % L_ov + L_ov) % L_ov);
+                        if (proj != nh_phase[p]) {
+                            anchor_agrees = false;
+                            ++_bp_veto[p];
+                        }
+                    }
                     if (ov && !ov->empty() && _dr_phase[p] >= 0 && _dr_rec_dt[p] > 0.0
-                        && _dr_prn[p] == prn_e && t_e > 0.0 && anchor_fresh) {
+                        && _dr_prn[p] == prn_e && t_e > 0.0 && anchor_fresh
+                        && anchor_agrees) {
                         const int L_ov = (int)ov->size();
                         const double dt_r = _dr_rec_dt[p];
                         // start at the first primary period at/after this emit
@@ -1377,6 +1407,8 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                 nlohmann::json pb = nlohmann::json::array();
                 for (int8_t c : bp.bits)
                     pb.push_back((int)c);
+                if (_bp_veto[(size_t)p] > 0)
+                    reply[(size_t)p]["bp_veto"] = _bp_veto[(size_t)p];
                 reply[(size_t)p]["bit_pred"] = {{"utc0", bp.utc0},
                                                 {"bit_s", bp.bit_s},
                                                 {"bits", pb}};
