@@ -178,6 +178,20 @@ public:
     /// two wrong theories on 2026-07-24.
     std::vector<double> peel_ratio;
     std::vector<int> peel_ratio_n;
+    /// ...and the SAME ratio built from per-channel MAGNITUDES, sqrt(sum|res_c|^2/sum|full_c|^2),
+    /// instead of the coherent channel sum |sum res_c|/|sum full_c| above.
+    ///
+    /// WHY BOTH (2026-07-25). The coherent version divides by a sum of complex per-channel
+    /// correlations, so on a PHASE-DIVERSE satellite the DENOMINATOR self-cancels and the ratio
+    /// is driven toward 1 -- which is indistinguishable from "the peel subtracted nothing", the
+    /// exact signature that had 7 of 8 GAL sats reading a flat 1.00 while their tracking was
+    /// pristine. Summing magnitudes cannot self-cancel, so this one measures the peel even when
+    /// the other is measuring the channel geometry. The pair is the instrument:
+    ///   both ~1        -> the peel really is not cancelling (look at the gain / the phase)
+    ///   ic << 1, coh~1 -> the peel WORKS and the coherent metric (and the floor, which shares
+    ///                     the defect -- open item 0a, GAL PRN2 floor 74 on 07-24) was lying.
+    /// Costs nothing new: both numbers come from mirror rows already resident on the host.
+    std::vector<double> peel_ratio_ic;
     /// Why each active PRN is NOT subtracting this record, so the health line can answer it
     /// directly. (The old line reported only warmup lag under "NOT-PEELING", which read as
     /// "nothing is being skipped" while the SNR gate was silently rejecting a third of the sky.)

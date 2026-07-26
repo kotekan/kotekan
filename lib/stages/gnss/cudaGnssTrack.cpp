@@ -152,6 +152,7 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         peel_prev_wstart.assign(n_prn, 0);
         peel_ratio.assign(n_prn, -1.0);
         peel_ratio_n.assign(n_prn, 0);
+        peel_ratio_ic.assign(n_prn, -1.0);
         peel_skip.assign(n_prn, PK_WARMUP);
         phi_nco.assign(n_prn, 0.0);
         fcar_prev.assign(n_prn, 0.0);
@@ -366,9 +367,21 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 if (S.mir_rows_spec > gnss_gpu::ROW_RES_P) { // ground-truth cancellation ratio
                     const size_t rowR = (size_t)(pu.job0 + gnss_gpu::ROW_RES_P) * S.n_chan;
                     std::complex<double> fu(0.0, 0.0), re(0.0, 0.0);
+                    // ...and the same two quantities as sums of per-channel MAGNITUDES. The
+                    // coherent sums above divide by |sum_c full_c|, which SELF-CANCELS on a
+                    // phase-diverse satellite and drives the ratio to 1 -- identical to "nothing
+                    // was subtracted". These cannot self-cancel, so they say whether the peel
+                    // worked even when the coherent pair cannot. See peel_ratio_ic in the hpp.
+                    double fu2 = 0.0, re2 = 0.0;
                     for (int c = 0; c < S.n_chan; ++c) {
-                        fu += std::complex<double>(S.mir_corr[rowP + c].x, S.mir_corr[rowP + c].y);
-                        re += std::complex<double>(S.mir_corr[rowR + c].x, S.mir_corr[rowR + c].y);
+                        const std::complex<double> fc(S.mir_corr[rowP + c].x,
+                                                      S.mir_corr[rowP + c].y);
+                        const std::complex<double> rc(S.mir_corr[rowR + c].x,
+                                                      S.mir_corr[rowR + c].y);
+                        fu += fc;
+                        re += rc;
+                        fu2 += std::norm(fc);
+                        re2 += std::norm(rc);
                     }
                     if (std::abs(fu) > 0.0) {
                         const double r = std::abs(re) / std::abs(fu);
@@ -377,6 +390,12 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                                               : 0.98 * S.peel_ratio[p] + 0.02 * r;
                         if (S.peel_ratio_n[p] < 1000000)
                             ++S.peel_ratio_n[p];
+                    }
+                    if (fu2 > 0.0) {
+                        const double ric = std::sqrt(re2 / fu2);
+                        S.peel_ratio_ic[p] = (S.peel_ratio_ic[p] < 0.0)
+                                                 ? ric
+                                                 : 0.98 * S.peel_ratio_ic[p] + 0.02 * ric;
                     }
                 }
                 const std::complex<double> derot = std::polar(1.0, -pu.phi);
@@ -1075,9 +1094,30 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 // A squaring discriminator (arg(prod^2)/2) has an absorbing state; that is
                 // exactly the class of fault [[carrier-loop-absorbing-state]] catalogues one
                 // layer down, and it is invisible until the loop state is per-PRN visible.
-                ratios += fmt::format(" {:d}:{:.2f}/{:.2f}{:s}f{:+.2f}n{:d}", S.prns[p],
-                                      S.peel_ratio[p], flr, at_floor ? "*" : "",
-                                      S.peel_f_track[p], S.gain_n[p]);
+                // TEST A: the phase-diversity-immune ratio beside the coherent one (i...).
+                // TEST B: per-channel GAIN COHERENCE g = sum_c|g_c|^2 / <sum_c|a_c|^2>. BOTH
+                // terms are sums of MAGNITUDES, so cross-channel phase cannot touch either --
+                // unlike sig2/floor, which live in the coherent sum. ->1 means the gain EMA is
+                // clean (the per-record phasors agree); <<1 means it is genuinely decohering.
+                // Together they split the remaining suspects, which the 2026-07-25 elimination
+                // narrowed to exactly two (the replica itself is SHARED with the despread, and
+                // the bit/overlay signs are cleared by measurement):
+                //   i~1, g~1      -> gain and cancellation both fine on their own terms; the
+                //                    fault is the PHASE applied at subtraction (measurement and
+                //                    application disagreeing -- a CONSTANT error cannot do it,
+                //                    since the gain is measured in the derotated frame and
+                //                    re-applied with the same rotation, so it cancels)
+                //   i~1, g<<1     -> the GAIN is decohering; the subtraction has nothing right
+                //                    to apply
+                //   i<<1          -> the peel WORKS; the coherent ratio and the floor were both
+                //                    measuring channel geometry, not the peel (open item 0a)
+                double a2g = 0.0;
+                for (int c = 0; c < S.n_chan; ++c)
+                    a2g += std::norm(S.gain[(size_t)p * S.n_chan + c]);
+                const double gcoh = (S.gain_p2[p] > 0.0) ? a2g / S.gain_p2[p] : -1.0;
+                ratios += fmt::format(" {:d}:{:.2f}/{:.2f}{:s}i{:.2f}g{:.2f}f{:+.2f}n{:d}",
+                                      S.prns[p], S.peel_ratio[p], flr, at_floor ? "*" : "",
+                                      S.peel_ratio_ic[p], gcoh, S.peel_f_track[p], S.gain_n[p]);
                 if (S.peel_ratio[p] > 1.05)
                     ++n_hurt;
             }
