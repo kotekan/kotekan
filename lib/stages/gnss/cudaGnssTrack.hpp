@@ -192,6 +192,26 @@ public:
     ///                     the defect -- open item 0a, GAL PRN2 floor 74 on 07-24) was lying.
     /// Costs nothing new: both numbers come from mirror rows already resident on the host.
     std::vector<double> peel_ratio_ic;
+    /// PER-RECORD PHASE RESIDUAL after derotation: d = arg(sum_c a_c * conj(g_c)), i.e. how far
+    /// this record's measured phasor sits from the gain the EMA has already built. Two EMAs:
+    /// pres2 = <d^2> (the LEVEL) and pres_d2 = <(d - d_prev)^2> (the record-to-record
+    /// INCREMENT). Reported in the health line as p<rms_deg>d<incr_rms_deg>.
+    ///
+    /// WHY (2026-07-25). deep_snr PREDICTS what the gain coherence must be: the combiner sums
+    /// the same per-record phasors coherently and reaches 186 sigma over 250 records, so
+    /// gcoh should be ~1/(1 + N/deep_snr^2) = 0.99. Measured 0.00. The signal is therefore
+    /// provably coherent and the MIRROR's phase is wrong by order a radian per record. These
+    /// two numbers say which kind of wrong, without another guess:
+    ///   p large, d large   -> the phase scrambles RECORD TO RECORD (bookkeeping: the mirror
+    ///                         disagrees with the assembler per record)
+    ///   p large, d small   -> a slow drift / lag: an uncompensated FREQUENCY the FLL is not
+    ///                         absorbing (the EMA trails a rotating phasor)
+    ///   both small         -> the phase is fine and gcoh is measuring something else, which
+    ///                         would mean my own gcoh is the faulty instrument
+    /// Fully random phase gives p = 180/sqrt(3) = 104 deg, d = 147 deg -- the scale to read
+    /// these against.
+    std::vector<double> pres2, pres_d2, pres_prev;
+    std::vector<uint8_t> pres_ok;
     /// Why each active PRN is NOT subtracting this record, so the health line can answer it
     /// directly. (The old line reported only warmup lag under "NOT-PEELING", which read as
     /// "nothing is being skipped" while the SNR gate was silently rejecting a third of the sky.)

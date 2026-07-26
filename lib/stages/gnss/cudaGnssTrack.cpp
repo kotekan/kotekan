@@ -153,6 +153,10 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         peel_ratio.assign(n_prn, -1.0);
         peel_ratio_n.assign(n_prn, 0);
         peel_ratio_ic.assign(n_prn, -1.0);
+        pres2.assign(n_prn, -1.0);
+        pres_d2.assign(n_prn, 0.0);
+        pres_prev.assign(n_prn, 0.0);
+        pres_ok.assign(n_prn, 0);
         peel_skip.assign(n_prn, PK_WARMUP);
         phi_nco.assign(n_prn, 0.0);
         fcar_prev.assign(n_prn, 0.0);
@@ -494,6 +498,10 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
 
                 double rec_p2 = 0.0; // this record's total gain power (signal + noise)
                 std::complex<double> csum(0.0, 0.0); // C = sum_c a_c*E_c, the ratio's own space
+                // Phase residual of THIS record against the gain built so far (see pres2 in
+                // the hpp): z = sum_c a_c*conj(g_c), accumulated with g still PRE-update so
+                // the record is scored against history rather than against itself.
+                std::complex<double> zsum(0.0, 0.0);
                 for (int c = 0; c < S.n_chan; ++c) {
                     const double e = S.mir_energy[rowP + c];
                     if (!(e > 0.0))
@@ -517,6 +525,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     rec_p2 += std::norm(a_d);
                     csum += a_d * e; // undo the per-channel normalisation: raw, summed
                     std::complex<float>& g = S.gain[(size_t)p * S.n_chan + c];
+                    zsum += a_d * std::conj(std::complex<double>(g)); // g still PRE-update
                     g = (S.gain_n[p] == 0)
                             ? (std::complex<float>)a_d
                             : (std::complex<float>)((1.0 - S.peel_alpha)
@@ -526,6 +535,21 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 S.gain_p2[p] = (S.gain_n[p] == 0)
                                    ? rec_p2
                                    : (1.0 - S.peel_alpha) * S.gain_p2[p] + S.peel_alpha * rec_p2;
+                // Phase residual level and record-to-record increment (see pres2 in the hpp).
+                // Only meaningful once a gain exists to score against.
+                if (S.gain_n[p] > 0 && std::abs(zsum) > 0.0) {
+                    const double d = std::arg(zsum);
+                    S.pres2[p] = (S.pres2[p] < 0.0)
+                                     ? d * d
+                                     : (1.0 - S.peel_alpha) * S.pres2[p] + S.peel_alpha * d * d;
+                    if (S.pres_ok[p]) {
+                        const double dd = std::remainder(d - S.pres_prev[p], 2.0 * M_PI);
+                        S.pres_d2[p] =
+                            (1.0 - S.peel_alpha) * S.pres_d2[p] + S.peel_alpha * dd * dd;
+                    }
+                    S.pres_prev[p] = d;
+                    S.pres_ok[p] = 1;
+                }
                 if (S.gain_n[p] == 0) {
                     S.gain_sum_p2[p] = std::norm(csum);
                     S.gain_dvar[p] = -1.0; // no previous record yet -- seeded on the next one
@@ -1145,9 +1169,16 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 for (int c = 0; c < S.n_chan; ++c)
                     a2g += std::norm(S.gain[(size_t)p * S.n_chan + c]);
                 const double gcoh = (S.gain_p2[p] > 0.0) ? a2g / S.gain_p2[p] : -1.0;
-                ratios += fmt::format(" {:d}:{:.2f}/{:.2f}{:s}i{:.2f}g{:.2f}f{:+.2f}n{:d}",
-                                      S.prns[p], S.peel_ratio[p], flr, at_floor ? "*" : "",
-                                      S.peel_ratio_ic[p], gcoh, S.peel_f_track[p], S.gain_n[p]);
+                // p = RMS phase residual (deg), d = RMS record-to-record INCREMENT (deg).
+                // Fully random phase reads p=104 d=147; a slow drift reads p large, d small.
+                const double DEG = 180.0 / M_PI;
+                const double prms = (S.pres2[p] >= 0.0) ? DEG * std::sqrt(S.pres2[p]) : -1.0;
+                const double drms = S.pres_ok[p] ? DEG * std::sqrt(S.pres_d2[p]) : -1.0;
+                ratios +=
+                    fmt::format(" {:d}:{:.2f}/{:.2f}{:s}i{:.2f}g{:.2f}p{:.0f}d{:.0f}f{:+.2f}n{:d}",
+                                S.prns[p], S.peel_ratio[p], flr, at_floor ? "*" : "",
+                                S.peel_ratio_ic[p], gcoh, prms, drms, S.peel_f_track[p],
+                                S.gain_n[p]);
                 if (S.peel_ratio[p] > 1.05)
                     ++n_hurt;
             }
