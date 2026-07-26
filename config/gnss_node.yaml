@@ -228,13 +228,16 @@ bands:
             hint_ttl_s: a hint the broker stops refreshing (a set sat) expires, dropping the
             PRN. Needs the broker's --narrow-search (run_live's almanac assist provides it).
         # VOLTAGE PEEL (2026-07-24, docs/gnss_voltage_peel_live.md): the fused CHORD-path-B
-        # peel, GPS L1CA ONLY. The records still carry the FULL correlation (analytic add-back
-        # on the device), so the broker/viewer/TEC see nothing new except slots 20-23 (the
-        # residual) and the combiner's peel_deep/peel_deep_snr. NOT enabled on the pilot
-        # chains (E1C/B1C/L1C): the gain loop's overlay-sign predictor carries "same as last",
-        # which is wrong ~50% of records on a per-record overlay -- their residual would be
-        # junk (tracking unharmed, but 2x GPU for nothing). Pilot overlay wiring + broker
-        # nav-bit prediction (the ~11 -> >=26-35 dB unlock on data signals) are P7.
+        # peel. The records still carry the FULL correlation (analytic add-back on the device),
+        # so the broker/viewer/TEC see nothing new except slots 20-23 (the residual) and the
+        # combiner's peel_deep/peel_deep_snr.
+        # ON ALL FOUR L1 CHAINS since P7b (c84f71f7): the pilots no longer carry "same as last"
+        # for the overlay sign -- the combiner publishes bit_pred (the deterministic overlay
+        # projected from its pinned dead-reckon anchor) and the broker forwards it as nav_bits,
+        # so a per-record overlay flip is PREDICTED rather than guessed. GPS L1CA gets the same
+        # slot filled by the broker's LNAV predictor / BRDC-constructed bits.
+        # (This note used to say "GPS L1CA ONLY, NOT enabled on the pilot chains" and outlived
+        # that by a day -- it read as if the pilot peel had never been wired at all.)
         # epl_frame: 6 output rows/spec instead of 4 (rows 4/5 = the residual prompt + head):
         # corr/energy grow 1.5x -> (16+8)*6*16*10 = 23040 per PRN, vs 15360 unpeeled.
         epl_frame: "176 + 1024 * {np} + 23040 * {np}"

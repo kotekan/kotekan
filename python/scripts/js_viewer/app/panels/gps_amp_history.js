@@ -17,6 +17,15 @@
 //   * dop       -- tracked Doppler (Hz). Should be a smooth orbital curve; steps are seed
 //                  re-anchors (staleness releases / escapes), the churn signature.
 //   * snr       -- SEARCH detection significance (acquire grid), independent of tracking.
+//   * peel      -- fused voltage-peel depth (dB) = 20 log10(deep / peel_deep). OPEN ORANGE
+//                  TRIANGLES are BOUNDS, not measurements: once the residual reaches the
+//                  combiner's detection floor the ratio stops measuring the peel and starts
+//                  measuring the floor, so those points read "≥ x dB" (an unbounded division
+//                  reported 61 dB on 2026-07-24 -- every way a depth measurement fails makes
+//                  the peel look BETTER). Filled blue = a real measurement above the floor.
+//                  This series is the one to watch over TIME: the peel oscillates with the
+//                  30 s GPS frame (constructed bits cover subframes 1-3 only), and a log line
+//                  sampling at 9.984 s aliases that at 3.005x into a flat-looking collapse.
 //
 // POINTS, NOT LINES: emits are irregular and gapped (a dropout is real information), so
 // connecting them draws structure that isn't in the data.
@@ -35,8 +44,10 @@ const MODES = {
     coh_s:   {label: "coh",      axis: "coherent window (s)", unit: " s", fmt: ".3f", zero: true},
     dop:     {label: "dop",      axis: "tracked Doppler (Hz)", unit: " Hz", fmt: ".1f"},
     snr:     {label: "snr",      axis: "search significance (σ)", unit: "σ", fmt: ".1f", zero: true},
+    peel:    {label: "peel",     axis: "voltage-peel depth (dB)", unit: " dB", fmt: ".1f",
+              zero: true},
 };
-const MODE_ORDER = ["cn0_coh", "cn0", "sig", "coh_s", "dop", "snr"];
+const MODE_ORDER = ["cn0_coh", "cn0", "sig", "coh_s", "dop", "snr", "peel"];
 
 // ICD minimum received power per TRACKED COMPONENT, as a C/N₀ floor with
 // N₀ = −204 dBW/Hz (290 K, lossless front end): C/N₀_min = P_min(dBW) + 204.
@@ -108,7 +119,11 @@ export class GpsAmpHistoryPanel {
     }
 
     _blank() {
-        return {t: [], cn0_coh: [], cn0: [], sig: [], coh_s: [], dop: [], snr: [], dr: []};
+        // `bound` parallels `peel`: true where the residual sat at the combiner's detection
+        // floor, i.e. the point is a LOWER BOUND. Kept as its own array so the plot can never
+        // render a bound as a measurement (see the header note).
+        return {t: [], cn0_coh: [], cn0: [], sig: [], coh_s: [], dop: [], snr: [], dr: [],
+                peel: [], bound: []};
     }
 
     _on_feed({sats}) {
@@ -133,6 +148,8 @@ export class GpsAmpHistoryPanel {
             h.dop.push(r.dop);
             h.snr.push(r.snr);
             h.dr.push(r.dr || 0);
+            h.peel.push(r.peel_db);      // null on chains that don't peel -> a GAP
+            h.bound.push(!!r.peel_bound);
             if (h.t.length > MAX_PTS)
                 for (const k of Object.keys(h)) h[k].shift();
             if (r.id === this.selected) this._dirty = true;
@@ -193,29 +210,44 @@ export class GpsAmpHistoryPanel {
         // window is real signal -- the ladder legitimately rides 125-500 ms windows at
         // 50-160σ. The incoherent/search/Doppler observables don't come off the ladder
         // at all, so nothing is greyed there.
+        // The SECOND trace is "this point is qualified, not plain": de-emphasized short-window
+        // ladder emits for cn0_coh/sig, and floor-limited LOWER BOUNDS for peel. Same
+        // mechanism, opposite emphasis -- a bound is not junk, it is a real statement about
+        // the peel that simply cannot be read as an equality.
         const ladder = (this.mode === "cn0_coh" || this.mode === "sig");
+        const isPeel = (this.mode === "peel");
         const thr = 0.6 * (this._maxDr || 0);
         const SIG_REAL = 20;
         const T = h.t.slice(), Yf = new Array(V.length), Ys = new Array(V.length),
               E = new Array(V.length);
-        let lastFull = -1;
+        let lastFull = -1, lastAny = -1;
         for (let i = 0; i < V.length; i++) {
             E[i] = this._err(h, i);
             const v = (V[i] == null) ? null : V[i];
-            const isShort = ladder && this._maxDr > 0 && (h.dr[i] || 0) < thr
-                            && (h.sig[i] || 0) < SIG_REAL;
-            Yf[i] = isShort ? null : v;
-            Ys[i] = isShort ? v : null;
-            if (!isShort && v != null) lastFull = i;
+            const isAlt = isPeel
+                ? !!h.bound[i]
+                : (ladder && this._maxDr > 0 && (h.dr[i] || 0) < thr
+                   && (h.sig[i] || 0) < SIG_REAL);
+            Yf[i] = isAlt ? null : v;
+            Ys[i] = isAlt ? v : null;
+            if (!isAlt && v != null) lastFull = i;
+            if (v != null) lastAny = i;
         }
 
         const n = V.length;
-        if (lastFull >= 0) {
-            const v = V[lastFull], e = E[lastFull], sig = h.sig[lastFull];
-            const tag = (lastFull !== n - 1)
-                ? ' · <span style="color:#aaa">short win / no value now</span>' : '';
+        // For peel, the newest point is worth reporting even when it is a BOUND -- "≥ 31 dB"
+        // is the honest reading, and suppressing it as "no certified value" would hide the
+        // deepest peels (the residual is at the floor precisely when the peel worked best).
+        const iShow = (isPeel && lastAny > lastFull) ? lastAny : lastFull;
+        if (iShow >= 0) {
+            const v = V[iShow], e = E[iShow], sig = h.sig[iShow];
+            const ge = (isPeel && h.bound[iShow]) ? "≥&nbsp;" : "";
+            const tag = (iShow !== n - 1)
+                ? (isPeel ? ' · <span style="color:#aaa">not peeling now</span>'
+                          : ' · <span style="color:#aaa">short win / no value now</span>')
+                : '';
             const err = M.errs && e ? ` ± ${e.toFixed(1)}` : "";
-            this._info.html(`${M.label} = <b>${v.toFixed(this.mode === "coh_s" ? 3 : 1)}</b>`
+            this._info.html(`${M.label} = ${ge}<b>${v.toFixed(this.mode === "coh_s" ? 3 : 1)}</b>`
                 + `${err}${M.unit}&nbsp;(${(sig || 0).toFixed(1)}σ)&nbsp;· ${n} pts` + tag);
         } else if (n) {
             this._info.html('<span style="color:#aaa">no certified value yet…</span>');
@@ -235,7 +267,16 @@ export class GpsAmpHistoryPanel {
                 ? `%{x|%H:%M:%S}<br>%{y:${M.fmt}} ± %{customdata:${M.fmt}}${M.unit}<extra></extra>`
                 : `%{x|%H:%M:%S}<br>%{y:${M.fmt}}${M.unit}<extra></extra>`,
         };
-        const shortWin = {
+        // Bounds get their OWN glyph -- open orange triangles pointing up, the direction the
+        // true value lies in. Greying them like a short-window emit would say "trust this
+        // less"; the right message is "trust this, but only as an inequality".
+        const shortWin = isPeel ? {
+            x: T, y: Ys, type: "scatter", mode: "markers",
+            marker: {size: 6, symbol: "triangle-up-open", color: "rgba(230,140,20,0.85)",
+                     line: {width: 1}},
+            hovertemplate: `%{x|%H:%M:%S}<br>≥ %{y:${M.fmt}}${M.unit} · residual at floor`
+                + `<extra></extra>`,
+        } : {
             x: T, y: Ys, type: "scatter", mode: "markers",
             marker: {size: 3, color: "rgba(150,150,150,0.45)"},
             hovertemplate: `%{x|%H:%M:%S}<br>%{y:${M.fmt}}${M.unit} · short window, low sig<extra></extra>`,

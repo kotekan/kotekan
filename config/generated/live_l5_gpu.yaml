@@ -43,7 +43,7 @@ samples_per_data_set: 49920
 bytes_per_sample: 2
 buffer_depth: 16
 sizeof_float: 4
-cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]  # 14-19 = private airspy-input pairs (USB isolation, 2026-07-18)
+cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]  # LIVE/DEV SPLIT (2026-07-25): 0-10 stages, 11-13 = one private core per airspy (USB isolation; was a PAIR each, but a single core carries one input thread fine and 3 cores were idle), 14-19 = RESERVED for benches/dev so offline work cannot steal from the soak. Stages measured at ~8.7 cores busy, so 11 leaves ~20% headroom -- widen back toward 13 if frames start dropping.
 
 spectrum_length: 10  # N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS
 num_taps: 4
@@ -86,7 +86,7 @@ out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_dep
 epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 15360 * n_prn }
 
 airspy_in:
-    cpu_affinity: [18, 19]
+    cpu_affinity: [13]
     kotekan_stage: airspyInput
     out_buf: input_buf
     # PIN THE DEVICE BY SERIAL (0 / absent = "open whichever enumerates first" -- a silent
