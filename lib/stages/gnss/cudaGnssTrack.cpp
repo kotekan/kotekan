@@ -1064,8 +1064,20 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 const bool at_floor = (flr > 0.0 && S.peel_ratio[p] <= 1.3 * flr);
                 if (at_floor)
                     ++n_floor;
-                ratios += fmt::format(" {:d}:{:.2f}/{:.2f}{:s}", S.prns[p], S.peel_ratio[p], flr,
-                                      at_floor ? "*" : "");
+                // ...and the LOOP STATE behind that ratio: the FLL's tracked residual and how
+                // many records the gain EMA has averaged. WHY PER-PRN (2026-07-25): the pilot
+                // peel is bimodal -- a sat sits at EXACTLY 0.0 dB (resid/full 1.00, floor ~1)
+                // for minutes while its deep integration is perfectly healthy, then steps to
+                // 26-38 dB and stays. Sequence and phase were both cleared by measurement
+                // (bit_pred cross-correlates at +1.000 and matches BRDC geometry to <0.4 chips
+                // on the sats that fail), so what is left is this loop -- and the line printed
+                // only the STRONGEST PRN's fll, which is by construction a sat that is working.
+                // A squaring discriminator (arg(prod^2)/2) has an absorbing state; that is
+                // exactly the class of fault [[carrier-loop-absorbing-state]] catalogues one
+                // layer down, and it is invisible until the loop state is per-PRN visible.
+                ratios += fmt::format(" {:d}:{:.2f}/{:.2f}{:s}f{:+.2f}n{:d}", S.prns[p],
+                                      S.peel_ratio[p], flr, at_floor ? "*" : "",
+                                      S.peel_f_track[p], S.gain_n[p]);
                 if (S.peel_ratio[p] > 1.05)
                     ++n_hurt;
             }
