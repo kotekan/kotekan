@@ -7,7 +7,8 @@ sign measured one GPU frame earlier. This module closes that gap by PREDICTING t
     combiner get_status "nav_obs"  ->  stitch  ->  frame_sync/decode  ->  predict +H s
                                                         (gps_nav_decode.py does the LNAV work)
 
-Consumed by gps_distributed_broker.py, which pushes {"nav_bits": {utc0, bit_s, bits}} with
+Consumed by gps_distributed_broker.py, which pushes {"nav_bits": {"P": {utc0, bit_s, bits}}}
+(component-keyed; see docs/navbit_supply_architecture.md) with
 each PRN's seeds; cudaGnssTrack uses them for BOTH the subtraction sign and the gain de-bit.
 
 Three design facts this leans on:

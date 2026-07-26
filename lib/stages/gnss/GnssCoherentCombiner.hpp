@@ -259,6 +259,7 @@ private:
     /// Cumulative per PRN; exported as "bp_veto" so the broker/viewer can see a source that
     /// is being continuously refused rather than mistaking silence for health.
     std::vector<int> _bp_veto;
+    std::vector<uint8_t> _bp_agree; ///< per-PRN: this emit's anchor projection == searched phase
     std::vector<float> _st_dll_disc; ///< window-averaged DLL discriminator (broker closes the loop)
     std::vector<float> _st_head_frac; ///< boundary fraction f = <head energy>/<prompt energy>
     std::vector<float> _st_s4;       ///< amplitude scintillation index, thermal floor removed

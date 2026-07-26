@@ -126,6 +126,17 @@ public:
         std::vector<int8_t> bits;
     };
     std::vector<NavBits> nav_bits; ///< [n_prn], seed-updated under seed_mtx
+    /// Which COMPONENT of the seed row's nav_bits this chain consumes. The wire schema is
+    /// component-keyed -- nav_bits: {"P": {...}, "D": {...}} -- where the keys are RELATIONAL:
+    /// "P" is the component this chain's replica correlates (the pilot on pilot chains, the
+    /// sole component on L1CA), "D" the paired data sibling (E1B beside E1C, B1Cd beside
+    /// B1Cp, L1Cd beside L1Cp, ...). A bare single table is accepted as "P" for back-compat.
+    /// Relational rather than signal-named because the broker does not universally know the
+    /// tracker's signal string, and roles survive across constellations. When the data-channel
+    /// peel lands, the second component becomes a second PeelSpec row with its own table --
+    /// the schema is fixed NOW, while there is exactly one producer and one consumer, so that
+    /// change is additive instead of breaking.
+    std::string peel_component = "P";
     /// Rows whose nav_bits failed to parse, since the last health line. This used to be
     /// swallowed in silence ("keep the previous table"), and on 2026-07-25 that cost a live
     /// debugging session: the constructed-bit source took every GPS PRN to `nobits` at once --

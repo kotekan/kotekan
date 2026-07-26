@@ -112,6 +112,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         _st_nav_obs.assign(_n_prn, {});
         _st_bit_pred.assign(_n_prn, {});
         _bp_veto.assign(_n_prn, 0);
+        _bp_agree.assign(_n_prn, 1);
     }
     if (_peel_depth) {
         _navbuf_res.assign(_n_prn, {});
@@ -870,6 +871,26 @@ void GnssCoherentCombiner::main_thread() {
                         _dr_phase[p] = -1; // slot reassigned to another sat: anchor invalid
                         _dr_rec_dt[p] = 0.0;
                     }
+                    // PILOT AGREEMENT GATE (see the bit_pred block): does the anchor's
+                    // projection to the winning rung's FIRST RECORD (real ub timestamp --
+                    // gap-immune) equal the phase the search just found? Only judged when
+                    // the search had real SNR; default true so "cannot evaluate" does not
+                    // silently veto (the elevation/age/ambiguity gates own those cases).
+                    _bp_agree[p] = true;
+                    if (_dr_phase[p] >= 0 && _dr_rec_dt[p] > 0.0 && deep_rec[p] > 0
+                        && nh_phase[p] >= 0 && deep_snr[p] > FLOOR_MARGIN * flr
+                        && ub.size() >= (size_t)deep_rec[p]) {
+                        const int L_ov2 = (int)ov->size();
+                        const double t0w = ub[ub.size() - (size_t)deep_rec[p]];
+                        const long long stp =
+                            (long long)std::llround((t0w - _dr_utc[p]) / _dr_rec_dt[p]);
+                        const int proj =
+                            (int)(((_dr_phase[p] + stp) % L_ov2 + L_ov2) % L_ov2);
+                        if (proj != nh_phase[p]) {
+                            _bp_agree[p] = false;
+                            ++_bp_veto[p];
+                        }
+                    }
                     if (full_len > 1 && ub.size() >= full_len) {
                         const double t0f = ub[ub.size() - full_len];
                         const double span = ub.back() - t0f;
@@ -1238,26 +1259,16 @@ void GnssCoherentCombiner::main_thread() {
                     // bits match the sky?), asked where pilots can answer it: nav_obs does
                     // not exist on the overlay path, but nh_phase does, and it IS the air.
                     // Fail closed: disagree -> publish nothing this emit.
-                    bool anchor_agrees = true;
-                    if (_dr_phase[p] >= 0 && _dr_rec_dt[p] > 0.0 && deep_rec[p] > 0
-                        && nh_phase[p] >= 0 && ov && !ov->empty() && t_e > 0.0
-                        && deep_snr[p] > FLOOR_MARGIN * deep_floor[p]) {
-                        const int L_ov = (int)ov->size();
-                        // rung start reconstructed from the emit time: records are uniform
-                        // on the capture clock (fixed sample count), t_e is the last record
-                        const double t0w =
-                            t_e - (double)(deep_rec[p] - 1) * _dr_rec_dt[p];
-                        const long long stp =
-                            (long long)std::llround((t0w - _dr_utc[p]) / _dr_rec_dt[p]);
-                        const int proj = (int)(((_dr_phase[p] + stp) % L_ov + L_ov) % L_ov);
-                        if (proj != nh_phase[p]) {
-                            anchor_agrees = false;
-                            ++_bp_veto[p];
-                        }
-                    }
+                    // anchor-vs-search agreement computed in the WIPE section, where the
+                    // rung's REAL first-record timestamp is in scope. First cut reconstructed
+                    // it as t_e - (len-1)*dt, which assumes a GAPLESS window; gaps are
+                    // routine, so the gate fired on healthy anchors and starved the pilot
+                    // chains of bits (BDS: 7 locked, 1 publishing; caught by the warmup
+                    // counts within 15 min). Time-difference step counts are gap-immune;
+                    // count-based reconstructions are not.
                     if (ov && !ov->empty() && _dr_phase[p] >= 0 && _dr_rec_dt[p] > 0.0
                         && _dr_prn[p] == prn_e && t_e > 0.0 && anchor_fresh
-                        && anchor_agrees) {
+                        && _bp_agree[p]) {
                         const int L_ov = (int)ov->size();
                         const double dt_r = _dr_rec_dt[p];
                         // start at the first primary period at/after this emit

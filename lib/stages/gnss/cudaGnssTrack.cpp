@@ -136,6 +136,8 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     peel_fll_max_slew_hz =
         config.get_default<double>(unique_name, "peel_fll_max_slew_hz", 2.0);
     peel_tag = signal + "@" + unique_name;
+    peel_component =
+        config.get_default<std::string>(unique_name, "peel_component", "P");
     if (peel) {
         gain.assign((size_t)n_prn * n_chan, std::complex<float>(0.f, 0.f));
         gain_n.assign(n_prn, 0);
@@ -228,7 +230,19 @@ void cudaGnssTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
                     // P7a predicted nav bits (optional): +-1 per 20 ms bit, 0 = unknown.
                     if (peel && s.contains("nav_bits")) {
                         try {
-                            const auto& nb = s.at("nav_bits");
+                            // Component-keyed ({"P": {...}, "D": {...}}) or bare legacy table
+                            // (= "P"). A dict without our component is NOT an error -- another
+                            // consumer's component may ride the same row -- it is simply no
+                            // bits for us.
+                            const auto& outer = s.at("nav_bits");
+                            const nlohmann::json* nbp = nullptr;
+                            if (outer.contains("bits"))
+                                nbp = &outer;                      // legacy bare table
+                            else if (outer.contains(peel_component))
+                                nbp = &outer.at(peel_component);
+                            if (nbp == nullptr)
+                                throw std::runtime_error("no component " + peel_component);
+                            const auto& nb = *nbp;
                             NavBits t;
                             t.utc0 = nb.at("utc0").get<double>();
                             t.bit_s = nb.value("bit_s", 0.02);

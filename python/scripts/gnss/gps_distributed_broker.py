@@ -2588,8 +2588,13 @@ def main(argv=None):
             # instead of re-picking the vetoed source and going dark every cycle.
             _src_ok = (lambda _s: navhealth is None
                        or navhealth.verdict(prn, _s) != "bad")
+            # Wire schema is COMPONENT-KEYED: nav_bits = {"P": table, "D": table, ...},
+            # "P" = the component this chain's replica correlates (relational, not a signal
+            # name -- see docs/navbit_supply_architecture.md C1). The tracker also accepts a
+            # bare table as "P"; we publish the keyed form so the first data-channel producer
+            # is an ADDITION ("D": ...) rather than a schema change.
             if _row.get("bit_pred", {}).get("bits") and _src_ok("pred"):
-                d["nav_bits"] = _row["bit_pred"]
+                d["nav_bits"] = {"P": _row["bit_pred"]}
                 _bsrc = "pred"
             elif navbits is not None:
                 # Predict from the freshest capture-clock UTC this PRN has reported: the
@@ -2615,7 +2620,7 @@ def main(argv=None):
                     elif nb is not None:
                         _bsrc = "lnav"
                     if nb is not None:
-                        d["nav_bits"] = nb
+                        d["nav_bits"] = {"P": nb}
                         _bsrc = _bsrc if _bsrc != "none" else "lnav"
             # VETO: a source that does not match the air for this satellite must not feed the
             # subtracter. Wrong bits are worse than no bits -- no bits means no subtraction,
@@ -2630,11 +2635,11 @@ def main(argv=None):
                 d.pop("nav_bits")
                 _bsrc = "vetoed:" + _bsrc
             elif "nav_bits" in d and navhealth is not None:
-                navhealth.remember(prn, d["nav_bits"], _bsrc)
+                navhealth.remember(prn, d["nav_bits"].get("P"), _bsrc)
             bit_src[_bsrc] = bit_src.get(_bsrc, 0) + 1
-            if _bsrc != "none":
+            if _bsrc != "none" and "nav_bits" in d:
                 bit_known[_bsrc] = bit_known.get(_bsrc, 0) + sum(
-                    1 for b in d["nav_bits"]["bits"] if b)
+                    1 for t in d["nav_bits"].values() for b in t["bits"] if b)
             payload.append(d)
         # WHERE THE PEEL'S SIGNS ACTUALLY CAME FROM this cycle. Without this the only symptom
         # of a source that silently supplies nothing is `nobits` in a health line 10 s later on
