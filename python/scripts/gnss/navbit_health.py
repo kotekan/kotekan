@@ -55,25 +55,29 @@ class BitAgreement:
 
     def __init__(self, log=None):
         self._log = log or (lambda m: None)
-        self.rate = {}      # prn -> EMA agreement in [0,1]
-        self.n = {}         # prn -> bits compared (cumulative)
-        self.bad = set()    # prns currently vetoed
+        self.rate = {}      # (prn, source) -> EMA agreement in [0,1]
+        self.n = {}         # (prn, source) -> bits compared (cumulative)
+        self.bad = set()    # (prn, source) pairs currently vetoed
         self.n_veto = 0     # vetoes applied since the last report
-        self._last = {}     # prn -> the table we last PUBLISHED (what to score against)
+        self._last = {}     # prn -> (source, table) last PUBLISHED (what to score against)
 
-    def remember(self, prn, nb):
-        """Stash the table being published for this PRN, to score next cycle's observations."""
+    def remember(self, prn, nb, source="?"):
+        """Stash the table being published for this PRN, to score next cycle's observations.
+        `source` names the producer ("pred"/"lnav"/"brdc"), so a veto can (a) name its culprit
+        and (b) apply to the (prn, source) PAIR -- a bad decoded table must not condemn a good
+        constructed one for the same satellite, and vice versa."""
         if nb and nb.get("bits"):
-            self._last[prn] = nb
+            self._last[prn] = (source, nb)
 
     # ---- ingest ------------------------------------------------------------------------
     def score(self, prn, nav_obs, deep_snr):
         """Fold one emit's observed bits into this PRN's agreement EMA, against the table we
         last PUBLISHED. No-op when the satellite is too weak for a disagreement to mean
         anything (see MIN_SNR), or when we have published nothing yet."""
-        nb = self._last.get(prn)
-        if not nb or not nav_obs or (deep_snr or 0.0) < MIN_SNR:
+        src_nb = self._last.get(prn)
+        if not src_nb or not nav_obs or (deep_snr or 0.0) < MIN_SNR:
             return
+        source, nb = src_nb
         bits = nav_obs.get("bits")
         if not bits:
             return
@@ -106,34 +110,39 @@ class BitAgreement:
         if n < 10:                          # too few to resolve this emit's polarity
             return
         r = max(agree, n - agree) / float(n)    # THIS EMIT at its own better polarity
-        self.rate[prn] = r if prn not in self.rate else (
-            (1.0 - ALPHA) * self.rate[prn] + ALPHA * r)
-        self.n[prn] = self.n.get(prn, 0) + n
+        k = (prn, source)
+        self.rate[k] = r if k not in self.rate else (
+            (1.0 - ALPHA) * self.rate[k] + ALPHA * r)
+        self.n[k] = self.n.get(k, 0) + n
 
     # ---- verdict -----------------------------------------------------------------------
-    def verdict(self, prn):
-        """'ok' | 'bad' | 'unknown'. Hysteretic: condemning is easier than exonerating, so a
-        satellite does not flap in and out of the peel on noise."""
-        r, n = self.rate.get(prn), self.n.get(prn, 0)
+    def verdict(self, prn, source):
+        """'ok' | 'bad' | 'unknown' for this (prn, source) PAIR. Hysteretic: condemning is
+        easier than exonerating, so a satellite does not flap in and out of the peel on
+        noise. Per-pair so a bad decode does not condemn a good construction (or vice
+        versa) -- the broker falls back to the next source instead of going dark."""
+        k = (prn, source)
+        r, n = self.rate.get(k), self.n.get(k, 0)
         if r is None or n < MIN_BITS:
             return "unknown"
-        if prn in self.bad:
+        if k in self.bad:
             if r >= GOOD_RATE:
-                self.bad.discard(prn)
-                self._log("navbit-health: PRN %d recovered (agreement %.1f%%)" % (prn, 100 * r))
+                self.bad.discard(k)
+                self._log("navbit-health: PRN %d source=%s recovered (agreement %.1f%%)"
+                          % (prn, source, 100 * r))
                 return "ok"
             return "bad"
         if r < BAD_RATE:
-            self.bad.add(prn)
-            self._log("navbit-health: PRN %d VETOED -- predicted bits agree with the air only "
-                      "%.1f%% (n=%d); publishing them would subtract at the wrong sign"
-                      % (prn, 100 * r, n))
+            self.bad.add(k)
+            self._log("navbit-health: PRN %d source=%s VETOED -- published bits agree with "
+                      "the air only %.1f%% (n=%d); subtracting them would flip signs"
+                      % (prn, source, 100 * r, n))
             return "bad"
         return "ok"
 
-    def veto(self, prn):
-        """True if this PRN's bits must NOT be published."""
-        v = self.verdict(prn) == "bad"
+    def veto(self, prn, source):
+        """True if this (prn, source)'s bits must NOT be published."""
+        v = self.verdict(prn, source) == "bad"
         if v:
             self.n_veto += 1
         return v
@@ -147,9 +156,9 @@ class BitAgreement:
         # 100% -- the same "silence is not success" trap that had a segfaulted node reported as
         # clean on 2026-07-25. `?` marks a PRN that is not yet entitled to an opinion.
         parts = []
-        for p, r in sorted(self.rate.items()):
-            v = self.verdict(p)
-            parts.append("%d:%.0f%%/%d%s" % (p, 100 * r, self.n.get(p, 0),
-                                             "*" if v == "bad" else ("?" if v == "unknown" else "")))
+        for (p, src), r in sorted(self.rate.items()):
+            v = self.verdict(p, src)
+            parts.append("%d/%s:%.0f%%/%d%s" % (p, src, 100 * r, self.n.get((p, src), 0),
+                                                "*" if v == "bad" else ("?" if v == "unknown" else "")))
         return "navbit-health: %s (rate/n; * vetoed, ? below %d samples; %d veto(es))" % (
             " ".join(parts), MIN_BITS, self.n_veto)

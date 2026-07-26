@@ -2583,7 +2583,12 @@ def main(argv=None):
             # exist (a known overlay beats a decoded guess).
             _row = status.get(prn) or {}
             _bsrc = "none"
-            if _row.get("bit_pred", {}).get("bits"):
+            # A source the health monitor has condemned for THIS satellite is skipped at
+            # SELECTION time, so the chain genuinely falls back (pred -> lnav -> brdc)
+            # instead of re-picking the vetoed source and going dark every cycle.
+            _src_ok = (lambda _s: navhealth is None
+                       or navhealth.verdict(prn, _s) != "bad")
+            if _row.get("bit_pred", {}).get("bits") and _src_ok("pred"):
                 d["nav_bits"] = _row["bit_pred"]
                 _bsrc = "pred"
             elif navbits is not None:
@@ -2592,8 +2597,9 @@ def main(argv=None):
                 # never enters. 4 s horizon >> the ~1 s status staleness + push cadence.
                 _utc = _row.get("utc")
                 if _utc:
-                    nb = navbits.predict(prn, float(_utc), horizon_s=4.0)
-                    if nb is None and navbrdc is not None:
+                    nb = (navbits.predict(prn, float(_utc), horizon_s=4.0)
+                          if _src_ok("lnav") else None)
+                    if nb is None and navbrdc is not None and _src_ok("brdc"):
                         # CONSTRUCTED fallback: this PRN never synced, so the decoder has
                         # nothing. Bits come from BRDC instead; alignment comes from the
                         # tracking geometry (range + sat clock) plus the common clock offset
@@ -2616,11 +2622,15 @@ def main(argv=None):
             # wrong bits mean subtracting at the wrong sign on ~40% of records (measured
             # 2026-07-26: HURTING 0-1 -> 7-8). Then remember what we are about to publish, so
             # next cycle's observations score THIS table rather than a re-derived one.
-            if "nav_bits" in d and navhealth is not None and navhealth.veto(prn):
+            if "nav_bits" in d and navhealth is not None and navhealth.veto(prn, _bsrc):
+                # FALL BACK, do not go dark: a bad decoded table must not darken a PRN whose
+                # constructed table is fine. The chain re-runs with the vetoed source skipped
+                # next cycle via the per-(prn,source) verdict; this cycle just drops the bits
+                # (one cycle of nobits is the safe direction).
                 d.pop("nav_bits")
-                _bsrc = "vetoed"
+                _bsrc = "vetoed:" + _bsrc
             elif "nav_bits" in d and navhealth is not None:
-                navhealth.remember(prn, d["nav_bits"])
+                navhealth.remember(prn, d["nav_bits"], _bsrc)
             bit_src[_bsrc] = bit_src.get(_bsrc, 0) + 1
             if _bsrc != "none":
                 bit_known[_bsrc] = bit_known.get(_bsrc, 0) + sum(
