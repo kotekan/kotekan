@@ -2,10 +2,94 @@
 
 #include "fmt.hpp" // for format
 
+#include <cctype>  // for tolower
 #include <set>     // for set
 #include <utility> // for pair
 
 namespace kotekan {
+
+std::string human_bytes(size_t bytes) {
+    static const char* units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
+    double size = static_cast<double>(bytes);
+    size_t unit = 0;
+    while (size >= 1024.0 && unit + 1 < sizeof(units) / sizeof(units[0])) {
+        size /= 1024.0;
+        unit++;
+    }
+    if (unit == 0)
+        return fmt::format("{:d} B", bytes);
+    return fmt::format("{:.4g} {:s}", size, units[unit]);
+}
+
+// Pale fills with a saturated outline of the same hue: readable behind several
+// lines of label text, and distinguishable in greyscale by outline darkness.
+GraphStyle graph_style(GraphCategory category) {
+    switch (category) {
+        case GraphCategory::Buffer:
+            return {"#dce9f7", "#3a6ea5"}; // blue
+        case GraphCategory::Gpu:
+            return {"#fde0c2", "#cc7a2e"}; // orange
+        case GraphCategory::Io:
+            return {"#e9ddf5", "#8a5fb0"}; // purple
+        case GraphCategory::Memory:
+            return {"#ffe9f3", "#c71585"}; // pink
+        case GraphCategory::Endpoint:
+            return {"#cfe6f5", "#3a6ea5"}; // blue, the outside world
+        case GraphCategory::Compute:
+        default:
+            return {"#fbf3c9", "#b8a417"}; // yellow
+    }
+}
+
+const char* const graph_device_fill = "#f0f0f0";
+
+std::string leaf_name(const std::string& unique_name) {
+    const size_t slash = unique_name.find_last_of('/');
+    if (slash == std::string::npos || slash + 1 == unique_name.size())
+        return unique_name;
+    return unique_name.substr(slash + 1);
+}
+
+GraphCategory stage_category(const std::string& stage_type) {
+    // The GPU meta-stages, by their registered names.
+    if (stage_type == "gpuProcess" || stage_type == "cudaProcess" || stage_type == "hipProcess"
+        || stage_type == "clProcess")
+        return GraphCategory::Gpu;
+
+    std::string lower;
+    for (char c : stage_type)
+        lower += (char)std::tolower((unsigned char)c);
+    static const char* const io_patterns[] = {
+        "network", "dpdk",  "uplink", "send", "recv", "socket", // off the machine
+        "file",    "write", "read",   "disk", "dump", "record", // onto storage
+    };
+    for (const char* pattern : io_patterns)
+        if (lower.find(pattern) != std::string::npos)
+            return GraphCategory::Io;
+    return GraphCategory::Compute;
+}
+
+GraphNode& GraphNode::set_category(GraphCategory category) {
+    const GraphStyle style = graph_style(category);
+    switch (category) {
+        case GraphCategory::Memory:
+            set_attr("shape", "oval");
+            break;
+        case GraphCategory::Endpoint:
+            set_attr("shape", "doubleoctagon");
+            break;
+        default:
+            // Rounded boxes hold multi-line labels without wasting the corners.
+            set_attr("shape", "box");
+            set_attr("style", "rounded,filled");
+            break;
+    }
+    if (attrs.find("style") == attrs.end())
+        set_attr("style", "filled");
+    set_attr("fillcolor", style.fill);
+    set_attr("color", style.line);
+    return *this;
+}
 
 GraphNode& GraphNode::add_line(const std::string& line) {
     if (!line.empty())
@@ -53,6 +137,43 @@ GraphEdge& PipelineGraph::add_edge(const std::string& from, const std::string& t
 
 bool PipelineGraph::has_node(const std::string& id) const {
     return _node_index.find(id) != _node_index.end();
+}
+
+std::string PipelineGraph::common_cluster(const std::vector<std::string>& node_ids) const {
+    // The chain of clusters holding a node, outermost first.
+    auto ancestry = [this](const std::string& node_id) {
+        std::vector<std::string> chain;
+        auto node = _node_index.find(node_id);
+        if (node == _node_index.end())
+            return chain;
+        std::string cluster = _nodes[node->second].cluster;
+        while (!cluster.empty()) {
+            chain.insert(chain.begin(), cluster);
+            auto it = _cluster_index.find(cluster);
+            if (it == _cluster_index.end())
+                break;
+            cluster = _clusters[it->second].parent;
+        }
+        return chain;
+    };
+
+    bool first = true;
+    std::vector<std::string> common;
+    for (const auto& node_id : node_ids) {
+        const std::vector<std::string> chain = ancestry(node_id);
+        if (first) {
+            common = chain;
+            first = false;
+            continue;
+        }
+        size_t shared = 0;
+        while (shared < common.size() && shared < chain.size() && common[shared] == chain[shared])
+            shared++;
+        common.resize(shared);
+        if (common.empty())
+            break;
+    }
+    return common.empty() ? std::string() : common.back();
 }
 
 std::string PipelineGraph::escape_html(const std::string& text) {

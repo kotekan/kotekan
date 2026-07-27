@@ -279,14 +279,20 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
     const std::string name = get_unique_name();
 
     // The device region, holding this stage's commands and GPU memory.
+    auto& stage_node = graph.add_node(name);
     auto& device = graph.add_cluster(name);
-    device.label = name;
-    device.set_attr("style", "filled").set_attr("color", "lightgrey");
+    device.label = fmt::format(fmt("GPU {:d}"), gpu_id);
+    device.set_attr("style", "rounded,filled")
+        .set_attr("fillcolor", kotekan::graph_device_fill)
+        .set_attr("color", "gray60");
+    // Keep whatever grouping the pipeline put this stage in as the region's own
+    // parent, so a device sits inside its config section rather than beside it.
+    device.parent = stage_node.cluster;
 
     // The stage node itself belongs in the region: the host buffer edges are
     // added centrally and point at the stage, so without a node inside the box
     // they would end on an empty one drawn beside it.
-    graph.add_node(name).cluster = name;
+    stage_node.cluster = device.id;
 
     // A node per gpuCommand, chained in execution order after the stage node.
     // Only the first instance of each command is drawn; the others are the same
@@ -294,36 +300,47 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
     std::string previous = name;
     for (auto& command : commands) {
         std::string shape;
+        std::string kind;
         switch (command[0]->get_command_type()) {
             case gpuCommandType::COPY_IN:
                 shape = "trapezium";
+                kind = "copy in";
                 break;
             case gpuCommandType::KERNEL:
                 shape = "box";
+                kind = "kernel";
                 break;
             case gpuCommandType::BARRIER:
                 shape = "parallelogram";
+                kind = "barrier";
                 break;
             case gpuCommandType::COPY_OUT:
                 shape = "invtrapezium";
+                kind = "copy out";
                 break;
             default:
                 // Hopefully one notices the type wasn't set with this shape.
                 shape = "diamond";
+                kind = "type not set";
                 break;
         }
         const std::string id = command[0]->get_unique_name();
         auto& node = graph.add_node(id);
         node.add_line(command[0]->get_name());
-        node.cluster = name;
-        node.set_attr("shape", shape).set_attr("style", "filled").set_attr("color", "white");
+        node.add_line(kind);
+        node.cluster = device.id;
+        node.set_category(kotekan::GraphCategory::Gpu)
+            .set_attr("shape", shape)
+            .set_attr("style", "filled");
         graph.add_edge(previous, id).set_attr("style", "dotted");
         previous = id;
     }
 
     // GPU memory, in a region of its own inside the device.
     auto& mem = graph.add_cluster(fmt::format("{:s}/mem", name));
-    mem.parent = name;
+    mem.parent = device.id;
+    mem.label = "device memory";
+    mem.set_attr("style", "rounded").set_attr("color", "gray70");
     // GPU memory names are local to a gpuProcess ("voltage" on one device is not
     // the "voltage" on the next), so the node ids carry the stage they belong to.
     const std::string mem_prefix = gpu_mem_node_prefix(name);
@@ -337,17 +354,20 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
                 gpu_buffers.insert(std::get<0>(buff));
         }
     }
+    // Arrays are per-frame (one region per buffer_depth slot); the rest is a
+    // single region shared by every frame in flight.
     for (const auto& buffer_name : gpu_buffer_arrays) {
         auto& node = graph.add_node(mem_prefix + buffer_name);
         node.add_line(buffer_name);
+        node.add_line(fmt::format(fmt("array ×{:d}"), _gpu_buffer_depth));
         node.cluster = mem.id;
-        node.set_attr("shape", "oval").set_attr("color", "hotpink3");
+        node.set_category(kotekan::GraphCategory::Memory);
     }
     for (const auto& buffer_name : gpu_buffers) {
         auto& node = graph.add_node(mem_prefix + buffer_name);
         node.add_line(buffer_name);
         node.cluster = mem.id;
-        node.set_attr("shape", "oval").set_attr("color", "hotpink");
+        node.set_category(kotekan::GraphCategory::Memory);
     }
 
     // Which commands read and write which GPU memory.

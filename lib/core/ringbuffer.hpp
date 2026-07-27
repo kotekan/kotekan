@@ -65,6 +65,8 @@ public:
     void print_buffer_status() override;
     void print_full_status() override;
 
+    std::vector<std::string> dot_label_lines() override;
+
     /**
      * @brief Waits until the given number of elements are free to be
      * written.  Must be called by a producer before writing.  Returns
