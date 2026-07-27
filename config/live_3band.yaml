@@ -163,8 +163,6 @@ l1_gputrack:
           peel_gain_alpha: 0.01
           peel_warmup_records: 100
           peel_fll_gain: 0.05
-          peel_verify: true
-          peel_verify_every: 200
         - name: cudaOutputData
           cuda_stream: 1
           gpu_mem: l1_gnss_epl

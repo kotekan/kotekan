@@ -109,7 +109,7 @@ airspy_in:
     file_name: "gpsin"
     file_ext: "raw"
     end_interrupt: true
-    frame_period_us: 2496   # 49920 / 20 MSPS -- realtime pace so brokers seed as if live
+    frame_period_us: 4992   # HALF-RATE for the ring-gap test: 2x GPU headroom; file-position epoch keeps predictions right at any pacing
     freq: 1176.45           # NOT used by rawFileRead -- run_live.sh greps the first `freq:`
                             # for the broker's --carrier-hz. Without it the broker logs
                             # "carrier  Hz" and every almanac Doppler prediction is garbage.
@@ -163,6 +163,7 @@ gputrack:
           fll_gain: 0.0
           carrier_shared: true
           seed_endpoint: "/gps_track/set_seeds"
+          peel_dbg_prn: -2          # blowup forensics: AUTO -- dump whichever PRN blows up
         - name: cudaOutputData
           gpu_mem: gnss_epl
           out_buf: epl_buf

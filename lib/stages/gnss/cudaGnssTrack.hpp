@@ -313,6 +313,9 @@ public:
     /// only bites on records straddling a code-period boundary would be averaged into silence.
     std::vector<double> peel_verr;
     std::vector<int> peel_vn;
+    /// BLOWUP FORENSICS (diagnostic): dump raw per-channel identity terms for this PRN.
+    int peel_dbg_prn = -1;
+    unsigned long long peel_dbg_ctr2 = 0;
 
     /// What the PREVIOUS frame's peel actually subtracted, so the next gain update can undo it
     /// exactly. Storing it beats recomputing: by update time the EMA has moved on.

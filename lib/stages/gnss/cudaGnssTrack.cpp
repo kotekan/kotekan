@@ -142,6 +142,7 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     // second despread of the RAW window plus a blocking readback, to measure whether the
     // analytic add-back actually reconstructs the full correlation on THIS chain.
     peel_verify = config.get_default<bool>(unique_name, "peel_verify", false);
+    peel_dbg_prn = config.get_default<int>(unique_name, "peel_dbg_prn", -1);
     peel_verify_every = config.get_default<int>(unique_name, "peel_verify_every", 500);
     if (peel_verify_every < 1)
         peel_verify_every = 1;
@@ -513,6 +514,45 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 const size_t rowH = (size_t)(pu.job0 + gnss_gpu::ROW_PH) * S.n_chan;
                 if (S.mir_rows_spec > gnss_gpu::ROW_RES_P) { // ground-truth cancellation ratio
                     const size_t rowR = (size_t)(pu.job0 + gnss_gpu::ROW_RES_P) * S.n_chan;
+                    // BLOWUP FORENSICS (2026-07-27, bench-reproduced 1.4e7 ratio): dump the
+                    // raw per-channel quantities of the identity full = resid + a*E for the
+                    // strongest peeling PRN, rate-limited hard. Every hypothesis so far died
+                    // on inspection; this prints what the kernel actually saw.
+                    // Self-targeting: fire on the BLOWUP itself (whichever PRN wins this
+                    // leg), rate-limited. peel_dbg_prn = -1 disables, -2 = auto (any PRN whose
+                    // per-record residual dwarfs its full correlation).
+                    bool _dbg_fire = false;
+                    if (S.peel_dbg_prn == -2) {
+                        double _f2 = 0.0, _r2 = 0.0;
+                        for (int c = 0; c < S.n_chan; ++c) {
+                            _f2 += (double)S.mir_corr[rowP + c].x * S.mir_corr[rowP + c].x
+                                   + (double)S.mir_corr[rowP + c].y * S.mir_corr[rowP + c].y;
+                            _r2 += (double)S.mir_corr[rowR + c].x * S.mir_corr[rowR + c].x
+                                   + (double)S.mir_corr[rowR + c].y * S.mir_corr[rowR + c].y;
+                        }
+                        _dbg_fire = (_r2 > 100.0 * _f2 && _f2 > 0.0
+                                     && ++S.peel_dbg_ctr2 % 500 == 0);
+                    } else if (S.peel_dbg_prn >= 0 && S.prns[p] == S.peel_dbg_prn)
+                        _dbg_fire = (++S.peel_dbg_ctr2 % 2000 == 0);
+                    if (_dbg_fire) {
+                        std::string d;
+                        for (int c = 0; c < S.n_chan && c < 4; ++c) {
+                            const auto& fc = S.mir_corr[rowP + c];
+                            const auto& rc = S.mir_corr[rowR + c];
+                            const auto& hc = S.mir_corr[rowH + c];
+                            const std::complex<float> g = S.gain[(size_t)p * S.n_chan + c];
+                            d += fmt::format(" c{:d}: full=({:.3g},{:.3g}) resid=({:.3g},{:.3g}) "
+                                             "head=({:.3g},{:.3g}) eP={:.3g} eH={:.3g} "
+                                             "g=({:.3g},{:.3g})",
+                                             c, fc.x, fc.y, rc.x, rc.y, hc.x, hc.y,
+                                             S.mir_energy[rowP + c], S.mir_energy[rowH + c],
+                                             g.real(), g.imag());
+                        }
+                        WARN("peel-dbg[{:s}] PRN{:d} rec{:d} job0={:d} s_head={:d} s_tail={:d} "
+                             "rows_spec={:d}:{:s}",
+                             S.peel_tag, p, r, pu.job0, (int)pu.s_head, (int)pu.s_tail,
+                             S.mir_rows_spec, d);
+                    }
                     std::complex<double> fu(0.0, 0.0), re(0.0, 0.0);
                     // ...and the same two quantities as sums of per-channel MAGNITUDES. The
                     // coherent sums above divide by |sum_c full_c|, which SELF-CANCELS on a
@@ -1236,6 +1276,32 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 // would stall every chain sharing this GPU process. One record in
                 // peel_verify_every is plenty -- the fault under investigation was sustained
                 // over 25 min, not a one-record glitch.
+                // BUFFER FORENSICS (2026-07-27): the identity dump showed full ~ 1e-6 --
+                // the residual despread saw -a*r and NO DATA, i.e. v is missing from the
+                // peel path. Read back a few residual floats and window samples to tell
+                // which: zero window = ring/sequencing; window ok + resid lacking v =
+                // the peel kernel's load path (stride/scale).
+                if (S.peel_dbg_prn == -2 && (++S.peel_dbg_ctr2 % 500) == 0) {
+                    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
+                    float2 rb[8];
+                    unsigned char wb[16];
+                    CHECK_CUDA_ERROR(cudaMemcpy(rb, d_resid, sizeof(rb), cudaMemcpyDeviceToHost));
+                    CHECK_CUDA_ERROR(
+                        cudaMemcpy(wb, d_window, sizeof(wb), cudaMemcpyDeviceToHost));
+                    double r2 = 0.0;
+                    int wnz = 0;
+                    for (int k = 0; k < 8; ++k)
+                        r2 += (double)rb[k].x * rb[k].x + (double)rb[k].y * rb[k].y;
+                    for (int k = 0; k < 16; ++k)
+                        wnz += (wb[k] != 0);
+                    WARN("peel-bufdbg[{:s}]: resid[0..7] rms={:.4g} first=({:.4g},{:.4g}) | "
+                         "window bytes nonzero {:d}/16 first8=[{:02x} {:02x} {:02x} {:02x} "
+                         "{:02x} {:02x} {:02x} {:02x}] scale0={:.4g} quantized={:d}",
+                         S.peel_tag, std::sqrt(r2 / 8.0), rb[0].x, rb[0].y, wnz, wb[0], wb[1],
+                         wb[2], wb[3], wb[4], wb[5], wb[6], wb[7],
+                         S.chan_scale_host.empty() ? -1.0f : S.chan_scale_host[0],
+                         (int)S.quantized);
+                }
                 if (S.peel_verify && (++_verify_ctr % S.peel_verify_every) == 0)
                     verify_addback(S, d_window, wstart, specs, spec_prn, d_corr, d_scale, stream);
             }
