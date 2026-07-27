@@ -39,6 +39,16 @@ shared:
 
   bytes_per_sample: 2
   buffer_depth: 16
+  # Elasticity BETWEEN the Valve and the GPU, in MILLISECONDS (-> config valve_depth,
+  # a per-band frame count; see gen_band_config.valve_depth). buffer_depth is a frame
+  # COUNT and the bands disagree on what a frame is -- 9.984 ms at L1/L2C, 2.496 ms at
+  # L5 -- so 16 frames bought L1 320 ms and L5 only 80, and L5 is the band with the
+  # least GPU slack to start with. That is exactly the asymmetry the drop counters
+  # showed on 2026-07-27 (a GPU stall L1/L2C rode out made L5 throw frames away).
+  # 500 ms costs ~95 MB across the three bands and adds latency ONLY while draining a
+  # stall; everything downstream is anchored on absolute sample time and the freshness
+  # gates that exist are 30 s.
+  valve_slack_ms: 500
   sizeof_float: 4
   cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
   cpu_affinity_note: "LIVE/DEV SPLIT (2026-07-25): 0-10 stages, 11-13 = one private
@@ -82,7 +92,10 @@ shared:
     q_frame: "samples_per_data_set / 2"
     rec_frame: "{np} * record_floats * sizeof_float"
     epl_frame: "176 + 1024 * {np} + 15360 * {np}"
-    metadata_objects: "8 * buffer_depth"
+    # gnss_pool backs chan_buf (buffer_depth) + chan_buf2 and q_buf (valve_depth each),
+    # so the in-flight ceiling is buffer_depth + 2*valve_depth; this keeps the ~2x margin
+    # the old flat "8 * buffer_depth" carried. Undersizing it stalls the F-engine.
+    metadata_objects: "2 * buffer_depth + 4 * valve_depth"
     in_frame_len: "samples_per_data_set / 2"
 
   notes:

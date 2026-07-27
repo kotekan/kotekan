@@ -21,6 +21,7 @@ kotekan, never here.
 Stdlib + PyYAML only.
 """
 import argparse
+import math
 import os
 import re
 import sys
@@ -132,13 +133,35 @@ def np_var(chain):
     return chain_prefix(chain) + "n_prn"
 
 
-def std_buf(pool, frame_size):
+def std_buf(pool, frame_size, depth="buffer_depth"):
     return {
         "kotekan_buffer": "standard",
         "metadata_pool": pool,
-        "num_frames": Raw("buffer_depth"),
+        "num_frames": Raw(depth),
         "frame_size": Raw(frame_size),
     }
+
+
+def valve_depth(band, sh):
+    """Frame count for the buffers DOWNSTREAM of the Valve, sized in TIME not frames.
+
+    ``buffer_depth`` is a frame COUNT, and the bands do not agree on what a frame is:
+    L1/L2C run 9.984 ms frames, L5 runs 2.496 ms. Sixteen of each therefore bought L1
+    320 ms of elasticity and L5 only 80 -- and L5 is the band with the least GPU slack
+    to begin with. That asymmetry is visible in the drop counters: a GPU stall that L1
+    and L2C ride out makes L5 throw frames away (measured 2026-07-27 while an offline
+    despread bench shared the device).
+
+    A buffer converts VARIANCE into LATENCY; it cannot fix a mean deficit. L5's tracker
+    phase is ~0.61 ms of a 2.496 ms budget, so the drops are pure variance -- other
+    bands' bursts, the search stages, anything else on the GPU -- and elasticity is
+    exactly the right medicine. The cost is latency, and it is irrelevant here: every
+    consumer downstream is anchored on absolute sample time, and the freshness gates
+    that do exist (hint_ttl_s, --bias-det-fresh-s) are 30 s.
+    """
+    frame_ms = 1e3 * float(band["samples_per_data_set"]) / float(band["sample_rate"])
+    want = int(math.ceil(float(sh["valve_slack_ms"]) / frame_ms))
+    return max(int(sh["buffer_depth"]), want)
 
 
 def search_stage(sh, chain):
@@ -261,6 +284,13 @@ def build_band(node, band_id):
     add("samples_per_data_set", band["samples_per_data_set"], c=band.get("frame_note"))
     add("bytes_per_sample", sh["bytes_per_sample"])
     add("buffer_depth", sh["buffer_depth"])
+    vdepth = valve_depth(band, sh)
+    add("valve_depth", vdepth, i="post-Valve elasticity in FRAMES = ceil(%d ms / %.3f ms "
+                                 "frame); buffer_depth is a frame count and the bands "
+                                 "disagree on what a frame is, so it is sized in time"
+                                 % (sh["valve_slack_ms"],
+                                    1e3 * float(band["samples_per_data_set"])
+                                    / float(band["sample_rate"])))
     add("sizeof_float", sh["sizeof_float"])
     add("cpu_affinity", sh["cpu_affinity"], i=sh["cpu_affinity_note"])
     doc.append(SPACER)
@@ -285,8 +315,11 @@ def build_band(node, band_id):
                       "num_metadata_objects": Raw(sh["expr"]["metadata_objects"])})
     add("input_buf", std_buf("none", sh["expr"]["input_frame"]))
     add("chan_buf", std_buf("gnss_pool", sh["expr"]["chan_frame"]))
-    add("chan_buf2", std_buf("gnss_pool", sh["expr"]["chan_frame"]))
-    add("q_buf", std_buf("gnss_pool", sh["expr"]["q_frame"]), c=sh["notes"]["q_buf"])
+    # The two buffers the Valve protects: everything between it and the GPU. These are
+    # what absorb a transient GPU stall, so they are the ones sized in time (valve_depth).
+    add("chan_buf2", std_buf("gnss_pool", sh["expr"]["chan_frame"], depth="valve_depth"))
+    add("q_buf", std_buf("gnss_pool", sh["expr"]["q_frame"], depth="valve_depth"),
+        c=sh["notes"]["q_buf"])
     add("rec_buf", std_buf("none", sh["expr"]["rec_frame"].format(np="n_prn")))
     add("out_buf", std_buf("none", sh["expr"]["rec_frame"].format(np="n_prn")))
     add("epl_buf",

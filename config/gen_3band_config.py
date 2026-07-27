@@ -34,7 +34,8 @@ PORT = 12048  # the ONE kotekan REST port; viewers + brokers all talk to it
 HERE = "config/"
 
 # Top-level scalar keys that stages/buffers inherit up-tree; pushed down per band.
-INHERIT = ["samples_per_data_set", "bytes_per_sample", "buffer_depth", "sizeof_float",
+INHERIT = ["samples_per_data_set", "bytes_per_sample", "buffer_depth", "valve_depth",
+           "sizeof_float",
            "spectrum_length", "num_taps", "sample_rate", "f_offset", "signal",
            "code_doppler_sign", "n_prn", "record_floats", "doppler_margin_hz", "acquire_snr",
            "acquire_windows", "doppler_min", "doppler_max", "doppler_step", "prns", "gal_n_prn",
