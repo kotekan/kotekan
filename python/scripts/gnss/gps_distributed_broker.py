@@ -895,6 +895,13 @@ def main(argv=None):
     seeds = {}       # prn -> {"doppler_hz", "code_phase_chips", ...} (consensus)
     low_hits = {}    # prn -> consecutive low-|A| poll count
     status = {}      # prn -> last combiner get_status record (previous cycle; lock gate below)
+    bp_pushed = {}   # prn -> utc0 of the bit_pred table last ATTACHED to a seed row. The
+                     # combiner regenerates bit_pred once per EMIT (~1 Hz) but seeds push every
+                     # --interval (0.25 s), so re-attaching each cycle is 75% redundant payload
+                     # -- and the seed POST has a known too-big failure mode (~14.5k numbers,
+                     # see --nav-bits-brdc). The tracker KEEPS its stored table on rows without
+                     # nav_bits (u.has_bits guard), so skipping unchanged tables is free. This
+                     # matters most at L5: 1 ms records make each table 4x an L1 pilot's.
     navbits = None   # LNAV decode-and-predict (P7a); created lazily on the first nav_obs row
     navbits_log_t = 0.0
     # CONSTRUCTED bits for satellites too weak to decode (2026-07-25). The decoder above needs
@@ -2594,7 +2601,11 @@ def main(argv=None):
             # bare table as "P"; we publish the keyed form so the first data-channel producer
             # is an ADDITION ("D": ...) rather than a schema change.
             if _row.get("bit_pred", {}).get("bits") and _src_ok("pred"):
-                d["nav_bits"] = {"P": _row["bit_pred"]}
+                # Attach only when the table CHANGED (utc0 moves once per combiner emit);
+                # on other cycles the tracker keeps its stored copy -- see bp_pushed above.
+                if bp_pushed.get(prn) != _row["bit_pred"].get("utc0"):
+                    d["nav_bits"] = {"P": _row["bit_pred"]}
+                    bp_pushed[prn] = _row["bit_pred"].get("utc0")
                 _bsrc = "pred"
             elif navbits is not None:
                 # Predict from the freshest capture-clock UTC this PRN has reported: the
