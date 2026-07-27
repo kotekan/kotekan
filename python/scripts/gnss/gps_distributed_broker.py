@@ -679,6 +679,10 @@ def main(argv=None):
                          "rate -- stale-age x dop_rate reads as a fake, GROWING clock bias "
                          "that the seeds then chase (measured: a ~90 s-stale detection walked "
                          "the bias +4 -> +68 Hz and dragged a 55-sigma tracker off the sky).")
+    ap.add_argument("--almanac-epoch-utc0", type=float, default=1.0,
+                    help="the tracker's capture_utc0 (gnss_node.yaml shared value, 1.0): "
+                         "subtracted from combiner row utc to get the FILE POSITION that "
+                         "advances the --almanac-epoch clock at the data's own rate.")
     ap.add_argument("--almanac-epoch", type=float, default=0.0,
                     help="REPLAY BENCH ONLY: unix time of the capture's sample 0. The almanac "
                          "clock is OFFSET to this and then ADVANCES with wall time, so the "
@@ -816,10 +820,22 @@ def main(argv=None):
     # Assumes the replay paces ~realtime (rawFileRead frame_period_us); pacing error over a
     # few-minute bench is <<1 s, i.e. <1 Hz of Doppler.
     _alm_clock_offset = (args.almanac_epoch - time.time()) if args.almanac_epoch else 0.0
+    # FILE-POSITION clock (fills in once combiner status flows): wall-rate advance assumes the
+    # replay paces at exactly 1.0x, and it does NOT -- measured 0.80x (frame_period_us plus
+    # per-frame file-open overhead), so a wall-advancing epoch runs AHEAD of the data by 0.2 s
+    # per second, i.e. dop_rate x 0.2t Hz of per-satellite seed error, growing without bound.
+    # The combiner's rows carry the CAPTURE-CLOCK utc (capture_utc0 + samples/fs): utc minus
+    # capture_utc0 is the exact file position at any pacing. One cycle stale (~interval) ->
+    # sub-second epoch error -> <1 Hz. Falls back to wall-advance until the first status row.
+    _alm_file_pos = [None]
 
     def _alm_now():
-        """The time the ALMANAC thinks it is: wall clock in live runs, capture-frame clock
-        (advancing) under --almanac-epoch."""
+        """The time the ALMANAC thinks it is: wall clock in live runs; under --almanac-epoch,
+        capture epoch + FILE POSITION (from the combiner's capture-clock utc) when available,
+        else capture epoch + wall elapsed."""
+        if args.almanac_epoch and _alm_file_pos[0] is not None:
+            return datetime.fromtimestamp(args.almanac_epoch + _alm_file_pos[0],
+                                          tz=timezone.utc)
         return datetime.fromtimestamp(time.time() + _alm_clock_offset, tz=timezone.utc)
 
     base = args.rest_url.rstrip("/")
@@ -1837,6 +1853,10 @@ def main(argv=None):
         coast_polls = max(1, int(round(args.coast_budget / max(args.interval, 1e-3))))
         try:
             status = {int(r["prn"]): r for r in _get("%s/get_status" % combiner)}
+            if args.almanac_epoch:
+                _u = [float(r["utc"]) for r in status.values() if r.get("utc")]
+                if _u:
+                    _alm_file_pos[0] = max(_u) - args.almanac_epoch_utc0
         except Exception as e:
             status = {}
             _log("get_status failed: %s" % e)

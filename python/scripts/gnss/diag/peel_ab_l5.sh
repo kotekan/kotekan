@@ -59,6 +59,12 @@ echo "  REST up after ${i}s (our kotekan pid=$KPID alive)"
 
 # Real control plane, kotekan owned by US (SKIP_KOTEKAN=1). No almanac assist: the replay has
 # no /adcstat endpoint, so dead-reckon/CL time-assist have nothing to anchor to.
+# --bias-min-sats 99: pin the broker PRE-SOLVE for the whole bench. Measured three times
+# (2026-07-27): with search-measured seeds + the shared carrier loop, PRN20 reaches asnr 81,
+# 0.5 s coherence, resid 0.6 Hz -- then the instant the clock-bias solves and seeding switches
+# to pred+bias, the seed steps by 20-40 Hz (replay epoch/pacing skew the common bias cannot
+# absorb per-sat) and the tracker is yanked off. The bench tests the PEEL, not the bias
+# machinery: keep seeds search-measured, let the CAR loop own the fine carrier.
 # ALMANAC PINNED TO THE CAPTURE EPOCH (--almanac-epoch). Search alone seeds Doppler only to
 # its 100 Hz grid, and 50 Hz of error destroys the 1 s coherent deep integration -- measured
 # 2026-07-27: DLL locked hard (disc +-0.03 chips) while deep_snr sat at 2.5, i.e. code fine,
@@ -67,9 +73,21 @@ echo "  REST up after ${i}s (our kotekan pid=$KPID alive)"
 # NO --dop-continuous: dead-reckon wants an /adcstat anchor the replay cannot serve, and the
 # broker just spins on "adcstat anchor unavailable (404); retrying".
 : "${CAP_EPOCH:?set CAP_EPOCH to the sample-0 UTC of the capture}"
+# FROZEN WARM-STARTED CLOCK BIAS. --bias-min-sats 99 alone DEADLOCKS: the bias never solves,
+# and the broker's bias-unsolved first-seed guard (a "~2 s hold-off" that assumes the bias
+# solves next cycle) then blocks every real satellite's FIRST seed forever -- measured
+# 2026-07-27: PRN20/21 detected for 4 min straight, active=[probes] only. Warm-starting via
+# --clock-bias-file makes the bias non-None from cycle 1 (guard passes); min-sats 99 then
+# FREEZES it (the EMA update sits behind the same gate), which is the point: the replay's
+# epoch/pacing skew poisons any re-solve. BENCH_BIAS: the LO offset the live L5 band
+# measured around the capture (+24..+42 Hz on 2026-07-27; persistent file read +34.9).
+BENCH_BIAS=${BENCH_BIAS:-35.0}
+BIAS_DIR=${BIAS_DIR:-$HOME/.cache/kotekan_gps}
+printf '%s 5 %s\n' "$BENCH_BIAS" "$(date +%s)" > "$BIAS_DIR/gps_clock_bias_l5ab_${LABEL}.hz"
+echo "  bench clock bias warm-start: $BENCH_BIAS Hz -> gps_clock_bias_l5ab_${LABEL}.hz"
 SKIP_KOTEKAN=1 STAGE_PREFIX="" CFG="$CFG" PORT=$PORT HTTP_PORT=8092 TAG="l5ab_$LABEL" \
     LAT=43.968697 LON=-79.252106 ALT=260 \
-    BROKER_EXTRA="--almanac-epoch $CAP_EPOCH" \
+    BROKER_EXTRA="--almanac-epoch $CAP_EPOCH --bias-min-sats 99 --bias-stale-s 0" \
     nice -n 5 taskset -c 14-19 ./config/run_live.sh > "/tmp/ctl_l5_${LABEL}.log" 2>&1 &
 CPPID=$!
 echo "  control plane pid=$CPPID; settling ${SETTLE}s..."
