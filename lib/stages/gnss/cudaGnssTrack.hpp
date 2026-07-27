@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <complex>
+#include <fstream>
 #include <string>
 #include <memory>
 #include <mutex>
@@ -315,6 +316,28 @@ public:
     std::vector<int> peel_vn;
     /// BLOWUP FORENSICS (diagnostic): dump raw per-channel identity terms for this PRN.
     int peel_dbg_prn = -1;
+    /// PER-RECORD SIGN GROUND-TRUTH DUMP (2026-07-27). The "pure sign" class -- phase clean
+    /// (<cos 2d> ~ 1) but the applied sign wrong on ~half the records, so the gain EMA averages
+    /// to zero and a 3000-sigma satellite peels 0 dB -- has resisted all three of the aggregate
+    /// splits above (value, straddle, boundary-fraction all read flat or inconsistent over a
+    /// full run). Those splits share one blind spot: they score the residual AGAINST the applied
+    /// sign, so they cannot see what the sign SHOULD have been.
+    ///
+    /// This closes that. It streams, per gain-measurement record, exactly what bit_at() APPLIED
+    /// plus the absolute time and boundary fraction needed to recompute the truth OFFLINE. For a
+    /// PILOT the secondary overlay is fully deterministic, so ground truth needs no decoding and
+    /// no broker -- just the PRN, the epoch and the overlay table. Comparing the two columns
+    /// names the fault directly (off-by-one, polarity, bf dependence, or none of them) instead
+    /// of inferring it from a conditional mean.
+    ///
+    /// -1 = off (default), 0 = every active PRN on this chain, N = PRN N only.
+    /// ⚠️ Writes one line per record per dumped PRN from the GPU stage's host thread: ~100
+    /// lines/s/PRN at 10 ms records, ~1000/s at 1 ms. Cheap, but it is real I/O on the
+    /// real-time path -- watch kotekan_valve_dropped_frames_total when enabling it, and leave
+    /// it off in production.
+    int peel_sign_dump_prn = -1;
+    std::string peel_sign_dump_path;
+    std::unique_ptr<std::ofstream> peel_sign_dump;
     unsigned long long peel_dbg_ctr2 = 0;
 
     /// What the PREVIOUS frame's peel actually subtracted, so the next gain update can undo it

@@ -218,6 +218,8 @@ gputrack:
           peel_gain_alpha: 0.01
           peel_warmup_records: 100
           peel_fll_gain: 0.05
+          peel_sign_dump_prn: 0
+          peel_sign_dump_path: /tmp/gnss_run/peel_sign_l1_bds.csv
         - name: cudaOutputData
           cuda_stream: 3
           gpu_mem: bds_epl

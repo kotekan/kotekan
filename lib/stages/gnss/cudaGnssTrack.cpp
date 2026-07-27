@@ -143,6 +143,22 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     // analytic add-back actually reconstructs the full correlation on THIS chain.
     peel_verify = config.get_default<bool>(unique_name, "peel_verify", false);
     peel_dbg_prn = config.get_default<int>(unique_name, "peel_dbg_prn", -1);
+    // Per-record sign ground-truth dump (see peel_sign_dump_prn in the hpp). Opened here so a
+    // bad path fails loudly at construction rather than silently producing nothing for an hour.
+    peel_sign_dump_prn = config.get_default<int>(unique_name, "peel_sign_dump_prn", -1);
+    peel_sign_dump_path = config.get_default<std::string>(unique_name, "peel_sign_dump_path", "");
+    if (peel_sign_dump_prn >= 0 && !peel_sign_dump_path.empty()) {
+        peel_sign_dump = std::make_unique<std::ofstream>(peel_sign_dump_path, std::ios::app);
+        if (!peel_sign_dump->good())
+            throw std::runtime_error("cudaGnssTrack: cannot open peel_sign_dump_path '"
+                                     + peel_sign_dump_path + "'");
+        // Header once per open; harmless to repeat on append (the reader skips '#').
+        *peel_sign_dump << "# prn,gain_n,wstart,utc,bf,s_head,s_tail,have_bits,d_rad,cos_d,"
+                           "cos_2d,g_abs,gcoh\n";
+        WARN("peel sign dump ACTIVE -> {:s} (prn {:d}); this writes on the real-time path, "
+             "watch kotekan_valve_dropped_frames_total",
+             peel_sign_dump_path, peel_sign_dump_prn);
+    }
     peel_verify_every = config.get_default<int>(unique_name, "peel_verify_every", 500);
     if (peel_verify_every < 1)
         peel_verify_every = 1;
@@ -770,6 +786,31 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     else if (pu.s_head < 0)
                         S.pres_neg[p] = (1.0 - S.peel_alpha) * S.pres_neg[p]
                                         + S.peel_alpha * std::cos(d);
+                    // GROUND-TRUTH SIGN DUMP (see peel_sign_dump_prn in the hpp). Everything the
+                    // offline check needs and nothing it can derive: the APPLIED signs, the
+                    // absolute record time (so the deterministic pilot overlay can be recomputed
+                    // independently), the tracker's own bf, and this record's phase residual --
+                    // d ~ pi is precisely "the sign we applied was wrong", so truth and symptom
+                    // land on the same row.
+                    if (S.peel_sign_dump
+                        && (S.peel_sign_dump_prn == 0 || S.prns[p] == S.peel_sign_dump_prn)) {
+                        const double utc =
+                            S.capture_utc0 + (double)pu.wstart / S.sample_rate;
+                        double a2 = 0.0;
+                        for (int c = 0; c < S.n_chan; ++c)
+                            a2 += std::norm(S.gain[(size_t)p * S.n_chan + c]);
+                        *S.peel_sign_dump
+                            << S.prns[p] << ',' << S.gain_n[p] << ',' << pu.wstart << ','
+                            << fmt::format("{:.6f}", utc) << ',' << fmt::format("{:.4f}", pu.bf)
+                            << ',' << (int)pu.s_head << ',' << (int)pu.s_tail << ','
+                            << (have_bits ? 1 : 0) << ',' << fmt::format("{:.5f}", d) << ','
+                            << fmt::format("{:.5f}", std::cos(d)) << ','
+                            << fmt::format("{:.5f}", std::cos(2.0 * d)) << ','
+                            << fmt::format("{:.5f}", std::sqrt(a2)) << ','
+                            << fmt::format("{:.5f}",
+                                           S.gain_p2[p] > 0.0 ? a2 / S.gain_p2[p] : -1.0)
+                            << '\n';
+                    }
                     S.pres_prev[p] = d;
                     S.pres_ok[p] = 1;
                 }

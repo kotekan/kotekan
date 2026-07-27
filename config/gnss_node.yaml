@@ -355,6 +355,18 @@ bands:
             peel_gain_alpha: 0.01
             peel_warmup_records: 100
             peel_fll_gain: 0.05
+            # TEMPORARY (2026-07-27): per-record ground-truth sign dump for the "pure sign"
+            # class -- C24 and C33 sit at 3000 sigma and peel 0.0 dB because the APPLIED
+            # overlay sign is wrong on ~50% of records (phase is clean: <cos 2d> = 0.98).
+            # The three aggregate splits all score the residual AGAINST the applied sign and
+            # so cannot see what it SHOULD have been; this dumps the applied signs plus utc
+            # and bf so the deterministic B1C overlay can be recomputed offline and compared.
+            # 0 = every active PRN (we want both the stuck sats and a fresh transition: C33
+            # fell ~95% of the way into the previous hour, C25 and C41 climbed OUT).
+            # REMOVE once the sign fault is named. ⚠️ real I/O on the real-time path (~1200
+            # lines/s here) -- watch kotekan_valve_dropped_frames_total{/l1_valve}.
+            peel_sign_dump_prn: 0
+            peel_sign_dump_path: /tmp/gnss_run/peel_sign_l1_bds.csv
           note_inline: "tight snap-to-model fence (rec B; alias limit 25 Hz at 10 ms)"
         combiner:
           # DIVERGENT (audit): bds combiners carry no prns list while gal combiners do
