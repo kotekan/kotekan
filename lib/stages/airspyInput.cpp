@@ -64,6 +64,7 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
 
     _airspy_sn = config.get_default<long>(unique_name, "serial", 0);
     _airspy_fn = config.get_default<std::string>(unique_name, "airspy_file", "");
+    _adcstat_timeout_ms = config.get_default<int>(unique_name, "adcstat_timeout_ms", 3000);
 }
 
 airspyInput::~airspyInput() {
@@ -91,7 +92,33 @@ void airspyInput::get_config_callback(kotekan::connectionInstance& conn) {
 void airspyInput::adcstat_callback(kotekan::connectionInstance& conn) {
     std::unique_lock<std::mutex> lock(adcstat_mutex);
     dump_adcstat = true;
-    adcstat_cv.wait(lock, [this] { return adcstat_ready || stop_thread; });
+    // BOUNDED wait -- this handler runs on restServer's SINGLE libevent thread, so blocking
+    // here does not fail one request, it kills the ENTIRE REST plane for every band.
+    //
+    // THE WEDGE, diagnosed 2026-07-26 (3rd sample, data/wedge/wedge_20260726_224903): a
+    // marginal USB link left /l1_airspy_in HALF-OPEN -- device claimed, libusb poll thread
+    // never created, so the producer never runs and adcstat_ready never flips. The launcher's
+    // own startup "front end" probe hits this endpoint, the unbounded wait() never returned,
+    // and the whole node went dark -- INCLUDING the two airspys that were streaming perfectly.
+    // Symptom: kotekan alive, no errors logged, every endpoint hanging; SIGTERM will not
+    // clear it (shutdown cannot sequence through a dead REST plane) -- it needs SIGKILL.
+    //
+    // A frame arrives every few ms on a healthy device, so this timeout only ever expires
+    // when the device is not delivering at all. Failing ONE request loudly beats hanging
+    // every request silently: the cost of a false timeout is a retry, the cost of no timeout
+    // is the node.
+    const bool got = adcstat_cv.wait_for(lock, std::chrono::milliseconds(_adcstat_timeout_ms),
+                                         [this] { return adcstat_ready || stop_thread; });
+    if (!got) {
+        dump_adcstat = false; // withdraw the request; the producer must not service a corpse
+        lock.unlock();
+        ERROR("/{:s}: adcstat timed out after {:d} ms -- no frames from this airspy. The "
+              "device is enumerated but not streaming (half-open); check the USB link.",
+              unique_name, _adcstat_timeout_ms);
+        conn.send_error("adcstat timed out: airspy not delivering frames (half-open device)",
+                        kotekan::HTTP_RESPONSE::REQUEST_FAILED);
+        return;
+    }
     if (stop_thread) {
         lock.unlock();
         conn.send_error("Stage shutting down.", kotekan::HTTP_RESPONSE::INTERNAL_ERROR);

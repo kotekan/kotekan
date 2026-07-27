@@ -161,6 +161,12 @@ private:
     /// Optional file path to read raw samples from instead of a device.
     std::string _airspy_fn;
 
+    /// How long /adcstat waits for the producer before failing the request. The wait MUST
+    /// stay bounded: the handler runs on restServer's single libevent thread, so an
+    /// unbounded wait on a non-streaming (half-open) device takes down the REST plane for
+    /// every band at once -- THE WEDGE, see adcstat_callback().
+    int _adcstat_timeout_ms = 3000;
+
     /// ADC statistics. The REST adcstat handler requests a dump and waits on
     /// @c adcstat_cv until the producer fills @c adc{rms,mean,railfrac} on the
     /// next frame and flips @c adcstat_ready (published under @c adcstat_mutex).
