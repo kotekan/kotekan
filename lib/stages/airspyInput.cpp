@@ -64,7 +64,13 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
 
     _airspy_sn = config.get_default<long>(unique_name, "serial", 0);
     _airspy_fn = config.get_default<std::string>(unique_name, "airspy_file", "");
-    _adcstat_timeout_ms = config.get_default<int>(unique_name, "adcstat_timeout_ms", 3000);
+    // 250 ms, not 3000 (2026-07-27). The bounded wait fixed THE WEDGE -- an unbounded
+    // cv.wait() here on restServer's single libevent thread killed every endpoint on every
+    // band when one airspy came up half-open. But 3 s is still far too long for an endpoint
+    // the VIEWER POLLS EVERY 1.5 s: a dead producer would block the whole REST plane ~2/3 of
+    // the time, which is a wedge in all but name. A healthy device fills the buffer in one
+    // frame period (2.5-10 ms), so 250 ms is ~25x margin and 12x less worst-case blocking.
+    _adcstat_timeout_ms = config.get_default<int>(unique_name, "adcstat_timeout_ms", 250);
 }
 
 airspyInput::~airspyInput() {

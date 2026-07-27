@@ -148,7 +148,14 @@ for b in $BANDS; do
     # flip validate it (coh duty 78->87%, RELEASE 9->0 on the GPS leg). NOTE the literal
     # BROKER_EXTRA=$BX prefix: a ${X:+VAR=v} expansion is NOT an assignment post-expansion
     # (bash executes it as a command and the launch line dies -- measured 07-19 am).
-    BX="${BROKER_EXTRA:---dop-continuous}"
+    # --nav-bits-brdc 1 is part of THE NODE'S default (2026-07-27), not something an operator
+    # has to remember. It was passed by hand via BROKER_EXTRA for days, which meant any launch
+    # that forgot it silently ran the GPS peel without constructed nav bits -- a foot-gun with
+    # no symptom except worse depth. The broker's OWN default stays 0 on purpose: it was turned
+    # off on 2026-07-25 when the 30 s tables broke the seed push, and that is a real caveat for
+    # other callers. The transport was since fixed (c839b3ca: parse outside seed_mtx +
+    # NAVBITS-BAD counter, broker CPU 98->31%), and the node has run it on all day.
+    BX="${BROKER_EXTRA:---dop-continuous --nav-bits-brdc 1}"
     SKIP_KOTEKAN=1 STAGE_PREFIX=${b}_ PORT=$PORT TAG=gps_${b} \
         CFG=$(cfg_of $b) HTTP_PORT=$(http_of $b) \
         BROKER_EXTRA=$BX \
@@ -157,5 +164,24 @@ for b in $BANDS; do
     echo "  $b control plane up (brokers/loggers; log /tmp/gps_${b}_ctl.log)"
 done
 
-echo "=== 3-band node running: kotekan :$PORT, viewers :8080/:8081/:8082 -- Ctrl-C stops all ==="
+# HONEST BANNER (2026-07-27). This used to print unconditionally, the instant the control
+# planes were BACKGROUNDED -- so "3-band node running" appeared even when a broker had already
+# died, and the launcher looked successful while the node was not. Check what we actually
+# claim: kotekan alive, REST answering, and every control plane still up.
+sleep 5
+_bad=""
+pgrep -f "[k]otekan .*live_3band" >/dev/null || _bad="$_bad kotekan"
+curl -s --max-time 5 -o /dev/null "localhost:$PORT/metrics" || _bad="$_bad rest"
+for pid in $SUBPIDS; do
+    kill -0 "$pid" 2>/dev/null || _bad="$_bad ctl-plane($pid)"
+done
+for b in $BANDS; do
+    pgrep -f "[g]ps_distributed_broker.py.*${b}_" >/dev/null || _bad="$_bad ${b}-broker"
+done
+if [ -n "$_bad" ]; then
+    echo "=== 3-band node came up DEGRADED -- not running:$_bad ==="
+    echo "    logs: $LOG, /tmp/gps_{l1,l2c,l5}_ctl.log"
+else
+    echo "=== 3-band node running: kotekan :$PORT, viewers :8080/:8081/:8082 -- Ctrl-C stops all ==="
+fi
 wait

@@ -682,6 +682,25 @@ void GnssCoherentCombiner::main_thread() {
         // more visible there, which is how it was noticed). The rec_dt and power-density code
         // below already used this exact len/(len-1) form; only the REPORTED number missed it.
         // Gap-robust: dropped records leave the spacing of those present unchanged.
+        // Shortest ladder rung, in RECORDS, from a floor expressed in TIME (2026-07-27).
+        // The hardcoded 64 below was a RECORD COUNT written for 1 ms records -- 64 ms at L1,
+        // but 1.28 s at L2C's 20 ms records, where it also killed the third rung outright
+        // (200/4 = 50 < 64). L2C was therefore offered only 4 s and 2 s windows, both of which
+        // need better than 0.25 Hz of carrier: measured live, the two certified sats sat at
+        // 0.064 and 0.181 Hz while EVERY uncertified one was >= 0.38 Hz, including the
+        // strongest satellite on the band at 294 sigma. Strength cannot rescue a window that
+        // nulls. Same bug class as buffer_depth and coherence_s: a COUNT where a TIME was
+        // meant, on a node whose bands disagree about what a record is.
+        const double rec_dt_floor_s = 0.064;
+        auto min_rung = [&](const std::vector<double>& u, size_t hard_min) {
+            size_t n = hard_min;
+            if (u.size() > 1) {
+                const double dt = (u.back() - u.front()) / (double)(u.size() - 1);
+                if (dt > 0.0)
+                    n = std::max<size_t>(2, (size_t)std::ceil(rec_dt_floor_s / dt));
+            }
+            return std::max<size_t>(hard_min, n);
+        };
         auto coh_span = [](const std::vector<double>& u, size_t len) {
             if (u.empty() || len < 2 || u.size() < len)
                 return 0.0;
@@ -806,7 +825,7 @@ void GnssCoherentCombiner::main_thread() {
                     bool cleared = false;
                     gnss::OverlayWipeResult full{};
                     size_t full_len = 0;
-                    for (size_t len : ladder(ab.size(), std::max<size_t>(2 * ov->size(), 64))) {
+                    for (size_t len : ladder(ab.size(), min_rung(ub, 2 * ov->size()))) {
                         gnss::OverlayWipeResult ow;
                         if (len == ab.size()) {
                             ow = gnss::overlay_wipe(ab, ub, *ov, &hb);
@@ -970,7 +989,7 @@ void GnssCoherentCombiner::main_thread() {
                 double full_amp = 0.0, full_snr = 0.0;
                 size_t full_len = 0;
                 for (size_t len :
-                     ladder(ab.size(), std::max<size_t>(4 * (size_t)_navwipe_bit_records, 64))) {
+                     ladder(ab.size(), min_rung(ub, 4 * (size_t)_navwipe_bit_records))) {
                     double snr = 0.0, amp;
                     if (len == ab.size()) {
                         // Full window: also export the per-bit decisions (nav_obs) when asked --
@@ -1154,7 +1173,7 @@ void GnssCoherentCombiner::main_thread() {
                         gnss::OverlayWipeResult dw{};
                         int hph = hph0;
                         size_t dlen = ab.size();
-                        for (size_t len : ladder(ab.size(), std::max<size_t>(ov.size() / 8, 32))) {
+                        for (size_t len : ladder(ab.size(), min_rung(ub, ov.size() / 8))) {
                             const std::vector<std::complex<double>> as(ab.end() - (long)len,
                                                                        ab.end());
                             const std::vector<double> us(ub.end() - (long)len, ub.end());
