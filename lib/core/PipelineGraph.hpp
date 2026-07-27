@@ -68,15 +68,35 @@ struct GraphStyle {
 GraphStyle graph_style(GraphCategory category);
 
 /**
+ * @name The colours that are not a node category
+ *
+ * These are named rather than inlined because a viewer embedding the graph has
+ * to be able to recognise every colour it can be handed -- choco recolours the
+ * whole palette for its dark theme by matching these exact values. Changing one
+ * is a change to that contract, not a local edit.
+ * @{
+ */
+/// Label text, everywhere. Set so that text carries an explicit colour rather
+/// than falling back to black, which a stylesheet cannot select on.
+extern const char* const graph_ink;
+/// Edges and their arrowheads.
+extern const char* const graph_edge_line;
+/// Outline of a config-section box.
+extern const char* const graph_cluster_line;
+/// Background and outline of the box drawn around one device's stages and memory.
+extern const char* const graph_device_fill;
+extern const char* const graph_device_line;
+/// Outline of a buffer with no free frame left.
+extern const char* const graph_full_line;
+/** @} */
+
+/**
  * @brief The last component of a kotekan unique name ("/gen/voltage" -> "voltage").
  *
  * The full path is what identifies a node; the leaf is what a reader needs, once
  * the enclosing box says which section it came from.
  */
 std::string leaf_name(const std::string& unique_name);
-
-/// Background of the box drawn around one device's stages and memory.
-extern const char* const graph_device_fill;
 
 /**
  * @brief Guesses what a stage does from its registered type name.
