@@ -10,6 +10,8 @@
 #ifndef PIPELINE_GRAPH_HPP
 #define PIPELINE_GRAPH_HPP
 
+#include "json.hpp" // for json
+
 #include <deque>    // for deque
 #include <map>      // for map
 #include <stddef.h> // for size_t
@@ -178,6 +180,41 @@ struct GraphCluster {
 };
 
 /**
+ * @brief What to put in a pipeline graph.
+ *
+ * Carried on the graph itself, so that everything contributing to it can see
+ * what was asked for without the options being threaded through every call.
+ */
+struct GraphOptions {
+    /// Layout direction: "LR", "TB", "RL" or "BT".
+    std::string rankdir = "LR";
+
+    /// Group stages into a box per config section.
+    bool cluster = true;
+
+    /// Draw the colour key.
+    bool legend = true;
+
+    /// List the metadata pools.
+    bool pools = true;
+
+    /// Draw each GPU stage's commands and device memory.
+    bool kernels = true;
+
+    /**
+     * @brief Include what the pipeline is doing right now: rates, fill levels,
+     *        CPU usage, kernel timings, and the full/idle colouring.
+     *
+     * Turning this off leaves the structure alone, which is what to compare
+     * between two runs -- live numbers differ every time the graph is fetched.
+     */
+    bool runtime = true;
+
+    /// Link buffer nodes to the endpoints that can show their contents.
+    bool urls = true;
+};
+
+/**
  * @class PipelineGraph
  * @brief The pipeline's buffers, stages and their connections, as a graph.
  *
@@ -240,6 +277,17 @@ public:
      * conjure up an empty node for it.
      */
     std::string to_dot() const;
+
+    /**
+     * @brief The same graph as JSON: nodes, edges and clusters.
+     *
+     * For anything that wants to lay the pipeline out itself, or diff two
+     * graphs, rather than parse DOT to get at the structure.
+     */
+    nlohmann::json to_json() const;
+
+    /// What was asked to be included; readable by everything building the graph.
+    GraphOptions options;
 
     /// Graph-wide attributes, applied in a `graph [...]` statement.
     std::map<std::string, std::string> graph_attrs;
