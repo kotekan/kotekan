@@ -76,6 +76,17 @@ public:
      */
     std::vector<pid_t> get_tids();
 
+    /**
+     * @brief The CPU cores this stage's threads are allowed to run on.
+     *
+     * @return The core numbers, zero based; empty when the stage was left
+     *         unpinned.
+     */
+    std::vector<int> get_cpu_affinity();
+
+    /// @return true once the stage has been asked to stop.
+    bool is_stopping() const;
+
 protected:
     std::atomic_bool stop_thread;
     Config& config;

@@ -328,6 +328,16 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
         auto& node = graph.add_node(id);
         node.add_line(command[0]->get_name());
         node.add_line(kind);
+        // What this step of the pipeline costs on the device. The instances of a
+        // command share one tracker, so the first one has the whole picture.
+        const double seconds = command[0]->excute_time->get_avg();
+        if (!std::isnan(seconds) && seconds > 0.0) {
+            std::string timing = fmt::format(fmt("{:.3g} ms"), seconds * 1e3);
+            if (frame_arrival_period > 0.0)
+                timing += fmt::format(fmt(" · {:.3g}% of a frame"),
+                                      100.0 * seconds / frame_arrival_period);
+            node.add_line(timing);
+        }
         node.cluster = device.id;
         node.set_category(kotekan::GraphCategory::Gpu)
             .set_attr("shape", shape)

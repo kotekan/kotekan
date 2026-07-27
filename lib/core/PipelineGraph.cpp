@@ -21,6 +21,17 @@ std::string human_bytes(size_t bytes) {
     return fmt::format("{:.4g} {:s}", size, units[unit]);
 }
 
+std::string human_rate(double bytes_per_second) {
+    static const char* units[] = {"B", "kB", "MB", "GB", "TB"};
+    double rate = bytes_per_second;
+    size_t unit = 0;
+    while (rate >= 1000.0 && unit + 1 < sizeof(units) / sizeof(units[0])) {
+        rate /= 1000.0;
+        unit++;
+    }
+    return fmt::format("{:.3g} {:s}/s", rate, units[unit]);
+}
+
 // Pale fills with a saturated outline of the same hue: readable behind several
 // lines of label text, and distinguishable in greyscale by outline darkness.
 GraphStyle graph_style(GraphCategory category) {
@@ -88,6 +99,24 @@ GraphNode& GraphNode::set_category(GraphCategory category) {
         set_attr("style", "filled");
     set_attr("fillcolor", style.fill);
     set_attr("color", style.line);
+    return *this;
+}
+
+GraphNode& GraphNode::set_buffer_state(BufferState state) {
+    switch (state) {
+        case BufferState::Full:
+            // Wherever the frames are piling up is where to start looking.
+            set_attr("color", "#c0392b");
+            set_attr("penwidth", "2.5");
+            break;
+        case BufferState::Idle:
+            set_attr("style", "rounded,filled,dashed");
+            break;
+        case BufferState::Flowing:
+        case BufferState::Unknown:
+        default:
+            break;
+    }
     return *this;
 }
 

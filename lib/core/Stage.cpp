@@ -176,4 +176,13 @@ std::vector<pid_t> Stage::get_tids() {
     return thread_list;
 }
 
+std::vector<int> Stage::get_cpu_affinity() {
+    std::lock_guard<std::mutex> lock(cpu_affinity_lock);
+    return cpu_affinity;
+}
+
+bool Stage::is_stopping() const {
+    return stop_thread;
+}
+
 } // namespace kotekan

@@ -303,7 +303,14 @@ PipelineGraph kotekanMode::get_pipeline_graph() {
         auto& node = graph.add_node(buf.first);
         node.label_lines = buf.second->dot_label_lines();
         node.set_category(GraphCategory::Buffer);
+        node.set_buffer_state(buf.second->dot_buffer_state());
     }
+
+#if !defined(MAC_OSX)
+    const std::map<std::string, double> cpu_usage = cpu_monitor.get_stage_cpu_usage();
+#else
+    const std::map<std::string, double> cpu_usage;
+#endif
 
     // Stage nodes, grouped by the config section they were declared in. Every
     // stage gets its node here, so that the edges below always have something to
@@ -317,6 +324,25 @@ PipelineGraph kotekanMode::get_pipeline_graph() {
         node.add_line(leaf_name(stage.first));
         node.add_line(type.empty() ? "" : "<" + type + ">");
         node.set_category(stage_category(type));
+
+        // What the stage is costing, and where it is allowed to run: the two
+        // things one goes looking for when a pipeline will not keep up.
+        const std::vector<pid_t> tids = stage.second->get_tids();
+        const std::vector<int> affinity = stage.second->get_cpu_affinity();
+        std::string running =
+            fmt::format(fmt("{:d} thread{:s}"), tids.size(), tids.size() == 1 ? "" : "s");
+        auto usage = cpu_usage.find(stage.first);
+        if (usage != cpu_usage.end())
+            running += fmt::format(fmt(" · cpu {:.0f}%"), usage->second);
+        if (stage.second->is_stopping())
+            running += " · stopping";
+        node.add_line(running);
+        if (!affinity.empty()) {
+            std::string cores;
+            for (int core : affinity)
+                cores += (cores.empty() ? "" : ",") + std::to_string(core);
+            node.add_line("cores " + cores);
+        }
 
         const std::string section = config_section(stage.first);
         if (!section.empty()) {
@@ -365,6 +391,31 @@ PipelineGraph kotekanMode::get_pipeline_graph() {
         // hand-off points are left crossing a boundary.
         if (!touched_by.empty())
             graph.add_node(buf.first).cluster = graph.common_cluster(touched_by);
+    }
+
+    // The metadata pools, which no buffer node can show on its own: a pool is
+    // shared, and its object size is what every frame of every buffer using it
+    // carries. (There is no occupancy to report -- a pool hands out objects on
+    // demand rather than holding a fixed set.)
+    if (!metadata_pools.empty()) {
+        auto& pools = graph.add_cluster("__pools");
+        pools.label = "metadata pools";
+        pools.set_attr("style", "rounded").set_attr("color", "gray70");
+        std::string previous;
+        for (auto& pool : metadata_pools) {
+            const std::string id = "__pool/" + pool.first;
+            auto& node = graph.add_node(id);
+            node.add_line(pool.first);
+            if (pool.second) {
+                node.add_line(pool.second->type_name);
+                node.add_line(human_bytes(pool.second->metadata_object_size) + " per frame");
+            }
+            node.cluster = pools.id;
+            node.set_category(GraphCategory::Buffer);
+            if (!previous.empty())
+                graph.add_edge(previous, id).set_attr("style", "invis");
+            previous = id;
+        }
     }
 
     add_legend(graph);

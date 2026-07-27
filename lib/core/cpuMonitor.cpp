@@ -189,6 +189,22 @@ void CpuMonitor::cpu_ult_call_back(connectionInstance& conn) {
     conn.send_json_reply(cpu_ult_json);
 }
 
+std::map<std::string, double> CpuMonitor::get_stage_cpu_usage() {
+    std::map<std::string, double> usage;
+    if (!this_thread.joinable())
+        return usage;
+
+    std::lock_guard<std::mutex> lock(ult_lock);
+    for (auto& stage : ult_list) {
+        double total = 0;
+        for (auto& thread : stage.second)
+            total += (thread.second).utime_usage->get_current()
+                     + (thread.second).stime_usage->get_current();
+        usage[stage.first] = total;
+    }
+    return usage;
+}
+
 void CpuMonitor::save_stages(std::map<std::string, Stage*> input_stages) {
     stages = input_stages;
 }

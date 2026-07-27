@@ -210,6 +210,10 @@ void GenericBuffer::json_description(nlohmann::json& buf_json) {
     buf_json["type"] = buffer_type;
 }
 
+kotekan::BufferState GenericBuffer::dot_buffer_state() {
+    return kotekan::BufferState::Unknown;
+}
+
 std::vector<std::string> GenericBuffer::dot_label_lines() {
     // Which kind of buffer this is, and the metadata that travels with its
     // frames -- the two things that decide what a consumer can do with it.
@@ -288,6 +292,21 @@ Buffer::~Buffer() {
 
 double Buffer::get_last_arrival_time() {
     return last_arrival_time;
+}
+
+double Buffer::get_arrival_rate() {
+    buffer_lock lock(mutex);
+    if (mean_arrival_period <= 0.0)
+        return 0.0;
+    // A buffer that has stopped receiving frames should read as stopped, not as
+    // whatever it was doing when it last delivered one.
+    const double since_last = e_time() - last_arrival_time;
+    return 1.0 / std::max(mean_arrival_period, since_last);
+}
+
+uint64_t Buffer::get_frames_arrived() {
+    buffer_lock lock(mutex);
+    return frames_arrived;
 }
 
 void Buffer::private_reset_producers(const int ID) {
@@ -472,6 +491,14 @@ std::vector<std::string> Buffer::dot_label_lines() {
     lines.push_back(fmt::format(fmt("{:d}/{:d} full ({:.1f}%)"), full, num_frames,
                                 (float)full / num_frames * 100));
 
+    // What the data is actually doing, rather than what the config asked for.
+    const double rate = get_arrival_rate();
+    if (rate > 0.0)
+        lines.push_back(fmt::format(fmt("{:.4g} frame/s · {:s}"), rate,
+                                    kotekan::human_rate(rate * frame_size)));
+    else
+        lines.push_back(fmt::format(fmt("{:d} frames arrived"), get_frames_arrived()));
+
     // Placement and pinning: cheap to get wrong in a config, expensive to work
     // out later from a throughput plot, so say it where the buffer is drawn.
     std::string flags = fmt::format(fmt("numa {:d}"), numa_node);
@@ -484,6 +511,18 @@ std::vector<std::string> Buffer::dot_label_lines() {
     lines.push_back(flags);
 
     return lines;
+}
+
+kotekan::BufferState Buffer::dot_buffer_state() {
+    buffer_lock lock(mutex);
+    if (frames_arrived == 0)
+        return kotekan::BufferState::Idle;
+    // No empty frame left means the next producer to come round has to wait. A
+    // one-frame buffer is excluded: sitting full is its resting state, not a
+    // backlog (a mask produced once and read from then on looks like this).
+    if (num_frames > 1 && get_num_full_frames() == num_frames)
+        return kotekan::BufferState::Full;
+    return kotekan::BufferState::Flowing;
 }
 
 void Buffer::print_buffer_status() {
@@ -605,7 +644,17 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
             private_reset_producers(ID);
             is_full[ID] = true;
             last_frame_filled = ID;
-            last_arrival_time = e_time();
+            const double now = e_time();
+            if (frames_arrived > 0 && now > last_arrival_time) {
+                // Weighted towards recent arrivals, so the reported rate follows
+                // a pipeline that speeds up or stalls instead of averaging over
+                // however long kotekan has been running.
+                const double period = now - last_arrival_time;
+                mean_arrival_period =
+                    mean_arrival_period == 0.0 ? period : 0.9 * mean_arrival_period + 0.1 * period;
+            }
+            frames_arrived++;
+            last_arrival_time = now;
             set_full = true;
 
             // peek_hold: a newer frame is now full, so run the previously

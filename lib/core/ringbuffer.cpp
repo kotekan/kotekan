@@ -276,6 +276,15 @@ std::vector<std::string> RingBuffer::dot_label_lines() {
     return lines;
 }
 
+kotekan::BufferState RingBuffer::dot_buffer_state() {
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    if (first_write_head == 0)
+        return kotekan::BufferState::Idle; // nothing has ever been written
+    if (size > 0 && first_write_head - last_read_tail >= size)
+        return kotekan::BufferState::Full;
+    return kotekan::BufferState::Flowing;
+}
+
 void RingBuffer::print_buffer_status() {
     std::ptrdiff_t read_tail, read_head;
     std::ptrdiff_t write_tail, write_head;

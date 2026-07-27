@@ -69,6 +69,17 @@ public:
      **/
     void set_track_len(const uint16_t mins);
 
+    /**
+     * @brief Current CPU usage of every tracked stage.
+     *
+     * The per-thread user and system time of a stage summed into one number, so
+     * a stage that spreads work over several threads reports what it costs the
+     * machine. Empty while the monitor is not running.
+     *
+     * @return stage unique name -> CPU usage in percent (100 is one busy core).
+     **/
+    std::map<std::string, double> get_stage_cpu_usage();
+
 private:
     std::thread this_thread;
     std::atomic<bool> stop_thread = false;

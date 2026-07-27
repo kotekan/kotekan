@@ -27,6 +27,24 @@ namespace kotekan {
 std::string human_bytes(size_t bytes);
 
 /**
+ * @brief Formats a data rate for a graph label (B/s ... TB/s).
+ *
+ * Rates are quoted in SI units, the convention for anything on a wire, while
+ * @c human_bytes() uses binary units for anything in memory.
+ */
+std::string human_rate(double bytes_per_second);
+
+/**
+ * @brief How busy a buffer is, for the reader who is looking for the blockage.
+ */
+enum class BufferState {
+    Unknown, ///< nothing to say about this buffer's occupancy
+    Idle,    ///< no data has ever passed through it
+    Flowing, ///< holding some frames, with room for more
+    Full,    ///< effectively full: whatever feeds it is being held up
+};
+
+/**
  * @brief What a node represents, which is what its colour tells the reader.
  */
 enum class GraphCategory {
@@ -104,6 +122,15 @@ struct GraphNode {
      * same wherever in the pipeline it is drawn.
      */
     GraphNode& set_category(GraphCategory category);
+
+    /**
+     * @brief Marks how busy a buffer node is, on top of its category colours.
+     *
+     * A full buffer is outlined in red and a buffer nothing has ever flowed
+     * through is dashed, so the place a pipeline is stuck can be found without
+     * reading a single number.
+     */
+    GraphNode& set_buffer_state(BufferState state);
 };
 
 /**
