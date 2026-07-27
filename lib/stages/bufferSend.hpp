@@ -94,8 +94,8 @@ public:
     /// Main loop for sending data
     void main_thread() override;
 
-    /// Adds the target server to the pipeline dot graph
-    virtual std::string dot_string(const std::string& prefix) const override;
+    /// Adds the target server to the pipeline graph
+    void add_graph_details(kotekan::PipelineGraph& graph) const override;
 
 private:
     /// The input buffer to send frames from.

@@ -2,6 +2,7 @@
 
 #include "Config.hpp"            // for Config
 #include "NDArray.hpp"           // for GenericNDArray, Config
+#include "PipelineGraph.hpp"     // for PipelineGraph, GraphNode
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"            // for Symbol
 #include "buffer.hpp"            // for Buffer, buffer_free, buffer_malloc
@@ -388,14 +389,16 @@ int bufferRecv::get_next_frame() {
     return last_frame_id;
 }
 
-std::string bufferRecv::dot_string(const std::string& prefix) const {
-    std::string dot = Stage::dot_string(prefix);
-    std::string source = fmt::format("Port: {:d}", listen_port);
-    dot += fmt::format("{:s}\"{:s}\" [shape=doubleoctagon style=filled,color=lightblue]", prefix,
-                       source);
-    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\"", prefix, source, get_unique_name());
-
-    return dot;
+void bufferRecv::add_graph_details(kotekan::PipelineGraph& graph) const {
+    // Node id is derived from the stage, not from the port, so that two stages
+    // listening on the same port number stay distinct nodes.
+    const std::string source_id = fmt::format("{:s}/source", get_unique_name());
+    graph.add_node(source_id)
+        .add_line(fmt::format("Port: {:d}", listen_port))
+        .set_attr("shape", "doubleoctagon")
+        .set_attr("style", "filled")
+        .set_attr("color", "lightblue");
+    graph.add_edge(source_id, get_unique_name());
 }
 
 connInstance::connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,

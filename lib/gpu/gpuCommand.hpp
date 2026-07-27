@@ -22,6 +22,10 @@
 
 class gpuDeviceInterface;
 
+namespace kotekan {
+class PipelineGraph;
+}
+
 /// Enumeration of known GPU command types.
 enum class gpuCommandType { COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET };
 
@@ -138,12 +142,18 @@ public:
     }
 
     /**
-     * @brief For DOT / graphviz, return an extra string that will be inserted into the DOT
-     * output after the GPU nodes and edges are drawn.
+     * @brief Adds anything else this command wants drawn, after the enclosing
+     *        gpuProcess has added its command and GPU memory nodes.
+     *
+     * @param graph       The graph being built.
+     * @param mem_prefix  Prefix turning a GPU memory name into its node id (see
+     *                    @c gpuProcess::gpu_mem_node_prefix), since GPU memory
+     *                    names are local to one gpuProcess.
      */
-    virtual std::string get_extra_dot(const std::string& prefix) const {
-        (void)prefix;
-        return "";
+    virtual void add_graph_details(kotekan::PipelineGraph& graph,
+                                   const std::string& mem_prefix) const {
+        (void)graph;
+        (void)mem_prefix;
     }
 
     /// Track the time the command was active on the GPU.

@@ -41,6 +41,11 @@ add_executable(test_ringbuffer_read_without_claiming test_ringbuffer_read_withou
 target_link_libraries(test_ringbuffer_read_without_claiming
                       PRIVATE pthread libexternal kotekan_libs kotekan_utils kotekan_core)
 
+# test_pipeline_graph - the graph model behind /pipeline_dot
+add_executable(test_pipeline_graph test_pipeline_graph.cpp)
+target_link_libraries(test_pipeline_graph PRIVATE libexternal kotekan_libs kotekan_utils
+                                                  kotekan_core)
+
 # test_buffer_peek - non-consuming newest-full-frame peek used by the /buffer/<name>/frame endpoints
 add_executable(test_buffer_peek test_buffer_peek.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
