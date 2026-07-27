@@ -16,6 +16,7 @@
 
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
+#include "PipelineGraph.hpp"  // for human_bytes
 #include "errors.h"           // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F
 #include "kotekanLogging.hpp" // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
 #include "metadata.hpp"       // for metadataObject, metadataPool
@@ -209,7 +210,11 @@ void GenericBuffer::json_description(nlohmann::json& buf_json) {
 }
 
 std::vector<std::string> GenericBuffer::dot_label_lines() {
-    return {buffer_name};
+    // Which kind of buffer this is, and the metadata that travels with its
+    // frames -- the two things that decide what a consumer can do with it.
+    return {buffer_name, metadata_pool
+                             ? fmt::format("{:s} · {:s}", buffer_type, metadata_pool->type_name)
+                             : buffer_type};
 }
 
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
@@ -438,9 +443,47 @@ void Buffer::json_description(nlohmann::json& buf_json) {
 }
 
 std::vector<std::string> Buffer::dot_label_lines() {
+    std::vector<std::string> lines = GenericBuffer::dot_label_lines();
+
+    // The array layout, when the buffer was declared with one. This is the shape
+    // the data actually has at run time, so nothing here has to be inferred from
+    // the config or from the kernel sources.
+    auto array = get_frame_desc<kotekan::GenericNDArray>();
+    if (array) {
+        const std::vector<std::ptrdiff_t> extents = array->get_extents();
+        const std::vector<kotekan::Symbol> dimnames = array->get_dimnames();
+        std::string layout;
+        for (size_t d = 0; d < extents.size(); d++) {
+            if (!layout.empty())
+                layout += " × ";
+            if (d < dimnames.size() && dimnames[d])
+                layout += fmt::format(fmt("{:s}:{:d}"), dimnames[d].get_string(), extents[d]);
+            else
+                layout += fmt::format(fmt("{:d}"), extents[d]);
+        }
+        lines.push_back(
+            fmt::format(fmt("{:s} {:s}"), type_to_string(array->get_value_datatype()), layout));
+    }
+
+    lines.push_back(fmt::format(fmt("{:s} ×{:d} frames = {:s}"), kotekan::human_bytes(frame_size),
+                                num_frames, kotekan::human_bytes(frame_size * (size_t)num_frames)));
+
     const int full = get_num_full_frames();
-    return {buffer_name, fmt::format(fmt("{:d}/{:d} ({:.1f}%)"), full, num_frames,
-                                     (float)full / num_frames * 100)};
+    lines.push_back(fmt::format(fmt("{:d}/{:d} full ({:.1f}%)"), full, num_frames,
+                                (float)full / num_frames * 100));
+
+    // Placement and pinning: cheap to get wrong in a config, expensive to work
+    // out later from a throughput plot, so say it where the buffer is drawn.
+    std::string flags = fmt::format(fmt("numa {:d}"), numa_node);
+    if (use_hugepages)
+        flags += " · hugepages";
+    if (mlock_frames)
+        flags += " · mlock";
+    if (peek_hold_enabled)
+        flags += " · peek hold";
+    lines.push_back(flags);
+
+    return lines;
 }
 
 void Buffer::print_buffer_status() {

@@ -19,6 +19,58 @@
 namespace kotekan {
 
 /**
+ * @brief Formats a byte count for a graph label (B / KiB / MiB / GiB / TiB).
+ *
+ * Sizes in a pipeline graph span bytes to hundreds of gigabytes, and the exact
+ * digits never matter as much as the magnitude.
+ */
+std::string human_bytes(size_t bytes);
+
+/**
+ * @brief What a node represents, which is what its colour tells the reader.
+ */
+enum class GraphCategory {
+    Buffer,   ///< a host buffer frames pass through
+    Compute,  ///< a stage doing work on the CPU
+    Gpu,      ///< a stage driving a GPU, and the commands it runs
+    Io,       ///< a stage moving data off (or onto) this machine
+    Memory,   ///< memory private to a device, not a kotekan buffer
+    Endpoint, ///< the far end of an I/O stage: a socket, a port, a file
+};
+
+/// Fill and outline colours for one category of node.
+struct GraphStyle {
+    const char* fill;
+    const char* line;
+};
+
+/// @return The colours for @p category.
+GraphStyle graph_style(GraphCategory category);
+
+/**
+ * @brief The last component of a kotekan unique name ("/gen/voltage" -> "voltage").
+ *
+ * The full path is what identifies a node; the leaf is what a reader needs, once
+ * the enclosing box says which section it came from.
+ */
+std::string leaf_name(const std::string& unique_name);
+
+/// Background of the box drawn around one device's stages and memory.
+extern const char* const graph_device_fill;
+
+/**
+ * @brief Guesses what a stage does from its registered type name.
+ *
+ * Only the GPU stage types are named exactly; everything else is matched on
+ * substrings, so a new network or file stage is categorised without having to
+ * be listed here. This only picks a colour -- being wrong costs nothing but a
+ * misleading shade.
+ *
+ * @param stage_type The `kotekan_stage` type name from the config.
+ */
+GraphCategory stage_category(const std::string& stage_type);
+
+/**
  * @brief A node in the pipeline graph.
  *
  * A node is identified by @c id, which must be unique across the whole graph
@@ -44,6 +96,14 @@ struct GraphNode {
 
     /// Convenience: set a graphviz attribute.
     GraphNode& set_attr(const std::string& key, const std::string& value);
+
+    /**
+     * @brief Applies a category's shape and colours to this node.
+     *
+     * Every contributor styles its nodes through this, so a category looks the
+     * same wherever in the pipeline it is drawn.
+     */
+    GraphNode& set_category(GraphCategory category);
 };
 
 /**
@@ -129,6 +189,20 @@ public:
 
     /// @return true if a node with this id has been added.
     bool has_node(const std::string& id) const;
+
+    /**
+     * @brief The innermost cluster that contains all of @p node_ids.
+     *
+     * Used to place a node next to everything that touches it: a buffer whose
+     * every producer and consumer live on one device belongs inside that
+     * device's box, while one shared across devices belongs in the box that
+     * holds them both.
+     *
+     * @param node_ids  Nodes that must all be inside the returned cluster.
+     * @return The cluster id, or an empty string when the nodes have no common
+     *         cluster (or any of them is unknown or at the top level).
+     */
+    std::string common_cluster(const std::vector<std::string>& node_ids) const;
 
     /**
      * @brief Renders the graph in graphviz `dot` format.

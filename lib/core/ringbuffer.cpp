@@ -259,6 +259,23 @@ void RingBuffer::finish_write(const std::string& name, [[maybe_unused]] const in
     }
 }
 
+std::vector<std::string> RingBuffer::dot_label_lines() {
+    std::vector<std::string> lines = GenericBuffer::dot_label_lines();
+
+    // A ring is measured in elements, not frames: what matters is how much of it
+    // is written and waiting to be read.
+    std::ptrdiff_t readable, capacity;
+    {
+        std::unique_lock<std::recursive_mutex> lock(mutex);
+        readable = first_write_head - last_read_tail;
+        capacity = size;
+    }
+    lines.push_back(fmt::format(fmt("{:d} elements"), capacity));
+    lines.push_back(fmt::format(fmt("{:d} readable ({:.1f}%)"), readable,
+                                capacity > 0 ? 100.0 * readable / capacity : 0.0));
+    return lines;
+}
+
 void RingBuffer::print_buffer_status() {
     std::ptrdiff_t read_tail, read_head;
     std::ptrdiff_t write_tail, write_head;
