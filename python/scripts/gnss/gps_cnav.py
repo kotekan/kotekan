@@ -280,9 +280,48 @@ def sv_position_cnav(eph, t):
 
 
 def read_symbols(paths, prn, n_prn):
-    recs = read_records(paths, n_prn=n_prn)
-    sel = recs[recs["prn"].astype(int) == int(prn)]
-    return sel["peak_re"].astype(float)
+    """Soft CNAV symbols (one per 20 ms CM record) + their UTC stamps for a PRN.
+
+    Auto-detects the record layout by frame stride: the CPU-chain era wrote
+    11-float records (peak_re at slot 4, gps_beamtrack.read_records); the GPU
+    chain (GnssGpuRecordAssemble -> combiner out_buf) writes 24-float REC_*
+    records -- prompt P.re/P.im at slots 3/4, float64 UTC at slots 9-10
+    (lib/stages/gnss/gnssRecord.hpp). The soft symbol is the carrier-locked
+    prompt's real part, same quantity either way."""
+    import struct
+    buf = open(paths[0], "rb").read()
+    strides = {11: 4 + n_prn * 44, 24: 4 + n_prn * 96}
+    fits = [k for k, s in strides.items() if len(buf) % s == 0 and len(buf) >= s]
+    if fits == [11] or (not fits and len(buf) % strides[11] < len(buf) % strides[24]):
+        recs = read_records(paths, n_prn=n_prn)
+        sel = recs[recs["prn"].astype(int) == int(prn)]
+        return sel["utc"].astype(float), sel["peak_re"].astype(float)
+    rb, stride = 96, strides[24]
+    utc, sym = [], []
+    for path in paths:
+        buf = open(path, "rb").read()
+        for off in range(0, len(buf) - stride + 1, stride):
+            meta = struct.unpack_from("<I", buf, off)[0]
+            ro = off + 4 + meta + prn_index(buf, off + 4 + meta, prn, n_prn, rb)
+            if ro < off + 4:
+                continue
+            v = np.frombuffer(buf, dtype="<f4", count=6, offset=ro)
+            t = struct.unpack_from("<d", buf, ro + 9 * 4)[0]
+            if v[5] > 0.0 and t > 0.0:                    # P_energy > 0: a real record
+                utc.append(t)
+                sym.append(float(v[3]))                   # REC_P_RE
+    return np.asarray(utc), np.asarray(sym)
+
+
+def prn_index(buf, base, prn, n_prn, rb):
+    """Byte offset (relative to base) of this PRN's record in a frame, or -1-base.
+    Records carry their PRN in slot 0; the row order is fixed per chain, so scan
+    once per call (cheap at 24 floats x n_prn)."""
+    import struct
+    for p in range(n_prn):
+        if int(struct.unpack_from("<f", buf, base + p * rb)[0]) == int(prn):
+            return p * rb
+    return -1 - base
 
 
 def main(argv=None):
@@ -299,7 +338,7 @@ def main(argv=None):
         ap.error("no record files matched: %s" % args.path)
 
     for prn in args.prn:
-        syms = read_symbols(paths, prn, args.n_prn)
+        utc, syms = read_symbols(paths, prn, args.n_prn)
         msgs = decode_cnav(syms)
         print("PRN %2d: %d symbols, %d CNAV messages" % (prn, len(syms), len(msgs)))
         for m in msgs:
