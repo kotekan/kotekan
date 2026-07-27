@@ -343,4 +343,45 @@ std::string PipelineGraph::to_dot() const {
     return dot;
 }
 
+nlohmann::json PipelineGraph::to_json() const {
+    nlohmann::json out;
+    out["graph_attrs"] = graph_attrs;
+
+    out["clusters"] = nlohmann::json::array();
+    for (const auto& cluster : _clusters) {
+        nlohmann::json entry;
+        entry["id"] = cluster.id;
+        entry["label"] = cluster.label;
+        entry["parent"] = cluster.parent;
+        out["clusters"].push_back(entry);
+    }
+
+    out["nodes"] = nlohmann::json::array();
+    for (const auto& node : _nodes) {
+        nlohmann::json entry;
+        entry["id"] = node.id;
+        // The label stays split into its lines: a consumer laying the graph out
+        // itself wants the parts, not one string with breaks in it.
+        entry["label_lines"] = node.label_lines;
+        entry["cluster"] = node.cluster;
+        entry["attrs"] = node.attrs;
+        out["nodes"].push_back(entry);
+    }
+
+    out["edges"] = nlohmann::json::array();
+    for (const auto& edge : _edges) {
+        if (!has_node(edge.from) || !has_node(edge.to))
+            continue; // same rule as to_dot(): an edge to nowhere is not a fact
+        nlohmann::json entry;
+        entry["from"] = edge.from;
+        entry["to"] = edge.to;
+        if (!edge.label.empty())
+            entry["label"] = edge.label;
+        entry["attrs"] = edge.attrs;
+        out["edges"].push_back(entry);
+    }
+
+    return out;
+}
+
 } // namespace kotekan

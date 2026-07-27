@@ -214,7 +214,7 @@ kotekan::BufferState GenericBuffer::dot_buffer_state() {
     return kotekan::BufferState::Unknown;
 }
 
-std::vector<std::string> GenericBuffer::dot_label_lines() {
+std::vector<std::string> GenericBuffer::dot_label_lines(const kotekan::GraphOptions&) {
     // Which kind of buffer this is, and the metadata that travels with its
     // frames -- the two things that decide what a consumer can do with it.
     return {buffer_name, metadata_pool
@@ -461,8 +461,8 @@ void Buffer::json_description(nlohmann::json& buf_json) {
     buf_json["peek_hold"] = peek_hold_enabled;
 }
 
-std::vector<std::string> Buffer::dot_label_lines() {
-    std::vector<std::string> lines = GenericBuffer::dot_label_lines();
+std::vector<std::string> Buffer::dot_label_lines(const kotekan::GraphOptions& options) {
+    std::vector<std::string> lines = GenericBuffer::dot_label_lines(options);
 
     // The array layout, when the buffer was declared with one. This is the shape
     // the data actually has at run time, so nothing here has to be inferred from
@@ -487,17 +487,19 @@ std::vector<std::string> Buffer::dot_label_lines() {
     lines.push_back(fmt::format(fmt("{:s} ×{:d} frames = {:s}"), kotekan::human_bytes(frame_size),
                                 num_frames, kotekan::human_bytes(frame_size * (size_t)num_frames)));
 
-    const int full = get_num_full_frames();
-    lines.push_back(fmt::format(fmt("{:d}/{:d} full ({:.1f}%)"), full, num_frames,
-                                (float)full / num_frames * 100));
-
     // What the data is actually doing, rather than what the config asked for.
-    const double rate = get_arrival_rate();
-    if (rate > 0.0)
-        lines.push_back(fmt::format(fmt("{:.4g} frame/s · {:s}"), rate,
-                                    kotekan::human_rate(rate * frame_size)));
-    else
-        lines.push_back(fmt::format(fmt("{:d} frames arrived"), get_frames_arrived()));
+    if (options.runtime) {
+        const int full = get_num_full_frames();
+        lines.push_back(fmt::format(fmt("{:d}/{:d} full ({:.1f}%)"), full, num_frames,
+                                    (float)full / num_frames * 100));
+
+        const double rate = get_arrival_rate();
+        if (rate > 0.0)
+            lines.push_back(fmt::format(fmt("{:.4g} frame/s · {:s}"), rate,
+                                        kotekan::human_rate(rate * frame_size)));
+        else
+            lines.push_back(fmt::format(fmt("{:d} frames arrived"), get_frames_arrived()));
+    }
 
     // Placement and pinning: cheap to get wrong in a config, expensive to work
     // out later from a throughput plot, so say it where the buffer is drawn.

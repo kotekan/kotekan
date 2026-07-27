@@ -294,6 +294,11 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
     // they would end on an empty one drawn beside it.
     stage_node.cluster = device.id;
 
+    // On a large pipeline the commands and device memory are most of the graph,
+    // and are not what one is looking at when following data between stages.
+    if (!graph.options.kernels)
+        return;
+
     // A node per gpuCommand, chained in execution order after the stage node.
     // Only the first instance of each command is drawn; the others are the same
     // step of the pipeline operating on another frame.

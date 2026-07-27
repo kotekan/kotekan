@@ -679,9 +679,10 @@ void connectionInstance::send_empty_reply(const HTTP_RESPONSE& status) {
                       restServer::get_http_responce_code_text(status).c_str(), event_buffer);
 }
 
-void connectionInstance::send_text_reply(const string& reply_message) {
+void connectionInstance::send_text_reply(const string& reply_message, const string& content_type) {
     maybe_add_cors_headers(request);
-    if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type", "text/plain")
+    if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type",
+                          content_type.c_str())
         != 0) {
         throw std::runtime_error("Failed to add header to reply");
     }

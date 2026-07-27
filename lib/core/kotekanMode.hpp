@@ -65,12 +65,17 @@ public:
      * @c Stage::add_graph_details(); everything common lives here so that the
      * graph is assembled in one place and can be rendered in any format.
      *
+     * @param options What to include in the graph.
      * @return The pipeline graph, as of the moment of the call.
      */
-    PipelineGraph get_pipeline_graph();
+    PipelineGraph get_pipeline_graph(const GraphOptions& options = GraphOptions());
 
     /// HTTP callback that dumps the current pipeline graph in `dot` format.
     void pipeline_dot_graph_callback(connectionInstance& conn);
+
+    /// HTTP callback that dumps the same graph as JSON, for clients that would
+    /// rather lay it out (or diff it) themselves than parse DOT.
+    void pipeline_json_graph_callback(connectionInstance& conn);
 
     /**
      * @brief HTTP callback serving a copy of the newest full frame in @c buf.

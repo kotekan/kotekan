@@ -182,6 +182,32 @@ BOOST_AUTO_TEST_CASE(leaf_names_and_byte_sizes) {
     BOOST_CHECK_EQUAL(kotekan::human_bytes(size_t(3) * 1024 * 1024 * 1024), "3 GiB");
 }
 
+BOOST_AUTO_TEST_CASE(json_carries_the_same_graph) {
+    PipelineGraph graph;
+    graph.graph_attrs["rankdir"] = "LR";
+    graph.add_cluster("section").label = "gen";
+    graph.add_node("stage").add_line("voltage").add_line("<testDataGen>").cluster = "section";
+    graph.add_node("buffer").add_line("host_voltage_buffer").set_attr("shape", "box");
+    graph.add_edge("stage", "buffer").set_attr("weight", "4");
+    graph.add_edge("stage", "never_added");
+
+    const nlohmann::json out = graph.to_json();
+    BOOST_CHECK_EQUAL(out["graph_attrs"]["rankdir"], "LR");
+    BOOST_REQUIRE_EQUAL(out["clusters"].size(), 1u);
+    BOOST_CHECK_EQUAL(out["clusters"][0]["label"], "gen");
+    BOOST_REQUIRE_EQUAL(out["nodes"].size(), 2u);
+    BOOST_CHECK_EQUAL(out["nodes"][0]["id"], "stage");
+    BOOST_CHECK_EQUAL(out["nodes"][0]["cluster"], "section");
+    // The label stays in pieces, for a client that lays the graph out itself.
+    BOOST_REQUIRE_EQUAL(out["nodes"][0]["label_lines"].size(), 2u);
+    BOOST_CHECK_EQUAL(out["nodes"][0]["label_lines"][1], "<testDataGen>");
+    // Same rule as the DOT output: an edge to a node that was never added is
+    // not a fact about the pipeline.
+    BOOST_REQUIRE_EQUAL(out["edges"].size(), 1u);
+    BOOST_CHECK_EQUAL(out["edges"][0]["to"], "buffer");
+    BOOST_CHECK_EQUAL(out["edges"][0]["attrs"]["weight"], "4");
+}
+
 BOOST_AUTO_TEST_CASE(graph_wide_attributes) {
     PipelineGraph graph;
     graph.header_comments.push_back("a pipeline");

@@ -64,6 +64,7 @@ kotekanMode::~kotekanMode() {
     restServer::instance().remove_get_callback("/config");
     restServer::instance().remove_get_callback("/buffers");
     restServer::instance().remove_get_callback("/pipeline_dot");
+    restServer::instance().remove_get_callback("/pipeline_json");
     for (auto const& endpoint : frame_peek_endpoints)
         restServer::instance().remove_get_callback(endpoint);
     restServer::instance().remove_all_aliases();
@@ -168,6 +169,9 @@ void kotekanMode::initalize_stages() {
     restServer::instance().register_get_callback(
         "/pipeline_dot", std::bind(&kotekanMode::pipeline_dot_graph_callback, this, _1));
 
+    restServer::instance().register_get_callback(
+        "/pipeline_json", std::bind(&kotekanMode::pipeline_json_graph_callback, this, _1));
+
     // Register frame-peek endpoints for every frame-holding buffer, so the
     // newest full frame in any buffer can be inspected without config changes.
     for (auto& buf : buffer_container.get_buffer_map()) {
@@ -253,6 +257,9 @@ static void add_legend(PipelineGraph& graph) {
     auto& legend = graph.add_cluster("__legend");
     legend.label = "legend";
     legend.set_attr("style", "rounded").set_attr("color", "gray70");
+    // One rank keeps the key as a compact block instead of a band stretched
+    // across the whole drawing.
+    legend.set_attr("rank", "same");
 
     struct Entry {
         const char* id;
@@ -267,28 +274,23 @@ static void add_legend(PipelineGraph& graph) {
         {"memory", GraphCategory::Memory, "device memory (not a kotekan buffer)"},
         {"endpoint", GraphCategory::Endpoint, "the far end: a socket, a port, a file"},
     };
-    std::string previous;
     for (const auto& entry : entries) {
-        const std::string id = std::string("__legend/") + entry.id;
-        auto& node = graph.add_node(id);
+        auto& node = graph.add_node(std::string("__legend/") + entry.id);
         node.add_line(entry.text);
         node.cluster = legend.id;
         node.set_category(entry.category);
-        // Stack the key vertically instead of letting it stretch across the graph.
-        if (!previous.empty())
-            graph.add_edge(previous, id).set_attr("style", "invis");
-        previous = id;
     }
 }
 
-PipelineGraph kotekanMode::get_pipeline_graph() {
+PipelineGraph kotekanMode::get_pipeline_graph(const GraphOptions& options) {
     PipelineGraph graph;
+    graph.options = options;
     graph.header_comments.push_back(
         "This is a DOT formatted pipeline graph, use the graphviz package to plot.");
     // Pipelines are long and thin, so they read left to right; the extra
     // crossing-minimisation passes are cheap next to the cost of untangling the
     // result by eye, and newrank lines the clusters up across the whole graph.
-    graph.graph_attrs["rankdir"] = "LR";
+    graph.graph_attrs["rankdir"] = options.rankdir;
     graph.graph_attrs["nodesep"] = "0.3";
     graph.graph_attrs["ranksep"] = "0.9";
     graph.graph_attrs["mclimit"] = "6";
@@ -301,9 +303,16 @@ PipelineGraph kotekanMode::get_pipeline_graph() {
     // Buffer nodes.
     for (auto& buf : buffer_container.get_buffer_map()) {
         auto& node = graph.add_node(buf.first);
-        node.label_lines = buf.second->dot_label_lines();
+        node.label_lines = buf.second->dot_label_lines(options);
         node.set_category(GraphCategory::Buffer);
-        node.set_buffer_state(buf.second->dot_buffer_state());
+        if (options.runtime)
+            node.set_buffer_state(buf.second->dot_buffer_state());
+        // A rendered graph is then a way in: click a buffer to see the frame it
+        // is holding. Only frame buffers have somewhere to go.
+        if (options.urls && dynamic_cast<Buffer*>(buf.second) != nullptr)
+            node.set_attr("URL", fmt::format(fmt("/buffer/{:s}/frame"), buf.first));
+        node.set_attr("tooltip",
+                      fmt::format(fmt("{:s} ({:s} buffer)"), buf.first, buf.second->buffer_type));
     }
 
 #if !defined(MAC_OSX)
@@ -329,23 +338,27 @@ PipelineGraph kotekanMode::get_pipeline_graph() {
         // things one goes looking for when a pipeline will not keep up.
         const std::vector<pid_t> tids = stage.second->get_tids();
         const std::vector<int> affinity = stage.second->get_cpu_affinity();
-        std::string running =
-            fmt::format(fmt("{:d} thread{:s}"), tids.size(), tids.size() == 1 ? "" : "s");
-        auto usage = cpu_usage.find(stage.first);
-        if (usage != cpu_usage.end())
-            running += fmt::format(fmt(" · cpu {:.0f}%"), usage->second);
-        if (stage.second->is_stopping())
-            running += " · stopping";
-        node.add_line(running);
+        if (options.runtime) {
+            std::string running =
+                fmt::format(fmt("{:d} thread{:s}"), tids.size(), tids.size() == 1 ? "" : "s");
+            auto usage = cpu_usage.find(stage.first);
+            if (usage != cpu_usage.end())
+                running += fmt::format(fmt(" · cpu {:.0f}%"), usage->second);
+            if (stage.second->is_stopping())
+                running += " · stopping";
+            node.add_line(running);
+        }
         if (!affinity.empty()) {
             std::string cores;
             for (int core : affinity)
                 cores += (cores.empty() ? "" : ",") + std::to_string(core);
             node.add_line("cores " + cores);
         }
+        // The node shows the leaf name; the full config path is a hover away.
+        node.set_attr("tooltip", stage.first);
 
         const std::string section = config_section(stage.first);
-        if (!section.empty()) {
+        if (options.cluster && !section.empty()) {
             auto& cluster = graph.add_cluster(section);
             cluster.label = section;
             cluster.set_attr("style", "rounded").set_attr("color", "gray70");
@@ -361,12 +374,26 @@ PipelineGraph kotekanMode::get_pipeline_graph() {
     // a stage may register a helper under another name (and a stage can be torn
     // down while its registration lives on), so give any unrecognised name a node
     // of its own rather than losing the edge.
-    auto endpoint = [&graph](const std::string& name) -> const std::string& {
-        if (!graph.has_node(name))
-            graph.add_node(name)
-                .add_line(name)
-                .set_category(GraphCategory::Compute)
-                .set_attr("style", "rounded,dashed");
+    auto endpoint = [&graph](const std::string& name) -> std::string {
+        if (graph.has_node(name))
+            return name;
+        // A stage may register under a name of its own making below its unique
+        // name -- a GPU command is "<stage>/commands/<n>" -- and that name has no
+        // node when the graph was asked not to draw the stage's internals. Hang
+        // the edge on the nearest enclosing thing that *is* drawn.
+        std::string prefix = name;
+        while (true) {
+            const size_t slash = prefix.find_last_of('/');
+            if (slash == std::string::npos || slash == 0)
+                break;
+            prefix = prefix.substr(0, slash);
+            if (graph.has_node(prefix))
+                return prefix;
+        }
+        graph.add_node(name)
+            .add_line(name)
+            .set_category(GraphCategory::Compute)
+            .set_attr("style", "rounded,dashed");
         return name;
     };
     for (auto& buf : buffer_container.get_buffer_map()) {
@@ -379,12 +406,14 @@ PipelineGraph kotekanMode::get_pipeline_graph() {
 
         std::vector<std::string> touched_by;
         for (auto& cit : buf.second->consumers) {
-            graph.add_edge(buf.first, endpoint(cit.second.name)).set_attr("weight", weight);
-            touched_by.push_back(cit.second.name);
+            const std::string node = endpoint(cit.second.name);
+            graph.add_edge(buf.first, node).set_attr("weight", weight);
+            touched_by.push_back(node);
         }
         for (auto& pit : buf.second->producers) {
-            graph.add_edge(endpoint(pit.second.name), buf.first).set_attr("weight", weight);
-            touched_by.push_back(pit.second.name);
+            const std::string node = endpoint(pit.second.name);
+            graph.add_edge(node, buf.first).set_attr("weight", weight);
+            touched_by.push_back(node);
         }
         // Draw the buffer wherever everything using it lives: private buffers
         // move inside the device or section that owns them, and only the genuine
@@ -397,11 +426,11 @@ PipelineGraph kotekanMode::get_pipeline_graph() {
     // shared, and its object size is what every frame of every buffer using it
     // carries. (There is no occupancy to report -- a pool hands out objects on
     // demand rather than holding a fixed set.)
-    if (!metadata_pools.empty()) {
+    if (options.pools && !metadata_pools.empty()) {
         auto& pools = graph.add_cluster("__pools");
         pools.label = "metadata pools";
         pools.set_attr("style", "rounded").set_attr("color", "gray70");
-        std::string previous;
+        pools.set_attr("rank", "same");
         for (auto& pool : metadata_pools) {
             const std::string id = "__pool/" + pool.first;
             auto& node = graph.add_node(id);
@@ -412,18 +441,51 @@ PipelineGraph kotekanMode::get_pipeline_graph() {
             }
             node.cluster = pools.id;
             node.set_category(GraphCategory::Buffer);
-            if (!previous.empty())
-                graph.add_edge(previous, id).set_attr("style", "invis");
-            previous = id;
         }
     }
 
-    add_legend(graph);
+    if (options.legend)
+        add_legend(graph);
     return graph;
 }
 
+/// Reads the graph options out of a request's query arguments.
+static GraphOptions graph_options_from_query(connectionInstance& conn) {
+    GraphOptions options;
+    const std::map<std::string, std::string> query = conn.get_query();
+
+    auto flag = [&query](const std::string& name, bool& value) {
+        auto arg = query.find(name);
+        if (arg == query.end())
+            return;
+        // Accept the forms people actually type, and treat a bare `?legend` as
+        // asking for it.
+        const std::string& text = arg->second;
+        value = text.empty() || text == "1" || text == "true" || text == "yes" || text == "on";
+    };
+    flag("cluster", options.cluster);
+    flag("legend", options.legend);
+    flag("pools", options.pools);
+    flag("kernels", options.kernels);
+    flag("runtime", options.runtime);
+    flag("urls", options.urls);
+
+    auto rankdir = query.find("rankdir");
+    if (rankdir != query.end()
+        && (rankdir->second == "LR" || rankdir->second == "TB" || rankdir->second == "RL"
+            || rankdir->second == "BT"))
+        options.rankdir = rankdir->second;
+
+    return options;
+}
+
 void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
-    conn.send_text_reply(get_pipeline_graph().to_dot());
+    conn.send_text_reply(get_pipeline_graph(graph_options_from_query(conn)).to_dot(),
+                         "text/vnd.graphviz");
+}
+
+void kotekanMode::pipeline_json_graph_callback(connectionInstance& conn) {
+    conn.send_json_reply(get_pipeline_graph(graph_options_from_query(conn)).to_json());
 }
 
 void kotekanMode::buffer_frame_callback(Buffer* buf, connectionInstance& conn) {

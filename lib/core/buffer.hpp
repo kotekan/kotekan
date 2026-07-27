@@ -263,7 +263,7 @@ public:
      * The lines are escaped and joined by the graph renderer, so implementations
      * must not add markup of their own.
      */
-    virtual std::vector<std::string> dot_label_lines();
+    virtual std::vector<std::string> dot_label_lines(const kotekan::GraphOptions& options);
 
     /**
      * @brief How busy this buffer is, for the pipeline graph.
@@ -787,7 +787,7 @@ public:
 
     void json_description(nlohmann::json& buf_json) override;
 
-    std::vector<std::string> dot_label_lines() override;
+    std::vector<std::string> dot_label_lines(const kotekan::GraphOptions& options) override;
 
     kotekan::BufferState dot_buffer_state() override;
 
