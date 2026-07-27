@@ -332,7 +332,12 @@ void airspyInput::stream_watchdog() {
             m_streaming.set(1);
             if (!ever_streamed) {
                 ever_streamed = true;
-                INFO("/{:s}: streaming CONFIRMED -- first samples {:.0f} ms after start_rx.",
+                // WARN, not INFO, and it is not a warning: the node runs at log_level "warn",
+                // so INFO never reaches the log that actually gets archived. This is the
+                // POSITIVE CONTROL for the silent failure above -- three lines per run that
+                // say each front end really did start delivering, and how long it took. Its
+                // absence is the evidence when a post-mortem asks "did L1 ever stream?".
+                WARN("/{:s}: streaming CONFIRMED -- first samples {:.0f} ms after start_rx.",
                      unique_name, silent_ms);
             } else if (next_report_ms > (double)_stream_stall_ms) {
                 // we had complained; say that it came back, or the log strands the operator
