@@ -658,13 +658,24 @@ bands:
           cudaOutputData.
         search:
           params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
-        # VOLTAGE PEEL (P9): REVERTED with the GPS_L5_Q chain (see its note) -- the L5
-        # add-back corrupts the band. bit_export stays on (transport soak).
+        # VOLTAGE PEEL (P9): RE-ENABLED 2026-07-27 with the GPS_L5_Q chain (see its note for
+        # the real root cause -- real-time overrun, not the add-back). CS100 is likewise one
+        # chip per 1 ms primary period, the segmented-pilot case the L1 chains already run.
+        # Budgeted before enabling, not assumed: with GPS alone peeling, the measured cost
+        # was 2.22x (0.691 ms vs 0.31 ms unpeeled) and the L5 tracker phase sat at 28% of
+        # the 2.496 ms frame, so all three peeling projects to ~0.71 ms/chain concurrent.
+        # THE GATE REMAINS kotekan_valve_dropped_frames_total{stage_name="/l5_valve"}.
+        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
         tracker:
           fll_reacq_hz: 15.0
+          params:
+            peel: true
+            peel_gain_alpha: 0.01
+            peel_warmup_records: 100
+            peel_fll_gain: 0.05
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)"
         combiner:
-          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5A_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5A_CS100, adr_smooth_records: 10, peel_depth: true, bit_export: true, bit_pred_horizon_s: 2.0 }
 
       - constellation: bds
         signal: BDS_B2A_P
@@ -676,10 +687,21 @@ bands:
           ---- BeiDou-3 B2a-pilot parallel chain (dataless pilot, PRN 1..63; BDS-3 only) ----
         search:
           params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
-        # VOLTAGE PEEL (P9): REVERTED with the GPS_L5_Q chain (see its note) -- the L5
-        # add-back corrupts the band. bit_export stays on (transport soak).
+        # VOLTAGE PEEL (P9): RE-ENABLED 2026-07-27 with the GPS_L5_Q chain (see its note for
+        # the real root cause -- real-time overrun, not the add-back). CS100 is likewise one
+        # chip per 1 ms primary period, the segmented-pilot case the L1 chains already run.
+        # Budgeted before enabling, not assumed: with GPS alone peeling, the measured cost
+        # was 2.22x (0.691 ms vs 0.31 ms unpeeled) and the L5 tracker phase sat at 28% of
+        # the 2.496 ms frame, so all three peeling projects to ~0.71 ms/chain concurrent.
+        # THE GATE REMAINS kotekan_valve_dropped_frames_total{stage_name="/l5_valve"}.
+        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
         tracker:
           fll_reacq_hz: 15.0
+          params:
+            peel: true
+            peel_gain_alpha: 0.01
+            peel_warmup_records: 100
+            peel_fll_gain: 0.05
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)"
         combiner:
-          params: { n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+          params: { n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100, adr_smooth_records: 10, peel_depth: true, bit_export: true, bit_pred_horizon_s: 2.0 }
