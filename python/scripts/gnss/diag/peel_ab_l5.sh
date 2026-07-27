@@ -85,7 +85,14 @@ BENCH_BIAS=${BENCH_BIAS:-35.0}
 BIAS_DIR=${BIAS_DIR:-$HOME/.cache/kotekan_gps}
 printf '%s 5 %s\n' "$BENCH_BIAS" "$(date +%s)" > "$BIAS_DIR/gps_clock_bias_l5ab_${LABEL}.hz"
 echo "  bench clock bias warm-start: $BENCH_BIAS Hz -> gps_clock_bias_l5ab_${LABEL}.hz"
+# CARRIER_GAIN=0: freeze the shared carrier loop. With deep not yet built, the combiner's
+# slope-fit residual is fold-noise; at gain 0.5 the trim swung +5 -> +42 Hz cycle-to-cycle
+# (measured 11:56), thrashing the NCO faster than coherence could ever form -- a bootstrap
+# instability. The bench does not need 1 s coherence: the seed is ~2 Hz accurate
+# (FIRST SEED 2376.5 vs det 2375.0), so pure feed-forward gives ~250 ms coherence, ample
+# for NH, bit_pred and a 158->2-class collapse to be unmissable.
 SKIP_KOTEKAN=1 STAGE_PREFIX="" CFG="$CFG" PORT=$PORT HTTP_PORT=8092 TAG="l5ab_$LABEL" \
+    CARRIER_GAIN=0.0 \
     LAT=43.968697 LON=-79.252106 ALT=260 \
     BROKER_EXTRA="--almanac-epoch $CAP_EPOCH --bias-min-sats 99 --bias-stale-s 0" \
     nice -n 5 taskset -c 14-19 ./config/run_live.sh > "/tmp/ctl_l5_${LABEL}.log" 2>&1 &
