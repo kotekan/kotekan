@@ -137,6 +137,14 @@ public:
     /// the schema is fixed NOW, while there is exactly one producer and one consumer, so that
     /// change is additive instead of breaking.
     std::string peel_component = "P";
+    /// DIAGNOSTIC: despread the RAW window beside the peeled+added-back one and log the
+    /// difference. Answers "is the analytic add-back exact on this chain" with a number
+    /// instead of an argument. Costs an extra despread + a blocking readback -- never on in
+    /// production. See the allocation-site note in the .cpp.
+    bool peel_verify = false;
+    /// Verify one record in N (the readback blocks the stream; every record would stall
+    /// every chain sharing this GPU process).
+    int peel_verify_every = 500;
     /// Rows whose nav_bits failed to parse, since the last health line. This used to be
     /// swallowed in silence ("keep the previous table"), and on 2026-07-25 that cost a live
     /// debugging session: the constructed-bit source took every GPS PRN to `nobits` at once --
@@ -299,6 +307,13 @@ public:
     std::vector<uint8_t> peel_prev_ok;             ///< [n_prn] discriminator history valid
     std::vector<long long> peel_prev_wstart;       ///< [n_prn] sample of the last gain update
 
+    /// TWIN-DESPREAD VERIFIER (peel_verify only). [n_prn] WORST relative prompt error between
+    /// the peeled+added-back correlation and a direct despread of the raw window, since the
+    /// last health line, and how many records were compared. Worst, not mean: a fault that
+    /// only bites on records straddling a code-period boundary would be averaged into silence.
+    std::vector<double> peel_verr;
+    std::vector<int> peel_vn;
+
     /// What the PREVIOUS frame's peel actually subtracted, so the next gain update can undo it
     /// exactly. Storing it beats recomputing: by update time the EMA has moved on.
     struct PeelUsed {
@@ -368,11 +383,23 @@ public:
 private:
     cudaGnssTrackState* st();
 
+    /// DIAGNOSTIC (peel_verify): despread the RAW window for the same specs and record, and
+    /// accumulate the worst relative prompt error vs the peeled+added-back result into
+    /// S.peel_verr. Blocks the stream -- never called in production. See the .cpp note.
+    void verify_addback(cudaGnssTrackState& S, const void* d_window, long long wstart,
+                        const std::vector<GnssCudaDespread::Spec>& specs,
+                        const std::vector<int>& spec_prn, const void* d_corr_peeled,
+                        const void* d_scale, cudaStream_t stream);
+
     std::string _gpu_mem_input, _gpu_mem_output;
     std::string _mem_ring, _mem_jobs, _mem_scale; // stage-namespaced device allocation names
     // Peel scratch, per frame (never leaves the GPU): the float2 residual window, the peel jobs,
     // the gains actually subtracted, and the reference cross-terms the add-back consumes.
     std::string _mem_resid, _mem_pjobs, _mem_gain, _mem_xcorr;
+    /// Twin-despread verifier (peel_verify, diagnostic): scratch for a second despread of the
+    /// RAW window, so the analytic add-back can be diffed against ground truth in-flight.
+    std::string _mem_vcorr, _mem_venergy, _mem_vjobs;
+    unsigned long long _verify_ctr = 0; ///< throttle counter for the twin-despread verifier
     int _rows_spec = 4; // gnss_gpu::ROWS_PLAIN, or ROWS_PEEL when this chain peels
     size_t _in_frame_len = 0, _out_frame_len = 0;
     int _n_hops_frame = 0;

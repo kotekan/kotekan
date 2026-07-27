@@ -138,6 +138,13 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     peel_tag = signal + "@" + unique_name;
     peel_component =
         config.get_default<std::string>(unique_name, "peel_component", "P");
+    // DIAGNOSTIC ONLY -- see the twin-despread verifier note at the allocation site. Adds a
+    // second despread of the RAW window plus a blocking readback, to measure whether the
+    // analytic add-back actually reconstructs the full correlation on THIS chain.
+    peel_verify = config.get_default<bool>(unique_name, "peel_verify", false);
+    peel_verify_every = config.get_default<int>(unique_name, "peel_verify_every", 500);
+    if (peel_verify_every < 1)
+        peel_verify_every = 1;
     if (peel) {
         gain.assign((size_t)n_prn * n_chan, std::complex<float>(0.f, 0.f));
         gain_n.assign(n_prn, 0);
@@ -170,6 +177,12 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         pres_blo.assign(n_prn, 0.0);
         pres_bhi.assign(n_prn, 0.0);
         peel_skip.assign(n_prn, PK_WARMUP);
+        // Allocated UNCONDITIONALLY, like _bp_veto/_bp_agree: the writer runs wherever
+        // peel_verify is on, and guarding allocation on a config flag read elsewhere is the
+        // exact shape that segfaulted the node at launch twice (2026-07-25 nco_ok,
+        // 2026-07-26 _bp_veto). Allocate where the WRITER runs.
+        peel_verr.assign(n_prn, 0.0);
+        peel_vn.assign(n_prn, 0);
         phi_nco.assign(n_prn, 0.0);
         fcar_prev.assign(n_prn, 0.0);
         nco_ok.assign(n_prn, 0);
@@ -348,6 +361,33 @@ cudaGnssTrack::cudaGnssTrack(Config& config, const std::string& unique_name,
         device.get_gpu_memory(_mem_xcorr,
                               (size_t)4 * gnss_gpu::max_specs(s->n_prn) * s->n_chan
                                   * sizeof(double2));
+        if (s->peel_verify) {
+            // TWIN-DESPREAD VERIFIER (diagnostic only, peel_verify: true).
+            //
+            // The analytic add-back claims V_full = V_resid + a*<R_P,R_k>. It is algebraically
+            // exact for ANY gain, so it can only fail if the peel and the despread build a
+            // DIFFERENT R_P from nominally identical inputs. Argument cannot settle that --
+            // measurement can: despread the RAW window alongside the peeled+added-back one,
+            // for the same specs in the same record, and diff the prompt.
+            //
+            // Rationale for existing at all: the 2026-07-26 L5 first light collapsed deep_snr
+            // 158-296 -> 2-8 with |resid|/|full| ~ 30000x, which VIOLATES the gain-coherence
+            // law (|resid|/|full| = 1 - sqrt(gcoh) is bounded by 1). A bound violation means
+            // mechanical, not statistical -- but seven candidate mechanisms were eliminated by
+            // inspection without finding it. This turns "which of these is it" into a number.
+            //
+            // Cost: one extra despread pass + a device->host copy and sync per health interval.
+            // NEVER enable in production; it stalls the stream deliberately.
+            _mem_vcorr = unique_name + "/gnss_peel_vcorr";
+            _mem_venergy = unique_name + "/gnss_peel_venergy";
+            _mem_vjobs = unique_name + "/gnss_peel_vjobs";
+            device.get_gpu_memory(_mem_vcorr, (size_t)gnss_gpu::max_specs(s->n_prn)
+                                                  * s->n_chan * 4 * sizeof(double2));
+            device.get_gpu_memory(_mem_venergy, (size_t)gnss_gpu::max_specs(s->n_prn)
+                                                    * s->n_chan * 4 * sizeof(double));
+            device.get_gpu_memory(_mem_vjobs, (size_t)gnss_gpu::max_specs(s->n_prn)
+                                                  * sizeof(gnss_cuda::DespreadJob));
+        }
     }
 }
 
@@ -355,6 +395,85 @@ cudaGnssTrack::~cudaGnssTrack() = default;
 
 cudaGnssTrackState* cudaGnssTrack::st() {
     return static_cast<cudaGnssTrackState*>(command_state.get());
+}
+
+/// TWIN-DESPREAD VERIFIER (peel_verify). Despread the RAW window for the SAME specs in the
+/// SAME record, and diff the prompt against the peeled+added-back result.
+///
+/// The add-back V_full = V_resid + a*<R_P,R_k> is exact for any gain, so it can only fail if
+/// the peel and the despread build a DIFFERENT R_P from nominally identical inputs. Seven
+/// candidate mechanisms were eliminated by inspection on 2026-07-27 without finding the L5
+/// fault; this replaces inspection with a measurement.
+///
+/// Reports the RELATIVE prompt error per PRN. Expected: ~1e-7 (fp32 replica rounding, shared
+/// by both paths and therefore cancelling). Anything at 1e-2 or above is the bug, and the
+/// PRN/channel pattern says which mechanism: all-channels-equal => gain/indexing; only
+/// straddling records => m_head; only some channels => chan_mask/coverage.
+void cudaGnssTrack::verify_addback(cudaGnssTrackState& S, const void* d_window, long long wstart,
+                                   const std::vector<GnssCudaDespread::Spec>& specs,
+                                   const std::vector<int>& spec_prn, const void* d_corr_peeled,
+                                   const void* d_scale, cudaStream_t stream) {
+    const int n_spec = (int)specs.size();
+    if (n_spec <= 0)
+        return;
+    const int nc = S.n_chan;
+    // Prove the function is REACHED, throttled to once per health interval. Without this,
+    // "0 PRNs compared" cannot be told apart from "never called".
+    if ((_verify_ctr / (unsigned long long)S.peel_verify_every) % 50 == 0)
+        INFO("peel-verify[{:s}]: entered, n_spec={:d} n_chan={:d}", S.peel_tag, n_spec, nc);
+
+    double2* d_vcorr = (double2*)device.get_gpu_memory(
+        _mem_vcorr, (size_t)gnss_gpu::max_specs(S.n_prn) * nc * 4 * sizeof(double2));
+    double* d_venergy = (double*)device.get_gpu_memory(
+        _mem_venergy, (size_t)gnss_gpu::max_specs(S.n_prn) * nc * 4 * sizeof(double));
+    void* d_vjobs = device.get_gpu_memory(
+        _mem_vjobs, (size_t)gnss_gpu::max_specs(S.n_prn) * sizeof(gnss_cuda::DespreadJob));
+
+    // GROUND TRUTH: the ordinary un-peeled despread, same window, same specs, 4-row layout.
+    S.despread->enqueue_batch_device(d_window, (int)S.ring_hops, wstart, specs, d_vjobs, d_vcorr,
+                                     d_venergy, (void*)stream, d_scale);
+
+    // Diagnostic path only: block, pull both back, compare on the host.
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
+    std::vector<double2> h_peel((size_t)n_spec * gnss_gpu::ROWS_PEEL * nc);
+    std::vector<double2> h_true((size_t)n_spec * 4 * nc);
+    CHECK_CUDA_ERROR(cudaMemcpy(h_peel.data(), d_corr_peeled, h_peel.size() * sizeof(double2),
+                                cudaMemcpyDeviceToHost));
+    CHECK_CUDA_ERROR(cudaMemcpy(h_true.data(), d_vcorr, h_true.size() * sizeof(double2),
+                                cudaMemcpyDeviceToHost));
+
+    for (int b = 0; b < n_spec; ++b) {
+        const int p = spec_prn[(size_t)b];
+        if (p < 0 || p >= (int)S.peel_verr.size())
+            continue;
+        // Prompt row (1) summed over channels -- the quantity the deep integration consumes.
+        double2 vp = {0.0, 0.0}, vt = {0.0, 0.0};
+        for (int ci = 0; ci < nc; ++ci) {
+            const double2 a = h_peel[(size_t)(gnss_gpu::ROWS_PEEL * b + 1) * nc + ci];
+            const double2 t = h_true[(size_t)(4 * b + 1) * nc + ci];
+            vp.x += a.x;
+            vp.y += a.y;
+            vt.x += t.x;
+            vt.y += t.y;
+        }
+        const double den = std::hypot(vt.x, vt.y);
+        if (!(den > 0.0)) {
+            // Say so instead of silently skipping: "0 PRNs compared" is exactly the
+            // silence-is-not-success trap -- indistinguishable from "the add-back is perfect".
+            if (b == 0)
+                WARN("peel-verify[{:s}]: ground-truth despread returned |prompt|=0 for spec 0 "
+                     "(PRN{:d}); n_spec={:d} n_chan={:d} -- the VERIFIER is broken, not the "
+                     "add-back",
+                     S.peel_tag, S.prns[p], n_spec, nc);
+            continue;
+        }
+        const double rel = std::hypot(vp.x - vt.x, vp.y - vt.y) / den;
+        // Keep the WORST seen since the last report: a fault that only bites on straddling
+        // records would be averaged away by a mean.
+        if (rel > S.peel_verr[(size_t)p])
+            S.peel_verr[(size_t)p] = rel;
+        ++S.peel_vn[(size_t)p];
+    }
 }
 
 cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
@@ -1112,6 +1231,13 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 CHECK_CUDA_ERROR(gnss_cuda::launch_peel_addback(
                     d_corr, d_energy, d_xcorr, d_gain, (int)specs.size(), S.n_chan,
                     gnss_gpu::ROWS_PEEL, stream));
+
+                // THROTTLED: the verifier blocks the stream, so running it on every record
+                // would stall every chain sharing this GPU process. One record in
+                // peel_verify_every is plenty -- the fault under investigation was sustained
+                // over 25 min, not a one-record glitch.
+                if (S.peel_verify && (++_verify_ctr % S.peel_verify_every) == 0)
+                    verify_addback(S, d_window, wstart, specs, spec_prn, d_corr, d_scale, stream);
             }
             n_spec += (int)specs.size();
         }
@@ -1269,6 +1395,37 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
              (gi >= 0) ? S.peel_f_track[gi] : 0.0, n_hurt, n_floor,
              S.nav_bits_bad.exchange(0, std::memory_order_relaxed),
              lag.empty() ? " none" : lag, ratios.empty() ? " -" : ratios);
+
+        // TWIN-DESPREAD VERIFIER: is the analytic add-back actually reconstructing the full
+        // correlation on THIS chain? Separate line so it can be grepped on its own, and so the
+        // (already long) ratio line is untouched when the verifier is off.
+        if (S.peel_verify) {
+            std::string ver;
+            double worst = 0.0;
+            int worst_p = -1, n_cmp = 0;
+            for (int p = 0; p < S.n_prn; ++p) {
+                if (S.peel_vn[(size_t)p] <= 0)
+                    continue;
+                ++n_cmp;
+                ver += fmt::format(" {:d}:{:.2e}/{:d}", S.prns[p], S.peel_verr[(size_t)p],
+                                   S.peel_vn[(size_t)p]);
+                if (S.peel_verr[(size_t)p] > worst) {
+                    worst = S.peel_verr[(size_t)p];
+                    worst_p = S.prns[p];
+                }
+                S.peel_verr[(size_t)p] = 0.0; // worst-since-last-report
+                S.peel_vn[(size_t)p] = 0;
+            }
+            // ~1e-7 is the fp32 replica floor, shared by both paths and cancelling. 1e-2+ is
+            // the add-back genuinely failing -- the thing the L5 first light implied but that
+            // no amount of code reading could confirm.
+            WARN("peel-verify[{:s}]: {:d} PRNs compared; WORST rel prompt err {:.2e}"
+                 "{:s} (PRN{:d}); per-PRN err/n:{:s}",
+                 S.peel_tag, n_cmp, worst,
+                 (worst > 1e-2) ? " <== ADD-BACK IS BROKEN" : (worst > 1e-4) ? " <== suspicious"
+                                                                            : " (fp32 floor, ok)",
+                 worst_p, ver.empty() ? " -" : ver);
+        }
     }
 
     return record_end_event();
