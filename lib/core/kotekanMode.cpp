@@ -480,8 +480,10 @@ static GraphOptions graph_options_from_query(connectionInstance& conn) {
 }
 
 void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
+    // Layout lines carry `×` and `·`, so the charset is not optional: without it
+    // HTTP says this is ISO-8859-1 and clients decode the labels into mojibake.
     conn.send_text_reply(get_pipeline_graph(graph_options_from_query(conn)).to_dot(),
-                         "text/vnd.graphviz");
+                         "text/vnd.graphviz; charset=utf-8");
 }
 
 void kotekanMode::pipeline_json_graph_callback(connectionInstance& conn) {
