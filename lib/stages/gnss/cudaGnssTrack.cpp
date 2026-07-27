@@ -276,6 +276,9 @@ void cudaGnssTrackState::set_seeds_callback(kotekan::connectionInstance& conn,
                             NavBits t;
                             t.utc0 = nb.at("utc0").get<double>();
                             t.bit_s = nb.value("bit_s", 0.02);
+                            // The producer declares its convention; absent = time-domain, so
+                            // an older combiner keeps the old behaviour (see NavBits).
+                            t.record_grid = (nb.value("grid", std::string("time")) == "record");
                             const auto& arr = nb.at("bits");
                             t.bits.reserve(arr.size());
                             for (const auto& b : arr)
@@ -1158,8 +1161,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                     nb_bit_s = nb.bit_s;
                     // kout reports WHICH CELL was read, so the offline check can tell a wrong
                     // index from wrong content (see PeelUsed::k_head).
-                    auto bit_at = [&](double t, int32_t* kout) -> int8_t {
-                        const double x = (t - nb.utc0) / nb.bit_s;
+                    auto cell = [&](double x, int32_t* kout) -> int8_t {
                         if (x < 0.0)
                             return 0;
                         const size_t k = (size_t)x;
@@ -1167,8 +1169,29 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                             *kout = (int32_t)k;
                         return (k < nb.bits.size()) ? nb.bits[k] : 0; // past horizon = unknown
                     };
-                    s_head = bit_at(t_b - 0.5 * t_rec, &k_head);
-                    s_tail = bit_at(t_b + 0.5 * t_rec, &k_tail);
+                    if (nb.record_grid) {
+                        // RECORD-INDEXED (pilot bit_pred): cell j is the head chip of record
+                        // j, so the answer is THIS RECORD'S OWN INDEX -- and the tail is the
+                        // next cell, because the code-period boundary inside the window is
+                        // exactly where the chip changes. No half-record probe, and bf does
+                        // not enter: nothing here can be tipped by where the boundary sits.
+                        //
+                        // ROUND, not truncate. The record grid is exact (wstart steps measured
+                        // at precisely 200000 samples, zero rounding error), so the quotient
+                        // lands on an integer up to float noise -- and truncating a quantity
+                        // that sits ON an integer is the same knife-edge that caused the fault
+                        // this replaces. Rounding puts half a record of margin either side.
+                        const double j = std::floor((utc_w - nb.utc0) / nb.bit_s + 0.5);
+                        s_head = cell(j, &k_head);
+                        s_tail = cell(j + 1.0, &k_tail);
+                    } else {
+                        // TIME-DOMAIN (GPS LNAV: utc0 is a true bit edge). Sample half a
+                        // period either side of the boundary so edge rounding cannot pick the
+                        // wrong bit -- correct HERE, because the cell really is "the bit
+                        // covering time t" and the boundary really can land anywhere in it.
+                        s_head = cell((t_b - 0.5 * t_rec - nb.utc0) / nb.bit_s, &k_head);
+                        s_tail = cell((t_b + 0.5 * t_rec - nb.utc0) / nb.bit_s, &k_tail);
+                    }
                 }
 
                 const size_t u = (size_t)n_rec * S.n_prn + p;

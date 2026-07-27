@@ -1292,24 +1292,18 @@ void GnssCoherentCombiner::main_thread() {
                         const long long i0 =
                             (long long)std::ceil((t_e - _dr_utc[p]) / dt_r);
                         const int n = (int)std::ceil(_bit_pred_horizon_s / dt_r) + 2;
-                        // TABLE SEMANTICS (2026-07-26): cell j is the HEAD chip of record
-                        // i0+j, whose true time span is [start - (1-bf)*dt, start + bf*dt] --
-                        // NOT [start, start+dt]. The tracker's bit_at() reads the table as
-                        // TIME-DOMAIN ("the chip covering capture time t", correct for the
-                        // GPS LNAV tables whose utc0 is a true bit edge), so publishing raw
-                        // record-start times made the head lookup land one cell early
-                        // whenever bf < 0.5. Measured live with <cos d> split by the
-                        // tracker's own bf: pilots at bf<0.5 were 6/6 BROKEN -- including
-                        // sats whose tables verify absolutely correct against the known
-                        // per-SV sequences and BRDC geometry (+-0.5 chip) -- while the GPS
-                        // control chain read clean in BOTH bins. Shifting utc0 by
-                        // -(1-bf)*dt makes every cell span its chip's true extent; the
-                        // tracker's mid-period samples then index m (head) and m+1 (tail)
-                        // EXACTLY, bf-free, with half-a-record of margin either side.
-                        const double bf_e =
-                            std::min(1.0, std::max(0.0, (double)rec[gnss::CMB_HEAD_FRAC]));
-                        bp.utc0 = _dr_utc[p] + (double)i0 * dt_r - (1.0 - bf_e) * dt_r;
+                        // TABLE SEMANTICS, DECLARED (2026-07-27; see BitPred::record_grid).
+                        // utc0 is the RAW RECORD-START time of cell 0 and the table is
+                        // record-indexed, full stop. The 2026-07-26 -(1-bf)*dt shift is GONE:
+                        // it existed only to disguise this table as time-domain so the
+                        // consumer's half-record probe would land right, and measurement
+                        // showed the disguise parks the consumer's floor() exactly on its own
+                        // discontinuity (psi + bf = 1.000 +- 0.02 on every satellite ->
+                        // floor(N + 0.5)). The consumer now indexes by record instead, so
+                        // there is nothing to compensate for and bf does not enter at all.
+                        bp.utc0 = _dr_utc[p] + (double)i0 * dt_r;
                         bp.bit_s = dt_r;
+                        bp.record_grid = true;
                         bp.bits.reserve((size_t)n);
                         for (int j = 0; j < n; ++j) {
                             const long long k = _dr_phase[p] + i0 + j;
@@ -1437,8 +1431,12 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                     pb.push_back((int)c);
                 if (_bp_veto[(size_t)p] > 0)
                     reply[(size_t)p]["bp_veto"] = _bp_veto[(size_t)p];
+                // "grid": the table's own declaration of what utc0 means (see
+                // BitPred::record_grid). A consumer that does not know the key must keep
+                // treating the table as time-domain, which is the pre-2026-07-27 behaviour.
                 reply[(size_t)p]["bit_pred"] = {{"utc0", bp.utc0},
                                                 {"bit_s", bp.bit_s},
+                                                {"grid", bp.record_grid ? "record" : "time"},
                                                 {"bits", pb}};
             }
             const NavObs& o = _st_nav_obs[(size_t)p];

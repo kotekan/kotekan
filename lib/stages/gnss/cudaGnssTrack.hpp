@@ -125,6 +125,21 @@ public:
     struct NavBits {
         double utc0 = 0.0, bit_s = 0.02;
         std::vector<int8_t> bits;
+        /// Which convention utc0 follows, DECLARED BY THE PRODUCER ("grid" on the wire).
+        ///
+        ///   record_grid = false (default, GPS LNAV): TIME-DOMAIN. utc0 is a true bit edge and
+        ///     cell k covers [utc0 + k*bit_s, utc0 + (k+1)*bit_s). Sampling the table at a time
+        ///     is correct, and probing half a period either side of a boundary is the right
+        ///     guard against edge rounding.
+        ///   record_grid = true (pilot bit_pred): RECORD-INDEXED. Cell j is the head chip of
+        ///     record j and utc0 is that record's START. The record's own index is the answer;
+        ///     head = bits[j], tail = bits[j+1]. bf does not enter.
+        ///
+        /// ⚠️ Guessing wrong costs a whole record of overlay, which on a pseudorandom sequence
+        /// is ~50% of signs -- the gain EMA then averages to zero and the peel subtracts
+        /// NOTHING at any SNR (measured 2026-07-27: satellites at 3000 sigma, 0.0 dB). Absent
+        /// key = time-domain, so an older producer keeps its old behaviour.
+        bool record_grid = false;
     };
     std::vector<NavBits> nav_bits; ///< [n_prn], seed-updated under seed_mtx
     /// Which COMPONENT of the seed row's nav_bits this chain consumes. The wire schema is

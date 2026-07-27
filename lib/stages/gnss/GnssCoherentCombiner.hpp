@@ -231,9 +231,25 @@ private:
     /// bit_s == the record period and the chip boundary IS the code-period boundary the peel
     /// splits head/tail at.
     struct BitPred {
-        double utc0 = 0.0;         ///< start UTC of bits[0]'s primary period
+        double utc0 = 0.0;         ///< RECORD-START UTC of bits[0]'s primary period
         double bit_s = 0.0;        ///< chip duration = record period
         std::vector<int8_t> bits;  ///< +-1 overlay chips
+        /// TABLE SEMANTICS, DECLARED (2026-07-27). This table is RECORD-INDEXED: cell j is the
+        /// head chip of record i0+j, and utc0 is that record's START. It is NOT a time-domain
+        /// table ("the chip covering time t"), which is what the GPS LNAV tables are (their
+        /// utc0 is a true bit edge). The consumer must not guess: cudaGnssTrack reads
+        /// record_grid tables by record index and time-domain tables by time.
+        ///
+        /// WHY THIS FIELD EXISTS. The 2026-07-26 fix made the record-grid table LOOK
+        /// time-domain by publishing utc0 shifted by -(1-bf)*dt, so the consumer's
+        /// half-record probe would land on the right cell. Measured 2026-07-27: that put the
+        /// consumer's index expression at floor(N + psi + bf - 0.5) with psi + bf = 1.000 +-
+        /// 0.02 on every satellite -- i.e. floor(N + 0.5), sitting EXACTLY on the truncation
+        /// boundary, on every record, forever. Two errors tuned to cancel, on a discontinuity
+        /// where the cancellation must be exact; satellites slipped a whole record and their
+        /// peel died at any SNR (C33/C24 at 3000 sigma, 0.0 dB). Declaring the convention
+        /// removes both the shift and the probe instead of balancing them.
+        bool record_grid = true;
     };
     std::vector<BitPred> _st_bit_pred;
     double _bit_pred_horizon_s = 4.0;
