@@ -673,6 +673,12 @@ def main(argv=None):
                          "its floor and the blind search result stands.")
     ap.add_argument("--nh-overlay-len", type=int, default=1800,
                     help="secondary-overlay length in chips (B1C pilot 1800; E5a/B2a CS100 = 100)")
+    ap.add_argument("--bias-det-fresh-s", type=float, default=30.0,
+                    help="clock-bias solve uses only detections FRESHER than this (seconds). "
+                         "A stale detection's (meas - pred) grows at the satellite's Doppler "
+                         "rate -- stale-age x dop_rate reads as a fake, GROWING clock bias "
+                         "that the seeds then chase (measured: a ~90 s-stale detection walked "
+                         "the bias +4 -> +68 Hz and dragged a 55-sigma tracker off the sky).")
     ap.add_argument("--almanac-epoch", type=float, default=0.0,
                     help="REPLAY BENCH ONLY: unix time of the capture's sample 0. The almanac "
                          "clock is OFFSET to this and then ADVANCES with wall time, so the "
@@ -1197,7 +1203,19 @@ def main(argv=None):
             # Common clock-frequency bias = median(measured - predicted) over detected
             # sats. A tight residual spread confirms the sign convention; a wild spread
             # (resid ~ -2x predicted) means flip --doppler-sign.
-            resid = [best[p][1] - pred[p][0] for p in best if p in pred]
+            # FRESH detections only. The search stage's REST table keeps serving a detection
+            # long after it was made, and best[] holds it; the prediction meanwhile ADVANCES
+            # at the satellite's dop_rate, so a stale detection's (meas - pred) grows linearly
+            # with its age -- stale-age x dop_rate wearing a clock-bias costume. Measured on
+            # the L5 replay bench 2026-07-27: one ~90 s-stale PRN20 detection walked the
+            # "solved" bias +4 -> +68 Hz at exactly dop_rate, the seeds chased it, and the
+            # tracker was dragged off a 55-sigma satellite. Live mostly hides this because
+            # strong sats re-detect every few seconds -- but any sparse-detection stretch
+            # (fades, one-sat horizons) exposes the same feedback. det_fresh already tracks
+            # exactly this (its comment even computes the hazard: "at 0.4 Hz/s slew, 100 s of
+            # staleness fakes a 40 Hz mismatch") -- the bias solve just never consulted it.
+            resid = [best[p][1] - pred[p][0] for p in best
+                     if p in pred and t0 - det_fresh.get(p, (None, 0.0))[1] < args.bias_det_fresh_s]
             # BAND-SHARED bias fusion (--clock-bias-siblings) is read BEFORE the min-sats
             # gate, and the gate counts LOCAL + SIBLING sats.
             #
