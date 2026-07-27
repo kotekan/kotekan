@@ -351,6 +351,15 @@ public:
         long long wstart = 0;  ///< window start (sample) -- the FLL's time axis
         float bf = -1.f;       ///< boundary fraction (L - cp_seed)/L at this record, for the
                                ///< table-semantics split (pres_blo/pres_bhi)
+        /// WHICH TABLE CELL bit_at() actually read, and the table's own epoch (2026-07-27).
+        /// The applied sign is table[k] -- a composition of the COMBINER's published content
+        /// and the TRACKER's index. Measuring the applied sign alone proved it is one record
+        /// late on some satellites but cannot say which half shifted it. With k and utc0
+        /// logged the two separate outright: recompute the record index n from the grid, then
+        ///   k == n-1  -> the LOOKUP is off by one (bit_at)
+        ///   k == n    -> the index is right and the CONTENT is shifted (combiner bit_pred)
+        int32_t k_head = -1, k_tail = -1;
+        double nb_utc0 = 0.0, nb_bit_s = 0.0;
     };
     std::vector<PeelUsed> used;                 ///< [MAX_REC][n_prn]
     std::vector<int> used_prn;                  ///< [MAX_REC*n_prn] -> PRN slot, parallel to used

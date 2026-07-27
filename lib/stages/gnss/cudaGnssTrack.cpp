@@ -154,7 +154,7 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
                                      + peel_sign_dump_path + "'");
         // Header once per open; harmless to repeat on append (the reader skips '#').
         *peel_sign_dump << "# prn,gain_n,wstart,utc,bf,s_head,s_tail,have_bits,d_rad,cos_d,"
-                           "cos_2d,g_abs,gcoh\n";
+                           "cos_2d,g_abs,gcoh,k_head,k_tail,nb_utc0,nb_bit_s\n";
         WARN("peel sign dump ACTIVE -> {:s} (prn {:d}); this writes on the real-time path, "
              "watch kotekan_valve_dropped_frames_total",
              peel_sign_dump_path, peel_sign_dump_prn);
@@ -809,7 +809,9 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                             << fmt::format("{:.5f}", std::sqrt(a2)) << ','
                             << fmt::format("{:.5f}",
                                            S.gain_p2[p] > 0.0 ? a2 / S.gain_p2[p] : -1.0)
-                            << '\n';
+                            << ',' << pu.k_head << ',' << pu.k_tail << ','
+                            << fmt::format("{:.6f}", pu.nb_utc0) << ','
+                            << fmt::format("{:.6f}", pu.nb_bit_s) << '\n';
                     }
                     S.pres_prev[p] = d;
                     S.pres_ok[p] = 1;
@@ -1144,21 +1146,29 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 // side of it so edge rounding can never pick the wrong bit. 0 = unknown ->
                 // the decision-directed fallback below (and in the next frame's measurement).
                 int8_t s_head = 0, s_tail = 0;
+                int32_t k_head = -1, k_tail = -1;
+                double nb_utc0 = 0.0, nb_bit_s = 0.0;
                 if (p < (int)navb.size() && !navb[p].bits.empty() && S.capture_utc0 > 0.0) {
                     const cudaGnssTrackState::NavBits& nb = navb[p];
                     const double t_rec =
                         (double)S.hops_per_record * (double)S.fft_len / S.sample_rate;
                     const double utc_w = S.capture_utc0 + (double)wstart / S.sample_rate;
                     const double t_b = utc_w + (L - cp_seed) / L * t_rec;
-                    auto bit_at = [&](double t) -> int8_t {
+                    nb_utc0 = nb.utc0;
+                    nb_bit_s = nb.bit_s;
+                    // kout reports WHICH CELL was read, so the offline check can tell a wrong
+                    // index from wrong content (see PeelUsed::k_head).
+                    auto bit_at = [&](double t, int32_t* kout) -> int8_t {
                         const double x = (t - nb.utc0) / nb.bit_s;
                         if (x < 0.0)
                             return 0;
                         const size_t k = (size_t)x;
+                        if (kout)
+                            *kout = (int32_t)k;
                         return (k < nb.bits.size()) ? nb.bits[k] : 0; // past horizon = unknown
                     };
-                    s_head = bit_at(t_b - 0.5 * t_rec);
-                    s_tail = bit_at(t_b + 0.5 * t_rec);
+                    s_head = bit_at(t_b - 0.5 * t_rec, &k_head);
+                    s_tail = bit_at(t_b + 0.5 * t_rec, &k_tail);
                 }
 
                 const size_t u = (size_t)n_rec * S.n_prn + p;
@@ -1169,6 +1179,10 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 S.used[u].phi = phi;
                 S.used[u].wstart = wstart;
                 S.used[u].bf = (float)((L - cp_seed) / L);
+                S.used[u].k_head = k_head;
+                S.used[u].k_tail = k_tail;
+                S.used[u].nb_utc0 = nb_utc0;
+                S.used[u].nb_bit_s = nb_bit_s;
                 S.used_prn[u] = p;
 
                 // SUBTRACT only once the gain has actually converged: an unconverged gain adds
