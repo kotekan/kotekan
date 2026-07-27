@@ -674,9 +674,11 @@ def main(argv=None):
     ap.add_argument("--nh-overlay-len", type=int, default=1800,
                     help="secondary-overlay length in chips (B1C pilot 1800; E5a/B2a CS100 = 100)")
     ap.add_argument("--almanac-epoch", type=float, default=0.0,
-                    help="REPLAY BENCH ONLY: unix time to evaluate the almanac at, instead of "
-                         "now() -- so a recorded capture's real sky (ranges, visibility) drives "
-                         "the seeds + nh-assist. 0 = live (use now).")
+                    help="REPLAY BENCH ONLY: unix time of the capture's sample 0. The almanac "
+                         "clock is OFFSET to this and then ADVANCES with wall time, so the "
+                         "predicted sky moves as the file plays (a frozen epoch actively pulls "
+                         "trackers off satellites -- measured 2026-07-27). Assumes ~realtime "
+                         "replay pacing. 0 = live (use now).")
     ap.add_argument("--dead-reckon", action="store_true",
                     help="seed CODE PHASE from broadcast ephemeris (BRDC) for every visible "
                          "sat the search hasn't detected: predict the absolute transmit-time "
@@ -795,6 +797,25 @@ def main(argv=None):
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
 
+    # --almanac-epoch is a CLOCK OFFSET, not a frozen instant. The broker "lives in the
+    # capture's time frame": every prediction site evaluates at now() + _alm_clock_offset, so
+    # the sky ADVANCES as the replayed file plays, exactly as it did during the capture.
+    # ⚠️ The first implementation evaluated the almanac at the fixed epoch forever. Measured
+    # on the L5 replay bench (2026-07-27): PRN20 locked beautifully for the first ~15 s
+    # (resid +1.6 Hz) while the prediction still matched the file, then the seeds -- refreshed
+    # every cycle from a prediction that never moved while the data did (~1 Hz/s at L5) --
+    # PULLED THE TRACKER OFF the satellite: amplitude collapsed to the noise floor, NH phase
+    # flapped randomly, residuals swung +-95 Hz. Worse than no assist: a stale assist is an
+    # active tug toward where the satellite used to be.
+    # Assumes the replay paces ~realtime (rawFileRead frame_period_us); pacing error over a
+    # few-minute bench is <<1 s, i.e. <1 Hz of Doppler.
+    _alm_clock_offset = (args.almanac_epoch - time.time()) if args.almanac_epoch else 0.0
+
+    def _alm_now():
+        """The time the ALMANAC thinks it is: wall clock in live runs, capture-frame clock
+        (advancing) under --almanac-epoch."""
+        return datetime.fromtimestamp(time.time() + _alm_clock_offset, tz=timezone.utc)
+
     base = args.rest_url.rstrip("/")
     detectors = parse_endpoints(args.detectors, base)
     trackers = parse_endpoints(args.trackers, base)
@@ -813,8 +834,7 @@ def main(argv=None):
     if args.almanac and args.almanac_source == "brdc":
         try:
             import gnss_ephemeris as _alm_eph_mod
-            when = (datetime.fromtimestamp(args.almanac_epoch, tz=timezone.utc)
-                    if args.almanac_epoch else datetime.now(timezone.utc))
+            when = _alm_now()
             brdc_alm = {"mod": _alm_eph_mod,
                         "eph": _alm_eph_mod.parse_rinex_nav(_alm_eph_mod.fetch_brdc(when)),
                         "eph_t": time.time()}
@@ -1130,8 +1150,7 @@ def main(argv=None):
         up = None
         if args.almanac:
             try:
-                t_pred = (datetime.fromtimestamp(args.almanac_epoch, tz=timezone.utc)
-                          if args.almanac_epoch else datetime.now(tz=timezone.utc))
+                t_pred = _alm_now()
                 if brdc_alm is not None:
                     raw = brdc_predict(brdc_alm, args.lat, args.lon, args.alt,
                                        alm_sys, alm_min_prn, t_pred, args.carrier_hz)
