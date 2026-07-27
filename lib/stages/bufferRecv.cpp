@@ -394,10 +394,8 @@ void bufferRecv::add_graph_details(kotekan::PipelineGraph& graph) const {
     // listening on the same port number stay distinct nodes.
     const std::string source_id = fmt::format("{:s}/source", get_unique_name());
     graph.add_node(source_id)
-        .add_line(fmt::format("Port: {:d}", listen_port))
-        .set_attr("shape", "doubleoctagon")
-        .set_attr("style", "filled")
-        .set_attr("color", "lightblue");
+        .add_line(fmt::format(fmt("port {:d}"), listen_port))
+        .set_category(kotekan::GraphCategory::Endpoint);
     graph.add_edge(source_id, get_unique_name());
 }
 

@@ -316,9 +316,7 @@ void bufferSend::add_graph_details(kotekan::PipelineGraph& graph) const {
     // sending to the same host:port stay distinct nodes.
     const std::string dest_id = fmt::format("{:s}/destination", get_unique_name());
     graph.add_node(dest_id)
-        .add_line(fmt::format("{:s}:{:d}", server_ip, server_port))
-        .set_attr("shape", "doubleoctagon")
-        .set_attr("style", "filled")
-        .set_attr("color", "lightblue");
+        .add_line(fmt::format(fmt("{:s}:{:d}"), server_ip, server_port))
+        .set_category(kotekan::GraphCategory::Endpoint);
     graph.add_edge(get_unique_name(), dest_id);
 }

@@ -656,28 +656,31 @@ exit_lcore:
 void dpdkCore::add_graph_details(kotekan::PipelineGraph& graph) const {
     const std::string name = get_unique_name();
 
+    auto& stage_node = graph.add_node(name);
     auto& cluster = graph.add_cluster(name);
-    cluster.label = name;
-    cluster.set_attr("style", "filled").set_attr("color", "lightgrey");
+    cluster.label = fmt::format(fmt("{:s} ({:d} ports)"), kotekan::leaf_name(name), num_ports);
+    cluster.set_attr("style", "rounded,filled")
+        .set_attr("fillcolor", kotekan::graph_device_fill)
+        .set_attr("color", "gray60");
+    // Keep whatever grouping the pipeline put this stage in as the region's parent.
+    cluster.parent = stage_node.cluster;
 
     // The stage node itself belongs in the region, so that the buffer edges added
     // centrally land inside the box rather than on an empty node beside it.
-    graph.add_node(name).cluster = name;
+    stage_node.cluster = cluster.id;
 
     for (uint i = 0; i < num_ports; ++i) {
         auto& handler = graph.add_node(handlers[i]->unique_name);
-        handler.add_line(handlers[i]->unique_name);
-        handler.cluster = name;
-        handler.set_attr("shape", "box").set_attr("style", "filled").set_attr("color", "white");
+        handler.add_line(kotekan::leaf_name(handlers[i]->unique_name));
+        handler.cluster = cluster.id;
+        handler.set_category(kotekan::GraphCategory::Io);
 
         // Port node ids carry the stage, so several dpdkCore stages each with a
         // port 0 stay distinct.
         const std::string port_id = fmt::format("{:s}/port_{:d}", name, i);
         graph.add_node(port_id)
-            .add_line(fmt::format("port {:d}", i))
-            .set_attr("shape", "doubleoctagon")
-            .set_attr("style", "filled")
-            .set_attr("color", "lightblue");
+            .add_line(fmt::format(fmt("port {:d}"), i))
+            .set_category(kotekan::GraphCategory::Endpoint);
         graph.add_edge(port_id, handlers[i]->unique_name);
     }
 }

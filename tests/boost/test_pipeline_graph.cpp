@@ -129,6 +129,59 @@ BOOST_AUTO_TEST_CASE(dangling_edges_are_dropped_not_drawn) {
     BOOST_CHECK(contains(dot, "// dropped edge(s) referring to unknown node: never_added"));
 }
 
+BOOST_AUTO_TEST_CASE(common_cluster_places_a_node_with_what_touches_it) {
+    PipelineGraph graph;
+    // section
+    //   +-- device_0 (stage_a)
+    //   +-- device_1 (stage_b)
+    // stage_c is outside the section entirely.
+    graph.add_cluster("section");
+    graph.add_cluster("device_0").parent = "section";
+    graph.add_cluster("device_1").parent = "section";
+    graph.add_node("stage_a").cluster = "device_0";
+    graph.add_node("stage_a2").cluster = "device_0";
+    graph.add_node("stage_b").cluster = "device_1";
+    graph.add_node("stage_c");
+
+    // Everything on one device: the buffer is private to it.
+    BOOST_CHECK_EQUAL(graph.common_cluster({"stage_a", "stage_a2"}), "device_0");
+    // Shared across the section's devices: it belongs to the section.
+    BOOST_CHECK_EQUAL(graph.common_cluster({"stage_a", "stage_b"}), "section");
+    // Shared with a stage outside: it stays at the top level.
+    BOOST_CHECK_EQUAL(graph.common_cluster({"stage_a", "stage_c"}), "");
+    // An unknown node is at the top level as far as anyone can tell.
+    BOOST_CHECK_EQUAL(graph.common_cluster({"stage_a", "no_such_node"}), "");
+    BOOST_CHECK_EQUAL(graph.common_cluster({}), "");
+}
+
+BOOST_AUTO_TEST_CASE(stage_categories) {
+    using kotekan::GraphCategory;
+    // The GPU meta-stages are named exactly.
+    BOOST_CHECK(kotekan::stage_category("cudaProcess") == GraphCategory::Gpu);
+    BOOST_CHECK(kotekan::stage_category("hipProcess") == GraphCategory::Gpu);
+    // I/O is matched on substrings, so unseen stages still land right.
+    BOOST_CHECK(kotekan::stage_category("bufferSend") == GraphCategory::Io);
+    BOOST_CHECK(kotekan::stage_category("frbNetworkProcess") == GraphCategory::Io);
+    BOOST_CHECK(kotekan::stage_category("hdf5FileRead") == GraphCategory::Io);
+    // Anything else is compute.
+    BOOST_CHECK(kotekan::stage_category("accumulate") == GraphCategory::Compute);
+    BOOST_CHECK(kotekan::stage_category("") == GraphCategory::Compute);
+}
+
+BOOST_AUTO_TEST_CASE(leaf_names_and_byte_sizes) {
+    BOOST_CHECK_EQUAL(kotekan::leaf_name("/gen/voltage"), "voltage");
+    BOOST_CHECK_EQUAL(kotekan::leaf_name("/copy"), "copy");
+    BOOST_CHECK_EQUAL(kotekan::leaf_name("copy"), "copy");
+    // A trailing slash leaves nothing to shorten to.
+    BOOST_CHECK_EQUAL(kotekan::leaf_name("/gen/"), "/gen/");
+
+    BOOST_CHECK_EQUAL(kotekan::human_bytes(0), "0 B");
+    BOOST_CHECK_EQUAL(kotekan::human_bytes(1023), "1023 B");
+    BOOST_CHECK_EQUAL(kotekan::human_bytes(1024), "1 KiB");
+    BOOST_CHECK_EQUAL(kotekan::human_bytes(32 * 1024), "32 KiB");
+    BOOST_CHECK_EQUAL(kotekan::human_bytes(size_t(3) * 1024 * 1024 * 1024), "3 GiB");
+}
+
 BOOST_AUTO_TEST_CASE(graph_wide_attributes) {
     PipelineGraph graph;
     graph.header_comments.push_back("a pipeline");

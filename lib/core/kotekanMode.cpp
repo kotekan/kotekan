@@ -229,26 +229,98 @@ void kotekanMode::buffer_data_callback(connectionInstance& conn) {
     conn.send_json_reply(get_buffer_json());
 }
 
+/// The config section a stage was declared in ("/gpu/gpu_0" -> "gpu"), or an
+/// empty string for a stage declared at the top level.
+static std::string config_section(const std::string& unique_name) {
+    const size_t first = unique_name.find_first_not_of('/');
+    if (first == std::string::npos)
+        return "";
+    const size_t slash = unique_name.find('/', first);
+    if (slash == std::string::npos)
+        return ""; // no section: the stage is a top level config block
+    return unique_name.substr(first, slash - first);
+}
+
+/// Adds a colour key, so the graph can be read without knowing this code.
+static void add_legend(PipelineGraph& graph) {
+    auto& legend = graph.add_cluster("__legend");
+    legend.label = "legend";
+    legend.set_attr("style", "rounded").set_attr("color", "gray70");
+
+    struct Entry {
+        const char* id;
+        GraphCategory category;
+        const char* text;
+    };
+    static const Entry entries[] = {
+        {"buffer", GraphCategory::Buffer, "buffer: name / type · metadata / layout / size / fill"},
+        {"compute", GraphCategory::Compute, "stage on the CPU"},
+        {"gpu", GraphCategory::Gpu, "GPU stage and its commands"},
+        {"io", GraphCategory::Io, "stage moving data on or off this machine"},
+        {"memory", GraphCategory::Memory, "device memory (not a kotekan buffer)"},
+        {"endpoint", GraphCategory::Endpoint, "the far end: a socket, a port, a file"},
+    };
+    std::string previous;
+    for (const auto& entry : entries) {
+        const std::string id = std::string("__legend/") + entry.id;
+        auto& node = graph.add_node(id);
+        node.add_line(entry.text);
+        node.cluster = legend.id;
+        node.set_category(entry.category);
+        // Stack the key vertically instead of letting it stretch across the graph.
+        if (!previous.empty())
+            graph.add_edge(previous, id).set_attr("style", "invis");
+        previous = id;
+    }
+}
+
 PipelineGraph kotekanMode::get_pipeline_graph() {
     PipelineGraph graph;
     graph.header_comments.push_back(
         "This is a DOT formatted pipeline graph, use the graphviz package to plot.");
+    // Pipelines are long and thin, so they read left to right; the extra
+    // crossing-minimisation passes are cheap next to the cost of untangling the
+    // result by eye, and newrank lines the clusters up across the whole graph.
+    graph.graph_attrs["rankdir"] = "LR";
+    graph.graph_attrs["nodesep"] = "0.3";
+    graph.graph_attrs["ranksep"] = "0.9";
+    graph.graph_attrs["mclimit"] = "6";
+    graph.graph_attrs["newrank"] = "true";
+    graph.node_attrs["fontname"] = "Helvetica";
+    graph.node_attrs["fontsize"] = "11";
+    graph.edge_attrs["fontname"] = "Helvetica";
+    graph.edge_attrs["fontsize"] = "8";
 
     // Buffer nodes.
     for (auto& buf : buffer_container.get_buffer_map()) {
         auto& node = graph.add_node(buf.first);
         node.label_lines = buf.second->dot_label_lines();
-        node.set_attr("shape", "ellipse").set_attr("color", "blue");
+        node.set_category(GraphCategory::Buffer);
     }
 
-    // Stage nodes. Every stage gets its node here, so that the edges below always
-    // have something to land on, and so a stage overriding add_graph_details()
-    // only has to describe what is particular to it.
+    // Stage nodes, grouped by the config section they were declared in. Every
+    // stage gets its node here, so that the edges below always have something to
+    // land on, and so a stage overriding add_graph_details() only has to describe
+    // what is particular to it.
     for (auto& stage : stages) {
+        // The type is what the stage *is*; the config path is only where it was
+        // declared. Read it back from the config, so no stage has to report it.
+        const std::string type = config.get_default<std::string>(stage.first, "kotekan_stage", "");
         auto& node = graph.add_node(stage.first);
-        node.add_line(stage.first);
-        node.set_attr("shape", "box").set_attr("color", "darkgreen");
+        node.add_line(leaf_name(stage.first));
+        node.add_line(type.empty() ? "" : "<" + type + ">");
+        node.set_category(stage_category(type));
+
+        const std::string section = config_section(stage.first);
+        if (!section.empty()) {
+            auto& cluster = graph.add_cluster(section);
+            cluster.label = section;
+            cluster.set_attr("style", "rounded").set_attr("color", "gray70");
+            node.cluster = cluster.id;
+        }
     }
+    // Stages may re-parent their own node (a device draws itself as a region
+    // inside its section), so this has to run before anything reads the layout.
     for (auto& stage : stages)
         stage.second->add_graph_details(graph);
 
@@ -260,17 +332,35 @@ PipelineGraph kotekanMode::get_pipeline_graph() {
         if (!graph.has_node(name))
             graph.add_node(name)
                 .add_line(name)
-                .set_attr("shape", "box")
-                .set_attr("style", "dashed");
+                .set_category(GraphCategory::Compute)
+                .set_attr("style", "rounded,dashed");
         return name;
     };
     for (auto& buf : buffer_container.get_buffer_map()) {
-        for (auto& cit : buf.second->consumers)
-            graph.add_edge(buf.first, endpoint(cit.second.name));
-        for (auto& pit : buf.second->producers)
-            graph.add_edge(endpoint(pit.second.name), buf.first);
+        // A buffer with one producer and one consumer is a link in a chain, and
+        // the chain is the thing to keep straight; everything else can bend
+        // around it.
+        const bool in_chain =
+            buf.second->producers.size() == 1 && buf.second->consumers.size() == 1;
+        const std::string weight = in_chain ? "4" : "1";
+
+        std::vector<std::string> touched_by;
+        for (auto& cit : buf.second->consumers) {
+            graph.add_edge(buf.first, endpoint(cit.second.name)).set_attr("weight", weight);
+            touched_by.push_back(cit.second.name);
+        }
+        for (auto& pit : buf.second->producers) {
+            graph.add_edge(endpoint(pit.second.name), buf.first).set_attr("weight", weight);
+            touched_by.push_back(pit.second.name);
+        }
+        // Draw the buffer wherever everything using it lives: private buffers
+        // move inside the device or section that owns them, and only the genuine
+        // hand-off points are left crossing a boundary.
+        if (!touched_by.empty())
+            graph.add_node(buf.first).cluster = graph.common_cluster(touched_by);
     }
 
+    add_legend(graph);
     return graph;
 }
 
