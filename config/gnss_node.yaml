@@ -572,21 +572,19 @@ bands:
             require_hint: scan only broker-hinted (visible + L5-capable) PRNs.
             hops_per_record 1000 = the 1 ms Q5 period at this geometry (search needs it
             explicitly; the tracker derives it).
-        # VOLTAGE PEEL (P9, 2026-07-26): the L1-pilot recipe verbatim (P7b c84f71f7) -- the
-        # NH20 overlay is one +-1 chip per 1 ms primary period, so bit_s == the record
-        # period and the chip boundary IS the code-period boundary the peel splits head/tail
-        # at, exactly like E1C/B1C/L1C. bit_pred_horizon_s 2.0 (not the 4.0 default): 1 ms
-        # records make each table 1000 ints/s of horizon, and the seed POST has a known
-        # too-big failure mode -- 2 s covers the ~1 s status staleness + push cadence with
-        # margin, and the broker now attaches tables only when they change (bp_pushed).
-        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
+        # VOLTAGE PEEL (P9) ⚠️ REVERTED 2026-07-26 21:10 after ~25 min live: with peel on,
+        # every satellite the subtraction engaged COLLAPSED band-wide (deep_snr 158-296 ->
+        # 2-8 on the exact sats that peeled; ratio/floor read up to 30000x) -- at L5 the
+        # analytic add-back is NOT reconstructing the full correlation, so the peel eats the
+        # tracking products it is supposed to leave exact. L1 (same code, same 20 MSPS
+        # front-end geometry, same 1 ms records on L1CA) is untouched, so the break rides an
+        # L5-specific parameter -- prime suspect inv_cps ~ 1.955 (first chain with <2
+        # samples/chip; ks=1 in chip_gather) feeding a peel-vs-despread mismatch in one of:
+        # gain upload (d_pjobs vs d_gain), hop coverage, m_head. Bench it offline before
+        # re-enabling (docs/buglist.md). bit_export stays ON: the bit_pred transport +
+        # 2 s horizon + broker utc0-dedup soak overnight, peel-independent.
         tracker:
           fll_reacq_hz: 15.0
-          params:
-            peel: true
-            peel_gain_alpha: 0.01
-            peel_warmup_records: 100
-            peel_fll_gain: 0.05
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous; alias limit 250 Hz at 1 ms)"
           # (2026-07-21 channel-width A/B: max_cover_bins 5 made the wander WORSE -> it lives
           # in the per-channel phases, which the full cross-channel sum partially cancels.
@@ -600,7 +598,7 @@ bands:
           # clock bias: GPS-L5 live ADR 0.24-0.54 m, dTEC G:L1xL5 2.07 TECU (was 25-67).
           # MEMORYLESS K=10 (raw block product, +-50 Hz margin): the v2 EMA rate-unwrap was
           # retracted (wrong-branch absorbing state under wandering residuals, 67-726 m).
-          params: { integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 10, peel_depth: true, bit_export: true, bit_pred_horizon_s: 2.0 }
+          params: { integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
           note: |
             L5 DEEP WIPE: Q5 is a dataless pilot under the KNOWN NH20 overlay (one +-1 chip
             per 1 ms record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-
@@ -620,19 +618,13 @@ bands:
           cudaOutputData.
         search:
           params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
-        # VOLTAGE PEEL (P9): see the GPS_L5_Q chain note -- CS100 is likewise one chip per
-        # 1 ms primary period, the segmented-pilot case the L1 chains already run.
-        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
+        # VOLTAGE PEEL (P9): REVERTED with the GPS_L5_Q chain (see its note) -- the L5
+        # add-back corrupts the band. bit_export stays on (transport soak).
         tracker:
           fll_reacq_hz: 15.0
-          params:
-            peel: true
-            peel_gain_alpha: 0.01
-            peel_warmup_records: 100
-            peel_fll_gain: 0.05
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)"
         combiner:
-          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5A_CS100, adr_smooth_records: 10, peel_depth: true, bit_export: true, bit_pred_horizon_s: 2.0 }
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5A_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
 
       - constellation: bds
         signal: BDS_B2A_P
@@ -644,16 +636,10 @@ bands:
           ---- BeiDou-3 B2a-pilot parallel chain (dataless pilot, PRN 1..63; BDS-3 only) ----
         search:
           params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
-        # VOLTAGE PEEL (P9): see the GPS_L5_Q chain note -- CS100 is likewise one chip per
-        # 1 ms primary period, the segmented-pilot case the L1 chains already run.
-        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
+        # VOLTAGE PEEL (P9): REVERTED with the GPS_L5_Q chain (see its note) -- the L5
+        # add-back corrupts the band. bit_export stays on (transport soak).
         tracker:
           fll_reacq_hz: 15.0
-          params:
-            peel: true
-            peel_gain_alpha: 0.01
-            peel_warmup_records: 100
-            peel_fll_gain: 0.05
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)"
         combiner:
-          params: { n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100, adr_smooth_records: 10, peel_depth: true, bit_export: true, bit_pred_horizon_s: 2.0 }
+          params: { n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
