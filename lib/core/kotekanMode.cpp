@@ -2,6 +2,7 @@
 
 #include "Config.hpp"            // for Config
 #include "FrameDesc.hpp"         // for FrameDesc
+#include "PipelineGraph.hpp"     // for PipelineGraph, GraphNode
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for StageFactory
 #include "Telescope.hpp"         // for Telescope
@@ -235,34 +236,53 @@ void kotekanMode::buffer_data_callback(connectionInstance& conn) {
     conn.send_json_reply(get_buffer_json());
 }
 
-void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
-    const std::string prefix = "    ";
-    std::string dot =
-        "# This is a DOT formatted pipeline graph, use the graphviz package to plot.\n";
-    dot += "digraph pipeline {\n";
+PipelineGraph kotekanMode::get_pipeline_graph() {
+    PipelineGraph graph;
+    graph.header_comments.push_back(
+        "This is a DOT formatted pipeline graph, use the graphviz package to plot.");
 
-    // Setup buffer nodes
+    // Buffer nodes.
     for (auto& buf : buffer_container.get_buffer_map()) {
-        std::string label = buf.second->get_dot_node_label();
-        dot += fmt::format("{:s}\"{:s}\" [label=<{:s}> shape=ellipse, color=blue];\n", prefix,
-                           buf.first, label);
+        auto& node = graph.add_node(buf.first);
+        node.label_lines = buf.second->dot_label_lines();
+        node.set_attr("shape", "ellipse").set_attr("color", "blue");
     }
 
-    // Setup stage nodes
+    // Stage nodes. Every stage gets its node here, so that the edges below always
+    // have something to land on, and so a stage overriding add_graph_details()
+    // only has to describe what is particular to it.
     for (auto& stage : stages) {
-        dot += stage.second->dot_string(prefix);
+        auto& node = graph.add_node(stage.first);
+        node.add_line(stage.first);
+        node.set_attr("shape", "box").set_attr("color", "darkgreen");
     }
+    for (auto& stage : stages)
+        stage.second->add_graph_details(graph);
 
-    // Generate graph edges (producer/consumer relations)
+    // Producer/consumer relations. Registration names are stage unique names, but
+    // a stage may register a helper under another name (and a stage can be torn
+    // down while its registration lives on), so give any unrecognised name a node
+    // of its own rather than losing the edge.
+    auto endpoint = [&graph](const std::string& name) -> const std::string& {
+        if (!graph.has_node(name))
+            graph.add_node(name)
+                .add_line(name)
+                .set_attr("shape", "box")
+                .set_attr("style", "dashed");
+        return name;
+    };
     for (auto& buf : buffer_container.get_buffer_map()) {
         for (auto& cit : buf.second->consumers)
-            dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\";\n", prefix, buf.first, cit.second.name);
+            graph.add_edge(buf.first, endpoint(cit.second.name));
         for (auto& pit : buf.second->producers)
-            dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\";\n", prefix, pit.second.name, buf.first);
+            graph.add_edge(endpoint(pit.second.name), buf.first);
     }
 
-    dot += "}\n";
-    conn.send_text_reply(dot);
+    return graph;
+}
+
+void kotekanMode::pipeline_dot_graph_callback(connectionInstance& conn) {
+    conn.send_text_reply(get_pipeline_graph().to_dot());
 }
 
 void kotekanMode::buffer_frame_callback(Buffer* buf, connectionInstance& conn) {

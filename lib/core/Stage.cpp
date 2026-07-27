@@ -1,6 +1,7 @@
 #include "Stage.hpp"
 
 #include "Config.hpp"          // for Config
+#include "PipelineGraph.hpp"   // for PipelineGraph
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "util.h"              // for string_tail
@@ -151,8 +152,10 @@ Stage::~Stage() {
         this_thread.join();
 }
 
-std::string Stage::dot_string(const std::string& prefix) const {
-    return fmt::format("{:s}\"{:s}\" [shape=box, color=darkgreen];\n", prefix, get_unique_name());
+void Stage::add_graph_details(PipelineGraph& graph) const {
+    // A plain stage is fully described by the node and buffer edges kotekanMode
+    // has already added for it.
+    (void)graph;
 }
 
 void Stage::register_tid(pid_t tid) {

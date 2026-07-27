@@ -2,6 +2,7 @@
 #define KOTEKAN_MODE_HPP
 
 #include "Config.hpp"          // for Config
+#include "PipelineGraph.hpp"   // for PipelineGraph
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer, GenericBuffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -55,6 +56,18 @@ public:
      * @return Returns JSON formatted data with all the current buffer information
      */
     nlohmann::json get_buffer_json();
+
+    /**
+     * @brief Builds the graph of the running pipeline: the buffers, the stages,
+     *        and the producer/consumer relations connecting them.
+     *
+     * Stages contribute their own internal detail through
+     * @c Stage::add_graph_details(); everything common lives here so that the
+     * graph is assembled in one place and can be rendered in any format.
+     *
+     * @return The pipeline graph, as of the moment of the call.
+     */
+    PipelineGraph get_pipeline_graph();
 
     /// HTTP callback that dumps the current pipeline graph in `dot` format.
     void pipeline_dot_graph_callback(connectionInstance& conn);

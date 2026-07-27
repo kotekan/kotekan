@@ -1,6 +1,7 @@
 #include "dpdkCore.hpp"
 
 #include "Config.hpp"                  // for Config
+#include "PipelineGraph.hpp"           // for PipelineGraph, GraphNode
 #include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
 #include "captureHandler.hpp"          // for captureHandler
 #include "crs16BoardCaptureWorker.hpp" // for crs16BoardCaptureWorker
@@ -638,26 +639,31 @@ exit_lcore:
     return 0;
 }
 
-std::string dpdkCore::dot_string(const std::string& prefix) const {
-    std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {{\n", prefix, get_unique_name());
+void dpdkCore::add_graph_details(kotekan::PipelineGraph& graph) const {
+    const std::string name = get_unique_name();
 
-    dot += fmt::format("{:s}{:s}style=filled;\n", prefix, prefix);
-    dot += fmt::format("{:s}{:s}color=lightgrey;\n", prefix, prefix);
-    dot += fmt::format("{:s}{:s}node [style=filled,color=white];\n", prefix, prefix);
-    dot += fmt::format("{:s}{:s}label = \"{:s}\";\n", prefix, prefix, get_unique_name());
+    auto& cluster = graph.add_cluster(name);
+    cluster.label = name;
+    cluster.set_attr("style", "filled").set_attr("color", "lightgrey");
 
-    for (uint i = 0; i < num_ports; ++i) {
-        dot += fmt::format("{:s}{:s} \"{:s}\" [shape=box];\n", prefix, prefix,
-                           handlers[i]->unique_name);
-    }
-
-    dot += fmt::format("{:s}}}\n", prefix);
+    // The stage node itself belongs in the region, so that the buffer edges added
+    // centrally land inside the box rather than on an empty node beside it.
+    graph.add_node(name).cluster = name;
 
     for (uint i = 0; i < num_ports; ++i) {
-        dot += fmt::format("{:s}port_{:d} [shape=doubleoctagon style=filled,color=lightblue];\n",
-                           prefix, i);
-        dot += fmt::format("{:s}port_{:d} -> \"{:s}\";\n", prefix, i, handlers[i]->unique_name);
-    }
+        auto& handler = graph.add_node(handlers[i]->unique_name);
+        handler.add_line(handlers[i]->unique_name);
+        handler.cluster = name;
+        handler.set_attr("shape", "box").set_attr("style", "filled").set_attr("color", "white");
 
-    return dot;
+        // Port node ids carry the stage, so several dpdkCore stages each with a
+        // port 0 stay distinct.
+        const std::string port_id = fmt::format("{:s}/port_{:d}", name, i);
+        graph.add_node(port_id)
+            .add_line(fmt::format("port {:d}", i))
+            .set_attr("shape", "doubleoctagon")
+            .set_attr("style", "filled")
+            .set_attr("color", "lightblue");
+        graph.add_edge(port_id, handlers[i]->unique_name);
+    }
 }
