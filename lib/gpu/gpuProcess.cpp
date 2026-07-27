@@ -278,21 +278,37 @@ std::string gpuProcess::gpu_mem_node_prefix(const std::string& stage_name) {
 void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
     const std::string name = get_unique_name();
 
-    // The device region, holding this stage's commands and GPU memory.
     auto& stage_node = graph.add_node(name);
-    auto& device = graph.add_cluster(name);
+
+    // One region per physical device, holding every stage that drives it. The
+    // config declares these the other way round -- a gpuProcess per section,
+    // each naming a gpu_id -- but a device is the thing that saturates, and
+    // the question the graph gets asked is what GPU 0 is doing. Answering it
+    // from a box per section means reading thirteen of them.
+    //
+    // Shared by unique_name, so every gpuProcess with this gpu_id lands in the
+    // same region; it stays at the top level, since grouping by device and
+    // grouping by config section cannot both hold.
+    auto& device = graph.add_cluster(fmt::format(fmt("__gpu/{:d}"), gpu_id));
     device.label = fmt::format(fmt("GPU {:d}"), gpu_id);
     device.set_attr("style", "rounded,filled")
         .set_attr("fillcolor", kotekan::graph_device_fill)
         .set_attr("color", kotekan::graph_device_line);
-    // Keep whatever grouping the pipeline put this stage in as the region's own
-    // parent, so a device sits inside its config section rather than beside it.
-    device.parent = stage_node.cluster;
+
+    // Inside it, a box per stage: the commands of thirteen stages in one region
+    // with nothing separating them would be worse than what this replaces. Name
+    // it for the section the stage was declared in -- that is what tells them
+    // apart, since every one of them is called gpu_<n>.
+    auto& work = graph.add_cluster(name + "/work");
+    work.label = stage_node.cluster.empty() ? kotekan::leaf_name(name)
+                                            : kotekan::leaf_name(stage_node.cluster);
+    work.set_attr("style", "rounded").set_attr("color", kotekan::graph_cluster_line);
+    work.parent = device.id;
 
     // The stage node itself belongs in the region: the host buffer edges are
     // added centrally and point at the stage, so without a node inside the box
     // they would end on an empty one drawn beside it.
-    stage_node.cluster = device.id;
+    stage_node.cluster = work.id;
 
     // On a large pipeline the commands and device memory are most of the graph,
     // and are not what one is looking at when following data between stages.
@@ -343,7 +359,7 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
                                       100.0 * seconds / frame_arrival_period);
             node.add_line(timing);
         }
-        node.cluster = device.id;
+        node.cluster = work.id;
         node.set_category(kotekan::GraphCategory::Gpu)
             .set_attr("shape", shape)
             .set_attr("style", "filled");
@@ -351,9 +367,9 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
         previous = id;
     }
 
-    // GPU memory, in a region of its own inside the device.
+    // GPU memory, in a region of its own inside this stage's box.
     auto& mem = graph.add_cluster(fmt::format("{:s}/mem", name));
-    mem.parent = device.id;
+    mem.parent = work.id;
     mem.label = "device memory";
     mem.set_attr("style", "rounded").set_attr("color", kotekan::graph_cluster_line);
     // GPU memory names are local to a gpuProcess ("voltage" on one device is not

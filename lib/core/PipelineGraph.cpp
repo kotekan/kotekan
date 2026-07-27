@@ -280,10 +280,26 @@ std::string PipelineGraph::node_dot(const GraphNode& node, const std::string& in
     return fmt::format("{:s}{:s} [{:s}];\n", indent, quote(node.id), attrs);
 }
 
+bool PipelineGraph::cluster_is_empty(const std::string& id) const {
+    for (const auto& node : _nodes)
+        if (node.cluster == id)
+            return false;
+    for (const auto& cluster : _clusters)
+        if (cluster.parent == id && !cluster_is_empty(cluster.id))
+            return false;
+    return true;
+}
+
 std::string PipelineGraph::cluster_dot(const std::string& parent, const std::string& indent) const {
     std::string dot;
     for (const auto& cluster : _clusters) {
         if (cluster.parent != parent)
+            continue;
+        // A section a stage was declared in, whose stages all drew themselves
+        // somewhere else, is a labelled empty rectangle: it reads as a part of
+        // the pipeline holding nothing rather than as a heading with nothing
+        // left under it.
+        if (cluster_is_empty(cluster.id))
             continue;
         const std::string inner = indent + "    ";
         dot += fmt::format("{:s}subgraph {:s} {{\n", indent,

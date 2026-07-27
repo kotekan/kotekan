@@ -115,6 +115,44 @@ BOOST_AUTO_TEST_CASE(clusters_nest_and_hold_their_nodes) {
     check_statements_terminated(dot);
 }
 
+BOOST_AUTO_TEST_CASE(clusters_holding_nothing_are_not_drawn) {
+    PipelineGraph graph;
+    // A section whose only stage drew itself somewhere else -- a gpuProcess
+    // moving into its device's region -- would otherwise render as a labelled
+    // empty rectangle, reading as a part of the pipeline that holds nothing.
+    graph.add_cluster("/run_n2k").label = "run_n2k";
+    auto& device = graph.add_cluster("__gpu/0");
+    device.label = "GPU 0";
+    graph.add_node("/run_n2k/gpu_0").add_line("gpu_0").cluster = device.id;
+
+    // Empty all the way down: a box holding only empty boxes is just as empty.
+    graph.add_cluster("/outer").label = "outer";
+    graph.add_cluster("/outer/inner").parent = "/outer";
+
+    const std::string dot = graph.to_dot();
+    BOOST_CHECK(contains(dot, "subgraph \"cluster___gpu/0\" {"));
+    BOOST_CHECK(!contains(dot, "cluster_/run_n2k"));
+    BOOST_CHECK(!contains(dot, "cluster_/outer"));
+    check_statements_terminated(dot);
+}
+
+BOOST_AUTO_TEST_CASE(a_cluster_counts_as_full_if_a_nested_one_holds_a_node) {
+    PipelineGraph graph;
+    graph.add_cluster("__gpu/0").label = "GPU 0";
+    auto& work = graph.add_cluster("/run_n2k/gpu_0/work");
+    work.parent = "__gpu/0";
+    work.label = "run_n2k";
+    auto& mem = graph.add_cluster("/run_n2k/gpu_0/mem");
+    mem.parent = work.id;
+    // The only node sits two levels down; nothing above it may be dropped.
+    graph.add_node("/run_n2k/gpu_0/mem/voltage").add_line("voltage").cluster = mem.id;
+
+    const std::string dot = graph.to_dot();
+    for (const char* id :
+         {"cluster___gpu/0", "cluster_/run_n2k/gpu_0/work", "cluster_/run_n2k/gpu_0/mem"})
+        BOOST_CHECK_MESSAGE(contains(dot, id), std::string("dropped ") + id);
+}
+
 BOOST_AUTO_TEST_CASE(dangling_edges_are_dropped_not_drawn) {
     PipelineGraph graph;
     graph.add_node("known").add_line("known");
