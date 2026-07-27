@@ -10,6 +10,7 @@
 #include <condition_variable>   // for condition_variable
 #include <functional>           // for bind, function, _1, _2
 #include <mutex>                // for mutex, unique_lock, lock_guard
+#include <thread>               // for this_thread::sleep_for
 #include <algorithm>            // for min
 #include <cmath>                // for sqrt
 #include <memory>               // for shared_ptr
@@ -21,6 +22,7 @@
 #include "buffer.hpp"           // for Buffer
 #include "bufferContainer.hpp"  // for bufferContainer
 #include "kotekanLogging.hpp"   // for ERROR, INFO, DEBUG, FATAL_ERROR
+#include "prometheusMetrics.hpp" // for Metrics, Gauge, Counter
 #include "restServer.hpp"       // for connectionInstance, HTTP_RESPONSE, restServer
 #include "fmt.hpp"              // for compile_string_to_view, format
 #include "NDArray.hpp"          // for GenericNDArray
@@ -28,6 +30,7 @@
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::Stage;
+using kotekan::prometheus::Metrics;
 
 REGISTER_KOTEKAN_STAGE(airspyInput);
 
@@ -71,6 +74,9 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
     // the time, which is a wedge in all but name. A healthy device fills the buffer in one
     // frame period (2.5-10 ms), so 250 ms is ~25x margin and 12x less worst-case blocking.
     _adcstat_timeout_ms = config.get_default<int>(unique_name, "adcstat_timeout_ms", 250);
+    _stream_start_timeout_ms =
+        config.get_default<int>(unique_name, "stream_start_timeout_ms", 5000);
+    _stream_stall_ms = config.get_default<int>(unique_name, "stream_stall_ms", 2000);
 }
 
 airspyInput::~airspyInput() {
@@ -252,6 +258,114 @@ void airspyInput::main_thread() {
         FATAL_ERROR("airspy_start_rx() failed: {:s} ({:d})",
                     airspy_error_name((enum airspy_error)err), err);
         return;
+    }
+
+    // start_rx() returning SUCCESS does NOT mean the device is streaming -- see
+    // stream_watchdog(). This call does not return until the stage stops.
+    stream_watchdog();
+}
+
+/**
+ * Fix (a) of THE WEDGE post-mortem (2026-07-27): "a half-open device should emit an ERROR at
+ * open time, not be inferred from a thread count."
+ *
+ * THE GAP THIS FILLS. Everything above returns SUCCESS on a half-open device: libusb claims
+ * the interface, every control transfer (samplerate, gains, PLL, board id, serial) is answered
+ * by firmware, and airspy_start_rx() returns AIRSPY_SUCCESS -- but the transfer thread never
+ * delivers a callback, so airspy_producer() never runs. Historically main_thread() RETURNED
+ * right here, which meant that on the one failure that matters there was nothing left running
+ * to notice it: no frames, no error, no log line, and a band that is simply absent. The only
+ * evidence was indirect (one thread instead of two, /adcstat hanging) and the outage that
+ * taught us this ran for hours behind an "=== 3-band node running ===" banner.
+ *
+ * Measured trigger (2026-07-26, data/wedge/wedge_20260726_224903): a marginal USB link. The
+ * SAME link failed loudly when it let go DURING start_rx (AIRSPY_ERROR_LIBUSB, kotekan exits --
+ * correct) and silently when it let go just after. Only the silent branch needed fixing.
+ *
+ * WHAT IT DOES. Polls the producer's own sample counter -- no device calls, so a sick USB link
+ * cannot be made sicker by the diagnosis -- and publishes three things to /metrics:
+ *
+ *   kotekan_airspy_streaming{stage_name}             1 = delivering, 0 = not
+ *   kotekan_airspy_samples_total{stage_name}         cumulative true samples
+ *   kotekan_airspy_samples_dropped_total{stage_name} cumulative libairspy FIFO drops
+ *
+ * /metrics is deliberately the vehicle: it is served without touching adcstat_mutex, so it
+ * answers even for a device whose /adcstat is failing -- the endpoint that wedged the node is
+ * not the endpoint you have to poll to find out that it wedged. `streaming` is also what
+ * run_3band.sh gates its startup banner on, so a half-open unit now reports DEGRADED at launch
+ * instead of hours later.
+ *
+ * The stall branch (stream was up, then stopped) fires for a device that dies mid-run AND for
+ * a producer blocked in wait_for_empty_frame() with a full input buffer -- distinct causes with
+ * the same observable, so the message names both rather than guessing.
+ */
+void airspyInput::stream_watchdog() {
+    auto& m_streaming = Metrics::instance().add_gauge("kotekan_airspy_streaming", unique_name);
+    auto& m_samples = Metrics::instance().add_counter("kotekan_airspy_samples_total", unique_name);
+    auto& m_dropped =
+        Metrics::instance().add_counter("kotekan_airspy_samples_dropped_total", unique_name);
+
+    const auto tick = std::chrono::milliseconds(100);
+    const double report_every_ms = 30000.0; // keep saying it -- an operator may grep in at any time
+
+    auto t_progress = std::chrono::steady_clock::now();
+    uint64_t last_total = 0, last_dropped = 0;
+    bool ever_streamed = false;
+    double next_report_ms = (double)_stream_start_timeout_ms;
+
+    while (!stop_thread) {
+        std::this_thread::sleep_for(tick);
+
+        const uint64_t n_total = _samples_total.load(std::memory_order_relaxed);
+        const uint64_t n_dropped = _samples_dropped.load(std::memory_order_relaxed);
+        m_samples.inc(n_total - last_total);
+        m_dropped.inc(n_dropped - last_dropped);
+        last_dropped = n_dropped;
+
+        const double silent_ms = std::chrono::duration<double, std::milli>(
+                                     std::chrono::steady_clock::now() - t_progress)
+                                     .count();
+
+        if (n_total != last_total) { // the producer ran since the last tick
+            last_total = n_total;
+            t_progress = std::chrono::steady_clock::now();
+            m_streaming.set(1);
+            if (!ever_streamed) {
+                ever_streamed = true;
+                INFO("/{:s}: streaming CONFIRMED -- first samples {:.0f} ms after start_rx.",
+                     unique_name, silent_ms);
+            } else if (next_report_ms > (double)_stream_stall_ms) {
+                // we had complained; say that it came back, or the log strands the operator
+                // at the last ERROR with no idea it self-healed
+                ERROR("/{:s}: stream RESUMED after {:.1f} s silent.", unique_name,
+                      silent_ms / 1000.0);
+            }
+            next_report_ms = (double)_stream_stall_ms;
+            continue;
+        }
+
+        const double limit = ever_streamed ? (double)_stream_stall_ms
+                                           : (double)_stream_start_timeout_ms;
+        if (silent_ms < limit)
+            continue;
+
+        m_streaming.set(0);
+        if (silent_ms < next_report_ms)
+            continue;
+        next_report_ms = silent_ms + report_every_ms;
+
+        if (!ever_streamed)
+            ERROR("/{:s}: HALF-OPEN DEVICE -- airspy_start_rx() succeeded {:.1f} s ago but the "
+                  "device has never delivered a single sample (serial {:#016x}). This band is "
+                  "producing NOTHING. Check the USB link/cable; the last one to do this was a "
+                  "marginal micro-B adapter.",
+                  unique_name, silent_ms / 1000.0, (unsigned long)_airspy_sn);
+        else
+            ERROR("/{:s}: stream STALLED -- no samples for {:.1f} s ({:d} delivered so far). "
+                  "Either the device stopped (USB link) or the producer is blocked on a full "
+                  "input buffer (check kotekan_valve_dropped_frames_total and the 'behind "
+                  "realtime' warnings). This band is producing NOTHING meanwhile.",
+                  unique_name, silent_ms / 1000.0, n_total);
     }
 }
 

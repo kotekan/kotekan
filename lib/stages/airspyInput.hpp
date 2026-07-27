@@ -93,6 +93,10 @@ public:
     /// Fills kotekan buffer frames from one USB transfer. See class doc.
     void airspy_producer(airspy_transfer_t* transfer);
 
+    /// Watches the sample stream and says so, loudly, when it is not running. Runs on the
+    /// stage thread for the life of the stage; see the definition for why it has to exist.
+    void stream_watchdog();
+
     /// REST callbacks.
     void get_config_callback(kotekan::connectionInstance& conn);
     void set_config_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
@@ -166,6 +170,15 @@ private:
     /// unbounded wait on a non-streaming (half-open) device takes down the REST plane for
     /// every band at once -- THE WEDGE, see adcstat_callback().
     int _adcstat_timeout_ms = 3000;
+
+    /// Stream watchdog thresholds -- see stream_watchdog().
+    /// @c _stream_start_timeout_ms: how long after a SUCCESSFUL airspy_start_rx() to wait for
+    /// the first sample before declaring the device half-open. Generous (USB enumeration +
+    /// R820T PLL lock + the first bulk transfers); a healthy unit delivers in tens of ms.
+    /// @c _stream_stall_ms: how long an already-running stream may go silent before the same
+    /// verdict. Both are diagnosis-only -- the watchdog never touches the device.
+    int _stream_start_timeout_ms = 5000;
+    int _stream_stall_ms = 2000;
 
     /// ADC statistics. The REST adcstat handler requests a dump and waits on
     /// @c adcstat_cv until the producer fills @c adc{rms,mean,railfrac} on the

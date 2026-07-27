@@ -133,7 +133,12 @@ if ! pgrep -f "[k]otekan .*live_3band" >/dev/null; then
     echo "kotekan DIED at startup:"; grep -iE "FATAL|ERROR" $LOG | head -5; exit 1
 fi
 for b in $BANDS; do
-    echo "  $b front end: $(curl -s localhost:$PORT/${b}_airspy_in/adcstat | tr -d '\n ' | head -c 120)"
+    # --max-time: this probe is what HUNG the launcher during THE WEDGE (an unbounded
+    # cv.wait in adcstat_callback on a half-open device). Both ends are bounded now -- the
+    # handler times out at adcstat_timeout_ms and returns 402 -- but a startup probe must
+    # never be the thing that blocks a launch, so bound this end too.
+    echo "  $b front end: $(curl -s --max-time 5 localhost:$PORT/${b}_airspy_in/adcstat \
+                            | tr -d '\n ' | head -c 120)"
 done
 
 # ---- three control planes against the one instance ----
@@ -171,12 +176,27 @@ done
 sleep 5
 _bad=""
 pgrep -f "[k]otekan .*live_3band" >/dev/null || _bad="$_bad kotekan"
-curl -s --max-time 5 -o /dev/null "localhost:$PORT/metrics" || _bad="$_bad rest"
+_metrics=$(curl -s --max-time 5 "localhost:$PORT/metrics") || _bad="$_bad rest"
 for pid in $SUBPIDS; do
     kill -0 "$pid" 2>/dev/null || _bad="$_bad ctl-plane($pid)"
 done
 for b in $BANDS; do
     pgrep -f "[g]ps_distributed_broker.py.*${b}_" >/dev/null || _bad="$_bad ${b}-broker"
+done
+# ARE THE FRONT ENDS ACTUALLY STREAMING? (2026-07-27, fix (a)/(c) of the wedge post-mortem.)
+# Every airspy call can succeed against a HALF-OPEN device -- claimed, configured, start_rx
+# returns SUCCESS -- and still never deliver a sample. Before this check the band was simply
+# absent, with no error anywhere, behind a banner claiming the node was up; the outage that
+# taught us this ran for hours. airspyInput's stream watchdog publishes the verdict, and
+# /metrics is the right place to read it because it answers even when /adcstat cannot.
+for b in $BANDS; do
+    case "$(printf '%s\n' "$_metrics" \
+            | grep "^kotekan_airspy_streaming{stage_name=\"/${b}_airspy_in\"}" \
+            | awk '{print $2}')" in
+        1|1.0*) ;;                                  # streaming
+        "")     _bad="$_bad ${b}-airspy(no-watchdog)" ;;  # stage never started
+        *)      _bad="$_bad ${b}-airspy(NOT-STREAMING/half-open)" ;;
+    esac
 done
 if [ -n "$_bad" ]; then
     echo "=== 3-band node came up DEGRADED -- not running:$_bad ==="
