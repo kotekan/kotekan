@@ -1,0 +1,74 @@
+---
+# L5 RAW VOLTAGE CAPTURE -- the input side of the peel add-back A/B bench (2026-07-27).
+#
+#   ./build_cuda/kotekan/kotekan -c config/capture_l5_raw.yaml
+#
+# Writes the airspy's raw ADC frames (input_buf: samples_per_data_set * bytes_per_sample,
+# 16-bit REAL) straight to disk, no processing. config/replay_l5_peel.yaml reads them back
+# through rawFileRead into the SAME input_buf, so the replayed pipeline sees byte-identical
+# voltage on every run -- which is the whole point: the peel A/B has to differ ONLY in
+# whether the peel ran, not in which photons arrived.
+#
+# WHY: the L5 pilot peel (P9, 6ba3aaae) corrupted the band and was reverted (71b70b37) --
+# peeling sats collapsed deep_snr 158-296 -> 2-8, |resid|/|full| to 30000x, which VIOLATES
+# the gain-coherence law's bound of 1 and therefore means a mechanical fault. Eight candidate
+# mechanisms were eliminated on 2026-07-27 without finding it (see that day's commits, and
+# diag/chip_gather_bench.py + diag/fp32_addback_bench.py which exonerated the two named
+# suspects by measurement). A live twin-despread verifier was tried and did not work. This
+# is the deterministic route the revert commit asked for in the first place.
+#
+# FRONT END IS BYTE-FAITHFUL to config/generated/live_l5_gpu.yaml (serial, freq, gains,
+# sample_bw, samples_per_data_set). Any drift here makes the replay a different experiment.
+#
+# SIZE: 49920 samples * 2 B = 99840 B/frame, 2.496 ms/frame -> ~40 MB/s. 30 s ~ 1.2 GB.
+type: config
+log_level: info
+instrument_name: airspy_gps
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+
+samples_per_data_set: 49920
+bytes_per_sample: 2
+buffer_depth: 32          # deeper than live: disk write must never backpressure the airspy
+sample_rate: 20.0e6
+cpu_affinity: [14, 15, 16, 17]   # bench cores ONLY -- the soak owns 0-13
+
+input_buf:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * bytes_per_sample
+
+airspy_in:
+    cpu_affinity: [18]
+    kotekan_stage: airspyInput
+    out_buf: input_buf
+    # Serial-pinned exactly as live. A serial that fails to parse silently becomes "open any",
+    # which with three dongles plugged in is a coin flip -- verify a pin by BREAKING it.
+    serial: 0x03A464C837264F67   # L5 unit
+    freq: 1176.45
+    sample_bw: 10                # airspy 10 MSPS mode -> 20 MSPS real
+    gain_lna: 8
+    gain_mix: 8
+    gain_if: 8
+    biast_power: false           # antenna is fed by a SEPARATE inline bias tee
+    dither_disable: true
+
+capture:
+    kotekan_stage: rawFileWrite
+    in_buf: input_buf
+    base_dir: "/tmp/gpsin_l5"
+    file_name: "gpsin"
+    file_ext: "raw"
+    prefix_hostname: false
+    num_frames_per_file: 1        # MUST be 1: rawFileWrite emits [size][meta][frame] PER FRAME,
+                                  # but rawFileRead reads the size ONCE then assumes frames are
+                                  # back-to-back. They only agree at one frame per file; anything
+                                  # larger silently misaligns every frame after the first (measured
+                                  # 2026-07-27: amplitude exactly 0 on all 32 PRNs, no error).
+    # ~12000 frames = 30 s at 2.496 ms/frame. kotekan exits when this many files are written;
+    # with one file it just stops accepting, so bound the run by wall clock instead.
+    exit_after_n_files: 1000000
+    # The airspy input buffer carries an NDArray descriptor (airspyFrameDesc::make_input_desc).
+    # Its shape is just samples_per_data_set, pinned identically in the replay config, so the
+    # descriptor carries no information the reader does not already have.
+    allow_ndarray: true
