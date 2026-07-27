@@ -371,12 +371,15 @@ bands:
         combiner:
           # DIVERGENT (audit): bds combiners carry no prns list while gal combiners do
           # (both inherit correctly; kept as-is).
-          # phase_dump (TEMPORARY, 2026-07-22): per-record A + head for the bf~0.5 deep-null
-          # investigation -- C22/C39 cross boundary_f=0.5 within the hour; C21/C36 are strong
-          # controls away from 0.5. Offline: run the real overlay_wipe on the dumped (a, head)
-          # records to localize the fault (tracker head data vs combiner bookkeeping). Remove
-          # once the null is explained (see memory: b1c bf=0.5 deep-null).
-          params: { nh_assist: true, nh_min_refs: 3, n_prn: 63, integration_length: 100, secondary_overlay: B1C, phase_dump_prns: [19, 21, 22, 34, 36, 39], phase_dump_path: /tmp/gpswipe/phase_dump_bds.txt, peel_depth: true, bit_export: true}
+          # phase_dump REMOVED 2026-07-27: it was armed on 07-22 (cff3c00c) for the bf~0.5
+          # deep-null, which 298b6d39 fixed, and then held open for the smaller record-EDGE
+          # (bf~0/1) null. That is now settled from the obs logs instead -- satellite-paired
+          # and elevation-matched, the edge deficit is 20x/-5.1 dB pre-fix and absent on every
+          # day since (07-24 through 07-27), so 298b6d39 fixed the edge along with the
+          # straddle. The dump was writing ~630 MB/h forever to answer a closed question.
+          # Re-add phase_dump_prns/phase_dump_path here if a per-record forensic tap is
+          # needed again; note the file is opened APPEND, so old content survives a restart.
+          params: { nh_assist: true, nh_min_refs: 3, n_prn: 63, integration_length: 100, secondary_overlay: B1C, peel_depth: true, bit_export: true}
           note: |
             B1C pilot: deterministic per-PRN 1800-chip overlay wipe (the per-record stopgap
             floored deep at sqrt(2*100/pi) ~ 8 sigma while the search hit 290+).
