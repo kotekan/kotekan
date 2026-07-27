@@ -1,6 +1,7 @@
 #include "bufferSend.hpp"
 
 #include "Config.hpp"            // for Config
+#include "PipelineGraph.hpp"     // for PipelineGraph, GraphNode
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
@@ -310,12 +311,14 @@ void bufferSend::connect_to_server() {
     }
 }
 
-std::string bufferSend::dot_string(const std::string& prefix) const {
-    std::string dot = Stage::dot_string(prefix);
-    std::string target = fmt::format("{:s}:{:d}", server_ip, server_port);
-    dot += fmt::format("{:s}\"{:s}\" [shape=doubleoctagon style=filled,color=lightblue]", prefix,
-                       target);
-    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\"", prefix, get_unique_name(), target);
-
-    return dot;
+void bufferSend::add_graph_details(kotekan::PipelineGraph& graph) const {
+    // Node id is derived from the stage, not from the address, so that two stages
+    // sending to the same host:port stay distinct nodes.
+    const std::string dest_id = fmt::format("{:s}/destination", get_unique_name());
+    graph.add_node(dest_id)
+        .add_line(fmt::format("{:s}:{:d}", server_ip, server_port))
+        .set_attr("shape", "doubleoctagon")
+        .set_attr("style", "filled")
+        .set_attr("color", "lightblue");
+    graph.add_edge(get_unique_name(), dest_id);
 }

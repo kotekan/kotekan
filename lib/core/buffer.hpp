@@ -256,10 +256,13 @@ public:
     virtual void json_description(nlohmann::json& buf_json);
 
     /**
-     * @brief Returns a text description of this buffer for use in the automatic Dot pipeline
-     * graphs.
+     * @brief Returns this buffer's description for the automatic pipeline graphs,
+     *        as one plain-text line per entry.
+     *
+     * The lines are escaped and joined by the graph renderer, so implementations
+     * must not add markup of their own.
      */
-    virtual std::string get_dot_node_label();
+    virtual std::vector<std::string> dot_label_lines();
 
     /// The number of frames kept by this object
     int num_frames;
@@ -760,7 +763,7 @@ public:
 
     void json_description(nlohmann::json& buf_json) override;
 
-    std::string get_dot_node_label() override;
+    std::vector<std::string> dot_label_lines() override;
 
     // don't call this, it's for internal use only
     void _impl_zero_frame(const int ID);

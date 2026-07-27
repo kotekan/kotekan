@@ -208,8 +208,8 @@ void GenericBuffer::json_description(nlohmann::json& buf_json) {
     buf_json["type"] = buffer_type;
 }
 
-std::string GenericBuffer::get_dot_node_label() {
-    return buffer_name;
+std::vector<std::string> GenericBuffer::dot_label_lines() {
+    return {buffer_name};
 }
 
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
@@ -437,9 +437,10 @@ void Buffer::json_description(nlohmann::json& buf_json) {
     buf_json["peek_hold"] = peek_hold_enabled;
 }
 
-std::string Buffer::get_dot_node_label() {
-    return fmt::format(fmt("{:s}<BR/>{:d}/{:d} ({:.1f}%)"), buffer_name, get_num_full_frames(),
-                       num_frames, (float)get_num_full_frames() / num_frames * 100);
+std::vector<std::string> Buffer::dot_label_lines() {
+    const int full = get_num_full_frames();
+    return {buffer_name, fmt::format(fmt("{:d}/{:d} ({:.1f}%)"), full, num_frames,
+                                     (float)full / num_frames * 100)};
 }
 
 void Buffer::print_buffer_status() {
