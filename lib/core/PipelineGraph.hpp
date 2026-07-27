@@ -351,6 +351,9 @@ private:
 
     /// Renders the clusters whose parent is @c parent, and the nodes they hold.
     std::string cluster_dot(const std::string& parent, const std::string& indent) const;
+
+    /// @return True if @p id holds no node, directly or in any cluster under it.
+    bool cluster_is_empty(const std::string& id) const;
 };
 
 } // namespace kotekan

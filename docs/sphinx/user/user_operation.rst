@@ -51,9 +51,14 @@ drawing made from the config cannot:
 - A buffer with no empty frame left is outlined in red — that is where the pipeline is
   backed up — and a buffer nothing has ever flowed through is dashed.
 
-Stages are grouped into the config section they were declared in, each GPU device is a
-region holding its commands and device memory, and a buffer is drawn inside the innermost
-region containing everything that touches it, so only real hand-offs cross a boundary.
+Stages are grouped into the config section they were declared in, except that GPU stages
+group by the device they drive: each ``gpu_id`` gets one region holding every stage that
+uses it, one box per stage, with that stage's commands and device memory inside. The
+config declares this the other way round — a ``gpuProcess`` per section, each naming a
+``gpu_id`` — but a device is the thing that saturates, so the graph answers "what is GPU 0
+doing" in one place instead of across a box per section. A section left holding nothing as
+a result is not drawn. A buffer is drawn inside the innermost region containing everything
+that touches it, so only real hand-offs cross a boundary.
 Buffer nodes link to their ``/buffer/<name>/frame`` endpoint, so a rendered SVG is
 clickable.
 
