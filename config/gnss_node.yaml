@@ -595,19 +595,36 @@ bands:
             require_hint: scan only broker-hinted (visible + L5-capable) PRNs.
             hops_per_record 1000 = the 1 ms Q5 period at this geometry (search needs it
             explicitly; the tracker derives it).
-        # VOLTAGE PEEL (P9) ⚠️ REVERTED 2026-07-26 21:10 after ~25 min live: with peel on,
-        # every satellite the subtraction engaged COLLAPSED band-wide (deep_snr 158-296 ->
-        # 2-8 on the exact sats that peeled; ratio/floor read up to 30000x) -- at L5 the
-        # analytic add-back is NOT reconstructing the full correlation, so the peel eats the
-        # tracking products it is supposed to leave exact. L1 (same code, same 20 MSPS
-        # front-end geometry, same 1 ms records on L1CA) is untouched, so the break rides an
-        # L5-specific parameter -- prime suspect inv_cps ~ 1.955 (first chain with <2
-        # samples/chip; ks=1 in chip_gather) feeding a peel-vs-despread mismatch in one of:
-        # gain upload (d_pjobs vs d_gain), hop coverage, m_head. Bench it offline before
-        # re-enabling (docs/buglist.md). bit_export stays ON: the bit_pred transport +
-        # 2 s horizon + broker utc0-dedup soak overnight, peel-independent.
+        # VOLTAGE PEEL (P9) -- RE-ENABLED 2026-07-27 PM, GPS CHAIN ONLY, after the real cause
+        # was found and the headroom built. The 07-26 revert blamed the add-back; it was
+        # wrong. The add-back is EXACT (identity measured to 1e-9 per channel at L5, ks=1).
+        # What actually happened: the peel pushed the L5 stream past real time, the Valve
+        # dropped frames SILENTLY, the gaps were zero-filled in the ring, and every coherent
+        # window touching one shredded -- on every sat WITH deep to lose, which on a 2-5-sat
+        # chain is indistinguishable from "exactly the peeling sats". A peeled sat meeting
+        # zeroed voltage reads resid = -a*E against full = 0, so the 30000x ratio was a
+        # metric artifact stacked on real damage. Proven causally on the replay bench:
+        # full-rate = gaps + ratio 6.7e7; half-rate = 0 gaps, ratio 1.10, deep HELD.
+        #
+        # Headroom since (f5d0da68, 6b8b81bd): per-chain CUDA streams + an exact chip_gather
+        # carry took the L5 tracker phase 0.91 -> 0.457 ms of a 2.496 ms frame, and
+        # valve_depth gave it 500 ms of elasticity instead of 80. Peel costs 2.1-2.3x, so
+        # GPS-with-peel budgets to ~1.05 ms wall -- 42% of frame.
+        #
+        # GPS ONLY, deliberately: E5a and B2a stay unpeeled on the SAME airspy and the same
+        # front end, so they are in-run CONTROLS. If the band degrades and they degrade too,
+        # it is not the peel. (The 07-26 hunt had no control and cost a day.)
+        # THE ONE-NUMBER TEST: kotekan_valve_dropped_frames_total{stage_name="/l5_valve"}.
+        # Flat = the peel fits real time. Climbing = it does not, and nothing else about the
+        # depth numbers is worth reading until it is flat again.
+        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
         tracker:
           fll_reacq_hz: 15.0
+          params:
+            peel: true
+            peel_gain_alpha: 0.01       # ~100-record (0.1 s) FF gain average
+            peel_warmup_records: 100    # subtract only once the gain has converged
+            peel_fll_gain: 0.05         # residual-carrier FLL (idles ~0 with ctrim closed)
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous; alias limit 250 Hz at 1 ms)"
           # (2026-07-21 channel-width A/B: max_cover_bins 5 made the wander WORSE -> it lives
           # in the per-channel phases, which the full cross-channel sum partially cancels.
@@ -621,7 +638,7 @@ bands:
           # clock bias: GPS-L5 live ADR 0.24-0.54 m, dTEC G:L1xL5 2.07 TECU (was 25-67).
           # MEMORYLESS K=10 (raw block product, +-50 Hz margin): the v2 EMA rate-unwrap was
           # retracted (wrong-branch absorbing state under wandering residuals, 67-726 m).
-          params: { integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+          params: { integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 10, peel_depth: true, bit_export: true, bit_pred_horizon_s: 2.0 }
           note: |
             L5 DEEP WIPE: Q5 is a dataless pilot under the KNOWN NH20 overlay (one +-1 chip
             per 1 ms record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-

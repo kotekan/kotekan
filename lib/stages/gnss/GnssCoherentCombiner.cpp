@@ -675,6 +675,18 @@ void GnssCoherentCombiner::main_thread() {
                     lens.push_back(l);
             return lens;
         };
+        // DURATION of a trailing window of `len` records. _navutc holds record START times, so
+        // first-to-last spans len-1 record periods and the window itself is ONE PERIOD LONGER.
+        // coherence_s was reported as the bare span and so came out one record short -- 0.999 s
+        // for a 1.000 s L1/L5 window, 3.98 s for L2C's 4.00 (20 ms records make the error 20x
+        // more visible there, which is how it was noticed). The rec_dt and power-density code
+        // below already used this exact len/(len-1) form; only the REPORTED number missed it.
+        // Gap-robust: dropped records leave the spacing of those present unchanged.
+        auto coh_span = [](const std::vector<double>& u, size_t len) {
+            if (u.empty() || len < 2 || u.size() < len)
+                return 0.0;
+            return (u.back() - u[u.size() - len]) * (double)len / (double)(len - 1);
+        };
         const double Keff = _rolling ? (double)_integration_length : (double)n_acc;
         for (int p = 0; p < _n_prn; ++p) {
             float* rec = out + (size_t)p * RECORD_FLOATS;
@@ -817,7 +829,7 @@ void GnssCoherentCombiner::main_thread() {
                             deep_snr[p] = ow.snr;
                             nh_phase[p] = ow.phase;
                             deep_rec[p] = (int)len;
-                            coh_s[p] = ub.empty() ? 0.0 : ub.back() - ub[ub.size() - len];
+                            coh_s[p] = coh_span(ub, len);
                             cleared = true;
                         }
                     }
@@ -984,7 +996,7 @@ void GnssCoherentCombiner::main_thread() {
                         deep_snr[p] = snr;
                         deep_rec[p] = (int)len;
                         deep_floor[p] = nav_floor(len);
-                        coh_s[p] = ub.empty() ? 0.0 : ub.back() - ub[ub.size() - len];
+                        coh_s[p] = coh_span(ub, len);
                         cleared = true;
                     }
                 }
@@ -1174,7 +1186,7 @@ void GnssCoherentCombiner::main_thread() {
                             deep_rec[p] = (int)dlen;
                             deep_floor[p] = flr;
                             const double t0r = ub[ub.size() - dlen];
-                            coh_s[p] = ub.back() - t0r;
+                            coh_s[p] = coh_span(ub, dlen);
                             const double span = ub.back() - t0r;
                             const double T = dlen > 1
                                 ? span * (double)dlen / (double)(dlen - 1) : 0.0;

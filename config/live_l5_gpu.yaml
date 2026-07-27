@@ -84,7 +84,7 @@ out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_dep
 # GPU epl frame = gnssGpuChain::frame_bytes(n_prn, n_chan) = 176 + 1024*n_prn +
 # 1536*n_prn*n_chan (n_chan 10 -> 15360*n_prn). MAX_REC=16 is baked in, so the size is
 # independent of record length.
-epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 15360 * n_prn }
+epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * n_prn + 23040 * n_prn }
 
 airspy_in:
     cpu_affinity: [13]
@@ -169,6 +169,10 @@ gputrack:
           fll_gain: 0.0
           carrier_shared: true
           seed_endpoint: "/gps_track/set_seeds"
+          peel: true
+          peel_gain_alpha: 0.01
+          peel_warmup_records: 100
+          peel_fll_gain: 0.05
         - name: cudaOutputData
           cuda_stream: 1
           gpu_mem: gnss_epl
@@ -223,7 +227,7 @@ assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_
 # per 1 ms record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-
 # period boundary. integration_length 1000 = 1 s max buffer (the auto-coherence
 # ladder finds the knee live).
-gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 10, peel_depth: true, bit_export: true, bit_pred_horizon_s: 2.0 }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- Galileo E5a-Q parallel chain (dataless pilot, PRN 1..36) ----
