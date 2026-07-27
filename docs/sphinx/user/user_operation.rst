@@ -13,7 +13,11 @@ REST endpoints
 - ``/endpoints`` (GET) – list all registered endpoints (including aliases).
 - ``/metrics`` (GET) – Prometheus-format metrics (buffers, stages, broker errors, etc.).
 - ``/buffers`` (GET) – per-buffer status: frame fullness, frame size, last arrival time.
-- ``/pipeline_dot`` (GET) – the running pipeline graph in graphviz ``dot`` format.
+- ``/pipeline_dot`` (GET) – the running pipeline graph in graphviz ``dot`` format
+  (``Content-Type: text/vnd.graphviz``). See `Pipeline graph`_.
+- ``/pipeline_json`` (GET) – the same graph as JSON (nodes, edges, clusters), for clients
+  that would rather lay it out, or diff it, than parse ``dot``. Takes the same query
+  arguments.
 - ``/buffer/<name>/frame`` (GET) – copy of the newest full frame in buffer ``<name>`` as JSON:
   base64 ``data``, the frame's metadata, and the buffer's frame descriptor. ``?len=N`` limits
   the number of data bytes returned; ``len=0`` returns metadata only. On buffers whose
@@ -30,6 +34,50 @@ Example:
 
     curl -X POST -H "Content-Type: application/json" --data @config.json \
       http://localhost:12048/start
+
+
+Pipeline graph
+--------------
+
+``/pipeline_dot`` draws the pipeline as it is actually running, so it shows things a
+drawing made from the config cannot:
+
+- Producer and consumer directions are the registrations themselves, not a guess from
+  the config key names.
+- A buffer's array layout comes from its frame descriptor: the shape the data has, not
+  one inferred from the config or the kernel sources.
+- Measured frame and byte rates, fill levels, CPU usage per stage, and GPU kernel times
+  (the last needs ``profiling: true``, CPU usage needs ``/cpu_monitor: {enabled: true}``).
+- A buffer with no empty frame left is outlined in red — that is where the pipeline is
+  backed up — and a buffer nothing has ever flowed through is dashed.
+
+Stages are grouped into the config section they were declared in, each GPU device is a
+region holding its commands and device memory, and a buffer is drawn inside the innermost
+region containing everything that touches it, so only real hand-offs cross a boundary.
+Buffer nodes link to their ``/buffer/<name>/frame`` endpoint, so a rendered SVG is
+clickable.
+
+Query arguments (all boolean ones take ``0``/``1``):
+
+- ``rankdir=LR|TB|RL|BT`` – layout direction (default ``LR``).
+- ``cluster=0`` – do not group stages by config section.
+- ``legend=0`` / ``pools=0`` – drop the colour key / the metadata pool list.
+- ``kernels=0`` – hide GPU commands and device memory; useful on large pipelines where
+  they dominate the graph.
+- ``runtime=0`` – structure only, no live numbers or state colouring. Use this to compare
+  two runs: the live figures differ on every fetch.
+- ``urls=0`` – no links on buffer nodes.
+
+.. code-block:: bash
+
+    # render the running pipeline
+    curl -s http://localhost:12048/pipeline_dot | dot -Tsvg -o pipeline.svg
+
+    # just the structure, without the GPU internals
+    curl -s 'http://localhost:12048/pipeline_dot?runtime=0&kernels=0' | dot -Tpdf -o pipeline.pdf
+
+``tools/pipeline_graph.py`` wraps this up: it fetches, renders, and can watch a running
+pipeline by re-fetching on an interval.
 
 
 Daemon mode

@@ -259,8 +259,8 @@ void RingBuffer::finish_write(const std::string& name, [[maybe_unused]] const in
     }
 }
 
-std::vector<std::string> RingBuffer::dot_label_lines() {
-    std::vector<std::string> lines = GenericBuffer::dot_label_lines();
+std::vector<std::string> RingBuffer::dot_label_lines(const kotekan::GraphOptions& options) {
+    std::vector<std::string> lines = GenericBuffer::dot_label_lines(options);
 
     // A ring is measured in elements, not frames: what matters is how much of it
     // is written and waiting to be read.
@@ -271,8 +271,9 @@ std::vector<std::string> RingBuffer::dot_label_lines() {
         capacity = size;
     }
     lines.push_back(fmt::format(fmt("{:d} elements"), capacity));
-    lines.push_back(fmt::format(fmt("{:d} readable ({:.1f}%)"), readable,
-                                capacity > 0 ? 100.0 * readable / capacity : 0.0));
+    if (options.runtime)
+        lines.push_back(fmt::format(fmt("{:d} readable ({:.1f}%)"), readable,
+                                    capacity > 0 ? 100.0 * readable / capacity : 0.0));
     return lines;
 }
 
