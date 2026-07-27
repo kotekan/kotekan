@@ -56,6 +56,47 @@ def sky_xy(az, el):
     return np.sin(a) * r, np.cos(a) * r
 
 
+def accessible_sky(GX, GY, lat_deg, incl_deg, alt_km, el_mask_deg):
+    """ANALYTIC "where can a GNSS satellite ever appear" for this site.
+
+    A satellite in a circular orbit of inclination i never exceeds geocentric latitude |i|,
+    so from latitude phi there is a permanent cutout toward the pole -- a direction is
+    reachable only if the SUB-SATELLITE point it implies lies within +-i.
+
+    For a look direction (az, el), the Earth-centred angle from the observer to the
+    satellite is
+        gamma = arccos(R/(R+h) * cos el) - el          [gamma=0 at zenith, arccos(R/(R+h)) at el=0]
+    and the sub-satellite latitude follows from the spherical law of cosines with azimuth
+    measured from north:
+        sin(psi) = sin(phi) cos(gamma) + cos(phi) sin(gamma) cos(az)
+    Reachable iff |psi| <= i.
+
+    This replaces the empirical union-of-discs mask, which was a SAMPLING estimate of this
+    same region: it was ragged where passes are sparse, needed morphological repair, and
+    could only ever be as complete as the run. The geometry is known exactly, so use it.
+
+    VALIDATED by inversion on real sky (2026-07-26): feeding the observed (az, el) back
+    through this same relation gives max sub-satellite |lat| of 55.6 (GPS), 56.5 (BeiDou),
+    57.2 (Galileo) against nominal 55/55/56 -- i.e. the formula reproduces the inclinations,
+    and Galileo has DRIFTED above nominal. Containment of real samples at incl=58: 99.9%.
+    A mask that excludes real satellites is simply wrong, so check containment when changing
+    these numbers.
+    Note the boundary is a property of the SITE, not of the data -- at 44 N with i~56 deg the
+    cutout is a cap around the pole that widens toward the horizon (a horseshoe on the dome).
+    """
+    R = 6371.0
+    rr = np.hypot(GX, GY)                      # sky_xy: r = (90-el)/90
+    el = 90.0 - 90.0 * rr
+    az = np.degrees(np.arctan2(GX, GY))        # sky_xy: x = sin(az) r, y = cos(az) r
+    with np.errstate(invalid="ignore"):
+        c = np.clip(R / (R + alt_km) * np.cos(np.radians(el)), -1.0, 1.0)
+        gamma = np.degrees(np.arccos(c)) - el
+        sin_psi = (np.sin(np.radians(lat_deg)) * np.cos(np.radians(gamma))
+                   + np.cos(np.radians(lat_deg)) * np.sin(np.radians(gamma))
+                   * np.cos(np.radians(az)))
+    return (np.abs(sin_psi) <= np.sin(np.radians(incl_deg))) & (el >= el_mask_deg)
+
+
 def _in_hull(grid, pts):
     """Boolean: which grid points fall inside the convex hull of pts (for --voronoi masking).
     Delaunay.find_simplex >= 0 iff the point is inside the triangulated hull."""
@@ -252,10 +293,16 @@ def main():
                          "fields (1=off). Damps the frame-to-frame RBF jump when a sat "
                          "appears/disappears -- the dominant flicker once dropouts are bridged. "
                          "Safe for absolute VTEC (slowly varying); N=3 ~ 3 min at frame_s=60.")
-    ap.add_argument("--sky-pad", type=float, default=6.0,
-                    help="a dome pixel counts as GNSS-ACCESSIBLE if some satellite passed "
-                         "within this many degrees of it at any time in the series "
-                         "(--voronoi tiles the whole accessible region, not the per-frame hull)")
+    ap.add_argument("--incl", type=float, default=58.0,
+                    help="inclination bound (deg) setting the polar cutout. 58 is MEASURED, "
+                         "not nominal: inverting the geometry on a night of real sky gives max "
+                         "sub-satellite |lat| = GPS 55.6, BeiDou 56.5, GALILEO 57.2 -- Galileo "
+                         "has drifted above its nominal 56 -- so 56 excluded 3%% of real Galileo "
+                         "samples. 58 keeps ~1 deg of margin over the worst observed.")
+    ap.add_argument("--orbit-km", type=float, default=23222.0,
+                    help="orbit ALTITUDE (km) for the elevation->earth-angle conversion; "
+                         "Galileo 23222 (the outermost MEO tracked, and the one that sets the "
+                         "bound), GPS 20200, BeiDou MEO 21528")
     ap.add_argument("--voronoi", action="store_true",
                     help="render nearest-satellite (Voronoi) cells over the covered sky (convex "
                          "hull of the sat points) instead of RBF discs. Each pixel takes its "
@@ -327,42 +374,17 @@ def main():
     # is precomputed per measurement so the hold interpolates CARTESIAN sky position (no azimuth
     # wraparound) and TEC together.
     _pxall, _pyall = sky_xy(d["az"], d["el"])
-    # ---- ACCESSIBLE-SKY MASK (Voronoi tiling target), computed ONCE from every sample.
-    # "Everything except the cap where nothing ever goes": a pixel is accessible if some
-    # satellite passed within --sky-pad degrees of it AT ANY TIME in the series. That is an
-    # empirical statement of the site+constellation geometry (44 N, ~55 deg inclinations ->
-    # a permanent hole toward the pole) and needs no orbital modelling. Using the series' own
-    # full extent also guarantees the mask can never claim sky the run did not actually see.
-    _keep_all = d["el"] >= args.el_mask
-    if _keep_all.sum() >= 3:
-        _ax, _ay = _pxall[_keep_all], _pyall[_keep_all]
-        from scipy.spatial import cKDTree
-        _d2, _ = cKDTree(np.column_stack([_ax, _ay])).query(
-            np.column_stack([GX.ravel(), GY.ravel()]), k=1)
-        ACCESS = (_d2.reshape(GX.shape) <= args.sky_pad / 90.0)
-        # A raw union-of-discs is RAGGED where passes are sparse (low elevation especially):
-        # holes between adjacent tracks and stray blobs off the main region. Those are
-        # SAMPLING artifacts, not geometry, and on a filled map the eye reads them as
-        # structure. Close the small gaps, then keep only the largest connected component --
-        # the accessible sky is one simply-connected region (a horseshoe open toward the pole
-        # at this latitude), so anything detached is noise.
-        try:
-            from scipy import ndimage as _ndi
-            _rad = max(1, int(round(args.sky_pad / 90.0 * (GX.shape[0] - 1) / 2.0)))
-            _yy, _xx = np.ogrid[-_rad:_rad + 1, -_rad:_rad + 1]
-            _disc = (_xx ** 2 + _yy ** 2) <= _rad ** 2
-            ACCESS = _ndi.binary_closing(ACCESS, structure=_disc)
-            _lab, _n = _ndi.label(ACCESS)
-            if _n > 1:
-                _sz = _ndi.sum(ACCESS, _lab, range(1, _n + 1))
-                ACCESS = _lab == (1 + int(np.argmax(_sz)))
-        except Exception as _e:
-            print(f"accessible-mask smoothing skipped: {_e}")
-    else:
-        ACCESS = np.ones_like(horizon)
-    print(f"accessible sky: {100.0 * (ACCESS & horizon).sum() / horizon.sum():.1f}% of the "
-          f"dome above {args.el_mask:.0f} deg elevation "
-          f"(pad {args.sky_pad:.0f} deg, from {int(_keep_all.sum())} samples)")
+    # ---- ACCESSIBLE-SKY MASK (Voronoi tiling target): ANALYTIC, from site geometry.
+    # "Everything except the cap where nothing ever goes" -- computed, not sampled. See
+    # accessible_sky(): a look direction is reachable only if its implied sub-satellite
+    # latitude is within the constellation inclination. The empirical predecessor (union of
+    # discs around every observed sample, then morphological repair) estimated this same
+    # region from data and was ragged wherever passes were sparse.
+    ACCESS = accessible_sky(GX, GY, args.lat, args.incl, args.orbit_km, args.el_mask)
+    print(f"accessible sky (analytic, lat {args.lat:.1f}, incl {args.incl:.0f} deg, "
+          f"alt {args.orbit_km:.0f} km): "
+          f"{100.0 * (ACCESS & horizon).sum() / horizon.sum():.1f}% of the dome "
+          f"(el >= {args.el_mask:.0f} deg)")
     _satid = np.char.add(d["sys"].astype(str), d["prn"].astype(str))
     sat_series = {}
     for sid in np.unique(_satid):
