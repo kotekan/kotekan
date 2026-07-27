@@ -647,7 +647,7 @@ void dpdkCore::add_graph_details(kotekan::PipelineGraph& graph) const {
     cluster.label = fmt::format(fmt("{:s} ({:d} ports)"), kotekan::leaf_name(name), num_ports);
     cluster.set_attr("style", "rounded,filled")
         .set_attr("fillcolor", kotekan::graph_device_fill)
-        .set_attr("color", "gray60");
+        .set_attr("color", kotekan::graph_device_line);
     // Keep whatever grouping the pipeline put this stage in as the region's parent.
     cluster.parent = stage_node.cluster;
 

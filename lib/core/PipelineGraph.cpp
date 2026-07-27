@@ -34,25 +34,36 @@ std::string human_rate(double bytes_per_second) {
 
 // Pale fills with a saturated outline of the same hue: readable behind several
 // lines of label text, and distinguishable in greyscale by outline darkness.
+// Each hue is far enough from the others to survive being shrunk to fit a
+// 200-node pipeline on a screen, where the fill is often all one can see.
 GraphStyle graph_style(GraphCategory category) {
     switch (category) {
         case GraphCategory::Buffer:
-            return {"#dce9f7", "#3a6ea5"}; // blue
+            return {"#d6e6f7", "#2a6099"}; // blue
         case GraphCategory::Gpu:
-            return {"#fde0c2", "#cc7a2e"}; // orange
+            return {"#fbdcc0", "#c2691a"}; // orange
         case GraphCategory::Io:
-            return {"#e9ddf5", "#8a5fb0"}; // purple
+            return {"#e6dcf5", "#7549a8"}; // violet
         case GraphCategory::Memory:
-            return {"#ffe9f3", "#c71585"}; // pink
+            return {"#fbd9ea", "#b01a6b"}; // magenta
         case GraphCategory::Endpoint:
-            return {"#cfe6f5", "#3a6ea5"}; // blue, the outside world
+            // Teal, not a second blue: the far end of a link is the thing most
+            // often mistaken for the buffer feeding it.
+            return {"#d3ece4", "#2b7a63"};
         case GraphCategory::Compute:
         default:
-            return {"#fbf3c9", "#b8a417"}; // yellow
+            return {"#f7edc0", "#94800c"}; // amber
     }
 }
 
-const char* const graph_device_fill = "#f0f0f0";
+const char* const graph_ink = "#1c2430";
+const char* const graph_edge_line = "#5c6b7a";
+const char* const graph_cluster_line = "#aab4bf";
+// A wash of the GPU hue rather than a grey slab: the region should read as
+// this device's territory, and grey competes with the section boxes.
+const char* const graph_device_fill = "#fdf4ea";
+const char* const graph_device_line = "#dcbf9a";
+const char* const graph_full_line = "#c0392b";
 
 std::string leaf_name(const std::string& unique_name) {
     const size_t slash = unique_name.find_last_of('/');
@@ -106,7 +117,7 @@ GraphNode& GraphNode::set_buffer_state(BufferState state) {
     switch (state) {
         case BufferState::Full:
             // Wherever the frames are piling up is where to start looking.
-            set_attr("color", "#c0392b");
+            set_attr("color", graph_full_line);
             set_attr("penwidth", "2.5");
             break;
         case BufferState::Idle:

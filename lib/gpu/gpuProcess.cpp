@@ -284,7 +284,7 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
     device.label = fmt::format(fmt("GPU {:d}"), gpu_id);
     device.set_attr("style", "rounded,filled")
         .set_attr("fillcolor", kotekan::graph_device_fill)
-        .set_attr("color", "gray60");
+        .set_attr("color", kotekan::graph_device_line);
     // Keep whatever grouping the pipeline put this stage in as the region's own
     // parent, so a device sits inside its config section rather than beside it.
     device.parent = stage_node.cluster;
@@ -355,7 +355,7 @@ void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
     auto& mem = graph.add_cluster(fmt::format("{:s}/mem", name));
     mem.parent = device.id;
     mem.label = "device memory";
-    mem.set_attr("style", "rounded").set_attr("color", "gray70");
+    mem.set_attr("style", "rounded").set_attr("color", kotekan::graph_cluster_line);
     // GPU memory names are local to a gpuProcess ("voltage" on one device is not
     // the "voltage" on the next), so the node ids carry the stage they belong to.
     const std::string mem_prefix = gpu_mem_node_prefix(name);

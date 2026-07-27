@@ -256,7 +256,7 @@ static std::string config_section(const std::string& unique_name) {
 static void add_legend(PipelineGraph& graph) {
     auto& legend = graph.add_cluster("__legend");
     legend.label = "legend";
-    legend.set_attr("style", "rounded").set_attr("color", "gray70");
+    legend.set_attr("style", "rounded").set_attr("color", graph_cluster_line);
     // One rank keeps the key as a compact block instead of a band stretched
     // across the whole drawing.
     legend.set_attr("rank", "same");
@@ -295,10 +295,18 @@ PipelineGraph kotekanMode::get_pipeline_graph(const GraphOptions& options) {
     graph.graph_attrs["ranksep"] = "0.9";
     graph.graph_attrs["mclimit"] = "6";
     graph.graph_attrs["newrank"] = "true";
+    // Name every colour, including the ones graphviz would default to black.
+    // An unset fontcolor emits no colour at all on the text, which leaves a
+    // viewer with nothing to select on when it restyles the graph -- and black
+    // text is what it is left with on a dark page.
+    graph.graph_attrs["fontcolor"] = graph_ink; // cluster labels
     graph.node_attrs["fontname"] = "Helvetica";
     graph.node_attrs["fontsize"] = "11";
+    graph.node_attrs["fontcolor"] = graph_ink;
     graph.edge_attrs["fontname"] = "Helvetica";
     graph.edge_attrs["fontsize"] = "8";
+    graph.edge_attrs["fontcolor"] = graph_ink;
+    graph.edge_attrs["color"] = graph_edge_line;
 
     // Buffer nodes.
     for (auto& buf : buffer_container.get_buffer_map()) {
@@ -361,7 +369,7 @@ PipelineGraph kotekanMode::get_pipeline_graph(const GraphOptions& options) {
         if (options.cluster && !section.empty()) {
             auto& cluster = graph.add_cluster(section);
             cluster.label = section;
-            cluster.set_attr("style", "rounded").set_attr("color", "gray70");
+            cluster.set_attr("style", "rounded").set_attr("color", graph_cluster_line);
             node.cluster = cluster.id;
         }
     }
@@ -429,7 +437,7 @@ PipelineGraph kotekanMode::get_pipeline_graph(const GraphOptions& options) {
     if (options.pools && !metadata_pools.empty()) {
         auto& pools = graph.add_cluster("__pools");
         pools.label = "metadata pools";
-        pools.set_attr("style", "rounded").set_attr("color", "gray70");
+        pools.set_attr("style", "rounded").set_attr("color", graph_cluster_line);
         pools.set_attr("rank", "same");
         for (auto& pool : metadata_pools) {
             const std::string id = "__pool/" + pool.first;

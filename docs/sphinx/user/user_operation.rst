@@ -57,6 +57,12 @@ region containing everything that touches it, so only real hand-offs cross a bou
 Buffer nodes link to their ``/buffer/<name>/frame`` endpoint, so a rendered SVG is
 clickable.
 
+Every colour in the graph is named explicitly, including the label ink and the edges that
+graphviz would otherwise leave black. That is what lets a viewer restyle the whole graph —
+choco's pipeline page mirrors the palette to draw it on a dark background — so the values
+in ``lib/core/PipelineGraph.cpp`` (``graph_style()`` and the ``graph_*`` constants) are an
+interface, not a local choice: changing one changes what those viewers have to match.
+
 Query arguments (all boolean ones take ``0``/``1``):
 
 - ``rankdir=LR|TB|RL|BT`` – layout direction (default ``LR``).
