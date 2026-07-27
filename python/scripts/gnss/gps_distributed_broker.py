@@ -1179,7 +1179,48 @@ def main(argv=None):
             # sats. A tight residual spread confirms the sign convention; a wild spread
             # (resid ~ -2x predicted) means flip --doppler-sign.
             resid = [best[p][1] - pred[p][0] for p in best if p in pred]
-            if len(resid) >= args.bias_min_sats:
+            # BAND-SHARED bias fusion (--clock-bias-siblings) is read BEFORE the min-sats
+            # gate, and the gate counts LOCAL + SIBLING sats.
+            #
+            # ⚠️ IT USED TO LIVE INSIDE THE GATE, which made the rescue unreachable by
+            # exactly the chains it was written for. The LO is a property of the BAND (one
+            # airspy, one LO): every chain on it is measuring ONE physical number, so the
+            # falsifiability the gate wants is satisfied by the band's detections in
+            # AGGREGATE, not by each constellation independently.
+            # Measured 2026-07-27 (power-outage cold start): L5 GPS could measure exactly
+            # one satellite, fell short of --bias-min-sats 2, and therefore never entered
+            # the block that would have read its siblings -- while L5 GAL and L5 BDS sat in
+            # those very files with 13-16 sats each and the correct answer (+32.1 / +32.9 Hz;
+            # GPS itself settled at +24..+34 once it finally solved). 603 cycles UNSOLVED,
+            # search_snr == 0.0, 2h45m of nothing, ended only when a second GPS satellite
+            # physically rose high enough. The band knew the answer the whole time.
+            n_sib = 0
+            _sib_bw = 0.0   # sum(bias * n) over fresh siblings
+            _sib_w = 0.0    # sum(n)
+            if args.clock_bias_siblings:
+                for _sp in args.clock_bias_siblings:
+                    try:
+                        _parts = open(_sp).read().split()
+                        _b = float(_parts[0])
+                        _n = int(_parts[1]) if len(_parts) > 1 else 1
+                        _ts = float(_parts[2]) if len(_parts) > 2 else 0.0
+                    except Exception:
+                        continue
+                    # Freshness still required: a stale sibling is a different epoch's LO.
+                    if t0 - _ts < 60.0 and _n >= 1:
+                        _sib_bw += _b * _n
+                        _sib_w += _n
+                        n_sib += _n
+            # Two INDEPENDENT ways to clear the bar, never a pooled sum:
+            #   * this chain has >= bias_min_sats of its own -> trust local, blend siblings in
+            #   * the BAND (siblings) has >= bias_min_sats    -> use the band consensus ALONE
+            # Summing the two would let a single untrusted local residual into the average --
+            # a bad -450 Hz detection dragged the fused answer 32.5 -> 15.3 Hz in the unit
+            # test, which is exactly the garden path --bias-min-sats exists to prevent. A lone
+            # local residual stays untrusted; it just no longer BLOCKS the band's answer.
+            _local_ok = len(resid) >= args.bias_min_sats
+            _sib_ok = n_sib >= args.bias_min_sats
+            if _local_ok or _sib_ok:
                 # The per-cycle median is quantized to the 500 Hz search grid and jumps
                 # hundreds of Hz as the detected-sat set flickers; the TRUE bias is a slow
                 # TCXO drift. EMA-smooth it (sub-grid dither across sats/cycles averages
@@ -1189,29 +1230,19 @@ def main(argv=None):
                 # one narrows the search into a self-locking deadlock (see the arg help);
                 # below the gate the EMA holds its last multi-sat value (or stays unsolved
                 # -> margins stay WIDE, which is exactly what lets more sats in).
-                raw_bias = statistics.median(resid)
-                # BAND-SHARED bias fusion (--clock-bias-siblings): one LO, one number --
-                # fold the sibling chains' persisted estimates in, sat-count weighted.
-                # A 2-sat chain then rides the band's ~10-sat consensus instead of its own
-                # unidentifiable median (see the arg help for the measured pathology).
-                n_sib = 0
-                if args.clock_bias_siblings:
-                    acc_w = float(len(resid))
-                    acc_b = raw_bias * acc_w
-                    for _sp in args.clock_bias_siblings:
-                        try:
-                            _parts = open(_sp).read().split()
-                            _b = float(_parts[0])
-                            _n = int(_parts[1]) if len(_parts) > 1 else 1
-                            _ts = float(_parts[2]) if len(_parts) > 2 else 0.0
-                        except Exception:
-                            continue
-                        if t0 - _ts < 60.0 and _n >= 1:
-                            acc_b += _b * _n
-                            acc_w += _n
-                            n_sib += _n
+                # One LO, one number: fuse this chain's median with the siblings' persisted
+                # estimates, sat-count weighted. With ZERO local sats the band consensus
+                # stands alone -- that is not a guess, it is the same physical LO measured
+                # by ~27 satellites on the neighbouring chains.
+                if _local_ok:
+                    raw_bias = statistics.median(resid)
                     if n_sib:
-                        raw_bias = acc_b / acc_w
+                        _w = float(len(resid))
+                        raw_bias = (raw_bias * _w + _sib_bw) / (_w + _sib_w)
+                else:
+                    # Local count below the bar: the band's answer stands ALONE. The local
+                    # residual is deliberately discarded, not down-weighted.
+                    raw_bias = _sib_bw / _sib_w
                 if clock_bias_ema is None or bias_stale:
                     # First solve, or stale-rescue re-solve: SNAP to the fresh median. An
                     # EMA crawl (a=0.05) from a mid-walk latch kHz off truth would spend
@@ -1278,16 +1309,23 @@ def main(argv=None):
                     _log_rl("meas-%d" % p,
                             "PRN %d: meas %+.0f  pred %+.0f  resid %+.0f Hz (elev %.0f)"
                             % (p, best[p][1], pred[p][0], best[p][1] - pred[p][0], pred[p][2]))
-            if len(resid) >= args.bias_min_sats:
+            if _local_ok or _sib_ok:
                 _log_rl("clkbias",
-                        "clock-freq bias %+.0f Hz (raw %+.0f, %d sats + %d sib, EMA a=%.2f) "
+                        "clock-freq bias %+.0f Hz (raw %+.0f, %d sats%s + %d sib, EMA a=%.2f) "
                         "-> seeding predicted Doppler"
-                        % (clock_bias, raw_bias, len(resid), n_sib, args.bias_alpha))
-            elif resid:
+                        % (clock_bias, raw_bias, len(resid),
+                           "" if _local_ok else " LOCAL-UNTRUSTED(band consensus)",
+                           n_sib, args.bias_alpha))
+            else:
+                # Say WHY, with both counts -- "1 sat" alone sent this investigation looking
+                # at the clock, the sky and the front end before anyone asked whether the
+                # BAND had already solved it (2026-07-27).
                 _log_rl("clkbias",
-                        "clock-freq bias %s (%d sat < --bias-min-sats %d: residual not trusted)"
+                        "clock-freq bias %s (%d local + %d sibling sats < --bias-min-sats "
+                        "%d: residual not trusted)"
                         % ("held %+.0f Hz" % clock_bias if clock_bias_ema is not None
-                           else "UNSOLVED (wide margins)", len(resid), args.bias_min_sats))
+                           else "UNSOLVED (wide margins)", len(resid), n_sib,
+                           args.bias_min_sats))
         elif gating:
             up = visible_prns(args.lat, args.lon, args.alt, args.mask_deg, 0.0)
 
