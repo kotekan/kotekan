@@ -11,6 +11,7 @@
 #include "DataType.hpp"       // for type_to_string, DataType
 #include "FrameDesc.hpp"      // for FrameDesc
 #include "NDArray.hpp"        // for GenericNDArray, NDArray
+#include "PipelineGraph.hpp"  // for BufferState
 #include "Symbol.hpp"         // for Symbol, operator!=, operator==
 #include "kotekanLogging.hpp" // for FATAL_ERROR, ERROR, kotekanLogging
 #include "metadata.hpp"       // for metadataObject, metadataPool
@@ -263,6 +264,14 @@ public:
      * must not add markup of their own.
      */
     virtual std::vector<std::string> dot_label_lines();
+
+    /**
+     * @brief How busy this buffer is, for the pipeline graph.
+     *
+     * Reported by the buffer itself because only it knows what "full" means for
+     * the way it stores data.
+     */
+    virtual kotekan::BufferState dot_buffer_state();
 
     /// The number of frames kept by this object
     int num_frames;
@@ -757,6 +766,21 @@ public:
     double get_last_arrival_time();
 
     /**
+     * @brief The measured rate at which frames are arriving in this buffer.
+     *
+     * A decaying average of the interval between arrivals, so a buffer that has
+     * stalled reports the rate falling rather than the rate it once had. This
+     * is what the frames are actually doing, as opposed to what the config says
+     * they should.
+     *
+     * @return Frames per second, or 0 before two frames have arrived.
+     */
+    double get_arrival_rate();
+
+    /// @return The number of frames that have been marked full since startup.
+    uint64_t get_frames_arrived();
+
+    /**
      * @brief Prints a picture of the frames which are currently full.
      */
     void print_buffer_status() override;
@@ -764,6 +788,8 @@ public:
     void json_description(nlohmann::json& buf_json) override;
 
     std::vector<std::string> dot_label_lines() override;
+
+    kotekan::BufferState dot_buffer_state() override;
 
     // don't call this, it's for internal use only
     void _impl_zero_frame(const int ID);
@@ -821,6 +847,13 @@ public:
 
     /// The last time a frame was marked as full (used for arrival rate)
     double last_arrival_time;
+
+    /// The number of frames marked full since startup.
+    uint64_t frames_arrived = 0;
+
+    /// Decaying average of the interval between arrivals, in seconds; 0 until a
+    /// second frame has arrived to measure an interval against.
+    double mean_arrival_period = 0.0;
 
     /// This buffer use huge pages for its frames if the following is true
     bool use_hugepages;
