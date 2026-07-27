@@ -102,14 +102,16 @@ export class GpsFeed {
         Promise.all([
             fetch("/gps_sky").then(r => r.ok ? r.json() : null).catch(() => null),
             jget(k.stageGet(this.airspy_stage, "adcstat")),
+            k.metrics(),
             ...per_chain,
-        ]).then(([sky, adc, ...chains]) => {
+        ]).then(([sky, adc, metrics, ...chains]) => {
             this._inflight = false;
             // Hold the last good value per feed: one slow/failed poll must not
             // blank every |A| for a frame (that would look like a mass drop).
             const last = this._last;
             if (sky) last.sky = sky;
             if (adc) last.adc = adc;
+            if (metrics) last.valve = this._valve(metrics);
             last.chains = last.chains || {};
             this.chains.forEach((c, i) => {
                 const [det, status] = chains[i];
@@ -119,6 +121,33 @@ export class GpsFeed {
             });
             this._emit();
         });
+    }
+
+    // THIS BAND'S Valve counters out of the pipeline-wide metrics dump.
+    //
+    // The Valve drops a frame whenever its output buffer is full -- i.e. whenever the GPU
+    // chain misses real time -- and that loss is otherwise INVISIBLE to every downstream
+    // observable: the frame simply never arrives, sample_seq jumps, and the tracker's ring
+    // zero-fills the gap. It reads as signal that decohered, not as data that was lost.
+    // (That mis-read cost 2026-07-27: the L5 peel looked like broken add-back arithmetic
+    // for a day, and was really this.) The counter is the only honest witness, so the
+    // viewer carries it beside the ADC's own drop counters.
+    //
+    // Band selection: a merged multi-band instance prefixes every stage, so our valve wears
+    // the same prefix as our airspy stage ("l5_airspy_in" -> "/l5_valve"). A single-band
+    // pipeline has no prefix and exactly one valve, so fall back to the only one present.
+    _valve(metrics) {
+        const drop = metrics["kotekan_valve_dropped_frames_total"];
+        if (!drop) return null;
+        const pass = metrics["kotekan_valve_passed_frames_total"] || {};
+        const prefix = String(this.airspy_stage).replace(/airspy_in$/, "");
+        const names = Object.keys(drop);
+        let key = names.find(n => n === `/${prefix}valve` || n === `${prefix}valve`);
+        if (!key && names.length === 1) key = names[0];
+        if (!key) return null;
+        // passed is absent on kotekan builds before 2026-07-27 -> rate only, no fraction.
+        return {stage: key, dropped: drop[key],
+                passed: pass[key] != null ? pass[key] : null};
     }
 
     // Merge every constellation into one list keyed "G12"/"E25"/"C19".
@@ -219,7 +248,7 @@ export class GpsFeed {
     _emit() {
         const payload = {
             sats: this._merge(),
-            sky: this._last.sky, adc: this._last.adc,
+            sky: this._last.sky, adc: this._last.adc, valve: this._last.valve,
             vis: this.vis, chains: this.chains,
         };
         for (const cb of this._listeners) {

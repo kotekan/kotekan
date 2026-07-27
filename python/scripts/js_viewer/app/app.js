@@ -220,9 +220,10 @@ export class App {
             this.panels.push(new GpsAmpHistoryPanel({
                 app: this, target: "gps_amp_card", feed,
             }));
-            // Stream health: ADC rms / rail% / drop rate from the adcstat the feed
-            // already polls (no extra kotekan load; counters need the 07-18 build).
-            this.layout.addWidget({mount_id: "airspy_stats_card", title: "Airspy stream",
+            // Stream health, END TO END: ADC rms / rail% / USB drop rate from the adcstat
+            // the feed already polls, plus this band's Valve drop counters (the pipeline's
+            // own silent data loss). No extra kotekan load -- the feed fetches both.
+            this.layout.addWidget({mount_id: "airspy_stats_card", title: "Stream health",
                                    x: 0, y: 13, w: 12, h: 2, min_w: 4, min_h: 2});
             this.panels.push(new AirspyStatsPanel({target: "airspy_stats_card", feed}));
             this.layout.restore_from_storage();

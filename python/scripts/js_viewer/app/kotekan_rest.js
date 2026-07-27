@@ -49,6 +49,27 @@ export class KotekanRest {
         return fetch(this.stageUrl(stage, endpoint));
     }
 
+    // kotekan's prometheus text exposition -> {metric_name: {stage_name: value}}.
+    // Whole-pipeline (not per stage) and tiny -- ~2 kB for the 3-band node -- so the GPS
+    // feed folds one of these into its existing 1.5 s poll rather than opening a second
+    // loop. Resolves to null on any failure; every consumer must tolerate that.
+    metrics() {
+        return fetch(`${this.base}/metrics`)
+            .then(r => (r.ok ? r.text() : null))
+            .then(text => {
+                if (!text) return null;
+                const out = {};
+                for (const line of text.split("\n")) {
+                    if (!line || line[0] === "#") continue;
+                    const m = /^(\w+)\{stage_name="([^"]*)"\}\s+([-\d.eE+]+)/.exec(line);
+                    if (!m) continue;
+                    (out[m[1]] = out[m[1]] || {})[m[2]] = parseFloat(m[3]);
+                }
+                return out;
+            })
+            .catch(() => null);
+    }
+
     stagePost(stage, endpoint, body) {
         // Real CORS request (not ``no-cors``) so the reply is readable and
         // failures surface. Only Content-Type is set -- adding Accept would put

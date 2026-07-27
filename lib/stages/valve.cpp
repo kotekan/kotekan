@@ -44,6 +44,16 @@ void Valve::main_thread() {
     /// Metric to track the number of dropped frames.
     auto& dropped_total =
         Metrics::instance().add_counter("kotekan_valve_dropped_frames_total", unique_name);
+    // ...and the DENOMINATOR. A drop count alone cannot be read: 2909 is catastrophic on a
+    // 1-minute run and negligible on an 8-hour one. With both counters any consumer (the
+    // viewer's stream-health strip, a prometheus rule) gets the fraction of the stream that
+    // was silently lost without needing to know the frame period. (2026-07-27: the L5 peel
+    // spent a day looking like broken arithmetic because this loss was invisible -- the
+    // dropped frames became sample_seq gaps, which the ring zero-filled, which shredded
+    // every coherent window that touched them.)
+    auto& passed_total =
+        Metrics::instance().add_counter("kotekan_valve_passed_frames_total", unique_name);
+    uint64_t n_dropped = 0;
 
     while (!stop_thread) {
         // Fetch a new frame and get its sequence id
@@ -64,8 +74,16 @@ void Valve::main_thread() {
                 break;
             }
             _buf_out->mark_frame_full(unique_name, frame_id_out++);
+            passed_total.inc();
         } else {
-            WARN("Output buffer full. Dropping incoming frame {:d}.", frame_id_in);
+            // Rate-limited: one line per frame buried the 2026-07-27 soak log under 4642
+            // WARNs, which is how a real signal becomes noise nobody greps for. The ring
+            // frame id was never the useful number anyway -- the RUNNING TOTAL is.
+            ++n_dropped;
+            if (n_dropped == 1 || n_dropped % 100 == 0)
+                WARN("Output buffer full, dropping frames: {:d} lost so far (downstream "
+                     "cannot keep up; each loss is a gap the consumer must zero-fill).",
+                     n_dropped);
             dropped_total.inc();
         }
         _buf_in->mark_frame_empty(unique_name, frame_id_in++);
