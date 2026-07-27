@@ -59,7 +59,11 @@ export LAT=${LAT:-43.968697} LON=${LON:--79.252106} ALT=${ALT:-260}
 export KOTEKAN=${KOTEKAN:-./build_cuda/kotekan/kotekan}
 export CFG PORT HTTP_PORT
 export TAG="gps_$BAND"                                   # -> /tmp/gps_l5*.log
-export CODE_BIAS_FILE=${CODE_BIAS_FILE:-/tmp/gps_code_bias_$BAND.ppm}
+# PERSISTENT, not /tmp -- see the BIAS_DIR note in run_live.sh (a reboot wiping this cost
+# L5 GPS 2h45m of cold-start acquisition on 2026-07-27).
+export BIAS_DIR=${BIAS_DIR:-$HOME/.cache/kotekan_gps}
+mkdir -p "$BIAS_DIR" 2>/dev/null
+export CODE_BIAS_FILE=${CODE_BIAS_FILE:-$BIAS_DIR/gps_code_bias_$BAND.ppm}
 export BROKER_EXTRA="$EXTRA"
 
 echo "=== band $BAND ==============================================="
