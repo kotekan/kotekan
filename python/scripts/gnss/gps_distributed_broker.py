@@ -962,6 +962,8 @@ def main(argv=None):
     low_hits = {}    # prn -> consecutive low-|A| poll count
     status = {}      # prn -> last combiner get_status record (previous cycle; lock gate below)
     cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
+    cl_pred0 = {}    # anchor-epoch geometry cache: {"key": (utc0, eph_t), "val": {prn: tuple}}
+    cl_toff = [0.0]  # measured common clock offset (s): slow EMA of the across-sat median fine
     bp_pushed = {}   # prn -> utc0 of the bit_pred table last ATTACHED to a seed row. The
                      # combiner regenerates bit_pred once per EMIT (~1 Hz) but seeds push every
                      # --interval (0.25 s), so re-attaching each cycle is 75% redundant payload
@@ -2820,23 +2822,57 @@ def main(argv=None):
         # ~2.7 us/s): expected, logged at debug cadence; any LARGER step is a clock/anchor
         # fault and logs loudly. Never averaged, never held against fresh evidence.
         if cl_tracker and utc0_sample0 and args.almanac and pred:
+            # tau AND the SV clock must be evaluated AT THE ANCHOR EPOCH (utc0_sample0),
+            # because that is where cp is referenced. The first deploy evaluated them at
+            # "now": invisible at launch, but the per-sat error grows at range_rate/c (up to
+            # +-2.7 us/s) -- +-10 ms/h, a guaranteed universal mis-pin by hour 2-3 -- and
+            # LINEAR extrapolation back is no cure (orbit curvature ~tens of ms over hours).
+            # So: a second model evaluation at the FIXED anchor epoch, cached per ephemeris
+            # refresh (the anchor never moves; only the ephemeris does).
+            if brdc_alm is not None:
+                _k0 = (round(utc0_sample0, 3), brdc_alm.get("eph_t"))
+                if cl_pred0.get("key") != _k0:
+                    try:
+                        cl_pred0["val"] = brdc_predict(
+                            brdc_alm, args.lat, args.lon, args.alt, alm_sys, alm_min_prn,
+                            datetime.fromtimestamp(utc0_sample0, tz=timezone.utc),
+                            args.carrier_hz)
+                        cl_pred0["key"] = _k0
+                        _log("CL: anchor-epoch geometry rebuilt (%d sats)"
+                             % len(cl_pred0["val"]))
+                    except Exception as e:
+                        _log("CL: anchor-epoch predict failed (%s); now-epoch fallback "
+                             "(fine will drift ~ms/10min)" % e)
+            _pred0 = cl_pred0.get("val") or {}
             cl_payload = []
+            _fines = []
             for d in payload:
                 pv = pred.get(d["prn"])
-                if pv is None:
-                    continue  # no geometry -> no k -> no CL row (fail closed; CM unaffected)
-                t_sv = utc0_sample0 - pv[3] / C_LIGHT + pv[4] + args.cl_time_adjust
+                # No geometry -> no k -> no CL row (fail closed; CM unaffected). Below the
+                # elevation mask -> ALSO no row: those seeds are the below-horizon NOISE
+                # PROBES, whose cp is deliberately noise -- deriving CL from them wastes a
+                # tracker slot and their "fine" poisoned the first margin analysis (the
+                # same el<0 trap the obs-aggregate rule exists for).
+                if pv is None or pv[2] < args.mask_deg:
+                    continue
+                _g = _pred0.get(d["prn"])
+                tau0 = (_g[3] if _g is not None else pv[3]) / C_LIGHT
+                clk0 = _g[4] if _g is not None else pv[4]
+                t_sv = utc0_sample0 - tau0 + clk0 + args.cl_time_adjust - cl_toff[0]
                 cl_chips = (t_sv % 1.5) * args.chip_rate_hz
                 cp_cm = d["code_phase_chips"] % CODE_LEN
                 k = int(round((cl_chips - cp_cm) / CODE_LEN))
                 fine_ms = (cl_chips - cp_cm - k * CODE_LEN) / args.chip_rate_hz * 1e3
                 k %= 75
+                _fines.append(fine_ms)
                 if abs(fine_ms) > 5.0:
-                    # Half the +-10 ms budget gone: the seed still goes out (a wrong k reads
-                    # as CL noise, which the verify below names; withholding would silently
-                    # dark the chain on a systematic host-clock bias instead of showing it).
-                    _log("CL PIN MARGIN THIN: PRN %d fine %+.2f ms of +-10 -- check host NTP "
-                         "/ utc0 anchor" % (d["prn"], fine_ms))
+                    # Half the +-10 ms budget gone AFTER centering: the seed still goes out
+                    # (a wrong k reads as CL noise, which the verify below names;
+                    # withholding would silently dark the chain instead of showing it).
+                    _log_rl("clthin-%d" % d["prn"],
+                            "CL PIN MARGIN THIN: PRN %d fine %+.2f ms of +-10 (post-center; "
+                            "clock-offset est %+.2f ms)"
+                            % (d["prn"], fine_ms, cl_toff[0] * 1e3))
                 dcl = {kk: d[kk] for kk in ("prn", "doppler_hz", "code_phase_rate", "ref_hop",
                                             "doppler_rate_hz_s", "carrier_trim_hz") if kk in d}
                 dcl["code_phase_chips"] = (cp_cm + k * CODE_LEN) % (75.0 * CODE_LEN)
@@ -2851,6 +2887,19 @@ def main(argv=None):
                         _log("CL K-JUMP (not +-1 -- clock/anchor fault?): " + msg)
                 cl_k[d["prn"]] = k
                 cl_report.append("PRN %d k=%d fine %+.1f ms" % (d["prn"], k, fine_ms))
+            # AUTO-CENTER: the across-sat MEDIAN fine is the common receiver-clock/anchor
+            # offset (class-1 continuous state -- measured +4.5 ms on first light, i.e. half
+            # the +-10 ms pin budget spent on a knowable constant). A slow EMA of the median
+            # (tau ~10 s at 5 Hz) folds it back into the next cycle's t_sv, re-centering
+            # every sat's margin; the +-8 ms clamp keeps a broken clock from walking the pin
+            # off a segment. Median (not mean): one sat mid k-step must not drag the fleet.
+            # The k pins themselves stay integer and per-cycle -- this only recenters the
+            # window they are rounded in.
+            if _fines:
+                _med = sorted(_fines)[len(_fines) // 2] * 1e-3
+                cl_toff[0] = max(-8e-3, min(8e-3, cl_toff[0] + 0.02 * _med))
+                _log_rl("cltoff", "CL clock-offset est %+.2f ms (median fine %+.2f ms, "
+                        "%d sats)" % (cl_toff[0] * 1e3, _med * 1e3, len(_fines)))
             if cl_payload:
                 try:
                     _post("%s/set_seeds" % cl_tracker, cl_payload)
