@@ -82,8 +82,8 @@ make_power_corr_desc(std::ptrdiff_t num_elements, std::ptrdiff_t spectrum_length
 /// trailing count word.
 inline std::shared_ptr<kotekan::GenericNDArray>
 make_gps_record_desc(std::ptrdiff_t num_prns, std::ptrdiff_t record_floats) {
-    return kotekan::GenericNDArray::create(kotekan::DataType::float32, "gps_records",
-                                           {num_prns, record_floats}, {"prn", "field"}, nullptr);
+    return kotekan::GenericNDArray::describe(kotekan::DataType::float32, "gps_records",
+                                             {num_prns, record_floats}, {"prn", "field"}, {1, 1});
 }
 
 } // namespace kotekan_airspy

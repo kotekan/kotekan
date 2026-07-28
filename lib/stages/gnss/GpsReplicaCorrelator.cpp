@@ -178,7 +178,11 @@ GpsReplicaCorrelator::GpsReplicaCorrelator(Config& config, const std::string& un
     // gps_records layout is documented by make_gps_record_desc() but only a
     // future NDArray-aware consumer would assert it -- same convention as
     // SimpleCrosscorr leaving its out_buf untagged.
-    in_buf->set_frame_desc(kotekan_airspy::make_input_desc(in_buf->frame_size / sizeof(int16_t)));
+    // set_frame_desc() became ensure_frame_desc() upstream (chord merge, 2026-07-28): same
+    // attach-if-absent behaviour and byte-size check, but a layout mismatch is now FATAL
+    // rather than a logged ERROR -- which is what this cross-check wanted in the first place.
+    in_buf->ensure_frame_desc(
+        kotekan_airspy::make_input_desc(in_buf->frame_size / sizeof(int16_t)));
 
     block.assign(_Ns, 0.0f);
     block_fill = 0;
