@@ -174,27 +174,44 @@ export class GpsFeed {
             u.search ? jget(k.stageGet(u.search, "get_detections")) : Promise.resolve(null),
             jget(k.stageGet(u.combiner, "get_status")),
         ]));
-        // Stream health: the unified viewer watches ALL THREE front ends (one page, three
-        // physical airspys), else just this band's. One /adcstat GET per airspy.
-        const adcStages = (this.unified && RF_BANDS)
-            ? RF_BANDS.map(b => b.airspy) : [this.airspy_stage];
-        const adc_fetch = Promise.all(adcStages.map(s => jget(k.stageGet(s, "adcstat"))));
+        // Stream health, unified: watch all three front ends but poll ONE airspy's /adcstat
+        // per tick, ROUND-ROBIN -- NOT all three concurrently. /adcstat runs on restServer's
+        // single libevent thread with a bounded cv.wait (THE WEDGE, 5988f657); three
+        // concurrent adcstat waits every tick tripled this viewer's REST-thread load over any
+        // per-band viewer and is a plausible aggravator of the silent-kill (2026-07-28). The
+        // valve counters -- the important silent-loss signal -- ride the single /metrics call
+        // (all bands, no per-airspy blocking) and stay fresh every tick; only ADC rms/rail/USB
+        // refreshes round-robin (~4.5 s per band, plenty for a health strip).
+        let adcStage, adcBand = null;
+        if (this.unified && RF_BANDS) {
+            this._rr = ((this._rr || 0) + 1) % RF_BANDS.length;
+            adcStage = RF_BANDS[this._rr].airspy;
+            adcBand = RF_BANDS[this._rr].band;
+        } else {
+            adcStage = this.airspy_stage;
+        }
         Promise.all([
             fetch("/gps_sky").then(r => r.ok ? r.json() : null).catch(() => null),
-            adc_fetch,
+            jget(k.stageGet(adcStage, "adcstat")),
             k.metrics(),
             ...per_unit,
-        ]).then(([sky, adcs, metrics, ...res]) => {
+        ]).then(([sky, adc, metrics, ...res]) => {
             this._inflight = false;
             // Hold the last good value per feed: one slow/failed poll must not
             // blank every |A| for a frame (that would look like a mass drop).
             const last = this._last;
             if (sky) last.sky = sky;
-            if (adcs && adcs[0]) last.adc = adcs[0];   // primary (single-band consumers)
-            if (this.unified && RF_BANDS && metrics)
-                last.rf_health = RF_BANDS.map((b, i) => ({
-                    band: b.band, label: b.label, adc: adcs ? adcs[i] : null,
-                    valve: this._valve_for(metrics, b.airspy)}));
+            if (adc) last.adc = adc;                   // primary (single-band consumers)
+            if (this.unified && RF_BANDS) {
+                // Keep the freshest ADC per band; rebuild rf_health from those + fresh valves.
+                this._adc_by_band = this._adc_by_band || {};
+                if (adc && adcBand) this._adc_by_band[adcBand] = adc;
+                if (metrics)
+                    last.rf_health = RF_BANDS.map(b => ({
+                        band: b.band, label: b.label,
+                        adc: this._adc_by_band[b.band] || null,
+                        valve: this._valve_for(metrics, b.airspy)}));
+            }
             if (metrics) last.valve = this._valve_for(metrics, this.airspy_stage);
             // Unified stores per-SIGNAL (keyed by combiner); legacy stores per-CONSTELLATION.
             const store = (last.units = last.units || {});
