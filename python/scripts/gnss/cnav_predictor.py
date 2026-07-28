@@ -48,6 +48,7 @@ import itertools
 import math
 import os
 import sys
+import time
 
 import numpy as np
 
@@ -61,16 +62,18 @@ WIN_EMITS = 7            # emits per decode window. A 300-bit message is 600 sym
                          # wants ~2 messages of contiguous symbols -- ~6-7 emits (~201 syms /
                          # ~4 s each). Fewer silently fails to place the preamble (found live: an
                          # 801-symbol / 4-emit window decodes NOTHING even under full brute force;
-                         # ~1200 does). ⚠️ LIVE COVERAGE DEPENDS ON EMIT CONTIGUITY: the
-                         # combiner's nav_obs export is intermittent (some deep windows do not
-                         # emit), so contiguous runs are sometimes only ~3 emits (too short) and
-                         # sometimes the whole history. The window takes the LONGEST contiguous run
-                         # and waits for a clean stretch -- decode is bursty until the export is
-                         # made gapless (a combiner change). Polarity within a run is resolved by
-                         # _try_decode (chained candidate first, then a bounded brute force).
-FREE_MAX = 5            # cap on UNRESOLVED emits brute-forced per attempt: 2^FREE_MAX patterns.
-                        # Steady state is 1-2 (the newest emits); only a cold PRN hits the cap,
-                        # once, over its first window.
+                         # ~1200 does). The combiner emits nav_obs CONTIGUOUSLY (block mode, every
+                         # ~200 records / 4 s) -- but only while the box keeps up: a decode that
+                         # blocks the poll loop past the 4 s emit period MISSES an emit and self-
+                         # fragments the run (measured -- the whole reason the decode is staggered +
+                         # budget-capped below). The window takes the LONGEST contiguous run.
+                         # Polarity within a run is resolved by _try_decode (cold: rotated 2^k
+                         # brute; warm: chained candidate + 1/2-emit-flip repair).
+COLD_EMITS = 5          # window (emits) for a COLD PRN's full 2^k brute (2^5=32 sign patterns).
+VITERBI_BUDGET = 40     # hard cap on Viterbi calls per decode attempt (~1.7 s at ~40 ms each) --
+                        # covers a cold attempt (2^COLD_EMITS at ONE rotated phase/g2 = 32) and any
+                        # warm attempt, while staying under the 4 s emit period so a decode never
+                        # stalls the poll loop long enough to miss an emit and fragment nav_obs.
 EMIT_MAX = 48           # keep ~48 emits (~3 min) per PRN
 DECODED_MAX = 80        # keep the last ~80 decoded messages (~16 min) for serve/ephemeris
 TRY_EVERY_SYMS = 200    # attempt a decode once per ~4 s of NEW symbols per PRN (one new emit)
@@ -116,6 +119,7 @@ class _PrnState:
         self.eph10 = None
         self.eph11 = None
         self.n_decoded = 0
+        self.boot = 0            # cold-bootstrap (phase, g2) rotation counter
 
 
 class CnavPredictor:
@@ -128,6 +132,9 @@ class CnavPredictor:
         # to CRC locks it here and the rest skip that half of the search. pair_phase is NOT shared
         # -- pseudorange shifts each PRN's symbol grid by up to a symbol -- so it stays per-PRN.
         self._g2 = None
+        self._min_gap = 0.5      # s between decode attempts across all PRNs (see ingest); 0 = off
+        self._last_decode = 0.0
+        self._round = set()      # PRNs decoded this round -- round-robin fairness (see ingest)
 
     # ---------------- ingest ----------------
     def ingest(self, prn, obs):
@@ -172,9 +179,21 @@ class CnavPredictor:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
         newest = hi
-        if st.try_slot is None or newest - st.try_slot >= TRY_EVERY_SYMS:
+        # STAGGER + ROUND-ROBIN across PRNs. The broker ingests all ~12 PRNs back-to-back in one
+        # poll loop; if every cold PRN ran a full decode that cycle, the loop would spend ~13 s and
+        # MISS the emits arriving meanwhile -> fragmented nav_obs -> nobody decodes. So gate on wall
+        # time (~one decode per poll cycle, cycle << the 4 s emit period so contiguity holds) AND
+        # rotate WHICH PRN decodes: without the round set the first PRN in iteration order wins the
+        # gate every cycle and the rest never decode (measured -- only PRN 1 ever attempted).
+        # self._min_gap = 0 disables the gate (the single-PRN self-test).
+        due = st.try_slot is None or newest - st.try_slot >= TRY_EVERY_SYMS
+        if due and prn not in self._round and time.time() - self._last_decode >= self._min_gap:
             st.try_slot = newest
+            self._round.add(prn)
+            if len(self._round) >= len(self._p):     # every live PRN had a turn -> new round
+                self._round.clear()
             self._try_decode(prn, st)
+            self._last_decode = time.time()
 
     # ---------------- decode ----------------
     # Polarity is resolved by CRC, not chaining. Each nav_obs emit's global sign is independent and
@@ -200,13 +219,11 @@ class CnavPredictor:
             else:
                 runs.append([s])
         best = max(runs, key=lambda r: (len(r), r[-1]))
-        chain = best[-WIN_EMITS:]                     # freshest WIN_EMITS of the longest run
-        # Cost guard: brute force is 2^(free emits). Trim the window from the OLD end so at most
-        # FREE_MAX emits are unresolved (the freshest are the interesting ones anyway).
-        free = [s for s in chain if s not in st.pol]
-        while len(free) > FREE_MAX and len(chain) > 3:
-            chain.pop(0)
-            free = [s for s in chain if s not in st.pol]
+        # COLD PRN (nothing resolved yet): use a SMALL window and a full 2^k brute -- guaranteed to
+        # find the polarity (diag-proven) and bounded (2^COLD_EMITS). WARM PRN: the freshest
+        # WIN_EMITS, resolved emits fixed from st.pol, only the newest few brute-forced cheaply.
+        cold = not any(s in st.pol for s in best)
+        chain = best[-(COLD_EMITS if cold else WIN_EMITS):]
         if len(chain) < 3:
             return
         hist, owner = {}, {}
@@ -229,9 +246,21 @@ class CnavPredictor:
         free_idx = [k for k, s in enumerate(chain) if s not in st.pol]
         phases = (st.phase,) if st.phase is not None else (0, 1)
         g2s = (self._g2,) if self._g2 is not None else (False, True)
-        # Candidate order: the OVERLAP-CHAINED sign pattern FIRST (cheap and ~90%/boundary right,
-        # so it usually decodes outright), then the full 2^free brute force as the fallback for the
-        # windows a chain link got wrong. This keeps even a cold PRN cheap most of the time.
+        # A COLD attempt does a full 2^k brute but over only ONE (phase, g2) per call, rotating
+        # across calls -- so each attempt is 2^COLD_EMITS Viterbis (~1.5 s), staying under the 4 s
+        # emit period (a longer stall misses emits and fragments the contiguity the brute needs).
+        if cold:
+            opts = [(ph, g2) for ph in phases for g2 in g2s]
+            phases, g2s = ((opts[st.boot % len(opts)][0],), (opts[st.boot % len(opts)][1],))
+            st.boot += 1
+        # BOUNDED, NEVER-BLOCKING candidate set. The decode runs in the broker's single poll loop;
+        # a long brute force (2^free is 5 s) would make it MISS the emits that arrive meanwhile,
+        # fragmenting the very contiguity it needs (measured: heavy decode -> gappy nav_obs -> no
+        # decode -> heavier decode). So no 2^free. Instead: the OVERLAP-CHAINED sign pattern (right
+        # ~90%/boundary -> usually decodes as-is), plus a SINGLE-emit-flip repair per free emit
+        # (fixes the one bad chain link -> ~92% of contiguous windows), plus the global negation
+        # for the cold case (nothing resolved yet -> the global sign is unconstrained). Worst case
+        # ~2*(free+1) candidates -> a few hundred ms, never a stall.
         chained = base.copy()
         acc = {}
         for k, s in enumerate(chain):
@@ -248,16 +277,37 @@ class CnavPredictor:
             chained[k] = sg
             for x, v in m.items():
                 acc[x] = v * sg
-        combos = itertools.chain(
-            [tuple(chained[k] for k in free_idx)],
-            itertools.product((1, -1), repeat=len(free_idx)))
+        base_free = [int(chained[k]) for k in free_idx]
+        nf = len(base_free)
+        if cold:
+            # Full brute over the small cold window: EVERY sign pattern (covers the global sign).
+            combos = list(itertools.product((1, -1), repeat=nf))
+        else:
+            # Warm: chained candidate + 1- and 2-emit-flip repairs of the (few) free emits.
+            combos = [tuple(base_free)]
+            for j in range(nf):
+                c = list(base_free)
+                c[j] = -c[j]
+                combos.append(tuple(c))
+            for j in range(nf):
+                for jj in range(j + 1, nf):
+                    c = list(base_free)
+                    c[j] = -c[j]
+                    c[jj] = -c[jj]
+                    combos.append(tuple(c))
+        budget = VITERBI_BUDGET   # hard cap on Viterbi calls per attempt -> never stalls the loop
         for combo in combos:
+            if budget <= 0:
+                return
             signs = base.copy()
             for j, k in enumerate(free_idx):
                 signs[k] = combo[j]
             r = raw * signs[own]
             for ph in phases:
                 for g2 in g2s:
+                    if budget <= 0:
+                        return
+                    budget -= 1
                     msgs = _crc_msgs(C.viterbi_decode(_g2(r[ph:], g2)))
                     if not msgs:
                         continue
@@ -380,6 +430,7 @@ def _selftest():
     # Feed as ~201-symbol emits (the live cadence) with an INDEPENDENT random global sign each
     # (the squaring estimate's arbitrary per-emit polarity) -- the CRC search must resolve it.
     pred = CnavPredictor(log=print)
+    pred._min_gap = 0.0          # the self-test feeds all emits in <1 s of wall time; no stagger
     ELEN = 201
     e = 0
     while e + ELEN <= len(pm):
