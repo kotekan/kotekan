@@ -337,13 +337,11 @@ void airspyInput::stream_watchdog() {
                 // POSITIVE CONTROL for the silent failure above -- three lines per run that
                 // say each front end really did start delivering, and how long it took. Its
                 // absence is the evidence when a post-mortem asks "did L1 ever stream?".
-                WARN("/{:s}: streaming CONFIRMED -- first samples {:.0f} ms after start_rx.",
-                     unique_name, silent_ms);
+                WARN("streaming CONFIRMED -- first samples {:.0f} ms after start_rx.", silent_ms);
             } else if (next_report_ms > (double)_stream_stall_ms) {
                 // we had complained; say that it came back, or the log strands the operator
                 // at the last ERROR with no idea it self-healed
-                ERROR("/{:s}: stream RESUMED after {:.1f} s silent.", unique_name,
-                      silent_ms / 1000.0);
+                ERROR("stream RESUMED after {:.1f} s silent.", silent_ms / 1000.0);
             }
             next_report_ms = (double)_stream_stall_ms;
             continue;
@@ -360,17 +358,17 @@ void airspyInput::stream_watchdog() {
         next_report_ms = silent_ms + report_every_ms;
 
         if (!ever_streamed)
-            ERROR("/{:s}: HALF-OPEN DEVICE -- airspy_start_rx() succeeded {:.1f} s ago but the "
-                  "device has never delivered a single sample (serial {:#016x}). This band is "
+            ERROR("HALF-OPEN DEVICE -- airspy_start_rx() succeeded {:.1f} s ago but the device "
+                  "has never delivered a single sample (serial {:#016x}). This band is "
                   "producing NOTHING. Check the USB link/cable; the last one to do this was a "
                   "marginal micro-B adapter.",
-                  unique_name, silent_ms / 1000.0, (unsigned long)_airspy_sn);
+                  silent_ms / 1000.0, (unsigned long)_airspy_sn);
         else
-            ERROR("/{:s}: stream STALLED -- no samples for {:.1f} s ({:d} delivered so far). "
-                  "Either the device stopped (USB link) or the producer is blocked on a full "
-                  "input buffer (check kotekan_valve_dropped_frames_total and the 'behind "
-                  "realtime' warnings). This band is producing NOTHING meanwhile.",
-                  unique_name, silent_ms / 1000.0, n_total);
+            ERROR("stream STALLED -- no samples for {:.1f} s ({:d} delivered so far). Either "
+                  "the device stopped (USB link) or the producer is blocked on a full input "
+                  "buffer (check kotekan_valve_dropped_frames_total and the 'behind realtime' "
+                  "warnings). This band is producing NOTHING meanwhile.",
+                  silent_ms / 1000.0, n_total);
     }
 }
 
