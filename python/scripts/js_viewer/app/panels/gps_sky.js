@@ -102,9 +102,13 @@ export class GpsSkyPanel {
             const {x, y} = project(r.az, r.el);
             // Compact symbols (user request 2026-07-12): ~35% smaller than v1 so dense
             // constellations don't overlap -- active 1.6..2.5 (was 2.4..3.8), idle 1.25.
+            // Colour by search SNR when we have it, else by the combined significance (the
+            // unified feed may lock a sat with no search stage -- e.g. the derived L2C-CL --
+            // so snr can be null on a genuinely strong satellite).
+            const shade = r.snr != null ? r.snr : (r.sig || null);
             const rad = r.active ? 1.6 + Math.min(0.9, r.amp) : 1.25;
             const dot = svg("circle", {cx: x, cy: y, r: rad,
-                fill: r.active ? snr_color(r.snr) : "none",
+                fill: r.active ? snr_color(shade) : "none",
                 stroke: r.active ? cc : cc + "66",   // idle ring = translucent
                 "stroke-width": r.active ? 0.7 : 0.5});
             const tip = svg("title", {});

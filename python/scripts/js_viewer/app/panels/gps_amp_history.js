@@ -68,7 +68,9 @@ export class GpsAmpHistoryPanel {
     constructor({app, target, feed}) {
         this.app = app;
         this.feed = feed;
-        this.hist = new Map();   // prn -> {t:[], cn0_coh:[], cn0:[], sig:[], coh_s:[], dop:[], snr:[], dr:[]}
+        this.hist = new Map();   // key -> {t:[], cn0_coh:[], cn0:[], sig:[], coh_s:[], dop:[], snr:[], dr:[]}
+        this.meta = new Map();   // key -> {label, band, tag} (unified: one entry per sat+signal)
+        this.unified = false;
         this.selected = null;
         this.mode = "cn0_coh";
         this._dirty = false;
@@ -126,42 +128,68 @@ export class GpsAmpHistoryPanel {
                 peel: [], bound: []};
     }
 
-    _on_feed({sats}) {
+    // L1/L2/L5 (unified signal band) -> the CN0_BASELINE band key.
+    static BAND_KEY = {L1: "l1", L2: "l2c", L5: "l5"};
+
+    // Append one (metrics) sample to a history series, with dedup + ring trim. `src` is either
+    // a flat row (r.snr present) or a per-signal metrics object (r.deep_snr, snr absent).
+    _push(key, src, now, snr) {
+        if (src.dr > this._maxDr) this._maxDr = src.dr;
+        if (!this.hist.has(key)) this.hist.set(key, this._blank());
+        const h = this.hist.get(key);
+        const n = h.t.length;
+        if (n && h.sig[n - 1] === src.sig && h.coh_s[n - 1] === src.coh_s
+            && h.dop[n - 1] === src.dop && h.snr[n - 1] === snr) return;
+        h.t.push(now);
+        h.cn0_coh.push(src.cn0_coh); h.cn0.push(src.cn0); h.sig.push(src.sig);
+        h.coh_s.push(src.coh_s); h.dop.push(src.dop); h.snr.push(snr);
+        h.dr.push(src.dr || 0);
+        h.peel.push(src.peel_db); h.bound.push(!!src.peel_bound);
+        if (h.t.length > MAX_PTS) for (const k of Object.keys(h)) h[k].shift();
+        if (key === this.selected) this._dirty = true;
+    }
+
+    _on_feed({sats, unified, signals}) {
+        this.unified = !!unified;
         const now = new Date();
         for (const r of sats || []) {
-            // No despread this emit -> a GAP, not a zero. (A tracked-but-silent sat still
-            // reports sig 0 with a real dop; require SOME signal-side content.)
-            if (!(r.sig > 0 || r.amp > 0 || r.cn0 != null || r.snr != null)) continue;
-            if (r.dr > this._maxDr) this._maxDr = r.dr;
-            if (!this.hist.has(r.id)) this.hist.set(r.id, this._blank());
-            const h = this.hist.get(r.id);
-            const n = h.t.length;
-            // Dedup: the poll runs faster than the combiner emits, so consecutive ticks
-            // catch the SAME record -> identical floats. Advance once per real emit.
-            if (n && h.sig[n - 1] === r.sig && h.coh_s[n - 1] === r.coh_s
-                && h.dop[n - 1] === r.dop && h.snr[n - 1] === r.snr) continue;
-            h.t.push(now);
-            h.cn0_coh.push(r.cn0_coh);   // null where the coherence wasn't certified
-            h.cn0.push(r.cn0);
-            h.sig.push(r.sig);
-            h.coh_s.push(r.coh_s);
-            h.dop.push(r.dop);
-            h.snr.push(r.snr);
-            h.dr.push(r.dr || 0);
-            h.peel.push(r.peel_db);      // null on chains that don't peel -> a GAP
-            h.bound.push(!!r.peel_bound);
-            if (h.t.length > MAX_PTS)
-                for (const k of Object.keys(h)) h[k].shift();
-            if (r.id === this.selected) this._dirty = true;
+            if (this.unified) {
+                // One history series per (satellite, signal) -- a sat carries several.
+                for (const sg of signals || []) {
+                    if (sg.tag !== r.tag) continue;
+                    const m = r.sig_by && r.sig_by[sg.key];
+                    if (!m || !(m.sig > 0 || m.amp > 0 || m.cn0 != null)) continue;
+                    const key = r.id + "|" + sg.key;
+                    this.meta.set(key, {label: r.id + " · " + sg.col,
+                                        band: GpsAmpHistoryPanel.BAND_KEY[sg.band] || "l1",
+                                        tag: r.tag});
+                    this._push(key, m, now, null);   // per-signal search SNR n/a
+                }
+            } else {
+                // No despread this emit -> a GAP, not a zero. (A tracked-but-silent sat
+                // still reports sig 0 with a real dop; require SOME signal-side content.)
+                if (!(r.sig > 0 || r.amp > 0 || r.cn0 != null || r.snr != null)) continue;
+                this._push(r.id, r, now, r.snr);
+            }
         }
         this._sync_dropdown();
         this._redraw();
     }
 
-    // Keep the dropdown in sync with the PRNs we've seen (sorted), preserving the selection.
+    // Keep the dropdown in sync with the series we've seen (sorted), preserving the selection.
+    // Unified keys are "G11|l2c_cl_combiner"; sort by constellation, PRN, then signal so a
+    // satellite's signals cluster (G11 · CA, G11 · CM, G11 · CL, ...).
     _sync_dropdown() {
-        const prns = [...this.hist.keys()].sort((a, b) =>
-            a[0] === b[0] ? parseInt(a.slice(1)) - parseInt(b.slice(1)) : a.localeCompare(b));
+        const parse = k => {
+            const sat = k.split("|")[0];
+            return [sat[0], parseInt(sat.slice(1)) || 0, k];
+        };
+        const prns = [...this.hist.keys()].sort((a, b) => {
+            const pa = parse(a), pb = parse(b);
+            return pa[0] !== pb[0] ? pa[0].localeCompare(pb[0])
+                 : pa[1] !== pb[1] ? pa[1] - pb[1] : pa[2].localeCompare(pb[2]);
+        });
+        const label = k => (this.meta.get(k) || {}).label || k;
         const cur = this.sel.val();
         const have = new Set();
         this.sel.find("option").each(function () { have.add($(this).val()); });
@@ -170,7 +198,7 @@ export class GpsAmpHistoryPanel {
         if (changed) {
             this.sel.empty();
             for (const p of prns)
-                this.sel.append($("<option/>").attr("value", p).text(p));
+                this.sel.append($("<option/>").attr("value", p).text(label(p)));
             if (this.selected != null && this.hist.has(this.selected))
                 this.sel.val(String(this.selected));
             else if (prns.length) {
@@ -293,7 +321,10 @@ export class GpsAmpHistoryPanel {
         // (dashed line, C/N₀ modes only). Baseline is per tracked component -- see
         // CN0_BASELINE for the power bookkeeping and sources.
         if (this.mode === "cn0_coh" || this.mode === "cn0") {
-            const band = (this.app && this.app.gps_band) || "l1";
+            // Per-signal band in unified mode (the selected key's meta), else the viewer's band.
+            const band = this.unified
+                ? ((this.meta.get(this.selected) || {}).band || "l1")
+                : ((this.app && this.app.gps_band) || "l1");
             const sys = String(this.selected)[0];
             const base = (CN0_BASELINE[band] || {})[sys];
             if (base != null) {
