@@ -372,4 +372,4 @@ l1c_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l1c_epl_buf, out_b
 l1c_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 2, in_bufs: [l1c_rec_buf], out_buf: l1c_out_buf, n_prn: 32, integration_length: 100, secondary_overlay: L1CO, peel_depth: true, bit_export: true }
 l1c_record: { kotekan_stage: rawFileWrite, in_buf: l1c_out_buf, base_dir: "/tmp/gpswipe", file_name: "l1c_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
-spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --band l1 --unified' }
+spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --band l1 --gps-constellations G,E,C,L' }
