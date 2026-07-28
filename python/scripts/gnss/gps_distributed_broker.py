@@ -1991,13 +1991,12 @@ def main(argv=None):
                         if e is not None:
                             eph_s = " eph toe=%.0f e=%.3e" % (e["toe"], e["e"])
                     if h["synced"]:
-                        _log("cnav PRN %d: %d msgs decoded, %d stored, reenc-mismatch %s%s"
-                             % (_p, h["decoded"], h["messages"],
-                                ("%.4f" % h["reenc_mismatch"])
-                                if h["reenc_mismatch"] is not None else "n/a", eph_s))
+                        _log("cnav PRN %d: %d msgs decoded, %d stored, %d emits, g2=%s%s"
+                             % (_p, h["decoded"], h["messages"], h["emits"],
+                                h["g2"], eph_s))
                     else:
-                        _log("cnav PRN %d: NO DECODE (contig run %d/%d, hist %d)"
-                             % (_p, h["run"], h["need"], h["hist"]))
+                        _log("cnav PRN %d: NO DECODE (%d emits accumulated, g2=%s)"
+                             % (_p, h["emits"], h["g2"]))
         # Lock metric: the detection SIGNIFICANCE (sigma above noise) -- the deep nav-wiped SNR when
         # available, else the noise-debiased incoherent SNR -- not the raw |A|. The incoherent |A| is
         # biased by the noise floor (~the floor for weak sats), so judging "still locked" by |A| >
