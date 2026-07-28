@@ -64,6 +64,12 @@ const CN0_BASELINE = {
     l5:  {G: 46.1, E: 45.7, C: 45.5},
 };
 
+// Unified overlay: signal draw order (frequency-ascending, pilot after its data sibling) and a
+// distinct-per-trace palette. Colours are by POSITION among a sat's signals, not fixed per
+// signal, so any constellation's 2-5 signals stay visually separable.
+const SIG_ORDER = {CA: 0, L1C: 1, E1C: 2, B1C: 3, CM: 4, CL: 5, Q: 6, E5a: 7, B2a: 8};
+const SIG_PALETTE = ["#4d9de0", "#6fbf73", "#e8923c", "#c65d21", "#d64550", "#8e6fb0", "#39a0a0"];
+
 export class GpsAmpHistoryPanel {
     constructor({app, target, feed}) {
         this.app = app;
@@ -160,7 +166,7 @@ export class GpsAmpHistoryPanel {
                     const m = r.sig_by && r.sig_by[sg.key];
                     if (!m || !(m.sig > 0 || m.amp > 0 || m.cn0 != null)) continue;
                     const key = r.id + "|" + sg.key;
-                    this.meta.set(key, {label: r.id + " · " + sg.col,
+                    this.meta.set(key, {label: r.id + " · " + sg.col, col: sg.col,
                                         band: GpsAmpHistoryPanel.BAND_KEY[sg.band] || "l1",
                                         tag: r.tag});
                     this._push(key, m, now, null);   // per-signal search SNR n/a
@@ -180,16 +186,17 @@ export class GpsAmpHistoryPanel {
     // Unified keys are "G11|l2c_cl_combiner"; sort by constellation, PRN, then signal so a
     // satellite's signals cluster (G11 · CA, G11 · CM, G11 · CL, ...).
     _sync_dropdown() {
-        const parse = k => {
-            const sat = k.split("|")[0];
-            return [sat[0], parseInt(sat.slice(1)) || 0, k];
-        };
-        const prns = [...this.hist.keys()].sort((a, b) => {
-            const pa = parse(a), pb = parse(b);
-            return pa[0] !== pb[0] ? pa[0].localeCompare(pb[0])
-                 : pa[1] !== pb[1] ? pa[1] - pb[1] : pa[2].localeCompare(pb[2]);
-        });
-        const label = k => (this.meta.get(k) || {}).label || k;
+        // Unified: the selector picks a SATELLITE (G11); the plot overlays a trace per signal
+        // it carries. So dedup the sat|signal history keys down to distinct sat ids. Flat: the
+        // keys ARE sat ids.
+        const sat_of = k => k.split("|")[0];
+        const ids = this.unified
+            ? [...new Set([...this.hist.keys()].map(sat_of))]
+            : [...this.hist.keys()];
+        const prns = ids.sort((a, b) =>
+            a[0] !== b[0] ? a[0].localeCompare(b[0])
+                          : (parseInt(a.slice(1)) || 0) - (parseInt(b.slice(1)) || 0));
+        const label = k => k;   // sat id (unified) or sat id (flat) -- both plain
         const cur = this.sel.val();
         const have = new Set();
         this.sel.find("option").each(function () { have.add($(this).val()); });
@@ -199,20 +206,28 @@ export class GpsAmpHistoryPanel {
             this.sel.empty();
             for (const p of prns)
                 this.sel.append($("<option/>").attr("value", p).text(label(p)));
-            if (this.selected != null && this.hist.has(this.selected))
+            if (this.selected != null && this._has(this.selected))
                 this.sel.val(String(this.selected));
             else if (prns.length) {
-                const best = prns.reduce((m, p) =>
-                    this.hist.get(p).t.length > this.hist.get(m).t.length ? p : m, prns[0]);
+                const best = prns.reduce((m, p) => this._len(p) > this._len(m) ? p : m, prns[0]);
                 this.selected = best;
                 this.sel.val(String(best));
                 this._plotted = false;
                 this._dirty = true;
             }
         }
-        if (cur && this.sel.val() !== cur && this.hist.has(cur))
+        if (cur && this.sel.val() !== cur && this._has(cur))
             this.sel.val(cur);
     }
+
+    // A selection ("G11") maps to its history series: unified = every signal key "G11|...";
+    // flat = the one key "G11".
+    _series_keys(id) {
+        if (!this.unified) return this.hist.has(id) ? [id] : [];
+        return [...this.hist.keys()].filter(k => k.split("|")[0] === id);
+    }
+    _has(id) { return this._series_keys(id).length > 0; }
+    _len(id) { return this._series_keys(id).reduce((n, k) => n + this.hist.get(k).t.length, 0); }
 
     // 1σ error bar for sample i, where the observable has one worth drawing.
     _err(h, i) {
@@ -222,8 +237,59 @@ export class GpsAmpHistoryPanel {
         return sig > 0 ? (2 * LN10_10) / sig : 0;
     }
 
+    // Unified: overlay one trace per signal the selected satellite carries (CM vs CL vs L5...
+    // on one axis) -- the shared-knowledge comparison. Colour + legend by signal; the "thing
+    // to plot" dropdown picks the observable for all of them.
+    _redraw_unified() {
+        const M = MODES[this.mode];
+        const keys = this._series_keys(this.selected)
+            .sort((a, b) => (SIG_ORDER[(this.meta.get(a) || {}).col] || 99)
+                          - (SIG_ORDER[(this.meta.get(b) || {}).col] || 99));
+        const traces = [];
+        const now_bits = [];
+        keys.forEach((k, i) => {
+            const h = this.hist.get(k); if (!h) return;
+            const col = (this.meta.get(k) || {}).col || k;
+            const color = SIG_PALETTE[i % SIG_PALETTE.length];
+            const V = h[this.mode];
+            traces.push({
+                x: h.t.slice(), y: V.map(v => (v == null ? null : v)),
+                type: "scatter", mode: "markers", name: col,
+                marker: {size: 4, color},
+                hovertemplate: `${col} · %{x|%H:%M:%S}<br>%{y:${M.fmt}}${M.unit}<extra></extra>`,
+            });
+            // latest non-null for the summary line
+            for (let j = V.length - 1; j >= 0; j--)
+                if (V[j] != null) { now_bits.push(`<span style="color:${color}">${col} ${V[j].toFixed(this.mode === "coh_s" ? 2 : 1)}</span>`); break; }
+        });
+        this._info.html(now_bits.length
+            ? `${this.selected} · ${M.label}: ${now_bits.join(" · ")}${M.unit}`
+            : `<span style="color:#aaa">${this.selected}: no ${M.label} yet…</span>`);
+        const layout = {
+            margin: {l: 56, r: 10, t: 6, b: 28},
+            xaxis: {type: "date", tickfont: {size: 10}, gridcolor: "#eee"},
+            yaxis: {title: {text: M.axis, font: {size: 11}},
+                    rangemode: M.zero ? "tozero" : "normal", tickfont: {size: 10},
+                    gridcolor: "#eee", zeroline: !!M.zero},
+            showlegend: true, legend: {orientation: "h", y: 1.02, yanchor: "bottom",
+                                       font: {size: 10}},
+            paper_bgcolor: "white", plot_bgcolor: "white",
+        };
+        if (!traces.length) return;
+        if (!this._plotted) {
+            window.Plotly.newPlot(this.plot, traces, layout,
+                {displayModeBar: false, responsive: true});
+            this._plotted = true;
+        } else if (this._dirty) {
+            window.Plotly.react(this.plot, traces, layout,
+                {displayModeBar: false, responsive: true});
+        }
+        this._dirty = false;
+    }
+
     _redraw() {
         if (this.selected == null || !window.Plotly) return;
+        if (this.unified) return this._redraw_unified();
         const h = this.hist.get(this.selected);
         if (!h) return;
         const M = MODES[this.mode];
