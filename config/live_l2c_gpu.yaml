@@ -173,11 +173,17 @@ gputrack:
           out_buf: cl_epl_buf
           in_buf: ""
 assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_buf, sample_rate: 5.0e6 }
+# bit_export (2026-07-28, S3): export the per-20ms navwipe bit decisions as nav_obs
+# so the broker's CNAV decoder (gps_cnav.decode_cnav via a CnavPredictor) can stitch
+# the 50 sps symbol stream. ★ The RECORD FILE is NOT the symbol stream -- it holds
+# the combiner's ~0.1 Hz DEEP EMITS (positive amplitude, ~8 s apart), so
+# gps_cnav.py's offline read_symbols path is a dead end for GPU-chain records; the
+# live symbols only come through nav_obs (this flag), exactly as LNAV does at L1.
 # L2C DEEP WIPE: a 20 ms record is exactly ONE CNAV symbol, so navwipe_bit_records
 # 1 wipes the 50 sym/s data and the sum integrates past 20 ms. integration_length
 # 200 = 4 s max buffer (the auto-coherence ladder finds the knee live).
 # DIVERGENT (audit): 4 s window here vs ~1 s everywhere else.
-gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 200, navwipe_bit_records: 1 }
+gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 200, navwipe_bit_records: 1, bit_export: true }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gps_l2c_gpu", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # L2C CL DATALESS PILOT -- the first Mechanism-A chain (docs/gnss_shared_knowledge_
