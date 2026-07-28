@@ -65,7 +65,8 @@ speaks CHORD idioms — you are NOT starting from scratch.
   the ring and every coherent window touching it shreds, looking exactly like decohered signal.
   Watch it whenever you add GPU load. And do NOT run heavy compute (e.g. numpy/Viterbi benches)
   that contends with a live real-time pipeline — it drops frames even when nice'd on "isolated"
-  cores (it just cost the airspy soak ~2669 L5 frames; see `data/logs/DATA_QUALITY.md`).
+  cores (it just cost the airspy soak ~2669 L5 frames; logged in the GNSS-side data-quality
+  register `docs/data_quality_windows.md`, loader `python/scripts/gnss/dq_windows.py`).
 
 ## The one bug class to internalize: COUNT-where-a-TIME-was-meant
 
