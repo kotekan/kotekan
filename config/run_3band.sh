@@ -169,6 +169,10 @@ for b in $BANDS; do
     # other callers. The transport was since fixed (c839b3ca: parse outside seed_mtx +
     # NAVBITS-BAD counter, broker CPU 98->31%), and the node has run it on all day.
     BX="${BROKER_EXTRA:---dop-continuous --nav-bits-brdc 1}"
+    # L2C-CM carries CNAV (FEC+CRC), not LNAV: route its nav_obs to the CNAV decoder or the
+    # LNAV frame-sync churns on CNAV symbols forever (S3, 2026-07-28). A band property, appended
+    # regardless of BROKER_EXTRA; the cnav path ignores --nav-bits-brdc (LNAV-only), so no clash.
+    [ "$b" = l2c ] && BX="$BX --nav-decoder cnav"
     SKIP_KOTEKAN=1 STAGE_PREFIX=${b}_ PORT=$PORT TAG=gps_${b} \
         CFG=$(cfg_of $b) HTTP_PORT=$(http_of $b) \
         BROKER_EXTRA=$BX \

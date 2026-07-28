@@ -820,6 +820,14 @@ def main(argv=None):
                          "(bit_export: true), pushed as nav_bits with each seed row -- the "
                          "fused peel's sign source (P7a: ~11 -> >=26-35 dB). Self-gating: "
                          "chains whose combiner exports no nav_obs are untouched. 0 = off.")
+    ap.add_argument("--nav-decoder", default="lnav", choices=("lnav", "cnav"),
+                    help="which decoder consumes nav_obs. lnav (default): the LNAV "
+                         "decode-and-predict (GPS L1CA, the periodic-subframe future-bit source). "
+                         "cnav: the CNAV decoder (GPS L2C-CM / L5-I) -- FEC+CRC-24Q, NOT a "
+                         "future-bit source (the type schedule is not fixed); it decodes live "
+                         "ephemeris/messages and shadow-serves the signs of DECODED spans. Set "
+                         "cnav on the L2C broker so its nav_obs (CNAV symbols) go to the right "
+                         "decoder instead of churning the LNAV frame-sync forever.")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -972,6 +980,7 @@ def main(argv=None):
                      # nav_bits (u.has_bits guard), so skipping unchanged tables is free. This
                      # matters most at L5: 1 ms records make each table 4x an L1 pilot's.
     navbits = None   # LNAV decode-and-predict (P7a); created lazily on the first nav_obs row
+    cnav = None      # CNAV decoder (--nav-decoder cnav, L2C-CM/L5-I); created lazily likewise
     navbits_log_t = 0.0
     # CONSTRUCTED bits for satellites too weak to decode (2026-07-25). The decoder above needs
     # 620 contiguous parity-clean bits, which is exactly what a weak satellite cannot give; this
@@ -1891,20 +1900,32 @@ def main(argv=None):
         # only when the combiner runs bit_export, so non-GPS chains skip this for free).
         if args.nav_bits:
             for _p, _r in status.items():
-                if "nav_obs" in _r:
+                if "nav_obs" not in _r:
+                    continue
+                if navhealth is None:
+                    from navbit_health import BitAgreement
+                    navhealth = BitAgreement(log=_log)
+                # Route nav_obs to the decoder this band actually speaks. L1CA carries LNAV
+                # (periodic subframes -> future bits); L2C-CM / L5-I carry CNAV (FEC+CRC, no
+                # fixed schedule -> decode + shadow-serve decoded spans). Sending CNAV symbols
+                # to the LNAV frame-sync just spins forever finding no preamble.
+                if args.nav_decoder == "cnav":
+                    if cnav is None:
+                        from cnav_predictor import CnavPredictor
+                        cnav = CnavPredictor(log=_log)
+                        _log("CNAV decoder armed (combiner exports nav_obs)")
+                    cnav.ingest(_p, _r["nav_obs"])
+                else:
                     if navbits is None:
                         from navbit_predictor import LnavPredictor
                         navbits = LnavPredictor(log=_log)
                         _log("nav-bit predictor armed (combiner exports nav_obs)")
                     navbits.ingest(_p, _r["nav_obs"])
-                    # ...and ask the question no single gate was asking continuously: did the
-                    # bits we PUBLISHED last cycle actually match the ones coming out of the
-                    # sky? Scored only where the satellite is strong enough that a disagreement
-                    # means OUR bits are wrong rather than the air reading being wrong.
-                    if navhealth is None:
-                        from navbit_health import BitAgreement
-                        navhealth = BitAgreement(log=_log)
-                    navhealth.score(_p, _r["nav_obs"], _r.get("deep_snr"))
+                # ...and ask the question no single gate was asking continuously (decoder-
+                # agnostic): did the bits we PUBLISHED last cycle actually match the ones coming
+                # out of the sky? Scored only where the satellite is strong enough that a
+                # disagreement means OUR bits are wrong rather than the air reading being wrong.
+                navhealth.score(_p, _r["nav_obs"], _r.get("deep_snr"))
             # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
             # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
             # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
@@ -1954,6 +1975,29 @@ def main(argv=None):
                                 navbrdc.n_cal, navbrdc.n_rej, " ".join(chk) or "n/a"))
                     else:
                         _log("navbrdc: NOT ready (%s)" % navbrdc.why_not())
+            # CNAV decode health + the live ephemeris (types 10+11). This is S3's headline
+            # result: are we reading CNAV off the sky? reenc-mismatch is how many raw symbols the
+            # Viterbi had to correct (the honest wipe-quality number); eph toe/e prove a decoded
+            # ephemeris set. TODO(S4): cross-check sv_position_cnav(eph) vs the BRDC position here.
+            if cnav is not None and time.time() - navbits_log_t > 60.0:
+                navbits_log_t = time.time()
+                for _p in sorted(cnav._p):
+                    h = cnav.health(_p)
+                    if not h:
+                        continue
+                    eph_s = ""
+                    if h["eph"]:
+                        e = cnav.ephemeris(_p)
+                        if e is not None:
+                            eph_s = " eph toe=%.0f e=%.3e" % (e["toe"], e["e"])
+                    if h["synced"]:
+                        _log("cnav PRN %d: %d msgs decoded, %d stored, reenc-mismatch %s%s"
+                             % (_p, h["decoded"], h["messages"],
+                                ("%.4f" % h["reenc_mismatch"])
+                                if h["reenc_mismatch"] is not None else "n/a", eph_s))
+                    else:
+                        _log("cnav PRN %d: NO DECODE (contig run %d/%d, hist %d)"
+                             % (_p, h["run"], h["need"], h["hist"]))
         # Lock metric: the detection SIGNIFICANCE (sigma above noise) -- the deep nav-wiped SNR when
         # available, else the noise-debiased incoherent SNR -- not the raw |A|. The incoherent |A| is
         # biased by the noise floor (~the floor for weak sats), so judging "still locked" by |A| >
@@ -2760,6 +2804,22 @@ def main(argv=None):
                     if nb is not None:
                         d["nav_bits"] = {"P": nb}
                         _bsrc = _bsrc if _bsrc != "none" else "lnav"
+            elif cnav is not None:
+                # CNAV serve: the L2C-CM chain's replica correlates the DATA component, so a
+                # decoded CNAV table is its "P" (the direct L1CA/LNAV analog). But this SERVES
+                # already-decoded spans, it does not PREDICT the future (the CNAV type schedule
+                # is not fixed -- see cnav_predictor), so at a forward horizon predict() usually
+                # returns None and nothing is attached. That is correct: CL, not CNAV, is L2C's
+                # peel win; CNAV's prizes are the live ephemeris + the S4 L5 cross-band feed.
+                # Shadow-remembered and vetoed like every other source before it feeds a wipe.
+                _utc = _row.get("utc")
+                if _utc:
+                    nb = cnav.predict(prn, float(_utc), horizon_s=4.0)
+                    if navhealth is not None:
+                        navhealth.remember(prn, nb, "cnav")
+                    if nb is not None and _src_ok("cnav"):
+                        d["nav_bits"] = {"P": nb}
+                        _bsrc = "cnav"
             # VETO: a source that does not match the air for this satellite must not feed the
             # subtracter. Wrong bits are worse than no bits -- no bits means no subtraction,
             # wrong bits mean subtracting at the wrong sign on ~40% of records (measured

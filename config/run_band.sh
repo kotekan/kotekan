@@ -40,7 +40,10 @@ case "$BAND" in
   l2c) CFG=config/live_l2c_gpu.yaml;   PORT=12148; HTTP_PORT=8081
        # GPU chain is now the L2C default: it exports the coherent-C/N0 / ADR / S4 / CMC
        # observables the old CPU chain lacked. `l2c_cpu` still launches the CPU chain.
-       EXTRA=${BROKER_EXTRA:---dop-continuous} ;;
+       # --nav-decoder cnav (S3, 2026-07-28): L2C-CM carries CNAV (FEC+CRC), not LNAV. Its
+       # nav_obs export must go to the CNAV decoder; the LNAV frame-sync never syncs on CNAV
+       # symbols and would just burn a core. It is a BAND property, so append it unconditionally.
+       EXTRA="${BROKER_EXTRA:---dop-continuous} --nav-decoder cnav" ;;
   l2c_cpu) CFG=config/live_l2c.yaml;   PORT=12148; HTTP_PORT=8081
        EXTRA=${BROKER_EXTRA:-} ;;
   l5)  CFG=config/live_l5_gpu.yaml;    PORT=12248; HTTP_PORT=8082
