@@ -8,27 +8,29 @@
 #ifndef KOTEKAN_BUFFER_HPP
 #define KOTEKAN_BUFFER_HPP
 
-#include <sched.h>             // for cpu_set_t
-#include <stdint.h>            // for uint8_t
-#include <algorithm>           // for copy, equal
-#include <array>               // for array
-#include <condition_variable>  // for condition_variable_any
-#include <cstddef>             // for size_t, ptrdiff_t
-#include <map>                 // for map
-#include <memory>              // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
-#include <mutex>               // for recursive_mutex, lock_guard
-#include <string>              // for string, basic_string
-#include <vector>              // for vector, operator!=
-#include <utility>             // for move
+#include "DataType.hpp"       // for type_to_string, DataType
+#include "FrameDesc.hpp"      // for FrameDesc
+#include "NDArray.hpp"        // for GenericNDArray, NDArray
+#include "PipelineGraph.hpp"  // for BufferState
+#include "Symbol.hpp"         // for Symbol, operator!=, operator==
+#include "kotekanLogging.hpp" // for FATAL_ERROR, ERROR, kotekanLogging
+#include "metadata.hpp"       // for metadataObject, metadataPool
 
-#include "DataType.hpp"        // for type_to_string, DataType
-#include "FrameDesc.hpp"       // for FrameDesc
-#include "NDArray.hpp"         // for GenericNDArray, NDArray
-#include "Symbol.hpp"          // for Symbol, operator!=, operator==
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, ERROR, kotekanLogging
-#include "metadata.hpp"        // for metadataObject, metadataPool
-#include "json.hpp"            // for json
-#include "fmt.hpp"             // for compile_string_to_view, join, format, format_string, join_...
+#include "fmt.hpp"  // for compile_string_to_view, join, format, format_string, join_...
+#include "json.hpp" // for json
+
+#include <algorithm>          // for copy, equal
+#include <array>              // for array
+#include <condition_variable> // for condition_variable_any
+#include <cstddef>            // for size_t, ptrdiff_t
+#include <map>                // for map
+#include <memory>             // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
+#include <mutex>              // for recursive_mutex, lock_guard
+#include <sched.h>            // for cpu_set_t
+#include <stdint.h>           // for uint8_t
+#include <string>             // for string, basic_string
+#include <utility>            // for move
+#include <vector>             // for vector, operator!=
 
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
@@ -255,10 +257,21 @@ public:
     virtual void json_description(nlohmann::json& buf_json);
 
     /**
-     * @brief Returns a text description of this buffer for use in the automatic Dot pipeline
-     * graphs.
+     * @brief Returns this buffer's description for the automatic pipeline graphs,
+     *        as one plain-text line per entry.
+     *
+     * The lines are escaped and joined by the graph renderer, so implementations
+     * must not add markup of their own.
      */
-    virtual std::string get_dot_node_label();
+    virtual std::vector<std::string> dot_label_lines(const kotekan::GraphOptions& options);
+
+    /**
+     * @brief How busy this buffer is, for the pipeline graph.
+     *
+     * Reported by the buffer itself because only it knows what "full" means for
+     * the way it stores data.
+     */
+    virtual kotekan::BufferState dot_buffer_state();
 
     /// The number of frames kept by this object
     int num_frames;
@@ -334,7 +347,7 @@ protected:
  *
  * Note that if no consumer is registered for on a buffer, then it will drop
  * the frames and log an INFO statement to notify the user that the data
- * is being dropped.
+ * is being dropped (unless @c peek_hold keeps the newest frame).
  *
  * @conf frame_size The size of the individual ring frames in bytes
  * @conf num_frames The buffer depth of size of the ring
@@ -342,6 +355,9 @@ protected:
  * @conf numa_node The NUMA domain to mbind the memory into.  Default: 1
  * @conf use_hugepages Allocate 2MB huge pages for the frames. Default: false
  * @conf mlock_frames Lock the frame pages with mlock Default: true
+ * @conf peek_hold Keep the newest full frame peekable by deferring its empty
+ *                 transition until the next frame is marked full; see
+ *                 @c enable_peek_hold(). Requires num_frames >= 2. Default: false
  *
  * See metadata.h for more information on metadata pools
  *
@@ -481,6 +497,62 @@ public:
     int get_num_full_frames();
 
     /**
+     * @brief Copies the data and metadata of the most recently filled frame
+     *        that is still full, without taking part in the producer/consumer
+     *        protocol.
+     *
+     * Intended for inspection/debugging (e.g. the REST `/buffer/<name>/frame`
+     * endpoint): the caller does not need to be a registered consumer, and
+     * calling this never consumes or delays frames. The buffer lock is held
+     * for the duration of the copy, which prevents the frame from being
+     * recycled mid-copy, but also blocks producer/consumer state changes on
+     * this buffer for the length of the memcpy -- avoid calling this at high
+     * rates on buffers with large frames. On buffers with deferred frame
+     * zeroing (@c zero_frames) the copy may observe a frame that is
+     * concurrently being zeroed, since the zeroing thread writes frame data
+     * without holding the buffer lock.
+     *
+     * @param[out] data_out Resized to the copy length and filled with the
+     *                      leading bytes of the frame.
+     * @param[in] max_len Maximum number of bytes of frame data to copy; the
+     *                    copy length is min(max_len, frame_size).
+     * @param[out] metadata_out Set to the frame's metadata object, or nullptr
+     *                          if the frame has none.
+     * @return The frame ID that was copied, or -1 if the buffer currently
+     *         contains no full frame.
+     */
+    int peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_len,
+                               std::shared_ptr<metadataObject>& metadata_out);
+
+    /**
+     * @brief Keeps the newest full frame peekable (the ``peek_hold``
+     *        buffer config option).
+     *
+     * When enabled, the frame most recently marked full never transitions
+     * to empty: its empty transition (consumer reset, metadata release,
+     * optional zeroing) is deferred until the *next* frame is marked full.
+     * The newest frame therefore always stays in the full state -- with
+     * its metadata -- so @c peek_newest_full_frame() keeps working on
+     * buffers whose consumers otherwise drain frames faster than an
+     * observer can peek.
+     *
+     * This costs no copies and no producer stalls: a producer only
+     * returns to a frame after filling every other frame in the ring, and
+     * filling any frame releases the previous hold -- so the hold is
+     * always long gone by the time its slot is wanted again. The visible
+     * costs are one permanently occupied frame slot (an otherwise-idle
+     * buffer reports one full frame) and one metadata object kept out of
+     * the pool. Data served from a held frame can be arbitrarily old if
+     * production has stopped; consult the metadata's timestamps rather
+     * than presenting it as live.
+     *
+     * @throws std::invalid_argument for a single-frame buffer: with
+     *         ``num_frames == 1`` the producer would deadlock waiting for
+     *         the held frame whose release requires the producer.
+     */
+    void enable_peek_hold();
+
+    /**
      * @brief Swaps the provided frame of memory with the internal frame
      *        given by @c frame_id
      *
@@ -531,139 +603,159 @@ public:
     void safe_swap_frame(int src_frame_id, Buffer* dest_buf, int dest_frame_id);
 
     /**
-     * @brief Allocates a new frame description object holding a D dimensional
-     *        array of type T, or checks the given values are consistent with
-     *        the existing frame descriptor, if it exists.
-     * @param[in] extents Array extentds in the D dimensions
-     * @param[in] dimnames Array axis labels in the D dimensions
+     * @brief Requires that a frame descriptor is attached to this buffer
+     *        (fatal if not), then ensures it conforms to @p desc.
+     *
+     * Stages should use this method to rigidly enforce that a frame
+     * descriptor is (already) attached to the buffer and conforms to their
+     * requirements. This fatals if no descriptor has been attached -- i.e. the
+     * buffer was not declared with a described type.
+     *
+     * Called with no argument it performs only the existence check: the idiom
+     * for a stage that then reads the descriptor with @c get_frame_desc<T>() or
+     * @c require_frame_desc<T>() and hand-validates the specific fields it
+     * depends on. Pass @p desc to additionally cross-check a full expected
+     * descriptor, in which case this method reconciles frame descriptors as in
+     * @c ensure_frame_desc; any unset (empty) fields are filled in from the
+     * other side, and values on both sides must agree; any conflict is fatal.
+     *
+     * See also @c ensure_frame_desc(). The difference is that `require` fatals on a
+     * missing or incompatible descriptor, whereas `ensure` attaches @p desc when
+     * none is present. Use `require` when a missing config declaration is an error;
+     * use `ensure` when the stage may legitimately originate the descriptor (e.g. a
+     * runtime-discovered GPU copy-out writing an undeclared buffer).
+     *
+     * Thread-safe.
      */
-    template<typename T, std::size_t D>
-    void allocate_ndarray_frame_desc(kotekan::Symbol quantity_name,
-                                     const std::array<std::ptrdiff_t, D>& extents,
-                                     const std::array<kotekan::Symbol, D>& dimnames) {
+    void require_frame_desc(std::shared_ptr<const kotekan::FrameDesc> desc = nullptr) {
         buffer_lock lock(mutex);
         if (!frames_desc)
-            frames_desc =
-                std::make_shared<kotekan::NDArray<T, D>>(quantity_name, extents, dimnames, nullptr);
-        else {
-            auto nd_desc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
-            if (!nd_desc) {
-                FATAL_ERROR("Frame desc mismatch: existing desc is not an NDArray");
-            }
-            if (D != nd_desc->get_rank())
-                FATAL_ERROR("Rank mismatch: {:d} != {:d}", D, nd_desc->get_rank());
-            if (kotekan::GetDataType_v<T> != nd_desc->get_value_datatype())
-                FATAL_ERROR("Type mismatch: {:s} != {:s}",
-                            kotekan::type_to_string(kotekan::GetDataType_v<T>),
-                            kotekan::type_to_string(nd_desc->get_value_datatype()));
-            if (quantity_name != nd_desc->get_quantity_name())
-                FATAL_ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
-                            nd_desc->get_quantity_name());
-            if (!std::equal(extents.begin(), extents.end(), nd_desc->get_extents().begin())) {
-                // Building individual strings with move() avoids nasty constexpr/fmt::join
-                // compilation error.
-                auto ex1_j = fmt::join(extents, ", ");
-                auto ex2_j = fmt::join(nd_desc->get_extents(), ", ");
-                std::string ex1_str = fmt::format("{}", std::move(ex1_j));
-                std::string ex2_str = fmt::format("{}", std::move(ex2_j));
-                FATAL_ERROR("Extents do not match: [{:s}] != [{:s}]", ex1_str, ex2_str);
-            }
-            if (!std::equal(dimnames.begin(), dimnames.end(), nd_desc->get_dimnames().begin()))
-                FATAL_ERROR("Dimnames do not match: [{:s}] != [{:s}]", fmt::join(dimnames, ", "),
-                            fmt::join(nd_desc->get_dimnames(), ", "));
-        }
-
-        if (frames_desc->get_byte_size() != frame_size) {
-            FATAL_ERROR("Buffer {:s} ndarray_frame_desc has size {:d}, does not match buffer "
-                        "frame_size {:d}",
-                        buffer_name, frames_desc->get_byte_size(), frame_size);
-        }
+            FATAL_ERROR(
+                "Buffer {:s} has no frame descriptor to validate against; declare the buffer "
+                "with a described buffer type (e.g. `kotekan_buffer: ndarray`) in the config",
+                buffer_name);
+        if (desc)
+            _ensure_frame_desc_locked(std::move(desc));
     }
 
     /**
-     * @brief Allocates a new frame description object holding a D dimensional
-     *        array of type T, or checks the given values are consistent with
-     *        the existing frame descriptor, if it exists.
-     * @param[in] value_type the kotekan type enumerator of the values stored
-     * @param[in] rank dimensionality of the data array
-     * @param[in] extents Array extentds in the D dimensions
-     * @param[in] dimnames Array axis labels in the D dimensions
+     * @brief Ensures the buffer's frame descriptor conforms to @p new_desc:
+     *        attaches it if none is present, otherwise reconciles the two.
+     *
+     * If no descriptor is attached yet, @p new_desc is recorded. Otherwise the
+     * existing and given descriptors are reconciled: their structural fields
+     * (value_type, extents, and hence byte size) must match, any unset (empty)
+     * labels (quantity_name, dimnames) are filled in from the other side, and
+     * labels set on both sides must agree -- any conflict is fatal. For
+     * non-NDArray descriptors reconciliation is a strict equality check. The
+     * reconciled descriptor replaces the stored one.
+     *
+     * See also @c require_frame_desc(). The difference is that `require` fatals on a
+     * missing or incompatible descriptor, whereas `ensure` attaches @p desc when
+     * none is present. Use `require` when a missing config declaration is an error;
+     * use `ensure` when the stage may legitimately originate the descriptor (e.g. a
+     * runtime-discovered GPU copy-out writing an undeclared buffer).
+     *
+     * Thread-safe.
      */
-    void allocate_ndarray_frame_desc(kotekan::DataType value_type, kotekan::Symbol quantity_name,
-                                     const std::vector<std::ptrdiff_t>& extents,
-                                     const std::vector<kotekan::Symbol>& dimnames) {
+    void ensure_frame_desc(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
         buffer_lock lock(mutex);
+        _ensure_frame_desc_locked(std::move(new_desc));
+    }
+
+    /**
+     * @brief Internal: attach @p new_desc, or reconcile it with the existing
+     *        descriptor, assuming the buffer @c mutex is already held.
+     *
+     * Shared, lock-free implementation of @c ensure_frame_desc() and
+     * @c require_frame_desc(). If no descriptor is attached, @p new_desc is
+     * recorded. Otherwise the two are reconciled: for NDArray descriptors the
+     * structural fields must match, unset labels are filled in and set labels
+     * validated (see @c kotekan::GenericNDArray::reconcile()), and the stored
+     * descriptor is replaced only when labels are completed; any other descriptor
+     * is compared for strict equality. A label/structural conflict, or a byte size
+     * that disagrees with @c frame_size, is fatal.
+     *
+     * The leading underscore marks this as an internal helper: it does not take
+     * the lock and is not part of the public API. Do not call it directly -- use
+     * @c ensure_frame_desc() or @c require_frame_desc().
+     *
+     * @param[in] new_desc The descriptor to attach or reconcile against.
+     */
+    void _ensure_frame_desc_locked(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
+        if (new_desc->get_byte_size() != frame_size) {
+            FATAL_ERROR(
+                "Buffer {:s} frame description size ({:d}) does not match frame_size ({:d})",
+                buffer_name, new_desc->get_byte_size(), frame_size);
+        }
         if (!frames_desc) {
-            frames_desc = kotekan::GenericNDArray::create(value_type, quantity_name, extents,
-                                                          dimnames, nullptr);
-        } else {
-            auto nd_desc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
-            if (!nd_desc) {
-                FATAL_ERROR("Frame desc mismatch: existing desc is not an NDArray");
-                return;
+            frames_desc = std::move(new_desc);
+            return;
+        }
+        auto cur = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
+        auto inc = std::dynamic_pointer_cast<const kotekan::GenericNDArray>(new_desc);
+        if (cur && inc) {
+            try {
+                // reconcile() returns a completed descriptor when @p new_desc
+                // fills in labels, or nullptr when nothing changes (keep ours).
+                if (auto merged = kotekan::GenericNDArray::reconcile(*cur, *inc))
+                    frames_desc = std::move(merged);
+            } catch (const std::exception& e) {
+                FATAL_ERROR("Buffer {:s} frame description mismatch (existing vs new): {:s}",
+                            buffer_name, e.what());
             }
-            if (extents.size() != nd_desc->get_rank())
-                FATAL_ERROR("Rank mismatch: {:d} != {:d}", extents.size(), nd_desc->get_rank());
-            if (value_type != nd_desc->get_value_datatype())
-                FATAL_ERROR("Type mismatch: {:s} != {:s}", kotekan::type_to_string(value_type),
-                            kotekan::type_to_string(nd_desc->get_value_datatype()));
-            if (quantity_name != nd_desc->get_quantity_name())
-                FATAL_ERROR("Quantity name mismatch: {:s} != {:s}", quantity_name,
-                            nd_desc->get_quantity_name());
-            if (extents != nd_desc->get_extents())
-                FATAL_ERROR("Extents do not match: [{:s}] != [{:s}]",
-                            fmt::format("{:s}", fmt::join(extents, ", ")),
-                            fmt::format("{:s}", fmt::join(nd_desc->get_extents(), ", ")));
-            if (dimnames != nd_desc->get_dimnames())
-                FATAL_ERROR("Dimnames do not match: [{:s}] != [{:s}]",
-                            fmt::format("{:s}", fmt::join(dimnames, ", ")),
-                            fmt::format("{:s}", fmt::join(nd_desc->get_dimnames(), ", ")));
+            return;
         }
-
-        if (frames_desc->get_byte_size() != frame_size) {
-            FATAL_ERROR("Buffer {:s} ndarray_frame_desc has size {:d}, does not match buffer "
-                        "frame_size {:d}",
-                        buffer_name, frames_desc->get_byte_size(), frame_size);
+        if (*frames_desc != *new_desc) {
+            FATAL_ERROR("Buffer {:s} frame description mismatch (existing vs new): {:s}",
+                        buffer_name, frames_desc->describe_mismatch(*new_desc));
         }
-    }
-
-    /**
-     * @brief provides read access to the array description
-     * @return The NDArray data structure describing the array. If type of frames_desc is
-     * not GenericNDArray, this will return nullptr.
-     */
-    std::shared_ptr<const kotekan::GenericNDArray> get_ndarray_frame_desc() {
-        buffer_lock lock(mutex);
-        return std::dynamic_pointer_cast<const kotekan::GenericNDArray>(frames_desc);
     }
 
     /**
      * @brief provides read access to the frame description
-     * @return The data structure describing the frame
+     * @return The data structure describing the frame, cast to T. Returns
+     *         nullptr if no descriptor is attached or it is not a T.
      */
-    std::shared_ptr<const kotekan::FrameDesc> get_frame_description() {
+    template<typename T = kotekan::FrameDesc>
+    std::shared_ptr<const T> get_frame_desc() {
         buffer_lock lock(mutex);
-        return frames_desc;
+        return std::dynamic_pointer_cast<const T>(frames_desc);
     }
 
     /**
-     * @brief Sets the frame description
+     * @brief Like @c get_frame_desc<T>(), but fatal if the buffer has no
+     *        descriptor attached or the attached descriptor is not a @c T.
+     *
+     * Use this when a stage depends on the buffer having been declared (in the
+     * config) with a described type it can read: it guarantees a non-null,
+     * correctly typed descriptor, so the caller can then hand-validate whatever
+     * specific fields it requires. Prefer it over @c get_frame_desc<T>() at
+     * sites that immediately dereference the result, to avoid a null-pointer
+     * crash when the buffer was left undeclared or declared with another type.
+     *
+     * This is the mirror of @c get_frame_desc<T>() (which returns nullptr
+     * instead of fataling) and of the non-typed @c require_frame_desc() (which
+     * only checks that a descriptor exists). It does not reconcile against an
+     * expected descriptor -- the buffer factory already validated byte size and
+     * structure against the config when it attached the descriptor.
+     *
+     * Thread-safe.
+     *
+     * @return The frame descriptor cast to @c T (never nullptr).
      */
-    void set_frame_desc(std::shared_ptr<const kotekan::FrameDesc> new_desc) {
+    template<typename T>
+    std::shared_ptr<const T> require_frame_desc() {
         buffer_lock lock(mutex);
-
-        if (new_desc->get_byte_size() != frame_size) {
-            FATAL_ERROR("Frame description size ({:d}) is unexpected, buffer provides ({:d})",
-                        new_desc->get_byte_size(), frame_size);
-        }
-
-        if (!frames_desc) {
-            frames_desc = new_desc;
-        } else {
-            if (*frames_desc != *new_desc) {
-                ERROR("Frame description mismatch!");
-            }
-        }
+        if (!frames_desc)
+            FATAL_ERROR("Buffer {:s} has no frame descriptor; declare the buffer with a "
+                        "described buffer type (e.g. `kotekan_buffer: ndarray`) in the config",
+                        buffer_name);
+        auto typed = std::dynamic_pointer_cast<const T>(frames_desc);
+        if (!typed)
+            FATAL_ERROR("Buffer {:s} frame descriptor is not of the type required by a consumer",
+                        buffer_name);
+        return typed;
     }
 
     /**
@@ -674,13 +766,30 @@ public:
     double get_last_arrival_time();
 
     /**
+     * @brief The measured rate at which frames are arriving in this buffer.
+     *
+     * A decaying average of the interval between arrivals, so a buffer that has
+     * stalled reports the rate falling rather than the rate it once had. This
+     * is what the frames are actually doing, as opposed to what the config says
+     * they should.
+     *
+     * @return Frames per second, or 0 before two frames have arrived.
+     */
+    double get_arrival_rate();
+
+    /// @return The number of frames that have been marked full since startup.
+    uint64_t get_frames_arrived();
+
+    /**
      * @brief Prints a picture of the frames which are currently full.
      */
     void print_buffer_status() override;
 
     void json_description(nlohmann::json& buf_json) override;
 
-    std::string get_dot_node_label() override;
+    std::vector<std::string> dot_label_lines(const kotekan::GraphOptions& options) override;
+
+    kotekan::BufferState dot_buffer_state() override;
 
     // don't call this, it's for internal use only
     void _impl_zero_frame(const int ID);
@@ -716,8 +825,35 @@ public:
      */
     std::vector<bool> is_full;
 
+    /**
+     * @brief The index of the frame most recently marked full, or -1 if no
+     * frame has been filled yet. Frames fill in ring order, so scanning
+     * backwards from here finds the newest still-full frame; used by
+     * @c peek_newest_full_frame().
+     */
+    int last_frame_filled = -1;
+
+    /// True once enable_peek_hold() has enabled newest-frame holding.
+    bool peek_hold_enabled = false;
+
+    /**
+     * @brief The frame whose empty transition is deferred by peek_hold,
+     * or -1 if none. Set when the newest full frame would otherwise go
+     * empty; the deferred transition runs when the next frame is marked
+     * full. At most one frame is ever deferred, since only the newest
+     * frame qualifies and a newer fill releases the previous hold first.
+     */
+    int hold_deferred_id = -1;
+
     /// The last time a frame was marked as full (used for arrival rate)
     double last_arrival_time;
+
+    /// The number of frames marked full since startup.
+    uint64_t frames_arrived = 0;
+
+    /// Decaying average of the interval between arrivals, in seconds; 0 until a
+    /// second frame has arrived to measure an interval against.
+    double mean_arrival_period = 0.0;
 
     /// This buffer use huge pages for its frames if the following is true
     bool use_hugepages;

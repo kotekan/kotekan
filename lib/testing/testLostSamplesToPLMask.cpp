@@ -2,6 +2,7 @@
 
 #include "Config.hpp" // for Config
 #include "Hash.hpp"
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "NDMetadata.hpp"      // for GenericNDArray
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
@@ -64,19 +65,21 @@ testLostSamplesToPLMask::testLostSamplesToPLMask(Config& config, const std::stri
         FATAL_ERROR("Unexpected frames sizes for pl_mask {:d} and lost_samples {:d}",
                     pl_mask_buf->frame_size, lost_samples_bufs.at(0)->frame_size);
 
-    pl_mask_buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::uint1x8>, 5>(
-        "pl_mask",
-        {ptrdiff_t(lost_samples_bufs.at(0)->frame_size / PL_MASK_DOWNSAMPLING_FACTOR
-                   / PL_MASK_HILO_SPLIT),
-         ptrdiff_t(lost_samples_bufs.size()), num_polarizations,
-         num_dishes / PL_MASK_DISHES_PER_BIN,
-         PL_MASK_HILO_SPLIT / BITS_PER_BYTE /* because we count uint1x8, not uint1 */},
-        {"T2hi64", "F4", "P", "D8", "T2lo64"});
+    pl_mask_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType_t<kotekan::uint1x8>, 5>::describe(
+            "pl_mask",
+            {ptrdiff_t(lost_samples_bufs.at(0)->frame_size / PL_MASK_DOWNSAMPLING_FACTOR
+                       / PL_MASK_HILO_SPLIT),
+             ptrdiff_t(lost_samples_bufs.size()), num_polarizations,
+             num_dishes / PL_MASK_DISHES_PER_BIN,
+             PL_MASK_HILO_SPLIT / BITS_PER_BYTE /* because we count uint1x8, not uint1 */},
+            {"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16}));
 
     for (int fbin = 0; fbin < num_freq_bins; ++fbin) {
         auto lost_samples_buf = lost_samples_bufs.at(fbin);
-        lost_samples_buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::uint8>, 1>(
-            "lost_samples", {ptrdiff_t(lost_samples_bufs.at(0)->frame_size)}, {"T"});
+        lost_samples_buf->require_frame_desc(
+            kotekan::NDArray<kotekan::GetType_t<kotekan::uint8>, 1>::describe(
+                "lost_samples", {ptrdiff_t(lost_samples_bufs.at(0)->frame_size)}, {"T"}, {1}));
     }
 }
 
@@ -137,7 +140,7 @@ void testLostSamplesToPLMask::main_thread() {
         pl_mask_buf->allocate_new_metadata_object(frame_id);
         auto pl_mask_meta = get_chord_metadata(pl_mask_buf, frame_id);
 
-        pl_mask_meta->set_from_frame_desc(pl_mask_buf->get_ndarray_frame_desc());
+        pl_mask_meta->set_from_frame_desc(pl_mask_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // physics metadata
         // TODO: add more that dpdk adds
@@ -155,7 +158,7 @@ void testLostSamplesToPLMask::main_thread() {
         pl_mask_meta->set_freq_upchan_factor(freq_upchan_factor);
         pl_mask_meta->set_freq_upchan_index(freq_upchan_index);
 
-        pl_mask_meta->check_frame_desc(pl_mask_buf->get_ndarray_frame_desc());
+        pl_mask_meta->check_frame_desc(pl_mask_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // done
         pl_mask_buf->mark_frame_full(unique_name, frame_id);
@@ -173,7 +176,8 @@ void testLostSamplesToPLMask::main_thread() {
 
             lost_samples_buf->allocate_new_metadata_object(frame_id);
             auto lost_samples_meta = get_chord_metadata(lost_samples_buf, frame_id);
-            lost_samples_meta->set_from_frame_desc(lost_samples_buf->get_ndarray_frame_desc());
+            lost_samples_meta->set_from_frame_desc(
+                lost_samples_buf->get_frame_desc<kotekan::GenericNDArray>());
 
             // physics metadata
             // TODO: add more that dpdk adds
@@ -183,10 +187,11 @@ void testLostSamplesToPLMask::main_thread() {
             lost_samples_meta->set_time_downsampling_fpga(1);
 
             lost_samples_meta->set_coarse_freq(
-                std::vector<int>(&coarse_freq[fbin * PL_MASK_FREQS_PER_BIN],
-                                 &coarse_freq[(fbin + 1) * PL_MASK_FREQS_PER_BIN]));
+                std::vector<int>(coarse_freq.data() + fbin * PL_MASK_FREQS_PER_BIN,
+                                 coarse_freq.data() + (fbin + 1) * PL_MASK_FREQS_PER_BIN));
 
-            lost_samples_meta->check_frame_desc(lost_samples_buf->get_ndarray_frame_desc());
+            lost_samples_meta->check_frame_desc(
+                lost_samples_buf->get_frame_desc<kotekan::GenericNDArray>());
 
             // done
             lost_samples_buf->mark_frame_full(unique_name, frame_id);

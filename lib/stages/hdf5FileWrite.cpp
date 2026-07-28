@@ -100,6 +100,7 @@ class hdf5FileWrite : public kotekan::Stage {
     const int host_pool_size = config.get_default<int>(unique_name, "frequency_pool_size", 1);
 
     const int max_frames = config.get_default<int>(unique_name, "max_frames", -1);
+    const bool use_compression = config.get_default<bool>(unique_name, "use_compression", true);
     const bool skip_writing = config.get_default<bool>(unique_name, "skip_writing", false);
     const bool create_single_file =
         config.get_default<bool>(unique_name, "create_single_file", false);
@@ -279,23 +280,25 @@ public:
             }
             (*(DataSetCreateProps*)&props).add(Chunking(chunk_dims));
 
-            // // Enable compression
-            // constexpr int blosc_compression_level = 9;
-            // const std::vector<unsigned int> blosc_flags{
-            //     blosc_compression_level,
-            //     BLOSC_SHUFFLE_BIT,
-            //     BLOSC_COMPRESS_ZSTD,
-            // };
-            // props.add(H5Pset_filter, H5Z_BLOSC, H5Z_FLAG_MANDATORY, blosc_flags.size(),
-            //           blosc_flags.data());
-            constexpr int bitshuffle_compression_level = 9;
-            const std::vector<unsigned int> bitshuffle_flags{
-                BITSHUFFLE_BLOCKSIZE_AUTO,
-                BITSHUFFLE_COMPRESS_ZSTD,
-                bitshuffle_compression_level,
-            };
-            props.add(H5Pset_filter, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY, bitshuffle_flags.size(),
-                      bitshuffle_flags.data());
+            if (use_compression) {
+                // // Enable compression
+                // constexpr int blosc_compression_level = 9;
+                // const std::vector<unsigned int> blosc_flags{
+                //     blosc_compression_level,
+                //     BLOSC_SHUFFLE_BIT,
+                //     BLOSC_COMPRESS_ZSTD,
+                // };
+                // props.add(H5Pset_filter, H5Z_BLOSC, H5Z_FLAG_MANDATORY, blosc_flags.size(),
+                //           blosc_flags.data());
+                constexpr int bitshuffle_compression_level = 9;
+                const std::vector<unsigned int> bitshuffle_flags{
+                    BITSHUFFLE_BLOCKSIZE_AUTO,
+                    BITSHUFFLE_COMPRESS_ZSTD,
+                    bitshuffle_compression_level,
+                };
+                props.add(H5Pset_filter, H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
+                          bitshuffle_flags.size(), bitshuffle_flags.data());
+            }
 
             // Create dataset
             auto dataset = file.createDataSet(file_name, space, type, props);
@@ -309,6 +312,9 @@ public:
             const auto dimnames = frame_desc->get_dimnames();
             std::vector<std::string> dim_names(dimnames.begin(), dimnames.end());
             dataset.createAttribute("dim_names", dim_names);
+            const auto dimscalings = frame_desc->get_dimscalings();
+            std::vector<std::ptrdiff_t> dim_scalings(dimscalings.begin(), dimscalings.end());
+            dataset.createAttribute("dim_scalings", dim_scalings);
 
             if (meta->has_fpga_seq_num()) {
                 dataset.createAttribute("fpga_seq_num", meta->get_fpga_seq_num());
@@ -453,7 +459,6 @@ public:
         // Set metadata as file-level attributes
         file.createAttribute("num_prod", frame.num_prod);
         file.createAttribute("num_ev", frame.num_ev);
-        // file.createAttribute("input_order", ElementOrder_to_string(input_order));
         file.createAttribute("freq_id", frame.freq_id);
         file.createAttribute("freq_MHz", frame.freq_MHz);
         file.createAttribute("abs_time_idx", frame.abs_time_idx);
@@ -591,8 +596,12 @@ public:
                     assert(metadata_is_chord(mc));
                     const std::shared_ptr<const chordMetadata> meta = get_chord_metadata(mc);
                     const std::shared_ptr<const kotekan::GenericNDArray> frame_desc =
-                        buffer->get_ndarray_frame_desc();
-                    assert(frame_desc);
+                        buffer->get_frame_desc<kotekan::GenericNDArray>();
+                    if (!frame_desc)
+                        FATAL_ERROR(
+                            "Buffer \"{:s}\" has no NDArray frame descriptor; hdf5FileWrite "
+                            "needs one to write CHORD-metadata frames",
+                            buffer->buffer_name);
                     write_chord(frame, meta, frame_desc, frame_counter);
                 } else if (metadata_is_N2(mc)) {
                     assert(metadata_is_N2(mc));

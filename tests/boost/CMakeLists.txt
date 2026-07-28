@@ -109,6 +109,28 @@ target_link_libraries(test_dataset_manager PRIVATE libexternal kotekan_libs kote
 add_executable(test_ringbuffer test_ringbuffer.cpp)
 target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
+# test_pipeline_graph - the graph model behind /pipeline_dot
+add_executable(test_pipeline_graph test_pipeline_graph.cpp)
+target_link_libraries(test_pipeline_graph PRIVATE libexternal kotekan_libs kotekan_utils
+                                                  kotekan_core)
+
+# test_buffer_peek - non-consuming newest-full-frame peek used by the /buffer/<name>/frame endpoints
+add_executable(test_buffer_peek test_buffer_peek.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(test_buffer_peek PRIVATE libexternal kotekan_libs kotekan_utils
+                                                   kotekan_core -Wl,-all_load kotekan_metadata)
+else()
+    target_link_libraries(
+        test_buffer_peek
+        PRIVATE libexternal
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+
 # test_fmt
 add_executable(test_fmt test_fmt.cpp)
 # target_link_libraries(test_fmt PRIVATE libexternal kotekan_utils)
@@ -258,6 +280,30 @@ target_link_libraries(test_CHORDTelescope PRIVATE kotekan_utils)
 # test_N2FrameDesc - unit tests for N2FrameDesc product list features
 add_executable(test_N2FrameDesc test_N2FrameDesc.cpp)
 target_link_libraries(test_N2FrameDesc PRIVATE kotekan_metadata kotekan_utils libexternal)
+
+# test_NDArrayBufferConfig - config-driven NDArray frame descriptors and the `ndarray` buffer type
+# in bufferFactory
+add_executable(test_NDArrayBufferConfig test_NDArrayBufferConfig.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_NDArrayBufferConfig PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core
+                                         -Wl,-all_load kotekan_metadata)
+else()
+    target_link_libraries(
+        test_NDArrayBufferConfig
+        PRIVATE libexternal
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+
+# test_FrameDescSerialize - FrameDesc JSON serialization round-trip + adversarial input
+add_executable(test_FrameDescSerialize test_FrameDescSerialize.cpp)
+target_link_libraries(test_FrameDescSerialize PRIVATE libexternal kotekan_libs kotekan_utils
+                                                      kotekan_core kotekan_metadata)
 
 # test_N2Subset - tests for N2Subset stage
 add_executable(test_N2Subset test_N2Subset.cpp)

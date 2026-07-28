@@ -1,28 +1,30 @@
 #include "gpuProcess.hpp"
 
-#include <assert.h>                // for assert
-#include <pthread.h>               // for pthread_setaffinity_np
-#include <sched.h>                 // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <sys/types.h>             // for uint
-#include <cmath>                   // for isnan
-#include <functional>              // for bind, ref, function, _1
-#include <map>                     // for operator!=, map, _Rb_tree_const_iterator, _Rb_tree_ite...
-#include <memory>                  // for __shared_ptr_access, shared_ptr
-#include <set>                     // for set
-#include <sstream>                 // for basic_ostringstream, basic_ostream, ostringstream
-#include <tuple>                   // for get, tuple
-#include <utility>                 // for pair
+#include "Config.hpp"             // for Config
+#include "PipelineGraph.hpp"      // for PipelineGraph, GraphNode
+#include "gpuCommand.hpp"         // for gpuCommand, gpuCommandType
+#include "gpuDeviceInterface.hpp" // for gpuDeviceInterface
+#include "gpuEventContainer.hpp"  // for gpuEventContainer
+#include "kotekanLogging.hpp"     // for DEBUG2, INFO
+#include "restServer.hpp"         // for restServer, connectionInstance
+#include "util.h"                 // for e_time
+#include "visUtil.hpp"            // for StatTracker
 
-#include "Config.hpp"              // for Config
-#include "gpuCommand.hpp"          // for gpuCommand, gpuCommandType
-#include "gpuDeviceInterface.hpp"  // for gpuDeviceInterface
-#include "gpuEventContainer.hpp"   // for gpuEventContainer
-#include "kotekanLogging.hpp"      // for DEBUG2, INFO
-#include "restServer.hpp"          // for restServer, connectionInstance
-#include "util.h"                  // for e_time
-#include "visUtil.hpp"             // for StatTracker
-#include "fmt.hpp"                 // for format, compile_string_to_view, format_string, fmt
-#include "json.hpp"                // for json_ref, basic_json, json, iter_impl
+#include "fmt.hpp"  // for format, compile_string_to_view, format_string, fmt
+#include "json.hpp" // for json_ref, basic_json, json, iter_impl
+
+#include <assert.h>    // for assert
+#include <cmath>       // for isnan
+#include <functional>  // for bind, ref, function, _1
+#include <map>         // for operator!=, map, _Rb_tree_const_iterator, _Rb_tree_ite...
+#include <memory>      // for __shared_ptr_access, shared_ptr
+#include <pthread.h>   // for pthread_setaffinity_np
+#include <sched.h>     // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <set>         // for set
+#include <sstream>     // for basic_ostringstream, basic_ostream, ostringstream
+#include <sys/types.h> // for uint
+#include <tuple>       // for get, tuple
+#include <utility>     // for pair
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -65,7 +67,8 @@ gpuProcess::gpuProcess(Config& config_, const std::string& unique_name,
 }
 
 gpuProcess::~gpuProcess() {
-    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile/{:s}"), unique_name));
+    // unique_name starts with "/", matching the path registered in main_thread()
+    restServer::instance().remove_get_callback(fmt::format(fmt("/gpu_profile{:s}"), unique_name));
     for (auto& command : commands)
         for (auto& c : command)
             delete c;
@@ -268,102 +271,148 @@ void gpuProcess::results_thread() {
     }
 }
 
-std::string gpuProcess::dot_string(const std::string& prefix) const {
-    std::string dot = fmt::format("{:s}subgraph \"cluster_{:s}\" {{\n", prefix, get_unique_name());
+std::string gpuProcess::gpu_mem_node_prefix(const std::string& stage_name) {
+    return fmt::format("{:s}/mem/", stage_name);
+}
 
-    dot += fmt::format("{:s}{:s}style=filled;\n", prefix, prefix);
-    dot += fmt::format("{:s}{:s}color=lightgrey;\n", prefix, prefix);
-    dot += fmt::format("{:s}{:s}node [style=filled,color=white];\n", prefix, prefix);
-    dot += fmt::format("{:s}{:s}label = \"{:s}\";\n", prefix, prefix, get_unique_name());
+void gpuProcess::add_graph_details(kotekan::PipelineGraph& graph) const {
+    const std::string name = get_unique_name();
 
-    // Draw a node for each gpuCommand
+    auto& stage_node = graph.add_node(name);
+
+    // One region per physical device, holding every stage that drives it. The
+    // config declares these the other way round -- a gpuProcess per section,
+    // each naming a gpu_id -- but a device is the thing that saturates, and
+    // the question the graph gets asked is what GPU 0 is doing. Answering it
+    // from a box per section means reading thirteen of them.
+    //
+    // Shared by unique_name, so every gpuProcess with this gpu_id lands in the
+    // same region; it stays at the top level, since grouping by device and
+    // grouping by config section cannot both hold.
+    auto& device = graph.add_cluster(fmt::format(fmt("__gpu/{:d}"), gpu_id));
+    device.label = fmt::format(fmt("GPU {:d}"), gpu_id);
+    device.set_attr("style", "rounded,filled")
+        .set_attr("fillcolor", kotekan::graph_device_fill)
+        .set_attr("color", kotekan::graph_device_line);
+
+    // Inside it, a box per stage: the commands of thirteen stages in one region
+    // with nothing separating them would be worse than what this replaces. Name
+    // it for the section the stage was declared in -- that is what tells them
+    // apart, since every one of them is called gpu_<n>.
+    auto& work = graph.add_cluster(name + "/work");
+    work.label = stage_node.cluster.empty() ? kotekan::leaf_name(name)
+                                            : kotekan::leaf_name(stage_node.cluster);
+    work.set_attr("style", "rounded").set_attr("color", kotekan::graph_cluster_line);
+    work.parent = device.id;
+
+    // The stage node itself belongs in the region: the host buffer edges are
+    // added centrally and point at the stage, so without a node inside the box
+    // they would end on an empty one drawn beside it.
+    stage_node.cluster = work.id;
+
+    // On a large pipeline the commands and device memory are most of the graph,
+    // and are not what one is looking at when following data between stages.
+    if (!graph.options.kernels)
+        return;
+
+    // A node per gpuCommand, chained in execution order after the stage node.
+    // Only the first instance of each command is drawn; the others are the same
+    // step of the pipeline operating on another frame.
+    std::string previous = name;
     for (auto& command : commands) {
         std::string shape;
+        std::string kind;
         switch (command[0]->get_command_type()) {
             case gpuCommandType::COPY_IN:
                 shape = "trapezium";
+                kind = "copy in";
                 break;
             case gpuCommandType::KERNEL:
                 shape = "box";
+                kind = "kernel";
                 break;
             case gpuCommandType::BARRIER:
                 shape = "parallelogram";
+                kind = "barrier";
                 break;
             case gpuCommandType::COPY_OUT:
                 shape = "invtrapezium";
+                kind = "copy out";
                 break;
             default:
                 // Hopefully one notices the type wasn't set with this shape.
                 shape = "diamond";
+                kind = "type not set";
                 break;
         }
-        dot += fmt::format("{:s}{:s}\"{:s}\" [shape={:s},label=\"{:s}\"];\n", prefix, prefix,
-                           command[0]->get_unique_name(), shape, command[0]->get_name());
-    }
-
-    // Draw edges between gpuCommands
-    dot += fmt::format("{:s}{:s}// start gpu command edges\n", prefix, prefix);
-    bool first_item = true;
-    std::string last_item = "";
-    for (auto& command : commands) {
-        if (first_item) {
-            last_item = command[0]->get_unique_name();
-            first_item = false;
-            continue;
+        const std::string id = command[0]->get_unique_name();
+        auto& node = graph.add_node(id);
+        node.add_line(command[0]->get_name());
+        node.add_line(kind);
+        // What this step of the pipeline costs on the device. The instances of a
+        // command share one tracker, so the first one has the whole picture.
+        const double seconds = command[0]->excute_time->get_avg();
+        if (!std::isnan(seconds) && seconds > 0.0) {
+            std::string timing = fmt::format(fmt("{:.3g} ms"), seconds * 1e3);
+            if (frame_arrival_period > 0.0)
+                timing += fmt::format(fmt(" · {:.3g}% of a frame"),
+                                      100.0 * seconds / frame_arrival_period);
+            node.add_line(timing);
         }
-        dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=dotted];\n", prefix, prefix,
-                           last_item, command[0]->get_unique_name());
-        last_item = command[0]->get_unique_name();
+        node.cluster = work.id;
+        node.set_category(kotekan::GraphCategory::Gpu)
+            .set_attr("shape", shape)
+            .set_attr("style", "filled");
+        graph.add_edge(previous, id).set_attr("style", "dotted");
+        previous = id;
     }
-    dot += fmt::format("{:s}{:s}// end gpu command edges\n", prefix, prefix);
 
-    // Draw GPU buffers (non-array)
+    // GPU memory, in a region of its own inside this stage's box.
+    auto& mem = graph.add_cluster(fmt::format("{:s}/mem", name));
+    mem.parent = work.id;
+    mem.label = "device memory";
+    mem.set_attr("style", "rounded").set_attr("color", kotekan::graph_cluster_line);
+    // GPU memory names are local to a gpuProcess ("voltage" on one device is not
+    // the "voltage" on the next), so the node ids carry the stage they belong to.
+    const std::string mem_prefix = gpu_mem_node_prefix(name);
     std::set<std::string> gpu_buffers;
     std::set<std::string> gpu_buffer_arrays;
     for (auto& command : commands) {
-        auto buffs = command[0]->get_gpu_buffers();
-        for (auto& buff : buffs)
+        for (auto& buff : command[0]->get_gpu_buffers()) {
             if (std::get<1>(buff))
                 gpu_buffer_arrays.insert(std::get<0>(buff));
             else
                 gpu_buffers.insert(std::get<0>(buff));
+        }
     }
-    dot += fmt::format("{:s}subgraph \"cluster_{:s}_mem\" {{\n", prefix, get_unique_name());
-    for (std::string name : gpu_buffer_arrays) {
-        // shape="box3d"
-        dot += fmt::format("{:s}{:s}\"{:s}\" [shape=\"oval\",color=\"hotpink3\",label=\"{:s}\"];\n",
-                           prefix, prefix, name, name);
+    // Arrays are per-frame (one region per buffer_depth slot); the rest is a
+    // single region shared by every frame in flight.
+    for (const auto& buffer_name : gpu_buffer_arrays) {
+        auto& node = graph.add_node(mem_prefix + buffer_name);
+        node.add_line(buffer_name);
+        node.add_line(fmt::format(fmt("array ×{:d}"), _gpu_buffer_depth));
+        node.cluster = mem.id;
+        node.set_category(kotekan::GraphCategory::Memory);
+    }
+    for (const auto& buffer_name : gpu_buffers) {
+        auto& node = graph.add_node(mem_prefix + buffer_name);
+        node.add_line(buffer_name);
+        node.cluster = mem.id;
+        node.set_category(kotekan::GraphCategory::Memory);
     }
 
-    for (std::string name : gpu_buffers) {
-        // shape="rect"
-        dot += fmt::format("{:s}{:s}\"{:s}\" [shape=\"oval\",color=\"hotpink\",label=\"{:s}\"];\n",
-                           prefix, prefix, name, name);
-    }
-    dot += fmt::format("{:s} }}\n", prefix);
-
-    // Draw I/O edges on GPU buffers
+    // Which commands read and write which GPU memory.
     for (auto& command : commands) {
-        auto buffs = command[0]->get_gpu_buffers();
-        for (auto& buff : buffs) {
-            std::string buffname = std::get<0>(buff);
-            if (std::get<2>(buff))
-                // Read
-                dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=solid];\n", prefix, prefix,
-                                   buffname, command[0]->get_unique_name());
-            if (std::get<3>(buff))
-                // Write
-                dot += fmt::format("{:s}{:s}\"{:s}\" -> \"{:s}\" [style=solid];\n", prefix, prefix,
-                                   command[0]->get_unique_name(), buffname);
+        for (auto& buff : command[0]->get_gpu_buffers()) {
+            const std::string buffer_id = mem_prefix + std::get<0>(buff);
+            if (std::get<2>(buff)) // read
+                graph.add_edge(buffer_id, command[0]->get_unique_name()).set_attr("style", "solid");
+            if (std::get<3>(buff)) // write
+                graph.add_edge(command[0]->get_unique_name(), buffer_id).set_attr("style", "solid");
         }
     }
 
-    // Add any extra DOT commands...
-    for (auto& command : commands) {
-        dot += command[0]->get_extra_dot(prefix);
-    }
-
-    dot += fmt::format("{:s}}}\n", prefix);
-
-    return dot;
+    // Anything else a command wants to say about its GPU memory.
+    for (auto& command : commands)
+        command[0]->add_graph_details(graph, mem_prefix);
 }

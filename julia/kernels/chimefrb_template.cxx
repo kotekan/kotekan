@@ -126,6 +126,11 @@ private:
                     {{{length}}},
                 {{/axes}}
             };
+            static constexpr std::array<std::ptrdiff_t, {{{name}}}_rank> {{{name}}}_dimscalings = {
+                {{#axes}}
+                    {{{dimscaling}}},
+                {{/axes}}
+            };
             static constexpr auto {{{name}}}_calc_stride = [](int dim) {
                 std::ptrdiff_t str = 1;
                 for (int d = 0; d < dim; ++d)
@@ -211,20 +216,37 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
             {{#hasbuffer}}
                 {{#hasringbuffer}}
                     {{{name}}}_buffer(
-                        {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
+                        {{{name}}}_name,
+                        {{{name}}}_quantity,
+                        reverse({{{name}}}_lengths),
+                        reverse({{{name}}}_labels),
+                        reverse({{{name}}}_dimscalings),
+                        *this
+                    ),
                 {{/hasringbuffer}}
                 {{^hasringbuffer}}
                     {{{name}}}_buffer(
-                        {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this
+                        {{{name}}}_name,
+                        {{{name}}}_quantity,
+                        reverse({{{name}}}_lengths),
+                        reverse({{{name}}}_labels),
+                        reverse({{{name}}}_dimscalings),
+                        *this
                         {{#do_once}}
                             , buffer_type_t::do_once
                         {{/do_once}}
-                        ),
+                    ),
                 {{/hasringbuffer}}
             {{/hasbuffer}}
             {{^hasbuffer}}
                 {{{name}}}_buffer(
-                    {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
+                    {{{name}}}_name,
+                    {{{name}}}_quantity,
+                    reverse({{{name}}}_lengths),
+                    reverse({{{name}}}_labels),
+                    reverse({{{name}}}_dimscalings),
+                    *this
+                ),
                 host_{{{name}}}_buffer({{{name}}}_length),
             {{/hasbuffer}}
         {{/isscalar}}

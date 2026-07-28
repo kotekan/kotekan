@@ -1,10 +1,3 @@
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
 import pytest
 import numpy as np
 import h5py
@@ -46,7 +39,10 @@ global_params = {
     },
     "wait": False,
     "sleep_before": 2.0,
-    "num_threads": 4,
+    # Run applyGains with many worker threads (more than the buffer depth) to
+    # reliably exercise the multi-threaded apply path; this is a regression
+    # guard against the frame hand-off race that duplicated output frames.
+    "num_threads": 16,
     "dataset_manager": {"use_dataset_broker": False},
 }
 

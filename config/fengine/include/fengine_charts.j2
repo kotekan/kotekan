@@ -18,7 +18,6 @@
 num_dishes_x: 8
 num_dishes_y: 8
 num_dishes: 64
-input_order: CHORDBeamformer
 
 # Telescope
 
@@ -53,6 +52,13 @@ telescope:
       label: CHARTS-{{"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[y]}}{{"{:02d}".format(x+1)}}
 {%   endfor %}
 {% endfor %}
+
+    sampling_rate_MHz: adc_frequency / 1.0e+6
+    fft_length: num_samples_per_frame
+    # CHARTS multiplexes multiple antenna elements onto the same ADC in a non-trivial pattern.
+    # This channel indexing describes the downstream result (the output of the F-engine).
+    min_science_freq_MHz: 1000 * adc_frequency / num_samples_per_frame / 1.0e+6
+    max_science_freq_MHz: 1671 * adc_frequency / num_samples_per_frame / 1.0e+6
 
 ################################################################################
 
@@ -113,15 +119,23 @@ num_times: 16384                 # frame length is 16384 * 3.333 us = 54.613 ms
 # Buffers
 
 host_bf_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["P", "D"]
+    dimscalings: [1, 1]
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 64)
+    value_type: uint1x8
+    extents: [num_times / 2 / 64, num_frequencies / 4, num_polarizations, num_dishes / 8, 64 / 8]
+    quantity_name: "pl_mask"
+    dimnames: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+    dimscalings: [128, 4, 1, 8, 16]
     metadata_pool: main_pool
 host_pl_mask_ringbuffer:
     kotekan_buffer: ring
@@ -129,9 +143,14 @@ host_pl_mask_ringbuffer:
     metadata_pool: main_pool
 
 host_pl_expanded_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)
+    # frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)
+    value_type: uint1x8
+    extents: [num_times / 64, num_frequencies, num_polarizations, num_dishes / 8, 64 / 8]
+    quantity_name: "pl_mask_exp"
+    dimnames: ["Thi64", "F", "P", "D8", "Tlo64"]
+    dimscalings: [64, 1, 1, 8, 8]
     metadata_pool: main_pool
 host_pl_expanded_mask_ringbuffer:
     kotekan_buffer: ring
@@ -139,9 +158,14 @@ host_pl_expanded_mask_ringbuffer:
     metadata_pool: main_pool
 
 host_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_dishes * num_polarizations * num_frequencies * num_times
+    # frame_size: num_dishes * num_polarizations * num_frequencies * num_times
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times, num_frequencies, num_polarizations, num_dishes]
+    quantity_name: "E"
+    dimnames: ["T", "F", "P", "D"]
+    dimscalings: [1, 1, 1, 1]
     metadata_pool: main_pool
 host_voltage_ringbuffer:
     kotekan_buffer: ring

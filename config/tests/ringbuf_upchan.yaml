@@ -106,6 +106,7 @@ gen_data:
     #array_shape: [ 32768, 128, 2, 64 ]
     array_shape: [2048, 128, 2, 64]
     dim_name: ["T", "F", "P", "D"]
+    dim_scaling: [1, 1, 1, 1]
     out_buf: host_voltage_buffer
 
 gen_data_2:

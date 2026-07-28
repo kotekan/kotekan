@@ -7,11 +7,9 @@ name: kotekan-ci-tests
 on:
   pull_request:
     branches:
-    - chord
     - develop
   push:
     branches:
-    - chord
     - develop
 
 # Cancel a superseded PR run on a new commit; let push runs finish.
@@ -27,12 +25,12 @@ jobs:
   # Kotekan docker image build and push
   kotekan-docker:
     permissions: write-all
-    uses: ./.github/workflows/build_push_docker.yml
+    uses: ./.github/workflows/build_push_docker.yaml
 
   kotekan-cpu-tests:
     name: CPU
     needs: kotekan-docker
-    uses: ./.github/workflows/test_kotekan_build.yml
+    uses: ./.github/workflows/test_kotekan_build.yaml
     with:
       container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
       ccache_key: ${{ matrix.ccache_key }}
@@ -200,10 +198,78 @@ jobs:
               cd $GITHUB_WORKSPACE/build-2404 && make docs
 
 
+  # Run the CPU test suites built with the Intel oneAPI compilers (icx/icpx).
+  # This is a trimmed-down version of the gcc CPU matrix above: one Test build
+  # shared via ccache across the pytest and boost-test suites.
+  kotekan-intel-tests:
+    name: Intel
+    needs: kotekan-docker
+    uses: ./.github/workflows/test_kotekan_build.yaml
+    with:
+      container_image: ${{ needs.kotekan-docker.outputs.docker_intel_img_name }}
+      ccache_key: ${{ matrix.ccache_key }}
+      cmake_defs: ${{ matrix.cmake_defs }}
+      post_build: ${{ matrix.post_build }}
+      runs_on: ${{ matrix.runs_on }} # Optional, but for these tests should generally be ubuntu-latest (GH)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+
+          # Test icx build + serial pytests
+          - id: test_icx_serial_pytests
+            ccache_key: kotekan-test-icx-cpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+            post_build: |
+              PYTHONPATH=$GITHUB_WORKSPACE/python
+              PYTEST_TIMEOUT=60
+              cd $GITHUB_WORKSPACE/tests
+              pytest -v -x -rs --durations=0 --timeout="${PYTEST_TIMEOUT}" -m serial
+
+          # Test icx build + parallel pytests
+          - id: test_icx_parallel_pytests
+            ccache_key: kotekan-test-icx-cpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=OFF
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=OFF
+            post_build: |
+              PYTHONPATH=$GITHUB_WORKSPACE/python
+              PYTEST_TIMEOUT=60
+              cd $GITHUB_WORKSPACE/tests
+              pytest -v -n auto -rs --dist=loadfile --durations=0 --timeout="${PYTEST_TIMEOUT}" -x -m 'not serial'
+
+          # Test icx build + boost tests
+          - id: test_icx_boost
+            ccache_key: kotekan-test-icx-cpu
+            cmake_defs: >-
+              -DCMAKE_BUILD_TYPE=Test -DWERROR=ON
+              -DCMAKE_LINK_WHAT_YOU_USE=ON -DCCACHE=ON -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx
+              -DUSE_OMP=ON -DUSE_NUMA=ON -DNO_MEMLOCK=ON
+              -DUSE_CUDA=OFF -DUSE_HIP=OFF -DUSE_OPENCL=OFF
+              -DUSE_ASDF=ON -DUSE_HDF5=ON -DUSE_GDAL=ON
+              -DUSE_AIRSPY=ON -DUSE_LAPACK_BLAZE=ON -DUSE_FFTW=ON -DUSE_JULIA=OFF -DUSE_DPDK=ON
+              -DWITH_TESTS=ON -DWITH_BOOST_TESTS=ON
+            post_build: |
+              TEST_TIMEOUT=30
+              bash $GITHUB_WORKSPACE/tests/boost/run_boost_tests.sh -v -t "${TEST_TIMEOUT}" $GITHUB_WORKSPACE/build-2404/tests/boost
+
+
   kotekan-gpu-tests:
     name: "GPU"
     needs: kotekan-docker
-    uses: ./.github/workflows/test_kotekan_build.yml
+    uses: ./.github/workflows/test_kotekan_build.yaml
     with:
       container_image: ${{ needs.kotekan-docker.outputs.docker_gpu_img_name }}
       ccache_key: ${{ matrix.ccache_key }}
@@ -276,7 +342,7 @@ jobs:
   kotekan-lint:
     name: "Lint"
     needs: kotekan-docker
-    uses: ./.github/workflows/test_kotekan_build.yml
+    uses: ./.github/workflows/test_kotekan_build.yaml
     with:
       container_image: ${{ needs.kotekan-docker.outputs.docker_cpu_img_name }}
       ccache_key: kotekan-lint
@@ -344,7 +410,7 @@ jobs:
           commit-message: "auto-lint: apply formatter fixes"
           title: "auto-lint: apply formatter fixes for ${{ env.SOURCE_BRANCH }}"
           body: |
-            Automatically opened by the `auto-lint-fix` job in `main.yml`
+            Automatically opened by the `auto-lint-fix` job in `main.yaml`
             after the `kotekan-lint` check failed on `${{ env.SOURCE_BRANCH }}`
             (commit `${{ env.SOURCE_SHA }}`).
 

@@ -1,26 +1,28 @@
 #include "rawFileWrite.hpp"
 
-#include <errno.h>                  // for errno
-#include <fcntl.h>                  // for open, O_CREAT, O_WRONLY
-#include <stdint.h>                 // for uint32_t, int32_t, uint8_t
-#include <stdio.h>                  // for snprintf, size_t
-#include <stdlib.h>                 // for exit
-#include <unistd.h>                 // for write, close, gethostname, ssize_t
-#include <atomic>                   // for __atomic_base, atomic
-#include <functional>               // for bind, function
-#include <memory>                   // for shared_ptr, __shared_ptr_access
+#include "Config.hpp"              // for Config
+#include "NDArray.hpp"             // for GenericNDArray, Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"              // for Buffer
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "errors.h"                // for ReturnCode, exit_kotekan
+#include "kotekanLogging.hpp"      // for ERROR, DEBUG, FATAL_ERROR, INFO
+#include "metadata.hpp"            // for metadataObject
+#include "prometheusMetrics.hpp"   // for Metrics, Gauge
+#include "visUtil.hpp"             // for current_time
+#include "waitingForMaxFrames.hpp" // for waiting_for_max_frames
 
-#include "Config.hpp"               // for Config
-#include "StageFactory.hpp"         // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"               // for Buffer
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "errors.h"                 // for ReturnCode, exit_kotekan
-#include "kotekanLogging.hpp"       // for ERROR, DEBUG, FATAL_ERROR, INFO
-#include "metadata.hpp"             // for metadataObject
-#include "prometheusMetrics.hpp"    // for Metrics, Gauge
-#include "visUtil.hpp"              // for current_time
-#include "waitingForMaxFrames.hpp"  // for waiting_for_max_frames
-#include "fmt.hpp"                  // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <atomic>     // for __atomic_base, atomic
+#include <errno.h>    // for errno
+#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdint.h>   // for uint32_t, int32_t, uint8_t
+#include <stdio.h>    // for snprintf, size_t
+#include <stdlib.h>   // for exit
+#include <unistd.h>   // for write, close, gethostname, ssize_t
 
 
 using kotekan::bufferContainer;
@@ -84,7 +86,7 @@ void rawFileWrite::main_thread() {
             break;
 
         // Check for NDArray on first frame (after producer may have set the descriptor)
-        if (buf->get_ndarray_frame_desc() && !_allow_ndarray) {
+        if (buf->get_frame_desc<kotekan::GenericNDArray>() && !_allow_ndarray) {
             FATAL_ERROR(
                 "rawFileWrite does not support NDArray buffers. The NDArray frame descriptor "
                 "is set dynamically and will not be written to the file. Set "

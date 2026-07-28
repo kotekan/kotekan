@@ -1,19 +1,20 @@
 #include "SimpleCrosscorr.hpp"
 
-#include <stdint.h>             // for uint32_t
-#include <stdlib.h>             // for calloc, free
-#include <string.h>             // for memset
-#include <functional>           // for bind, function
-#include <memory>               // for shared_ptr
+#include "Config.hpp"          // for Config
+#include "NDArray.hpp"         // for GenericNDArray
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp" // for make_fengine_desc
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp"  // for make_fengine_desc
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for DEBUG
-#include "NDArray.hpp"          // for GenericNDArray
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr
+#include <stdint.h>   // for uint32_t
+#include <stdlib.h>   // for calloc, free
+#include <string.h>   // for memset
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -43,9 +44,9 @@ SimpleCrosscorr::SimpleCrosscorr(Config& config, const std::string& unique_name,
     // crosscorr unit test captures buf_out via rawFileWrite. networkPowerStream
     // asserts the expected power_corr layout on its consumer side, so the
     // contract is still documented in code.
-    buf_inA->set_frame_desc(
+    buf_inA->ensure_frame_desc(
         kotekan_airspy::make_fengine_desc(buf_inA->frame_size / (2 * sizeof(float))));
-    buf_inB->set_frame_desc(
+    buf_inB->ensure_frame_desc(
         kotekan_airspy::make_fengine_desc(buf_inB->frame_size / (2 * sizeof(float))));
 }
 

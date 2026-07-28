@@ -146,6 +146,9 @@ private:
     static constexpr std::array<std::ptrdiff_t, G_rank> G_lengths = {
         1024,
     };
+    static constexpr std::array<std::ptrdiff_t, G_rank> G_dimscalings = {
+        1,
+    };
     static constexpr auto G_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -180,6 +183,12 @@ private:
         2,
         384,
         32768,
+    };
+    static constexpr std::array<std::ptrdiff_t, E_rank> E_dimscalings = {
+        1,
+        1,
+        1,
+        1,
     };
     static constexpr auto E_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -216,6 +225,12 @@ private:
         1024,
         2048,
     };
+    static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_dimscalings = {
+        1,
+        1,
+        1,
+        16,
+    };
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -249,6 +264,11 @@ private:
         32,
         16,
         384,
+    };
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_dimscalings = {
+        1,
+        1,
+        1,
     };
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -304,11 +324,14 @@ cudaUpchannelizer_pathfinder_U16::cudaUpchannelizer_pathfinder_U16(Config& confi
     Ebar_name(config.get<std::string>(unique_name, "upchan_U16_voltage_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
-    G_buffer(G_name, G_quantity, reverse(G_lengths), reverse(G_labels), *this,
-             buffer_type_t::do_once),
-    E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), *this),
-    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels), *this),
-    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
+    G_buffer(G_name, G_quantity, reverse(G_lengths), reverse(G_labels), reverse(G_dimscalings),
+             *this, buffer_type_t::do_once),
+    E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), reverse(E_dimscalings),
+             *this),
+    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels),
+                reverse(Ebar_dimscalings), *this),
+    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels),
+                reverse(info_dimscalings), *this),
     host_info_buffer(info_length),
 
     dummy() // avoid trailing comma
@@ -579,7 +602,7 @@ cudaUpchannelizer_pathfinder_U16::execute(cudaPipelineState& /*pipestate*/,
             }
         }
 
-        Ebar_buffer.check_for_poison(0x00, 0, Fmax - Fmin);
+        Ebar_buffer.check_for_poison(0x00, 0, cuda_upchannelization_factor * (Fmax - Fmin));
     } // if (poison_buffers)
 
     return record_end_event();

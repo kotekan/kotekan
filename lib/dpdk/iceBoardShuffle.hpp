@@ -9,6 +9,7 @@
 #define ICE_BOARD_SHUFFLE_HPP
 
 #include "Config.hpp"
+#include "NDArray.hpp" // for GenericNDArray, NDArray
 #include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
@@ -274,11 +275,12 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
         out_bufs[i] = buffer_container.get_buffer(buffer_names[i]);
         out_bufs[i]->register_producer(unique_name);
         /* new style array description */
-        out_bufs[i]
-            ->allocate_ndarray_frame_desc<
-                kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type, 3>(
-                "E", {1, ptrdiff_t(out_bufs[i]->frame_size) / sample_size, sample_size},
-                {"F", "T", "E"});
+        out_bufs[i]->ensure_frame_desc(
+            kotekan::NDArray<kotekan::GetType<kotekan::int4x2_swapped_withoffset>::type,
+                             3>::describe("E",
+                                          {1, ptrdiff_t(out_bufs[i]->frame_size) / sample_size,
+                                           sample_size},
+                                          {"F", "T", "E"}, {1, 1, 1}));
     }
 
     lost_samples_buf =
@@ -352,6 +354,10 @@ inline int iceBoardShuffle::handle_packet(struct rte_mbuf* mbuf) {
 
     if (unlikely(!iceBoardHandler::check_order(diff)))
         return 0;
+
+    // Accepting the packet, add to stats
+    rx_packets_total += 1;
+    rx_bytes_total += mbuf->pkt_len;
 
     // Handle lost packets
     // Note this handles packets for all loss reasons,
@@ -487,10 +493,13 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
         meta->dim[0] = 1;
         meta->dim[1] = out_bufs[i]->frame_size / sample_size;
         meta->dim[2] = sample_size;
+        meta->dim_scaling[0] = 1;
+        meta->dim_scaling[1] = 1;
+        meta->dim_scaling[2] = 1;
         meta->set_strides_simple();
         // frame_desc set in constructor
         /* test that things are consistent */
-        meta->check_frame_desc(out_bufs[i]->get_ndarray_frame_desc());
+        meta->check_frame_desc(out_bufs[i]->get_frame_desc<kotekan::GenericNDArray>());
 
         // Print out the chordMetadata
         DEBUG("chordMetadata: seq: {:d} freq_id: {:d} dim[0]: {:d} dim[1]: {:d}",
@@ -538,20 +547,39 @@ inline bool iceBoardShuffle::advance_frames(uint64_t new_seq, bool first_time) {
 
     std::strncpy(meta->dim_name[0], "T", sizeof meta->dim_name[0]);
     meta->dim[0] = lost_samples_buf->frame_size; // One byte per time sample
+    meta->dim_scaling[0] = 1;
     meta->dims = 1;
     std::strncpy(meta->name, "lost_samples", sizeof meta->name);
     meta->set_strides_simple();
     /* new style array description */
-    lost_samples_buf->allocate_ndarray_frame_desc<kotekan::GetType<kotekan::uint8>::type, 1>(
-        "lost_samples", {ptrdiff_t(lost_samples_buf->frame_size)}, {"T"});
+    lost_samples_buf->ensure_frame_desc(
+        kotekan::NDArray<kotekan::GetType<kotekan::uint8>::type, 1>::describe(
+            "lost_samples", {ptrdiff_t(lost_samples_buf->frame_size)}, {"T"}, {1}));
     /* test that things are consistent */
-    meta->check_frame_desc(lost_samples_buf->get_ndarray_frame_desc());
+    meta->check_frame_desc(lost_samples_buf->get_frame_desc<kotekan::GenericNDArray>());
 
 
     return true;
 }
 
 inline bool iceBoardShuffle::handle_lost_samples(int64_t lost_samples) {
+
+    // A single gap (nearly) as large as the whole lost samples ringbuffer can never be
+    // back-filled: reusing those frames requires the other producers in this link group to
+    // catch up first, but they may share an lcore with this handler and so would never be
+    // serviced again while we block in advance_frames(). Fail with a clear error instead of
+    // deadlocking all the DPDK lcores.
+    // Note: one byte per time sample in the lost samples frames.
+    if (unlikely(lost_samples >= (int64_t)(lost_samples_buf->num_frames - 1)
+                                     * (int64_t)lost_samples_buf->frame_size)) {
+        FATAL_ERROR("Port {:d}: gap of {:d} lost samples exceeds the lost samples buffer "
+                    "capacity ({:d} frames of {:d} samples). Back-filling it would deadlock "
+                    "the DPDK handlers. Check for major packet loss on this port and/or "
+                    "increase the number of frames in the lost samples buffer, closing "
+                    "kotekan!",
+                    port, lost_samples, lost_samples_buf->num_frames, lost_samples_buf->frame_size);
+        return false;
+    }
 
     // By design all the seq numbers for all frames should be the same here.
     int64_t lost_sample_location;
@@ -653,16 +681,19 @@ inline bool iceBoardShuffle::check_fpga_shuffle_flags(struct rte_mbuf* mbuf) {
     const int flag_len = 4; // 32-bits = 4 bytes
     const int rounding_factor = 2;
 
-    // Go to the last part of the packet
-    // Note this assumes that the footer doesn't cross two mbuf
-    // segment, but based on the packet design this should never happen.
+#ifndef NDEBUG
+    uint32_t previous_segment_sizes = 0;
+#endif
     while (mbuf->next != nullptr) {
+#ifndef NDEBUG
+        previous_segment_sizes += mbuf->data_len;
+#endif
         mbuf = mbuf->next;
     }
 
     int cur_mbuf_len = mbuf->data_len;
-    assert(cur_mbuf_len >= flag_len);
-    assert(2048 * 2 + cur_mbuf_len - flag_len - rounding_factor
+    assert(cur_mbuf_len >= flag_len + rounding_factor);
+    assert(previous_segment_sizes + cur_mbuf_len - flag_len - rounding_factor
            == 4922); // Make sure the flag address is correct.
     const uint8_t* mbuf_data =
         rte_pktmbuf_mtod_offset(mbuf, uint8_t*, cur_mbuf_len - flag_len - rounding_factor);

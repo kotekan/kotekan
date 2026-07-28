@@ -10,7 +10,6 @@ cpu_affinity: [0, 1]
 
 num_dishes: 1024
 num_polarizations: 2
-num_elements: num_dishes * num_polarizations
 num_freq_bins: 3 # actual CHIME has 4, but then its 4 bins of 4 freqs each, which is a worse test case
 
 
@@ -29,23 +28,30 @@ main_pool:
 # Buffers
 lost_samples_buffers:
     num_frames: buffer_depth
-    frame_size: num_frame_samples
     metadata_pool: main_pool
+    # Shared frame descriptor (scope-inherited by all three buffers)
+    value_type: uint8
+    extents: [num_frame_samples]
+    dimnames: ["T"]
     lost_samples_buffer_0:
-        kotekan_buffer: standard
+        kotekan_buffer: ndarray
     lost_samples_buffer_1:
-        kotekan_buffer: standard
+        kotekan_buffer: ndarray
     lost_samples_buffer_2:
-        kotekan_buffer: standard
+        kotekan_buffer: ndarray
 
 pl_mask_buffers:
     num_frames: buffer_depth
-    frame_size: num_frame_samples/pl_mask_downsampling_factor * num_dishes/pl_mask_dishes_per_bin * num_polarizations * num_freq_bins / 8
     metadata_pool: main_pool
+    # Shared frame descriptor (scope-inherited by both buffers)
+    value_type: uint1x8
+    extents: [num_frame_samples / pl_mask_downsampling_factor / pl_mask_hilo_split, num_freq_bins, num_polarizations, num_dishes / pl_mask_dishes_per_bin, pl_mask_hilo_split / 8]
+    dimnames: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+    dimscalings: [128, 4, 1, 8, 16]
     out_pl_mask_buffer:
-        kotekan_buffer: standard
+        kotekan_buffer: ndarray
     cmp_pl_mask_buffer:
-        kotekan_buffer: standard
+        kotekan_buffer: ndarray
 
 # Kotekan stages
 gen_test_data:
@@ -87,24 +93,20 @@ writers:
         kotekan_stage: hdf5FileWrite
         file_name: lost_samples_buffer_0
         in_buf: lost_samples_buffer_0
-        input_order: CHIMEBeamformer
     lost_samples_1:
         kotekan_stage: hdf5FileWrite
         file_name: lost_samples_buffer_1
         in_buf: lost_samples_buffer_1
-        input_order: CHIMEBeamformer
     lost_samples_2:
         kotekan_stage: hdf5FileWrite
         file_name: lost_samples_buffer_2
         in_buf: lost_samples_buffer_2
-        input_order: CHIMEBeamformer
     out_pl_mask:
         kotekan_stage: hdf5FileWrite
         file_name: out_pl_mask_buffer
         in_buf: out_pl_mask_buffer
-        input_order: CHIMEBeamformer
     cmp_pl_mask:
         kotekan_stage: hdf5FileWrite
         file_name: cmp_pl_mask_buffer
         in_buf: cmp_pl_mask_buffer
-        input_order: CHIMEBeamformer
+log_config_usage: fatal_error

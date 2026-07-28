@@ -15,9 +15,9 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata) {
     meta0.type = kotekan::DataType::uint8;
 
     meta0.dims = 3;
-    meta0.set_array_dimension(0, 11229, "D");
-    meta0.set_array_dimension(1, 23039, "P");
-    meta0.set_array_dimension(2, 18137, "Time");
+    meta0.set_array_dimension(0, 11229, "D", 1);
+    meta0.set_array_dimension(1, 23039, "P", 1);
+    meta0.set_array_dimension(2, 18137, "Time", 1);
     meta0.set_strides_simple();
     meta0.offset = 24987; // mostly 0 in code, but still
 

@@ -1,33 +1,35 @@
 #include "restServer.hpp"
 
-#include <arpa/inet.h>              // for inet_pton, ntohs
-#include <assert.h>                 // for assert
-#include <event2/buffer.h>          // for evbuffer_add, evbuffer_peek, iovec, evbuffer_iovec
-#include <event2/event.h>           // for event_add, event_base_dispatch, event_base_free, even...
-#include <event2/http.h>            // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
-#include <event2/keyvalq_struct.h>  // for evkeyvalq, evkeyval
-#include <event2/thread.h>          // for evthread_use_pthreads
-#include <evhttp.h>                 // for evhttp_request
-#include <netdb.h>                  // for addrinfo, freeaddrinfo, gai_strerror, getaddrinfo
-#include <netinet/in.h>             // for sockaddr_in, IPPROTO_IPV6, IPV6_V6ONLY
-#include <pthread.h>                // for pthread_setaffinity_np, pthread_setname_np
-#include <sched.h>                  // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <stdlib.h>                 // for exit, free, malloc
-#include <sys/socket.h>             // for setsockopt, bind, getsockname, shutdown, socket, AF_INET
-#include <sys/time.h>               // for timeval
-#include <unistd.h>                 // for close
-#include <json.hpp>                 // for json_ref, basic_json, input_adapter, iter_impl, json
-#include <cstring>                  // for memset
-#include <exception>                // for exception
-#include <mutex>                    // for unique_lock
-#include <stdexcept>                // for runtime_error
-#include <string>                   // for basic_string, string, allocator, operator!=, operator<
-#include <utility>                  // for pair
-#include <vector>                   // for vector
+#include "Config.hpp"         // for Config
+#include "kotekanLogging.hpp" // for ERROR_NON_OO, FatalError, DEBUG_NON_OO, WARN_NON_OO
 
-#include "Config.hpp"               // for Config
-#include "kotekanLogging.hpp"       // for ERROR_NON_OO, FatalError, DEBUG_NON_OO, WARN_NON_OO
-#include "fmt.hpp"                  // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <arpa/inet.h>             // for inet_pton, ntohs
+#include <assert.h>                // for assert
+#include <cstring>                 // for memset
+#include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_iovec
+#include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
+#include <event2/http.h>           // for evhttp_send_reply, evhttp_add_header, evhttp_request_...
+#include <event2/keyvalq_struct.h> // for evkeyvalq, evkeyval
+#include <event2/thread.h>         // for evthread_use_pthreads
+#include <evhttp.h>                // for evhttp_request
+#include <exception>               // for exception
+#include <json.hpp>                // for json_ref, basic_json, input_adapter, iter_impl, json
+#include <mutex>                   // for unique_lock
+#include <netdb.h>                 // for addrinfo, freeaddrinfo, gai_strerror, getaddrinfo
+#include <netinet/in.h>            // for sockaddr_in, IPPROTO_IPV6, IPV6_V6ONLY
+#include <pthread.h>               // for pthread_setaffinity_np, pthread_setname_np
+#include <sched.h>                 // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <shared_mutex>            // for shared_lock, shared_timed_mutex
+#include <stdexcept>               // for runtime_error
+#include <stdlib.h>                // for exit, free, malloc
+#include <string>                  // for basic_string, string, allocator, operator!=, operator<
+#include <sys/socket.h>            // for setsockopt, bind, getsockname, shutdown, socket, AF_INET
+#include <sys/time.h>              // for timeval
+#include <unistd.h>                // for close
+#include <utility>                 // for pair
+#include <vector>                  // for vector
 #ifdef MAC_OSX
 #include "osxBindCPU.hpp"
 #endif
@@ -218,8 +220,6 @@ void restServer::start(const std::string& bind_address, u_short port) {
         _port = ntohs(sin.sin_port);
     }
 
-    // Register endpoints before starting the loop thread: once dispatch
-    // runs, handle_request reads the callback map without a read lock.
     using namespace std::placeholders;
     register_get_callback("/endpoints", std::bind(&restServer::endpoint_list_callback, this, _1));
 
@@ -238,77 +238,85 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
 
     DEBUG2_NON_OO("restServer: Got request with url {:s}", url);
 
+    // Resolve aliases and look up callbacks under a shared lock, but invoke
+    // a copy of the callback after releasing it: callbacks (e.g. /start,
+    // /stop) may themselves register or remove endpoints, which takes this
+    // lock exclusively.
     {
-        // TODO This function should be locked against changes to the callback
-        // maps from other threads.  However there are a number of callbacks (start, stop, etc)
-        // which add or remove callbacks from the maps. So a more fine-grained
-        // locking system is needed here.
-        // std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
-        // Probably this should be a recursive mutex?
-        // https://en.cppreference.com/w/cpp/thread/recursive_mutex.html
-        map<string, string>& aliases = server->get_aliases();
-        if (aliases.find(url) != aliases.end()) {
-            url = aliases[url];
+        std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
+        auto alias = server->aliases.find(url);
+        if (alias != server->aliases.end()) {
+            url = alias->second;
         }
+    }
 
-        if (request->type == EVHTTP_REQ_OPTIONS) {
-            // CORS preflight. Always reply 200 with the configured CORS headers;
-            // routing happens on the subsequent GET/POST.
-            connectionInstance conn(request);
-            conn.send_empty_reply(HTTP_RESPONSE::OK);
+    if (request->type == EVHTTP_REQ_OPTIONS) {
+        // CORS preflight. Always reply 200 with the configured CORS headers;
+        // routing happens on the subsequent GET/POST.
+        connectionInstance conn(request);
+        conn.send_empty_reply(HTTP_RESPONSE::OK);
+        return;
+    }
+
+    if (request->type == EVHTTP_REQ_GET) {
+        connectionInstance conn(request);
+        std::function<void(connectionInstance&)> callback;
+        {
+            std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
+            auto it = server->get_callbacks.find(url);
+            if (it != server->get_callbacks.end()) {
+                callback = it->second;
+            }
+        }
+        if (!callback) {
+            DEBUG_NON_OO("restServer: GET Endpoint {:s} called, but not found", url);
+            conn.send_error("Not Found", HTTP_RESPONSE::NOT_FOUND);
+            return;
+        }
+        try {
+            callback(conn);
+        } catch (const FatalError& e) {
+            ERROR_NON_OO("restServer: GET endpoint {:s} raised FatalError: {:s}", url, e.what());
+            conn.send_error("Fatal error while handling request", HTTP_RESPONSE::INTERNAL_ERROR);
+        } catch (const std::exception& e) {
+            ERROR_NON_OO("restServer: GET endpoint {:s} threw exception: {:s}", url, e.what());
+            conn.send_error("Internal error while handling request", HTTP_RESPONSE::INTERNAL_ERROR);
+        }
+        return;
+    }
+
+    if (request->type == EVHTTP_REQ_POST) {
+        connectionInstance conn(request);
+        std::function<void(connectionInstance&, json&)> callback;
+        {
+            std::shared_lock<std::shared_timed_mutex> lock(server->callback_map_lock);
+            auto it = server->json_callbacks.find(url);
+            if (it != server->json_callbacks.end()) {
+                callback = it->second;
+            }
+        }
+        if (!callback) {
+            DEBUG_NON_OO("restServer: POST Endpoint {:s} called, but not found", url);
+            conn.send_error("Not Found", HTTP_RESPONSE::NOT_FOUND);
             return;
         }
 
-        if (request->type == EVHTTP_REQ_GET) {
-            connectionInstance conn(request);
-            if (!server->get_callbacks.count(url)) {
-                DEBUG_NON_OO("restServer: GET Endpoint {:s} called, but not found", url);
-                conn.send_error("Not Found", HTTP_RESPONSE::NOT_FOUND);
-                return;
-            }
-            try {
-                server->get_callbacks[url](conn);
-            } catch (const FatalError& e) {
-                ERROR_NON_OO("restServer: GET endpoint {:s} raised FatalError: {:s}", url,
-                             e.what());
-                conn.send_error("Fatal error while handling request",
-                                HTTP_RESPONSE::INTERNAL_ERROR);
-            } catch (const std::exception& e) {
-                ERROR_NON_OO("restServer: GET endpoint {:s} threw exception: {:s}", url, e.what());
-                conn.send_error("Internal error while handling request",
-                                HTTP_RESPONSE::INTERNAL_ERROR);
-            }
+        // We currently assume that POST requests come with a JSON message
+        json json_request;
+        if (server->handle_json(request, json_request) != 0) {
             return;
         }
 
-        if (request->type == EVHTTP_REQ_POST) {
-            connectionInstance conn(request);
-            if (!server->json_callbacks.count(url)) {
-                DEBUG_NON_OO("restServer: POST Endpoint {:s} called, but not found", url);
-                conn.send_error("Not Found", HTTP_RESPONSE::NOT_FOUND);
-                return;
-            }
-
-            // We currently assume that POST requests come with a JSON message
-            json json_request;
-            if (server->handle_json(request, json_request) != 0) {
-                return;
-            }
-
-            try {
-                server->json_callbacks[url](conn, json_request);
-            } catch (const FatalError& e) {
-                ERROR_NON_OO("restServer: POST endpoint {:s} raised FatalError: {:s}", url,
-                             e.what());
-                conn.send_error("Fatal error while handling request",
-                                HTTP_RESPONSE::INTERNAL_ERROR);
-            } catch (const std::exception& e) {
-                ERROR_NON_OO("restServer: POST endpoint {:s} threw exception: {:s}", url, e.what());
-                conn.send_error("Internal error while handling request",
-                                HTTP_RESPONSE::INTERNAL_ERROR);
-            }
-            return;
+        try {
+            callback(conn, json_request);
+        } catch (const FatalError& e) {
+            ERROR_NON_OO("restServer: POST endpoint {:s} raised FatalError: {:s}", url, e.what());
+            conn.send_error("Fatal error while handling request", HTTP_RESPONSE::INTERNAL_ERROR);
+        } catch (const std::exception& e) {
+            ERROR_NON_OO("restServer: POST endpoint {:s} threw exception: {:s}", url, e.what());
+            conn.send_error("Internal error while handling request", HTTP_RESPONSE::INTERNAL_ERROR);
         }
+        return;
     }
 
     DEBUG_NON_OO("restServer: Call back with method != POST|GET called!");
@@ -421,10 +429,6 @@ void restServer::remove_all_aliases() {
     aliases.clear();
 }
 
-map<string, string>& restServer::get_aliases() {
-    return aliases;
-}
-
 string restServer::get_http_message(struct evhttp_request* request) {
 
     string str_data;
@@ -501,6 +505,8 @@ int restServer::handle_json(struct evhttp_request* request, json& json_parse) {
 
 void restServer::endpoint_list_callback(connectionInstance& conn) {
     json reply;
+
+    std::shared_lock<std::shared_timed_mutex> lock(callback_map_lock);
 
     vector<string> get_callback_names;
     for (auto& endpoint : get_callbacks) {
@@ -673,9 +679,10 @@ void connectionInstance::send_empty_reply(const HTTP_RESPONSE& status) {
                       restServer::get_http_responce_code_text(status).c_str(), event_buffer);
 }
 
-void connectionInstance::send_text_reply(const string& reply_message) {
+void connectionInstance::send_text_reply(const string& reply_message, const string& content_type) {
     maybe_add_cors_headers(request);
-    if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type", "text/plain")
+    if (evhttp_add_header(evhttp_request_get_output_headers(request), "Content-Type",
+                          content_type.c_str())
         != 0) {
         throw std::runtime_error("Failed to add header to reply");
     }

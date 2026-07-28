@@ -1,12 +1,5 @@
 """Read a frbBuffer dump into python.
 """
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
 import ctypes
 import os
 import io
@@ -49,7 +42,7 @@ class FrbPacket(ctypes.Structure):
         with io.FileIO(filename, "rb") as fh:
             fh.readinto(buf)
 
-        return from_buffer(cls, buf[4:], max_packets, filename)
+        return cls.from_buffer(buf[4:], max_packets, filename)
 
     @classmethod
     def from_buffer(cls, buffer, max_packets=None, name=None):

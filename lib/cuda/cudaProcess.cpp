@@ -1,18 +1,19 @@
 #include "cudaProcess.hpp"
 
-#include <stdint.h>                // for uint32_t, int32_t
-#include <mutex>                   // for recursive_mutex, lock_guard
+#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
+#include "cudaCommand.hpp"        // for cudaCommand, _factory_aliascudaCommandState, _factory_...
+#include "cudaEventContainer.hpp" // for cudaEventContainer
+#include "cudaUtils.hpp"          // for CHECK_CUDA_ERROR
+#include "cuda_profiler_api.h"    // for cudaProfilerStart, cudaProfilerStop
+#include "cuda_runtime_api.h"     // for cudaHostRegister
+#include "driver_types.h"         // for CUevent_st, cudaEvent_t, cudaHostRegisterDefault
+#include "factory.hpp"            // for FACTORY, FACTORY_VARIANT
+#include "kotekanLogging.hpp"     // for DEBUG, DEBUG2
 
-#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
-#include "cudaCommand.hpp"         // for cudaCommand, _factory_aliascudaCommandState, _factory_...
-#include "cudaEventContainer.hpp"  // for cudaEventContainer
-#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
-#include "cuda_profiler_api.h"     // for cudaProfilerStart, cudaProfilerStop
-#include "cuda_runtime_api.h"      // for cudaHostRegister
-#include "driver_types.h"          // for CUevent_st, cudaEvent_t, cudaHostRegisterDefault
-#include "factory.hpp"             // for FACTORY, FACTORY_VARIANT
-#include "kotekanLogging.hpp"      // for DEBUG, DEBUG2
-#include "fmt.hpp"                 // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <mutex>    // for recursive_mutex, lock_guard
+#include <stdint.h> // for uint32_t, int32_t
 
 using kotekan::bufferContainer;
 using kotekan::Config;

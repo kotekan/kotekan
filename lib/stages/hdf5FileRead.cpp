@@ -2,6 +2,7 @@
 
 #include <Config.hpp>          // for Config
 #include <DataType.hpp>        // for string_to_type, DataType
+#include <NDArray.hpp>         // for GenericNDArray
 #include <Stage.hpp>           // for Stage
 #include <StageFactory.hpp>    // for REGISTER_KOTEKAN_STAGE
 #include <Symbol.hpp>          // for Symbol
@@ -138,8 +139,8 @@ public:
             assert(dims.at(1) == 2);
             std::vector<std::array<std::int64_t, 2>> dish_grid_indices(dims.at(0));
             attr.read_raw(reinterpret_cast<std::int64_t*>(dish_grid_indices.data()));
-            const auto& expected_dish_grid_indices =
-                telescope.get_main_array_grid_indices(num_dishes, ElementOrder::CHORDBeamformer);
+            const auto& expected_dish_grid_indices = telescope.get_main_array_grid_indices(
+                num_dishes, telescope.fiducial_element_order());
             if (dish_grid_indices != expected_dish_grid_indices)
                 FATAL_ERROR("Attribute dish_grid_indices is {}, expected {}", dish_grid_indices,
                             expected_dish_grid_indices);
@@ -154,7 +155,7 @@ public:
             std::vector<std::array<double, 3>> feed_positions_m(dims.at(0));
             attr.read_raw(reinterpret_cast<double*>(feed_positions_m.data()));
             const auto& expected_feed_positions_m =
-                telescope.get_feed_positions_m(num_dishes, ElementOrder::CHORDBeamformer);
+                telescope.get_feed_positions_m(num_dishes, telescope.fiducial_element_order());
             if (feed_positions_m != expected_feed_positions_m)
                 FATAL_ERROR("Attribute feed_positions_m is {}, expected {}", feed_positions_m,
                             expected_feed_positions_m);
@@ -244,8 +245,11 @@ public:
                 const auto dim_names =
                     dataset.getAttribute("dim_names").read<std::vector<std::string>>();
                 assert(std::ptrdiff_t(dim_names.size()) == meta->dims);
+                const auto dim_scalings =
+                    dataset.getAttribute("dim_scalings").read<std::vector<std::ptrdiff_t>>();
+                assert(std::ptrdiff_t(dim_scalings.size()) == meta->dims);
                 for (int d = 0; d < meta->dims; ++d)
-                    meta->set_array_dimension(d, dims.at(d), dim_names.at(d));
+                    meta->set_array_dimension(d, dims.at(d), dim_names.at(d), dim_scalings.at(d));
                 {
                     std::ptrdiff_t npoints = 1;
                     for (int d = meta->dims - 1; d >= 0; --d) {
@@ -291,12 +295,15 @@ public:
                     assert(value_type != kotekan::unknown_type);
                     const std::string name = dataset.getAttribute("name").read<std::string>();
 
-                    std::vector<ptrdiff_t> dimensions(dims.begin(), dims.end());
+                    std::vector<std::ptrdiff_t> dimensions(dims.begin(), dims.end());
                     std::vector<kotekan::Symbol> dimnames(dim_names.begin(), dim_names.end());
+                    std::vector<std::ptrdiff_t> dimscalings(dim_scalings.begin(),
+                                                            dim_scalings.end());
 
-                    buffer->allocate_ndarray_frame_desc(value_type, name, dimensions, dimnames);
+                    buffer->require_frame_desc(kotekan::GenericNDArray::describe(
+                        value_type, name, dimensions, dimnames, dimscalings));
                     /* test that things are consistent */
-                    meta->check_frame_desc(buffer->get_ndarray_frame_desc());
+                    meta->check_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
                 }
 
                 // Read buffer

@@ -1,21 +1,22 @@
 #include "fftwEngine.hpp"
 
-#include <stdint.h>             // for int16_t
-#include <string.h>             // for memcpy
-#include <functional>           // for bind, function
-#include <mutex>                // for mutex, lock_guard
-#include <memory>               // for shared_ptr
-
 #include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp"  // for make_fengine_desc
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "fftwPlannerLock.hpp"  // for fftw_planner_mutex
-#include "kotekanLogging.hpp"   // for DEBUG, FATAL_ERROR
-#include "fmt.hpp"              // for compile_string_to_view
-#include "NDArray.hpp"          // for GenericNDArray
 #include "GnssChanMetadata.hpp" // for get_gnss_chan_metadata, metadata_is_gnss_chan
+#include "NDArray.hpp"          // for GenericNDArray
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp" // for make_fengine_desc
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "fftwPlannerLock.hpp" // for fftw_planner_mutex
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
+
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr
+#include <mutex>      // for mutex, lock_guard
+#include <stdint.h>   // for int16_t
+#include <string.h>   // for memcpy
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -33,11 +34,11 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    // Output is cfloat32 1-D regardless of input_type (we accept either
-    // int16 reals or cint16 IQ pairs upstream, so in_buf's descriptor is
-    // intentionally left for the upstream producer to assert).
-    out_buf->set_frame_desc(
-        kotekan_airspy::make_fengine_desc(out_buf->frame_size / sizeof(fftwf_complex)));
+    // Output is cfloat32 1-D regardless of input_type (we accept either int16
+    // reals or cint16 IQ pairs upstream, so in_buf's descriptor is intentionally
+    // left for the upstream producer to assert). out_buf's descriptor is declared
+    // in config (kotekan_buffer: ndarray); require_frame_desc confirms it.
+    out_buf->require_frame_desc();
 
     _spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 128);
 

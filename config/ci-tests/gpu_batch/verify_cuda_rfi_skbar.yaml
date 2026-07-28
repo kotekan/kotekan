@@ -12,11 +12,9 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: INFO
 
-num_gpus: 1
 buffer_depth: 4
 cpu_affinity: [0]
 sizeof_float: 4
-sizeof_int: 4
 sizeof_long: 8
 
 # For faster CHORD testing, we're using...
@@ -39,6 +37,15 @@ rfi_mu_max: 50.0
 rfi_num_times: samples_per_data_set / rfi_downsampling_factor
 rfi_num_times_bar: rfi_num_times / rfi_second_downsampling_factor
 
+updatable_config:
+    bad_inputs:
+        kotekan_update_endpoint: json
+        # yamlfix:off
+        bad_inputs: [3, 12, 46, 47, 48, 84, 99, 107, 120]
+        # yamlfix:on
+        start_time: 1535048997.
+        update_id: "initial_flags"
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata
@@ -47,45 +54,52 @@ main_pool:
 # Buffers
 
 host_bf_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: num_elements
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_s012bar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_skbar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_float
+    value_type: float32
+    extents: [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_skbartilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: rfi_num_times_bar * num_local_freq * 3 * sizeof_float
+    value_type: float32
+    extents: [rfi_num_times_bar, num_local_freq, 3]
     metadata_pool: main_pool
 
 simulated_rfi_skbar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_float
+    value_type: float32
+    extents: [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 simulated_rfi_skbartilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: rfi_num_times_bar * num_local_freq * 3 * sizeof_float
+    value_type: float32
+    extents: [rfi_num_times_bar, num_local_freq, 3]
     metadata_pool: main_pool
 
 simulated_rfi_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_local_freq / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     metadata_pool: main_pool
 
 
@@ -114,14 +128,11 @@ gen_rfi_s012bar:
     downsampling_factor: rfi_downsampling_factor * rfi_second_downsampling_factor
     num_frames: 2 * buffer_depth
 
-gen_bf_mask:
-    type: random8
-    kotekan_stage: testDataGen
+set_bf_mask:
+    kotekan_stage: bufferBadInputs
+    updatable_config:
+        bad_inputs: /updatable_config/bad_inputs
     out_buf: host_bf_mask_buffer
-    name: "bf_mask"
-    array_shape: [2, 64]
-    dim_name: ["P", "D"]
-    num_frames: 1
 
 run_send_rfi_s012bar:
     gpu_0:
@@ -152,7 +163,7 @@ run_rfi_skbar:
             host_rfi_skbartilde_ringbuffer: host_rfi_skbartilde_ringbuffer
         commands:
             - name: cudaInputData
-              do_once: true
+              do_once: false
               in_buf: host_bf_mask_buffer
               gpu_mem: bf_mask_buffer
             - name: cudaSyncInput
@@ -234,3 +245,4 @@ check_rfi_skbartilde_data:
 #   max_num_errors_logged: 64
 #   num_frames_to_test: 2 * buffer_depth
 #   check_metadata: True
+log_config_usage: fatal_error

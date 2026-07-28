@@ -50,8 +50,6 @@ rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
     rfi_downsampling_factor = config.get<size_t>(unique_name, "rfi_downsampling_factor");
     rfi_second_downsampling_factor =
         config.get<size_t>(unique_name, "rfi_second_downsampling_factor");
-    // Stage-specific params
-    num_sigma_deviations = config.get<uint16_t>(unique_name, "num_sigma_deviations");
     // Packet/network config params
     frames_per_packet = config.get_default<size_t>(unique_name, "frames_per_packet", 1);
     dest_port = config.get<size_t>(unique_name, "destination_port");
@@ -126,7 +124,12 @@ void rfiBroadcast::main_thread() {
     const size_t FSE = FS * num_elements;
 
     // Sort out the rfi mask buffer time stride
-    auto rfi_frame_desc = rfi_mask_buf->get_ndarray_frame_desc();
+    auto rfi_frame_desc = rfi_mask_buf->get_frame_desc<kotekan::GenericNDArray>();
+    if (!rfi_frame_desc)
+        FATAL_ERROR("rfi_mask_buf ({:s}) has no NDArray frame descriptor; rfiBroadcast needs the "
+                    "mask shape, so declare the buffer with `kotekan_buffer: ndarray` in the "
+                    "config",
+                    rfi_mask_buf->buffer_name);
     auto _rfi_frame_rank = rfi_frame_desc->get_rank();
     auto _rfi_frame_dims = rfi_frame_desc->get_extents();
     size_t _rfi_t_hi = _rfi_frame_dims[_rfi_frame_rank - 1];

@@ -1,36 +1,38 @@
-#include <unistd.h>                            // for sleep
-#include <highfive/H5Attribute.hpp>            // for Attribute, Attribute::read
-#include <highfive/H5DataSet.hpp>              // for DataSet, AnnotateTraits::getAttribute, Dat...
-#include <highfive/H5DataSpace.hpp>            // for DataSpace, DataSpace::getDimensions
-#include <highfive/H5Exception.hpp>            // for FileException
-#include <highfive/H5File.hpp>                 // for File, File::File, NodeTraits::getDataSet
-#include <highfive/H5Selection.hpp>            // for Selection, SliceTraits::read_raw, SliceTra...
-#include <highfive/bits/H5Selection_misc.hpp>  // for Selection::getSpace
-#include <algorithm>                           // for minmax_element, copy, find
-#include <cassert>                             // for assert
-#include <cstddef>                             // for size_t, ptrdiff_t
-#include <cstdint>                             // for uint8_t
-#include <cstring>                             // for memchr, memcpy, memset
-#include <functional>                          // for function
-#include <memory>                              // for allocator, __shared_ptr_access, shared_ptr
-#include <sstream>                             // for basic_ostream, operator<<, basic_ostringst...
-#include <string>                              // for basic_string, string, char_traits, operator==
-#include <vector>                              // for vector
-#include <utility>                             // for pair
+#include "Config.hpp"            // for Config
+#include "DataType.hpp"          // for string_to_type, DataType
+#include "NDArray.hpp"           // for GenericNDArray
+#include "Stage.hpp"             // for Stage
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Symbol.hpp"            // for Symbol
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
+#include "hdf5Files.hpp"         // for hdf5
+#include "kotekanLogging.hpp"    // for DEBUG, INFO, FATAL_ERROR
+#include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "visUtil.hpp"           // for current_time
 
-#include "Config.hpp"                          // for Config
-#include "DataType.hpp"                        // for string_to_type, DataType
-#include "Stage.hpp"                           // for Stage
-#include "StageFactory.hpp"                    // for REGISTER_KOTEKAN_STAGE
-#include "Symbol.hpp"                          // for Symbol
-#include "buffer.hpp"                          // for Buffer
-#include "bufferContainer.hpp"                 // for bufferContainer
-#include "chordMetadata.hpp"                   // for chordMetadata, get_chord_metadata
-#include "hdf5Files.hpp"                       // for hdf5
-#include "kotekanLogging.hpp"                  // for DEBUG, INFO, FATAL_ERROR
-#include "prometheusMetrics.hpp"               // for Metrics, Gauge
-#include "visUtil.hpp"                         // for current_time
-#include "fmt.hpp"                             // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>                          // for minmax_element, copy, find
+#include <cassert>                            // for assert
+#include <cstddef>                            // for size_t, ptrdiff_t
+#include <cstdint>                            // for uint8_t
+#include <cstring>                            // for memchr, memcpy, memset
+#include <functional>                         // for function
+#include <highfive/H5Attribute.hpp>           // for Attribute, Attribute::read
+#include <highfive/H5DataSet.hpp>             // for DataSet, AnnotateTraits::getAttribute, Dat...
+#include <highfive/H5DataSpace.hpp>           // for DataSpace, DataSpace::getDimensions
+#include <highfive/H5Exception.hpp>           // for FileException
+#include <highfive/H5File.hpp>                // for File, File::File, NodeTraits::getDataSet
+#include <highfive/H5Selection.hpp>           // for Selection, SliceTraits::read_raw, SliceTra...
+#include <highfive/bits/H5Selection_misc.hpp> // for Selection::getSpace
+#include <memory>                             // for allocator, __shared_ptr_access, shared_ptr
+#include <sstream>                            // for basic_ostream, operator<<, basic_ostringst...
+#include <string>                             // for basic_string, string, char_traits, operator==
+#include <unistd.h>                           // for sleep
+#include <utility>                            // for pair
+#include <vector>                             // for vector
 
 using namespace hdf5;
 using namespace HighFive;
@@ -91,7 +93,8 @@ public:
             assert(type == kotekan::int4x2_swapped_withoffset);
             const auto dim_names =
                 dataset.getAttribute("dim_names").read<std::vector<std::string>>();
-            const auto dim_scaling = dataset.getAttribute("dim_scalings").read<std::vector<int>>();
+            const auto dim_scalings =
+                dataset.getAttribute("dim_scalings").read<std::vector<std::ptrdiff_t>>();
 
             const auto coarse_freq = dataset.getAttribute("coarse_freq").read<std::vector<int>>();
             const auto freq_upchan_factor =
@@ -108,20 +111,26 @@ public:
             // Convert dimensions
             assert(dims.size() == 4);
             assert(dim_names.size() == 4);
+            assert(dim_scalings.size() == 4);
             std::vector<std::ptrdiff_t> new_dims;
             std::vector<kotekan::Symbol> new_dim_names;
+            std::vector<std::ptrdiff_t> new_dim_scalings;
             if (!transpose_frequency_and_time) {
                 // Standard case
                 new_dims.push_back(num_times);
                 new_dims.push_back(frequency_channels.size());
                 new_dim_names.push_back(dim_names.at(0));
                 new_dim_names.push_back(dim_names.at(1));
+                new_dim_scalings.push_back(dim_scalings.at(0));
+                new_dim_scalings.push_back(dim_scalings.at(1));
             } else {
                 // For CHIME, tranpose time and frequency
                 new_dims.push_back(frequency_channels.size());
                 new_dims.push_back(num_times);
                 new_dim_names.push_back(dim_names.at(1));
                 new_dim_names.push_back(dim_names.at(0));
+                new_dim_scalings.push_back(dim_scalings.at(1));
+                new_dim_scalings.push_back(dim_scalings.at(0));
             }
             if (!combine_dishes_and_polarizations) {
                 // Standard case
@@ -129,14 +138,18 @@ public:
                 new_dims.push_back(dims.at(3));
                 new_dim_names.push_back(dim_names.at(2));
                 new_dim_names.push_back(dim_names.at(3));
+                new_dim_scalings.push_back(dim_scalings.at(2));
+                new_dim_scalings.push_back(dim_scalings.at(3));
             } else {
                 // For CHIME, combine dishes and polarizations into elements
                 new_dims.push_back(dims.at(2) * dims.at(3));
                 new_dim_names.push_back("E");
+                new_dim_scalings.push_back(dim_scalings.at(2) * dim_scalings.at(3));
             }
 
             // Find which frequencies to read
             assert(std::string(dim_names.at(1)) == "F");
+            assert(dim_scalings.at(1) == 1);
             INFO("This file has {} frequencies", dims.at(1));
             INFO("Will read {} frequencies", frequency_channels.size());
             std::vector<int> frequency_indices(frequency_channels.size());
@@ -160,6 +173,7 @@ public:
 
             // Calculate available number of frames
             assert(std::string(dim_names.at(0)) == "T");
+            assert(dim_scalings.at(0) == 1);
             const std::ptrdiff_t available_num_times = dims.at(0);
             const std::ptrdiff_t available_num_frames = available_num_times / num_times;
             INFO("This file has {} time samples", available_num_times);
@@ -185,11 +199,11 @@ public:
                     break;
 
                 // Set metadata
-                buffer->allocate_ndarray_frame_desc(type, kotekan::Symbol(name), new_dims,
-                                                    new_dim_names);
+                buffer->require_frame_desc(kotekan::GenericNDArray::describe(
+                    type, kotekan::Symbol(name), new_dims, new_dim_names, new_dim_scalings));
                 buffer->allocate_new_metadata_object(frame_id);
                 const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
-                meta->set_from_frame_desc(buffer->get_ndarray_frame_desc());
+                meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
 
                 meta->set_coarse_freq(frequency_channels);
                 meta->set_freq_upchan_factor(new_freq_upchan_factor);

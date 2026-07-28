@@ -1,6 +1,7 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType
 #include "N2Util.hpp"          // for frameID
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "Stage.hpp"           // for Stage
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
@@ -206,46 +207,40 @@ gpuSimulateRFISK::gpuSimulateRFISK(Config& config, const std::string& unique_nam
     out_rfi_mask_buf->register_producer(unique_name);
 
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
-    size_t bf_mask_size = _num_elements;
-    size_t rfi_s012_size = nt * _num_local_freq * 3 * _num_elements * sizeof(uint64_t);
-
     // Check input sizes and buffer compatibility
     if (_samples_per_data_set % _rfi_downsampling_factor != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of rfi_downsampling_factor");
     }
     assert(_samples_per_data_set % _rfi_downsampling_factor == 0);
 
-    if (in_rfi_s012_buf->frame_size != rfi_s012_size) {
-        FATAL_ERROR("in_rfi_s012_buf ({:s}) has frame size: {:d}, expected: {:d}",
-                    in_rfi_s012_buf->buffer_name, in_rfi_s012_buf->frame_size, rfi_s012_size);
-    }
-    assert(in_rfi_s012_buf->frame_size == rfi_s012_size);
-
-    if (in_bf_mask_buf->frame_size != bf_mask_size) {
-        FATAL_ERROR("in_bf_mask_buf ({:s}) has frame size: {:d}, expected: {:d}",
-                    in_bf_mask_buf->buffer_name, in_bf_mask_buf->frame_size, bf_mask_size);
-    }
-    assert(in_bf_mask_buf->frame_size == bf_mask_size);
+    in_rfi_s012_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
+        _bar_mode ? "S012bar" : "S012", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
+        {_bar_mode ? "Trfibar" : "Trfi", "F", "S", "P", "D"},
+        {_rfi_downsampling_factor, 1, 1, 1, 1}));
+    in_bf_mask_buf->require_frame_desc(kotekan::NDArray<std::int8_t, 2>::describe(
+        "bf_mask", {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
 
     // Make frame desc for produced buffers
     if (_bar_mode) {
-        out_rfi_sk_buf->allocate_ndarray_frame_desc<float, 5>(
+        out_rfi_sk_buf->require_frame_desc(kotekan::NDArray<float, 5>::describe(
             "SKbar", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
-            {"Trfibar", "F", "SK", "P", "D"});
-        out_rfi_sktilde_buf->allocate_ndarray_frame_desc<float, 3>(
-            "SKbartilde", {nt, _num_local_freq, 3}, {"Trfibar", "F", "SK"});
-        out_rfi_mask_buf->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 3>(
+            {"Trfibar", "F", "SK", "P", "D"}, {_rfi_downsampling_factor, 1, 1, 1, 1}));
+        out_rfi_sktilde_buf->require_frame_desc(kotekan::NDArray<float, 3>::describe(
+            "SKbartilde", {nt, _num_local_freq, 3}, {"Trfibar", "F", "SK"},
+            {_rfi_downsampling_factor, 1, 1}));
+        out_rfi_mask_buf->require_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 3>::describe(
             "RFImask", {_samples_per_data_set / 1024, _num_local_freq, 128},
-            {"T8hi128", "F", "T8lo128"});
+            {"T8hi128", "F", "T8lo128"}, {1024, 1, 8}));
     } else {
-        out_rfi_sk_buf->allocate_ndarray_frame_desc<float, 5>(
+        out_rfi_sk_buf->require_frame_desc(kotekan::NDArray<float, 5>::describe(
             "SK", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
-            {"Trfi", "F", "SK", "P", "D"});
-        out_rfi_sktilde_buf->allocate_ndarray_frame_desc<float, 3>(
-            "SKtilde", {nt, _num_local_freq, 3}, {"Trfi", "F", "SK"});
-        out_rfi_mask_buf->allocate_ndarray_frame_desc<kotekan::uint1x8_t, 3>(
+            {"Trfi", "F", "SK", "P", "D"}, {_rfi_downsampling_factor, 1, 1, 1, 1}));
+        out_rfi_sktilde_buf->require_frame_desc(kotekan::NDArray<float, 3>::describe(
+            "SKtilde", {nt, _num_local_freq, 3}, {"Trfi", "F", "SK"},
+            {_rfi_downsampling_factor, 1, 1}));
+        out_rfi_mask_buf->require_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 3>::describe(
             "RFImask", {_samples_per_data_set / 1024, _num_local_freq, 128},
-            {"T8hi128", "F", "T8lo128"});
+            {"T8hi128", "F", "T8lo128"}, {1024, 1, 8}));
     }
 
     // Check the size of the interpolation tables
@@ -552,14 +547,18 @@ void gpuSimulateRFISK::main_thread() {
         meta_sktilde->deepCopy(meta_in);
         meta_rfi_mask->deepCopy(meta_in);
 
-        meta_sk->set_from_frame_desc(out_rfi_sk_buf->get_ndarray_frame_desc());
-        meta_sktilde->set_from_frame_desc(out_rfi_sktilde_buf->get_ndarray_frame_desc());
-        meta_rfi_mask->set_from_frame_desc(out_rfi_mask_buf->get_ndarray_frame_desc());
+        meta_sk->set_from_frame_desc(out_rfi_sk_buf->get_frame_desc<kotekan::GenericNDArray>());
+        meta_sktilde->set_from_frame_desc(
+            out_rfi_sktilde_buf->get_frame_desc<kotekan::GenericNDArray>());
+        meta_rfi_mask->set_from_frame_desc(
+            out_rfi_mask_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // test that things are consistent
-        meta_sk->check_frame_desc(out_rfi_sk_buf->get_ndarray_frame_desc());
-        meta_sktilde->check_frame_desc(out_rfi_sktilde_buf->get_ndarray_frame_desc());
-        meta_rfi_mask->check_frame_desc(out_rfi_mask_buf->get_ndarray_frame_desc());
+        meta_sk->check_frame_desc(out_rfi_sk_buf->get_frame_desc<kotekan::GenericNDArray>());
+        meta_sktilde->check_frame_desc(
+            out_rfi_sktilde_buf->get_frame_desc<kotekan::GenericNDArray>());
+        meta_rfi_mask->check_frame_desc(
+            out_rfi_mask_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set non-NDArray things.
         meta_rfi_mask->set_time_downsampling_fpga(1024 * meta_in->get_time_downsampling_fpga()
@@ -572,6 +571,9 @@ void gpuSimulateRFISK::main_thread() {
              out_rfi_sktilde_buf->buffer_name, out_rfi_sktilde_frame_id,
              out_rfi_mask_buf->buffer_name, out_rfi_mask_frame_id);
 
+        // Release the bf_mask each frame: the GPU pipeline uploads a bf_mask frame per
+        // S012 frame (cudaInputData without do_once), so consume them in lockstep.
+        in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id++);
         in_rfi_s012_buf->mark_frame_empty(unique_name, in_rfi_s012_frame_id++);
         out_rfi_sk_buf->mark_frame_full(unique_name, out_rfi_sk_frame_id++);
         out_rfi_sktilde_buf->mark_frame_full(unique_name, out_rfi_sktilde_frame_id++);
@@ -585,7 +587,8 @@ double gpuSimulateRFISK::get_bias(double x, double y) {
     // index of bin in bias table containing x, unless x is near the end
     // of the bin. Leaves at least 1 free bin to the left and at least two
     // free bins to the right.
-    uint64_t bin_idx = std::clamp(static_cast<uint64_t>((x - _xmin) / dx), uint64_t{1}, _bias_nx - 3);
+    uint64_t bin_idx =
+        std::clamp(static_cast<uint64_t>((x - _xmin) / dx), uint64_t{1}, _bias_nx - 3);
     // Index of first bin (or first table point) in the reconstruction.
     // Probably one to the left of where the sample point is.
     uint64_t i0 = bin_idx - 1;
@@ -616,7 +619,8 @@ double gpuSimulateRFISK::get_sigma(double x, uint64_t s0) {
     // index of bin in sigma table containing x, unless x is near the end
     // of the bin. Leaves at least 1 free bin to the left and at least two
     // free bins to the right.
-    uint64_t bin_idx = std::clamp(static_cast<uint64_t>((x - _xmin) / dx), uint64_t{1}, _sigma_nx - 3);
+    uint64_t bin_idx =
+        std::clamp(static_cast<uint64_t>((x - _xmin) / dx), uint64_t{1}, _sigma_nx - 3);
     // Index of first bin (or first table point) in the reconstruction.
     // Probably one to the left of where the sample point is.
     uint64_t i0 = bin_idx - 1;

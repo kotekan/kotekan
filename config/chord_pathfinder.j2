@@ -57,8 +57,10 @@
 {% set rfi_second_downsampling_factor = 32 %}
 {% set rfi_num_times = samples_per_data_set // rfi_downsampling_factor %}  {# = 32 #}
 {% set rfi_num_times_bar = rfi_num_times //  rfi_second_downsampling_factor %}  {# = 1 #}
-# Number of live/connected feeds (A01,A06,A07 x 2 pol = 6). Used to scale the feed-averaged
-# SK validity threshold so the gate can pass with only these feeds present (see below).
+# Number of live/connected feeds: the ArrayDish entries in dish_inputs
+# (A1, A6, A7 x 2 pol = 6 today; Fake/RFI entries are masked by set_bf_mask).
+# Used to scale the feed-averaged SK validity threshold so the gate can pass
+# with only these feeds present (see below). Keep in step with dish_inputs.
 {% set rfi_num_good_feeds = 6 %}
 
 ---
@@ -114,6 +116,10 @@ rfi_single_feed_min_good_frac: 0.25     # Wide open (0.25) so most feeds are goo
 rfi_feed_averaged_min_good_frac: {{ 0.25 * rfi_num_good_feeds / (2 * num_dishes) }}   # = 0.01171875 -> threshold 384
 rfi_mu_min: 2.0       # Minimum accepted average signal (|E|^2)  Kendrick's RFI Notes recommends 2.0
 rfi_mu_max: 50.0      # Maximum accepted average signal (|E|^2)  Kendrick's RFI Notes recommends 50.0
+# Disable first-stage (GPU, SK-based) RFI excision: cudaRFISKtilde produces an all-good RFImask,
+# so no samples are excised in the correlator. The SKtilde statistics are still computed, so
+# second-stage excision (RfiFrameMask -> N2Accumulate) keeps working.
+rfi_first_stage_excision_enabled: false
 
 num_times: samples_per_data_set  # New N2K needs this.
 num_polarizations: 2
@@ -150,7 +156,7 @@ telescope:
                 0.003889630373557614]
 
     dish_elev_axis: [0.99999999838132391,
-                   -0.000056897733584327
+                   -0.000056897733584327,
                    0.0]
     dish_vert_axis: [0.0, 0.0, 1.0]
 
@@ -161,18 +167,82 @@ telescope:
     dish_grid_size_y: 12
     dish_separation_x_m: 6.300156854906823
     dish_separation_y_m: 8.500057809796308
+    # Live wiring (July 22 2026): 4 CRS boards (crate slots 1-4) x 8 ADCs = 32 inputs.
+    # Element order eventually needs to be [P][D] (CHORDBeamformer) but for
+    # now is not actually consistent with that.
     dish_inputs: [
-        {dish_idx: 0,  grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A01},
-        {dish_idx: 1,  grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A06},
-        {dish_idx: 2,  grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A07},
-        {dish_idx: 3,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI01},
-        {dish_idx: 4,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI02},
-        {dish_idx: 5,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI03},
-        {dish_idx: 6,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI04},
-        {dish_idx: 7,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI05},
-        {dish_idx: 8,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI06},
-        {dish_idx: 9,  grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI07},
-        {dish_idx: 10, grid_x_idx: 10, grid_y_idx: 12, feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: RFIDish,   label: RFI08},
+        # slot 1: X pol of A1-A4, B1-B4 (elements 0-7)
+        {dish_idx: 0,  grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A1X},
+        {dish_idx: 1,  grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A2X},
+        {dish_idx: 2,  grid_x_idx: 2,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A3X},
+        {dish_idx: 3,  grid_x_idx: 3,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A4X},
+        {dish_idx: 4,  grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B1X},
+        {dish_idx: 5,  grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B2X},
+        {dish_idx: 6,  grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B3X},
+        {dish_idx: 7,  grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B4X},
+        # slot 2: Y pol of A1-A4, B1-B4 (elements 8-15)
+        {dish_idx: 8,  grid_x_idx: 0,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A1Y},
+        {dish_idx: 9,  grid_x_idx: 1,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A2Y},
+        {dish_idx: 10, grid_x_idx: 2,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A3Y},
+        {dish_idx: 11, grid_x_idx: 3,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A4Y},
+        {dish_idx: 12, grid_x_idx: 0,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B1Y},
+        {dish_idx: 13, grid_x_idx: 1,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B2Y},
+        {dish_idx: 14, grid_x_idx: 2,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B3Y},
+        {dish_idx: 15, grid_x_idx: 3,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B4Y},
+        # slot 3: X pol of A5-A8, B5-B8 (elements 16-23)
+        {dish_idx: 16, grid_x_idx: 4,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A5X},
+        {dish_idx: 17, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A6X},
+        {dish_idx: 18, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A7X},
+        {dish_idx: 19, grid_x_idx: 7,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A8X},
+        {dish_idx: 20, grid_x_idx: 4,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B5X},
+        {dish_idx: 21, grid_x_idx: 5,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B6X},
+        {dish_idx: 22, grid_x_idx: 6,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B7X},
+        {dish_idx: 23, grid_x_idx: 7,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B8X},
+        # slot 4: Y pol of A5-A8, B5-B8 (elements 24-31)
+        {dish_idx: 24, grid_x_idx: 4,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A5Y},
+        {dish_idx: 25, grid_x_idx: 5,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A6Y},
+        {dish_idx: 26, grid_x_idx: 6,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A7Y},
+        {dish_idx: 27, grid_x_idx: 7,  grid_y_idx: 0,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: A8Y},
+        {dish_idx: 28, grid_x_idx: 4,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B5Y},
+        {dish_idx: 29, grid_x_idx: 5,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B6Y},
+        {dish_idx: 30, grid_x_idx: 6,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B7Y},
+        {dish_idx: 31, grid_x_idx: 7,  grid_y_idx: 1,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: B8Y},
+        # slot 5: X pol of C1-C4, D1-D4 (elements 32-39)
+        {dish_idx: 32,  grid_x_idx: 0,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C1X},
+        {dish_idx: 33,  grid_x_idx: 1,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C2X},
+        {dish_idx: 34,  grid_x_idx: 2,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C3X},
+        {dish_idx: 35,  grid_x_idx: 3,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C4X},
+        {dish_idx: 36,  grid_x_idx: 0,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D1X},
+        {dish_idx: 37,  grid_x_idx: 1,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D2X},
+        {dish_idx: 38,  grid_x_idx: 2,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D3X},
+        {dish_idx: 39,  grid_x_idx: 3,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D4X},
+        # slot 6: Y pol of C1-C4, D1-D4 (elements 40-47)
+        {dish_idx: 40,  grid_x_idx: 0,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C1Y},
+        {dish_idx: 41,  grid_x_idx: 1,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C2Y},
+        {dish_idx: 42,  grid_x_idx: 2,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C3Y},
+        {dish_idx: 43,  grid_x_idx: 3,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C4Y},
+        {dish_idx: 44,  grid_x_idx: 0,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D1Y},
+        {dish_idx: 45,  grid_x_idx: 1,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D2Y},
+        {dish_idx: 46,  grid_x_idx: 2,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D3Y},
+        {dish_idx: 47,  grid_x_idx: 3,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D4Y},
+        # slot 7: X pol of C5-C8, D5-D8 (elements 48-55)
+        {dish_idx: 48,  grid_x_idx: 4,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C5X},
+        {dish_idx: 49,  grid_x_idx: 5,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C6X},
+        {dish_idx: 50,  grid_x_idx: 6,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C7X},
+        {dish_idx: 51,  grid_x_idx: 7,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C8X},
+        {dish_idx: 52,  grid_x_idx: 4,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D5X},
+        {dish_idx: 53,  grid_x_idx: 5,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D6X},
+        {dish_idx: 54,  grid_x_idx: 6,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D7X},
+        {dish_idx: 55,  grid_x_idx: 7,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D8X},
+        # slot 8: Y pol of C5-C8, D5-D8 (elements 56-63)
+        {dish_idx: 56,  grid_x_idx: 4,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C5Y},
+        {dish_idx: 57,  grid_x_idx: 5,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C6Y},
+        {dish_idx: 58,  grid_x_idx: 6,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C7Y},
+        {dish_idx: 59,  grid_x_idx: 7,  grid_y_idx: 2,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: C8Y},
+        {dish_idx: 60,  grid_x_idx: 4,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D5Y},
+        {dish_idx: 61,  grid_x_idx: 5,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D6Y},
+        {dish_idx: 62,  grid_x_idx: 6,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D7Y},
+        {dish_idx: 63,  grid_x_idx: 7,  grid_y_idx: 3,  feed_pos_disp_m: [0.0, 0.0, 0.0], coelev_disp_deg: 0.0, type: ArrayDish, label: D8Y}
     ]
 
     require_gps: true
@@ -186,6 +256,18 @@ earth_rotation_data:
     kotekan_update_endpoint: json
     earth_orientation_parameter_table: []
 
+updatable_config:
+    # Bad feed list, POSTed to /updatable_config/bad_inputs (e.g. by bffs via
+    # choco). Indices are element indices in the [P][D] (CHORDBeamformer)
+    # order, i.e. positions in dish_inputs; consumed by the set_bf_mask
+    # (bufferBadInputs) stages below. All three keys must be present in every
+    # update.
+    bad_inputs:
+        kotekan_update_endpoint: json
+        bad_inputs: []
+        start_time: 1752451200.
+        update_id: "initial_flags"
+
 
 # Pools
 main_pool:
@@ -197,23 +279,22 @@ n2_pool:
     num_metadata_objects: 16 * buffer_depth
 
 # Bad feed mask - marks which feeds to exclude from RFI calculations
-# Shape: [P, D] = [2, num_dishes] - all ones means all feeds are good
+# Produced by bufferBadInputs (set_bf_mask): int8 "bf_mask"
+# [P, D] = [num_polarizations, num_dishes], 1 = good / 0 = bad.
 host_bf_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
-    zero_new_frames: true
-    zero_value: 0xFF
     numa_node: 0
 
 host_bf_mask_buffer_1:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
-    zero_new_frames: true
-    zero_value: 0xFF
     numa_node: 1
 
 # Buffers
@@ -222,8 +303,9 @@ network_input_buffers:
     frame_size: dpdk_output_frame_size
     metadata_pool: main_pool
     use_hugepages: true
-    
-    # The workers share an output buffer
+
+    # The workers share an output buffer.
+    # Fed by dpdkCore (crs16BoardCaptureWorker handler) -> leave standard.
     network_input_buffer_0:
         zero_new_frames: true
         numa_node: 0
@@ -234,13 +316,32 @@ network_input_buffers:
         numa_node: 1
         zero_value: 0x88
         kotekan_buffer: standard
-    # Main voltage buffer after transpose
-    host_voltage_buffer_0:
-        kotekan_buffer: standard
-        numa_node: 0
-    host_voltage_buffer_1:
-        kotekan_buffer: standard
-        numa_node: 1
+
+# Main voltage buffer after transpose.
+# Produced by TransposeBasebandArray: int4x2_swapped_withoffset "E"
+# [timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS/2] = [samples_per_data_set, 384, 2, 64].
+# The stage uses compile-time macros NUM_LOCAL_FREQ=384, NUM_ELEMENTS=128 (it fatally checks the
+# config num_local_freq/num_elements equal them); this config sets num_local_freq=384,
+# num_elements=128, so the static extents below are valid. These live outside the
+# network_input_buffers group: that group's frame_size is for the dpdk buffers, while
+# ndarray buffers derive their size from the descriptor.
+host_voltage_buffer_0:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
+    metadata_pool: main_pool
+    use_hugepages: true
+    numa_node: 0
+
+host_voltage_buffer_1:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
+    metadata_pool: main_pool
+    use_hugepages: true
+    numa_node: 1
 
 
 packet_receipt_bitmap_buffers:
@@ -264,125 +365,155 @@ packet_receipt_bitmap_buffers:
         kotekan_buffer: standard
         numa_node: 1
 
-# These are the dummy RFI masks produced by DPDK
-host_rfi_RFImask_dummy_buffer:
-    kotekan_buffer: standard
-    num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
-    zero_new_frames: true
-    zero_value: 0xFF
-    metadata_pool: main_pool
-
-host_rfi_RFImask_dummy_buffer_1:
-    kotekan_buffer: standard
-    num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
-    zero_new_frames: true
-    zero_value: 0xFF
-    numa_node: 1
-    metadata_pool: main_pool
-
-# Note this is the expanded version of the pl_mask, produced by DPDK. It will be compressed to
-# the normal PL mask before being sent to the GPU.
+# Note this is the expanded version of the pl_mask, produced by ProcessPacketMask (pl_mask_buf).
+# It will be compressed to the normal PL mask before being sent to the GPU.
+# uint1x8 "pl_mask_exp" [samples_per_data_set/64, num_local_freq, 2, num_elements/8/2, 8]
+# {Thi64, F, P, D8, Tlo64}.
 host_pl_mask_exp_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 64, num_local_freq, 2, num_elements / 8 / 2, 8]
     metadata_pool: main_pool
 
 host_pl_mask_exp_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 64) * (num_local_freq) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 64, num_local_freq, 2, num_elements / 8 / 2, 8]
     metadata_pool: main_pool
     numa_node: 1
 
 # This is the PL mask, sent to GPU and used for n2k_counts and the RFI SK system.
+# Produced by PLMaskExpandedToCompact (out_buf): uint1x8 "pl_mask"
+# [samples_per_data_set/128, (num_local_freq+3)/4, 2, (num_elements/8)/2, 8]
+# {T2hi64, F4, P, D8, T2lo64}. num_local_freq=384 -> (384+3)/4 = 96 = num_local_freq/4.
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, 2, (num_elements / 8) / 2, 8]
     metadata_pool: main_pool
 
 host_pl_mask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, 2, (num_elements / 8) / 2, 8]
     metadata_pool: main_pool
     numa_node: 1
 
 # This contains the SK statistics averaged over elements.
+# GPU output (cudaCopyFromRingbuffer of cudaRFISKtilde rfi_SKtilde) and consumed by RfiFrameMask:
+# float32 "SKtilde" [samples_per_data_set/rfi_downsampling_factor, num_local_freq, 3] {Trfi, F, SK}.
 host_rfi_sktilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    value_type: float32
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
     metadata_pool: main_pool
 
 host_rfi_sktilde_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_float32
+    value_type: float32
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
+    metadata_pool: main_pool
+    numa_node: 1
+
+# Per-feed (single-feed) SK statistics from the second-stage RFI kernel.
+# GPU output (cudaCopyFromRingbuffer of cudaRFISKbar rfi_skbar), consumed by RfiSKMetrics:
+# float32 "SKbar" [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
+# {Trfibar, F, SK = {SK, b, sigma}, P, D}; sigma < 0 marks an invalid cell.
+host_rfi_skbar_buffer:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: float32
+    extents: [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+
+host_rfi_skbar_buffer_1:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: float32
+    extents: [rfi_num_times_bar, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
     numa_node: 1
 
 # This is the RFI Mask recieved from the GPU, that was applied to produce n2k_correlation & n2k_counts.
-# It may contain either the dummy DPDK-generated mask or the real mask computed by SKtilde.
+# It contains the mask computed by SKtilde (all-good if rfi_first_stage_excision_enabled is false).
+# GPU output (cudaCopyFromRingbuffer of rfi_RFImask) and consumed by RfiMaskSum:
+# uint1x8 "RFImask" [samples_per_data_set/1024, num_local_freq, 128] {T8hi128, F, T8lo128}.
 host_rfi_RFImask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     numa_node: 1
     metadata_pool: main_pool
 
+# Produced by RfiMaskSum (out_buf): int32 "RFImask_counts"
+# [samples_per_data_set/sub_integration_ntime, num_local_freq] {Tc, F}.
 host_rfi_RFImask_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 host_rfi_RFImask_counts_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
     numa_node: 1
 
+# Produced by CountLostPLSamplesScalar (out_buf): int32 "pl_lost_counts_scalar"
+# [samples_per_data_set/sub_integration_ntime, num_local_freq] {Tc, F}.
 host_pl_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 host_pl_counts_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int32
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
     numa_node: 1
 
 # The mask for second stage RFI excision.
+# Produced by RfiFrameMask (out_buf): uint8 "RFIFrameMask"
+# [samples_per_data_set/sub_integration_ntime, num_local_freq] {Tc, F}.
 host_rfi_RFIframemask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    value_type: uint8
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
 
 host_rfi_RFIframemask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    value_type: uint8
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
@@ -391,16 +522,23 @@ host_rfi_RFIframemask_buffer_1:
 vis_blocksize: 16
 vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
+# GPU output (cudaOutputData of cudaCorrelator n2k_correlation): int32 "n2k_correlation"
+# [samples_per_data_set/sub_integration_ntime, num_local_freq, vis_num_blocks, 16, 16, 2]
+# {Tc, F, DPhi, DPlo1, DPlo2, C}. Block-count note: cudaCorrelator uses (num_elements+1)/16
+# while the CPU side uses num_elements/16; at num_elements=128 both equal 8, so vis_num_blocks=36
+# matches the kernel's triangle_num_blocks.
 host_correlation_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * vis_num_blocks * 2 * sizeof_gpu_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
 
 host_correlation_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * vis_num_blocks * 2 * sizeof_gpu_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
     numa_node: 1
 
@@ -408,16 +546,23 @@ host_correlation_buffer_1:
 counts_blocksize: 8
 counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
 counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
+# GPU output (cudaOutputData of cudaPL1bitCorrelator n2k_counts): int32 "n2k_counts"
+# [samples_per_data_set/sub_integration_ntime, num_local_freq, counts_num_blocks, 8, 8]
+# {Tc, F, D8Phi, D8Plo1, D8Plo2}. Block-count note: cudaPL1bitCorrelator uses
+# (num_elements/8+1)/8 while the CPU side uses (num_elements/8)/8; at num_elements=128 both equal 2,
+# so counts_num_blocks=3 matches the kernel's triangle_num_blocks.
 host_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_gpu_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
     metadata_pool: main_pool
 
 host_counts_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_gpu_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
     metadata_pool: main_pool
     numa_node: 1
 
@@ -438,7 +583,7 @@ n2_buffer_1:
 
 n2_subset_buffer:
     kotekan_buffer: N2
-    num_elements: 8
+    num_elements: 32
     num_ev: 0
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -446,7 +591,7 @@ n2_subset_buffer:
 
 n2_subset_buffer_1:
     kotekan_buffer: N2
-    num_elements: 8
+    num_elements: 32
     num_ev: 0
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -454,7 +599,7 @@ n2_subset_buffer_1:
 
 n2_eigen_buffer:
     kotekan_buffer: N2
-    num_elements: 8
+    num_elements: 32
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -462,7 +607,7 @@ n2_eigen_buffer:
 
 n2_eigen_buffer_1:
     kotekan_buffer: N2
-    num_elements: 8
+    num_elements: 32
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -470,7 +615,7 @@ n2_eigen_buffer_1:
 
 n2_recv_buffer_0:
     kotekan_buffer: N2
-    num_elements: 8
+    num_elements: 32
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -478,7 +623,7 @@ n2_recv_buffer_0:
 
 n2_recv_buffer_1:
     kotekan_buffer: N2
-    num_elements: 8
+    num_elements: 32
     num_ev: num_ev_to_calculate
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth * num_local_freq
@@ -553,17 +698,41 @@ host_rfi_sktilde_ringbuffer_1:
     metadata_pool: main_pool
     numa_node: 1
 
-host_rfi_RFImask_dummy_ringbuffer:
+host_rfi_s012bar_ringbuffer:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * num_local_freq * samples_per_data_set / 8
+    ring_buffer_size: buffer_depth * rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_uint64
     metadata_pool: main_pool
 
-host_rfi_RFImask_dummy_ringbuffer_1:
+host_rfi_s012bar_ringbuffer_1:
     kotekan_buffer: ring
-    ring_buffer_size: buffer_depth * num_local_freq * samples_per_data_set / 8
+    ring_buffer_size: buffer_depth * rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_uint64
     metadata_pool: main_pool
     numa_node: 1
 
+host_rfi_skbar_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_float32
+    metadata_pool: main_pool
+
+host_rfi_skbar_ringbuffer_1:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_float32
+    metadata_pool: main_pool
+    numa_node: 1
+
+# cudaRFISKbar always writes its feed-averaged output (rfi_skbartilde), so
+# these rings must exist, but nothing consumes them yet — a consumerless ring
+# auto-drains on finish_write, so they are intentionally unread.
+host_rfi_skbartilde_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * rfi_num_times_bar * num_local_freq * 3 * sizeof_float32
+    metadata_pool: main_pool
+
+host_rfi_skbartilde_ringbuffer_1:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * rfi_num_times_bar * num_local_freq * 3 * sizeof_float32
+    metadata_pool: main_pool
+    numa_node: 1
 
 # Stages
 
@@ -571,10 +740,11 @@ host_rfi_RFImask_dummy_ringbuffer_1:
 dpdk:
     kotekan_stage: dpdkCore
     # Format is index = lcore, value = cpu core
-    lcore_cpu_map: [5, 6, 7, 21, 22, 23] # [5,6,7]
+    # lcore 1 -> cpu 21 (NUMA 1) so port-1's RX lcore is local to its NIC a0:00.0 (NUMA 1)
+    lcore_cpu_map: [5, 21, 7, 6, 22, 23] # [5,6,7]
     main_lcore_cpu: 4
     num_mbufs: 16384
-    rx_ring_size: 1024
+    rx_ring_size: 4096
     mbuf_cache_size: 512
     packet_size: 6208
     payload_size: 6144
@@ -653,7 +823,6 @@ process_packet_mask_0:
         - packet_receipt_bitmap_buffer_1
     combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_0
     pl_mask_buf: host_pl_mask_exp_buffer
-    rfi_mask_buf: host_rfi_RFImask_dummy_buffer
     num_frequency: num_local_freq
     num_source_ids: num_crs_boards
     # Update this as we add more CRS (F-engine) boards 
@@ -668,7 +837,6 @@ process_packet_mask_1:
         - packet_receipt_bitmap_buffer_3
     combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_1
     pl_mask_buf: host_pl_mask_exp_buffer_1
-    rfi_mask_buf: host_rfi_RFImask_dummy_buffer_1
     num_frequency: num_local_freq
     num_source_ids: num_crs_boards
     # Update this as we add more CRS (F-engine) boards 
@@ -726,14 +894,28 @@ PL_mask_compactor_1:
     in_buf: host_pl_mask_exp_buffer_1
     out_buf: host_pl_mask_buffer_1
 
-gen_fake_bf_mask:
+# Bad feed mask from the /updatable_config/bad_inputs endpoint (fed by bffs
+# via choco). One instance per NUMA node; both subscribe to the same endpoint.
+# CHORD flags arrive and are masked in the same [P][D] order, so no reorder.
+# Elements whose dish_inputs type is not ArrayDish (Fake, RFI antennas) are
+# always masked, independent of the posted list (as inventBFMask mode: auto
+# did before this stage replaced it).
+set_bf_mask:
     mode: auto
     bf_mask_0:
-        kotekan_stage: inventBFMask
-        bf_mask: host_bf_mask_buffer
+        kotekan_stage: bufferBadInputs
+        input_order: CHORDBeamformer
+        output_order: CHORDBeamformer
+        updatable_config:
+            bad_inputs: /updatable_config/bad_inputs
+        out_buf: host_bf_mask_buffer
     bf_mask_1:
-        kotekan_stage: inventBFMask
-        bf_mask: host_bf_mask_buffer_1
+        kotekan_stage: bufferBadInputs
+        input_order: CHORDBeamformer
+        output_order: CHORDBeamformer
+        updatable_config:
+            bad_inputs: /updatable_config/bad_inputs
+        out_buf: host_bf_mask_buffer_1
 
 ## Send data to GPU ringbuffers ##
 
@@ -768,41 +950,6 @@ run_send_voltage:
           in_buf: host_voltage_buffer_in
           signal_buf: host_voltage_ringbuffer_out
           gpu_mem_output: voltage_buffer
-
-# Copy the dummy RFI mask to the RFI mask on the GPU
-# To activate the 1st stage RFI excision, do not run this stage! Instead make sure the
-# SKtilde stage produces the RFI mask and places it in the host_rfi_RFImask_buffer
-# run_send_rfi_RFImask_dummy:
-#     gpu_0:
-#         kotekan_stage: cudaProcess
-#         gpu_id: 0
-#         cpu_affinity: [12, 13, 14]
-#         in_buffers:
-#             host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer
-#         out_buffers:
-#             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
-#         commands:
-#         - name: cudaCopyToRingbuffer
-#           input_size: num_local_freq * samples_per_data_set / 8
-#           ring_buffer_size: buffer_depth * input_size
-#           in_buf: host_rfi_RFImask_buffer_in
-#           signal_buf: host_rfi_RFImask_ringbuffer_out
-#           gpu_mem_output: rfi_RFImask_buffer
-#     gpu_1:
-#         kotekan_stage: cudaProcess
-#         gpu_id: 1
-#         cpu_affinity: [25, 26, 27]
-#         in_buffers:
-#             host_rfi_RFImask_buffer_in: host_rfi_RFImask_dummy_buffer_1
-#         out_buffers:
-#             host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer_1
-#         commands:
-#         - name: cudaCopyToRingbuffer
-#           input_size: num_local_freq * samples_per_data_set / 8
-#           ring_buffer_size: buffer_depth * input_size
-#           in_buf: host_rfi_RFImask_buffer_in
-#           signal_buf: host_rfi_RFImask_ringbuffer_out
-#           gpu_mem_output: rfi_RFImask_buffer
 
 run_send_pl_mask:
     gpu_0:
@@ -871,9 +1018,8 @@ run_rfi_s012:
           rfi_num_times: samples_per_data_set / rfi_downsampling_factor
 
 # This stage produces SK statistics averaged over all input elements and the RFI mask.
-# If the pipeline is using the dummy DPDK-produced RFI mask, then this stage needs to direct its
-# mask to "_dummy" buffers.  If the pipeline is using this RFI mask, then the buffers should
-# *not* contain "_dummy", and the DPDK-produced mask should not be sent to the GPU.
+# When rfi_first_stage_excision_enabled is false, the mask is written as all-good (no excision)
+# but the SK statistics are still computed for second-stage excision.
 run_rfi_sktilde:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -886,7 +1032,6 @@ run_rfi_sktilde:
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
         commands:
         - name: cudaInputData
-          do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
         - name: cudaSyncInput
@@ -909,7 +1054,6 @@ run_rfi_sktilde:
             host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer_1
         commands:
         - name: cudaInputData
-          do_once: true
           in_buf: host_bf_mask_buffer
           gpu_mem: bf_mask_buffer
         - name: cudaSyncInput
@@ -952,9 +1096,125 @@ run_recv_rfi_sktilde:
           ring_buffer_size: buffer_depth * output_size
           out_buf: host_rfi_sktilde_buffer_out
 
+# Second-stage (time-downsampled) per-feed RFI statistics: S012 -> S012bar -> SKbar.
+# rfi_skbar is the single-feed SK per element (computed for every feed regardless
+# of the bad-feed mask, so a flagged feed keeps being measured and can heal);
+# rfi_skbartilde is its feed average.
+run_rfi_s012bar:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer
+        out_buffers:
+            host_rfi_s012bar_ringbuffer: host_rfi_s012bar_ringbuffer
+        commands:
+        - name: cudaRFIS012bar
+          rfi_S012_name: rfi_s012
+          rfi_S012bar_name: rfi_s012bar
+          num_frequencies: num_local_freq
+          rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 1
+        in_buffers:
+            host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer_1
+        out_buffers:
+            host_rfi_s012bar_ringbuffer: host_rfi_s012bar_ringbuffer_1
+        commands:
+        - name: cudaRFIS012bar
+          rfi_S012_name: rfi_s012
+          rfi_S012bar_name: rfi_s012bar
+          num_frequencies: num_local_freq
+          rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+
+run_rfi_skbar:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+            host_rfi_s012bar_ringbuffer: host_rfi_s012bar_ringbuffer
+        out_buffers:
+            host_rfi_skbar_ringbuffer: host_rfi_skbar_ringbuffer
+            host_rfi_skbartilde_ringbuffer: host_rfi_skbartilde_ringbuffer
+        commands:
+        - name: cudaInputData
+          in_buf: host_bf_mask_buffer
+          gpu_mem: bf_mask_buffer
+        - name: cudaSyncInput
+        - name: cudaRFISKbar
+          bf_mask_name: bf_mask
+          rfi_S012bar_name: rfi_s012bar
+          rfi_SKbar_name: rfi_skbar
+          rfi_SKbartilde_name: rfi_skbartilde
+          num_frequencies: num_local_freq
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 1
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer_1
+            host_rfi_s012bar_ringbuffer: host_rfi_s012bar_ringbuffer_1
+        out_buffers:
+            host_rfi_skbar_ringbuffer: host_rfi_skbar_ringbuffer_1
+            host_rfi_skbartilde_ringbuffer: host_rfi_skbartilde_ringbuffer_1
+        commands:
+        - name: cudaInputData
+          in_buf: host_bf_mask_buffer
+          gpu_mem: bf_mask_buffer
+        - name: cudaSyncInput
+        - name: cudaRFISKbar
+          bf_mask_name: bf_mask
+          rfi_S012bar_name: rfi_s012bar
+          rfi_SKbar_name: rfi_skbar
+          rfi_SKbartilde_name: rfi_skbartilde
+          num_frequencies: num_local_freq
+
+run_recv_rfi_skbar:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_skbar_ringbuffer_in: host_rfi_skbar_ringbuffer
+        out_buffers:
+            host_rfi_skbar_buffer_out: host_rfi_skbar_buffer
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_skbar_ringbuffer_in
+          gpu_mem_input: rfi_skbar_buffer
+          output_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_float32
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_skbar_buffer_out
+    gpu_1:
+        kotekan_stage: cudaProcess
+        gpu_id: 1
+        in_buffers:
+            host_rfi_skbar_ringbuffer_in: host_rfi_skbar_ringbuffer_1
+        out_buffers:
+            host_rfi_skbar_buffer_out: host_rfi_skbar_buffer_1
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_skbar_ringbuffer_in
+          gpu_mem_input: rfi_skbar_buffer
+          output_size: rfi_num_times_bar * num_local_freq * 3 * num_elements * sizeof_float32
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_skbar_buffer_out
+
+# Export the per-feed SK: a JSON GET endpoint per instance for machine
+# consumers (bffs's rfi source polls /rfi_sk_metrics/sk_metrics_<n>/sk), plus
+# prometheus gauges on /metrics for dashboards. Elements are indexed by their
+# flat [P][D] index — the same indexing as /updatable_config/bad_inputs.
+rfi_sk_metrics:
+    sk_metrics_0:
+        kotekan_stage: RfiSKMetrics
+        in_buf: host_rfi_skbar_buffer
+    sk_metrics_1:
+        kotekan_stage: RfiSKMetrics
+        in_buf: host_rfi_skbar_buffer_1
+
 # This copies the RFI Mask that was used in N2K kernels back out to the CPU into the
-# host_rfi_RFImask_buffer. It may contain either the DPDK-produced dummy mask or the
-# SKtilde-produced real mask.
+# host_rfi_RFImask_buffer. It contains the SKtilde-produced mask (all-good if
+# rfi_first_stage_excision_enabled is false).
 run_recv_rfi_RFImask:
     gpu_0:
         kotekan_stage: cudaProcess
@@ -1154,7 +1414,9 @@ n2_accumulate:
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: true
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
-    input_order: CHORDEarly
+    # N2Accumulate itself uses the telescope's fiducial order ([P][D],
+    # CHORDBeamformer); this key documents it for downstream consumers.
+    input_order: CHORDBeamformer
     variance_mode: EvenOddPosDef
     bin_in_ERA: true
     num_bins_per_rotation: 8640

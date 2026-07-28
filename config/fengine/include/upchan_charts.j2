@@ -83,17 +83,38 @@ upchan_all_max_output_channel: upchan_U1_max_output_channel
 # Gains
 
 host_upchan_U32_gain_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * upchan_U32_max_num_channels * 32
+    value_type: float16
+    extents: [upchan_U32_max_num_channels * 32]
+    quantity_name: "G"
+    dimnames: ["Fbar"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+
+# Packet loss masks
+
+host_upchan_U32_expanded_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U32_max_num_channels * (num_times / 64 / 32)
+    metadata_pool: main_pool
+host_upchan_U32_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U32_max_num_channels * (num_times / 64 / 32)
     metadata_pool: main_pool
 
 # Voltages
 
 host_upchan_U32_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_dishes * num_polarizations * (upchan_U32_max_num_channels * 32) * (num_times / 32)
+    # frame_size: num_dishes * num_polarizations * (upchan_U32_max_num_channels * 32) * (num_times / 32)
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times / 32, upchan_U32_max_num_channels * 32, num_polarizations, num_dishes]
+    quantity_name: "Ebar"
+    dimnames: ["Tbar", "Fbar", "P", "D"]
+    dimscalings: [32, 1, 1, 1]
     metadata_pool: main_pool
 host_upchan_U32_voltage_ringbuffer:
     kotekan_buffer: ring
@@ -113,6 +134,23 @@ run_set_upchan_U32_gain:
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     ]
     upchan_gain_buffer: host_upchan_U32_gain_buffer
+
+run_upchan_pl_U32:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        out_buffers:
+            host_upchan_U32_expanded_pl_mask_ringbuffer: host_upchan_U32_expanded_pl_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskUpchannelizer
+          expanded_pl_mask_name: pl_expanded_mask
+          upchannelized_expanded_pl_mask_name: upchan_U32_expanded_pl_mask
+          upchannelization_factor: 32
+          num_frequencies_out: upchan_U32_max_num_channels
+          Fmin: upchan_U32_min_channel
+          Fmax: upchan_U32_max_channel
 
 run_upchan_U32:
     gpu_0:

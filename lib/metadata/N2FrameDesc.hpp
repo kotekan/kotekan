@@ -1,20 +1,20 @@
 #ifndef N2_FRAME_DESC_HPP
 #define N2_FRAME_DESC_HPP
 
-#include <stddef.h>       // for size_t
-#include <stdint.h>       // for uint32_t, int32_t, uint16_t
-#include <algorithm>      // for max
-#include <map>            // for map, operator!=, _Rb_tree_const_iterator
-#include <utility>        // for pair
-#include <vector>         // for vector
-#include <iosfwd>         // for ostream
-#include <string>         // for string
+#include "Config.hpp"    // for Config
+#include "FrameDesc.hpp" // for FrameDesc
+#include "N2Layout.hpp"  // for N2Layout
+#include "N2Util.hpp"    // for prod_ctype
+#include "Symbol.hpp"    // for Symbol
 
-#include "Config.hpp"     // for Config
-#include "FrameDesc.hpp"  // for FrameDesc
-#include "N2Layout.hpp"   // for N2Layout
-#include "N2Util.hpp"     // for prod_ctype
-#include "Symbol.hpp"     // for Symbol
+#include <algorithm> // for max
+#include <iosfwd>    // for ostream
+#include <map>       // for map, operator!=, _Rb_tree_const_iterator
+#include <stddef.h>  // for size_t
+#include <stdint.h>  // for uint32_t, int32_t, uint16_t
+#include <string>    // for string
+#include <utility>   // for pair
+#include <vector>    // for vector
 
 namespace kotekan {
 
@@ -67,8 +67,9 @@ public:
      * @param n2_layout     The layout of the visibility matrix
      * @param product_list  Optional explicit list of products (required for subset layouts)
      *
-     * @throws std::runtime_error If product_list is required but not provided, or if
-     *         product_list.size() != num_products for layouts that require it.
+     * @note Validation failures (product_list missing, sized inconsistently with
+     *       num_products, or referencing inputs outside num_elements) are fatal
+     *       and shut kotekan down (FATAL_ERROR_NON_OO).
      */
     N2FrameDesc(uint32_t num_elements, uint32_t num_ev, uint32_t num_products, N2Layout n2_layout,
                 std::vector<N2::prod_ctype> product_list = {});
@@ -79,6 +80,12 @@ public:
     void output_framedesc(std::ostream& os) const override;
     bool operator==(const FrameDesc& other) const override;
     size_t get_byte_size() const override;
+
+    // FrameDesc JSON-serialization override (see FrameDesc::to_json)
+    nlohmann::json to_json() const override;
+    /// Reconstruct an N2FrameDesc from JSON written by to_json(). Validation
+    /// failures are fatal (see the constructor).
+    static std::shared_ptr<const FrameDesc> from_json(const nlohmann::json& j);
 
     // Accessors
     uint32_t get_num_elements() const {

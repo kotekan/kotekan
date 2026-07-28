@@ -6,15 +6,15 @@
 #ifndef RFI_BROADCAST
 #define RFI_BROADCAST
 
-#include <netinet/in.h>         // for sockaddr_in
-#include <stddef.h>             // for size_t
-#include <stdint.h>             // for uint16_t
-#include <string>               // for string, basic_string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "buffer.hpp"           // for Buffer
+#include <netinet/in.h> // for sockaddr_in
+#include <stddef.h>     // for size_t
+#include <stdint.h>     // for uint16_t
+#include <string>       // for string, basic_string
 
 /*
  * @class rfiBroadcast
@@ -75,8 +75,6 @@
  * @conf frames_per_packet                 Int. Number of frames to accumulate per UDP packet.
  * @conf dest_port                         Int. Destination port number.
  * @conf dest_ip                           String. Destination IP address.
- * @conf num_sigma_deviations              Int. Number of sigma deviations to use when
- * computing per-feed excursion count.
  *
  * @author Liam Gray
  */
@@ -114,10 +112,6 @@ private:
     size_t frames_per_packet; // Number of frames to gather into each packet
     size_t dest_port;         // broker port
     std::string dest_ip;      // broker IP
-
-    // The number of standard deviations required
-    // for a sample to be considered an outlier.
-    uint16_t num_sigma_deviations;
 
     // Other
     struct sockaddr_in dest_addr; // Destination socket address

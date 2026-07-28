@@ -12,11 +12,8 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: INFO
 
-num_gpus: 1
 buffer_depth: 4
 cpu_affinity: [0]
-sizeof_float: 4
-sizeof_int: 4
 sizeof_long: 8
 
 # For faster CHORD testing, we're using...
@@ -38,21 +35,24 @@ main_pool:
 # Buffers
 
 host_rfi_s012_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_s012bar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 simulated_rfi_s012bar_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor / rfi_second_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 
@@ -74,6 +74,7 @@ gen_rfi_s012:
     name: "S012"
     array_shape: [128, 8, 3, 2, 64]
     dim_name: ["Trfi", "F", "S", "P", "D"]
+    dim_scaling: [256, 1, 1, 1, 1] # rfi_downsampling_factor=256
     num_frames: 2*buffer_depth  # Must be at least what check_data expects
     meta_time_downsample_factor: rfi_downsampling_factor
 
@@ -140,3 +141,4 @@ check_rfi_data:
     max_num_errors_logged: 384
     num_frames_to_test: 2*buffer_depth
     check_metadata: true
+log_config_usage: fatal_error

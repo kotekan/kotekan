@@ -7,9 +7,6 @@ log_level: INFO
 
 buffer_depth: 4
 cpu_affinity: [2]  # [2,3,4,5,8,9,10,11]
-sizeof_float: 4
-frame_arrival_period: 5.12e-6 * samples_per_data_set
-sizeof_int: 4
 
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 2048
@@ -17,7 +14,6 @@ samples_per_data_set: 4096
 rfi_downsampling_factor: 256
 # sub_integration_ntime: 8192  # ~40 ms for chord
 # samples_per_data_set: 8192   # 
-num_times: samples_per_data_set
 num_polarizations: 2
 num_dishes: 64
 num_elements: num_polarizations * num_dishes
@@ -57,8 +53,6 @@ telescope:
     dish_grid_size_y: 24
     dish_inputs: []
 
-input_order: CHORDBeamformer
-
 gps_time:
     frame0_nano: start_time_s * GIGA
 
@@ -90,39 +84,45 @@ n2_pool:
     num_metadata_objects: 16 * buffer_depth
 
 fake_correlation_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
 
 fake_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
     metadata_pool: main_pool
 
 fake_rfimask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set * num_local_freq) / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     metadata_pool: main_pool
 
 fake_rficounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 fake_plcounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 fake_rfi_frame_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    value_type: uint8
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 n2_buffer:
@@ -139,6 +139,7 @@ gen_fake_rfi_RFImask:
     name: "RFImask"
     array_shape: [4, 16, 128]    # [samples_per_data_set / 1024, num_local_freq, 128]
     dim_name: ["T8hi128", "F", "T8lo128"]
+    dim_scaling: [1024, 1, 8]
     num_frames: frames_to_generate
     meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
 
@@ -161,13 +162,10 @@ gen_fake_corr_counts:
     kotekan_stage: testN2kGen
     out_buf: fake_correlation_buffer
     out_counts_buf: fake_counts_buffer
-    in_rfimask_buf: fake_rfimask_buffer
     correlation_type: "f_times_ee"
     counts_type: "random_scalar"
     correlation_value: [1, -1]
     counts_value: sub_integration_ntime
-    counts_min: 0
-    counts_max: sub_integration_ntime
     mul_correlation_by_counts: true
     num_frames: frames_to_generate
     freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
@@ -230,3 +228,4 @@ writers:
         file_name: n2_vis_posdef
         in_buf: n2_buffer
         max_frames: num_local_freq * n2_frames_to_write # Will trigger exit after writing this many frames
+log_config_usage: fatal_error

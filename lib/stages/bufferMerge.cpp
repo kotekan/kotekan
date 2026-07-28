@@ -1,19 +1,20 @@
 #include "bufferMerge.hpp"
 
-#include <assert.h>             // for assert
-#include <cstring>              // for memcpy
-#include <functional>           // for bind, function
-#include <stdexcept>            // for invalid_argument, runtime_error
-#include <memory>               // for shared_ptr
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO, DEBUG2, FATAL_ERROR
+#include "visUtil.hpp"         // for frameID, current_time, double_to_ts, modulo
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for INFO, DEBUG2, FATAL_ERROR
-#include "visUtil.hpp"          // for frameID, current_time, double_to_ts, modulo
-#include "fmt.hpp"              // for compile_string_to_view, format, fmt
-#include "json.hpp"             // for json, basic_json, iter_impl
+#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "json.hpp" // for json, basic_json, iter_impl
+
+#include <assert.h>   // for assert
+#include <cstring>    // for memcpy
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr
+#include <stdexcept>  // for invalid_argument, runtime_error
 
 using nlohmann::json;
 
@@ -116,11 +117,11 @@ void bufferMerge::main_thread() {
                 in_buf->pass_metadata(in_frame_id, out_buf, out_frame_id);
 
                 // Link frame description
-                const auto in_frame_desc = in_buf->get_frame_description();
+                const auto in_frame_desc = in_buf->get_frame_desc();
                 if (in_frame_desc) {
-                    out_buf->set_frame_desc(in_frame_desc);
+                    out_buf->require_frame_desc(in_frame_desc);
                 } else {
-                    assert(!out_buf->get_frame_description());
+                    assert(!out_buf->get_frame_desc());
                 }
 
                 // Copy or swap the frame.

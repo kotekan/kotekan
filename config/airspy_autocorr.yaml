@@ -52,10 +52,11 @@ sizeof_float: 4
 # chordMetadata pool the forward-port inherited).
 
 input_buf:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
+    value_type: int16
+    extents: [samples_per_data_set]
     metadata_pool: none
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * bytes_per_sample
 
 sample_bw: 2.5 #MHz device rate (Fs_real = 5 MSPS); R2 supports 10 and 2.5
 freq: 1421.    #MHz
@@ -80,10 +81,11 @@ spectrum_output:
     spectrum_length: 1024
 
     post_fengine_buf:
-        kotekan_buffer: standard
+        kotekan_buffer: ndarray
+        value_type: cfloat32
+        extents: [samples_per_data_set * sizeof_float / 8]
         metadata_pool: none
         num_frames: buffer_depth
-        frame_size: samples_per_data_set * sizeof_float # * 2 for complex / 2 for half-size
 
     fengine:
         kotekan_stage: fftwEngine

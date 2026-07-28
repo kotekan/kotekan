@@ -27,11 +27,16 @@ add_library(
     cudaCopyToRingbuffer.cpp
     cudaCopyNToRingbuffer.cpp
     cudaFRBBeamReformer.cpp
+    cudaHFB1Accumulate.cpp
+    cudaHFB1Accumulate.cu
     cudaMemsetInt.cu
     cudaGnssDespreadKernel.cu
     chordMVPSetup.cpp
     cudaPLMaskAccumulator.cpp
     cudaPLMaskExpander.cpp
+    cudaPLMaskUpchannelizer.cpp
+    cudaPLMaskUpchannelizer.cu
+    testPLMaskUpchannelizer.cpp
     cudaPL1bitCorrelator.cpp
     cudaQuantize4.cpp
     cudaQuantize8.cpp
@@ -130,8 +135,8 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 target_include_directories(kotekan_cuda INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
 target_include_directories(kotekan_cuda PUBLIC .)
 
-# Per-architecture gencode flags are derived from CMAKE_CUDA_ARCHITECTURES (set above);
-# keep -lineinfo for profiling/debug symbols.
+# Per-architecture gencode flags are derived from CMAKE_CUDA_ARCHITECTURES (set above); keep
+# -lineinfo for profiling/debug symbols.
 target_compile_options(kotekan_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)
 
 add_dependencies(kotekan_cuda kotekan_gpu)

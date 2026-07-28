@@ -12,12 +12,9 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: INFO
 
-num_gpus: 1
 buffer_depth: 4
 cpu_affinity: [2, 3, 4, 5, 8, 9, 10, 11]
-sizeof_float: 4
 frame_arrival_period: 5.12e-6 * samples_per_data_set
-sizeof_int: 4
 
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 512
@@ -31,9 +28,6 @@ num_elements: num_polarizations * num_dishes
 num_local_freq: 8
 
 #counts matrix size
-counts_blocksize: 8
-counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
-counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
 
 # vis matrix size
 vis_blocksize: 16
@@ -47,27 +41,31 @@ main_pool:
 
 # Buffers
 host_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_elements
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_local_freq / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     metadata_pool: main_pool
 
 host_correlation_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
 
 simulated_correlation_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
 
 # Ringbuffer signalling buffer
@@ -89,6 +87,7 @@ gen_data_voltage:
     name: "E"
     array_shape: [2048, 8, 2, 64]
     dim_name: ["T", "F", "P", "D"]
+    dim_scaling: [1, 1, 1, 1]
     num_frames: buffer_depth  # Must be at least what check_data expects
 
 gen_data_rfi_RFImask:
@@ -99,6 +98,7 @@ gen_data_rfi_RFImask:
     name: "RFImask"
     array_shape: [2, 8, 128]
     dim_name: ["T8hi128", "F", "T8lo128"]
+    dim_scaling: [1024, 1, 8]
     num_frames: buffer_depth
     meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
 
@@ -165,3 +165,4 @@ check_data:
     second_buf: simulated_correlation_buffer
     num_frames_to_test: buffer_depth
     check_metadata: true
+log_config_usage: fatal_error

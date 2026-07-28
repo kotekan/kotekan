@@ -5,12 +5,23 @@
 #include "N2Util.hpp"
 
 #include <boost/test/included/unit_test.hpp>
+#include <csignal>
 #include <iostream>
 #include <set>
 #include <stdexcept>
 #include <vector>
 
 using namespace kotekan;
+
+// N2FrameDesc validation failures are fatal: FATAL_ERROR_NON_OO signals kotekan
+// shutdown (SIGTERM) before throwing FatalError. Ignore the signal so the tests
+// observe the throw instead of being terminated.
+struct IgnoreSigterm {
+    IgnoreSigterm() {
+        std::signal(SIGTERM, SIG_IGN);
+    }
+};
+BOOST_GLOBAL_FIXTURE(IgnoreSigterm);
 
 BOOST_AUTO_TEST_CASE(test_layout_requires_product_list) {
     std::cout << "Testing layout_requires_product_list()...\n";

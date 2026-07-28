@@ -1,22 +1,23 @@
 #include "SampleAutocorr.hpp"
 
-#include <stdlib.h>             // for calloc, free
-#include <string.h>             // for memset
-#include <json.hpp>             // for json, basic_json
-#include <condition_variable>   // for condition_variable
-#include <functional>           // for bind, function, _1, _2
-#include <mutex>                // for mutex, unique_lock, lock_guard
-#include <memory>               // for shared_ptr
+#include "Config.hpp"          // for Config
+#include "NDArray.hpp"         // for GenericNDArray
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp" // for make_fengine_desc
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO
+#include "restServer.hpp"      // for HTTP_RESPONSE, connectionInstance, restServer
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp"  // for make_fengine_desc
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for INFO
-#include "restServer.hpp"       // for HTTP_RESPONSE, connectionInstance, restServer
-#include "NDArray.hpp"          // for GenericNDArray
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <condition_variable> // for condition_variable
+#include <functional>         // for bind, function, _1, _2
+#include <json.hpp>           // for json, basic_json
+#include <memory>             // for shared_ptr
+#include <mutex>              // for mutex, unique_lock, lock_guard
+#include <stdlib.h>           // for calloc, free
+#include <string.h>           // for memset
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -32,7 +33,7 @@ SampleAutocorr::SampleAutocorr(Config& config, const std::string& unique_name,
     buf_in->register_consumer(unique_name);
 
     // Input: cfloat32 1-D fengine spectra (consumer-only; no out_buf).
-    buf_in->set_frame_desc(
+    buf_in->ensure_frame_desc(
         kotekan_airspy::make_fengine_desc(buf_in->frame_size / (2 * sizeof(float))));
 
     _spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 1024);

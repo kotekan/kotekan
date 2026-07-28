@@ -1,23 +1,24 @@
 #include "N2Subset.hpp"
 
-#include <gsl-lite.hpp>         // for span
-#include <map>                  // for map, operator==, _Rb_tree_iterator
-#include <utility>              // for pair
-#include <complex>              // for complex
-#include <functional>           // for bind, function
-#include <set>                  // for set
+#include "Config.hpp"          // for Config
+#include "FrameDesc.hpp"       // for FrameDesc
+#include "N2FrameDesc.hpp"     // for N2Field, N2FrameDesc
+#include "N2FrameView.hpp"     // for N2FrameView
+#include "N2Metadata.hpp"      // for N2Metadata
+#include "N2Util.hpp"          // for prod_ctype, frameID, modulo
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
 
-#include "Config.hpp"           // for Config
-#include "N2FrameDesc.hpp"      // for N2Field, N2FrameDesc
-#include "N2FrameView.hpp"      // for N2FrameView
-#include "N2Util.hpp"           // for prod_ctype, frameID, modulo
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO
-#include "fmt.hpp"              // for compile_string_to_view
-#include "FrameDesc.hpp"        // for FrameDesc
-#include "N2Metadata.hpp"       // for N2Metadata
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <complex>      // for complex
+#include <functional>   // for bind, function
+#include <gsl-lite.hpp> // for span
+#include <map>          // for map, operator==, _Rb_tree_iterator
+#include <set>          // for set
+#include <utility>      // for pair
 
 
 using kotekan::bufferContainer;
@@ -48,23 +49,8 @@ N2Subset::N2Subset(Config& config, const std::string& unique_name,
     }
 
     // Get and validate frame descriptors
-    auto in_frame_desc = in_buf->get_frame_description();
-    if (!in_frame_desc) {
-        FATAL_ERROR("N2Subset: in_buf does not have a frame descriptor set");
-    }
-    in_desc = std::dynamic_pointer_cast<const N2FrameDesc>(in_frame_desc);
-    if (!in_desc) {
-        FATAL_ERROR("N2Subset: in_buf does not have an N2FrameDesc");
-    }
-
-    auto out_frame_desc = out_buf->get_frame_description();
-    if (!out_frame_desc) {
-        FATAL_ERROR("N2Subset: out_buf does not have a frame descriptor set");
-    }
-    out_desc = std::dynamic_pointer_cast<const N2FrameDesc>(out_frame_desc);
-    if (!out_desc) {
-        FATAL_ERROR("N2Subset: out_buf does not have an N2FrameDesc");
-    }
+    in_desc = in_buf->require_frame_desc<N2FrameDesc>();
+    out_desc = out_buf->require_frame_desc<N2FrameDesc>();
 
     // Store num_elements from descriptors
     _in_num_elements = in_desc->get_num_elements();

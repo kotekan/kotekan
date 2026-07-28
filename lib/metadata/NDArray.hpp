@@ -1,60 +1,22 @@
 #ifndef NDARRAY_HPP
 #define NDARRAY_HPP
 
-#include <DataType.hpp>     // for DataType
-#include <FrameDesc.hpp>    // for FrameDesc
-#include <Symbol.hpp>       // for Symbol
-#include <algorithm>        // for fill_n
-#include <array>            // for array
-#include <cassert>          // for assert
-#include <cstddef>          // for ptrdiff_t, size_t
-#include <functional>       // for function
-#include <initializer_list> // for initializer_list
-#include <iostream>         // for ostream
-#include <iterator>         // for pair
-#include <memory>           // for shared_ptr
-#include <utility>          // for pair
-#include <vector>           // for vector
+#include <DataType.hpp>  // for DataType
+#include <FrameDesc.hpp> // for FrameDesc
+#include <Symbol.hpp>    // for Symbol
+#include <algorithm>     // for fill_n
+#include <array>         // for array
+#include <cassert>       // for assert
+#include <cstddef>       // for ptrdiff_t, size_t
+#include <functional>    // for function
+#include <iostream>      // for ostream
+#include <iterator>      // for pair
+#include <memory>        // for shared_ptr
+#include <tuple>         // for tuple
+#include <utility>       // for pair
+#include <vector>        // for vector
 
 namespace kotekan {
-
-namespace {
-
-template<typename T, std::size_t D, typename U>
-std::array<T, D> convert_array(const std::array<U, D>& values) {
-    std::array<T, D> result;
-    for (std::size_t d = 0; d < D; ++d)
-        result[d] = values[d];
-    return result;
-}
-
-// Helper function to create a `std::array` from an initializer list.
-// The initializer list must have the correct size.
-template<std::size_t D, typename T>
-std::array<T, D> make_array(std::initializer_list<T> values) {
-    assert(values.size() == D);
-    std::array<T, D> result;
-    for (std::size_t d = 0; d < D; ++d)
-        result[d] = values.begin()[d];
-    return result;
-}
-
-// Helper function to create a pair of `std::array`s from an
-// initializer list of pairs. (This transposes the input.) The
-// initializer list must have the correct size.
-template<std::size_t D, typename T, typename U>
-std::pair<std::array<T, D>, std::array<U, D>>
-make_arrays_from_pairs(std::initializer_list<std::pair<T, U>> values) {
-    assert(values.size() == D);
-    std::pair<std::array<T, D>, std::array<U, D>> result;
-    for (std::size_t d = 0; d < D; ++d)
-        result.first[d] = values.begin()[d].first;
-    for (std::size_t d = 0; d < D; ++d)
-        result.second[d] = values.begin()[d].second;
-    return result;
-}
-
-} // namespace
 
 // MISSING:
 // - get/set chordDatatype
@@ -77,67 +39,109 @@ make_arrays_from_pairs(std::initializer_list<std::pair<T, U>> values) {
 // - new type `NDBuffer`?
 // - add functions to allocate/deallocate buffer?
 
-// A `GenericNDArray` is similar to a numpy array. Neither the type
-// nor the rank are known at compile time. This is convenient e.g.
-// when reading data from a file, but it prevents efficient operations
-// on array elements.
+class Config;
+
+/// A `GenericNDArray` is similar to a numpy array. Neither the type
+/// nor the rank are known at compile time. This is convenient e.g.
+/// when reading data from a file, but it prevents efficient operations
+/// on array elements.
 class GenericNDArray : public FrameDesc {
 public:
-    // create an NDArray based on run-time type information
-    static std::shared_ptr<GenericNDArray> create(const DataType value_datatype,
-                                                  const Symbol quantity_name,
-                                                  const std::vector<std::ptrdiff_t>& extents,
-                                                  const std::vector<Symbol>& dimnames, void* data);
-    static const size_t max_rank = 10;
+    /// create a descriptor (an NDArray without data) based on run-time type
+    /// information, e.g. for Buffer::ensure_frame_desc / require_frame_desc. An
+    /// empty `quantity_name`, or empty `dimnames` entries, are treated as unset
+    /// labels (see reconcile()).
+    static std::shared_ptr<GenericNDArray> describe(const DataType value_datatype,
+                                                    const Symbol quantity_name,
+                                                    const std::vector<std::ptrdiff_t>& extents,
+                                                    const std::vector<Symbol>& dimnames,
+                                                    const std::vector<std::ptrdiff_t>& dimscalings);
+
+    /// Build a frame descriptor from a config block. `value_type` and
+    /// `extents` are required; the optional labels `quantity_name`
+    /// and `dimnames` are left unset when omitted. Extents may be
+    /// arithmetic expressions over other config values. Throws on
+    /// invalid or inconsistent config.
+    static std::shared_ptr<GenericNDArray> from_config(const Config& config,
+                                                       const std::string& location);
+
+    /// Merge two descriptors for the same buffer. The structural fields
+    /// (value_type, extents) must match; an unset label (quantity_name,
+    /// dimnames) on `a` is filled from `b`, and labels set on both sides must
+    /// agree. Returns the merged descriptor if `a` gained labels, or nullptr if
+    /// nothing changed. Throws on any structural or label conflict.
+    static std::shared_ptr<GenericNDArray> reconcile(const GenericNDArray& a,
+                                                     const GenericNDArray& b);
+    /// constexpr makes this an inline variable (C++17), so odr-uses (e.g.
+    /// passing it by reference to fmt::format) link without an out-of-line
+    /// definition.
+    static constexpr size_t max_rank = 10;
     virtual ~GenericNDArray() {}
-    // The value (element) type
+    /// The value (element) type
     virtual DataType get_value_datatype() const = 0;
-    // The number of bytes for each value (element)
+    /// The number of bytes for each value (element)
     virtual std::size_t get_value_type_size() const = 0;
-    // The stored quantity_name
+    /// The stored quantity_name
     Symbol get_quantity_name() const override = 0;
-    // The rank (number of dimensions)
+    /// The rank (number of dimensions)
     virtual std::size_t get_rank() const = 0;
-    // Pointer to the array data
+    /// Pointer to the array data
     virtual const void* get_data() const = 0;
     virtual void* get_data() = 0;
-    // The array extents (array shape)
+    /// The array extents (array shape)
     virtual std::vector<std::ptrdiff_t> get_extents() const = 0;
     virtual std::ptrdiff_t get_extent(std::size_t d) const = 0;
-    // Is the array empty?
+    /// Is the array empty?
     virtual bool get_empty() const = 0;
-    // The array size. (This is the product of the extents.)
+    /// The array size. (This is the product of the extents.)
     virtual std::ptrdiff_t get_size() const = 0;
-    // The names of the array dimensions
+    /// The names of the array dimensions
     virtual std::vector<Symbol> get_dimnames() const = 0;
     virtual Symbol get_dimname(std::size_t d) const = 0;
-    // The array strides. Strides can have any value (including negative).
+    /// The dimension scalings
+    virtual std::vector<std::ptrdiff_t> get_dimscalings() const = 0;
+    virtual std::ptrdiff_t get_dimscaling(std::size_t d) const = 0;
+    /// The array strides. Strides can have any value (including negative).
     virtual std::vector<std::ptrdiff_t> get_strides() const = 0;
     virtual std::ptrdiff_t get_stride(std::size_t d) const = 0;
 
-    // FrameDesc override
+    /// FrameDesc override
     size_t get_byte_size() const override {
         return get_size() * get_value_type_size();
     }
 
-    // Output the array description (framedesc), useful for logging or debugging
+    /// Output the array description (framedesc), useful for logging or debugging
     void output_framedesc(std::ostream& os) const override;
 
-    // Compare two NDArrays, useful to compare metadata
+    /// Describe the first structural difference (value type, quantity name,
+    /// rank, extents, dimnames) between this descriptor and `other`; returns
+    /// an empty string when they match. Strides and data are not compared.
+    std::string structure_mismatch(const GenericNDArray& other) const;
+
+    /// FrameDesc override: the structural difference when `other` is also an
+    /// NDArray, else the default both-descriptions dump.
+    std::string describe_mismatch(const FrameDesc& other) const override;
+
+    /// Compare two NDArrays, useful to compare metadata
     bool operator==(const FrameDesc& other) const override;
+
+    /// FrameDesc JSON-serialization override (see FrameDesc::to_json).
+    nlohmann::json to_json() const override;
+    /// Reconstruct a GenericNDArray from JSON written by to_json().
+    static std::shared_ptr<const FrameDesc> from_json(const nlohmann::json& j);
 };
 
-// A `NDArray<T,D>` is a `D`-dimensional array of type `T`. Different
-// from `GenericNDArray`, its elements can be accessed efficiently. If
-// you are writing C++ code that processes multi-dimensional arrays
-// then this class is a fine choice.
+/// A `NDArray<T,D>` is a `D`-dimensional array of type `T`. Different
+/// from `GenericNDArray`, its elements can be accessed efficiently. If
+/// you are writing C++ code that processes multi-dimensional arrays
+/// then this class is a fine choice.
 template<typename T, std::size_t D>
 class NDArray : public GenericNDArray {
 public:
-    // Value (element) type
+    /// Value (element) type
     using value_type = T;
     constexpr static DataType value_datatype = GetDataType_v<T>;
-    // Rank (number of dimensions)
+    /// Rank (number of dimensions)
     constexpr static std::size_t rank = D;
     constexpr static std::size_t value_type_size = sizeof(T);
 
@@ -162,58 +166,52 @@ private:
     // Dimension names
     std::array<Symbol, D> m_dimnames;
 
+    // Dimension scalings
+    std::array<std::ptrdiff_t, D> m_dimscalings;
+
 public:
-    // No default constructor
+    /// No default constructor
     NDArray() = delete;
 
-    // No copy constructors
+    /// No copy constructors
     NDArray(const NDArray&) = delete;
     NDArray& operator=(const NDArray&) = delete;
 
-    // Move constructors
+    /// Move constructors
     NDArray(NDArray&&) = default;
     NDArray& operator=(NDArray&&) = default;
 
-    // Construct from extents and dimension names
+    /// Create a descriptor (an NDArray without data), e.g. for
+    /// Buffer::ensure_frame_desc / require_frame_desc
+    static std::shared_ptr<NDArray<T, D>>
+    describe(const Symbol quantity_name, const std::array<std::ptrdiff_t, D>& extents,
+             const std::array<Symbol, D>& dimnames,
+             const std::array<std::ptrdiff_t, D>& dimscalings) {
+        return std::make_shared<NDArray<T, D>>(quantity_name, extents, dimnames, dimscalings);
+    }
+
+    /// Construct from extents and dimension names
     NDArray(const Symbol quantity_name, const std::vector<std::ptrdiff_t>& extents,
-            const std::vector<Symbol>& dimnames, T* data) {
+            const std::vector<Symbol>& dimnames, const std::vector<std::ptrdiff_t>& dimscalings,
+            T* data) {
         assert(extents.size() == D && "extents size must match dimensionality D");
         assert(dimnames.size() == D && "dimnamess size must match dimensionality D");
-        init(quantity_name, extents, dimnames, data);
+        assert(dimscalings.size() == D && "dimscalings size must match dimensionality D");
+        init(quantity_name, extents, dimnames, dimscalings, data);
     }
     NDArray(const Symbol quantity_name, const std::array<std::ptrdiff_t, D>& extents,
-            const std::array<Symbol, D>& dimnames, T* data) {
-        init(quantity_name, extents, dimnames, data);
+            const std::array<Symbol, D>& dimnames, const std::array<std::ptrdiff_t, D>& dimscalings,
+            T* data) {
+        init(quantity_name, extents, dimnames, dimscalings, data);
     }
     NDArray(const Symbol quantity_name, const std::array<std::ptrdiff_t, D>& extents,
-            const std::array<Symbol, D>& dimnames) :
-        NDArray(quantity_name, extents, dimnames, nullptr) {
+            const std::array<Symbol, D>& dimnames,
+            const std::array<std::ptrdiff_t, D>& dimscalings) :
+        NDArray(quantity_name, extents, dimnames, dimscalings, nullptr) {
         // We allocate the array without initializing its elements
         m_data = new T[m_size];
         m_cleanup = [&]() { delete[] m_data; };
     }
-
-    template<typename I = std::ptrdiff_t>
-    NDArray(const Symbol quantity_name, const std::array<I, D>& extents,
-            const std::array<Symbol, D>& dimnames, T* data) :
-        NDArray(quantity_name, std::array<std::ptrdiff_t, D>(extents), dimnames, data) {}
-    template<typename I = std::ptrdiff_t>
-    NDArray(const Symbol quantity_name, const std::array<I, D>& extents,
-            const std::array<Symbol, D>& dimnames) :
-        NDArray(quantity_name, convert_array<std::ptrdiff_t, D>(extents), dimnames) {}
-
-    template<typename I = std::ptrdiff_t>
-    NDArray(const Symbol quantity_name, std::initializer_list<I> extents,
-            std::initializer_list<Symbol> dimnames) :
-        NDArray(quantity_name, make_array<D>(extents), make_array<D>(dimnames)) {}
-    template<typename I = std::ptrdiff_t>
-    NDArray(const Symbol quantity_name,
-            const std::pair<std::array<Symbol, D>, std::array<I, D>>& dimnames_extents) :
-        NDArray(quantity_name, dimnames_extents.second, dimnames_extents.first) {}
-    template<typename I = std::ptrdiff_t>
-    NDArray(const Symbol quantity_name,
-            std::initializer_list<std::pair<Symbol, I>> dimnames_extents) :
-        NDArray(quantity_name, make_arrays_from_pairs<D>(dimnames_extents)) {}
 
     virtual ~NDArray() {
         if (m_cleanup)
@@ -226,7 +224,7 @@ public:
     //     m_data = data;
     // }
 
-    // Get a pointer to the first element
+    /// Get a pointer to the first element
     const T* data() const {
         return m_data;
     }
@@ -234,12 +232,12 @@ public:
         return m_data;
     }
 
-    // The (physical) quantity_name
+    /// The (physical) quantity_name
     Symbol quantity_name() const {
         return m_quantity_name;
     }
 
-    // The array extents (array shape)
+    /// The array extents (array shape)
     std::array<std::ptrdiff_t, D> extents() const {
         return m_extents;
     }
@@ -248,17 +246,17 @@ public:
         return m_extents[d];
     }
 
-    // Is the array empty?
+    /// Is the array empty?
     bool empty() const {
         return size() == 0;
     }
 
-    // The array size. (This is the product of the extents.)
+    /// The array size. (This is the product of the extents.)
     std::ptrdiff_t size() const {
         return m_size;
     }
 
-    // The names of the array dimensions
+    /// The names of the array dimensions
     std::array<Symbol, D> dimnames() const {
         return m_dimnames;
     }
@@ -267,7 +265,16 @@ public:
         return m_dimnames[d];
     }
 
-    // The array strides. Strides can have any value (including negative).
+    /// The scalings of the array dimensions
+    std::array<std::ptrdiff_t, D> dimscalings() const {
+        return m_dimscalings;
+    }
+    std::ptrdiff_t dimscaling(std::size_t d) const {
+        assert(d < D);
+        return m_dimscalings[d];
+    }
+
+    /// The array strides. Strides can have any value (including negative).
     std::array<std::ptrdiff_t, D> strides() const {
         return m_strides;
     }
@@ -276,7 +283,7 @@ public:
         return m_strides[d];
     }
 
-    // Convert an array index to an offset, using the strides
+    /// Convert an array index to an offset, using the strides
     template<typename I = std::ptrdiff_t>
     std::ptrdiff_t index2offset(const std::array<I, D>& ind) const {
         for (std::size_t d = 0; d < D; ++d)
@@ -287,7 +294,7 @@ public:
         return off;
     }
 
-    // Access an array element by index
+    /// Access an array element by index
     template<typename I = std::ptrdiff_t>
     const T& operator()(const std::array<I, D>& ind) const {
         return m_data[index2offset(ind)];
@@ -305,7 +312,7 @@ public:
         return (*this)(std::array<std::ptrdiff_t, sizeof...(Inds)>{inds...});
     }
 
-    // A const iterator
+    /// A const iterator
     class ConstIterator {
         const NDArray<T, D>* m_parent;
         std::array<std::ptrdiff_t, D> m_indices;
@@ -398,6 +405,15 @@ public:
     Symbol get_dimname(std::size_t d) const override {
         return dimname(d);
     }
+    std::vector<std::ptrdiff_t> get_dimscalings() const override {
+        std::vector<std::ptrdiff_t> result(D);
+        for (std::size_t d = 0; d < D; ++d)
+            result.at(d) = dimscalings()[d];
+        return result;
+    }
+    std::ptrdiff_t get_dimscaling(std::size_t d) const override {
+        return dimscaling(d);
+    }
     std::vector<std::ptrdiff_t> get_strides() const override {
         std::vector<std::ptrdiff_t> result(D);
         for (std::size_t d = 0; d < D; ++d)
@@ -409,21 +425,31 @@ public:
     }
 
 private:
-    template<typename ExtentsArray, typename NamesArray>
+    template<typename ExtentsArray, typename NamesArray, typename ScalingsArray>
     void init(const Symbol quantity_name, const ExtentsArray& extents, const NamesArray& dimnames,
-              T* data) {
+              const ScalingsArray& dimscalings, T* data) {
         m_quantity_name = quantity_name;
 
+        assert(extents.size() == D);
         for (std::size_t d = 0; d < D; ++d)
             m_extents.at(d) = extents.at(d);
         for (std::size_t d = 0; d < D; ++d)
             assert(m_extents.at(d) >= 0);
 
+        assert(dimnames.size() == D);
         for (std::size_t d = 0; d < D; ++d)
             m_dimnames.at(d) = dimnames.at(d);
+        // Unset (empty) labels are permitted on multiple axes; only set labels
+        // must be unique.
         for (std::size_t d = 0; d < D; ++d)
             for (std::size_t d1 = 0; d1 < d; ++d1)
-                assert(m_dimnames.at(d) != m_dimnames.at(d1));
+                assert(m_dimnames.at(d) == Symbol("") || m_dimnames.at(d) != m_dimnames.at(d1));
+
+        assert(dimscalings.size() == D);
+        for (std::size_t d = 0; d < D; ++d)
+            m_dimscalings.at(d) = dimscalings.at(d);
+        for (std::size_t d = 0; d < D; ++d)
+            assert(m_dimscalings.at(d) > 0);
 
         m_size = 1;
         for (std::size_t d = D; d > 0; --d) {

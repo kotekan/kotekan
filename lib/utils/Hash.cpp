@@ -1,10 +1,10 @@
 #include "Hash.hpp"
 
 #include <inttypes.h> // IWYU pragma: keep
-#include <stdio.h>    // for sscanf
-#include <json.hpp>   // for json, basic_json
 #include <iostream>   // for istream, ostream, basic_istream, basic_istream::read, basic_ostream
+#include <json.hpp>   // for json, basic_json
 #include <stdexcept>  // for invalid_argument
+#include <stdio.h>    // for sscanf
 
 
 using nlohmann::json;

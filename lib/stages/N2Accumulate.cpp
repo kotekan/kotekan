@@ -1,41 +1,43 @@
 #include "N2Accumulate.hpp"
 
-#include <assert.h>               // for assert
-#include <math.h>                 // for floor
-#include <algorithm>              // for fill
-#include <complex>                // for complex, operator*, conj, operator-, norm
-#include <functional>             // for bind, function, placeholders
-#include <memory>                 // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
-#include <array>                  // for array
-#include <ostream>                // for ostream, basic_ostream
+#include "Config.hpp"            // for Config
+#include "DataType.hpp"          // for DataType
+#include "FrameDesc.hpp"         // for FrameDesc
+#include "Hash.hpp"              // for operator!=
+#include "N2FrameDesc.hpp"       // for N2FrameDesc
+#include "N2FrameView.hpp"       // for N2FrameView
+#include "N2Layout.hpp"          // for N2Layout
+#include "N2Metadata.hpp"        // for N2Metadata, get_N2_metadata
+#include "N2Util.hpp"            // for frameID, modulo, operator+, cfloat, cmap
+#include "NDArray.hpp"           // for GenericNDArray
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"         // for Telescope, freq_id_t
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chordMetadata.hpp"     // for chordMetadata, get_chord_metadata
+#include "dataset.hpp"           // for dset_id_t
+#include "div.hpp"               // for div_ceil, num_triangle_blocks
+#include "kotekanLogging.hpp"    // for FATAL_ERROR, DEBUG, FATAL_ERROR_NON_OO, INFO
+#include "prometheusMetrics.hpp" // for Metrics, Gauge
+#include "timeUtil.hpp"          // for EOP, get_UT1_from_ERA, get_ERA_from_UT1, get_UT1_from_time
 
-#include "Config.hpp"             // for Config
-#include "N2FrameView.hpp"        // for N2FrameView
-#include "N2Metadata.hpp"         // for N2Metadata, get_N2_metadata
-#include "N2Util.hpp"             // for frameID, modulo, operator+, cfloat, cmap
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"          // for Telescope, freq_id_t
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "chordMetadata.hpp"      // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"     // for FATAL_ERROR, DEBUG, FATAL_ERROR_NON_OO, INFO
-#include "prometheusMetrics.hpp"  // for Metrics, Gauge
-#include "timeUtil.hpp"           // for EOP, get_UT1_from_ERA, get_ERA_from_UT1, get_UT1_from_time
-#include "fmt.hpp"                // for compile_string_to_view
-#include "gsl-lite.hpp"           // for span
-#include "DataType.hpp"           // for DataType
-#include "FrameDesc.hpp"          // for FrameDesc
-#include "Hash.hpp"               // for operator!=
-#include "N2FrameDesc.hpp"        // for N2FrameDesc
-#include "N2Layout.hpp"           // for N2Layout
-#include "dataset.hpp"            // for dset_id_t
-#include "div.hpp"                // for div_ceil, num_triangle_blocks
-#include "jsonMetadata.hpp"       // for MAX_NUM_RFI_THRESHOLDS
+#include "fmt.hpp"          // for compile_string_to_view
+#include "gsl-lite.hpp"     // for span
+#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
+
+#include <algorithm>  // for fill
+#include <array>      // for array
+#include <assert.h>   // for assert
+#include <complex>    // for complex, operator*, conj, operator-, norm
+#include <functional> // for bind, function, placeholders
+#include <math.h>     // for floor
+#include <memory>     // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
+#include <ostream>    // for ostream, basic_ostream
 #ifdef WITH_OMP
 #include <omp.h>
 #endif
-#include <time.h>                 // for timespec, size_t
-#include <vector>                 // for vector
+#include <time.h> // for timespec, size_t
+#include <vector> // for vector
 
 
 using namespace std::placeholders;
@@ -72,14 +74,19 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _num_elements(_num_polarizations * _num_dishes),
     _num_workers(config.get_default<int>(unique_name, "num_workers", 1)),
     _do_fringestop(config.get_default<bool>(unique_name, "do_fringestop", false)),
-    _input_order(config.get<ElementOrder>(unique_name, "input_order")),
     _variance_mode(config.get<N2VarianceMode>(unique_name, "variance_mode")),
     _debug_accum_mode(config.get_default<bool>(unique_name, "debug_accum_mode", false)),
     _profile_info(config.get_default<bool>(unique_name, "profile_info", false)),
     _tel(Telescope::instance()),
-    _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _input_order)),
-    skipped_frame_counter(Metrics::instance().add_counter(
-        "kotekan_N2accumulate_skipped_frame_total", unique_name, {"freq_id", "reason"})) {
+    _feed_positions_m(_tel.get_feed_positions_m(_num_elements, _tel.fiducial_element_order())),
+    n_valid_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_frac_valid_fpga_ticks",
+                                                unique_name, {"freq_id"})),
+    n_pl_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_frac_flagged_fpga_ticks_pl",
+                                             unique_name, {"freq_id"})),
+    n_rfi_gauge(Metrics::instance().add_gauge("kotekan_N2accumulate_frac_flagged_fpga_ticks_rfi",
+                                              unique_name, {"freq_id"})),
+    n_rfi_only_gauge(Metrics::instance().add_gauge(
+        "kotekan_N2accumulate_frac_flagged_fpga_ticks_rfi_only", unique_name, {"freq_id"})) {
 
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
@@ -202,44 +209,38 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
     _accum_bin_idx = -1;
 
     // Ensure incoming buffer shapes and type are correct
-    in_buf->allocate_ndarray_frame_desc(kotekan::int32, "n2k_correlation",
-                                        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame,
-                                         _n2k_correlation_num_blocks, _n2k_correlation_blocksize,
-                                         _n2k_correlation_blocksize, 2},
-                                        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"});
+    in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::int32, "n2k_correlation",
+        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame, _n2k_correlation_num_blocks,
+         _n2k_correlation_blocksize, _n2k_correlation_blocksize, 2},
+        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"},
+        {_n_fpga_samples_per_n2k_correlation, 1, 16, 1, 1, 1}));
 
-    in_counts_buf->allocate_ndarray_frame_desc(kotekan::int32, "n2k_counts",
-                                               {_n_integrations_per_n2k_frame,
-                                                _num_freq_per_n2k_frame, _n2k_counts_num_blocks,
-                                                _n2k_counts_blocksize, _n2k_counts_blocksize},
-                                               {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+    in_counts_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::int32, "n2k_counts",
+        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame, _n2k_counts_num_blocks,
+         _n2k_counts_blocksize, _n2k_counts_blocksize},
+        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"},
+        {_n_fpga_samples_per_n2k_correlation, 1, 64, 8, 8}));
 
-    in_rficounts_buf->allocate_ndarray_frame_desc(
+    in_rficounts_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int32, "RFImask_counts", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
-        {"Tc", "F"});
+        {"Tc", "F"}, {_n_fpga_samples_per_n2k_correlation, 1}));
 
-    in_plcounts_buf->allocate_ndarray_frame_desc(
-        kotekan::int32, "pl_lost_counts_scalar",
-        {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame}, {"Tc", "F"});
+    in_plcounts_buf->require_frame_desc(
+        kotekan::GenericNDArray::describe(kotekan::int32, "pl_lost_counts_scalar",
+                                          {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
+                                          {"Tc", "F"}, {_n_fpga_samples_per_n2k_correlation, 1}));
 
-    in_rfiframemask_buf->allocate_ndarray_frame_desc(
+    in_rfiframemask_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::uint8, "RFIFrameMask", {_n_integrations_per_n2k_frame, _num_freq_per_n2k_frame},
-        {"Tc", "F"});
+        {"Tc", "F"}, {_n_fpga_samples_per_n2k_correlation, 1}));
 
 
     // Validate that the output buffer's frame descriptor (set by bufferFactory) matches
     // what this stage will produce
     {
-        auto out_frame_desc = out_buf->get_frame_description();
-        if (!out_frame_desc) {
-            FATAL_ERROR("N2Accumulate: Output buffer {:s} does not have a frame descriptor set",
-                        out_buf->buffer_name);
-        }
-        auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(out_frame_desc);
-        if (!n2_desc) {
-            FATAL_ERROR("N2Accumulate: Output buffer {:s} does not have an N2FrameDesc",
-                        out_buf->buffer_name);
-        }
+        auto n2_desc = out_buf->require_frame_desc<kotekan::N2FrameDesc>();
         // Validate the descriptor matches what we expect to produce
         if (n2_desc->get_num_elements() != (uint32_t)_num_elements) {
             FATAL_ERROR(
@@ -264,9 +265,11 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
 void N2Accumulate::main_thread() {
 
     auto& comp_time_seconds_metric =
-        Metrics::instance().add_gauge("kotekan_N2_accum_time", unique_name);
-    auto& samples_in_out_frame =
-        Metrics::instance().add_gauge("kotekan_samples_in_accumulated_out_frame", unique_name);
+        Metrics::instance().add_gauge("kotekan_N2accumulate_accum_time", unique_name);
+    auto& samples_in_out_frame = Metrics::instance().add_gauge(
+        "kotekan_N2accumulate_samples_in_accumulated_out_frame", unique_name);
+    auto& skipped_input_frames = Metrics::instance().add_gauge(
+        "kotekan_N2accumulate_skipped_frames", unique_name, {"freq_id", "reason"});
 
     frameID in_frame_id(in_buf);
     frameID in_counts_frame_id(in_counts_buf);
@@ -306,11 +309,16 @@ void N2Accumulate::main_thread() {
 
     // storage for each frequency's fringe phases, declared here so it is only
     // allocated once.
-    std::vector<std::vector<std::complex<float>>> fringe_phase_t0(_num_freq_per_n2k_frame, std::vector<std::complex<float>>(_num_elements, _sentinel_phase));
-    std::vector<std::vector<std::complex<float>>> fringe_phase_t1(_num_freq_per_n2k_frame, std::vector<std::complex<float>>(_num_elements, _sentinel_phase));
+    std::vector<std::vector<std::complex<float>>> fringe_phase_t0(
+        _num_freq_per_n2k_frame, std::vector<std::complex<float>>(_num_elements, _sentinel_phase));
+    std::vector<std::vector<std::complex<float>>> fringe_phase_t1(
+        _num_freq_per_n2k_frame, std::vector<std::complex<float>>(_num_elements, _sentinel_phase));
 
     // We start with START.
     AccumState state = AccumState::START;
+
+    // track the number of skipped input frames per frequency
+    std::vector<uint64_t> _vis_input_frames_skipped_rfi(_num_freq_per_n2k_frame, 0);
 
 #ifdef WITH_OMP
     [[maybe_unused]] double prof_last_time = omp_get_wtime();
@@ -521,10 +529,11 @@ void N2Accumulate::main_thread() {
                 // Second-stage RFI excision.
                 if ((!rfiframemask_t0[f]) || (!rfiframemask_t1[f])) {
                     _n_rfi_samples_in_vis[f] += n_samples_per_pair;
+                    _vis_input_frames_skipped_rfi.at(f) += 1;
                     continue;
                 }
 
-                // Third: accum RFI sampes
+                // Third: accum RFI samples
                 _n_rfi_samples_in_vis[f] += rficounts_t0[f] + rficounts_t1[f];
 
                 // Fourth: Normalization - accum the remaining good ticks.
@@ -544,7 +553,8 @@ void N2Accumulate::main_thread() {
                 accum_corr_and_var(_vis.data() + f * corr_stride_f,
                                    _var.data() + f * corr_stride_f / 2, corr_t0 + f * corr_stride_f,
                                    corr_t1 + f * corr_stride_f, freq_MHz, target_eop, eop_t0,
-                                   eop_t1, count_t0, count_t1, fringe_phase_t0.at(f), fringe_phase_t1.at(f));
+                                   eop_t1, count_t0, count_t1, fringe_phase_t0.at(f),
+                                   fringe_phase_t1.at(f));
             }
 
             // We're adding frames in pairs, increment frame count by 2
@@ -557,9 +567,16 @@ void N2Accumulate::main_thread() {
                 DEBUG("Finishing N2Accumulate output frame. Accumulated {:d} visibility samples.",
                       _vis_samples_in_out_frame);
                 samples_in_out_frame.set(_vis_samples_in_out_frame);
+                // set skipped frame metrics and reset counter
+                for (int64_t f = 0; f < _num_freq_per_n2k_frame; ++f) {
+                    skipped_input_frames.labels({std::to_string(f), "rfi"})
+                        .set(_vis_input_frames_skipped_rfi.at(f));
+                }
                 output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
 
                 _vis_samples_in_out_frame = 0;
+                std::fill(_vis_input_frames_skipped_rfi.begin(),
+                          _vis_input_frames_skipped_rfi.end(), 0);
                 _accum_fpga_start_tick = seq + _n_fpga_samples_per_n2k_correlation;
                 _accum_bin_idx = next_bin_idx;
                 target_eop = get_accum_bin_EOP(next_bin_idx);
@@ -744,7 +761,7 @@ void N2Accumulate::accum_corr_and_var(int32_t* vis_f, float* var_f, const int32_
                                        fringe_phase_t1);
         _tel.fill_fringestop_phases_1d(freq_MHz, eop_t0, target_eop, _feed_positions_m,
                                        fringe_phase_t0);
-        for(int64_t e = 0; e < _num_elements; e++) {
+        for (int64_t e = 0; e < _num_elements; e++) {
             if (fringe_phase_t1[e] == _sentinel_phase)
                 FATAL_ERROR("fringe_phase_t1[%d] was never_set", e);
             if (fringe_phase_t0[e] == _sentinel_phase)
@@ -981,6 +998,15 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
             meta->dataset_id = dataset_id;
         }
         N2FrameView out_vis(out_buf, out_frame_id + f);
+
+        // Update some prometheus metrics here, since metadata is already available
+        auto fid = std::to_string(meta->freq_id);
+        n_valid_gauge.labels({fid}).set(static_cast<float>(meta->n_valid_fpga_ticks)
+                                        / ticks_in_accum);
+        n_pl_gauge.labels({fid}).set(static_cast<float>(meta->n_pl_fpga_ticks) / ticks_in_accum);
+        n_rfi_gauge.labels({fid}).set(static_cast<float>(meta->n_rfi_fpga_ticks) / ticks_in_accum);
+        n_rfi_only_gauge.labels({fid}).set(static_cast<float>(meta->n_rfi_only_fpga_ticks)
+                                           / ticks_in_accum);
 
         // Sample numbers for normalizing variaces/weights
         int64_t ns = _n_valid_fpga_samples_in_vis.at(f); // ns = "number of samples"

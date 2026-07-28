@@ -1,22 +1,24 @@
-#include <unistd.h>                      // for sleep
-#include <cassert>                       // for assert
-#include <string>                        // for basic_string, string
-#include <vector>                        // for vector
-#include <cstddef>                       // for ptrdiff_t
-#include <functional>                    // for function
-#include <memory>                        // for allocator, __shared_ptr_access, shared_ptr
-#include <set>                           // for operator!=, set
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for float16_t
+#include "NDArray.hpp"
+#include "Stage.hpp"                    // for Stage
+#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
+#include "UpchannelizationSchedule.hpp" // for UpchannelizationSchedule
+#include "buffer.hpp"                   // for Buffer
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "chordMetadata.hpp"            // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"           // for DEBUG
 
-#include "Config.hpp"                    // for Config
-#include "Stage.hpp"                     // for Stage
-#include "StageFactory.hpp"              // for REGISTER_KOTEKAN_STAGE
-#include "UpchannelizationSchedule.hpp"  // for UpchannelizationSchedule
-#include "buffer.hpp"                    // for Buffer
-#include "bufferContainer.hpp"           // for bufferContainer
-#include "chordMetadata.hpp"             // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"            // for DEBUG
-#include "DataType.hpp"                  // for float16_t
-#include "fmt.hpp"                       // for compile_string_to_view, format
+#include "fmt.hpp" // for compile_string_to_view, format
+
+#include <cassert>    // for assert
+#include <cstddef>    // for ptrdiff_t
+#include <functional> // for function
+#include <memory>     // for allocator, __shared_ptr_access, shared_ptr
+#include <set>        // for operator!=, set
+#include <string>     // for basic_string, string
+#include <unistd.h>   // for sleep
+#include <vector>     // for vector
 
 class setUpchanGain : public kotekan::Stage {
     const std::string upchannelization_schedule_name =
@@ -71,12 +73,13 @@ public:
             return;
 
         // Set metadata
-        upchan_gain_buffer->allocate_ndarray_frame_desc<float16_t, 1>(
-            "G", {upchan_max_num_channels * upchan_factor}, {"Fbar"});
+        upchan_gain_buffer->require_frame_desc(kotekan::NDArray<float16_t, 1>::describe(
+            "G", {upchan_max_num_channels * upchan_factor}, {"Fbar"}, {1}));
         upchan_gain_buffer->allocate_new_metadata_object(frame_id);
         const auto& upchan_gain_meta =
             get_chord_metadata(upchan_gain_buffer->get_metadata(frame_id));
-        upchan_gain_meta->set_from_frame_desc(upchan_gain_buffer->get_ndarray_frame_desc());
+        upchan_gain_meta->set_from_frame_desc(
+            upchan_gain_buffer->get_frame_desc<kotekan::GenericNDArray>());
         upchan_gain_meta->set_fpga_seq_num(0);           // ???
         upchan_gain_meta->set_time_downsampling_fpga(1); // ???
         const auto& upchan_channels_set = upchan_schedule.get_upchan_channels(upchan_factor);

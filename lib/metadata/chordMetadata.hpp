@@ -1,30 +1,31 @@
 #ifndef CHORD_METADATA
 #define CHORD_METADATA
 
-#include <string.h>            // for strnlen, strncpy
-#include <sys/time.h>          // for timeval
-#include <time.h>              // for timespec
-#include <cassert>             // for assert
-#include <cstddef>             // for size_t, ptrdiff_t
-#include <cstdint>             // for int32_t, uint32_t, int64_t, uint64_t
-#include <memory>              // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
-#include <mutex>               // for mutex, lock_guard
-#include <sstream>             // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
-#include <string>              // for basic_string, char_traits, operator==, string, operator<<
-#include <vector>              // for vector
-#include <array>               // for array
+#include "DataType.hpp"  // for type_to_string, type_total_bytes, DataType
+#include "NDArray.hpp"   // for GenericNDArray
+#include "Telescope.hpp" // for Telescope, stream_t
+#include "buffer.hpp"    // for Buffer
 
-#include "DataType.hpp"        // for type_to_string, type_total_bytes, DataType
-#include "NDArray.hpp"         // for GenericNDArray
-#include "Telescope.hpp"       // for Telescope, stream_t
-#include "buffer.hpp"          // for Buffer
+#include <array>      // for array
+#include <cassert>    // for assert
+#include <cstddef>    // for size_t, ptrdiff_t
+#include <cstdint>    // for int32_t, uint32_t, int64_t, uint64_t
+#include <memory>     // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
+#include <mutex>      // for mutex, lock_guard
+#include <sstream>    // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
+#include <string.h>   // for strnlen, strncpy
+#include <string>     // for basic_string, char_traits, operator==, string, operator<<
+#include <sys/time.h> // for timeval
+#include <time.h>     // for timespec
+#include <vector>     // for vector
 // TODO: CHIME and CHORD differ whether they use the datasetManager
-#include "dataset.hpp"         // for dset_id_t
-#include "kotekanLogging.hpp"  // for WARN_NON_OO
-#include "metadata.hpp"        // for metadataObject, metadataPool
-#include "json.hpp"            // for basic_json, json
-#include "jsonMetadata.hpp"    // for COARSE_FREQ, LOST_TIMESAMPLES, STREAM_ID, BEAM_COORD, DATA...
-#include "fmt.hpp"             // for compile_string_to_view
+#include "dataset.hpp"        // for dset_id_t
+#include "kotekanLogging.hpp" // for WARN_NON_OO
+#include "metadata.hpp"       // for metadataObject, metadataPool
+
+#include "fmt.hpp"          // for compile_string_to_view
+#include "json.hpp"         // for basic_json, json
+#include "jsonMetadata.hpp" // for COARSE_FREQ, LOST_TIMESAMPLES, STREAM_ID, BEAM_COORD, DATA...
 
 // One of the warning-silencing pragmas below only applied for gcc >= 8
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
@@ -90,6 +91,7 @@ public:
     int dims;
     int dim[CHORD_META_MAX_DIM];
     char dim_name[CHORD_META_MAX_DIM][CHORD_META_MAX_DIMNAME]; // "F", "T", "D", etc
+    int64_t dim_scaling[CHORD_META_MAX_DIM];
     // The stride counts elements, not bytes
     int64_t stride[CHORD_META_MAX_DIM];
     // The offset counts elements, not bytes
@@ -118,7 +120,7 @@ public:
         return s.str();
     }
 
-    void set_array_dimension(int dim, int size, const std::string& name) {
+    void set_array_dimension(int dim, int size, const std::string& name, int64_t scaling) {
         assert(dim < CHORD_META_MAX_DIM);
         this->dim[dim] = size;
         // GCC helpfully tries to warn us that the destination string may end up not
@@ -129,6 +131,7 @@ public:
 #endif
         strncpy(this->dim_name[dim], name.c_str(), CHORD_META_MAX_DIMNAME);
 #pragma GCC diagnostic pop
+        this->dim_scaling[dim] = scaling;
     }
 
     void set_strides_simple() {

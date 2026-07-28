@@ -94,8 +94,8 @@ public:
     /// Main loop for sending data
     void main_thread() override;
 
-    /// Adds the target server to the pipeline dot graph
-    virtual std::string dot_string(const std::string& prefix) const override;
+    /// Adds the target server to the pipeline graph
+    void add_graph_details(kotekan::PipelineGraph& graph) const override;
 
 private:
     /// The input buffer to send frames from.
@@ -122,6 +122,10 @@ private:
     /// Flag to indicate if config tracker header data should be sent
     bool use_config_tracker;
 
+    /// Flag to indicate the buffer's frame descriptor should be transmitted
+    /// (once per connection). Must match use_frame_desc on the receiver.
+    bool use_frame_desc;
+
     /// Serialized list of current config tracker hashes
     std::string config_tracker_combined_hash;
 
@@ -137,6 +141,11 @@ private:
 
     /// Set to true if this is the first transmission
     std::atomic<bool> first_transmission_sent;
+
+    /// Set once the frame descriptor has been sent on the current connection.
+    /// Read and set by the send thread, and reset by the connect thread when a
+    /// new connection is established, so it is atomic (like first_transmission_sent).
+    std::atomic<bool> desc_sent;
 
     /// Internal server address struct
     struct sockaddr_in server_addr;

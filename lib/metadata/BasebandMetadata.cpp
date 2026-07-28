@@ -1,11 +1,12 @@
 #include "BasebandMetadata.hpp"
 
-#include <assert.h>     // for assert
-#include <json.hpp>     // for json
-#include <memory>       // for allocator, shared_ptr, dynamic_pointer_cast, __shared_ptr_access
-#include <string>       // for basic_string
+#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
 
-#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
+#include <assert.h> // for assert
+#include <cstring>  // for memset
+#include <json.hpp> // for json
+#include <memory>   // for allocator, shared_ptr, dynamic_pointer_cast, __shared_ptr_access
+#include <string>   // for basic_string
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, BasebandMetadata);
 
@@ -57,6 +58,8 @@ size_t BasebandMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size
 size_t BasebandMetadata::serialize(char* bytes) {
     size_t sz = get_serialized_size();
     BasebandMetadataFormat* fmt = reinterpret_cast<BasebandMetadataFormat*>(bytes);
+    // Zero first so struct padding is not written out uninitialized
+    memset(bytes, 0, sz);
     fmt->event_id = event_id;
     fmt->freq_id = freq_id;
     fmt->event_start_fpga = event_start_fpga;

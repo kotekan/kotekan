@@ -1,5 +1,6 @@
 #include "buffer.hpp"
 
+#include <algorithm>  // for min
 #include <assert.h>   // for assert
 #include <chrono>     // for duration, operator+, nanoseconds, seconds, system_clock
 #include <errno.h>    // for errno
@@ -7,7 +8,7 @@
 #include <pthread.h>  // for pthread_create, pthread_detach, pthread_exit, pthread_seta...
 #include <sched.h>    // for CPU_SET, CPU_ZERO, cpu_set_t
 #include <sstream>    // for ostringstream
-#include <stdexcept>  // for runtime_error
+#include <stdexcept>  // for runtime_error, invalid_argument
 #include <stdlib.h>   // for free, malloc
 #include <string.h>   // for strerror, memset, memcpy
 #include <sys/mman.h> // for mlock, mmap, munmap, MAP_FAILED
@@ -15,6 +16,7 @@
 
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
+#include "PipelineGraph.hpp"  // for human_bytes
 #include "errors.h"           // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F
 #include "kotekanLogging.hpp" // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
 #include "metadata.hpp"       // for metadataObject, metadataPool
@@ -181,6 +183,7 @@ void GenericBuffer::send_shutdown_signal() {
 }
 
 void GenericBuffer::json_description(nlohmann::json& buf_json) {
+    buffer_lock lock(mutex);
     buf_json["consumers"];
     for (auto& cit : consumers) {
         auto& c = cit.second;
@@ -207,8 +210,16 @@ void GenericBuffer::json_description(nlohmann::json& buf_json) {
     buf_json["type"] = buffer_type;
 }
 
-std::string GenericBuffer::get_dot_node_label() {
-    return buffer_name;
+kotekan::BufferState GenericBuffer::dot_buffer_state() {
+    return kotekan::BufferState::Unknown;
+}
+
+std::vector<std::string> GenericBuffer::dot_label_lines(const kotekan::GraphOptions&) {
+    // Which kind of buffer this is, and the metadata that travels with its
+    // frames -- the two things that decide what a consumer can do with it.
+    return {buffer_name, metadata_pool
+                             ? fmt::format("{:s} · {:s}", buffer_type, metadata_pool->type_name)
+                             : buffer_type};
 }
 
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
@@ -283,6 +294,21 @@ double Buffer::get_last_arrival_time() {
     return last_arrival_time;
 }
 
+double Buffer::get_arrival_rate() {
+    buffer_lock lock(mutex);
+    if (mean_arrival_period <= 0.0)
+        return 0.0;
+    // A buffer that has stopped receiving frames should read as stopped, not as
+    // whatever it was doing when it last delivered one.
+    const double since_last = e_time() - last_arrival_time;
+    return 1.0 / std::max(mean_arrival_period, since_last);
+}
+
+uint64_t Buffer::get_frames_arrived() {
+    buffer_lock lock(mutex);
+    return frames_arrived;
+}
+
 void Buffer::private_reset_producers(const int ID) {
     for (auto& x : producers)
         x.second.is_done[ID] = false;
@@ -343,7 +369,6 @@ uint8_t* Buffer::wait_for_full_frame(const std::string& consumer_name, const int
     full_cond.wait(lock, [&]() { return (is_full[ID] && !con.is_done[ID]) || shutdown_signal; });
     DEBUG2("wait_for_full_frame({:s}[{:d}]): waiting done.", consumer_name, ID);
     assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
-    lock.unlock();
 
     if (shutdown_signal)
         return nullptr;
@@ -365,7 +390,6 @@ int Buffer::wait_for_full_frame_timeout(const std::string& name, const int ID,
     DEBUG2("wait_for_full_frame_timeout({:s}[{:d}]): waiting done.", name, ID);
     if (st)
         assert((is_full[ID] && !con.is_done[ID]) || shutdown_signal);
-    lock.unlock();
 
     if (shutdown_signal)
         return -1;
@@ -386,7 +410,45 @@ int Buffer::get_num_full_frames() {
     return numFull;
 }
 
+int Buffer::peek_newest_full_frame(std::vector<uint8_t>& data_out, size_t max_len,
+                                   std::shared_ptr<metadataObject>& metadata_out) {
+    buffer_lock lock(mutex);
+
+    if (last_frame_filled < 0)
+        return -1;
+
+    // Frames fill in ring order, so the first full frame found scanning
+    // backwards from the last filled position is the newest one.
+    int ID = -1;
+    for (int i = 0; i < num_frames; ++i) {
+        const int candidate = (last_frame_filled - i + num_frames) % num_frames;
+        if (is_full[candidate]) {
+            ID = candidate;
+            break;
+        }
+    }
+    if (ID == -1)
+        return -1;
+
+    const size_t copy_len = std::min(max_len, frame_size);
+    data_out.resize(copy_len);
+    memcpy(data_out.data(), frames[ID], copy_len);
+    metadata_out = metadata[ID];
+    return ID;
+}
+
+void Buffer::enable_peek_hold() {
+    buffer_lock lock(mutex);
+    if (num_frames < 2)
+        throw std::invalid_argument(
+            fmt::format(fmt("peek_hold on buffer {:s} requires num_frames >= 2: with a single "
+                            "frame the producer would deadlock waiting for the held frame"),
+                        buffer_name));
+    peek_hold_enabled = true;
+}
+
 void Buffer::json_description(nlohmann::json& buf_json) {
+    buffer_lock lock(mutex);
     GenericBuffer::json_description(buf_json);
     buf_json["frames"];
     for (int i = 0; i < num_frames; ++i)
@@ -394,11 +456,75 @@ void Buffer::json_description(nlohmann::json& buf_json) {
     buf_json["num_full_frame"] = get_num_full_frames();
     buf_json["frame_size"] = frame_size;
     buf_json["last_frame_arrival_time"] = last_arrival_time;
+    // Lets /buffers consumers see which buffers keep their newest frame
+    // peekable (and that one "full" frame at idle is the hold, not backlog).
+    buf_json["peek_hold"] = peek_hold_enabled;
 }
 
-std::string Buffer::get_dot_node_label() {
-    return fmt::format(fmt("{:s}<BR/>{:d}/{:d} ({:.1f}%)"), buffer_name, get_num_full_frames(),
-                       num_frames, (float)get_num_full_frames() / num_frames * 100);
+std::vector<std::string> Buffer::dot_label_lines(const kotekan::GraphOptions& options) {
+    std::vector<std::string> lines = GenericBuffer::dot_label_lines(options);
+
+    // The array layout, when the buffer was declared with one. This is the shape
+    // the data actually has at run time, so nothing here has to be inferred from
+    // the config or from the kernel sources.
+    auto array = get_frame_desc<kotekan::GenericNDArray>();
+    if (array) {
+        const std::vector<std::ptrdiff_t> extents = array->get_extents();
+        const std::vector<kotekan::Symbol> dimnames = array->get_dimnames();
+        std::string layout;
+        for (size_t d = 0; d < extents.size(); d++) {
+            if (!layout.empty())
+                layout += " × ";
+            if (d < dimnames.size() && dimnames[d])
+                layout += fmt::format(fmt("{:s}:{:d}"), dimnames[d].get_string(), extents[d]);
+            else
+                layout += fmt::format(fmt("{:d}"), extents[d]);
+        }
+        lines.push_back(
+            fmt::format(fmt("{:s} {:s}"), type_to_string(array->get_value_datatype()), layout));
+    }
+
+    lines.push_back(fmt::format(fmt("{:s} ×{:d} frames = {:s}"), kotekan::human_bytes(frame_size),
+                                num_frames, kotekan::human_bytes(frame_size * (size_t)num_frames)));
+
+    // What the data is actually doing, rather than what the config asked for.
+    if (options.runtime) {
+        const int full = get_num_full_frames();
+        lines.push_back(fmt::format(fmt("{:d}/{:d} full ({:.1f}%)"), full, num_frames,
+                                    (float)full / num_frames * 100));
+
+        const double rate = get_arrival_rate();
+        if (rate > 0.0)
+            lines.push_back(fmt::format(fmt("{:.4g} frame/s · {:s}"), rate,
+                                        kotekan::human_rate(rate * frame_size)));
+        else
+            lines.push_back(fmt::format(fmt("{:d} frames arrived"), get_frames_arrived()));
+    }
+
+    // Placement and pinning: cheap to get wrong in a config, expensive to work
+    // out later from a throughput plot, so say it where the buffer is drawn.
+    std::string flags = fmt::format(fmt("numa {:d}"), numa_node);
+    if (use_hugepages)
+        flags += " · hugepages";
+    if (mlock_frames)
+        flags += " · mlock";
+    if (peek_hold_enabled)
+        flags += " · peek hold";
+    lines.push_back(flags);
+
+    return lines;
+}
+
+kotekan::BufferState Buffer::dot_buffer_state() {
+    buffer_lock lock(mutex);
+    if (frames_arrived == 0)
+        return kotekan::BufferState::Idle;
+    // No empty frame left means the next producer to come round has to wait. A
+    // one-frame buffer is excluded: sitting full is its resting state, not a
+    // backlog (a mask produced once and read from then on looks like this).
+    if (num_frames > 1 && get_num_full_frames() == num_frames)
+        return kotekan::BufferState::Full;
+    return kotekan::BufferState::Flowing;
 }
 
 void Buffer::print_buffer_status() {
@@ -511,6 +637,7 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
 
     bool set_full = false;
     bool set_empty = false;
+    bool release_empty = false;
     {
         buffer_lock lock(mutex);
 
@@ -518,17 +645,43 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
         if (private_producers_done(ID)) {
             private_reset_producers(ID);
             is_full[ID] = true;
-            last_arrival_time = e_time();
+            last_frame_filled = ID;
+            const double now = e_time();
+            if (frames_arrived > 0 && now > last_arrival_time) {
+                // Weighted towards recent arrivals, so the reported rate follows
+                // a pipeline that speeds up or stalls instead of averaging over
+                // however long kotekan has been running.
+                const double period = now - last_arrival_time;
+                mean_arrival_period =
+                    mean_arrival_period == 0.0 ? period : 0.9 * mean_arrival_period + 0.1 * period;
+            }
+            frames_arrived++;
+            last_arrival_time = now;
             set_full = true;
+
+            // peek_hold: a newer frame is now full, so run the previously
+            // held frame's deferred empty transition. last_frame_filled
+            // has moved on, so private_mark_frame_empty() won't re-defer.
+            if (hold_deferred_id >= 0 && hold_deferred_id != ID) {
+                const int held = hold_deferred_id;
+                hold_deferred_id = -1;
+                release_empty = private_mark_frame_empty(held);
+            }
 
             // If there are no consumers registered then we can just mark the buffer empty
             if (private_consumers_done(ID)) {
-                DEBUG("No consumers are registered on {:s} dropping data in frame {:d}...",
-                      buffer_name, ID);
-                is_full[ID] = false;
-                metadata[ID].reset();
-                set_empty = true;
-                private_reset_consumers(ID);
+                if (peek_hold_enabled) {
+                    // peek_hold: keep the frame full until the next fill
+                    // instead of dropping it on the floor.
+                    hold_deferred_id = ID;
+                } else {
+                    DEBUG("No consumers are registered on {:s} dropping data in frame {:d}...",
+                          buffer_name, ID);
+                    is_full[ID] = false;
+                    metadata[ID].reset();
+                    set_empty = true;
+                    private_reset_consumers(ID);
+                }
             }
         }
     }
@@ -536,6 +689,12 @@ void Buffer::mark_frame_full(const std::string& producer_name, const int ID) {
     // Signal consumer
     if (set_full)
         full_cond.notify_all();
+
+    // Signal any producer waiting to refill the frame just released from
+    // its peek_hold (with multiple producers, one can already be asleep in
+    // wait_for_empty_frame on it).
+    if (release_empty)
+        empty_cond.notify_all();
 
     // Signal producer
     if (set_empty) {
@@ -607,6 +766,15 @@ void Buffer::mark_frame_empty(const std::string& consumer_name, const int ID) {
 }
 
 bool Buffer::private_mark_frame_empty(const int ID) {
+    // peek_hold: never empty the newest full frame -- defer its transition
+    // until a newer frame is marked full, so it stays available (data and
+    // metadata) to peek_newest_full_frame(). Covers every route here: the
+    // last-consumer path and consumer unregistration.
+    if (peek_hold_enabled && ID == last_frame_filled) {
+        hold_deferred_id = ID;
+        return false;
+    }
+
     bool broadcast = false;
     if (_zero_frames) {
         pthread_t zero_t;
@@ -651,7 +819,6 @@ uint8_t* Buffer::wait_for_empty_frame(const std::string& producer_name, const in
     DEBUG2("wait_for_empty_frame({:s}[{:d}]): waiting done.", producer_name, ID);
     assert((!is_full[ID] && !pro->is_done[ID]) || shutdown_signal);
     assert(!((is_full[ID] || pro->is_done[ID]) && !shutdown_signal));
-    lock.unlock();
 
     if (shutdown_signal)
         return nullptr;
@@ -767,7 +934,8 @@ void Buffer::private_copy_frame(int dest_frame_id, Buffer* src, int src_frame_id
 bool is_frame_buffer(GenericBuffer* buf) {
     // See also bufferFactory::new_buffer()
     return (buf->buffer_type == "standard") || (buf->buffer_type == "vis")
-           || (buf->buffer_type == "hfb") || (buf->buffer_type == "N2");
+           || (buf->buffer_type == "hfb") || (buf->buffer_type == "N2")
+           || (buf->buffer_type == "ndarray");
 }
 
 uint8_t* buffer_malloc(size_t len, int numa_node, bool use_hugepages, bool mlock_frames,

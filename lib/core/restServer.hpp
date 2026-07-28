@@ -1,22 +1,23 @@
 #ifndef REST_SERVER_HPP
 #define REST_SERVER_HPP
 
-#include <event2/util.h>       // for evutil_socket_t
-#include <evhttp.h>      // for evhttp  // IWYU pragma: keep
-#include <stdint.h>            // for uint8_t
-#include <sys/types.h>         // for u_short
-#include <atomic>              // for atomic
-#include <functional>          // for function
-#include <map>                 // for map
-#include <shared_mutex>        // for shared_timed_mutex
-#include <string>              // for string, allocator, basic_string
-#include <thread>              // for thread
-#include <vector>              // for vector (CORS allowlist)
+#include "Config.hpp"         // for Config
+#include "kotekanLogging.hpp" // for INFO_NON_OO
 
-#include "Config.hpp"          // for Config
-#include "kotekanLogging.hpp"  // for INFO_NON_OO
-#include "json.hpp"            // for json
-#include "fmt.hpp"             // for compile_string_to_view
+#include "fmt.hpp"  // for compile_string_to_view
+#include "json.hpp" // for json
+
+#include <atomic>        // for atomic
+#include <event2/util.h> // for evutil_socket_t
+#include <evhttp.h>      // for evhttp  // IWYU pragma: keep
+#include <functional>    // for function
+#include <map>           // for map
+#include <shared_mutex>  // for shared_timed_mutex
+#include <stdint.h>      // for uint8_t
+#include <string>        // for string, allocator, basic_string
+#include <sys/types.h>   // for u_short
+#include <thread>        // for thread
+#include <vector>        // for vector (CORS allowlist)
 
 namespace kotekan {
 
@@ -79,11 +80,19 @@ public:
     void send_empty_reply(const HTTP_RESPONSE& status);
 
     /**
-     * Sends an HTTP response with "content-type" header set to "text/plain"
+     * Sends an HTTP response with a text "content-type" header
      *
      * @param[in] reply The body of the reply
+     * @param[in] content_type The MIME type to declare; the default suits plain
+     *                         text, but a caller sending a known format (DOT,
+     *                         CSV, ...) should name it so clients can act on it.
+     *                         Name the charset too: HTTP says a text type with
+     *                         no charset is ISO-8859-1, and clients that follow
+     *                         that rule (`requests`, among others) will mangle
+     *                         any reply holding non-ASCII.
      */
-    void send_text_reply(const std::string& reply);
+    void send_text_reply(const std::string& reply,
+                         const std::string& content_type = "text/plain; charset=utf-8");
 
     /**
      * @brief Returns the message body.
@@ -404,13 +413,6 @@ private:
      * @return string The string message matching that code
      */
     static std::string get_http_responce_code_text(const HTTP_RESPONSE& status);
-
-    /**
-     * @brief Returns the aliases map
-     *
-     * @return Alias map
-     */
-    std::map<std::string, std::string>& get_aliases();
 
     /// Map of GET callbacks
     std::map<std::string, std::function<void(connectionInstance&)>> get_callbacks;

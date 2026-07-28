@@ -1,4 +1,5 @@
 #include "Config.hpp"          // for Config
+#include "N2Util.hpp"          // for frameID
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "beamUtil.hpp"        // for FRBBeam
 #include "buffer.hpp"          // for Buffer
@@ -6,16 +7,15 @@
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
 #include "restServer.hpp"      // for restServer, connectionInstance
-#include "N2Util.hpp"          // for frameID
 
 #include <vector>
 
+using Beams::FRBBeam;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::connectionInstance;
-using kotekan::Stage;
 using kotekan::restServer;
-using Beams::FRBBeam;
+using kotekan::Stage;
 using N2::frameID;
 
 constexpr double deg2rad = M_PI / 180.0;
@@ -25,8 +25,8 @@ constexpr double deg2rad = M_PI / 180.0;
  * @class setFRBBeams
  * @brief Produce FRB beam positions and ids.
  *
- * This stage produces the FRB beam positions and IDs used downstream. Beams are fixed relative to the
- * telescope, and scan with the Earth's rotation, so they only need to be produced once.
+ * This stage produces the FRB beam positions and IDs used downstream. Beams are fixed relative to
+ * the telescope, and scan with the Earth's rotation, so they only need to be produced once.
  *
  * Beam positions may be set in multiple ways depending on the `mode` parameter:
  *   - `"manual"`: Read beams from the `beams` config parameter, which is a list of
@@ -38,11 +38,11 @@ constexpr double deg2rad = M_PI / 180.0;
  *              theta_x = arcsin(nx), theta_y = arcsin(ny).
  *
  * The output beam position buffer contains the nx and ny components of each beam pointing
- * vector in the GRID frame (ie. direction cosines relative to the telescope). 
+ * vector in the GRID frame (ie. direction cosines relative to the telescope).
  *
- * In the GRID frame, a pointing vector n has components n = (nx, ny, nz). n is normalizaed (|n| = 1),
- * and the components nx, ny, nz are dimensionless. An upward-looking beam position will have nz > 0,
- * which can be computed from nz = sqrt(1 - nx^2 - ny^2).
+ * In the GRID frame, a pointing vector n has components n = (nx, ny, nz). n is normalizaed (|n| =
+ * 1), and the components nx, ny, nz are dimensionless. An upward-looking beam position will have nz
+ * > 0, which can be computed from nz = sqrt(1 - nx^2 - ny^2).
  *
  * Beam IDs are u64 values used to identify beams in post.
  *
@@ -60,7 +60,7 @@ constexpr double deg2rad = M_PI / 180.0;
  * @conf beams      List of FixedBBBeam.  For `fixed_mode` = "manual". Beams to produce.
  * @conf num_x      uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in grid X
  *                          direction (~East/West)
- * @conf num_y      uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in grid Y 
+ * @conf num_y      uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in grid Y
  *                          direction (~North/South)
  * @conf x_min      double. For `fixed_mode` = "grid" or "grid_degrees". Minimum value of nx
  *                          ("grid", dimensionless) or theta_x ("grid_degrees", degrees)
@@ -74,8 +74,7 @@ constexpr double deg2rad = M_PI / 180.0;
  */
 class setFRBBeams : public Stage {
 public:
-    setFRBBeams(Config& config, const std::string& unique_name,
-                   bufferContainer& buffer_container);
+    setFRBBeams(Config& config, const std::string& unique_name, bufferContainer& buffer_container);
     ~setFRBBeams();
     void main_thread() override;
 
@@ -116,7 +115,7 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
     x_max(config.get_default<double>(unique_name, "x_max", 0.0)),
     y_min(config.get_default<double>(unique_name, "y_min", 0.0)),
     y_max(config.get_default<double>(unique_name, "y_max", 0.0)) {
-        
+
     // Get Buffer
     out_pos_buf = get_buffer("out_pos_buf");
     out_pos_buf->register_producer(unique_name);
@@ -150,8 +149,10 @@ setFRBBeams::setFRBBeams(Config& config, const std::string& unique_name,
     rest_server.register_get_callback(unique_name + "/beams",
                                       std::bind(&setFRBBeams::send_beams, this, _1));
 
-    out_pos_buf->allocate_ndarray_frame_desc<float, 2>("frb2_beam_positions", {static_cast<ptrdiff_t>(num_beams), 2}, {"R", "X/Y"});
-    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>("frb2_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"R"});
+    out_pos_buf->require_frame_desc(kotekan::NDArray<float, 2>::describe(
+        "frb2_beam_positions", {static_cast<ptrdiff_t>(num_beams), 2}, {"R", "X/Y"}, {1, 1}));
+    out_id_buf->require_frame_desc(kotekan::NDArray<uint64_t, 1>::describe(
+        "frb2_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"R"}, {1}));
 }
 
 setFRBBeams::~setFRBBeams() {
@@ -178,13 +179,13 @@ std::vector<FRBBeam> setFRBBeams::build_grid_beams() const {
 
             double x = (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
             double y = (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
-            grid_beams.at(b) = {.id=b, .x_dir_grid=x, .y_dir_grid=y};
+            grid_beams.at(b) = {.id = b, .x_dir_grid = x, .y_dir_grid = y};
         }
     }
 
     return grid_beams;
 }
-    
+
 /**
  * @brief Compute a grid of beams, uniform in theta_x & theta_y
  **/
@@ -198,13 +199,14 @@ std::vector<FRBBeam> setFRBBeams::build_grid_deg_beams() const {
 
             double x = (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
             double y = (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
-            grid_beams.at(b) = {.id=b, .x_dir_grid=sin(x * deg2rad), .y_dir_grid=sin(y * deg2rad)};
+            grid_beams.at(b) = {
+                .id = b, .x_dir_grid = sin(x * deg2rad), .y_dir_grid = sin(y * deg2rad)};
         }
     }
 
     return grid_beams;
 }
-    
+
 std::vector<FRBBeam> setFRBBeams::build_chime_beams() const {
     FATAL_ERROR("chime beams not implemented.");
 }
@@ -219,45 +221,44 @@ void setFRBBeams::main_thread() {
     frameID id_frame_id(out_id_buf);
 
     while (!stop_thread) {
-        float *beam_pos = (float *)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
+        float* beam_pos = (float*)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
         if (beam_pos == nullptr)
             break;
-        uint64_t *beam_id = (uint64_t *)out_id_buf->wait_for_empty_frame(unique_name, id_frame_id);
+        uint64_t* beam_id = (uint64_t*)out_id_buf->wait_for_empty_frame(unique_name, id_frame_id);
         if (beam_id == nullptr)
             break;
 
-        DEBUG("Writing {:d} beams to {:s} and {:s}", beams.size(),
-                out_pos_buf->buffer_name, out_id_buf->buffer_name);
-        
+        DEBUG("Writing {:d} beams to {:s} and {:s}", beams.size(), out_pos_buf->buffer_name,
+              out_id_buf->buffer_name);
+
         for (size_t b = 0; b < beams.size(); b++) {
             beam_id[b] = beams.at(b).id;
-            beam_pos[2*b+0] = beams.at(b).x_dir_grid;
-            beam_pos[2*b+1] = beams.at(b).y_dir_grid;
+            beam_pos[2 * b + 0] = beams.at(b).x_dir_grid;
+            beam_pos[2 * b + 1] = beams.at(b).y_dir_grid;
         }
 
         out_pos_buf->allocate_new_metadata_object(pos_frame_id);
-        const std::shared_ptr<chordMetadata> pos_meta = get_chord_metadata(out_pos_buf, pos_frame_id);
+        const std::shared_ptr<chordMetadata> pos_meta =
+            get_chord_metadata(out_pos_buf, pos_frame_id);
 
-        pos_meta->set_from_frame_desc(out_pos_buf->get_ndarray_frame_desc());
+        pos_meta->set_from_frame_desc(out_pos_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // If this gets made time-dependent, set fpga_seq_num, and fpga_time_downsampling here.
 
-        pos_meta->check_frame_desc(out_pos_buf->get_ndarray_frame_desc());
+        pos_meta->check_frame_desc(out_pos_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         out_id_buf->allocate_new_metadata_object(id_frame_id);
         const std::shared_ptr<chordMetadata> id_meta = get_chord_metadata(out_id_buf, id_frame_id);
 
-        id_meta->set_from_frame_desc(out_id_buf->get_ndarray_frame_desc());
+        id_meta->set_from_frame_desc(out_id_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // If this gets made time-dependent, set fpga_seq_num, and fpga_time_downsampling here.
 
-        id_meta->check_frame_desc(out_id_buf->get_ndarray_frame_desc());
+        id_meta->check_frame_desc(out_id_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         out_pos_buf->mark_frame_full(unique_name, pos_frame_id++);
         out_id_buf->mark_frame_full(unique_name, id_frame_id++);
 
         break;
-    } 
+    }
 }
-    
-

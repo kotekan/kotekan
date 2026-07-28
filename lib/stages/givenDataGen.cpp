@@ -1,21 +1,23 @@
 #include "givenDataGen.hpp"
 
-#include <assert.h>             // for assert
-#include <stdint.h>             // for uint8_t
-#include <unistd.h>             // for sleep
-#include <string>               // for allocator, basic_string, string
-#include <vector>               // for vector
-#include <cstdio>               // for snprintf
-#include <cstring>              // for memcpy
-#include <functional>           // for bind, function
-#include <memory>               // for shared_ptr, __shared_ptr_access
-#include <stdexcept>            // for invalid_argument, runtime_error
+#include "DataType.hpp"        // for type_total_bytes, string_to_type, DataType
+#include "NDArray.hpp"         // for GenericNDArray, Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM
 
-#include "DataType.hpp"         // for type_total_bytes, string_to_type, DataType
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata, CHORD_META_MAX_DIM
-#include "fmt.hpp"              // for format
+#include "fmt.hpp" // for format
+
+#include <assert.h>   // for assert
+#include <cstdio>     // for snprintf
+#include <cstring>    // for memcpy
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdexcept>  // for invalid_argument, runtime_error
+#include <stdint.h>   // for uint8_t
+#include <string>     // for allocator, basic_string, string
+#include <unistd.h>   // for sleep
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;
@@ -27,11 +29,13 @@ REGISTER_KOTEKAN_STAGE(givenDataGen);
 givenDataGen::givenDataGen(Config& config, const std::string& unique_name,
                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&givenDataGen::main_thread, this)),
-    _out_buf(get_buffer("out_buf")), _values(config.get<std::vector<int>>(unique_name, "values")),
+    _out_buf(get_buffer("out_buf")),
+    _values(config.get<std::vector<long double>>(unique_name, "values")),
     _name(config.get<kotekan::Symbol>(unique_name, "name")),
     _datatype(kotekan::string_to_type(config.get<std::string>(unique_name, "datatype"))),
     _array_shape(config.get<std::vector<ptrdiff_t>>(unique_name, "array_shape")),
     _dim_name(config.get<std::vector<kotekan::Symbol>>(unique_name, "dim_name")),
+    _dim_scalings(config.get<std::vector<std::ptrdiff_t>>(unique_name, "dim_scalings")),
     _do_once(config.get<bool>(unique_name, "do_once")) {
 
     _out_buf->register_producer(unique_name);
@@ -42,6 +46,11 @@ givenDataGen::givenDataGen(Config& config, const std::string& unique_name,
 
     if (_array_shape.size() != _dim_name.size()) {
         throw std::invalid_argument("givenDataGen: 'array_shape' and 'dim_name' config "
+                                    "settings must be the same length!");
+    }
+
+    if (_array_shape.size() != _dim_scalings.size()) {
+        throw std::invalid_argument("givenDataGen: 'array_shape' and 'dim_scalings' config "
                                     "settings must be the same length!");
     }
 
@@ -76,12 +85,50 @@ void givenDataGen::main_thread() {
             break;
 
         const size_t type_size = kotekan::type_total_bytes(_datatype);
+        const bool is_float = kotekan::type_to_string(_datatype).find("float") != std::string::npos;
+        const bool is_int = kotekan::type_to_string(_datatype).find("int") != std::string::npos;
+        const bool is_complex = kotekan::type_to_string(_datatype)[0] == 'c';
+        if (!(is_float + is_int == 1)) {
+            FATAL_ERROR("Unexpected data type: {:s} which is not either int or float",
+                        kotekan::type_to_string(_datatype));
+        }
+        if (is_complex) {
+            FATAL_ERROR("Cannot currently handle complex type: {:s}",
+                        kotekan::type_to_string(_datatype));
+        }
         for (size_t i = 0; i < _values.size(); ++i) {
-            // this really makes all kinds of asusmptions
-            // only works for integers
-            // only works on little endian machines
             assert((i + 1) * type_size <= _out_buf->frame_size && "Out of bounds access");
-            std::memcpy(frame + i * type_size, &_values.at(i), type_size);
+            if (is_float) {
+                switch (_datatype) {
+                    case kotekan::float16: {
+                        const float16_t hval =
+                            static_cast<float16_t>(static_cast<double>(_values[i]));
+                        static_assert(sizeof(hval) == kotekan::type_total_bytes(kotekan::float16));
+                        std::memcpy(frame + i * type_size, &hval, type_size);
+                    } break;
+                    case kotekan::float32: {
+                        const float fval = static_cast<float>(_values[i]);
+                        static_assert(sizeof(fval) == kotekan::type_total_bytes(kotekan::float32));
+                        std::memcpy(frame + i * type_size, &fval, type_size);
+                    } break;
+                    case kotekan::float64: {
+                        const double dval = static_cast<double>(_values[i]);
+                        static_assert(sizeof(dval) == kotekan::type_total_bytes(kotekan::float64));
+                        std::memcpy(frame + i * type_size, &dval, type_size);
+                    } break;
+                    default:
+                        FATAL_ERROR("Unexpected data type: {:s}",
+                                    kotekan::type_to_string(_datatype));
+                        break;
+                }
+            } else if (is_int) {
+                // this really makes all kinds of asusmptions
+                // only works on little endian machines
+                const long long ival = static_cast<long long>(_values[i]);
+                std::memcpy(frame + i * type_size, &ival, type_size);
+            } else {
+                assert(0 && "Should not ever be reached");
+            }
         }
 
         _out_buf->allocate_new_metadata_object(frame_id);
@@ -108,12 +155,14 @@ void givenDataGen::main_thread() {
                 throw std::runtime_error("Dimension label too long");
             }
             chordmeta->dim[d] = _array_shape.at(d);
+            chordmeta->dim_scaling[d] = _dim_scalings.at(d);
         }
         chordmeta->set_strides_simple();
 
-        _out_buf->allocate_ndarray_frame_desc(chordmeta->type, _name, _array_shape, _dim_name);
+        _out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+            chordmeta->type, _name, _array_shape, _dim_name, _dim_scalings));
         /* test that things are consistent */
-        chordmeta->check_frame_desc(_out_buf->get_ndarray_frame_desc());
+        chordmeta->check_frame_desc(_out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         _out_buf->mark_frame_full(unique_name, frame_id);
 

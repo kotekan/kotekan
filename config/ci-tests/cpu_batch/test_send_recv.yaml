@@ -1,6 +1,8 @@
 ---
 #
-# Just a simple test pipeline that generates random data, does a send/recieve, for different buffer types.
+# A simple test pipeline that generates random data and does a send/receive,
+# for each buffer type: standard, N2, and ndarray (the latter both with and
+# without the optional descriptor labels declared in config).
 #
 type: config
 log_level: INFO
@@ -39,19 +41,23 @@ earth_rotation_data:
 # Pools
 main_pool:
     kotekan_metadata_pool: chordMetadata
-    num_metadata_objects: 4 * buffer_depth
+    num_metadata_objects: 8 * buffer_depth
 
 N2_pool:
     kotekan_metadata_pool: N2Metadata
     num_metadata_objects: 2 * buffer_depth
 
 # Buffers
+#
+# `standard` frames are opaque bytes (int4x2 is one byte per sample, so
+# frame_size == num_frame_samples). bufferRecv attaches whatever descriptor it
+# receives from the wire. The recv buffers mirror their send counterparts.
+
 send_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
     frame_size: num_frame_samples
     metadata_pool: main_pool
-
 recv_buffer:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -63,7 +69,6 @@ send_buffer_noCT:
     num_frames: buffer_depth
     frame_size: num_frame_samples
     metadata_pool: main_pool
-
 recv_buffer_noCT:
     kotekan_buffer: standard
     num_frames: buffer_depth
@@ -75,12 +80,46 @@ send_N2_buffer:
     metadata_pool: N2_pool
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth
-
 recv_N2_buffer:
     kotekan_buffer: N2
     metadata_pool: N2_pool
     n2_layout: "FullUpperTri"
     num_frames: buffer_depth
+
+# ndarray with a full descriptor: the labels (quantity_name, dimnames) are
+# declared in config, so bufferRecv validates the received shape against them.
+send_ndarray_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int4x2
+    quantity_name: voltage
+    extents: [num_frame_samples]
+    dimnames: ["S"]
+    metadata_pool: main_pool
+recv_ndarray_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int4x2
+    quantity_name: voltage
+    extents: [num_frame_samples]
+    dimnames: ["S"]
+    metadata_pool: main_pool
+
+# ndarray with only the structural fields: the labels are omitted from config
+# and supplied by the producing stage (and, on the recv side, by the frame
+# received over the wire).
+send_ndarray_nolabel_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int4x2
+    extents: [num_frame_samples]
+    metadata_pool: main_pool
+recv_ndarray_nolabel_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int4x2
+    extents: [num_frame_samples]
+    metadata_pool: main_pool
 
 
 # Kotekan stages
@@ -89,26 +128,26 @@ recv_N2_buffer:
 
 gen_buffer_data:
     log_level: WARN
-    # type: const
-    # value: 34 # 1i # 34 # = 2 + 2i
     type: random_signed
     value: 1532
     kotekan_stage: testDataGen
     out_buf: send_buffer
+    name: voltage
     array_shape: [2048]
     dim_name: ["S"]
     num_frames: 6
 
 buffer_send_standard:
     kotekan_stage: bufferSend
+    use_frame_desc: true
     buf: send_buffer
     server_ip: 127.0.0.1
     server_port: 11024
-    retry_time: 1.0
     drop_frames: false
 
 buffer_recv_standard:
     kotekan_stage: bufferRecv
+    use_frame_desc: true
     buf: recv_buffer
     listen_port: 11024
 
@@ -116,27 +155,27 @@ buffer_recv_standard:
 
 gen_buffer_data_noCT:
     log_level: WARN
-    # type: const
-    # value: 34 # 1i # 34 # = 2 + 2i
     type: random_signed
     value: 1532
     kotekan_stage: testDataGen
     out_buf: send_buffer_noCT
+    name: voltage
     array_shape: [2048]
     dim_name: ["S"]
     num_frames: 6
 
 buffer_send_standard_noCT:
     kotekan_stage: bufferSend
+    use_frame_desc: true
     use_config_tracker: false
     buf: send_buffer_noCT
     server_ip: 127.0.0.1
     server_port: 11026
-    retry_time: 1.0
     drop_frames: false
 
 buffer_recv_standard_NoCT:
     kotekan_stage: bufferRecv
+    use_frame_desc: true
     use_config_tracker: false
     buf: recv_buffer_noCT
     listen_port: 11026
@@ -150,7 +189,6 @@ fake_n2:
     log_level: WARN
     kotekan_stage: FakeN2
     out_buf: send_N2_buffer
-    num_total_freq: 3
     cadence: 0.2
     wait: false
     mode: default
@@ -158,18 +196,73 @@ fake_n2:
 
 buffer_send_n2:
     kotekan_stage: bufferSend
+    use_frame_desc: true
     buf: send_N2_buffer
     server_ip: 127.0.0.1
     server_port: 11025
-    retry_time: 1.0
     drop_frames: false
 
 buffer_recv_n2:
     kotekan_stage: bufferRecv
+    use_frame_desc: true
     buf: recv_N2_buffer
     listen_port: 11025
 
-# Verify buffers are the same.
+# ndarray buffer (labels declared in config): generate and send/recv
+
+gen_ndarray_data:
+    log_level: WARN
+    type: random_signed
+    value: 1532
+    kotekan_stage: testDataGen
+    out_buf: send_ndarray_buffer
+    name: voltage
+    array_shape: [2048]
+    dim_name: ["S"]
+    num_frames: 6
+
+buffer_send_ndarray:
+    kotekan_stage: bufferSend
+    use_frame_desc: true
+    buf: send_ndarray_buffer
+    server_ip: 127.0.0.1
+    server_port: 11027
+    drop_frames: false
+
+buffer_recv_ndarray:
+    kotekan_stage: bufferRecv
+    use_frame_desc: true
+    buf: recv_ndarray_buffer
+    listen_port: 11027
+
+# ndarray buffer (labels supplied by the stage, not config): generate and send/recv
+
+gen_ndarray_nolabel_data:
+    log_level: WARN
+    type: random_signed
+    value: 1532
+    kotekan_stage: testDataGen
+    out_buf: send_ndarray_nolabel_buffer
+    name: voltage
+    array_shape: [2048]
+    dim_name: ["S"]
+    num_frames: 6
+
+buffer_send_ndarray_nolabel:
+    kotekan_stage: bufferSend
+    use_frame_desc: true
+    buf: send_ndarray_nolabel_buffer
+    server_ip: 127.0.0.1
+    server_port: 11028
+    drop_frames: false
+
+buffer_recv_ndarray_nolabel:
+    kotekan_stage: bufferRecv
+    use_frame_desc: true
+    buf: recv_ndarray_nolabel_buffer
+    listen_port: 11028
+
+# Verify each recv buffer matches its send buffer (data and metadata).
 
 check_standard_send_recv:
     kotekan_stage: testDataCheckUchar
@@ -195,6 +288,22 @@ check_n2_send_recv:
     trigger_exit_on_pass: false
     check_metadata: true
 
+check_ndarray_send_recv:
+    kotekan_stage: testDataCheckUchar
+    first_buf: send_ndarray_buffer
+    second_buf: recv_ndarray_buffer
+    num_frames_to_test: buffer_depth
+    trigger_exit_on_pass: false
+    check_metadata: true
+
+check_ndarray_nolabel_send_recv:
+    kotekan_stage: testDataCheckUchar
+    first_buf: send_ndarray_nolabel_buffer
+    second_buf: recv_ndarray_nolabel_buffer
+    num_frames_to_test: buffer_depth
+    trigger_exit_on_pass: false
+    check_metadata: true
+
 # Monitor recv buffers for completion, shutdown after some inactivity if none.
 
 buffer_monitor:
@@ -206,4 +315,7 @@ buffer_monitor:
         - recv_buffer
         - recv_buffer_noCT
         - recv_N2_buffer
+        - recv_ndarray_buffer
+        - recv_ndarray_nolabel_buffer
     clean_exit_after_frames: 6 # Trigger success after this many frames have been seen
+log_config_usage: fatal_error

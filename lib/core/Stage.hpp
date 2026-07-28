@@ -21,6 +21,8 @@
 
 namespace kotekan {
 
+class PipelineGraph;
+
 class Stage : public kotekanLogging {
 public:
     Stage(Config& config, const std::string& unique_name, bufferContainer& buffer_container,
@@ -43,13 +45,21 @@ public:
     void stop();
 
     /**
-     * @brief Generates a graphviz "dot" string for this stage.
+     * @brief Adds this stage's internal detail to the pipeline graph.
      *
-     * By default this is just the stage name plus some default formatting.
+     * The stage's own node, and the edges to every buffer it produces into or
+     * consumes from, are added centrally by @c kotekanMode: a stage only needs
+     * to override this to describe what the pipeline cannot see from the outside
+     * -- an external endpoint it talks to, or the internal structure of a
+     * compound stage.
      *
-     * @return "dot" style graph description for this stage.
+     * The stage's node has already been added under @c get_unique_name() when
+     * this is called, so an override can fetch it back from the graph (to move
+     * it into a cluster, say) and can attach edges to it.
+     *
+     * @param graph The graph being built.
      */
-    virtual std::string dot_string(const std::string& prefix) const;
+    virtual void add_graph_details(PipelineGraph& graph) const;
 
     /**
      * @brief Add newly created stage tid to thread_list for cpu usage tracking.
@@ -64,7 +74,18 @@ public:
     /**
      * @brief Get tids from the current stage.
      */
-    const std::vector<pid_t>& get_tids();
+    std::vector<pid_t> get_tids();
+
+    /**
+     * @brief The CPU cores this stage's threads are allowed to run on.
+     *
+     * @return The core numbers, zero based; empty when the stage was left
+     *         unpinned.
+     */
+    std::vector<int> get_cpu_affinity();
+
+    /// @return true once the stage has been asked to stop.
+    bool is_stopping() const;
 
 protected:
     std::atomic_bool stop_thread;
@@ -114,7 +135,11 @@ private:
     /// joined after the exit signal has been given before exiting ungracefully.
     uint32_t join_timeout;
 
-    // List of stage tids used for CPU usage tracking
+    // Lock for changing or reading the thread_list variable.
+    std::mutex thread_list_lock;
+
+    // List of stage tids used for CPU usage tracking.
+    // Written by each stage thread and read by the CPU monitor thread.
     std::vector<pid_t> thread_list;
 };
 

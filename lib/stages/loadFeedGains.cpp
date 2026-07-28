@@ -15,6 +15,7 @@
 #include <exception>  // for exception
 #include <functional> // for bind, function, _1
 #include <memory>     // for __shared_ptr_access, shared_ptr
+#include <mutex>      // for lock_guard, mutex
 #include <regex>
 #include <stdio.h> // for fclose, fopen, fread, snprintf, FILE
 #include <string>
@@ -85,11 +86,11 @@ loadFeedGains::loadFeedGains(Config& config, const std::string& unique_name,
                         num_local_freq * num_elements * 2 * sizeof(float), buf->frame_size);
         }
         // Set frame description
-        buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::float32>, 3>(
+        buf->require_frame_desc(kotekan::NDArray<kotekan::GetType_t<kotekan::float32>, 3>::describe(
             "gain",
             {static_cast<ptrdiff_t>(num_local_freq), static_cast<ptrdiff_t>(num_elements),
-             (ptrdiff_t)2},
-            {"F", "E", "ReIm"});
+             static_cast<ptrdiff_t>(2)},
+            {"F", "E", "C"}, {1, 1, 1}));
     }
 
     // Set up callbacks for each beam_id
@@ -272,10 +273,11 @@ void loadFeedGains::main_thread() {
         // Set metadata from the frame desc, and other metadata
         buf->allocate_new_metadata_object(frame_id);
         auto meta = get_chord_metadata(buf, frame_id);
-        meta->set_from_frame_desc(buf->get_ndarray_frame_desc());
+        meta->set_from_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
         meta->set_name("gain");
+        meta->set_coarse_freq(meta_freq_idx);
         // Verify that frame desc and metadata match
-        meta->check_frame_desc(buf->get_ndarray_frame_desc());
+        meta->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // load gains into the buffer, returning in the received frame
         // is invalid

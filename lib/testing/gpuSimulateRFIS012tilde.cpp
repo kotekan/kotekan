@@ -3,12 +3,13 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType
 #include "N2Util.hpp"          // for frameID
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, get_chord_metadata, CHO...
 #include "div.hpp"             // for div_noremainder
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
+#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR, INFO
 #include "metadata.hpp"        // for metadataObject
 
 #include "fmt.hpp" // for compile_string_to_view
@@ -52,26 +53,15 @@ gpuSimulateRFIS012tilde::gpuSimulateRFIS012tilde(Config& config, const std::stri
     }
     assert(_samples_per_data_set % _rfi_downsampling_factor == 0);
 
-    size_t bf_mask_size = _num_elements;
-    size_t rfi_s012_size = (_samples_per_data_set / _rfi_downsampling_factor) * _num_local_freq * 3
-                           * _num_elements * sizeof(uint64_t);
-
-    if (in_rfi_s012_buf->frame_size != rfi_s012_size) {
-        FATAL_ERROR("in_rfi_s012_buf ({:s}) has frame size: {:d}, expected {:d}",
-                    in_rfi_s012_buf->buffer_name, in_rfi_s012_buf->frame_size, rfi_s012_size);
-    }
-    assert(in_rfi_s012_buf->frame_size == rfi_s012_size);
-
-    if (in_bf_mask_buf->frame_size != bf_mask_size) {
-        FATAL_ERROR("in_bf_mask_buf ({:s}) has frame size: {:d}, expected {:d}",
-                    in_bf_mask_buf->buffer_name, in_bf_mask_buf->frame_size, bf_mask_size);
-    }
-    assert(in_bf_mask_buf->frame_size == bf_mask_size);
-
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
     int64_t nf = _num_local_freq;
-    out_rfi_s012tilde_buf->allocate_ndarray_frame_desc<uint64_t, 3>("S012tilde", {nt, nf, 3},
-                                                                    {"Trfi", "F", "S"});
+    in_rfi_s012_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
+        "S012", {nt, nf, 3, _num_polarizations, _num_dishes}, {"Trfi", "F", "S", "P", "D"},
+        {_rfi_downsampling_factor, 1, 1, 1, 1}));
+    in_bf_mask_buf->require_frame_desc(kotekan::NDArray<std::int8_t, 2>::describe(
+        "bf_mask", {_num_polarizations, _num_dishes}, {"P", "D"}, {1, 1}));
+    out_rfi_s012tilde_buf->require_frame_desc(kotekan::NDArray<uint64_t, 3>::describe(
+        "S012tilde", {nt, nf, 3}, {"Trfi", "F", "S"}, {_rfi_downsampling_factor, 1, 1}));
 }
 
 gpuSimulateRFIS012tilde::~gpuSimulateRFIS012tilde() {}
@@ -82,18 +72,18 @@ void gpuSimulateRFIS012tilde::main_thread() {
     frameID in_rfi_s012_frame_id(in_rfi_s012_buf);
     frameID out_rfi_s012tilde_frame_id(out_rfi_s012tilde_buf);
 
-    // BF mask (for now) is not updated in time. Only read once.
-    uint8_t* bf_mask =
-        (uint8_t*)in_bf_mask_buf->wait_for_full_frame(unique_name, in_bf_mask_frame_id);
-    if (bf_mask == nullptr)
-        return;
-
-    for (int64_t e = 0; e < _num_elements; e++) {
-        INFO("BF[{:03d}]: {:08b}", e, bf_mask[e]);
-    }
-
     while (!stop_thread) {
-        // Grab in/out buffers
+        // Grab in/out buffers. The GPU pipeline uploads a bf_mask frame per S012 frame
+        // (cudaInputData without do_once), so consume them in lockstep.
+        uint8_t* bf_mask =
+            (uint8_t*)in_bf_mask_buf->wait_for_full_frame(unique_name, in_bf_mask_frame_id);
+        if (bf_mask == nullptr)
+            break;
+
+        for (int64_t e = 0; e < _num_elements; e++) {
+            DEBUG("BF[{:03d}]: {:08b}", e, bf_mask[e]);
+        }
+
         uint64_t* rfi_s012 =
             (uint64_t*)in_rfi_s012_buf->wait_for_full_frame(unique_name, in_rfi_s012_frame_id);
         if (rfi_s012 == nullptr)
@@ -160,10 +150,12 @@ void gpuSimulateRFIS012tilde::main_thread() {
         // Start with a copy
         meta_out->deepCopy(meta_in);
 
-        meta_out->set_from_frame_desc(out_rfi_s012tilde_buf->get_ndarray_frame_desc());
+        meta_out->set_from_frame_desc(
+            out_rfi_s012tilde_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // test that things are consistent
-        meta_out->check_frame_desc(out_rfi_s012tilde_buf->get_ndarray_frame_desc());
+        meta_out->check_frame_desc(
+            out_rfi_s012tilde_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set non-NDArray things.
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());
@@ -172,10 +164,8 @@ void gpuSimulateRFIS012tilde::main_thread() {
              in_bf_mask_buf->buffer_name, in_bf_mask_frame_id, in_rfi_s012_buf->buffer_name,
              in_rfi_s012_frame_id, out_rfi_s012tilde_buf->buffer_name, out_rfi_s012tilde_frame_id);
 
+        in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id++);
         in_rfi_s012_buf->mark_frame_empty(unique_name, in_rfi_s012_frame_id++);
         out_rfi_s012tilde_buf->mark_frame_full(unique_name, out_rfi_s012tilde_frame_id++);
     }
-
-    // Only release the bf_mask when we're done.
-    in_bf_mask_buf->mark_frame_empty(unique_name, in_bf_mask_frame_id);
 }

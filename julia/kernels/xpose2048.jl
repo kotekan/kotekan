@@ -560,6 +560,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                 "kernel_arguments" => [
                     Dict(
                         "name" => "Tin_min",
+                        "quantity_name" => "Tin_min",
                         "kotekan_name" => "Tin_min",
                         "type" => "int32",
                         "isoutput" => false,
@@ -569,6 +570,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     ),
                     Dict(
                         "name" => "Tin_max",
+                        "quantity_name" => "Tin_max",
                         "kotekan_name" => "Tin_max",
                         "type" => "int32",
                         "isoutput" => false,
@@ -578,6 +580,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     ),
                     Dict(
                         "name" => "T_min",
+                        "quantity_name" => "T_min",
                         "kotekan_name" => "T_min",
                         "type" => "int32",
                         "isoutput" => false,
@@ -587,6 +590,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     ),
                     Dict(
                         "name" => "T_max",
+                        "quantity_name" => "T_max",
                         "kotekan_name" => "T_max",
                         "type" => "int32",
                         "isoutput" => false,
@@ -596,13 +600,14 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     ),
                     Dict(
                         "name" => "Ein",
+                        "quantity_name" => "E",
                         "kotekan_name" => "input_voltage_name",
                         "type" => "int4x2_swapped_withoffset",
                         "axes" => [
-                            Dict("label" => "E", "length" => D * P),
-                            Dict("label" => "Tlo16384", "length" => T16384),
-                            Dict("label" => "F", "length" => F),
-                            Dict("label" => "Thi16384", "length" => T ÷ T16384),
+                            Dict("label" => "E", "length" => D * P, "dimscalings" => 1),
+                            Dict("label" => "Tlo16384", "length" => T16384, "dimscalings" => 1),
+                            Dict("label" => "F", "length" => F, "dimscalings" => 1),
+                            Dict("label" => "Thi16384", "length" => T ÷ T16384, "dimscalings" => 16384),
                         ],
                         "isoutput" => false,
                         "hasbuffer" => true,
@@ -610,13 +615,14 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     ),
                     Dict(
                         "name" => "E",
+                        "quantity_name" => "E",
                         "kotekan_name" => "output_voltage_name",
                         "type" => "int4x2_swapped_withoffset",
                         "axes" => [
-                            Dict("label" => "D", "length" => D),
-                            Dict("label" => "P", "length" => P),
-                            Dict("label" => "F", "length" => F),
-                            Dict("label" => "T", "length" => T),
+                            Dict("label" => "D", "length" => D, "dimscalings" => 1),
+                            Dict("label" => "P", "length" => P, "dimscalings" => 1),
+                            Dict("label" => "F", "length" => F, "dimscalings" => 1),
+                            Dict("label" => "T", "length" => T, "dimscalings" => 1),
                         ],
                         "isoutput" => true,
                         "hasbuffer" => true,
@@ -624,9 +630,13 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                     ),
                     Dict(
                         "name" => "scatter_indices",
+                        "quantity_name" => "scatter_indices",
                         "kotekan_name" => "scatter_indices_name",
                         "type" => "int32",
-                        "axes" => [Dict("label" => "D", "length" => D), Dict("label" => "P", "length" => P)],
+                        "axes" => [
+                            Dict("label" => "D", "length" => D, "dimscalings" => 1),
+                            Dict("label" => "P", "length" => P, "dimscalings" => 1),
+                        ],
                         "isoutput" => false,
                         "hasbuffer" => true,
                         "do_once" => true,
@@ -636,9 +646,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false)
                         "kotekan_name" => "gpu_mem_info",
                         "type" => "int32",
                         "axes" => [
-                            Dict("label" => "thread", "length" => num_threads),
-                            Dict("label" => "warp", "length" => num_warps),
-                            Dict("label" => "block", "length" => num_blocks),
+                            Dict("label" => "thread", "length" => num_threads, "dimscalings" => 1),
+                            Dict("label" => "warp", "length" => num_warps, "dimscalings" => 1),
+                            Dict("label" => "block", "length" => num_blocks, "dimscalings" => 1),
                         ],
                         "isoutput" => true,
                         "hasbuffer" => false,

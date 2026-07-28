@@ -36,8 +36,8 @@ omit metadata entirely.
 
 Common keys (unless noted otherwise):
 
-- ``kotekan_buffer``: buffer type; supported values are ``standard``, ``vis``, ``N2``, ``hfb``, and
-  ``ring``.
+- ``kotekan_buffer``: buffer type; supported values are ``standard``, ``ndarray``, ``vis``, ``N2``,
+  ``hfb``, and ``ring``.
 - ``num_frames``: depth of frame-based buffers (everything except ``ring``). Pick a size that covers
   the latency of downstream stages.
 - ``metadata_pool``: optional for ``standard`` buffers; name of a :ref:`metadata pool
@@ -47,10 +47,24 @@ Common keys (unless noted otherwise):
   threads), and ``log_level`` mirror the values on stages. ``zero_new_frames`` only zeros memory
   when it is first allocated; reused frames are not cleared unless a stage calls ``zero_frames()``
   or explicitly writes over the data.
+- ``peek_hold`` (default ``false``, frame-based buffers only): keep the newest full frame around —
+  its recycling is deferred until the next frame is marked full — so the ``/buffer/<name>/frame``
+  endpoint always has a frame to serve even when consumers drain frames quickly. Requires
+  ``num_frames >= 2``; the held frame counts as one full frame in ``/buffers``.
 
 Type-specific notes:
 
 - ``standard`` – raw byte buffers. You must set ``frame_size`` in bytes.
+- ``ndarray`` – frames holding a single typed multi-dimensional array. The **required** structural
+  fields are ``value_type`` (a kotekan ``DataType`` name such as ``float32`` or ``int4x2``) and
+  ``extents`` (a list of dimension sizes; entries may be arithmetic expressions referencing other
+  config values, e.g. ``samples_per_data_set / upchan_factor``) -- these fix the byte layout the
+  factory allocates. The semantic labels ``quantity_name`` and ``dimnames`` (a list of axis labels,
+  one per extent) are **optional**: when omitted, the producing stage supplies them; when given,
+  the stage validates against them. ``frame_size`` is derived from the descriptor, and the frame
+  descriptor is attached to the buffer at startup, so stages can validate against it (or read
+  shapes from it) from their constructors onward. Typically paired with a ``chordMetadata`` pool.
+  See :ref:`dev_buffers` for the descriptor model and authoring guidance.
 - ``vis`` – visibility frames sized automatically from ``num_elements``, ``num_ev``, and optional
   ``num_prod`` (defaults to an upper-triangular visibility matrix). Numeric types are fixed
   (complex floats for visibilities/EVs, floats for weights/flags). The attached metadata type is
@@ -180,6 +194,30 @@ Config values are resolved by walking up the YAML path: a stage first looks in i
 parent scopes, then the root. Jinja2 templating can be used in ``.j2`` configs; supply variables via
 ``-e '{"key": "value"}'`` when invoking kotekan. Shared constants can be defined at higher levels
 and referenced by name in child blocks.
+
+Config usage tracking
+---------------------
+
+Set the top-level ``log_config_usage`` to have kotekan record which config leaf items (scalar
+values, strings, and lists -- not the object blocks that contain them) are actually read while a
+pipeline runs, and by which path. At shutdown a summary is logged listing the accessed items (with
+the requesting base paths, typically stage ``unique_name``\ s) and the items that were never
+accessed. This is useful for spotting stale or misspelled config keys that no stage consumes. The
+feature is off by default and adds no overhead unless enabled.
+
+The value selects how unused items are reported:
+
+- ``false`` (default) -- disabled.
+- ``true`` / ``info`` -- log the summary at ``INFO``.
+- ``warn`` / ``error`` -- log the summary at that severity when one or more items went unused
+  (otherwise ``INFO``).
+- ``fatal_error`` -- additionally fail kotekan with a non-zero exit when any item went unused. Useful
+  in CI to reject configs that carry stale parameters.
+
+Framework dispatch markers (``kotekan_buffer``, ``kotekan_stage``, ``kotekan_metadata_pool``,
+``kotekan_update_endpoint``) are excluded from the summary: the factories and config updater consume
+those by walking the config tree directly rather than through a value lookup, so they would otherwise
+always appear as unused.
 
 REST server
 -----------

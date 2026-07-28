@@ -16,13 +16,9 @@ log_level: INFO
 #timesamples_per_packet: 2
 
 #num_data_sets: 1
-num_gpus: 1
 buffer_depth: 4
-num_gpu_frames: 4
 cpu_affinity: [2, 3, 4, 5, 8, 9, 10, 11]
-sizeof_float: 4
 frame_arrival_period: 0.00000256 * samples_per_data_set
-sizeof_int: 4
 
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 1024
@@ -35,7 +31,6 @@ num_dishes: 64
 num_elements: 128
 num_local_freq: 16
 
-input_order: CHIMEBeamformer
 
 # vis matrix size
 vis_blocks_tr_root: (num_elements + 1) / 16
@@ -48,21 +43,24 @@ main_pool:
 
 # Buffers
 host_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_elements * num_local_freq
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     metadata_pool: main_pool
 
 host_correlation_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * num_vis_blocks * 2 * sizeof_int
+    value_type: int32
+    extents: [num_times / sub_integration_ntime, num_local_freq, num_vis_blocks, 16, 16, 2]
     metadata_pool: main_pool
 
 # Ringbuffer signalling buffer
@@ -86,6 +84,7 @@ gen_data_voltage:
     name: "E"
     array_shape: [2048, 16, 2, 64]
     dim_name: ["T", "F", "P", "D"]
+    dim_scaling: [1, 1, 1, 1]
     num_frames: buffer_depth  # Must be at least what write_n2k_correlation expects
 
 gen_data_rfi_RFImask:
@@ -96,6 +95,7 @@ gen_data_rfi_RFImask:
     name: "RFImask"
     array_shape: [2, 16, 128]
     dim_name: ["T8hi128", "F", "T8lo128"]
+    dim_scaling: [1024, 1, 8]
     num_frames: buffer_depth
     meta_time_downsample_factor: 1024
 
@@ -163,3 +163,4 @@ write_n2k_correlation:
     skip_writing: false
     in_buf: host_correlation_buffer
 
+log_config_usage: fatal_error

@@ -1,40 +1,41 @@
 #ifndef NDARRAYRINGBUFFER_HPP
 #define NDARRAYRINGBUFFER_HPP
 
-#include <cuda_runtime_api.h>       // for cudaMemcpy2D, cudaMemset2DAsync
-#include <driver_types.h>           // for CUstream_st, cudaMemcpyKind
-#include <algorithm>                // for find_if, fill_n
-#include <array>                    // for array
-#include <cassert>                  // for assert
-#include <cmath>                    // for isfinite
-#include <cstddef>                  // for ptrdiff_t, size_t
-#include <cstdint>                  // for uint8_t
-#include <cstring>                  // for memcmp, memcpy, memset
-#include <functional>               // for function
-#include <iomanip>                  // for setfill, operator<<, setw
-#include <iostream>                 // for basic_ostream, operator<<, ostream, ostringstream
-#include <memory>                   // for shared_ptr, __shared_ptr_access, allocator
-#include <optional>                 // for optional
-#include <sstream>                  // for basic_ostringstream
-#include <string>                   // for basic_string, char_traits, string, operator+, operator<<
-#include <type_traits>              // for is_floating_point_v, is_same_v
-#include <utility>                  // for pair
-#include <vector>                   // for vector
+#include "DataType.hpp"            // for uint_from_element_bits, operator<<, GetType_t, isfinite
+#include "NDArray.hpp"             // for NDArray
+#include "Symbol.hpp"              // for Symbol, operator==, strings_to_symbols, operator<<
+#include "buffer.hpp"              // for GenericBuffer
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata, get_chord_metadata
+#include "cudaCommand.hpp"         // for cudaCommand
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "div.hpp"                 // for mod, div_noremainder
+#include "kotekanLogging.hpp"      // for FATAL_ERROR, ERROR, kotekanLogging
+#include "metadata.hpp"            // for metadataObject
+#include "ringbuffer.hpp"          // for RingBuffer
 
-#include "DataType.hpp"             // for uint_from_element_bits, operator<<, GetType_t, isfinite
-#include "NDArray.hpp"              // for NDArray
-#include "Symbol.hpp"               // for Symbol, operator==, strings_to_symbols, operator<<
-#include "buffer.hpp"               // for GenericBuffer
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "chordMetadata.hpp"        // for chordMetadata, get_chord_metadata
-#include "cudaCommand.hpp"          // for cudaCommand
-#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
-#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
-#include "div.hpp"                  // for mod, div_noremainder
-#include "kotekanLogging.hpp"       // for FATAL_ERROR, ERROR, kotekanLogging
-#include "metadata.hpp"             // for metadataObject
-#include "ringbuffer.hpp"           // for RingBuffer
-#include "fmt.hpp"                  // for compile_string_to_view, formatter
+#include "fmt.hpp" // for compile_string_to_view, formatter
+
+#include <algorithm>          // for find_if, fill_n
+#include <array>              // for array
+#include <cassert>            // for assert
+#include <cmath>              // for isfinite
+#include <cstddef>            // for ptrdiff_t, size_t
+#include <cstdint>            // for uint8_t
+#include <cstring>            // for memcmp, memcpy, memset
+#include <cuda_runtime_api.h> // for cudaMemcpy2D, cudaMemset2DAsync
+#include <driver_types.h>     // for CUstream_st, cudaMemcpyKind
+#include <functional>         // for function
+#include <iomanip>            // for setfill, operator<<, setw
+#include <iostream>           // for basic_ostream, operator<<, ostream, ostringstream
+#include <memory>             // for shared_ptr, __shared_ptr_access, allocator
+#include <optional>           // for optional
+#include <sstream>            // for basic_ostringstream
+#include <string>             // for basic_string, char_traits, string, operator+, operator<<
+#include <type_traits>        // for is_floating_point_v, is_same_v
+#include <utility>            // for pair
+#include <vector>             // for vector
 
 using kotekan::div_noremainder;
 using kotekan::mod;
@@ -189,7 +190,8 @@ private:
 public:
     NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
                       const std::array<std::ptrdiff_t, D>& extents,
-                      const std::array<kotekan::Symbol, D>& dimnames, cudaCommand& cuda_command) :
+                      const std::array<kotekan::Symbol, D>& dimnames,
+                      const std::array<std::ptrdiff_t, D>& dimscalings, cudaCommand& cuda_command) :
         // metadata
         buffer_name(buffer_name),                            // e.g. "bb_beams"
         buffer_name_host("host_" + buffer_name + "_buffer"), // e.g. "host_bb_beams_buffer"
@@ -200,7 +202,7 @@ public:
         ringbuffer(dynamic_cast<RingBuffer*>(
             cuda_command.get_host_buffers().get_generic_buffer(signal_buffer_name))),
         // NDArray
-        ndarray(quantity_name, extents, dimnames, get_buffer_pointer(extents)),
+        ndarray(quantity_name, extents, dimnames, dimscalings, get_buffer_pointer(extents)),
         // State
         write_valid(0, 0), read_valid(0, 0), read_claimed(0, 0)
     //
@@ -212,15 +214,17 @@ public:
 
     NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
                       const std::array<std::ptrdiff_t, D>& extents,
-                      const std::array<std::string, D>& dimnames, cudaCommand& cuda_command) :
+                      const std::array<std::string, D>& dimnames,
+                      const std::array<std::ptrdiff_t, D>& dimscalings, cudaCommand& cuda_command) :
         NDArrayRingBuffer(buffer_name, quantity_name, extents,
-                          kotekan::strings_to_symbols(dimnames), cuda_command) {}
+                          kotekan::strings_to_symbols(dimnames), dimscalings, cuda_command) {}
 
     NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
                       const std::array<std::ptrdiff_t, D>& extents,
-                      const std::array<const char*, D>& dimnames, cudaCommand& cuda_command) :
+                      const std::array<const char*, D>& dimnames,
+                      const std::array<std::ptrdiff_t, D>& dimscalings, cudaCommand& cuda_command) :
         NDArrayRingBuffer(buffer_name, quantity_name, extents,
-                          kotekan::strings_to_symbols(dimnames), cuda_command) {}
+                          kotekan::strings_to_symbols(dimnames), dimscalings, cuda_command) {}
 
     virtual ~NDArrayRingBuffer() {}
 
@@ -399,6 +403,16 @@ public:
         return ndarray;
     }
 
+    // static const std::shared_ptr<const kotekan::GenericNDArray>
+    // get_ndarray_frame_desc(cudaCommand& cuda_command, const std::string& buffer_name) {
+    //     const std::string signal_buffer_name("host_" + buffer_name + "_ringbuffer");
+    //     const RingBuffer* const ringbuffer(dynamic_cast<RingBuffer*>(
+    //         cuda_command.get_host_buffers().get_generic_buffer(signal_buffer_name)));
+    //     const std::shared_ptr<const kotekan::GenericNDArray> ndarray =
+    //         ringbuffer->get_ndarray_frame_desc();
+    //     return ndarray;
+    // }
+
 private:
     std::ptrdiff_t granularity_in_bytes() const {
         return ndarray.get_stride(0) * ndarray.value_type_size;
@@ -464,6 +478,7 @@ public:
                       buffer_name, d, metadata->get_dimension_name(d),
                       std::string(ndarray.dimname(d)));
             assert(metadata->get_dimension_name(d) == ndarray.dimname(d));
+            assert(metadata->dim_scaling[d] == ndarray.dimscaling(d));
             // The ring buffer direction is special
             if (d > 0)
                 assert(metadata->dim[d] == int(ndarray.extent(d)));
@@ -486,10 +501,11 @@ public:
             // The ring buffer direction is special
             if (d == 0)
                 metadata->set_array_dimension(d, other_metadata->dim[d],
-                                              std::string(ndarray.dimname(d)));
+                                              std::string(ndarray.dimname(d)),
+                                              ndarray.dimscaling(d));
             else
-                metadata->set_array_dimension(d, ndarray.extent(d),
-                                              std::string(ndarray.dimname(d)));
+                metadata->set_array_dimension(d, ndarray.extent(d), std::string(ndarray.dimname(d)),
+                                              ndarray.dimscaling(d));
             metadata->stride[d] = ndarray.stride(d);
         }
     }
@@ -687,5 +703,8 @@ public:
         return buf.str();
     }
 };
+
+const std::shared_ptr<const chordMetadata> get_ringbuffer_metadata(cudaCommand& cuda_command,
+                                                                   const std::string& buffer_name);
 
 #endif // #ifndef NDARRAYRINGBUFFER_HPP

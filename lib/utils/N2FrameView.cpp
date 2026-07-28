@@ -1,37 +1,26 @@
 #include "N2FrameView.hpp"
 
-#include <assert.h>            // for assert
-#include <gsl-lite.hpp>        // for span
-#include <complex>             // for complex
-#include <cstring>             // for memset
-#include <algorithm>           // for copy
-#include <map>                 // for map
-#include <vector>              // for vector
+#include "FrameDesc.hpp"      // for FrameDesc
+#include "FrameView.hpp"      // for bind_span, bind_scalar, FrameView
+#include "buffer.hpp"         // for Buffer
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
 
-#include "FrameView.hpp"       // for bind_span, bind_scalar, FrameView
-#include "buffer.hpp"          // for Buffer
-#include "FrameDesc.hpp"       // for FrameDesc
-#include "fmt.hpp"             // for compile_string_to_view
-#include "kotekanLogging.hpp"  // for FATAL_ERROR_NON_OO
+#include "fmt.hpp" // for compile_string_to_view
 
-namespace {
+#include <algorithm>    // for copy
+#include <assert.h>     // for assert
+#include <complex>      // for complex
+#include <cstring>      // for memset
+#include <gsl-lite.hpp> // for span
+#include <map>          // for map
+#include <vector>       // for vector
 
-// Helper to ensure that the given FrameDesc is actually an N2FrameDesc
-std::shared_ptr<const kotekan::N2FrameDesc>
-validate_desc_type(std::shared_ptr<const kotekan::FrameDesc> desc) {
-    auto n2_desc = std::dynamic_pointer_cast<const kotekan::N2FrameDesc>(desc);
-    if (!n2_desc) {
-        FATAL_ERROR_NON_OO("N2FrameView: Buffer does not have a valid N2FrameDesc");
-    }
-    return n2_desc;
-}
-} // namespace
 
 N2FrameView::N2FrameView(Buffer* buf, int frame_id) :
 
     FrameView(buf, frame_id),
     _metadata(std::static_pointer_cast<N2Metadata>(buf->metadata[frame_id])),
-    _desc(validate_desc_type(buf->get_frame_description())),
+    _desc(buf->require_frame_desc<kotekan::N2FrameDesc>()),
 
     // Set the const refs to the structural metadata
     n2_layout(_desc->get_n2_layout()), num_elements(_desc->get_num_elements()),

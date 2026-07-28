@@ -91,33 +91,43 @@ n2_pool:
     num_metadata_objects: 16 * buffer_depth
 
 fake_correlation_buffer:
-    kotekan_buffer: standard
+    # num_elements=1024: corr_lin_blocks=num_elements/16=64, vis_num_blocks=64*65/2=2080.
+    # testN2kGen, testLostCountsGen, and N2Accumulate all use num_elements/16, so the
+    # producer and consumer agree on the block count.
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
 
 fake_counts_buffer:
-    kotekan_buffer: standard
+    # num_elements=1024: count_lin_blocks=(num_elements/8)/8=16, counts_num_blocks=16*17/2=136.
+    # testN2kGen, testLostCountsGen (in_buf validator), and N2Accumulate all use (num_elements/8)/8.
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
     metadata_pool: main_pool
 
 fake_rficounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 fake_plcounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 fake_rfiframemask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    value_type: uint8
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 n2_buffer:

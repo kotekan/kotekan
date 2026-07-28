@@ -1,21 +1,23 @@
 #include "Stage.hpp"
 
-#include <pthread.h>            // for pthread_setaffinity_np, pthread_setname_np
-#include <sched.h>              // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <sys/syscall.h>        // for SYS_gettid
-#include <unistd.h>             // for syscall
-#include <algorithm>            // for find, copy
-#include <chrono>               // for seconds
-#include <cstdlib>              // for abort
-#include <future>               // for async, future, future_status, launch
-#include <thread>               // for thread
-#include <exception>            // for exception
+#include "Config.hpp"          // for Config
+#include "PipelineGraph.hpp"   // for PipelineGraph
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "util.h"              // for string_tail
 
-#include "Config.hpp"           // for Config
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "util.h"               // for string_tail
-#include "fmt.hpp"              // for compile_string_to_view, format, format_string
+#include "fmt.hpp" // for compile_string_to_view, format, format_string
+
+#include <algorithm>     // for find, copy
+#include <chrono>        // for seconds
+#include <cstdlib>       // for abort
+#include <exception>     // for exception
+#include <future>        // for async, future, future_status, launch
+#include <pthread.h>     // for pthread_setaffinity_np, pthread_setname_np
+#include <sched.h>       // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <sys/syscall.h> // for SYS_gettid
+#include <thread>        // for thread
+#include <unistd.h>      // for syscall
 
 namespace kotekan {
 
@@ -150,23 +152,37 @@ Stage::~Stage() {
         this_thread.join();
 }
 
-std::string Stage::dot_string(const std::string& prefix) const {
-    return fmt::format("{:s}\"{:s}\" [shape=box, color=darkgreen];\n", prefix, get_unique_name());
+void Stage::add_graph_details(PipelineGraph& graph) const {
+    // A plain stage is fully described by the node and buffer edges kotekanMode
+    // has already added for it.
+    (void)graph;
 }
 
 void Stage::register_tid(pid_t tid) {
+    std::lock_guard<std::mutex> lock(thread_list_lock);
     thread_list.push_back(tid);
 }
 
 void Stage::unregister_tid(pid_t tid) {
+    std::lock_guard<std::mutex> lock(thread_list_lock);
     auto itr = std::find(thread_list.begin(), thread_list.end(), tid);
     if (itr != thread_list.end()) {
         thread_list.erase(itr);
     }
 }
 
-const std::vector<pid_t>& Stage::get_tids() {
+std::vector<pid_t> Stage::get_tids() {
+    std::lock_guard<std::mutex> lock(thread_list_lock);
     return thread_list;
+}
+
+std::vector<int> Stage::get_cpu_affinity() {
+    std::lock_guard<std::mutex> lock(cpu_affinity_lock);
+    return cpu_affinity;
+}
+
+bool Stage::is_stopping() const {
+    return stop_thread;
 }
 
 } // namespace kotekan

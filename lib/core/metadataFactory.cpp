@@ -1,21 +1,22 @@
 #include "metadataFactory.hpp"
 
-#include <stdint.h>              // for uint32_t
-#include <json.hpp>              // for basic_json, iter_impl, json
-#include <stdexcept>             // for runtime_error
+#include "BasebandMetadata.hpp" // for BasebandMetadata
+#include "BeamMetadata.hpp"     // for BeamMetadata
+#include "Config.hpp"           // for Config
+#include "GnssChanMetadata.hpp" // for GnssChanMetadata
+#include "HFBMetadata.hpp"      // for HFBMetadata
+#include "N2Metadata.hpp"       // for N2Metadata
+#include "chordMetadata.hpp"    // for chordMetadata
+#include "kotekanLogging.hpp"   // for INFO_NON_OO
+#include "metadata.hpp"         // for metadataPool
+#include "oneHotMetadata.hpp"   // for oneHotMetadata
+#include "visBuffer.hpp"        // for VisMetadata
 
-#include "BasebandMetadata.hpp"  // for BasebandMetadata
-#include "BeamMetadata.hpp"      // for BeamMetadata
-#include "Config.hpp"            // for Config
-#include "GnssChanMetadata.hpp"  // for GnssChanMetadata
-#include "HFBMetadata.hpp"       // for HFBMetadata
-#include "N2Metadata.hpp"        // for N2Metadata
-#include "chordMetadata.hpp"     // for chordMetadata
-#include "kotekanLogging.hpp"    // for INFO_NON_OO
-#include "metadata.hpp"          // for metadataPool
-#include "oneHotMetadata.hpp"    // for oneHotMetadata
-#include "visBuffer.hpp"         // for VisMetadata
-#include "fmt.hpp"               // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <json.hpp>  // for basic_json, iter_impl, json
+#include <stdexcept> // for runtime_error
+#include <stdint.h>  // for uint32_t
 
 using json = nlohmann::json;
 using std::map;

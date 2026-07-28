@@ -1,5 +1,6 @@
 #include "Config.hpp"                   // for Config
 #include "DataType.hpp"                 // for float16_t
+#include "NDArray.hpp"                  // for GenericNDArray
 #include "Stage.hpp"                    // for Stage
 #include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"                // for Telescope, freq_id_t
@@ -101,11 +102,11 @@ public:
         frb2_beam_positions_buffer->register_consumer(unique_name);
         W2_buffer->register_producer(unique_name);
 
-        frb2_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
-            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"});
-        W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>(
+        frb2_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
+            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}, {1, 1}));
+        W2_buffer->require_frame_desc(kotekan::NDArray<float16_t, 4>::describe(
             "W2", {frb2_num_frequencies, frb2_num_beams, frb1_num_beams_Q, frb1_num_beams_P},
-            {"Fbar", "R", "beamQ", "beamP"});
+            {"Fbar", "R", "beamQ", "beamP"}, {1, 1, 1, 1}));
     }
 
     virtual ~calcFRB2Weights() {}
@@ -179,10 +180,9 @@ public:
         assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
 
         // Set metadata
-
         W2_buffer->allocate_new_metadata_object(frame_id);
         const auto& W2_meta = get_chord_metadata(W2_buffer->get_metadata(frame_id));
-        W2_meta->set_from_frame_desc(W2_buffer->get_ndarray_frame_desc());
+        W2_meta->set_from_frame_desc(W2_buffer->get_frame_desc<kotekan::GenericNDArray>());
         W2_meta->set_fpga_seq_num(0);           // ???
         W2_meta->set_time_downsampling_fpga(1); // ???
         W2_meta->set_coarse_freq(coarse_freq);
@@ -220,13 +220,13 @@ public:
             // with the feed grid array and are also orthogonal. This makes the
             // vectors very simple, with a single component in the x and y directions
             // respectively.
-            const float sigmax_x = telescope.get_feed_separation_x_m();
-            const float sigmax_y = 0;
-            const float sigmax_z = 0;
+            const float sigmaM_x = frb1_swap_MN ? 0 : telescope.get_feed_separation_x_m();
+            const float sigmaM_y = frb1_swap_MN ? telescope.get_feed_separation_y_m() : 0;
+            const float sigmaM_z = 0;
 
-            const float sigmay_x = 0;
-            const float sigmay_y = telescope.get_feed_separation_y_m();
-            const float sigmay_z = 0;
+            const float sigmaN_x = frb1_swap_MN ? telescope.get_feed_separation_y_m() : 0;
+            const float sigmaN_y = frb1_swap_MN ? 0 : telescope.get_feed_separation_y_m();
+            const float sigmaN_z = 0;
 
             std::atomic<int> nfreqs_done = 0;
 
@@ -255,14 +255,12 @@ public:
                         //   theta = M (nhat ⋅ sigma) / lambda
                         // where nhat is the unit vector in the direction of the sky location
                         // sigma is the dish displacement in meters East-West.
-                        const float theta_x = num_dishes_x
-                                              * (nx * sigmax_x + ny * sigmax_y + nz * sigmax_z)
+                        const float theta_M = num_dishes_M
+                                              * (nx * sigmaM_x + ny * sigmaM_y + nz * sigmaM_z)
                                               / wavelength;
-                        const float theta_y = num_dishes_y
-                                              * (nx * sigmay_x + ny * sigmay_y + nz * sigmay_z)
+                        const float theta_N = num_dishes_N
+                                              * (nx * sigmaN_x + ny * sigmaN_y + nz * sigmaN_z)
                                               / wavelength;
-                        const float theta_M = frb1_swap_MN ? theta_y : theta_x;
-                        const float theta_N = frb1_swap_MN ? theta_x : theta_y;
 
                         for (int i = 0; i < frb1_num_beams_P; ++i)
                             Up[i] = Ufunc(i, num_dishes_M, theta_M);

@@ -1,5 +1,6 @@
 #include "Config.hpp"            // for Config
 #include "DataType.hpp"          // for string_to_type, DataType
+#include "NDArray.hpp"           // for NDArray, GenericNDArray
 #include "Stage.hpp"             // for Stage
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "Symbol.hpp"            // for Symbol
@@ -25,10 +26,10 @@
 #ifdef WITH_OMP
 #include <omp.h> // for omp_get_wtime
 #endif
-#include <sstream>    // for basic_ostream, operator<<, basic_ostrin...
-#include <string>     // for basic_string, char_traits, string, oper...
-#include <unistd.h>   // for gethostname, sleep
-#include <vector>     // for vector
+#include <sstream>  // for basic_ostream, operator<<, basic_ostrin...
+#include <string>   // for basic_string, char_traits, string, oper...
+#include <unistd.h> // for gethostname, sleep
+#include <vector>   // for vector
 
 [[maybe_unused]] static std::uint32_t xorshift32(std::uint32_t state) {
     state ^= state << 13;
@@ -81,8 +82,10 @@ public:
             buffer->register_producer(unique_name);
 
             // Set metadata
-            buffer->allocate_ndarray_frame_desc<kotekan::int4x2_swapped_withoffset_t, 3>(
-                "E", {1, num_times, num_polarizations * num_dishes}, {"F", "T", "E"});
+            buffer->require_frame_desc(
+                kotekan::NDArray<kotekan::int4x2_swapped_withoffset_t, 3>::describe(
+                    "E", {1, num_times, num_polarizations * num_dishes}, {"F", "T", "E"},
+                    {1, 1, 1}));
         }
     }
 
@@ -162,7 +165,7 @@ public:
                 buffer->allocate_new_metadata_object(frame_id);
                 const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
                 meta->set_fpga_seq_num(frame_index * num_times);
-                meta->set_from_frame_desc(buffer->get_ndarray_frame_desc());
+                meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
                 meta->set_time_downsampling_fpga(1);
 
                 // Set frequency information

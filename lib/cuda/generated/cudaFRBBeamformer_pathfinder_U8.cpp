@@ -111,7 +111,6 @@ private:
     // How many frequencies we will process
     const int Fbar_in_min, Fbar_in_max;
     const int Fbar_out_min, Fbar_out_max;
-    const ElementOrder input_order;
 
     // Kernel arguments:
     enum class args {
@@ -179,6 +178,10 @@ private:
         2,
         96,
     };
+    static constexpr std::array<std::ptrdiff_t, S_rank> S_dimscalings = {
+        1,
+        1,
+    };
     static constexpr auto S_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -201,14 +204,17 @@ private:
         W_index_dishM,
         W_index_dishN,
         W_index_P,
-        W_index_F,
+        W_index_Fbar,
         W_rank,
     };
     static constexpr std::array<const char*, W_rank> W_labels = {
-        "C", "dishM", "dishN", "P", "F",
+        "C", "dishM", "dishN", "P", "Fbar",
     };
     static constexpr std::array<std::ptrdiff_t, W_rank> W_lengths = {
         2, 8, 12, 2, 512,
+    };
+    static constexpr std::array<std::ptrdiff_t, W_rank> W_dimscalings = {
+        1, 1, 1, 1, 1,
     };
     static constexpr auto W_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -218,7 +224,7 @@ private:
     };
     static constexpr std::array<std::ptrdiff_t, W_rank + 1> W_strides = {
         W_calc_stride(W_index_C), W_calc_stride(W_index_dishM), W_calc_stride(W_index_dishN),
-        W_calc_stride(W_index_P), W_calc_stride(W_index_F),     W_calc_stride(W_rank),
+        W_calc_stride(W_index_P), W_calc_stride(W_index_Fbar),  W_calc_stride(W_rank),
     };
     static constexpr std::ptrdiff_t W_length = W_strides[W_rank];
     static constexpr std::ptrdiff_t W_length_in_bytes = type_total_bytes(W_type) * W_length;
@@ -244,6 +250,12 @@ private:
         2,
         512,
         4096,
+    };
+    static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_dimscalings = {
+        1,
+        1,
+        1,
+        8,
     };
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -282,6 +294,12 @@ private:
         4096,
         1024,
     };
+    static constexpr std::array<std::ptrdiff_t, I_rank> I_dimscalings = {
+        1,
+        1,
+        1,
+        192,
+    };
     static constexpr auto I_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -313,6 +331,11 @@ private:
         32,
         6,
         512,
+    };
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_dimscalings = {
+        1,
+        1,
+        1,
     };
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -376,7 +399,6 @@ cudaFRBBeamformer_pathfinder_U8::cudaFRBBeamformer_pathfinder_U8(Config& config,
     Fbar_in_max(config.get<int>(unique_name, "Fbar_in_max")),
     Fbar_out_min(config.get<int>(unique_name, "Fbar_out_min")),
     Fbar_out_max(config.get<int>(unique_name, "Fbar_out_max")),
-    input_order(config.get<ElementOrder>(unique_name, "input_order")),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
@@ -386,12 +408,16 @@ cudaFRBBeamformer_pathfinder_U8::cudaFRBBeamformer_pathfinder_U8(Config& config,
     I_name(config.get<std::string>(unique_name, "frb_beamgrid_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
-    S_buffer(S_name, S_quantity, reverse(S_lengths), reverse(S_labels), *this),
+    S_buffer(S_name, S_quantity, reverse(S_lengths), reverse(S_labels), reverse(S_dimscalings),
+             *this),
     host_S_buffer(S_length), W_buffer(W_name, W_quantity, reverse(W_lengths), reverse(W_labels),
-                                      *this, buffer_type_t::do_once),
-    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels), *this),
-    I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), *this),
-    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
+                                      reverse(W_dimscalings), *this, buffer_type_t::do_once),
+    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels),
+                reverse(Ebar_dimscalings), *this),
+    I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), reverse(I_dimscalings),
+             *this),
+    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels),
+                reverse(info_dimscalings), *this),
     host_info_buffer(info_length),
 
     did_init_host_S_buffer(false), did_set_metadata(false) {
@@ -414,13 +440,6 @@ cudaFRBBeamformer_pathfinder_U8::cudaFRBBeamformer_pathfinder_U8(Config& config,
     I_buffer.register_producer();
     register_gpu_buffer_user(
         {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
-
-    if (input_order != ElementOrder::CHIMEBeamformer
-        && input_order != ElementOrder::CHORDBeamformer) {
-        FATAL_ERROR("FRBBeamformer cannot run with input_order: {}. Must be CHIMEBeamformer or "
-                    "CHORDBeamformer",
-                    input_order);
-    }
 
     set_command_type(gpuCommandType::KERNEL);
 
@@ -712,7 +731,7 @@ cudaFRBBeamformer_pathfinder_U8::execute(cudaPipelineState& /*pipestate*/,
         // The input order is a Beamformer type (P slow, D fast), so the first num_dishes
         // entries will contain the grid indices for all connected dishes.
         std::vector<grid_idx_2d_t> grid_indices =
-            tel.get_main_array_grid_indices(cuda_number_of_dishes, input_order);
+            tel.get_main_array_grid_indices(cuda_number_of_dishes, tel.fiducial_element_order());
 
         // Now build:
         // 1) a table of grid locations populated with the index of the dish at that location,

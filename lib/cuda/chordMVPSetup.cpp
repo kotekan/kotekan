@@ -1,5 +1,6 @@
 #include "chordMVPSetup.hpp"
 
+#include "PipelineGraph.hpp"  // for PipelineGraph
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h" // for cudaMemset
 #include "gpuCommand.hpp"     // for gpuCommandType
@@ -95,14 +96,15 @@ cudaEvent_t chordMVPSetup::execute(cudaPipelineState&, const std::vector<cudaEve
     return record_end_event();
 }
 
-std::string chordMVPSetup::get_extra_dot(const std::string& prefix) const {
-    std::string fullname = config.get<std::string>(unique_name, "gpu_mem_frb_bf_input");
-    std::string viewname = config.get<std::string>(unique_name, "gpu_mem_upchan_output");
-    std::string dot = fmt::format("{:s}\"{:s}\" -> \"{:s}\" [style=solid, color=\"red\"];\n",
-                                  prefix, viewname, fullname);
-    fullname = config.get<std::string>(unique_name, "gpu_mem_voltage");
-    viewname = config.get<std::string>(unique_name, "gpu_mem_fine_upchan_input");
-    dot += fmt::format("{:s}\"{:s}\" -> \"{:s}\" [style=solid, color=\"red\"];\n", prefix, fullname,
-                       viewname);
-    return dot;
+void chordMVPSetup::add_graph_details(kotekan::PipelineGraph& graph,
+                                      const std::string& mem_prefix) const {
+    auto alias = [&](const std::string& from, const std::string& to) {
+        graph
+            .add_edge(mem_prefix + config.get<std::string>(unique_name, from),
+                      mem_prefix + config.get<std::string>(unique_name, to))
+            .set_attr("style", "solid")
+            .set_attr("color", "red");
+    };
+    alias("gpu_mem_upchan_output", "gpu_mem_frb_bf_input");
+    alias("gpu_mem_voltage", "gpu_mem_fine_upchan_input");
 }

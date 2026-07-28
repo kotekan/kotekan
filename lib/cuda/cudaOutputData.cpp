@@ -6,21 +6,23 @@
 
 #include "cudaOutputData.hpp"
 
-#include <stddef.h>            // for ptrdiff_t, size_t
-#include <stdint.h>            // for uint8_t
-#include <string.h>            // for strnlen
-#include <sys/types.h>         // for uint, size_t
-#include <memory>              // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
-#include <tuple>               // for tuple, make_tuple
+#include "NDArray.hpp"        // for GenericNDArray
+#include "Symbol.hpp"         // for Symbol
+#include "chordMetadata.hpp"  // for chordMetadata
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaHostRegister, cudaHostUnregister
+#include "gpuCommand.hpp"     // for gpuCommandType
+#include "kotekanLogging.hpp" // for DEBUG
+#include "metadata.hpp"       // for metadataObject
 
-#include "Symbol.hpp"          // for Symbol
-#include "chordMetadata.hpp"   // for chordMetadata
-#include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h"  // for cudaHostGetFlags, cudaHostRegister, cudaHostUnregister
-#include "gpuCommand.hpp"      // for gpuCommandType
-#include "kotekanLogging.hpp"  // for DEBUG
-#include "metadata.hpp"        // for metadataObject
-#include "fmt.hpp"             // for compile_string_to_view, format, format_string
+#include "fmt.hpp" // for compile_string_to_view, format, format_string
+
+#include <memory>      // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
+#include <stddef.h>    // for ptrdiff_t, size_t
+#include <stdint.h>    // for uint8_t
+#include <string.h>    // for strnlen
+#include <sys/types.h> // for uint, size_t
+#include <tuple>       // for tuple, make_tuple
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -36,8 +38,9 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
         in_buffer = host_buffers.get_buffer(in_buf_name);
         if (instance_num == 0)
             in_buffer->register_consumer(unique_name);
-    } else
+    } else {
         in_buffer = nullptr;
+    }
 
     output_buffer = host_buffers.get_buffer(config.get<std::string>(unique_name, "out_buf"));
     if (instance_num == 0)
@@ -53,9 +56,9 @@ cudaOutputData::cudaOutputData(Config& config, const std::string& unique_name,
         }
     }
 
-    if (output_buffer->frame_size == 0)
+    if (output_buffer->frame_size == 0) {
         _gpu_mem = "";
-    else {
+    } else {
         _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
         gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, true, false));
     }
@@ -128,20 +131,23 @@ cudaEvent_t cudaOutputData::execute(cudaPipelineState&,
                 auto chord = std::dynamic_pointer_cast<chordMetadata>(meta);
                 if (chord) {
                     /* new style array description */
-                    std::vector<ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
+                    std::vector<std::ptrdiff_t> dimensions(chord->dim, chord->dim + chord->dims);
                     std::vector<kotekan::Symbol> dimnames(chord->dims);
                     for (size_t d = 0; d < dimnames.size(); ++d) {
                         dimnames.at(d) =
                             std::string(chord->dim_name[d],
                                         strnlen(chord->dim_name[d], sizeof(chord->dim_name[d])));
                     }
+                    std::vector<std::ptrdiff_t> dimscalings(chord->dim_scaling,
+                                                            chord->dim_scaling + chord->dims);
 
                     // difficult to move to constructor since it depends on frame_desc in the
                     // signal_buffer which may not be set at contructor time
-                    output_buffer->allocate_ndarray_frame_desc(chord->type, chord->get_name(),
-                                                               dimensions, dimnames);
+                    output_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                        chord->type, chord->get_name(), dimensions, dimnames, dimscalings));
                     /* test that things are consistent */
-                    chord->check_frame_desc(output_buffer->get_ndarray_frame_desc());
+                    chord->check_frame_desc(
+                        output_buffer->get_frame_desc<kotekan::GenericNDArray>());
                 }
             }
         }

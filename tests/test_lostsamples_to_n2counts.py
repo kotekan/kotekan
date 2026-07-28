@@ -45,10 +45,14 @@ class FakeRFIBuffer(runner.InputBuffer):
 
         self.buffer_block = {
             self.name: {
-                "kotekan_buffer": "standard",
+                "kotekan_buffer": "ndarray",
                 "metadata_pool": "main_pool",
                 "num_frames": "buffer_depth",
-                "frame_size": "(samples_per_data_set * num_local_freq) / 8",
+                "value_type": "uint1x8",
+                "quantity_name": "RFImask",
+                "extents": [samples_per_data_set // 1024, num_local_freq, 128],
+                "dimnames": ["T8hi128", "F", "T8lo128"],
+                "dimscalings": [1024, 1, 8],
             }
         }
 
@@ -57,9 +61,10 @@ class FakeRFIBuffer(runner.InputBuffer):
             "out_buf": self.name,
             "type": "const1x8",
             "value": 85,  # alternating 10101010...
-            "name": stage_name,
+            "name": "RFImask",
             "array_shape": [samples_per_data_set // 1024, num_local_freq, 128],
             "dim_name": ["T8hi128", "F", "T8lo128"],
+            "dim_scaling": [1024, 1, 8],
         }
 
         stage_config.update(**kwargs)
@@ -137,10 +142,20 @@ class DumpCountsBuffer(runner.OutputBuffer):
 
         self.buffer_block = {
             self.name: {
-                "kotekan_buffer": "standard",
+                "kotekan_buffer": "ndarray",
                 "metadata_pool": "main_pool",
                 "num_frames": "buffer_depth",
-                "frame_size": "sizeof_int * num_local_freq * counts_ntiles * 8 * 8 * samples_per_data_set / sub_integration_ntime",
+                "value_type": "int32",
+                "quantity_name": "n2k_counts",
+                "extents": [
+                    "samples_per_data_set / sub_integration_ntime",
+                    "num_local_freq",
+                    "counts_ntiles",
+                    8,
+                    8,
+                ],
+                "dimnames": ["Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"],
+                "dimscalings": ["sub_integration_ntime", 1, 64, 8, 8],
             }
         }
 
@@ -408,6 +423,7 @@ def test_accumulate(tmpdir_factory, nsamples, nfreq, sub_integration_ntime):
         8,
     ]
     _expected_dim_names = ["Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"]
+    _expected_dim_scalings = [sub_integration_ntime, 1, 64, 8, 8]
 
     # This is a generator, so use a loop even if returning a single dset
     for dset in accumulate(
@@ -418,6 +434,7 @@ def test_accumulate(tmpdir_factory, nsamples, nfreq, sub_integration_ntime):
         assert dset.attrs["type"] == "int32"
         assert dset.attrs["time_downsampling_fpga"] == sub_integration_ntime
         assert (dset.attrs["dim_names"] == _expected_dim_names).all()
+        assert (dset.attrs["dim_scalings"] == _expected_dim_scalings).all()
 
         # Check the payload
         arr = dset[:]

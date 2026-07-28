@@ -38,17 +38,26 @@ upchan_hfb_upchan_U128_max_num_output_channels: upchan_hfb_upchan_U128_max_outpu
 # Gains
 
 host_upchan_hfb_U128_gain_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_float16 * upchan_hfb_upchan_U128_max_num_channels * 128
+    value_type: float16
+    extents: [upchan_hfb_upchan_U128_max_num_channels * 128]
+    quantity_name: "G"
+    dimnames: ["Fbar"]
+    dimscalings: [1]
     metadata_pool: main_pool
 
 # Voltages
 
 host_upchan_hfb_U128_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_dishes * num_polarizations * (upchan_hfb_upchan_U128_max_num_channels * 128) * (num_times / 128)
+    # frame_size: num_dishes * num_polarizations * (upchan_hfb_upchan_U128_max_num_channels * 128) * (num_times / 128)
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times / 128, upchan_hfb_upchan_U128_max_num_channels * 128, num_polarizations, num_dishes]
+    quantity_name: "Ebar"
+    dimnames: ["Tbar", "Fbar", "P", "D"]
+    dimscalings: [128, 1, 1, 1]
     metadata_pool: main_pool
 host_upchan_hfb_U128_voltage_ringbuffer:
     kotekan_buffer: ring
@@ -95,5 +104,36 @@ run_upchan_hfb_U128:
           voltage_name: xposed_voltage
           upchan_U128_gain_name: upchan_hfb_U128_gain
           upchan_U128_voltage_name: upchan_hfb_U128_voltage
+          Fmin: upchan_hfb_upchan_U128_min_channel
+          Fmax: upchan_hfb_upchan_U128_max_channel
+
+################################################################################
+
+# Packet loss mask
+
+host_upchan_hfb_U128_expanded_pl_mask_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_hfb_upchan_U128_max_num_channels * (num_times / 64 / 128)
+    metadata_pool: main_pool
+host_upchan_hfb_U128_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_hfb_upchan_U128_max_num_channels * (num_times / 64 / 128)
+    metadata_pool: main_pool
+
+run_upchan_pl_hfb_U128:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        out_buffers:
+            host_upchan_hfb_U128_expanded_pl_mask_ringbuffer: host_upchan_hfb_U128_expanded_pl_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskUpchannelizer
+          expanded_pl_mask_name: pl_expanded_mask
+          upchannelized_expanded_pl_mask_name: upchan_hfb_U128_expanded_pl_mask
+          upchannelization_factor: 128
+          num_frequencies_out: upchan_hfb_upchan_U128_max_num_channels
           Fmin: upchan_hfb_upchan_U128_min_channel
           Fmax: upchan_hfb_upchan_U128_max_channel

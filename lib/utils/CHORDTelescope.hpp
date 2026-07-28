@@ -341,9 +341,8 @@ private:
  * @conf    log_level           string. Optional log level for this telescope instance.
  *
  * @author Geoffrey Ryan
- **/
-
-/*
+ *
+ * @details
  * 2024/10/25: Initial version copied from ICETelescope. Frequency logic
  *              stripped out. GR
  * 2025/11/10: Required frequency logic re-added (no stream_t behaviour). Dish input table
@@ -354,7 +353,6 @@ private:
  * 2026/06/01:  Move much geographic, coordinates, and vector logic into Telescope and GeoFrame. Add
  * new functions for element ordering and dish position access. Clean up.
  */
-
 class CHORDTelescope : public Telescope {
 public:
     CHORDTelescope(const kotekan::Config& config, const std::string& path);

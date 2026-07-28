@@ -1,25 +1,26 @@
-#include <unistd.h>             // for sleep
-#include <cassert>              // for assert
-#include <cstdint>              // for int8_t, int32_t
-#include <string>               // for basic_string, string
-#include <vector>               // for vector
-#include <algorithm>            // for clamp
-#include <array>                // for array
-#include <cmath>                // for sin, lrint, sqrt, M_PI
-#include <complex>              // for complex, imag, polar, real
-#include <cstddef>              // for ptrdiff_t
-#include <functional>           // for function
-#include <memory>               // for allocator, __shared_ptr_access, shared_ptr
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for DEBUG
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"   // for DEBUG
-#include "Telescope.hpp"        // for Telescope
-#include "fmt.hpp"              // for compile_string_to_view, format
+#include "fmt.hpp" // for compile_string_to_view, format
+
+#include <algorithm>  // for clamp
+#include <array>      // for array
+#include <cassert>    // for assert
+#include <cmath>      // for sin, lrint, sqrt, M_PI
+#include <complex>    // for complex, imag, polar, real
+#include <cstddef>    // for ptrdiff_t
+#include <cstdint>    // for int8_t, int32_t
+#include <functional> // for function
+#include <memory>     // for allocator, __shared_ptr_access, shared_ptr
+#include <string>     // for basic_string, string
+#include <unistd.h>   // for sleep
+#include <vector>     // for vector
 
 
 class calcBBPhase : public kotekan::Stage {
@@ -29,7 +30,6 @@ class calcBBPhase : public kotekan::Stage {
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
     const int num_frequencies = config.get<int>(unique_name, "num_frequencies");
     const int num_times = config.get<int>(unique_name, "num_times");
-    const ElementOrder input_order = config.get<ElementOrder>(unique_name, "input_order");
     const int num_elements = num_dishes * num_polarizations;
 
     const std::vector<int> frequency_channels =
@@ -70,15 +70,15 @@ public:
         A_buffer->register_producer(unique_name);
         s_buffer->register_producer(unique_name);
 
-        bb_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
-            "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"});
-        
-        A_buffer->allocate_ndarray_frame_desc<std::int8_t, 5>(
-            "A", {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
-            {"F", "P", "B", "D", "C"});
+        bb_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
+            "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"}, {1, 1}));
 
-        s_buffer->allocate_ndarray_frame_desc<std::int32_t, 3>(
-            "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"});
+        A_buffer->require_frame_desc(kotekan::NDArray<std::int8_t, 5>::describe(
+            "A", {num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
+            {"F", "P", "B", "D", "C"}, {1, 1, 1, 1, 1}));
+
+        s_buffer->require_frame_desc(kotekan::NDArray<std::int32_t, 3>::describe(
+            "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"}, {1, 1, 1}));
     }
 
     virtual ~calcBBPhase() {}
@@ -95,7 +95,8 @@ public:
         const Telescope& telescope = Telescope::instance();
 
         // Get dish positions (in the Telescope's GRID frame in meters).
-        std::vector<vec3d_t> feed_pos_m = telescope.get_feed_positions_m(num_elements, input_order);
+        std::vector<vec3d_t> feed_pos_m =
+            telescope.get_feed_positions_m(num_elements, telescope.fiducial_element_order());
         assert(std::ptrdiff_t(feed_pos_m.size()) == num_elements);
 
         // Get frequencies
@@ -135,14 +136,15 @@ public:
 
 
         // Get timing info from beam positions buffer.
-        const auto& bb_beam_positions_meta = get_chord_metadata(bb_beam_positions_buffer->get_metadata(frame_id));
+        const auto& bb_beam_positions_meta =
+            get_chord_metadata(bb_beam_positions_buffer->get_metadata(frame_id));
         uint64_t seq_num = bb_beam_positions_meta->get_fpga_seq_num();
         uint64_t time_downsampling = bb_beam_positions_meta->get_time_downsampling_fpga();
 
         // Set metadata
         A_buffer->allocate_new_metadata_object(frame_id);
         const auto& A_meta = get_chord_metadata(A_buffer->get_metadata(frame_id));
-        A_meta->set_from_frame_desc(A_buffer->get_ndarray_frame_desc());
+        A_meta->set_from_frame_desc(A_buffer->get_frame_desc<kotekan::GenericNDArray>());
         A_meta->set_fpga_seq_num(seq_num);
         A_meta->set_time_downsampling_fpga(time_downsampling);
         A_meta->set_coarse_freq(frequency_channels);
@@ -151,7 +153,7 @@ public:
 
         s_buffer->allocate_new_metadata_object(frame_id);
         const auto& s_meta = get_chord_metadata(s_buffer->get_metadata(frame_id));
-        s_meta->set_from_frame_desc(s_buffer->get_ndarray_frame_desc());
+        s_meta->set_from_frame_desc(s_buffer->get_frame_desc<kotekan::GenericNDArray>());
         s_meta->set_fpga_seq_num(seq_num);
         s_meta->set_time_downsampling_fpga(time_downsampling);
         s_meta->set_coarse_freq(frequency_channels);
@@ -179,14 +181,13 @@ public:
                             const float dish_x = feed_pos_m.at(element)[0];
                             const float dish_y = feed_pos_m.at(element)[1];
                             const float dish_z = feed_pos_m.at(element)[2];
-                            // Buffered beam positions are nx & ny cartesian components in GRID frame.
-                            // |n| = 1.0
+                            // Buffered beam positions are nx & ny cartesian components in GRID
+                            // frame. |n| = 1.0
                             const float n_x = bb_beam_positions_frame[2 * beam + 0];
                             const float n_y = bb_beam_positions_frame[2 * beam + 1];
                             const float n_z = sqrt(1 - (pow2(n_x) + pow2(n_y)));
-                            const float deltat = n_x * dish_x / c0
-                                                 + n_y * dish_y / c0
-                                                 + n_z * dish_z / c0;
+                            const float deltat =
+                                n_x * dish_x / c0 + n_y * dish_y / c0 + n_z * dish_z / c0;
                             const float f = frequencies.at(freq);
                             const float phi = 2 * float(M_PI) * f * deltat;
                             const std::complex<float> A = polar(127.5f, phi);

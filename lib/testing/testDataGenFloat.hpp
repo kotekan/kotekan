@@ -2,6 +2,7 @@
 #define TEST_DATA_GEN_FLOAT_H
 
 #include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for datatype_t
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -29,6 +30,15 @@ private:
     bool _gen_all_const_data;
     float _rand_min;
     float _rand_max;
+
+    std::string _name;
+    std::vector<int> _array_shape;
+    std::vector<std::string> _dim_name;
+    std::vector<ptrdiff_t> _dim_scaling;
+    kotekan::DataType _value_type;
+    size_t _num_freq_in_frame;
+    std::vector<uint32_t> _manual_freq_ids;
+    int _meta_time_downsample_factor;
 };
 
 #endif

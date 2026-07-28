@@ -1,31 +1,33 @@
 #include "airspyInput.hpp"
 #include <chrono>
 
-#include <fcntl.h>              // for open, O_RDWR
-#include <stdint.h>             // for uint32_t, uint8_t
-#include <stdlib.h>             // for free, abs, malloc
-#include <string.h>             // for memcpy
-#include <unistd.h>             // for size_t, close, usleep
-#include <json.hpp>             // for basic_json, json
-#include <condition_variable>   // for condition_variable
-#include <functional>           // for bind, function, _1, _2
-#include <mutex>                // for mutex, unique_lock, lock_guard
-#include <thread>               // for this_thread::sleep_for
-#include <algorithm>            // for min
-#include <cmath>                // for sqrt
-#include <memory>               // for shared_ptr
-
 #include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp"  // for make_input_desc
-#include "GnssChanMetadata.hpp" // for get_gnss_chan_metadata, metadata_is_gnss_chan (opt-in sample_seq)
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for ERROR, INFO, DEBUG, FATAL_ERROR
+#include "GnssChanMetadata.hpp" // for get_gnss_chan_metadata, metadata_is_gnss_chan (opt-in
+                                // sample_seq)
+#include "NDArray.hpp"           // for GenericNDArray
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"   // for make_input_desc
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for ERROR, INFO, DEBUG, FATAL_ERROR
 #include "prometheusMetrics.hpp" // for Metrics, Gauge, Counter
-#include "restServer.hpp"       // for connectionInstance, HTTP_RESPONSE, restServer
-#include "fmt.hpp"              // for compile_string_to_view, format
-#include "NDArray.hpp"          // for GenericNDArray
+#include "restServer.hpp"        // for connectionInstance, HTTP_RESPONSE, restServer
+
+#include "fmt.hpp" // for compile_string_to_view, format
+
+#include <algorithm>          // for min
+#include <cmath>              // for sqrt
+#include <condition_variable> // for condition_variable
+#include <fcntl.h>            // for open, O_RDWR
+#include <functional>         // for bind, function, _1, _2
+#include <json.hpp>           // for basic_json, json
+#include <memory>             // for shared_ptr
+#include <mutex>              // for mutex, unique_lock, lock_guard
+#include <stdint.h>           // for uint32_t, uint8_t
+#include <stdlib.h>           // for free, abs, malloc
+#include <string.h>           // for memcpy
+#include <thread>             // for this_thread::sleep_for
+#include <unistd.h>           // for size_t, close, usleep
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -52,10 +54,12 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
         return;
     }
 
-    // Buffer carries int16 1-D samples. set_frame_desc validates byte size
-    // against buf->frame_size and either records the descriptor or compares
-    // against an earlier assertion -- see airspyFrameDesc.hpp.
-    buf->set_frame_desc(kotekan_airspy::make_input_desc(buf->frame_size / BYTES_PER_SAMPLE));
+    // Buffer carries int16 1-D samples; its descriptor is declared in config
+    // (kotekan_buffer: ndarray) and attached by the buffer factory at startup,
+    // which already checks the descriptor's byte size against frame_size.
+    // require_frame_desc just confirms config declared it. The even-sample-count
+    // constraint above is enforced separately: the descriptor cannot express it.
+    buf->require_frame_desc();
 
     freq = config.get_default<float>(unique_name, "freq", 1420) * 1e6;             // MHz
     _sample_rate = config.get_default<float>(unique_name, "sample_bw", 2.5) * 1e6; // MSPS

@@ -1,28 +1,29 @@
 #include "N2TimeDownsample.hpp"
 
-#include <stdint.h>               // for uint32_t, int64_t, uint64_t, int32_t
-#include <time.h>                 // for timespec
-#include <algorithm>              // for equal
-#include <complex>                // for complex, operator*, conj
-#include <functional>             // for bind, function
-#include <stdexcept>              // for runtime_error
-#include <vector>                 // for vector
-#include <memory>                 // for shared_ptr, __shared_ptr_access
+#include "Config.hpp"            // for Config
+#include "FrameDesc.hpp"         // for FrameDesc
+#include "N2FrameView.hpp"       // for N2FrameView
+#include "N2Util.hpp"            // for frameID, modulo
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"         // for Telescope, ElementOrder
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "geoUtil.hpp"           // for vec3d_t
+#include "kotekanLogging.hpp"    // for DEBUG, FATAL_ERROR, ERROR
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily, Metrics
+#include "timeUtil.hpp"          // for EOP, get_ERA_from_UT1, get_UT1_from_ERA, eop_null
 
-#include "Config.hpp"             // for Config
-#include "N2FrameView.hpp"        // for N2FrameView
-#include "N2Util.hpp"             // for frameID, modulo
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"          // for Telescope, ElementOrder
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "geoUtil.hpp"            // for vec3d_t
-#include "kotekanLogging.hpp"     // for DEBUG, FATAL_ERROR, ERROR
-#include "prometheusMetrics.hpp"  // for Counter, MetricFamily, Metrics
-#include "timeUtil.hpp"           // for EOP, get_ERA_from_UT1, get_UT1_from_ERA, eop_null
-#include "fmt.hpp"                // for compile_string_to_view
-#include "gsl-lite.hpp"           // for span
-#include "FrameDesc.hpp"          // for FrameDesc
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for equal
+#include <complex>    // for complex, operator*, conj
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdexcept>  // for runtime_error
+#include <stdint.h>   // for uint32_t, int64_t, uint64_t, int32_t
+#include <time.h>     // for timespec
+#include <vector>     // for vector
 
 #define GIGA 1'000'000'000L
 
@@ -45,8 +46,8 @@ N2TimeDownsample::N2TimeDownsample(Config& config, const std::string& unique_nam
     out_buf->register_producer(unique_name);
 
     // Validate that input and output buffers have compatible N2 frame descriptors
-    auto in_desc = in_buf->get_frame_description();
-    auto out_desc = out_buf->get_frame_description();
+    auto in_desc = in_buf->get_frame_desc();
+    auto out_desc = out_buf->get_frame_desc();
     if (!in_desc || !out_desc) {
         FATAL_ERROR("N2TimeDownsample: Input and output buffers must have frame descriptors set");
     }
@@ -64,8 +65,8 @@ N2TimeDownsample::N2TimeDownsample(Config& config, const std::string& unique_nam
     num_elements = config.get<size_t>(unique_name, "num_elements");
     nprod = 0;
 
-    input_order = config.get<ElementOrder>(unique_name, "input_order");
-    feed_positions_m = Telescope::instance().get_feed_positions_m(num_elements, input_order);
+    feed_positions_m = Telescope::instance().get_feed_positions_m(
+        num_elements, Telescope::instance().fiducial_element_order());
 }
 
 void N2TimeDownsample::main_thread() {
@@ -243,7 +244,8 @@ void N2TimeDownsample::main_thread() {
 
             if (do_fringestop) {
                 // Get the per-dish fringestopping phases.
-                tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, feed_positions_m, fringe_phase);
+                tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, feed_positions_m,
+                                              fringe_phase);
 
                 size_t idx = 0;
                 for (size_t i = 0; i < num_elements; i++) {
@@ -289,7 +291,8 @@ void N2TimeDownsample::main_thread() {
 
             // Recalculate fringestop phases
             if (do_fringestop)
-                tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, feed_positions_m, fringe_phase);
+                tel.fill_fringestop_phases_1d(freq_MHz, frame.bin_eop, eop_target, feed_positions_m,
+                                              fringe_phase);
             // Accumulate contents of buffer
             size_t idx = 0;
             for (size_t i = 0; i < num_elements; i++) {

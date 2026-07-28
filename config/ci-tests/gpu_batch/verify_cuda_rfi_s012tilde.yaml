@@ -12,11 +12,8 @@ type: config
 # Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
 log_level: INFO
 
-num_gpus: 1
 buffer_depth: 4
 cpu_affinity: [0]
-sizeof_float: 4
-sizeof_int: 4
 sizeof_long: 8
 
 # For faster CHORD testing, we're using...
@@ -29,35 +26,48 @@ num_local_freq: 4
 
 rfi_downsampling_factor: 256
 
+updatable_config:
+    bad_inputs:
+        kotekan_update_endpoint: json
+        # Indices must be valid for this test's num_elements (= 2 * 64 = 128).
+        # yamlfix:off
+        bad_inputs: [   3,   17,   46,   60,   84,   99,  107,  120]
+        # yamlfix:on
+        start_time: 1535048997.
+        update_id: "initial_flags"
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata
     num_metadata_objects: 20 * buffer_depth
 
 # Buffers
-
 host_bf_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: num_elements
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_s012_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * num_elements * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_s012tilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
     metadata_pool: main_pool
 
 simulated_rfi_s012tilde_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_long
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
     metadata_pool: main_pool
 
 
@@ -79,17 +89,15 @@ gen_rfi_s012:
     name: "S012"
     array_shape: [4, 4, 3, 2, 64]
     dim_name: ["Trfi", "F", "S", "P", "D"]
+    dim_scaling: [256, 1, 1, 1, 1] # rfi_downsampling_factor=256
     num_frames: 2*buffer_depth  # Must be at least what check_data expects
     meta_time_downsample_factor: rfi_downsampling_factor
 
-gen_bf_mask:
-    type: random8
-    kotekan_stage: testDataGen
+set_bf_mask:
+    kotekan_stage: bufferBadInputs
+    updatable_config:
+        bad_inputs: /updatable_config/bad_inputs
     out_buf: host_bf_mask_buffer
-    name: "bf_mask"
-    array_shape: [2, 64]
-    dim_name: ["P", "D"]
-    num_frames: 1
 
 run_send_rfi_s012:
     gpu_0:
@@ -119,7 +127,7 @@ run_rfi_s012tilde:
             host_rfi_s012tilde_ringbuffer: host_rfi_s012tilde_ringbuffer
         commands:
             - name: cudaInputData
-              do_once: true
+              do_once: false
               in_buf: host_bf_mask_buffer
               gpu_mem: bf_mask_buffer
             - name: cudaSyncInput
@@ -162,3 +170,4 @@ check_rfi_data:
     max_num_errors_logged: 64
     num_frames_to_test: 2 * buffer_depth
     check_metadata: true
+log_config_usage: fatal_error

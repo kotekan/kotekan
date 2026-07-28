@@ -1,21 +1,22 @@
 #include "lostSamplesToN2Counts.hpp"
 
-#include <stdint.h>             // for uint8_t, int32_t
-#include <memory>               // for shared_ptr, __shared_ptr_access
-#include <string>               // for allocator, basic_string, string
-#include <functional>           // for bind, function
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType, GetType_t
+#include "N2Util.hpp"          // for frameID, modulo
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "div.hpp"             // for num_triangle_blocks
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG
 
-#include "Config.hpp"           // for Config
-#include "DataType.hpp"         // for DataType, GetType_t
-#include "N2Util.hpp"           // for frameID, modulo
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "json.hpp"             // for basic_json, json, iter_impl
-#include "div.hpp"              // for num_triangle_blocks
-#include "fmt.hpp"              // for compile_string_to_view, format
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG
+#include "json.hpp" // for basic_json, json, iter_impl
+
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdint.h>   // for uint8_t, int32_t
+#include <string>     // for allocator, basic_string, string
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -91,11 +92,6 @@ lostSamplesToN2Counts::lostSamplesToN2Counts(Config& config, const std::string& 
             "Number of lost_samples buffers ({:d}) does not evenly divide total frequencies ({:d})",
             _nbufs, num_n2k_freq);
 
-    // Check rfi make frame size against expectation
-    size_t _expected_rfi_frame_size = num_n2k_freq * samples_per_data_set / BITS_PER_BYTE;
-    if (rfi_mask_buf->frame_size != _expected_rfi_frame_size)
-        FATAL_ERROR("Unexpected frame size for rfi_mask {:d} - expected {:d}",
-                    rfi_mask_buf->frame_size, _expected_rfi_frame_size);
 
     // This is a bit of a misnomer - the lost_samples buffer does not _include_
     // multiple frequencies, but information may be shared by multiple frequencies
@@ -118,13 +114,21 @@ lostSamplesToN2Counts::lostSamplesToN2Counts(Config& config, const std::string& 
                     n2k_counts_buf->frame_size, _expected_counts_frame_size);
 
     // Set the frame description
+    rfi_mask_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType_t<kotekan::uint1x8>, 3>::describe(
+            "RFImask",
+            {static_cast<ptrdiff_t>(samples_per_data_set) / 1024,
+             static_cast<ptrdiff_t>(num_n2k_freq), 1024 / 8},
+            {"T8hi128", "F", "T8lo128"}, {1024, 1, 8}));
     // The buffer name and axis names are the same as those set in
     // cudaPL1butCorrelator
-    n2k_counts_buf->allocate_ndarray_frame_desc<kotekan::GetType_t<kotekan::int32>, 5>(
-        "n2k_counts",
-        {static_cast<long>(_num_subintegrations), static_cast<long>(num_n2k_freq),
-         static_cast<long>(_counts_ntiles), COUNTS_BLOCK_SIZE, COUNTS_BLOCK_SIZE},
-        {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"});
+    n2k_counts_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::GetType_t<kotekan::int32>, 5>::describe(
+            "n2k_counts",
+            {static_cast<long>(_num_subintegrations), static_cast<long>(num_n2k_freq),
+             static_cast<long>(_counts_ntiles), COUNTS_BLOCK_SIZE, COUNTS_BLOCK_SIZE},
+            {"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"},
+            {static_cast<long>(sub_integration_ntime), 1, 64, 8, 8}));
 }
 
 lostSamplesToN2Counts::~lostSamplesToN2Counts() {}
@@ -173,8 +177,9 @@ void lostSamplesToN2Counts::main_thread() {
             DEBUG("Waiting on full lost_samples frame from buffer {:d}.", fouter);
             uint8_t* lost_samples_frame =
                 (uint8_t*)lost_samples_buf->wait_for_full_frame(unique_name, lost_samples_frame_id);
+            // Shutdown mid-loop: exit without publishing the partial counts frame
             if (lost_samples_frame == nullptr)
-                break;
+                return;
 
             // Collect science metadata from lost samples
             const auto lost_samples_meta =
@@ -256,7 +261,7 @@ void lostSamplesToN2Counts::main_thread() {
         // Update metadata from the frame description
         std::shared_ptr<chordMetadata> meta =
             get_chord_metadata(n2k_counts_buf, n2k_counts_buf_frame_id);
-        meta->set_from_frame_desc(n2k_counts_buf->get_ndarray_frame_desc());
+        meta->set_from_frame_desc(n2k_counts_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set additional metadata not handled by the helper, including
         // the name and FPGA time-sample downsampling
@@ -264,7 +269,7 @@ void lostSamplesToN2Counts::main_thread() {
         meta->set_time_downsampling_fpga(sub_integration_ntime);
 
         // Check that frame desc and metadata match
-        meta->check_frame_desc(n2k_counts_buf->get_ndarray_frame_desc());
+        meta->check_frame_desc(n2k_counts_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Release the current frames and increment to the next frame ID
         n2k_counts_buf->mark_frame_full(unique_name, n2k_counts_buf_frame_id);

@@ -147,39 +147,48 @@ n2_pool:
 
 # Buffers
 host_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * num_elements * num_local_freq
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_rfi_RFImask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / 128) * (num_local_freq / 4) * 2 * (num_dishes / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 128, num_local_freq / 4, num_polarizations, num_dishes / 8, 8]
     metadata_pool: main_pool
 
 vis_blocksize: 16
 vis_num_blocks_lin: num_elements / vis_blocksize
 vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 host_correlation_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_local_freq * (samples_per_data_set / sub_integration_ntime) * 16 * 16 * vis_num_blocks * 2 * sizeof_gpu_int
+    value_type: int32
+    # num_elements=1024: cudaCorrelator (num_elements+1)/16=64 == N2Accumulate num_elements/16=64
+    # -> vis_num_blocks=2080 from both producer and consumer; safe to flip.
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
 
 counts_blocksize: 8
 counts_num_blocks_lin: (num_elements / 8) / counts_blocksize
 counts_num_blocks: (counts_num_blocks_lin * (counts_num_blocks_lin + 1)) / 2
 host_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_gpu_int
+    value_type: int32
+    # num_elements=1024: cudaPL1bitCorrelator (num_pol*num_dishes/8+1)/8=16 ==
+    # N2Accumulate num_elements/(8*counts_blocksize)=16 -> counts_num_blocks=136 from both; safe.
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
     metadata_pool: main_pool
 
 n2_buffer:
@@ -281,6 +290,7 @@ gen_data_voltage:
     name: "E"
     array_shape: [ {{ samples_per_data_set }}, {{ num_local_freq }}, 2, {{ num_dishes }} ]
     dim_name: ["T", "F", "P", "D" ]
+    dim_scaling: [1, 1, 1, 1]
     num_frames: {{ frames_to_generate }}
     manual_freq_ids: {{ freq_ids_list | list }}
 
@@ -292,6 +302,7 @@ gen_data_rfi_RFImask:
     name: "RFImask"
     array_shape: [ {{ samples_per_data_set // 1024 }}, {{ num_local_freq }}, 128 ]
     dim_name: ["T8hi128", "F", "T8lo128"]
+    dim_scaling: [1024, 1, 8]
     num_frames: {{ frames_to_generate }}
     meta_time_downsample_factor: 1024
     manual_freq_ids: {{ freq_ids_list | list }}
@@ -304,6 +315,7 @@ gen_pl_mask:
     name: "pl_mask"
     array_shape: [ {{ samples_per_data_set // 128 }}, {{ num_local_freq // 4 }}, 2, {{ num_dishes // 8 }}, 8 ]
     dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
+    dim_scaling: [128, 4, 1, 8, 16]
     num_frames: {{ frames_to_generate }}
     meta_time_downsample_factor: 128  # The number of time samples represented by each coarse time index.
     manual_freq_ids: {{ freq_ids_list | list }}
@@ -430,6 +442,7 @@ n2_accumulate:
     packet_loss_is_scalar: True
     num_subintegrations_per_bin: {{ num_subintegrations_per_bin }}
     input_order: CHORDBeamformer
+    variance_mode: EvenOddPosDef
 
 
 # Add eigen calculation
