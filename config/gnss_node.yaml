@@ -216,13 +216,14 @@ bands:
       half-written sibling frames. Bench-validated (merged3 leg: certs at baseline).
       DIVERGENT (audit): per-chain streams here vs all-on-stream-1 serial layout on L5.
     record_dir: /tmp/gpswipe
-    # ⚠️ UNIFIED VIEWER DEPLOY HELD BACK (2026-07-28): --unified on :8080 is built and works
-    # (see the unified-viewer memory + docs), but TWO silent kotekan deaths today correlated
-    # with the unified viewer + an actively-polling browser (buglist 07-28). Until that is
-    # root-caused, :8080 stays the known-good FLAT L1 viewer -- the node ran stably for days on
-    # this. Re-enable by restoring `viewer_args: "--band l1 --unified"` once the silent kill is
-    # understood (or the unified viewer is cleared as coincidental).
-    viewer_args: "--band l1 --gps-constellations G,E,C,L"
+    # THE UNIFIED VIEWER on :8080 (2026-07-28) -- one satellite-centric page, every signal a
+    # sat carries (L1 C/A, L1C, L2C-CM, L2C-CL, L5, E1C/E5a, B1C/B2a) in one row. Re-deployed
+    # WITH the death-trap armed (diag/silent_kill_forensics.md): if the two earlier silent
+    # kills were this viewer's concurrent adcstat polling, the round-robin fix (one adcstat/
+    # tick, same REST load as a flat viewer) removes it; if the node dies anyway, bpftrace
+    # names the signal/sender and a self-crash leaves a core. :8081/:8082 stay as flat
+    # fallbacks. --unified forces G,E,C + the GPS panel on.
+    viewer_args: "--band l1 --unified"
     chains:
 
       - constellation: gps
