@@ -95,6 +95,13 @@ public:
 
     /// Watches the sample stream and says so, loudly, when it is not running. Runs on the
     /// stage thread for the life of the stage; see the definition for why it has to exist.
+    /// ⚠️ THREAD SIGNATURE CHANGED (2026-07-27): because main_thread() no longer returns after
+    /// airspy_start_rx(), a healthy airspy stage is now **3** threads, not 2 -- measured
+    /// 3/3/3 across l1/l2c/l5. The old field diagnostic
+    ///   cat /proc/$(pgrep -x kotekan)/task/*/comm | grep airspy_in | sort | uniq -c
+    /// therefore reads 3 = healthy, 2 = half-open (the libusb poll thread is the one that is
+    /// never created). Prefer kotekan_airspy_streaming from /metrics -- it states the answer
+    /// instead of encoding it in a count that shifts whenever this file changes.
     void stream_watchdog();
 
     /// REST callbacks.
