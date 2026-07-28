@@ -270,6 +270,22 @@ bands:
             peel_gain_alpha: 0.01       # ~100-record (0.1 s) FF gain average
             peel_warmup_records: 100    # subtract only once the gain has converged
             peel_fll_gain: 0.05         # residual-carrier FLL (idles ~0 with ctrim closed)
+            # ⚠️ TEMPORARY (2026-07-27 eve) -- REMOVE once the GPS L1CA `nobits` is named.
+            # Live symptom: this chain reads `nobits` on EVERY active PRN (0/13 subtracting)
+            # while the broker's own census says it is publishing usable tables for 7 of them
+            # (lnav, scoring ~100% against the air). So the bits ARRIVE and the LOOKUP returns
+            # unknown. Already ruled out without a restart: the seed endpoint matches, the
+            # component key matches ("P" both ends), NAVBITS-BAD is 0 (so the parse is not
+            # throwing), and the combiner clock is NOT stale (utc 782.0 against 782.8 s of
+            # capture, so the 4 s lnav horizon is anchored at the present, not 35 s behind).
+            # This dump is the comparison the buglist has wanted since 07-26: nb_utc0 and
+            # nb_bit_s beside the record's OWN utc, plus the cell actually read (k_head/k_tail),
+            # which separates a wrong INDEX from wrong CONTENT.
+            # ONE PRN, not 0: records here are 1 ms, so a single PRN is already ~1000 lines/s
+            # and all 13 would be ~13k lines/s of real I/O on the real-time path.
+            # PRN 26 = this chain's strongest and a confirmed lnav supplier (26/lnav:99%).
+            peel_sign_dump_prn: 26
+            peel_sign_dump_path: /tmp/gnss_run/peel_sign_l1_gps.csv
         combiner:
           # phase dumps REMOVED (2026-07-20): the three L1 dumps wrote 52 GB of diagnostic
           # text into /tmp/gpswipe (35/13/4.5 GB) with no live consumer -- they were the
@@ -365,7 +381,12 @@ bands:
             # fell ~95% of the way into the previous hour, C25 and C41 climbed OUT).
             # REMOVE once the sign fault is named. ⚠️ real I/O on the real-time path (~1200
             # lines/s here) -- watch kotekan_valve_dropped_frames_total{/l1_valve}.
-            peel_sign_dump_prn: 0
+            # OFF 2026-07-27 eve: it did its job (8bb8e55d named the fault, and the fix held --
+            # 0 of 35 pilot sats pure-sign afterwards), and it was writing ~300 MB/h (783 MB at
+            # removal), which is also I/O the GPS-chain dump above now needs. The one thread it
+            # was still watching -- C32 one record off in CONTENT, not in the lookup -- gets a
+            # fresh dump if it recurs: re-enable here with peel_sign_dump_prn: 32.
+            peel_sign_dump_prn: -1
             peel_sign_dump_path: /tmp/gnss_run/peel_sign_l1_bds.csv
           note_inline: "tight snap-to-model fence (rec B; alias limit 25 Hz at 10 ms)"
         combiner:
