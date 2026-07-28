@@ -284,7 +284,12 @@ bands:
             # ONE PRN, not 0: records here are 1 ms, so a single PRN is already ~1000 lines/s
             # and all 13 would be ~13k lines/s of real I/O on the real-time path.
             # PRN 26 = this chain's strongest and a confirmed lnav supplier (26/lnav:99%).
-            peel_sign_dump_prn: 26
+            # ANSWERED 2026-07-27 eve, so back OFF: the dump verified the lookup INDEX is
+            # correct (utc 1344.960 vs nb_utc0 1342.999 at bit_s 0.02 -> k=98, and k in
+            # range on 100% of records once bits exist). The GPS L1CA `nobits` is CONTENT,
+            # not indexing -- nav-bit coverage is only ~51% of records, swinging on a 30 s
+            # period with ~10 s windows of zero (the sf4/5 hole). Re-enable with prn 26.
+            peel_sign_dump_prn: -1
             peel_sign_dump_path: /tmp/gnss_run/peel_sign_l1_gps.csv
         combiner:
           # phase dumps REMOVED (2026-07-20): the three L1 dumps wrote 52 GB of diagnostic
