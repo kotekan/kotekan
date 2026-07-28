@@ -1,0 +1,21 @@
+BEGIN { printf("=== kotekan death-trap armed (comm=kotekan, restart-proof) at %s ===\n", strftime("%H:%M:%S", nsecs)); }
+
+/* An explicit SIGKILL(9) or SIGABRT(6) to any pid -- match the target to kotekan at death
+   time. SIGKILL is the silent external killer (uncatchable, no log, no core); its presence
+   here with a named sender IS the answer. SIGTERM is excluded: it triggers kotekan's clean,
+   LOGGED shutdown, which is not the silent-death signature. Restart-proof (not pid-anchored). */
+tracepoint:syscalls:sys_enter_kill   /args->sig==9 || args->sig==6/
+{ printf("%s  KILL-SYSCALL  sender=%d(%s) uid=%d  ->  pid=%d sig=%d\n",
+         strftime("%H:%M:%S.%f", nsecs), pid, comm, uid, args->pid, args->sig); }
+tracepoint:syscalls:sys_enter_tgkill /args->sig==9 || args->sig==6/
+{ printf("%s  TGKILL        sender=%d(%s) uid=%d  ->  tgid=%d sig=%d\n",
+         strftime("%H:%M:%S.%f", nsecs), pid, comm, uid, args->tgid, args->sig); }
+
+/* Every fatal signal actually delivered to a kotekan process (comm match = restart-proof).
+   SEGV/ABRT/BUS/ILL/FPE with NO kill-syscall above = kotekan crashed ITSELF -> the core has
+   the backtrace. KILL(9) with no kill-syscall = OOM / kernel. KILL(9) WITH a kill-syscall =
+   the named external process above. */
+tracepoint:signal:signal_generate
+/args->comm == "kotekan" && (args->sig==4 || args->sig==6 || args->sig==7 || args->sig==8 || args->sig==9 || args->sig==11)/
+{ printf("%s  SIGNAL->kotekan  pid=%d sig=%d code=%d result=%d  (ctx pid=%d comm=%s)\n",
+         strftime("%H:%M:%S.%f", nsecs), args->pid, args->sig, args->code, args->result, pid, comm); }

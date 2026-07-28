@@ -127,6 +127,14 @@ trap cleanup INT TERM
 python3 config/gen_band_config.py --out-dir config || { echo "band-config generation FAILED"; exit 1; }
 python3 config/gen_3band_config.py || { echo "config generation FAILED"; exit 1; }
 echo "starting the merged kotekan ($CFG3) -> $LOG"
+# Core dumps for the SILENT-KILL hunt (2026-07-28): kotekan has vanished twice with no crash
+# line / no core / not-OOM. A self-crash (SIGSEGV/SIGABRT) leaves a symbolizable core here
+# (the binary is not stripped) for a postmortem backtrace; a SIGKILL leaves none, which itself
+# says "external/OOM, not a self-crash". core_pattern is a sysctl set out-of-band to
+# /tmp/gnss_cores (bypassing apport, which discards cores for non-packaged binaries) -- see
+# diag/silent_kill_forensics.md; this line just lifts the per-process limit so a core is
+# actually written. Harmless when nothing crashes.
+ulimit -c unlimited 2>/dev/null || true
 $KOTEKAN -c $CFG3 -b 0.0.0.0:$PORT > $LOG 2>&1 &
 sleep 8
 if ! pgrep -f "[k]otekan .*live_3band" >/dev/null; then
