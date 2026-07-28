@@ -278,6 +278,34 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     return out
 
 
+def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
+    """S4 ephemeris cross-check: ECEF position residual between the live-decoded CNAV ephemeris
+    and the downloaded BRDC (LNAV) ephemeris, both propagated to the SAME absolute instant (the
+    CNAV toe). Returns a short suffix for the health log. Two independent messages/encodings of
+    one orbit -> a small residual validates the decode; a huge one flags a decode/convention
+    fault or a week mismatch (shown via the toe delta). Kepler propagation only, no Viterbi."""
+    try:
+        import gps_cnav as _C
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        toe = cnav_eph["toe"]
+        # the CNAV toe is seconds-of-week; place it in the BRDC record's CONTINUOUS GPS frame via
+        # that record's week start (toe_gpst - toe_sow), assuming the same GPS week (a big toe
+        # delta in the log flags a week straddle).
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + toe
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _C.sv_position_cnav(cnav_eph, toe)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.1f m (brdc toe %+.0f s)" % (dpos, be["toe_sow"] - toe)
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
 def visible_prns(lat, lon, alt_m, mask_deg, look_ahead_s):
     """PRNs above the elevation mask now (and look_ahead_s ahead). Needs skyfield."""
     try:
@@ -1975,10 +2003,14 @@ def main(argv=None):
                                 navbrdc.n_cal, navbrdc.n_rej, " ".join(chk) or "n/a"))
                     else:
                         _log("navbrdc: NOT ready (%s)" % navbrdc.why_not())
-            # CNAV decode health + the live ephemeris (types 10+11). This is S3's headline
-            # result: are we reading CNAV off the sky? reenc-mismatch is how many raw symbols the
-            # Viterbi had to correct (the honest wipe-quality number); eph toe/e prove a decoded
-            # ephemeris set. TODO(S4): cross-check sv_position_cnav(eph) vs the BRDC position here.
+            # CNAV decode health + the live ephemeris (types 10+11). eph toe/e prove a decoded
+            # ephemeris set. S4 EPHEMERIS CROSS-CHECK: propagate the live-decoded CNAV ephemeris
+            # and the independently-downloaded BRDC (LNAV) ephemeris to the SAME absolute instant
+            # (the CNAV toe) and report the ECEF position residual. Two independent nav messages,
+            # two encodings (CNAV FEC+CRC vs LNAV parity), one truth -- a small residual VALIDATES
+            # the whole decode chain against an outside reference, and is the foundation for
+            # eventually trusting live CNAV ephemeris over the 2 h-latency download. Cheap (Kepler
+            # propagation, no Viterbi), so it rides the existing 60 s health cadence.
             if cnav is not None and time.time() - navbits_log_t > 60.0:
                 navbits_log_t = time.time()
                 for _p in sorted(cnav._p):
@@ -1990,6 +2022,8 @@ def main(argv=None):
                         e = cnav.ephemeris(_p)
                         if e is not None:
                             eph_s = " eph toe=%.0f e=%.3e" % (e["toe"], e["e"])
+                            if brdc_alm is not None:
+                                eph_s += _cnav_brdc_xcheck(brdc_alm, alm_sys, _p, e, _log)
                     if h["synced"]:
                         _log("cnav PRN %d: %d msgs decoded, %d stored, %d emits, g2=%s%s"
                              % (_p, h["decoded"], h["messages"], h["emits"],
