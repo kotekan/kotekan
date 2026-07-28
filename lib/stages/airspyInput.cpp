@@ -54,12 +54,16 @@ airspyInput::airspyInput(Config& config, const std::string& unique_name,
         return;
     }
 
-    // Buffer carries int16 1-D samples; its descriptor is declared in config
-    // (kotekan_buffer: ndarray) and attached by the buffer factory at startup,
-    // which already checks the descriptor's byte size against frame_size.
-    // require_frame_desc just confirms config declared it. The even-sample-count
-    // constraint above is enforced separately: the descriptor cannot express it.
-    buf->require_frame_desc();
+    // Buffer carries int16 1-D samples. ensure_frame_desc, NOT require_frame_desc:
+    // this stage can ORIGINATE the descriptor (n_samples follows from frame_size), so
+    // it works whether or not config declares the buffer. Where config declares it
+    // (kotekan_buffer: ndarray, the CHORD convention) the two are reconciled and a
+    // mismatch is fatal; where it does not (the GNSS node's `standard` buffers) the
+    // descriptor is attached here, as it was before the chord merge. `require` makes a
+    // missing config declaration fatal, which took the whole GNSS node down on the
+    // first launch after the merge (2026-07-28). The even-sample-count constraint
+    // above is enforced separately: the descriptor cannot express it.
+    buf->ensure_frame_desc(kotekan_airspy::make_input_desc(buf->frame_size / BYTES_PER_SAMPLE));
 
     freq = config.get_default<float>(unique_name, "freq", 1420) * 1e6;             // MHz
     _sample_rate = config.get_default<float>(unique_name, "sample_bw", 2.5) * 1e6; // MSPS

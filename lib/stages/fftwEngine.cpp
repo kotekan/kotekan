@@ -36,9 +36,12 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
 
     // Output is cfloat32 1-D regardless of input_type (we accept either int16
     // reals or cint16 IQ pairs upstream, so in_buf's descriptor is intentionally
-    // left for the upstream producer to assert). out_buf's descriptor is declared
-    // in config (kotekan_buffer: ndarray); require_frame_desc confirms it.
-    out_buf->require_frame_desc();
+    // left for the upstream producer to assert). ensure_frame_desc, NOT
+    // require_frame_desc: this stage originates out_buf's descriptor, so it works
+    // both with a config declaration (reconciled, mismatch fatal) and without one
+    // (attached here) -- see the note in airspyInput.cpp.
+    out_buf->ensure_frame_desc(
+        kotekan_airspy::make_fengine_desc(out_buf->frame_size / sizeof(fftwf_complex)));
 
     _spectrum_length = config.get_default<int>(unique_name, "spectrum_length", 128);
 
