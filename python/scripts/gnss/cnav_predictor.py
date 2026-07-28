@@ -74,6 +74,14 @@ VITERBI_BUDGET = 40     # hard cap on Viterbi calls per decode attempt (~1.7 s a
                         # covers a cold attempt (2^COLD_EMITS at ONE rotated phase/g2 = 32) and any
                         # warm attempt, while staying under the 4 s emit period so a decode never
                         # stalls the poll loop long enough to miss an emit and fragment nav_obs.
+COLD_TRIES = 6          # free quick cold-bootstrap attempts before exponential backoff kicks in.
+                        # A DECODABLE PRN locks within ~4 (the phase/g2 rotation cycles in 4); a
+                        # PRN that never locks (too weak / no data) is the one to back off, because
+                        # its full 2^COLD_EMITS brute every round-robin turn is a CONTINUOUS load
+                        # that dropped L5 frames in the deployed broker (2026-07-28).
+COLD_BACKOFF_BASE = 8.0 # s; retry a stuck cold PRN after BASE, then 2x each further failure...
+COLD_BACKOFF_MAX = 300.0  # ...capped at 5 min. Locked PRNs are exempt (their incremental decode is
+                        # a handful of Viterbis -- cheap -- so they stay responsive).
 EMIT_MAX = 48           # keep ~48 emits (~3 min) per PRN
 DECODED_MAX = 80        # keep the last ~80 decoded messages (~16 min) for serve/ephemeris
 TRY_EVERY_SYMS = 200    # attempt a decode once per ~4 s of NEW symbols per PRN (one new emit)
@@ -120,6 +128,8 @@ class _PrnState:
         self.eph11 = None
         self.n_decoded = 0
         self.boot = 0            # cold-bootstrap (phase, g2) rotation counter
+        self.cold_fail = 0       # consecutive cold decode attempts that did NOT lock (backoff)
+        self.cold_next_t = 0.0   # earliest wall time to retry a cold decode (exp backoff)
 
 
 class CnavPredictor:
@@ -132,7 +142,7 @@ class CnavPredictor:
         # to CRC locks it here and the rest skip that half of the search. pair_phase is NOT shared
         # -- pseudorange shifts each PRN's symbol grid by up to a symbol -- so it stays per-PRN.
         self._g2 = None
-        self._min_gap = 0.5      # s between decode attempts across all PRNs (see ingest); 0 = off
+        self._min_gap = 1.0      # s between decode attempts across all PRNs (see ingest); 0 = off
         self._last_decode = 0.0
         self._round = set()      # PRNs decoded this round -- round-robin fairness (see ingest)
 
@@ -185,15 +195,35 @@ class CnavPredictor:
         # time (~one decode per poll cycle, cycle << the 4 s emit period so contiguity holds) AND
         # rotate WHICH PRN decodes: without the round set the first PRN in iteration order wins the
         # gate every cycle and the rest never decode (measured -- only PRN 1 ever attempted).
-        # self._min_gap = 0 disables the gate (the single-PRN self-test).
+        # self._min_gap = 0 disables the gate (the single-PRN self-test). COLD BACKOFF: a cold PRN
+        # (phase is None) that keeps failing its full 2^k brute is a continuous drain -- exempt it
+        # after COLD_TRIES via exponential backoff (locked PRNs are cheap incremental, never backed
+        # off). Without this the ~half of PRNs that never lock dropped L5 frames in the live broker.
+        now = time.time()
         due = st.try_slot is None or newest - st.try_slot >= TRY_EVERY_SYMS
-        if due and prn not in self._round and time.time() - self._last_decode >= self._min_gap:
+        cold = st.phase is None
+        if (due and prn not in self._round and now - self._last_decode >= self._min_gap
+                and not (cold and now < st.cold_next_t)):
             st.try_slot = newest
             self._round.add(prn)
-            if len(self._round) >= len(self._p):     # every live PRN had a turn -> new round
+            # a round is complete once every currently-ELIGIBLE PRN has had a turn (backed-off cold
+            # PRNs are not eligible, so they don't stall the rotation among the active ones).
+            eligible = sum(1 for s2 in self._p.values()
+                           if s2.phase is not None or now >= s2.cold_next_t)
+            if len(self._round) >= max(1, eligible):
                 self._round.clear()
             self._try_decode(prn, st)
             self._last_decode = time.time()
+            if cold:
+                if st.phase is not None:             # locked this attempt -> full speed again
+                    st.cold_fail = 0
+                    st.cold_next_t = 0.0
+                else:                                 # still cold -> exponential backoff
+                    st.cold_fail += 1
+                    over = st.cold_fail - COLD_TRIES
+                    st.cold_next_t = now + (0.0 if over <= 0
+                                            else min(COLD_BACKOFF_BASE * 2 ** (over - 1),
+                                                     COLD_BACKOFF_MAX))
 
     # ---------------- decode ----------------
     # Polarity is resolved by CRC, not chaining. Each nav_obs emit's global sign is independent and
