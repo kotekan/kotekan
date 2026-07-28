@@ -652,16 +652,33 @@ def main(argv=None):
                          "update so discriminator NOISE can't random-walk it to the clamp. DC "
                          "loop gain = dll_gain/dll_leak; ~1/leak windows of smoothing.")
     ap.add_argument("--cl-assist", action="store_true",
-                    help="trackers despread the L2C CL pilot: lift each seed's code_phase_chips by "
-                         "k*10230 with the CL segment k COMPUTED from absolute capture time (the "
-                         "airspy /adcstat utc0_sample0 anchor) + almanac range. CL's 1.5 s epoch is "
-                         "GPS-time-locked, so k is arithmetic, not a 75-way search (which is "
-                         "SNR-starved per-record in a narrow subband). Needs --almanac.")
+                    help="LEGACY single-chain CL mode (superseded by --cl-tracker, which keeps "
+                         "CM running as the in-run control): lift each seed's code_phase_chips "
+                         "IN PLACE by k*10230 with the CL segment k COMPUTED from absolute "
+                         "capture time (the airspy /adcstat utc0_sample0 anchor) + almanac "
+                         "range. CL's 1.5 s epoch is GPS-time-locked, so k is arithmetic, not "
+                         "a 75-way search. Needs --almanac; the main trackers must despread "
+                         "GPS_L2C_CL. Mutually exclusive with --cl-tracker.")
     ap.add_argument("--adc-stage", default="airspy_in",
                     help="airspy input stage name for the utc0_sample0 anchor GET (CL assist)")
     ap.add_argument("--cl-time-adjust", type=float, default=0.0,
                     help="seconds added to the CL time-assist clock -- escape hatch for a future "
                          "non-multiple-of-1.5s GPS-UTC offset or a known host-clock bias")
+    ap.add_argument("--cl-tracker", default=None,
+                    help="L2C CL SIBLING-CHAIN mode (Mechanism A of the shared-knowledge plan; "
+                         "supersedes --cl-assist's in-place lift): derive one CL pilot seed row "
+                         "per CM row -- same doppler/dop-rate/carrier-trim/ref_hop (SAME carrier, "
+                         "SAME 511.5 kcps chip clock), code_phase lifted by k*10230 with the "
+                         "segment k pinned from absolute capture time + model range + SV clock "
+                         "(t_sv = t_gpst - range/c + clk, the nh-assist convention proven to "
+                         "0.01 chip by c31_convention.py) and SNAPPED to the measured CM cp -- "
+                         "and POST them to THIS tracker stage's /set_seeds. The CM chain is "
+                         "untouched: it stays up as the in-run control, and CL certification is "
+                         "judged against it. Needs --almanac + the airspy utc0_sample0 anchor.")
+    ap.add_argument("--cl-combiner", default=None,
+                    help="the CL chain's combiner stage: polled each cycle so the CL-vs-CM "
+                         "deep_snr comparison (the segment-pin VERIFY -- a wrong k despreads "
+                         "as noise) lands in this broker's own log next to the k it verifies.")
     ap.add_argument("--nh-assist", action="store_true",
                     help="secondary-overlay TIME-ASSIST for a per-PRN-overlay pilot (B1C/E5a/B2a): "
                          "POST each visible sat's PREDICTED absolute overlay-chip index (from "
@@ -806,6 +823,11 @@ def main(argv=None):
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
+    if args.cl_assist and args.cl_tracker:
+        # In-place lift + copied lift together would hand the CM tracker CL-lifted phases:
+        # broken CM tracking with no error anywhere downstream. Refuse at the door.
+        ap.error("--cl-assist (in-place, single-chain) and --cl-tracker (sibling-chain) are "
+                 "mutually exclusive")
 
     # --almanac-epoch is a CLOCK OFFSET, not a frozen instant. The broker "lives in the
     # capture's time frame": every prediction site evaluates at now() + _alm_clock_offset, so
@@ -842,6 +864,8 @@ def main(argv=None):
     detectors = parse_endpoints(args.detectors, base)
     trackers = parse_endpoints(args.trackers, base)
     combiner = resolve_prefix(args.combiner, base)
+    cl_tracker = resolve_prefix(args.cl_tracker, base) if args.cl_tracker else None
+    cl_combiner = resolve_prefix(args.cl_combiner, base) if args.cl_combiner else None
     gating = args.lat is not None and args.lon is not None
 
     # Almanac assist: BRDC (default; PRN-indexed, label-rot-proof) or the legacy TLE path.
@@ -937,6 +961,7 @@ def main(argv=None):
     seeds = {}       # prn -> {"doppler_hz", "code_phase_chips", ...} (consensus)
     low_hits = {}    # prn -> consecutive low-|A| poll count
     status = {}      # prn -> last combiner get_status record (previous cycle; lock gate below)
+    cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
     bp_pushed = {}   # prn -> utc0 of the bit_pred table last ATTACHED to a seed row. The
                      # combiner regenerates bit_pred once per EMIT (~1 Hz) but seeds push every
                      # --interval (0.25 s), so re-attaching each cycle is 75% redundant payload
@@ -1418,7 +1443,7 @@ def main(argv=None):
         # Capture time anchor: wall-clock UTC of capture sample 0 (airspy stamps it at its
         # first USB callback; /adcstat serves it). 0.0 until the stream starts -- retry
         # lazily. Used by the CL time-assist and the dead-reckoned cp seeding.
-        if (args.cl_assist or dr_state is not None) and not utc0_sample0:
+        if (args.cl_assist or args.cl_tracker or dr_state is not None) and not utc0_sample0:
             try:
                 utc0_sample0 = float(
                     _get("%s/%s/adcstat" % (base, args.adc_stage)).get("utc0_sample0", 0.0))
@@ -2774,9 +2799,83 @@ def main(argv=None):
                 ok += 1
             except Exception as e:
                 _log("set_seeds %s failed: %s" % (t_ep, e))
+
+        # L2C CL SIBLING CHAIN (--cl-tracker; Mechanism A of docs/gnss_shared_knowledge_framework
+        # .md). DERIVATION, not acquisition: CM and CL are chip-interleaved on ONE 511.5 kcps
+        # clock, so a CL row is the CM row with its code phase lifted into the 1.5 s CL period --
+        # cp_CL = (cp_CM + k*10230) mod 767250. Everything else (doppler, dop-rate, carrier trim,
+        # residual code rate, ref_hop) is copied VERBATIM: same carrier, same chip clock, so CM's
+        # tracked solution IS CL's. nav_bits are deliberately NOT copied (CL is dataless -- the
+        # whole point).
+        #
+        # The segment index k is CLASS-2 knowledge (integer): computed fresh each cycle from
+        # coarse absolute time, with the CM code phase supplying the fine time --
+        #   k_est = (SV-transmit-time-of-sample-0 mod 1.5)*chip_rate/10230 - cp_CM/10230
+        # where t_sv = utc0_sample0 - range/c + sat_clk (the nh-assist convention, proven to
+        # 0.01 chip). round(k_est)'s margin |fine_ms| < 10 ms is the pin budget; utc0 anchor
+        # (~1-3 ms) + host NTP (~ms) dominate, and fine_ms MEASURES the actual total per sat.
+        # k is derived from the row's FINAL cp (post-DLL-trim, post-hold), so the snap and the
+        # lift always use the same cp value -- a cp near the 0/10230 wrap moves k by +-1 in
+        # exact compensation. k STEPS by +-1 every ~2 h/sat as range advances (tau drifts
+        # ~2.7 us/s): expected, logged at debug cadence; any LARGER step is a clock/anchor
+        # fault and logs loudly. Never averaged, never held against fresh evidence.
+        if cl_tracker and utc0_sample0 and args.almanac and pred:
+            cl_payload = []
+            for d in payload:
+                pv = pred.get(d["prn"])
+                if pv is None:
+                    continue  # no geometry -> no k -> no CL row (fail closed; CM unaffected)
+                t_sv = utc0_sample0 - pv[3] / C_LIGHT + pv[4] + args.cl_time_adjust
+                cl_chips = (t_sv % 1.5) * args.chip_rate_hz
+                cp_cm = d["code_phase_chips"] % CODE_LEN
+                k = int(round((cl_chips - cp_cm) / CODE_LEN))
+                fine_ms = (cl_chips - cp_cm - k * CODE_LEN) / args.chip_rate_hz * 1e3
+                k %= 75
+                if abs(fine_ms) > 5.0:
+                    # Half the +-10 ms budget gone: the seed still goes out (a wrong k reads
+                    # as CL noise, which the verify below names; withholding would silently
+                    # dark the chain on a systematic host-clock bias instead of showing it).
+                    _log("CL PIN MARGIN THIN: PRN %d fine %+.2f ms of +-10 -- check host NTP "
+                         "/ utc0 anchor" % (d["prn"], fine_ms))
+                dcl = {kk: d[kk] for kk in ("prn", "doppler_hz", "code_phase_rate", "ref_hop",
+                                            "doppler_rate_hz_s", "carrier_trim_hz") if kk in d}
+                dcl["code_phase_chips"] = (cp_cm + k * CODE_LEN) % (75.0 * CODE_LEN)
+                cl_payload.append(dcl)
+                kp = cl_k.get(d["prn"])
+                if kp is not None and kp != k:
+                    msg = ("CL k-step PRN %d: %d -> %d (fine %+.2f ms)"
+                           % (d["prn"], kp, k, fine_ms))
+                    if (k - kp) % 75 in (1, 74):
+                        _log_rl("clk-%d" % d["prn"], msg)  # geometry advancing: routine
+                    else:
+                        _log("CL K-JUMP (not +-1 -- clock/anchor fault?): " + msg)
+                cl_k[d["prn"]] = k
+                cl_report.append("PRN %d k=%d fine %+.1f ms" % (d["prn"], k, fine_ms))
+            if cl_payload:
+                try:
+                    _post("%s/set_seeds" % cl_tracker, cl_payload)
+                except Exception as e:
+                    _log("CL set_seeds %s failed: %s" % (cl_tracker, e))
+            # VERIFY (the other half of the class-2 pin): CL deep_snr vs CM per PRN. Equal
+            # power split -> a right k reads ~CM's deep; a wrong k despreads noise. Read
+            # beside the k it verifies, in this log, so the pin and its evidence never
+            # separate.
+            if cl_combiner:
+                try:
+                    cls_ = {int(r["prn"]): r for r in _get("%s/get_status" % cl_combiner)}
+                    pairs = []
+                    for prn in sorted(cl_k):
+                        cm_d = (status.get(prn) or {}).get("deep_snr") or 0.0
+                        cl_d = (cls_.get(prn) or {}).get("deep_snr") or 0.0
+                        pairs.append("%d:%.0f/%.0f" % (prn, cm_d, cl_d))
+                    if pairs:
+                        _log_rl("clverify", "CL verify (PRN:cm/cl deep): " + " ".join(pairs))
+                except Exception as e:
+                    _log_rl("clverify", "CL verify poll failed: %s" % e)
+
         _log_rl("active", "active=%s (%d); seeded %d/%d trackers" % (sorted(seeds), len(seeds), ok, len(trackers)))
         if cl_report:
-            _log("CL assist: " + "; ".join(cl_report))
+            _log_rl("clreport", "CL: " + "; ".join(cl_report))
 
         if args.once:
             return

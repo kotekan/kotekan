@@ -38,11 +38,20 @@ using cf = std::complex<float>;
 
 int main(int argc, char** argv) {
     // Default: L1 C/A at the GX10 front-end geometry (5 MSPS real, N=20 channels, 4-tap hamming
-    // PFB). Optional argv: [signal_name] [N] -- e.g. `cuda_gnss_despread_test GPS_L2C_CM 10`
-    // runs the TDM (zero-stuffed comb) signal at the live L2C geometry (5000-hop records), the
-    // case that validated the GPU despread during the 2026-07-18 L2C zero-cert hunt. The GPU
-    // side below is fully signal-generic (bank-driven), mirroring GnssCudaDespread's job
-    // construction -- it was L1CA-hardcoded before, which made non-L1 runs vacuous.
+    // PFB). Optional argv: [signal_name] [N] [n_hops] [cp_true] -- e.g.
+    //   `cuda_gnss_despread_test GPS_L2C_CM 10` runs the TDM (zero-stuffed comb) signal at the
+    //   live L2C geometry (5000-hop records), the case that validated the GPU despread during
+    //   the 2026-07-18 L2C zero-cert hunt.
+    //   `cuda_gnss_despread_test GPS_L2C_CL 10 5000` is the L2C CL PILOT at the live record
+    //   shape: 5000-hop (20 ms) records despread against a rolling SEGMENT of the 1.5 s code
+    //   (record != code period -- the default n_hops = repl_period_hops would be 375,000 here,
+    //   a whole 1.5 s window, which is not what production runs). The n_hops override exists
+    //   for exactly this partial-period case.
+    //   `cuda_gnss_despread_test GPS_L2C_CL 10 5000 765749.75` starts the prompt 1500.25
+    //   component chips before the CL code END, so the record CROSSES the 767250->0 wrap
+    //   mid-window -- the code-index wrap path a 20 ms sub-period record hits once per 1.5 s.
+    // The GPU side below is fully signal-generic (bank-driven), mirroring GnssCudaDespread's
+    // job construction -- it was L1CA-hardcoded before, which made non-L1 runs vacuous.
     const double fs = 5.0e6, f_off = 1.25e6;
     const int N = (argc > 2) ? atoi(argv[2]) : 20;
     const int taps = 4;
@@ -55,10 +64,12 @@ int main(int argc, char** argv) {
         fprintf(stderr, "unknown signal %s\n", argv[1]);
         return 2;
     }
-    const double cp_true = (sig->code_length > 1023) ? 5170.25 : 517.25;
+    const double cp_true =
+        (argc > 4) ? atof(argv[4]) : ((sig->code_length > 1023) ? 5170.25 : 517.25);
     gnss::ChannelizedReplicaBank bank(*sig, fs, f_off, N, taps, dsp::window_from_string("hamming"),
                                       {prn});
-    const int n_hops = bank.repl_period_hops(); // 125 @ L1/5MSPS
+    // Window length: one code period by default; override for sub-period records (L2C CL).
+    const int n_hops = (argc > 3) ? atoi(argv[3]) : bank.repl_period_hops(); // 125 @ L1/5MSPS
     const int fft_len = 2 * N;
 
     // Covering channels for this Doppler.

@@ -391,7 +391,11 @@ def build_band(node, band_id):
         add(prefix + "out_buf", std_buf("none", sh["expr"]["rec_frame"].format(np=npv)))
         add(prefix + "epl_buf",
             std_buf("none", c.get("epl_frame", sh["expr"]["epl_frame"]).format(np=npv)))
-        add(prefix + "search", search_stage(sh, c), c=c["search"].get("note"))
+        # A chain without a `search:` block has NO search stage -- the L2C CL pilot is
+        # DERIVED from its CM sibling (broker --cl-tracker), never acquired. Everything
+        # else (tracker command, assemble, combiner, record) is emitted as usual.
+        if "search" in c:
+            add(prefix + "search", search_stage(sh, c), c=c["search"].get("note"))
         add(prefix + "assemble",
             {"kotekan_stage": "GnssGpuRecordAssemble", "in_buf": prefix + "epl_buf",
              "out_buf": prefix + "rec_buf", "sample_rate": Raw(band["sample_rate"]),

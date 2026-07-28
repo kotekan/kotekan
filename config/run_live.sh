@@ -50,10 +50,12 @@ TAG=${TAG:-gpslive}                 # log-file stem: /tmp/$TAG*.log
 # ZERO trackers -- seeds never POSTed, GPS tracking silently dead while search looked normal.
 # Skip the gal_/bds_/l1c_ constellations: their own broker sections below seed them (l1c_ is
 # GPS-constellation but a SEPARATE chain/signal -- if left in, the C/A broker POSTs 1023-chip
-# seeds to the 10230-chip L1C tracker; see the L1C broker block below).
+# seeds to the 10230-chip L1C tracker; see the L1C broker block below). Skip cl_ too: the
+# L2C CL pilot tracker is seeded by the CM broker's --cl-tracker DERIVATION (phase lifted by
+# k*10230) -- raw CM seeds POSTed to it would despread the wrong 1/75th of the CL code.
 TRK=${TRK:-$(
   { grep -oE 'seed_endpoint:[[:space:]]*"/[a-z_0-9]+/set_seeds"' "$CFG" \
-      | sed -E 's|.*"/([a-z_0-9]+)/set_seeds"|\1|' | grep -vE '^(gal|bds|l1c)_';
+      | sed -E 's|.*"/([a-z_0-9]+)/set_seeds"|\1|' | grep -vE '^(gal|bds|l1c|cl)_';
     grep -oE '^track[_0-9]*' "$CFG"; } | sort -u | tr '\n' ',' | sed 's/,$//')}
 # Also hand any GnssVoltagePeel stage to the broker's --trackers: it POSTs the same consensus seeds
 # {cp, Doppler, cp_rate(+l-a)} to /<peel>/set_seeds, so the peel reconstructs + subtracts each sat
@@ -63,20 +65,38 @@ PEEL=$(grep -oE '^[a-z_0-9]+: \{ kotekan_stage: GnssVoltagePeel' "$CFG" | grep -
 # the running stages carry the band prefix.
 [ -n "$SP" ] && TRK=$(echo "$TRK" | sed "s/[^,][^,]*/${SP}&/g")
 [ -n "$PEEL" ] && TRK="${TRK:+$TRK,}$PEEL" && echo "voltage-peel stage(s) seeded by the broker: $PEEL"
-# L2C CL pilot trackers (per-stage signal: GPS_L2C_CL): turn on the broker's time-assist -- it
-# lifts each seed's cp by k*10230 with the CL segment k computed from the capture's absolute UTC
-# anchor (airspy /adcstat utc0_sample0) + almanac range. Needs the almanac (LAT/LON).
+# L2C CL pilot. TWO shapes, detected in order:
+#  (1) SIBLING CHAIN (the shared-knowledge plan's Mechanism A; gen_band_config emits it from
+#      the cl chain row): a cl_track seed_endpoint beside the CM tracker. The CM broker gets
+#      --cl-tracker/--cl-combiner and DERIVES one lifted CL row per CM row (cp + k*10230, the
+#      segment k pinned from capture UTC + model range + SV clock, snapped to the measured
+#      cp). CM keeps its own seeds and stays up as the in-run control; no CL search, no CL
+#      broker, and the normal shared carrier loop (CARG below) serves both -- CL's trim IS
+#      CM's, copied with the row.
+#  (2) LEGACY single-chain (--cl-assist, superseded but kept): the MAIN trackers despread
+#      GPS_L2C_CL and their seeds are lifted IN PLACE. Only fires when no cl_track endpoint
+#      exists, so old configs behave as before. Needs the almanac (LAT/LON) either way.
 CLA=""
-grep -qE 'signal: GPS_L2C_CL' "$CFG" && CLA="--cl-assist --carrier-gain ${CARRIER_GAIN:-0.2} --carrier-min-sig ${CARRIER_MIN_SIG:-15} --carrier-max-step ${CARRIER_MAX_STEP:-1.0} --carrier-fleet-seed" \
-  && echo "L2C CL time-assist ON (k from capture UTC + almanac range) + shared carrier loop"
+if grep -qE 'seed_endpoint:[[:space:]]*"/cl_track/set_seeds"' "$CFG"; then
+  CLA="--cl-tracker ${SP}cl_track"
+  grep -qE '^cl_combiner:' "$CFG" && CLA="$CLA --cl-combiner ${SP}cl_combiner"
+  echo "L2C CL sibling chain: broker derives CL seeds (k from capture UTC + model range + SV clock) -> ${SP}cl_track"
+elif grep -qE 'signal: GPS_L2C_CL' "$CFG"; then
+  CLA="--cl-assist --carrier-gain ${CARRIER_GAIN:-0.2} --carrier-min-sig ${CARRIER_MIN_SIG:-15} --carrier-max-step ${CARRIER_MAX_STEP:-1.0} --carrier-fleet-seed"
+  echo "L2C CL time-assist ON, LEGACY in-place mode (k from capture UTC + almanac range) + shared carrier loop"
+fi
 # SHARED CARRIER LOOP: any config whose tracker sets carrier_shared: true runs pure feed-forward
 # (seed + almanac Doppler-rate ramp) + an NCO fed the broker's carrier_trim_hz. The combiner measures
 # the residual carrier as a bit-robust phase-SLOPE fit over the deep window and the broker integrates
 # it at LOW bandwidth (--carrier-gain) -> residual driven <1 Hz -> the deep coheres a full 1 s+
-# (REPLAY-VALIDATED: PRN19 80 sigma@1 s ON vs 7 sigma OFF). Auto-enabled here (CL adds its own
-# --carrier-gain above, so skip it there). Tune via CARRIER_GAIN / CARRIER_MAX_HZ / CARRIER_LEAK env.
+# (REPLAY-VALIDATED: PRN19 80 sigma@1 s ON vs 7 sigma OFF). Auto-enabled here EXCEPT in the
+# legacy in-place CL mode, whose CLA already carries its own carrier args. The SIBLING-chain CL
+# config also contains `signal: GPS_L2C_CL` (its second tracker command) but needs the normal
+# loop for the CM chain -- so key the suppression on the MODE (--cl-assist in CLA), not on the
+# signal string, which stopped implying single-chain the day the sibling chain landed.
+# Tune via CARRIER_GAIN / CARRIER_MAX_HZ / CARRIER_LEAK env.
 CARG=""
-if grep -qE 'carrier_shared:[[:space:]]*true' "$CFG" && ! grep -qE 'signal: GPS_L2C_CL' "$CFG"; then
+if grep -qE 'carrier_shared:[[:space:]]*true' "$CFG" && [[ "$CLA" != *--cl-assist* ]]; then
   # leak 0.0005 (was 0.005): the leaky integrator's equilibrium leaves a STANDING residual
   # = trim*leak/gain. GPS held seeds sit up to their 100 Hz fence off -> leak 0.005 left
   # ~0.5-1 Hz standing carrier -> 300+ deg of phase wrap across a 1 s deep window, capping

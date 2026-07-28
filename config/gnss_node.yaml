@@ -539,6 +539,50 @@ bands:
             200 = 4 s max buffer (the auto-coherence ladder finds the knee live).
             DIVERGENT (audit): 4 s window here vs ~1 s everywhere else.
 
+      - constellation: cl
+        signal: GPS_L2C_CL
+        tracker_signal_explicit: true
+        n_prn: 32
+        seed_endpoint: /cl_track/set_seeds
+        record_name: cl_level
+        section_note: |
+          L2C CL DATALESS PILOT -- the first Mechanism-A chain (docs/gnss_shared_knowledge_
+          framework.md, S1). NO SEARCH STAGE, deliberately: CL is DERIVED, not acquired. CM
+          and CL are chip-interleaved on one 511.5 kcps clock, so the broker (--cl-tracker,
+          set by run_live when it sees this chain) copies each CM seed row with the code
+          phase lifted by k*10230 -- the segment k pinned from absolute capture time
+          (utc0_sample0) + model range + SV clock, snapped to the measured CM cp. Same
+          doppler/rates/trim verbatim: CM's tracked solution IS CL's (same carrier, same
+          chip clock). CM stays untouched as the in-run control.
+          THE PRIZE: 1.5 s of code with NO data and NO overlay -> zero free signs, so the
+          navwipe floor (11.3 sigma at CM's 200 free signs / 4 s) collapses to the plain
+          Rayleigh floor and no bit can ever flip. The descriptor has called CL "best
+          target for peeling" since it was written; this chain is what makes that reachable.
+        tracker:
+          # Same record geometry and FLL fence as CM: 20 ms records (5000 hops), 12 Hz
+          # alias limit. hops_per_record is EXPLICIT because the tracker's default is
+          # repl_period_hops() = one code period -- 5000 at CM but 375,000 (1.5 s!) at CL.
+          # A CL record is a rolling 1/75th SEGMENT of the code; the despread kernel walks
+          # the full 1,534,500-comb-chip table with its ordinary code-index wrap
+          # (validated: cuda_gnss_despread_test GPS_L2C_CL 10 5000 [765749.75]).
+          fll_reacq_hz: 12.0
+          params:
+            hops_per_record: 5000
+        combiner:
+          # COHERENT = the length-1 all-ones overlay (gnssOverlay.cpp wrote the row for
+          # exactly this chain): overlay_wipe degenerates to a plain gap-robust coherent
+          # sum -- deep integration with no bit estimate, no alignment search, and the
+          # PREWIPED carrier path (raw phase fit, no squaring). navwipe_bit_records stays
+          # 0: CL has no data, and the whole point is to never pay the free-sign floor.
+          params: { n_prn: 32, prns: RANGE, integration_length: 200, secondary_overlay: COHERENT }
+          note: |
+            CL DEEP: plain coherent integration over the auto-coherence ladder (min_rung is
+            a TIME since f57b9388, so the 20 ms records get rungs down to 0.24 s). Floor =
+            sqrt(2 ln 2)+1 ~ 2.2 sigma vs CM's navwipe 11.3 -- the certification bar drops
+            ~5x for the SAME satellites on the SAME band. Equal TDM power split means a
+            healthy CL should read within a few dB of its CM sibling; judge it against CM
+            (the in-run control), not against an absolute.
+
   l5:
     out_file: live_l5_gpu.yaml
     header: |
