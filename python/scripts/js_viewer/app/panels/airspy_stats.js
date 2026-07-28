@@ -31,6 +31,7 @@ export class AirspyStatsPanel {
         this.feed = feed;
         this._hist = [];    // ring of {t, total, dropped}   (ADC / USB FIFO)
         this._vhist = [];   // ring of {t, total, dropped}   (Valve / pipeline)
+        this._rf = new Map();   // unified: band -> {ah:[], vh:[]} per-band rings
         this._render(null, null);
         feed.on(p => this._update(p));
     }
@@ -44,6 +45,8 @@ export class AirspyStatsPanel {
     }
 
     _update(payload) {
+        // UNIFIED: one page, three physical front ends -> a compact row per band.
+        if (payload && Array.isArray(payload.rf_health)) return this._update_rf(payload.rf_health);
         const adc = payload && payload.adc;
         const valve = (payload && payload.valve) || null;
         const now = performance.now() / 1000;
@@ -149,5 +152,62 @@ export class AirspyStatsPanel {
 
         this.el.innerHTML =
             `<div style="display:flex;flex-wrap:wrap;align-items:stretch;">${cells}</div>`;
+    }
+
+    // Unified: push each band's ADC + valve counters onto its own rings, then render one
+    // compact row per band -- the three front ends at a glance, valve drop (the silent loss)
+    // called out per band since it is the number a new peel/feature moves first.
+    _update_rf(rf) {
+        const now = performance.now() / 1000;
+        for (const b of rf) {
+            const r = this._rf.get(b.band) || {ah: [], vh: []};
+            if (b.adc && b.adc.samples_total != null)
+                this._push(r.ah, now, b.adc.samples_total, b.adc.samples_dropped || 0);
+            if (b.valve) {
+                const tot = b.valve.passed != null ? b.valve.passed + b.valve.dropped : null;
+                this._push(r.vh, now, tot != null ? tot : b.valve.dropped, b.valve.dropped);
+            }
+            this._rf.set(b.band, r);
+        }
+        this._render_rf(rf);
+    }
+
+    _render_rf(rf) {
+        if (!this.el) return;
+        const fmt = f => f == null ? "n/a" : f === 0 ? "0"
+            : f < 1e-6 ? "<1e-6" : (f * 100).toPrecision(2) + "%";
+        const cell = (v, color, tip) =>
+            `<div style="flex:0 0 5.5em;padding:.15em .5em;" title="${tip}">
+               <span style="font-size:1.05em;font-weight:600;color:${color};">${v}</span></div>`;
+        const rows = rf.map(b => {
+            const r = this._rf.get(b.band) || {ah: [], vh: []};
+            const adc = b.adc || {};
+            const rms = adc.rms != null ? adc.rms : NaN;
+            const rmsCol = rms >= 20 ? "#3fb26f" : "#e8a13c";
+            const aCum = adc.samples_total > 0 ? (adc.samples_dropped || 0) / adc.samples_total : null;
+            const aWin = this._window_frac(r.ah);
+            const aCol = aCum > 1e-4 ? "#d64550" : (aWin > 0 ? "#e8a13c" : "#3fb26f");
+            const v = b.valve;
+            const vWin = this._window_frac(r.vh), vRate = this._window_rate(r.vh);
+            const vCol = v && (vRate > 0 || (vWin || 0) > 0) ? "#d64550"
+                : (v && v.dropped > 0 ? "#e8a13c" : "#3fb26f");
+            const vNow = !v ? "—" : (v.passed != null ? fmt(vWin)
+                : (vRate == null ? "n/a" : vRate.toFixed(vRate >= 1 ? 0 : 2) + "/s"));
+            const vLost = v ? String(v.dropped) : "—";
+            return `<div style="display:flex;align-items:center;border-top:1px solid #f0f0f0;">
+                <div style="flex:0 0 9em;font-weight:600;color:#5a6472;padding:.15em .5em;">${b.label}</div>`
+                + cell(isNaN(rms) ? "—" : rms.toFixed(0), rmsCol, "ADC rms (counts)")
+                + cell(fmt(aWin), aCol, "USB FIFO drop, last ~15 s")
+                + cell(vNow, vCol, "VALVE drop (silent pipeline loss), last ~15 s")
+                + cell(vLost, vCol, "valve frames lost since start")
+                + "</div>";
+        }).join("");
+        const hdr = `<div style="display:flex;align-items:center;font-size:.72em;opacity:.6;">
+            <div style="flex:0 0 9em;padding:.1em .5em;">front end</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">rms</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">ADC drop</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">valve 15s</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">valve lost</div></div>`;
+        this.el.innerHTML = hdr + rows;
     }
 }

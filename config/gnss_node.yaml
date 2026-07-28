@@ -216,7 +216,13 @@ bands:
       half-written sibling frames. Bench-validated (merged3 leg: certs at baseline).
       DIVERGENT (audit): per-chain streams here vs all-on-stream-1 serial layout on L5.
     record_dir: /tmp/gpswipe
-    viewer_args: "--band l1 --gps-constellations G,E,C,L"
+    # THE UNIFIED VIEWER (2026-07-28): --unified makes :8080 the one satellite-centric page --
+    # every signal a satellite carries (L1 C/A, L1C, L2C-CM, L2C-CL, L5, E1C/E5a, B1C/B2a) in
+    # one row, polling all nine combiners on the merged kotekan. The L2C (:8081) and L5 (:8082)
+    # viewers keep running as the old per-band pages (harmless fallbacks; the merged kotekan
+    # already holds every band's data, so :8080 is the whole node). --unified overrides
+    # --gps-constellations to G,E,C and forces the GPS panel on.
+    viewer_args: "--band l1 --unified"
     chains:
 
       - constellation: gps

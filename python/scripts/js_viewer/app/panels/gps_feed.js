@@ -174,19 +174,28 @@ export class GpsFeed {
             u.search ? jget(k.stageGet(u.search, "get_detections")) : Promise.resolve(null),
             jget(k.stageGet(u.combiner, "get_status")),
         ]));
+        // Stream health: the unified viewer watches ALL THREE front ends (one page, three
+        // physical airspys), else just this band's. One /adcstat GET per airspy.
+        const adcStages = (this.unified && RF_BANDS)
+            ? RF_BANDS.map(b => b.airspy) : [this.airspy_stage];
+        const adc_fetch = Promise.all(adcStages.map(s => jget(k.stageGet(s, "adcstat"))));
         Promise.all([
             fetch("/gps_sky").then(r => r.ok ? r.json() : null).catch(() => null),
-            jget(k.stageGet(this.airspy_stage, "adcstat")),
+            adc_fetch,
             k.metrics(),
             ...per_unit,
-        ]).then(([sky, adc, metrics, ...res]) => {
+        ]).then(([sky, adcs, metrics, ...res]) => {
             this._inflight = false;
             // Hold the last good value per feed: one slow/failed poll must not
             // blank every |A| for a frame (that would look like a mass drop).
             const last = this._last;
             if (sky) last.sky = sky;
-            if (adc) last.adc = adc;
-            if (metrics) last.valve = this._valve(metrics);
+            if (adcs && adcs[0]) last.adc = adcs[0];   // primary (single-band consumers)
+            if (this.unified && RF_BANDS && metrics)
+                last.rf_health = RF_BANDS.map((b, i) => ({
+                    band: b.band, label: b.label, adc: adcs ? adcs[i] : null,
+                    valve: this._valve_for(metrics, b.airspy)}));
+            if (metrics) last.valve = this._valve_for(metrics, this.airspy_stage);
             // Unified stores per-SIGNAL (keyed by combiner); legacy stores per-CONSTELLATION.
             const store = (last.units = last.units || {});
             units.forEach((u, i) => {
@@ -213,11 +222,11 @@ export class GpsFeed {
     // Band selection: a merged multi-band instance prefixes every stage, so our valve wears
     // the same prefix as our airspy stage ("l5_airspy_in" -> "/l5_valve"). A single-band
     // pipeline has no prefix and exactly one valve, so fall back to the only one present.
-    _valve(metrics) {
+    _valve_for(metrics, airspy_stage) {
         const drop = metrics["kotekan_valve_dropped_frames_total"];
         if (!drop) return null;
         const pass = metrics["kotekan_valve_passed_frames_total"] || {};
-        const prefix = String(this.airspy_stage).replace(/airspy_in$/, "");
+        const prefix = String(airspy_stage).replace(/airspy_in$/, "");
         const names = Object.keys(drop);
         let key = names.find(n => n === `/${prefix}valve` || n === `${prefix}valve`);
         if (!key && names.length === 1) key = names[0];
@@ -255,7 +264,11 @@ export class GpsFeed {
             for (const sg of this.signals) {
                 const l = store[sg.key] || {};
                 if (Array.isArray(l.det))
-                    for (const d of l.det) get(sg.tag, d.prn).detected = true;
+                    for (const d of l.det) {
+                        const r = get(sg.tag, d.prn);
+                        r.detected = true;
+                        if (d.snr != null && (r.snr == null || d.snr > r.snr)) r.snr = d.snr;
+                    }
                 if (Array.isArray(l.status))
                     for (const s of l.status) {
                         if (!s.prn) continue;
@@ -301,6 +314,7 @@ export class GpsFeed {
             sky: this._last.sky, adc: this._last.adc, valve: this._last.valve,
             vis: this.vis, chains: this.chains,
             unified: this.unified, signals: this.signals,
+            rf_health: this._last.rf_health || null,
         };
         for (const cb of this._listeners) {
             try { cb(payload); } catch (e) { console.error("gps feed listener:", e); }
