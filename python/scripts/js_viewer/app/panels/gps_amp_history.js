@@ -152,7 +152,10 @@ export class GpsAmpHistoryPanel {
         h.dr.push(src.dr || 0);
         h.peel.push(src.peel_db); h.bound.push(!!src.peel_bound);
         if (h.t.length > MAX_PTS) for (const k of Object.keys(h)) h[k].shift();
-        if (key === this.selected) this._dirty = true;
+        // Mark dirty when this series belongs to the SELECTED satellite. Unified keys are
+        // "G11|<signal>" while `selected` is the sat "G11", so compare the sat part -- else
+        // the plot renders once (newPlot) and never react()s again (static after frame 1).
+        if ((this.unified ? key.split("|")[0] : key) === this.selected) this._dirty = true;
     }
 
     _on_feed({sats, unified, signals}) {

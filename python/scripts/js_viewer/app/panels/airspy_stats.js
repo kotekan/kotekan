@@ -195,7 +195,7 @@ export class AirspyStatsPanel {
                 : (vRate == null ? "n/a" : vRate.toFixed(vRate >= 1 ? 0 : 2) + "/s"));
             const vLost = v ? String(v.dropped) : "—";
             return `<div style="display:flex;align-items:center;border-top:1px solid #f0f0f0;">
-                <div style="flex:0 0 9em;font-weight:600;color:#5a6472;padding:.15em .5em;">${b.label}</div>`
+                <div style="flex:0 0 11em;font-weight:600;color:#5a6472;padding:.15em .5em;white-space:nowrap;">${(b.label || "").split("·").pop().trim()}</div>`
                 + cell(isNaN(rms) ? "—" : rms.toFixed(0), rmsCol, "ADC rms (counts)")
                 + cell(fmt(aWin), aCol, "USB FIFO drop, last ~15 s")
                 + cell(vNow, vCol, "VALVE drop (silent pipeline loss), last ~15 s")
@@ -203,7 +203,7 @@ export class AirspyStatsPanel {
                 + "</div>";
         }).join("");
         const hdr = `<div style="display:flex;align-items:center;font-size:.72em;opacity:.6;">
-            <div style="flex:0 0 9em;padding:.1em .5em;">front end</div>
+            <div style="flex:0 0 11em;padding:.1em .5em;">front end</div>
             <div style="flex:0 0 5.5em;padding:.1em .5em;">rms</div>
             <div style="flex:0 0 5.5em;padding:.1em .5em;">ADC drop</div>
             <div style="flex:0 0 5.5em;padding:.1em .5em;">valve 15s</div>
