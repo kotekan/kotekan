@@ -50,6 +50,12 @@ int main(int argc, char** argv) {
     //   `cuda_gnss_despread_test GPS_L2C_CL 10 5000 765749.75` starts the prompt 1500.25
     //   component chips before the CL code END, so the record CROSSES the 767250->0 wrap
     //   mid-window -- the code-index wrap path a 20 ms sub-period record hits once per 1.5 s.
+    // EXPECTED DURATION: seconds for L1CA/CM, but ~13-16 min per CL invocation (measured
+    // twice, 2026-07-28) -- the CPU reference regenerates a hoprate replica per row plus the
+    // 32-PRN bench tail, and every code-table walk touches CL's 1,534,500-comb-chip code
+    // (75x CM's). Not a hang; it exits 0. Budget accordingly, and NEVER run any of these
+    // against a live node -- the bench tail saturates the GPU and the soak drops frames
+    // (measured 2026-07-28: 135k L5 frames in ~10 min; see data_quality_windows.md).
     // The GPU side below is fully signal-generic (bank-driven), mirroring GnssCudaDespread's
     // job construction -- it was L1CA-hardcoded before, which made non-L1 runs vacuous.
     const double fs = 5.0e6, f_off = 1.25e6;
