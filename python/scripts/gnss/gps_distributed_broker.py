@@ -301,7 +301,7 @@ def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
         bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
         cx, cy, cz = _C.sv_position_cnav(cnav_eph, toe)
         dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
-        return " | BRDC dpos=%.1f m (brdc toe %+.0f s)" % (dpos, be["toe_sow"] - toe)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s)" % (dpos, be["toe_sow"] - toe)
     except Exception as ex:
         return " | BRDC xcheck err: %s" % ex
 
