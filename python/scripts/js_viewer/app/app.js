@@ -27,7 +27,7 @@ import {CCERAPointingPanel}       from "./panels/ccera.js";
 import {GalaxyViewPanel}          from "./panels/galaxy.js";
 import {GpsSkyPanel}              from "./panels/gps_sky.js";
 import {GpsTablePanel}            from "./panels/gps_table.js";
-import {GpsFeed, configure_chains} from "./panels/gps_feed.js";
+import {GpsFeed, configure_chains, configure_signals} from "./panels/gps_feed.js";
 import {GpsAmpHistoryPanel}       from "./panels/gps_amp_history.js";
 import {AirspyStatsPanel}         from "./panels/airspy_stats.js";
 
@@ -101,6 +101,13 @@ export class App {
             // Adopt this band's constellation legend/colours/t_rec (L2C, L5) before the socket
             // opens; the GPS feed re-renders on the next tick. Missing (older server) -> L1 keeps.
             if (cfg && cfg.chains) configure_chains(cfg.chains);
+            // Unified viewer: the full signal inventory + RF-band selector list. Sets the feed
+            // to poll every band's combiner and the table to render one column per signal.
+            if (cfg && cfg.unified && cfg.signals) {
+                configure_signals(cfg.signals, cfg.rf_bands);
+                this.gps_unified = true;
+                this.rf_bands = cfg.rf_bands || null;
+            }
             // Band tag ("l1"|"l2c"|"l5") -- the history panel keys its ICD C/N0
             // baseline off this + the selected sat's constellation letter.
             if (cfg && cfg.band) this.gps_band = cfg.band;

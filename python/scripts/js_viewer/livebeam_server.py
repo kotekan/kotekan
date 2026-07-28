@@ -753,6 +753,51 @@ BAND_CHAINS = {
             {"tag": "C", "name": "BeiDou B2a",  "t_rec": 1e-3,  "color": "#d64550"}],
 }
 
+# UNIFIED VIEWER (2026-07-28): one page, one satellite per row, every signal that satellite
+# carries shown side by side -- the shared-knowledge paradigm made visible (L1 C/A, L1C,
+# L2C-CM, L2C-CL, L5 are ONE satellite). The merged kotekan already serves every band's
+# stages on one REST port, so the client polls all of these; the split into three viewer
+# ports was purely presentational. Each row here is ONE signal:
+#   tag        constellation (G/E/C) -- the satellite key is tag+prn across ALL bands
+#   band       frequency-band column group in the table (L1 / L2 / L5)
+#   col        the short column label under that group ("CA","L1C","CM","CL","Q","E1C",...)
+#   name       full signal name (tooltips / amp-history legend)
+#   combiner   ABSOLUTE kotekan stage (merged instance -- already l1_/l2c_/l5_ prefixed)
+#   search     detections stage, or None for a derived pilot (L2C-CL has no search)
+#   t_rec      record period (s) -> incoherent C/N0 = x / t_rec
+#   peel       whether this chain runs the voltage peel (peel-depth column applies)
+# The table renders columns in THIS order; add a signal by adding a row.
+UNIFIED_SIGNALS = [
+    {"tag": "G", "band": "L1", "col": "CA",  "name": "GPS L1 C/A",
+     "combiner": "l1_gps_combiner", "search": "l1_gps_search",  "t_rec": 1e-3,  "peel": True},
+    {"tag": "G", "band": "L1", "col": "L1C", "name": "GPS L1C-P",
+     "combiner": "l1_l1c_combiner", "search": "l1_l1c_search",  "t_rec": 10e-3, "peel": True},
+    {"tag": "G", "band": "L2", "col": "CM",  "name": "GPS L2C-CM",
+     "combiner": "l2c_gps_combiner", "search": "l2c_gps_search", "t_rec": 20e-3, "peel": False},
+    {"tag": "G", "band": "L2", "col": "CL",  "name": "GPS L2C-CL (pilot)",
+     "combiner": "l2c_cl_combiner", "search": None,             "t_rec": 20e-3, "peel": False},
+    {"tag": "G", "band": "L5", "col": "Q",   "name": "GPS L5-Q",
+     "combiner": "l5_gps_combiner", "search": "l5_gps_search",  "t_rec": 1e-3,  "peel": True},
+    {"tag": "E", "band": "L1", "col": "E1C", "name": "Galileo E1-C",
+     "combiner": "l1_gal_combiner", "search": "l1_gal_search",  "t_rec": 4e-3,  "peel": True},
+    {"tag": "E", "band": "L5", "col": "E5a", "name": "Galileo E5a-Q",
+     "combiner": "l5_gal_combiner", "search": "l5_gal_search",  "t_rec": 1e-3,  "peel": True},
+    {"tag": "C", "band": "L1", "col": "B1C", "name": "BeiDou B1C",
+     "combiner": "l1_bds_combiner", "search": "l1_bds_search",  "t_rec": 10e-3, "peel": True},
+    {"tag": "C", "band": "L5", "col": "B2a", "name": "BeiDou B2a",
+     "combiner": "l5_bds_combiner", "search": "l5_bds_search",  "t_rec": 1e-3,  "peel": True},
+]
+
+# The three physical front ends, for the unified page's RF selector (spectrum + waterfall +
+# airspy controls switch between them). ws_port = the per-band livebeam_server the browser
+# opens for that band's power stream (those servers keep running as headless streamers);
+# airspy = the ADC stage on the merged kotekan. Must match gen_3band_config's port plan.
+UNIFIED_RF_BANDS = [
+    {"band": "l1",  "ws_port": 8539, "airspy": "l1_airspy_in",  "label": "L1 · 1575.42 MHz"},
+    {"band": "l2c", "ws_port": 8639, "airspy": "l2c_airspy_in", "label": "L2C · 1227.6 MHz"},
+    {"band": "l5",  "ws_port": 8739, "airspy": "l5_airspy_in",  "label": "L5 · 1176.45 MHz"},
+]
+
 
 class WsPortResource(resource.Resource):
     """``GET /wsport`` -> ``{"ws_port": N, "band": .., "chains": [..]}`` for THIS server.
@@ -769,10 +814,22 @@ class WsPortResource(resource.Resource):
 
     isLeaf = True
 
-    def __init__(self, ws_port, band="l1", consts="G,E,C", stage_prefix=""):
+    def __init__(self, ws_port, band="l1", consts="G,E,C", stage_prefix="", unified=False):
         resource.Resource.__init__(self)
         self.ws_port = ws_port
         self.band = band
+        self.unified = unified
+        # UNIFIED: advertise the whole signal inventory + the RF-band selector. The client
+        # keys satellites by tag+prn across every band and polls every combiner here. `chains`
+        # is still emitted (the sky legend + per-constellation colours read it), one entry per
+        # CONSTELLATION rather than per band.
+        if unified:
+            self.signals = [dict(s) for s in UNIFIED_SIGNALS]
+            self.rf_bands = [dict(b) for b in UNIFIED_RF_BANDS]
+            self.chains = [{"tag": "G", "name": "GPS",     "color": "#4d9de0"},
+                           {"tag": "E", "name": "Galileo", "color": "#e8923c"},
+                           {"tag": "C", "name": "BeiDou",  "color": "#d64550"}]
+            return
         tags = [t.strip() for t in consts.split(",") if t.strip()]
         table = BAND_CHAINS.get(band, BAND_CHAINS["l1"])
         # EXPLICIT stage names per chain: a merged multi-band instance prefixes its stages
@@ -792,8 +849,12 @@ class WsPortResource(resource.Resource):
 
     def render_GET(self, request):
         request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
-        return json.dumps({"ws_port": self.ws_port, "band": self.band,
-                           "chains": self.chains}).encode("utf-8")
+        reply = {"ws_port": self.ws_port, "band": self.band, "chains": self.chains}
+        if self.unified:
+            reply["unified"] = True
+            reply["signals"] = self.signals
+            reply["rf_bands"] = self.rf_bands
+        return json.dumps(reply).encode("utf-8")
 
 
 class GpsSkyResource(resource.Resource):
@@ -1106,6 +1167,13 @@ def main():
                     help="Prefix on every kotekan GNSS stage name (merged multi-band instance: "
                          "'l1_'/'l2c_'/'l5_'; see gen_3band_config.py). Applied to the "
                          "search/combiner/airspy stage args AND carried per-chain in /wsport.")
+    gg.add_argument("--unified", action="store_true",
+                    help="UNIFIED viewer: one page, one row per satellite, every signal it "
+                         "carries (L1 C/A, L1C, L2C-CM, L2C-CL, L5, E1C/E5a, B1C/B2a) shown "
+                         "side by side, polling ALL band-prefixed combiners on the merged "
+                         "kotekan. /wsport carries the full signal inventory (UNIFIED_SIGNALS) "
+                         "and the RF-band selector list (UNIFIED_RF_BANDS). Without it, the "
+                         "viewer serves its single --band as before.")
     gg.add_argument("--gps-airspy-stage", default="airspy_in",
                     help="kotekan airspy stage name for the ADC noise readout "
                     "(adcstat); default 'airspy_in'.")
@@ -1133,7 +1201,12 @@ def main():
     if args.alt is None:
         args.alt = float(os.environ.get("ALT", 0.0))
     # GPS-only mode is meaningless without the panel, so it implies --gps.
-    args._gps_enabled = bool(args.gps or args.no_power_stream)
+    # --unified is a GPS-first page across all constellations: force the panel on and the
+    # sky to the full sky (the RF band selector owns which spectrum shows).
+    if args.unified:
+        args.gps = True
+        args.gps_constellations = "G,E,C"
+    args._gps_enabled = bool(args.gps or args.no_power_stream or args.unified)
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -1175,7 +1248,7 @@ def main():
     root = NoCacheFile(static_dir)
     root.putChild(b"mode", ModeResource(kotekan))
     root.putChild(b"wsport", WsPortResource(args.ws_port, args.band, args.gps_constellations,
-                                            args.stage_prefix))
+                                            args.stage_prefix, unified=args.unified))
 
     # GPS sky positions (az/el) for the live-status panel. gps_beamtrack lives
     # one dir up (python/scripts); add it to the path so the worker thread can
