@@ -650,8 +650,12 @@ bands:
     prns_note: |
       Full constellation: require_hint + the broker's band-capability filter (L5 = IIF and
       later; drops IIR/IIR-M false detects like PRN17) select the real transmitters.
-    num_cuda_streams: 4
-    per_chain_streams: true      # trackers on streams 1/2/3 (gps/gal/bds), stream-matched outputs
+    # 5 = one per chain (1..4) + stream 0 for the shared cudaInputData. MUST be bumped
+    # whenever a chain is added: this is emitted VERBATIM, not derived from the chain count,
+    # so a 4th chain on stream 4 with num_cuda_streams 4 would index past the allocated set.
+    # (L1 runs 4 chains at 5 -- the same arithmetic.)
+    num_cuda_streams: 5
+    per_chain_streams: true      # trackers on streams 1/2/3/4 (gps/i/gal/bds), stream-matched outputs
     gputrack_note: |
       SHARED-INPUT tri-constellation GPU stage. All three L5 signals despread the SAME
       channelized voltage, so ONE cudaInputData copies q_buf -> gnss_chan_frame per frame
@@ -715,14 +719,18 @@ bands:
         # THE ONE-NUMBER TEST: kotekan_valve_dropped_frames_total{stage_name="/l5_valve"}.
         # Flat = the peel fits real time. Climbing = it does not, and nothing else about the
         # depth numbers is worth reading until it is flat again.
-        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
+        # ★ PEEL OFF ON L5 (2026-07-29, Keith's call) -- to buy real-time budget for the L5-I
+        # chain, to be revisited in a future optimization pass. The peel costs ~2.1-2.3x on the
+        # band with the least slack (2.496 ms frames), and the S4 phase-1 trial showed a 4th L5
+        # chain does not fit ON TOP of three peeling ones (/l5_valve 0 -> 2931 in ~3 min).
+        # L1's peel is UNTOUCHED: 9.984 ms frames, headroom, zero drops -- it is not implicated.
+        # NOTE the epl_frame override went with it, NECESSARILY: rows_spec drops ROWS_PEEL 6 ->
+        # ROWS_PLAIN 4, so the per-PRN term is 15360 not 23040 (the shared default). Leaving the
+        # 23040 override behind would make the buffer ask 770224 while the tracker allocates
+        # 524464 -> "get_gpu_memory_array failed" and the node does not start. Restoring the peel
+        # means restoring BOTH the peel params and this override, together.
         tracker:
           fll_reacq_hz: 15.0
-          params:
-            peel: true
-            peel_gain_alpha: 0.01       # ~100-record (0.1 s) FF gain average
-            peel_warmup_records: 100    # subtract only once the gain has converged
-            peel_fll_gain: 0.05         # residual-carrier FLL (idles ~0 with ctrim closed)
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous; alias limit 250 Hz at 1 ms)"
           # (2026-07-21 channel-width A/B: max_cover_bins 5 made the wander WORSE -> it lives
           # in the per-channel phases, which the full cross-channel sum partially cancels.
@@ -736,12 +744,59 @@ bands:
           # clock bias: GPS-L5 live ADR 0.24-0.54 m, dTEC G:L1xL5 2.07 TECU (was 25-67).
           # MEMORYLESS K=10 (raw block product, +-50 Hz margin): the v2 EMA rate-unwrap was
           # retracted (wrong-branch absorbing state under wandering residuals, 67-726 m).
-          params: { integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 10, peel_depth: true, bit_export: true, bit_pred_horizon_s: 2.0 }
+          params: { integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
           note: |
             L5 DEEP WIPE: Q5 is a dataless pilot under the KNOWN NH20 overlay (one +-1 chip
             per 1 ms record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-
             period boundary. integration_length 1000 = 1 s max buffer (the auto-coherence
             ladder finds the knee live).
+
+      - constellation: i
+        signal: GPS_L5_I
+        tracker_signal_explicit: true
+        n_prn: 32
+        seed_endpoint: /i_track/set_seeds
+        record_name: i_level
+        section_note: |
+          ---- GPS L5-I DATA component (S4 part 2, PHASE 1: acquire/track only) ----
+          The second Mechanism-A chain (docs/gnss_shared_knowledge_framework.md, S4).
+          NO SEARCH STAGE, deliberately: like CL, L5-I is DERIVED, not acquired.
+          ★ SIMPLER THAN CL. CM->CL needed a code-phase lift (cp + k*10230) because CM and
+          CL are chip-interleaved on a 1.5 s period. L5-I and L5-Q share the SAME 10230-chip
+          primary code, the SAME 1 ms period and the SAME code epoch -- only the XB advance
+          differs -- so an L5-I row is the L5-Q row VERBATIM: no lift, no segment index k,
+          and no broker flag at all. The endpoint is named `i_track` precisely so it lands in
+          run_live.sh's auto-detected --trackers list (that grep excludes only
+          ^(gal|bds|l1c|cl)_), and the GPS broker POSTs it the same consensus payload it
+          sends L5-Q. Verified the trackers list is used ONLY to POST seeds -- no per-tracker
+          status reads a derived chain could confuse. L5-Q stays as the in-run control.
+          ★ PROVEN ON SKY 2026-07-29 00:56-01:08Z: acquired + certified within ~3 min off the
+          derived seeds (PRN 27 deep_snr 40, 26 38, 3 26, 28 21). That trial was REVERTED not
+          because the chain failed but because it did not fit real time ON TOP of three
+          PEELING L5 chains (/l5_valve 0 -> 2931 in ~3 min). The L5 peel is now OFF (see the
+          gps chain note), which is what buys the budget for this.
+          NO peel on this chain either -- so NO epl_frame override (ROWS_PLAIN 4 -> the shared
+          15360 default). Overriding it to the peel-sized 23040 is what failed the first
+          launch: the buffer asked 770224 while the tracker allocated 524464.
+        tracker:
+          fll_reacq_hz: 15.0
+        combiner:
+          params: { n_prn: 32, prns: RANGE, integration_length: 1000, secondary_overlay: L5_NH10 }
+          note: |
+            PHASE 1 = OVERLAY PATH ONLY. L5-I is a DATA channel that ALSO carries a secondary
+            overlay (NH10, one +-1 chip per 1 ms record, 10 ms cycle) -- no other chain on
+            this node is both, and the combiner treats secondary_overlay and
+            navwipe_bit_records as MUTUALLY EXCLUSIVE branches. That crux only bites when we
+            want coherence PAST the 20 ms CNAV symbol boundary and the bit export;
+            acquisition and tracking do not need it. Wiping NH10 alone coheres to the symbol
+            boundary -- the same situation L1 C/A lives in with its 20 ms bits -- so phase 1
+            runs the EXISTING overlay path (the one L5-Q runs with NH20) and defers the
+            branch merge to phase 2. L5_NH10 was already in the overlay registry bound to
+            GPS_L5_I (gnssOverlay.cpp:54). NO navwipe_bit_records, NO bit_export: phase 2.
+            THE PHASE-1 MEASUREMENT, still UNANSWERED: the auto-coherence ladder should knee
+            AT 20 ms -- the data-bit limit. The 07-29 trial could not answer it because the
+            rungs were read while frames were dropping (climbing valves invalidate every
+            depth number). This run, with the peel off, is the first chance to read it.
 
       - constellation: gal
         signal: GAL_E5A_Q
@@ -763,17 +818,13 @@ bands:
         # was 2.22x (0.691 ms vs 0.31 ms unpeeled) and the L5 tracker phase sat at 28% of
         # the 2.496 ms frame, so all three peeling projects to ~0.71 ms/chain concurrent.
         # THE GATE REMAINS kotekan_valve_dropped_frames_total{stage_name="/l5_valve"}.
-        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
+        # PEEL OFF 2026-07-29 with the GPS L5 chain -- see its note. epl_frame override removed
+        # with it (ROWS_PEEL 6 -> ROWS_PLAIN 4); restore both together or not at all.
         tracker:
           fll_reacq_hz: 15.0
-          params:
-            peel: true
-            peel_gain_alpha: 0.01
-            peel_warmup_records: 100
-            peel_fll_gain: 0.05
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)"
         combiner:
-          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5A_CS100, adr_smooth_records: 10, peel_depth: true, bit_export: true, bit_pred_horizon_s: 2.0 }
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5A_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
 
       - constellation: bds
         signal: BDS_B2A_P
@@ -792,14 +843,10 @@ bands:
         # was 2.22x (0.691 ms vs 0.31 ms unpeeled) and the L5 tracker phase sat at 28% of
         # the 2.496 ms frame, so all three peeling projects to ~0.71 ms/chain concurrent.
         # THE GATE REMAINS kotekan_valve_dropped_frames_total{stage_name="/l5_valve"}.
-        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
+        # PEEL OFF 2026-07-29 with the GPS L5 chain -- see its note. epl_frame override removed
+        # with it (ROWS_PEEL 6 -> ROWS_PLAIN 4); restore both together or not at all.
         tracker:
           fll_reacq_hz: 15.0
-          params:
-            peel: true
-            peel_gain_alpha: 0.01
-            peel_warmup_records: 100
-            peel_fll_gain: 0.05
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)"
         combiner:
-          params: { n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100, adr_smooth_records: 10, peel_depth: true, bit_export: true, bit_pred_horizon_s: 2.0 }
+          params: { n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
