@@ -786,6 +786,16 @@ def main(argv=None):
                          "SEED is shifted; the fleet's pin, the fine, and the auto-center are "
                          "untouched, so this is safe to leave off and harmless when on. Pick a "
                          "strong CM sat as the probe.")
+    ap.add_argument("--cl-kscan-chips", default="",
+                    help="FRACTIONAL scan mode: CSV of CHIP offsets added to the probe "
+                         "PRN's seeded cp (e.g. '0,0.25,-0.25,0.5,-0.5,0.75,-0.75,1,-1') "
+                         "instead of whole-segment steps. The comb/sub-chip test: CM/CL "
+                         "are chip-interleaved at 1.023 Mcps (one comb slot = 0.5 chip of "
+                         "the 511.5 kcps code), and slot parity couples with code phase "
+                         "when the replica timeline shifts, so scan a fine grid rather "
+                         "than betting on +-0.5 -- a half-chip code offset degrades ~6 dB "
+                         "rather than nulling, so any partial despread stands far above "
+                         "the ~2 noise floor and names the true offset.")
     ap.add_argument("--cl-kscan-dwell", type=int, default=20,
                     help="CL k-scan: broker cycles to dwell per offset (the CL combiner's deep "
                          "integration must respond before stepping). 20 cycles ~= 4 s at the "
@@ -1105,7 +1115,26 @@ def main(argv=None):
     # it steps the seeded segment for ONE probe PRN through {k-2..k+2}, dwelling long enough
     # for the CL combiner's deep integration to respond, and the verify names which offset
     # despreads. If k+-N wins, the whole-segment bug is PROVEN and its magnitude N is known.
-    _kscan_seq = [0, -1, 1, -2, 2]   # try the true k first (baseline), then neighbours
+    # Two scan modes share the machinery:
+    #   SEGMENT mode (default): offsets are whole segments k+N -- the whole-segment test.
+    #     RESULT 2026-07-29: falsified. On a broken launch NOTHING in k+-2 despreads
+    #     (incl. k+0); positive control on a working launch shows k+0 winning 39x. The
+    #     segment pin is EXONERATED.
+    #   FRACTIONAL mode (--cl-kscan-chips "0,0.25,-0.25,..."): offsets are CHIPS added to
+    #     the seeded cp -- the comb/sub-chip test. CM/CL are chip-interleaved at 1.023 Mcps
+    #     (one comb slot = 0.5 chip at the 511.5 kcps code), so a TDM comb-phase fault
+    #     lands somewhere on a sub-chip grid. A fine grid rather than a bet on +-0.5
+    #     exactly: slot parity and code phase COUPLE when the replica timeline shifts, and
+    #     a half-chip code offset degrades ~6 dB rather than nulling -- so any partial
+    #     despread (~half of CM's deep) stands far above the noise floor of ~2 and names
+    #     the true offset.
+    if args.cl_kscan_chips:
+        _kscan_seq = [float(x) for x in args.cl_kscan_chips.split(",") if x.strip()]
+        _kscan_frac = True
+    else:
+        _kscan_seq = [0, -1, 1, -2, 2]   # true k first (baseline), then neighbours
+        _kscan_frac = False
+    _kfmt = (lambda o: "c%+.2f" % o) if _kscan_frac else (lambda o: "k%+d" % o)
     _kscan = [0]     # [cycle counter], advanced once per CL cycle
     _kscan_deep = {} # offset -> best cl_deep seen for the probe PRN at that offset
     bp_pushed = {}   # prn -> utc0 of the bit_pred table last ATTACHED to a seed row. The
@@ -3262,18 +3291,24 @@ def main(argv=None):
                             "CL PIN MARGIN THIN: PRN %d fine %+.2f ms of +-10 (post-center; "
                             "clock-offset est %+.2f ms)"
                             % (d["prn"], fine_ms, cl_toff[0] * 1e3))
-                # K-SCAN: for the one probe PRN, offset the seeded segment by the current
-                # step so its CL row despreads at k+off instead of k. Everything else
-                # (fine, k report, auto-center) uses the true k untouched -- only the seed
-                # sent to the tracker is shifted, so the scan cannot perturb the fleet's pin.
+                # K-SCAN: for the one probe PRN, offset the seed by the current step --
+                # whole segments (segment mode) or fractional chips (comb mode) -- so its
+                # CL row despreads at the shifted position. Everything else (fine, k
+                # report, auto-center) uses the true k untouched; only the probe's seed is
+                # shifted, so the scan cannot perturb the fleet's pin.
+                _cp_extra = 0.0
                 k_seed = k
                 if args.cl_kscan_prn and d["prn"] == args.cl_kscan_prn:
                     _off = _kscan_seq[(_kscan[0] // max(args.cl_kscan_dwell, 1))
                                       % len(_kscan_seq)]
-                    k_seed = (k + _off) % 75
+                    if _kscan_frac:
+                        _cp_extra = _off
+                    else:
+                        k_seed = (k + int(_off)) % 75
                 dcl = {kk: d[kk] for kk in ("prn", "doppler_hz", "code_phase_rate", "ref_hop",
                                             "doppler_rate_hz_s", "carrier_trim_hz") if kk in d}
-                dcl["code_phase_chips"] = (cp_cm + k_seed * CODE_LEN) % (75.0 * CODE_LEN)
+                dcl["code_phase_chips"] = ((cp_cm + k_seed * CODE_LEN + _cp_extra)
+                                           % (75.0 * CODE_LEN))
                 cl_payload.append(dcl)
                 kp = cl_k.get(d["prn"])
                 if kp is not None and kp != k:
@@ -3335,8 +3370,8 @@ def main(argv=None):
                         if _pos >= _dw // 2:              # settled back half only
                             _kscan_deep[_cur] = max(_kscan_deep.get(_cur, 0.0), _cl)
                         _log_rl("kscan-%d" % _p,
-                                "CL KSCAN PRN %d: k%+d (dwell %d/%d) cl_deep %.0f cm %.0f"
-                                % (_p, _cur, _pos, _dw, _cl, _cm), every_s=5.0)
+                                "CL KSCAN PRN %d: %s (dwell %d/%d) cl_deep %.0f cm %.0f"
+                                % (_p, _kfmt(_cur), _pos, _dw, _cl, _cm), every_s=5.0)
                         # a full sweep completes when we return to seq index 0 having filled
                         # every offset; declare once per sweep.
                         if (_idx == 0 and _pos == 0 and _kscan[0] > 0
@@ -3346,17 +3381,28 @@ def main(argv=None):
                             _2nd = sorted(_kscan_deep.values())[-2]
                             _cmp = (status.get(_p) or {}).get("deep_snr") or 0.0
                             _clear = _bd > 20.0 and _bd > 3.0 * max(_2nd, 1.0)
+                            _win_says = (
+                                ("SUB-CHIP/COMB FAULT, offset %s chips" % _kfmt(_best)
+                                 if _best != 0 else
+                                 "true cp CORRECT -- fault is not a sub-chip seed offset")
+                                if _kscan_frac else
+                                ("WHOLE-SEGMENT ANCHOR BUG, magnitude %s" % _kfmt(_best)
+                                 if _best != 0 else
+                                 "true k CORRECT -- fault is NOT the segment pin"))
                             _log("CL KSCAN PRN %d SWEEP: %s -> %s"
-                                 % (_p, " ".join("k%+d:%.0f" % (o, _kscan_deep[o])
+                                 % (_p, " ".join("%s:%.0f" % (_kfmt(o), _kscan_deep[o])
                                                  for o in sorted(_kscan_deep)),
-                                    ("best k%+d clears noise %.0fx: %s" % (
-                                        _best, _bd / max(_2nd, 1.0),
-                                        "WHOLE-SEGMENT ANCHOR BUG, magnitude %+d" % _best
-                                        if _best != 0 else "true k CORRECT -- fault is NOT "
-                                        "the segment pin")) if _clear else
-                                    "NO offset in this range despreads (best k%+d only %.0f "
-                                    "vs cm %.0f) -- not a small whole-segment error; widen "
-                                    "the range or look past the pin" % (_best, _bd, _cmp)))
+                                    ("best %s clears noise %.0fx: %s" % (
+                                        _kfmt(_best), _bd / max(_2nd, 1.0), _win_says))
+                                    if _clear else
+                                    "NO offset in this range despreads (best %s only %.0f "
+                                    "vs cm %.0f) -- %s" % (
+                                        _kfmt(_best), _bd, _cmp,
+                                        "not a sub-chip seed offset either; the fault is "
+                                        "past the seed (replica/carrier/comb in the C++)"
+                                        if _kscan_frac else
+                                        "not a small whole-segment error; widen the range "
+                                        "or look past the pin")))
                             _kscan_deep.clear()          # fresh accumulation next sweep
                     _kscan[0] += 1
                 except Exception as e:
