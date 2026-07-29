@@ -266,6 +266,23 @@ class CnavPredictor:
         if lo % 2:                                   # even-anchor: the pair grid is absolute (utc)
             lo += 1
         if hi - lo + 1 < MSG_SYMS:
+            # SAY SO. This window can never hold a message, and returning quietly here is
+            # indistinguishable from "decoding, just not yet" -- the chain simply reports
+            # NO DECODE forever. It is reachable by configuration, not just by bad luck: the
+            # window is COUNTED IN EMITS (WIN_EMITS / COLD_EMITS) while what matters is the
+            # SYMBOL SPAN, so a combiner emitting shorter windows than L2C's 4 s silently
+            # starves it -- L5-I at a 1 s emit span offers 350 symbols against the 600 needed.
+            # The fix is on the PRODUCER (raise that chain's integration_length so one emit
+            # spans more symbols); raising the emit COUNT is not available, because a cold
+            # bootstrap is 2^COLD_EMITS Viterbis.
+            if len(chain) >= (COLD_EMITS if cold else WIN_EMITS):
+                self._warn_short = getattr(self, "_warn_short", set())
+                if prn not in self._warn_short:
+                    self._warn_short.add(prn)
+                    self._log("cnav PRN %d: emit span too short to decode -- %d symbols over "
+                              "%d emits, need %d. Raise this chain's integration_length "
+                              "(emit span = integration_length x record period)."
+                              % (prn, hi - lo + 1, len(chain), MSG_SYMS))
             return
         for x in range(lo, hi + 1):
             if x not in hist:                        # gap inside the window -- bail (rare)
