@@ -166,5 +166,85 @@ constexpr int CMB_PEEL_DEEP = 17; ///< deep |A| of the PEEL RESIDUAL (the CMB_DE
 constexpr int CMB_PEEL_INCOH = 18;///< incoherent |A| of the peel residual (the CMB_AMP_INCOH twin).
                                   ///< Both zero when no peel ran.
 
+// ---------------------------------------------------------------------------------------
+// ELEMENT AXIS (CHORD)
+// ---------------------------------------------------------------------------------------
+/// The airspy node is single-antenna: one record per PRN, and the correlations above ARE the
+/// measurement. CHORD despreads N antennas against the same M references, so a record carries
+/// an antenna axis the layout above has no room for.
+///
+/// LAYOUT. Per PRN: the existing @ref RECORD_FLOATS header, followed by @c n_elem blocks of
+/// @ref ELEM_FLOATS:
+///
+///     [PRN 0: 24 header floats][elem 0: 12][elem 1: 12]...[elem n-1: 12][PRN 1: ...]
+///
+/// so the frame is `n_prn * (RECORD_FLOATS + n_elem * ELEM_FLOATS)` floats, and element e of
+/// PRN p starts at `p * (RECORD_FLOATS + n_elem*ELEM_FLOATS) + RECORD_FLOATS + e*ELEM_FLOATS`
+/// (see @ref elem_offset). @c n_elem == 0 reproduces the airspy layout byte-for-byte, so every
+/// existing consumer and every existing config keeps working untouched.
+///
+/// WHAT IS *NOT* HERE, DELIBERATELY. Only the per-antenna quantities live in an element block.
+/// The code/carrier model (PRN, Doppler, code phase), the commanded NCO increments, the
+/// covering-channel count and -- importantly -- the replica ENERGIES are element-INDEPENDENT:
+/// one replica is correlated against every antenna, so E, P, L and P_HEAD energies are shared
+/// and stay in the header. That is also the M x M block path B gets free from the N^2 kernel
+/// (docs/gnss_chord_framework.md), which is why the split is drawn here: when the standalone
+/// N x M correlator is replaced by synthetic lanes, the N x M block fills the element blocks
+/// and the M x M block fills the header energies, with no schema change.
+///
+/// THE HEADER'S CORRELATION SLOTS carry the REFERENCE ELEMENT (config @c reference_element),
+/// not element 0 blindly and not a sum. The broker closes the DLL and carrier loops off those
+/// slots, so they must be a phase-coherent single-antenna view; an incoherent element sum
+/// would destroy the carrier loop, and a coherent sum needs the per-element phases that are
+/// the very thing being measured. Pick the reference as a healthy high-gain feed. Upgrading
+/// to a self-calibrated coherent sum later changes only what the assembler writes there.
+constexpr int ELEM_FLOATS = 12;
+
+constexpr int ELEM_P_RE = 0;  ///< prompt correlation for this antenna
+constexpr int ELEM_P_IM = 1;
+constexpr int ELEM_E_RE = 2;  ///< early / late, same taps as REC_E_*/REC_L_*
+constexpr int ELEM_E_IM = 3;
+constexpr int ELEM_L_RE = 4;
+constexpr int ELEM_L_IM = 5;
+constexpr int ELEM_PH_RE = 6; ///< prompt HEAD segment (hops before the code-period boundary);
+constexpr int ELEM_PH_IM = 7; ///< tail = P - PH, exactly as in the header. Required for deep
+                              ///< integration across an overlay/nav sign flip.
+constexpr int ELEM_RES_RE = 8;     ///< PEEL RESIDUAL prompt, per antenna. RESERVED -- the peel
+constexpr int ELEM_RES_IM = 9;     ///< is deferred until acq/track and beam mapping are up
+constexpr int ELEM_RES_PH_RE = 10; ///< (a single-PRN replica is likely sub-quantization at
+constexpr int ELEM_RES_PH_IM = 11; ///< 4+4b). Written zero until then; slots held so the
+                                   ///< record size does not change when the peel lands.
+
+/// Floats per PRN for a record carrying @c n_elem antennas (@c n_elem 0 => the airspy layout).
+constexpr int record_stride(int n_elem) {
+    return RECORD_FLOATS + n_elem * ELEM_FLOATS;
+}
+
+/// Float offset of element @c e of PRN @c p within the frame.
+constexpr int elem_offset(int p, int e, int n_elem) {
+    return p * record_stride(n_elem) + RECORD_FLOATS + e * ELEM_FLOATS;
+}
+
+/// Float offset of PRN @c p's header within the frame.
+constexpr int record_offset(int p, int n_elem) {
+    return p * record_stride(n_elem);
+}
+
+// Layout invariants, checked at compile time so a careless edit above cannot silently
+// change the frame geometry that the config's `record_floats` has to match.
+static_assert(record_stride(0) == RECORD_FLOATS,
+              "n_elem == 0 must reproduce the single-antenna layout exactly");
+static_assert(elem_offset(0, 0, 4) == RECORD_FLOATS,
+              "element 0 must start immediately after the PRN header");
+static_assert(elem_offset(0, 1, 4) - elem_offset(0, 0, 4) == ELEM_FLOATS,
+              "consecutive elements must be ELEM_FLOATS apart");
+static_assert(record_offset(1, 4) == record_stride(4),
+              "consecutive PRNs must be one stride apart");
+static_assert(elem_offset(1, 0, 4) == record_stride(4) + RECORD_FLOATS,
+              "PRN 1's first element must follow PRN 1's header");
+// The last element of PRN p must end exactly where PRN p+1 begins -- no gap, no overlap.
+static_assert(elem_offset(0, 3, 4) + ELEM_FLOATS == record_offset(1, 4),
+              "element blocks must tile the record exactly");
+
 } // namespace gnss
 #endif // GNSS_RECORD_HPP
