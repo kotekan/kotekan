@@ -719,18 +719,29 @@ bands:
         # THE ONE-NUMBER TEST: kotekan_valve_dropped_frames_total{stage_name="/l5_valve"}.
         # Flat = the peel fits real time. Climbing = it does not, and nothing else about the
         # depth numbers is worth reading until it is flat again.
-        # ★ PEEL OFF ON L5 (2026-07-29, Keith's call) -- to buy real-time budget for the L5-I
-        # chain, to be revisited in a future optimization pass. The peel costs ~2.1-2.3x on the
-        # band with the least slack (2.496 ms frames), and the S4 phase-1 trial showed a 4th L5
-        # chain does not fit ON TOP of three peeling ones (/l5_valve 0 -> 2931 in ~3 min).
-        # L1's peel is UNTOUCHED: 9.984 ms frames, headroom, zero drops -- it is not implicated.
-        # NOTE the epl_frame override went with it, NECESSARILY: rows_spec drops ROWS_PEEL 6 ->
-        # ROWS_PLAIN 4, so the per-PRN term is 15360 not 23040 (the shared default). Leaving the
-        # 23040 override behind would make the buffer ask 770224 while the tracker allocates
-        # 524464 -> "get_gpu_memory_array failed" and the node does not start. Restoring the peel
-        # means restoring BOTH the peel params and this override, together.
+        # ★ PEEL RESTORED 2026-07-29 pm, ON THE GPS CHAIN ONLY -- deliberately not all three.
+        # It came off that morning to buy budget for the L5-I chain. What changed since: the
+        # S4-phase-2 blowup turned out to be a missing buffer clear in the combiner, not chain
+        # cost (l5_i duty 1.56 -> 0.008), so the band has real headroom back.
+        # WHY GPS-ONLY. The peel costs ~2.1-2.3x on the band with the least slack, and the
+        # measured failing config was three peeling chains PLUS L5-I. Restoring one peel instead
+        # of three is both the lighter change and the BETTER EXPERIMENT: this chain's own note
+        # says E5a/B2a are meant to be unpeeled IN-RUN CONTROLS on the same airspy and front end,
+        # and that control was lost when all three ended up peeling on 07-27. If the band
+        # degrades and the controls degrade with it, it is not the peel.
+        # ⚠️ epl_frame comes back WITH the peel, necessarily: rows_spec ROWS_PLAIN 4 ->
+        # ROWS_PEEL 6, so the per-PRN term is 23040 not the shared 15360 default. Omitting it
+        # makes the tracker allocate 770224 while the buffer asks 524464 ->
+        # "get_gpu_memory_array failed" and the node will not start. They move together, always.
+        # THE GATE IS UNCHANGED: kotekan_valve_dropped_frames_total{stage_name="/l5_valve"}.
+        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
         tracker:
           fll_reacq_hz: 15.0
+          params:
+            peel: true
+            peel_gain_alpha: 0.01       # ~100-record (0.1 s) FF gain average
+            peel_warmup_records: 100    # subtract only once the gain has converged
+            peel_fll_gain: 0.05         # residual-carrier FLL (idles ~0 with ctrim closed)
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous; alias limit 250 Hz at 1 ms)"
           # (2026-07-21 channel-width A/B: max_cover_bins 5 made the wander WORSE -> it lives
           # in the per-channel phases, which the full cross-channel sum partially cancels.
@@ -744,7 +755,7 @@ bands:
           # clock bias: GPS-L5 live ADR 0.24-0.54 m, dTEC G:L1xL5 2.07 TECU (was 25-67).
           # MEMORYLESS K=10 (raw block product, +-50 Hz margin): the v2 EMA rate-unwrap was
           # retracted (wrong-branch absorbing state under wandering residuals, 67-726 m).
-          params: { integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+          params: { integration_length: 1000, secondary_overlay: L5_NH20, adr_smooth_records: 10, peel_depth: true, bit_export: true, bit_pred_horizon_s: 2.0 }
           note: |
             L5 DEEP WIPE: Q5 is a dataless pilot under the KNOWN NH20 overlay (one +-1 chip
             per 1 ms record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-
