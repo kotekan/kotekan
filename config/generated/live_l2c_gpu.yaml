@@ -111,7 +111,7 @@ gputrack:
     num_cuda_streams: 3
     frame_arrival_period: 0.0
     in_buffers: { q_buf: q_buf }
-    out_buffers: { epl_buf: epl_buf }
+    out_buffers: { epl_buf: epl_buf, cl_epl_buf: cl_epl_buf }
     commands:
         # ONE host->device copy of the channelized 4+4b frame
         - name: cudaInputData
@@ -150,12 +150,66 @@ gputrack:
           gpu_mem: gnss_epl
           out_buf: epl_buf
           in_buf: ""
+        - name: cudaGnssTrack
+          signal: GPS_L2C_CL
+          max_anchor_age_s: 0.0
+          fll_reacq_hz: 12.0
+          cuda_stream: 1
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: cl_epl
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
+          n_channels: 10
+          channel_offset: 0
+          n_prn: 32
+          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
+          capture_utc0: 1.0
+          fll_gain: 0.0
+          carrier_shared: true
+          seed_endpoint: "/cl_track/set_seeds"
+          hops_per_record: 5000
+        - name: cudaOutputData
+          gpu_mem: cl_epl
+          out_buf: cl_epl_buf
+          in_buf: ""
 assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_buf, sample_rate: 5.0e6 }
+# bit_export (2026-07-28, S3): export the per-20ms navwipe bit decisions as nav_obs
+# so the broker's CNAV decoder (gps_cnav.decode_cnav via a CnavPredictor) can stitch
+# the 50 sps symbol stream. ★ The RECORD FILE is NOT the symbol stream -- it holds
+# the combiner's ~0.1 Hz DEEP EMITS (positive amplitude, ~8 s apart), so
+# gps_cnav.py's offline read_symbols path is a dead end for GPU-chain records; the
+# live symbols only come through nav_obs (this flag), exactly as LNAV does at L1.
 # L2C DEEP WIPE: a 20 ms record is exactly ONE CNAV symbol, so navwipe_bit_records
 # 1 wipes the 50 sym/s data and the sum integrates past 20 ms. integration_length
 # 200 = 4 s max buffer (the auto-coherence ladder finds the knee live).
 # DIVERGENT (audit): 4 s window here vs ~1 s everywhere else.
-gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 200, navwipe_bit_records: 1 }
+gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, integration_length: 200, navwipe_bit_records: 1, bit_export: true }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gps_l2c_gpu", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+
+# L2C CL DATALESS PILOT -- the first Mechanism-A chain (docs/gnss_shared_knowledge_
+# framework.md, S1). NO SEARCH STAGE, deliberately: CL is DERIVED, not acquired. CM
+# and CL are chip-interleaved on one 511.5 kcps clock, so the broker (--cl-tracker,
+# set by run_live when it sees this chain) copies each CM seed row with the code
+# phase lifted by k*10230 -- the segment k pinned from absolute capture time
+# (utc0_sample0) + model range + SV clock, snapped to the measured CM cp. Same
+# doppler/rates/trim verbatim: CM's tracked solution IS CL's (same carrier, same
+# chip clock). CM stays untouched as the in-run control.
+# THE PRIZE: 1.5 s of code with NO data and NO overlay -> zero free signs, so the
+# navwipe floor (11.3 sigma at CM's 200 free signs / 4 s) collapses to the plain
+# Rayleigh floor and no bit can ever flip. The descriptor has called CL "best
+# target for peeling" since it was written; this chain is what makes that reachable.
+cl_n_prn: 32
+cl_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: cl_n_prn * record_floats * sizeof_float }
+cl_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: cl_n_prn * record_floats * sizeof_float }
+cl_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * cl_n_prn + 15360 * cl_n_prn }
+cl_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: cl_epl_buf, out_buf: cl_rec_buf, sample_rate: 5.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] }
+# CL DEEP: plain coherent integration over the auto-coherence ladder (min_rung is
+# a TIME since f57b9388, so the 20 ms records get rungs down to 0.24 s). Floor =
+# sqrt(2 ln 2)+1 ~ 2.2 sigma vs CM's navwipe 11.3 -- the certification bar drops
+# ~5x for the SAME satellites on the SAME band. Equal TDM power split means a
+# healthy CL should read within a few dB of its CM sibling; judge it against CM
+# (the in-run control), not against an absolute.
+cl_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [cl_rec_buf], out_buf: cl_out_buf, n_prn: 32, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], integration_length: 200, secondary_overlay: COHERENT }
+cl_record: { kotekan_stage: rawFileWrite, in_buf: cl_out_buf, base_dir: "/tmp/gps_l2c_gpu", file_name: "cl_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --http-port 8081 --ws-port 8639 --kotekan-rest-port 12148 --gps-constellations G --band l2c' }

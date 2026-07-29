@@ -166,6 +166,8 @@ gputrack:
           peel_gain_alpha: 0.01
           peel_warmup_records: 100
           peel_fll_gain: 0.05
+          peel_sign_dump_prn: -1
+          peel_sign_dump_path: /tmp/gnss_run/peel_sign_l1_gps.csv
         - name: cudaOutputData
           cuda_stream: 1
           gpu_mem: gnss_epl
@@ -218,7 +220,7 @@ gputrack:
           peel_gain_alpha: 0.01
           peel_warmup_records: 100
           peel_fll_gain: 0.05
-          peel_sign_dump_prn: 0
+          peel_sign_dump_prn: -1
           peel_sign_dump_path: /tmp/gnss_run/peel_sign_l1_bds.csv
         - name: cudaOutputData
           cuda_stream: 3
@@ -326,7 +328,7 @@ bds_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: bds_epl_buf, out_b
 # floored deep at sqrt(2*100/pi) ~ 8 sigma while the search hit 290+).
 # nh_assist: fleet-grid overlay time assist -- THIS is the flag the 07-18 launch
 # silently dropped (e1eba7a2); it is generated now and cannot be dropped again.
-bds_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 3, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 100, secondary_overlay: B1C, phase_dump_prns: [19, 21, 22, 34, 36, 39], phase_dump_path: "/tmp/gpswipe/phase_dump_bds.txt", peel_depth: true, bit_export: true }
+bds_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 3, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 100, secondary_overlay: B1C, peel_depth: true, bit_export: true }
 bds_record: { kotekan_stage: rawFileWrite, in_buf: bds_out_buf, base_dir: "/tmp/gpswipe", file_name: "bds_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- GPS L1C-P parallel chain (4th L1 constellation, same 1575.42 tune) ----
@@ -370,4 +372,4 @@ l1c_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l1c_epl_buf, out_b
 l1c_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 2, in_bufs: [l1c_rec_buf], out_buf: l1c_out_buf, n_prn: 32, integration_length: 100, secondary_overlay: L1CO, peel_depth: true, bit_export: true }
 l1c_record: { kotekan_stage: rawFileWrite, in_buf: l1c_out_buf, base_dir: "/tmp/gpswipe", file_name: "l1c_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
-spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --band l1 --gps-constellations G,E,C,L' }
+spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --band l1 --unified' }

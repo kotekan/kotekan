@@ -650,8 +650,12 @@ bands:
     prns_note: |
       Full constellation: require_hint + the broker's band-capability filter (L5 = IIF and
       later; drops IIR/IIR-M false detects like PRN17) select the real transmitters.
-    num_cuda_streams: 4
-    per_chain_streams: true      # trackers on streams 1/2/3 (gps/gal/bds), stream-matched outputs
+    # 5 = one per chain (1..4) + stream 0 for the shared cudaInputData. MUST be bumped
+    # whenever a chain is added: this is emitted verbatim, NOT derived from the chain
+    # count, so a 4th chain on stream 4 with num_cuda_streams 4 would index past the
+    # allocated set. (L1 already runs 4 chains at 5 -- the same arithmetic.)
+    num_cuda_streams: 5
+    per_chain_streams: true      # trackers on streams 1/2/3/4 (gps/i/gal/bds), stream-matched outputs
     gputrack_note: |
       SHARED-INPUT tri-constellation GPU stage. All three L5 signals despread the SAME
       channelized voltage, so ONE cudaInputData copies q_buf -> gnss_chan_frame per frame
@@ -742,6 +746,52 @@ bands:
             per 1 ms record, 20 ms cycle) -> secondary_overlay wipe, SEGMENTED at the code-
             period boundary. integration_length 1000 = 1 s max buffer (the auto-coherence
             ladder finds the knee live).
+
+      - constellation: i
+        signal: GPS_L5_I
+        tracker_signal_explicit: true
+        n_prn: 32
+        seed_endpoint: /i_track/set_seeds
+        record_name: i_level
+        section_note: |
+          ---- GPS L5-I DATA component (S4 part 2, PHASE 1: acquire/track only) ----
+          The second Mechanism-A chain (docs/gnss_shared_knowledge_framework.md, S4).
+          NO SEARCH STAGE, deliberately: like CL, L5-I is DERIVED, not acquired.
+          ★ SIMPLER THAN CL. CM->CL needed a code-phase lift (cp + k*10230) because CM and
+          CL are chip-interleaved on a 1.5 s period. L5-I and L5-Q share the SAME 10230-chip
+          primary code, the SAME 1 ms period and the SAME code epoch -- only the XB advance
+          differs -- so an L5-I row is the L5-Q row VERBATIM: no lift, no segment index k,
+          and no --l5i-tracker broker flag. The endpoint is named `i_track` precisely so it
+          lands in run_live.sh's auto-detected --trackers list (that grep excludes only
+          ^(gal|bds|l1c|cl)_), and the GPS broker POSTs it the same consensus payload it
+          sends L5-Q. Verified the trackers list is used ONLY to POST seeds -- no
+          per-tracker status reads a derived chain could confuse. L5-Q stays untouched as
+          the in-run control, exactly as CM does for CL.
+          PHASE 1 SCOPE: prove it acquires and that the soak stays clean. L5 is the band
+          with the least real-time slack (2.496 ms frames) and dropped frames twice on
+          2026-07-28, so the CNAV decoder does not go on until this is shown to be free.
+          NO peel here either: the L5 peel runs on the Q pilot and costs ~2.1-2.3x.
+        epl_frame: "176 + 1024 * {np} + 23040 * {np}"
+        tracker:
+          fll_reacq_hz: 15.0
+        combiner:
+          params: { n_prn: 32, prns: RANGE, integration_length: 1000, secondary_overlay: L5_NH10 }
+          note: |
+            PHASE 1 = OVERLAY PATH ONLY. L5-I is a DATA channel that ALSO carries a
+            secondary overlay (NH10, one +-1 chip per 1 ms record, 10 ms cycle) -- no
+            other chain on this node is both, and the combiner treats secondary_overlay
+            and navwipe_bit_records as MUTUALLY EXCLUSIVE branches. That crux only bites
+            when we want coherence PAST the 20 ms CNAV symbol boundary and the bit export;
+            acquisition and tracking do not need it. Wiping NH10 alone coheres to the
+            symbol boundary -- exactly the situation L1 C/A lives in with its 20 ms bits --
+            so phase 1 runs the EXISTING overlay path (the one L5-Q runs with NH20) and
+            defers the branch merge to phase 2. L5_NH10 was already in the overlay registry
+            bound to GPS_L5_I (gnssOverlay.cpp:54).
+            NO navwipe_bit_records, NO bit_export: phase 2.
+            integration_length 1000 mirrors L5-Q's 1 s buffer. THE PHASE-1 MEASUREMENT: the
+            auto-coherence ladder should find a knee AT 20 ms -- the data-bit limit. That
+            knee is what phase 2's navwipe exists to lift, and finding it here is the
+            evidence that the deferral was the right call.
 
       - constellation: gal
         signal: GAL_E5A_Q
