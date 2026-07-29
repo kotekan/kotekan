@@ -418,10 +418,20 @@ case "$SIGNAL" in *L1CA*|*L1_CA*) SIG_CAP="";; *) SIG_CAP="--signal-capability $
 # not a common reference error.
 STATE_DIR=${STATE_DIR:-$BIAS_DIR/state}
 mkdir -p "$STATE_DIR" 2>/dev/null
-STA_GPS="--state-file $STATE_DIR/${TAG}.json --state-dongle ${TAG}"
-STA_GAL="--state-file $STATE_DIR/${TAG}_gal.json --state-dongle ${TAG}"
-STA_BDS="--state-file $STATE_DIR/${TAG}_bds.json --state-dongle ${TAG}"
-STA_L1C="--state-file $STATE_DIR/${TAG}_l1c.json --state-dongle ${TAG}"
+# S2d THE FLIP, as a launch-time switch so turning it on -- and turning it back off -- is
+# an env var and a relaunch (~30 s), never a code edit under pressure:
+#     STATE_CONSUME=1 ./config/run_3band.sh     # consume the fused state
+#     STATE_CONSUME=0 ...                       # revert; provably identical to pre-S2d
+# With 0 the consumption site reduces to `clock_bias_ema if not None else 0.0` and the
+# first-seed guard to `clock_bias_ema is None` -- character-for-character the old behaviour,
+# so OFF is a no-op rather than a different code path that happens to agree.
+STATE_CONSUME=${STATE_CONSUME:-0}
+STA_COMMON="--state-consume $STATE_CONSUME"
+[ "$STATE_CONSUME" = "1" ] && echo "S2d: brokers CONSUME the fused receiver state (clock bias comes from the dongle's fusion, not this chain's own)"
+STA_GPS="--state-file $STATE_DIR/${TAG}.json --state-dongle ${TAG} $STA_COMMON"
+STA_GAL="--state-file $STATE_DIR/${TAG}_gal.json --state-dongle ${TAG} $STA_COMMON"
+STA_BDS="--state-file $STATE_DIR/${TAG}_bds.json --state-dongle ${TAG} $STA_COMMON"
+STA_L1C="--state-file $STATE_DIR/${TAG}_l1c.json --state-dongle ${TAG} $STA_COMMON"
 CBP=$BIAS_DIR/gps_clock_bias_${TAG}
 SIB_GPS="--clock-bias-siblings ${CBP}_gal.hz ${CBP}_bds.hz ${CBP}_l1c.hz"
 SIB_GAL="--clock-bias-siblings ${CBP}.hz ${CBP}_bds.hz ${CBP}_l1c.hz"
