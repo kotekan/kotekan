@@ -1525,9 +1525,12 @@ def main(argv=None):
                 if args.time0_endpoint:
                     # CHORD: frame 0 is GPS-disciplined, so this is exact rather than an
                     # estimate. time0_ns is the absolute time of fpga_seq_num 0.
-                    t0 = float(_get("%s/%s" % (base, args.time0_endpoint.strip("/")))
-                               .get("time0_ns", 0.0))
-                    utc0_sample0 = t0 / 1e9
+                    # NB: NOT `t0` -- that name is the cycle-start timestamp in this loop, and
+                    # shadowing it with a nanosecond epoch made the loop's
+                    # `dt = interval - (time.time() - t0)` about 1.8e18 seconds.
+                    frame0_ns = float(_get("%s/%s" % (base, args.time0_endpoint.strip("/")))
+                                      .get("time0_ns", 0.0))
+                    utc0_sample0 = frame0_ns / 1e9
                     if utc0_sample0:
                         _log("time anchor: CHORD F-engine frame0 = %.9f s (GPS-disciplined)"
                              % utc0_sample0)
