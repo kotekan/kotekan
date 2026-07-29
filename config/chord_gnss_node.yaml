@@ -104,13 +104,21 @@ nodes:
   cx27: { host: cx27.site.chord-observatory.ca, comb_offset_mod8: 0, gpu_offsets_mod16: [0, 8] }
   cx42: { host: cx42.site.chord-observatory.ca, comb_offset_mod8: 5, gpu_offsets_mod16: [5, 13] }
   cx43: { host: cx43.site.chord-observatory.ca, comb_offset_mod8: 6, gpu_offsets_mod16: [6, 14] }
+  cx44: { host: cx44.site.chord-observatory.ca, comb_offset_mod8: 2, gpu_offsets_mod16: [2, 10] }
+  cx47: { host: cx47.site.chord-observatory.ca, comb_offset_mod8: 3, gpu_offsets_mod16: [3, 11] }
+  cx51: { host: cx51.site.chord-observatory.ca, comb_offset_mod8: 7, gpu_offsets_mod16: [7, 15] }
+  cx52: { host: cx52.site.chord-observatory.ca, comb_offset_mod8: 1, gpu_offsets_mod16: [1, 9] }
+  # ALL EIGHT mod-8 offsets are present and pairwise disjoint, so the eight nodes TILE the
+  # science band exactly: 8 x 768 = 6144 channels = freq_id 1536..7679, nothing missing and
+  # nothing duplicated (verified against live /metrics from all eight, 2026-07-29). The comb is
+  # therefore not a sampling limitation at full deployment -- only a limitation on how few nodes
+  # we run.
 
-  # Bring-up order. cx19+cx27 first: their offsets {0,4} are equally spaced, so the union
-  # is a clean uniform stride-4 comb whose delay response is analytic -- worth more during
-  # bring-up than the extra channels. Then extend to all four, where the comb goes
-  # non-uniform, the first alias drops to -6 dB, and we gain 6 dB of beam dynamic range
-  # over a single node.
-  bringup_order: [cx19, cx27, cx42, cx43]
+  # Bring-up order. cx19+cx27 first: offsets {0,4} are equally spaced, so their union is a clean uniform stride-4
+  # comb with an analytic delay response -- worth more during bring-up than extra channels. Then
+  # widen. At all eight the comb closes completely: no channel loss, no aliasing, and ~8.8 dB more
+  # despread SNR than one node, which converts directly into beam-map dynamic range.
+  bringup_order: [cx19, cx27, cx42, cx43, cx44, cx47, cx51, cx52]
 
 array:
   # 32 of 128 elements carry data (SK ~1.0); elements 32..127 read flat.
