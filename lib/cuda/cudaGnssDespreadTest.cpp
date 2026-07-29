@@ -7,6 +7,7 @@
 //
 //   ./cuda_gnss_despread_test            (prints PASS/FAIL per trial + max relative error)
 
+#include "cudaGnssChordDespread.hpp"
 #include "cudaGnssDespreadKernel.hpp"
 #include "GnssCudaDespread.hpp"
 #include "gnssChannelizedReplica.hpp"
@@ -531,6 +532,126 @@ int main(int argc, char** argv) {
                qmax, (qmax < 1e-6) ? "OK" : "FAIL");
         qpass = qpass && (qmax < 1e-6);
         pass = pass && qpass;
+
+        // --- CHORD split (waveform generation + N x M correlation) vs the FUSED kernel ---
+        // The CHORD path generates the replica once and correlates it against N antennas, instead
+        // of regenerating it inside the MAC. At N=1 it must reproduce the fused kernel EXACTLY:
+        // same gather, same carrier, same combination, same accumulation order. Not "close" --
+        // the two paths do identical arithmetic on identical inputs, so anything but 0.0 here
+        // means the split has drifted from the fused path, which is the failure mode that shows
+        // up downstream only as an unexplained correlation-amplitude discrepancy.
+        {
+            const int n_elem = 1;
+            // The fused kernel reads [chan][hop]; the CHORD correlator reads the voltage in its
+            // NATIVE frame order [hop][chan][elem]. Same bytes, transposed.
+            std::vector<unsigned char> qt((size_t)n_hops * n_chan * n_elem);
+            for (int c = 0; c < n_chan; ++c)
+                for (int m = 0; m < n_hops; ++m)
+                    qt[((size_t)m * n_chan + c) * n_elem + 0] = q[(size_t)c * n_hops + m];
+            std::vector<int> h_chan_ids(n_chan);
+            for (int c = 0; c < n_chan; ++c)
+                h_chan_ids[c] = c;
+
+            unsigned char* d_qt = nullptr;
+            int* d_chan_ids = nullptr;
+            float2* d_wave = nullptr;
+            double2* d_ncorr = nullptr;
+            double* d_nenergy = nullptr;
+            CK(cudaMalloc(&d_qt, qt.size()));
+            CK(cudaMalloc(&d_chan_ids, h_chan_ids.size() * sizeof(int)));
+            CK(cudaMalloc(&d_wave, (size_t)3 * n_spec * n_chan * n_hops * sizeof(float2)));
+            CK(cudaMalloc(&d_ncorr, (size_t)4 * n_spec * n_chan * n_elem * sizeof(double2)));
+            CK(cudaMalloc(&d_nenergy, (size_t)4 * n_spec * n_chan * sizeof(double)));
+            CK(cudaMemcpy(d_qt, qt.data(), qt.size(), cudaMemcpyHostToDevice));
+            CK(cudaMemcpy(d_chan_ids, h_chan_ids.data(), h_chan_ids.size() * sizeof(int),
+                          cudaMemcpyHostToDevice));
+
+            CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, p, d_wave, d_nenergy, 0));
+            CK(gnss_cuda::launch_correlate_nm(d_qt, d_scale, d_chan_ids, d_wave, d_jobs, n_spec,
+                                              n_chan, n_elem, n_elem, n_chan, p, d_ncorr, 0));
+            CK(cudaDeviceSynchronize());
+
+            std::vector<double2> nc((size_t)4 * n_spec * n_chan * n_elem);
+            std::vector<double> ne((size_t)4 * n_spec * n_chan), qe((size_t)n_out * n_chan);
+            CK(cudaMemcpy(nc.data(), d_ncorr, nc.size() * sizeof(double2), cudaMemcpyDeviceToHost));
+            CK(cudaMemcpy(ne.data(), d_nenergy, ne.size() * sizeof(double), cudaMemcpyDeviceToHost));
+            CK(cudaMemcpy(qe.data(), d_qe, qe.size() * sizeof(double), cudaMemcpyDeviceToHost));
+
+            double cmax = 0.0, emax = 0.0;
+            for (int b = 0; b < n_spec; ++b)
+                for (int j = 0; j < 4; ++j)
+                    for (int c = 0; c < n_chan; ++c) {
+                        const size_t kf = (size_t)(p.out_rows_spec * b + j) * n_chan + c;
+                        const size_t ks = ((size_t)(4 * b + j) * n_chan + c) * n_elem + 0;
+                        const std::complex<double> a(qc[kf].x, qc[kf].y);
+                        const std::complex<double> bb(nc[ks].x, nc[ks].y);
+                        cmax = std::max(cmax, std::abs(bb - a) / std::max(1e-9, std::abs(a)));
+                        const size_t ke = (size_t)(4 * b + j) * n_chan + c;
+                        emax = std::max(emax, std::abs(ne[ke] - qe[kf])
+                                                  / std::max(1e-9, std::abs(qe[kf])));
+                    }
+            const bool split_ok = (cmax == 0.0) && (emax == 0.0);
+            printf("CHORD split (waveform + NxM) vs fused despread, N=1: corr %.3e energy %.3e "
+                   "%s\n",
+                   cmax, emax, split_ok ? "OK (exact)" : "FAIL");
+            pass = pass && split_ok;
+
+            cudaFree(d_qt);
+            cudaFree(d_ncorr);
+
+            // --- element axis: N>1 indexing, stride and tail handling ---
+            // N=1 above proves the ARITHMETIC matches; it says nothing about whether the element
+            // axis is indexed correctly. So: replicate the same voltage into every element, pad
+            // the frame's element axis with a POISON byte (0x00 -> (-8,-8), the loudest value the
+            // codec can produce -- deliberately not 0x88, which decodes to zero and would hide a
+            // stride error), and require every element to reproduce the fused answer exactly.
+            //
+            // n_elem = 5 with elem_stride = 7 is chosen to be awkward: not a power of two, not a
+            // multiple of the 32-wide element block, and strictly less than the stride. That is
+            // the shape that catches both a stride bug and the divergent-__syncthreads() tail bug
+            // (the block must run a whole number of element passes, predicating the ragged tail
+            // rather than letting threads drop out at different barriers).
+            const int nE = 5, strideE = 7;
+            std::vector<unsigned char> qm((size_t)n_hops * n_chan * strideE, 0x00); // poison
+            for (int c = 0; c < n_chan; ++c)
+                for (int m = 0; m < n_hops; ++m)
+                    for (int e = 0; e < nE; ++e)
+                        qm[((size_t)m * n_chan + c) * strideE + e] = q[(size_t)c * n_hops + m];
+
+            unsigned char* d_qm = nullptr;
+            double2* d_mcorr = nullptr;
+            CK(cudaMalloc(&d_qm, qm.size()));
+            CK(cudaMalloc(&d_mcorr, (size_t)4 * n_spec * n_chan * nE * sizeof(double2)));
+            CK(cudaMemcpy(d_qm, qm.data(), qm.size(), cudaMemcpyHostToDevice));
+            CK(gnss_cuda::launch_correlate_nm(d_qm, d_scale, d_chan_ids, d_wave, d_jobs, n_spec,
+                                              n_chan, nE, strideE, n_chan, p, d_mcorr, 0));
+            CK(cudaDeviceSynchronize());
+            std::vector<double2> mc((size_t)4 * n_spec * n_chan * nE);
+            CK(cudaMemcpy(mc.data(), d_mcorr, mc.size() * sizeof(double2), cudaMemcpyDeviceToHost));
+
+            double mmax = 0.0;
+            for (int b = 0; b < n_spec; ++b)
+                for (int j = 0; j < 4; ++j)
+                    for (int c = 0; c < n_chan; ++c) {
+                        const size_t kf = (size_t)(p.out_rows_spec * b + j) * n_chan + c;
+                        const std::complex<double> a(qc[kf].x, qc[kf].y);
+                        for (int e = 0; e < nE; ++e) {
+                            const size_t km = ((size_t)(4 * b + j) * n_chan + c) * nE + e;
+                            const std::complex<double> bb(mc[km].x, mc[km].y);
+                            mmax = std::max(mmax, std::abs(bb - a) / std::max(1e-9, std::abs(a)));
+                        }
+                    }
+            printf("CHORD NxM element axis, N=%d stride=%d (poison-padded): max rel %.3e %s\n", nE,
+                   strideE, mmax, (mmax == 0.0) ? "OK (exact)" : "FAIL");
+            pass = pass && (mmax == 0.0);
+
+            cudaFree(d_qm);
+            cudaFree(d_mcorr);
+            cudaFree(d_chan_ids);
+            cudaFree(d_wave);
+            cudaFree(d_nenergy);
+        }
+
         cudaFree(d_q);
         cudaFree(d_deq);
         cudaFree(d_scale);
