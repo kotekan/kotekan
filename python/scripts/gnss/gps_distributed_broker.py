@@ -774,6 +774,18 @@ def main(argv=None):
                     help="the CL chain's combiner stage: polled each cycle so the CL-vs-CM "
                          "deep_snr comparison (the segment-pin VERIFY -- a wrong k despreads "
                          "as noise) lands in this broker's own log next to the k it verifies.")
+    ap.add_argument("--cl-kscan-prn", type=int, default=0,
+                    help="DIAGNOSTIC (default 0 = OFF): step the CL segment for THIS probe PRN "
+                         "through {k, k-1, k+1, k-2, k+2} and log which offset despreads best. "
+                         "Convention-free test for the whole-segment anchor bug that fine_ms "
+                         "cannot see (fine is the residual after round()). Only the probe PRN's "
+                         "SEED is shifted; the fleet's pin, the fine, and the auto-center are "
+                         "untouched, so this is safe to leave off and harmless when on. Pick a "
+                         "strong CM sat as the probe.")
+    ap.add_argument("--cl-kscan-dwell", type=int, default=20,
+                    help="CL k-scan: broker cycles to dwell per offset (the CL combiner's deep "
+                         "integration must respond before stepping). 20 cycles ~= 4 s at the "
+                         "0.2 s interval, matching L2C's coherence window.")
     ap.add_argument("--nh-assist", action="store_true",
                     help="secondary-overlay TIME-ASSIST for a per-PRN-overlay pilot (B1C/E5a/B2a): "
                          "POST each visible sat's PREDICTED absolute overlay-chip index (from "
@@ -1080,6 +1092,18 @@ def main(argv=None):
     cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
     cl_pred0 = {}    # anchor-epoch geometry cache: {"key": (utc0, eph_t), "val": {prn: tuple}}
     cl_toff = [0.0]  # measured common clock offset (s): slow EMA of the across-sat median fine
+    # CL K-SCAN (diagnostic, --cl-kscan-prn; default 0 = OFF, zero effect). The recurring
+    # "CL despreads noise on ~40% of launches while fine_ms looks perfect" is the signature
+    # of a WHOLE-SEGMENT (N x 20 ms) anchor error: fine is the residual AFTER round(), so an
+    # error that is an exact multiple of the segment folds entirely into k and reports a
+    # perfect margin. A single restart cannot confirm this (60% base rate), and any absolute
+    # cross-check needs the TOW convention + slot mapping exact. A k-scan is CONVENTION-FREE:
+    # it steps the seeded segment for ONE probe PRN through {k-2..k+2}, dwelling long enough
+    # for the CL combiner's deep integration to respond, and the verify names which offset
+    # despreads. If k+-N wins, the whole-segment bug is PROVEN and its magnitude N is known.
+    _kscan_seq = [0, -1, 1, -2, 2]   # try the true k first (baseline), then neighbours
+    _kscan = [0]     # [cycle counter], advanced once per CL cycle
+    _kscan_deep = {} # offset -> best cl_deep seen for the probe PRN at that offset
     bp_pushed = {}   # prn -> utc0 of the bit_pred table last ATTACHED to a seed row. The
                      # combiner regenerates bit_pred once per EMIT (~1 Hz) but seeds push every
                      # --interval (0.25 s), so re-attaching each cycle is 75% redundant payload
@@ -3258,9 +3282,18 @@ def main(argv=None):
                             "CL PIN MARGIN THIN: PRN %d fine %+.2f ms of +-10 (post-center; "
                             "clock-offset est %+.2f ms)"
                             % (d["prn"], fine_ms, cl_toff[0] * 1e3))
+                # K-SCAN: for the one probe PRN, offset the seeded segment by the current
+                # step so its CL row despreads at k+off instead of k. Everything else
+                # (fine, k report, auto-center) uses the true k untouched -- only the seed
+                # sent to the tracker is shifted, so the scan cannot perturb the fleet's pin.
+                k_seed = k
+                if args.cl_kscan_prn and d["prn"] == args.cl_kscan_prn:
+                    _off = _kscan_seq[(_kscan[0] // max(args.cl_kscan_dwell, 1))
+                                      % len(_kscan_seq)]
+                    k_seed = (k + _off) % 75
                 dcl = {kk: d[kk] for kk in ("prn", "doppler_hz", "code_phase_rate", "ref_hop",
                                             "doppler_rate_hz_s", "carrier_trim_hz") if kk in d}
-                dcl["code_phase_chips"] = (cp_cm + k * CODE_LEN) % (75.0 * CODE_LEN)
+                dcl["code_phase_chips"] = (cp_cm + k_seed * CODE_LEN) % (75.0 * CODE_LEN)
                 cl_payload.append(dcl)
                 kp = cl_k.get(d["prn"])
                 if kp is not None and kp != k:
@@ -3304,6 +3337,48 @@ def main(argv=None):
                         pairs.append("%d:%.0f/%.0f" % (prn, cm_d, cl_d))
                     if pairs:
                         _log_rl("clverify", "CL verify (PRN:cm/cl deep): " + " ".join(pairs))
+                    # K-SCAN readout. The seeded offset for THIS cycle is
+                    # seq[(cycle//dwell) % n]; the combiner is integrating that same offset
+                    # (the seed goes out just above, then we read deep next). CL deep takes
+                    # tens of seconds to build, and the tracker needs a few cycles to re-lock
+                    # after a segment jump -- so only RECORD in the back half of each dwell,
+                    # and only DECLARE a result after a full sweep has completed, requiring a
+                    # winner that clears noise by a real margin.
+                    if args.cl_kscan_prn:
+                        _p = args.cl_kscan_prn
+                        _dw = max(args.cl_kscan_dwell, 1)
+                        _idx = (_kscan[0] // _dw) % len(_kscan_seq)
+                        _cur = _kscan_seq[_idx]
+                        _pos = _kscan[0] % _dw            # position within this dwell
+                        _cl = (cls_.get(_p) or {}).get("deep_snr") or 0.0
+                        _cm = (status.get(_p) or {}).get("deep_snr") or 0.0
+                        if _pos >= _dw // 2:              # settled back half only
+                            _kscan_deep[_cur] = max(_kscan_deep.get(_cur, 0.0), _cl)
+                        _log_rl("kscan-%d" % _p,
+                                "CL KSCAN PRN %d: k%+d (dwell %d/%d) cl_deep %.0f cm %.0f"
+                                % (_p, _cur, _pos, _dw, _cl, _cm), every_s=5.0)
+                        # a full sweep completes when we return to seq index 0 having filled
+                        # every offset; declare once per sweep.
+                        if (_idx == 0 and _pos == 0 and _kscan[0] > 0
+                                and len(_kscan_deep) >= len(_kscan_seq)):
+                            _best = max(_kscan_deep, key=_kscan_deep.get)
+                            _bd = _kscan_deep[_best]
+                            _2nd = sorted(_kscan_deep.values())[-2]
+                            _cmp = (status.get(_p) or {}).get("deep_snr") or 0.0
+                            _clear = _bd > 20.0 and _bd > 3.0 * max(_2nd, 1.0)
+                            _log("CL KSCAN PRN %d SWEEP: %s -> %s"
+                                 % (_p, " ".join("k%+d:%.0f" % (o, _kscan_deep[o])
+                                                 for o in sorted(_kscan_deep)),
+                                    ("best k%+d clears noise %.0fx: %s" % (
+                                        _best, _bd / max(_2nd, 1.0),
+                                        "WHOLE-SEGMENT ANCHOR BUG, magnitude %+d" % _best
+                                        if _best != 0 else "true k CORRECT -- fault is NOT "
+                                        "the segment pin")) if _clear else
+                                    "NO offset in this range despreads (best k%+d only %.0f "
+                                    "vs cm %.0f) -- not a small whole-segment error; widen "
+                                    "the range or look past the pin" % (_best, _bd, _cmp)))
+                            _kscan_deep.clear()          # fresh accumulation next sweep
+                    _kscan[0] += 1
                 except Exception as e:
                     _log_rl("clverify", "CL verify poll failed: %s" % e)
 
