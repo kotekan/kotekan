@@ -164,7 +164,8 @@ if(FFTW_FOUND)
                 gnss/GnssChannelizedTracker.cpp
                 gnss/GnssChannelizedSearch.cpp
                 gnss/GnssVoltagePeel.cpp
-                gnss/GnssChannelGather.cpp)
+                gnss/GnssChannelGather.cpp
+                gnss/GnssChordVoltageTap.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
 endif()
