@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-step-ahead PREDICTION CONTEST between a chain and the state that would replace it.
+"""FORWARD PREDICTION CONTEST between a chain and the state that would replace it.
 
 This is the S2c shadow score, and the gate on S2d. Read-only; safe on the soak.
 
@@ -10,9 +10,11 @@ WHY A CONTEST AND NOT AN A/B
 ----------------------------
 The obvious shadow score -- "does chain X hold coherence better with the fused prior than
 without" -- requires APPLYING the prior, which is steering, which is the thing being
-deferred. A contest needs no intervention: every predictor is asked to guess a chain's own
-NEXT measurement, and they are judged against what that chain actually measured. The winner
-is decided by evidence rather than by argument, before anything is allowed to steer.
+deferred. A contest needs no intervention: every predictor is asked to guess what a chain
+will measure NEXT, and is judged against what that chain actually went on to measure. The
+winner is decided by evidence rather than by argument, before anything is allowed to steer.
+(The target is a short forward MEDIAN, not the single next sample -- see `target_of`, where
+using one sample was found to cap the measurable gain at sqrt(2).)
 
 THE PREDICTORS
 --------------
