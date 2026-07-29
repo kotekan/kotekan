@@ -138,10 +138,23 @@ private:
         std::vector<std::pair<long long, int8_t>> bits; ///< (bit index, +-1 sign)
     };
 
+    /// @p pin_phase >= 0 SKIPS the internal bit-sync search and uses that epoch phase directly;
+    /// @p out_phase (optional) reports the phase actually used. Both exist because the search is
+    /// @c navwipe_bit_records full passes over the window, and re-running it per ladder rung is
+    /// the dominant cost on a chain with many records per symbol (L5-I: 20 alignments x 1000
+    /// records vs L2C's 1 x 200 -- 100x per rung). The epoch is a property of the SIGNAL, so
+    /// searching it once on the longest window and pinning the rest is exact, not an approximation.
+    ///
+    /// ⚠️ THE PHASE IS WINDOW-RELATIVE: bit index = (round((utc[r]-utc[0])/rec_dt) + phase)/br,
+    /// so a phase found on one window is valid on another only after shifting by the two windows'
+    /// record-index offset. Callers MUST derive that offset from UTC
+    /// (@c llround((sub_utc0 - full_utc0)/rec_dt)), never from buffer positions -- a valve drop
+    /// skips an index, and binning by position would slide every bit epoch.
     double navwipe_amplitude(const std::vector<std::complex<double>>& a,
                              const std::vector<double>& utc, double* snr_out = nullptr,
                              const std::vector<std::complex<double>>* head = nullptr,
-                             NavObs* obs = nullptr) const;
+                             NavObs* obs = nullptr, int pin_phase = -1,
+                             int* out_phase = nullptr) const;
 
     /// Residual carrier frequency (Hz) from a window of per-record A, as a bit-robust phase-SLOPE
     /// fit over the whole window (long baseline -> low variance -- the clean measurement the shared

@@ -897,6 +897,28 @@ void GnssCoherentCombiner::main_thread() {
                 }
                 if (best_ph >= 0) {
                     nh_phase[p] = best_ph;
+                    // ★★ THE BIT EPOCH IS SEARCHED ONCE, ON THE LONGEST RUNG, AND PINNED FOR THE
+                    // REST. navwipe's internal bit sync is navwipe_bit_records full passes over
+                    // the window; re-running it per rung is what still cost ~140 drops/s after
+                    // the NH-ranking fix (L5-I: 20 alignments x 1000 records = 100x L2C's 1 x 200,
+                    // then x ~5 rungs). The epoch is a property of the signal, not of the trailing
+                    // window, so pinning it is EXACT -- the shorter rungs are strict suffixes of
+                    // the window the epoch was found on.
+                    //
+                    // ⚠️ The phase is WINDOW-RELATIVE (bit index counts from each window's own
+                    // utc[0]), so it must be shifted by the two windows' record-index offset --
+                    // derived from UTC, never from buffer positions: a valve drop skips an index,
+                    // and position arithmetic would slide every bit epoch by the gap.
+                    int pin = -1;
+                    double rec_dt_full = 0.0;
+                    if (ub.size() >= 2) {
+                        std::vector<double> dt;
+                        dt.reserve(ub.size() - 1);
+                        for (size_t r = 1; r < ub.size(); ++r)
+                            dt.push_back(ub[r] - ub[r - 1]);
+                        std::nth_element(dt.begin(), dt.begin() + dt.size() / 2, dt.end());
+                        rec_dt_full = dt[dt.size() / 2];
+                    }
                     for (size_t len :
                          ladder(ab.size(), min_rung(ub, 4 * (size_t)_navwipe_bit_records))) {
                         const bool is_full = (len == ab.size());
@@ -906,11 +928,25 @@ void GnssCoherentCombiner::main_thread() {
                         if (!gnss::overlay_apply(as, us, ov, best_ph, &hs, aw, &hw))
                             continue;
                         double snr = 0.0;
+                        int used_ph = -1;
+                        // Shift the pinned epoch into THIS rung's frame (0 on the full window).
+                        int pin_here = -1;
+                        if (pin >= 0 && rec_dt_full > 0.0) {
+                            const long long d =
+                                (long long)std::llround((us.front() - ub.front()) / rec_dt_full);
+                            const long long m = ((pin + d) % _navwipe_bit_records
+                                                 + _navwipe_bit_records)
+                                                % _navwipe_bit_records;
+                            pin_here = (int)m;
+                        }
                         // Export the per-symbol decisions on the full window only -- same rule as
                         // the plain navwipe path (the longest rung sees every symbol the broker's
                         // CNAV stitcher wants).
                         const double amp = navwipe_amplitude(
-                            aw, us, &snr, &hw, (is_full && _bit_export) ? &nav_obs[p] : nullptr);
+                            aw, us, &snr, &hw, (is_full && _bit_export) ? &nav_obs[p] : nullptr,
+                            pin_here, &used_ph);
+                        if (pin < 0 && used_ph >= 0)
+                            pin = used_ph; // first (longest) rung searched: pin the rest to it
                         if (full_len == 0) { // ladder walks longest-first
                             full_amp = amp;
                             full_snr = snr;
@@ -1613,8 +1649,8 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
 double
 GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>& a,
                                         const std::vector<double>& utc, double* snr_out,
-                                        const std::vector<std::complex<double>>* head,
-                                        NavObs* obs) const {
+                                        const std::vector<std::complex<double>>* head, NavObs* obs,
+                                        int pin_phase, int* out_phase) const {
     const int br = _navwipe_bit_records;
     const int nrec = (int)a.size();
     if (br <= 0 || nrec < 2 * br)
@@ -1685,17 +1721,26 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
             *powsum = nb >= 2 ? g / nb : -1.0;
     };
 
-    // Bit sync: the phase (0..br-1) maximising the mean per-bit coherent power.
+    // Bit sync: the phase (0..br-1) maximising the mean per-bit coherent power -- UNLESS the
+    // caller pinned it. The search is br full passes over the window, so on a chain with many
+    // records per symbol it dominates everything else this function does; pinning is what makes
+    // the ladder affordable there (see the header note, and the caller's UTC-derived shift).
     int best_phase = 0;
-    double best_g = -1.0;
-    for (int phase = 0; phase < br; ++phase) {
-        double g;
-        bit_sums(phase, nullptr, &g);
-        if (g > best_g) {
-            best_g = g;
-            best_phase = phase;
+    if (pin_phase >= 0) {
+        best_phase = ((pin_phase % br) + br) % br;
+    } else {
+        double best_g = -1.0;
+        for (int phase = 0; phase < br; ++phase) {
+            double g;
+            bit_sums(phase, nullptr, &g);
+            if (g > best_g) {
+                best_g = g;
+                best_phase = phase;
+            }
         }
     }
+    if (out_phase)
+        *out_phase = best_phase;
     std::vector<cd> s;
     std::vector<long long> s_bi;
     bit_sums(best_phase, &s, nullptr, obs ? &s_bi : nullptr);
