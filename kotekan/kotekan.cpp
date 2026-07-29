@@ -590,6 +590,41 @@ int run_dry_run(Config& config) {
         return 1;
     }
 
+    // A kotekan stage BLOCKS until its inputs arrive, so a buffer left with consumers and no
+    // producer is not an error at construction -- it is a pipeline that starts, looks healthy,
+    // and silently wedges forever with no log line. That is exactly how the first live CHORD
+    // GNSS run failed: a stage the config pruned was the only producer of the packet-loss mask
+    // the transposes require, and the ingest stalled with DPDK happily filling its input buffer.
+    //
+    // The graph is fully known here -- every stage has registered -- so check it while we can.
+    // The reverse case (a producer with no consumer) is NOT an error: it is a normal way to
+    // disable an output leg, and those buffers simply fill and stop.
+    int stalled = 0;
+    const json bufs = mode->get_buffer_json();
+    for (auto it = bufs.begin(); it != bufs.end(); ++it) {
+        const json& b = it.value();
+        if (!b.is_object())
+            continue;
+        const bool has_prod = b.contains("producers") && b["producers"].is_object()
+                              && !b["producers"].empty();
+        const bool has_cons = b.contains("consumers") && b["consumers"].is_object()
+                              && !b["consumers"].empty();
+        if (has_prod || !has_cons)
+            continue;
+        std::string who;
+        for (auto c = b["consumers"].begin(); c != b["consumers"].end(); ++c)
+            who += (who.empty() ? "" : ", ") + c.key();
+        ERROR_NON_OO("dry run: buffer '{:s}' has consumers ({:s}) but NO producer -- those "
+                     "stages would block forever.",
+                     it.key(), who);
+        stalled++;
+    }
+    if (stalled > 0) {
+        ERROR_NON_OO("dry run: {:d} buffer(s) would stall the pipeline.", stalled);
+        delete mode;
+        return 1;
+    }
+
     INFO_NON_OO("dry run: pipeline constructed; tearing down without starting stages.");
     delete mode;
     INFO_NON_OO("dry run: teardown complete.");

@@ -833,6 +833,56 @@ packet_receipt_bitmap_buffers:
     numa_node: 1
     peek_hold: true
   use_hugepages: true
+process_packet_mask_0:
+  combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_0
+  cpu_affinity:
+  - 1
+  kotekan_stage: ProcessPacketMask
+  missing_source_ids:
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  num_frequency: num_local_freq
+  num_source_ids: num_crs_boards
+  pl_mask_buf: host_pl_mask_exp_buffer
+  receipt_bitmap_bufs:
+  - packet_receipt_bitmap_buffer_0
+  - packet_receipt_bitmap_buffer_1
+  voltage_buf: network_input_buffer_0
+process_packet_mask_1:
+  combined_receipt_bitmap_buf: combined_receipt_bitmap_buffer_1
+  cpu_affinity:
+  - 16
+  kotekan_stage: ProcessPacketMask
+  missing_source_ids:
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  num_frequency: num_local_freq
+  num_source_ids: num_crs_boards
+  pl_mask_buf: host_pl_mask_exp_buffer_1
+  receipt_bitmap_bufs:
+  - packet_receipt_bitmap_buffer_2
+  - packet_receipt_bitmap_buffer_3
+  voltage_buf: network_input_buffer_1
 rest_server:
   cpu_affinity:
   - 19
@@ -865,43 +915,6 @@ rfi_second_stage_thresholds:
   valid_at_time_ns: 0
 rfi_single_feed_min_good_frac: 0.25
 rfi_sk_rfimask_sigmas: 5.0
-run_send_voltage:
-  gpu_0:
-    commands:
-    - gpu_mem_output: voltage_buffer
-      in_buf: host_voltage_buffer_in
-      input_size: samples_per_data_set * num_elements * num_local_freq
-      name: cudaCopyToRingbuffer
-      ring_buffer_size: buffer_depth * input_size
-      signal_buf: host_voltage_ringbuffer_out
-    cpu_affinity:
-    - 12
-    - 13
-    - 14
-    gpu_id: 0
-    in_buffers:
-      host_voltage_buffer_in: host_voltage_buffer_0
-    kotekan_stage: cudaProcess
-    out_buffers:
-      host_voltage_ringbuffer_out: host_voltage_ringbuffer
-  gpu_1:
-    commands:
-    - gpu_mem_output: voltage_buffer
-      in_buf: host_voltage_buffer_in
-      input_size: samples_per_data_set * num_elements * num_local_freq
-      name: cudaCopyToRingbuffer
-      ring_buffer_size: buffer_depth * input_size
-      signal_buf: host_voltage_ringbuffer_out
-    cpu_affinity:
-    - 25
-    - 26
-    - 27
-    gpu_id: 1
-    in_buffers:
-      host_voltage_buffer_in: host_voltage_buffer_1
-    kotekan_stage: cudaProcess
-    out_buffers:
-      host_voltage_ringbuffer_out: host_voltage_ringbuffer_1
 samples_per_data_set: 8192
 sizeof_float32: 4
 sizeof_gpu_int: 4

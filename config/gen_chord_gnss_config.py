@@ -43,12 +43,31 @@ from chord_band_plan import covering_channels, node_channels  # noqa: E402
 
 DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 
-# Stages that exist only to feed the N2 science products. Dropped unless --keep-n2.
+# Stages that exist ONLY to feed the N2 science products. Dropped unless --keep-n2.
+#
+# ⚠️ GET THIS LIST WRONG AND THE PIPELINE SILENTLY STALLS. A kotekan stage blocks until its
+# inputs arrive, so dropping a stage that some SURVIVING stage consumes from does not raise an
+# error -- the consumer simply waits forever and the whole ingest wedges with no log line.
+# Two mistakes, both found on the first live run (2026-07-29):
+#
+#   * process_packet_mask was in this list. It is INGEST, not science: it turns DPDK's
+#     per-packet receipt bitmaps into host_pl_mask_exp_buffer, which TransposeBasebandArray
+#     REQUIRES. Dropped it, and both transposes blocked on their first frame -- DPDK happily
+#     filled network_input_buffer to 21/24 while host_voltage_buffer stayed empty.
+#
+#   * run_send_voltage was NOT in this list and needed to be. It uploads the full 402 MB frame
+#     to the GPU for the N2 correlator; with run_n2k dropped its output ringbuffer has no
+#     consumer, so it fills, blocks, and stops releasing host_voltage_buffer frames -- stalling
+#     the transposes from the other side. Our tap reads host_voltage_buffer directly and does
+#     not want that upload anyway, so dropping it also saves 9.6 GB/s of PCIe.
+#
+# The rule: drop only what nothing surviving CONSUMES from. --dry-run now checks this
+# (buffers left with consumers but no producer) instead of leaving it to a live stall.
 N2_STAGE_PREFIXES = (
     "run_n2k", "n2_accumulate", "eigencalc", "n2_subset", "hex_dump",
     "buffer_send_n2", "compute_RFI_frame_mask", "count_rfi_mask", "rfi_sk_metrics",
     "run_rfi_", "run_recv_rfi_", "run_pl_", "count_PL", "PL_mask_compactor",
-    "run_send_pl_mask", "set_bf_mask", "process_packet_mask",
+    "run_send_pl_mask", "set_bf_mask", "run_send_voltage",
 )
 
 
