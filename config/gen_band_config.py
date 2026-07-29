@@ -387,7 +387,17 @@ def build_band(node, band_id):
         prefix = chain_prefix(c)
         npv = np_var(c)
         add(npv, c["n_prn"], c=c.get("section_note"))
-        add(prefix + "rec_buf", std_buf("none", sh["expr"]["rec_frame"].format(np=npv)))
+        # rec_buf_depth: per-chain override of the combiner's INPUT elasticity, in frames.
+        # buffer_depth (16) is sized for a combiner whose emit is short compared with a frame.
+        # A combiner whose deep block takes far longer than one frame period stalls its input
+        # while it runs, and because gputrack is SHARED across the band, that backpressure
+        # reaches every chain on it -- one slow combiner drops the whole band's frames.
+        # MEASURED 2026-07-29: the L5-I composed wipe emits every ~1 s of data and takes 785 ms
+        # to do it, at a duty of 0.671 -- i.e. it KEEPS UP on average and only needs to ride out
+        # the burst. 16 frames is ~40 ms at L5. These frames are n_prn*record_floats*4 bytes
+        # (3 KB at n_prn 32), so depth here is essentially free.
+        add(prefix + "rec_buf", std_buf("none", sh["expr"]["rec_frame"].format(np=npv),
+                                        depth=c.get("rec_buf_depth", "buffer_depth")))
         add(prefix + "out_buf", std_buf("none", sh["expr"]["rec_frame"].format(np=npv)))
         add(prefix + "epl_buf",
             std_buf("none", c.get("epl_frame", sh["expr"]["epl_frame"]).format(np=npv)))

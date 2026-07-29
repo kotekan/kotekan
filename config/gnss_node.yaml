@@ -778,6 +778,15 @@ bands:
           NO peel on this chain either -- so NO epl_frame override (ROWS_PLAIN 4 -> the shared
           15360 default). Overriding it to the peel-sized 23040 is what failed the first
           launch: the buffer asked 770224 while the tracker allocated 524464.
+        # ★ MEASURED, not guessed (2026-07-29, the whole point of the new combiner metrics):
+        # with the composed wipe on, l5_i_combiner runs at DUTY 0.671 -- it KEEPS UP with real
+        # time on average -- but each emit takes 785 ms and they come every ~1 s of data. The
+        # default 16-frame rec_buf is ~40 ms at L5, so the combiner stalls its own input while
+        # it runs; i_rec_buf fills, i_assemble blocks, i_epl_buf fills, and gputrack -- SHARED
+        # by all four L5 chains -- blocks with it. That is why one slow combiner dropped the
+        # whole band. duty < 1 is precisely the case a buffer FIXES rather than postpones.
+        # 1200 frames ~ 3.0 s of GPU frames, ~3.8x the measured burst, at 3 KB/frame = ~3.7 MB.
+        rec_buf_depth: 1200
         tracker:
           fll_reacq_hz: 15.0
         combiner:

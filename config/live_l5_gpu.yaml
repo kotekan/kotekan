@@ -269,7 +269,7 @@ record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gps_l5_g
 # 15360 default). Overriding it to the peel-sized 23040 is what failed the first
 # launch: the buffer asked 770224 while the tracker allocated 524464.
 i_n_prn: 32
-i_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: i_n_prn * record_floats * sizeof_float }
+i_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: i_n_prn * record_floats * sizeof_float }
 i_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: i_n_prn * record_floats * sizeof_float }
 i_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * i_n_prn + 15360 * i_n_prn }
 i_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: i_epl_buf, out_buf: i_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] }
