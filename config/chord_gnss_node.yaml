@@ -1,0 +1,140 @@
+---
+# =============================================================================================
+# chord_gnss_node.yaml -- SINGLE SOURCE OF TRUTH for the CHORD-side GNSS instrument.
+#
+#   Mirrors the role gnss_node.yaml plays for the airspy node: every per-node config is
+#   GENERATED from this table. Hand-editing a generated config is a bug.
+#
+#   Unlike the airspy node, a CHORD node cannot run a second kotekan instance -- DPDK owns
+#   the NICs exclusively -- so a generated config is the LIVE PRODUCTION CONFIG PLUS a GNSS
+#   branch. The generator takes the production config as its base and injects; it never
+#   restates the production pipeline, so upstream changes to chord_pathfinder.j2 are picked
+#   up automatically.
+#
+# PROVENANCE. Every value below is either measured on cx19 (2026-07-28/29), read out of the
+# kotekan source, or quoted from the CRS F-engine paper (arXiv:2607.01625). Fields carrying
+# an `_unverified` suffix are assumptions that have NOT been confirmed -- treat them as bugs
+# waiting to happen, not as facts.
+# =============================================================================================
+
+fengine:
+  # arXiv:2607.01625 s2.2.2 -- and cross-checked against the live config + kotekan source.
+  sampling_rate_MHz: 3200.0     # pure real sampling, Nyquist zone 1 -> 0..1600 MHz
+  nyquist_zone: 1
+  fft_length: 16384             # M real samples per frame
+  num_bins: 8192                # positive-frequency bins
+  channel_width_hz: 195312.5    # 1600 MHz / 8192
+  pfb_taps: 4                   # "Ntaps=4-tap Hamming window ... 18-bit coefficient resolution"
+  pfb_window: hamming
+  pfb_critically_sampled: true  # CASPER pfb_fir_real block
+  dt_ns: 5120                   # VERIFIED: fft_length/sampling_rate, exact in the uint64 cast
+  # The FFT emits bins in decimation-in-frequency (bit-reversed) order and the reordering is
+  # "compensated for in downstream software" UPSTREAM of our tap point. Confirmed two ways:
+  # CHORDTelescope::to_freq_id reproduces the measured comb exactly, and the eigenvalue
+  # spectrum is smooth in freq_id (neighbour/scatter 0.086 vs 0.221 shuffled). So:
+  #     centre_hz(freq_id) = freq_id * channel_width_hz
+  freq_id_is_physical_bin: true
+  # Sample encoding at host_voltage_buffer: int4x2_swapped_withoffset, 1 byte per complex
+  # sample, low nibble = REAL, high nibble = IMAG, each stored as value+8.
+  # The F-engine clips to -7..+7, so a stored nibble of 0 must NEVER appear -- assert on it.
+  sample_min: -7
+  sample_max: 7
+
+clock:
+  # arXiv:2607.01625 s2 -- GNSS-disciplined 10 MHz + IRIG-B (Spectrum Instruments TM-4),
+  # dual-PLL/TCXO. The ADC clock is frequency-locked to GNSS, so the +2.6 ppm LO-vs-ADC
+  # offset (l-a) that gated the airspy node should start at ~0 here. MEASURE, don't assume.
+  profile: gpsdo
+  l_minus_a_ppm_prior: 0.0
+  # Short-term stability is TCXO-dominated inside the PLL loop bandwidth; this may cap
+  # coherent integration length. Unknown until measured.
+  max_coherent_s_unverified: 1.0
+
+station:
+  # From the live telescope config; altitude supplied by K. Vanderlinde 2026-07-29.
+  name: CHORD pathfinder (DRAO)
+  lat_deg: 49.32075144444
+  lon_deg: -119.62081125
+  alt_m: 545.0
+  # Full-hemisphere beam mapping: we want the low-elevation sky, so no elevation mask.
+  elevation_mask_deg: 0.0
+
+signals:
+  # All three share the 1176.45 MHz carrier and therefore the SAME covering channels --
+  # adding E5a/B2a costs no extra bandwidth, nodes, or GPU input, and roughly triples
+  # source density. That matters because GPS's 55 deg inclination leaves a coverage hole
+  # toward the north from latitude 49.3 N.
+  primary: GPS_L5_Q             # dataless pilot, 10230 chips, 1 ms primary, NH20 secondary
+  also_available: [GAL_E5A_Q, BDS_B2A_P]
+  carrier_hz: 1176.45e6
+  chip_rate_hz: 10.23e6
+  # Worst-case |Doppler| used to widen the occupied band. GPS geometric Doppler is
+  # ~+/-4.5 kHz at L1 for a stationary receiver; scaled to L5 that is ~+/-3.4 kHz.
+  # 5 kHz carries margin for clock error. (Negligible next to a 10.23 MHz half-band, but
+  # the band-plan math takes it, so state it explicitly rather than pass 0.)
+  max_doppler_hz: 5000.0
+
+science_band:
+  # freq_id = min_science_freq_id + index*128 + stream_id, index 0..47, stream_id 0..127
+  # (CHORDTelescope::to_freq_id). So the science band is exactly 48*128 = 6144 channels.
+  min_freq_id: 1536             # 300.000 MHz
+  max_freq_id: 7679             # 1499.805 MHz
+  num_freq_per_stream: 48
+  num_stream_ids: 128
+
+nodes:
+  # MEASURED from each node's /metrics on 2026-07-29 (eigencalc freq_id sets).
+  # A node holds every freq_id == comb_offset_mod8 (mod 8) within the science band: 768
+  # channels, split across its two GPUs as two stride-16 combs. Pairwise overlap between
+  # all four nodes is exactly zero, as expected -- each node owns 16 of the 128 stream_ids.
+  #
+  # These offsets are a SITE WIRING FACT, not something the config declares, so the
+  # generator emits a runtime assertion that the observed freq_ids match what is claimed
+  # here. If the wiring is ever changed, that assertion is what will catch it.
+  cx19: { host: cx19.site.chord-observatory.ca, comb_offset_mod8: 4, gpu_offsets_mod16: [4, 12] }
+  cx27: { host: cx27.site.chord-observatory.ca, comb_offset_mod8: 0, gpu_offsets_mod16: [0, 8] }
+  cx42: { host: cx42.site.chord-observatory.ca, comb_offset_mod8: 5, gpu_offsets_mod16: [5, 13] }
+  cx43: { host: cx43.site.chord-observatory.ca, comb_offset_mod8: 6, gpu_offsets_mod16: [6, 14] }
+
+  # Bring-up order. cx19+cx27 first: their offsets {0,4} are equally spaced, so the union
+  # is a clean uniform stride-4 comb whose delay response is analytic -- worth more during
+  # bring-up than the extra channels. Then extend to all four, where the comb goes
+  # non-uniform, the first alias drops to -6 dB, and we gain 6 dB of beam dynamic range
+  # over a single node.
+  bringup_order: [cx19, cx27, cx42, cx43]
+
+array:
+  # 32 of 128 elements carry data (SK ~1.0); elements 32..127 read flat.
+  # element index -> dish = e % num_dishes, pol = e / num_dishes  (CHORDBeamformer order,
+  # which is the fiducial order -- NOT the dish*2+pol of CHORDEarly).
+  num_dishes: 64
+  num_polarizations: 2
+  live_elements: [0, 31]        # inclusive range: CRS boards 00..03, 8 feeds each
+  # Rows A and B only (16 dual-pol dishes); rows C/D are configured but not instrumented.
+  # DO NOT TRUST any of this as a liveness statement -- deployment is active and feeds come
+  # and go. It is a prior. Authoritative liveness is per-feed despread SNR, computed live.
+  known_bad_elements: [16]      # A5X, flagged in the live config's bad_inputs
+  # ~28 dB down relative to the pack in the digital gain table (2026-07-21 acquisition);
+  # either badly attenuated or effectively dead. Not flagged upstream. Verify per-feed.
+  suspect_weak_elements: [1, 4, 5, 7, 12]   # A2X, B1X, B2X, B4X, B1Y
+
+gains:
+  # Per-bin, per-input digital gain applied in firmware before the 4+4 bit requantization.
+  # Stored complex64 but PURELY REAL (phase == 0 on every entry); gain_exp == -1 uniformly.
+  # These are part of the sky-to-bits chain and are absorbed into the end-to-end gain we
+  # solve for -- they are NOT divided out. We snapshot them to detect RE-TUNES mid-track,
+  # which would otherwise look like a genuine instrumental gain step.
+  source_url: http://10.222.0.54:54321/get-current-gain-file
+  format: hdf5                  # gain_coeff[1, 8192, 128], index_map/{freq,input}
+  snapshot_on_start: true
+  alarm_on_change: true
+
+runtime:
+  # Cores verified free on cx19: unclaimed by the production config AND measured idle.
+  # DPDK poll cores (5-7, 21-23 and their isolcpus siblings 37-39, 53-55) are at 0% idle
+  # and must never be touched. NUMA1 keeps us on the same domain as host_voltage_buffer_1.
+  cpu_affinity: [19, 24, 31, 57, 58, 59, 60, 61, 62, 63]
+  rest_port: 12049              # production owns 12048
+  # /home is NFS (shared across all four nodes -- good for code/config, wrong for records).
+  record_dir: /data/gnss        # local disk; / has 2.6 TB free on cx19
+  venv: /home/kvand/gnss/venv   # skyfield 1.54 + numpy/scipy/h5py/yaml/requests
