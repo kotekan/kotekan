@@ -165,6 +165,142 @@ class StateWriter:
             return False
 
 
+def sources_from(rec):
+    """Every independent LO measurement a chain's record carries, as FRACTIONAL ppm.
+
+    ★ WHY PPM IS THE FUSED FRAME. The carrier estimator reports Hz at its own band and the
+    code estimator reports l-a in ppm, but both measure ONE fractional clock error -- which
+    is why their sum in ppm vanishes (measured 0.00022-0.00080 ppm on all 8 chains). ppm is
+    the frame where they are literally the same number; each chain converts back through its
+    own carrier frequency. Fusing in Hz would silently mean three different quantities on a
+    three-band node.
+
+    ★ ONLY `raw_*` IS READ, NEVER the smoothed `hz`/`ppm`. The smoothed values already
+    incorporate the siblings via --clock-bias-siblings, so fusing them would feed the
+    estimate back on itself: the result would tighten with every pass and its covariance
+    would be fiction. Raw values are independent per chain, which is what makes the
+    inverse-variance weights mean anything.
+
+    The two RESIDUAL monitors (car_trim, dr drift) are deliberately NOT sources -- measured
+    at 0.000-0.113 of the primary, they are what is left after the seed already carries the
+    estimate, so counting them would be double-counting the same information.
+    """
+    out = []
+    fc = rec.get("carrier_hz")
+    c = rec.get("carrier") or {}
+    if fc and c.get("raw_hz") is not None:
+        se = se_of_median(c.get("mad_hz"), c.get("n"))
+        if se:
+            out.append({"chain": rec.get("chain"), "family": "carrier",
+                        "ppm": float(c["raw_hz"]) / float(fc) * 1e6,
+                        "se_ppm": se / float(fc) * 1e6, "n": c.get("n")})
+    d = rec.get("code") or {}
+    if d.get("raw_ppm") is not None:
+        se = se_of_median(d.get("mad_ppm"), d.get("n"))
+        if se:
+            # OPPOSITE SIGN CONVENTION: l-a is +0.0956 ppm where the carrier reads -0.0958.
+            out.append({"chain": rec.get("chain"), "family": "code",
+                        "ppm": -float(d["raw_ppm"]), "se_ppm": se, "n": d.get("n")})
+    return out
+
+
+def fuse_dongle(records, floor_ppm=0.0, reject_sigma=0.0):
+    """Fuse every chain's independent measurements into ONE fractional LO estimate.
+
+    `records` are the state records for a single dongle (one airspy, one LO, one physical
+    number). Returns None when nothing usable is present -- absent, not zero.
+
+    COVARIANCE FLOOR (`floor_ppm`): no source may claim a standard error below this. Without
+    it a chain that momentarily reports a tiny MAD -- a handful of satellites that happen to
+    agree -- takes essentially all the weight and captures the estimate. Measured evidence
+    says no floor is needed today (pairwise |z| = 0.2 across chains on both multi-chain
+    dongles, i.e. the spread is pure noise), but the floor costs nothing and the failure it
+    prevents is the one that hurts every chain at once.
+
+    REJECTION (`reject_sigma`, 0 = off): drop sources further than N sigma from the
+    unrejected fit, then refit once. Reported alongside the unrejected answer so the effect
+    of rejecting is always visible rather than silent.
+    """
+    src = []
+    for r in records:
+        src.extend(sources_from(r))
+    if not src:
+        return None
+
+    def _fit(items):
+        num = den = 0.0
+        for s in items:
+            se = max(float(s["se_ppm"]), float(floor_ppm)) if floor_ppm else float(s["se_ppm"])
+            if se <= 0:
+                continue
+            w = 1.0 / (se * se)
+            num += float(s["ppm"]) * w
+            den += w
+        if den <= 0:
+            return None, None
+        return num / den, math.sqrt(1.0 / den)
+
+    ppm_all, se_all = _fit(src)
+    if ppm_all is None:
+        return None
+
+    def _se(s):
+        return (max(float(s["se_ppm"]), float(floor_ppm)) if floor_ppm
+                else float(s["se_ppm"]))
+
+    for s in src:
+        s["rejected"] = False
+
+    ppm, se_ = ppm_all, se_all
+    n_rej = 0
+    all_out = False
+    if reject_sigma and len(src) > 2:
+        # ★★ REJECT AGAINST A ROBUST CENTRE, NEVER THE MEAN THE OUTLIER POISONED.
+        # Judging residuals against the inverse-variance mean is the classic breakdown:
+        # with one bad source among three, the mean is dragged far enough that the GOOD
+        # sources also exceed the threshold, the survivor list comes back EMPTY, and a
+        # naive `if keep:` then rejects nothing and publishes the contaminated estimate
+        # while reporting n_rejected = 0 -- "everything looks fine". That is precisely the
+        # "one poisoned input hits every chain" coupling risk, occurring inside the fuser
+        # meant to contain it. The median is uncontaminated by a minority of bad sources.
+        centre = statistics.median([float(s["ppm"]) for s in src])
+        keep = [s for s in src if abs(float(s["ppm"]) - centre) / _se(s) <= reject_sigma]
+        if not keep:
+            # Every source disagrees with the robust centre: pathological, and NOT
+            # something to paper over by silently keeping everything. Publish the
+            # unrejected fit but say so loudly.
+            all_out = True
+        elif len(keep) < len(src):
+            p2, s2 = _fit(keep)
+            if p2 is not None:
+                kept = {id(s) for s in keep}
+                for s in src:
+                    s["rejected"] = id(s) not in kept
+                n_rej = len(src) - len(keep)
+                ppm, se_ = p2, s2
+
+    # per-source residual against the PUBLISHED estimate -- THE health monitor
+    # (mitigation #1), reported for every source whether or not rejection is enabled.
+    for s in src:
+        s["resid_ppm"] = float(s["ppm"]) - ppm
+        s["resid_sigma"] = (abs(s["resid_ppm"]) / _se(s)) if _se(s) > 0 else None
+
+    return {
+        "lo_ppm": ppm,
+        "se_ppm": se_,
+        "lo_ppm_norej": ppm_all,
+        "n_src": len(src),
+        "n_rejected": n_rej,
+        "all_outliers": all_out,
+        "n_carrier": sum(1 for s in src if s["family"] == "carrier" and not s["rejected"]),
+        "n_code": sum(1 for s in src if s["family"] == "code" and not s["rejected"]),
+        "chains": sorted({s["chain"] for s in src if s["chain"] and not s["rejected"]}),
+        "worst_sigma": max([s["resid_sigma"] for s in src
+                            if s["resid_sigma"] is not None and not s["rejected"]] or [None]),
+        "sources": src,
+    }
+
+
 def read_state(path, max_age_s=None, t_now=None):
     """Read one chain's state. Returns None if absent, malformed, or stale.
 

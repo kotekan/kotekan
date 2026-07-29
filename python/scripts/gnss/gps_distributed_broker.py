@@ -474,6 +474,38 @@ def main(argv=None):
                          "chain on it). Do NOT fuse across dongles -- the per-band offsets "
                          "(-151/-15/+31 Hz) are frac-N synthesis constants, not a common "
                          "reference error, and averaging them is meaningless.")
+    ap.add_argument("--state-fuse", type=int, default=1,
+                    help="with --state-file: also compute and PUBLISH this dongle's fused "
+                         "fractional LO estimate (S2c). STILL WRITE-ONLY -- no seed, gate "
+                         "or estimator consumes it; the broker logs what the fused prior "
+                         "WOULD have said beside what the chain actually uses, so the flip "
+                         "is decided on a soak of evidence rather than on argument. Fuses "
+                         "in ppm because carrier (Hz at this band) and code (l-a in ppm) "
+                         "measure the same FRACTIONAL error, and only from siblings' RAW "
+                         "values -- fusing their smoothed ones would feed the estimate back "
+                         "on itself and its covariance would be fiction.")
+    ap.add_argument("--state-fuse-floor-ppm", type=float, default=0.001,
+                    help="covariance FLOOR: no source may claim a standard error below "
+                         "this. ON by default, and the default was chosen from a live "
+                         "capture, not from theory. The 15-min cross-chain scan said a "
+                         "floor was unnecessary (pairwise |z| = 0.2 -- pure noise), but "
+                         "that scan compared MEDIANS over 150 samples and the fuser runs "
+                         "PER CYCLE: on the very first live fusion the L5 GPS chain claimed "
+                         "se = 0.00018 ppm (0.21 Hz, 100x tighter than any sibling) while "
+                         "sitting 22.7 sigma off, because its handful of satellites "
+                         "happened to agree that cycle. Its inverse-variance weight alone "
+                         "would have dragged the dongle's answer from +32.3 Hz to +14.7 Hz "
+                         "with all three chains actually at +31.5..+33.8. MAD over 2-6 "
+                         "satellites is a poor scatter estimate and can come out near zero "
+                         "by chance; the floor is the statement that no chain can beat "
+                         "~1.5 Hz from a few sats no matter what its MAD says.")
+    ap.add_argument("--state-fuse-reject-sigma", type=float, default=5.0,
+                    help="drop a source this far from the ROBUST (median) centre, then "
+                         "refit. Judged against the median, never the inverse-variance "
+                         "mean: with one bad source among three the mean is dragged far "
+                         "enough that the GOOD sources also exceed the bar, the survivor "
+                         "list comes back empty and a naive implementation then rejects "
+                         "nothing while publishing the contaminated estimate. 0 disables.")
     ap.add_argument("--state-flush-s", type=float, default=1.0,
                     help="--state-file publish cadence (s). Current state only; history is "
                          "the scorer's job (8 brokers appending at 1 Hz is ~200 MB/day in a "
@@ -1202,9 +1234,11 @@ def main(argv=None):
     # never stop a broker from starting: a diagnostic riding in a live receiver's control
     # loop must fail to nothing, not fail loudly.
     state_w = None
+    _state_dir = None
     if args.state_file:
         try:
             import receiver_state
+            _state_dir = os.path.dirname(args.state_file) or "."
             state_w = receiver_state.StateWriter(
                 args.state_file,
                 chain=os.path.basename(args.state_file).rsplit(".", 1)[0],
@@ -3196,6 +3230,49 @@ def main(argv=None):
                         untrusted=len(dr_untrusted),
                         age_s=(round(t0 - dr_state["clk_t"], 2)
                                if dr_state.get("clk_t") else None))
+                # ---- S2c: fuse this dongle's chains, PUBLISH, consume NOTHING ----
+                # Sources are read from the state files, self included (self's record is up
+                # to one flush old -- irrelevant for a quantity measured flat within noise
+                # over 15 min, and it keeps the ordering trivial). No feedback loop exists:
+                # sources_from() reads only `carrier.raw_hz` / `code.raw_ppm`, never the
+                # `fused` group this writes back.
+                if args.state_fuse and _state_dir:
+                    _recs = receiver_state.read_dongle(
+                        _state_dir, args.state_dongle, max_age_s=30.0, t_now=t0)
+                    _fus = receiver_state.fuse_dongle(
+                        _recs, floor_ppm=args.state_fuse_floor_ppm,
+                        reject_sigma=args.state_fuse_reject_sigma)
+                    if _fus:
+                        state_w.observe(
+                            "fused",
+                            lo_ppm=_fus["lo_ppm"], se_ppm=_fus["se_ppm"],
+                            lo_ppm_norej=_fus["lo_ppm_norej"],
+                            n_src=_fus["n_src"], n_carrier=_fus["n_carrier"],
+                            n_code=_fus["n_code"], n_rejected=_fus["n_rejected"],
+                            all_outliers=_fus["all_outliers"],
+                            worst_sigma=_fus["worst_sigma"], chains=_fus["chains"],
+                            hz_here=_fus["lo_ppm"] * 1e-6 * args.carrier_hz)
+                        # SHADOW LINE: what the fused prior says, beside what this chain is
+                        # actually using. The delta is the whole S2d decision, logged every
+                        # minute so a soak can be read straight out of the broker log.
+                        _fhz = _fus["lo_ppm"] * 1e-6 * args.carrier_hz
+                        _own = clock_bias_ema
+                        _log_rl("shadowfuse",
+                                "SHADOW fused LO %+.5f ppm +-%.5f (%d src: %dc/%dd over %s"
+                                "%s%s) -> %+.2f Hz here; chain uses %s; delta %s "
+                                "[NOT CONSUMED]"
+                                % (_fus["lo_ppm"], _fus["se_ppm"] or 0.0, _fus["n_src"],
+                                   _fus["n_carrier"], _fus["n_code"],
+                                   ",".join(_fus["chains"]),
+                                   "; REJECTED %d" % _fus["n_rejected"]
+                                   if _fus["n_rejected"] else "",
+                                   "; ALL-OUTLIERS (no majority -- do not trust)"
+                                   if _fus["all_outliers"] else "",
+                                   _fhz,
+                                   ("%+.2f Hz" % _own) if _own is not None else "UNSOLVED",
+                                   ("%+.2f Hz" % (_fhz - _own)) if _own is not None
+                                   else "n/a (this is exactly the case fusion rescues)"),
+                                every_s=60.0)
                 state_w.flush(t0)
             except Exception:
                 pass
