@@ -844,16 +844,53 @@ void GnssCoherentCombiner::main_thread() {
                 // search would (a) cost L x the navwipe on the band with the least real-time
                 // slack and (b) be statistically worse -- every extra maximisation rectifies more
                 // noise, and the floor would have to grow to pay for selections that buy nothing.
+                // ★★ AND IT IS SCORED BY A CHEAP O(n) STATISTIC, NOT BY navwipe.
+                // The first cut of this branch scored each alignment with navwipe_amplitude --
+                // which runs its OWN bit-phase search over navwipe_bit_records alignments. The
+                // two searches then MULTIPLY: 10 NH x 20 bit-phase = 200 inner passes per PRN
+                // per emit, which took /l5_valve to 57327 in six minutes (2026-07-29 02:05Z).
+                // No ladder tuning fixes a product.
+                //
+                // navwipe is only needed to MEASURE the winner, not to RANK the candidates.
+                // Ranking just needs a statistic that peaks at the right alignment and is blind
+                // to the symbol signs: sum over fixed blocks of |coherent sum of the NH-wiped
+                // records in that block|. A wrong NH alignment leaves residual +-1 overlay
+                // modulation INSIDE every block, which cancels the block sum; the right one
+                // leaves only the (constant-within-a-symbol) data sign, which |.| discards.
+                // The block grid is fixed and generally misaligned to the true symbol epoch --
+                // deliberately fine, because that misalignment costs EVERY candidate the same
+                // and this statistic is only ever used for argmax. navwipe then does the real
+                // bit-phase search once, at the winner.
+                // Cost: L x O(n) to rank + ONE navwipe per rung, i.e. 10 + 20 instead of 10 x 20.
+                //
+                // ⚠️ KNOWN LIMIT, measured: selection is reliable at per-record S >~ 0.25
+                // (19-20/20 on synthetic data) and degrades below it (6/20 at S=0.12). A sat
+                // that weak cannot clear its floor anyway, and the failure is FAIL-CLOSED: a
+                // wrong alignment despreads noise, navwipe reads low, the floor gate rejects it,
+                // and the next emit (0.1 s later) re-picks. It cannot manufacture a detection.
                 int best_ph = -1;
                 {
-                    double best = 0.0;
+                    double best = -1.0;
+                    const size_t B = (size_t)std::max(_navwipe_bit_records, 1);
                     for (size_t ph = 0; ph < L; ++ph) {
                         if (!gnss::overlay_apply(ab, ub, ov, (int)ph, &hb, aw, &hw))
                             continue;
-                        double snr = 0.0;
-                        navwipe_amplitude(aw, ub, &snr, &hw);
-                        if (snr > best) {
-                            best = snr;
+                        // POWER, not magnitude: under noise E[|s|^2] is a constant independent
+                        // of the alignment, so it biases every candidate equally and cancels in
+                        // the argmax, while the signal term adds linearly. Measured on synthetic
+                        // NH10 x random-symbol data, power roughly DOUBLES the margin over the
+                        // runner-up vs sum|s| (4.95 vs 2.16 at per-record S=1; 1.36 vs 1.15 at
+                        // S=0.25) for identical cost.
+                        double stat = 0.0;
+                        for (size_t i = 0; i < aw.size(); i += B) {
+                            std::complex<double> s(0.0, 0.0);
+                            const size_t e = std::min(i + B, aw.size());
+                            for (size_t j = i; j < e; ++j)
+                                s += aw[j];
+                            stat += std::norm(s);
+                        }
+                        if (stat > best) {
+                            best = stat;
                             best_ph = (int)ph;
                         }
                     }
