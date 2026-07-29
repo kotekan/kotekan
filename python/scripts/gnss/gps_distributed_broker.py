@@ -455,6 +455,29 @@ def main(argv=None):
                          "(~8-10) -- an identifiability fix, not a tuning knob. Chains in "
                          "drift-alarm stop persisting, so poisoned estimates go quiet "
                          "automatically.")
+    ap.add_argument("--state-file", default=None,
+                    help="S2 / Mechanism B OBSERVER: publish this chain's receiver-state "
+                         "estimates as JSON (atomically replaced, ~1 Hz) for cross-chain "
+                         "comparison. WRITE-ONLY -- exporting changes no estimate and no "
+                         "seed. It exists because eight brokers estimate the same four "
+                         "physical quantities independently, four of them measure the SAME "
+                         "per-dongle clock error by different routes (search-Doppler median, "
+                         "carrier-loop trim, l-a slope, DR drift), nothing has ever compared "
+                         "carrier-side against code-side, and NOTHING anywhere carries a "
+                         "variance -- so the covariance-weighted fuser this is a prerequisite "
+                         "for cannot yet be written. Exports each chain's PRE-fusion value "
+                         "and its scatter, because the persisted .hz files already read each "
+                         "other and their agreement is therefore partly manufactured.")
+    ap.add_argument("--state-dongle", default=None,
+                    help="fusion scope key for --state-file: what physically shares an LO "
+                         "(one airspy per band, so this is the band tag, identical for every "
+                         "chain on it). Do NOT fuse across dongles -- the per-band offsets "
+                         "(-151/-15/+31 Hz) are frac-N synthesis constants, not a common "
+                         "reference error, and averaging them is meaningless.")
+    ap.add_argument("--state-flush-s", type=float, default=1.0,
+                    help="--state-file publish cadence (s). Current state only; history is "
+                         "the scorer's job (8 brokers appending at 1 Hz is ~200 MB/day in a "
+                         "cache directory that has to survive reboots).")
     ap.add_argument("--clock-bias-alarm-hz", type=float, default=10.0,
                     help="CLOCK DRIFT ALARM bar: loud log if the live bias EMA departs the "
                          "warm-start calibration by more than this (GPSDO unlock / thermal "
@@ -841,7 +864,7 @@ def main(argv=None):
                          "2026-07-25 collapsed the GPS chain to 0/14 peeling with every PRN on "
                          "`nobits` and every gain reset -- the 30 s tables make the seed POST "
                          "~14.5k numbers and the whole seed push appears to stop landing. The "
-                         "bit CONTENT is validated (113820/113820 offline, hold-one-out 100%); "
+                         "bit CONTENT is validated (113820/113820 offline, hold-one-out 100%%); "
                          "it is the transport that needs sizing before this goes back on.")
     ap.add_argument("--nav-bits", type=int, default=1,
                     help="LNAV decode-and-predict from the combiner's nav_obs export "
@@ -1175,6 +1198,25 @@ def main(argv=None):
     _bias_meas_t = time.time()     # last multi-sat bias measurement (stale-rescue clock;
                                    # birth-stamped so warm-start gets a full grace window)
     bias_stale = False             # solved-but-unmeasured for > --bias-stale-s
+    # S2 observer (write-only). Import is local + tolerant so a missing/broken module can
+    # never stop a broker from starting: a diagnostic riding in a live receiver's control
+    # loop must fail to nothing, not fail loudly.
+    state_w = None
+    if args.state_file:
+        try:
+            import receiver_state
+            state_w = receiver_state.StateWriter(
+                args.state_file,
+                chain=os.path.basename(args.state_file).rsplit(".", 1)[0],
+                dongle=args.state_dongle or "unknown",
+                carrier_hz=args.carrier_hz, log=_log,
+                flush_s=args.state_flush_s)
+            _log("receiver-state export -> %s (dongle %s, %.1f s) [WRITE-ONLY: no estimate "
+                 "or seed consumes this yet]"
+                 % (args.state_file, args.state_dongle, args.state_flush_s))
+        except Exception as e:
+            _log("receiver-state export DISABLED: %s" % e)
+            state_w = None
     CODE_LEN = float(args.code_length)
     # Search-Doppler record-alias quantum, 1/(2*t_rec): see the DETECTION ALIAS FOLD
     # in the seeding loop. 500 Hz on the 1 ms bands (never confused), 125 E1C, 50 B1C,
@@ -1434,6 +1476,28 @@ def main(argv=None):
                                 "(|d| > %.0f Hz, %d sats) -- GPSDO unlock / thermal event? INVESTIGATE"
                                 % (clock_bias_ema, clock_bias_cal, _abar, len(resid)),
                                 every_s=60.0)
+            # S2 OBSERVER: publish the carrier-side estimate. OUTSIDE the solve gate on
+            # purpose -- an unsolved chain is exactly the case the fused state exists to
+            # rescue, so it has to be visible, and `null` is how that is said (never 0).
+            # `raw_hz` is this chain's OWN median, computed here rather than reusing
+            # `raw_bias` above, which is already sibling-FUSED. Scoring cross-chain
+            # agreement on a fused number measures the fusion, not the estimator.
+            if state_w is not None:
+                try:
+                    _raw_local = statistics.median(resid) if resid else None
+                    state_w.observe(
+                        "carrier",
+                        hz=clock_bias_ema,
+                        raw_hz=_raw_local,
+                        mad_hz=receiver_state.mad(resid, _raw_local),
+                        n=len(resid),
+                        sib_hz=(_sib_bw / _sib_w) if _sib_w else None,
+                        sib_n=n_sib,
+                        cal_hz=clock_bias_cal,
+                        stale=bool(bias_stale),
+                        meas_age_s=round(t0 - _bias_meas_t, 2))
+                except Exception:
+                    pass
             for p in sorted(best):
                 if p in pred:
                     _log_rl("meas-%d" % p,
@@ -2755,6 +2819,28 @@ def main(argv=None):
                     car_step_hist.pop(k, None)
                     car_fade.pop(k, None)
 
+        # S2 OBSERVER: the SECOND carrier-side estimator of the same LO. `car_trim`'s own
+        # arg help calls the converged fleet trim "the chain's deterministic frac-N LO
+        # offset ... stable across restarts (e.g. the L5 chain sits ~+30 Hz)" -- which is
+        # the same physical number `clock_bias_ema` solves for from search Doppler, on a
+        # different observable and a different timescale. The two have never been compared
+        # and this one is never persisted, so it is rebuilt from zero every launch despite
+        # being described as a restart-stable constant. Exported outside the carrier-loop
+        # gate so a chain with the loop disabled reports null rather than vanishing.
+        if state_w is not None:
+            try:
+                _ct = sorted(car_trim.values())
+                _ctm = statistics.median(_ct) if _ct else None
+                state_w.observe(
+                    "carrier_trim",
+                    median_hz=_ctm,
+                    mad_hz=receiver_state.mad(_ct, _ctm),
+                    n=len(_ct),
+                    railed=sum(1 for v in _ct if args.carrier_max_hz > 0.0
+                               and abs(v) >= 0.95 * args.carrier_max_hz))
+            except Exception:
+                pass
+
         # 3b. Receiver code-rate clock offset (l-a): pool the strong sats' per-fit samples (robust
         # median), EMA-smooth it (slow -> tracks TCXO/OCXO drift), then SEED it to every sat that
         # could NOT fit its own slope (weak / just-acquired / coasting) as carrier-aiding + (l-a).
@@ -2787,6 +2873,24 @@ def main(argv=None):
                             f.write("%.4f\n" % (code_bias_ema * 1e6))
                     except Exception:
                         pass
+        # S2 OBSERVER: the code-side twin. Outside the min-sats gate, same reason as the
+        # carrier export. This one is the honest cross-chain comparison of the two: l-a has
+        # NO sibling fusion at all, so its spread across a band's chains is a real measure
+        # of estimator scatter, where the carrier's is partly manufactured by the fusion.
+        if state_w is not None:
+            try:
+                _raw_la = statistics.median(la_samples) if la_samples else None
+                state_w.observe(
+                    "code",
+                    ppm=(code_bias_ema * 1e6) if code_bias_ema is not None else None,
+                    raw_ppm=(_raw_la * 1e6) if _raw_la is not None else None,
+                    mad_ppm=(lambda m: m * 1e6 if m is not None else None)(
+                        receiver_state.mad(la_samples, _raw_la)),
+                    n=len(la_samples),
+                    cal_ppm=(code_bias_cal * 1e6) if code_bias_cal is not None else None,
+                    forced=args.code_bias_force is not None)
+            except Exception:
+                pass
         cb_to_seed = (args.code_bias_force * 1e-6 if args.code_bias_force is not None
                       else code_bias_ema)
         if cb_to_seed is not None:
@@ -3055,6 +3159,29 @@ def main(argv=None):
         if cl_report:
             _log_rl("clreport", "CL: " + "; ".join(cl_report))
 
+        # S2 OBSERVER: receiver clock, then publish the whole record. dr_state persists
+        # across cycles so it is read here rather than at its solve site -- and it is the
+        # one shared quantity with ZERO persistence today, so every restart re-bootstraps
+        # it from nothing. `integ` is the only per-measurement residual the system keeps
+        # anywhere; it is used to VETO satellites and has never been used as a weight.
+        if state_w is not None:
+            try:
+                if dr_state is not None:
+                    _iw = time.time()
+                    _ir = [v[0] for v in dr_state.get("integ", {}).values()
+                           if isinstance(v, (list, tuple)) and _iw - v[1] < 30.0]
+                    state_w.observe(
+                        "rxclock",
+                        chips=dr_state.get("clk"),
+                        drift_chips_s=dr_state.get("drift"),
+                        n=len(_ir),
+                        integ_mad_chips=receiver_state.mad(_ir),
+                        untrusted=len(dr_untrusted),
+                        age_s=(round(t0 - dr_state["clk_t"], 2)
+                               if dr_state.get("clk_t") else None))
+                state_w.flush(t0)
+            except Exception:
+                pass
         if args.once:
             return
         dt = args.interval - (time.time() - t0)
