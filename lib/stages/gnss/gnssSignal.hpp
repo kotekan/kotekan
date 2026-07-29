@@ -117,7 +117,15 @@ inline constexpr SignalDescriptor GPS_L2C_CL = {
 inline constexpr SignalDescriptor GPS_L5_I = {
     "GPS_L5_I", 1176.45e6, 10.23e6, 10230, 1e-3,
     Modulation::BPSK, 0, 0,
-    /*pilot=*/false, /*nav_symbol_s=*/20e-3, /*secondary_length=*/10,
+    // 10 ms, NOT 20 (corrected 2026-07-29). L5 CNAV is 50 bps through the rate-1/2 FEC =
+    // 100 sps, so a post-FEC SYMBOL is 10 ms = ten 1 ms I5 code periods. L2C is 25 bps ->
+    // 50 sps -> 20 ms, which is where the 20e-3 came from. The giveaway is on this very line:
+    // secondary_length 10 means NH10 spans 10 ms, and NH10 covers exactly ONE symbol by
+    // construction -- a 20 ms symbol beside a 10 ms overlay was internally inconsistent.
+    // Documentary field (no logic reads it), but the combiner's navwipe_bit_records is set
+    // from this understanding, and at 20 the wipe straddles TWO symbols whose signs differ
+    // half the time -- which is what blocked the L5 CNAV decode (g2 never locked).
+    /*pilot=*/false, /*nav_symbol_s=*/10e-3, /*secondary_length=*/10,
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
 };
 
