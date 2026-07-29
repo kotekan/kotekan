@@ -285,9 +285,19 @@ def fuse_dongle(records, floor_ppm=0.0, reject_sigma=0.0):
         s["resid_ppm"] = float(s["ppm"]) - ppm
         s["resid_sigma"] = (abs(s["resid_ppm"]) / _se(s)) if _se(s) > 0 else None
 
+    # DOMINANCE: what fraction of the total weight does the single heaviest source hold?
+    # Diversity is the whole point of fusing -- an estimate carried by one source inherits
+    # that source's failure modes and only looks fused. Measured live on L5, one chain's
+    # carrier holds ~76% even after the floor, because its siblings' errors there are
+    # genuinely 10-100x worse. That is not a bug (the contest still shows L5 improving
+    # 1.75x), but it is a property a consumer should be able to see rather than infer.
+    _w = [1.0 / (_se(s) ** 2) for s in src if not s["rejected"] and _se(s) > 0]
+    dom = (max(_w) / sum(_w)) if _w else None
+
     return {
         "lo_ppm": ppm,
         "se_ppm": se_,
+        "dominance": dom,
         "lo_ppm_norej": ppm_all,
         "n_src": len(src),
         "n_rejected": n_rej,

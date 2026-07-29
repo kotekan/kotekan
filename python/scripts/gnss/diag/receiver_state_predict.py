@@ -301,7 +301,14 @@ def _f(v):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--json", default=None, help="samples dumped by receiver_state_score.py")
+    ap.add_argument("--json", default=None,
+                    help="INPUT: a samples dump to score (from --save here, or from "
+                         "receiver_state_score.py --json). This is a file to READ. To WRITE "
+                         "one while sampling live, use --save -- confusing the two silently "
+                         "cost a 60 min soak that appeared to be running and was not.")
+    ap.add_argument("--save", default=None,
+                    help="OUTPUT: write the live samples here as well as scoring them, so a "
+                         "long run can be re-scored later without re-sampling the sky.")
     ap.add_argument("--dir", default=os.path.expanduser("~/.cache/kotekan_gps/state"))
     ap.add_argument("--samples", type=int, default=200)
     ap.add_argument("--interval", type=float, default=6.0)
@@ -319,6 +326,13 @@ def main():
     if not hist:
         print("no state samples")
         return 1
+    if args.save:
+        try:
+            with open(args.save, "w") as f:
+                json.dump(hist, f)
+            print("samples saved -> %s" % args.save)
+        except Exception as e:
+            print("could not save samples: %s" % e)
     print("chains: %s" % ", ".join("%s x%d" % (c, len(r)) for c, r in sorted(hist.items())))
     errs = contest(hist, args.align_tol_s, max(1, args.target_window))
     if errs:

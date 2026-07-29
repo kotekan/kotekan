@@ -484,6 +484,18 @@ def main(argv=None):
                          "measure the same FRACTIONAL error, and only from siblings' RAW "
                          "values -- fusing their smoothed ones would feed the estimate back "
                          "on itself and its covariance would be fiction.")
+    ap.add_argument("--state-consume", type=int, default=0,
+                    help="S2d THE FLIP: actually CONSUME the fused state -- the seeded "
+                         "clock bias becomes the dongle's fused estimate, always, rather "
+                         "than this chain's own. Not a fallback: 'own, falling back to "
+                         "fused when unsolved' is a rescue path, and a rescue path only "
+                         "runs in the condition it rescues, which is exactly how 682ee91b "
+                         "shipped and sat unexercised. The chain's own measurement is one "
+                         "INPUT to the fused state; it consumes the OUTPUT unconditionally. "
+                         "No special case is needed for a lone chain -- with one chain the "
+                         "fusion degenerates to that chain's own carrier+code combination, "
+                         "still better than carrier alone. Default OFF: turn on only after "
+                         "a soak of the SHADOW deltas shows fusion helps and harms nobody.")
     ap.add_argument("--state-fuse-floor-ppm", type=float, default=0.001,
                     help="covariance FLOOR: no source may claim a standard error below "
                          "this. ON by default, and the default was chosen from a live "
@@ -1230,6 +1242,28 @@ def main(argv=None):
     _bias_meas_t = time.time()     # last multi-sat bias measurement (stale-rescue clock;
                                    # birth-stamped so warm-start gets a full grace window)
     bias_stale = False             # solved-but-unmeasured for > --bias-stale-s
+    bias_available = False         # is ANY usable bias in hand (own or fused)? S2d gate
+    # Fuse at most once a second and cache: the state files themselves only republish at
+    # 1 Hz, so fusing at the broker's 5 Hz cycle would re-read the same bytes four times
+    # for the same answer.
+    _fus_cache = [0.0, None]
+
+    def _fuse_cached(t_now):
+        if state_w is None or not _state_dir or not args.state_fuse:
+            return None
+        if t_now - _fus_cache[0] < 1.0:
+            return _fus_cache[1]
+        _fus_cache[0] = t_now
+        try:
+            _fus_cache[1] = receiver_state.fuse_dongle(
+                receiver_state.read_dongle(_state_dir, args.state_dongle,
+                                           max_age_s=30.0, t_now=t_now),
+                floor_ppm=args.state_fuse_floor_ppm,
+                reject_sigma=args.state_fuse_reject_sigma)
+        except Exception:
+            _fus_cache[1] = None
+        return _fus_cache[1]
+
     # S2 observer (write-only). Import is local + tolerant so a missing/broken module can
     # never stop a broker from starting: a diagnostic riding in a live receiver's control
     # loop must fail to nothing, not fail loudly.
@@ -1307,10 +1341,51 @@ def main(argv=None):
             if det_fresh.get(_p, (None,))[0] != _b[3]:
                 det_fresh[_p] = (_b[3], t0)
 
+        # ---- S2d: the consumed bias IS the fused state, ALWAYS ----------------------
+        # NOT "own value, falling back to fused when unsolved" -- that is a rescue path
+        # again, and a rescue path only runs in the condition it rescues, which is how
+        # 682ee91b shipped and stayed unexercised for days. The chain's own measurement is
+        # one INPUT to the fused state; the chain consumes the fused OUTPUT unconditionally.
+        #
+        # This needs no special case for a lone chain: with one chain the fusion degenerates
+        # to that chain's own carrier+code combination, which is still strictly better than
+        # carrier alone (they are independent measurements of one fractional error, measured
+        # to agree to 0.0003 ppm). The single-chain L2C dongle already exercises that path
+        # every cycle.
+        _fus_now = _fuse_cached(t0)
+        _fused_hz = None
+        if _fus_now and _fus_now.get("lo_ppm") is not None and not _fus_now["all_outliers"]:
+            _fused_hz = _fus_now["lo_ppm"] * 1e-6 * args.carrier_hz
+        if args.state_consume and _fused_hz is not None:
+            clock_bias = _fused_hz
+            bias_available = True
+            if clock_bias_ema is not None and abs(_fused_hz - clock_bias_ema) > 25.0:
+                # Loud, because this is the one way fusion can hurt: the band dragging a
+                # chain that was right. The per-source residuals in the state file name
+                # which source did it.
+                _log_rl("fusedepart",
+                        "FUSED BIAS DEPARTS this chain by %+.1f Hz (fused %+.1f vs own "
+                        "%+.1f, %d src, worst resid %.1f sigma) -- CONSUMED; check the "
+                        "per-source residuals in the state file"
+                        % (_fused_hz - clock_bias_ema, _fused_hz, clock_bias_ema,
+                           _fus_now["n_src"], _fus_now.get("worst_sigma") or 0.0),
+                        every_s=30.0)
+        else:
+            # Shadow mode, or the state layer is unavailable (missing/stale files, a
+            # filesystem fault). Falling back to the chain's own value here is an
+            # INFRASTRUCTURE fallback, not a physics rescue -- and it is loud.
+            clock_bias = clock_bias_ema if clock_bias_ema is not None else 0.0
+            bias_available = clock_bias_ema is not None
+            if args.state_consume and _fus_now is None:
+                _log_rl("fusegone",
+                        "FUSED STATE UNAVAILABLE -- falling back to this chain's own bias "
+                        "%s. This is an infrastructure fault (state dir unreadable/stale), "
+                        "not a normal mode."
+                        % (("%+.1f Hz" % clock_bias_ema) if clock_bias_ema is not None
+                           else "UNSOLVED"), every_s=30.0)
+
         # 2. orbit-predicted Doppler + visibility (almanac assist), else plain gate
         pred = {}          # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]
-        # Hold the last smoothed bias through detection dropouts (the TCXO didn't move).
-        clock_bias = clock_bias_ema if clock_bias_ema is not None else 0.0
         # STALE-BIAS RESCUE (--bias-stale-s): a solved bias nobody has measured for minutes
         # is a LIABILITY, not a constant -- if it latched away from truth (mid-walk during
         # the 2026-07-20 GPSDO unlock) the narrow hints it centers are what PREVENT the
@@ -1649,7 +1724,15 @@ def main(argv=None):
             # a ~exact-doppler_step jump here is the smoking gun for a grid/quantization
             # slip upstream (the hint-anchored search grid was one such; fixed same day).
             _prev_sd = seeds.get(prn, {}).get("doppler_hz")
-            if _prev_sd is None and args.almanac and clock_bias_ema is None:
+            if _prev_sd is None and args.almanac and not bias_available:
+                # S2d: the condition is now "no bias FROM ANY SOURCE", not "this chain has
+                # not solved its own". Same guard, wider supply. It is the exact deadlock
+                # that cost 2h45m on 2026-07-27: L5 GPS could measure one satellite, never
+                # reached --bias-min-sats, so this line withheld every first seed -- while
+                # its two siblings sat in the same band holding the right answer (+32 Hz)
+                # and its OWN l-a fit held a better one still. With the fused state that
+                # chain is `bias_available` from cycle 1 and never enters this branch.
+                #
                 # BIAS-UNSOLVED FIRST-SEED GUARD (2026-07-18): a first seed sent before the
                 # clock-freq bias solves carries the FULL dongle offset (~150 Hz at L1,
                 # measured: PRN 5 first seed 1146.5 vs det 974.1 at bias +0.0). A strong sat
@@ -3237,11 +3320,10 @@ def main(argv=None):
                 # sources_from() reads only `carrier.raw_hz` / `code.raw_ppm`, never the
                 # `fused` group this writes back.
                 if args.state_fuse and _state_dir:
-                    _recs = receiver_state.read_dongle(
-                        _state_dir, args.state_dongle, max_age_s=30.0, t_now=t0)
-                    _fus = receiver_state.fuse_dongle(
-                        _recs, floor_ppm=args.state_fuse_floor_ppm,
-                        reject_sigma=args.state_fuse_reject_sigma)
+                    # Reuse the cycle's cached fusion -- the same object the consumption
+                    # path above was handed, so the published record and the value actually
+                    # used can never disagree.
+                    _fus = _fuse_cached(t0)
                     if _fus:
                         state_w.observe(
                             "fused",
@@ -3259,8 +3341,7 @@ def main(argv=None):
                         _own = clock_bias_ema
                         _log_rl("shadowfuse",
                                 "SHADOW fused LO %+.5f ppm +-%.5f (%d src: %dc/%dd over %s"
-                                "%s%s) -> %+.2f Hz here; chain uses %s; delta %s "
-                                "[NOT CONSUMED]"
+                                "%s%s) -> %+.2f Hz here; chain uses %s; delta %s [%s]"
                                 % (_fus["lo_ppm"], _fus["se_ppm"] or 0.0, _fus["n_src"],
                                    _fus["n_carrier"], _fus["n_code"],
                                    ",".join(_fus["chains"]),
@@ -3271,11 +3352,18 @@ def main(argv=None):
                                    _fhz,
                                    ("%+.2f Hz" % _own) if _own is not None else "UNSOLVED",
                                    ("%+.2f Hz" % (_fhz - _own)) if _own is not None
-                                   else "n/a (this is exactly the case fusion rescues)"),
+                                   else "n/a (this is exactly the case fusion rescues)",
+                                   "CONSUMED" if args.state_consume else "NOT CONSUMED"),
                                 every_s=60.0)
                 state_w.flush(t0)
-            except Exception:
-                pass
+            except Exception as e:
+                # NOT a bare pass. A silent except here once swallowed a broken format
+                # string in the shadow line: the line simply stopped appearing and nothing
+                # said why -- and a soak read from that log would have looked like "the
+                # fuser stopped running" or, worse, like clean data. Rate-limited so a
+                # persistent fault names itself once a minute instead of flooding.
+                _log_rl("stateobs", "receiver-state observe/flush failed: %r" % (e,),
+                        every_s=60.0)
         if args.once:
             return
         dt = args.interval - (time.time() - t0)
