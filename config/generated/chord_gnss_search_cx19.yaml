@@ -70,7 +70,7 @@ srch0_search:
   doppler_max: 5000.0
   doppler_min: -5000.0
   doppler_step: 250.0
-  f_offset: 0.0
+  f_offset: 1176450000.0
   in_buf: srch0_f_buf
   kotekan_stage: GnssChannelizedSearch
   n_channels: 106
@@ -159,7 +159,7 @@ srch1_search:
   doppler_max: 5000.0
   doppler_min: -5000.0
   doppler_step: 250.0
-  f_offset: 0.0
+  f_offset: 1176450000.0
   in_buf: srch1_f_buf
   kotekan_stage: GnssChannelizedSearch
   n_channels: 106

@@ -208,6 +208,7 @@ gnss0_gpu:
     in_buf: gnss_volt_in
     name: cudaInputData
   - elem_stride: 32
+    f_offset_hz: 1176450000.0
     fft_length: 16384
     frame_chan_stride: 7
     gpu_mem_input: gnss0_voltage
@@ -333,6 +334,7 @@ gnss1_gpu:
     in_buf: gnss_volt_in
     name: cudaInputData
   - elem_stride: 32
+    f_offset_hz: 1176450000.0
     fft_length: 16384
     frame_chan_stride: 7
     gpu_mem_input: gnss1_voltage

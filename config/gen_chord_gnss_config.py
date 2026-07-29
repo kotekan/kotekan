@@ -170,6 +170,13 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args):
                  "n_elements": n_elem,
                  "elem_stride": n_elem,
                  "frame_chan_stride": n_chan,
+                 # THE REPLICA'S CARRIER, and on CHORD it is the SKY frequency, not an IF.
+                 # The airspy node downconverts, so its f_offset is the post-mixer IF (a few
+                 # MHz). CHORD does not downconvert at all: the RFSoC samples 0-1600 MHz
+                 # directly and L5 sits at bin 6023 of 8192. Leaving this at the 0.0 default
+                 # generates the replica at DC, so covering_bins lands on bins -51..52 while
+                 # the data is at 5971..6076 -- zero overlap, and every correlation is noise.
+                 "f_offset_hz": float(sig["carrier_hz"]),
                  "hops_per_record": args.hops_per_record,
                  "fft_length": cfg["fengine"]["fft_length"],
                  "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
@@ -338,7 +345,10 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 "signal": sig["primary"],
                 "prns": args.prns,
                 "sample_rate": float(fe["sampling_rate_MHz"]) * 1e6,
-                "f_offset": 0.0,
+                # Sky carrier, not an IF -- see the note on the tracker's f_offset_hz.
+                # covering_bins() sets local.carrier_hz = f_offset, so 0.0 makes the search
+                # look for the signal at DC and report "carrier not in this subband".
+                "f_offset": float(sig["carrier_hz"]),
                 "spectrum_length": fe["num_bins"],
                 "num_taps": fe["pfb_taps"],
                 "pfb_window": fe["pfb_window"],
