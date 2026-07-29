@@ -48,16 +48,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import receiver_state  # noqa: E402
 
-# MAD -> sigma for a Gaussian, and sigma -> standard error of a MEDIAN (pi/2 factor).
-MAD_TO_SIGMA = 1.4826
-SE_MEDIAN = math.sqrt(math.pi / 2.0)
-
-
-def se_of_median(mad, n):
-    """Standard error of a median estimated from n samples with the given MAD."""
-    if mad is None or n is None or n < 2:
-        return None
-    return SE_MEDIAN * MAD_TO_SIGMA * mad / math.sqrt(n)
+from receiver_state import se_of_median  # noqa: E402  (one conversion, one convention)
 
 
 def collect(state_dir, samples, interval, max_age_s):

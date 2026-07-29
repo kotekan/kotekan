@@ -46,10 +46,36 @@ exactly the confusion this is meant to end.)
 """
 
 import json
+import math
 import os
 import statistics
 
 SCHEMA = 1
+
+# MAD -> sigma for a Gaussian, and sigma -> standard error of a MEDIAN (the pi/2 factor).
+# Kept here beside the schema so every consumer converts identically -- two consumers with
+# two conventions would silently disagree about how much to trust the same number.
+MAD_TO_SIGMA = 1.4826
+SE_MEDIAN = math.sqrt(math.pi / 2.0)
+
+
+def se_of_median(mad, n):
+    """Standard error of a median estimated from n samples with the given MAD.
+
+    This is the weight a covariance-weighted fuser needs, and the reason `mad` and `n` are
+    exported rather than a pre-baked sigma: the conversion is a convention, and baking it
+    into the published record would make a later change of convention silently rewrite
+    history.
+    """
+    if mad is None or n is None:
+        return None
+    try:
+        n = float(n)
+        if n < 2:
+            return None
+        return SE_MEDIAN * MAD_TO_SIGMA * float(mad) / math.sqrt(n)
+    except Exception:
+        return None
 
 
 def mad(vals, center=None):
