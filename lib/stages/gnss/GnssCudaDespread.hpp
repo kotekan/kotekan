@@ -73,6 +73,11 @@ public:
     /// analytic peel add-back needs: [4*specs][n_chan] double2, rows 4i+0/1 = <R_P,R_E>/<R_P,R_L>
     /// over the window and 4i+2/3 the same restricted to the head segment. Costs nothing when
     /// null (the accumulators are a template parameter and compile away).
+    /// Build + upload the per-PRN jobs. Shared by the fused and N x M paths so the replicas
+    /// cannot fork between them.
+    void build_jobs(const std::vector<Spec>& specs, void* d_jobs_slot,
+                    long long window_start_sample, void* stream);
+
     int enqueue_batch_device(const void* d_window /*float2 or uint8*/, int data_stride,
                              long long window_start_sample, const std::vector<Spec>& specs,
                              void* d_jobs_slot /*gnss_cuda::DespreadJob, [specs]*/,
@@ -82,6 +87,25 @@ public:
                              const void* d_chan_scale = nullptr /*float, [n_chan]*/,
                              void* d_xcorr_out = nullptr /*double2, [4*specs][n_chan]*/,
                              int rows_spec = 4 /*corr/energy row stride per spec*/);
+
+    /// CHORD N x M: generate the replicas ONCE, then correlate them against @c n_elem antennas.
+    ///
+    /// Same jobs, same replicas, same numerics as @ref enqueue_batch_device -- only the consumer
+    /// differs, which is checked by an exact-equality test at N=1 (cuda_gnss_despread_test).
+    ///
+    /// @c d_frame is the voltage in CHORD's NATIVE [hop][chan][elem] order (element fastest), as
+    /// GnssChordVoltageTap emits it -- no transpose anywhere. @c d_wave is scratch for the
+    /// materialised replicas, [3*specs][n_chan][n_hops] float2.
+    ///
+    /// Correlations come back with an ELEMENT AXIS, [4*specs][n_chan][n_elem]; the energies do
+    /// NOT ([4*specs][n_chan]), because one replica is correlated against every antenna. That
+    /// asymmetry is deliberate and is what the record schema mirrors: energies in the per-PRN
+    /// header, correlations in the element blocks (gnssRecord.hpp).
+    int enqueue_batch_nm(const void* d_frame, const void* d_chan_scale, const int* d_chan_ids,
+                         void* d_wave, int n_elem, int elem_stride, int frame_chan_stride,
+                         long long window_start_sample, const std::vector<Spec>& specs,
+                         void* d_jobs_slot, void* d_corr_out /*double2 [4*specs][nchan][nelem]*/,
+                         void* d_energy_out /*double [4*specs][nchan]*/, void* stream);
 
     /// One PRN's VOLTAGE PEEL request (docs/gnss_voltage_peel_live.md).
     ///

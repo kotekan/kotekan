@@ -1,5 +1,6 @@
 #include "GnssCudaDespread.hpp"
 
+#include "cudaGnssChordDespread.hpp"
 #include "cudaGnssDespreadKernel.hpp"
 
 #include <cuda_runtime.h>
@@ -268,20 +269,17 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     return out;
 }
 
-int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride,
-                                           long long window_start_sample,
-                                           const std::vector<Spec>& specs, void* d_jobs_slot,
-                                           void* d_corr_out, void* d_energy_out, void* stream,
-                                           const void* d_chan_scale, void* d_xcorr_out,
-                                           int rows_spec) {
+// Build and upload the per-PRN jobs. Shared verbatim by the fused path and the CHORD N x M
+// path: the two differ ONLY in which kernels consume the jobs, and the whole point of the split
+// is that the replicas stay identical, so the job construction must not fork.
+void GnssCudaDespread::build_jobs(const std::vector<Spec>& specs, void* d_jobs_slot,
+                                  long long window_start_sample, void* stream) {
     Impl& im = *_impl;
-    if (specs.empty())
-        return 0;
     const int n_spec = (int)specs.size();
     const cudaStream_t st = (cudaStream_t)stream;
 
-    // Same job construction as despread_batch; h_jobs staging is pageable, so the async H2D
-    // below is host-synchronous on return and the buffer is safely reusable per call.
+    // h_jobs staging is pageable, so the async H2D below is host-synchronous on return and the
+    // buffer is safely reusable per call.
     for (size_t i = 0; i < specs.size(); ++i) {
         const Spec& sp = specs[i];
         auto& pc = im.ensure_phi(sp.p, sp.doppler_hz);
@@ -316,6 +314,20 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
                        (size_t)n_spec * sizeof(gnss_cuda::DespreadJob), cudaMemcpyHostToDevice,
                        st),
        "jobs upload (device batch)");
+}
+
+int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride,
+                                           long long window_start_sample,
+                                           const std::vector<Spec>& specs, void* d_jobs_slot,
+                                           void* d_corr_out, void* d_energy_out, void* stream,
+                                           const void* d_chan_scale, void* d_xcorr_out,
+                                           int rows_spec) {
+    Impl& im = *_impl;
+    if (specs.empty())
+        return 0;
+    const int n_spec = (int)specs.size();
+    const cudaStream_t st = (cudaStream_t)stream;
+    build_jobs(specs, d_jobs_slot, window_start_sample, stream);
 
     gnss_cuda::DespreadParams par;
     par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
@@ -342,6 +354,46 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
     // OUTPUT rows RESERVED per spec -- not the job count, and not the rows actually written
     // (with rows_spec 6 the despread fills 0-3 and the add-back fills 4-5).
     return rows_spec * n_spec;
+}
+
+int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_scale,
+                                       const int* d_chan_ids, void* d_wave, int n_elem,
+                                       int elem_stride, int frame_chan_stride,
+                                       long long window_start_sample,
+                                       const std::vector<Spec>& specs, void* d_jobs_slot,
+                                       void* d_corr_out, void* d_energy_out, void* stream) {
+    Impl& im = *_impl;
+    if (specs.empty())
+        return 0;
+    const int n_spec = (int)specs.size();
+    const cudaStream_t st = (cudaStream_t)stream;
+    build_jobs(specs, d_jobs_slot, window_start_sample, stream);
+
+    gnss_cuda::DespreadParams par;
+    par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
+    par.fft_len = im.bank.fft_len();
+    par.n_hops = im.n_hops;
+    par.Lf = im.Lf;
+    // The CHORD correlator reads the frame in its native [hop][chan][elem] order, so there is no
+    // channel-major ring and no data_stride to speak of; the geometry is carried by
+    // frame_chan_stride/elem_stride instead.
+    par.data_stride = im.n_hops;
+    par.out_rows_spec = 4;
+
+    // GENERATE ONCE. The replicas are materialised here and reused across all n_elem antennas by
+    // the correlator below -- that reuse is the entire reason the fused kernel is split for
+    // CHORD. Both launches go on the SAME stream, so the correlator cannot start before the
+    // waveform it consumes is complete.
+    ck(gnss_cuda::launch_waveform(im.d_code, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec,
+                                  im.n_chan, par, (float2*)d_wave, (double*)d_energy_out, st),
+       "launch waveform (NxM)");
+    ck(gnss_cuda::launch_correlate_nm((const unsigned char*)d_frame, (const float*)d_chan_scale,
+                                      d_chan_ids, (const float2*)d_wave,
+                                      (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec, im.n_chan,
+                                      n_elem, elem_stride, frame_chan_stride, par,
+                                      (double2*)d_corr_out, st),
+       "launch correlate NxM");
+    return 4 * n_spec;
 }
 
 int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
