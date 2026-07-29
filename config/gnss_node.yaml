@@ -781,9 +781,25 @@ bands:
         tracker:
           fll_reacq_hz: 15.0
         combiner:
-          params: { n_prn: 32, prns: RANGE, integration_length: 1000, secondary_overlay: L5_NH10 }
+          params: { n_prn: 32, prns: RANGE, integration_length: 1000, secondary_overlay: L5_NH10, navwipe_bit_records: 20, bit_export: true }
           note: |
-            PHASE 1 = OVERLAY PATH ONLY. L5-I is a DATA channel that ALSO carries a secondary
+            ★ PHASE 2 (2026-07-29): secondary_overlay AND navwipe_bit_records TOGETHER -- the
+            COMPOSED wipe. This is the only chain on the node that sets both, and the combiner
+            branch that handles it exists for this signal: NH10 comes off each 1 ms record
+            first, then the nav-bit wipe runs over 20-record CNAV symbols on the result
+            (navwipe_bit_records 20 = 20 ms / 1 ms records -- a TIME expressed in records, so
+            it is band-specific; L2C sets 1 because its records ARE 20 ms).
+            The NH alignment is searched by the NAVWIPE statistic, not a coherent sum: a
+            coherent phase search is meaningless on a data channel past 20 ms. It is searched
+            ONCE on the longest window and reused across rungs (the alignment is a property of
+            the signal, not the window).
+            THE PRIZE, measured in phase 1: L5-I ran ~14 dB below its L5-Q sibling at the 1 s
+            rung, and the deficit GREW with rung length -- the signature of a hard 20 ms
+            coherence cap. Wiping the symbols is what lifts it. bit_export then feeds the
+            broker's CNAV decoder, giving a second independent decode of the SAME message set
+            L2C already decodes -> eph cross-checkable three ways (L2C vs L5 vs BRDC).
+
+            PHASE 1 (superseded) = OVERLAY PATH ONLY. L5-I is a DATA channel that ALSO carries a secondary
             overlay (NH10, one +-1 chip per 1 ms record, 10 ms cycle) -- no other chain on
             this node is both, and the combiner treats secondary_overlay and
             navwipe_bit_records as MUTUALLY EXCLUSIVE branches. That crux only bites when we

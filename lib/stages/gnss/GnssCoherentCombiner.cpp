@@ -61,8 +61,12 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
                                                       std::max(1, _integration_length / 10)));
     _navwipe_bit_records = config.get_default<int>(unique_name, "navwipe_bit_records", 0);
     // Known secondary overlay (the L5 Neuman-Hofman pilot overlay) -> deep coherent integration
-    // by searching its alignment, instead of the squaring nav-bit estimate. Mutually exclusive
-    // with navwipe_bit_records (a pilot has no nav bit). Both buffer the per-record A.
+    // by searching its alignment, instead of the squaring nav-bit estimate. Both buffer the
+    // per-record A.
+    // NOT mutually exclusive with navwipe_bit_records since S4 phase 2: setting BOTH selects
+    // the COMPOSED wipe (overlay first, then the nav-bit wipe on the result), which is what a
+    // data component carrying a secondary overlay needs -- GPS L5-I (CNAV under NH10) is the
+    // only such chain here. A dataless pilot still sets the overlay alone.
     const std::string sec = config.get_default<std::string>(unique_name, "secondary_overlay", "");
     // TABLE-DRIVEN dispatch (gnssOverlay.cpp): one registry row per known name carries the
     // overlay's shape and generator, so adding a signal means adding a row, not a branch.
@@ -800,7 +804,101 @@ void GnssCoherentCombiner::main_thread() {
                 // applied further down, once deep_snr/deep_rec exist. Here: the raw index.
                 s4_raw[p] = (m2 > 1e-12) ? std::sqrt(var) / m2 : 0.0;
             }
-            if (!_secondary.empty() || !_l1co.empty()) {
+            if (!_secondary.empty() && _navwipe_bit_records > 0) {
+                // ---- OVERLAY *AND* NAVWIPE (S4 phase 2) -- the GPS L5-I case ----
+                // L5-I is the only chain on this node that is BOTH a data component and an
+                // overlay carrier: 50 sps CNAV under the 10-chip NH10. It needs the two wipes
+                // COMPOSED, in order -- NH10 off each 1 ms record first, then the nav-bit wipe
+                // over 20-record symbols on the result. Until now these were mutually
+                // exclusive branches, which is why phase 1 could only reach the 20 ms data-bit
+                // boundary (measured: ~14 dB below the L5-Q sibling at the 1 s rung).
+                //
+                // ★ THE PHASE SEARCH CANNOT BE COHERENT HERE. overlay_wipe() picks its
+                // alignment by maximising a coherent sum over the whole window -- valid for a
+                // dataless pilot, meaningless for a data channel, where the +-1 symbols destroy
+                // that sum past 20 ms. So the alignment is chosen by the NAVWIPE statistic
+                // instead: wipe at each of the L candidate alignments and keep the one whose
+                // nav-bit wipe reads highest. That criterion is bit-robust by construction
+                // (navwipe estimates each symbol's sign), which is the whole point.
+                const auto& ab = _navbuf[p];
+                const auto& ub = _navutc[p];
+                const auto& hb = _navhead[p];
+                const std::vector<int8_t>& ov = _secondary;
+                const size_t L = std::max<size_t>(ov.size(), 1);
+                // Floor = the navwipe floor (nb free symbol signs) PLUS the extra selection
+                // over L overlay alignments. Both selections are real and both must be paid:
+                // reporting only the navwipe term would let a noise-only sat clear its bar.
+                const double sel = std::sqrt(std::log((double)std::max(_navwipe_bit_records, 2)))
+                                   + std::sqrt(std::log((double)std::max<size_t>(L, 2)));
+                auto nav_floor = [&](size_t len) {
+                    const double nb = std::max(1.0, (double)len / (double)_navwipe_bit_records);
+                    return std::sqrt(2.0 * nb / M_PI) + sel;
+                };
+                bool cleared = false;
+                double full_amp = 0.0, full_snr = 0.0;
+                size_t full_len = 0;
+                std::vector<std::complex<double>> aw, hw; // NH-wiped records + wiped heads
+                // ★ The alignment is searched ONCE, on the longest window, and reused for every
+                // rung. It is a property of the SIGNAL (the overlay advances deterministically in
+                // capture-UTC), not of the trailing window we happen to be scoring, so a per-rung
+                // search would (a) cost L x the navwipe on the band with the least real-time
+                // slack and (b) be statistically worse -- every extra maximisation rectifies more
+                // noise, and the floor would have to grow to pay for selections that buy nothing.
+                int best_ph = -1;
+                {
+                    double best = 0.0;
+                    for (size_t ph = 0; ph < L; ++ph) {
+                        if (!gnss::overlay_apply(ab, ub, ov, (int)ph, &hb, aw, &hw))
+                            continue;
+                        double snr = 0.0;
+                        navwipe_amplitude(aw, ub, &snr, &hw);
+                        if (snr > best) {
+                            best = snr;
+                            best_ph = (int)ph;
+                        }
+                    }
+                }
+                if (best_ph >= 0) {
+                    nh_phase[p] = best_ph;
+                    for (size_t len :
+                         ladder(ab.size(), min_rung(ub, 4 * (size_t)_navwipe_bit_records))) {
+                        const bool is_full = (len == ab.size());
+                        const std::vector<std::complex<double>> as(ab.end() - (long)len, ab.end());
+                        const std::vector<double> us(ub.end() - (long)len, ub.end());
+                        const std::vector<std::complex<double>> hs(hb.end() - (long)len, hb.end());
+                        if (!gnss::overlay_apply(as, us, ov, best_ph, &hs, aw, &hw))
+                            continue;
+                        double snr = 0.0;
+                        // Export the per-symbol decisions on the full window only -- same rule as
+                        // the plain navwipe path (the longest rung sees every symbol the broker's
+                        // CNAV stitcher wants).
+                        const double amp = navwipe_amplitude(
+                            aw, us, &snr, &hw, (is_full && _bit_export) ? &nav_obs[p] : nullptr);
+                        if (full_len == 0) { // ladder walks longest-first
+                            full_amp = amp;
+                            full_snr = snr;
+                            full_len = len;
+                        }
+                        if (snr < FLOOR_MARGIN * nav_floor(len))
+                            continue; // indistinguishable from noise rectification
+                        if (!cleared || snr > deep_snr[p] * 1.05) {
+                            rec[8] = (float)amp;
+                            deep_snr[p] = snr;
+                            deep_rec[p] = (int)len;
+                            deep_floor[p] = nav_floor(len);
+                            coh_s[p] = coh_span(ub, len);
+                            cleared = true;
+                        }
+                    }
+                }
+                if (!cleared && full_len > 0) {
+                    rec[8] = (float)full_amp;
+                    deep_snr[p] = full_snr;
+                    deep_rec[p] = (int)full_len;
+                    deep_floor[p] = nav_floor(full_len);
+                    coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
+                }
+            } else if (!_secondary.empty() || !_l1co.empty()) {
                 // Dataless pilot: wipe the KNOWN secondary overlay at its best-fitting alignment
                 // -> deep coherent |A| past the primary period (no nav-bit estimate). L5 Q5 uses
                 // one PRN-independent NH overlay; L1C-P uses the per-PRN L1CO, picked by the

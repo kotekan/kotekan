@@ -862,7 +862,23 @@ l5_i_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, f
 l5_i_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: l5_i_n_prn * 24 * 4 }
 l5_i_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 176 + 1024 * l5_i_n_prn + 15360 * l5_i_n_prn }
 l5_i_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l5_i_epl_buf, out_buf: l5_i_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
-# PHASE 1 = OVERLAY PATH ONLY. L5-I is a DATA channel that ALSO carries a secondary
+# ★ PHASE 2 (2026-07-29): secondary_overlay AND navwipe_bit_records TOGETHER -- the
+# COMPOSED wipe. This is the only chain on the node that sets both, and the combiner
+# branch that handles it exists for this signal: NH10 comes off each 1 ms l5_record
+# first, then the nav-bit wipe runs over 20-l5_record CNAV symbols on the result
+# (navwipe_bit_records 20 = 20 ms / 1 ms records -- a TIME expressed in records, so
+# it is band-specific; L2C sets 1 because its records ARE 20 ms).
+# The NH alignment is searched by the NAVWIPE statistic, not a coherent sum: a
+# coherent phase search is meaningless on a data channel past 20 ms. It is searched
+# ONCE on the longest window and reused across rungs (the alignment is a property of
+# the GPS_L5_Q, not the window).
+# THE PRIZE, measured in phase 1: L5-I ran ~14 dB below its L5-Q sibling at the 1 s
+# rung, and the deficit GREW with rung length -- the signature of a hard 20 ms
+# coherence cap. Wiping the symbols is what lifts it. bit_export then feeds the
+# broker's CNAV decoder, giving a second independent decode of the SAME message set
+# L2C already decodes -> eph cross-checkable three ways (L2C vs L5 vs BRDC).
+#
+# PHASE 1 (superseded) = OVERLAY PATH ONLY. L5-I is a DATA channel that ALSO carries a secondary
 # overlay (NH10, one +-1 chip per 1 ms l5_record, 10 ms cycle) -- no other chain on
 # this node is both, and the combiner treats secondary_overlay and
 # navwipe_bit_records as MUTUALLY EXCLUSIVE branches. That crux only bites when we
@@ -876,7 +892,7 @@ l5_i_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l5_i_epl_buf, out
 # AT 20 ms -- the data-bit limit. The 07-29 trial could not answer it because the
 # rungs were read while frames were dropping (climbing valves invalidate every
 # depth number). This run, with the peel off, is the first chance to read it.
-l5_i_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l5_i_rec_buf], out_buf: l5_i_out_buf, n_prn: 32, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], integration_length: 1000, secondary_overlay: L5_NH10, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
+l5_i_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l5_i_rec_buf], out_buf: l5_i_out_buf, n_prn: 32, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], integration_length: 1000, secondary_overlay: L5_NH10, navwipe_bit_records: 20, bit_export: true, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, gal_n_prn: 36, bds_n_prn: 63 }
 l5_i_record: { kotekan_stage: rawFileWrite, in_buf: l5_i_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "i_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 49920, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 201, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L5_Q, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 8.0, acquire_windows: 100, doppler_min: -5000.0, doppler_max: 5000.0, doppler_step: 100, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63 }
 
 # ---- Galileo E5a-Q parallel chain (dataless pilot, PRN 1..36) ----

@@ -78,6 +78,27 @@ struct OverlayWipeResult {
 /// BEFORE its boundary (tail = a[r] - head[r]); the wipe applies chip k to the head and
 /// chip k+1 to the tail, so nothing ever cancels. head == a (tail 0) reduces exactly to
 /// the unsegmented behaviour.
+/// Apply a KNOWN overlay at a GIVEN alignment and hand back the wiped per-record amplitudes,
+/// without reducing them to a coherent sum. This exists for the signal no other chain is:
+/// a DATA component that ALSO carries a secondary overlay (GPS L5-I = CNAV under NH10). Such a
+/// chain needs BOTH wipes in order -- overlay first, then the nav-bit wipe on the result -- and
+/// the two were mutually exclusive branches until S4 phase 2.
+///
+/// @p out_head (optional) receives the wiped HEAD segment of each record, so a downstream
+/// SEGMENTED wipe keeps a consistent head/tail split (its tail is out_a - out_head).
+///
+/// ★ This is THE ONE PLACE the overlay's per-record chip index is computed; overlay_wipe_at()
+/// calls it rather than repeating the expression. A second, silently-divergent copy of an index
+/// convention is exactly what produced the L5 "pure sign" peel fault (2026-07-27).
+///
+/// @returns false if the window is degenerate (too short, size mismatch, no positive record
+/// period), in which case @p out_a is not usable.
+bool overlay_apply(const std::vector<std::complex<double>>& a, const std::vector<double>& utc,
+                   const std::vector<int8_t>& overlay, int phase,
+                   const std::vector<std::complex<double>>* head,
+                   std::vector<std::complex<double>>& out_a,
+                   std::vector<std::complex<double>>* out_head);
+
 OverlayWipeResult overlay_wipe_at(const std::vector<std::complex<double>>& a,
                                   const std::vector<double>& utc,
                                   const std::vector<int8_t>& overlay, int phase,
