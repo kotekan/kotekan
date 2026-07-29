@@ -35,7 +35,16 @@ fengine:
   #     centre_hz(freq_id) = freq_id * channel_width_hz
   freq_id_is_physical_bin: true
   # Sample encoding at host_voltage_buffer: int4x2_swapped_withoffset, 1 byte per complex
-  # sample, low nibble = REAL, high nibble = IMAG, each stored as value+8.
+  # sample, HIGH nibble = REAL, LOW nibble = IMAG, each stored as value+8. The "swapped" in
+  # the type name means exactly this: component [0] is imag, [1] is real.
+  #   real = ((b & 0xf0) >> 4) - 8      imag = (b & 0x0f) - 8
+  # Authoritative source is lib/testing/gpuSimulate.cpp, the correlator reference model the
+  # CHIME/CHORD X-engine is validated against (and lib/cuda/cudaGnssDespreadKernel.hpp
+  # states the same contract).
+  # TRAP: external/n2k/src_lib/s12_kernel.cu names the LOW nibble "real". That kernel only
+  # forms square(re)+square(im), which is symmetric, so the mislabel is invisible there --
+  # but copying its naming into a correlation conjugates the data. Magnitudes and the DLL
+  # would still look correct while carrier phase ran backwards.
   # The F-engine clips to -7..+7, so a stored nibble of 0 must NEVER appear -- assert on it.
   sample_min: -7
   sample_max: 7
