@@ -17,7 +17,7 @@
 // weak sats) -- it mostly confused. Band is implied by the viewer instance
 // (all three constellations here share the 1575.42 tune).
 
-import {chain_color} from "./gps_feed.js";
+import {chain_color, not_transmitted} from "./gps_feed.js";
 import {snr_color} from "./gps_sky.js";
 
 const PREFS_KEY = "gps_viewer_prefs_v1";
@@ -219,7 +219,8 @@ export class GpsTablePanel {
         const th = (k, label, align, span) =>
             `<th class="gps-uth" data-key="${k}"${span ? ` rowspan="${span}"` : ""}`
             + ` style="text-align:${align};padding:1px 5px;cursor:pointer;user-select:none;`
-            + `white-space:nowrap;` + (this.usort.key === k ? "color:#1a1e24;" : "color:#666;")
+            + `white-space:nowrap;` + (k === "id" ? "width:1%;" : "")
+            + (this.usort.key === k ? "color:#1a1e24;" : "color:#666;")
             + `">${label}${arrow(k)}</th>`;
         let h1 = "<tr style='border-bottom:1px solid #eee;'>"
             + th("id", "Sat", "left", 2) + th("el", "El", "right", 2);
@@ -239,21 +240,34 @@ export class GpsTablePanel {
         h1 += th("best", "az", "right", 2) + "</tr>";
         h2 += "</tr>";
 
-        const mcell = (m, extra) =>
-            `<td style="padding:1px 5px;text-align:right;${extra || ""}">`
-            + (M.fmt(m) != null ? M.fmt(m) : "—") + "</td>";
+        // Empty cells are NOT all the same. "·" = this satellite's block does not broadcast
+        // this signal (nothing to detect, nothing wrong); "—" = it does and we have no value.
+        // Without the split, a Block IIR sat reading 238 sigma on L1 C/A and blank across
+        // L1C/L2C/L5 looks identical to a Block III sat that has lost three chains.
+        const mcell = (m, sg, prn, extra) => {
+            const v = M.fmt(m);
+            if (v != null)
+                return `<td style="padding:1px 5px;text-align:right;${extra || ""}">${v}</td>`;
+            const nx = sg && not_transmitted(sg.key, prn);
+            return `<td title="${nx ? "not broadcast by this satellite" : "no detection"}"`
+                + ` style="padding:1px 5px;text-align:right;${nx ? "color:#c8ccd2;" : ""}`
+                + `${extra || ""}">${nx ? "·" : "—"}</td>`;
+        };
         const row = (r) => {
             const cc = chain_color(r.tag);
             const dot = `<span style="display:inline-block;width:8px;height:8px;`
                 + `border-radius:50%;background:${r.active ? snr_color(r.sig >= 6 ? r.sig : r.snr) : "transparent"};`
                 + `border:2px solid ${cc};margin-right:5px;"></span>`;
-            let cells = `<td style="padding:1px 5px;"><b>${dot}${r.id}</b></td>`
+            // width:1% + nowrap = shrink-to-fit inside a width:100% table, so "Sat" takes only
+            // what the chip + id need instead of absorbing all the table's slack.
+            let cells = `<td style="padding:1px 5px;width:1%;white-space:nowrap;">`
+                + `<b>${dot}${r.id}</b></td>`
                 + `<td style="padding:1px 5px;text-align:right;">`
                 + (r.el != null ? r.el.toFixed(0) + "°" : "—") + "</td>";
             for (const b of bands) {
                 if (r.tag === "G") {
                     bandCols[b].forEach((sg, i) =>
-                        cells += mcell(r.sig_by[sg.key],
+                        cells += mcell(r.sig_by[sg.key], sg, r.prn,
                                        i === 0 ? "border-left:1px solid #eee;" : ""));
                 } else {
                     const sg = other[r.tag + ":" + b];
