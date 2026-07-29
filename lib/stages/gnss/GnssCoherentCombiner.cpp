@@ -995,6 +995,26 @@ void GnssCoherentCombiner::main_thread() {
                     deep_floor[p] = nav_floor(full_len);
                     coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
                 }
+                // ★★ RETIRE THE WINDOW. Every branch owns its own clear (the overlay branch
+                // and the plain-navwipe branch each have one further down), and this branch
+                // was added WITHOUT one -- so _navbuf grew without bound: 1000 records at the
+                // first emit, 2000 at the second, 3000 at the third. That single omission
+                // produced every symptom this cost me three days to chase: an emit ~4000x its
+                // op count, onset ALWAYS delayed (the buffer has to grow first), duty climbing
+                // 0.671 -> 1.56 over six minutes (which I misread as "satellites acquiring"),
+                // a deeper rec_buf delaying but never fixing it, and a shorter
+                // integration_length appearing to make things WORSE. A missing clear does not
+                // look like a leak from the outside; it looks like an expensive algorithm.
+                if (!_rolling) {
+                    _navbuf[p].clear();
+                    _navutc[p].clear();
+                    _navhead[p].clear();
+                    _navwipe[p].clear();
+                    if (_peel_depth) {
+                        _navbuf_res[p].clear();
+                        _navhead_res[p].clear();
+                    }
+                }
             } else if (!_secondary.empty() || !_l1co.empty()) {
                 // Dataless pilot: wipe the KNOWN secondary overlay at its best-fitting alignment
                 // -> deep coherent |A| past the primary period (no nav-bit estimate). L5 Q5 uses
