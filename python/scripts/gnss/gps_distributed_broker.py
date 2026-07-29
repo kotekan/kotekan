@@ -1362,17 +1362,40 @@ def main(argv=None):
         if args.state_consume and _fused_hz is not None:
             clock_bias = _fused_hz
             bias_available = True
-            if clock_bias_ema is not None and abs(_fused_hz - clock_bias_ema) > 25.0:
-                # Loud, because this is the one way fusion can hurt: the band dragging a
-                # chain that was right. The per-source residuals in the state file name
-                # which source did it.
-                _log_rl("fusedepart",
-                        "FUSED BIAS DEPARTS this chain by %+.1f Hz (fused %+.1f vs own "
-                        "%+.1f, %d src, worst resid %.1f sigma) -- CONSUMED; check the "
-                        "per-source residuals in the state file"
-                        % (_fused_hz - clock_bias_ema, _fused_hz, clock_bias_ema,
-                           _fus_now["n_src"], _fus_now.get("worst_sigma") or 0.0),
-                        every_s=30.0)
+            if clock_bias_ema is not None:
+                # DEPARTURE ALARM ON A SIGMA, NOT A FIXED Hz BAR.
+                # ⚠️ This shipped as `> 25.0 Hz` and immediately cried wolf: 5 alarms in
+                # 8 minutes, ALL on the two weakest L5 chains, none on L1. That is exactly
+                # the bug the clock-bias alarm above already fixed and documents -- a bar
+                # tuned on the strong chains fires constantly on the weak ones (~730 false
+                # alarms/night, 2026-07-20) and false alarms are how real ones get ignored.
+                # L5's own per-cycle estimate swings +-25 Hz routinely while L1's agrees to
+                # ~1 Hz, so 25 Hz means two different things on the two dongles. Both sides
+                # already publish their scatter; use it.
+                #
+                # This chain's own se comes from the fused record's own source list -- the
+                # fuser already read and converted it, so there is nothing new to carry.
+                _se_own = None
+                for _s in (_fus_now.get("sources") or ()):
+                    if _s.get("chain") == state_w.chain and _s.get("family") == "carrier":
+                        _se_own = float(_s["se_ppm"]) * 1e-6 * args.carrier_hz
+                        break
+                _d = _fused_hz - clock_bias_ema
+                _se_fus = (_fus_now.get("se_ppm") or 0.0) * 1e-6 * args.carrier_hz
+                _comb = math.sqrt((_se_own or 0.0) ** 2 + _se_fus ** 2)
+                _sig = (abs(_d) / _comb) if _comb > 0.0 else 0.0
+                # Hz floor too: when BOTH uncertainties are tiny, a sub-Hz disagreement
+                # must not manufacture a huge sigma out of nothing.
+                if _sig > 5.0 and abs(_d) > 5.0:
+                    _log_rl("fusedepart",
+                            "FUSED BIAS DEPARTS this chain by %+.1f Hz = %.1f sigma (fused "
+                            "%+.1f +-%.1f vs own %+.1f +-%.1f, %d src, worst src resid %.1f "
+                            "sigma) -- CONSUMED; check the per-source residuals in the "
+                            "state file"
+                            % (_d, _sig, _fused_hz, _se_fus, clock_bias_ema,
+                               _se_own if _se_own is not None else float("nan"),
+                               _fus_now["n_src"], _fus_now.get("worst_sigma") or 0.0),
+                            every_s=30.0)
         else:
             # Shadow mode, or the state layer is unavailable (missing/stale files, a
             # filesystem fault). Falling back to the chain's own value here is an
