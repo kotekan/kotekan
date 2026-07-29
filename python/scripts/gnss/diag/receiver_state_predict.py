@@ -163,23 +163,44 @@ def code_predictor(rec):
     return -la * 1e-6 * float(fc)
 
 
-def contest(hist, tol_s):
+def target_of(epochs, k, chain, window):
+    """Truth for the prediction at epoch k: the median of this chain's NEXT `window` raw
+    measurements.
+
+    ★ WHY NOT A SINGLE NEXT SAMPLE. The per-cycle raw median is itself noisy (measured
+    live: sd 1.4 Hz on L1-GAL up to 25 Hz on L5-GPS). Scoring against one noisy sample puts
+    that noise in the TARGET, so a perfect predictor still scores ~sd while `own` scores
+    ~sqrt(2)*sd -- capping the measurable improvement at 1.41x no matter how good fusion
+    is. Averaging the next `window` samples shrinks the target's own noise by sqrt(window)
+    and lets a real difference show. Still strictly causal: the target is entirely in the
+    future of every predictor being scored, so nothing leaks backwards.
+    """
+    vals = []
+    for j in range(k + 1, min(k + 1 + window, len(epochs))):
+        r = epochs[j][1].get(chain)
+        if r is None:
+            continue
+        v = _g(r, "carrier", "raw_hz")
+        if v is not None:
+            vals.append(v)
+    if not vals:
+        return None
+    return statistics.median(vals)
+
+
+def contest(hist, tol_s, window=1):
     epochs = align(hist, tol_s)
     if len(epochs) < 3:
         print("need >=3 aligned epochs, got %d" % len(epochs))
         return {}
-    print("aligned %d epochs (tol %.1f s) spanning %.0f s"
-          % (len(epochs), tol_s, epochs[-1][0] - epochs[0][0]))
+    print("aligned %d epochs (tol %.1f s) spanning %.0f s; target = median of the next %d"
+          % (len(epochs), tol_s, epochs[-1][0] - epochs[0][0], window))
 
     errs = {}   # chain -> {predictor: [abs errors]}
     for k in range(len(epochs) - 1):
         _, e_now = epochs[k]
-        _, e_next = epochs[k + 1]
         for chain, r in e_now.items():
-            nxt = e_next.get(chain)
-            if nxt is None:
-                continue
-            truth = _g(nxt, "carrier", "raw_hz")
+            truth = target_of(epochs, k, chain, window)
             if truth is None:
                 continue
             dongle = r.get("dongle")
@@ -284,6 +305,11 @@ def main():
     ap.add_argument("--interval", type=float, default=6.0)
     ap.add_argument("--max-age-s", type=float, default=30.0)
     ap.add_argument("--align-tol-s", type=float, default=2.0)
+    ap.add_argument("--target-window", type=int, default=5,
+                    help="score against the median of the next N raw measurements rather "
+                         "than a single one. The target's own noise otherwise caps the "
+                         "measurable improvement at 1.41x (see target_of). 1 = the strict "
+                         "one-step-ahead form.")
     args = ap.parse_args()
 
     hist = load_json(args.json) if args.json else sample_live(
@@ -292,7 +318,7 @@ def main():
         print("no state samples")
         return 1
     print("chains: %s" % ", ".join("%s x%d" % (c, len(r)) for c, r in sorted(hist.items())))
-    errs = contest(hist, args.align_tol_s)
+    errs = contest(hist, args.align_tol_s, max(1, args.target_window))
     if errs:
         report(errs)
     return 0
