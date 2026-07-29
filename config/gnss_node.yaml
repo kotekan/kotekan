@@ -781,7 +781,7 @@ bands:
         tracker:
           fll_reacq_hz: 15.0
         combiner:
-          params: { n_prn: 32, prns: RANGE, integration_length: 1000, secondary_overlay: L5_NH10, navwipe_bit_records: 20, bit_export: true }
+          params: { n_prn: 32, prns: RANGE, integration_length: 1000, secondary_overlay: L5_NH10 }
           note: |
             ★ PHASE 2 (2026-07-29): secondary_overlay AND navwipe_bit_records TOGETHER -- the
             COMPOSED wipe. This is the only chain on the node that sets both, and the combiner
