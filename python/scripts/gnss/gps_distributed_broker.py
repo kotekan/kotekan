@@ -1247,6 +1247,7 @@ def main(argv=None):
     # 1 Hz, so fusing at the broker's 5 Hz cycle would re-read the same bytes four times
     # for the same answer.
     _fus_cache = [0.0, None]
+    _fus_seen = [False]           # have we EVER had a fused state? startup vs fault
 
     def _fuse_cached(t_now):
         if state_w is None or not _state_dir or not args.state_fuse:
@@ -1356,6 +1357,8 @@ def main(argv=None):
         _fused_hz = None
         if _fus_now and _fus_now.get("lo_ppm") is not None and not _fus_now["all_outliers"]:
             _fused_hz = _fus_now["lo_ppm"] * 1e-6 * args.carrier_hz
+        if _fus_now is not None:
+            _fus_seen[0] = True
         if args.state_consume and _fused_hz is not None:
             clock_bias = _fused_hz
             bias_available = True
@@ -1377,10 +1380,19 @@ def main(argv=None):
             clock_bias = clock_bias_ema if clock_bias_ema is not None else 0.0
             bias_available = clock_bias_ema is not None
             if args.state_consume and _fus_now is None:
+                # STARTUP is not a fault. On the first cycles after launch no broker has
+                # published a fresh record yet and the previous run's files are correctly
+                # refused as stale, so "unavailable" is the expected state for a few
+                # seconds. Saying "infrastructure fault" there is a false alarm, and false
+                # alarms are how real ones get ignored -- so only call it a fault once we
+                # have actually HAD a fused state and then lost it.
                 _log_rl("fusegone",
-                        "FUSED STATE UNAVAILABLE -- falling back to this chain's own bias "
-                        "%s. This is an infrastructure fault (state dir unreadable/stale), "
-                        "not a normal mode."
+                        ("FUSED STATE not yet available (starting up) -- using this "
+                         "chain's own bias %s meanwhile"
+                         if not _fus_seen[0] else
+                         "FUSED STATE LOST -- falling back to this chain's own bias %s. "
+                         "We had one and it went away: infrastructure fault (state dir "
+                         "unreadable, or every sibling gone stale), not a normal mode.")
                         % (("%+.1f Hz" % clock_bias_ema) if clock_bias_ema is not None
                            else "UNSOLVED"), every_s=30.0)
 
