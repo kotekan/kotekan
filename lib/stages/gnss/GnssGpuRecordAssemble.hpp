@@ -39,6 +39,14 @@ private:
     std::vector<int> _prns;
     double _sample_rate;
 
+    /// Element axis (CHORD). 0 = single-antenna airspy layout, byte-for-byte.
+    int _n_elements = 0;
+    /// Which antenna the record HEADER's correlation slots carry -- the broker's loop reference.
+    int _reference_element = 0;
+    /// Scratch, [n_rows_spec][n_elem]: the per-antenna covering-mask sum, reused per PRN so the
+    /// per-record path does not allocate.
+    std::vector<std::complex<double>> _g_elem;
+
     // NCO state per PRN slot (pass-2's half of the carrier machinery).
     std::vector<double> _phi;
     std::vector<double> _phi_cyc;   ///< NCO phase, UNWRAPPED, in cycles (the export's time base;

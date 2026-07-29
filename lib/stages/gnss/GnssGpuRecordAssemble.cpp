@@ -36,16 +36,29 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             unique_name, "chan_dump_path", "/tmp/gnss_chan_phase_dump.txt");
         _chan_dump = std::fopen(path.c_str(), "a");
     }
+    // ELEMENT AXIS (CHORD). 0 = the single-antenna airspy layout, byte-for-byte -- the default,
+    // so nothing existing changes. >0 appends n_elements per-antenna blocks to every PRN record
+    // (gnssRecord.hpp). The GPU correlation array grows the same axis: [rows][n_chan][n_elem].
+    _n_elements = config.get_default<int>(unique_name, "n_elements", 0);
+    // Which element the record HEADER's correlation slots carry. The broker closes the DLL and
+    // carrier loops off those slots, so this must be a phase-coherent single-antenna view (see
+    // gnssRecord.hpp) -- pick a healthy, high-gain feed. Ignored when n_elements == 0.
+    _reference_element = config.get_default<int>(unique_name, "reference_element", 0);
+    if (_n_elements > 0 && (_reference_element < 0 || _reference_element >= _n_elements)) {
+        FATAL_ERROR("GnssGpuRecordAssemble: reference_element {:d} outside [0, n_elements={:d})",
+                    _reference_element, _n_elements);
+        return;
+    }
     const int n = (int)_prns.size();
     // Record width is a C++ constant; the frame is sized in yaml (n_prn * record_floats *
     // sizeof_float) with nothing linking the two. A stale config under-sizes the frame and this
     // stage writes past its end -- die at construction rather than corrupt memory.
-    const size_t rec_bytes_need = (size_t)n * gnss::RECORD_FLOATS * sizeof(float);
+    const int rec_stride = gnss::record_stride(_n_elements);
+    const size_t rec_bytes_need = (size_t)n * rec_stride * sizeof(float);
     if ((size_t)out_buf->frame_size < rec_bytes_need) {
         FATAL_ERROR("GnssGpuRecordAssemble: out_buf frame {:d} B < {:d} PRN x {:d} floats "
                     "({:d} B). Bump 'record_floats' in the config to {:d}.",
-                    (size_t)out_buf->frame_size, n, gnss::RECORD_FLOATS, rec_bytes_need,
-                    gnss::RECORD_FLOATS);
+                    (size_t)out_buf->frame_size, n, rec_stride, rec_bytes_need, rec_stride);
         return;
     }
     _phi.assign(n, 0.0);
@@ -102,8 +115,11 @@ void GnssGpuRecordAssemble::main_thread() {
                                        .count();
 
             for (int p = 0; p < n_prn; ++p) {
-                float* rec = out + (size_t)p * gnss::RECORD_FLOATS;
-                for (int f = 0; f < gnss::RECORD_FLOATS; ++f)
+                const int rec_stride = gnss::record_stride(_n_elements);
+                float* rec = out + (size_t)p * rec_stride;
+                // Zero the WHOLE record, element blocks included: a PRN that does not run this
+                // window must not leave a previous window's per-antenna correlations behind.
+                for (int f = 0; f < rec_stride; ++f)
                     rec[f] = 0.0f;
                 rec[0] = (float)_prns[p];
                 *reinterpret_cast<double*>(rec + gnss::RECORD_UTC_SLOT) = utc;
@@ -125,19 +141,31 @@ void GnssGpuRecordAssemble::main_thread() {
                 // analytic add-back was applied on the device (docs/gnss_voltage_peel_live.md).
                 // That is what leaves everything below this stage -- combiner, broker, viewer,
                 // TEC -- unable to tell whether a peel happened.
-                std::complex<double> g3[6];
-                double e3[6];
+                // With an element axis the correlation array is [rows][n_chan][n_elem] and the
+                // covering-mask sum runs PER ANTENNA. The ENERGIES do not: one replica is
+                // correlated against every antenna, so energy stays [rows][n_chan] and is summed
+                // once (gnssRecord.hpp -- this is why energies live in the record header and only
+                // the correlations go in the element blocks).
+                //
+                // n_e == 1 with n_elements == 0 makes the index expression below collapse to
+                // exactly the single-antenna one, so that path is unchanged.
+                const int n_e = (_n_elements > 0) ? _n_elements : 1;
+                const int ref_e = (_n_elements > 0) ? _reference_element : 0;
+                std::complex<double> g3[6];  // reference element, for the header + NCO/gain state
+                double e3[6];                // element-independent
+                _g_elem.assign((size_t)n_rows_spec * n_e, std::complex<double>(0.0, 0.0));
                 for (int t = 0; t < n_rows_spec; ++t) {
                     const size_t row = (size_t)(c.job0 + t) * n_chan;
-                    std::complex<double> g(0.0, 0.0);
                     double e = 0.0;
                     for (int ch = 0; ch < n_chan; ++ch)
                         if ((c.chan_mask >> ch) & 1ULL) {
-                            g += std::complex<double>(corr[2 * (row + ch)],
-                                                      corr[2 * (row + ch) + 1]);
                             e += energy[row + ch];
+                            const size_t base = (row + ch) * n_e;
+                            for (int el = 0; el < n_e; ++el)
+                                _g_elem[(size_t)t * n_e + el] += std::complex<double>(
+                                    corr[2 * (base + el)], corr[2 * (base + el) + 1]);
                         }
-                    g3[t] = g;
+                    g3[t] = _g_elem[(size_t)t * n_e + ref_e];
                     e3[t] = e;
                 }
                 // Per-channel PROMPT dump (diagnostic, see hpp): raw pre-rotation per-channel
@@ -148,7 +176,8 @@ void GnssGpuRecordAssemble::main_thread() {
                     for (int ch = 0; ch < n_chan; ++ch)
                         if ((c.chan_mask >> ch) & 1ULL)
                             std::fprintf(_chan_dump, "%.6f %d %.6e %.6e %.6e\n", utc, ch,
-                                         corr[2 * (prow + ch)], corr[2 * (prow + ch) + 1],
+                                         corr[2 * ((prow + ch) * n_e + ref_e)],
+                                         corr[2 * ((prow + ch) * n_e + ref_e) + 1],
                                          energy[prow + ch]);
                 }
                 rec[1] = c.fcar_report;
@@ -246,6 +275,38 @@ void GnssGpuRecordAssemble::main_thread() {
                     rec[gnss::REC_RES_PH_RE] = (float)grh.real();
                     rec[gnss::REC_RES_PH_IM] = (float)grh.imag();
                 }
+                // ELEMENT BLOCKS. Every antenna gets the SAME NCO rotation: the NCO is a per-PRN
+                // model of the code/carrier, not a per-antenna quantity, so rotating each element
+                // by `rot` preserves exactly the inter-element phase differences -- which are the
+                // measurement. Rotating per element would divide out the very thing being mapped.
+                if (_n_elements > 0) {
+                    for (int el = 0; el < _n_elements; ++el) {
+                        float* eb = out + gnss::elem_offset(p, el, _n_elements);
+                        const std::complex<double> ge = _g_elem[(size_t)1 * n_e + el] * rot;
+                        const std::complex<double> gE = _g_elem[(size_t)0 * n_e + el] * rot;
+                        const std::complex<double> gL = _g_elem[(size_t)2 * n_e + el] * rot;
+                        const std::complex<double> gH = _g_elem[(size_t)3 * n_e + el] * rot;
+                        eb[gnss::ELEM_P_RE] = (float)ge.real();
+                        eb[gnss::ELEM_P_IM] = (float)ge.imag();
+                        eb[gnss::ELEM_E_RE] = (float)gE.real();
+                        eb[gnss::ELEM_E_IM] = (float)gE.imag();
+                        eb[gnss::ELEM_L_RE] = (float)gL.real();
+                        eb[gnss::ELEM_L_IM] = (float)gL.imag();
+                        eb[gnss::ELEM_PH_RE] = (float)gH.real();
+                        eb[gnss::ELEM_PH_IM] = (float)gH.imag();
+                        if (n_rows_spec > ROW_RES_PH) {
+                            const std::complex<double> gr =
+                                _g_elem[(size_t)ROW_RES_P * n_e + el] * rot;
+                            const std::complex<double> grh =
+                                _g_elem[(size_t)ROW_RES_PH * n_e + el] * rot;
+                            eb[gnss::ELEM_RES_RE] = (float)gr.real();
+                            eb[gnss::ELEM_RES_IM] = (float)gr.imag();
+                            eb[gnss::ELEM_RES_PH_RE] = (float)grh.real();
+                            eb[gnss::ELEM_RES_PH_IM] = (float)grh.imag();
+                        }
+                    }
+                }
+
                 _a_prev[p] = (e3[1] > 0.0) ? g_corr / e3[1] : std::complex<double>(0.0, 0.0);
                 _a_prev_ok[p] = 1;
                 _wstart_prev[p] = wstart;
