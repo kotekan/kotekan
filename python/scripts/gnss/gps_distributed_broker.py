@@ -485,17 +485,21 @@ def main(argv=None):
                          "values -- fusing their smoothed ones would feed the estimate back "
                          "on itself and its covariance would be fiction.")
     ap.add_argument("--state-consume", type=int, default=0,
-                    help="S2d THE FLIP: actually CONSUME the fused state -- the seeded "
-                         "clock bias becomes the dongle's fused estimate, always, rather "
-                         "than this chain's own. Not a fallback: 'own, falling back to "
-                         "fused when unsolved' is a rescue path, and a rescue path only "
-                         "runs in the condition it rescues, which is exactly how 682ee91b "
-                         "shipped and sat unexercised. The chain's own measurement is one "
-                         "INPUT to the fused state; it consumes the OUTPUT unconditionally. "
-                         "No special case is needed for a lone chain -- with one chain the "
-                         "fusion degenerates to that chain's own carrier+code combination, "
-                         "still better than carrier alone. Default OFF: turn on only after "
-                         "a soak of the SHADOW deltas shows fusion helps and harms nobody.")
+                    help="S2d, RESCUE-ONLY (revised 2026-07-29): consume the dongle's fused "
+                         "LO estimate EXACTLY when this chain has no estimate of its own "
+                         "(cold start, below min-sats, warm-start file lost). The original "
+                         "always-on scope was tried and REVERTED the same day -- car_trim "
+                         "rose 30-36% at matched node age, because the LO is a CONSTANT and "
+                         "the chain's own EMA (minutes of time-averaging) beats one cycle "
+                         "of cross-chain averaging; rescored against the EMA, fusion lost "
+                         "7 of 8 chains. In the rescue case there is no EMA to lose to, and "
+                         "the fused state's unique value is the cross-FAMILY rescue "
+                         "(code->carrier) that --clock-bias-siblings structurally cannot "
+                         "provide. With the chain solved, this flag is a PROVEN no-op. The "
+                         "'untested rescue path' worry is answered by scoring it always "
+                         "(the SHADOW log line) and exercising it deliberately "
+                         "(diag/receiver_state_rescue_test.py + the isolated-broker "
+                         "method), not by running it always.")
     ap.add_argument("--state-fuse-floor-ppm", type=float, default=0.001,
                     help="covariance FLOOR: no source may claim a standard error below "
                          "this. ON by default, and the default was chosen from a live "
@@ -1366,67 +1370,43 @@ def main(argv=None):
             if det_fresh.get(_p, (None,))[0] != _b[3]:
                 det_fresh[_p] = (_b[3], t0)
 
-        # ---- S2d: the consumed bias IS the fused state, ALWAYS ----------------------
-        # NOT "own value, falling back to fused when unsolved" -- that is a rescue path
-        # again, and a rescue path only runs in the condition it rescues, which is how
-        # 682ee91b shipped and stayed unexercised for days. The chain's own measurement is
-        # one INPUT to the fused state; the chain consumes the fused OUTPUT unconditionally.
+        # ---- S2d, REVISED SCOPE (2026-07-29): RESCUE-ONLY consumption ---------------
+        # Always-on consumption was tried and REVERTED the same day: car_trim rose +30-36%
+        # at matched node age, and rescored against the EMA the chains actually seed with,
+        # fusion lost 7 of 8 -- the LO is flat within noise (a CONSTANT), and minutes of
+        # time-averaging beat one cycle of cross-chain averaging. The original premise
+        # ("consume always so the rescue path is never untested") was the wrong cure: the
+        # durable one is publish + SCORE always (the SHADOW line below runs regardless) and
+        # EXERCISE deliberately (diag/receiver_state_rescue_test.py offline; the
+        # isolated-broker method live).
         #
-        # This needs no special case for a lone chain: with one chain the fusion degenerates
-        # to that chain's own carrier+code combination, which is still strictly better than
-        # carrier alone (they are independent measurements of one fractional error, measured
-        # to agree to 0.0003 ppm). The single-chain L2C dongle already exercises that path
-        # every cycle.
+        # So: the fused state is consumed EXACTLY when this chain has no estimate of its
+        # own -- cold start, below min-sats, warm-start file lost. There it has no EMA to
+        # lose to, and its unique value over --clock-bias-siblings is real: cross-FAMILY
+        # rescue (code -> carrier), which the sibling files structurally cannot provide
+        # (measured: all-carriers-dark recovers to 0.6-1.8 Hz on every dongle from code
+        # fits alone, including the lone-chain L2C dongle where a sibling rescue cannot
+        # exist). When the chain HAS its own estimate, this block is byte-identical to
+        # pre-S2d -- proven exhaustively over the input combinations, not argued.
         _fus_now = _fuse_cached(t0)
         _fused_hz = None
         if _fus_now and _fus_now.get("lo_ppm") is not None and not _fus_now["all_outliers"]:
             _fused_hz = _fus_now["lo_ppm"] * 1e-6 * args.carrier_hz
         if _fus_now is not None:
             _fus_seen[0] = True
-        if args.state_consume and _fused_hz is not None:
+        if args.state_consume and clock_bias_ema is None and _fused_hz is not None:
             clock_bias = _fused_hz
             bias_available = True
-            if clock_bias_ema is not None:
-                # DEPARTURE ALARM ON A SIGMA, NOT A FIXED Hz BAR.
-                # ⚠️ This shipped as `> 25.0 Hz` and immediately cried wolf: 5 alarms in
-                # 8 minutes, ALL on the two weakest L5 chains, none on L1. That is exactly
-                # the bug the clock-bias alarm above already fixed and documents -- a bar
-                # tuned on the strong chains fires constantly on the weak ones (~730 false
-                # alarms/night, 2026-07-20) and false alarms are how real ones get ignored.
-                # L5's own per-cycle estimate swings +-25 Hz routinely while L1's agrees to
-                # ~1 Hz, so 25 Hz means two different things on the two dongles. Both sides
-                # already publish their scatter; use it.
-                #
-                # This chain's own se comes from the fused record's own source list -- the
-                # fuser already read and converted it, so there is nothing new to carry.
-                _se_own = None
-                for _s in (_fus_now.get("sources") or ()):
-                    if _s.get("chain") == state_w.chain and _s.get("family") == "carrier":
-                        _se_own = float(_s["se_ppm"]) * 1e-6 * args.carrier_hz
-                        break
-                _d = _fused_hz - clock_bias_ema
-                _se_fus = (_fus_now.get("se_ppm") or 0.0) * 1e-6 * args.carrier_hz
-                _comb = math.sqrt((_se_own or 0.0) ** 2 + _se_fus ** 2)
-                _sig = (abs(_d) / _comb) if _comb > 0.0 else 0.0
-                # Hz floor too: when BOTH uncertainties are tiny, a sub-Hz disagreement
-                # must not manufacture a huge sigma out of nothing.
-                if _sig > 5.0 and abs(_d) > 5.0:
-                    _log_rl("fusedepart",
-                            "FUSED BIAS DEPARTS this chain by %+.1f Hz = %.1f sigma (fused "
-                            "%+.1f +-%.1f vs own %+.1f +-%.1f, %d src, worst src resid %.1f "
-                            "sigma) -- CONSUMED; check the per-source residuals in the "
-                            "state file"
-                            % (_d, _sig, _fused_hz, _se_fus, clock_bias_ema,
-                               _se_own if _se_own is not None else float("nan"),
-                               _fus_now["n_src"], _fus_now.get("worst_sigma") or 0.0),
-                            every_s=30.0)
+            _log_rl("fusrescue",
+                    "FUSED-STATE RESCUE: this chain is UNSOLVED; consuming the dongle's "
+                    "fused LO %+.1f Hz (%d src: %dc/%dd over %s) until it solves itself"
+                    % (_fused_hz, _fus_now["n_src"], _fus_now["n_carrier"],
+                       _fus_now["n_code"], ",".join(_fus_now["chains"])),
+                    every_s=10.0)
         else:
-            # Shadow mode, or the state layer is unavailable (missing/stale files, a
-            # filesystem fault). Falling back to the chain's own value here is an
-            # INFRASTRUCTURE fallback, not a physics rescue -- and it is loud.
             clock_bias = clock_bias_ema if clock_bias_ema is not None else 0.0
             bias_available = clock_bias_ema is not None
-            if args.state_consume and _fus_now is None:
+            if args.state_consume and clock_bias_ema is None and _fus_now is None:
                 # STARTUP is not a fault. On the first cycles after launch no broker has
                 # published a fresh record yet and the previous run's files are correctly
                 # refused as stale, so "unavailable" is the expected state for a few
@@ -3463,7 +3443,14 @@ def main(argv=None):
                                    ("%+.2f Hz" % _own) if _own is not None else "UNSOLVED",
                                    ("%+.2f Hz" % (_fhz - _own)) if _own is not None
                                    else "n/a (this is exactly the case fusion rescues)",
-                                   "CONSUMED" if args.state_consume else "NOT CONSUMED"),
+                                   # three honest modes: actively rescuing an unsolved
+                                   # chain / armed but idle (steady state, proven no-op) /
+                                   # pure shadow. "CONSUMED" when the chain is solved would
+                                   # be a lie under rescue-only semantics.
+                                   ("RESCUING (own unsolved)"
+                                    if args.state_consume and clock_bias_ema is None
+                                    else "RESCUE-ARMED, idle"
+                                    if args.state_consume else "SHADOW")),
                                 every_s=60.0)
                 state_w.flush(t0)
             except Exception as e:

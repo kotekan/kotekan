@@ -418,16 +418,16 @@ case "$SIGNAL" in *L1CA*|*L1_CA*) SIG_CAP="";; *) SIG_CAP="--signal-capability $
 # not a common reference error.
 STATE_DIR=${STATE_DIR:-$BIAS_DIR/state}
 mkdir -p "$STATE_DIR" 2>/dev/null
-# S2d THE FLIP, as a launch-time switch so turning it on -- and turning it back off -- is
-# an env var and a relaunch (~30 s), never a code edit under pressure:
-#     STATE_CONSUME=1 ./config/run_3band.sh     # consume the fused state
-#     STATE_CONSUME=0 ...                       # revert; provably identical to pre-S2d
-# With 0 the consumption site reduces to `clock_bias_ema if not None else 0.0` and the
-# first-seed guard to `clock_bias_ema is None` -- character-for-character the old behaviour,
-# so OFF is a no-op rather than a different code path that happens to agree.
-STATE_CONSUME=${STATE_CONSUME:-0}
+# S2d, RESCUE-ONLY (revised 2026-07-29, ON by default). A chain with NO estimate of its
+# own -- cold start, below min-sats, warm-start file lost -- consumes the dongle's fused LO
+# instead of sitting blind (the 2h45m 07-27 class). With the chain solved this is a PROVEN
+# no-op (exhaustive truth table in the commit), so ON is safe as the default; the original
+# always-on scope was tried and REVERTED the same day (car_trim +30-36% -- the chain's own
+# EMA beats an instantaneous cross-chain average for a constant). Revert switch kept:
+#     STATE_CONSUME=0 ./config/run_3band.sh     # rescue disarmed, byte-identical to pre-S2d
+STATE_CONSUME=${STATE_CONSUME:-1}
 STA_COMMON="--state-consume $STATE_CONSUME"
-[ "$STATE_CONSUME" = "1" ] && echo "S2d: brokers CONSUME the fused receiver state (clock bias comes from the dongle's fusion, not this chain's own)"
+[ "$STATE_CONSUME" = "1" ] && echo "S2d(rescue-only): an UNSOLVED chain consumes the dongle's fused LO; a solved chain is untouched (proven no-op)"
 STA_GPS="--state-file $STATE_DIR/${TAG}.json --state-dongle ${TAG} $STA_COMMON"
 STA_GAL="--state-file $STATE_DIR/${TAG}_gal.json --state-dongle ${TAG} $STA_COMMON"
 STA_BDS="--state-file $STATE_DIR/${TAG}_bds.json --state-dongle ${TAG} $STA_COMMON"
