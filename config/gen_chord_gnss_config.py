@@ -250,7 +250,12 @@ def main():
     if port == 12048:
         raise SystemExit("refusing to generate a config on port 12048: choco owns that port and "
                          "would redirect or reconfigure this instance")
-    out["rest_server"] = {"port": port, "cpu_affinity": cfg["runtime"]["cpu_affinity"]}
+    # CORS: the live viewer is served on its own HTTP port and fetches kotekan's REST
+    # cross-origin, so without this the browser silently blocks every status poll and the
+    # panels just sit empty. Wildcard is fine here -- this instance is bound on a private
+    # site network and serves nothing but diagnostics.
+    out["rest_server"] = {"port": port, "cpu_affinity": cfg["runtime"]["cpu_affinity"],
+                          "enable_cors": True}
 
     # --- safety: don't inject into the downstream science consumer ----------------------------
     dropped = []
