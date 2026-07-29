@@ -206,25 +206,62 @@ def q3_trim_redundancy(dongle, chains):
               % (chain, trim, _f(n, "%.0f"), bias, r, verdict))
 
 
+def _slope(ts, vs):
+    """Least-squares slope and its standard error.
+
+    ⚠️ NOT the endpoint difference v[-1]-v[0], which was the first version here and is a
+    terrible drift estimator: it throws away every interior sample and its uncertainty is
+    sqrt(2)*scatter regardless of how long you watched. On the live 150-sample window that
+    made a pure-noise L5 chain read as a "-50 Hz drift" (2.2 sigma of nothing). A fitted
+    slope over n samples is ~sqrt(n) more precise and comes with an honest error bar, which
+    is what "constant or state?" actually needs.
+    """
+    n = len(ts)
+    if n < 3:
+        return None, None
+    mt = sum(ts) / n
+    mv = sum(vs) / n
+    sxx = sum((t - mt) ** 2 for t in ts)
+    if sxx <= 0:
+        return None, None
+    b = sum((t - mt) * (v - mv) for t, v in zip(ts, vs)) / sxx
+    a = mv - b * mt
+    resid = [v - (a + b * t) for t, v in zip(ts, vs)]
+    if n <= 2:
+        return b, None
+    s2 = sum(r * r for r in resid) / (n - 2)
+    return b, math.sqrt(s2 / sxx)
+
+
 def q4_motion(dongle, chains):
-    """Does anything move faster than its own noise? If not, it is a constant."""
-    print("\n  Q4  motion over the window vs noise (constant, or genuinely a state?)")
+    """Does anything move faster than its own noise? If not, it is a constant.
+
+    The point of this question: a quantity that does not move faster than its own noise is
+    a CONSTANT to be persisted, not a state to be tracked -- and it decides whether the
+    fused state needs a drift term at all.
+    """
+    print("\n  Q4  motion: FITTED slope vs its own error bar (constant, or a state?)")
     for chain, recs in sorted(chains.items()):
         if len(recs) < 3:
             continue
-        span = recs[-1]["t"] - recs[0]["t"]
         for grp, fld, unit in (("carrier", "raw_hz", "Hz"),
                                ("code", "raw_ppm", "ppm"),
                                ("carrier_trim", "median_hz", "Hz")):
-            v = _series(recs, grp, fld)
-            if len(v) < 3:
+            pts = [(float(r["t"]), float((r.get(grp) or {}).get(fld)))
+                   for r in recs if (r.get(grp) or {}).get(fld) is not None]
+            if len(pts) < 3:
                 continue
-            drift = v[-1] - v[0]
-            scat = statistics.pstdev(v)
-            print("      %-18s %-12s span %5.0f s  drift %+9.4f %-3s  scatter %8.4f  "
-                  "-> %s" % (chain, grp + "." + fld, span, drift, unit, scat,
-                             "MOVES" if scat > 0 and abs(drift) > 3 * scat
-                             else "flat within noise (a CONSTANT to persist)"))
+            ts = [p[0] for p in pts]
+            vs = [p[1] for p in pts]
+            span = ts[-1] - ts[0]
+            b, se = _slope(ts, vs)
+            if b is None or not se:
+                continue
+            sig = abs(b) / se
+            # report the drift ACROSS THE WINDOW (slope x span) with its own error bar
+            print("      %-18s %-22s %+9.4f +- %.4f %-4s/window  (%.1f sigma) -> %s"
+                  % (chain, grp + "." + fld, b * span, se * span, unit, sig,
+                     "MOVES" if sig > 3 else "flat (a CONSTANT to persist)"))
 
 
 def q5_persistence(hist):

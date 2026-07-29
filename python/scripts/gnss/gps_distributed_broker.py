@@ -3170,12 +3170,29 @@ def main(argv=None):
                     _iw = time.time()
                     _ir = [v[0] for v in dr_state.get("integ", {}).values()
                            if isinstance(v, (list, tuple)) and _iw - v[1] < 30.0]
+                    # ⚠️ CHIPS ARE NOT COMPARABLE ACROSS CHAINS -- a chip is a different
+                    # duration per signal (1.023 Mcps at L1 C/A, 10.23 at L5), and this
+                    # value is mod a different CODE_LEN too. Publishing only chips is the
+                    # count-where-a-time-was-meant trap that has bitten this node three
+                    # times; carry the rate and the derived TIME/FRACTIONAL forms so a
+                    # consumer never has to guess. drift_ppm is the important one: it is
+                    # directly comparable to l-a and to the carrier bias in ppm, and that
+                    # comparison is what shows dr drift to be a RESIDUAL (measured 0.000
+                    # -0.11 of l-a on all 8 chains) rather than a third estimator.
+                    _cr = float(args.chip_rate_hz) if args.chip_rate_hz else None
+                    _dr = dr_state.get("drift")
+                    _im = receiver_state.mad(_ir)
                     state_w.observe(
                         "rxclock",
                         chips=dr_state.get("clk"),
-                        drift_chips_s=dr_state.get("drift"),
+                        chip_rate_hz=_cr,
+                        us=((dr_state["clk"] / _cr * 1e6)
+                            if (_cr and dr_state.get("clk") is not None) else None),
+                        drift_chips_s=_dr,
+                        drift_ppm=((_dr / _cr * 1e6) if (_cr and _dr is not None) else None),
                         n=len(_ir),
-                        integ_mad_chips=receiver_state.mad(_ir),
+                        integ_mad_chips=_im,
+                        integ_mad_us=((_im / _cr * 1e6) if (_cr and _im is not None) else None),
                         untrusted=len(dr_untrusted),
                         age_s=(round(t0 - dr_state["clk_t"], 2)
                                if dr_state.get("clk_t") else None))
