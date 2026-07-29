@@ -626,6 +626,15 @@ static void maybe_add_cors_headers(struct evhttp_request* request) {
 }
 
 void restServer::set_server_affinity(Config& config) {
+    // If the server was never started there is no thread to pin, and
+    // main_thread.native_handle() is 0 -- passing that to pthread_setaffinity_np
+    // segfaults. This is the case when a pipeline is built without being run
+    // (see kotekan --dry-run).
+    if (!main_thread.joinable()) {
+        DEBUG_NON_OO("restServer: not started, skipping affinity.");
+        return;
+    }
+
     vector<int32_t> cpu_affinity = config.get<std::vector<int32_t>>("/rest_server", "cpu_affinity");
 
     cpu_set_t cpuset;
