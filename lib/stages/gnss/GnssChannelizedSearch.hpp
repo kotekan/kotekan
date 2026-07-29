@@ -46,7 +46,12 @@
  * which periodic re-seeding by the broker absorbs.
  *
  * @conf signal/sample_rate/f_offset/spectrum_length/num_taps/pfb_window  As the F-engine.
- * @conf channel_offset   Int (default 0). Global index of this subband's channel 0.
+ * @conf channel_offset   Int (default 0). Global index of this subband's channel 0. Describes
+ *                        a CONTIGUOUS subband only.
+ * @conf channel_ids      Array<Int> (optional). Explicit global index per local channel, for a
+ *                        SPARSE subband -- CHORD's corner-turn hands a node every 16th bin, so
+ *                        its covering set for one carrier is a stride-16 comb, not a run.
+ *                        Overrides channel_offset. Empty = contiguous, unchanged.
  * @conf n_channels       Int. Channels owned by this subband.
  * @conf prns             Array<Int>. PRN universe to search.
  * @conf doppler_min/max/step  Double. Acquisition Doppler grid, Hz.
@@ -90,12 +95,18 @@ private:
         int misses = 0; ///< consecutive non-detecting snapshots since last valid hit
     };
 
+    /// Global spectrum index of local channel @c lc, and its inverse (-1 = not ours).
+    /// Identity+offset for a contiguous subband; a lookup when @c channel_ids is given.
+    int global_of_local(int lc) const;
+    int local_of_global(int c) const;
+
     Buffer* in_buf;
 
     int _N;
     int _fft_len;
     int _chan_offset;
     int _n_chan;
+    std::vector<int> _chan_ids; ///< global index per local channel; empty = contiguous
     int _hops_per_record; ///< hops per integration window
     int _acquire_windows; ///< windows accumulated per snapshot
     int _hold_snapshots;  ///< keep a detection valid this many non-detecting snapshots

@@ -245,8 +245,22 @@ gnss0_record:
   file_name: cx19_gnss0_cmb
   in_buf: gnss0_cmb_buf
   kotekan_stage: rawFileWrite
-gnss0_tap:
-  chan_ids:
+gnss0_srch_buf:
+  frame_size: samples_per_data_set * 7 * 1
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss0_srch_send:
+  buf: gnss0_srch_buf
+  cpu_affinity:
+  - 57
+  drop_frames: true
+  kotekan_stage: bufferSend
+  retry_time: 5.0
+  server_ip: 127.0.0.1
+  server_port: 11040
+gnss0_srch_tap:
+  chan_ids: &id002
   - 277
   - 278
   - 279
@@ -254,6 +268,18 @@ gnss0_tap:
   - 281
   - 282
   - 283
+  cpu_affinity:
+  - 24
+  element_offset: 0
+  fft_length: 16384
+  frame_chan_stride: num_local_freq
+  frame_elem_stride: num_elements
+  in_buf: host_voltage_buffer_0
+  kotekan_stage: GnssChordVoltageTap
+  n_elements: 1
+  out_buf: gnss0_srch_buf
+gnss0_tap:
+  chan_ids: *id002
   cpu_affinity:
   - 19
   element_offset: 0
@@ -343,8 +369,22 @@ gnss1_record:
   file_name: cx19_gnss1_cmb
   in_buf: gnss1_cmb_buf
   kotekan_stage: rawFileWrite
-gnss1_tap:
-  chan_ids:
+gnss1_srch_buf:
+  frame_size: samples_per_data_set * 7 * 1
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss1_srch_send:
+  buf: gnss1_srch_buf
+  cpu_affinity:
+  - 58
+  drop_frames: true
+  kotekan_stage: bufferSend
+  retry_time: 5.0
+  server_ip: 127.0.0.1
+  server_port: 11041
+gnss1_srch_tap:
+  chan_ids: &id003
   - 277
   - 278
   - 279
@@ -352,6 +392,18 @@ gnss1_tap:
   - 281
   - 282
   - 283
+  cpu_affinity:
+  - 31
+  element_offset: 0
+  fft_length: 16384
+  frame_chan_stride: num_local_freq
+  frame_elem_stride: num_elements
+  in_buf: host_voltage_buffer_1
+  kotekan_stage: GnssChordVoltageTap
+  n_elements: 1
+  out_buf: gnss1_srch_buf
+gnss1_tap:
+  chan_ids: *id003
   cpu_affinity:
   - 24
   element_offset: 0

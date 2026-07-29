@@ -50,11 +50,33 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _N = config.get<int>(unique_name, "spectrum_length");
     _fft_len = 2 * _N;
     _chan_offset = config.get_default<int>(unique_name, "channel_offset", 0);
+    // SPARSE SUBBANDS. The airspy node owns a CONTIGUOUS run of channels, so a single offset
+    // describes it. CHORD does not: the corner-turn gives a node every 16th bin, so its
+    // covering channels for one carrier are a stride-16 comb spanning ~20 MHz. Without an
+    // explicit list the search would build replicas for `channel_offset + 0..n-1` -- the wrong
+    // seven bins -- and correlate real data against a replica for a different part of the
+    // spectrum. That fails SILENTLY: the surface is noise, so it looks like "no satellite"
+    // rather than like a bug. Empty (the default) keeps the contiguous behaviour exactly.
+    _chan_ids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
     _n_chan = config.get<int>(unique_name, "n_channels");
-    if (_chan_offset < 0 || _n_chan <= 0 || _chan_offset + _n_chan > _N) {
-        FATAL_ERROR("GnssChannelizedSearch: channel slice [{:d},{:d}) invalid for N={:d}",
-                    _chan_offset, _chan_offset + _n_chan, _N);
-        return;
+    if (_chan_ids.empty()) {
+        if (_chan_offset < 0 || _n_chan <= 0 || _chan_offset + _n_chan > _N) {
+            FATAL_ERROR("GnssChannelizedSearch: channel slice [{:d},{:d}) invalid for N={:d}",
+                        _chan_offset, _chan_offset + _n_chan, _N);
+            return;
+        }
+    } else {
+        if ((int)_chan_ids.size() != _n_chan) {
+            FATAL_ERROR("GnssChannelizedSearch: channel_ids has {:d} entries but n_channels is "
+                        "{:d}",
+                        _chan_ids.size(), _n_chan);
+            return;
+        }
+        for (int c : _chan_ids)
+            if (c < 0 || c >= _N) {
+                FATAL_ERROR("GnssChannelizedSearch: channel_id {:d} outside [0,{:d})", c, _N);
+                return;
+            }
     }
     const int num_taps = config.get_default<int>(unique_name, "num_taps", 4);
     const std::string win = config.get_default<std::string>(unique_name, "pfb_window", "hamming");
@@ -138,11 +160,13 @@ void GnssChannelizedSearch::search_snapshot() {
     // Covering channels (global) for this carrier that fall in this subband.
     const auto cover = _replica->covering_bins(dmax, _doppler_margin_hz);
     std::vector<int> cov_local, cov_global;
-    for (int c : cover)
-        if (c >= _chan_offset && c < _chan_offset + _n_chan) {
-            cov_local.push_back(c - _chan_offset);
+    for (int c : cover) {
+        const int lc = local_of_global(c);
+        if (lc >= 0) {
+            cov_local.push_back(lc);
             cov_global.push_back(c);
         }
+    }
 
     for (int p = 0; p < n_prn; ++p) {
         if (cov_local.empty()) { // carrier not in this subband: nothing to find
@@ -193,7 +217,7 @@ void GnssChannelizedSearch::search_snapshot() {
         const auto repl_full = _replica->channels(p, anchor, 0.0, 0.0, Mp); // [N][Mp]
         std::vector<std::vector<cf>> repl0(_n_chan);
         for (int lc = 0; lc < _n_chan; ++lc)
-            repl0[lc] = repl_full[_chan_offset + lc];
+            repl0[lc] = repl_full[global_of_local(lc)];
 
         const std::vector<double>& grid = pgrid.empty() ? _doppler_grid : pgrid;
 
@@ -299,6 +323,19 @@ void GnssChannelizedSearch::search_worker() {
             _worker_busy = false;
         }
     }
+}
+
+int GnssChannelizedSearch::global_of_local(int lc) const {
+    return _chan_ids.empty() ? (_chan_offset + lc) : _chan_ids[(size_t)lc];
+}
+
+int GnssChannelizedSearch::local_of_global(int c) const {
+    if (_chan_ids.empty())
+        return (c >= _chan_offset && c < _chan_offset + _n_chan) ? (c - _chan_offset) : -1;
+    for (size_t i = 0; i < _chan_ids.size(); ++i)
+        if (_chan_ids[i] == c)
+            return (int)i;
+    return -1;
 }
 
 void GnssChannelizedSearch::main_thread() {

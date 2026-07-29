@@ -189,6 +189,39 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args):
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [cores[(gpu + 8) % len(cores)]],
         },
+        # SEARCH FEED. A SECOND tap on the same voltage buffer, taking ONE element -- the
+        # acquisition search is single-antenna by design, so this is ~57 kB/frame (1.4 MB/s)
+        # rather than the 1.8 MB/frame the tracking tap moves. Shipped as 4+4b bytes and
+        # unpacked on the far side, which is 8x cheaper on the wire than sending floats.
+        f"{pre}srch_buf": {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": args.buffer_depth,
+            "frame_size": f"samples_per_data_set * {n_chan} * 1",
+        },
+        f"{pre}srch_tap": {
+            "kotekan_stage": "GnssChordVoltageTap",
+            "in_buf": f"host_voltage_buffer_{gpu}",
+            "out_buf": f"{pre}srch_buf",
+            "chan_ids": chan_idx,
+            "n_elements": 1,
+            "element_offset": elem0 + args.search_element,
+            "frame_chan_stride": "num_local_freq",
+            "frame_elem_stride": "num_elements",
+            "fft_length": cfg["fengine"]["fft_length"],
+            "cpu_affinity": [cores[(gpu + 1) % len(cores)]],
+        },
+        f"{pre}srch_send": {
+            "kotekan_stage": "bufferSend",
+            "buf": f"{pre}srch_buf",
+            "server_ip": args.search_host,
+            "server_port": args.search_port_base + gpu,
+            # The search must NEVER back-pressure the ingest: acquisition is a bootstrap
+            # convenience, the science chain is not.
+            "drop_frames": True,
+            "retry_time": 5.0,
+            "cpu_affinity": [cores[(gpu + 3) % len(cores)]],
+        },
         f"{pre}combine": {
             "kotekan_stage": "GnssCoherentCombiner",
             "in_bufs": [rec_buf],
@@ -209,6 +242,94 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args):
         },
     }
     return blocks, record_floats, n_elem
+
+
+def build_search_instance(cfg, node, per_gpu, args, port):
+    """The SEARCH instance: a standalone kotekan that only acquires.
+
+    Separate process, not a branch of the node config, for two reasons. It must not share the
+    node instance's fate -- acquisition is a bootstrap aid and the science chain must not stop
+    when it is restarted -- and keeping it standalone means moving it to its own machine is a
+    change of --search-host, nothing else. It takes no DPDK, no GPU and no hugepages, so it
+    also runs as an ordinary user.
+    """
+    sig = cfg["signals"]
+    rt = cfg["runtime"]
+    fe = cfg["fengine"]
+    cores = rt["cpu_affinity"]
+    out = {
+        "type": "config",
+        "log_level": "info",
+        "samples_per_data_set": 8192,
+        "sizeof_float32": 4,
+        "cpu_affinity": cores,
+        "rest_server": {"port": port, "cpu_affinity": cores, "enable_cors": True},
+        "gnss_pool": {"kotekan_metadata_pool": "GnssChanMetadata",
+                      "num_metadata_objects": 30 * args.buffer_depth},
+        # The search stage builds a Telescope-free replica bank, but kotekan constructs a
+        # Telescope regardless, so it needs a minimal valid block.
+        "telescope": {"name": "ICETelescope", "num_polarizations": 1, "num_dishes": 1,
+                      "query_gps": False, "require_gps": False},
+    }
+    for gpu, pairs in sorted(per_gpu.items()):
+        n_chan = len(pairs)
+        pre = f"srch{gpu}_"
+        # Global channel index of this subband's first channel: the search reports code phase
+        # and Doppler against the ABSOLUTE frequency grid, so it has to know where it sits.
+        chan0 = pairs[0][0]
+        out.update({
+            f"{pre}in_buf": {
+                "kotekan_buffer": "standard", "metadata_pool": "gnss_pool",
+                "num_frames": args.buffer_depth * 2,
+                "frame_size": f"samples_per_data_set * {n_chan} * 1",
+            },
+            f"{pre}f_buf": {
+                "kotekan_buffer": "standard", "metadata_pool": "gnss_pool",
+                "num_frames": args.buffer_depth * 2,
+                "frame_size": f"samples_per_data_set * {n_chan} * 8",  # cfloat32
+            },
+            f"{pre}recv": {
+                "kotekan_stage": "bufferRecv",
+                "buf": f"{pre}in_buf",
+                "listen_port": args.search_port_base + gpu,
+                "num_threads": 1,
+                "drop_frames": True,
+                "cpu_affinity": [cores[gpu % len(cores)]],
+            },
+            f"{pre}deq": {
+                "kotekan_stage": "GnssChordDequantize",
+                "in_buf": f"{pre}in_buf",
+                "out_buf": f"{pre}f_buf",
+                "n_channels": n_chan,
+                "n_elements": 1,
+                "element": 0,
+                "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
+            },
+            f"{pre}search": {
+                "kotekan_stage": "GnssChannelizedSearch",
+                "in_buf": f"{pre}f_buf",
+                "signal": sig["primary"],
+                "prns": args.prns,
+                "sample_rate": float(fe["sampling_rate_MHz"]) * 1e6,
+                "f_offset": 0.0,
+                "spectrum_length": fe["num_bins"],
+                "num_taps": fe["pfb_taps"],
+                "pfb_window": fe["pfb_window"],
+                "channel_offset": chan0,   # unused when channel_ids is given; kept for logs
+                "n_channels": n_chan,
+                # The comb is SPARSE -- these are every 16th bin, not a contiguous block --
+                # so the search needs the explicit global indices. With only channel_offset it
+                # would correlate against replicas for the wrong bins and report "no satellite".
+                "channel_ids": [fid for fid, _ in pairs],
+                "doppler_min": -float(sig["max_doppler_hz"]),
+                "doppler_max": float(sig["max_doppler_hz"]),
+                "doppler_step": 250.0,
+                "acquire_windows": args.acquire_windows,
+                "acquire_snr": args.acquire_snr,
+                "cpu_affinity": [cores[(gpu + 4) % len(cores)]],
+            },
+        })
+    return out
 
 
 def main():
@@ -240,6 +361,19 @@ def main():
                     help="antenna whose correlation fills the record HEADER -- the broker's DLL "
                          "and carrier loop reference")
     ap.add_argument("--buffer-depth", type=int, default=4)
+    ap.add_argument("--search-element", type=int, default=0,
+                    help="element (relative to the live range) the acquisition search runs on. "
+                         "Single-antenna by design -- pick a healthy, high-gain feed.")
+    ap.add_argument("--search-host", default="127.0.0.1",
+                    help="where the search instance listens. Localhost today; changing this is "
+                         "the ONLY edit needed to move the search to another machine.")
+    ap.add_argument("--search-port-base", type=int, default=11040,
+                    help="bufferRecv port for GPU 0; GPU 1 uses base+1")
+    ap.add_argument("--acquire-windows", type=int, default=64,
+                    help="incoherent 1 ms windows stacked per acquisition attempt")
+    ap.add_argument("--acquire-snr", type=float, default=12.0)
+    ap.add_argument("--search-instance", action="store_true",
+                    help="emit the SEARCH instance config instead of the node config")
     args = ap.parse_args()
 
     with open(args.node_file) as fh:
@@ -263,6 +397,27 @@ def main():
     for fid in chans:
         gpu, idx = gpu_of_channel(cfg, args.node, fid)
         per_gpu.setdefault(gpu, []).append((fid, idx))
+
+    if args.search_instance:
+        port = args.rest_port if args.rest_port is not None else cfg["runtime"]["rest_port"] + 1
+        out = build_search_instance(cfg, args.node, per_gpu, args, port)
+        text = ("# GENERATED by config/gen_chord_gnss_config.py --search-instance -- DO NOT "
+                "HAND-EDIT.\n"
+                f"# node {args.node}  signal {sig['primary']}  rest port {port}\n"
+                "# Standalone acquisition instance: no DPDK, no GPU, no hugepages -- runs as an\n"
+                "# ordinary user. Fed by bufferSend from the node instance.\n"
+                + yaml.safe_dump(out, default_flow_style=False, sort_keys=True))
+        if args.out:
+            os.makedirs(os.path.dirname(args.out), exist_ok=True)
+            open(args.out, "w").write(text)
+            print(f"wrote {args.out}")
+        else:
+            sys.stdout.write(text)
+        print(f"  SEARCH instance for {args.node}", file=sys.stderr)
+        print(f"  listens  {args.search_port_base}..{args.search_port_base + len(per_gpu) - 1}",
+              file=sys.stderr)
+        print(f"  rest     {port}", file=sys.stderr)
+        return
 
     # --- safety: never answer on production's port -------------------------------------------
     port = args.rest_port if args.rest_port is not None else cfg["runtime"]["rest_port"]
