@@ -88,6 +88,20 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
             WARN("overlay registry/descriptor mismatch: {:s}", msg);
     }
     _wipe_buffer = (_navwipe_bit_records > 0 || !_secondary.empty() || !_l1co.empty());
+
+    // Real-time cost instrumentation -- see the header note. The derived quantity is the DUTY
+    // CYCLE: (d ingest_us + d emit_us) / (d records x record_period). < 1 keeps up; >= 1 is
+    // saturated and no amount of valve_slack fixes it.
+    {
+        using namespace kotekan::prometheus;
+        auto& m = Metrics::instance();
+        _m_ingest_us = &m.add_counter("kotekan_gnss_combiner_ingest_time_us_total", unique_name);
+        _m_emit_us = &m.add_counter("kotekan_gnss_combiner_emit_time_us_total", unique_name);
+        _m_records = &m.add_counter("kotekan_gnss_combiner_records_total", unique_name);
+        _m_emits = &m.add_counter("kotekan_gnss_combiner_emits_total", unique_name);
+        _m_last_emit_us = &m.add_gauge("kotekan_gnss_combiner_last_emit_time_us", unique_name);
+        _m_last_emit_prns = &m.add_gauge("kotekan_gnss_combiner_last_emit_prns", unique_name);
+    }
     // Auto-coherence (default ON, the clock_profile philosophy: automatic unless overridden):
     // integration_length is a MAX -- at emit the deep wipe is also evaluated over trailing
     // sub-windows (full, 1/2, 1/4, ... octaves) and the best deep SNR wins, so the deep |A|
@@ -270,6 +284,9 @@ void GnssCoherentCombiner::main_thread() {
         }
         if (stopping)
             break;
+        // Cost clock starts only AFTER wait_for_full_frame returns: blocking on input is IDLE,
+        // not work, and counting it would make an under-loaded stage look saturated.
+        const double _t_ingest0 = current_time();
 
         for (int p = 0; p < _n_prn; ++p) {
             // Sum the un-normalized correlation and replica energy across subbands
@@ -617,6 +634,11 @@ void GnssCoherentCombiner::main_thread() {
             }
         }
 
+        if (_m_ingest_us)
+            _m_ingest_us->inc((uint64_t)std::max(0.0, (current_time() - _t_ingest0) * 1e6));
+        if (_m_records)
+            _m_records->inc(); // the DATA clock: records consumed (x record period = data time)
+
         for (size_t i = 0; i < in_bufs.size(); ++i)
             in_bufs[i]->mark_frame_empty(unique_name, in_ids[i]++);
 
@@ -632,6 +654,8 @@ void GnssCoherentCombiner::main_thread() {
         float* out = (float*)out_buf->wait_for_empty_frame(unique_name, out_id);
         if (out == nullptr)
             break;
+        // Again after the blocking wait: downstream backpressure is not this stage's cost.
+        const double _t_emit0 = current_time();
         // block: divide sums by the block count. rolling: the EMA is already a mean, so just
         // undo the warm-up bias (1-(1-alpha)^n_roll) -> a true running mean from record 1.
         const double inv = _rolling ? 1.0 / (1.0 - std::pow(1.0 - alpha, (double)n_roll))
@@ -1531,6 +1555,22 @@ void GnssCoherentCombiner::main_thread() {
                 _st_adr_n[p] = _adr_ok[p] ? _adr_n[p] : 0;
                 _st_adr_lock[p] =
                     (_adr_ok[p] && _adr_t0[p] > 0.0) ? (utc_e - _adr_t0[p]) : 0.0;
+            }
+        }
+        {
+            const double us = std::max(0.0, (current_time() - _t_emit0) * 1e6);
+            if (_m_emit_us)
+                _m_emit_us->inc((uint64_t)us);
+            if (_m_emits)
+                _m_emits->inc();
+            if (_m_last_emit_us)
+                _m_last_emit_us->set(us);
+            if (_m_last_emit_prns) {
+                int active = 0;
+                for (int p = 0; p < _n_prn; ++p)
+                    if (!_navbuf[(size_t)p].empty())
+                        ++active;
+                _m_last_emit_prns->set((double)active); // cost scales with THIS, not with n_prn
             }
         }
         out_buf->mark_frame_full(unique_name, out_id++);

@@ -12,8 +12,9 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "gnssRecord.hpp"      // for RECORD_FLOATS + slot names (the record schema)
-#include "restServer.hpp"      // for connectionInstance
+#include "gnssRecord.hpp"        // for RECORD_FLOATS + slot names (the record schema)
+#include "prometheusMetrics.hpp" // for Counter, Gauge (real-time cost instrumentation)
+#include "restServer.hpp"        // for connectionInstance
 
 #include <complex> // for complex
 #include <cstdint> // for int8_t
@@ -234,6 +235,29 @@ private:
     /// broker can LNAV-decode and predict future bits for the peel. Config `bit_export: true`.
     bool _bit_export = false;
     std::vector<NavObs> _st_nav_obs; ///< last emit's observations per PRN (under _st_mtx)
+
+    /// ---- REAL-TIME COST INSTRUMENTATION (2026-07-29) ----
+    /// Added because four S4-phase-2 configurations were tuned against valve DROP RATE, which
+    /// cannot support that comparison: past the real-time cliff a stage's drop rate reflects
+    /// the pipeline's collapse dynamics, not its own cost, so every over-budget config reports
+    /// a number that says "already broken" rather than "this expensive". Worse, the rates were
+    /// not even ordered by cost -- shrinking the window 4x made them WORSE.
+    ///
+    /// THE NUMBER THESE EXIST TO PRODUCE is a DUTY CYCLE: CPU-seconds spent per second of DATA
+    /// consumed, = (d ingest_us + d emit_us) / (d records x record_period). Below 1 the stage
+    /// keeps up with real time; at 1 it is saturated and drops are inevitable no matter how deep
+    /// the buffer. That distinction is exactly what a bigger valve_slack cannot change: buffering
+    /// absorbs a TRANSIENT overrun (duty < 1 with spikes) and merely postpones a STEADY one
+    /// (duty >= 1). Read the duty BEFORE reaching for more buffer.
+    ///
+    /// Times are microseconds (Counter is integral). Per-emit gauges give the spike shape that
+    /// a cumulative counter averages away.
+    kotekan::prometheus::Counter* _m_ingest_us = nullptr; ///< cumulative record-ingest time
+    kotekan::prometheus::Counter* _m_emit_us = nullptr;   ///< cumulative emit/deep-block time
+    kotekan::prometheus::Counter* _m_records = nullptr;   ///< records consumed (the data clock)
+    kotekan::prometheus::Counter* _m_emits = nullptr;     ///< emits completed
+    kotekan::prometheus::Gauge* _m_last_emit_us = nullptr;  ///< last emit's deep-block time
+    kotekan::prometheus::Gauge* _m_last_emit_prns = nullptr; ///< PRNs carrying data that emit
 
     /// P7b PILOT OVERLAY PREDICTION. A pilot's secondary overlay (E1C CS25 / B1C / L1C-O /
     /// L5 NH) is DETERMINISTIC -- no decode needed, unlike LNAV. Once the dead-reckon anchor
