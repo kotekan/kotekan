@@ -326,9 +326,16 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rest-url", default="http://localhost:12048",
                     help="default kotekan REST base for bare stage names")
-    ap.add_argument("--detectors", "--searches", dest="detectors", required=True,
+    ap.add_argument("--detectors", "--searches", dest="detectors", default="",
                     help="detection endpoints: aggregator/search stage names, absolute "
-                         "URLs, or {a..b} ranges (e.g. aggregate  or  search_{00..49})")
+                         "URLs, or {a..b} ranges (e.g. aggregate  or  search_{00..49}). "
+                         "OPTIONAL: leave empty to run PURELY MODEL-PRIMARY, seeding every "
+                         "visible satellite from the BRDC model with no acquisition search at "
+                         "all (--almanac --dead-reckon). That is the CHORD configuration -- the "
+                         "chain there has no search stage, because the station position is known "
+                         "to millimetres and the model already lands inside the DLL capture "
+                         "range, so a blind search would only re-derive what the ephemeris "
+                         "already says.")
     ap.add_argument("--trackers", required=True,
                     help="tracker endpoints to seed (e.g. track_{00..49} or "
                          "http://nodeA:12048/track_{0..24},http://nodeB:12048/track_{0..24})")
@@ -689,6 +696,24 @@ def main(argv=None):
                          "GPS_L2C_CL. Mutually exclusive with --cl-tracker.")
     ap.add_argument("--adc-stage", default="airspy_in",
                     help="airspy input stage name for the utc0_sample0 anchor GET (CL assist)")
+    ap.add_argument("--time0-endpoint", default=None,
+                    help="CHORD: REST path (relative to --rest-url, e.g. telescope/time0_ns) "
+                         "serving the F-engine's GPS-disciplined absolute time of frame 0. Used "
+                         "INSTEAD of the airspy /adcstat anchor. The airspy node stamps sample 0 "
+                         "with host wall-clock -- good to milliseconds -- which is why it must "
+                         "then SOLVE the receiver clock from measured code phases. CHORD's "
+                         "frame 0 is disciplined to GPS via IRIG-B/PPS and is exact, so the "
+                         "anchor is a fact rather than an estimate.")
+    ap.add_argument("--dr-clock-chips", type=float, default=None,
+                    help="CHORD: prime the dead-reckon receiver clock (chips) instead of "
+                         "bootstrapping it from measured code phases. THIS IS WHAT LETS A NODE "
+                         "WITH NO SEARCH STAGE COLD-START. The bootstrap needs --dr-min-sats "
+                         "satellites already tracking to take a median of their residuals, but "
+                         "nothing can track until it is seeded -- on the airspy node the search "
+                         "stage breaks that circle. With a GPS-disciplined F-engine the offset "
+                         "is known a priori (0 plus a fixed instrumental/cable delay), so pass "
+                         "0.0 to start and calibrate the constant later from the measured "
+                         "integrity residual, which the broker logs every cycle.")
     ap.add_argument("--cl-time-adjust", type=float, default=0.0,
                     help="seconds added to the CL time-assist clock -- escape hatch for a future "
                          "non-multiple-of-1.5s GPS-UTC offset or a known host-clock bias")
@@ -988,6 +1013,19 @@ def main(argv=None):
                 dr_state = {"eph": None, "eph_t": 0.0, "t0m": None, "clk": None,
                             "clk_t": 0.0, "next": 0.0, "log_next": 0.0,
                             "pin": {}, "seeded": set()}
+                if args.dr_clock_chips is not None:
+                    # COLD START WITHOUT A SEARCH STAGE. The bootstrap below takes a median of
+                    # measured code-phase residuals, so it needs satellites already tracking --
+                    # but nothing tracks until something seeds it. The airspy node breaks that
+                    # circle with its search stage; a GPS-disciplined F-engine breaks it with
+                    # arithmetic instead, because the receiver clock offset is known a priori.
+                    # The live EMA below still refines this from the moment the first satellite
+                    # locks, so a wrong constant self-corrects rather than persisting.
+                    dr_state["clk"] = args.dr_clock_chips % float(args.code_length)
+                    dr_state["clk_t"] = time.time()
+                    _log("dead-reckon: receiver clock PRIMED %.2f chips = %.3f us (no search "
+                         "stage; EMA refines from the first lock)"
+                         % (dr_state["clk"], dr_state["clk"] / args.chip_rate_hz * 1e6))
                 _log("dead-reckon: BRDC cp seeding armed (%s, repin %.0f s%s)"
                      % (args.dr_constellation, args.dr_repin_s,
                         ", DRY RUN" if args.dr_dry_run else ""))
@@ -1484,12 +1522,22 @@ def main(argv=None):
         # lazily. Used by the CL time-assist and the dead-reckoned cp seeding.
         if (args.cl_assist or args.cl_tracker or dr_state is not None) and not utc0_sample0:
             try:
-                utc0_sample0 = float(
-                    _get("%s/%s/adcstat" % (base, args.adc_stage)).get("utc0_sample0", 0.0))
-                if utc0_sample0:
-                    _log("CL time-assist: capture sample-0 UTC anchor %.3f" % utc0_sample0)
+                if args.time0_endpoint:
+                    # CHORD: frame 0 is GPS-disciplined, so this is exact rather than an
+                    # estimate. time0_ns is the absolute time of fpga_seq_num 0.
+                    t0 = float(_get("%s/%s" % (base, args.time0_endpoint.strip("/")))
+                               .get("time0_ns", 0.0))
+                    utc0_sample0 = t0 / 1e9
+                    if utc0_sample0:
+                        _log("time anchor: CHORD F-engine frame0 = %.9f s (GPS-disciplined)"
+                             % utc0_sample0)
+                else:
+                    utc0_sample0 = float(
+                        _get("%s/%s/adcstat" % (base, args.adc_stage)).get("utc0_sample0", 0.0))
+                    if utc0_sample0:
+                        _log("CL time-assist: capture sample-0 UTC anchor %.3f" % utc0_sample0)
             except Exception as e:
-                _log("CL time-assist: adcstat anchor unavailable (%s); retrying" % e)
+                _log("time anchor unavailable (%s); retrying" % e)
         dr_pd = (dr_state or {}).get("pd") or {}
         dr_pd2 = (dr_state or {}).get("pd2") or {}
         for prn, (snr, dop, cp, ref_hop) in best.items():
