@@ -220,6 +220,15 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args):
             # convenience, the science chain is not.
             "drop_frames": True,
             "retry_time": 5.0,
+            # PIN THE WIRE FORMAT EXPLICITLY on both ends. bufferSend/bufferRecv default
+            # use_config_tracker to whether the INSTANCE has a /config_tracker block, and the two
+            # instances differ: the node inherits one from the production base config, the search
+            # instance has none. The sender then writes a 3-field header and the receiver reads a
+            # 2-field one, the stream shifts, and frame_size is read out of the neighbouring
+            # field -- surfacing as "Frame size does not match between server: 57344 and client:
+            # 12", where 12 is sizeof(GnssChanMetadata). Nothing about that message points at
+            # config_tracker, so pin it rather than inherit it.
+            "use_config_tracker": False,
             "cpu_affinity": [cores[(gpu + 3) % len(cores)]],
         },
         f"{pre}combine": {
@@ -294,6 +303,8 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 "listen_port": args.search_port_base + gpu,
                 "num_threads": 1,
                 "drop_frames": True,
+                # Must match the sender exactly -- see the note on the node's srch_send leg.
+                "use_config_tracker": False,
                 "cpu_affinity": [cores[gpu % len(cores)]],
             },
             f"{pre}deq": {

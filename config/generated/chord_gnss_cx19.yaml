@@ -259,6 +259,7 @@ gnss0_srch_send:
   retry_time: 5.0
   server_ip: 127.0.0.1
   server_port: 11040
+  use_config_tracker: false
 gnss0_srch_tap:
   chan_ids: &id002
   - 277
@@ -383,6 +384,7 @@ gnss1_srch_send:
   retry_time: 5.0
   server_ip: 127.0.0.1
   server_port: 11041
+  use_config_tracker: false
 gnss1_srch_tap:
   chan_ids: &id003
   - 277
