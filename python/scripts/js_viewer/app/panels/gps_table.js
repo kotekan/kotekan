@@ -26,6 +26,14 @@ const PREFS_KEY = "gps_viewer_prefs_v1";
 // per-signal metrics object (gps_feed.signal_metrics) + a formatter. Integer C/N0 / sig keep
 // the many columns tight; peel carries the ">=" lower-bound flag.
 const METRICS = {
+    // SNR = SEARCH detection significance, the only metric here that reports on ACQUISITION
+    // rather than on the deep integration. Restored 2026-07-29 (it existed as a fixed column
+    // before the unified matrix): the diagnostic value is precisely the DISAGREEMENT -- a
+    // strong SNR beside a dead sig/coh says the signal is there and something downstream of
+    // the search is wrong, which no deep metric can tell you on its own. Blank for a DERIVED
+    // signal (L2C-CL, L5-I): those are seeded from a sibling and never searched.
+    snr:  {label: "SNR",  field: "snr",     unit: "σ",
+           fmt: m => m && m.snr ? m.snr.toFixed(0) : null},
     cn0:  {label: "C/N0", field: "cn0",     unit: "dB-Hz",
            fmt: m => m && m.cn0 != null ? m.cn0.toFixed(0) : null},
     sig:  {label: "sig",  field: "sig",     unit: "σ",

@@ -778,6 +778,14 @@ UNIFIED_SIGNALS = [
      "combiner": "l2c_cl_combiner", "search": None,             "t_rec": 20e-3, "peel": False},
     {"tag": "G", "band": "L5", "col": "Q",   "name": "GPS L5-Q",
      "combiner": "l5_gps_combiner", "search": "l5_gps_search",  "t_rec": 1e-3,  "peel": True},
+    # L5-I is the DATA component of the same signal L5-Q pilots (S4 phase 2). Like L2C-CL it
+    # is DERIVED, not acquired -- seeded verbatim from its sibling's rows -- so search is None
+    # and it will never show an SNR cell. Its combiner runs the composed NH10 + CNAV navwipe,
+    # which is what lets it integrate past the 20 ms symbol boundary. Judge it against Q, its
+    # equal-power sibling, not against an absolute: measured 6.4 dB below Q at the 1 s rung
+    # (2026-07-29), down from 15.4 dB before the navwipe.
+    {"tag": "G", "band": "L5", "col": "I",   "name": "GPS L5-I (data, CNAV)",
+     "combiner": "l5_i_combiner",   "search": None,             "t_rec": 1e-3,  "peel": False},
     {"tag": "E", "band": "L1", "col": "E1C", "name": "Galileo E1-C",
      "combiner": "l1_gal_combiner", "search": "l1_gal_search",  "t_rec": 4e-3,  "peel": True},
     {"tag": "E", "band": "L5", "col": "E5a", "name": "Galileo E5a-Q",

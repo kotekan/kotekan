@@ -284,13 +284,28 @@ export class GpsFeed {
                     for (const d of l.det) {
                         const r = get(sg.tag, d.prn);
                         r.detected = true;
-                        if (d.snr != null && (r.snr == null || d.snr > r.snr)) r.snr = d.snr;
+                        if (d.snr != null) {
+                            // Keep the search SNR PER SIGNAL, not just as a row maximum: it is
+                            // the one metric that reports on the ACQUISITION rather than the
+                            // deep integration, so "strong in search, wrong downstream" is
+                            // exactly the state it exists to show -- and a row max hides which
+                            // signal is which. The row-level r.snr (sky colour, sort) is
+                            // unchanged.
+                            const e = (r.sig_by[sg.key] = r.sig_by[sg.key] || {});
+                            e.snr = Math.max(e.snr || 0, d.snr);
+                            if (r.snr == null || d.snr > r.snr) r.snr = d.snr;
+                        }
                     }
                 if (Array.isArray(l.status))
                     for (const s of l.status) {
                         if (!s.prn) continue;
                         const r = get(sg.tag, s.prn);
                         const m = signal_metrics(s, sg.t_rec);
+                        // The det loop above may already have stashed this signal's search SNR;
+                        // signal_metrics() knows nothing about detections, so carry it across
+                        // rather than letting the status overwrite it.
+                        const prev = r.sig_by[sg.key];
+                        if (prev && prev.snr != null) m.snr = prev.snr;
                         r.sig_by[sg.key] = m;
                         if ((m.sig || 0) >= SNR_LOCK) r.n_sig += 1;
                         // Row summary = the BEST signal (sky colour, sort default, lock gate).
