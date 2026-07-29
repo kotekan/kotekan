@@ -59,6 +59,48 @@ fpga_controller:
   port: 54321
   timing_endpoint: /get-frame0-time
 frame_arrival_period: 5.12e-6 * 8192
+gnss0_assemble:
+  cpu_affinity:
+  - 62
+  in_buf: gnss0_epl_buf
+  kotekan_stage: GnssGpuRecordAssemble
+  n_elements: 32
+  out_buf: gnss0_rec_buf
+  prns: &id001
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  - 20
+  - 21
+  - 22
+  - 23
+  - 24
+  - 25
+  - 26
+  - 27
+  - 28
+  - 29
+  - 30
+  - 31
+  - 32
+  reference_element: 0
+  sample_rate: 3200000000.0
 gnss0_cmb_buf:
   frame_size: 32 * 408 * sizeof_float32
   kotekan_buffer: standard
@@ -75,6 +117,41 @@ gnss0_combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss0_cmb_buf
+gnss0_epl_buf:
+  frame_size: 7487664
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss0_gpu:
+  commands:
+  - gpu_mem: gnss0_voltage
+    in_buf: gnss_volt_in
+    name: cudaInputData
+  - elem_stride: 32
+    fft_length: 16384
+    frame_chan_stride: 7
+    gpu_mem_input: gnss0_voltage
+    gpu_mem_output: gnss0_epl
+    hops_per_record: 2048
+    n_channels: 7
+    n_elements: 32
+    name: cudaGnssChordTrack
+    prns: *id001
+    sample_rate: 3200000000.0
+    seed_endpoint: /gnss0_track/set_seeds
+    signal: GPS_L5_Q
+  - name: cudaSyncOutput
+  - gpu_mem: gnss0_epl
+    name: cudaOutputData
+    out_buf: gnss_epl_out
+  cpu_affinity:
+  - 60
+  gpu_id: 0
+  in_buffers:
+    gnss_volt_in: gnss0_volt_buf
+  kotekan_stage: cudaProcess
+  out_buffers:
+    gnss_epl_out: gnss0_epl_buf
 gnss0_rec_buf:
   frame_size: 32 * 408 * sizeof_float32
   kotekan_buffer: standard
@@ -112,6 +189,16 @@ gnss0_volt_buf:
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
+gnss1_assemble:
+  cpu_affinity:
+  - 63
+  in_buf: gnss1_epl_buf
+  kotekan_stage: GnssGpuRecordAssemble
+  n_elements: 32
+  out_buf: gnss1_rec_buf
+  prns: *id001
+  reference_element: 0
+  sample_rate: 3200000000.0
 gnss1_cmb_buf:
   frame_size: 32 * 408 * sizeof_float32
   kotekan_buffer: standard
@@ -128,6 +215,41 @@ gnss1_combine:
   n_elements: 32
   n_prn: 32
   out_buf: gnss1_cmb_buf
+gnss1_epl_buf:
+  frame_size: 7487664
+  kotekan_buffer: standard
+  metadata_pool: gnss_pool
+  num_frames: 4
+gnss1_gpu:
+  commands:
+  - gpu_mem: gnss1_voltage
+    in_buf: gnss_volt_in
+    name: cudaInputData
+  - elem_stride: 32
+    fft_length: 16384
+    frame_chan_stride: 7
+    gpu_mem_input: gnss1_voltage
+    gpu_mem_output: gnss1_epl
+    hops_per_record: 2048
+    n_channels: 7
+    n_elements: 32
+    name: cudaGnssChordTrack
+    prns: *id001
+    sample_rate: 3200000000.0
+    seed_endpoint: /gnss1_track/set_seeds
+    signal: GPS_L5_Q
+  - name: cudaSyncOutput
+  - gpu_mem: gnss1_epl
+    name: cudaOutputData
+    out_buf: gnss_epl_out
+  cpu_affinity:
+  - 61
+  gpu_id: 1
+  in_buffers:
+    gnss_volt_in: gnss1_volt_buf
+  kotekan_stage: cudaProcess
+  out_buffers:
+    gnss_epl_out: gnss1_epl_buf
 gnss1_rec_buf:
   frame_size: 32 * 408 * sizeof_float32
   kotekan_buffer: standard

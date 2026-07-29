@@ -123,6 +123,53 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args):
             "fft_length": cfg["fengine"]["fft_length"],
             "cpu_affinity": [cores[gpu % len(cores)]],
         },
+        f"{pre}epl_buf": {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": args.buffer_depth,
+            # gnss_gpu::frame_bytes(n_prn, n_chan, ROWS_PLAIN=4, n_elem): header + winstart +
+            # PrnCtl + corr[jobs][chan][elem] + energy[jobs][chan]. MAX_REC = 16.
+            "frame_size": (48 + 8 * 16 + 64 * 16 * n_prn
+                           + 16 * 4 * n_prn * 16 * n_chan * n_elem
+                           + 8 * 4 * n_prn * 16 * n_chan),
+        },
+        f"{pre}gpu": {
+            "kotekan_stage": "cudaProcess",
+            "gpu_id": gpu,
+            "cpu_affinity": [cores[(gpu + 6) % len(cores)]],
+            "in_buffers": {"gnss_volt_in": tap_out},
+            "out_buffers": {"gnss_epl_out": f"{pre}epl_buf"},
+            "commands": [
+                {"name": "cudaInputData", "in_buf": "gnss_volt_in",
+                 "gpu_mem": f"{pre}voltage"},
+                {"name": "cudaGnssChordTrack",
+                 "gpu_mem_input": f"{pre}voltage",
+                 "gpu_mem_output": f"{pre}epl",
+                 "signal": sig["primary"],
+                 "prns": args.prns,
+                 "n_channels": n_chan,
+                 "n_elements": n_elem,
+                 "elem_stride": n_elem,
+                 "frame_chan_stride": n_chan,
+                 "hops_per_record": args.hops_per_record,
+                 "fft_length": cfg["fengine"]["fft_length"],
+                 "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
+                 "seed_endpoint": f"/{pre}track/set_seeds"},
+                {"name": "cudaSyncOutput"},
+                {"name": "cudaOutputData", "gpu_mem": f"{pre}epl",
+                 "out_buf": "gnss_epl_out"},
+            ],
+        },
+        f"{pre}assemble": {
+            "kotekan_stage": "GnssGpuRecordAssemble",
+            "in_buf": f"{pre}epl_buf",
+            "out_buf": rec_buf,
+            "prns": args.prns,
+            "n_elements": n_elem,
+            "reference_element": args.reference_element,
+            "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
+            "cpu_affinity": [cores[(gpu + 8) % len(cores)]],
+        },
         f"{pre}combine": {
             "kotekan_stage": "GnssCoherentCombiner",
             "in_bufs": [rec_buf],
@@ -166,6 +213,13 @@ def main():
                     help="retain the science pipeline alongside the GNSS branch")
     ap.add_argument("--prns", type=int, nargs="*", default=list(range(1, 33)))
     ap.add_argument("--integration-length", type=int, default=100)
+    ap.add_argument("--hops-per-record", type=int, default=2048,
+                    help="10.49 ms at CHORD's 5.12 us hop; divides the 8192-hop frame 4 ways and "
+                         "stays under the 20 ms NH20 period, so a record straddles at most one "
+                         "overlay transition (which P_HEAD handles)")
+    ap.add_argument("--reference-element", type=int, default=0,
+                    help="antenna whose correlation fills the record HEADER -- the broker's DLL "
+                         "and carrier loop reference")
     ap.add_argument("--buffer-depth", type=int, default=4)
     args = ap.parse_args()
 

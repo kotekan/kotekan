@@ -114,12 +114,22 @@ constexpr size_t off_prnctl() {
 constexpr size_t off_corr(int n_prn) {
     return off_prnctl() + sizeof(PrnCtl) * MAX_REC * n_prn;
 }
-constexpr size_t off_energy(int n_prn, int n_chan, int rows_spec = ROWS_PLAIN) {
-    return off_corr(n_prn) + sizeof(double) * 2 * max_jobs(n_prn, rows_spec) * n_chan;
+/// @param n_elem antennas per correlation (CHORD). 1 = the single-antenna airspy layout, which
+///        is what every existing caller gets by default -- the expressions below collapse to
+///        the originals term for term.
+///
+/// The CORRELATION array carries the element axis, [jobs][n_chan][n_elem]; the ENERGY array does
+/// NOT, [jobs][n_chan]. One replica is correlated against every antenna, so its energy is
+/// element-independent. That asymmetry is the same one the record schema encodes (energies in the
+/// per-PRN header, correlations in the element blocks) and the same one path B will hand us for
+/// free from the N^2 kernel as N x M versus M x M -- so it is worth keeping visible here rather
+/// than padding the energy array to match.
+constexpr size_t off_energy(int n_prn, int n_chan, int rows_spec = ROWS_PLAIN, int n_elem = 1) {
+    return off_corr(n_prn) + sizeof(double) * 2 * max_jobs(n_prn, rows_spec) * n_chan * n_elem;
 }
 /// Total frame size -- the yaml epl buffer's frame_size must equal this (asserted at runtime).
-constexpr size_t frame_bytes(int n_prn, int n_chan, int rows_spec = ROWS_PLAIN) {
-    return off_energy(n_prn, n_chan, rows_spec)
+constexpr size_t frame_bytes(int n_prn, int n_chan, int rows_spec = ROWS_PLAIN, int n_elem = 1) {
+    return off_energy(n_prn, n_chan, rows_spec, n_elem)
            + sizeof(double) * max_jobs(n_prn, rows_spec) * n_chan;
 }
 
