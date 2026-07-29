@@ -13,6 +13,7 @@
 #include "bufferContainer.hpp"
 
 #include <string>
+#include <vector>
 
 /**
  * @class GnssChordDequantize
@@ -33,6 +34,20 @@
  *
  * SCALE is arbitrary for acquisition (the search normalizes), so this emits raw lsb units by
  * default. It matters only if the output is ever used for absolute amplitude.
+ *
+ * ZERO-FILL TO A CONTIGUOUS SPAN. Optionally widens the output from the node's SPARSE comb to a
+ * contiguous channel range, placing each measured channel at its true position and leaving the
+ * rest zero. @ref GnssChannelizedSearch runs a parallel-code-phase FFT search, which transforms
+ * over the channel axis and therefore assumes the channels are CONTIGUOUS. Handing it a
+ * stride-16 comb aliases the code-phase axis with period 1/(8 * 195.3 kHz) = 640 ns ~ 6.5 chips,
+ * so the peak repeats and the reported code phase is ambiguous -- addressing the right bins
+ * (channel_ids) is necessary but NOT sufficient. Zero-filling restores contiguity: the
+ * transform is valid again and the missing channels cost only sensitivity (the fill fraction),
+ * which we already accept.
+ *
+ * @conf out_channels  width of the contiguous output span (default = n_channels, i.e. no fill)
+ * @conf out_offset    global index of output channel 0 (required when out_channels is set)
+ * @conf channel_ids   global index of each INPUT channel, in input order
  *
  * @conf in_buf        [hop][chan][elem] 4+4b bytes (a GnssChordVoltageTap output)
  * @conf out_buf       [hop][chan] cfloat32
@@ -57,6 +72,8 @@ private:
     int _element;
     int _n_hops;
     float _scale;
+    int _out_chan;              ///< output span width (== _n_chan when not zero-filling)
+    std::vector<int> _out_idx;  ///< output slot for each input channel
 };
 
 #endif // GNSS_CHORD_DEQUANTIZE_HPP

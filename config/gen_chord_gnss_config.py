@@ -39,7 +39,7 @@ import yaml
 CONF = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, CONF)
 
-from chord_band_plan import covering_channels, node_channels  # noqa: E402
+from chord_band_plan import all_band_channels, covering_channels, node_channels  # noqa: E402
 
 DEFAULT_NODE_FILE = os.path.join(CONF, "chord_gnss_node.yaml")
 
@@ -280,6 +280,16 @@ def build_search_instance(cfg, node, per_gpu, args, port):
         "telescope": {"name": "ICETelescope", "num_polarizations": 1, "num_dishes": 1,
                       "query_gps": False, "require_gps": False},
     }
+    # Contiguous span covering the signal's whole main lobe on the PFB grid. Derived from the
+    # SAME covering_channels() the band plan and the tap use -- deliberately not re-derived from
+    # frequencies, because that criterion (centre inside the band) differs from covering's
+    # (passband OVERLAP) and drops the edge channels the tap actually delivers. Both GPUs share
+    # one span so the two searches are directly comparable.
+    full_cover = covering_channels(all_band_channels(cfg), float(sig["carrier_hz"]),
+                                   float(sig["chip_rate_hz"]), float(sig["max_doppler_hz"]))
+    span_lo, span_hi = full_cover[0], full_cover[-1]
+    span_n = span_hi - span_lo + 1
+
     for gpu, pairs in sorted(per_gpu.items()):
         n_chan = len(pairs)
         pre = f"srch{gpu}_"
@@ -295,7 +305,9 @@ def build_search_instance(cfg, node, per_gpu, args, port):
             f"{pre}f_buf": {
                 "kotekan_buffer": "standard", "metadata_pool": "gnss_pool",
                 "num_frames": args.buffer_depth * 2,
-                "frame_size": f"samples_per_data_set * {n_chan} * 8",  # cfloat32
+                # The SPAN, not the comb: the search's FFT over the channel axis needs
+                # contiguity (see GnssChordDequantize's header note).
+                "frame_size": f"samples_per_data_set * {span_n} * 8",  # cfloat32
             },
             f"{pre}recv": {
                 "kotekan_stage": "bufferRecv",
@@ -314,6 +326,10 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 "n_channels": n_chan,
                 "n_elements": 1,
                 "element": 0,
+                # Zero-fill the stride-16 comb into the contiguous L5 span.
+                "out_channels": span_n,
+                "out_offset": span_lo,
+                "channel_ids": [fid for fid, _ in pairs],
                 "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
             },
             f"{pre}search": {
@@ -326,12 +342,12 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 "spectrum_length": fe["num_bins"],
                 "num_taps": fe["pfb_taps"],
                 "pfb_window": fe["pfb_window"],
-                "channel_offset": chan0,   # unused when channel_ids is given; kept for logs
-                "n_channels": n_chan,
-                # The comb is SPARSE -- these are every 16th bin, not a contiguous block --
-                # so the search needs the explicit global indices. With only channel_offset it
-                # would correlate against replicas for the wrong bins and report "no satellite".
-                "channel_ids": [fid for fid, _ in pairs],
+                # CONTIGUOUS span, because the dequantize zero-filled it. channel_ids is
+                # deliberately NOT set: the sparse-comb path addresses the right bins but leaves
+                # the FFT's code-phase axis aliased at ~6.5 chips, so contiguity is what actually
+                # makes the search valid. Sensitivity costs the fill fraction, which we accept.
+                "channel_offset": span_lo,
+                "n_channels": span_n,
                 "doppler_min": -float(sig["max_doppler_hz"]),
                 "doppler_max": float(sig["max_doppler_hz"]),
                 "doppler_step": 250.0,

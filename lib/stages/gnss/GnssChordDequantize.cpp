@@ -5,6 +5,7 @@
 #include "kotekanLogging.hpp"
 #include "visUtil.hpp" // for frameID
 
+#include <algorithm>
 #include <complex>
 #include <functional>
 
@@ -29,18 +30,48 @@ GnssChordDequantize::GnssChordDequantize(Config& config, const std::string& uniq
     _n_hops = config.get<int>(unique_name, "samples_per_data_set");
     _scale = config.get_default<float>(unique_name, "scale", 1.0f);
 
+    // Zero-fill to a contiguous span (see the header note on why the FFT search needs it).
+    _out_chan = config.get_default<int>(unique_name, "out_channels", _n_chan);
+    const int out_offset = config.get_default<int>(unique_name, "out_offset", 0);
+    const auto chan_ids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
+    _out_idx.resize((size_t)_n_chan);
+    if (_out_chan == _n_chan && chan_ids.empty()) {
+        for (int c = 0; c < _n_chan; ++c)
+            _out_idx[(size_t)c] = c; // pass-through
+    } else {
+        if ((int)chan_ids.size() != _n_chan) {
+            FATAL_ERROR("GnssChordDequantize: channel_ids has {:d} entries but n_channels is {:d}",
+                        chan_ids.size(), _n_chan);
+            return;
+        }
+        for (int c = 0; c < _n_chan; ++c) {
+            const int slot = chan_ids[(size_t)c] - out_offset;
+            if (slot < 0 || slot >= _out_chan) {
+                FATAL_ERROR("GnssChordDequantize: channel {:d} maps to slot {:d}, outside the "
+                            "[0,{:d}) output span at out_offset {:d}",
+                            chan_ids[(size_t)c], slot, _out_chan, out_offset);
+                return;
+            }
+            _out_idx[(size_t)c] = slot;
+        }
+        INFO("GnssChordDequantize[{:s}]: {:d} measured channels zero-filled into a contiguous "
+             "{:d}-channel span from global {:d} (fill {:.1f}%)",
+             unique_name, _n_chan, _out_chan, out_offset,
+             100.0 * (double)_n_chan / (double)_out_chan);
+    }
+
     if (_element < 0 || _element >= _n_elem)
         FATAL_ERROR("GnssChordDequantize: element {:d} outside [0, {:d})", _element, _n_elem);
 
     const size_t in_need = (size_t)_n_hops * _n_chan * _n_elem;
-    const size_t out_need = (size_t)_n_hops * _n_chan * sizeof(std::complex<float>);
+    const size_t out_need = (size_t)_n_hops * _out_chan * sizeof(std::complex<float>);
     if ((size_t)in_buf->frame_size < in_need)
         FATAL_ERROR("GnssChordDequantize: in_buf frame {:d} B < {:d}", (size_t)in_buf->frame_size,
                     in_need);
     if ((size_t)out_buf->frame_size < out_need)
         FATAL_ERROR("GnssChordDequantize: out_buf frame {:d} B < {:d} ({:d} hops x {:d} chan x "
                     "cfloat32)",
-                    (size_t)out_buf->frame_size, out_need, _n_hops, _n_chan);
+                    (size_t)out_buf->frame_size, out_need, _n_hops, _out_chan);
 }
 
 void GnssChordDequantize::main_thread() {
@@ -55,16 +86,20 @@ void GnssChordDequantize::main_thread() {
         if (out == nullptr)
             break;
 
+        // Zero the whole frame first: the un-measured channels of the span MUST be zero, and
+        // a stale previous frame there would be correlated as if it were data.
+        if (_out_chan != _n_chan)
+            std::fill(out, out + (size_t)_n_hops * _out_chan, std::complex<float>(0.f, 0.f));
         for (int m = 0; m < _n_hops; ++m) {
             const uint8_t* src = in + (size_t)m * _n_chan * _n_elem + _element;
-            std::complex<float>* dst = out + (size_t)m * _n_chan;
+            std::complex<float>* dst = out + (size_t)m * _out_chan;
             for (int c = 0; c < _n_chan; ++c) {
                 const uint8_t b = src[(size_t)c * _n_elem];
                 // HIGH nibble = REAL, LOW = IMAG, each stored as value+8. See the header note:
                 // swapping these is invisible in magnitude and inverts the Doppler sign.
                 const float re = (float)(int((b & 0xf0) >> 4) - 8) * _scale;
                 const float im = (float)(int(b & 0x0f) - 8) * _scale;
-                dst[c] = std::complex<float>(re, im);
+                dst[_out_idx[(size_t)c]] = std::complex<float>(re, im);
             }
         }
 
