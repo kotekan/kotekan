@@ -28,26 +28,31 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
+    // ELEMENT AXIS (CHORD). 0 = the single-antenna airspy layout, byte-for-byte; the per-element
+    // path below is then skipped entirely and every accumulator/emit is unchanged.
+    _n_elements = config.get_default<int>(unique_name, "n_elements", 0);
+    _rec_stride = gnss::record_stride(_n_elements);
+
     // Records per frame: configured, else inferred from the first input frame size.
     _n_prn = config.get_default<int>(unique_name, "n_prn", 0);
     if (_n_prn <= 0 && !in_bufs.empty())
-        _n_prn = in_bufs[0]->frame_size / (int)sizeof(float) / RECORD_FLOATS;
+        _n_prn = in_bufs[0]->frame_size / (int)sizeof(float) / _rec_stride;
     // Record width is a C++ constant; the frames are sized in yaml (n_prn * record_floats *
     // sizeof_float) with nothing linking the two. A stale config under-sizes them -- and here it
     // is doubly nasty, because the inference above would then silently compute the WRONG n_prn.
     {
-        const size_t need = (size_t)_n_prn * RECORD_FLOATS * sizeof(float);
+        const size_t need = (size_t)_n_prn * _rec_stride * sizeof(float);
         for (Buffer* b : in_bufs)
             if ((size_t)b->frame_size < need) {
                 FATAL_ERROR("GnssCoherentCombiner: input frame {:d} B < {:d} PRN x {:d} floats "
                             "({:d} B). Bump 'record_floats' in the config to {:d}.",
-                            (size_t)b->frame_size, _n_prn, RECORD_FLOATS, need, RECORD_FLOATS);
+                            (size_t)b->frame_size, _n_prn, _rec_stride, need, _rec_stride);
                 return;
             }
         if ((size_t)out_buf->frame_size < need) {
             FATAL_ERROR("GnssCoherentCombiner: out_buf frame {:d} B < {:d} PRN x {:d} floats "
                         "({:d} B). Bump 'record_floats' in the config to {:d}.",
-                        (size_t)out_buf->frame_size, _n_prn, RECORD_FLOATS, need, RECORD_FLOATS);
+                        (size_t)out_buf->frame_size, _n_prn, _rec_stride, need, _rec_stride);
             return;
         }
     }
@@ -248,6 +253,13 @@ void GnssCoherentCombiner::main_thread() {
     std::vector<float> ref_prn(_n_prn), ref_dop(_n_prn), ref_cp(_n_prn);
     std::vector<double> ref_utc(_n_prn);
     int n_acc = 0;              // block: records in the current block
+    // Per-antenna state (empty and untouched when n_elements == 0).
+    _ge_r.assign((size_t)_n_elements, 0.0);
+    _ge_i.assign((size_t)_n_elements, 0.0);
+    _acc_epow_el.assign((size_t)_n_prn * _n_elements, 0.0);
+    _acc_ear.assign((size_t)_n_prn * _n_elements, 0.0);
+    _acc_eai.assign((size_t)_n_prn * _n_elements, 0.0);
+    _alpha_el = 1.0 / (double)_integration_length;
     long long n_roll = 0;      // rolling: total records seen (for EMA bias correction)
     int since_emit = 0;        // rolling: records since the last emit
     const double alpha = 1.0 / (double)_integration_length; // rolling EMA weight
@@ -273,9 +285,13 @@ void GnssCoherentCombiner::main_thread() {
             double gr = 0.0, gi = 0.0, energy = 0.0, nchan = 0.0;
             double er = 0.0, ei = 0.0, e_energy = 0.0, lr = 0.0, li = 0.0, l_energy = 0.0;
             double ghr = 0.0, ghi = 0.0, h_energy = 0.0; // prompt HEAD segment (slots 16-18)
-            const float* ref = ins[0] + (size_t)p * RECORD_FLOATS; // PRN/dop/cp/UTC reference
+            const float* ref = ins[0] + (size_t)p * _rec_stride; // PRN/dop/cp/UTC reference
+            if (_n_elements > 0) {
+                std::fill(_ge_r.begin(), _ge_r.end(), 0.0);
+                std::fill(_ge_i.begin(), _ge_i.end(), 0.0);
+            }
             for (float* in : ins) {
-                const float* rec = in + (size_t)p * RECORD_FLOATS;
+                const float* rec = in + (size_t)p * _rec_stride;
                 gr += rec[3];
                 gi += rec[4];
                 energy += rec[5];
@@ -293,9 +309,47 @@ void GnssCoherentCombiner::main_thread() {
                 ghr += rec[gnss::REC_PH_RE];
                 ghi += rec[gnss::REC_PH_IM];
                 h_energy += rec[gnss::REC_PH_ENERGY];
+                // PER-ANTENNA prompt, summed across subbands exactly like the reference
+                // element's -- additive for the same reason (raw G sums; the shared energy
+                // normalizes once, below).
+                if (_n_elements > 0) {
+                    const float* eb0 = in + gnss::elem_offset((int)p, 0, _n_elements);
+                    for (int el = 0; el < _n_elements; ++el) {
+                        const float* eb = eb0 + (size_t)el * gnss::ELEM_FLOATS;
+                        _ge_r[el] += eb[gnss::ELEM_P_RE];
+                        _ge_i[el] += eb[gnss::ELEM_P_IM];
+                    }
+                }
             }
             const double ar = energy > 0.0 ? gr / energy : 0.0;
             const double ai = energy > 0.0 ? gi / energy : 0.0;
+            // PER-ANTENNA amplitude A_e = G_e / E, normalized by the SHARED replica energy --
+            // the same E every antenna's correlation was formed against, so the ratios are
+            // directly comparable across antennas. That comparability is the whole point: the
+            // beam map is the relative response across dishes, and dividing each antenna by its
+            // own energy would be dividing by the same number anyway.
+            //
+            // Accumulated the same way the reference element is (EMA when rolling, running sum
+            // otherwise) so a per-antenna value means exactly what rec[3] means, one antenna at
+            // a time. |A_e|^2 is incoherent -- it needs no per-antenna phase model and grows
+            // like sqrt(K) -- while <A_e> keeps the phase for the complex gain.
+            if (_n_elements > 0) {
+                for (int el = 0; el < _n_elements; ++el) {
+                    const double aer = energy > 0.0 ? _ge_r[el] / energy : 0.0;
+                    const double aei = energy > 0.0 ? _ge_i[el] / energy : 0.0;
+                    const double p2e = aer * aer + aei * aei;
+                    const size_t k = (size_t)p * _n_elements + el;
+                    if (_rolling) {
+                        _acc_epow_el[k] += _alpha_el * (p2e - _acc_epow_el[k]);
+                        _acc_ear[k] += _alpha_el * (aer - _acc_ear[k]);
+                        _acc_eai[k] += _alpha_el * (aei - _acc_eai[k]);
+                    } else {
+                        _acc_epow_el[k] += p2e;
+                        _acc_ear[k] += aer;
+                        _acc_eai[k] += aei;
+                    }
+                }
+            }
             // Head amplitude normalized by the TOTAL prompt energy, so head + tail == A
             // exactly and the segmented overlay wipe's units match the unsegmented one's.
             // A tracker that doesn't segment (CPU chain) writes PH == P -> head == A,
@@ -542,7 +596,7 @@ void GnssCoherentCombiner::main_thread() {
                     if (_peel_depth) { // residual prompt, same slide (see the block-mode note)
                         double rr = 0.0, ri = 0.0, rhr = 0.0, rhi = 0.0;
                         for (float* in2 : ins) {
-                            const float* rc = in2 + (size_t)p * RECORD_FLOATS;
+                            const float* rc = in2 + (size_t)p * _rec_stride;
                             rr += rc[gnss::REC_RES_RE];
                             ri += rc[gnss::REC_RES_IM];
                             rhr += rc[gnss::REC_RES_PH_RE];
@@ -593,7 +647,7 @@ void GnssCoherentCombiner::main_thread() {
                         // wipe applies unchanged.
                         double rr = 0.0, ri = 0.0, rhr = 0.0, rhi = 0.0;
                         for (float* in2 : ins) {
-                            const float* rc = in2 + (size_t)p * RECORD_FLOATS;
+                            const float* rc = in2 + (size_t)p * _rec_stride;
                             rr += rc[gnss::REC_RES_RE];
                             ri += rc[gnss::REC_RES_IM];
                             rhr += rc[gnss::REC_RES_PH_RE];
@@ -708,8 +762,8 @@ void GnssCoherentCombiner::main_thread() {
         };
         const double Keff = _rolling ? (double)_integration_length : (double)n_acc;
         for (int p = 0; p < _n_prn; ++p) {
-            float* rec = out + (size_t)p * RECORD_FLOATS;
-            for (int f = 0; f < RECORD_FLOATS; ++f)
+            float* rec = out + (size_t)p * _rec_stride;
+            for (int f = 0; f < _rec_stride; ++f) // whole record: element blocks too
                 rec[f] = 0.0f;
             rec[0] = ref_prn[p];
             rec[1] = ref_dop[p];
@@ -719,6 +773,20 @@ void GnssCoherentCombiner::main_thread() {
             rec[5] = (float)(acc_ai[p] * inv);                       // <A>.im
             rec[6] = (float)std::hypot(acc_ar[p], acc_ai[p]) * inv;  // |<A>|_coh
             rec[7] = (float)(acc_nchan[p] * inv);                    // covering channels used
+            // PER-ANTENNA BEAM MAP. Same `inv` normalization as the reference element above, so
+            // CMB_ELEM_AMP_INCOH is directly comparable with rec[3] -- for a single-antenna
+            // configuration with reference_element = e they are the same number.
+            if (_n_elements > 0) {
+                for (int el = 0; el < _n_elements; ++el) {
+                    float* eb = rec + gnss::RECORD_FLOATS + (size_t)el * gnss::ELEM_FLOATS;
+                    const size_t k = (size_t)p * _n_elements + el;
+                    const double mr = _acc_ear[k] * inv, mi = _acc_eai[k] * inv;
+                    eb[gnss::CMB_ELEM_AMP_INCOH] = (float)std::sqrt(_acc_epow_el[k] * inv);
+                    eb[gnss::CMB_ELEM_MEAN_RE] = (float)mr;
+                    eb[gnss::CMB_ELEM_MEAN_IM] = (float)mi;
+                    eb[gnss::CMB_ELEM_AMP_COH] = (float)std::hypot(mr, mi);
+                }
+            }
             // DLL observables (gnssRecord.hpp): window-averaged full-band Early/Late powers and
             // the normalized early-minus-late discriminator. ~Linear in the code-phase error
             // over ~+-dll_spacing (tau ~ disc/4 chips at 0.5-chip spacing); the BROKER closes
@@ -1080,8 +1148,13 @@ void GnssCoherentCombiner::main_thread() {
                 }
             }
             *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = ref_utc[p];
-            if (!_rolling)
+            if (!_rolling) {
                 acc_pow[p] = acc_pow2[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = acc_epow[p] = acc_lpow[p] = acc_he[p] = acc_pe[p] = 0.0; // block: reset
+                for (int el = 0; el < _n_elements; ++el) { // per-antenna block reset
+                    const size_t k = (size_t)p * _n_elements + el;
+                    _acc_epow_el[k] = _acc_ear[k] = _acc_eai[k] = 0.0;
+                }
+            }
         }
         if (!_rolling)
             n_acc = 0;
@@ -1198,7 +1271,7 @@ void GnssCoherentCombiner::main_thread() {
                             dbg += b;
                         }
                         if (dw.snr > FLOOR_MARGIN * flr && dw.snr > deep_snr[p]) {
-                            float* rec = out + (size_t)p * RECORD_FLOATS;
+                            float* rec = out + (size_t)p * _rec_stride;
                             rec[8] = (float)dw.amplitude;
                             deep_snr[p] = dw.snr;
                             nh_phase[p] = hph;
@@ -1245,7 +1318,7 @@ void GnssCoherentCombiner::main_thread() {
         {
             std::lock_guard<std::mutex> lk(_st_mtx);
             for (int p = 0; p < _n_prn; ++p) {
-                const float* rec = out + (size_t)p * RECORD_FLOATS;
+                const float* rec = out + (size_t)p * _rec_stride;
                 _st_prn[p] = (int)std::lround(rec[0]);
                 _st_amp[p] = rec[3];
                 _st_coh[p] = rec[6];

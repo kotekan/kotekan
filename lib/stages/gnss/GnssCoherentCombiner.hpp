@@ -162,6 +162,15 @@ private:
     std::vector<Buffer*> in_bufs;
     Buffer* out_buf;
     int _n_prn;
+
+    /// Element axis (CHORD). 0 = single-antenna airspy layout; the per-antenna path is then
+    /// skipped entirely and every accumulator and emit below is unchanged.
+    int _n_elements = 0;
+    int _rec_stride = gnss::RECORD_FLOATS; ///< floats per PRN record, = record_stride(_n_elements)
+    std::vector<double> _ge_r, _ge_i;      ///< scratch: per-antenna prompt summed over subbands
+    std::vector<double> _acc_epow_el;      ///< [n_prn][n_elem] <|A_e|^2>, the beam-map estimator
+    std::vector<double> _acc_ear, _acc_eai; ///< [n_prn][n_elem] <A_e>, the per-antenna phase
+    double _alpha_el = 0.0;                ///< rolling EMA weight for the per-antenna state
     int _integration_length; ///< block: records/output; rolling: EMA time constant (records)
     bool _rolling;           ///< rolling EMA integration vs block-and-reset
     int _emit_every;         ///< rolling: records between emits (output cadence)

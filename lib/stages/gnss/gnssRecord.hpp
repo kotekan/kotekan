@@ -215,6 +215,21 @@ constexpr int ELEM_RES_PH_RE = 10; ///< (a single-PRN replica is likely sub-quan
 constexpr int ELEM_RES_PH_IM = 11; ///< 4+4b). Written zero until then; slots held so the
                                    ///< record size does not change when the peel lands.
 
+// COMBINER element blocks reuse the same ELEM_FLOATS stride -- one geometry for both record
+// types, so a buffer sized for one fits the other and record_stride() is the only size rule in
+// the system. The SLOT MEANINGS differ, exactly as they do for the shared 24-float header
+// (REC_* vs CMB_*): the tracker's blocks hold per-record correlations, the combiner's hold
+// integrated per-antenna amplitudes.
+constexpr int CMB_ELEM_AMP_INCOH = 0; ///< sqrt<|A_e|^2> -- THE BEAM MAP VALUE for this antenna.
+                                      ///< Incoherent, so it needs no per-antenna phase model and
+                                      ///< grows like sqrt(K); this is what a transit traces out.
+constexpr int CMB_ELEM_MEAN_RE = 1;   ///< <A_e> coherent mean: carries the per-antenna PHASE,
+constexpr int CMB_ELEM_MEAN_IM = 2;   ///< i.e. the complex gain the array calibration wants.
+constexpr int CMB_ELEM_AMP_COH = 3;   ///< |<A_e>| -- coherent amplitude. Below the incoherent one
+                                      ///< by the amount the phase wandered over the window, so
+                                      ///< the RATIO is a per-antenna coherence diagnostic.
+// 4..11 reserved (per-antenna deep integration, peel residual).
+
 /// Floats per PRN for a record carrying @c n_elem antennas (@c n_elem 0 => the airspy layout).
 constexpr int record_stride(int n_elem) {
     return RECORD_FLOATS + n_elem * ELEM_FLOATS;

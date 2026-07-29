@@ -138,6 +138,31 @@ gains:
   snapshot_on_start: true
   alarm_on_change: true
 
+roadmap:
+  # EARLY PRIORITY, once there is on-sky proof of life: SPLIT THE FREQUENCY AXIS BACK OUT.
+  #
+  # The first cut collapses the covering channels in GnssGpuRecordAssemble (the covering-mask
+  # sum) and carries only the element axis downstream, so the beam product is per-dish/pol
+  # amplitude vs time. That is the right thing to get working first, but it discards a
+  # measurement we are already paying for.
+  #
+  # WHY IT MATTERS, and why it gets worse rather than better:
+  #   * The beam evolves ACROSS a wide signal. L5 spans ~20 MHz, which is already enough for
+  #     the response to change measurably from one edge of the main lobe to the other -- this
+  #     is the reason GnssBeamCube exists on the airspy side.
+  #   * BOC signals make it critical, not merely nice. BOC(m,n) puts its power in TWO lobes at
+  #     +/- m*1.023 MHz, so a frequency-collapsed measurement averages the beam over a split
+  #     spectrum tens of MHz wide and reports a number that describes neither lobe.
+  #
+  # WHAT IT TAKES. The element axis and the channel axis both have to survive to the beam
+  # stage, so the assembler needs an option to NOT sum the covering channels, and the record
+  # schema needs the element blocks indexed per channel. GnssBeamCube is already the right
+  # consumer -- it is "the combiner without the cross-channel sum" -- but it is built for the
+  # CPU per-channel tracker chain (one input buffer per channel), whereas the GPU chain emits
+  # one stream with the channels already summed. So this is a real change to the assembler and
+  # the schema, not just plumbing, which is exactly why it is recorded here rather than left
+  # as an assumption that it will be easy later.
+
 runtime:
   # Cores verified free on cx19: unclaimed by the production config AND measured idle.
   # DPDK poll cores (5-7, 21-23 and their isolcpus siblings 37-39, 53-55) are at 0% idle
