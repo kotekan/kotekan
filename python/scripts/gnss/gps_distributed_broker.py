@@ -796,6 +796,12 @@ def main(argv=None):
                          "than betting on +-0.5 -- a half-chip code offset degrades ~6 dB "
                          "rather than nulling, so any partial despread stands far above "
                          "the ~2 noise floor and names the true offset.")
+    ap.add_argument("--cl-kscan-segs", default="",
+                    help="explicit CSV of SEGMENT offsets for the scan (e.g. the full-75 "
+                         "sweep '0,-1,1,...,-37,37'). The default +-2 neighbourhood only "
+                         "exonerates SMALL anchor errors; utc0_sample0 is stamped from "
+                         "system_clock::now() on the FIRST USB transfer and carries tens "
+                         "of ms of per-launch startup latency -- several 20 ms segments.")
     ap.add_argument("--cl-kscan-dwell", type=int, default=20,
                     help="CL k-scan: broker cycles to dwell per offset (the CL combiner's deep "
                          "integration must respond before stepping). 20 cycles ~= 4 s at the "
@@ -1131,6 +1137,12 @@ def main(argv=None):
     if args.cl_kscan_chips:
         _kscan_seq = [float(x) for x in args.cl_kscan_chips.split(",") if x.strip()]
         _kscan_frac = True
+    elif args.cl_kscan_segs:
+        # explicit segment list -- built for the FULL-75 sweep after the +-2 scan was
+        # over-read as exoneration (it exonerated |N|<=2 ONLY; the anchor's startup
+        # latency jitter is tens of ms, i.e. potentially several 20 ms segments)
+        _kscan_seq = [int(x) for x in args.cl_kscan_segs.split(",") if x.strip()]
+        _kscan_frac = False
     else:
         _kscan_seq = [0, -1, 1, -2, 2]   # true k first (baseline), then neighbours
         _kscan_frac = False
