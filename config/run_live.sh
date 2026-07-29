@@ -76,6 +76,17 @@ PEEL=$(grep -oE '^[a-z_0-9]+: \{ kotekan_stage: GnssVoltagePeel' "$CFG" | grep -
 #  (2) LEGACY single-chain (--cl-assist, superseded but kept): the MAIN trackers despread
 #      GPS_L2C_CL and their seeds are lifted IN PLACE. Only fires when no cl_track endpoint
 #      exists, so old configs behave as before. Needs the almanac (LAT/LON) either way.
+# S4 CROSS-BAND CNAV. A chain whose combiner carries the CNAV DATA component but which is not
+# this broker's own --combiner: at L5 the broker owns the Q pilot, while the CNAV symbols come
+# off the derived L5-I sibling (i_combiner). Handed over as --cnav-combiner so its nav_obs reach
+# the CNAV decoder and get cross-checked against BRDC -- a SECOND independent decode of the same
+# message set L2C already decodes, so an ephemeris can be verified three ways.
+# Detected the same way as the CL sibling: by the chain existing in the band's config.
+CNAVA=""
+if grep -qE '^i_combiner:' "$CFG"; then
+  CNAVA="--cnav-combiner ${SP}i_combiner"
+  echo "L5-I cross-band CNAV: broker decodes ${SP}i_combiner's symbols + BRDC cross-check"
+fi
 CLA=""
 if grep -qE 'seed_endpoint:[[:space:]]*"/cl_track/set_seeds"' "$CFG"; then
   CLA="--cl-tracker ${SP}cl_track"
@@ -410,7 +421,7 @@ python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gps_search 
         ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} ${CPERR:+--hold-max-cp-err $CPERR} \
         --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
         --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
-        ${BROKER_EXTRA:-} $ALM $CLA $CARG $SIG_CAP \
+        ${BROKER_EXTRA:-} $ALM $CLA $CNAVA $CARG $SIG_CAP \
         > /tmp/${TAG}_broker.log 2>&1 &
 BPID=$!
 # WATCHDOG NOW FLEET-WIDE (was BeiDou-only until 2026-07-19 eve): the L2C duty timeline

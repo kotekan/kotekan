@@ -856,6 +856,18 @@ def main(argv=None):
                          "ephemeris/messages and shadow-serves the signs of DECODED spans. Set "
                          "cnav on the L2C broker so its nav_obs (CNAV symbols) go to the right "
                          "decoder instead of churning the LNAV frame-sync forever.")
+    ap.add_argument("--cnav-combiner", default=None,
+                    help="AUXILIARY combiner polled purely for CNAV nav_obs, in ADDITION to "
+                         "--combiner (S4). Exists because a band's CNAV can live on a chain "
+                         "that is not this broker's own: at L5 the broker's combiner is the "
+                         "Q PILOT (whose nav_obs are deterministic overlay predictions, which "
+                         "belong to the LNAV/pilot path), while the CNAV symbols come from the "
+                         "derived L5-I DATA sibling. Pointing --nav-decoder at the main "
+                         "combiner cannot express that split. Symbols from here go to the CNAV "
+                         "decoder regardless of --nav-decoder, and are cross-checked against "
+                         "BRDC on the usual 60 s health cadence -- giving a SECOND, independent "
+                         "decode of the same message set L2C already decodes, so an ephemeris "
+                         "can be verified three ways (L2C vs L5 vs BRDC).")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -902,6 +914,7 @@ def main(argv=None):
     combiner = resolve_prefix(args.combiner, base)
     cl_tracker = resolve_prefix(args.cl_tracker, base) if args.cl_tracker else None
     cl_combiner = resolve_prefix(args.cl_combiner, base) if args.cl_combiner else None
+    cnav_combiner = resolve_prefix(args.cnav_combiner, base) if args.cnav_combiner else None
     gating = args.lat is not None and args.lon is not None
 
     # Almanac assist: BRDC (default; PRN-indexed, label-rot-proof) or the legacy TLE path.
@@ -1954,6 +1967,29 @@ def main(argv=None):
                 # out of the sky? Scored only where the satellite is strong enough that a
                 # disagreement means OUR bits are wrong rather than the air reading being wrong.
                 navhealth.score(_p, _r["nav_obs"], _r.get("deep_snr"))
+            # AUXILIARY CNAV CHAIN (--cnav-combiner, S4): a second combiner polled only for its
+            # CNAV symbols. At L5 this broker's own combiner is the Q PILOT -- its nav_obs are
+            # deterministic overlay predictions handled above -- while CNAV arrives on the
+            # derived L5-I data sibling, which no broker otherwise reads. Failure here is
+            # deliberately NON-FATAL and quiet-ish: this is an observability path, and a chain
+            # that has not acquired yet simply returns nothing. It must never disturb the
+            # tracking loop that shares this cycle.
+            if cnav_combiner:
+                try:
+                    _aux = {int(r["prn"]): r for r in _get("%s/get_status" % cnav_combiner)
+                            if r.get("prn")}
+                except Exception as e:
+                    _aux = {}
+                    _log_rl("cnavaux", "cnav aux combiner %s unreadable: %s"
+                            % (cnav_combiner, e))
+                for _p, _r in _aux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if cnav is None:
+                        from cnav_predictor import CnavPredictor
+                        cnav = CnavPredictor(log=_log)
+                        _log("CNAV decoder armed on aux chain %s" % cnav_combiner)
+                    cnav.ingest(_p, _r["nav_obs"])
             # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
             # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
             # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
