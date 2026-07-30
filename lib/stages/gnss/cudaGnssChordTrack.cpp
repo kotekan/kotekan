@@ -38,6 +38,9 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     fft_len = config.get_default<int>(unique_name, "fft_length", 16384);
     sample_rate = config.get_default<double>(unique_name, "sample_rate", 3.2e9);
     f_offset_hz = config.get_default<double>(unique_name, "f_offset_hz", 0.0);
+    // F-engine conjugation, measured on sky 2026-07-30 -- see DespreadParams::conj_data.
+    // Without it the tracker despreads the conjugate of the sky and never locks.
+    _conjugate = config.get_default<bool>(unique_name, "conjugate", false);
     dll_spacing = config.get_default<double>(unique_name, "dll_spacing", 0.5);
     doppler_margin_hz = config.get_default<double>(unique_name, "doppler_margin_hz", 5000.0);
 
@@ -272,7 +275,7 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
         n_out_rows += S.despread->enqueue_batch_nm(d_window, d_scale, d_chanids, d_wave, S.n_elem,
                                                    S.elem_stride, S.frame_chan_stride, wstart,
                                                    specs, d_jobs + (size_t)n_out_rows, d_corr,
-                                                   d_energy, (void*)stream);
+                                                   d_energy, (void*)stream, S._conjugate);
     }
     hdr->n_jobs = n_out_rows;
 

@@ -96,6 +96,11 @@ struct DespreadParams {
                            ///< also carries the peel residual rows, so the despread writes its
                            ///< E/P/L/P_HEAD into the same stride the add-back and the assembler
                            ///< use. (xcorr keeps its own stride of 4 -- it is scratch, not frame.)
+    int conj_data = 0; ///< negate the imag of every unpacked data sample. The CHORD F-engine's
+                       ///< output is CONJUGATED relative to the gnss44 decode (measured on sky
+                       ///< 2026-07-30 -- see GnssChordDequantize.cpp for the evidence). A flag
+                       ///< here rather than in gnss44: the airspy chain uses gnss44 as a matched
+                       ///< encoder/decoder PAIR, which must stay self-consistent.
     int data_stride; ///< row stride (hops) of the [n_chan][*] data array: n_hops for a packed
                      ///< per-record staging buffer, or the ring length when a window is read in
                      ///< place from the device ring (phase F: ring_hops is a multiple of n_hops,

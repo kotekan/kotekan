@@ -162,6 +162,8 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args):
                 {"name": "cudaInputData", "in_buf": "gnss_volt_in",
                  "gpu_mem": f"{pre}voltage"},
                 {"name": "cudaGnssChordTrack",
+                 # F-engine conjugation, measured on sky 2026-07-30 (see GnssChordDequantize).
+                 "conjugate": True,
                  "gpu_mem_input": f"{pre}voltage",
                  "gpu_mem_output": f"{pre}epl",
                  "signal": sig["primary"],

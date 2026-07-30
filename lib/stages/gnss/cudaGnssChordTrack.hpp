@@ -43,6 +43,7 @@ public:
     int elem_stride = 0, frame_chan_stride = 0;
     int hops_per_record = 0, n_hops_frame = 0, fft_len = 16384;
     double sample_rate = 3.2e9, f_offset_hz = 0.0, dll_spacing = 0.5;
+    bool _conjugate = false; ///< F-engine conjugation (see DespreadParams::conj_data)
     double doppler_margin_hz = 5000.0;
 
     /// One PRN's live seed. Model-primary: the broker owns these and refreshes them every

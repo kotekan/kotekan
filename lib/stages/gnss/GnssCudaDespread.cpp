@@ -361,7 +361,8 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
                                        int elem_stride, int frame_chan_stride,
                                        long long window_start_sample,
                                        const std::vector<Spec>& specs, void* d_jobs_slot,
-                                       void* d_corr_out, void* d_energy_out, void* stream) {
+                                       void* d_corr_out, void* d_energy_out, void* stream,
+                                       bool conjugate) {
     Impl& im = *_impl;
     if (specs.empty())
         return 0;
@@ -379,6 +380,7 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     // frame_chan_stride/elem_stride instead.
     par.data_stride = im.n_hops;
     par.out_rows_spec = 4;
+    par.conj_data = conjugate ? 1 : 0;
 
     // GENERATE ONCE. The replicas are materialised here and reused across all n_elem antennas by
     // the correlator below -- that reuse is the entire reason the fused kernel is split for

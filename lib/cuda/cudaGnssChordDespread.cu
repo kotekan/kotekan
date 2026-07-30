@@ -140,10 +140,12 @@ __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
 
         for (int mh = threadIdx.y; mh < p.n_hops; mh += blockDim.y) {
             // Coalesced across threadIdx.x: consecutive elements are adjacent bytes.
-            const float2 dd =
+            float2 dd =
                 active ? gnss_cuda::unpack_44(
                              data[((size_t)mh * frame_chan_stride + fc) * elem_stride + e0], scale)
                        : make_float2(0.f, 0.f);
+            if (p.conj_data)
+                dd.y = -dd.y; // F-engine conjugation -- see DespreadParams::conj_data
             const bool in_head = (mh < m_head);
 
 #pragma unroll

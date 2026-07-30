@@ -105,7 +105,8 @@ public:
                          void* d_wave, int n_elem, int elem_stride, int frame_chan_stride,
                          long long window_start_sample, const std::vector<Spec>& specs,
                          void* d_jobs_slot, void* d_corr_out /*double2 [4*specs][nchan][nelem]*/,
-                         void* d_energy_out /*double [4*specs][nchan]*/, void* stream);
+                         void* d_energy_out /*double [4*specs][nchan]*/, void* stream,
+                         bool conjugate = false);
 
     /// One PRN's VOLTAGE PEEL request (docs/gnss_voltage_peel_live.md).
     ///
