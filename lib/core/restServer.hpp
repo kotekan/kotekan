@@ -27,7 +27,8 @@ enum class HTTP_RESPONSE {
     BAD_REQUEST = 400,
     REQUEST_FAILED = 402,
     NOT_FOUND = 404,
-    INTERNAL_ERROR = 500
+    INTERNAL_ERROR = 500,
+    SERVICE_UNAVAILABLE = 503
 };
 
 #define PORT_REST_SERVER 12048
@@ -193,6 +194,32 @@ public:
      * @param port The port to bind.  Default: PORT_REST_SERVER
      */
     void start(const std::string& bind_address = "0.0.0.0", u_short port = PORT_REST_SERVER);
+
+    /**
+     * @brief Quiesce request handling ahead of tearing down the pipeline.
+     *
+     * Stop dispatching to registered endpoint callbacks and block until any
+     * handler already running on the server thread has returned. After this
+     * call every incoming request is answered with 503 (Service Unavailable)
+     * without touching a callback, so it is safe for the caller to destruct
+     * the stages that own those callbacks.
+     *
+     * This closes a use-after-free on shutdown: an external signal (SIGINT /
+     * SIGTERM) tears the pipeline down on the main thread while the server
+     * thread may be part-way through a handler that captured a stage's @c
+     * this. handle_request looks a callback up under a lock but invokes a
+     * copy after releasing it (so callbacks may re-register endpoints), so the
+     * map lock alone does not keep the stage alive across the call; this
+     * barrier does.
+     *
+     * The server thread is left running (endpoints stay resolvable, just
+     * refused) so this composes with the framework's normal singleton
+     * teardown. Idempotent. Safe to call from the server thread itself (e.g. a
+     * @c /stop handler that deletes the mode): the single-threaded event loop
+     * guarantees no other handler is in flight, so the drain is skipped rather
+     * than dead-locking on the caller's own in-flight handler.
+     */
+    void stop_processing();
 
     /**
      * @brief Set the server thread CPU affinity
@@ -443,6 +470,17 @@ private:
 
     /// Flag set to true when exit condition is reached
     std::atomic<bool> stop_thread;
+
+    /// Held shared for the whole duration of a request handler and exclusively
+    /// by @c stop_processing, so shutdown can wait out any in-flight handler
+    /// before the stages those handlers reach into are destructed. Distinct
+    /// from @c callback_map_lock (which only guards the map structure and is
+    /// released before a callback is invoked).
+    std::shared_timed_mutex request_lock;
+
+    /// Cleared by @c stop_processing to refuse further callback dispatch. Once
+    /// false, handle_request answers 503 without invoking any endpoint.
+    std::atomic<bool> _accepting_requests{true};
 
     /// Cached value of /rest_server/enable_cors (legacy "*" mode); see
     /// @c set_cors_from_config.
