@@ -129,39 +129,39 @@ def find_pages(symbols):
 # --------------------------------------------------------------------------
 # F/NAV ephemeris: page types 1-4 -> Keplerian set (SI), then ECEF
 # --------------------------------------------------------------------------
-# name -> (page type, start bit WITHIN the 238-bit content AFTER the 6-bit type [0-indexed],
-# length, signed, scale). ⚠️ ICD-TRANSCRIBED, offsets are the ONE thing a roundtrip cannot
-# check -- the live BRDC position cross-check is the validator (metres if right, wild if a
-# field is misplaced). F/NAV splits the ephemeris across pages differently from I/NAV; the
-# reused sv_position math is identical (Galileo Kepler). Layout per the OS SIS ICD F/NAV
-# page-type tables. Offsets are relative to content bit 0 (the page-type field starts at 0).
-# NOTE: these are placeholders pending the code table + live symbols -- populated to the
-# ICD F/NAV structure but NOT yet live-verified; do not trust before the dpos check.
+# name -> (page type, start bit WITHIN the 238-bit content [0-indexed, the 6-bit page-type
+# field is bits 0..5], length, signed, scale). Offsets/pages are the ONE thing a roundtrip
+# cannot check (the E1B field-offset lesson) -- LIVE-VERIFIED against the gnss-sdr Galileo_FNAV.h
+# tables and confirmed by the BRDC dpos cross-check 2026-07-30. gnss-sdr uses 1-indexed offsets
+# from the same page frame, so my_start = gnss_offset - 1 (checked on M0: {17,32} -> start 16 =
+# type(6)+IODnav(10)). Scales are IDENTICAL to the I/NAV table (both Galileo Kepler); only the
+# page/bit LAYOUT differs -- and it differs a LOT from a naive guess: t0e is on PAGE 3 (not 4),
+# OMEGA0 + iDot are on PAGE 2 (not 3), and page 4 carries only Cic/Cis (the rest is GST-UTC).
 FNAV_EPH_FIELDS = {
-    # Page type 1: SVID(6), IODnav(10), t0c(14), af0(31), af1(21), af2(6), ... clock
+    # Page 1 (clock): IODnav@6, t0c@22, af0@36, af1@67, af2@88
     "t0c":   (1, 22, 14, False, 60.0),
     "af0":   (1, 36, 31, True, _P(34)),
     "af1":   (1, 67, 21, True, _P(46)),
     "af2":   (1, 88, 6, True, _P(59)),
-    # Page type 2: IODnav(10), M0(32), OMEGA_dot(24), e(32), sqrtA(32), OMEGA0(32)...
+    # Page 2 (orbit A): M0@16, OMEGA_dot@48, e@72, sqrtA@104, OMEGA0@136, iDot@168
     "M0":    (2, 16, 32, True, _P(31) * GAL_PI),
     "OMEGA_dot": (2, 48, 24, True, _P(43) * GAL_PI),
     "e":     (2, 72, 32, False, _P(33)),
     "sqrtA": (2, 104, 32, False, _P(19)),
-    # Page type 3: IODnav(10), OMEGA0(32), i0(32), omega(32), iDot(14), dn(16)...
-    "OMEGA0": (3, 16, 32, True, _P(31) * GAL_PI),
-    "i0":    (3, 48, 32, True, _P(31) * GAL_PI),
-    "omega": (3, 80, 32, True, _P(31) * GAL_PI),
-    "iDot":  (3, 112, 14, True, _P(43) * GAL_PI),
-    "dn":    (3, 126, 16, True, _P(43) * GAL_PI),
-    # Page type 4: IODnav(10), Cuc(16), Cus(16), Crc(16), Crs(16), Cic(16), Cis(16), t0e(14)
-    "Cuc":   (4, 16, 16, True, _P(29)),
-    "Cus":   (4, 32, 16, True, _P(29)),
-    "Crc":   (4, 48, 16, True, _P(5)),
-    "Crs":   (4, 64, 16, True, _P(5)),
-    "Cic":   (4, 80, 16, True, _P(29)),
-    "Cis":   (4, 96, 16, True, _P(29)),
-    "t0e":   (4, 112, 14, False, 60.0),
+    "OMEGA0": (2, 136, 32, True, _P(31) * GAL_PI),
+    "iDot":  (2, 168, 14, True, _P(43) * GAL_PI),
+    # Page 3 (orbit B): i0@16, omega@48, dn@80, Cuc@96, Cus@112, Crc@128, Crs@144, t0e@160
+    "i0":    (3, 16, 32, True, _P(31) * GAL_PI),
+    "omega": (3, 48, 32, True, _P(31) * GAL_PI),
+    "dn":    (3, 80, 16, True, _P(43) * GAL_PI),
+    "Cuc":   (3, 96, 16, True, _P(29)),
+    "Cus":   (3, 112, 16, True, _P(29)),
+    "Crc":   (3, 128, 16, True, _P(5)),
+    "Crs":   (3, 144, 16, True, _P(5)),
+    "t0e":   (3, 160, 14, False, 60.0),
+    # Page 4 (harmonics; rest of page is GST-UTC/GGTO): Cic@16, Cis@32
+    "Cic":   (4, 16, 16, True, _P(29)),
+    "Cis":   (4, 32, 16, True, _P(29)),
 }
 
 
