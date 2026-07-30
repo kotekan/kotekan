@@ -162,9 +162,13 @@ private:
     /// carrier loop needs; the old consecutive-record product was short-baseline + doubly-noisy and
     /// made the loop noise-inject). Squares A to cancel the +-1 nav-bit pi flips (data signals);
     /// a dataless pilot (carrier_pilot) fits the raw phase. Uses capture-UTC as the time axis so
-    /// valve-drop gaps don't bias the slope. Returns 0 if too short / degenerate.
+    /// valve-drop gaps don't bias the slope. Returns 0 (the broker's carrier-loop "skip"
+    /// sentinel -- `if resid == 0.0`) if too short / degenerate.
     /// @param sigma_phi_out (optional) weighted RMS of THIS fit's residuals, radians on the
-    /// true carrier -- the phase-jitter half of the multipath/scintillation pair.
+    /// true carrier -- the phase-jitter half of the multipath/scintillation pair. ALWAYS
+    /// written when non-null: a real value when the fit succeeds, else NaN ("not measured").
+    /// NEVER 0.0 on a failed fit -- a 0 jitter is indistinguishable from a pristine lock, so
+    /// an unmeasurable window would masquerade as a perfect one (fail-open); NaN reads honestly.
     /// @param prewiped the records are ALREADY overlay-free (the caller passes _navwipe = the
     /// de-rotated v_cur stream), so fit the RAW phase (mult 1, no squaring) exactly as for a
     /// dataless pilot -- half the phase noise AND no |2f-1| straddle null at boundary_f=0.5.

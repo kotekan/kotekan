@@ -665,7 +665,10 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<int> nh_phase(_n_prn, -1);     // secondary-overlay alignment found (L5; -1 = n/a)
         std::vector<double> amp_dbi(_n_prn, 0.0);  // noise-debiased (unbiased) signal amplitude
         std::vector<double> s4_raw(_n_prn, 0.0);   // amplitude scintillation index (raw)
-        std::vector<double> sigma_phi(_n_prn, 0.0);// carrier-phase jitter about the slope fit (rad)
+        std::vector<double> sigma_phi(_n_prn, NAN); // carrier-phase jitter (rad); NaN = NOT MEASURED
+                                                    // this emit (short window / no-wipe fallback /
+                                                    // no carrier data). Overwritten with a real value
+                                                    // only when carrier_resid_hz actually fits.
         std::vector<double> coh_s(_n_prn, 0.0);    // measured coherence: span of the winning window
         std::vector<int> deep_rec(_n_prn, 0);      // records in the winning deep window
         std::vector<double> deep_floor(_n_prn, 0.0); // rectification floor at the reported rung
@@ -1851,8 +1854,16 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
                                        const std::vector<double>& utc,
                                        double* sigma_phi_out, bool prewiped) const {
     const int n = (int)a.size();
-    if (n < 16)
+    // CONTRACT: this function ALWAYS writes *sigma_phi_out. Too few records to fit a
+    // phase slope -> return the residual's "no measurement" value (0.0, which the broker's
+    // carrier loop reads as skip -- see gps_distributed_broker.py `if resid == 0.0`) and mark
+    // the jitter UNMEASURED with NaN, NOT 0.0. A 0.0 here is indistinguishable from a pristine
+    // lock ("silence reads as success"); NaN ships as JSON null and reads as "not measured".
+    if (n < 16) {
+        if (sigma_phi_out != nullptr)
+            *sigma_phi_out = NAN;
         return 0.0;
+    }
     using cd = std::complex<double>;
     // Bit-robust phase-SLOPE fit: square A to cancel the +-1 nav-bit pi flips (a data signal), or
     // fit the raw phase for a dataless pilot. TWO STAGES, because a sequential record-to-record
@@ -1925,8 +1936,11 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
         Swtp += w * t * phi;
     }
     const double det = Sw * Swtt - Swt * Swt;
-    if (!(std::fabs(det) > 0.0))
+    if (!(std::fabs(det) > 0.0)) {
+        if (sigma_phi_out != nullptr)
+            *sigma_phi_out = NAN; // degenerate fit -> jitter unmeasured, not zero
         return 0.0;
+    }
     const double slope = (Sw * Swtp - Swt * Swp) / det; // d(phi)/dt (rad/s)
     const double icept = (Swtt * Swp - Swt * Swtp) / det;
     // SIGMA_PHI (scintillation / multipath phase jitter): the weighted RMS of the SAME fit's
@@ -1962,7 +1976,7 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
             Sw2 += w;
             Sr2 += w * resid * resid;
         }
-        *sigma_phi_out = (Sw2 > 0.0) ? std::sqrt(Sr2 / Sw2) / mult : 0.0;
+        *sigma_phi_out = (Sw2 > 0.0) ? std::sqrt(Sr2 / Sw2) / mult : NAN; // no valid weight -> unmeasured
     }
     // Total residual = the slip-free coarse stage PLUS the fine LSQ slope of what it left.
     return f_coarse + slope / mult / (2.0 * M_PI);      // -> residual carrier (Hz)
