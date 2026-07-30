@@ -453,13 +453,16 @@ def build_aggregator_instance(cfg, nodes, args, port):
             "in_channels": in_channels,
             "cpu_affinity": [cores[3 % len(cores)]],
         },
-        "agg_search": search_stage(cfg, args, "agg_merged_buf", union_ids,
+        # Named gps_search -- the CANONICAL spelling the browser viewer's /wsport chains and
+        # the airspy tooling poll (/gps_search/get_detections). Renaming our invented
+        # "agg_search" is cheaper and more durable than teaching every client an alias.
+        "gps_search": search_stage(cfg, args, "agg_merged_buf", union_ids,
                                    cores[4 % len(cores)]),
     })
     # The union surface is ~16x a single node's (4x channels x 4x stored lags); give the
     # search worker the spare cores and thread the aggregate across them.
-    out["agg_search"]["acquire_threads"] = 6
-    out["agg_search"]["cpu_affinity"] = list(cores[-6:])
+    out["gps_search"]["acquire_threads"] = 6
+    out["gps_search"]["cpu_affinity"] = list(cores[-6:])
     return out, feeds, union_ids
 
 
