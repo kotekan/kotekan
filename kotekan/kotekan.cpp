@@ -715,6 +715,12 @@ int main(int argc, char** argv) {
                 if (string(get_error_message()) != "not set") {
                     KotekanTrackers::instance().dump_trackers();
                 }
+                // Quiesce the REST server before destructing the stages: this
+                // teardown runs on the main thread while the server thread may
+                // still be handling a request that captured a stage's `this`
+                // (e.g. a monitor polling a stage's get_status endpoint), which
+                // would use-after-free once the stage is deleted below.
+                rest_server.stop_processing();
                 delete kotekan_mode;
             }
             break;
