@@ -227,6 +227,67 @@ wants 104 of 8192 bins, still 79x.
 `want` overload already existed); the boundary snap changes shared numerics and must be flagged
 on merge -- see `cudaGnssChordTrack.hpp`'s note for the shared/duplicated split.
 
+## 5b. FIRST LIVE RUN OF THE FIXED SEARCH, 2026-07-30 12:3x-12:45
+
+The speedups hold on sky: `precomputed banded repl0 for 32 PRNs x 7 channels x 3125 hops in
+3.0 s (5.6 MB; the full-spectrum form would be 6553.6 MB)`, logged once per instance, and passes
+now cycle in seconds instead of minutes.
+
+**THE TRACKER IS DOWNSTREAM OF DETECTION GATING — a trap I walked into.** The broker builds its
+tracker seeds by iterating `best`, which is populated only from detections passing
+`--acquire-snr` (broker line ~1247, seed loop ~1546). So with the search threshold at the 12.0
+default, nothing detected, `active=[]` every cycle, and the trackers were seeded with an EMPTY
+list. Records were still produced at the right size and rate, with correct PRN numbers and
+capture-UTC — and every measurement slot zero. 96 nonzero floats out of 13057, all of them PRN
+indices and the UTC double. **A record file that looks structurally perfect and is empty.**
+
+Yesterday's config carried `acquire_snr: 0.2`, which made every PRN "detect" and hid this
+entirely; regenerating the config restored the 12.0 default and switched the measurement chain
+off. I chose 12.0 deliberately that morning, reasoning only about not paying the refine cost on
+noise peaks, and missed the gating dependency completely.
+
+**The right fix is `--dr-clock-chips 0.0`, not a lowered threshold.** That flag exists for
+precisely this circle -- its own help says "THIS IS WHAT LETS A NODE WITH NO SEARCH STAGE
+COLD-START. The bootstrap needs --dr-min-sats satellites already tracking to take a median of
+their residuals, but nothing can track until it is seeded." With a GPS-disciplined F-engine the
+clock offset is known a priori, so priming it lets dead-reckoning seed every visible sat from
+BRDC with no detection at all. It was written yesterday FOR CHORD and then left out of both the
+command line and the documented run recipe in §7. It is now in §7 -- do not omit it again.
+
+With it: **`active=[5, 6, 9, 11, 12, 18, 21, 25, 26, 28, 29, 31]` (12 sats)** and the trackers
+produce real per-PRN correlations at model-predicted phases. Reported Dopplers follow the seeds
+(PRN 18: 2467 vs seeded 2472; PRN 31: -188 vs -164), `nchan` 7 as configured.
+
+### No signal yet, and the numbers say why we should not have expected one
+
+* `amp_coh` is 10-25x BELOW `amp_incoh` for every one of the 12 (e.g. PRN 31: 2.07 vs 33.6).
+  That is the noise signature: a coherent average decays as 1/sqrt(N) while the incoherent one
+  sits at the noise floor. `deep` is 0.0000 for all 12.
+* `dll_disc` rails past +-0.9 on half of them, with E/L power ratios up to 230x (PRN 21:
+  17.5 vs 3996). Not noise-like (noise gives balanced E/L) and not lock-like.
+* **We applied ZERO instrumental delay.** `--dr-clock-chips 0.0` means the seed carries no
+  delay term, while the cable alone is 4.26 +- 0.18 chips and the F-engine framing/PFB offset is
+  unknown on top (one frame = 52.4 chips, PFB group delay = 104.8). The DLL captures +-0.5 chip.
+  So the seeds are certainly outside capture, and a railed DLL at an uncorrected multi-chip
+  offset is what that looks like.
+* Search-side, the threshold is miscalibrated for this surface, independently of the above. With
+  32-window incoherent integration the surface is Gamma(32), so sigma/mean = 1/sqrt(32) = 0.177,
+  and the max over ~80M cells lands at about mean*(1 + 5.5 sigma) ~ 2.0. Observed best-SNR is
+  **2.1-2.3 and the winning PRN wanders (5, 18, 12, 12)** -- textbook noise. A threshold of 12
+  cannot fire at this integration depth no matter how strong the signal; it is calibrated for
+  airspy's far smaller single-window surface. A real bar here is ~2.8-3.
+
+### Next step, and why it is the search rather than a sweep
+
+The delay constant could be found by sweeping `--dr-clock-chips` and watching `amp_incoh`, but
+the plausible range is 0-160 chips (cable + framing + group delay) and each setting needs seconds
+of integration. The acquisition search covers **all 10230 chips at once** -- that is what it is
+for, and it is now cheap enough to run continuously. So: set `acquire_snr` to ~2.8, raise
+`acquire_windows` for sensitivity (the accumulate is 16x cheaper, so this is now affordable), and
+let the search report the code phase. Delay constant = reported code phase minus model
+prediction. Expect to need real integration: only 7 of 106 covering channels are used, which is
+-11.8 dB before any consideration of where a parked dish's sidelobe points.
+
 ## 6. Also outstanding
 
 * **Instrumental delay is still unmeasured.** The cable term is now well determined —
@@ -256,14 +317,16 @@ on merge -- see `cudaGnssChordTrack.hpp`'s note for the shared/duplicated split.
 sudo ./build/kotekan/kotekan --config config/generated/chord_gnss_cx19.yaml \
     --bind-address 0.0.0.0:12049
 
-# broker -- note -u, python buffers stdout when piped and you lose everything on kill
+# broker -- note -u (python buffers stdout when piped and you lose everything on kill), and
+# note --dr-clock-chips: WITHOUT IT the trackers are seeded with an empty list and every record
+# comes out structurally perfect and numerically zero. See 5b.
 PYTHONUNBUFFERED=1 /home/kvand/gnss/venv/bin/python -u \
   python/scripts/gnss/gps_distributed_broker.py \
   --rest-url http://localhost:12049 \
   --detectors http://localhost:12050/srch0_search,http://localhost:12050/srch1_search \
   --trackers gnss0_track,gnss1_track --combiner gnss0_combine \
   --almanac --almanac-source brdc --dead-reckon --narrow-search \
-  --time0-endpoint telescope/time0_ns \
+  --time0-endpoint telescope/time0_ns --dr-clock-chips 0.0 \
   --constellation G --carrier-hz 1176.45e6 --code-length 10230 --hops-per-sec 195312.5 \
   --lat 49.32075144444 --lon -119.62081125 --alt 545 --mask-deg 0 --interval 2
 ```
