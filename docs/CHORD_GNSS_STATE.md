@@ -94,9 +94,13 @@ on an unstarted thread (fixed, worth upstreaming).
   gathered union — not a search per node. At eight nodes that union is contiguous (all eight
   mod-8 offsets present), so full sensitivity and no aliasing.
 
-## 5. RESOLVED 2026-07-30 — replica generation cost (was THE blocker)
+## 5. RESOLVED 2026-07-30 — the search was ~600x too expensive (was THE blocker)
 
-Fixed, and it turned up a real numerics bug on the way. Measured at CHORD scale (Mp = 3125,
+Two independent costs, in the order they were found rather than the order they mattered.
+
+### The replica: banded and precomputed
+
+Measured at CHORD scale (Mp = 3125,
 fft_len = 16384, N = 8192, the node's 14 covering channels):
 
 | | per PRN | per pass (32 PRN x 2 instances) |
