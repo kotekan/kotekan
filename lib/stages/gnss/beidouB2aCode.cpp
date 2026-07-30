@@ -81,7 +81,55 @@ const std::array<int8_t, 1021>& legendre1021() {
     return L;
 }
 
+// B2a-DATA G1: same all-ones-truncate-restart structure as the pilot but a DIFFERENT
+// generator polynomial (BDS-3 B2a ICD 5.2.1). B2AD and B2AP share the G2 START table (60/63
+// PRNs identical) and differ in BOTH G1 and G2 taps -- verified bit-exact vs PocketSDR
+// gen_code_B2AD for PRN 19/20/30/45/63 (2026-07-30).
+const std::array<int8_t, B2A_CODE_LENGTH>& g1_code_b2ad() {
+    static const std::array<int8_t, B2A_CODE_LENGTH> g1 = [] {
+        std::array<int8_t, B2A_CODE_LENGTH> a{};
+        int8_t base[8190];
+        lfsr13(base, 8190, 0x1FFFu, 0b1000100000101u);
+        for (int i = 0; i < 8190; ++i)
+            a[i] = base[i];
+        for (int i = 8190; i < B2A_CODE_LENGTH; ++i)
+            a[i] = base[i - 8190];
+        return a;
+    }();
+    return g1;
+}
+
+// Per-PRN G2 START VALUES for B2a-DATA (BDS-3 B2a ICD Table 5-2 via PocketSDR B2AD_G2_init,
+// used directly -- the pilot table's transform is the identity, verified). PRN 1..63.
+constexpr uint32_t B2AD_G2_START[63] = {
+    0x1025, 0x1034, 0x10AD, 0x114F, 0x1155, 0x11AE, 0x11EE, 0x11FB,
+    0x1329, 0x13DA, 0x1435, 0x1444, 0x1455, 0x145B, 0x145C, 0x14A3,
+    0x14F7, 0x1501, 0x153E, 0x15AB, 0x15B1, 0x1653, 0x1662, 0x1698,
+    0x16B6, 0x16F2, 0x16FF, 0x1712, 0x173C, 0x17A1, 0x17C8, 0x17D4,
+    0x17EB, 0x17F3, 0x1851, 0x1894, 0x18B7, 0x1911, 0x1919, 0x19AB,
+    0x19B1, 0x19D2, 0x1A55, 0x1A74, 0x1ACB, 0x1B57, 0x1C34, 0x1C83,
+    0x1C8B, 0x1CA3, 0x1CA8, 0x1D3B, 0x1D97, 0x1E48, 0x1E94, 0x1E99,
+    0x1EDA, 0x1EF8, 0x1EFF, 0x1FB5, 0x0402, 0x1BF5, 0x03D2,
+};
+
 } // namespace
+
+std::array<int8_t, B2A_CODE_LENGTH> generate_b2ad_code(int prn) {
+    if (prn < 1 || prn > 63)
+        throw std::out_of_range("BeiDou B2a PRN must be 1..63");
+    std::array<int8_t, B2A_CODE_LENGTH> a{}, g2{};
+    lfsr13(g2.data(), B2A_CODE_LENGTH, B2AD_G2_START[prn - 1], 0b0010100010111u);
+    const auto& g1 = g1_code_b2ad();
+    for (int i = 0; i < B2A_CODE_LENGTH; ++i)
+        a[i] = (int8_t)(g1[i] * g2[i]);
+    return a;
+}
+
+// B2a-DATA secondary: the fixed 5-chip sequence 00010 -> {+1,+1,+1,-1,+1} (BDS-3 B2a ICD),
+// one 5-symbol period = one 5 ms B-CNAV2 symbol. SAME for every satellite.
+std::array<int8_t, 5> b2ad_secondary() {
+    return {1, 1, 1, -1, 1};
+}
 
 std::array<int8_t, B2A_CODE_LENGTH> generate_b2ap_code(int prn) {
     if (prn < 1 || prn > 63)

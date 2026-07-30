@@ -27,5 +27,12 @@ std::array<int8_t, B2A_CODE_LENGTH> generate_b2ap_code(int prn);
 /// B2a-pilot 100-chip secondary overlay (one per primary period), PRN 1..63.
 std::array<int8_t, 100> b2ap_secondary(int prn);
 
+/// B2a-DATA primary code, PRN 1..63, as +-1 chips. Same G1/G2 structure as the pilot, its own
+/// generator polynomials (shares the G2 start table). Carries B-CNAV2 (S5 D-component #3).
+std::array<int8_t, B2A_CODE_LENGTH> generate_b2ad_code(int prn);
+
+/// B2a-DATA 5-chip secondary overlay (5 ms = one B-CNAV2 symbol), SAME for every satellite.
+std::array<int8_t, 5> b2ad_secondary();
+
 } // namespace beidou
 #endif // BEIDOU_B2A_CODE_HPP

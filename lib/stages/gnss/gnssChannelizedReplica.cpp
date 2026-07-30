@@ -71,6 +71,10 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = beidou::generate_b2ap_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "BDS_B2A_D") {
+        auto a = beidou::generate_b2ad_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
     if (name == "GPS_L2C_CM")
         return gps::generate_l2cm_code(prn);
     if (name == "GPS_L2C_CL")
@@ -150,6 +154,10 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
             _secondary.assign(galileo::E1C_CS25.begin(), galileo::E1C_CS25.end());
         else if (name == "GAL_E5A_I") {
             const auto o = galileo::e5ai_secondary(); // shared CS20 (20 ms = one F/NAV symbol)
+            _secondary.assign(o.begin(), o.end());
+        }
+        else if (name == "BDS_B2A_D") {
+            const auto o = beidou::b2ad_secondary(); // shared 5-chip (5 ms = one B-CNAV2 symbol)
             _secondary.assign(o.begin(), o.end());
         }
         _secondary_length = (int)_secondary.size();

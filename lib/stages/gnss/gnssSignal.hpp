@@ -208,6 +208,18 @@ inline constexpr SignalDescriptor BDS_B2A_P = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
 };
 
+/// BeiDou-3 B2a DATA (1176.45 MHz) -- the B2a data channel carrying B-CNAV2: same 10230-chip
+/// primary at 1 ms (its own generator polys), a 5-chip secondary shared by all sats. B-CNAV2 is
+/// 100 sps through the NON-BINARY LDPC(GF64) = 200 sps, so a symbol is 5 ms = five 1 ms code
+/// periods, and the 5-chip secondary covers exactly ONE symbol (the GPS_L5_I / GAL_E5A_I
+/// discipline). The 3rd S5 D-component; DERIVED from the B2a-P pilot, decoded by beidou_bcnav2.
+inline constexpr SignalDescriptor BDS_B2A_D = {
+    "BDS_B2A_D", 1176.45e6, 10.23e6, 10230, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/false, /*nav_symbol_s=*/5e-3, /*secondary_length=*/5,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
@@ -215,7 +227,7 @@ inline constexpr SignalDescriptor BDS_B2A_P = {
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
-          &GAL_E1B, &BDS_B1C_P, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P})
+          &GAL_E1B, &BDS_B1C_P, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D})
         if (name == s->name)
             return s;
     return nullptr;

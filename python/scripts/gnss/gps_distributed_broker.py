@@ -359,6 +359,33 @@ def _fnav_brdc_xcheck(brdc_alm, sys, prn, fnav_eph, log):
         return " | BRDC xcheck err: %s" % ex
 
 
+def _bcnav2_brdc_xcheck(brdc_alm, sys, prn, bcnav2_eph, log):
+    """S5 ephemeris cross-check for BeiDou B2a B-CNAV2, the _fnav_brdc_xcheck analogue on the
+    BDS broker (sys='C'). B-CNAV2 and BRDC describe the same BDS-3 orbit through different
+    framing, so a correct decode matches BRDC to a few metres; a huge residual flags a decode
+    fault (the NB-LDPC / field-offset / GEO-vs-MEO conventions beidou_bcnav2 flagged as
+    ICD-owned, pending live symbols). Kepler/CNAV only."""
+    try:
+        import beidou_bcnav2 as _B
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        t0e = bcnav2_eph["t_oe"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + t0e
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _B.sv_position_bcnav2(bcnav2_eph, t0e)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODE %d, SatType %d)" % (
+            dpos, be["toe_sow"] - t0e, bcnav2_eph.get("IODE", -1),
+            int(round(bcnav2_eph.get("SatType", -1))))
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
 def visible_prns(lat, lon, alt_m, mask_deg, look_ahead_s):
     """PRNs above the elevation mask now (and look_ahead_s ahead). Needs skyfield."""
     try:
@@ -1089,6 +1116,16 @@ def main(argv=None):
                          "against BRDC on the 60 s health cadence -- an independent E5a decode "
                          "validating the Galileo ephemeris (and galileo_fnav's ICD "
                          "conventions) against the almanac, beside E1B's I/NAV decode.")
+    ap.add_argument("--bcnav2-combiner", default=None,
+                    help="AUXILIARY combiner polled for BeiDou B2a B-CNAV2 nav_obs (S5 "
+                         "D-component #3, the FIRST non-binary FEC), the --fnav-combiner "
+                         "analogue on the BDS broker: the BDS broker's own --combiner is the "
+                         "B2a-P PILOT (deterministic Weil overlay signs), while the B-CNAV2 "
+                         "DATA symbols come off the derived B2a-D sibling chain (CS5 secondary "
+                         "+ navwipe). Symbols go to the Bcnav2Predictor (GF(64) NB-LDPC codec) "
+                         "and the decoded ephemeris is cross-checked against BRDC on the 60 s "
+                         "health cadence -- an independent BDS-3 decode validating the "
+                         "ephemeris (and the LDPC + CNAV-eph conventions) against the almanac.")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -1138,6 +1175,7 @@ def main(argv=None):
     cnav_combiner = resolve_prefix(args.cnav_combiner, base) if args.cnav_combiner else None
     inav_combiner = resolve_prefix(args.inav_combiner, base) if args.inav_combiner else None
     fnav_combiner = resolve_prefix(args.fnav_combiner, base) if args.fnav_combiner else None
+    bcnav2_combiner = resolve_prefix(args.bcnav2_combiner, base) if args.bcnav2_combiner else None
     gating = args.lat is not None and args.lon is not None
 
     # Almanac assist: BRDC (default; PRN-indexed, label-rot-proof) or the legacy TLE path.
@@ -1322,6 +1360,8 @@ def main(argv=None):
     _inav_log_t = [0.0]
     fnav = None      # F/NAV decoder (--fnav-combiner, Galileo E5a-I); created lazily
     _fnav_log_t = [0.0]
+    bcnav2 = None    # B-CNAV2 decoder (--bcnav2-combiner, BeiDou B2a-D); created lazily
+    _bcnav2_log_t = [0.0]
     navbits_log_t = 0.0
     # CONSTRUCTED bits for satellites too weak to decode (2026-07-25). The decoder above needs
     # 620 contiguous parity-clean bits, which is exactly what a weak satellite cannot give; this
@@ -2536,6 +2576,36 @@ def main(argv=None):
                         xc = (_fnav_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
                               if (eph is not None and brdc_alm is not None) else "")
                         _log("fnav PRN %d: %d pages, %d words, have %s, eph %s%s"
+                             % (_p, h["pages"], h["words"], h["have"],
+                                "YES" if eph is not None else "no", xc))
+            # S5 D-component #3: BeiDou B2a B-CNAV2 (first LDPC), the F/NAV-aux analogue on BDS.
+            if bcnav2_combiner:
+                try:
+                    _baux = {int(r["prn"]): r for r in _get("%s/get_status" % bcnav2_combiner)
+                             if r.get("prn")}
+                except Exception as e:
+                    _baux = {}
+                    _log_rl("bcnav2aux", "bcnav2 aux combiner %s unreadable: %s"
+                            % (bcnav2_combiner, e))
+                for _p, _r in _baux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if bcnav2 is None:
+                        from bcnav2_predictor import Bcnav2Predictor
+                        bcnav2 = Bcnav2Predictor(log=_log)
+                        _log("B-CNAV2 decoder armed on aux chain %s" % bcnav2_combiner)
+                    bcnav2.ingest(_p, _r["nav_obs"])
+                # 60 s health + BRDC cross-check (alm_sys is 'C' for the BDS broker)
+                if bcnav2 is not None and time.time() - _bcnav2_log_t[0] > 60.0:
+                    _bcnav2_log_t[0] = time.time()
+                    for _p in sorted(bcnav2._p):
+                        h = bcnav2.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = bcnav2.ephemeris(_p)
+                        xc = (_bcnav2_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("bcnav2 PRN %d: %d frames, %d crc, have %s, eph %s%s"
                              % (_p, h["pages"], h["words"], h["have"],
                                 "YES" if eph is not None else "no", xc))
             # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry

@@ -695,9 +695,10 @@ bands:
     # whenever a chain is added: this is emitted VERBATIM, not derived from the chain count,
     # so a chain on stream N with num_cuda_streams N would index past the allocated set.
     # Bumped 5 -> 6 when the E5a-I F/NAV sibling (5th L5 chain, stream 5) was added
-    # (2026-07-30); L1 did the identical 5 -> 6 for E1B.
-    num_cuda_streams: 6
-    per_chain_streams: true      # trackers on streams 1/2/3/4/5 (gps/i/gal/bds/e5a_i), stream-matched outputs
+    # (2026-07-30); then 6 -> 7 for the B2a-D B-CNAV2 sibling (6th L5 chain, stream 6); L1 did
+    # the identical bump for E1B.
+    num_cuda_streams: 7
+    per_chain_streams: true      # trackers on streams 1..6 (gps/i/gal/bds/e5a_i/b2a_d), stream-matched outputs
     gputrack_note: |
       SHARED-INPUT tri-constellation GPU stage. All three L5 signals despread the SAME
       channelized voltage, so ONE cudaInputData copies q_buf -> gnss_chan_frame per frame
@@ -981,3 +982,36 @@ bands:
           note_inline: "tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)"
         combiner:
           params: { n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+
+      - constellation: b2a_d
+        signal: BDS_B2A_D
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /b2a_d_track/set_seeds
+        record_name: b2a_d_level
+        section_note: |
+          ---- BeiDou-3 B2a-DATA component (S5 D-component #3: B-CNAV2, first LDPC) ----
+          DERIVED from B2a-P exactly as E5a-I is from E5a-Q and L5-I from L5-Q: no search stage.
+          B2a-D (data) and B2a-P (pilot) share the SAME 10230-chip primary period and epoch
+          (their codes differ only in the generator polys) -- so a B2a-D row is the B2a-P row
+          VERBATIM: no code-phase lift, no broker flag. run_live adds b2a_d_track to the BDS
+          broker's --trackers so it gets the same consensus seeds as bds_track (B2a-P). The
+          combiner wipes the 5-chip CS5 secondary AND exports the per-5ms-symbol signs
+          (secondary_overlay B2A_CS5 + navwipe_bit_records 5 + bit_export -- the composed wipe
+          E5a-I/L5-I proved, since a B-CNAV2 symbol is 5 ms = one CS5 period). run_live hands
+          b2a_d_combiner to the broker as --bcnav2-combiner so its nav_obs reach the
+          Bcnav2Predictor (beidou_bcnav2's GF(64) NON-BINARY LDPC codec) and the decoded
+          B-CNAV2 ephemeris is cross-checked against BRDC -- BeiDou's first nav-message decode
+          here, beside the two Galileo ones (E1B I/NAV, E5a F/NAV).
+          GPU BUDGET: 6th L5 chain -- MEASURE l5_valve after enabling (loaded band; peel OFF).
+          rec_buf sized in TIME (the L5-I / count-vs-time lesson).
+        rec_buf_depth: 1200
+        tracker:
+          fll_reacq_hz: 15.0
+        combiner:
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, secondary_overlay: B2A_CS5, navwipe_bit_records: 5, bit_export: true }
+          note: |
+            integration_length 1000 x 1 ms = 1 s emit; navwipe_bit_records 5 = 5 ms / 1 ms
+            records = ONE B-CNAV2 symbol per CS5 period (the count-vs-time discipline).
+            secondary_overlay B2A_CS5 wipes the 5-chip overlay so the 5 code periods within a
+            symbol sum coherently; bit_export publishes the per-symbol signs as nav_obs. NO peel.
