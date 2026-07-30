@@ -140,10 +140,10 @@ quant: { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, targe
 gputrack:
     kotekan_stage: cudaProcess
     gpu_id: 0
-    num_cuda_streams: 5
+    num_cuda_streams: 6
     frame_arrival_period: 0.0
     in_buffers: { q_buf: q_buf }
-    out_buffers: { epl_buf: epl_buf, i_epl_buf: i_epl_buf, gal_epl_buf: gal_epl_buf, bds_epl_buf: bds_epl_buf }
+    out_buffers: { epl_buf: epl_buf, i_epl_buf: i_epl_buf, gal_epl_buf: gal_epl_buf, e5a_i_epl_buf: e5a_i_epl_buf, bds_epl_buf: bds_epl_buf }
     commands:
         # ONE host->device copy of the channelized 4+4b frame
         - name: cudaInputData
@@ -223,10 +223,32 @@ gputrack:
           out_buf: gal_epl_buf
           in_buf: ""
         - name: cudaGnssTrack
+          signal: GAL_E5A_I
+          max_anchor_age_s: 0.0
+          fll_reacq_hz: 15.0
+          cuda_stream: 4
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: e5a_i_epl
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
+          n_channels: 10
+          channel_offset: 0
+          n_prn: 36
+          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+          capture_utc0: 1.0
+          fll_gain: 0.0
+          carrier_shared: true
+          seed_endpoint: "/e5a_i_track/set_seeds"
+        - name: cudaOutputData
+          cuda_stream: 4
+          gpu_mem: e5a_i_epl
+          out_buf: e5a_i_epl_buf
+          in_buf: ""
+        - name: cudaGnssTrack
           signal: BDS_B2A_P
           max_anchor_age_s: 0.0
           fll_reacq_hz: 15.0    # tight snap-to-model fence (audit rec B; free under dop-continuous, kills stale f_ref offsets; alias limit 250 Hz at 1 ms)
-          cuda_stream: 4
+          cuda_stream: 5
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: bds_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
@@ -240,7 +262,7 @@ gputrack:
           carrier_shared: true
           seed_endpoint: "/bds_track/set_seeds"
         - name: cudaOutputData
-          cuda_stream: 4
+          cuda_stream: 5
           gpu_mem: bds_epl
           out_buf: bds_epl_buf
           in_buf: ""
@@ -350,6 +372,37 @@ gal_search:
 gal_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: gal_epl_buf, out_buf: gal_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36] }
 gal_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [gal_rec_buf], out_buf: gal_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 1000, secondary_overlay: E5A_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
 gal_record: { kotekan_stage: rawFileWrite, in_buf: gal_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "gal_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+
+# ---- Galileo E5a-I DATA component (S5 D-component #2: F/NAV) ----
+# DERIVED from E5a-Q exactly as E1B is from E1C and L5-I is from L5-Q: no search stage.
+# E5a-I (data) and E5a-Q (pilot) share the SAME 10230-chip primary at the SAME 1 ms
+# period and epoch -- only the code (X2 start table) differs -- so an E5a-I row is the
+# E5a-Q row VERBATIM: no code-phase lift, no segment index, no broker flag. run_live
+# adds e5a_i_track to the GAL(E5a) broker's --trackers so it gets the same consensus
+# seeds as gal_track (E5a-Q). The combiner wipes the 20-chip CS20 secondary AND exports
+# the per-20ms-symbol signs (secondary_overlay E5A_CS20 + navwipe_bit_records 20 +
+# bit_export -- the SAME composed wipe the L5-I chain proved in S4 phase 2, since an
+# F/NAV symbol is 20 ms = one CS20 period). run_live hands e5a_i_combiner to the broker
+# as --fnav-combiner so its nav_obs reach the FnavPredictor (galileo_fnav codec) and
+# the decoded F/NAV ephemeris is cross-checked against BRDC -- an independent E5a decode
+# beside E1B's I/NAV, a THIRD verification of the Galileo ephemeris (E1B vs E5a vs BRDC).
+# GPU BUDGET: this rides the L5 band, which (unlike L1's E1B) is the loaded band. It is
+# a plain 1 s combiner with NO peel -- but MEASURE l5_valve after enabling (the L5-I
+# lesson: a chain broke real time there only atop three PEELING chains, and peel is
+# currently OFF). rec_buf sized in TIME (the L5-I / count-vs-time lesson).
+e5a_i_n_prn: 36
+e5a_i_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: e5a_i_n_prn * record_floats * sizeof_float }
+e5a_i_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: e5a_i_n_prn * record_floats * sizeof_float }
+e5a_i_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * e5a_i_n_prn + 15360 * e5a_i_n_prn }
+e5a_i_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: e5a_i_epl_buf, out_buf: e5a_i_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36] }
+# integration_length 1000 x 1 ms = 1 s emit; navwipe_bit_records 20 = 20 ms / 1 ms
+# records = ONE F/NAV symbol per CS20 period (a TIME expressed in records, the
+# count-vs-time discipline). secondary_overlay E5A_CS20 wipes the 20-chip overlay so
+# the 20 code periods within a symbol sum coherently; bit_export then publishes the
+# per-symbol signs as nav_obs. The composed secondary+navwipe branch is the one L5-I
+# exercises. NO peel, so NO epl_frame override (shared default).
+e5a_i_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [e5a_i_rec_buf], out_buf: e5a_i_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 1000, secondary_overlay: E5A_CS20, navwipe_bit_records: 20, bit_export: true }
+e5a_i_record: { kotekan_stage: rawFileWrite, in_buf: e5a_i_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "e5a_i_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- BeiDou-3 B2a-pilot parallel chain (dataless pilot, PRN 1..63; BDS-3 only) ----
 bds_n_prn: 63
