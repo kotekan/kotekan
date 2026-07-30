@@ -786,6 +786,18 @@ def main(argv=None):
                          "SEED is shifted; the fleet's pin, the fine, and the auto-center are "
                          "untouched, so this is safe to leave off and harmless when on. Pick a "
                          "strong CM sat as the probe.")
+    ap.add_argument("--cl-autoseg", type=int, default=1,
+                    help="CL segment AUTO-SEARCH (default ON; the durable fix for the "
+                         "~40%%-of-launches CL failure): when the CL-vs-CM verify reads a "
+                         "dead fleet under strong CM, step an integer-segment correction "
+                         "through 0,-1,+1,-2,... (one 20 ms segment per step) and LATCH on "
+                         "green. Compensates the whole-segment utc0_sample0 anchor error "
+                         "(stamped from system_clock::now() on the first USB transfer, "
+                         "tens of ms of per-launch jitter; the auto-center absorbs only "
+                         "the fractional part). A working launch latches 0 immediately.")
+    ap.add_argument("--cl-autoseg-dwell", type=float, default=30.0,
+                    help="seconds per correction step (tracker re-lock + combiner deep "
+                         "build; the k-scan measured green appearing well inside 30 s)")
     ap.add_argument("--cl-kscan-chips", default="",
                     help="FRACTIONAL scan mode: CSV of CHIP offsets added to the probe "
                          "PRN's seeded cp (e.g. '0,0.25,-0.25,0.5,-0.5,0.75,-0.75,1,-1') "
@@ -1112,6 +1124,23 @@ def main(argv=None):
     cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
     cl_pred0 = {}    # anchor-epoch geometry cache: {"key": (utc0, eph_t), "val": {prn: tuple}}
     cl_toff = [0.0]  # measured common clock offset (s): slow EMA of the across-sat median fine
+    # CL SEGMENT AUTO-SEARCH (--cl-autoseg, the durable fix for the ~40%-of-launches CL
+    # failure, root-caused 2026-07-29). utc0_sample0 is stamped from system_clock::now() on
+    # the FIRST USB transfer (airspyInput.cpp:396-405) and carries tens of ms of per-launch
+    # startup latency. The auto-center absorbs the FRACTIONAL part (its job), so fine_ms
+    # always reads perfect -- but the INTEGER part (N x 20 ms) lands wholesale in the
+    # segment index k: fleet-common, fixed at startup, invisible to every seed-level
+    # diagnostic. Proven by the full-75 k-scan (k-1 despread 185 with all 74 others at
+    # noise) and clinched by --cl-time-adjust -0.020 turning the whole fleet green on the
+    # same anchor. N measured 0 (~60% of launches), 1, and >=3 -- so no fixed constant
+    # fixes it. Instead: the broker already measures the truth every cycle (the CL-vs-CM
+    # verify); when the fleet reads dead-CL-under-strong-CM, step the correction through
+    # the spiral 0,-1,+1,-2,... (~25 s per step, negative first: a LATE anchor pushes k
+    # HIGH, and USB latency only makes anchors late), and LATCH on green -- the class-2
+    # discipline, verify + lockout, never averaged. A working launch latches 0 on the
+    # first check and is untouched.
+    cl_segsearch = {"corr": 0, "idx": 0, "latched": False, "t_step": 0.0}
+    _clseg_spiral = [0] + [v for n in range(1, 38) for v in (-n, n)]
     # CL K-SCAN (diagnostic, --cl-kscan-prn; default 0 = OFF, zero effect). The recurring
     # "CL despreads noise on ~40% of launches while fine_ms looks perfect" is the signature
     # of a WHOLE-SEGMENT (N x 20 ms) anchor error: fine is the residual AFTER round(), so an
@@ -3288,7 +3317,8 @@ def main(argv=None):
                 _g = _pred0.get(d["prn"])
                 tau0 = (_g[3] if _g is not None else pv[3]) / C_LIGHT
                 clk0 = _g[4] if _g is not None else pv[4]
-                t_sv = utc0_sample0 - tau0 + clk0 + args.cl_time_adjust - cl_toff[0]
+                t_sv = (utc0_sample0 - tau0 + clk0 + args.cl_time_adjust - cl_toff[0]
+                        + cl_segsearch["corr"] * 0.020)
                 cl_chips = (t_sv % 1.5) * args.chip_rate_hz
                 cp_cm = d["code_phase_chips"] % CODE_LEN
                 k = int(round((cl_chips - cp_cm) / CODE_LEN))
@@ -3364,6 +3394,37 @@ def main(argv=None):
                         pairs.append("%d:%.0f/%.0f" % (prn, cm_d, cl_d))
                     if pairs:
                         _log_rl("clverify", "CL verify (PRN:cm/cl deep): " + " ".join(pairs))
+                    # SEGMENT AUTO-SEARCH, judged on this same verify data. Step only when
+                    # the fleet is unambiguously dead (>=2 strong CM sats, ZERO green CL) --
+                    # a partly-green fleet must never be stepped away from -- and latch the
+                    # moment >=2 strong sats read green. Disabled while a k-scan diagnostic
+                    # is shifting the probe's seed.
+                    if (args.cl_autoseg and not args.cl_kscan_prn
+                            and not cl_segsearch["latched"]):
+                        _strong = [prn for prn in cl_k
+                                   if ((status.get(prn) or {}).get("deep_snr") or 0.0) > 50.0]
+                        _green = [prn for prn in _strong
+                                  if ((cls_.get(prn) or {}).get("deep_snr") or 0.0)
+                                  > ((status.get(prn) or {}).get("deep_snr") or 0.0) / 3.0]
+                        _nowv = time.time()
+                        if cl_segsearch["t_step"] == 0.0:
+                            cl_segsearch["t_step"] = _nowv
+                        elif len(_strong) >= 2 and len(_green) >= 2:
+                            cl_segsearch["latched"] = True
+                            _log("CL SEG-SEARCH LATCHED: correction %+d segment(s) "
+                                 "(compensating a %+.0f ms utc0_sample0 anchor error); "
+                                 "%d/%d strong sats green"
+                                 % (cl_segsearch["corr"], -cl_segsearch["corr"] * 20.0,
+                                    len(_green), len(_strong)))
+                        elif (len(_strong) >= 2 and not _green
+                              and _nowv - cl_segsearch["t_step"] > args.cl_autoseg_dwell):
+                            cl_segsearch["idx"] = ((cl_segsearch["idx"] + 1)
+                                                   % len(_clseg_spiral))
+                            cl_segsearch["corr"] = _clseg_spiral[cl_segsearch["idx"]]
+                            cl_segsearch["t_step"] = _nowv
+                            _log("CL SEG-SEARCH: fleet dead under strong CM (%d strong, 0 "
+                                 "green) -- trying correction %+d segment(s)"
+                                 % (len(_strong), cl_segsearch["corr"]))
                     # K-SCAN readout. The seeded offset for THIS cycle is
                     # seq[(cycle//dwell) % n]; the combiner is integrating that same offset
                     # (the seed goes out just above, then we read deep next). CL deep takes
