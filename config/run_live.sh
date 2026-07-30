@@ -55,7 +55,7 @@ TAG=${TAG:-gpslive}                 # log-file stem: /tmp/$TAG*.log
 # k*10230) -- raw CM seeds POSTed to it would despread the wrong 1/75th of the CL code.
 TRK=${TRK:-$(
   { grep -oE 'seed_endpoint:[[:space:]]*"/[a-z_0-9]+/set_seeds"' "$CFG" \
-      | sed -E 's|.*"/([a-z_0-9]+)/set_seeds"|\1|' | grep -vE '^(gal|bds|l1c|cl)_';
+      | sed -E 's|.*"/([a-z_0-9]+)/set_seeds"|\1|' | grep -vE '^(gal|bds|l1c|cl|e1b)_';
     grep -oE '^track[_0-9]*' "$CFG"; } | sort -u | tr '\n' ',' | sed 's/,$//')}
 # Also hand any GnssVoltagePeel stage to the broker's --trackers: it POSTs the same consensus seeds
 # {cp, Doppler, cp_rate(+l-a)} to /<peel>/set_seeds, so the peel reconstructs + subtracts each sat
@@ -86,6 +86,16 @@ CNAVA=""
 if grep -qE '^i_combiner:' "$CFG"; then
   CNAVA="--cnav-combiner ${SP}i_combiner"
   echo "L5-I cross-band CNAV: broker decodes ${SP}i_combiner's symbols + BRDC cross-check"
+fi
+# S5 D-component #1: the Galileo E1B DATA sibling (I/NAV). Like L5-I: derived from the
+# pilot (E1C), seeded verbatim, and its combiner's nav_obs handed to the GAL broker as
+# --inav-combiner. e1b_track joins the GAL broker's --trackers so it gets the E1C seeds.
+INAVA=""
+E1B_TRK=""
+if grep -qE '^e1b_combiner:' "$CFG"; then
+  INAVA="--inav-combiner ${SP}e1b_combiner"
+  E1B_TRK=",${SP}e1b_track"
+  echo "Galileo E1B I/NAV: broker decodes ${SP}e1b_combiner's symbols + BRDC cross-check"
 fi
 CLA=""
 if grep -qE 'seed_endpoint:[[:space:]]*"/cl_track/set_seeds"' "$CFG"; then
@@ -487,7 +497,7 @@ if grep -qE '^gal_track:|seed_endpoint:[[:space:]]*"/gal_track/set_seeds"' "$RUN
     echo "WARNING: gal_track present but LAT/LON unset -- Galileo require_hint search will scan NOTHING"
   fi
   echo "starting GALILEO broker ($GAL_SIGNAL: gal_search/gal_track/gal_combiner, TLE group=galileo)..."
-  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gal_search --trackers ${SP}gal_track --combiner ${SP}gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in"           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_gal.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_gal.hz $SIB_GAL $STA_GAL           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN --hold-max-cp-err $GAL_CPERR           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10}           ${BROKER_EXTRA:-} $GAL_ALM $CARG           > /tmp/${TAG}_broker_gal.log 2>&1 &
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gal_search --trackers ${SP}gal_track${E1B_TRK} --combiner ${SP}gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in"           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_gal.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_gal.hz $SIB_GAL $STA_GAL           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN --hold-max-cp-err $GAL_CPERR           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10}           ${BROKER_EXTRA:-} $GAL_ALM $CARG $INAVA           > /tmp/${TAG}_broker_gal.log 2>&1 &
   GALPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT           --combiner ${SP}gal_combiner --search ${SP}gal_search --airspy "${SP}$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/${TAG}_logger_gal.log 2>&1 &
   GALLOGPID=$!

@@ -206,8 +206,13 @@ bands:
       scans the ones the broker flags visible (hints), so the active set follows the sky as
       PRNs rise/set. run_live.sh skips its visible-PRN patch when require_hint is set (this
       full list survives). n_prn matches.
-    num_cuda_streams: 5
-    per_chain_streams: true      # trackers on streams 1/2/3/4 (gps/gal/bds/l1c), stream-matched outputs
+    num_cuda_streams: 6          # 5 tracker chains use streams 1..5 (gps/E1C/E1B/bds/l1c);
+                                 # num must exceed the max stream index (streams 0..N-1), so 6.
+                                 # ⚠️ EMITTED VERBATIM, not derived -- adding the E1B chain
+                                 # (2026-07-30, S5) shifted l1c onto stream 5, which num 5
+                                 # (streams 0..4) would index PAST -> the exact bug the note
+                                 # below flags. Bumped 5 -> 6 with the chain.
+    per_chain_streams: true      # trackers on streams 1/2/3/4/5 (gps/E1C/E1B/bds/l1c), stream-matched outputs
     gputrack_note: |
       UNIFIED L1 GPU PROCESS (2026-07-19): one cudaProcess, ONE q_buf upload, three
       cudaGnssTrack commands on streams 1/2/3, three stream-matched outputs. Needs the
@@ -356,6 +361,42 @@ bands:
             per-record stopgap navwipe_bit_records 1 capped deep at the sqrt(2N/pi)
             rectification floor ~13-16 sigma.) integration_length 250 x 4 ms = 1 s, matching
             the GPS emit cadence.
+
+      - constellation: e1b
+        signal: GAL_E1B
+        tracker_signal_explicit: true
+        n_prn: 36
+        seed_endpoint: /e1b_track/set_seeds
+        record_name: e1b_level
+        section_note: |
+          ---- Galileo E1-B DATA component (S5 D-component #1: I/NAV) ----
+          DERIVED from E1C exactly as L5-I is from L5-Q and CL is from CM: no search stage.
+          E1B (data) and E1C (pilot) are chip-synchronous BOC(1,1) on E1, SAME 4 ms primary
+          period and epoch -- only the code differs -- so an E1B row is the E1C row VERBATIM:
+          no code-phase lift, no segment index, no broker flag. run_live adds e1b_track to
+          the GAL broker's --trackers so it gets the same consensus seeds as gal_track (E1C).
+          The combiner exports the per-4ms-symbol signs (navwipe_bit_records 1 + bit_export,
+          the L2C-CM data-channel pattern -- NOT secondary_overlay, E1B has no secondary
+          code), and run_live hands e1b_combiner to the broker as --inav-combiner so its
+          nav_obs reach the InavPredictor (galileo_inav codec) and the decoded I/NAV
+          ephemeris is cross-checked against BRDC.
+          GPU budget: measured L1 gal combiner duty ~0.25% (2026-07-30), so a second Galileo
+          despread + a simple 1 s combiner on the L1 band has ample headroom -- unlike the
+          L5-I case that broke real time only because it rode three PEELING L5 chains. rec_buf
+          sized in TIME anyway, per the L5-I lesson.
+        rec_buf_depth: 1200
+        tracker:
+          fll_reacq_hz: 15.0
+        combiner:
+          params: { n_prn: 36, prns: RANGE, integration_length: 250, navwipe_bit_records: 1, bit_export: true }
+          note: |
+            integration_length 250 x 4 ms = 1 s = ONE I/NAV page part per emit -- the cadence
+            inav_predictor is built for (a page part is 1 s = 250 symbols). navwipe_bit_records
+            1: a 4 ms E1B record is exactly ONE I/NAV symbol, so one sign is exported per
+            record (the L2C-CM data pattern, where a 20 ms record is one CNAV symbol -> also
+            navwipe_bit_records 1). bit_export publishes those per-symbol signs as nav_obs.
+            NO secondary_overlay: E1B is a pure data channel (CS25 is the E1C PILOT's secondary
+            code, not E1B's). NO peel, so NO epl_frame override (shared 15360 default).
 
       - constellation: bds
         signal: BDS_B1C_P

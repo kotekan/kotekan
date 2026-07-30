@@ -306,6 +306,33 @@ def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
         return " | BRDC xcheck err: %s" % ex
 
 
+def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
+    """S5 ephemeris cross-check, the _cnav_brdc_xcheck analogue for Galileo I/NAV: ECEF
+    position residual between the live-decoded I/NAV ephemeris and BRDC, both propagated to
+    the I/NAV t0e. BRDC's Galileo record IS I/NAV-derived, so a right decode matches it to a
+    few metres; a huge residual flags a decode/convention fault (the G2 or field-offset
+    conventions galileo_inav flagged as ICD-owned) or a week straddle (shown via toe delta).
+    Kepler only, no Viterbi."""
+    try:
+        import galileo_inav as _I
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        t0e = inav_eph["t0e"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + t0e
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _I.sv_position_inav(inav_eph, t0e)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODnav %d)" % (
+            dpos, be["toe_sow"] - t0e, inav_eph.get("IODnav", -1))
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
 def visible_prns(lat, lon, alt_m, mask_deg, look_ahead_s):
     """PRNs above the elevation mask now (and look_ahead_s ahead). Needs skyfield."""
     try:
@@ -1017,6 +1044,15 @@ def main(argv=None):
                          "BRDC on the usual 60 s health cadence -- giving a SECOND, independent "
                          "decode of the same message set L2C already decodes, so an ephemeris "
                          "can be verified three ways (L2C vs L5 vs BRDC).")
+    ap.add_argument("--inav-combiner", default=None,
+                    help="AUXILIARY combiner polled for Galileo E1B I/NAV nav_obs (S5 "
+                         "D-component #1), the exact analogue of --cnav-combiner: the GAL "
+                         "broker's own --combiner is the E1C PILOT (deterministic overlay "
+                         "signs), while the I/NAV DATA symbols come off the derived E1B "
+                         "sibling chain. Symbols from here go to the InavPredictor and the "
+                         "decoded ephemeris is cross-checked against BRDC on the 60 s health "
+                         "cadence -- an independent E1B decode validating the Galileo "
+                         "ephemeris (and the codec's ICD conventions) against the almanac.")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -1064,6 +1100,7 @@ def main(argv=None):
     cl_tracker = resolve_prefix(args.cl_tracker, base) if args.cl_tracker else None
     cl_combiner = resolve_prefix(args.cl_combiner, base) if args.cl_combiner else None
     cnav_combiner = resolve_prefix(args.cnav_combiner, base) if args.cnav_combiner else None
+    inav_combiner = resolve_prefix(args.inav_combiner, base) if args.inav_combiner else None
     gating = args.lat is not None and args.lon is not None
 
     # Almanac assist: BRDC (default; PRN-indexed, label-rot-proof) or the legacy TLE path.
@@ -1244,6 +1281,8 @@ def main(argv=None):
                      # matters most at L5: 1 ms records make each table 4x an L1 pilot's.
     navbits = None   # LNAV decode-and-predict (P7a); created lazily on the first nav_obs row
     cnav = None      # CNAV decoder (--nav-decoder cnav, L2C-CM/L5-I); created lazily likewise
+    inav = None      # I/NAV decoder (--inav-combiner, Galileo E1B); created lazily
+    _inav_log_t = [0.0]
     navbits_log_t = 0.0
     # CONSTRUCTED bits for satellites too weak to decode (2026-07-25). The decoder above needs
     # 620 contiguous parity-clean bits, which is exactly what a weak satellite cannot give; this
@@ -2400,6 +2439,36 @@ def main(argv=None):
                         cnav = CnavPredictor(log=_log)
                         _log("CNAV decoder armed on aux chain %s" % cnav_combiner)
                     cnav.ingest(_p, _r["nav_obs"])
+            # S5 D-component #1: Galileo E1B I/NAV, the exact CNAV-aux analogue.
+            if inav_combiner:
+                try:
+                    _iaux = {int(r["prn"]): r for r in _get("%s/get_status" % inav_combiner)
+                             if r.get("prn")}
+                except Exception as e:
+                    _iaux = {}
+                    _log_rl("inavaux", "inav aux combiner %s unreadable: %s"
+                            % (inav_combiner, e))
+                for _p, _r in _iaux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if inav is None:
+                        from inav_predictor import InavPredictor
+                        inav = InavPredictor(log=_log)
+                        _log("I/NAV decoder armed on aux chain %s" % inav_combiner)
+                    inav.ingest(_p, _r["nav_obs"])
+                # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker)
+                if inav is not None and time.time() - _inav_log_t[0] > 60.0:
+                    _inav_log_t[0] = time.time()
+                    for _p in sorted(inav._p):
+                        h = inav.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = inav.ephemeris(_p)
+                        xc = (_inav_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("inav PRN %d: %d pages, %d words, have %s, eph %s%s"
+                             % (_p, h["pages"], h["words"], h["have"],
+                                "YES" if eph is not None else "no", xc))
             # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
             # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
             # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
