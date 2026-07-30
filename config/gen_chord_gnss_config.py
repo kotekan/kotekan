@@ -370,7 +370,12 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 # the extent itself. Kept so the config is readable without knowing that.
                 "doppler_min": -float(sig["max_doppler_hz"]),
                 "doppler_max": float(sig["max_doppler_hz"]),
-                "doppler_step": 250.0,
+                # 31.25 Hz = 1/(2*T_coh) for the 16 ms (3125-hop) coherent window. A coherent
+                # window of length T cannot tolerate a Doppler error much past 1/(2T): at the
+                # old 250 Hz step a half-bin miss is 125 Hz, which rotates the phase TWO FULL
+                # CYCLES across 16 ms and lands the correlation in a sinc null. The Doppler grid
+                # resolution and the coherent window length are ONE parameter, not two.
+                "doppler_step": 31.25,
                 # 30 s, matching the live airspy L5 chain -- NOT the 8 s default. The broker
                 # refreshes hints every 10 s, so an 8 s TTL guarantees a window each cycle where
                 # every hint is stale; with require_hint that means every PRN is skipped before
@@ -387,6 +392,15 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 "require_hint": True,
                 "acquire_windows": args.acquire_windows,
                 "acquire_snr": args.acquire_snr,
+                # L5 Q5 is a dataless PILOT, which does not mean unmodulated: it carries the
+                # NH20 secondary overlay, one +-1 chip per 1 ms code period. The coherent window
+                # is 16 ms = SIXTEEN code periods, so an overlay-blind replica sums 16 chips of a
+                # near-balanced sequence: measured -12.7 dB rms over the 20 alignments, and
+                # EXACTLY ZERO for three of them. Consecutive windows step the alignment by
+                # 16 mod 20, so a snapshot only visits {0,4,8,12,16} -- one of which is a null.
+                # Searching the 20 alignments recovers full coherent gain; 12.7 dB won
+                # COHERENTLY would need ~350x more incoherent windows to match.
+                "nh_search": True,
                 # Post-detection code-phase refine: an exact despread per step, over +-1 hop.
                 # The stage default step is 1 SAMPLE, which is right for the airspy bank
                 # (fft_len 20 -> 41 despreads) and catastrophic here (fft_len 16384 -> 32769),

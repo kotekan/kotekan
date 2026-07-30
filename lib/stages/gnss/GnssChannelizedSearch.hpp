@@ -150,8 +150,18 @@ private:
     /// channelized_accumulate reads none of them). repl0 depends only on (PRN, covering set,
     /// Mp), none of which change between snapshots, so it is built once and reused. Worker
     /// thread only, like _acq_ws.
-    std::vector<std::vector<std::vector<std::complex<float>>>> _repl0;
+    /// Indexed [nh alignment][prn][local channel][hop]; one alignment (index 0) unless
+    /// @c nh_search, in which case one per secondary-code alignment. See the note at the
+    /// build site for why a dataless pilot needs this.
+    std::vector<std::vector<std::vector<std::vector<std::complex<float>>>>> _repl0;
     std::vector<int> _repl0_cover; ///< the covering set _repl0 was built for (rebuild key)
+    /// Search every secondary-code (Neuman-Hofman) alignment and keep the best peak. Costs
+    /// secondary_length() acquires per PRN and buys back the coherent loss that an
+    /// overlay-blind replica suffers over a multi-period window -- 12.7 dB rms on L5 Q5,
+    /// with exact nulls. Off by default: a signal without a secondary code, or a window
+    /// inside one code period, gains nothing.
+    bool _nh_search = false;
+    int _n_nh = 1; ///< alignments actually built (1 when not searching)
 
     std::vector<Detection> _detections; ///< per-PRN latest detection
     std::mutex _det_mtx;

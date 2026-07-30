@@ -137,9 +137,40 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _refine_span = config.get_default<int>(unique_name, "refine_span", _fft_len);
     _refine_step = std::max(1, config.get_default<int>(unique_name, "refine_step", 1));
 
+    // SECONDARY-CODE (Neuman-Hofman) ALIGNMENT SEARCH.
+    //
+    // The acquire correlates coherently over hops_per_record, which defaults to the replica
+    // period -- 3125 hops = 16 ms on CHORD L5, i.e. SIXTEEN code periods. L5 Q5 is a dataless
+    // pilot, but "dataless" does not mean unmodulated: it carries the NH20 overlay, one +-1 chip
+    // per 1 ms code period. Correlating 16 code periods against a replica built with the overlay
+    // OFF therefore sums 16 consecutive NH chips of a near-balanced sequence:
+    //     measured over all 20 alignments -- 12.7 dB rms loss, best case 8.5 dB,
+    //     and EXACTLY ZERO for three of the twenty.
+    // Worse, it is not a fixed penalty. Consecutive 16 ms windows step the alignment by
+    // 16 mod 20, so a snapshot only ever visits phases {0,4,8,12,16} -- and phase 4 is one of
+    // the nulls, so a fixed fraction of every snapshot contributes nothing at all.
+    //
+    // With the alignment applied the same window integrates at FULL coherent gain (the
+    // l5q_nh20_overlay test pins this: aligned overlay = matched filter over 20 periods, one
+    // chip off = decorrelated). The alignment is a single unknown in [0, secondary_length), so
+    // search it. 20 acquires per PRN buys 12.7 dB COHERENTLY, which incoherent integration would
+    // need ~350x more windows to match -- so this is strongly favourable even before trading
+    // acquire_windows down to pay for it.
+    _nh_search = config.get_default<bool>(unique_name, "nh_search", false);
+    _n_nh = (_nh_search && _replica->secondary_length() > 0) ? _replica->secondary_length() : 1;
+    if (_nh_search && _n_nh == 1)
+        INFO("GnssChannelizedSearch[{:s}]: nh_search requested but {:s} has no secondary code "
+             "-- ignored",
+             unique_name, sig->name);
+    else if (_n_nh > 1)
+        INFO("GnssChannelizedSearch[{:s}]: searching {:d} secondary-code alignments over a "
+             "{:d}-hop ({:.1f} ms) coherent window",
+             unique_name, _n_nh, _hops_per_record,
+             1e3 * (double)_hops_per_record * _fft_len / _sample_rate);
+
     _detections.assign(_prns.size(), Detection{});
     _dop_hints.assign(_prns.size(), DopHint{});
-    _repl0.assign(_prns.size(), {});
+    _repl0.assign((size_t)_n_nh, std::vector<std::vector<std::vector<cf>>>(_prns.size()));
     _snap_hops = (size_t)_acquire_windows * _hops_per_record;
     _snapshot.assign(_snap_hops * (size_t)_n_chan, cf(0.0f, 0.0f));
 }
@@ -208,19 +239,25 @@ void GnssChannelizedSearch::search_snapshot() {
     // the non-covering rows stay empty vectors (24 B each) and are never read.
     if (!cov_local.empty() && cov_global != _repl0_cover) {
         const double t_build = steady_s();
-        for (int p = 0; p < n_prn; ++p) {
-            const auto banded = _replica->channels_hoprate(p, anchor, 0.0, 0.0, Mp, cov_global);
-            _repl0[p].assign((size_t)_n_chan, {});
-            for (size_t i = 0; i < cov_local.size(); ++i)
-                _repl0[p][(size_t)cov_local[i]] = banded[i];
+        for (int nh = 0; nh < _n_nh; ++nh) {
+            // nh_phase < 0 leaves the overlay OFF, which is the single-alignment default and
+            // what the airspy chain has always used; >= 0 applies that alignment.
+            const int nh_phase = (_n_nh > 1) ? nh : -1;
+            for (int p = 0; p < n_prn; ++p) {
+                const auto banded = _replica->channels_hoprate(p, anchor, 0.0, 0.0, Mp, cov_global,
+                                                               {}, nh_phase);
+                _repl0[(size_t)nh][p].assign((size_t)_n_chan, {});
+                for (size_t i = 0; i < cov_local.size(); ++i)
+                    _repl0[(size_t)nh][p][(size_t)cov_local[i]] = banded[i];
+            }
         }
         _repl0_cover = cov_global;
         INFO("GnssChannelizedSearch[{:s}]: precomputed banded repl0 for {:d} PRNs x {:d} channels "
-             "x {:d} hops in {:.2f} s ({:.1f} MB; the full-spectrum form would be {:.1f} MB and is "
-             "rebuilt no further)",
-             unique_name, n_prn, (int)cov_local.size(), Mp, steady_s() - t_build,
-             1e-6 * (double)n_prn * cov_local.size() * Mp * sizeof(cf),
-             1e-6 * (double)n_prn * _replica->spectrum_length() * Mp * sizeof(cf));
+             "x {:d} hops x {:d} nh alignment(s) in {:.2f} s ({:.1f} MB; the full-spectrum form "
+             "would be {:.1f} MB and is rebuilt no further)",
+             unique_name, n_prn, (int)cov_local.size(), Mp, _n_nh, steady_s() - t_build,
+             1e-6 * (double)_n_nh * n_prn * cov_local.size() * Mp * sizeof(cf),
+             1e-6 * (double)_n_nh * n_prn * _replica->spectrum_length() * Mp * sizeof(cf));
         // The refine cost is one exact replica build per step, so say the number out loud: at
         // fft_len 16384 with the default step of 1 this is 32769 builds on the FIRST detection,
         // which looks exactly like a hang. See the refine loop for the resolution argument.
@@ -239,6 +276,7 @@ void GnssChannelizedSearch::search_snapshot() {
 
     double best_any = 0.0;
     int best_any_prn = -1;
+    int best_any_nh = -1;
     for (int p = 0; p < n_prn; ++p) {
         if (cov_local.empty()) { // carrier not in this subband: nothing to find
             std::lock_guard<std::mutex> lk(_det_mtx);
@@ -284,29 +322,42 @@ void GnssChannelizedSearch::search_snapshot() {
             continue;
         }
 
-        // repl0 (code 0, Doppler 0) on the covering channels -- precomputed above, not rebuilt.
-        const std::vector<std::vector<cf>>& repl0 = _repl0[p];
-
         const std::vector<double>& grid = pgrid.empty() ? _doppler_grid : pgrid;
 
-        // Integrate the |D|^2 surface over the snapshot windows (incoherent).
+        // Integrate the |D|^2 surface over the snapshot windows (incoherent), once per
+        // secondary-code alignment, and keep the best peak. The alignments are processed
+        // SEQUENTIALLY and only the winning result is retained, so peak memory is one surface
+        // (128 MB at CHORD dimensions) rather than _n_nh of them.
+        gnss::AcquisitionResult a{};
+        int best_nh = -1;
         std::vector<double> surf;
-        gnss::AcquisitionSurface dims{};
         std::vector<std::vector<cf>> dch(_n_chan, std::vector<cf>(hpr));
-        for (int w = 0; w < nwin; ++w) {
-            for (int lc = 0; lc < _n_chan; ++lc)
-                for (int m = 0; m < hpr; ++m)
-                    dch[lc][m] = _snapshot[((size_t)(w * hpr + m)) * _n_chan + lc];
-            dims = gnss::channelized_accumulate(dch, repl0, cov_local, grid, _sample_rate, _n_chan,
-                                                surf, _acq_ws, cov_global, _fft_len);
+        for (int nh = 0; nh < _n_nh; ++nh) {
+            // repl0 (code 0, Doppler 0) on the covering channels -- precomputed, not rebuilt.
+            const std::vector<std::vector<cf>>& repl0 = _repl0[(size_t)nh][p];
+            gnss::AcquisitionSurface dims{};
+            surf.assign(surf.size(), 0.0); // reuse the allocation, drop the previous alignment
+            for (int w = 0; w < nwin; ++w) {
+                for (int lc = 0; lc < _n_chan; ++lc)
+                    for (int m = 0; m < hpr; ++m)
+                        dch[lc][m] = _snapshot[((size_t)(w * hpr + m)) * _n_chan + lc];
+                dims = gnss::channelized_accumulate(dch, repl0, cov_local, grid, _sample_rate,
+                                                    _n_chan, surf, _acq_ws, cov_global, _fft_len);
+            }
+            const auto ai = gnss::channelized_peak(surf, dims, grid, _sample_rate,
+                                                   _replica->chip_rate_hz(),
+                                                   _replica->code_length());
+            if (best_nh < 0 || ai.snr > a.snr) {
+                a = ai;
+                best_nh = nh;
+            }
         }
-        const auto a = gnss::channelized_peak(surf, dims, grid, _sample_rate,
-                                              _replica->chip_rate_hz(), _replica->code_length());
 
         const bool detected = a.snr >= _acquire_snr;
         if (a.snr > best_any) {
             best_any = a.snr;
             best_any_prn = _prns[p];
+            best_any_nh = best_nh;
         }
         Detection det;
         det.snr = (float)a.snr;
@@ -341,7 +392,10 @@ void GnssChannelizedSearch::search_snapshot() {
             double best_cp = a.code_phase_chips, best_pw = -1.0;
             for (int off = -_refine_span; off <= _refine_span; off += _refine_step) {
                 const double cp = a.code_phase_chips + off * cps;
-                const auto r = _replica->hoprate_stream(rf, p, anchor, cp, dop, hpr);
+                // Same secondary-code alignment the peak was found at, or the refine despreads
+                // an overlay-blind replica against an overlay-aligned peak and walks off it.
+                const auto r = _replica->hoprate_stream(rf, p, anchor, cp, dop, hpr, {},
+                                                        (_n_nh > 1) ? best_nh : -1);
                 const double pw = std::norm(gnss::channelized_despread(d, r).amplitude);
                 if (pw > best_pw) {
                     best_pw = pw;
@@ -396,8 +450,10 @@ void GnssChannelizedSearch::search_snapshot() {
     // which leaves "found nothing" and "found 8 sigma with the threshold at 12" looking
     // identical from outside. Report the best of the pass so a near-miss is visible.
     if (best_any_prn >= 0)
-        INFO("GnssChannelizedSearch[{:s}]: pass best snr {:.2f} (PRN {:d}), threshold {:.2f}",
-             unique_name, best_any, best_any_prn, _acquire_snr);
+        INFO("GnssChannelizedSearch[{:s}]: pass best snr {:.2f} (PRN {:d}{:s}), threshold {:.2f}",
+             unique_name, best_any, best_any_prn,
+             (_n_nh > 1) ? fmt::format(", nh {:d}/{:d}", best_any_nh, _n_nh) : std::string(),
+             _acquire_snr);
 }
 
 void GnssChannelizedSearch::search_worker() {

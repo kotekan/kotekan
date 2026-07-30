@@ -288,6 +288,75 @@ let the search report the code phase. Delay constant = reported code phase minus
 prediction. Expect to need real integration: only 7 of 106 covering channels are used, which is
 -11.8 dB before any consideration of where a parked dish's sidelobe points.
 
+## 5c. THE COHERENT WINDOW WAS MISCONFIGURED THREE WAYS, 2026-07-30 13:00-13:20
+
+Chasing sensitivity found three independent losses, all from the same root: **the coherent window
+length is not a free parameter.** `hops_per_record` defaults to the replica period = 3125 hops =
+**16 ms**, and everything else has to be consistent with that.
+
+1. **NH20 overlay off: -12.7 dB rms, with exact nulls.** L5 Q5 is a dataless PILOT, which does
+   not mean unmodulated -- it carries the NH20 secondary overlay, one +-1 chip per 1 ms code
+   period. A 16 ms window spans SIXTEEN code periods, and the replica was built with the overlay
+   off (`nh_phase` defaults to -1). Summing 16 chips of a near-balanced sequence, computed over
+   all 20 alignments: **-12.7 dB rms, best case -8.5 dB, and EXACTLY ZERO for three of twenty.**
+   Worse, it is not a fixed penalty -- consecutive 16 ms windows step the alignment by 16 mod 20,
+   so a snapshot only ever visits phases {0,4,8,12,16}, and phase 4 is one of the nulls. A fixed
+   fraction of every snapshot contributed nothing.
+2. **Doppler step 250 Hz against a 62.5 Hz requirement.** A coherent window of length T cannot
+   tolerate a Doppler error much past 1/(2T). At 16 ms that is 31 Hz; the grid step was 250 Hz,
+   so a half-bin miss is 125 Hz = **two full cycles of phase rotation across the window**, i.e.
+   a sinc null. The Doppler grid resolution and the coherent window length are ONE parameter.
+3. **`--search-margin-wide-hz 3000` is airspy conservatism.** Its help says it "covers the
+   unknown TCXO offset" -- but CHORD's F-engine is GPS-disciplined and the `gpsdo` clock profile
+   is 0.06 ppm = **+-71 Hz at L5**. There is no unknown TCXO. This was the dominant cost driver,
+   and narrowing it to +-150 Hz is what made a 31.25 Hz grid affordable at all (11 bins, vs 25 at
+   the old 3000/250 and vs 194 if we had kept the wide margin).
+
+### `nh_search` (new, default OFF)
+
+`GnssChannelizedSearch` can now search every secondary-code alignment and keep the best peak
+(`nh_search: true`; `_n_nh = secondary_length()`). Alignments are processed SEQUENTIALLY so peak
+memory is one surface, not twenty. The precompute is 20x the banded repl0: **112 MB in 57 s,
+once** -- worth stating that the full-spectrum form of the same thing would be **131 GB**. The
+post-detection refine uses the winning alignment (`hoprate_stream(..., best_nh)`), or it would
+despread an overlay-blind replica against an overlay-aligned peak. Default off keeps airspy and
+any signal without a secondary code bit-identical.
+
+12.7 dB won COHERENTLY would need ~350x more incoherent windows to match, so 20 acquires is a
+strongly favourable trade -- but it IS 20x, and the pass cost is real: 20 alignments x 8 windows
+x 11 PRNs ran >2 min/pass. Going deep on the three highest-elevation sats (PRN 29 at 65 deg,
+5 at 53, 25 at 52) with 16 windows is the better iteration loop AND the more sensitive
+measurement.
+
+### Result: still no detection, and the threshold arithmetic says why it looked like one
+
+Best-SNR came in at **3.0-3.4 against a 2.90 bar** -- above threshold, and NOT a detection:
+
+* **The winning PRN wanders** (29, 5, 5 on one instance; 25, 5 on the other), and the two
+  instances name DIFFERENT PRNs for the same sky at the same time. A real satellite is in both.
+* **The winning NH alignment jumps randomly for the same PRN** -- PRN 5 came up at nh 0, then 7,
+  then 14. The alignment is a deterministic function of GPS time; it cannot hop like that. This
+  is the sharpest single discriminator the alignment search bought us, and it says noise.
+* **My threshold was wrong, in the direction that manufactures detections.** The bar
+  1 + c/sqrt(k) is for ONE surface. `nh_search` takes the max over TWENTY, which raises the
+  effective noise ceiling (c goes ~6.0 -> ~6.5 through the sqrt(2 ln N) growth): the real bar at
+  k=16 is ~2.6-3.0, not 2.75. The observed 3.0-3.4 sits exactly on it. **A detection threshold
+  must be recomputed whenever the number of surfaces searched changes** -- otherwise adding a
+  search dimension silently converts a null result into a positive one.
+
+### What is left, in order
+
+The three losses above are fixed. The remaining structural one is not a bug: **only 7 of the 106
+covering channels are on this node**, which is -11.8 dB, and no amount of local integration
+recovers it. That is precisely what the eight-node aggregator is for (all eight mod-8 offsets
+present -> the union is contiguous and complete). Beyond that, the honest unknown is where a
+PARKED dish's sidelobe points for any given satellite; the user's goal is the full hemisphere
+response including sidelobes, so low levels are expected rather than surprising.
+
+So: (a) recompute the detection bar for n_nh surfaces and make the stage log the bar it is
+actually using, (b) integrate deeper now that a pass is affordable, (c) scale to a second node and
+use the aggregator -- the -11.8 dB is the biggest single term left and it is architectural.
+
 ## 6. Also outstanding
 
 * **Instrumental delay is still unmeasured.** The cable term is now well determined —

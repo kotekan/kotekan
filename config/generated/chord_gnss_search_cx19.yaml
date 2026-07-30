@@ -54,8 +54,8 @@ srch0_recv:
   num_threads: 1
   use_config_tracker: false
 srch0_search:
-  acquire_snr: 12.0
-  acquire_windows: 32
+  acquire_snr: 3.6
+  acquire_windows: 8
   channel_ids:
   - 5972
   - 5988
@@ -71,13 +71,14 @@ srch0_search:
   doppler_margin_hz: 5000.0
   doppler_max: 5000.0
   doppler_min: -5000.0
-  doppler_step: 250.0
+  doppler_step: 31.25
   f_offset: 1176450000.0
   hint_ttl_s: 30.0
   hold_snapshots: 5
   in_buf: srch0_f_buf
   kotekan_stage: GnssChannelizedSearch
   n_channels: 7
+  nh_search: true
   num_taps: 4
   pfb_window: hamming
   prns: &id002
@@ -147,8 +148,8 @@ srch1_recv:
   num_threads: 1
   use_config_tracker: false
 srch1_search:
-  acquire_snr: 12.0
-  acquire_windows: 32
+  acquire_snr: 3.6
+  acquire_windows: 8
   channel_ids:
   - 5980
   - 5996
@@ -164,13 +165,14 @@ srch1_search:
   doppler_margin_hz: 5000.0
   doppler_max: 5000.0
   doppler_min: -5000.0
-  doppler_step: 250.0
+  doppler_step: 31.25
   f_offset: 1176450000.0
   hint_ttl_s: 30.0
   hold_snapshots: 5
   in_buf: srch1_f_buf
   kotekan_stage: GnssChannelizedSearch
   n_channels: 7
+  nh_search: true
   num_taps: 4
   pfb_window: hamming
   prns: *id002
