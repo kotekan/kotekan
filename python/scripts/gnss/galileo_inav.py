@@ -29,7 +29,10 @@ import numpy as np
 SYM_S = 0.004               # E1B symbol = 4 ms (250 sps)
 K = 7
 POLY = (0o171, 0o133)       # G1, G2 -- identical to GPS CNAV
-G2_INVERT = False           # ⚠️ ICD-owned, verify on live symbols (GPS inverts; Galileo not)
+G2_INVERT = True            # VERIFIED on live E1B symbols 2026-07-30 (a convention scan
+                            # decoded 160 CRC-valid words at True+swap, 0 otherwise). The
+                            # roundtrip self-test was blind to this -- encode/decode agree on
+                            # any choice -- exactly why it was flagged for the live step.
 NSTATES = 1 << (K - 1)      # 64
 CRC24Q_POLY = 0x1864CFB     # same CRC-24Q as CNAV
 
@@ -107,15 +110,17 @@ def viterbi_decode(symbols, known_start=True):
 # block interleaver (30 cols x 8 rows), CRC-24Q -- I/NAV specific
 # --------------------------------------------------------------------------
 def interleave(sym):
-    """Write the 240 encoded symbols into an 8x30 matrix by ROWS, read by COLUMNS.
-    (Orientation is ICD-owned; interleave/deinterleave are exact inverses so the
-    self-test is blind to it -- the live decode confirms the true orientation.)"""
-    m = np.asarray(sym, dtype=np.int8).reshape(INTERLEAVE_ROWS, INTERLEAVE_COLS)
+    """Write the 240 encoded symbols into a 30x8 matrix by ROWS, read by COLUMNS.
+    ★ Orientation VERIFIED on live E1B symbols 2026-07-30 (the convention scan: this
+    orientation + G2_INVERT True decoded 160 CRC-valid words; the other three combinations
+    of {G2, orientation} decoded 0). interleave/deinterleave are exact inverses, so the
+    roundtrip self-test could not tell this from the transpose -- the live CRC did."""
+    m = np.asarray(sym, dtype=np.int8).reshape(INTERLEAVE_COLS, INTERLEAVE_ROWS)
     return m.T.reshape(-1)
 
 
 def deinterleave(sym):
-    m = np.asarray(sym, dtype=float).reshape(INTERLEAVE_COLS, INTERLEAVE_ROWS)
+    m = np.asarray(sym, dtype=float).reshape(INTERLEAVE_ROWS, INTERLEAVE_COLS)
     return m.T.reshape(-1)
 
 
