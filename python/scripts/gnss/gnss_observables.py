@@ -61,10 +61,24 @@ def cn0_dbhz(deep_snr, coherence_s):
 
 def cn0_inc_dbhz(amp, unbiased, t_rec):
     """Incoherent C/N0 (dB-Hz) from the single-record power ratio x = u^2/(a^2 - u^2). Needs
-    no coherence at all, so it survives where the coherent estimator drops out."""
+    no coherence at all, so it survives where the coherent estimator drops out -- BUT its noise
+    split is the 4th-moment debias, which a BOC pilot's amplitude modulation fools (reads low by
+    ~10log10(t_rec): E1C ~-7, B1C ~-13 dB). Kept as the phase-blind estimator + a commercial-Rx
+    comparison; cross-check it against cn0_q (modulation-immune) and cn0_coh."""
     if amp and unbiased and amp > unbiased > 0 and t_rec > 0:
         x = (unbiased * unbiased) / (amp * amp - unbiased * unbiased)
         return 10.0 * math.log10(x / t_rec)
+    return None
+
+
+def cn0_q_dbhz(snr_q, t_rec):
+    """Modulation-immune C/N0 (dB-Hz): snr_q is the combiner's per-record SNR with the noise taken
+    from the QUADRATURE component of the carrier-removed frame, so BOC amplitude modulation does not
+    bias it (unlike cn0_inc). Coherence-referenced (the combiner produces it on the LINEAR pilot
+    path only, and only while the carrier fit holds), so it is None for data signals / decohered
+    windows -- there, fall back to cn0_inc. C/N0 = 10 log10(snr_q / t_rec)."""
+    if snr_q is not None and snr_q > 0 and t_rec > 0:
+        return 10.0 * math.log10(snr_q / t_rec)
     return None
 
 
@@ -238,6 +252,7 @@ def main():
                     "cn0_coh_dbhz": cn0_dbhz(r.get("deep_snr"), r.get("coherence_s")),
                     "cn0_inc_dbhz": cn0_inc_dbhz(r.get("amplitude"),
                                                  r.get("unbiased_amplitude"), t_rec),
+                    "cn0_q_dbhz": cn0_q_dbhz(r.get("snr_q"), t_rec),  # modulation-immune (BOC pilots)
                     "sig": sig, "coherence_s": r.get("coherence_s"),
                     "search_snr": det_snr.get(prn),
                     "doppler_hz": r.get("doppler_hz"),

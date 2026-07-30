@@ -179,6 +179,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_s4.assign(_n_prn, 0.0f);
     _st_s4_raw.assign(_n_prn, 0.0f);
     _st_sigma_phi.assign(_n_prn, 0.0f);
+    _st_snr_q.assign(_n_prn, NAN);
     _st_car_resid.assign(_n_prn, 0.0f);
     _adr_cyc.assign(_n_prn, 0.0);
     _trim_cyc.assign(_n_prn, 0.0);
@@ -669,6 +670,8 @@ void GnssCoherentCombiner::main_thread() {
                                                     // this emit (short window / no-wipe fallback /
                                                     // no carrier data). Overwritten with a real value
                                                     // only when carrier_resid_hz actually fits.
+        std::vector<double> snr_q(_n_prn, NAN);     // modulation-immune per-record SNR (LINEAR pilots
+                                                    // only); NaN = not available (data fit / no fit)
         std::vector<double> coh_s(_n_prn, 0.0);    // measured coherence: span of the winning window
         std::vector<int> deep_rec(_n_prn, 0);      // records in the winning deep window
         std::vector<double> deep_floor(_n_prn, 0.0); // rectification floor at the reported rung
@@ -788,8 +791,10 @@ void GnssCoherentCombiner::main_thread() {
                         if (std::norm(z) > 0.0)
                             ++nw;
                     resid_hz = (nw >= 16)
-                        ? carrier_resid_hz(_navwipe[p], _navutc[p], &sigma_phi[p], /*prewiped=*/true)
-                        : carrier_resid_hz(_navbuf[p], _navutc[p], &sigma_phi[p]);
+                        ? carrier_resid_hz(_navwipe[p], _navutc[p], &sigma_phi[p], /*prewiped=*/true,
+                                           &snr_q[p])
+                        : carrier_resid_hz(_navbuf[p], _navutc[p], &sigma_phi[p], /*prewiped=*/false,
+                                           &snr_q[p]);
                 } else if (car_n[p] > 0 && std::abs(car_S[p]) > 0.0) {
                     const double dphi = std::arg(car_S[p]) / (carrier_raw() ? 1.0 : 2.0);
                     resid_hz = dphi / (2.0 * M_PI * (car_dt[p] / car_n[p]));
@@ -1567,6 +1572,7 @@ void GnssCoherentCombiner::main_thread() {
                 }
                 _st_s4_raw[p] = (float)s4_raw[p];
                 _st_sigma_phi[p] = (float)sigma_phi[p];
+                _st_snr_q[p] = (float)snr_q[p];
                 _st_car_resid[p] = rec[gnss::CMB_CARRIER_RESID];
                 // ADR snapshot: the phase itself is a double (REST only); the record carries
                 // the arc id, which is what makes a raw capture self-describing about slips.
@@ -1658,6 +1664,7 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"s4", _st_s4[p]},
                          {"s4_raw", _st_s4_raw[p]},
                          {"sigma_phi", _st_sigma_phi[p]},
+                         {"snr_q", _st_snr_q[p]},
                          {"carrier_hz_resid", _st_car_resid[p]},
                          // Accumulated carrier phase (cycles) on the current unbroken arc,
                          // its id, its length in records, and how long it has held (s). 0
@@ -1852,8 +1859,13 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
 double
 GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& a,
                                        const std::vector<double>& utc,
-                                       double* sigma_phi_out, bool prewiped) const {
+                                       double* sigma_phi_out, bool prewiped,
+                                       double* snr_q_out) const {
     const int n = (int)a.size();
+    // snr_q_out defaults to NaN ("not available"): it is only produced on the LINEAR (pilot /
+    // prewiped) path below, and every early return must leave it as the not-measured sentinel.
+    if (snr_q_out != nullptr)
+        *snr_q_out = NAN;
     // CONTRACT: this function ALWAYS writes *sigma_phi_out. Too few records to fit a
     // phase slope -> return the residual's "no measurement" value (0.0, which the broker's
     // carrier loop reads as skip -- see gps_distributed_broker.py `if resid == 0.0`) and mark
@@ -1949,8 +1961,23 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
     // swing, scintillation, and thermal noise. Divide by `mult` to undo the bit-robust
     // squaring and get radians on the true carrier. A second pass is needed because the
     // accumulators above cannot yield residuals; it is O(n) on a window already in cache.
-    if (sigma_phi_out != nullptr) {
+    // MODULATION-IMMUNE (quadrature-referenced) noise -- snr_q_out. The 4th-moment incoherent
+    // debias (<|A|^2>,<|A|^4> -> s2,N, feeding cn0_inc) is fooled by BOC pilots: a steep BOC ACF
+    // turns code-phase jitter into large per-record AMPLITUDE modulation, which the moment debias
+    // books as noise, so cn0_inc under-reads (E1C ~-7, B1C ~-13 dB). Here the carrier is fitted
+    // out (f_coarse + the slope), so the signal sits at a FIXED phase and amplitude modulation
+    // lives entirely on the in-phase axis; the QUADRATURE component |v|*sin(resid) is thermal
+    // noise with the amplitude divided back out (a*(n_perp/a) = n_perp), so its variance is the
+    // per-component noise power INDEPENDENT of the modulation. This needs a phase reference, i.e.
+    // it is COHERENCE-REFERENCED -- valid only while the fit holds over the window (phase wander
+    // << pi); a decohered window has no fixed signal axis and this is not meaningful. LINEAR path
+    // only (sq==false: overlay-wiped or dataless pilots -- exactly the BOC signals); a squared
+    // (data) fit has no single amplitude axis, so snr_q stays NaN there and cn0_inc is used.
+    if (sigma_phi_out != nullptr || snr_q_out != nullptr) {
         double phi2 = 0.0, raw_prev2 = 0.0, Sw2 = 0.0, Sr2 = 0.0;
+        // quadrature-noise accumulators (uniform per-record weight -- see the |v| cancellation):
+        double Kq = 0.0, S_im = 0.0, S_im2 = 0.0, S_pow = 0.0;
+        const bool want_q = (snr_q_out != nullptr) && !sq;
         bool have2 = false;
         for (int r = 0; r < n; ++r) {
             const double w = std::norm(a[r]);
@@ -1975,8 +2002,27 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
             const double resid = phi2 - (icept + slope * t);
             Sw2 += w;
             Sr2 += w * resid * resid;
+            if (want_q) {
+                // |v|*sin(resid) = the record's amplitude projected onto the quadrature (noise)
+                // axis of the carrier-removed frame. For thermal noise resid ~ n_perp/|v|, so this
+                // is ~ n_perp regardless of |v| -> modulation-immune per-record noise sample.
+                const double imq = std::sqrt(w) * std::sin(resid);
+                Kq += 1.0;
+                S_im += imq;
+                S_im2 += imq * imq;
+                S_pow += w; // <|v|^2> = <|A|^2> over the same window (rotation preserves magnitude)
+            }
         }
-        *sigma_phi_out = (Sw2 > 0.0) ? std::sqrt(Sr2 / Sw2) / mult : NAN; // no valid weight -> unmeasured
+        if (sigma_phi_out != nullptr)
+            *sigma_phi_out = (Sw2 > 0.0) ? std::sqrt(Sr2 / Sw2) / mult : NAN; // unmeasured -> NaN
+        if (want_q && Kq >= 16.0) {
+            const double mean_im = S_im / Kq;
+            const double var_im = std::max(0.0, S_im2 / Kq - mean_im * mean_im); // per-component noise
+            const double noise = 2.0 * var_im;             // complex thermal power / record
+            const double m2 = S_pow / Kq;                  // total power / record
+            const double sig = std::max(0.0, m2 - noise);  // modulation-immune signal power / record
+            *snr_q_out = (noise > 1e-300) ? sig / noise : NAN; // per-record SNR; /t_rec -> C/N0 downstream
+        }
     }
     // Total residual = the slip-free coarse stage PLUS the fine LSQ slope of what it left.
     return f_coarse + slope / mult / (2.0 * M_PI);      // -> residual carrier (Hz)

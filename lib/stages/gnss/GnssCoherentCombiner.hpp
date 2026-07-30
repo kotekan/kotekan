@@ -172,10 +172,16 @@ private:
     /// @param prewiped the records are ALREADY overlay-free (the caller passes _navwipe = the
     /// de-rotated v_cur stream), so fit the RAW phase (mult 1, no squaring) exactly as for a
     /// dataless pilot -- half the phase noise AND no |2f-1| straddle null at boundary_f=0.5.
+    /// @param snr_q_out (optional) MODULATION-IMMUNE per-record SNR s^2/N -- noise taken from the
+    /// QUADRATURE component in the carrier-removed frame, so BOC amplitude modulation (which the
+    /// 4th-moment cn0_inc debias mistakes for noise) does not bias it. Divide by t_rec downstream
+    /// for C/N0. COHERENCE-REFERENCED (needs the carrier fit to hold over the window) and produced
+    /// only on the LINEAR path (pilots / prewiped); NaN for squared (data) fits and short windows.
     double carrier_resid_hz(const std::vector<std::complex<double>>& a,
                             const std::vector<double>& utc,
                             double* sigma_phi_out = nullptr,
-                            bool prewiped = false) const;
+                            bool prewiped = false,
+                            double* snr_q_out = nullptr) const;
 
     std::vector<Buffer*> in_bufs;
     Buffer* out_buf;
@@ -322,6 +328,7 @@ private:
     std::vector<float> _st_s4;       ///< amplitude scintillation index, thermal floor removed
     std::vector<float> _st_s4_raw;   ///< ... before the debias (diagnostic)
     std::vector<float> _st_sigma_phi;///< carrier-phase jitter about the slope fit (rad)
+    std::vector<float> _st_snr_q;    ///< modulation-immune per-record SNR (quadrature noise); NaN n/a
     std::vector<float> _st_car_resid; ///< full-band carrier residual, Hz (shared carrier loop)
     std::vector<float> _st_coh_s;  ///< measured coherence: time span of the chosen deep window (s)
                                    ///< -- 0 when NO ladder rung beat its rectification floor
