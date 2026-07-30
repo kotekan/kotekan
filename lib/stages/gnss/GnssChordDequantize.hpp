@@ -72,6 +72,7 @@ private:
     int _element;
     int _n_hops;
     float _scale;
+    bool _conjugate = false; ///< negate imag: the F-engine convention, measured on sky
     int _out_chan;              ///< output span width (== _n_chan when not zero-filling)
     std::vector<int> _out_idx;  ///< output slot for each input channel
 };

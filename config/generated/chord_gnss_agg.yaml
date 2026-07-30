@@ -3,6 +3,7 @@
 # union comb: 27 channels 5972..6076
 # ONE search over the gathered union, aligned on the global sample counter.
 agg0_deq:
+  conjugate: true
   cpu_affinity:
   - 31
   element: 0
@@ -31,6 +32,7 @@ agg0_recv:
   num_threads: 1
   use_config_tracker: false
 agg1_deq:
+  conjugate: true
   cpu_affinity:
   - 57
   element: 0
@@ -59,6 +61,7 @@ agg1_recv:
   num_threads: 1
   use_config_tracker: false
 agg2_deq:
+  conjugate: true
   cpu_affinity:
   - 58
   element: 0
@@ -87,6 +90,7 @@ agg2_recv:
   num_threads: 1
   use_config_tracker: false
 agg3_deq:
+  conjugate: true
   cpu_affinity:
   - 59
   element: 0
@@ -135,7 +139,7 @@ agg_merged_buf:
   metadata_pool: gnss_pool
   num_frames: 8
 agg_search:
-  acquire_snr: 3.4
+  acquire_snr: 3.8
   acquire_threads: 6
   acquire_windows: 16
   channel_ids:
@@ -189,9 +193,38 @@ agg_search:
   num_taps: 4
   pfb_window: hamming
   prns:
-  - 29
+  - 1
+  - 2
+  - 3
+  - 4
   - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  - 20
+  - 21
+  - 22
+  - 23
+  - 24
   - 25
+  - 26
+  - 27
+  - 28
+  - 29
+  - 30
+  - 31
+  - 32
   refine_step: 75
   require_hint: true
   sample_rate: 3200000000.0

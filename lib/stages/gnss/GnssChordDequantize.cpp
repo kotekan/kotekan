@@ -29,6 +29,7 @@ GnssChordDequantize::GnssChordDequantize(Config& config, const std::string& uniq
     _element = config.get_default<int>(unique_name, "element", 0);
     _n_hops = config.get<int>(unique_name, "samples_per_data_set");
     _scale = config.get_default<float>(unique_name, "scale", 1.0f);
+    _conjugate = config.get_default<bool>(unique_name, "conjugate", false);
 
     // Zero-fill to a contiguous span (see the header note on why the FFT search needs it).
     _out_chan = config.get_default<int>(unique_name, "out_channels", _n_chan);
@@ -99,7 +100,18 @@ void GnssChordDequantize::main_thread() {
                 // swapping these is invisible in magnitude and inverts the Doppler sign.
                 const float re = (float)(int((b & 0xf0) >> 4) - 8) * _scale;
                 const float im = (float)(int(b & 0x0f) - 8) * _scale;
-                dst[_out_idx[(size_t)c]] = std::complex<float>(re, im);
+                // conjugate: MEASURED ON SKY 2026-07-30. The CHORD F-engine's channelized
+                // output is CONJUGATED relative to this decode's convention (equivalently:
+                // the nibbles may carry imag-high -- indistinguishable, since swap = i*conj
+                // and a constant phase is invisible to every downstream product). The
+                // X-engine only forms |.|^2, so nothing in the production system could ever
+                // see this, and gpuSimulate's labeling was never load-bearing evidence.
+                // Found by running the acquire offline on captured sky both ways: as-is,
+                // PRN 32 gave 10.1 (noise, ceiling ~14); conjugated, 22.5 -- and the
+                // measured Dopplers then match BRDC to ~6 Hz on two satellites with a
+                // common +5.8 Hz receiver clock bias. FIRST LIGHT was behind this flag.
+                dst[_out_idx[(size_t)c]] =
+                    std::complex<float>(re, _conjugate ? -im : im);
             }
         }
 

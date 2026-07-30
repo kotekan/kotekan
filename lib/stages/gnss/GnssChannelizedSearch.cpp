@@ -97,6 +97,7 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     // exact serial path -- unless configured: the airspy chains are sized for one core, while
     // the aggregator's 27-channel surface is ~10 s/window serial and owns several cores.
     _acquire_threads = config.get_default<int>(unique_name, "acquire_threads", 1);
+    _hint_dop_sign = config.get_default<double>(unique_name, "hint_doppler_sign", -1.0);
     _require_hint = config.get_default<bool>(unique_name, "require_hint", false);
     _hint_ttl_s = config.get_default<double>(unique_name, "hint_ttl_s", 8.0);
     double dmin = config.get_default<double>(unique_name, "doppler_min", -6000.0);
@@ -306,7 +307,15 @@ void GnssChannelizedSearch::search_snapshot() {
             const DopHint& hh = _snap_hints.size() == _prns.size() ? _snap_hints[p] : _dop_hints[p];
             if (hh.valid && (_hint_ttl_s <= 0.0 || _snap_taken_s - hh.t_recv < _hint_ttl_s)) {
                 hinted = true;
-                const double c = -hh.doppler, m = std::max(0.0, hh.margin);
+                // _hint_dop_sign: the map from PHYSICAL (hinted) Doppler to the internal r2c
+                // grid. -1 is the convention validated on airspy end to end. It is a CONFIG
+                // because a front end whose FFT sign convention is opposite to the model's
+                // conjugates every channel -- which leaves the correlation peak height alone
+                // and NEGATES the internal Doppler, so a hinted scan centered at -pred misses
+                // a real satellite at +pred by 2x its Doppler, for every satellite, forever.
+                // A symmetric blind grid would catch that; require_hint never scans one. An
+                // A/B run of the two signs is the direct hardware-convention test.
+                const double c = _hint_dop_sign * hh.doppler, m = std::max(0.0, hh.margin);
                 // Anchor the hinted window to the ABSOLUTE Doppler grid (integer multiples
                 // of _doppler_step), NOT to the hint. A hint-anchored (sliding-origin) grid
                 // made the reported dop a function of the hint's continuous drift: a static

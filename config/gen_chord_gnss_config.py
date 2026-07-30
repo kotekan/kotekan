@@ -421,6 +421,12 @@ def build_aggregator_instance(cfg, nodes, args, port):
                 "n_channels": n_chan,
                 "n_elements": 1,
                 "element": 0,
+                # Measured on sky 2026-07-30: the F-engine channelized output is CONJUGATED
+                # relative to the nominal decode (or equivalently nibble-swapped; the two are
+                # indistinguishable and both invisible to the |.|^2-only X-engine). Without
+                # this the despread is blind to every satellite while the aggregate GNSS glow
+                # sits at +2.4 dB in the very same bins. See GnssChordDequantize.cpp.
+                "conjugate": True,
                 "cpu_affinity": [cores[(i + 2) % len(cores)]],
             },
         })
@@ -527,6 +533,7 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 "n_channels": n_chan,
                 "n_elements": 1,
                 "element": 0,
+                "conjugate": True,  # F-engine conjugation, measured on sky -- see the aggregator note
                 # NO zero-fill. channelized_accumulate FFTs along the HOP axis WITHIN each
                 # channel and sums the per-channel surfaces -- it is "the distributable half of
                 # the search", built for channels scattered across nodes, so a sparse comb is
