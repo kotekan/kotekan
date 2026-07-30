@@ -222,10 +222,18 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
 
         // TRIAL ORDER {P, E, L}, not {E, P, L}. The prompt replica has to be in hand when the
         // Early/Late ones are formed, so <R_P, R_E> / <R_P, R_L> can be accumulated without a
-        // second gather. Accumulator indices are unchanged, so every output row keeps its meaning
-        // -- only the order the three are computed in moved. (Numerically a no-op: the three
-        // trials are independent, and each accumulator sums the same terms in the same per-hop
-        // order as before.)
+        // second gather. Accumulator indices are unchanged, so every output row keeps its
+        // meaning -- only the order the three are computed in moved.
+        //
+        // MATH no-op, NOT a bitwise one. acc[t]/e[t] sum the same terms in the same per-hop
+        // order regardless of XC, so corr/energy are unchanged to the LAST BIT of the algebra
+        // -- but not of the float codegen: with XC on, `r_P` must stay live and the xc MACs
+        // raise register pressure, so nvcc makes different FMA-contraction/scheduling choices
+        // on the identical `dd.x*r.x + dd.y*r.y` float MACs. That shifts corr/energy by ~1 ULP
+        // (~1e-7 rel, data-dependent) between the XC=off and XC=on instantiations. The test
+        // gates this at the suite's float floor (~1e-6), NOT bit-identity -- a real leak from
+        // the xc path into acc/e (there is none: grep this function, xc[] never writes acc/e)
+        // would be orders larger.
         float2 r_P = make_float2(0.f, 0.f);
 #pragma unroll
         for (int tt = 0; tt < 3; ++tt) {
