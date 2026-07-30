@@ -280,6 +280,13 @@ def build_search_instance(cfg, node, per_gpu, args, port):
         "sizeof_float32": 4,
         "cpu_affinity": cores,
         "rest_server": {"port": port, "cpu_affinity": cores, "enable_cors": True},
+        # CLOCK PROFILE, read by GnssChannelizedSearch from /clock_profile: when present the
+        # carrier search extent is DERIVED from the clock's frequency accuracy plus the band's
+        # max sky Doppler, instead of a guessed doppler_min/max. gpsdo = 0.06 ppm, which at
+        # 1176.45 MHz is ~71 Hz of clock uncertainty against +-5 kHz of geometry -- so the
+        # extent is set by the orbit, as it should be. CHORD's F-engine is GNSS-disciplined
+        # (arXiv:2607.01625 s2), so this is the honest preset, not an optimistic one.
+        "clock_profile": {"name": cfg["clock"]["profile"]},
         "gnss_pool": {"kotekan_metadata_pool": "GnssChanMetadata",
                       "num_metadata_objects": 30 * args.buffer_depth},
         # The search stage builds a Telescope-free replica bank, but kotekan constructs a
@@ -359,9 +366,20 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 "channel_offset": pairs[0][0],
                 "n_channels": n_chan,
                 "channel_ids": [fid for fid, _ in pairs],
+                # Explicit bounds are a FALLBACK: with /clock_profile present the stage derives
+                # the extent itself. Kept so the config is readable without knowing that.
                 "doppler_min": -float(sig["max_doppler_hz"]),
                 "doppler_max": float(sig["max_doppler_hz"]),
                 "doppler_step": 250.0,
+                # 30 s, matching the live airspy L5 chain -- NOT the 8 s default. The broker
+                # refreshes hints every 10 s, so an 8 s TTL guarantees a window each cycle where
+                # every hint is stale; with require_hint that means every PRN is skipped before
+                # its SNR is even computed, and the stage goes silent for a reason nothing in its
+                # output explains. Two timers that must agree, and the defaults do not.
+                "hint_ttl_s": 30.0,
+                "hold_snapshots": 5,
+                "code_doppler_sign": 1.0,
+                "doppler_margin_hz": float(sig["max_doppler_hz"]),
                 # Only search PRNs the broker has HINTED, and only near the hinted Doppler. The
                 # broker knows every visible satellite's Doppler to ~Hz from BRDC, so a blind
                 # 41-bin grid over all 32 PRNs is work we can simply not do: this collapses it to
@@ -412,8 +430,14 @@ def main():
                          "the ONLY edit needed to move the search to another machine.")
     ap.add_argument("--search-port-base", type=int, default=11040,
                     help="bufferRecv port for GPU 0; GPU 1 uses base+1")
-    ap.add_argument("--acquire-windows", type=int, default=16,
-                    help="incoherent 1 ms windows stacked per acquisition attempt")
+    ap.add_argument("--acquire-windows", type=int, default=32,
+                    help="windows stacked per acquisition attempt. CHOOSE BY INTEGRATION TIME, "
+                         "not by copying the airspy count: a window is repl_period_hops long, "
+                         "which is 1 ms there (1000 hops) but 16 ms here (3125 hops), because "
+                         "CHORD's 1 ms code period is not commensurate with its 5.12 us hop. So "
+                         "the same COUNT buys 16x the integration and costs 16x more. 32 windows "
+                         "= 512 ms, ~5x the airspy node's 100 ms -- deliberate compensation for "
+                         "holding only 7 of 106 channels (-11.8 dB).")
     ap.add_argument("--acquire-snr", type=float, default=12.0)
     ap.add_argument("--search-instance", action="store_true",
                     help="emit the SEARCH instance config instead of the node config")

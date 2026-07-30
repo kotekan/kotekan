@@ -2,6 +2,8 @@
 # node cx19  signal GPS_L5_Q  rest port 12050
 # Standalone acquisition instance: no DPDK, no GPU, no hugepages -- runs as an
 # ordinary user. Fed by bufferSend from the node instance.
+clock_profile:
+  name: gpsdo
 cpu_affinity: &id001
 - 19
 - 24
@@ -53,7 +55,7 @@ srch0_recv:
   use_config_tracker: false
 srch0_search:
   acquire_snr: 0.2
-  acquire_windows: 16
+  acquire_windows: 32
   channel_ids:
   - 5972
   - 5988
@@ -63,12 +65,16 @@ srch0_search:
   - 6052
   - 6068
   channel_offset: 5972
+  code_doppler_sign: 1.0
   cpu_affinity:
   - 58
+  doppler_margin_hz: 5000.0
   doppler_max: 5000.0
   doppler_min: -5000.0
   doppler_step: 250.0
   f_offset: 1176450000.0
+  hint_ttl_s: 30.0
+  hold_snapshots: 5
   in_buf: srch0_f_buf
   kotekan_stage: GnssChannelizedSearch
   n_channels: 7
@@ -141,7 +147,7 @@ srch1_recv:
   use_config_tracker: false
 srch1_search:
   acquire_snr: 0.2
-  acquire_windows: 16
+  acquire_windows: 32
   channel_ids:
   - 5980
   - 5996
@@ -151,12 +157,16 @@ srch1_search:
   - 6060
   - 6076
   channel_offset: 5980
+  code_doppler_sign: 1.0
   cpu_affinity:
   - 59
+  doppler_margin_hz: 5000.0
   doppler_max: 5000.0
   doppler_min: -5000.0
   doppler_step: 250.0
   f_offset: 1176450000.0
+  hint_ttl_s: 30.0
+  hold_snapshots: 5
   in_buf: srch1_f_buf
   kotekan_stage: GnssChannelizedSearch
   n_channels: 7
