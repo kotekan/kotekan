@@ -271,7 +271,7 @@ gnss0_srch_tap:
   - 283
   cpu_affinity:
   - 24
-  element_offset: 13
+  element_offset: 0
   fft_length: 16384
   frame_chan_stride: num_local_freq
   frame_elem_stride: num_elements
@@ -397,7 +397,7 @@ gnss1_srch_tap:
   - 283
   cpu_affinity:
   - 31
-  element_offset: 13
+  element_offset: 0
   fft_length: 16384
   frame_chan_stride: num_local_freq
   frame_elem_stride: num_elements

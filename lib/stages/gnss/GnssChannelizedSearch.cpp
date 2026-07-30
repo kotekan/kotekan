@@ -301,8 +301,10 @@ void GnssChannelizedSearch::search_snapshot() {
         bool hinted = false;
         {
             std::lock_guard<std::mutex> lk(_hint_mtx);
-            const DopHint& hh = _dop_hints[p];
-            if (hh.valid && (_hint_ttl_s <= 0.0 || steady_s() - hh.t_recv < _hint_ttl_s)) {
+            // The SNAPSHOT-epoch hints, TTL judged against the snapshot time -- not the live
+            // table and not now(): the data is frozen, so the hints must be too.
+            const DopHint& hh = _snap_hints.size() == _prns.size() ? _snap_hints[p] : _dop_hints[p];
+            if (hh.valid && (_hint_ttl_s <= 0.0 || _snap_taken_s - hh.t_recv < _hint_ttl_s)) {
                 hinted = true;
                 const double c = -hh.doppler, m = std::max(0.0, hh.margin);
                 // Anchor the hinted window to the ABSOLUTE Doppler grid (integer multiples
@@ -555,6 +557,12 @@ void GnssChannelizedSearch::main_thread() {
                          "rest dropped upstream -> zero-filled, peak stays aligned)",
                          unique_name, 100.0 * (double)filled_hops / (double)_snap_hops,
                          (long)filled_hops, (long)_snap_hops);
+                {
+                    // Freeze the hint table at the data's epoch -- see _snap_hints.
+                    std::lock_guard<std::mutex> hk(_hint_mtx);
+                    _snap_hints = _dop_hints;
+                    _snap_taken_s = steady_s();
+                }
                 std::lock_guard<std::mutex> lk(_m);
                 _snap_ready = true;
                 _worker_busy = true;

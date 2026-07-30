@@ -127,7 +127,17 @@ private:
         double margin = 0.0;
         double t_recv = 0.0;
     };
-    std::vector<DopHint> _dop_hints; ///< parallel to _prns
+    std::vector<DopHint> _dop_hints; ///< parallel to _prns (live, updated by REST)
+    /// The hint table AS OF the snapshot, copied under _hint_mtx when the snapshot finalizes.
+    /// The worker searches THESE, not the live table: a pass can run for minutes, during which
+    /// the broker keeps refreshing hints to predict the CURRENT sky -- but the data is frozen
+    /// at snapshot time. High-elevation sats (the best targets) have the highest Doppler rate
+    /// (~0.65 Hz/s), so a hint read 4-5 minutes into a pass is off by ~150-200 Hz for data
+    /// captured at pass start: outside the narrowed window entirely, a silent per-PRN miss
+    /// that gets WORSE the later in the pass the PRN is processed. Epoch-matching the hints to
+    /// the data removes it; residual = broker interval (10 s) x rate ~ 7 Hz.
+    std::vector<DopHint> _snap_hints;
+    double _snap_taken_s = 0.0; ///< steady_s() when the snapshot finalized (for hint TTL)
     std::mutex _hint_mtx;
     /// require_hint: scan ONLY PRNs with a fresh broker hint (visible sats), SKIP the rest (no blind
     /// grid) -> cost tracks the visible count, and the set follows the sky (mid-run PRN swap) when
