@@ -2,8 +2,10 @@
 
 #include "fftwPlannerLock.hpp" // for fftw_planner_mutex
 
-#include <cmath>  // for cos, sin, fmod, M_PI
-#include <mutex>  // for lock_guard
+#include <cmath>   // for cos, sin, fmod, M_PI
+#include <cstdlib> // for abs
+#include <mutex>   // for lock_guard
+#include <numeric> // for gcd
 
 namespace gnss {
 
@@ -96,7 +98,36 @@ aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
     const int nd = nc ? (int)P[0].size() : 0;
     const int Mp = (nc && nd) ? (int)P[0][0].size() : 0;
     const int sph = samples_per_hop;
-    const AcquisitionSurface dims{nd, Mp, sph};
+
+    // The fine-lag axis is exactly periodic, so only store one period of it.
+    //
+    // D[s] = sum_ci P_ci e^{+i 2pi f_ci s / sph}. Factor out the first channel's ramp: it has
+    // unit modulus, so |D[s]|^2 -- all this function keeps -- depends only on the channel
+    // DIFFERENCES f_ci - f_c0. If those share a common factor g with sph, then |D[s]|^2 repeats
+    // with period sph/g and the remaining g-1 copies are bit-for-bit identical.
+    //
+    // This is not a corner case, it is the normal situation for a combed band, and g is large:
+    // CHORD's node comb is stride 8, split across two GPUs, so each search instance sees
+    // stride 16 and g = 16 -- 15/16 of both the compute and the 2 GB surface was recomputing
+    // numbers it already had. (Airspy's covering set is stride 2, so g = 2.)
+    //
+    // It is also the SAME redundancy as the known code-phase ambiguity: period sph/g samples is
+    // 1/(g * channel_width) in time, = 320 ns for g=16 here, the comb ambiguity resolved by the
+    // BRDC model with ~16x margin. So nothing is lost that was ever independent information.
+    //
+    // Behaviour is preserved EXACTLY, not approximately:
+    //   - channelized_peak takes the first STRICT maximum, so among g identical copies it
+    //     already returned the s in [0, sph/g); the peak cell is unchanged.
+    //   - its noise floor is a mean over the surface, and dropping g uniform copies of every
+    //     value leaves the mean identical -- so the reported SNR is unchanged too.
+    int g = 0;
+    for (int ci = 1; ci < nc; ++ci)
+        g = std::gcd(g, std::abs(chan_freq[ci] - chan_freq[0]));
+    // g == 0 means a single covering channel: |D|^2 is then flat in s (one unit-modulus ramp),
+    // so one column suffices. std::gcd(0, sph) == sph gives exactly that.
+    const int s_stored = (nc > 0 && sph > 0) ? sph / std::gcd(g, sph) : sph;
+
+    const AcquisitionSurface dims{nd, Mp, sph, s_stored};
     if ((long)surf.size() != dims.size())
         surf.assign(dims.size(), 0.0);
     if (nc == 0)
@@ -104,22 +135,24 @@ aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
 
     // Cross-channel fine-lag phase ramp e^{+i 2pi f_c s / sph}; SoA float so the
     // inner s-loop vectorizes (std::complex<float> does not auto-vectorize).
-    std::vector<std::vector<float>> rampRe(nc, std::vector<float>(sph));
-    std::vector<std::vector<float>> rampIm(nc, std::vector<float>(sph));
+    // NOTE the ramp argument still divides by the FULL sph -- s_stored bounds the range of s,
+    // it does not rescale the frequency.
+    std::vector<std::vector<float>> rampRe(nc, std::vector<float>(s_stored));
+    std::vector<std::vector<float>> rampIm(nc, std::vector<float>(s_stored));
     for (int ci = 0; ci < nc; ++ci) {
         const int fc = chan_freq[ci];
-        for (int s = 0; s < sph; ++s) {
+        for (int s = 0; s < s_stored; ++s) {
             const double a = 2.0 * M_PI * fc * s / sph;
             rampRe[ci][s] = (float)std::cos(a);
             rampIm[ci][s] = (float)std::sin(a);
         }
     }
 
-    std::vector<float> Dre(sph), Dim(sph);
+    std::vector<float> Dre(s_stored), Dim(s_stored);
     for (int d = 0; d < nd; ++d) {
-        double* base = surf.data() + (long)d * Mp * sph;
+        double* base = surf.data() + (long)d * Mp * s_stored;
         for (int q = 0; q < Mp; ++q) {
-            for (int s = 0; s < sph; ++s) {
+            for (int s = 0; s < s_stored; ++s) {
                 Dre[s] = 0.0f;
                 Dim[s] = 0.0f;
             }
@@ -127,13 +160,13 @@ aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
                 const float pre = P[ci][d][q].real(), pim = P[ci][d][q].imag();
                 const float* rr = rampRe[ci].data();
                 const float* ri = rampIm[ci].data();
-                for (int s = 0; s < sph; ++s) {
+                for (int s = 0; s < s_stored; ++s) {
                     Dre[s] += pre * rr[s] - pim * ri[s];
                     Dim[s] += pre * ri[s] + pim * rr[s];
                 }
             }
-            double* row = base + (long)q * sph;
-            for (int s = 0; s < sph; ++s)
+            double* row = base + (long)q * s_stored;
+            for (int s = 0; s < s_stored; ++s)
                 row[s] += (double)(Dre[s] * Dre[s] + Dim[s] * Dim[s]);
         }
     }
@@ -173,11 +206,16 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     long best_tau = 0;
     std::vector<double> dop_peak(dims.n_dop, 0.0); // per-Doppler max-over-tau (for the sub-grid fit)
 
+    // Index by the STORED fine-lag width, but form the absolute delay with the full sph: the
+    // surface may hold one period of a periodic fine-lag axis (see channelized_accumulate), and
+    // tau is still q*sph + s. Dropping identical copies changes neither the peak cell (first
+    // strict max, which already fell in the first period) nor the mean (uniform copies).
+    const int sfine = dims.fine();
     for (int d = 0; d < dims.n_dop; ++d) {
-        const double* base = surf.data() + (long)d * dims.Mp * dims.sph;
+        const double* base = surf.data() + (long)d * dims.Mp * sfine;
         for (int q = 0; q < dims.Mp; ++q) {
-            const double* row = base + (long)q * dims.sph;
-            for (int s = 0; s < dims.sph; ++s) {
+            const double* row = base + (long)q * sfine;
+            for (int s = 0; s < sfine; ++s) {
                 const double pw = row[s];
                 surf_sum += pw;
                 surf_n++;

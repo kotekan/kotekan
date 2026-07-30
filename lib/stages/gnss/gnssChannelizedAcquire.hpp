@@ -71,13 +71,22 @@ struct AcquisitionResult {
 };
 
 /// Dimensions of an accumulated acquisition surface (see @ref channelized_accumulate).
-/// The surface is a flat [n_dop][Mp][sph] array of |D|^2, indexed
-/// `surf[(d*Mp + q)*sph + s]`.
+/// The surface is a flat [n_dop][Mp][s_stored] array of |D|^2, indexed
+/// `surf[(d*Mp + q)*s_stored + s]`.
+///
+/// @c s_stored is usually @c sph, but is SMALLER when the covering channel indices share a
+/// common factor with @c sph, because the fine-lag axis is then exactly periodic and the extra
+/// columns are bit-for-bit copies -- see @ref channelized_accumulate. The fine lag still
+/// STRIDES by @c sph when converting a surface cell to an absolute delay (tau = q*sph + s);
+/// only the stored width shrinks. Use @c s_stored for indexing and @c sph for delay arithmetic.
 struct AcquisitionSurface {
-    int n_dop; ///< Doppler trials (= doppler_grid.size())
-    int Mp;    ///< replica hop-period (coarse-lag range)
-    int sph;   ///< full-rate samples per hop (fine-lag range)
-    long size() const { return (long)n_dop * Mp * sph; }
+    int n_dop;        ///< Doppler trials (= doppler_grid.size())
+    int Mp;           ///< replica hop-period (coarse-lag range)
+    int sph;          ///< full-rate samples per hop (the fine-lag STRIDE in absolute delay)
+    int s_stored = 0; ///< fine-lag columns actually stored (== sph when not periodic)
+    /// Distinct fine-lag columns, tolerating a surface built before @c s_stored existed.
+    int fine() const { return s_stored > 0 ? s_stored : sph; }
+    long size() const { return (long)n_dop * Mp * fine(); }
 };
 
 /**

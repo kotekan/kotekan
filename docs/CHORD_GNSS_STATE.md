@@ -3,11 +3,12 @@
 Working state of the CHORD-side GNSS instrument on branch `kv/chord-gnss`.
 
 **Where we are:** the pipeline runs end to end on real sky with zero frame loss, the broker seeds
-nine GPS L5 satellites from BRDC, and the acquisition search is correctly configured. The replica
-cost that made the search unusable is **fixed** (§5) — 55.7 s of replica building per pass, every
-pass, is now 14.3 s once — along with a real numerics bug found on the way. **No detection yet:
-the fixed search has not been run against sky.** That is the next thing to do, and the first
-number to read off it is the instrumental delay constant (§6).
+nine GPS L5 satellites from BRDC, and the acquisition search is correctly configured. The two costs
+that made the search unusable are **fixed** (§5): a pass over 9 hinted PRNs was ~14 min and ~15 GB
+and is now **~1.4 min and ~150 MB**. A real numerics bug in the shared replica turned up on the
+way, and an 8-hour hang was waiting on the first detection. **No detection yet: the fixed search
+has not been run against sky.** That is the next thing to do, and the first number to read off it
+is the instrumental delay constant (§6).
 
 Read `config/chord_gnss_node.yaml` first — it is the source of truth and every measured number
 lives there. This file is the narrative: what works, what broke, and what is left.
@@ -163,7 +164,46 @@ split gates are still exact, so nothing regressed. **This matters for peeling, n
 a -53 dB replica error floors the peel depth, which is the one place the "machine precision"
 claim would have been leaned on. Flag it to the core dev with the merge note.
 
-### Why it was 1170x, kept for the arithmetic
+### The bigger half: the acquisition surface was 16x oversampled
+
+The replica turned out to be about **1% of pass time** — it was the memory churn (204.8 MB
+allocated and freed per PRN, 19.4 GB RSS). Measured, the dominant cost was
+`channelized_accumulate`: at 5 Doppler bins, **91 s per PRN per pass and a 2.05 GB surface**, so
+**13.7 min** for 9 hinted PRNs. That matches the observed 8-minute passes far better than the
+replica ever did.
+
+`D[s] = sum_ci P_ci e^{+i2pi f_ci s/sph}`, and the surface keeps only `|D[s]|^2`. Factor out the
+first channel's ramp — unit modulus, so it drops out of the magnitude — and what is left depends
+only on the channel **differences**. If those share a factor `g` with `sph`, the fine-lag axis is
+exactly periodic with period `sph/g` and the other `g-1` copies are bit-for-bit identical.
+
+For a combed band `g` is large. The node's comb is stride 8, split across two GPUs, so **each
+search instance sees stride 16 and g = 16**: fifteen sixteenths of both the compute and the 2 GB
+surface was recomputing numbers it already had. (Airspy's covering set is stride 2, so g = 2 —
+a free doubling there too.)
+
+This is the SAME redundancy as the code-phase ambiguity already documented in §4: period `sph/g`
+samples is `1/(g * channel_width)` in time, 320 ns at g=16, resolved by the BRDC model with ~16x
+margin. Nothing is lost that was ever independent information.
+
+**Exact, not approximate**, which is why it is safe: `channelized_peak` takes the first *strict*
+maximum, so among `g` identical copies it already returned the `s` in the first period — the peak
+cell is unchanged; and its noise floor is a mean over the surface, which is unmoved by dropping
+`g` uniform copies of every value. `AcquisitionSurface` now carries `s_stored` alongside `sph`:
+index by `s_stored`, but form the absolute delay with `sph` (tau is still `q*sph + s`). Gated by
+`fine_lag_period_is_exact`, which checks the stored surface against the *formula* in double
+precision and then checks that `channelized_peak` reports an identical peak cell, Doppler, SNR and
+code phase off the reduced surface and off a hand-tiled full-width one.
+
+| per PRN per pass (nd=5) | time | surface |
+|---|---|---|
+| before | 91.4 s | 2.05 GB |
+| after | 9.4 s | 0.13 GB |
+
+**A pass over 9 hinted PRNs: 13.7 min → 1.4 min.** Combined with the cached replica, the search
+is affordable to run continuously.
+
+### Why the replica was 1170x, kept for the arithmetic
 
 ```
 N = 8192 (CHORD's PFB spans 0-1600 MHz), Mp = 3125

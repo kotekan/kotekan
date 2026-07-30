@@ -287,6 +287,76 @@ BOOST_AUTO_TEST_CASE(accumulate_reads_only_covering_rows) {
     }
 }
 
+// The fine-lag axis is stored to one period when the covering channels are combed, and that must
+// be EXACT, not a cheaper approximation: same peak cell, same Doppler, same SNR. Verified by
+// expanding the reduced surface back out by hand (tiling it g times) and confirming the expansion
+// is bit-identical to what a full-width surface would hold, then that channelized_peak agrees on
+// both. This is the 16x that makes the CHORD search affordable, so it is worth pinning hard.
+BOOST_AUTO_TEST_CASE(fine_lag_period_is_exact) {
+    const auto proto = dsp::pfb_prototype(N, P, dsp::Window::Hamming);
+    auto data = stft(gen(5, 50 * CHIP_RATE / FS, 200.0, cf(1.0f, 0.0f)), proto);
+    auto repl0 = stft(gen(5, 0.0, 0.0, cf(1.0f, 0.0f)), proto);
+    const std::vector<double> grid = {-400, -200, 0, 200, 400};
+
+    // A deliberately COMBED covering set: stride 3 out of N=31, so the differences share g=3
+    // with... nothing (gcd(3,31)=1, N prime) -- so build the comb in a bank whose sph shares a
+    // factor. Use samples_per_hop = 30 with stride-3 channels: gcd(3,30) = 3, period 10.
+    const std::vector<int> cov = {0, 3, 6, 9};
+    const int sph = 30;
+    std::vector<std::vector<std::vector<cf>>> Pall(cov.size());
+    for (size_t ci = 0; ci < cov.size(); ++ci) {
+        gnss::AcquireWorkspace w;
+        Pall[ci] = gnss::channel_correlate(data[(size_t)cov[ci]], repl0[(size_t)cov[ci]], grid, FS,
+                                           sph, w);
+    }
+
+    std::vector<double> surf;
+    const auto dims = gnss::aggregate_accumulate(Pall, cov, sph, surf);
+    BOOST_REQUIRE_EQUAL(dims.sph, sph);
+    BOOST_REQUIRE_EQUAL(dims.s_stored, 10); // gcd(3, 30) = 3 -> period 10
+    BOOST_REQUIRE_EQUAL((long)surf.size(), (long)dims.n_dop * dims.Mp * 10);
+
+    // Recompute the FULL-width surface directly from the definition and check the reduced one is
+    // one exact period of it -- this is the claim, tested against the formula rather than against
+    // another run of the same code.
+    const int nd = dims.n_dop, Mp = dims.Mp;
+    for (int d = 0; d < nd; ++d)
+        for (int q = 0; q < Mp; ++q)
+            for (int s = 0; s < sph; ++s) {
+                std::complex<double> D(0.0, 0.0);
+                for (size_t ci = 0; ci < cov.size(); ++ci) {
+                    const double a = 2.0 * M_PI * cov[ci] * s / sph;
+                    D += std::complex<double>(Pall[ci][d][q].real(), Pall[ci][d][q].imag())
+                         * std::complex<double>(std::cos(a), std::sin(a));
+                }
+                const double want = std::norm(D);
+                const double got = surf[((long)d * Mp + q) * 10 + (s % 10)];
+                // 1e-5 relative: the production path builds the ramp and accumulates D in
+                // FLOAT32 (deliberately -- it is what lets the inner s-loop vectorize) and then
+                // squares it, so ~2e-6 against a double reference is the floor. The failure this
+                // guards against -- a wrong period, so the wrong column -- is O(1) relative.
+                BOOST_REQUIRE_SMALL(got - want, 1e-5 * std::max(1.0, want));
+            }
+
+    // The behavioural claim: channelized_peak must report the same thing off the reduced surface
+    // as off the full-width one. Tile the reduced surface back out (exactly what the extra
+    // columns held) and check peak cell, Doppler and SNR all agree -- SNR included, because it is
+    // a mean over the surface and would shift if the copies were not uniform.
+    std::vector<double> wide((size_t)nd * Mp * sph);
+    for (int d = 0; d < nd; ++d)
+        for (int q = 0; q < Mp; ++q)
+            for (int s = 0; s < sph; ++s)
+                wide[((size_t)d * Mp + q) * sph + s] = surf[((long)d * Mp + q) * 10 + (s % 10)];
+
+    const gnss::AcquisitionSurface wide_dims{nd, Mp, sph, sph};
+    const auto r_red = gnss::channelized_peak(surf, dims, grid, FS, CHIP_RATE, CODE_LEN);
+    const auto r_wide = gnss::channelized_peak(wide, wide_dims, grid, FS, CHIP_RATE, CODE_LEN);
+    BOOST_CHECK_EQUAL(r_red.peak_tau_samples, r_wide.peak_tau_samples);
+    BOOST_CHECK_EQUAL(r_red.doppler_hz, r_wide.doppler_hz);
+    BOOST_CHECK_CLOSE(r_red.snr, r_wide.snr, 1e-9);
+    BOOST_CHECK_CLOSE(r_red.code_phase_chips, r_wide.code_phase_chips, 1e-9);
+}
+
 // Re-accumulating the same noiseless window K times scales the |D|^2 surface (and
 // its peak) by K, leaving the peak/mean ratio and the recovered lag/Doppler
 // unchanged -- the basic invariant the incoherent accumulator must satisfy.
