@@ -126,10 +126,10 @@ l1_gputrack:
     l1c_n_prn: 32
     kotekan_stage: cudaProcess
     gpu_id: 0
-    num_cuda_streams: 6
+    num_cuda_streams: 7
     frame_arrival_period: 0.0
     in_buffers: { l1_q_buf: l1_q_buf }
-    out_buffers: { l1_epl_buf: l1_epl_buf, l1_gal_epl_buf: l1_gal_epl_buf, l1_e1b_epl_buf: l1_e1b_epl_buf, l1_bds_epl_buf: l1_bds_epl_buf, l1_l1c_epl_buf: l1_l1c_epl_buf }
+    out_buffers: { l1_epl_buf: l1_epl_buf, l1_gal_epl_buf: l1_gal_epl_buf, l1_e1b_epl_buf: l1_e1b_epl_buf, l1_bds_epl_buf: l1_bds_epl_buf, l1_b1c_d_epl_buf: l1_b1c_d_epl_buf, l1_l1c_epl_buf: l1_l1c_epl_buf }
     commands:
         # ONE host->device copy of the channelized 4+4b frame
         - name: cudaInputData
@@ -249,10 +249,32 @@ l1_gputrack:
           out_buf: l1_bds_epl_buf
           in_buf: ""
         - name: cudaGnssTrack
+          signal: BDS_B1C_D
+          max_anchor_age_s: 0.0
+          fll_reacq_hz: 15.0
+          cuda_stream: 5
+          gpu_mem_input: l1_gnss_chan_frame
+          gpu_mem_output: l1_b1c_d_epl
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: 99840
+          n_channels: 10
+          channel_offset: 0
+          n_prn: 63
+          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+          capture_utc0: 1.0
+          fll_gain: 0.0
+          carrier_shared: true
+          seed_endpoint: "/l1_b1c_d_track/set_seeds"
+        - name: cudaOutputData
+          cuda_stream: 5
+          gpu_mem: l1_b1c_d_epl
+          out_buf: l1_b1c_d_epl_buf
+          in_buf: ""
+        - name: cudaGnssTrack
           signal: GPS_L1C_P
           max_anchor_age_s: 0.0
           fll_reacq_hz: 15.0    # tight snap-to-model fence (rec B; free under dop-continuous; alias limit 25 Hz at 10 ms)
-          cuda_stream: 5
+          cuda_stream: 6
           gpu_mem_input: l1_gnss_chan_frame
           gpu_mem_output: l1_l1c_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
@@ -270,7 +292,7 @@ l1_gputrack:
           peel_warmup_records: 100
           peel_fll_gain: 0.05
         - name: cudaOutputData
-          cuda_stream: 5
+          cuda_stream: 6
           gpu_mem: l1_l1c_epl
           out_buf: l1_l1c_epl_buf
           in_buf: ""
@@ -414,6 +436,32 @@ l1_bds_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l1_bds_epl_buf,
 # silently dropped (e1eba7a2); it is generated now and cannot be dropped again.
 l1_bds_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 3, in_bufs: [l1_bds_rec_buf], out_buf: l1_bds_out_buf, n_prn: 63, integration_length: 100, secondary_overlay: B1C, peel_depth: true, bit_export: true, samples_per_data_set: 199680, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 51, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L1CA, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 10.0, acquire_windows: 20, doppler_min: -5500.0, doppler_max: 5500.0, doppler_step: 100.0, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63, l1c_n_prn: 32 }
 l1_bds_record: { kotekan_stage: rawFileWrite, in_buf: l1_bds_out_buf, base_dir: "/tmp/gpswipe", file_name: "bds_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 199680, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 51, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L1CA, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 10.0, acquire_windows: 20, doppler_min: -5500.0, doppler_max: 5500.0, doppler_step: 100.0, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63, l1c_n_prn: 32 }
+
+# ---- BeiDou-3 B1C-DATA component (S5 D-component #4, LAST: B-CNAV1) ----
+# DERIVED from B1C-P exactly as E1B is from E1C: no search stage. B1C-D (data) and
+# B1C-P (pilot) share the SAME 10230-chip BOC(1,1) primary period and epoch (codes
+# differ only in the Weil tables) -- so a B1C-D row is the B1C-P row VERBATIM: no lift,
+# no broker flag. run_live adds b1c_d_track to the L1 BDS broker's --trackers so it gets
+# the same consensus seeds as bds_track (B1C-P). Like E1B (NOT the E5a-I/B2a-D case) it
+# is a PURE DATA channel with NO secondary: navwipe_bit_records 1 (one 10 ms code period
+# = one B-CNAV1 symbol) + bit_export, no secondary_overlay. run_live hands l1_b1c_d_combiner
+# to the broker as --bcnav1-combiner so its nav_obs reach the Bcnav1Predictor (reusing
+# the GF(64) NB-LDPC codec) and the decoded B-CNAV1 ephemeris is cross-checked vs BRDC --
+# the LAST civil D-component, completing GPS + Galileo + BeiDou nav decoding.
+# ⚠️ B-CNAV1's frame is 18 s (>> the others): it needs a phase-CONTINUOUS tracking run
+# to decode (cannot re-sync per emit). GPU: 6th L1 chain -- MEASURE l1_valve.
+# l1_rec_buf in TIME (the L5-I lesson).
+l1_b1c_d_n_prn: 63
+l1_b1c_d_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: l1_b1c_d_n_prn * 24 * 4 }
+l1_b1c_d_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: l1_b1c_d_n_prn * 24 * 4 }
+l1_b1c_d_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 16, frame_size: 176 + 1024 * l1_b1c_d_n_prn + 15360 * l1_b1c_d_n_prn }
+l1_b1c_d_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: l1_b1c_d_epl_buf, out_buf: l1_b1c_d_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], samples_per_data_set: 199680, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 51, sizeof_float: 4, spectrum_length: 10, num_taps: 4, f_offset: 5.0e6, signal: GPS_L1CA, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 10.0, acquire_windows: 20, doppler_min: -5500.0, doppler_max: 5500.0, doppler_step: 100.0, gal_n_prn: 36, bds_n_prn: 63, l1c_n_prn: 32 }
+# integration_length 100 x 10 ms = 1 s emit; navwipe_bit_records 1: a 10 ms B1C l1_record
+# is exactly ONE B-CNAV1 symbol, so one sign is exported per l1_record (the E1B pattern).
+# NO secondary_overlay (B1C-D is a pure data channel; the 1800-chip overlay is the
+# B1C-P PILOT's). NO peel.
+l1_b1c_d_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [l1_b1c_d_rec_buf], out_buf: l1_b1c_d_out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 100, navwipe_bit_records: 1, bit_export: true, samples_per_data_set: 199680, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 51, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L1CA, code_doppler_sign: 1.0, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 10.0, acquire_windows: 20, doppler_min: -5500.0, doppler_max: 5500.0, doppler_step: 100.0, gal_n_prn: 36, bds_n_prn: 63, l1c_n_prn: 32 }
+l1_b1c_d_record: { kotekan_stage: rawFileWrite, in_buf: l1_b1c_d_out_buf, base_dir: "/tmp/gpswipe", file_name: "b1c_d_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000, samples_per_data_set: 199680, bytes_per_sample: 2, buffer_depth: 16, valve_depth: 51, sizeof_float: 4, spectrum_length: 10, num_taps: 4, sample_rate: 20.0e6, f_offset: 5.0e6, signal: GPS_L1CA, code_doppler_sign: 1.0, n_prn: 32, record_floats: 24, doppler_margin_hz: 250000.0, acquire_snr: 10.0, acquire_windows: 20, doppler_min: -5500.0, doppler_max: 5500.0, doppler_step: 100.0, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], gal_n_prn: 36, bds_n_prn: 63, l1c_n_prn: 32 }
 
 # ---- GPS L1C-P parallel chain (4th L1 constellation, same 1575.42 tune) ----
 # Modernized civil pilot (Block III), BOC(1,1)+TMBOC modeled as BOC(1,1) like E1C/B1C
