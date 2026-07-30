@@ -398,6 +398,42 @@ ever binds again, the NH factorization (per-code-period partial correlations com
 sign patterns would amortize the 20x alignment cost to ~1x -- an algorithmic project, noted not
 planned).
 
+## 5e. THE BEAM-CROSSING NULL AND THE GAMMA CEILING, 2026-07-30 evening
+
+The dishes are parked on the meridian for the Cyg A transit: boresight (az 180, el 81.4), beam
+FWHM ~2.9 deg at L5. Computed from BRDC: **PRN 32 crossed 2.1 deg from that boresight at 19:41
+UTC** -- a +40 dB event if the pointing assumption and the analog budget hold. We watched it
+with 4-window (~3 min) passes from 25 deg off-axis all the way through the crossing.
+
+**Result: nothing.** The pass whose snapshot started 19:39:41 (dead inside the FWHM) reported
+best snr 6.74, indistinguishable from every pass before and after.
+
+**And the "detection plateau" leading up to it was my own miscalibration.** Twenty consecutive
+passes at snr 5.9-7.3 over a 5.0 bar looked like a persistent weak detection. The bar was set
+with the Gaussian-ish heuristic 1 + c/sqrt(k); the honest ceiling is the max of ~N Gamma(k)
+cells, solving  k*x - (k-1)*ln(k*x) + ln((k-1)!) = ln(N):
+
+    k = windows    heuristic bar    Gamma ceiling    measured noise maxima
+        16             ~2.7             3.4              3.11 - 3.40
+        64             ~1.8             1.94             1.86 - 1.92
+         4             ~4.7             ~7.5             "plateau" 5.9 - 7.3
+
+The Gamma model reproduces BOTH deep-run measurements to a few percent; at k=4 the heavy tail
+sits 50% above the heuristic, and the plateau was BELOW the true ceiling the whole time. Flat
+snr from 25 deg to 2 deg off-axis, wandering nh, Doppler bouncing anywhere in the drifting hint
+window -- noise, end to end. The stage now computes and logs the ceiling every pass and flags a
+threshold set below it ("every 'detection' is meaningless"), so this cannot be silently done a
+third time (the acquire_snr 0.2 era was the first).
+
+**What the null MEANS:** with the software chain validated by synthetic injection (5a) and the
+channel map verified to the packet copy, a no-show at 2 deg off assumed boresight leaves two
+explanations: the park pointing is not (180, 81.4) -- the user's "I think ~10 deg off zenith"
+was hedged -- or the analog path toward those sats delivers far less than the sidelobe budget
+(feed/filter/pointing unknowns at 1176 MHz). Next discriminators: PRN 3 passes 5.3 deg off the
+assumed boresight at 23:23 UTC (watched at 32 windows with the honest bar 2.8 vs ceiling
+~2.5); the element-0 node cycle; and a boresight FIT -- run crossing watches on several sats
+and fit where the snr actually peaks, which measures the true pointing instead of assuming it.
+
 ## 6. Also outstanding
 
 * **Instrumental delay is still unmeasured.** The cable term is now well determined —

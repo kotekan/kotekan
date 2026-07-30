@@ -351,6 +351,7 @@ void GnssChannelizedSearch::search_snapshot() {
                                                     _n_chan, surf, _acq_ws, cov_global, _fft_len,
                                                     _acquire_threads);
             }
+            _last_surface_cells = dims.size();
             const auto ai = gnss::channelized_peak(surf, dims, grid, _sample_rate,
                                                    _replica->chip_rate_hz(),
                                                    _replica->code_length());
@@ -456,11 +457,38 @@ void GnssChannelizedSearch::search_snapshot() {
     // The peak SNR is computed for every PRN and then THROWN AWAY unless it clears acquire_snr,
     // which leaves "found nothing" and "found 8 sigma with the threshold at 12" looking
     // identical from outside. Report the best of the pass so a near-miss is visible.
-    if (best_any_prn >= 0)
-        INFO("GnssChannelizedSearch[{:s}]: pass best snr {:.2f} (PRN {:d}{:s}), threshold {:.2f}",
+    if (best_any_prn >= 0) {
+        // The PURE-NOISE expectation of this pass's best SNR, so a threshold below it is
+        // visibly meaningless in the log it has to be read from. The surface cell is a sum of
+        // nwin |D|^2 draws (Gamma(nwin) up to channel-count effects, unit mean), and the pass
+        // maximum over N cells solves N * P(X > x) = 1 with the true Gamma tail:
+        //     k*x - (k-1)*ln(k*x) + ln((k-1)!) = ln(N),  k = windows integrated.
+        // The Gaussian-ish shortcut 1 + c/sqrt(k) badly UNDERESTIMATES this at small k (the
+        // Gamma tail is heavy): at k = 4 it said ~5.0 where the truth is ~7.5, which is how a
+        // 20-pass "detection plateau" of 5.9-7.3 got waved through on 2026-07-30 -- flat
+        // through an assumed main-beam crossing, because it was noise the whole time. The
+        // model reproduces the measured noise maxima at k=16 (3.1-3.4 obs, 3.4 pred) and k=64
+        // (1.86-1.92 obs, 1.94 pred). Correlations between cells make it a mild OVERestimate,
+        // which is the safe side for a ceiling.
+        const int kwin = std::min(_acquire_windows, (int)(_snap_hops / (size_t)_hops_per_record));
+        double ceiling = 0.0;
+        if (kwin > 0) {
+            double lgamma_k = std::lgamma((double)kwin); // ln((k-1)!)
+            const double lnN = std::log((double)_last_surface_cells * std::max(1, _n_nh));
+            double kx = std::max((double)kwin, lnN); // iterate kx = lnN + (k-1)ln(kx) - ln((k-1)!)
+            for (int it = 0; it < 50; ++it)
+                kx = lnN + (kwin - 1) * std::log(kx) - lgamma_k;
+            ceiling = kx / (double)kwin;
+        }
+        INFO("GnssChannelizedSearch[{:s}]: pass best snr {:.2f} (PRN {:d}{:s}), threshold {:.2f}, "
+             "pure-noise ceiling ~{:.2f}{:s}",
              unique_name, best_any, best_any_prn,
              (_n_nh > 1) ? fmt::format(", nh {:d}/{:d}", best_any_nh, _n_nh) : std::string(),
-             _acquire_snr);
+             _acquire_snr, ceiling,
+             (_acquire_snr < ceiling) ? "  [THRESHOLD BELOW NOISE CEILING -- every \"detection\" "
+                                        "is meaningless]"
+                                      : "");
+    }
 }
 
 void GnssChannelizedSearch::search_worker() {

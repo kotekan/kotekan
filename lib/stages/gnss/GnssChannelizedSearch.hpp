@@ -144,6 +144,7 @@ private:
     /// `prns` lists the whole constellation. hint_ttl_s: a hint older than this counts as absent.
     bool _require_hint = false;
     int _acquire_threads = 1; ///< d-parallelism of the aggregate (see channelized_accumulate)
+    long _last_surface_cells = 0; ///< cells in the last surface (for the noise-ceiling log)
     double _hint_ttl_s = 8.0;
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> _replica;
