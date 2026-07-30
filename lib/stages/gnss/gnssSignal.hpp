@@ -185,6 +185,18 @@ inline constexpr SignalDescriptor GAL_E5A_Q = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
 };
 
+/// Galileo E5a-I (1176.45 MHz) -- the E5a DATA channel carrying F/NAV: same 10230-chip
+/// primary at 1 ms (its own X2 start table), a 20-chip CS20 secondary shared by all sats.
+/// F/NAV is 25 bps through the rate-1/2 FEC = 50 sps, so a symbol is 20 ms = twenty 1 ms
+/// code periods, and CS20 covers exactly ONE symbol (same discipline as GPS_L5_I / NH10).
+/// The 2nd S5 D-component; DERIVED from the E5a-Q pilot (no search), decoded by galileo_fnav.
+inline constexpr SignalDescriptor GAL_E5A_I = {
+    "GAL_E5A_I", 1176.45e6, 10.23e6, 10230, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/false, /*nav_symbol_s=*/20e-3, /*secondary_length=*/20,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
+};
+
 /// BeiDou-3 B2a-pilot (1176.45 MHz) -- dataless: 10230-chip primary at 10.23 Mcps
 /// (1 ms, two 13-stage LFSRs), per-PRN 100-chip Weil-1021 secondary (100 ms).
 /// BDS-3 only (B2a not on BDS-2 -- same capability gate as B1C).
@@ -203,7 +215,7 @@ inline constexpr SignalDescriptor BDS_B2A_P = {
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
-          &GAL_E1B, &BDS_B1C_P, &GAL_E5A_Q, &BDS_B2A_P})
+          &GAL_E1B, &BDS_B1C_P, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P})
         if (name == s->name)
             return s;
     return nullptr;

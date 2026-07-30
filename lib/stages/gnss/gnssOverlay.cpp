@@ -33,6 +33,10 @@ static std::vector<int8_t> gen_e5aq(int prn) {
     const auto o = galileo::e5aq_secondary(prn);
     return {o.begin(), o.end()};
 }
+static std::vector<int8_t> gen_e5ai_cs20(int) {
+    const auto o = galileo::e5ai_secondary(); // shared 20-chip CS20 (E5a-I data channel)
+    return {o.begin(), o.end()};
+}
 static std::vector<int8_t> gen_b2ap(int prn) {
     const auto o = beidou::b2ap_secondary(prn);
     return {o.begin(), o.end()};
@@ -68,6 +72,9 @@ static const OverlayDescriptor OVERLAY_REGISTRY[] = {
     {"B1C", /*per_prn=*/true, 63, 1800, gen_b1cp, "BDS_B1C_P"},
     // Galileo E5a-Q pilot: PER-PRN 100-chip CS100 secondary.
     {"E5A_CS100", /*per_prn=*/true, 50, 100, gen_e5aq, "GAL_E5A_Q"},
+    // Galileo E5a-I DATA: 20-chip CS20, one SHARED sequence (the F/NAV symbol rides on top) --
+    // structurally the L5_NH10 case, just 20 ms/symbol. Floor ~sqrt(2 ln 20) ~2.4 sigma.
+    {"E5A_CS20", /*per_prn=*/false, 1, 20, gen_e5ai_cs20, "GAL_E5A_I"},
     // BeiDou-3 B2a-pilot: PER-PRN 100-chip Weil secondary.
     {"B2A_CS100", /*per_prn=*/true, 63, 100, gen_b2ap, "BDS_B2A_P"},
     // GPS L1C-P pilot: PER-PRN 1800-symbol L1CO overlay (18 s).

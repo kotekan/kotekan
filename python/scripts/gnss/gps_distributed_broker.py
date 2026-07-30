@@ -333,6 +333,32 @@ def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
         return " | BRDC xcheck err: %s" % ex
 
 
+def _fnav_brdc_xcheck(brdc_alm, sys, prn, fnav_eph, log):
+    """S5 ephemeris cross-check for Galileo E5a-I F/NAV, the _inav_brdc_xcheck analogue.
+    F/NAV and I/NAV describe the SAME Galileo orbit through different framing, so a correct
+    F/NAV decode matches BRDC to a few metres just as I/NAV does; a huge residual flags a
+    decode/convention fault (the sync / interleaver / field-offset conventions galileo_fnav
+    flagged as ICD-owned, pending live symbols) or a week straddle. Kepler only."""
+    try:
+        import galileo_fnav as _F
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        t0e = fnav_eph["t0e"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + t0e
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _F.sv_position_fnav(fnav_eph, t0e)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODnav %d)" % (
+            dpos, be["toe_sow"] - t0e, fnav_eph.get("IODnav", -1))
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
 def visible_prns(lat, lon, alt_m, mask_deg, look_ahead_s):
     """PRNs above the elevation mask now (and look_ahead_s ahead). Needs skyfield."""
     try:
@@ -1053,6 +1079,16 @@ def main(argv=None):
                          "decoded ephemeris is cross-checked against BRDC on the 60 s health "
                          "cadence -- an independent E1B decode validating the Galileo "
                          "ephemeris (and the codec's ICD conventions) against the almanac.")
+    ap.add_argument("--fnav-combiner", default=None,
+                    help="AUXILIARY combiner polled for Galileo E5a-I F/NAV nav_obs (S5 "
+                         "D-component #2), the --inav-combiner analogue on the L5 band: the "
+                         "GAL/E5a broker's own --combiner is the E5a-Q PILOT (deterministic "
+                         "CS100 overlay signs), while the F/NAV DATA symbols come off the "
+                         "derived E5a-I sibling chain (CS20 secondary + navwipe). Symbols go "
+                         "to the FnavPredictor and the decoded ephemeris is cross-checked "
+                         "against BRDC on the 60 s health cadence -- an independent E5a decode "
+                         "validating the Galileo ephemeris (and galileo_fnav's ICD "
+                         "conventions) against the almanac, beside E1B's I/NAV decode.")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -1101,6 +1137,7 @@ def main(argv=None):
     cl_combiner = resolve_prefix(args.cl_combiner, base) if args.cl_combiner else None
     cnav_combiner = resolve_prefix(args.cnav_combiner, base) if args.cnav_combiner else None
     inav_combiner = resolve_prefix(args.inav_combiner, base) if args.inav_combiner else None
+    fnav_combiner = resolve_prefix(args.fnav_combiner, base) if args.fnav_combiner else None
     gating = args.lat is not None and args.lon is not None
 
     # Almanac assist: BRDC (default; PRN-indexed, label-rot-proof) or the legacy TLE path.
@@ -1283,6 +1320,8 @@ def main(argv=None):
     cnav = None      # CNAV decoder (--nav-decoder cnav, L2C-CM/L5-I); created lazily likewise
     inav = None      # I/NAV decoder (--inav-combiner, Galileo E1B); created lazily
     _inav_log_t = [0.0]
+    fnav = None      # F/NAV decoder (--fnav-combiner, Galileo E5a-I); created lazily
+    _fnav_log_t = [0.0]
     navbits_log_t = 0.0
     # CONSTRUCTED bits for satellites too weak to decode (2026-07-25). The decoder above needs
     # 620 contiguous parity-clean bits, which is exactly what a weak satellite cannot give; this
@@ -2467,6 +2506,36 @@ def main(argv=None):
                         xc = (_inav_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
                               if (eph is not None and brdc_alm is not None) else "")
                         _log("inav PRN %d: %d pages, %d words, have %s, eph %s%s"
+                             % (_p, h["pages"], h["words"], h["have"],
+                                "YES" if eph is not None else "no", xc))
+            # S5 D-component #2: Galileo E5a-I F/NAV, the exact I/NAV-aux analogue on L5.
+            if fnav_combiner:
+                try:
+                    _faux = {int(r["prn"]): r for r in _get("%s/get_status" % fnav_combiner)
+                             if r.get("prn")}
+                except Exception as e:
+                    _faux = {}
+                    _log_rl("fnavaux", "fnav aux combiner %s unreadable: %s"
+                            % (fnav_combiner, e))
+                for _p, _r in _faux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if fnav is None:
+                        from fnav_predictor import FnavPredictor
+                        fnav = FnavPredictor(log=_log)
+                        _log("F/NAV decoder armed on aux chain %s" % fnav_combiner)
+                    fnav.ingest(_p, _r["nav_obs"])
+                # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker)
+                if fnav is not None and time.time() - _fnav_log_t[0] > 60.0:
+                    _fnav_log_t[0] = time.time()
+                    for _p in sorted(fnav._p):
+                        h = fnav.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = fnav.ephemeris(_p)
+                        xc = (_fnav_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("fnav PRN %d: %d pages, %d words, have %s, eph %s%s"
                              % (_p, h["pages"], h["words"], h["have"],
                                 "YES" if eph is not None else "no", xc))
             # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
