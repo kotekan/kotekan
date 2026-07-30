@@ -786,6 +786,25 @@ def main(argv=None):
                          "SEED is shifted; the fleet's pin, the fine, and the auto-center are "
                          "untouched, so this is safe to leave off and harmless when on. Pick a "
                          "strong CM sat as the probe.")
+    ap.add_argument("--xband-combiner", default=None,
+                    help="S5 CROSS-BAND ASSIST (SHADOW): a SIBLING band's combiner stage "
+                         "(e.g. l1_gps_combiner) whose per-sat tracked Doppler this broker "
+                         "reads to predict THIS band's Doppler by the exact carrier ratio. "
+                         "The satellite-motion part is geometry -- common to both bands and "
+                         "scaling as f_this/f_sibling -- so `(D_sib - LO_sib)*ratio + LO_this` "
+                         "predicts this band's observed Doppler; the LO terms come from each "
+                         "band's own S2 fused state (the dongle LOs are INDEPENDENT -- "
+                         "measured, no GPSDO common-mode -- so neither can be borrowed). "
+                         "SHADOW: logs the prediction beside this band's actual acquisition "
+                         "for every dual-tracked sat and accumulates the residual; nothing is "
+                         "seeded from it yet. The eventual flip is RESCUE-ONLY (seed a sat "
+                         "this band cannot predict itself -- cold start / stale BRDC), the "
+                         "S2d lesson applied.")
+    ap.add_argument("--xband-lo-dongle", default=None,
+                    help="the sibling band's S2 state dongle key (e.g. gps_l1), to read its "
+                         "fused LO for --xband-combiner")
+    ap.add_argument("--xband-carrier-hz", type=float, default=None,
+                    help="the sibling band's carrier frequency (Hz), for the Doppler ratio")
     ap.add_argument("--cl-autoseg", type=int, default=1,
                     help="CL segment AUTO-SEARCH (default ON; the durable fix for the "
                          "~40%%-of-launches CL failure): when the CL-vs-CM verify reads a "
@@ -1141,6 +1160,25 @@ def main(argv=None):
     # first check and is untouched.
     cl_segsearch = {"corr": 0, "idx": 0, "latched": False, "t_step": 0.0}
     _clseg_spiral = [0] + [v for n in range(1, 38) for v in (-n, n)]
+    xband = resolve_prefix(args.xband_combiner, base) if args.xband_combiner else None
+    _xb_resid = []   # rolling cross-band prediction residuals (Hz), shadow accumulation
+    _xb_dir = os.path.dirname(args.state_file) if args.state_file else None
+
+    def _fused_lo_ppm(dongle):
+        # this band's own LO comes from _fuse_cached; a sibling's is read fresh from its file
+        if state_w is not None and dongle == args.state_dongle:
+            f = _fuse_cached(time.time())
+        elif _xb_dir:
+            try:
+                f = receiver_state.fuse_dongle(
+                    receiver_state.read_dongle(_xb_dir, dongle, max_age_s=30.0,
+                                               t_now=time.time()),
+                    floor_ppm=0.001, reject_sigma=5.0)
+            except Exception:
+                f = None
+        else:
+            f = None
+        return (f.get("lo_ppm") if f and not f.get("all_outliers") else None)
     # CL K-SCAN (diagnostic, --cl-kscan-prn; default 0 = OFF, zero effect). The recurring
     # "CL despreads noise on ~40% of launches while fine_ms looks perfect" is the signature
     # of a WHOLE-SEGMENT (N x 20 ms) anchor error: fine is the residual AFTER round(), so an
@@ -3480,6 +3518,53 @@ def main(argv=None):
                     _kscan[0] += 1
                 except Exception as e:
                     _log_rl("clverify", "CL verify poll failed: %s" % e)
+
+        # ---- S5 CROSS-BAND ASSIST, SHADOW (--xband-combiner) ------------------------
+        # Read the sibling band's per-sat tracked Doppler; predict THIS band's Doppler by
+        # the exact carrier ratio, supplying each band's LO from its own S2 fused state
+        # (the LOs are independent -- measured -- so neither is borrowed). Log the
+        # prediction against this band's OWN acquisition for every dual-tracked sat and
+        # accumulate the residual. Nothing is seeded from it yet: score, don't steer (the
+        # S2 discipline), and the eventual flip is rescue-only (a sat this band cannot
+        # predict itself). Cheap and safe: one extra get_status, no seed change.
+        if xband and args.xband_carrier_hz and args.xband_lo_dongle:
+            try:
+                _sib = {int(r["prn"]): r for r in _get("%s/get_status" % xband)}
+                _lo_sib = _fused_lo_ppm(args.xband_lo_dongle)
+                _lo_own = _fused_lo_ppm(args.state_dongle)
+                if _lo_sib is not None and _lo_own is not None:
+                    _ratio = args.carrier_hz / args.xband_carrier_hz
+                    _LOsib = _lo_sib * 1e-6 * args.xband_carrier_hz
+                    _LOown = _lo_own * 1e-6 * args.carrier_hz
+                    _pairs = []
+                    for _p, _sr in _sib.items():
+                        _ds = _sr.get("doppler_hz")
+                        _own = (status.get(_p) or {})
+                        _do = _own.get("doppler_hz")
+                        # both bands must have this sat with real signal to score a residual
+                        if (_ds is None or _do is None
+                                or (_sr.get("amp_snr") or 0) < 30
+                                or (_own.get("amp_snr") or 0) < 30):
+                            continue
+                        _pred = (_ds - _LOsib) * _ratio + _LOown
+                        _r = _do - _pred
+                        _xb_resid.append(_r)
+                        _pairs.append("%d:%+.1f" % (_p, _r))
+                    if len(_xb_resid) > 4000:
+                        del _xb_resid[:len(_xb_resid) - 4000]
+                    if _pairs and _xb_resid:
+                        _med = statistics.median(_xb_resid)
+                        _mad = receiver_state.mad(_xb_resid, _med) if len(_xb_resid) > 1 else None
+                        _log_rl("xband",
+                                "XBAND(shadow) predict THIS from %s: %d dual-tracked "
+                                "[resid Hz: %s]; rolling n=%d median %+.1f mad %s Hz -- "
+                                "the median is the INTER-BAND BIAS (removable at seed time), "
+                                "the mad is the seed accuracy [NOT SEEDED]"
+                                % (xband, len(_pairs), " ".join(_pairs[:8]), len(_xb_resid),
+                                   _med, ("%.1f" % _mad) if _mad is not None else "-"),
+                                every_s=30.0)
+            except Exception as e:
+                _log_rl("xband", "XBAND read failed: %s" % e)
 
         _log_rl("active", "active=%s (%d); seeded %d/%d trackers" % (sorted(seeds), len(seeds), ok, len(trackers)))
         if cl_report:

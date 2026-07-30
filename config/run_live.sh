@@ -437,6 +437,16 @@ SIB_GPS="--clock-bias-siblings ${CBP}_gal.hz ${CBP}_bds.hz ${CBP}_l1c.hz"
 SIB_GAL="--clock-bias-siblings ${CBP}.hz ${CBP}_bds.hz ${CBP}_l1c.hz"
 SIB_BDS="--clock-bias-siblings ${CBP}.hz ${CBP}_gal.hz ${CBP}_l1c.hz"
 SIB_L1C="--clock-bias-siblings ${CBP}.hz ${CBP}_gal.hz ${CBP}_bds.hz"
+# S5 CROSS-BAND ASSIST (SHADOW): the L5 GPS chain reads the L1 GPS combiner (same kotekan,
+# same REST port) to predict its own Doppler by the exact carrier ratio, LO from each band's
+# S2 state. Only L5<-L1 is wired (L1 acquires first/strongest and both are GPS C/A+L5 sats);
+# keyed on the stage prefix so only the L5 band's GPS broker gets it. Shadow only -- logs the
+# residual, seeds nothing. run_3band prefixes stages l1_/l2c_/l5_.
+XBAND=""
+if [ "$SP" = "l5_" ]; then
+  XBAND="--xband-combiner l1_gps_combiner --xband-lo-dongle gps_l1 --xband-carrier-hz 1575420000"
+  echo "S5 cross-band assist (shadow): L5 GPS reads L1 GPS combiner for ratio-predicted Doppler"
+fi
 echo "signal $SIGNAL: hops/s ${HOPS_PER_SEC:-default}, chip ${CHIP_HZ:-default} Hz, code ${CODELEN:-default} chips, l-a file $CODE_BIAS_FILE"
 python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gps_search --trackers "$TRK" --combiner ${SP}gps_combiner \
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in" \
@@ -444,7 +454,7 @@ python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gps_search 
         ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} ${CPERR:+--hold-max-cp-err $CPERR} \
         --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
         --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
-        ${BROKER_EXTRA:-} $ALM $CLA $CNAVA $CARG $SIG_CAP \
+        ${BROKER_EXTRA:-} $ALM $CLA $CNAVA $CARG $SIG_CAP $XBAND \
         > /tmp/${TAG}_broker.log 2>&1 &
 BPID=$!
 # WATCHDOG NOW FLEET-WIDE (was BeiDou-only until 2026-07-19 eve): the L2C duty timeline
