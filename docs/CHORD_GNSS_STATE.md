@@ -434,6 +434,59 @@ assumed boresight at 23:23 UTC (watched at 32 windows with the honest bar 2.8 vs
 ~2.5); the element-0 node cycle; and a boresight FIT -- run crossing watches on several sats
 and fit where the snr actually peaks, which measures the true pointing instead of assuming it.
 
+## 5f. FIRST LIGHT, 2026-07-30 evening -- and the conjugation that hid it
+
+**Two, then five-plus GPS satellites detected on CHORD dishes through the L5 despread.** The
+finding chain, because each link was necessary: the aggregate GNSS glow was in the GAIN TABLE
+(+2.4 dB, sinc^2-shaped, centered on the L5 carrier bin -- not DME); cross-element correlation
+showed the same glow SKY-COHERENT (|r| ~ 0.1) in exactly the channels the search consumes,
+proving the channel map with the sky itself; the user then argued the brightest satellite HAD to
+be despreadable; offline acquisition on captured data with convention variants found it in two
+runs: **the F-engine output is CONJUGATED relative to the nominal decode** (equivalently
+imag-high nibbles; indistinguishable, and both invisible to the |.|^2-only X-engine, so
+gpuSimulate was never load-bearing evidence, and invisible to any self-consistent synthetic
+test). PRN 32: 10.1 (noise) as-is -> 22.5 conjugated; Dopplers then match BRDC to ~6 Hz on two
+satellites with a common +5.8 Hz = the GPSDO's frequency bias, measured for the first time
+(5e-9, well inside spec). A firmware-derived float translation of the FFT says standard forward
+convention; the deployed bitstream disagrees -- flagged to the F-engine team. All four feeds
+share the one convention.
+
+Deployed: `conjugate` on GnssChordDequantize (search path) and DespreadParams::conj_data through
+the NxM kernel (tracker path), both default-off so airspy and every exact-equality gate are
+untouched; the generator sets them on all CHORD legs.
+
+**Post-fix live behaviour:** passes detect 5-6 satellites at SNR up to 108 against honest
+Gamma ceilings. Two operational lessons the first hours taught: (1) the post-detection REFINE
+runs per DETECTION, so cost appears exactly when the search starts working -- at refine_step
+resolution/8 it was ~5 min per detected sat and pushed "8-minute" passes to 30+; now step =
+resolution/2 (~1 min/sat, ~10 min full passes). (2) Detection STALENESS: the broker compares
+frozen measurements against a drifting model, so every residual consumer needs pass cadence <<
+Doppler/code drift times; the ±3000-chip "integrity failures" and the -80 chips/s "clock drift"
+were stale-input artifacts, not physics.
+
+**The delay measurement (direct, bypassing the broker):** undo the sample-0 currency (validated:
+reproduces the stage's raw coarse+refine EXACTLY), compare against BRDC t_sv = t_gpst - range/c
++ clk at the shared snapshot epoch. Within one pass, satellites agree to 0.02-0.03 chips (!) in
+clusters; between passes the common mod-residual shifts by the RECEIVER CLOCK code-rate
+(+5.8 Hz carrier bias = 0.05 chips/s = ~70 chips per 23-min pass, aliased mod the 13.0944-chip
+comb ambiguity -- this aliasing also explains the within-pass "bimodality" of the first pass).
+So the observable is delay + clock_rate*t: a two-parameter solve the broker's machinery was
+built for, needing only fresh detections (now available). The raw residuals box the absolute
+delay at ~100-155 chips; the tooth-quantized center ~140 chips ~ 2.7 F-engine frames + the
+4.3-chip cable -- physically sensible pipeline depth.
+
+**CHORD-scale caveat for the currency layer:** the search's sample-0 cp referencing multiplies
+Doppler error by the FULL F-engine uptime -- 4412 chips/Hz at 5.75 days (airspy: hours, and 13x
+smaller chip/carrier ratio). The undo is exact when the same dop double is used, but any
+consumer that mixes currencies pays the full lever. Prefer ref_hop-anchored cp end to end at
+CHORD scale.
+
+**Next session:** joint delay+clock solve from consecutive passes (or teach the broker); feed
+--dr-clock-chips; watch the trackers lock (deep > 0) and the per-element beam-map values become
+physical. Then: remaining six nodes (contiguous cover kills the comb ambiguity entirely),
+element ranking by cross-element sky coherence (measured: element 0's coupling is ~half of
+elements 3/9/10's), Galileo E5a + BeiDou B2a on the same carrier.
+
 ## 6. Also outstanding
 
 * **Instrumental delay is still unmeasured.** The cable term is now well determined —

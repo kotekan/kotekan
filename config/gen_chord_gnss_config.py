@@ -327,7 +327,13 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         # only bite on the FIRST DETECTION, looking like a hang precisely when the thing
         # finally worked. Also pointless precision: only the covering channels enter the
         # despread, so it cannot resolve better than ~fft_len/n_chan samples. Step at 1/8.
-        "refine_step": max(1, int(2 * fe["num_bins"] / max(1, n_chan) / 8)),
+        # Step at HALF the covering set's intrinsic resolution (fft_len/n_chan samples), not an
+        # eighth: once satellites actually detect, the refine runs PER DETECTION and its cost is
+        # step-count x 0.7 s -- at /8 with 27 channels that was 437 steps ~ 5 min per detected
+        # satellite, which with ~8 detecting sats pushed a "fast" 8-window pass to 30+ min and
+        # made every published Doppler stale before the broker could solve on it. /2 keeps the
+        # cp error well inside the comb ambiguity the model resolves anyway.
+        "refine_step": max(1, int(2 * fe["num_bins"] / max(1, n_chan) / 2)),
         # The aggregate is parallel over Doppler bins and is the whole cost of an aggregator
         # pass (27 channels x 4096 lags x nd bins ~ 10 s/window on one core). The per-node
         # instances keep 1 thread; the aggregator overrides after construction.

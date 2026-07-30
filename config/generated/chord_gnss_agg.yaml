@@ -139,9 +139,9 @@ agg_merged_buf:
   metadata_pool: gnss_pool
   num_frames: 8
 agg_search:
-  acquire_snr: 3.8
+  acquire_snr: 5.5
   acquire_threads: 6
-  acquire_windows: 16
+  acquire_windows: 8
   channel_ids:
   - 5972
   - 5988
@@ -225,7 +225,7 @@ agg_search:
   - 30
   - 31
   - 32
-  refine_step: 75
+  refine_step: 303
   require_hint: true
   sample_rate: 3200000000.0
   signal: GPS_L5_Q
