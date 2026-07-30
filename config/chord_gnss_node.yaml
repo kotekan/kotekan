@@ -159,6 +159,33 @@ gains:
   alarm_on_change: true
 
 roadmap:
+  # ===========================================================================================
+  # BLOCKER AS OF 2026-07-30: replica generation costs 1170x what the measurement needs.
+  #
+  # GnssChannelizedSearch calls ChannelizedReplicaBank::channels(p, ...), which returns the
+  # ENTIRE spectrum [N][Mp] and then slices out the channels it wants. On the airspy node N=10,
+  # so the full spectrum IS the useful set. On CHORD N=8192 (the PFB spans 0-1600 MHz):
+  #     per PRN 204.8 MB (8192 ch x 3125 hops); x32 PRNs = 6.55 GB; x2 instances = 13.1 GB
+  #     (observed RSS 19.4 GB).  We use 7 of 8192 rows = 0.09%.
+  # This is the sole reason the search is unusable here -- it explains the 8-minute passes and
+  # the eventual starvation (1 pass in 5 min, workers idle).
+  #
+  # FIX: a BANDED replica call, generating only the requested channel set. And it should be
+  # PRECOMPUTED, not regenerated per pass: repl0 is the code at Doppler 0 and code phase 0, so
+  # it depends only on (PRN, channel set, Mp) -- none of which change between passes. The
+  # airspy node gets away with regenerating because its spectrum is 10 channels wide.
+  # Matters MORE at full scale, not less: the eight-node aggregator wants 104 of 8192 bins,
+  # still 79x waste. Shared GNSS-side code -- coordinate before changing the interface.
+  # ===========================================================================================
+
+  # INSTRUMENTAL DELAY, still unmeasured. Cable is now well determined: 100 m LMR-400 (vf 0.85)
+  # + 6 m LMR-195 (vf 0.83) = 4.26 +- 0.18 chips, inside the +-0.5-chip DLL capture. UNKNOWN is
+  # the F-engine's internal pipeline/framing offset -- one frame is 52.4 chips, the PFB group
+  # delay is 104.8 chips, and whether that cancels (the replica goes through the same PFB) is an
+  # argument, not a measurement. The SEARCH is what measures it: reported code phase minus model
+  # prediction IS the constant. Write it here once measured; dead-reckon cold-start then works
+  # permanently and the search becomes the thing that catches firmware/cabling changes.
+
   # EARLY PRIORITY, once there is on-sky proof of life: SPLIT THE FREQUENCY AXIS BACK OUT.
   #
   # The first cut collapses the covering channels in GnssGpuRecordAssemble (the covering-mask
