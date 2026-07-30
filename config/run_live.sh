@@ -440,12 +440,15 @@ SIB_L1C="--clock-bias-siblings ${CBP}.hz ${CBP}_gal.hz ${CBP}_bds.hz"
 # S5 CROSS-BAND ASSIST (SHADOW): the L5 GPS chain reads the L1 GPS combiner (same kotekan,
 # same REST port) to predict its own Doppler by the exact carrier ratio, LO from each band's
 # S2 state. Only L5<-L1 is wired (L1 acquires first/strongest and both are GPS C/A+L5 sats);
-# keyed on the stage prefix so only the L5 band's GPS broker gets it. Shadow only -- logs the
-# residual, seeds nothing. run_3band prefixes stages l1_/l2c_/l5_.
+# keyed on the stage prefix so only the L5 band's GPS broker gets it. S5b (--xband-seed, default
+# on): shadow ALWAYS (logs residual = the inter-band bias for TEC), PLUS rescue search-Doppler
+# hints for a sat L1 tracks that BRDC does not predict (outage / deep cold start) -- a provable
+# no-op with fresh BRDC (that sat is already hinted), so it only fires when L5 would otherwise
+# search blind. run_3band prefixes stages l1_/l2c_/l5_.
 XBAND=""
 if [ "$SP" = "l5_" ]; then
   XBAND="--xband-combiner l1_gps_combiner --xband-lo-dongle gps_l1 --xband-carrier-hz 1575420000"
-  echo "S5 cross-band assist (shadow): L5 GPS reads L1 GPS combiner for ratio-predicted Doppler"
+  echo "S5b cross-band assist: L5 GPS rides L1 (shadow bias + rescue hints where BRDC is blind)"
 fi
 echo "signal $SIGNAL: hops/s ${HOPS_PER_SEC:-default}, chip ${CHIP_HZ:-default} Hz, code ${CODELEN:-default} chips, l-a file $CODE_BIAS_FILE"
 python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gps_search --trackers "$TRK" --combiner ${SP}gps_combiner \

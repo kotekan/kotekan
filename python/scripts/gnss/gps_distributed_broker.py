@@ -805,6 +805,25 @@ def main(argv=None):
                          "fused LO for --xband-combiner")
     ap.add_argument("--xband-carrier-hz", type=float, default=None,
                     help="the sibling band's carrier frequency (Hz), for the Doppler ratio")
+    ap.add_argument("--xband-seed", type=int, default=1,
+                    help="S5b THE FLIP (default ON; a provable no-op in normal operation): "
+                         "emit a SEARCH DOPPLER HINT from the cross-band prediction for a sat "
+                         "the SIBLING band tracks but THIS band has NO prediction of its own "
+                         "for (not in BRDC pred / no almanac). Cross-band transfers Doppler "
+                         "(carrier ratio) but NOT code phase (the codes differ), so it hints "
+                         "the SEARCH -- narrowing its Doppler window -- it does not seed the "
+                         "tracker. RESCUE-ONLY by construction: for any sat BRDC already "
+                         "predicts, the BRDC hint stands and NO cross-band hint is added, so "
+                         "with fresh BRDC the cross-band hint list is EMPTY. It fires only "
+                         "when BRDC is missing a sat the sibling sees (outage / deep cold "
+                         "start / a band too weak to hold its own almanac lock) -- the "
+                         "S2d-learned rescue-only scope, structural not just gated. 0 = pure "
+                         "shadow (log the residual, emit no hints).")
+    ap.add_argument("--xband-hint-margin-hz", type=float, default=60.0,
+                    help="search margin for a cross-band RESCUE hint (Hz): the cross-band "
+                         "seed accuracy is the inter-band MAD (~10 Hz) plus this band's own "
+                         "unsolved-LO width, so wider than a BRDC hint but far tighter than "
+                         "the blind grid")
     ap.add_argument("--cl-autoseg", type=int, default=1,
                     help="CL segment AUTO-SEARCH (default ON; the durable fix for the "
                          "~40%%-of-launches CL failure): when the CL-vs-CM verify reads a "
@@ -1779,18 +1798,81 @@ def main(argv=None):
         elif gating:
             up = visible_prns(args.lat, args.lon, args.alt, args.mask_deg, 0.0)
 
+        # 2a-xband. S5 CROSS-BAND: read the sibling band's per-sat tracked Doppler ONCE and
+        # predict THIS band's by the exact carrier ratio (satellite motion is geometry, common
+        # to both bands, scaling as f_this/f_sib; the LO terms come from each band's own S2
+        # fused state -- the dongle LOs are INDEPENDENT, measured, so neither is borrowed).
+        # Feeds two things below: the SHADOW residual (validate + measure the inter-band bias)
+        # and, when --xband-seed, RESCUE search-Doppler hints for sats BRDC does not predict.
+        _xb_pred = {}   # prn -> cross-band predicted Doppler for THIS band (bias-removed)
+        if xband and args.xband_carrier_hz and args.xband_lo_dongle:
+            try:
+                _sib = {int(r["prn"]): r for r in _get("%s/get_status" % xband)}
+                _lo_sib = _fused_lo_ppm(args.xband_lo_dongle)
+                _lo_own = _fused_lo_ppm(args.state_dongle)
+                if _lo_sib is not None and _lo_own is not None:
+                    _ratio = args.carrier_hz / args.xband_carrier_hz
+                    _LOsib = _lo_sib * 1e-6 * args.xband_carrier_hz
+                    _LOown = _lo_own * 1e-6 * args.carrier_hz
+                    # inter-band bias = the rolling median residual (LO diff + iono divergence);
+                    # it drifts ~20 Hz/day so it must be LIVE, not a constant. Removed from the
+                    # prediction so the hint centers on the truth.
+                    _bias = statistics.median(_xb_resid) if len(_xb_resid) >= 20 else 0.0
+                    for _p, _sr in _sib.items():
+                        _ds = _sr.get("doppler_hz")
+                        if _ds is None or (_sr.get("amp_snr") or 0) < 30:
+                            continue      # only ride a sat the sibling holds STRONGLY
+                        _xb_pred[_p] = (_ds - _LOsib) * _ratio + _LOown - _bias
+                        # SHADOW: accumulate the residual for every dual-tracked sat
+                        _own = status.get(_p) or {}
+                        _do = _own.get("doppler_hz")
+                        if _do is not None and (_own.get("amp_snr") or 0) >= 30:
+                            _xb_resid.append(_do - ((_ds - _LOsib) * _ratio + _LOown))
+                    if len(_xb_resid) > 4000:
+                        del _xb_resid[:len(_xb_resid) - 4000]
+                    if _xb_resid:
+                        _med = statistics.median(_xb_resid)
+                        _mad = receiver_state.mad(_xb_resid, _med) if len(_xb_resid) > 1 else None
+                        _log_rl("xband",
+                                "XBAND from %s: %d sibling-tracked; rolling n=%d bias %+.1f "
+                                "mad %s Hz%s"
+                                % (xband, len(_xb_pred), len(_xb_resid), _med,
+                                   ("%.1f" % _mad) if _mad is not None else "-",
+                                   " [seeding rescue hints]" if args.xband_seed else " [shadow]"),
+                                every_s=30.0)
+            except Exception as e:
+                _log_rl("xband", "XBAND read failed: %s" % e)
+
         # 2b. Almanac-narrow the SEARCH: push per-PRN predicted Doppler to the detectors so each
         # scans only doppler +- margin instead of its blind grid -- far cheaper + more sensitive,
         # and it's what lets the not-yet-detected sats be acquired without a full sweep. The margin
         # is WIDE until the common clock-freq bias is solved (the geometric Doppler is then offset
         # by the unknown TCXO), NARROW once a few sats pin it. Sent for all predicted+visible sats.
-        if args.narrow_search and args.almanac and pred:
+        if (args.narrow_search and args.almanac and pred) or (_xb_pred and args.xband_seed):
             margin = (args.search_margin_hz
                       if clock_bias_ema is not None and not bias_stale
                       else args.search_margin_wide_hz)
             hints = [dict(prn=p, doppler_hz=pred[p][0] + clock_bias, margin_hz=margin)
                      for p in sorted(pred) if (up is None or p in up)
-                     and (_capable is None or p in _capable)]
+                     and (_capable is None or p in _capable)] if (args.almanac and pred) else []
+            # RESCUE: for a sat the sibling band tracks but BRDC did NOT just hint (no pred /
+            # no almanac), add a cross-band hint so the search narrows instead of going blind.
+            # Wider margin than a BRDC hint -- the cross-band seed accuracy is the inter-band
+            # MAD (~10 Hz) plus this band's own unsolved-LO width -- but far better than the
+            # blind grid. Provably rescue-only: a sat BRDC covered is already in `hints`.
+            if args.xband_seed and _xb_pred:
+                _hinted = {h["prn"] for h in hints}
+                _xb_margin = max(margin, args.xband_hint_margin_hz)
+                for _p, _xd in sorted(_xb_pred.items()):
+                    if _p in _hinted or (_capable is not None and _p not in _capable):
+                        continue
+                    if up is not None and _p not in up:
+                        continue
+                    hints.append(dict(prn=_p, doppler_hz=_xd, margin_hz=_xb_margin))
+                    _log_rl("xbandseed-%d" % _p,
+                            "XBAND RESCUE HINT PRN %d: %+.0f Hz (sibling tracks it, BRDC does "
+                            "not) -> search narrows instead of blind" % (_p, _xd),
+                            every_s=30.0)
             pushed = 0
             for d_ep in detectors:
                 try:
@@ -3519,52 +3601,8 @@ def main(argv=None):
                 except Exception as e:
                     _log_rl("clverify", "CL verify poll failed: %s" % e)
 
-        # ---- S5 CROSS-BAND ASSIST, SHADOW (--xband-combiner) ------------------------
-        # Read the sibling band's per-sat tracked Doppler; predict THIS band's Doppler by
-        # the exact carrier ratio, supplying each band's LO from its own S2 fused state
-        # (the LOs are independent -- measured -- so neither is borrowed). Log the
-        # prediction against this band's OWN acquisition for every dual-tracked sat and
-        # accumulate the residual. Nothing is seeded from it yet: score, don't steer (the
-        # S2 discipline), and the eventual flip is rescue-only (a sat this band cannot
-        # predict itself). Cheap and safe: one extra get_status, no seed change.
-        if xband and args.xband_carrier_hz and args.xband_lo_dongle:
-            try:
-                _sib = {int(r["prn"]): r for r in _get("%s/get_status" % xband)}
-                _lo_sib = _fused_lo_ppm(args.xband_lo_dongle)
-                _lo_own = _fused_lo_ppm(args.state_dongle)
-                if _lo_sib is not None and _lo_own is not None:
-                    _ratio = args.carrier_hz / args.xband_carrier_hz
-                    _LOsib = _lo_sib * 1e-6 * args.xband_carrier_hz
-                    _LOown = _lo_own * 1e-6 * args.carrier_hz
-                    _pairs = []
-                    for _p, _sr in _sib.items():
-                        _ds = _sr.get("doppler_hz")
-                        _own = (status.get(_p) or {})
-                        _do = _own.get("doppler_hz")
-                        # both bands must have this sat with real signal to score a residual
-                        if (_ds is None or _do is None
-                                or (_sr.get("amp_snr") or 0) < 30
-                                or (_own.get("amp_snr") or 0) < 30):
-                            continue
-                        _pred = (_ds - _LOsib) * _ratio + _LOown
-                        _r = _do - _pred
-                        _xb_resid.append(_r)
-                        _pairs.append("%d:%+.1f" % (_p, _r))
-                    if len(_xb_resid) > 4000:
-                        del _xb_resid[:len(_xb_resid) - 4000]
-                    if _pairs and _xb_resid:
-                        _med = statistics.median(_xb_resid)
-                        _mad = receiver_state.mad(_xb_resid, _med) if len(_xb_resid) > 1 else None
-                        _log_rl("xband",
-                                "XBAND(shadow) predict THIS from %s: %d dual-tracked "
-                                "[resid Hz: %s]; rolling n=%d median %+.1f mad %s Hz -- "
-                                "the median is the INTER-BAND BIAS (removable at seed time), "
-                                "the mad is the seed accuracy [NOT SEEDED]"
-                                % (xband, len(_pairs), " ".join(_pairs[:8]), len(_xb_resid),
-                                   _med, ("%.1f" % _mad) if _mad is not None else "-"),
-                                every_s=30.0)
-            except Exception as e:
-                _log_rl("xband", "XBAND read failed: %s" % e)
+        # (S5 cross-band read + shadow accumulation + rescue hints moved EARLY, block 2a-xband
+        # above -- it must run before the search-hint POST it feeds.)
 
         _log_rl("active", "active=%s (%d); seeded %d/%d trackers" % (sorted(seeds), len(seeds), ok, len(trackers)))
         if cl_report:
