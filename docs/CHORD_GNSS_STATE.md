@@ -1,11 +1,13 @@
 # CHORD GNSS — state of play, 2026-07-30
 
-Working state of the CHORD-side GNSS instrument on branch `kv/chord-gnss`. Written at the end of
-the first day of live work, for whoever picks it up (including me tomorrow).
+Working state of the CHORD-side GNSS instrument on branch `kv/chord-gnss`.
 
 **Where we are:** the pipeline runs end to end on real sky with zero frame loss, the broker seeds
-nine GPS L5 satellites from BRDC, and the acquisition search is correctly configured. **No
-detection yet.** One blocker remains and it is well characterised (§5).
+nine GPS L5 satellites from BRDC, and the acquisition search is correctly configured. The replica
+cost that made the search unusable is **fixed** (§5) — 55.7 s of replica building per pass, every
+pass, is now 14.3 s once — along with a real numerics bug found on the way. **No detection yet:
+the fixed search has not been run against sky.** That is the next thing to do, and the first
+number to read off it is the instrumental delay constant (§6).
 
 Read `config/chord_gnss_node.yaml` first — it is the source of truth and every measured number
 lives there. This file is the narrative: what works, what broke, and what is left.
@@ -91,35 +93,95 @@ on an unstarted thread (fixed, worth upstreaming).
   gathered union — not a search per node. At eight nodes that union is contiguous (all eight
   mod-8 offsets present), so full sensitivity and no aliasing.
 
-## 5. THE REMAINING BLOCKER — replica generation cost
+## 5. RESOLVED 2026-07-30 — replica generation cost (was THE blocker)
 
-`GnssChannelizedSearch` calls `_replica->channels(p, anchor, 0, 0, Mp)`, which returns the
-**entire** spectrum `[N][Mp]`, then slices out the channels it wants:
+Fixed, and it turned up a real numerics bug on the way. Measured at CHORD scale (Mp = 3125,
+fft_len = 16384, N = 8192, the node's 14 covering channels):
+
+| | per PRN | per pass (32 PRN x 2 instances) |
+|---|---|---|
+| was: `channels()`, full spectrum, every pass | 0.87 s, 204.8 MB | **55.7 s, 13.1 GB, every pass** |
+| now: `channels_hoprate()`, banded, cached | 0.22 s, 0.35 MB | **14.3 s, 22 MB, ONCE** |
+
+Three separate changes, in increasing order of how much they mattered:
+
+1. **Banded.** `channels_hoprate()` already existed and already took a `want` channel list —
+   no new interface, which keeps the merge story clean. `channelized_accumulate` reads only
+   `repl0_ch[covering[ci]]`, so the non-covering rows are left as empty vectors; that is now
+   gated (`accumulate_reads_only_covering_rows`, poison + empty, bit-identical surfaces).
+2. **Cached.** `repl0` is the code at Doppler 0 and code phase 0, so it depends only on
+   (PRN, covering set, Mp) — none of which move between snapshots. The covering set comes from
+   the fixed blind grid, not the per-PRN hint, so the broker's 10 s hint refresh does not
+   invalidate it. Keyed on the covering set anyway rather than asserting that from a distance.
+3. **The refine loop was worse than the acquire.** It called full-spectrum `channels()` once per
+   1-sample step over +-1 hop: at fft_len 16384 that is **32769 builds ~ 8 hours per detected
+   PRN**, and it would have fired only on the FIRST DETECTION — i.e. it would have looked like a
+   hang at exactly the moment the thing finally worked. Now banded, with the Doppler-only filter
+   hoisted out of the scan (it is constant across it) and the data columns hoisted too, and
+   `refine_step` config-driven: **225 steps, 40 s**. The step is set from the physics — only the
+   covering channels enter the despread, so it is band-limited to `n_chan * 195.3 kHz` and cannot
+   resolve better than `fft_len/n_chan` ~ 2341 samples ~ 7.5 chips; the generator emits
+   `refine_step: 292`, one eighth of that. Stage default stays 1 (correct for airspy's fft_len 20).
+
+### The bug: one filter tap on the wrong side of a chip boundary
+
+`channels_hoprate()` was documented as equal to `channels()` "to ~machine precision". At CHORD
+scale it was not: **1.8e-3 rms over a replica period, and up to 1.99 absolute on isolated hops
+against a typical |R| of 912 (-53 dB)**. Against a double-precision reference, `channels()` is
+exact to 3.7e-8 and the hop-rate path was not — so `channels()` was right.
+
+Cause: chip `d` owns the taps `k` in `((phi+d-1)/cps, (phi+d)/cps]`, and evaluating that bound in
+floating point puts the boundary tap on the wrong side whenever `(phi+d)/cps` lands on an exact
+integer. That is **systematic, not luck**: `cps = chip_rate/sample_rate` is rational (1023/320000
+on CHORD L5), so `phi` is a multiple of 1/320000 and the tie is a congruence in `d` that hits
+about 8 times per replica period. The partition stays exact — `klo(d+1)` is literally
+`khi(d)+1`, so no tap is lost or double-counted — the tap just gets its **neighbour's code sign**,
+costing `2*proto[k]`, which is why every bad hop was off by very nearly the same ~1.9.
+
+Fixed by snapping the boundary to the direct per-sample expression `floor(cp0 + (n_m - k)*cps)`,
+which is what `channels()` (and therefore the F-engine) uses. Now 3.4e-8 vs the double reference —
+marginally better than `channels()`, since the hop-rate path accumulates in double instead of
+through a float32 FFT. The per-chip tap range and code value also moved out of the channel loop
+(they never depended on the channel), which is where most of the 3.9x came from.
+
+**How it hid**, both ways worth remembering:
+* At airspy scale it is ~1e-5 rms, right under the existing 1e-5 tolerance.
+* The first affected hop at CHORD scale is **hop 255**. My first version of the CHORD-scale test
+  used 12 hops — because `channels()` costs O(n_hops * 16384) and 12 felt sufficient — and passed
+  at 6e-8. The test now runs a full replica period at zero Doppler and checks the **worst single
+  hop**, not just the rms: 1.99 absolute out of 3125 hops is only 1.8e-3 in rms, so an rms-only
+  bound over a long run hides exactly what a long run was added to catch.
+
+**Still divergent, deliberately: the GPU path.** `chip_gather` in `cudaGnssReplicaDevice.cuh` is a
+heavily optimized form of the SAME unsnapped formula (its own comments record 9 boundary
+disagreements over 16e6 (phi,d) pairs, judged benign at airspy scale). It has NOT been snapped —
+that is optimized device code whose float32 integer/fraction split exists precisely to avoid a
+double floor per chip, and the effect is -53 dB on isolated hops, i.e. invisible to acquisition
+and tracking. So the CHORD **tracker** (GPU) still carries the one-tap error while the **search**
+(CPU) no longer does. `cuda_gnss_despread_test` still passes GPU-vs-CPU at 5.3e-07 and the CHORD
+split gates are still exact, so nothing regressed. **This matters for peeling, not for us yet** —
+a -53 dB replica error floors the peel depth, which is the one place the "machine precision"
+claim would have been leaned on. Flag it to the core dev with the merge note.
+
+### Why it was 1170x, kept for the arithmetic
 
 ```
 N = 8192 (CHORD's PFB spans 0-1600 MHz), Mp = 3125
   per PRN              204.8 MB   (8192 channels x 3125 hops)
   x 32 PRNs              6.55 GB
   x 2 search instances  13.11 GB   (observed RSS 19.4 GB)
-we use 7 of 8192 rows = 0.09%   ->  1170x waste, in memory AND compute
+we used 7 of 8192 rows = 0.09%   ->  1170x waste, in memory AND compute
 ```
 
-On the airspy node `N = 10`, so the full spectrum *is* the useful set and there is no waste.
-This is the single reason the search is unusable here: it explains the 8-minute passes, the
-"336 passes then nothing" burst, and the final starvation (1 pass in 5 min with workers idle).
+On the airspy node `N = 10`, so the full spectrum *is* the useful set and there was nothing to
+notice. This was the single reason the search could not keep up here: it explains the 8-minute
+passes, the "336 passes then nothing" burst, and the final starvation (1 pass in 5 min with
+workers idle). It would have mattered MORE at full scale, not less -- the eight-node aggregator
+wants 104 of 8192 bins, still 79x.
 
-**Fix direction (agreed to start here tomorrow):** a *banded* replica call that generates only
-the requested channel set. Two notes:
-
-* It matters far more at full scale, not less: the eight-node aggregator wants 104 of 8192 bins,
-  still 79× waste.
-* **It should be PRECOMPUTED, not regenerated per pass.** The `repl0` used by the search is the
-  code at Doppler 0 and code phase 0 — it depends only on (PRN, channel set, Mp), none of which
-  change between passes. The airspy node gets away with regenerating because its spectrum is 10
-  channels wide. Caching it per PRN, banded, is both the correctness-neutral and the cheap fix.
-
-This is shared GNSS-side code (`gnssChannelizedReplica`), so coordinate before changing the
-interface — see `cudaGnssChordTrack.hpp`'s merge note for the shared/duplicated split.
+`gnssChannelizedReplica` is shared GNSS-side code. The banding needed no interface change (the
+`want` overload already existed); the boundary snap changes shared numerics and must be flagged
+on merge -- see `cudaGnssChordTrack.hpp`'s note for the shared/duplicated split.
 
 ## 6. Also outstanding
 

@@ -387,6 +387,15 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 "require_hint": True,
                 "acquire_windows": args.acquire_windows,
                 "acquire_snr": args.acquire_snr,
+                # Post-detection code-phase refine: an exact despread per step, over +-1 hop.
+                # The stage default step is 1 SAMPLE, which is right for the airspy bank
+                # (fft_len 20 -> 41 despreads) and catastrophic here (fft_len 16384 -> 32769),
+                # and it would only bite on the FIRST DETECTION -- i.e. it would look like a
+                # hang precisely when the thing finally worked. It is also pointless precision:
+                # only the covering channels enter the despread, so it is band-limited to
+                # n_chan * 195.3 kHz and cannot resolve better than ~fft_len/n_chan samples
+                # (7 channels -> 2341 samples ~ 7.5 chips). Step at 1/8 of that.
+                "refine_step": max(1, int(2 * fe["num_bins"] / max(1, n_chan) / 8)),
                 "cpu_affinity": [cores[(gpu + 4) % len(cores)]],
             },
         })

@@ -318,32 +318,73 @@ ChannelizedReplicaBank::hoprate_stream(const HopRateFilter& f, int p, long long 
     const long long n0 = window_start_sample + _fft_len - 1;
     std::complex<double> pa = std::polar(1.0, std::fmod(wc * (double)n0, 2.0 * M_PI));
     const std::complex<double> pstep = std::polar(1.0, std::fmod(wc * (double)_fft_len, 2.0 * M_PI));
+    // Per-chip tap range + code value for one hop. Identical for every channel (the channel
+    // only enters through Phi), so it is computed once per hop rather than once per hop per
+    // channel as it used to be -- nw times less of this work, and it leaves room to make the
+    // chip/tap boundary exact (below) without paying for it nw times.
+    std::vector<int> k_lo((size_t)f.n_chips), k_hi((size_t)f.n_chips);
+    std::vector<double> cvs((size_t)f.n_chips);
+
     for (int m = 0; m < n_hops; ++m) {
         const long long n_m = n0 + (long long)m * _fft_len;
         const double C = cp0 + (double)n_m * cps;
         const long long chip0 = (long long)std::floor(C);
         const double phi = C - (double)chip0;
         const std::complex<double> pb = std::conj(pa);
+
+        // The chip index the DIRECT per-sample generator (channels()) assigns to tap k, which
+        // sits at absolute sample n_m - k. The fast formula below inverts this; the inversion
+        // must agree with it EXACTLY, because it is channels() that matches the F-engine.
+        auto chip_at = [&](int k) {
+            return (long long)std::floor(cp0 + (double)(n_m - (long long)k) * cps);
+        };
+
+        // Chip d owns the taps k with floor(C - k*cps) == chip0 - d, i.e.
+        // k in ((phi+d-1)/cps, (phi+d)/cps]. Computing that bound in floating point puts the
+        // boundary tap on the WRONG SIDE whenever (phi+d)/cps lands on an exact integer -- and
+        // it does so SYSTEMATICALLY, not just by luck: cps = chip_rate/sample_rate is rational
+        // (1023/320000 on CHORD L5), so phi is a multiple of 1/320000 and the tie condition is
+        // a congruence in d that hits ~8 times per replica period. The partition itself stays
+        // exact (chip d+1's klo is chip d's khi+1 by construction, so no tap is lost or
+        // double-counted) -- the tap just gets its NEIGHBOUR's code sign, costing 2*proto[k].
+        // Measured at CHORD scale before this snap: |error| up to 1.99 on isolated hops against
+        // a typical |R| of 912 (-53 dB), 1.8e-3 rms over a full 3125-hop period, vs 3.7e-8 for
+        // channels(). It hid at airspy scale (1e-5 rms, under the existing tolerance) and hid
+        // again in any short test, because the first affected hop here is 255.
+        int klo = 0;
+        for (int d = 0; d < f.n_chips; ++d) {
+            int khi = (int)std::floor((phi + (double)d) / cps);
+            const long long want_chip = chip0 - (long long)d;
+            if (khi >= 0 && khi < Lf && chip_at(khi) < want_chip)
+                --khi; // one tap too far: khi belongs to the next chip down
+            else if (khi + 1 >= 0 && khi + 1 < Lf && chip_at(khi + 1) >= want_chip)
+                ++khi; // one tap short: khi+1 is still this chip's
+            if (khi > Lf - 1)
+                khi = Lf - 1;
+            k_lo[(size_t)d] = klo;
+            k_hi[(size_t)d] = khi;
+            double cv = 0.0;
+            if (khi >= klo) {
+                cv = (double)code_chip(p, (double)want_chip);
+                if (nav_bit)
+                    cv *= nav_bit(want_chip);
+                if (_secondary_length > 0 && nh_phase >= 0)
+                    cv *= overlay_sign(
+                        (long long)std::floor((double)want_chip / (double)_eff_code_length),
+                        nh_phase);
+            }
+            cvs[(size_t)d] = cv;
+            klo = khi + 1;
+        }
+
         for (int ci = 0; ci < nw; ++ci) {
             std::complex<double> sA(0.0, 0.0), sB(0.0, 0.0);
             for (int d = 0; d < f.n_chips; ++d) {
-                int klo = (int)std::floor((phi + d - 1.0) / cps) + 1; // chip d's tap range
-                int khi = (int)std::floor((phi + d) / cps);
-                if (klo < 0)
-                    klo = 0;
-                if (khi > Lf - 1)
-                    khi = Lf - 1;
-                if (khi < klo)
+                if (k_hi[(size_t)d] < k_lo[(size_t)d])
                     continue;
-                const long long cidx = chip0 - d;
-                double cv = (double)code_chip(p, (double)cidx);
-                if (nav_bit)
-                    cv *= nav_bit(cidx);
-                if (_secondary_length > 0 && nh_phase >= 0)
-                    cv *= overlay_sign(
-                        (long long)std::floor((double)cidx / (double)_eff_code_length), nh_phase);
-                sA += cv * (f.PhiA[ci][khi + 1] - f.PhiA[ci][klo]);
-                sB += cv * (f.PhiB[ci][khi + 1] - f.PhiB[ci][klo]);
+                const double cv = cvs[(size_t)d];
+                sA += cv * (f.PhiA[ci][(size_t)k_hi[(size_t)d] + 1] - f.PhiA[ci][(size_t)k_lo[(size_t)d]]);
+                sB += cv * (f.PhiB[ci][(size_t)k_hi[(size_t)d] + 1] - f.PhiB[ci][(size_t)k_lo[(size_t)d]]);
             }
             chan[ci][m] = (cf)(0.5 * (pa * sA + pb * sB));
         }

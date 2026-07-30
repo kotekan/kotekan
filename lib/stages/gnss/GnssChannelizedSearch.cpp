@@ -129,8 +129,17 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
         config.get_default<int>(unique_name, "hops_per_record", _replica->repl_period_hops());
     _replica->code_doppler_sign = config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
 
+    // Fine-refine geometry. The span is one hop each side (the acquire's coarse-lag quantum);
+    // the step defaults to 1 sample, which is what the narrow-bank (airspy) case wants and has
+    // always done. `refine_step` exists because the cost is one exact replica build PER STEP:
+    // at CHORD's fft_len 16384 the default is 32769 builds, and see the loop for why they buy
+    // nothing. Set it in config for a wide bank.
+    _refine_span = config.get_default<int>(unique_name, "refine_span", _fft_len);
+    _refine_step = std::max(1, config.get_default<int>(unique_name, "refine_step", 1));
+
     _detections.assign(_prns.size(), Detection{});
     _dop_hints.assign(_prns.size(), DopHint{});
+    _repl0.assign(_prns.size(), {});
     _snap_hops = (size_t)_acquire_windows * _hops_per_record;
     _snapshot.assign(_snap_hops * (size_t)_n_chan, cf(0.0f, 0.0f));
 }
@@ -182,6 +191,52 @@ void GnssChannelizedSearch::search_snapshot() {
         INFO("GnssChannelizedSearch[{:s}]: {:d} covering channels in this subband (global {:d}..{:d})",
              unique_name, (int)cov_local.size(), cov_global.front(), cov_global.back());
 
+    // Build (once) the banded repl0 for every PRN. This used to be a per-PRN, per-snapshot
+    // channels() call returning the ENTIRE [N][Mp] spectrum, of which channelized_accumulate
+    // reads only the covering rows: at CHORD's N = 8192 that is 204.8 MB and ~1170x the needed
+    // work for 7 useful rows, per PRN, per pass -- the whole reason the search could not keep up
+    // here. Two independent fixes, both correctness-neutral:
+    //   BANDED -- channels_hoprate() generates only `want`, per chip instead of per sample, and
+    //     is numerically equal to channels() (gated at BOTH airspy and CHORD scale in
+    //     test_gnss_channelized_replica; the CHORD case is the one this depends on).
+    //   CACHED -- repl0 is the code at Doppler 0 and code phase 0, so it depends only on
+    //     (PRN, covering set, Mp). None of those move between snapshots. The covering set is
+    //     derived from the fixed blind grid, not from the per-PRN hint, so the Doppler hints
+    //     changing every broker cycle does NOT invalidate it -- but key on it anyway rather
+    //     than asserting that invariant from a distance.
+    // Rows are indexed by LOCAL channel to match channelized_accumulate's repl0_ch[covering[ci]];
+    // the non-covering rows stay empty vectors (24 B each) and are never read.
+    if (!cov_local.empty() && cov_global != _repl0_cover) {
+        const double t_build = steady_s();
+        for (int p = 0; p < n_prn; ++p) {
+            const auto banded = _replica->channels_hoprate(p, anchor, 0.0, 0.0, Mp, cov_global);
+            _repl0[p].assign((size_t)_n_chan, {});
+            for (size_t i = 0; i < cov_local.size(); ++i)
+                _repl0[p][(size_t)cov_local[i]] = banded[i];
+        }
+        _repl0_cover = cov_global;
+        INFO("GnssChannelizedSearch[{:s}]: precomputed banded repl0 for {:d} PRNs x {:d} channels "
+             "x {:d} hops in {:.2f} s ({:.1f} MB; the full-spectrum form would be {:.1f} MB and is "
+             "rebuilt no further)",
+             unique_name, n_prn, (int)cov_local.size(), Mp, steady_s() - t_build,
+             1e-6 * (double)n_prn * cov_local.size() * Mp * sizeof(cf),
+             1e-6 * (double)n_prn * _replica->spectrum_length() * Mp * sizeof(cf));
+        // The refine cost is one exact replica build per step, so say the number out loud: at
+        // fft_len 16384 with the default step of 1 this is 32769 builds on the FIRST detection,
+        // which looks exactly like a hang. See the refine loop for the resolution argument.
+        const long evals = 2L * _refine_span / _refine_step + 1;
+        const double res_samp = (double)_fft_len / (double)cov_local.size();
+        INFO("GnssChannelizedSearch[{:s}]: code-phase refine +-{:d} samples step {:d} = {:d} exact "
+             "despreads; the {:d}-channel covering set band-limits the despread to {:.2f} MHz, so "
+             "its intrinsic resolution is ~{:.0f} samples ({:.1f} chips){:s}",
+             unique_name, _refine_span, _refine_step, evals, (int)cov_local.size(),
+             1e-6 * cov_local.size() * _sample_rate / _fft_len, res_samp,
+             res_samp * _replica->chip_rate_hz() / _sample_rate,
+             (double)_refine_step < res_samp / 8.0
+                 ? " -- OVERSAMPLED, consider raising refine_step"
+                 : "");
+    }
+
     double best_any = 0.0;
     int best_any_prn = -1;
     for (int p = 0; p < n_prn; ++p) {
@@ -229,11 +284,8 @@ void GnssChannelizedSearch::search_snapshot() {
             continue;
         }
 
-        // repl0 (code 0, Doppler 0), sliced to this subband's local channels.
-        const auto repl_full = _replica->channels(p, anchor, 0.0, 0.0, Mp); // [N][Mp]
-        std::vector<std::vector<cf>> repl0(_n_chan);
-        for (int lc = 0; lc < _n_chan; ++lc)
-            repl0[lc] = repl_full[global_of_local(lc)];
+        // repl0 (code 0, Doppler 0) on the covering channels -- precomputed above, not rebuilt.
+        const std::vector<std::vector<cf>>& repl0 = _repl0[p];
 
         const std::vector<double>& grid = pgrid.empty() ? _doppler_grid : pgrid;
 
@@ -261,21 +313,35 @@ void GnssChannelizedSearch::search_snapshot() {
         if (detected) {
             // r2c fold conjugates the channel frequency axis -> flip Doppler sign.
             const double dop = -a.doppler_hz;
-            // Refine code phase to sample resolution: ±1 hop exact-despread scan on
-            // window 0, absorbing the coarse-lag (hop) quantization of the acquire.
-            const int span = _fft_len;
+            // Refine code phase within the acquire's coarse (hop) lag quantum: an exact-despread
+            // scan over +-_refine_span samples in _refine_step steps, on window 0.
+            //
+            // Banded, with the filter built ONCE. The Doppler is fixed across the scan, so the
+            // slow half of the hop-rate generator (the cumulative channel filter, O(num_taps *
+            // fft_len) per channel) is Doppler-only and can be hoisted; only the per-chip stream
+            // varies with cp. channels_hoprate() would rebuild the filter every step. This
+            // replaced a full-spectrum channels() call per step, which at CHORD scale was 204.8 MB
+            // and ~1170x the needed work, 32769 times over -- i.e. the first detection would have
+            // looked like a hang rather than a result.
+            //
+            // On _refine_step: only the covering channels enter the despread, so it is
+            // band-limited to n_cover * bin_width and cannot resolve code phase better than
+            // ~fft_len/n_cover samples (7.5 chips for 7 CHORD channels). Stepping finer than that
+            // costs a replica build per step and buys nothing but interpolation of a peak whose
+            // width is set elsewhere. The default step is 1, which is right for a narrow bank
+            // (airspy: fft_len 20, so 41 evaluations either way) and wrong for a wide one.
+            const gnss::ChannelizedReplicaBank::HopRateFilter rf =
+                _replica->hoprate_filter(cov_global, dop);
+            // Hoist the data columns too: they do not depend on the trial cp, and rebuilding them
+            // per step was copying hpr * n_cover samples for nothing.
+            std::vector<std::vector<cf>> d(cov_local.size(), std::vector<cf>(hpr));
+            for (size_t i = 0; i < cov_local.size(); ++i)
+                for (int m = 0; m < hpr; ++m)
+                    d[i][m] = _snapshot[((size_t)m) * _n_chan + cov_local[i]];
             double best_cp = a.code_phase_chips, best_pw = -1.0;
-            for (int off = -span; off <= span; ++off) {
+            for (int off = -_refine_span; off <= _refine_span; off += _refine_step) {
                 const double cp = a.code_phase_chips + off * cps;
-                const auto repl = _replica->channels(p, anchor, cp, dop, hpr);
-                std::vector<std::vector<cf>> d, r;
-                for (size_t i = 0; i < cov_local.size(); ++i) {
-                    std::vector<cf> col(hpr);
-                    for (int m = 0; m < hpr; ++m)
-                        col[m] = _snapshot[((size_t)m) * _n_chan + cov_local[i]];
-                    d.push_back(std::move(col));
-                    r.push_back(repl[cov_global[i]]);
-                }
+                const auto r = _replica->hoprate_stream(rf, p, anchor, cp, dop, hpr);
                 const double pw = std::norm(gnss::channelized_despread(d, r).amplitude);
                 if (pw > best_pw) {
                     best_pw = pw;

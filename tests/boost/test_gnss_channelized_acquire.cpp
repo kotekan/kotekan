@@ -240,6 +240,53 @@ BOOST_AUTO_TEST_CASE(accumulate_peak_matches_wrapper) {
     BOOST_CHECK_CLOSE(rs.snr, rw.snr, 1e-2);
 }
 
+// The accumulator must read ONLY the covering rows of repl0. GnssChannelizedSearch depends on
+// this: it generates the replica for the covering channels alone (banded) and leaves every other
+// row an EMPTY vector, which on a wide bank is the difference between 7 rows and 8192. If the
+// accumulator ever touched a non-covering row this would read a zero-length vector -- so gate it
+// with poison (a strong wrong-code replica) in the non-covering rows as well as with the empty
+// form: poison changing the answer means the row was read; empty crashing means the same.
+BOOST_AUTO_TEST_CASE(accumulate_reads_only_covering_rows) {
+    const auto proto = dsp::pfb_prototype(N, P, dsp::Window::Hamming);
+    auto data = stft(gen(5, 50 * CHIP_RATE / FS, 200.0, cf(1.0f, 0.0f)), proto);
+    auto repl0 = stft(gen(5, 0.0, 0.0, cf(1.0f, 0.0f)), proto);
+    const auto cov = energy_covering(repl0);
+    const std::vector<double> grid = {-400, -200, 0, 200, 400};
+    BOOST_REQUIRE_LT(cov.size(), (size_t)N); // otherwise the test proves nothing
+
+    gnss::AcquireWorkspace ws;
+    std::vector<double> ref_surf;
+    const auto ref_dims = gnss::channelized_accumulate(data, repl0, cov, grid, FS, N, ref_surf, ws);
+
+    std::vector<bool> is_cov(N, false);
+    for (int c : cov)
+        is_cov[(size_t)c] = true;
+
+    // (a) poison: a different PRN's replica in every non-covering row.
+    auto poisoned = repl0;
+    auto wrong = stft(gen(17, 300.0, -1000.0, cf(50.0f, 0.0f)), proto);
+    for (int c = 0; c < N; ++c)
+        if (!is_cov[(size_t)c])
+            poisoned[(size_t)c] = wrong[(size_t)c];
+    std::vector<double> p_surf;
+    gnss::channelized_accumulate(data, poisoned, cov, grid, FS, N, p_surf, ws);
+
+    // (b) banded: non-covering rows empty, exactly as the search now builds them.
+    auto banded = std::vector<std::vector<cf>>((size_t)N);
+    for (int c : cov)
+        banded[(size_t)c] = repl0[(size_t)c];
+    std::vector<double> b_surf;
+    const auto b_dims = gnss::channelized_accumulate(data, banded, cov, grid, FS, N, b_surf, ws);
+
+    BOOST_CHECK_EQUAL(b_dims.Mp, ref_dims.Mp);
+    BOOST_REQUIRE_EQUAL(p_surf.size(), ref_surf.size());
+    BOOST_REQUIRE_EQUAL(b_surf.size(), ref_surf.size());
+    for (size_t i = 0; i < ref_surf.size(); ++i) {
+        BOOST_REQUIRE_EQUAL(p_surf[i], ref_surf[i]); // bit-identical: poison never read
+        BOOST_REQUIRE_EQUAL(b_surf[i], ref_surf[i]); // bit-identical: banded == full
+    }
+}
+
 // Re-accumulating the same noiseless window K times scales the |D|^2 surface (and
 // its peak) by K, leaving the peak/mean ratio and the recovered lag/Doppler
 // unchanged -- the basic invariant the incoherent accumulator must satisfy.

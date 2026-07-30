@@ -138,6 +138,21 @@ private:
     std::unique_ptr<gnss::ChannelizedReplicaBank> _replica;
     gnss::AcquireWorkspace _acq_ws;
 
+    /// Fine code-phase refine (post-detection), in SAMPLES: scan +-_refine_span at _refine_step
+    /// with an exact despread. See the note at the refine loop for why the step is DERIVED
+    /// rather than 1 -- on a wide bank a 1-sample step is thousands of times finer than the
+    /// covering set can resolve, and costs one replica build each.
+    int _refine_span = 0;
+    int _refine_step = 0;
+
+    /// Precomputed repl0 (code phase 0, Doppler 0), BANDED to the covering channels: [prn]
+    /// [local channel][hop], with only the covering rows populated (the rest stay empty --
+    /// channelized_accumulate reads none of them). repl0 depends only on (PRN, covering set,
+    /// Mp), none of which change between snapshots, so it is built once and reused. Worker
+    /// thread only, like _acq_ws.
+    std::vector<std::vector<std::vector<std::complex<float>>>> _repl0;
+    std::vector<int> _repl0_cover; ///< the covering set _repl0 was built for (rebuild key)
+
     std::vector<Detection> _detections; ///< per-PRN latest detection
     std::mutex _det_mtx;
 

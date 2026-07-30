@@ -54,7 +54,7 @@ srch0_recv:
   num_threads: 1
   use_config_tracker: false
 srch0_search:
-  acquire_snr: 0.2
+  acquire_snr: 12.0
   acquire_windows: 32
   channel_ids:
   - 5972
@@ -113,6 +113,7 @@ srch0_search:
   - 30
   - 31
   - 32
+  refine_step: 292
   require_hint: true
   sample_rate: 3200000000.0
   signal: GPS_L5_Q
@@ -146,7 +147,7 @@ srch1_recv:
   num_threads: 1
   use_config_tracker: false
 srch1_search:
-  acquire_snr: 0.2
+  acquire_snr: 12.0
   acquire_windows: 32
   channel_ids:
   - 5980
@@ -173,6 +174,7 @@ srch1_search:
   num_taps: 4
   pfb_window: hamming
   prns: *id002
+  refine_step: 292
   require_hint: true
   sample_rate: 3200000000.0
   signal: GPS_L5_Q
