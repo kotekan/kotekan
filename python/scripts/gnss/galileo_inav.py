@@ -22,6 +22,8 @@ Refs: Galileo OS SIS ICD (I/NAV page layout, FEC, interleaver, sync). gps_cnav.p
 structural template; cnav_predictor.py will be the streaming wrapper (next).
 """
 
+import math
+
 import numpy as np
 
 SYM_S = 0.004               # E1B symbol = 4 ms (250 sps)
@@ -184,6 +186,148 @@ def find_page_parts(symbols):
 
 
 # --------------------------------------------------------------------------
+# nominal-page word assembly: EVEN + ODD page parts -> 128-bit word + CRC-24
+# --------------------------------------------------------------------------
+# A nominal page (2 s) is an EVEN page part then an ODD one, each 114 content bits:
+#   even: [even/odd=0][page_type=0][data 112]                        (2 + 112 = 114)
+#   odd : [even/odd=1][page_type=0][data 16][reserved 64][crc 24][ssp 8]  (2+16+64+24+8=114)
+# The 128-bit nav word = even.data(112) + odd.data(16); word type = word[0:6].
+# CRC-24Q spans the 196 bits even[0:114] + odd[0:82] (everything before the CRC field).
+EVEN_DATA = 112
+ODD_DATA = 16
+WORD_BITS = EVEN_DATA + ODD_DATA        # 128
+CRC_SPAN = 196                          # even[0:114] + odd[0:82]
+ODD_CRC_AT = 82                         # crc-24 occupies odd[82:106]
+
+
+def assemble_word(even_bits, odd_bits):
+    """(even 114, odd 114) -> (word_128 bits, crc_ok, word_type) or None if the
+    even/odd flags are wrong. CRC gates whether the word is trustworthy."""
+    e = [int(b) & 1 for b in even_bits]
+    o = [int(b) & 1 for b in odd_bits]
+    if len(e) != PAGE_PART_BITS or len(o) != PAGE_PART_BITS:
+        return None
+    if e[0] != 0 or o[0] != 1:           # even part flag 0, odd part flag 1
+        return None
+    word = e[2:2 + EVEN_DATA] + o[2:2 + ODD_DATA]
+    crc_calc = crc24q(e[0:PAGE_PART_BITS] + o[0:ODD_CRC_AT])
+    crc_rx = _uint(o[ODD_CRC_AT:ODD_CRC_AT + 24])
+    return word, (crc_calc == crc_rx), _uint(word[0:6])
+
+
+def build_page(word_128, reserved=None):
+    """Inverse of assemble_word for the self-test: a 128-bit word -> (even 114, odd 114)
+    with a correct CRC. `reserved` fills odd[18:82] (64 bits); default zeros."""
+    w = [int(b) & 1 for b in word_128]
+    if len(w) != WORD_BITS:
+        raise ValueError("word is %d bits" % WORD_BITS)
+    res = list(reserved) if reserved is not None else [0] * (ODD_CRC_AT - 2 - ODD_DATA)
+    even = [0, 0] + w[0:EVEN_DATA]
+    odd_head = [1, 0] + w[EVEN_DATA:WORD_BITS] + res    # odd[0:82]
+    crc = crc24q(even + odd_head)
+    crc_bits = [(crc >> (23 - i)) & 1 for i in range(24)]
+    odd = odd_head + crc_bits + [0] * 8                 # + 8-bit SSP/tail
+    return even, odd
+
+
+# --------------------------------------------------------------------------
+# I/NAV ephemeris: Word Types 1-4 -> Keplerian set (SI), then ECEF
+# --------------------------------------------------------------------------
+GAL_PI = 3.1415926535898
+GAL_MU = 3.986004418e14                  # Galileo GM (WGS-close; GPS uses 3.986005e14)
+GAL_OMEGA_E = 7.2921151467e-5
+_P = lambda n: 2.0 ** (-n)
+
+# name -> (word type, start bit WITHIN the 128-bit word AFTER the 6-bit type field
+# [0-indexed], length, signed, scale). ⚠️ ICD-TRANSCRIBED FROM MEMORY OF THE Galileo
+# OS SIS ICD I/NAV layout -- the offsets are the ONE thing a roundtrip cannot check;
+# the live BRDC position cross-check (a few metres if right, wildly off if a field is
+# misplaced) is the real validator. If that fails, correct THIS table, not the math.
+# Layout within each word: [type 6][IODnav 10][fields...]. Start bits below are the
+# absolute bit index in the 128-bit word.
+INAV_EPH_FIELDS = {
+    # Word Type 1: IODnav, t0e, M0, e, sqrtA
+    "t0e":     (1, 16, 14, False, 60.0),
+    "M0":      (1, 30, 32, True,  _P(31) * GAL_PI),
+    "e":       (1, 62, 32, False, _P(33)),
+    "sqrtA":   (1, 94, 32, False, _P(19)),
+    # Word Type 2: Omega0, i0, omega, iDot
+    "OMEGA0":  (2, 16, 32, True,  _P(31) * GAL_PI),
+    "i0":      (2, 48, 32, True,  _P(31) * GAL_PI),
+    "omega":   (2, 80, 32, True,  _P(31) * GAL_PI),
+    "iDot":    (2, 112, 14, True, _P(43) * GAL_PI),
+    # Word Type 3: OmegaDot, deltaN, Cuc, Cus, Crc, Crs (SISA ignored here)
+    "OMEGA_dot": (3, 16, 24, True, _P(43) * GAL_PI),
+    "dn":        (3, 40, 16, True, _P(43) * GAL_PI),
+    "Cuc":       (3, 56, 16, True, _P(29)),
+    "Cus":       (3, 72, 16, True, _P(29)),
+    "Crc":       (3, 88, 16, True, _P(5)),
+    "Crs":       (3, 104, 16, True, _P(5)),
+    # Word Type 4: Cic, Cis, t0c, af0, af1, af2 (SVID at 16..22 ignored here)
+    "Cic":     (4, 22, 16, True, _P(29)),
+    "Cis":     (4, 38, 16, True, _P(29)),
+    "t0c":     (4, 54, 14, False, 60.0),
+    "af0":     (4, 68, 31, True, _P(34)),
+    "af1":     (4, 99, 21, True, _P(46)),
+    "af2":     (4, 120, 6, True, _P(59)),
+}
+
+
+def _field(word, start, length, signed, scale):
+    bits = word[start:start + length]
+    v = _uint(bits)
+    if signed and bits and bits[0] == 1:
+        v -= (1 << length)
+    return v * scale
+
+
+def parse_inav_ephemeris(words_by_type):
+    """words_by_type: {word_type: 128-bit word}. Needs types 1-4. Returns the SI
+    Keplerian set, or None if a needed word is missing."""
+    if not all(t in words_by_type for t in (1, 2, 3, 4)):
+        return None
+    eph = {}
+    for name, (wt, start, length, signed, scale) in INAV_EPH_FIELDS.items():
+        eph[name] = _field(words_by_type[wt], start, length, signed, scale)
+    # IODnav must agree across the four words (they belong to one ephemeris set)
+    iod = [_uint(words_by_type[t][6:16]) for t in (1, 2, 3, 4)]
+    eph["IODnav"] = iod[0]
+    eph["_iod_consistent"] = len(set(iod)) == 1
+    return eph
+
+
+def sv_position_inav(eph, t):
+    """ECEF (x,y,z) m from I/NAV ephemeris. Standard Keplerian propagation (identical
+    math to GPS LNAV/CNAV; Galileo transmits sqrtA directly). t in Galileo system time
+    of week (seconds)."""
+    A = eph["sqrtA"] ** 2
+    tk = t - eph["t0e"]
+    if tk > 302400:
+        tk -= 604800
+    elif tk < -302400:
+        tk += 604800
+    n0 = math.sqrt(GAL_MU / A ** 3)
+    n = n0 + eph["dn"]
+    M = eph["M0"] + n * tk
+    e = eph["e"]
+    E = M
+    for _ in range(20):
+        E = M + e * math.sin(E)
+    v = math.atan2(math.sqrt(1 - e * e) * math.sin(E), math.cos(E) - e)
+    phi = v + eph["omega"]
+    s2, c2 = math.sin(2 * phi), math.cos(2 * phi)
+    u = phi + eph["Cus"] * s2 + eph["Cuc"] * c2
+    r = A * (1 - e * math.cos(E)) + eph["Crs"] * s2 + eph["Crc"] * c2
+    i = eph["i0"] + eph["iDot"] * tk + eph["Cis"] * s2 + eph["Cic"] * c2
+    om = eph["OMEGA0"] + (eph["OMEGA_dot"] - GAL_OMEGA_E) * tk - GAL_OMEGA_E * eph["t0e"]
+    xp, yp = r * math.cos(u), r * math.sin(u)
+    x = xp * math.cos(om) - yp * math.cos(i) * math.sin(om)
+    y = xp * math.sin(om) + yp * math.cos(i) * math.cos(om)
+    z = yp * math.sin(i)
+    return x, y, z
+
+
+# --------------------------------------------------------------------------
 # self-test: the codec is SELF-CONSISTENT (ICD-correctness is the live step)
 # --------------------------------------------------------------------------
 if __name__ == "__main__":
@@ -235,11 +379,66 @@ if __name__ == "__main__":
     print("3. CRC-24Q flip-detect: %s" % ("OK" if crc24q(bad) != c else "FAIL"))
 
     # 4. structural invariants
-    ok4 = (PAGE_PART_SYMS == 250 and N_DATA_SYM == 240 and PAGE_PART_BITS == 114)
-    print("4. page geometry (250 sym = 10 sync + 240 data, 114 content bits): %s"
+    ok4 = (PAGE_PART_SYMS == 250 and N_DATA_SYM == 240 and PAGE_PART_BITS == 114
+           and WORD_BITS == 128 and CRC_SPAN == 196)
+    print("4. page geometry (250 sym = 10+240; 128-bit word; 196-bit CRC span): %s"
           % ("OK" if ok4 else "FAIL"))
 
-    bad_any = fails or p2 or ok4 is False or crc24q(bad) == c
+    # 5. word assembly roundtrip: word -> even/odd page parts -> word, CRC valid,
+    #    and a corrupted odd bit fails the CRC.
+    p5 = 0
+    for _ in range(100):
+        w = list(rng.integers(0, 2, WORD_BITS).astype(int))
+        even, odd = build_page(w)
+        res = assemble_word(even, odd)
+        if res is None or not res[1] or res[0] != w or res[2] != _uint(w[0:6]):
+            p5 += 1
+    # corruption must be caught
+    w = list(rng.integers(0, 2, WORD_BITS).astype(int)); even, odd = build_page(w)
+    odd[20] ^= 1
+    r = assemble_word(even, odd)
+    if r is None or r[1]:      # CRC should now be invalid
+        p5 += 1
+    print("5. word assembly + CRC roundtrip (even/odd, corruption caught): %s"
+          % ("OK" if p5 == 0 else "FAIL %d" % p5))
+
+    # 6. ephemeris field pack/unpack is SELF-CONSISTENT: place known integer codes in
+    #    each word by the field table, parse, recover the scaled values. (This checks
+    #    the table is internally consistent -- NOT that the offsets match the ICD; only
+    #    a live BRDC position check can confirm that.)
+    words = {}
+    truth = {}
+    for name, (wt, start, length, signed, scale) in INAV_EPH_FIELDS.items():
+        words.setdefault(wt, [0] * WORD_BITS)
+    for wt in (1, 2, 3, 4):
+        words[wt][0:6] = [(wt >> (5 - i)) & 1 for i in range(6)]   # word type
+        words[wt][6:16] = [0] * 10                                  # IODnav = 0 (consistent)
+    for name, (wt, start, length, signed, scale) in INAV_EPH_FIELDS.items():
+        code = 5 if not (start + length <= WORD_BITS) else (1 << (length - 1)) - 1  # a value
+        # place a distinctive code, guard overlaps by using a small unique per field
+        code = (hash(name) % ((1 << (length - 1)) - 1 if length > 1 else 1)) + 1
+        for k in range(length):
+            words[wt][start + k] = (code >> (length - 1 - k)) & 1
+        truth[name] = _field(words[wt], start, length, signed, scale)
+    eph = parse_inav_ephemeris(words)
+    p6 = 0 if (eph is not None and eph.get("_iod_consistent")
+               and all(abs(eph[n] - truth[n]) < 1e-12 * (abs(truth[n]) + 1) for n in truth)) else 1
+    # overlap check: no two fields in the same word may share a bit
+    for wt in (1, 2, 3, 4):
+        occ = [0] * WORD_BITS
+        for name, (w2, start, length, s, sc) in INAV_EPH_FIELDS.items():
+            if w2 != wt:
+                continue
+            for k in range(start, start + length):
+                occ[k] += 1
+        if any(x > 1 for x in occ) or any(start + length > WORD_BITS
+                                          for n, (w2, start, length, s, sc)
+                                          in INAV_EPH_FIELDS.items() if w2 == wt):
+            p6 += 1
+    print("6. ephemeris field table self-consistent (pack/unpack, no overlaps/overruns): %s"
+          % ("OK" if p6 == 0 else "FAIL %d" % p6))
+
+    bad_any = fails or p2 or ok4 is False or crc24q(bad) == c or p5 or p6
     print("\n%s" % ("ALL SELF-CONSISTENT (ICD-correctness pends live E1B symbols)"
                     if not bad_any else "SELF-TEST FAILURES"))
     sys.exit(1 if bad_any else 0)
