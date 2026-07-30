@@ -312,9 +312,7 @@ def build_search_instance(cfg, node, per_gpu, args, port):
             f"{pre}f_buf": {
                 "kotekan_buffer": "standard", "metadata_pool": "gnss_pool",
                 "num_frames": args.buffer_depth * 2,
-                # The SPAN, not the comb: the search's FFT over the channel axis needs
-                # contiguity (see GnssChordDequantize's header note).
-                "frame_size": f"samples_per_data_set * {span_n} * 8",  # cfloat32
+                "frame_size": f"samples_per_data_set * {n_chan} * 8",  # cfloat32
             },
             f"{pre}recv": {
                 "kotekan_stage": "bufferRecv",
@@ -333,10 +331,14 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 "n_channels": n_chan,
                 "n_elements": 1,
                 "element": 0,
-                # Zero-fill the stride-16 comb into the contiguous L5 span.
-                "out_channels": span_n,
-                "out_offset": span_lo,
-                "channel_ids": [fid for fid, _ in pairs],
+                # NO zero-fill. channelized_accumulate FFTs along the HOP axis WITHIN each
+                # channel and sums the per-channel surfaces -- it is "the distributable half of
+                # the search", built for channels scattered across nodes, so a sparse comb is
+                # fine by construction. Widening 7 channels into the 106-channel span made the
+                # search transform 93% zeros for no gain: 15x the work, and it never finished a
+                # pass. (The 640 ns code-phase ambiguity the comb DOES cause is a property of
+                # the measurement, not a defect in the algorithm, and the BRDC model resolves it
+                # with >=16x margin.)
                 "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
             },
             f"{pre}search": {
@@ -352,15 +354,19 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 "spectrum_length": fe["num_bins"],
                 "num_taps": fe["pfb_taps"],
                 "pfb_window": fe["pfb_window"],
-                # CONTIGUOUS span, because the dequantize zero-filled it. channel_ids is
-                # deliberately NOT set: the sparse-comb path addresses the right bins but leaves
-                # the FFT's code-phase axis aliased at ~6.5 chips, so contiguity is what actually
-                # makes the search valid. Sensitivity costs the fill fraction, which we accept.
-                "channel_offset": span_lo,
-                "n_channels": span_n,
+                # The node's SPARSE comb, addressed explicitly. Correct and 15x cheaper than
+                # zero-filling to a contiguous span (see the dequantize note).
+                "channel_offset": pairs[0][0],
+                "n_channels": n_chan,
+                "channel_ids": [fid for fid, _ in pairs],
                 "doppler_min": -float(sig["max_doppler_hz"]),
                 "doppler_max": float(sig["max_doppler_hz"]),
                 "doppler_step": 250.0,
+                # Only search PRNs the broker has HINTED, and only near the hinted Doppler. The
+                # broker knows every visible satellite's Doppler to ~Hz from BRDC, so a blind
+                # 41-bin grid over all 32 PRNs is work we can simply not do: this collapses it to
+                # the ~9 satellites actually up, a few bins each.
+                "require_hint": True,
                 "acquire_windows": args.acquire_windows,
                 "acquire_snr": args.acquire_snr,
                 "cpu_affinity": [cores[(gpu + 4) % len(cores)]],
@@ -406,7 +412,7 @@ def main():
                          "the ONLY edit needed to move the search to another machine.")
     ap.add_argument("--search-port-base", type=int, default=11040,
                     help="bufferRecv port for GPU 0; GPU 1 uses base+1")
-    ap.add_argument("--acquire-windows", type=int, default=64,
+    ap.add_argument("--acquire-windows", type=int, default=16,
                     help="incoherent 1 ms windows stacked per acquisition attempt")
     ap.add_argument("--acquire-snr", type=float, default=12.0)
     ap.add_argument("--search-instance", action="store_true",

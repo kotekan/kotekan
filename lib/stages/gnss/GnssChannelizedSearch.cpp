@@ -168,6 +168,22 @@ void GnssChannelizedSearch::search_snapshot() {
         }
     }
 
+    // The empty-cover path below is a SILENT no-op: it publishes an invalid detection for every
+    // PRN, which is indistinguishable from "no satellites overhead". Say so once per snapshot
+    // instead, because the usual cause is a misconfigured f_offset (the replica placed at the
+    // wrong sky frequency), and nothing else in the output distinguishes that from bad luck.
+    if (cov_local.empty())
+        INFO("GnssChannelizedSearch[{:s}]: NO covering channels overlap this subband -- the "
+             "replica's covering bins do not intersect channels [{:d},{:d}). Check f_offset "
+             "(currently placing the carrier at bin {:.1f}).",
+             unique_name, _chan_offset, _chan_offset + _n_chan,
+             _replica->f_offset() / (_sample_rate / _fft_len));
+    else
+        INFO("GnssChannelizedSearch[{:s}]: {:d} covering channels in this subband (global {:d}..{:d})",
+             unique_name, (int)cov_local.size(), cov_global.front(), cov_global.back());
+
+    double best_any = 0.0;
+    int best_any_prn = -1;
     for (int p = 0; p < n_prn; ++p) {
         if (cov_local.empty()) { // carrier not in this subband: nothing to find
             std::lock_guard<std::mutex> lk(_det_mtx);
@@ -236,6 +252,10 @@ void GnssChannelizedSearch::search_snapshot() {
                                               _replica->chip_rate_hz(), _replica->code_length());
 
         const bool detected = a.snr >= _acquire_snr;
+        if (a.snr > best_any) {
+            best_any = a.snr;
+            best_any_prn = _prns[p];
+        }
         Detection det;
         det.snr = (float)a.snr;
         if (detected) {
@@ -306,6 +326,12 @@ void GnssChannelizedSearch::search_snapshot() {
                 _detections[p].valid = false;
         }
     }
+    // The peak SNR is computed for every PRN and then THROWN AWAY unless it clears acquire_snr,
+    // which leaves "found nothing" and "found 8 sigma with the threshold at 12" looking
+    // identical from outside. Report the best of the pass so a near-miss is visible.
+    if (best_any_prn >= 0)
+        INFO("GnssChannelizedSearch[{:s}]: pass best snr {:.2f} (PRN {:d}), threshold {:.2f}",
+             unique_name, best_any, best_any_prn, _acquire_snr);
 }
 
 void GnssChannelizedSearch::search_worker() {
