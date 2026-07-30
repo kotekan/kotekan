@@ -133,6 +133,7 @@ private:
     /// grid) -> cost tracks the visible count, and the set follows the sky (mid-run PRN swap) when
     /// `prns` lists the whole constellation. hint_ttl_s: a hint older than this counts as absent.
     bool _require_hint = false;
+    int _acquire_threads = 1; ///< d-parallelism of the aggregate (see channelized_accumulate)
     double _hint_ttl_s = 8.0;
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> _replica;

@@ -260,6 +260,195 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args):
     return blocks, record_floats, n_elem
 
 
+def search_stage(cfg, args, in_buf, chan_ids, core):
+    """The GnssChannelizedSearch block, shared by the per-node and aggregator instances so
+    their search configuration CANNOT drift apart -- every hard-won constant below applies
+    identically to both."""
+    sig = cfg["signals"]
+    fe = cfg["fengine"]
+    n_chan = len(chan_ids)
+    return {
+        "kotekan_stage": "GnssChannelizedSearch",
+        "in_buf": in_buf,
+        "signal": sig["primary"],
+        "prns": args.prns,
+        "sample_rate": float(fe["sampling_rate_MHz"]) * 1e6,
+        # Sky carrier, not an IF -- see the note on the tracker's f_offset_hz.
+        # covering_bins() sets local.carrier_hz = f_offset, so 0.0 makes the search
+        # look for the signal at DC and report "carrier not in this subband".
+        "f_offset": float(sig["carrier_hz"]),
+        "spectrum_length": fe["num_bins"],
+        "num_taps": fe["pfb_taps"],
+        "pfb_window": fe["pfb_window"],
+        # The SPARSE comb, addressed explicitly. Correct and 15x cheaper than zero-filling
+        # to a contiguous span (see the dequantize note).
+        "channel_offset": chan_ids[0],
+        "n_channels": n_chan,
+        "channel_ids": list(chan_ids),
+        # Explicit bounds are a FALLBACK: with /clock_profile present the stage derives
+        # the extent itself. Kept so the config is readable without knowing that.
+        "doppler_min": -float(sig["max_doppler_hz"]),
+        "doppler_max": float(sig["max_doppler_hz"]),
+        # 31.25 Hz = 1/(2*T_coh) for the 16 ms (3125-hop) coherent window. A coherent
+        # window of length T cannot tolerate a Doppler error much past 1/(2T): at the
+        # old 250 Hz step a half-bin miss is 125 Hz, which rotates the phase TWO FULL
+        # CYCLES across 16 ms and lands the correlation in a sinc null. The Doppler grid
+        # resolution and the coherent window length are ONE parameter, not two.
+        "doppler_step": 31.25,
+        # 30 s, matching the live airspy L5 chain -- NOT the 8 s default. The broker
+        # refreshes hints every 10 s, so an 8 s TTL guarantees a window each cycle where
+        # every hint is stale; with require_hint that means every PRN is skipped before
+        # its SNR is even computed, and the stage goes silent for a reason nothing in its
+        # output explains. Two timers that must agree, and the defaults do not.
+        "hint_ttl_s": 30.0,
+        "hold_snapshots": 5,
+        "code_doppler_sign": 1.0,
+        "doppler_margin_hz": float(sig["max_doppler_hz"]),
+        # Only search PRNs the broker has HINTED, and only near the hinted Doppler. The
+        # broker knows every visible satellite's Doppler to ~Hz from BRDC, so a blind
+        # grid over all 32 PRNs is work we can simply not do.
+        "require_hint": True,
+        "acquire_windows": args.acquire_windows,
+        "acquire_snr": args.acquire_snr,
+        # L5 Q5 is a dataless PILOT, which does not mean unmodulated: it carries the
+        # NH20 secondary overlay, one +-1 chip per 1 ms code period. The coherent window
+        # is 16 ms = SIXTEEN code periods, so an overlay-blind replica sums 16 chips of a
+        # near-balanced sequence: measured -12.7 dB rms over the 20 alignments, and
+        # EXACTLY ZERO for three of them. Consecutive windows step the alignment by
+        # 16 mod 20, so a snapshot only visits {0,4,8,12,16} -- one of which is a null.
+        # Searching the 20 alignments recovers full coherent gain; 12.7 dB won
+        # COHERENTLY would need ~350x more incoherent windows to match.
+        "nh_search": True,
+        # Post-detection code-phase refine: an exact despread per step, over +-1 hop.
+        # The stage default step is 1 SAMPLE, right for the airspy bank (fft_len 20 ->
+        # 41 despreads) and catastrophic here (fft_len 16384 -> 32769) -- and it would
+        # only bite on the FIRST DETECTION, looking like a hang precisely when the thing
+        # finally worked. Also pointless precision: only the covering channels enter the
+        # despread, so it cannot resolve better than ~fft_len/n_chan samples. Step at 1/8.
+        "refine_step": max(1, int(2 * fe["num_bins"] / max(1, n_chan) / 8)),
+        # The aggregate is parallel over Doppler bins and is the whole cost of an aggregator
+        # pass (27 channels x 4096 lags x nd bins ~ 10 s/window on one core). The per-node
+        # instances keep 1 thread; the aggregator overrides after construction.
+        "acquire_threads": 1,
+        "cpu_affinity": [core],
+    }
+
+
+
+
+def build_aggregator_instance(cfg, nodes, args, port):
+    """ONE search over the union of several nodes' combs -- the sensitivity the per-node
+    searches cannot reach. A node sees 7 of the ~106 covering channels (-11.8 dB) and no
+    amount of local integration recovers that; the union of N nodes is denser by
+    construction (all eight mod-8 offsets -> the full contiguous cover). The feeds arrive
+    exactly as for per-node search instances (bufferSend/bufferRecv, one per node GPU);
+    GnssChanAlignMerge aligns them on the F-engine's GLOBAL sample counter -- equality of
+    sample_seq IS simultaneity, so the union search is coherent across nodes -- and one
+    GnssChannelizedSearch runs on the merged comb.
+
+    Port layout: feed i (node-major, GPU-minor) listens on search_port_base + i, which is
+    exactly where the node configs already send (cx19 -> 11040/11041 local, cx27 ->
+    11042/11043 at --search-host cx19).
+    """
+    sig = cfg["signals"]
+    rt = cfg["runtime"]
+    cores = rt["cpu_affinity"]
+    out = {
+        "type": "config",
+        "log_level": "info",
+        "samples_per_data_set": 8192,
+        "sizeof_float32": 4,
+        "cpu_affinity": cores,
+        "rest_server": {"port": port, "cpu_affinity": cores, "enable_cors": True},
+        "clock_profile": {"name": cfg["clock"]["profile"]},
+        "gnss_pool": {"kotekan_metadata_pool": "GnssChanMetadata",
+                      "num_metadata_objects": 30 * args.buffer_depth},
+        "telescope": {"name": "ICETelescope", "num_polarizations": 1, "num_dishes": 1,
+                      "query_gps": False, "require_gps": False},
+    }
+
+    # One feed per (node, gpu), in node-major order matching the port assignment. The merge
+    # concatenates columns in feed order, so union_ids is BUILT in that order -- feed order
+    # and channel_ids order are the same fact stated twice, and the search never assumes
+    # sortedness.
+    feeds = []
+    for node in nodes:
+        nchans = covering_channels(node_channels(cfg, node), float(sig["carrier_hz"]),
+                                   float(sig["chip_rate_hz"]), float(sig["max_doppler_hz"]))
+        if not nchans:
+            raise SystemExit(f"{node} holds no covering channels for {sig['primary']}")
+        pg = {}
+        for fid in nchans:
+            gpu, idx = gpu_of_channel(cfg, node, fid)
+            pg.setdefault(gpu, []).append(fid)
+        for gpu in sorted(pg):
+            feeds.append((node, gpu, pg[gpu]))
+
+    union_ids = []
+    in_buf_names = []
+    in_channels = []
+    for i, (node, gpu, fids) in enumerate(feeds):
+        n_chan = len(fids)
+        pre = f"agg{i}_"
+        union_ids.extend(fids)
+        in_buf_names.append(f"{pre}f_buf")
+        in_channels.append(n_chan)
+        out.update({
+            f"{pre}in_buf": {
+                "kotekan_buffer": "standard", "metadata_pool": "gnss_pool",
+                "num_frames": args.buffer_depth * 2,
+                "frame_size": f"samples_per_data_set * {n_chan} * 1",
+            },
+            f"{pre}f_buf": {
+                "kotekan_buffer": "standard", "metadata_pool": "gnss_pool",
+                "num_frames": args.buffer_depth * 2,
+                "frame_size": f"samples_per_data_set * {n_chan} * 8",  # cfloat32
+            },
+            f"{pre}recv": {
+                "kotekan_stage": "bufferRecv",
+                "buf": f"{pre}in_buf",
+                "listen_port": args.search_port_base + i,
+                "num_threads": 1,
+                "drop_frames": True,
+                # Must match the sender exactly -- see the note on the node's srch_send leg.
+                "use_config_tracker": False,
+                "cpu_affinity": [cores[i % len(cores)]],
+            },
+            f"{pre}deq": {
+                "kotekan_stage": "GnssChordDequantize",
+                "in_buf": f"{pre}in_buf",
+                "out_buf": f"{pre}f_buf",
+                "n_channels": n_chan,
+                "n_elements": 1,
+                "element": 0,
+                "cpu_affinity": [cores[(i + 2) % len(cores)]],
+            },
+        })
+
+    n_union = len(union_ids)
+    out.update({
+        "agg_merged_buf": {
+            "kotekan_buffer": "standard", "metadata_pool": "gnss_pool",
+            "num_frames": args.buffer_depth * 2,
+            "frame_size": f"samples_per_data_set * {n_union} * 8",
+        },
+        "agg_merge": {
+            "kotekan_stage": "GnssChanAlignMerge",
+            "in_bufs": in_buf_names,
+            "out_buf": "agg_merged_buf",
+            "in_channels": in_channels,
+            "cpu_affinity": [cores[3 % len(cores)]],
+        },
+        "agg_search": search_stage(cfg, args, "agg_merged_buf", union_ids,
+                                   cores[4 % len(cores)]),
+    })
+    # The union surface is ~16x a single node's (4x channels x 4x stored lags); give the
+    # search worker the spare cores and thread the aggregate across them.
+    out["agg_search"]["acquire_threads"] = 6
+    out["agg_search"]["cpu_affinity"] = list(cores[-6:])
+    return out, feeds, union_ids
+
+
 def build_search_instance(cfg, node, per_gpu, args, port):
     """The SEARCH instance: a standalone kotekan that only acquires.
 
@@ -348,70 +537,9 @@ def build_search_instance(cfg, node, per_gpu, args, port):
                 # with >=16x margin.)
                 "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
             },
-            f"{pre}search": {
-                "kotekan_stage": "GnssChannelizedSearch",
-                "in_buf": f"{pre}f_buf",
-                "signal": sig["primary"],
-                "prns": args.prns,
-                "sample_rate": float(fe["sampling_rate_MHz"]) * 1e6,
-                # Sky carrier, not an IF -- see the note on the tracker's f_offset_hz.
-                # covering_bins() sets local.carrier_hz = f_offset, so 0.0 makes the search
-                # look for the signal at DC and report "carrier not in this subband".
-                "f_offset": float(sig["carrier_hz"]),
-                "spectrum_length": fe["num_bins"],
-                "num_taps": fe["pfb_taps"],
-                "pfb_window": fe["pfb_window"],
-                # The node's SPARSE comb, addressed explicitly. Correct and 15x cheaper than
-                # zero-filling to a contiguous span (see the dequantize note).
-                "channel_offset": pairs[0][0],
-                "n_channels": n_chan,
-                "channel_ids": [fid for fid, _ in pairs],
-                # Explicit bounds are a FALLBACK: with /clock_profile present the stage derives
-                # the extent itself. Kept so the config is readable without knowing that.
-                "doppler_min": -float(sig["max_doppler_hz"]),
-                "doppler_max": float(sig["max_doppler_hz"]),
-                # 31.25 Hz = 1/(2*T_coh) for the 16 ms (3125-hop) coherent window. A coherent
-                # window of length T cannot tolerate a Doppler error much past 1/(2T): at the
-                # old 250 Hz step a half-bin miss is 125 Hz, which rotates the phase TWO FULL
-                # CYCLES across 16 ms and lands the correlation in a sinc null. The Doppler grid
-                # resolution and the coherent window length are ONE parameter, not two.
-                "doppler_step": 31.25,
-                # 30 s, matching the live airspy L5 chain -- NOT the 8 s default. The broker
-                # refreshes hints every 10 s, so an 8 s TTL guarantees a window each cycle where
-                # every hint is stale; with require_hint that means every PRN is skipped before
-                # its SNR is even computed, and the stage goes silent for a reason nothing in its
-                # output explains. Two timers that must agree, and the defaults do not.
-                "hint_ttl_s": 30.0,
-                "hold_snapshots": 5,
-                "code_doppler_sign": 1.0,
-                "doppler_margin_hz": float(sig["max_doppler_hz"]),
-                # Only search PRNs the broker has HINTED, and only near the hinted Doppler. The
-                # broker knows every visible satellite's Doppler to ~Hz from BRDC, so a blind
-                # 41-bin grid over all 32 PRNs is work we can simply not do: this collapses it to
-                # the ~9 satellites actually up, a few bins each.
-                "require_hint": True,
-                "acquire_windows": args.acquire_windows,
-                "acquire_snr": args.acquire_snr,
-                # L5 Q5 is a dataless PILOT, which does not mean unmodulated: it carries the
-                # NH20 secondary overlay, one +-1 chip per 1 ms code period. The coherent window
-                # is 16 ms = SIXTEEN code periods, so an overlay-blind replica sums 16 chips of a
-                # near-balanced sequence: measured -12.7 dB rms over the 20 alignments, and
-                # EXACTLY ZERO for three of them. Consecutive windows step the alignment by
-                # 16 mod 20, so a snapshot only visits {0,4,8,12,16} -- one of which is a null.
-                # Searching the 20 alignments recovers full coherent gain; 12.7 dB won
-                # COHERENTLY would need ~350x more incoherent windows to match.
-                "nh_search": True,
-                # Post-detection code-phase refine: an exact despread per step, over +-1 hop.
-                # The stage default step is 1 SAMPLE, which is right for the airspy bank
-                # (fft_len 20 -> 41 despreads) and catastrophic here (fft_len 16384 -> 32769),
-                # and it would only bite on the FIRST DETECTION -- i.e. it would look like a
-                # hang precisely when the thing finally worked. It is also pointless precision:
-                # only the covering channels enter the despread, so it is band-limited to
-                # n_chan * 195.3 kHz and cannot resolve better than ~fft_len/n_chan samples
-                # (7 channels -> 2341 samples ~ 7.5 chips). Step at 1/8 of that.
-                "refine_step": max(1, int(2 * fe["num_bins"] / max(1, n_chan) / 8)),
-                "cpu_affinity": [cores[(gpu + 4) % len(cores)]],
-            },
+            f"{pre}search": search_stage(cfg, args, f"{pre}f_buf",
+                                          [fid for fid, _ in pairs],
+                                          cores[(gpu + 4) % len(cores)]),
         })
     return out
 
@@ -451,6 +579,11 @@ def main():
     ap.add_argument("--search-host", default="127.0.0.1",
                     help="where the search instance listens. Localhost today; changing this is "
                          "the ONLY edit needed to move the search to another machine.")
+    ap.add_argument("--aggregator-instance", nargs="+", metavar="NODE", default=None,
+                    help="emit ONE standalone search instance over the UNION of these nodes'\
+ combs (e.g. --aggregator-instance cx19 cx27). Feeds listen on search_port_base + i in\
+ node-major, GPU-minor order -- the same ports the node configs already target. Implies\
+ everything --search-instance implies (no DPDK/GPU/hugepages, ordinary user).")
     ap.add_argument("--record-dir", default=None,
                     help="override runtime.record_dir from the node file. Needed on any node "
                          "without /data: rawFileWrite takes base_dir from the config, so pointing "
@@ -492,6 +625,32 @@ def main():
     for fid in chans:
         gpu, idx = gpu_of_channel(cfg, args.node, fid)
         per_gpu.setdefault(gpu, []).append((fid, idx))
+
+    if args.aggregator_instance:
+        port = args.rest_port if args.rest_port is not None else cfg["runtime"]["rest_port"] + 1
+        if port == 12048:
+            raise SystemExit("refusing port 12048 (choco owns it)")
+        out, feeds, union_ids = build_aggregator_instance(cfg, args.aggregator_instance, args, port)
+        text = ("# GENERATED by config/gen_chord_gnss_config.py --aggregator-instance -- DO NOT "
+                "HAND-EDIT.\n"
+                f"# nodes {' '.join(args.aggregator_instance)}  signal {sig['primary']}  "
+                f"rest port {port}\n"
+                f"# union comb: {len(union_ids)} channels {min(union_ids)}..{max(union_ids)}\n"
+                "# ONE search over the gathered union, aligned on the global sample counter.\n"
+                + yaml.safe_dump(out, default_flow_style=False, sort_keys=True))
+        if args.out:
+            os.makedirs(os.path.dirname(args.out), exist_ok=True)
+            open(args.out, "w").write(text)
+            print(f"wrote {args.out}")
+        else:
+            sys.stdout.write(text)
+        print(f"  AGGREGATOR instance over {args.aggregator_instance}", file=sys.stderr)
+        for i, (node, gpu, fids) in enumerate(feeds):
+            print(f"  feed {i}: {node} gpu{gpu} {len(fids)} ch  <- port "
+                  f"{args.search_port_base + i}", file=sys.stderr)
+        print(f"  union    {len(union_ids)} channels", file=sys.stderr)
+        print(f"  rest     {port}", file=sys.stderr)
+        return
 
     if args.search_instance:
         port = args.rest_port if args.rest_port is not None else cfg["runtime"]["rest_port"] + 1

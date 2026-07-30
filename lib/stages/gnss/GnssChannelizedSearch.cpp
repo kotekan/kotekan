@@ -93,6 +93,10 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     // whole constellation and the active-scan set follows the sky (mid-run PRN swap) at a cost that
     // tracks the visible count, never blind-gridding a below-horizon sat. hint_ttl_s expires a hint
     // the broker stopped refreshing (a set sat) so it drops out. Off by default (blind-grid legacy).
+    // Threads for the aggregate half of the acquire (parallel over Doppler bins). 1 -- the
+    // exact serial path -- unless configured: the airspy chains are sized for one core, while
+    // the aggregator's 27-channel surface is ~10 s/window serial and owns several cores.
+    _acquire_threads = config.get_default<int>(unique_name, "acquire_threads", 1);
     _require_hint = config.get_default<bool>(unique_name, "require_hint", false);
     _hint_ttl_s = config.get_default<double>(unique_name, "hint_ttl_s", 8.0);
     double dmin = config.get_default<double>(unique_name, "doppler_min", -6000.0);
@@ -342,7 +346,8 @@ void GnssChannelizedSearch::search_snapshot() {
                     for (int m = 0; m < hpr; ++m)
                         dch[lc][m] = _snapshot[((size_t)(w * hpr + m)) * _n_chan + lc];
                 dims = gnss::channelized_accumulate(dch, repl0, cov_local, grid, _sample_rate,
-                                                    _n_chan, surf, _acq_ws, cov_global, _fft_len);
+                                                    _n_chan, surf, _acq_ws, cov_global, _fft_len,
+                                                    _acquire_threads);
             }
             const auto ai = gnss::channelized_peak(surf, dims, grid, _sample_rate,
                                                    _replica->chip_rate_hz(),

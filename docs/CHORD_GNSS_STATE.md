@@ -357,6 +357,47 @@ So: (a) recompute the detection bar for n_nh surfaces and make the stage log the
 actually using, (b) integrate deeper now that a pass is affordable, (c) scale to a second node and
 use the aggregator -- the -11.8 dB is the biggest single term left and it is architectural.
 
+## 5d. THE AGGREGATOR IS BUILT AND LIVE, 2026-07-30 14:30-15:30
+
+The -11.8 dB structural term is now addressed the way the design intended: ONE search over the
+gathered union of nodes' combs, not a search per node.
+
+* **`GnssChanAlignMerge`** (new stage): N cfloat32 feeds -> one [hop][sum chan] stream, aligned
+  on `GnssChanMetadata::sample_seq`. Alignment is the entire point: the send legs run
+  `drop_frames: true` (acquisition must never back-pressure a node's science chain), so inputs
+  lose frames independently, and the existing `GnssChannelGather` -- which is INDEX-LOCKSTEP and
+  never reads sample_seq -- would silently combine different epochs from the first drop onward.
+  sample_seq inherits from the F-engine's GLOBAL fpga_seq_num, so equality IS simultaneity and
+  the union search is coherent across nodes. Emits only epochs present on ALL inputs;
+  `gnss_merge_skipped_frames_total{input=}` counts what alignment discarded. A feed without
+  GnssChanMetadata is a FATAL error, because guessing is the failure mode the stage exists to
+  prevent.
+* **`--aggregator-instance cx19 cx27`** in the generator: per-feed recv+dequantize, the merge,
+  and one search over the union, with the search block factored into `search_stage()` shared
+  with `--search-instance` so the two modes cannot drift. Feed i listens on search_port_base+i,
+  node-major GPU-minor -- exactly where the node configs already send, so the NODE configs did
+  not change at all.
+* **Union geometry (cx19+cx27):** 27 channels, stride-4 comb, 5972..6076. +5.9 dB over one
+  node's 7; -5.9 dB vs the full 106 cover (all eight nodes closes it, and makes the union
+  CONTIGUOUS). The fine-lag reduction still applies at g=4: s_stored 4096.
+* **The aggregate is now threaded** (`acquire_threads`, default 1 = the exact serial path,
+  bit-identical -- gated). Necessary, not nice-to-have: the union surface is ~16x a single
+  node's (4x channels x 4x stored lags), ~10 s per window on one core, which x windows x NH
+  alignments x PRNs is HOURS per pass. Parallel over Doppler bins (disjoint surface slices);
+  the aggregator config grants 6 cores. Pass time at 3 PRN x 20 nh x 16 win: **~7 min**.
+
+**Proven live:** `first aligned frame at sample_seq 1542426640515072 across 4 inputs (27
+channels merged)` -- cx19 local + cx27 over the network, one search, 27 covering channels,
+precompute 40.5 MB/27 s (the full-spectrum form would be 12.3 GB).
+
+**Result: still noise.** Best-SNR 3.11 vs a 3.40 bar, winning PRN and NH alignment wander pass
+to pass. That is a clean null at 256 ms integration, -5.9 dB of full cover, on whatever gain a
+parked dish's sidelobe offers at 1176 MHz. Levers, in order of expected value: more nodes (the
+remaining -5.9 dB, plus contiguity), deeper integration (windows scale sqrt), and if pass cost
+ever binds again, the NH factorization (per-code-period partial correlations combined with 20
+sign patterns would amortize the 20x alignment cost to ~1x -- an algorithmic project, noted not
+planned).
+
 ## 6. Also outstanding
 
 * **Instrumental delay is still unmeasured.** The cable term is now well determined —

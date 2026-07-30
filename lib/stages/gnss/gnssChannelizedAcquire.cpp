@@ -6,6 +6,7 @@
 #include <cstdlib> // for abs
 #include <mutex>   // for lock_guard
 #include <numeric> // for gcd
+#include <thread>  // for thread (aggregate d-parallelism)
 
 namespace gnss {
 
@@ -93,7 +94,7 @@ channel_correlate(const std::vector<cf>& data, const std::vector<cf>& repl0,
 AcquisitionSurface
 aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
                      const std::vector<int>& chan_freq, int samples_per_hop,
-                     std::vector<double>& surf) {
+                     std::vector<double>& surf, int n_threads) {
     const int nc = (int)P.size();
     const int nd = nc ? (int)P[0].size() : 0;
     const int Mp = (nc && nd) ? (int)P[0][0].size() : 0;
@@ -148,27 +149,47 @@ aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
         }
     }
 
-    std::vector<float> Dre(s_stored), Dim(s_stored);
-    for (int d = 0; d < nd; ++d) {
-        double* base = surf.data() + (long)d * Mp * s_stored;
-        for (int q = 0; q < Mp; ++q) {
-            for (int s = 0; s < s_stored; ++s) {
-                Dre[s] = 0.0f;
-                Dim[s] = 0.0f;
-            }
-            for (int ci = 0; ci < nc; ++ci) {
-                const float pre = P[ci][d][q].real(), pim = P[ci][d][q].imag();
-                const float* rr = rampRe[ci].data();
-                const float* ri = rampIm[ci].data();
+    // Doppler bins write DISJOINT surface slices, so the d-loop is trivially parallel. This
+    // matters at aggregator scale, where the aggregate is the whole cost of a pass: 27 union
+    // channels x 4096 stored lags x 11 Doppler bins is ~3e10 flops per window, ~10 s on one
+    // core -- which multiplied by windows x NH alignments x PRNs is HOURS per pass. n_threads=1
+    // (the default everywhere it is not explicitly configured) runs the identical serial loop.
+    const auto run_d = [&](int d0, int d1) {
+        std::vector<float> Dre(s_stored), Dim(s_stored);
+        for (int d = d0; d < d1; ++d) {
+            double* base = surf.data() + (long)d * Mp * s_stored;
+            for (int q = 0; q < Mp; ++q) {
                 for (int s = 0; s < s_stored; ++s) {
-                    Dre[s] += pre * rr[s] - pim * ri[s];
-                    Dim[s] += pre * ri[s] + pim * rr[s];
+                    Dre[s] = 0.0f;
+                    Dim[s] = 0.0f;
                 }
+                for (int ci = 0; ci < nc; ++ci) {
+                    const float pre = P[ci][d][q].real(), pim = P[ci][d][q].imag();
+                    const float* rr = rampRe[ci].data();
+                    const float* ri = rampIm[ci].data();
+                    for (int s = 0; s < s_stored; ++s) {
+                        Dre[s] += pre * rr[s] - pim * ri[s];
+                        Dim[s] += pre * ri[s] + pim * rr[s];
+                    }
+                }
+                double* row = base + (long)q * s_stored;
+                for (int s = 0; s < s_stored; ++s)
+                    row[s] += (double)(Dre[s] * Dre[s] + Dim[s] * Dim[s]);
             }
-            double* row = base + (long)q * s_stored;
-            for (int s = 0; s < s_stored; ++s)
-                row[s] += (double)(Dre[s] * Dre[s] + Dim[s] * Dim[s]);
         }
+    };
+    const int nt = std::max(1, std::min(n_threads, nd));
+    if (nt == 1) {
+        run_d(0, nd);
+    } else {
+        std::vector<std::thread> pool;
+        for (int t = 0; t < nt; ++t) {
+            const int d0 = nd * t / nt, d1 = nd * (t + 1) / nt;
+            if (d1 > d0)
+                pool.emplace_back(run_d, d0, d1);
+        }
+        for (auto& th : pool)
+            th.join();
     }
     return dims;
 }
@@ -178,7 +199,8 @@ channelized_accumulate(const std::vector<std::vector<std::complex<float>>>& data
                        const std::vector<std::vector<std::complex<float>>>& repl0_ch,
                        const std::vector<int>& covering, const std::vector<double>& doppler_grid,
                        double sample_rate, int num_chan, std::vector<double>& surf,
-                       AcquireWorkspace& ws, const std::vector<int>& chan_freq, int samples_per_hop) {
+                       AcquireWorkspace& ws, const std::vector<int>& chan_freq, int samples_per_hop,
+                       int n_threads) {
     // The decimation (samples per hop): N for a critically-sampled complex bank,
     // 2N for an r2c real-FFT bank. This is now just per-channel correlate (the
     // distributable part) + cross-channel aggregate (see channel_correlate /
@@ -193,7 +215,7 @@ channelized_accumulate(const std::vector<std::vector<std::complex<float>>>& data
     std::vector<int> fc(nc);
     for (int ci = 0; ci < nc; ++ci)
         fc[ci] = chan_freq.empty() ? covering[ci] : chan_freq[ci];
-    return aggregate_accumulate(P, fc, sph, surf);
+    return aggregate_accumulate(P, fc, sph, surf, n_threads);
 }
 
 AcquisitionResult channelized_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,

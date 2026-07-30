@@ -143,7 +143,7 @@ channelized_accumulate(const std::vector<std::vector<std::complex<float>>>& data
                        const std::vector<int>& covering, const std::vector<double>& doppler_grid,
                        double sample_rate, int num_chan, std::vector<double>& surf,
                        AcquireWorkspace& ws, const std::vector<int>& chan_freq = {},
-                       int samples_per_hop = 0);
+                       int samples_per_hop = 0, int n_threads = 1);
 
 /// Per-channel coarse correlation for ONE channel -- the distributable half of the
 /// search. P_c[d][q] = IFFT{ FFT(wiped0_d) * conj(FFT(repl0)) } for each Doppler d
@@ -164,7 +164,7 @@ channel_correlate(const std::vector<std::complex<float>>& data,
 AcquisitionSurface
 aggregate_accumulate(const std::vector<std::vector<std::vector<std::complex<float>>>>& P,
                      const std::vector<int>& chan_freq, int samples_per_hop,
-                     std::vector<double>& surf);
+                     std::vector<double>& surf, int n_threads = 1);
 
 /// Reduce an accumulated surface to its peak: code phase, Doppler, lag and SNR
 /// (peak / surface mean). Mirrors @ref channelized_acquire's peak bookkeeping.
