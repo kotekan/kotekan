@@ -44,34 +44,15 @@ BDS_PI = 3.1415926535898
 A_REF_MEO = 27906100.0         # reference semi-major axis, MEO (m) -- IGSO/MEO CNAV eph
 A_REF_IGSO = 42162200.0        # reference semi-major axis, IGSO (m)
 
-# ------------------------------------------------------------------ GF(64) NB-LDPC (ported)
-N_GF = 6
-Q_GF = 1 << N_GF               # 64
-MAX_ITER = 15
-NM_EMS = 4                     # EMS truncation
-ERR_PROB = 1e-5
-
-GF_VEC = (  # power -> vector (primitive poly of GF(64), ICD/PocketSDR)
-    1, 2, 4, 8, 16, 32, 3, 6, 12, 24, 48, 35, 5, 10, 20, 40,
-    19, 38, 15, 30, 60, 59, 53, 41, 17, 34, 7, 14, 28, 56, 51, 37,
-    9, 18, 36, 11, 22, 44, 27, 54, 47, 29, 58, 55, 45, 25, 50, 39,
-    13, 26, 52, 43, 21, 42, 23, 46, 31, 62, 63, 61, 57, 49, 33)
-GF_POW = (  # vector -> power
-    0, 0, 1, 6, 2, 12, 7, 26, 3, 32, 13, 35, 8, 48, 27, 18,
-    4, 24, 33, 16, 14, 52, 36, 54, 9, 45, 49, 38, 28, 41, 19, 56,
-    5, 62, 25, 11, 34, 31, 17, 47, 15, 23, 53, 51, 37, 44, 55, 40,
-    10, 61, 46, 30, 50, 22, 39, 43, 29, 60, 42, 21, 20, 59, 57, 58)
-
-_GF_MUL = None
-def _init_gf():
-    global _GF_MUL
-    if _GF_MUL is not None:
-        return
-    m = np.zeros((Q_GF, Q_GF), dtype=np.uint8)
-    for i in range(1, Q_GF):
-        for j in range(1, Q_GF):
-            m[i][j] = GF_VEC[(GF_POW[i] + GF_POW[j]) % (Q_GF - 1)]
-    _GF_MUL = m
+# ------------------------------------------------------------------ GF(64) NB-LDPC (shared)
+# The decoder + GF(64) tables live in nb_ldpc.py (shared with B-CNAV1). Re-exported here under
+# the names this module's self-test + bcnav2_predictor already use.
+import nb_ldpc as _NB
+from nb_ldpc import GF_VEC, GF_POW, Q_GF, N_GF  # noqa: F401  (re-export for tests)
+_init_gf = _NB.init_gf
+_bin2gf = _NB.bin2gf
+_gf2bin = _NB.gf2bin
+_gf_mul = _NB.gf_mul
 
 # B-CNAV2 LDPC H-matrix ([BDS-ICD-B2a 6.2.2] via PocketSDR): 48 checks x 96 vars, weight 4
 H_BCNV2_IDX = (
@@ -104,136 +85,10 @@ N_CHECK = len(H_BCNV2_IDX)     # 48
 N_VAR = 96
 
 
-def _bin2gf(syms):
-    n = len(syms) // N_GF
-    code = np.zeros(n, dtype=np.uint8)
-    for i in range(n):
-        v = 0
-        for j in range(N_GF):
-            v = (v << 1) + int(syms[i * N_GF + j])
-        code[i] = v
-    return code
-
-
-def _gf2bin(code):
-    syms = np.zeros(len(code) * N_GF, dtype=np.uint8)
-    for i in range(len(code)):
-        for j in range(N_GF):
-            syms[i * N_GF + j] = (int(code[i]) >> (N_GF - 1 - j)) & 1
-    return syms
-
-
-def _graph_edges():
-    ie, je, he = [], [], []
-    for i in range(N_CHECK):
-        for j in range(len(H_BCNV2_IDX[i])):
-            ie.append(i); je.append(H_BCNV2_IDX[i][j]); he.append(H_BCNV2_ELE[i][j])
-    return ie, je, he, len(he)
-
-
-def _check_parity(ie, je, he, code):
-    s = np.zeros(N_CHECK, dtype=np.uint8)
-    for i in range(len(ie)):
-        s[ie[i]] ^= _GF_MUL[he[i]][code[je[i]]]
-    return bool(np.all(s == 0))
-
-
-def _permute_V2C(h, V2C):
-    out = np.zeros(Q_GF, dtype=np.float32)
-    for i in range(Q_GF):
-        out[_GF_MUL[h][i]] = V2C[i]
-    return out
-
-
-def _permute_C2V(h, C2V):
-    out = np.zeros(Q_GF, dtype=np.float32)
-    for i in range(Q_GF):
-        out[i] = C2V[_GF_MUL[h][i]]
-    return out
-
-
-def _ext_min_sum(L1, L2):
-    if len(L1) == 0:
-        return L2
-    idx1 = np.argsort(L1)[:NM_EMS]
-    idx2 = np.argsort(L2)[:NM_EMS]
-    maxL = L1[idx1[-1]] + L2[idx2[-1]]
-    Ls = np.full(Q_GF, maxL, dtype=np.float32)
-    for i in idx1:
-        for j in idx2:
-            v = L1[i] + L2[j]
-            if v < Ls[i ^ j]:
-                Ls[i ^ j] = v
-    return Ls
-
-
-_EDGE_CACHE = None
-def _edges():
-    """(ie, je, he, ne, check_edges, var_edges) with per-node edge groupings precomputed so
-    the CN/VN updates are O(sum degree^2) not O(ne^2) -- keeps the errored-frame decode fast
-    enough for the live broker loop."""
-    global _EDGE_CACHE
-    if _EDGE_CACHE is None:
-        ie, je, he, ne = _graph_edges()
-        check_edges = [[] for _ in range(N_CHECK)]
-        var_edges = [[] for _ in range(N_VAR)]
-        for e in range(ne):
-            check_edges[ie[e]].append(e)
-            var_edges[je[e]].append(e)
-        _EDGE_CACHE = (ie, je, he, ne, check_edges, var_edges)
-    return _EDGE_CACHE
-
-
 def decode_nb_ldpc(syms):
-    """576 hard bits (0/1) -> (288 info bits, nerr). nerr>=0 = decoded (0 = clean, syndrome
-    passed immediately); nerr=-1 = failed to converge. QSPA/EMS over GF(64), ported from
-    PocketSDR with per-node edge groupings for speed."""
-    _init_gf()
-    s = np.asarray(syms, dtype=np.uint8)
-    code = _bin2gf(s)
-    ie, je, he, ne, check_edges, var_edges = _edges()
-    V2C = np.zeros((ne, Q_GF), dtype=np.float32)
-    C2V = np.zeros((ne, Q_GF), dtype=np.float32)
-    # LLR from hard code + fixed error prob (hamming distance cost)
-    L = np.zeros((N_VAR, Q_GF), dtype=np.float32)
-    c = -math.log(ERR_PROB)
-    for i in range(N_VAR):
-        for j in range(Q_GF):
-            L[i][j] = c * bin(int(code[i]) ^ j).count("1")
-    for e in range(ne):
-        V2C[e] = _permute_V2C(he[e], L[je[e]])
-    for _ in range(MAX_ITER):
-        if _check_parity(ie, je, he, code):
-            dec = _gf2bin(code)
-            nerr = int(np.count_nonzero(dec ^ s))
-            return dec[:N_CHECK * N_GF], nerr
-        # check nodes: each edge gets ext-min-sum over the OTHER edges of its check
-        for cn in range(N_CHECK):
-            es = check_edges[cn]
-            for e in es:
-                Ls = []
-                for f in es:
-                    if f != e:
-                        Ls = _ext_min_sum(Ls, V2C[f])
-                Ls = Ls - np.min(Ls)
-                C2V[e] = _permute_C2V(he[e], Ls)
-        # variable nodes: each edge gets L + sum C2V over the OTHER edges of its var
-        for vn in range(N_VAR):
-            es = var_edges[vn]
-            for e in es:
-                Ls = L[vn].copy()
-                for f in es:
-                    if f != e:
-                        Ls = Ls + C2V[f]
-                Ls = Ls - np.min(Ls)
-                V2C[e] = _permute_V2C(he[e], Ls)
-        # posterior LLR + hard decision
-        for vn in range(N_VAR):
-            Lp = L[vn].copy()
-            for e in var_edges[vn]:
-                Lp = Lp + C2V[e]
-            code[vn] = int(np.argmin(Lp))
-    return _gf2bin(code)[:N_CHECK * N_GF], -1
+    """576 hard bits (0/1) -> (288 info bits, nerr) via the shared GF(64) NB-LDPC decoder
+    (nb_ldpc.decode). nerr>=0 = decoded (0 = clean); -1 = failed to converge."""
+    return _NB.decode(H_BCNV2_IDX, H_BCNV2_ELE, N_CHECK, N_VAR, syms)
 
 
 # ------------------------------------------------------------------ frame sync + CRC + parse
@@ -434,13 +289,10 @@ if __name__ == "__main__":
     print("1. GF(64) field (inverse/assoc/distrib): %s" % ("OK" if okgf else "FAIL"))
     fails += 0 if okgf else 1
 
-    # 2. a constructed codeword has zero syndrome; the decoder returns it clean (nerr 0)
-    ie, je, he, ne = _graph_edges()
+    # 2. a constructed codeword decodes clean (nerr 0 == the syndrome passed on iteration 0)
     p2 = 0
     for _ in range(5):
         cw = _nullspace_codeword(rng)
-        if not _check_parity(ie, je, he, np.array(cw, dtype=np.uint8)):
-            p2 += 1; continue
         syms = _gf2bin(np.array(cw, dtype=np.uint8))
         bits, nerr = decode_nb_ldpc(syms)
         if nerr != 0:

@@ -174,6 +174,18 @@ inline constexpr SignalDescriptor BDS_B1C_P = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
 };
 
+/// BeiDou-3 B1C DATA (1575.42 MHz) -- the B1C data channel carrying B-CNAV1: same 10230-chip
+/// BOC(1,1) primary at 10 ms (its own Weil tables), NO secondary (like E1B). B-CNAV1 is 50 bps
+/// through the rate-1/2 LDPC = 100 sps, so a symbol is 10 ms = one code period ->
+/// navwipe_bit_records 1, no overlay. The 4th/LAST S5 D-component; DERIVED from the B1C-P
+/// pilot, decoded by beidou_bcnav1 (its 18 s frame is SF1 + block-interleaved SF2/SF3, GF(64)).
+inline constexpr SignalDescriptor BDS_B1C_D = {
+    "BDS_B1C_D", 1575.42e6, 1.023e6, 10230, 10e-3,
+    Modulation::BOC, 1, 1, // BOC(1,1)
+    /*pilot=*/false, /*nav_symbol_s=*/10e-3, /*secondary_length=*/0,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
 /// Galileo E5a-Q (1176.45 MHz) -- the E5a dataless *pilot*: 10230-chip primary at
 /// 10.23 Mcps (1 ms, two 14-stage LFSRs), per-PRN 100-chip CS100 secondary (100 ms).
 /// SAME sky carrier as GPS L5 -- one airspy tune covers GPS/Galileo/BeiDou here.
@@ -227,7 +239,7 @@ inline constexpr SignalDescriptor BDS_B2A_D = {
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
-          &GAL_E1B, &BDS_B1C_P, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D})
+          &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D})
         if (name == s->name)
             return s;
     return nullptr;

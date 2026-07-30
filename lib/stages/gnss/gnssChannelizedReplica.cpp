@@ -59,6 +59,10 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = beidou::generate_b1cp_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "BDS_B1C_D") {
+        auto a = beidou::generate_b1cd_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
     if (name == "GAL_E5A_Q") {
         auto a = galileo::generate_e5aq_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());

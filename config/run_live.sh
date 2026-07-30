@@ -55,7 +55,7 @@ TAG=${TAG:-gpslive}                 # log-file stem: /tmp/$TAG*.log
 # k*10230) -- raw CM seeds POSTed to it would despread the wrong 1/75th of the CL code.
 TRK=${TRK:-$(
   { grep -oE 'seed_endpoint:[[:space:]]*"/[a-z_0-9]+/set_seeds"' "$CFG" \
-      | sed -E 's|.*"/([a-z_0-9]+)/set_seeds"|\1|' | grep -vE '^(gal|bds|l1c|cl|e1b|e5a_i|b2a_d)_';
+      | sed -E 's|.*"/([a-z_0-9]+)/set_seeds"|\1|' | grep -vE '^(gal|bds|l1c|cl|e1b|e5a_i|b2a_d|b1c_d)_';
     grep -oE '^track[_0-9]*' "$CFG"; } | sort -u | tr '\n' ',' | sed 's/,$//')}
 # Also hand any GnssVoltagePeel stage to the broker's --trackers: it POSTs the same consensus seeds
 # {cp, Doppler, cp_rate(+l-a)} to /<peel>/set_seeds, so the peel reconstructs + subtracts each sat
@@ -116,6 +116,16 @@ if grep -qE '^b2a_d_combiner:' "$CFG"; then
   BCNAV2A="--bcnav2-combiner ${SP}b2a_d_combiner"
   B2A_D_TRK=",${SP}b2a_d_track"
   echo "BeiDou B2a-D B-CNAV2: broker decodes ${SP}b2a_d_combiner's symbols + BRDC cross-check"
+fi
+# S5 D-component #4 (LAST): the BeiDou B1C-D DATA sibling (B-CNAV1) on the L1 band. Like E1B but
+# from the B1C-P pilot: derived, seeded verbatim, its combiner's nav_obs handed to the L1 BDS
+# broker as --bcnav1-combiner. b1c_d_track joins that broker's --trackers to get B1C-P seeds.
+BCNAV1A=""
+B1C_D_TRK=""
+if grep -qE '^b1c_d_combiner:' "$CFG"; then
+  BCNAV1A="--bcnav1-combiner ${SP}b1c_d_combiner"
+  B1C_D_TRK=",${SP}b1c_d_track"
+  echo "BeiDou B1C-D B-CNAV1: broker decodes ${SP}b1c_d_combiner's symbols + BRDC cross-check"
 fi
 CLA=""
 if grep -qE 'seed_endpoint:[[:space:]]*"/cl_track/set_seeds"' "$CFG"; then
@@ -556,13 +566,13 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
     echo "WARNING: bds_track present but LAT/LON unset -- BeiDou require_hint search will scan NOTHING"
   fi
   echo "starting BEIDOU broker ($BDS_SIGNAL: bds_search/bds_track/bds_combiner, TLE group=beidou)..."
-  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}bds_search --trackers ${SP}bds_track${B2A_D_TRK} --combiner ${SP}bds_combiner \
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}bds_search --trackers ${SP}bds_track${B2A_D_TRK}${B1C_D_TRK} --combiner ${SP}bds_combiner \
           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in" \
           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_bds.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_bds.hz $SIB_BDS $STA_BDS \
           --chip-rate-hz $BDS_CHIP --code-length $BDS_CODELEN --hold-max-cp-err $BDS_CPERR \
           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
           --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
-          ${BROKER_EXTRA:-} $BDS_ALM $CARG $BCNAV2A \
+          ${BROKER_EXTRA:-} $BDS_ALM $CARG $BCNAV2A $BCNAV1A \
           > /tmp/${TAG}_broker_bds.log 2>&1 &
   BDSPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT \

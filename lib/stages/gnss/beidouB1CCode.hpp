@@ -25,6 +25,10 @@ constexpr int B1C_SECONDARY_LENGTH = 1800;
 /// B1C pilot primary code, +-1 chips.
 std::array<int8_t, B1C_CODE_LENGTH> generate_b1cp_code(int prn);
 
+/// B1C-DATA primary code, +-1 chips, PER PRN. Same Legendre-10243 Weil construction as the
+/// pilot, its own phase-diff / truncation tables. Carries B-CNAV1 (S5 D-component #4).
+std::array<int8_t, B1C_CODE_LENGTH> generate_b1cd_code(int prn);
+
 /// B1C pilot secondary (overlay) code, +-1 chips, PER PRN.
 std::vector<int8_t> generate_b1cp_secondary(int prn);
 
