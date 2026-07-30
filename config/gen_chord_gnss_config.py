@@ -251,7 +251,7 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args):
         f"{pre}record": {
             "kotekan_stage": "rawFileWrite",
             "in_buf": cmb_buf,
-            "base_dir": rt["record_dir"],
+            "base_dir": args.record_dir or rt["record_dir"],
             "file_name": f"{node}_gnss{gpu}_cmb",
             "file_ext": "raw",
             "cpu_affinity": [cores[(gpu + 4) % len(cores)]],
@@ -451,6 +451,11 @@ def main():
     ap.add_argument("--search-host", default="127.0.0.1",
                     help="where the search instance listens. Localhost today; changing this is "
                          "the ONLY edit needed to move the search to another machine.")
+    ap.add_argument("--record-dir", default=None,
+                    help="override runtime.record_dir from the node file. Needed on any node "
+                         "without /data: rawFileWrite takes base_dir from the config, so pointing "
+                         "the LOGS elsewhere does not move the RECORDS, and the stage fails on a "
+                         "directory that is not there.")
     ap.add_argument("--search-port-base", type=int, default=11040,
                     help="bufferRecv port for GPU 0; GPU 1 uses base+1")
     ap.add_argument("--acquire-windows", type=int, default=32,
