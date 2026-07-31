@@ -649,7 +649,15 @@ P9 ~192.9, P26 ~202.1 (night).
 
 ## 6. Also outstanding
 
-* **Instrumental delay is still unmeasured.** The cable term is now well determined —
+* **Instrumental delay: partially measured, but the number below is NOT yet trustworthy.**
+  A common ~148-chip term appeared in the search-vs-model deltas across satellites (P8 +136..140,
+  P10 +151..155, P24 +134..138, P23 +149, P27 +155, P32 +148), with a reproducible ±9-chip
+  per-satellite spread seen on two separate days. TREAT IT AS PROVISIONAL: those deltas are
+  built on the search's reported code phase, which §5m proves carries an anchor artefact, and
+  the direct oracle measurement of the same quantity for P32 disagreed by thousands of chips.
+  Re-derive the constant once the acquire-vs-despread question is settled — the oracle
+  (`scripts/oracle2.cpp`) measures it directly and needs only one transit-strength satellite.
+  The cable term is well determined —
   100 m LMR-400 (vf 0.85) + 6 m LMR-195 (vf 0.83) = **4.26 ± 0.18 chips**, comfortably inside
   the ±0.5-chip DLL capture. What is NOT known is the F-engine's internal pipeline/framing
   offset (one frame = 52.4 chips; PFB group delay = 104.8 chips, and whether it cancels because
@@ -660,6 +668,10 @@ P9 ~192.9, P26 ~202.1 (night).
   test, wrong for a soak. Raise `output_every` or use an appending writer.
 * **Frequency axis collapse** is an early priority once there is proof of life — see the
   `roadmap` block in `chord_gnss_node.yaml`. BOC signals make it critical, not cosmetic.
+* **The per-satellite ±9-chip spread is real and unexplained** (seen 2026-07-30 and again
+  2026-07-31, in two different currencies). Suspects unchanged: SV-clock relativistic term,
+  TGD, or a per-PRN code-generation offset. Only worth chasing after a lock, when the trim
+  measures each satellite's residual directly.
 * **A grinding search worker ignores SIGTERM** (it cannot check `stop_thread` mid-FFT), so it
   holds its REST port and the replacement instance fails to bind and exits silently. Use
   `kill -9` when restarting the search.
