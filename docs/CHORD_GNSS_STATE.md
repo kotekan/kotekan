@@ -822,3 +822,43 @@ fresh strong search detection via scripts/trim_lock2.py (exact-epoch, per-sat de
 chips), then watch `get_trim`: q should climb toward ~3.6 with ema_frames filling, and the
 combiner amplitudes should lift off the 0.014 floor for the first time. Only after a real lock
 does the clock-oscillation question (5h/5j) become answerable.
+
+## 5l. FIRST SKY CONFIRMATION of the fix, and why the SEARCH's cp cannot bridge to the tracker
+
+With `51b1ca034` applied offline (the live nodes were still on the old binary), a frame captured
+during **PRN 32's transit (search snr 936)** was scanned with the tracker's own despread path
+(scripts/oracle2.cpp, all 32 elements, 4 records):
+
+    ratio 49.8 at cp204 162833, top cells spaced 3.25-3.50 chips  <- the stride-16 GRATING LOBES
+
+That is the first real correlation the CHORD tracker path has ever produced. The same scan
+before the fix, and on every other configuration tried, returned flat noise. The lobe comb at
+3.27 chips is exactly the predicted single-GPU comb ambiguity, visible for the first time.
+
+**The remaining gap is a CURRENCY problem, not physics.** The measured cp is +4477 chips from
+the model, while the search-derived delta says +140. It is NOT Doppler (model vs search agree
+to 7 Hz) and NOT drift (search-derived deltas were stable to a few chips over an hour). The
+reason the search's cp0 cannot be bridged to the tracker:
+
+    cp0 = (best_cp - off - drift) mod L,  drift = hop*fft_len*cps*(sgn*dop/carrier) mod L
+    d(drift)/d(dop) = hop*fft_len*cps/carrier = ~5085 CHIPS PER HZ at 6.8 days of uptime
+
+Undoing that term requires reproducing the search's Doppler AND its exact convention to
+sub-Hz; any mismatch is thousands of chips. (This is the same 4412-chips/Hz lever noted in
+5b, now larger with uptime.) Weak detections' deltas swinging by thousands of chips (P27 +155
+-> -4381) were this, not noise in the fit.
+
+**BOOTSTRAP INSTEAD (scripts/lock_bootstrap.py, ready to run):**
+ 1. capture a frame; measure the strongest satellite's cp DIRECTLY with oracle2 (the tracker's
+    own convention, no reconstruction);
+ 2. delta_common = cp_true - cp_model(hop) -- instrumental delay + receiver clock, common to
+    all satellites (the per-sat term is only ~+-9 chips);
+ 3. seed every strong satellite at cp_model(now) + delta_common;
+ 4. sweep a shared +-12 chip offset with the EMA'd q and hold at the peak.
+Only a transit-strength satellite (snr >~ 300) is findable in a single 42 ms frame with 7
+channels -- P1/P28/P27 at snr 44-60 gave ratios 2.6-3.0 (noise) in the same frame. Wait for a
+bright one, or stack more frames.
+
+**STILL REQUIRED: restart both node kotekans on 51b1ca034** (running instances at 18:20 predate
+it -- `curl -s localhost:12049/config | grep channel_ids` returns nothing, so they are still
+correlating at DC).
