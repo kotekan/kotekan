@@ -223,9 +223,14 @@ void GnssChannelizedSearch::search_snapshot() {
              "(currently placing the carrier at bin {:.1f}).",
              unique_name, _chan_offset, _chan_offset + _n_chan,
              _replica->f_offset() / (_sample_rate / _fft_len));
-    else
+    else if ((int)cov_local.size() != _last_cov_n || cov_global.front() != _last_cov_first
+             || cov_global.back() != _last_cov_last) { // once per SET, not per snapshot
         INFO("GnssChannelizedSearch[{:s}]: {:d} covering channels in this subband (global {:d}..{:d})",
              unique_name, (int)cov_local.size(), cov_global.front(), cov_global.back());
+        _last_cov_n = (int)cov_local.size();
+        _last_cov_first = cov_global.front();
+        _last_cov_last = cov_global.back();
+    }
 
     // Build (once) the banded repl0 for every PRN. This used to be a per-PRN, per-snapshot
     // channels() call returning the ENTIRE [N][Mp] spectrum, of which channelized_accumulate
@@ -282,6 +287,7 @@ void GnssChannelizedSearch::search_snapshot() {
     double best_any = 0.0;
     int best_any_prn = -1;
     int best_any_nh = -1;
+    int n_unhinted = 0;
     for (int p = 0; p < n_prn; ++p) {
         if (cov_local.empty()) { // carrier not in this subband: nothing to find
             std::lock_guard<std::mutex> lk(_det_mtx);
@@ -332,6 +338,7 @@ void GnssChannelizedSearch::search_snapshot() {
             }
         }
         if (_require_hint && !hinted) { // below horizon / stale -> not in the active set this cycle
+            ++n_unhinted;
             std::lock_guard<std::mutex> lk(_det_mtx);
             _detections[p] = Detection{};
             continue;
@@ -497,6 +504,16 @@ void GnssChannelizedSearch::search_snapshot() {
              (_acquire_snr < ceiling) ? "  [THRESHOLD BELOW NOISE CEILING -- every \"detection\" "
                                         "is meaningless]"
                                       : "");
+    } else if (_require_hint && n_unhinted == n_prn && n_prn > 0) {
+        // Every PRN skipped for lack of a fresh hint: the pass did NOTHING, at input frame
+        // rate. Without this line the only symptom is the covering-channels line spamming --
+        // 43k of them on 2026-07-31, 100 minutes of "searching" after the hint broker died,
+        // indistinguishable from an empty sky. Say the real cause, rate-limited.
+        if ((_empty_hint_passes++ % 256) == 0)
+            WARN("GnssChannelizedSearch[{:s}]: 0/{:d} PRNs hinted -- require_hint is set and "
+                 "the broker's hints are absent or older than hint_ttl_s ({:.0f} s). The "
+                 "search is scanning NOTHING. (repeat {:d})",
+                 unique_name, n_prn, _hint_ttl_s, _empty_hint_passes - 1);
     }
 }
 

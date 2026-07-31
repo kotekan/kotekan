@@ -146,6 +146,9 @@ private:
     int _acquire_threads = 1; ///< d-parallelism of the aggregate (see channelized_accumulate)
     double _hint_dop_sign = -1.0; ///< physical->internal Doppler map (see the hint window note)
     long _last_surface_cells = 0; ///< cells in the last surface (for the noise-ceiling log)
+    long _empty_hint_passes = 0;  ///< require_hint passes that scanned nothing (rate-limited WARN)
+    int _last_cov_n = -1;         ///< last logged covering set (log once per set, not snapshot)
+    int _last_cov_first = -1, _last_cov_last = -1;
     double _hint_ttl_s = 8.0;
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> _replica;
