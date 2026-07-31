@@ -981,9 +981,44 @@ broker needs no change: `cp_to_seed_currency` already re-expresses cp0 in the se
 The airspy tracker is deliberately untouched (its extra term is ~0 mod L, its lever ~30
 chips/Hz).
 
-**What this predicts for the sky:** a seed should now hold across a whole record set instead of
-lighting one record in ~10. Not yet confirmed on sky -- both nodes need a restart on
-9e12d515b, and the fix has only ever been run against synthetic injection.
+### 5n.1 CONFIRMED ON SKY, and the FIRST LOCK (2026-07-31, ~23:30-00:40)
+
+Both nodes restarted on 9e12d515b. Measured with `scripts/seed_audit.py` /
+`scripts/audit_series.py` -- capture a live voltage frame, compute EXACTLY what the tracker
+would despread it at (the same phase_from_arg -> propagate -> arg_from_phase chain, in exact
+arithmetic), then ask the oracle where the satellite actually is. The difference IS the seed
+error, in chips, with no DLL and no q in the loop:
+
+    PRN 3 (search snr 883), seed extrapolated from one search pass:
+      age  651 s -> oracle ratio 121.4, NH period 15, seed error  +4.25 chips
+      age 1028 s -> oracle ratio  40.0, NH period  7, seed error  +2.75 chips
+      age 1314 s -> oracle ratio  24.0, NH period 16, seed error  +2.50 chips
+
+A few chips after twenty minutes of extrapolation, where before the fix it was thousands of
+chips and moving. Fitted: a CONSTANT offset of ~+6.8 chips plus a drift of -0.004 chips/s
+(= 0.46 Hz of Doppler error). Note the constant is a clean number now and is the honest
+replacement for the ~148-chip "instrumental delay" of section 6, which was measured through the
+anchor-contaminated cp -- do not reconcile them, re-measure.
+
+**FIRST LOCK.** Seeding PRN 3 from that direct measurement (`scripts/lock_measured.py`: seed
+the argument the oracle actually found, anchored at that frame's own hop):
+
+    t+150s   q 3.8 / 3.7 / 3.2 / 3.7      (q_noise ~1.0, q_locked ~3.6)
+    t+240s   q 3.7 / 3.6 / 3.1 / 3.6
+
+All FOUR tracker stages (both GPUs on both nodes) at once, held 90+ s, with the DLL trim moving
+in lockstep across all four to +-0.02 chips -- which is itself the proof it is one physical
+signal and not four noise excursions.
+
+**What is NOT yet solved: the residual rate.** The trim ramped at +0.0257 chips/s through that
+lock -- a ~3 Hz per-satellite Doppler residual (the search's grid is 31.25 Hz and its parabolic
+refine is only good to ~1/20 bin) -- so it walks into the +-3 chip `trim_clamp` in ~2 minutes.
+Folding the measured rate back in by hand OVERSHOT on the next attempt (trim ramped negative
+into the clamp, q never settled), so this needs a closed loop, not a hand-tuned constant. The
+broker already has the machinery (rate fitting, clock-bias solve, `carrier_trim_hz`); it is
+currently running with `--trackers ""`, i.e. hinting the search but not seeding. **Next step:
+point the broker at the trackers and let its loop close the rate**, rather than more hand
+seeding.
 
 ## 6. Also outstanding
 
