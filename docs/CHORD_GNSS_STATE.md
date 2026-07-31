@@ -692,3 +692,39 @@ where `<base.json>` is `curl -s http://cx19:12048/config` from a node running pr
   use it for beam maps and noise temperature; keep the X-engine healthy ±4 h around it.
 * Eight nodes: cx19(4) cx27(0) cx42(5) cx43(6) cx44(2) cx47(3) cx51(7) cx52(1), where the number
   is the mod-8 comb offset. Together they tile the science band exactly.
+
+## 5i. AFTERNOON/EVENING 2026-07-31: the trim was necessary but NOT sufficient -- two
+## structural despread killers found and fixed (d37064e87), offline-verified on sky
+
+Chronology: trim port deployed and mechanically verified (loop runs, gate holds on noise)
+-> records structurally dead -> assembler energy-offset bug fixed (2527e0298) -> still no
+capture at any clk -> search revealed silently idle since 12:16 (require_hint + dead broker;
+83e5110b0 makes it say so) -> hints-only broker revived it (passes to snr 615) -> P10 sweep
+null -> element probe null -> OFFLINE AUDITS on a captured live frame (buffer REST
+/buffer/gnss0_volt_buf/frame) found everything:
+
+* **P10 at snr 40 in a single 42 ms frame, elements 0 AND 8** (cp consistent to 0.2 chips,
+  dop matches model+5.4 bias to ~1 Hz). Data, conjugation, element 0, doppler: all fine.
+* **KILLER 1 -- missing nominal advance**: records are 10.4857 code periods (airspy: exactly
+  1); residual-only extrapolation dropped 4969.3 chips/record mod L. Every record despread at
+  a pseudo-random offset; the isolated q-spikes in sweeps were REAL single-record alignments.
+  Fixed: absolute extrapolation (52.3776 c/hop nominal + residual + quadratic code-Doppler).
+* **KILLER 2 -- NH20 intra-record cancellation**: overlay flips every 1 ms (20 ms is the
+  sequence period, not the transition spacing); ~10 overlay chips per record, partial sums
+  mostly cancel. Fixed: GPS_L5_Q_NH (primary tiled 20x, NH baked, 204600 chips / 20 ms) --
+  bit-identical to bare+nh_phase per alignment; trackers switch, search keeps the short code.
+* **Currency map (verified)**: bank cp args are SAMPLE-0-referenced with internal FF; the
+  search anchors repl0 at Mp*fft_len = exactly 16 periods (hiding the convention); the GPU
+  despread is window-anchored. Seeding chain: cp_phys(t_det) = cp0 + off + drift (exact
+  inverse of GnssChannelizedSearch.cpp:429-446), cp204(t) = cp204_model(t) +
+  (cp_phys - cp_model(t_det)) + clk_try, NH period from GPS time, clk_try ~ 0 expected.
+  A ~10-chip cross-audit residual remains unexplained -- the live sweep covers it.
+* **CLOCK OSCILLATION RETRACT-LIKELY**: the burst pattern (consecutive strong records every
+  15-25 s) is the alignment-walk + NH-beat signature of the two bugs, not a clock. HOLD the
+  F-engine escalation. The fixed tracker's trim measures the actual clock phase directly.
+
+**TO RUN (after restarting node kotekans on the d37064e87 binary + regenerated configs):**
+`python trim_lock.py` (scratchpad; copy to session_artifacts) -- seeds every fresh search
+detection through the verified currency chain, sweeps clk_try +-15, holds and logs the trim
+on a multi-sat bite. Also: my python model needs TODAY's BRDC (stale-cache poisoning cost an
+afternoon: P26 550 Hz off at 13:52, fine after the 14:05 refetch).
