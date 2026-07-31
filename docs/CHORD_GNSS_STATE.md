@@ -901,3 +901,48 @@ depend on the channel geometry is the *interpretation* of results, not their cor
 correlation's grating-lobe spacing is 1/(channel spacing) (3.27 chips for CHORD's stride-16
 single-GPU comb, 13.09 for the 27-channel union), and an irregular set simply gives a messier
 ambiguity pattern rather than a wrong answer.
+
+## 5m. THE SEARCH'S REPORTED CODE PHASE -- an anchor bug, proven offline (2026-07-31 night)
+
+Two live seeding attempts on the FIXED binary (both nodes confirmed carrying `channel_ids`)
+returned clean nulls -- q = 1.0-1.2 everywhere, the exact noise value:
+  * model + delta_common (+4476.82, from the P32 transit) swept +-12 chips: nothing;
+  * the search's cp_phys extrapolated by the tracker's own formula, + the -1961.26 correction
+    measured against the oracle, swept +-16 chips: nothing.
+So delta_common is not constant and the -1961 correction is epoch-dependent: the search's code
+phase and the tracker's are in different currencies by a term that MOVES.
+
+**Root cause, proven with a synthetic injection** (`scripts/acq_conv.cpp` -- inject a known cp,
+ask the SEARCH's own acquire where it is):
+
+    repl0 anchored at Mp*fft_len  (WHAT THE LIVE SEARCH DOES)  -> error -3942.61 chips
+    repl0 anchored at the data window                          -> error    -1.20 chips (= its
+                                                                  own refine resolution)
+
+The offset is exactly the data window's absolute code advance:
+`off = (window_start_sample * chip_rate/sample_rate) mod L` = 6288.59 for that window, and
+-(L - 6288.59) = -3941.41 vs the -3942.61 observed. The cause is that the bank's
+`code_phase_chips` is SAMPLE-0-REFERENCED (conv_test settled this), so a repl0 anchored
+anywhere but the data window carries that window's advance into the reported lag.
+
+Consequence for `GnssChannelizedSearch::cp0 = best_cp - off - drift`: since `best_cp` ALREADY
+contains `+off` via the anchor, cp0 = true_cp_at_window - drift, NOT the intended
+true - off - drift. Intent and behaviour disagree, which is why no consumer-side inversion has
+ever worked. NOTE the caching tension: repl0 is cached across snapshots precisely BECAUSE its
+anchor is fixed (Mp*fft_len); re-anchoring per snapshot would cost the 14 s/pass the banded+
+cached optimization bought (S5). The fix is therefore analytic (correct the reported cp by the
+window advance, or define cp0 consistently and document it), NOT re-anchoring.
+
+**STILL UNEXPLAINED, and the first thing to chase next:** on the SAME frame (f3.raw, P32
+transit), with the anchor handled correctly, the two paths still disagree:
+
+    search's acquire, repl0 anchored at the data window : cp 8991.83  (snr 164.5)
+    tracker's despread (oracle2)                        : cp 9383.09  (ratio 49.8)
+    difference                                          : 391.26 chips
+
+Same data, same window, no epoch/staleness/Doppler-drift involved. 391.26 is not a multiple of
+the 3.2735-chip grating-lobe spacing (119.5 lobes), so it is not a lobe ambiguity. Both tools
+are in the repo and run offline in minutes: extend `acq_conv.cpp` to ALSO despread the same
+synthetic injection through GnssCudaDespread, and whichever tool misplaces the known phase is
+the one to fix. Do this BEFORE any further live seeding -- it is a pure software question and
+needs no sky.
