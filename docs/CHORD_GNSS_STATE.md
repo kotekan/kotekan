@@ -515,6 +515,9 @@ anywhere in this system.
 (drift priming added 2026-07-31; without it a slow-cadence search pins drift to zero on stale
 repeats and the clock freezes between passes).
 
+**Session artifacts** (logs with every detection line = the calibration dataset, fit/sweep
+scripts, captured voltage frames, gain snapshot): `~/gnss/session_artifacts_20260730/`.
+
 **Overnight state:** aggregator searching (precision-refine config), plain hint broker (no lock
 attempts), viewer live on 8080/8539 with detections. Tomorrow: the age-gate patch, re-verify
 per-sat cp under the broker's model, prime, lock, then wire the viewer's combiner columns to
