@@ -1266,8 +1266,21 @@ def main(argv=None):
             # A detection is FRESH when its ref_hop advanced (the stage re-detected it,
             # not a stale REST snapshot) -- the alias escape below must never act on a
             # stale Doppler: at 0.4 Hz/s slew, 100 s of staleness fakes a 40 Hz mismatch.
+            #
+            # Stamp with the DETECTION'S OWN EPOCH (ref_hop converted through the capture
+            # anchor), NOT the wall clock of first sight. Wall-clock stamping defines
+            # freshness relative to THIS BROKER's history: a freshly (re)started broker sees
+            # every entry in the search's REST table as "new" and certifies minutes-stale
+            # detections as fresh -- measured 2026-07-31 00:47 on CHORD: six 20-40-min-old
+            # detections walked the bias EMA to +518 Hz and the dead-reckon clock off its
+            # primed value within ten cycles. With the epoch stamp, every downstream
+            # consumer's (t0 - stamp) measures TRUE data age, restart or not. When the
+            # anchor is unavailable (utc0_sample0 == 0, pre-fetch), fall back to wall clock
+            # -- the old behaviour, right for airspy where re-detection is seconds-fast.
             if det_fresh.get(_p, (None,))[0] != _b[3]:
-                det_fresh[_p] = (_b[3], t0)
+                t_det = (utc0_sample0 + _b[3] / args.hops_per_sec
+                         if utc0_sample0 else t0)
+                det_fresh[_p] = (_b[3], t_det)
 
         # 2. orbit-predicted Doppler + visibility (almanac assist), else plain gate
         pred = {}          # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]
@@ -2381,7 +2394,11 @@ def main(argv=None):
                                  for _, d in offs)
                     raw = (cen[len(cen) // 2] + ref) % CODE_LEN
                     prev_raw = dr_state.get("raw_prev")
-                    if prev_raw is not None and 0.5 < now_w - prev_raw[1] < 30.0:
+                    # A primed drift is authoritative (the GPSDO rate is a band constant):
+                    # never EMA it toward pair-differences of solutions built from UNCHANGED
+                    # detections, which difference to ~zero and drag a correct prime away
+                    # (measured 2026-07-31: primed +0.0439 walked to -61 within a minute).
+                    if prev_raw is not None and 0.5 < now_w - prev_raw[1] < 30.0                             and args.dr_clock_drift is None:
                         d_est = (((raw - prev_raw[0] + CODE_LEN / 2) % CODE_LEN)
                                  - CODE_LEN / 2) / (now_w - prev_raw[1])
                         dr_state["drift"] = (d_est if dr_state.get("drift") is None

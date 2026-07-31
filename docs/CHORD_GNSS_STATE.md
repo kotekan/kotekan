@@ -523,6 +523,71 @@ attempts), viewer live on 8080/8539 with detections. Tomorrow: the age-gate patc
 per-sat cp under the broker's model, prime, lock, then wire the viewer's combiner columns to
 12049.
 
+## 5h. MORNING 2026-07-31: the clock BREATHES, and the trim port is the fix
+
+**Chronology of the morning's findings, each one real:**
+
+1. **Overnight hint poisoning (+347 Hz), fixed and verified.** The unpatched broker's bias EMA
+   ingested stale detections when the nodes resumed (det_fresh stamped wall-clock novelty, not
+   data epoch); its hint windows sat ~+350 Hz off truth and every morning "detection" echoed
+   the poison back (the cp scatter came free via the 4412-chips/Hz sample-0 lever). Patched:
+   det_fresh now stamps ref_hop epoch (single point, all consumers honest, restart-proof);
+   drift EMA frozen when primed. First honest pass: SNRs straight back to 63-128.
+2. **THE CLOCK-CHAIN OSCILLATION -- the morning's big find.** Full-rate record streams (19/s,
+   not the 1-in-45 subsample that faked "decay") show despread bursts: CONSECUTIVE strong
+   records (median gap 0.11 s) in ~0.5-1 s bursts every 15-25 s, cyclically, with NO
+   re-seeding. That is a PERIODIC PHASE OSCILLATION, amplitude ~+-1 chip (+-98 ns), period
+   ~20 s -- a steering/synthesis-loop signature (GPSDO 1PPS discipline or the RFSoC's
+   10 MHz -> 3.2 GHz PLL), NOT oscillator jitter. The TM-4-class OCXO should sit sub-ns; the
+   user is escalating to the F-engine team ("got to be a bug"). Burst-timing extract for them:
+   `~/gnss/session_artifacts_20260730/clock_oscillation_bursts.txt`. NOTE: if the breathing is
+   real at the ADC clock it matters for VISIBILITIES too, not just GNSS.
+   It retro-explains: calibration-pass cp scatter (+-2-3 chips = oscillation sampled at random
+   phase), the hold-test flicker, one-shot ~10 s holds, and the external-DLL failure (REST
+   latency 1.5-3 s can't follow +-0.2 chips/s slew).
+3. **The clock does NOT accumulate.** The same absolute clk values captured on BOTH nights
+   (sweep centers ~191-201 last night AND this morning): the GPSDO steers phase to GPS =
+   bounded, so last night's "+0.044 chips/s drift" was loop wander over a short baseline, not
+   a rate to extrapolate. Overnight extrapolation is unnecessary AND wrong.
+4. **Per-sat split ~9.5 chips, stable across days** (P9 192.9 / P26 202.1 night; P25 191.1 /
+   P24 200.7 morning -- same two clusters!). A systematic in MY quick python model (suspects:
+   SV-clock relativistic term, TGD), not noise. The broker's own cp_predicted disagrees with
+   my model by ~3000 chips AND churns cycle-to-cycle (-0.3..-0.9 c/s apparent) -- reverse
+   engineering its currency from log echoes was abandoned; reconcile by READING cp_predicted
+   when needed. My +5.8 Hz "clock bias" may be partly common-mode model error too.
+5. **Capture is routine** (sweep bites at 441-2919 inc vs ~30 floor, on command, both nights).
+   Only HOLD is missing, and the reason is now precise:
+
+**THE FIX: port the in-tracker DLL trim into cudaGnssChordTrack.** The airspy tracker holds
+locks because the trim closes the code loop per record ON the tracker (19 Hz laughs at
++-0.2 c/s breathing); cudaGnssChordTrack computes the E/P/L discriminator but NEVER APPLIES
+it -- the model-primary design deliberately dropped the frozen-seed machinery ("if CHORD ever
+needs the fence, port it knowingly" -- cudaGnssChordTrack.hpp header). CHORD needs the trim
+(not the whole fence), knowingly.
+
+### Trim-port worklist (start here after compaction)
+* REFERENCE: lib/stages/gnss/cudaGnssTrack.cpp (airspy; ~12 'trim' sites). UNDERSTAND FIRST:
+  where the airspy tracker computes its code trim (from its own E/P/L within the command? or
+  host-side between records?) and where it applies it (cp extrapolation per record).
+* TARGET: lib/stages/gnss/cudaGnssChordTrack.cpp -- Spec construction ~lines 230-260 (the
+  per-record seed -> Spec extrapolation, sp.spacing_chips already there); state on
+  cudaGnssChordTrackState (per-PRN trim accumulator beside Seed).
+* The discriminator today is computed downstream (GnssCoherentCombiner, CMB_DLL_DISC) -- the
+  port likely wants the E/L powers already in the tracker's own output rows (corr rows E/P/L
+  exist per record in the epl frame) so the trim can close inside the command WITHOUT waiting
+  on the combiner. Airspy's answer to this is the thing to copy.
+* Config-gate it (default off = current behaviour; CHORD generator turns it on) and keep the
+  exact-equality despread gates green (trim off must be bit-identical).
+* After trim works: single sweep-capture per sat (proven) -> trim holds through the breathing
+  -> broker's lock-driven EMA takes the fleet; then viewer combiner columns (12049), then the
+  per-sat model reconciliation, then multi-node scaling.
+
+**Current running state:** aggregator searching (agg_cal config: precision refine span 4096 /
+step 75, stage renamed gps_search), plain broker (hints only), viewer on 8080/8539. All
+scripts + logs synced to ~/gnss/session_artifacts_20260730/. Sweep-proven per-sat clk values
+(MY python-model currency, compute_clk.py/sweep_clk.py): P24 200.72, P25 191.12 (morning),
+P9 ~192.9, P26 ~202.1 (night).
+
 ## 6. Also outstanding
 
 * **Instrumental delay is still unmeasured.** The cable term is now well determined —
