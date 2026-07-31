@@ -212,4 +212,3 @@ cl_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: cl_epl_buf, out_buf
 cl_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [cl_rec_buf], out_buf: cl_out_buf, n_prn: 32, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32], integration_length: 200, secondary_overlay: COHERENT }
 cl_record: { kotekan_stage: rawFileWrite, in_buf: cl_out_buf, base_dir: "/tmp/gps_l2c_gpu", file_name: "cl_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
-spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --http-port 8081 --ws-port 8639 --kotekan-rest-port 12148 --gps-constellations G --band l2c' }

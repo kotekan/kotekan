@@ -584,7 +584,9 @@ bands:
     num_cuda_streams: 3
     per_chain_streams: false
     record_dir: /tmp/gps_l2c_gpu
-    viewer_args: "--http-port 8081 --ws-port 8639 --kotekan-rest-port 12148 --gps-constellations G --band l2c"
+    # viewer_args REMOVED 2026-07-30: pared to ONE unified viewer (L1, --unified). The unified page
+    # already shows L2C signals; this per-band flat viewer only survived as a power streamer.
+    # viewer_args: "--http-port 8081 --ws-port 8639 --kotekan-rest-port 12148 --gps-constellations G --band l2c"
     chains:
 
       - constellation: gps
@@ -751,7 +753,9 @@ bands:
       single chain. That headroom is the point: the 2026-07-27 L5 peel died of real-time
       overrun (silent Valve drops -> ring gaps), and the peel costs ~2.05x.
     record_dir: /tmp/gps_l5_gpu
-    viewer_args: "--http-port 8082 --ws-port 8739 --kotekan-rest-port 12248 --gps-constellations G,E,C --band l5"
+    # viewer_args REMOVED 2026-07-30: pared to ONE unified viewer (L1, --unified). The unified page
+    # already shows L5 signals; this per-band flat viewer only survived as a power streamer.
+    # viewer_args: "--http-port 8082 --ws-port 8739 --kotekan-rest-port 12248 --gps-constellations G,E,C --band l5"
     chains:
 
       - constellation: gps
