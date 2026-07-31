@@ -487,6 +487,39 @@ physical. Then: remaining six nodes (contiguous cover kills the comb ambiguity e
 element ranking by cross-element sky coherence (measured: element 0's coupling is ~half of
 elements 3/9/10's), Galileo E5a + BeiDou B2a on the same carrier.
 
+## 5g. THE LOCK CAMPAIGN, 2026-07-31 00:00-01:00 -- capture PROVEN, broker freshness next
+
+**The DLL captures on command.** A direct sweep (bypassing the broker: /set_seeds driven at
+cp_model(now) + clk_try in 0.4-chip steps) hit hard: PRN 9 at clk ~192.9 despread at amp_incoh
+1483 against a ~30 floor (50x), PRN 26 at ~202.1 (418) -- classic capture-and-drag as the sweep
+walked away. The tracker locks the instant the seed is right. Lock is not a sensitivity problem
+anywhere in this system.
+
+**What still blocks fleet-wide lock, in order:**
+1. **Broker estimator freshness.** The dead-reckon clock, drift, and clock-freq-bias estimators
+   consume the CURRENT detection table without an age gate (only the seeding path checks
+   ref_hop advance). With minutes-long passes, 20-40-min-stale detections poison every solve
+   within seconds: the "+518 Hz clock-freq bias" and the clock EMA walking off the primed value
+   were both this. Fix is mechanical: age-gate (ref_hop epoch vs now) the inputs to the offs
+   loop and the bias residual loop -- a --dr-max-det-age-s. The seeding freshness guard
+   (det_fresh) shows exactly the pattern to follow.
+2. **Per-sat cp model bias ~9 chips in MY quick python model** (P9 vs P26 sweep centers) --
+   likely its missing relativistic SV-clock / TGD terms; the broker's own cp_predicted (proven
+   0.01 chip on airspy) should not share it, but VERIFY against the sweep-measured clks before
+   trusting fleet seeding.
+3. Search cp precision: the fast refine (step 303) scatters cp +-2-3 chips; the calibration
+   refine (span 4096 = +-1 tooth, step 75) gives +-0.3 at the same 109-step cost and should
+   simply become the default for the aggregator.
+
+**Primed-broker plumbing that now exists:** --dr-clock-chips <clk> --dr-clock-drift <chips/s>
+(drift priming added 2026-07-31; without it a slow-cadence search pins drift to zero on stale
+repeats and the clock freezes between passes).
+
+**Overnight state:** aggregator searching (precision-refine config), plain hint broker (no lock
+attempts), viewer live on 8080/8539 with detections. Tomorrow: the age-gate patch, re-verify
+per-sat cp under the broker's model, prime, lock, then wire the viewer's combiner columns to
+12049.
+
 ## 6. Also outstanding
 
 * **Instrumental delay is still unmeasured.** The cable term is now well determined —
