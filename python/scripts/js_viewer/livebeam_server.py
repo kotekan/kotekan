@@ -788,12 +788,25 @@ UNIFIED_SIGNALS = [
      "combiner": "l5_i_combiner",   "search": None,             "t_rec": 1e-3,  "peel": False},
     {"tag": "E", "band": "L1", "col": "E1C", "name": "Galileo E1-C",
      "combiner": "l1_gal_combiner", "search": "l1_gal_search",  "t_rec": 4e-3,  "peel": True},
+    # E1B / E5a-I / B1C-data / B2a-data: the DATA components (S5 D-components), each DERIVED off
+    # its band-mate pilot (search None, seeded verbatim). Their combiners run the nav-bit wipe
+    # (navwipe_bit_records) that lets a data channel integrate to 1 s, so they carry coherent
+    # C/N0 like any chain; judge each against its pilot sibling, not an absolute. Unpeeled
+    # (peel is GPS-only for now).
+    {"tag": "E", "band": "L1", "col": "E1B", "name": "Galileo E1-B (data, I/NAV)",
+     "combiner": "l1_e1b_combiner",  "search": None,            "t_rec": 4e-3,  "peel": False},
     {"tag": "E", "band": "L5", "col": "E5a", "name": "Galileo E5a-Q",
      "combiner": "l5_gal_combiner", "search": "l5_gal_search",  "t_rec": 1e-3,  "peel": True},
+    {"tag": "E", "band": "L5", "col": "E5aI","name": "Galileo E5a-I (data, F/NAV)",
+     "combiner": "l5_e5a_i_combiner","search": None,            "t_rec": 1e-3,  "peel": False},
     {"tag": "C", "band": "L1", "col": "B1C", "name": "BeiDou B1C",
      "combiner": "l1_bds_combiner", "search": "l1_bds_search",  "t_rec": 10e-3, "peel": True},
+    {"tag": "C", "band": "L1", "col": "B1CD","name": "BeiDou B1C (data, B-CNAV1)",
+     "combiner": "l1_b1c_d_combiner","search": None,            "t_rec": 10e-3, "peel": False},
     {"tag": "C", "band": "L5", "col": "B2a", "name": "BeiDou B2a",
      "combiner": "l5_bds_combiner", "search": "l5_bds_search",  "t_rec": 1e-3,  "peel": True},
+    {"tag": "C", "band": "L5", "col": "B2aD","name": "BeiDou B2a (data, B-CNAV2)",
+     "combiner": "l5_b2a_d_combiner","search": None,            "t_rec": 1e-3,  "peel": False},
 ]
 
 def _gps_signal_capability():
