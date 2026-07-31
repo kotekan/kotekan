@@ -182,7 +182,12 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args):
                  "hops_per_record": args.hops_per_record,
                  "fft_length": cfg["fengine"]["fft_length"],
                  "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
-                 "seed_endpoint": f"/{pre}track/set_seeds"},
+                 "seed_endpoint": f"/{pre}track/set_seeds",
+                 # In-tracker DLL code trim (ported 2026-07-31): per-frame closure is the only
+                 # loop fast enough for the clock chain's +-1 chip / ~20 s breathing. The
+                 # broker's own DLL (3c) sees disc ~ 0 once this holds and stays quiet.
+                 "code_trim": True,
+                 "trim_endpoint": f"/{pre}track/get_trim"},
                 {"name": "cudaSyncOutput"},
                 {"name": "cudaOutputData", "gpu_mem": f"{pre}epl",
                  "out_buf": "gnss_epl_out"},

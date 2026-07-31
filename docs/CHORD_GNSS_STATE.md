@@ -565,7 +565,42 @@ it -- the model-primary design deliberately dropped the frozen-seed machinery ("
 needs the fence, port it knowingly" -- cudaGnssChordTrack.hpp header). CHORD needs the trim
 (not the whole fence), knowingly.
 
-### Trim-port worklist (start here after compaction)
+### Trim port: DONE 2026-07-31 (post-compaction)
+
+Implemented in `cudaGnssChordTrack.{cpp,hpp}`, config key `code_trim` (default OFF = the old
+behaviour, bit-identical; the generator turns it on for CHORD). Both node configs regenerated
+-- diff vs deployed was trim-keys-only, so nothing else moved.
+
+* **What it is:** the broker's 3c DLL math (disc = (E^2-L^2)/(E^2+L^2), tau = -disc/4 *
+  (spacing/0.5), leaky integrator, clamp +-3 chips), run PER GPU FRAME (~24 Hz) inside the
+  command instead of ~1 Hz in the broker. Observable = coherent channel sum of the tracker's
+  own E/P/L rows at `trim_ref_elem` (default 0) -- exactly the assembler's header rows, so the
+  sign convention is inherited from the airspy-proven broker loop, not re-derived.
+* **Plumbing:** a CUDA command never sees its results on the host, so each execute() enqueues
+  a ~20 kB strided D2H of its E/P/L rows (ref element only) + an event; a later execute()
+  consumes completed slots non-blockingly before building specs. One frame (~42 ms) of loop
+  latency against the 20 s clock breathing.
+* **Application:** `cp = model + trim[p]` at the single Spec-construction point; the trim
+  rides on top of whatever the broker/scripts seed, and reported cp_seed includes it (records
+  and broker see the true commanded phase). Quality gate q = 2|P|^2/(|E|^2+|L|^2) (~1 noise,
+  ~4 locked; `trim_quality_min` 1.8) keeps unlocked PRNs from walking.
+* **Watching it:** GET `/gnss{0,1}_track/get_trim` -> {prn, trim_chips, disc, quality,
+  updates}; plus a "code trim:" INFO heartbeat every ~10 s in the node log.
+* **Knobs:** trim_gain 0.15, trim_leak 0.002, trim_clamp 3.0 per update at ~24 Hz
+  (steady-state residual = leak/gain * trim ~ 0.013 chips/chip of static bias).
+* **Cautions:** (1) run the broker with `--dll-gain 0` against a trimming CHORD node -- the
+  in-tracker loop nulls the disc so the broker loop mostly idles, but during transients both
+  integrate the same discriminator; (2) the trim does NOT reset on broker re-anchor (the
+  broker pops its dll_trim on re-anchor; ours persists) -- fine for hold_seeds/one-shot
+  driving, revisit if broker-primary seeding jumps anchors; (3) despread exactness gates
+  verified green post-port (CHORD split + element axis 0.000e+00; the 1.914e-07 trial-reorder
+  failure is pre-existing).
+* **Next live step:** sudo dry-run both node configs, restart trackers, sweep-capture one PRN
+  (sweep_clk.py; P24 200.72 / P25 191.12 in my-model currency), then watch get_trim: the trim
+  should breathe +-1 chip with the ~20 s clock oscillation while inc/coh stay high and deep
+  goes > 0 -- that is LOCK HELD THROUGH THE BREATHING, the thing this port exists for.
+
+### Original trim-port worklist (for reference)
 * REFERENCE: lib/stages/gnss/cudaGnssTrack.cpp (airspy; ~12 'trim' sites). UNDERSTAND FIRST:
   where the airspy tracker computes its code trim (from its own E/P/L within the command? or
   host-side between records?) and where it applies it (cp extrapolation per record).

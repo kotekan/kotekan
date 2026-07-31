@@ -207,7 +207,8 @@ gnss0_gpu:
   - gpu_mem: gnss0_voltage
     in_buf: gnss_volt_in
     name: cudaInputData
-  - conjugate: true
+  - code_trim: true
+    conjugate: true
     elem_stride: 32
     f_offset_hz: 1176450000.0
     fft_length: 16384
@@ -222,6 +223,7 @@ gnss0_gpu:
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_track/set_seeds
     signal: GPS_L5_Q
+    trim_endpoint: /gnss0_track/get_trim
   - name: cudaSyncOutput
   - gpu_mem: gnss0_epl
     name: cudaOutputData
@@ -333,7 +335,8 @@ gnss1_gpu:
   - gpu_mem: gnss1_voltage
     in_buf: gnss_volt_in
     name: cudaInputData
-  - conjugate: true
+  - code_trim: true
+    conjugate: true
     elem_stride: 32
     f_offset_hz: 1176450000.0
     fft_length: 16384
@@ -348,6 +351,7 @@ gnss1_gpu:
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_track/set_seeds
     signal: GPS_L5_Q
+    trim_endpoint: /gnss1_track/get_trim
   - name: cudaSyncOutput
   - gpu_mem: gnss1_epl
     name: cudaOutputData
