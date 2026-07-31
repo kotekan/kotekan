@@ -121,6 +121,39 @@ public:
     /// the stage from config `code_doppler_sign` so it can be tuned without a rebuild.
     double code_doppler_sign = 1.0;
 
+    /// Absolute code advance, in COMBINED chips mod @c eff_code_length, from sample 0 to the
+    /// per-hop reference of the window starting at @c window_start_sample, at @c doppler_hz.
+    /// This is the term every replica generator here adds internally (C(n) = CM*arg + n*cps).
+    double window_advance_chips(long long window_start_sample, double doppler_hz) const;
+
+    /// PHASE <-> ARGUMENT, the conversion every cross-stage code phase must go through.
+    ///
+    /// Every generator in this file (and the GPU kernel that mirrors them) defines the code
+    /// phase at ABSOLUTE sample n as C(n) = comb_mult*code_phase_chips + n*cps(doppler). The
+    /// `code_phase_chips` ARGUMENT is therefore not a physical phase: it is a phase
+    /// back-referenced to sample 0 along a Doppler-scaled code rate, and at CHORD's uptime
+    /// (n ~ 1.9e15 samples, 6.8 days) that back-reference has a lever of
+    ///
+    ///     d(argument)/d(doppler) = -n * chip_rate/(sample_rate * carrier) ~ 5095 chips per Hz
+    ///
+    /// measured 2026-07-31 by injection (509.50 chips at 0.1 Hz, predicted 509.49). So an
+    /// argument is only meaningful ALONGSIDE the exact Doppler it was derived at: hand one to a
+    /// consumer that uses a Doppler 0.002 Hz different and the despread lands 10 chips away,
+    /// outside the DLL's capture, with nothing in the numbers to say so. That is why the search
+    /// -> broker -> tracker seed never locked.
+    ///
+    /// The rule these two functions exist to enforce: NEVER transport or extrapolate an
+    /// argument. Convert it to a physical phase at its own epoch with its OWN Doppler
+    /// (@c phase_from_arg -- the lever cancels exactly), do all propagation in the phase
+    /// domain, and convert back with the Doppler actually being passed to the generator
+    /// (@c arg_from_phase). A Doppler error then only accrues over the propagation interval
+    /// (seconds), not over the uptime (days).
+    ///
+    /// @c phase is in combined chips mod @c eff_code_length; @c arg is in the generator's own
+    /// units mod @c code_length (identical unless comb_mult > 1).
+    double phase_from_arg(double arg, long long window_start_sample, double doppler_hz) const;
+    double arg_from_phase(double phase, long long window_start_sample, double doppler_hz) const;
+
     int spectrum_length() const { return _N; }
     int fft_len() const { return _fft_len; }
     double f_offset() const { return _f_offset; }

@@ -194,6 +194,42 @@ int ChannelizedReplicaBank::overlay_sign(long long period, int nh_phase) const {
     return _secondary[(size_t)k];
 }
 
+double ChannelizedReplicaBank::window_advance_chips(long long window_start_sample,
+                                                    double doppler_hz) const {
+    // cps must be the SAME double the generators compute, or the two disagree by
+    // n0 * 1ulp ~ 1e-3 chips at CHORD's uptime -- small, but it would be a silent floor under
+    // every phase comparison. long double for the product: n0 (~1.9e15) is exact in a 64-bit
+    // mantissa and the reduced result is then good to ~3e-7 chips, vs ~0.5 chips if the whole
+    // thing is done in double (ulp(6e12) = 1e-3 chips, amplified by nothing but visible).
+    const double cps =
+        _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
+    const long double n0 = (long double)(window_start_sample + _fft_len - 1); // hoprate_stream's
+    const long double L = (long double)_eff_code_length;                      // per-hop reference
+    const long double adv = n0 * (long double)cps;
+    long double r = adv - std::floor(adv / L) * L;
+    if (r < 0.0L)
+        r += L;
+    return (double)r;
+}
+
+double ChannelizedReplicaBank::phase_from_arg(double arg, long long window_start_sample,
+                                              double doppler_hz) const {
+    const double L = (double)_eff_code_length;
+    double ph = std::fmod((double)_comb_mult * arg + window_advance_chips(window_start_sample,
+                                                                         doppler_hz),
+                          L);
+    return (ph < 0.0) ? ph + L : ph;
+}
+
+double ChannelizedReplicaBank::arg_from_phase(double phase, long long window_start_sample,
+                                              double doppler_hz) const {
+    const double L = (double)_eff_code_length;
+    double ph = std::fmod(phase - window_advance_chips(window_start_sample, doppler_hz), L);
+    if (ph < 0.0)
+        ph += L;
+    return ph / (double)_comb_mult;
+}
+
 std::vector<int> ChannelizedReplicaBank::covering_bins(double doppler_hz,
                                                        double doppler_margin_hz) const {
     // Global r2c bin grid: bin j centred at j*Fs/(2N) over [0, Fs/2), natural order.
