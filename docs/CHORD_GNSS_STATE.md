@@ -855,7 +855,18 @@ correlation's grating-lobe spacing is 1/(channel spacing) (3.27 chips for CHORD'
 single-GPU comb, 13.09 for the 27-channel union), and an irregular set simply gives a messier
 ambiguity pattern rather than a wrong answer.
 
-## 5m. THE SEARCH'S REPORTED CODE PHASE -- an anchor bug, proven offline (2026-07-31 night)
+## 5m. THE SEARCH'S REPORTED CODE PHASE -- PARTLY RETRACTED, see 5n
+
+> **RETRACTION (2026-07-31, later).** The measurements in this section are all sound and
+> reproduce; two of the CONCLUSIONS drawn from them are wrong, and 5n replaces them:
+>   * "`cp0 = best_cp - off - drift` double-counts" -- it does NOT. Subtracting `off` and
+>     `drift` is the correct inversion of the fixed anchor; the search's cp0 is right.
+>   * "the 391.26-chip acquire-vs-despread gap is unexplained" -- it is the Doppler lever.
+>     The two tools were handed Dopplers 0.077 Hz apart, and 0.077 x 5094.9 = 392 chips.
+> The anchor effect described below is real and is exactly what `off` removes. Read 5n first;
+> this section is kept because its numbers are the evidence 5n is built on.
+
+### 5m (as written). An anchor effect, proven offline (2026-07-31 night)
 
 Two live seeding attempts on the FIXED binary (both nodes confirmed carrying `channel_ids`)
 returned clean nulls -- q = 1.0-1.2 everywhere, the exact noise value:
@@ -901,12 +912,78 @@ transit), with the anchor handled correctly, the two paths still disagree:
     tracker's despread (oracle2)                        : cp 9383.09  (ratio 49.8)
     difference                                          : 391.26 chips
 
-Same data, same window, no epoch/staleness/Doppler-drift involved. 391.26 is not a multiple of
-the 3.2735-chip grating-lobe spacing (119.5 lobes), so it is not a lobe ambiguity. Both tools
-are in the repo and run offline in minutes: extend `acq_conv.cpp` to ALSO despread the same
-synthetic injection through GnssCudaDespread, and whichever tool misplaces the known phase is
-the one to fix. Do this BEFORE any further live seeding -- it is a pure software question and
-needs no sky.
+Same data, same window. 391.26 is not a multiple of the 3.2735-chip grating-lobe spacing, so it
+is not a lobe ambiguity. [RESOLVED in 5n: the two tools were handed Dopplers 0.077 Hz apart,
+and the code phase moves 5094.9 chips per Hz. Neither tool was wrong.]
+
+## 5n. THE ACTUAL LOCK BLOCKER: an ARGUMENT is not a PHASE (2026-07-31, fixed)
+
+Everything in 5m was measured by asking one tool where a signal was. The question that settled
+it was different: **inject a signal at a phase we CHOSE, and push it through both paths.**
+`scripts/mkframe.cpp` writes a byte-for-byte synthetic voltage frame (CHORD's native
+[hop][chan][elem] 4+4b, conjugated like the F-engine) at a known code phase, so the existing
+tools run on it unmodified. What that showed, in order:
+
+**1. Both engines are individually correct.** Over injected phases across the code, Doppler
+-250..+500 Hz, both anchors, NH and no-NH, float and 4+4b byte paths, the acquire's reported cp
+matches
+
+    reported = injected + (n_window - n_anchor)*cps + n_window*cps*(dop/carrier)   (mod L)
+    n_x = x + fft_len - 1     cps = chip_rate/sample_rate
+
+to within +-3 chips (its own refine resolution, set by n_cover*bin_width). The GPU despread
+lands on the injected phase at +0.00. The search's `cp0 = best_cp - off - drift` inverts that
+expression exactly -- `off` is the anchor term, `drift` is the Doppler term. **The search is
+right, the despread is right, and they agree.**
+
+**2. The currency they share is the problem.** Every generator here, CPU and GPU, defines
+
+    C(n) = comb_mult*code_phase_chips + n*cps(doppler),   n ABSOLUTE
+
+so `code_phase_chips` is not a physical phase: it is a phase back-referenced to sample 0 along
+a Doppler-scaled rate. At 6.8 days of uptime (n ~ 1.9e15) that back-reference has a lever of
+
+    d(argument)/d(doppler) = n*chip_rate/(sample_rate*carrier) = **5094.9 chips per Hz**
+
+Measured directly on the tracker's own GPU path: despreading a known injection with the Doppler
+wrong by 0.1 Hz moves the peak 509.50 chips (predicted 509.49); by 0.05 Hz, 258.00. This is the
+same number the broker has always known as the "0.65 chips per Hz per 1000 s" projection noise
+and the memory as the ~5085 chips/Hz drift lever. It is not new physics; what was new is
+realising the TRACKER was violating it.
+
+**3. Two violations, both in `cudaGnssChordTrack`, both fixed in 9e12d515b.**
+
+  * *The nominal advance was added twice.* The generator already advances the code by n*cps.
+    d37064e87 added `chips_per_hop*dh` on top. Measured over four records of one seed:
+    power 1.0000 / 0.0000 / 0.0000 / 0.0002 -- the record at the seed epoch despread perfectly
+    and every later one despread noise. d37064e87 read the symptom right and the cause
+    backwards; the airspy record being exactly one code period is what makes the extra term
+    ~0 mod L there, so it was harmless in the prototype and fatal here.
+  * *The argument was re-used against a moving Doppler.* `dop = doppler_hz + dop_rate*dt`
+    changes every record, and an argument is only valid at the Doppler it was derived at.
+    Isolated (dop_rate -0.4 Hz/s, seed otherwise exact): 1.0000 / 0.0004 / 0.1003 / 0.0010 --
+    note the 0.1003, a partial grating-lobe re-alignment, which is precisely what a "flash"
+    looks like from the outside.
+
+The fix is a rule, now enforced by two functions on the bank (`phase_from_arg` /
+`arg_from_phase`, with `window_advance_chips` doing the absolute reduction in long double
+because double is only good to ~1e-3 chips at this uptime): **never transport or extrapolate an
+argument.** Lift it to a physical phase at its own epoch with its OWN Doppler (the lever cancels
+exactly), propagate in the phase domain, convert back with the Doppler actually being handed to
+the generator. A Doppler error then only accrues over the propagation interval -- 0.0087 chips
+per Hz per second -- which is what the DLL trim exists to close.
+
+Same four records, same seed, Doppler errors out to 1.5 Hz: **0.988-1.000**. The residual
+decline is the genuine code-rate error over dt.
+
+`scripts/seed_chain.cpp` is that whole demonstration and runs offline in under a minute. The
+broker needs no change: `cp_to_seed_currency` already re-expresses cp0 in the seed's Doppler.
+The airspy tracker is deliberately untouched (its extra term is ~0 mod L, its lever ~30
+chips/Hz).
+
+**What this predicts for the sky:** a seed should now hold across a whole record set instead of
+lighting one record in ~10. Not yet confirmed on sky -- both nodes need a restart on
+9e12d515b, and the fix has only ever been run against synthetic injection.
 
 ## 6. Also outstanding
 
