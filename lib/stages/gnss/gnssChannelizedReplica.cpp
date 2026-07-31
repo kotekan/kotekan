@@ -47,6 +47,18 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = gps::generate_l5q_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GPS_L5_Q_NH") {
+        // Q5 primary tiled by the NH20 overlay -- see the descriptor in gnssSignal.hpp. The
+        // sign convention is EXACTLY overlay_sign()'s (chip * L5_NH20[period]), so a cp in
+        // this 204600-chip space equals (primary cp + 10230 * period-index mod 20).
+        auto a = gps::generate_l5q_code(prn);
+        std::vector<int8_t> tiled;
+        tiled.reserve((size_t)gps::L5_CODE_LENGTH * gps::L5_NH20_LENGTH);
+        for (int k = 0; k < gps::L5_NH20_LENGTH; ++k)
+            for (int i = 0; i < gps::L5_CODE_LENGTH; ++i)
+                tiled.push_back((int8_t)(a[(size_t)i] * gps::L5_NH20[(size_t)k]));
+        return tiled;
+    }
     if (name == "GAL_E1C") {
         auto a = galileo::generate_e1c_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());

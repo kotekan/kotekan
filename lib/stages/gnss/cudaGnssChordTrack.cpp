@@ -363,18 +363,36 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             if (!sd.have || seq0 < 0)
                 continue;
 
-            // MODEL-PRIMARY EXTRAPOLATION. The broker refreshes doppler/cp every cycle from the
-            // BRDC model, so all this does is carry the seed forward to THIS window: the code
-            // phase advances at the broker's measured cp_rate (chips per hop, which absorbs the
-            // residual LO-vs-ADC offset l-a), and the Doppler along its own rate. No frozen
-            // anchor, no fence -- if the model moves, the seed moves with it.
+            // ABSOLUTE EXTRAPOLATION (fixed 2026-07-31). The seed's cp is the physical code
+            // phase at ref_hop; this window's cp is that plus the FULL code advance:
+            // NOMINAL chips-per-hop (52.3776 exactly at CHORD's rates) + the residual
+            // cp_rate (code Doppler, chips/hop) + the quadratic code-Doppler feed-forward
+            // (dop_rate; without it a one-shot seed walks off in ~30 s).
+            //
+            // The nominal term is the one the port originally DROPPED: airspy records are
+            // exactly one code period (1 ms), so its nominal advance mod L is ZERO per
+            // record and residual-only extrapolation is silently correct there. CHORD's
+            // 2048-hop record is 10.48576 ms = 10.4857 code periods: every record the true
+            // cp advances 4969.3 chips (mod 10230) that residual-only extrapolation never
+            // applied -- each record despread at a pseudo-random code offset, and the rare
+            // near-alignments masqueraded as "bursts". Found 2026-07-31 offline: a snr-40
+            // satellite in a captured frame, invisible to per-record despread at the
+            // correct cp.
             const double dh = (double)(hop0 - sd.ref_hop);
             const double dt = dh * (double)S.fft_len / S.sample_rate;
             const double dop = sd.doppler_hz + sd.dop_rate * dt;
+            const double chips_per_hop =
+                S.replica->chip_rate_hz() * (double)S.fft_len / S.sample_rate;
+            const double quad = 0.5 * (S.replica->chip_rate_hz() / S.f_offset_hz) * sd.dop_rate
+                                * dt * dt;
+            const double Lc = (double)S.replica->code_length();
             // The DLL trim rides ON TOP of the model cp: the broker keeps owning the seed
-            // (fit/coast state stays pure), the trim owns the sub-chip residual -- including
-            // the clock chain's +-1 chip / ~20 s breathing that no external loop can follow.
-            const double cp = sd.cp_chips + sd.cp_rate * dh + trim_now[(size_t)p];
+            // (fit/coast state stays pure), the trim owns the sub-chip residual.
+            double cp = std::fmod(sd.cp_chips + (chips_per_hop + sd.cp_rate) * dh + quad
+                                      + trim_now[(size_t)p],
+                                  Lc);
+            if (cp < 0.0)
+                cp += Lc;
 
             GnssCudaDespread::Spec sp;
             sp.p = p;

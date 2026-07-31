@@ -222,7 +222,7 @@ gnss0_gpu:
     prns: *id001
     sample_rate: 3200000000.0
     seed_endpoint: /gnss0_track/set_seeds
-    signal: GPS_L5_Q
+    signal: GPS_L5_Q_NH
     trim_endpoint: /gnss0_track/get_trim
   - name: cudaSyncOutput
   - gpu_mem: gnss0_epl
@@ -350,7 +350,7 @@ gnss1_gpu:
     prns: *id001
     sample_rate: 3200000000.0
     seed_endpoint: /gnss1_track/set_seeds
-    signal: GPS_L5_Q
+    signal: GPS_L5_Q_NH
     trim_endpoint: /gnss1_track/get_trim
   - name: cudaSyncOutput
   - gpu_mem: gnss1_epl

@@ -74,6 +74,11 @@ signals:
   # source density. That matters because GPS's 55 deg inclination leaves a coverage hole
   # toward the north from latitude 49.3 N.
   primary: GPS_L5_Q             # dataless pilot, 10230 chips, 1 ms primary, NH20 secondary
+  # TRACKER-ONLY signal: the NH20 overlay baked into a 204600-chip / 20 ms code, so a
+  # multi-period record despreads coherently (a 10.5 ms record of the bare primary spans
+  # ~10 NH chips whose signs mostly cancel -- measured 2026-07-31, snr-40 sat invisible per
+  # record). The search keeps `primary` + its nh_search; seeds' cp lives mod 204600.
+  tracker: GPS_L5_Q_NH
   also_available: [GAL_E5A_Q, BDS_B2A_P]
   carrier_hz: 1176.45e6
   chip_rate_hz: 10.23e6

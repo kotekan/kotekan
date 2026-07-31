@@ -131,6 +131,23 @@ inline constexpr SignalDescriptor GPS_L5_Q = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
 };
 
+/// GPS L5 Q5 with the NH20 secondary BAKED INTO the code table: the 10230-chip primary tiled
+/// 20x with the overlay signs, one 204600-chip / 20 ms "code". FOR TRACKERS whose records
+/// span multiple primary periods (CHORD: 2048-hop = 10.5 ms records = ~10 NH20 chips, whose
+/// +-1 partial sums mostly CANCEL -- NH20 is designed to cancel; measured 2026-07-31, a
+/// snr-40 satellite invisible per record). With the overlay in the table the record is
+/// coherent by construction, the code-period boundary is the 20 ms overlay boundary (so a
+/// record straddles at most ONE -- the P_HEAD design assumption becomes true), and the seed's
+/// cp lives mod 204600 with the NH phase implied (computable exactly from GPS time: the
+/// overlay is locked to the SV's code periods). secondary_length=0: nothing left to overlay.
+/// The SEARCH keeps GPS_L5_Q + its nh_search; only trackers switch.
+inline constexpr SignalDescriptor GPS_L5_Q_NH = {
+    "GPS_L5_Q_NH", 1176.45e6, 10.23e6, 204600, 20e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/0,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 32,
+};
+
 /// Galileo E1-C (1575.42 MHz) -- the OS dataless *pilot*: 4092-chip memory code at 1.023 Mcps
 /// (4 ms), BOC(1,1) (the CBOC(6,1,1/11) high-frequency component is ~1/11 of the power;
 /// modeling BOC(1,1) costs ~0.4 dB -- standard practice). 25-chip CS25 secondary (100 ms).
@@ -194,8 +211,8 @@ inline constexpr SignalDescriptor BDS_B2A_P = {
 /// pilot (CL) component. Likewise L5 splits into I5 (data) and Q5 (pilot).
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
-         {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
-          &GAL_E1B, &BDS_B1C_P, &GAL_E5A_Q, &BDS_B2A_P})
+         {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GPS_L5_Q_NH,
+          &GAL_E1C, &GAL_E1B, &BDS_B1C_P, &GAL_E5A_Q, &BDS_B2A_P})
         if (name == s->name)
             return s;
     return nullptr;

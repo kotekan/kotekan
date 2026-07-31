@@ -166,7 +166,9 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args):
                  "conjugate": True,
                  "gpu_mem_input": f"{pre}voltage",
                  "gpu_mem_output": f"{pre}epl",
-                 "signal": sig["primary"],
+                 # NH-baked tracker code (2026-07-31): multi-period records despread the bare
+                 # primary to ~zero (NH20 partial sums cancel); see chord_gnss_node.yaml.
+                 "signal": sig.get("tracker", sig["primary"]),
                  "prns": args.prns,
                  "n_channels": n_chan,
                  "n_elements": n_elem,

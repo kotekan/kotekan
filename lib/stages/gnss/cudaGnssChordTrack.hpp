@@ -146,11 +146,17 @@ public:
  *       [hop][chan][elem] order, so there is nothing to transpose into.
  *
  * RECORD LENGTH. hops_per_record defaults to 2048 (10.49 ms at CHORD's 5.12 us hop), which
- * divides the tap's 8192-hop frame exactly 4 ways and stays under the 20 ms NH20 secondary
- * period -- so a record straddles at most ONE overlay transition, which is exactly the case
- * P_HEAD/m_head exists to handle. A code period is 195.3125 hops, NOT an integer, which is
- * fine: the despread anchors to an absolute sample index with exact cp0/cps, so nothing
- * requires whole hops per period.
+ * divides the tap's 8192-hop frame exactly 4 ways. TWO LESSONS bought on sky (2026-07-31),
+ * both consequences of records NOT being code-period aligned (airspy's are: 1 ms exactly):
+ *   1. The extrapolation must add the NOMINAL code advance (52.3776 chips/hop) between
+ *      records -- airspy's residual-only formula is correct there ONLY because its nominal
+ *      advance mod L is zero per record. See the ABSOLUTE EXTRAPOLATION comment in the cpp.
+ *   2. A 10.49 ms record spans ~10 NH20 overlay chips (1 ms EACH -- the 20 ms figure is the
+ *      SEQUENCE period, not the transition spacing), whose +-1 partial sums mostly cancel:
+ *      the bare-primary record of a snr-40 satellite despreads to noise. Trackers must use
+ *      GPS_L5_Q_NH (overlay baked into a 204600-chip code, 20 ms period) -- with which the
+ *      code-period boundary IS the overlay boundary, one per record at most, and the
+ *      P_HEAD/m_head machinery handles exactly that case as designed.
  *
  * @conf prns, n_channels, n_elements, elem_stride, frame_chan_stride
  * @conf hops_per_record   default 2048
