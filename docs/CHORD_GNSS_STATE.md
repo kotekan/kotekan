@@ -862,3 +862,16 @@ bright one, or stack more frames.
 **STILL REQUIRED: restart both node kotekans on 51b1ca034** (running instances at 18:20 predate
 it -- `curl -s localhost:12049/config | grep channel_ids` returns nothing, so they are still
 correlating at DC).
+
+### The one calibration datum so far (use this to seed the first lock)
+
+    frame seq0 1874906635567104  (hop 114435219456, 2026-07-31 ~19:41:51 UTC)
+    PRN 32, model dop +189.7 Hz (model vs search agree to 7 Hz)
+    model  cp204 158356.27
+    MEASURED cp204 162833.09   ratio 49.8, grating lobes at 3.25-3.50 chip spacing
+    => delta_common = +4476.82 chips  (instrumental delay + receiver clock, common-mode)
+
+A second attempt 25 min later (seq0 1878764187287552) found nothing (ratio 2.5) because the
+satellite had left beam centre: **search detections are LATCHED and can be ~18 minutes stale**,
+so the snr shown in get_detections is NOT the snr at capture time. Capture immediately after a
+pass line appears in the log, and prefer a satellite whose snr is still RISING pass over pass.
