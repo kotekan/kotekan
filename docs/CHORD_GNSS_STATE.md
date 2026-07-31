@@ -1,17 +1,41 @@
-# CHORD GNSS — state of play, 2026-07-30
+# CHORD GNSS — state of play, 2026-07-31 (evening)
 
 Working state of the CHORD-side GNSS instrument on branch `kv/chord-gnss`.
 
-**Where we are:** the pipeline runs end to end on real sky with zero frame loss, the broker seeds
-nine GPS L5 satellites from BRDC, and the acquisition search is correctly configured. The two costs
-that made the search unusable are **fixed** (§5): a pass over 9 hinted PRNs was ~14 min and ~15 GB
-and is now **~1.4 min and ~150 MB**. A real numerics bug in the shared replica turned up on the
-way, and an 8-hour hang was waiting on the first detection. **No detection yet: the fixed search
-has not been run against sky.** That is the next thing to do, and the first number to read off it
-is the instrumental delay constant (§6).
+**READ THIS FIRST — the picture changed completely on 2026-07-31.** For weeks the tracker could
+not lock on anything. The cause was found this evening and it was not tuning, calibration or
+the clock: `GnssCudaDespread` synthesized every replica at `chan_offset + local`, i.e. a
+CONTIGUOUS subband, and CHORD's tap delivers a STRIDE-16 comb. With `chan_offset = 0` every
+CHORD replica was built at global bins 0..6 — DC — against data at 1176 MHz. **Every tracker
+correlation since first light was noise at every code phase** (§5k). Fixed in `51b1ca034`; the
+channel-id list is now the only API (`cae8cad2d`), so no front end can inherit that assumption.
 
-Read `config/chord_gnss_node.yaml` first — it is the source of truth and every measured number
-lives there. This file is the narrative: what works, what broke, and what is left.
+**Where we actually are:**
+* The tracker DESPREADS REAL SATELLITES. PRN 32's transit gives ratio 49.8 through the
+  tracker's own path, with the 3.27-chip grating lobes of the single-GPU comb resolved (§5l).
+* The search has been healthy throughout — snr up to 1084 on a transit — and was never
+  affected by the DC bug (it passes global channel ids).
+* **NO LOCK YET.** One thing blocks it: the code phase the search reports and the code phase
+  the tracker wants are in different currencies. An anchor bug in the search is proven (§5m),
+  and a further 391.26-chip acquire-vs-despread gap on IDENTICAL data is unexplained.
+* **START HERE NEXT SESSION:** extend `scripts/acq_conv.cpp` to push ONE injected synthetic
+  signal through both the acquire and `GnssCudaDespread`, and fix whichever misplaces the
+  known phase. Pure software, no sky, ~10 minutes. The despread side is already proven exact
+  (+0.000), so the acquire is the prime suspect. Do NOT run more live sweeps first — two
+  returned exact noise tonight and cost hours.
+* **HOLD the F-engine clock escalation** (§5h/§5j): the "±98 ns / 20 s breathing" was measured
+  through a correlator that was despreading noise, and the record-geometry bugs explain the
+  same pattern. Re-measure with the trim once tracking works.
+
+Six other real defects were found and fixed on 2026-07-31, each of which the DC bug had been
+masking: the missing nominal code advance per record and NH20 intra-record cancellation
+(`d37064e87`), the assembler's element-count energy offset (`2527e0298`), a lock statistic that
+provably could not see a lock (`db4c0fa45`), host-clock record stamps (`f2d2e9dd3`), and a
+silent no-op in the hint-gated search (`83e5110b0`). A 52-chip hop-truncation bug in every
+seeding script I wrote is fixed in `scripts/trim_lock2.py` (§5j).
+
+Read `config/chord_gnss_node.yaml` for measured constants. §§5i–5m are this day's narrative,
+newest last; §6 lists what remains.
 
 ---
 
@@ -932,6 +956,14 @@ ever worked. NOTE the caching tension: repl0 is cached across snapshots precisel
 anchor is fixed (Mp*fft_len); re-anchoring per snapshot would cost the 14 s/pass the banded+
 cached optimization bought (S5). The fix is therefore analytic (correct the reported cp by the
 window advance, or define cp0 consistently and document it), NOT re-anchoring.
+
+**REFERENCE DATASET, preserved:** `session_artifacts_20260730/data/`
+`p32_transit_frame_seq1874906635567104.raw` -- the 42 ms frame captured during PRN 32's
+transit (search snr 936), 8192 hops x 7 chan x 32 elem, 4+4b, gnss0's comb
+(5972 + 16k). Everything below reproduces from it offline, with no sky and no live node:
+    ./oracle2 <frame> 32 189.7 1874906635567104 158356.27 5115 0.5 0   -> ratio 49.8 @ 162833.09
+    ./audit_any <frame> 0 32 1 7 5972 1874906635567104                 -> acquire cp 8991.83
+(model cp204 at that hop = 158356.27, dop +189.7; primary of the oracle answer = 9383.09.)
 
 **STILL UNEXPLAINED, and the first thing to chase next:** on the SAME frame (f3.raw, P32
 transit), with the anchor handled correctly, the two paths still disagree:
