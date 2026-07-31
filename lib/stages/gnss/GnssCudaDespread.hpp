@@ -25,23 +25,20 @@
 class GnssCudaDespread {
 public:
     /// @param bank the tracker's replica bank (code tables, filter builder, geometry)
-    /// @param n_prn number of PRN slots  @param n_chan channels in this subband (<=64)
-    /// @param chan_offset GLOBAL index of local channel 0; the subband is assumed CONTIGUOUS
-    ///        (global = chan_offset + local). True for the airspy node, FALSE for CHORD --
-    ///        use the chan_ids overload there.
+    /// @param n_prn number of PRN slots
+    /// @param chan_ids the GLOBAL bin index of every local channel, IN LOCAL ORDER (<=64).
+    ///        ARBITRARY: no contiguity, ordering, uniform spacing or comb structure is
+    ///        assumed or checked -- whatever the front end presents is what gets synthesized.
+    ///        Each local channel's replica is built at the sky frequency of ITS OWN bin,
+    ///        because the PFB filter is per bin centre.
     /// @param refresh_hz rebuild a PRN's Phi bucket when its Doppler moves further than this
-    GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn, int n_chan, int chan_offset,
-                     int n_hops, double sample_rate, double f_offset, double refresh_hz = 100.0);
-
-    /// SPARSE-COMB overload: the GLOBAL bin index of every local channel, in local order.
     ///
-    /// The channelized replica for local channel c must be synthesized at the SKY FREQUENCY of
-    /// the bin it came from (the PFB filter is built per bin centre), so a receiver whose
-    /// channels are not a contiguous run cannot be described by an offset. CHORD's tap hands
-    /// the tracker a stride-16 comb (e.g. 5972, 5988, ... 6076); with the offset constructor
-    /// those became global bins 0..6 -- replicas near DC against data at 1176 MHz, i.e. noise,
-    /// at every code phase, forever. Found 2026-07-31 with a noiseless synthetic-signal test
-    /// after the sky refused to lock. The search never had this bug: it passes global ids.
+    /// There is deliberately NO offset/count form. There was one (`chan_offset + local`), it
+    /// suited the airspy node's contiguous subband, and passing 0 for CHORD's stride-16 comb
+    /// synthesized every replica near DC against data at 1176 MHz -- noise at every code
+    /// phase, for weeks, invisible to every self-consistent test. A caller with a contiguous
+    /// subband can say so in one line (std::iota); a caller with an arbitrary channel set now
+    /// has no way to get it silently wrong.
     GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn,
                      const std::vector<int>& chan_ids, int n_hops, double sample_rate,
                      double f_offset, double refresh_hz = 100.0);

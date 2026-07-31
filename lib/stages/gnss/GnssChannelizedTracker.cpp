@@ -14,7 +14,8 @@
 #include <algorithm> // for fill
 #include <array>     // for array (GPU despread results)
 #include <chrono>    // for system_clock
-#include <cmath>     // for nan, arg, norm, isnan, fabs
+#include <cmath>
+#include <numeric>
 #include <complex>   // for complex, arg, norm
 #include <cstring>   // for memcpy
 #include <set>       // for set
@@ -131,8 +132,12 @@ GnssChannelizedTracker::GnssChannelizedTracker(Config& config, const std::string
     _use_cuda = config.get_default<bool>(unique_name, "use_cuda", false);
     if (_use_cuda) {
 #ifdef GNSS_CUDA
-        _cuda = std::make_shared<GnssCudaDespread>(*_replica, (int)_prns.size(), _n_chan,
-                                                   _chan_offset, _hops_per_record, _sample_rate,
+        // Contiguous subband here -- stated explicitly, since the despread now takes an
+        // arbitrary channel list (GnssCudaDespread.hpp).
+        std::vector<int> chan_ids((size_t)_n_chan);
+        std::iota(chan_ids.begin(), chan_ids.end(), _chan_offset);
+        _cuda = std::make_shared<GnssCudaDespread>(*_replica, (int)_prns.size(), chan_ids,
+                                                   _hops_per_record, _sample_rate,
                                                    _replica->f_offset());
         INFO("GNSS despread on GPU (use_cuda): {:d} PRN slots x E/P/L x {:d} channels",
              (int)_prns.size(), _n_chan);

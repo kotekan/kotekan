@@ -875,3 +875,29 @@ A second attempt 25 min later (seq0 1878764187287552) found nothing (ratio 2.5) 
 satellite had left beam centre: **search detections are LATCHED and can be ~18 minutes stale**,
 so the snr shown in get_detections is NOT the snr at capture time. Capture immediately after a
 pass line appears in the log, and prefer a satellite whose snr is still RISING pass over pass.
+
+### Channel-set generality (audited 2026-07-31, after the DC-replica bug)
+
+The upstream is more general than a comb, so nothing downstream may assume one. Audit result:
+
+* **Already general, takes the list verbatim:** `GnssChordVoltageTap` (`chan_ids`), the replica
+  bank (`hoprate_filter(want, ...)`, `channels_hoprate(..., want, ...)`),
+  `GnssChannelizedSearch::local_of_global` (arbitrary id list; falls back to offset+count only
+  when no list is configured), `gnssBandPlan` (enumerates, no stride logic), the NxM kernel
+  (`chan_ids` is a data-layout map).
+* **Was the exception, now removed:** `GnssCudaDespread` had an `(n_chan, chan_offset)`
+  constructor -- `global = chan_offset + local`. It is DELETED. The channel-id list is the only
+  form, so no caller can silently assume contiguity; the two airspy sites, whose subbands
+  genuinely are contiguous, now say so in one `std::iota` line. The constructor also validates
+  ids against `spectrum_length()` and rejects duplicates (a repeated bin would double that
+  channel's weight in the coherent sum and bias every correlation).
+* **Guarded by a test** (`scripts/irregular_test.cpp`): an UNSORTED, IRREGULARLY SPACED set
+  {6020, 5972, 6068, 5975, 6023, 5988, 6119} -- gaps of 16, 3, 45, 1, 96, 7 -- synthesizes and
+  despreads at exactly the injected code phase (offset +0.000, ratio 22.1). Run it after any
+  change to channel handling; it fails loudly if structure creeps back in.
+
+No spacing, ordering, contiguity or comb assumption remains in the synthesis path. What DOES
+depend on the channel geometry is the *interpretation* of results, not their correctness: the
+correlation's grating-lobe spacing is 1/(channel spacing) (3.27 chips for CHORD's stride-16
+single-GPU comb, 13.09 for the 27-channel union), and an irregular set simply gives a messier
+ambiguity pattern rather than a wrong answer.

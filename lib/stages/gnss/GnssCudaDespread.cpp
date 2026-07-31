@@ -51,25 +51,30 @@ struct GnssCudaDespread::Impl {
     std::vector<gnss_cuda::PeelJob> h_pjobs; // peel staging (pageable: H2D is host-sync on return)
     std::vector<float2> h_gains;             // [job][head|tail][chan]
 
-    Impl(gnss::ChannelizedReplicaBank& b, int np, int nc, int coff, int nh, double fs_, double fo,
-         double rh, const std::vector<int>* ids = nullptr) :
+    Impl(gnss::ChannelizedReplicaBank& b, int np, int nc, int nh, double fs_, double fo,
+         double rh, const std::vector<int>& ids) :
         bank(b), n_prn(np), n_chan(nc), n_hops(nh), fs(fs_), f_off(fo), refresh_hz(rh) {
-        // Phi tables index by LOCAL channel ci but must be built at the GLOBAL channel
-        // frequency (the bin's absolute position in the band -- the PFB filter is per bin
-        // centre). `ids` gives those directly (sparse combs); `coff` is the contiguous
-        // shorthand global = coff + local. See the hpp for what passing 0 cost us.
+        // Phi tables index by LOCAL channel ci; each is built at the GLOBAL bin's centre
+        // frequency, taken verbatim from `ids`. NO structure is assumed -- the list may be
+        // sparse, unsorted, irregularly spaced, or a single channel.
         if (nc > 64)
             throw std::runtime_error("GnssCudaDespread: >64 channels needs a wider chan_mask");
+        if (nc <= 0)
+            throw std::runtime_error("GnssCudaDespread: empty channel list");
         Lf = bank.fft_len() * 4; // num_taps -- matches the bank's prototype (pfb num_taps)
         // NB the bank doesn't expose num_taps; derive Lf from a probe filter below instead.
-        if (ids) {
-            if ((int)ids->size() != nc)
-                throw std::runtime_error("GnssCudaDespread: chan_ids size != n_chan");
-            all_chans = *ids;
-        } else {
-            all_chans.resize(nc);
-            for (int c = 0; c < nc; ++c)
-                all_chans[c] = coff + c;
+        all_chans = ids;
+        // Validate against the spectrum, and reject duplicates: a repeated bin would double
+        // that channel's weight in the coherent sum and quietly bias every correlation.
+        for (int i = 0; i < nc; ++i) {
+            if (all_chans[i] < 0 || all_chans[i] >= bank.spectrum_length())
+                throw std::runtime_error("GnssCudaDespread: channel id "
+                                         + std::to_string(all_chans[i]) + " outside [0, "
+                                         + std::to_string(bank.spectrum_length()) + ")");
+            for (int j = 0; j < i; ++j)
+                if (all_chans[i] == all_chans[j])
+                    throw std::runtime_error("GnssCudaDespread: duplicate channel id "
+                                             + std::to_string(all_chans[i]));
         }
         const auto probe = bank.hoprate_filter(all_chans, 0.0);
         Lf = (int)probe.PhiA[0].size() - 1;
@@ -179,16 +184,11 @@ struct GnssCudaDespread::Impl {
     }
 };
 
-GnssCudaDespread::GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn, int n_chan,
-                                   int chan_offset, int n_hops, double sample_rate,
-                                   double f_offset, double refresh_hz) :
-    _impl(new Impl(bank, n_prn, n_chan, chan_offset, n_hops, sample_rate, f_offset, refresh_hz)) {}
-
 GnssCudaDespread::GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn,
                                    const std::vector<int>& chan_ids, int n_hops,
                                    double sample_rate, double f_offset, double refresh_hz) :
-    _impl(new Impl(bank, n_prn, (int)chan_ids.size(), 0, n_hops, sample_rate, f_offset,
-                   refresh_hz, &chan_ids)) {}
+    _impl(new Impl(bank, n_prn, (int)chan_ids.size(), n_hops, sample_rate, f_offset, refresh_hz,
+                   chan_ids)) {}
 
 GnssCudaDespread::~GnssCudaDespread() = default;
 

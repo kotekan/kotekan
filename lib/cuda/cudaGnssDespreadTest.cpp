@@ -833,7 +833,9 @@ int main(int argc, char** argv) {
                                            dsp::window_from_string("hamming"), prns);
         const int bn_hops = bbank.repl_period_hops(); // 1000 @ L1/20MSPS
         const int bfft_len = 2 * bN;
-        GnssCudaDespread gpu(bbank, bench_prn, bN, 0, bn_hops, bfs, bf_off);
+        std::vector<int> bench_ids((size_t)bN);
+        std::iota(bench_ids.begin(), bench_ids.end(), 0); // contiguous 0..bN-1 for the bench
+        GnssCudaDespread gpu(bbank, bench_prn, bench_ids, bn_hops, bfs, bf_off);
         std::vector<cf> win((size_t)bn_hops * bN);
         for (auto& v : win)
             v = cf((float)frand(), (float)frand());

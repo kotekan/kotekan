@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cstdio>
 #include <limits>
+#include <numeric>
 #include <set>
 
 using kotekan::bufferContainer;
@@ -106,9 +107,13 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
     // despread decodes with the per-channel scales riding the frame metadata.
     quantized = config.get_default<bool>(unique_name, "quantized_input", false);
 
-    despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, n_chan, chan_offset,
-                                                  hops_per_record, sample_rate,
-                                                  replica->f_offset());
+    // This receiver's subband IS contiguous (channel_offset .. +n_chan), so say so explicitly.
+    // The despread takes an arbitrary channel list -- see GnssCudaDespread.hpp for why there
+    // is no offset form any more.
+    std::vector<int> chan_ids((size_t)n_chan);
+    std::iota(chan_ids.begin(), chan_ids.end(), chan_offset);
+    despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, chan_ids, hops_per_record,
+                                                  sample_rate, replica->f_offset());
 
     dop.assign(n_prn, 0.0);
     cp.assign(n_prn, 0.0);
