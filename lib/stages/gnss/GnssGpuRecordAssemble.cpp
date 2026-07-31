@@ -100,8 +100,17 @@ void GnssGpuRecordAssemble::main_thread() {
         const int64_t* winstart = (const int64_t*)(in + off_winstart());
         const PrnCtl* pctl = (const PrnCtl*)(in + off_prnctl());
         const double* corr = (const double*)(in + off_corr(n_prn));      // double2 rows
-        const double* energy =
-            (const double*)(in + off_energy(n_prn, n_chan, n_rows_spec));
+        // The energy block sits AFTER the corr block, whose size scales with the ELEMENT axis
+        // -- the writer passes its n_elem (cudaGnssChordTrack: 32), so the reader must too, or
+        // every "energy" lands inside the corr block: garbage when enough PRNs run to fill
+        // that far (which is why sparse days flickered and broker-full days "worked"), zeros
+        // when few do -- and a zero P_ENERGY makes the combiner treat the record as inactive,
+        // so 2-PRN seeding produced structurally-perfect numerically-zero records
+        // (found 2026-07-31, first trim-port test). Airspy configs set n_elements 0 -> 1,
+        // matching cudaGnssTrack's element-free layout.
+        const double* energy = (const double*)(in
+                                               + off_energy(n_prn, n_chan, n_rows_spec,
+                                                            (_n_elements > 0) ? _n_elements : 1));
 
         for (int r = 0; r < hdr.n_rec && !stop_thread; ++r) {
             float* out = (float*)out_buf->wait_for_empty_frame(unique_name, frame_out);
