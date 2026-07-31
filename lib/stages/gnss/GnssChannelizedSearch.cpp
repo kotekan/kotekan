@@ -265,7 +265,7 @@ void GnssChannelizedSearch::search_snapshot() {
             //   coarse= cross-channel acquire cp (pre-refine)   refine= +- from refine
             //   off/drift = nominal + code-Doppler back-reference to sample 0
             //   cp0   = final reported code phase
-            INFO("GnssChannelizedSearch[{:s}]: PRN {:d} snr {:.1f} dop {:+.0f} | hop {:d} "
+            DEBUG("GnssChannelizedSearch[{:s}]: PRN {:d} snr {:.1f} dop {:+.0f} | hop {:d} "
                  "coarse {:.2f} refine {:+.2f} off {:.2f} drift {:.2f} -> cp0 {:.2f}",
                  unique_name, _prns[p], a.snr, dop, _snap_start_hop, a.code_phase_chips,
                  best_cp - a.code_phase_chips, off, drift, cp);

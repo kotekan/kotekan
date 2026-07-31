@@ -440,7 +440,7 @@ void cudaGnssTrack::verify_addback(cudaGnssTrackState& S, const void* d_window, 
     // Prove the function is REACHED, throttled to once per health interval. Without this,
     // "0 PRNs compared" cannot be told apart from "never called".
     if ((_verify_ctr / (unsigned long long)S.peel_verify_every) % 50 == 0)
-        INFO("peel-verify[{:s}]: entered, n_spec={:d} n_chan={:d}", S.peel_tag, n_spec, nc);
+        DEBUG("peel-verify[{:s}]: entered, n_spec={:d} n_chan={:d}", S.peel_tag, n_spec, nc);
 
     double2* d_vcorr = (double2*)device.get_gpu_memory(
         _mem_vcorr, (size_t)gnss_gpu::max_specs(S.n_prn) * nc * 4 * sizeof(double2));
