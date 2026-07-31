@@ -43,6 +43,18 @@ F_REL = -4.442807633e-10     # relativistic clock coefficient (s/sqrt(m))
 CACHE = os.path.join(os.path.expanduser("~"), ".cache", "kotekan_gps")
 
 
+def _atomic_write_bytes(path, data):
+    """Write `data` to `path` atomically: a sibling .tmp then os.replace (atomic on the same
+    filesystem). The cache is SHARED across the per-band obs loggers, so a plain open().write()
+    lets another band's reader hit a half-written gzip mid-download -> parse exception ->
+    'geometry omitted' -> a dropped az/el row (the L2C/L5 beam-map coverage gap). os.replace
+    makes readers see only the old or the new file, never a torn one."""
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+
+
 def _earthdata_token():
     """Earthdata bearer token for the CDDIS BRDC mirror, from $EARTHDATA_TOKEN or
     <cache>/.earthdata_token (chmod 600, never committed). None -> CDDIS is skipped."""
@@ -144,8 +156,8 @@ def _fetch_station_hourly(when, cache_dir, token):
                 break
         if header and bodies:
             local = os.path.join(cache_dir, "hourly_MN.rnx.gz")
-            with gzip.open(local, "wt") as f:
-                f.write(header + "".join(bodies))
+            _atomic_write_bytes(local, gzip.compress(
+                (header + "".join(bodies)).encode("ascii", "replace")))
             return local
     return None
 
@@ -167,7 +179,7 @@ def _try_refresh_daily(kind, year, doy, cache_dir, tok):
                 data = r.read()
             if data[:2] != b"\x1f\x8b":
                 continue  # not gzip (login/error/404 page) -> next mirror
-            open(local, "wb").write(data)
+            _atomic_write_bytes(local, data)
             return local
         except Exception:
             continue
@@ -244,7 +256,7 @@ def _fetch_brdc_merged(when=None, cache_dir=CACHE):
                         data = r.read()
                     if data[:2] != b"\x1f\x8b":
                         continue  # not gzip (login/error page) -> try the next mirror
-                    open(local, "wb").write(data)
+                    _atomic_write_bytes(local, data)
                     return local
                 except Exception:
                     continue
