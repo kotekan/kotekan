@@ -704,6 +704,15 @@ def main(argv=None):
                          "then SOLVE the receiver clock from measured code phases. CHORD's "
                          "frame 0 is disciplined to GPS via IRIG-B/PPS and is exact, so the "
                          "anchor is a fact rather than an estimate.")
+    ap.add_argument("--dr-clock-drift", type=float, default=None,
+                    help="CHORD: prime the dead-reckon clock DRIFT (chips/s). The drift "
+                         "estimator needs consecutive multi-sat solutions 0.5-30 s apart; a "
+                         "search whose passes take minutes never provides them, so drift pins "
+                         "to zero on stale repeats and the clock freezes while the true "
+                         "receiver clock walks (measured 0.044 chips/s = +5 Hz at L5 on the "
+                         "CHORD GPSDO). Priming it makes the age-correction terms treat "
+                         "minutes-old detections consistently, which is what lets a "
+                         "slow-cadence search bootstrap the fast tracker loop.")
     ap.add_argument("--dr-clock-chips", type=float, default=None,
                     help="CHORD: prime the dead-reckon receiver clock (chips) instead of "
                          "bootstrapping it from measured code phases. THIS IS WHAT LETS A NODE "
@@ -1023,6 +1032,10 @@ def main(argv=None):
                     # locks, so a wrong constant self-corrects rather than persisting.
                     dr_state["clk"] = args.dr_clock_chips % float(args.code_length)
                     dr_state["clk_t"] = time.time()
+                    if args.dr_clock_drift is not None:
+                        dr_state["drift"] = float(args.dr_clock_drift)
+                        _log("dead-reckon: clock DRIFT primed %+.4f chips/s"
+                             % dr_state["drift"])
                     _log("dead-reckon: receiver clock PRIMED %.2f chips = %.3f us (no search "
                          "stage; EMA refines from the first lock)"
                          % (dr_state["clk"], dr_state["clk"] / args.chip_rate_hz * 1e6))
