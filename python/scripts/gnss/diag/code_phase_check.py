@@ -99,7 +99,18 @@ def main():
     ap.add_argument("--t-code", type=float, default=1e-3, help="code period (s)")
     ap.add_argument("--carrier-hz", type=float, default=1575.42e6)
     ap.add_argument("--min-snr", type=float, default=10.0, help="search detection SNR floor")
-    ap.add_argument("--min-amp-snr", type=float, default=8.0, help="combiner amp_snr floor")
+    ap.add_argument("--min-amp-snr", type=float, default=30.0,
+                    help="combiner amp_snr floor. MATCHES gnss_tec.py's science gate (2026-07-31): "
+                         "the code observable is only meaningful where the CARRIER has converged, "
+                         "because the reconstruction propagates cp at the REPORTED doppler and a "
+                         "marginal sat's reported doppler is not the carrier the code actually rode. "
+                         "A weak/coasting sat (amp_snr<30, coherence_s 0, tens-of-Hz carrier_hz_resid) "
+                         "reconstructs to tens of chips NOT because REC_CP is wrong but because its "
+                         "own carrier is -- it is excluded from TEC for the same reason. Was 8.0, "
+                         "which let PRN30 (amp_snr 14.7, resid -32 Hz) masquerade as a 53-chip BREAK.")
+    ap.add_argument("--require-coherent", type=int, default=1,
+                    help="1 = also require coherence_s>0 (certified-coherent carrier, the exact gate "
+                         "gnss_tec.py uses). Cleanly separates converged sats from coasting ones.")
     ap.add_argument("--lat", type=float, default=43.968697)
     ap.add_argument("--lon", type=float, default=-79.252106)
     ap.add_argument("--alt", type=float, default=260.0)
@@ -128,6 +139,8 @@ def main():
     for c in get("%s/%s/get_status" % (args.url, args.combiner_stage)):
         if (c.get("code_phase_chips") or 0) == 0 or (c.get("amp_snr") or 0) < args.min_amp_snr:
             continue
+        if args.require_coherent and not ((c.get("coherence_s") or 0) > 0):
+            continue  # coasting/marginal carrier -> reported doppler != carrier the code rode
         r = reconstruct(c["code_phase_chips"], c.get("doppler_hz") or 0.0, c["utc"],
                         int(c["prn"]), eph, utc0, args)
         if r is not None:
