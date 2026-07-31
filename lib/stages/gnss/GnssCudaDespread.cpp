@@ -52,18 +52,25 @@ struct GnssCudaDespread::Impl {
     std::vector<float2> h_gains;             // [job][head|tail][chan]
 
     Impl(gnss::ChannelizedReplicaBank& b, int np, int nc, int coff, int nh, double fs_, double fo,
-         double rh) :
+         double rh, const std::vector<int>* ids = nullptr) :
         bank(b), n_prn(np), n_chan(nc), n_hops(nh), fs(fs_), f_off(fo), refresh_hz(rh) {
         // Phi tables index by LOCAL channel ci but must be built at the GLOBAL channel
-        // frequency (the subband's absolute position in the band) -- chan_offset maps them.
-        (void)coff;
+        // frequency (the bin's absolute position in the band -- the PFB filter is per bin
+        // centre). `ids` gives those directly (sparse combs); `coff` is the contiguous
+        // shorthand global = coff + local. See the hpp for what passing 0 cost us.
         if (nc > 64)
             throw std::runtime_error("GnssCudaDespread: >64 channels needs a wider chan_mask");
         Lf = bank.fft_len() * 4; // num_taps -- matches the bank's prototype (pfb num_taps)
         // NB the bank doesn't expose num_taps; derive Lf from a probe filter below instead.
-        all_chans.resize(nc);
-        for (int c = 0; c < nc; ++c)
-            all_chans[c] = coff + c;
+        if (ids) {
+            if ((int)ids->size() != nc)
+                throw std::runtime_error("GnssCudaDespread: chan_ids size != n_chan");
+            all_chans = *ids;
+        } else {
+            all_chans.resize(nc);
+            for (int c = 0; c < nc; ++c)
+                all_chans[c] = coff + c;
+        }
         const auto probe = bank.hoprate_filter(all_chans, 0.0);
         Lf = (int)probe.PhiA[0].size() - 1;
 
@@ -176,6 +183,12 @@ GnssCudaDespread::GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn
                                    int chan_offset, int n_hops, double sample_rate,
                                    double f_offset, double refresh_hz) :
     _impl(new Impl(bank, n_prn, n_chan, chan_offset, n_hops, sample_rate, f_offset, refresh_hz)) {}
+
+GnssCudaDespread::GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn,
+                                   const std::vector<int>& chan_ids, int n_hops,
+                                   double sample_rate, double f_offset, double refresh_hz) :
+    _impl(new Impl(bank, n_prn, (int)chan_ids.size(), 0, n_hops, sample_rate, f_offset,
+                   refresh_hz, &chan_ids)) {}
 
 GnssCudaDespread::~GnssCudaDespread() = default;
 

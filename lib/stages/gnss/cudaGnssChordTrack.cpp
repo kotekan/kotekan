@@ -68,12 +68,19 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     if (!sig)
         FATAL_ERROR("cudaGnssChordTrack: unknown signal '{:s}'", signame);
 
-    // The tap already selected the covering channels, so locally they are 0..n_chan-1 and every
-    // one of them is covered. (The band plan decided WHICH sky channels those are; see
-    // config/chord_band_plan.py, which mirrors gnssBandPlan.cpp.)
+    // The tap already selected the covering channels, so in the DATA they are dense
+    // 0..n_chan-1 and every one is covered. Their SKY identity is a different matter: the
+    // replica for local channel c must be synthesized at the centre frequency of the global
+    // bin it came from, and CHORD's comb is stride-16 (5972, 5988, ...), not contiguous.
+    // `channel_ids` carries those global bins, in local order.
     covering.resize((size_t)n_chan);
     for (int c = 0; c < n_chan; ++c)
         covering[(size_t)c] = c;
+    channel_ids = config.get<std::vector<int>>(unique_name, "channel_ids");
+    if ((int)channel_ids.size() != n_chan)
+        FATAL_ERROR("cudaGnssChordTrack: channel_ids has {:d} entries but n_channels is {:d} -- "
+                    "these are the GLOBAL bins of this GPU's covering comb, in local order.",
+                    (int)channel_ids.size(), n_chan);
 
     // The replica bank must be built with the F-ENGINE's exact PFB, or the channelized replica
     // does not match the data: CHORD is a 4-tap Hamming critically-sampled bank over 8192
@@ -82,8 +89,11 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     replica = std::make_unique<gnss::ChannelizedReplicaBank>(
         *sig, sample_rate, f_offset_hz, N, /*num_taps=*/4, dsp::window_from_string("hamming"),
         prns);
-    despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, n_chan, /*chan_offset=*/0,
-                                                 hops_per_record, sample_rate, f_offset_hz);
+    // SPARSE comb -> the chan_ids overload. Passing chan_offset 0 here built every replica at
+    // global bins 0..6 (DC) while the data sat at 5972..6076: noise at every code phase, which
+    // is why nothing ever locked (found 2026-07-31). See GnssCudaDespread.hpp.
+    despread = std::make_unique<GnssCudaDespread>(*replica, n_prn, channel_ids, hops_per_record,
+                                                 sample_rate, f_offset_hz);
 
     seeds.assign((size_t)n_prn, Seed{});
     trim.assign((size_t)n_prn, 0.0);

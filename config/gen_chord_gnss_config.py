@@ -83,7 +83,7 @@ def gpu_of_channel(cfg, node, freq_id):
     raise SystemExit(f"freq_id {freq_id} is not on {node} (offsets {off16})")
 
 
-def build_gnss_branch(cfg, node, gpu, chan_idx, args):
+def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
     """The GNSS stages+buffers to inject, for one GPU's covering channels."""
     sig = cfg["signals"]
     rt = cfg["runtime"]
@@ -169,6 +169,11 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args):
                  # NH-baked tracker code (2026-07-31): multi-period records despread the bare
                  # primary to ~zero (NH20 partial sums cancel); see chord_gnss_node.yaml.
                  "signal": sig.get("tracker", sig["primary"]),
+                 # GLOBAL bins of this GPU's covering comb, in the tap's local order. The
+                 # replica for a channel must be built at ITS OWN sky frequency, and CHORD's
+                 # comb is stride-16, so a contiguous chan_offset cannot describe it -- passing
+                 # 0 put every replica at DC and nothing ever locked (2026-07-31).
+                 "channel_ids": list(freq_ids if freq_ids is not None else chan_idx),
                  "prns": args.prns,
                  "n_channels": n_chan,
                  "n_elements": n_elem,
@@ -736,7 +741,8 @@ def main():
     record_floats = None
     for gpu, pairs in sorted(per_gpu.items()):
         blocks, record_floats, n_elem = build_gnss_branch(
-            cfg, args.node, gpu, [i for _, i in pairs], args)
+            cfg, args.node, gpu, [i for _, i in pairs], args,
+            freq_ids=[f for f, _ in pairs])
         out.update(blocks)
 
     hdr = [

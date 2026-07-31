@@ -207,7 +207,14 @@ gnss0_gpu:
   - gpu_mem: gnss0_voltage
     in_buf: gnss_volt_in
     name: cudaInputData
-  - code_trim: true
+  - channel_ids:
+    - 5984
+    - 6000
+    - 6016
+    - 6032
+    - 6048
+    - 6064
+    code_trim: true
     conjugate: true
     elem_stride: 32
     f_offset_hz: 1176450000.0
@@ -336,7 +343,15 @@ gnss1_gpu:
   - gpu_mem: gnss1_voltage
     in_buf: gnss_volt_in
     name: cudaInputData
-  - code_trim: true
+  - channel_ids:
+    - 5976
+    - 5992
+    - 6008
+    - 6024
+    - 6040
+    - 6056
+    - 6072
+    code_trim: true
     conjugate: true
     elem_stride: 32
     f_offset_hz: 1176450000.0

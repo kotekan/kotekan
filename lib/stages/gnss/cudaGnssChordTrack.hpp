@@ -117,7 +117,8 @@ public:
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> replica;
     std::unique_ptr<GnssCudaDespread> despread;
-    std::vector<int> covering; ///< local channel indices this signal occupies (0..n_chan-1)
+    std::vector<int> covering;    ///< local channel indices this signal occupies (0..n_chan-1)
+    std::vector<int> channel_ids; ///< GLOBAL bin of each local channel (sparse comb; @conf)
 };
 
 /**
