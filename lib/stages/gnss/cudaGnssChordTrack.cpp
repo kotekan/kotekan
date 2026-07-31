@@ -51,6 +51,7 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     trim_quality_min = config.get_default<double>(unique_name, "trim_quality_min", 2.2);
     trim_pow_alpha = config.get_default<double>(unique_name, "trim_pow_alpha", 0.05);
     trim_ref_elem = config.get_default<int>(unique_name, "trim_ref_elem", 0);
+    frame0_utc = config.get_default<double>(unique_name, "frame0_utc", 0.0);
 
     if (hops_per_record <= 0 || n_hops_frame % hops_per_record != 0)
         FATAL_ERROR("cudaGnssChordTrack: hops_per_record {:d} must divide samples_per_data_set "
@@ -281,7 +282,16 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
     hdr->n_chan = S.n_chan;
     hdr->n_rows_spec = gnss_gpu::ROWS_PLAIN;
     hdr->seq0 = seq0;
-    hdr->utc0 = 0.0;
+    // DATA time, not host time. With utc0 == 0 the assembler falls back to
+    // system_clock::now() at assembly, so every record is stamped with the host wall clock
+    // plus the pipeline latency -- unusable for anything that compares a record against the
+    // model (a 100 ms stamp error is 1e6 chips of code phase). frame0_utc is the F-engine's
+    // GPS-disciplined time of absolute sample 0 (the broker's telescope/time0_ns); with it
+    // set, record UTC = frame0_utc + wstart/sample_rate tracks the DATA (good to the ~0.24 us
+    // that a double can resolve at 1.8e9 s -- fine for the combiner's ms-level alignment and
+    // dead reckoning). Chip-level work must still use sample_seq/hop, which are exact
+    // integers: 0.24 us is 2.4 chips.
+    hdr->utc0 = S.frame0_utc;
 
     // DLL trim, step 1: fold in every completed E/P/L readback (enqueued by earlier frames'
     // executes; cudaEventQuery keeps this non-blocking, so an unfinished frame just waits its

@@ -189,7 +189,10 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args):
                  # loop fast enough for the clock chain's +-1 chip / ~20 s breathing. The
                  # broker's own DLL (3c) sees disc ~ 0 once this holds and stays quiet.
                  "code_trim": True,
-                 "trim_endpoint": f"/{pre}track/get_trim"},
+                 "trim_endpoint": f"/{pre}track/get_trim",
+                 # GPS-disciplined UTC of absolute sample 0 -- without it the assembler
+                 # stamps records with HOST wall clock (see cudaGnssChordTrack.cpp).
+                 "frame0_utc": float(cfg["fengine"].get("frame0_utc", 0.0))},
                 {"name": "cudaSyncOutput"},
                 {"name": "cudaOutputData", "gpu_mem": f"{pre}epl",
                  "out_buf": "gnss_epl_out"},

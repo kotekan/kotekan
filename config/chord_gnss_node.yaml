@@ -24,6 +24,12 @@ fengine:
   fft_length: 16384             # M real samples per frame
   num_bins: 8192                # positive-frequency bins
   channel_width_hz: 195312.5    # 1600 MHz / 8192
+  # GPS-disciplined UTC of absolute sample 0 (the F-engine's frame 0), from the live
+  # telescope/time0_ns endpoint. Records are stamped frame0_utc + wstart/sample_rate; with
+  # it 0 the assembler falls back to HOST wall clock at assembly time, which is unusable for
+  # comparing a record against the model (100 ms of stamp error = 1e6 chips of code phase).
+  # Re-read it after any F-engine restart -- it changes.
+  frame0_utc: 1784941003.000002861
   pfb_taps: 4                   # "Ntaps=4-tap Hamming window ... 18-bit coefficient resolution"
   pfb_window: hamming
   pfb_critically_sampled: true  # CASPER pfb_fir_real block
