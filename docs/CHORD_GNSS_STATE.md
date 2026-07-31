@@ -785,3 +785,40 @@ advanced cp). Its answer, minus what the seeder would command for that same fram
 (P10: 11335.40 at hop 113561591808, dop -51.6), IS the remaining bug. Structure of the residual
 tells the story: ~0 = seeding right and the fault is live-side; multiple of 10230 = NH phase;
 multiple of 4969.3 = record advance; else = the model/delta chain.
+
+## 5k. THE LOCK BLOCKER, FOUND 2026-07-31 EVENING: tracker replicas were built at DC
+
+`GnssCudaDespread` synthesized channelized replicas at `all_chans[c] = chan_offset + c` -- a
+CONTIGUOUS subband, which is what the airspy node has. CHORD's tap delivers a **stride-16
+comb** (cx19 gpu0: 5972, 5988, ... 6068), and `cudaGnssChordTrack` passed `chan_offset = 0`.
+So every replica was built for global bins **0..6 -- DC** -- while the data sat at 1176 MHz.
+**Every CHORD tracker correlation since first light was noise, at every code phase.** No seed,
+clk, NH alignment, trim or statistic could ever have locked. The SEARCH never had this bug: it
+passes global channel ids to `channels_hoprate`.
+
+Fixed (51b1ca034): a `chan_ids` overload taking each local channel's GLOBAL bin;
+`cudaGnssChordTrack` reads config `channel_ids`, generator-emitted per GPU, FATAL on size
+mismatch. Airspy's offset constructor untouched.
+
+**Why it survived every test.** It is invisible to self-consistent checks: the exactness gates
+compare GPU against GPU, or against a CPU replica built from the SAME wrong channel list, so
+they read 0.000e+00 all day. Only an INDEPENDENTLY generated signal exposes it.
+
+**THE TEST TO KEEP** (`scripts/conv_test.cpp`): synthesize data with the CPU bank at a known
+cp, scan the full code on the GPU, require the peak at offset +0.000 with a large ratio.
+    before: no peak anywhere, ratio 4.0,  |P| 9e5
+    after:  peak at cp_true exactly,      ratio 30.5, |P| 6.2e9   (x7000)
+It also settles the cp convention permanently: the bank's `code_phase_chips` and the GPU's
+`cp_seed` agree exactly at a common window (both window-referenced in the live usage). Run
+this BEFORE chasing sky, clk calibration, or lock statistics.
+
+**What this retroactively explains:** every q at its theoretical noise value 1.0-1.3 in the
+first trustworthy sweep; the flat NH scan; both oracle nulls (they used the same broken
+harness); and why the earlier fixes -- record advance, NH-baked code, EMA statistic,
+exact-epoch seeding -- were each necessary but individually untestable while this masked them.
+
+**NEXT (after restarting the node kotekans on 51b1ca034 + regenerated configs):** seed from a
+fresh strong search detection via scripts/trim_lock2.py (exact-epoch, per-sat delta ~148
+chips), then watch `get_trim`: q should climb toward ~3.6 with ema_frames filling, and the
+combiner amplitudes should lift off the 0.014 floor for the first time. Only after a real lock
+does the clock-oscillation question (5h/5j) become answerable.
