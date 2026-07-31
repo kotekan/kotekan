@@ -647,90 +647,7 @@ scripts + logs synced to ~/gnss/session_artifacts_20260730/. Sweep-proven per-sa
 (MY python-model currency, compute_clk.py/sweep_clk.py): P24 200.72, P25 191.12 (morning),
 P9 ~192.9, P26 ~202.1 (night).
 
-## 6. Also outstanding
-
-* **Instrumental delay: partially measured, but the number below is NOT yet trustworthy.**
-  A common ~148-chip term appeared in the search-vs-model deltas across satellites (P8 +136..140,
-  P10 +151..155, P24 +134..138, P23 +149, P27 +155, P32 +148), with a reproducible ±9-chip
-  per-satellite spread seen on two separate days. TREAT IT AS PROVISIONAL: those deltas are
-  built on the search's reported code phase, which §5m proves carries an anchor artefact, and
-  the direct oracle measurement of the same quantity for P32 disagreed by thousands of chips.
-  Re-derive the constant once the acquire-vs-despread question is settled — the oracle
-  (`scripts/oracle2.cpp`) measures it directly and needs only one transit-strength satellite.
-  The cable term is well determined —
-  100 m LMR-400 (vf 0.85) + 6 m LMR-195 (vf 0.83) = **4.26 ± 0.18 chips**, comfortably inside
-  the ±0.5-chip DLL capture. What is NOT known is the F-engine's internal pipeline/framing
-  offset (one frame = 52.4 chips; PFB group delay = 104.8 chips, and whether it cancels because
-  the replica goes through the same PFB is an argument, not a measurement). The search is meant
-  to measure this: its reported code phase minus the model prediction IS the constant. Once
-  measured it goes in `chord_gnss_node.yaml` and dead-reckon cold-start works permanently.
-* **`rawFileWrite` makes one file per frame** — 19/s ≈ 1.6 M files and 86 GB/day. Fine for a
-  test, wrong for a soak. Raise `output_every` or use an appending writer.
-* **Frequency axis collapse** is an early priority once there is proof of life — see the
-  `roadmap` block in `chord_gnss_node.yaml`. BOC signals make it critical, not cosmetic.
-* **The per-satellite ±9-chip spread is real and unexplained** (seen 2026-07-30 and again
-  2026-07-31, in two different currencies). Suspects unchanged: SV-clock relativistic term,
-  TGD, or a per-PRN code-generation offset. Only worth chasing after a lock, when the trim
-  measures each satellite's residual directly.
-* **A grinding search worker ignores SIGTERM** (it cannot check `stop_thread` mid-FFT), so it
-  holds its REST port and the replacement instance fails to bind and exits silently. Use
-  `kill -9` when restarting the search.
-
-## 7. How to run it
-
-```bash
-# search instance -- ordinary user, no DPDK/GPU/hugepages, fully dry-runnable
-./build/kotekan/kotekan --config config/generated/chord_gnss_search_cx19.yaml \
-    --bind-address 0.0.0.0:12050
-
-# node instance -- needs sudo for DPDK hugepages (/dev/hugepages is root:root, and
-# /dev/vfio/{19,38} too, so the group route needs BOTH; sudo is simpler for debugging)
-sudo ./build/kotekan/kotekan --config config/generated/chord_gnss_cx19.yaml \
-    --bind-address 0.0.0.0:12049
-
-# broker -- note -u (python buffers stdout when piped and you lose everything on kill), and
-# note --dr-clock-chips: WITHOUT IT the trackers are seeded with an empty list and every record
-# comes out structurally perfect and numerically zero. See 5b.
-PYTHONUNBUFFERED=1 /home/kvand/gnss/venv/bin/python -u \
-  python/scripts/gnss/gps_distributed_broker.py \
-  --rest-url http://localhost:12049 \
-  --detectors http://localhost:12050/srch0_search,http://localhost:12050/srch1_search \
-  --trackers gnss0_track,gnss1_track --combiner gnss0_combine \
-  --almanac --almanac-source brdc --dead-reckon --narrow-search \
-  --time0-endpoint telescope/time0_ns --dr-clock-chips 0.0 \
-  --constellation G --carrier-hz 1176.45e6 --code-length 10230 --hops-per-sec 195312.5 \
-  --lat 49.32075144444 --lon -119.62081125 --alt 545 --mask-deg 0 --interval 2
-```
-
-Ports: **12048** production (choco owns it; the generator REFUSES to emit it), **12049** node,
-**12050** search, **11040/11041** the raw-voltage feed. Always validate with
-`sudo ... --dry-run` before a real run — it is the only way to exercise the full graph including
-DPDK, and it is what would have caught the pruned-ingest-stage stall.
-
-**Regenerate, never hand-edit:**
-```bash
-python3 config/gen_chord_gnss_config.py --base <base.json> --node cx19 \
-    --search-element 23 [--search-instance] --out config/generated/...
-```
-where `<base.json>` is `curl -s http://cx19:12048/config` from a node running production.
-
-## 8. Operational notes
-
-* Cores: DPDK owns 5-7 and 21-23 (0% idle) plus their isolcpus siblings — never touch. Our
-  stages use NUMA1: 19, 24, 31, 57-63.
-* `/home/kvand` is NFS shared across all eight nodes at the same path (code, config, venv);
-  records must go to local disk (`/data/gnss`, 2.6 TB free).
-* venv at `/home/kvand/gnss/venv` (skyfield 1.54 + numpy/scipy/h5py/yaml/requests).
-* `kvand` has sudo (password), and is in `docker`. Passwordless is NOT configured.
-* choco has a per-node **maintenance mode** ("choco will not push"). It must be ON while we run,
-  or choco may push a production config over us mid-run.
-* **Cyg A transits ~07:2x UTC**, 81.5° elevation, drifting 3m56s earlier daily. Several dishes
-  use it for beam maps and noise temperature; keep the X-engine healthy ±4 h around it.
-* Eight nodes: cx19(4) cx27(0) cx42(5) cx43(6) cx44(2) cx47(3) cx51(7) cx52(1), where the number
-  is the mod-8 comb offset. Together they tile the science band exactly.
-
-## 5i. AFTERNOON/EVENING 2026-07-31: the trim was necessary but NOT sufficient -- two
-## structural despread killers found and fixed (d37064e87), offline-verified on sky
+## 5i. AFTERNOON/EVENING 2026-07-31: the trim was necessary but NOT sufficient -- two structural despread killers found and fixed (d37064e87)
 
 Chronology: trim port deployed and mechanically verified (loop runs, gate holds on noise)
 -> records structurally dead -> assembler energy-offset bug fixed (2527e0298) -> still no
@@ -990,3 +907,85 @@ are in the repo and run offline in minutes: extend `acq_conv.cpp` to ALSO despre
 synthetic injection through GnssCudaDespread, and whichever tool misplaces the known phase is
 the one to fix. Do this BEFORE any further live seeding -- it is a pure software question and
 needs no sky.
+
+## 6. Also outstanding
+
+* **Instrumental delay: partially measured, but the number below is NOT yet trustworthy.**
+  A common ~148-chip term appeared in the search-vs-model deltas across satellites (P8 +136..140,
+  P10 +151..155, P24 +134..138, P23 +149, P27 +155, P32 +148), with a reproducible ±9-chip
+  per-satellite spread seen on two separate days. TREAT IT AS PROVISIONAL: those deltas are
+  built on the search's reported code phase, which §5m proves carries an anchor artefact, and
+  the direct oracle measurement of the same quantity for P32 disagreed by thousands of chips.
+  Re-derive the constant once the acquire-vs-despread question is settled — the oracle
+  (`scripts/oracle2.cpp`) measures it directly and needs only one transit-strength satellite.
+  The cable term is well determined —
+  100 m LMR-400 (vf 0.85) + 6 m LMR-195 (vf 0.83) = **4.26 ± 0.18 chips**, comfortably inside
+  the ±0.5-chip DLL capture. What is NOT known is the F-engine's internal pipeline/framing
+  offset (one frame = 52.4 chips; PFB group delay = 104.8 chips, and whether it cancels because
+  the replica goes through the same PFB is an argument, not a measurement). The search is meant
+  to measure this: its reported code phase minus the model prediction IS the constant. Once
+  measured it goes in `chord_gnss_node.yaml` and dead-reckon cold-start works permanently.
+* **`rawFileWrite` makes one file per frame** — 19/s ≈ 1.6 M files and 86 GB/day. Fine for a
+  test, wrong for a soak. Raise `output_every` or use an appending writer.
+* **Frequency axis collapse** is an early priority once there is proof of life — see the
+  `roadmap` block in `chord_gnss_node.yaml`. BOC signals make it critical, not cosmetic.
+* **The per-satellite ±9-chip spread is real and unexplained** (seen 2026-07-30 and again
+  2026-07-31, in two different currencies). Suspects unchanged: SV-clock relativistic term,
+  TGD, or a per-PRN code-generation offset. Only worth chasing after a lock, when the trim
+  measures each satellite's residual directly.
+* **A grinding search worker ignores SIGTERM** (it cannot check `stop_thread` mid-FFT), so it
+  holds its REST port and the replacement instance fails to bind and exits silently. Use
+  `kill -9` when restarting the search.
+
+## 7. How to run it
+
+```bash
+# search instance -- ordinary user, no DPDK/GPU/hugepages, fully dry-runnable
+./build/kotekan/kotekan --config config/generated/chord_gnss_search_cx19.yaml \
+    --bind-address 0.0.0.0:12050
+
+# node instance -- needs sudo for DPDK hugepages (/dev/hugepages is root:root, and
+# /dev/vfio/{19,38} too, so the group route needs BOTH; sudo is simpler for debugging)
+sudo ./build/kotekan/kotekan --config config/generated/chord_gnss_cx19.yaml \
+    --bind-address 0.0.0.0:12049
+
+# broker -- note -u (python buffers stdout when piped and you lose everything on kill), and
+# note --dr-clock-chips: WITHOUT IT the trackers are seeded with an empty list and every record
+# comes out structurally perfect and numerically zero. See 5b.
+PYTHONUNBUFFERED=1 /home/kvand/gnss/venv/bin/python -u \
+  python/scripts/gnss/gps_distributed_broker.py \
+  --rest-url http://localhost:12049 \
+  --detectors http://localhost:12050/srch0_search,http://localhost:12050/srch1_search \
+  --trackers gnss0_track,gnss1_track --combiner gnss0_combine \
+  --almanac --almanac-source brdc --dead-reckon --narrow-search \
+  --time0-endpoint telescope/time0_ns --dr-clock-chips 0.0 \
+  --constellation G --carrier-hz 1176.45e6 --code-length 10230 --hops-per-sec 195312.5 \
+  --lat 49.32075144444 --lon -119.62081125 --alt 545 --mask-deg 0 --interval 2
+```
+
+Ports: **12048** production (choco owns it; the generator REFUSES to emit it), **12049** node,
+**12050** search, **11040/11041** the raw-voltage feed. Always validate with
+`sudo ... --dry-run` before a real run — it is the only way to exercise the full graph including
+DPDK, and it is what would have caught the pruned-ingest-stage stall.
+
+**Regenerate, never hand-edit:**
+```bash
+python3 config/gen_chord_gnss_config.py --base <base.json> --node cx19 \
+    --search-element 23 [--search-instance] --out config/generated/...
+```
+where `<base.json>` is `curl -s http://cx19:12048/config` from a node running production.
+
+## 8. Operational notes
+
+* Cores: DPDK owns 5-7 and 21-23 (0% idle) plus their isolcpus siblings — never touch. Our
+  stages use NUMA1: 19, 24, 31, 57-63.
+* `/home/kvand` is NFS shared across all eight nodes at the same path (code, config, venv);
+  records must go to local disk (`/data/gnss`, 2.6 TB free).
+* venv at `/home/kvand/gnss/venv` (skyfield 1.54 + numpy/scipy/h5py/yaml/requests).
+* `kvand` has sudo (password), and is in `docker`. Passwordless is NOT configured.
+* choco has a per-node **maintenance mode** ("choco will not push"). It must be ON while we run,
+  or choco may push a production config over us mid-run.
+* **Cyg A transits ~07:2x UTC**, 81.5° elevation, drifting 3m56s earlier daily. Several dishes
+  use it for beam maps and noise temperature; keep the X-engine healthy ±4 h around it.
+* Eight nodes: cx19(4) cx27(0) cx42(5) cx43(6) cx44(2) cx47(3) cx51(7) cx52(1), where the number
+  is the mod-8 comb offset. Together they tile the science band exactly.
