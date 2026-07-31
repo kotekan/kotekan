@@ -728,3 +728,60 @@ null -> element probe null -> OFFLINE AUDITS on a captured live frame (buffer RE
 detection through the verified currency chain, sweeps clk_try +-15, holds and logs the trim
 on a multi-sat bite. Also: my python model needs TODAY's BRDC (stale-cache poisoning cost an
 afternoon: P26 550 Hz off at 13:52, fine after the 14:05 refetch).
+
+## 5j. EVENING 2026-07-31: the measurement that was fooling us, and what the null means
+
+**THE METHODOLOGICAL ERROR (mine, and it cost the afternoon).** I steered every sweep by the
+in-tracker trim's per-frame quality q = 2|P|^2/(|E|^2+|L|^2). That statistic CANNOT see a lock:
+at 0.5-chip spacing E and L each carry R(0.5)^2 = 1/4 of the peak, so q saturates at 4 for ANY
+signal strength -- 3.60 for our strongest satellite, 3.97 even at search snr 600 -- while its
+own noise tail reaches 7. Every "bite" (clk 0.0, clk -0.25, NH k=7) and every "null" (the P10
+clk sweep, the element probe, the NH scan) was noise read as signal or the reverse. Compute the
+expected value of a statistic BEFORE running an experiment on it.
+
+Fixed in db4c0fa45: the E/P/L powers are EMA-averaged (~1 s, trim_pow_alpha 0.05) before the
+gate and the discriminator touch them -- q_locked stays ~3.6 while q_noise falls toward 1, and
+the disc the trim integrates stops being a per-frame random number. This is exactly what the
+airspy broker always did with the combiner's WINDOW-AVERAGED E/L; porting the formula per-frame
+had dropped the averaging that made it work. Gate 2.2, warm-up 1/alpha frames, EMA reset on
+re-seed. get_trim now reports ema_frames -- never trust a q whose average has not filled.
+
+**THE SEEDING BUG (mine, in every seeder written this week).**
+`hop = int((time.time() - FRAME0) * HPS)` truncates to an integer hop. A hop is 5.12 us =
+**52.4 chips**, so the seed's claimed epoch and its cp's epoch differed by up to 52 chips,
+RANDOM on every repost, against a +-0.5-chip capture. Measured live: 49 chips at that instant,
+common-mode across satellites. This contaminated every clk calibration (Wednesday's 191/200
+"winners" included) and is why sweep winners never reproduced. Fixed by evaluating the model at
+EXACTLY FRAME0 + hop/HPS. Note also that float64 cannot hold GPS seconds better than ~4 chips
+(ulp 2.4e-7 s at 1.8e9), so the code phase must come from the FRACTIONAL second only (carried
+as an exact Fraction) -- legitimate because 1 s = 50 x 20 ms and GPS-UTC offsets are whole
+seconds. Reference implementation: scratchpad/trim_lock2.py (model_at/hop_epoch).
+
+**THE FIRST TRUSTWORTHY NULL.** With the EMA statistic and exact-epoch seeding, a +-4 chip
+sweep in 0.5-chip steps over 6 satellites returned q = 1.0-1.3 EVERYWHERE -- exactly the
+theoretical noise value, no excursions. So the commanded code phase is wrong by much more than
+4 chips. Note a single GPU's 7 channels are 3.125 MHz apart, so its correlation has GRATING
+LOBES every 3.27 chips under an envelope tens of chips wide (the 27-channel union: 13.09
+chips). The sweep therefore crossed several lobes and still saw nothing -- the error is
+hundreds or thousands of chips, i.e. a currency/convention error, not a calibration offset.
+(Grating lobes are also a standing hazard for the DLL: locking one lobe off is full amplitude
+at a wrong delay. More nodes -> denser comb -> the ambiguity opens out.)
+
+**WHAT IS SOLID.** The delta between the search's measured cp and my model, per satellite:
+P8 +136..140, P10 +151..155, P24 +134..138, P23 +149, P27 +155, P32 +148 -- a common
+**~148 chip** term (the instrumental delay constant of section 6, first measurement) plus the
+same +-9 chip per-satellite spread seen Wednesday. Stable to a few chips over 30+ minutes, so
+the receiver clock's frequency offset is small (~0.002 chips/s). Weak (snr ~10) detections give
+garbage deltas (P27 swung +155 -> -4381) -- only trust deltas from snr >~ 20.
+
+**ALSO FIXED (f2d2e9dd3):** records were stamped with HOST wall clock (hdr->utc0 was 0, so the
+assembler fell back to system_clock::now() at assembly time). Now frame0_utc from
+telescope/time0_ns, in chord_gnss_node.yaml -- re-read after any F-engine restart. Chip-level
+work still uses sample_seq; a double at 1.8e9 s resolves only 2.4 chips.
+
+**IN FLIGHT:** scratchpad/cp_oracle.cpp brute-forces all 204600 chips of the NH code space on a
+CAPTURED frame using the tracker's own GnssCudaDespread (stacking records at their correctly
+advanced cp). Its answer, minus what the seeder would command for that same frame
+(P10: 11335.40 at hop 113561591808, dop -51.6), IS the remaining bug. Structure of the residual
+tells the story: ~0 = seeding right and the fault is live-side; multiple of 10230 = NH phase;
+multiple of 4969.3 = record advance; else = the model/delta chain.
