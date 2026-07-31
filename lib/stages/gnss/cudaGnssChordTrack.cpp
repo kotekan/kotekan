@@ -48,7 +48,8 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     trim_gain = config.get_default<double>(unique_name, "trim_gain", 0.15);
     trim_leak = config.get_default<double>(unique_name, "trim_leak", 0.002);
     trim_clamp = config.get_default<double>(unique_name, "trim_clamp", 3.0);
-    trim_quality_min = config.get_default<double>(unique_name, "trim_quality_min", 1.8);
+    trim_quality_min = config.get_default<double>(unique_name, "trim_quality_min", 2.2);
+    trim_pow_alpha = config.get_default<double>(unique_name, "trim_pow_alpha", 0.05);
     trim_ref_elem = config.get_default<int>(unique_name, "trim_ref_elem", 0);
 
     if (hops_per_record <= 0 || n_hops_frame % hops_per_record != 0)
@@ -88,6 +89,10 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     trim_disc.assign((size_t)n_prn, 0.0);
     trim_q.assign((size_t)n_prn, 0.0);
     trim_n.assign((size_t)n_prn, 0);
+    ema_e2.assign((size_t)n_prn, 0.0);
+    ema_p2.assign((size_t)n_prn, 0.0);
+    ema_l2.assign((size_t)n_prn, 0.0);
+    ema_n.assign((size_t)n_prn, 0);
 
     const std::string ep =
         config.get_default<std::string>(unique_name, "seed_endpoint", "/chord_track/set_seeds");
@@ -135,6 +140,14 @@ void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& co
         for (auto& u : upd)
             seeds[(size_t)u.first] = u.second;
     }
+    {
+        // A re-seed moves the commanded cp, so the power average that gates the trim no
+        // longer describes what is being despread: restart it (the trim itself persists --
+        // it is a correction to the model, not to a particular seed).
+        std::lock_guard<std::mutex> lk(trim_mtx);
+        for (auto& u : upd)
+            ema_n[(size_t)u.first] = 0;
+    }
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
@@ -156,6 +169,7 @@ void cudaGnssChordTrackState::get_trim_callback(kotekan::connectionInstance& con
                            {"trim_chips", trim[(size_t)p]},
                            {"disc", trim_disc[(size_t)p]},
                            {"quality", trim_q[(size_t)p]},
+                           {"ema_frames", ema_n[(size_t)p]},
                            {"updates", trim_n[(size_t)p]}});
     }
     nlohmann::json reply = {{"enabled", trim_enable}, {"trims", out}};
@@ -307,11 +321,30 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
                 }
                 if (n_meas == 0 || e2 + l2 <= 0.0)
                     continue;
-                const double q = 2.0 * p2 / (e2 + l2);
-                S.trim_q[(size_t)p] = q;
-                if (q < S.trim_quality_min)
+                // EMA the POWERS first (see the header): per-frame q saturates at 4 and its
+                // noise tail exceeds that, so only the averaged powers separate lock from
+                // noise -- for the gate AND for the discriminator the trim integrates.
+                const double al = S.trim_pow_alpha;
+                const size_t up = (size_t)p;
+                if (S.ema_n[up] == 0) {
+                    S.ema_e2[up] = e2;
+                    S.ema_p2[up] = p2;
+                    S.ema_l2[up] = l2;
+                } else {
+                    S.ema_e2[up] += al * (e2 - S.ema_e2[up]);
+                    S.ema_p2[up] += al * (p2 - S.ema_p2[up]);
+                    S.ema_l2[up] += al * (l2 - S.ema_l2[up]);
+                }
+                ++S.ema_n[up];
+                const double E = S.ema_e2[up], P = S.ema_p2[up], La = S.ema_l2[up];
+                if (E + La <= 0.0)
                     continue;
-                const double disc = (e2 - l2) / (e2 + l2);
+                const double q = 2.0 * P / (E + La);
+                S.trim_q[up] = q;
+                // Warm-up: do not judge on a half-formed average (1/alpha frames).
+                if (S.ema_n[up] < (long long)(1.0 / al) || q < S.trim_quality_min)
+                    continue;
+                const double disc = (E - La) / (E + La);
                 const double tau =
                     -std::max(-1.0, std::min(1.0, disc)) / 4.0 * (S.dll_spacing / 0.5);
                 const double t_new = (1.0 - S.trim_leak) * S.trim[(size_t)p] + S.trim_gain * tau;

@@ -76,17 +76,28 @@ public:
     // execute() consumes whatever has completed -- one frame (~42 ms) of loop latency against
     // a 20 s oscillation. The trim is added to the broker's model cp at the single
     // Spec-construction point; the broker's own DLL (3c) then sees disc ~ 0 and stays quiet.
+    // The powers are EMA-AVERAGED before the discriminator and the gate touch them. Per-frame
+    // q = 2|P|^2/(|E|^2+|L|^2) cannot tell a lock from noise: at 0.5-chip spacing E and L each
+    // carry R(0.5)^2 = 1/4 of the peak, so q saturates at 4 for ANY signal strength (3.6 for
+    // our strongest satellite, 3.97 at search snr 600) while its own noise tail reaches 7.
+    // Measured 2026-07-31 -- a whole afternoon of sweeps read that noise as "bites" and
+    // "nulls". Averaging ~1 s of frames leaves q_perfect ~3.6 but pulls the noise toward 1,
+    // which is the separation the gate needs; the disc gets the same benefit (this is exactly
+    // what the airspy broker does with the combiner's window-averaged E/L powers).
     bool trim_enable = false;
     double trim_gain = 0.15;        ///< integrator gain per update
     double trim_leak = 0.002;       ///< leaky-integrator leak per update (noise can't walk it)
     double trim_clamp = 3.0;        ///< |trim| bound, chips
-    double trim_quality_min = 1.8;  ///< q = 2|P|^2/(|E|^2+|L|^2) gate: ~1 noise, ~4 locked
+    double trim_quality_min = 2.2;  ///< gate on the EMA'd q (~1 noise, ~3.6 locked)
+    double trim_pow_alpha = 0.05;   ///< power EMA (0.05 ~ 20 frames ~ 0.85 s)
     int trim_ref_elem = 0;          ///< element the loop listens to (match the assembler's)
-    std::mutex trim_mtx;            ///< guards the four vectors below (REST getter thread)
+    std::mutex trim_mtx;            ///< guards the vectors below (REST getter thread)
     std::vector<double> trim;       ///< per-PRN cp trim, chips (applied cp = model + trim)
     std::vector<double> trim_disc;  ///< last applied discriminator, diagnostics
-    std::vector<double> trim_q;     ///< last quality, diagnostics
+    std::vector<double> trim_q;     ///< EMA'd quality, diagnostics + the gate
     std::vector<long long> trim_n;  ///< updates applied, diagnostics
+    std::vector<double> ema_e2, ema_p2, ema_l2; ///< per-PRN power EMAs (0 = uninitialized)
+    std::vector<long long> ema_n;               ///< frames folded in (warm-up guard)
     uint64_t trim_frames = 0;       ///< frames processed (rate-limits the log line)
 
     /// One in-flight E/P/L readback: host landing zone + the event that says it is real.
