@@ -723,6 +723,17 @@ def main(argv=None):
                          "is known a priori (0 plus a fixed instrumental/cable delay), so pass "
                          "0.0 to start and calibrate the constant later from the measured "
                          "integrity residual, which the broker logs every cycle.")
+    ap.add_argument("--long-code-segments", type=int, default=75,
+                    help="number of primary periods in the overlaid/long code the TRACKERS "
+                         "despread (L2C CL = 75 x 10230; GPS L5 Q5 with NH20 baked in = 20 x "
+                         "10230). The time-assist below picks which one, so this must match the "
+                         "tracker's `signal`, not the search's.")
+    ap.add_argument("--long-code-epoch-s", type=float, default=1.5,
+                    help="the long code's GPS-time-locked repeat period, seconds (L2C CL 1.5; "
+                         "L5 NH20 0.02). The assist needs unix-time mod EPOCH == GPS-time mod "
+                         "EPOCH, which holds when GPS-UTC (whole seconds) and the GPS epoch "
+                         "offset (315964800) are both multiples of it -- true for 1.5 and for "
+                         "0.02. Absolute-time accuracy needed is ~EPOCH/2.")
     ap.add_argument("--cl-time-adjust", type=float, default=0.0,
                     help="seconds added to the CL time-assist clock -- escape hatch for a future "
                          "non-multiple-of-1.5s GPS-UTC offset or a known host-clock bias")
@@ -875,7 +886,7 @@ def main(argv=None):
                          "2026-07-25 collapsed the GPS chain to 0/14 peeling with every PRN on "
                          "`nobits` and every gain reset -- the 30 s tables make the seed POST "
                          "~14.5k numbers and the whole seed push appears to stop landing. The "
-                         "bit CONTENT is validated (113820/113820 offline, hold-one-out 100%); "
+                         "bit CONTENT is validated (113820/113820 offline, hold-one-out 100%%); "
                          "it is the transport that needs sizing before this goes back on.")
     ap.add_argument("--nav-bits", type=int, default=1,
                     help="LNAV decode-and-predict from the combiner's nav_obs export "
@@ -1214,6 +1225,14 @@ def main(argv=None):
                                    # birth-stamped so warm-start gets a full grace window)
     bias_stale = False             # solved-but-unmeasured for > --bias-stale-s
     CODE_LEN = float(args.code_length)
+    # The long/overlaid code the TRACKERS despread, in primary periods and in seconds. The
+    # time-assist below computes WHICH period a seed's cp sits in rather than searching it;
+    # both constants used to be L2C CL's (75, 1.5 s), which silently pinned every other signal
+    # to period 0. GPS L5 Q5 with NH20 baked in is (20, 0.02 s) -- and without this the CHORD
+    # trackers, which despread the 204600-chip NH code while the search acquires the 10230-chip
+    # primary, get a seed that is right 1 time in 20.
+    LC_SEG = int(args.long_code_segments)
+    LC_EPOCH = float(args.long_code_epoch_s)
     # Search-Doppler record-alias quantum, 1/(2*t_rec): see the DETECTION ALIAS FOLD
     # in the seeding loop. 500 Hz on the 1 ms bands (never confused), 125 E1C, 50 B1C,
     # 25 L2C -- the alias-severity ranking that matches where zombie births appear.
@@ -1715,13 +1734,13 @@ def main(argv=None):
             # this valid for ~hour-long runs.
             if args.cl_assist and utc0_sample0 and args.almanac and prn in pred:
                 tau = pred[prn][3] / C_LIGHT
-                cl_chips = (((utc0_sample0 - tau + args.cl_time_adjust) % 1.5)
+                cl_chips = (((utc0_sample0 - tau + args.cl_time_adjust) % LC_EPOCH)
                             * args.chip_rate_hz)
                 cp_cm = seed["code_phase_chips"]
                 k = int(round((cl_chips - cp_cm) / CODE_LEN))
                 fine_ms = (cl_chips - cp_cm - k * CODE_LEN) / args.chip_rate_hz * 1e3
-                seed["code_phase_chips"] = (cp_cm + (k % 75) * CODE_LEN) % (75 * CODE_LEN)
-                cl_report.append("PRN %d k=%d fine %+.1f ms" % (prn, k % 75, fine_ms))
+                seed["code_phase_chips"] = (cp_cm + (k % LC_SEG) * CODE_LEN) % (LC_SEG * CODE_LEN)
+                cl_report.append("PRN %d k=%d fine %+.1f ms" % (prn, k % LC_SEG, fine_ms))
             # HOLD-ON-LOCK: once a PRN shows a real lock, FREEZE its cp anchor + rate and let the
             # DLL trim own the sub-chip residual. The search's per-fix cp is only good to ~1-2
             # chips (hop-resolution coarse + refine), so re-anchoring from the fit at every cycle
@@ -3033,11 +3052,11 @@ def main(argv=None):
                 tau0 = (_g[3] if _g is not None else pv[3]) / C_LIGHT
                 clk0 = _g[4] if _g is not None else pv[4]
                 t_sv = utc0_sample0 - tau0 + clk0 + args.cl_time_adjust - cl_toff[0]
-                cl_chips = (t_sv % 1.5) * args.chip_rate_hz
+                cl_chips = (t_sv % LC_EPOCH) * args.chip_rate_hz
                 cp_cm = d["code_phase_chips"] % CODE_LEN
                 k = int(round((cl_chips - cp_cm) / CODE_LEN))
                 fine_ms = (cl_chips - cp_cm - k * CODE_LEN) / args.chip_rate_hz * 1e3
-                k %= 75
+                k %= LC_SEG
                 _fines.append(fine_ms)
                 if abs(fine_ms) > 5.0:
                     # Half the +-10 ms budget gone AFTER centering: the seed still goes out
@@ -3049,13 +3068,13 @@ def main(argv=None):
                             % (d["prn"], fine_ms, cl_toff[0] * 1e3))
                 dcl = {kk: d[kk] for kk in ("prn", "doppler_hz", "code_phase_rate", "ref_hop",
                                             "doppler_rate_hz_s", "carrier_trim_hz") if kk in d}
-                dcl["code_phase_chips"] = (cp_cm + k * CODE_LEN) % (75.0 * CODE_LEN)
+                dcl["code_phase_chips"] = (cp_cm + k * CODE_LEN) % (float(LC_SEG) * CODE_LEN)
                 cl_payload.append(dcl)
                 kp = cl_k.get(d["prn"])
                 if kp is not None and kp != k:
                     msg = ("CL k-step PRN %d: %d -> %d (fine %+.2f ms)"
                            % (d["prn"], kp, k, fine_ms))
-                    if (k - kp) % 75 in (1, 74):
+                    if (k - kp) % LC_SEG in (1, LC_SEG - 1):
                         _log_rl("clk-%d" % d["prn"], msg)  # geometry advancing: routine
                     else:
                         _log("CL K-JUMP (not +-1 -- clock/anchor fault?): " + msg)
