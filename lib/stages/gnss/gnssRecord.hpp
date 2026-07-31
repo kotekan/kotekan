@@ -10,6 +10,16 @@
  *
  *  TRACKER record (GnssChannelizedTracker -> combiner/BeamCube; one per subband):
  *    0 PRN   1 Doppler_Hz   2 code_phase_chips
+ *      -- SLOT-2 CURRENCY CONTRACT (2026-07-31): slot 2 is the sample-0-anchored code phase
+ *         expressed in THE SAME RECORD'S slot-1 carrier: cp_phys(t_rec) = slot2 +
+ *         t_abs*f_chip*(1 + sign*slot1/f_carrier) mod L, EXACTLY. The tracker re-expresses
+ *         its internal f_ref-currency despread command into slot 1's reported carrier at
+ *         emit (the export-currency translation in both trackers); consumers MUST pair
+ *         slot 2 with slot 1 from the same record (the combiner forwards both from its
+ *         reference record, so status doppler_hz/code_phase_chips are a valid pair).
+ *         Before this, slot 2 carried the raw f_ref-currency command and every downstream
+ *         reconstruction inherited a t_abs*f_chip*(ctrim)/f_c error (~25 chips/Hz at soak
+ *         age) -- the absolute-VTEC blocker.
  *    3 P.re  4 P.im         -- PROMPT correlation, un-normalized coherent sum G (the combiner
  *                              sums G and energy across subbands, then normalizes: A = G/E)
  *    5 P_energy             -- prompt replica energy E

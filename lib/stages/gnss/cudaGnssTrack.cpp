@@ -1065,6 +1065,24 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 cp_seed += L;
             const double ff_hz = -dop_rate[p] * (double)(whop - S.reacq_hop[p])
                                  * (double)S.fft_len / S.sample_rate;
+            // EXPORT CURRENCY (2026-07-31, the absolute-VTEC blocker): the despread command
+            // above is in the PINNED-f_ref currency, but the record reports rec[1] =
+            // fcar_report = fcar - ff + ctrim -- and every downstream reconstruction
+            // (gnss_observables, deadreckon/time-bootstrap, code_phase_check) propagates
+            // REC_CP at that REPORTED carrier. Emitting the f_ref-currency value there made
+            // the reconstruction wrong by t_abs*C*sgn*(ctrim - ff)/fc -- the per-sat carrier
+            // trim times the FULL RUN AGE (~25 chips/Hz at t~10 h): the measured ~100-chip
+            // across-sat code scatter, verified trim-by-trim against the broker's CAR table.
+            // So re-express the EXPORT into the reported carrier's currency (same algebra as
+            // the translation above, target rec[1]); the GPU command keeps f_ref. The
+            // reconstruction cp + t_abs*C*(1 + sgn*doppler_hz/fc) is then exact BY
+            // CONSTRUCTION -- both sides of it ride the same record's rec[1].
+            double cp_export = cp_seed
+                               + (double)whop * (double)S.fft_len / S.sample_rate
+                                     * chip_component * sgn * (ff_hz - ctrim[p]) / fc;
+            cp_export = std::fmod(cp_export, L);
+            if (cp_export < 0.0)
+                cp_export += L;
 
             c.run = 1;
             c.reanchored = reanchored;
@@ -1073,7 +1091,9 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
             c.job0 = n_out + _rows_spec * (int)specs.size();
             c.fcar_report = (float)(fcar - ff_hz + ctrim[p]);
             c.n_owned = (float)local.size();
-            c.cp_seed = cp_seed;
+            c.cp_seed = cp_export; // record slot 2: EXPORT currency (see above); the GPU
+                                   // command (specs/pspecs below) keeps the f_ref-currency
+                                   // cp_seed -- the replica physically runs at f_ref.
             c.f_nco = ctrim[p] + ff_hz;
             c.chan_mask = mask;
             c.energy_scale = 1.0;

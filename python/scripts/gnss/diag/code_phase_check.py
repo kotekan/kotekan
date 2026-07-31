@@ -12,14 +12,21 @@ the per-satellite residual. What's left should be ionosphere + multipath -- a fe
 
 The SEARCH's cp0 is back-referenced to sample 0 (search subtracts the nominal advance + Doppler
 drift), so it reconstructs CLEAN -- it is the positive control that proves the reconstruction,
-orbit, epoch handling and constants are all correct. The COMBINER's code_phase_chips is REC_CP,
-the tracker's "commanded prompt code phase" at the tracking WINDOW (its job is to command the
-despread), which is NOT the same sample-0 currency -- so it reconstructs with a large per-sat
-scatter (measured ~90 chips / 25 km at L1, ~150 km at L2C, 2026-07-30). That scatter is the
-window->sample-0 back-reference the observable never undoes, and it is why absolute VTEC is blocked.
+orbit, epoch handling and constants are all correct.
 
-Use this to (a) reproduce the split and (b) regression-check any fix: a fix that gives the combiner
-a proper sample-0 cp0 currency should bring the COMBINER rms down to the SEARCH rms (< ~1 chip).
+ROOT CAUSE (found 2026-07-31, fixed same day -- the tracker export-currency translation): REC_CP
+was emitted in the tracker's internal PINNED-f_ref currency, while every consumer propagates it
+at the record's REPORTED carrier (rec[1] = f_ref + ctrim under max_anchor_age 0). Error =
+sign*f_chip*t_abs*ctrim/f_c -- each sat's broker carrier trim times the FULL RUN AGE
+(~25 chips/Hz at t~10 h). Verified externally, trim-by-trim: the per-sat residuals this tool
+measured (114 chips rms, 2026-07-31) matched the broker CAR-table trims through that exact
+coefficient (PRN21: +13.2 Hz trim <-> +316 chips), and the scatter grew with run age
+(94 chips @ 25 ks -> 114 @ 38 ks). The fix re-expresses the EXPORT into rec[1]'s currency
+(gnssRecord.hpp slot-2 contract); the GPU despread command keeps f_ref.
+
+Use this as the regression gate: post-fix the COMBINER rms must sit at the SEARCH rms (< ~1 chip)
+-- and STAY there as the run ages (the old error grew ~6.5e-4*ctrim chips/s, so a re-grown
+scatter after hours of soak means the currency contract broke again).
 
 Usage:
     python3 code_phase_check.py                       # GPS L1 on the merged 3-band node

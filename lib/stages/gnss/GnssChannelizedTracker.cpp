@@ -461,7 +461,23 @@ void GnssChannelizedTracker::main_thread() {
                 cmds[p].ff_hz = ff_hz;
                 rec[1] = (float)(fcar - ff_hz // report the ramp physical-signed
                                  + ((_fll_gain > 0.0) ? f_track[p] : 0.0) + ctrim[p]);
-                rec[2] = (float)cp_seed;
+                // EXPORT CURRENCY (2026-07-31; see cudaGnssTrack for the full story): the
+                // command above is in the f_ref currency, but downstream reconstructions
+                // propagate rec[2] at the REPORTED carrier rec[1]. Re-express the export into
+                // rec[1]'s currency (same algebra as the translation above, target rec[1] =
+                // fcar - ff + f_track? + ctrim) so the reconstruction is exact by
+                // construction; the despread command (cmds[p]) keeps f_ref.
+                double cp_export =
+                    cp_seed
+                    + (double)window_start_hop * (double)_fft_len / _sample_rate
+                          * (_replica->eff_chip_rate() / (double)_replica->comb_mult())
+                          * _replica->code_doppler_sign
+                          * (ff_hz - ((_fll_gain > 0.0) ? f_track[p] : 0.0) - ctrim[p])
+                          / _replica->carrier_hz();
+                cp_export = std::fmod(cp_export, L);
+                if (cp_export < 0.0)
+                    cp_export += L;
+                rec[2] = (float)cp_export;
                 rec[6] = (float)cmds[p].owned.size();
                 cmds[p].run = !cmds[p].owned.empty(); // empty = carrier not in this subband
             }

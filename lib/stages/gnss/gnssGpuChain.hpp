@@ -85,7 +85,9 @@ struct PrnCtl {
     int32_t job0;       ///< first of this PRN's 4 job rows (E,P,L,P_HEAD); -1 if !run
     float fcar_report;  ///< record slot 1 (physical-signed reported Doppler)
     float n_owned;      ///< record slot 6 (covering channels owned by this subband)
-    double cp_seed;     ///< record slot 2 (commanded prompt code phase, chips)
+    double cp_seed;     ///< record slot 2: EXPORT-currency code phase, chips (gnssRecord.hpp
+                        ///< slot-2 contract: paired with fcar_report). NOT the GPU despread
+                        ///< command -- that keeps the f_ref currency and rides the Spec.
     double f_nco;       ///< NCO slope for this record (ctrim + ff, internal convention, Hz)
     uint64_t chan_mask; ///< local covering-channel bits (for the assembler's cross-channel sum)
     double energy_scale;///< reserved (1.0)
