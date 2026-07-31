@@ -121,6 +121,16 @@ def main():
     ap.add_argument("--max-gap-s", type=float, default=10.0)
     ap.add_argument("--min-arc-s", type=float, default=600.0)
     ap.add_argument("--min-sig", type=float, default=20.0)
+    ap.add_argument("--subtract-trim", action="store_true",
+                    help="A/B THE OPEN QUESTION (docs/adr_trim_subtraction.md vs the code as "
+                         "built): subtract trim_cycles from adr_cycles before forming carr_gf. "
+                         "The doc (07-19) says the broker's ctrim integrates straight into ADR "
+                         "and predicts arc drifts of exactly the observed magnitude; but the "
+                         "combiner now accumulates dcmd - dres (commanded MINUS the measured "
+                         "arg(A) residual, GnssCoherentCombiner.cpp:491), which absorbs a "
+                         "CONVERGED trim on its own -- so subtracting could be a DOUBLE "
+                         "correction. Run both ways: whichever shrinks the per-sat residual "
+                         "D-slope is the right answer, and that settles it empirically.")
     ap.add_argument("--json-out", default=None, help="optional per-arc results jsonl")
     args = ap.parse_args()
 
@@ -148,11 +158,23 @@ def main():
                     continue
                 rows_a = [r for r in aa if lo <= r["t"] <= hi]
                 ts = [r["t"] for r in rows_a]
+                # carr_resid_m = -adr*lam - range. Removing the trim's contribution means
+                # ADDING BACK trim_cycles*lam with the same sign the ADR entered with.
+                def carr_a_of(r):
+                    v = r.get("carr_resid_m")
+                    if v is None or not args.subtract_trim:
+                        return v
+                    tc = r.get("trim_cycles")
+                    return v if tc is None else v + tc * (C / fa)
                 # unwrap each band's code residual along the arc, then difference
                 code_a = unwrap([r.get("code_resid_m") for r in rows_a], per_a)
                 code_b = unwrap([interp(bb, t, "code_resid_m") for t in ts], per_b)
-                carr_a = [r.get("carr_resid_m") for r in rows_a]
+                carr_a = [carr_a_of(r) for r in rows_a]
                 carr_b = [interp(bb, t, "carr_resid_m") for t in ts]
+                if args.subtract_trim:
+                    tb = [interp(bb, t, "trim_cycles") for t in ts]
+                    carr_b = [None if (v is None or c is None) else v + c * (C / fb)
+                              for v, c in zip(carr_b, tb)]
                 series = {
                     "carr_gf": [None if (x is None or y is None) else x - y
                                 for x, y in zip(carr_a, carr_b)],
