@@ -1219,3 +1219,58 @@ scan and attack the surface, which is what (1)-(3) do.
 the Mp-point transform. At 62.5 Hz the wipe becomes an integer bin rotation, so `FFT(wiped)` is
 a cyclic shift of ONE `FFT(data)` -- roughly halving the correlate cost, which is now the
 dominant term. The parabolic refine already recovers sub-grid Doppler.
+
+## 5r. THE PERIOD, AND THE WINDOW/OVERLAY MISMATCH (2026-08-01 afternoon)
+
+Two real defects found, both from the same root: **CHORD's natural integration window is 16
+primary code periods, and L5 Q5's overlay is 20.** Nothing divides anything.
+
+### 5r.1 acquire_windows was smearing across overlay bins
+
+The search accumulates |D|^2 over `acquire_windows` windows of Mp = 3125 hops. Mp is a whole
+number of PRIMARY periods (16), so the code phase is stationary window to window -- but 16 is
+NOT a whole number of NH periods, so each window's overlay alignment advances by 16 = +4 mod 20
+and lands in a DIFFERENT nh bin. Measured on noiseless synthetic, every injection:
+
+    1 window : snr 9121  9124  8738  8744  8908  8905
+    2 windows: snr 4579  4635  4577  4375  4470  4529     <- exactly HALF, every time
+
+The second window's signal goes to another bin; its noise raises the mean everywhere. So
+`acquire_windows` was costing sensitivity, not buying it, AND scrambling the reported `nh`
+(with 8 windows the true alignment gets at most 1 in 8, and 5 aliases sit at equal height).
+Live confirmation: PRN 23 at snr 342 with one window, against 56 with eight.
+
+`acquire_windows: 1` is deployed as the immediate fix. NOTE the side effect: the pure-noise
+ceiling rises 4.45 -> 19.1 (a Gamma(1) tail, not Gamma(8)), so `acquire_snr` MUST rise with it
+-- 5.5 would have let pure noise through as detections. It is now 30 in both the stage and the
+broker. **The better fix, not yet done:** route window w into bin (a + 4w) mod 20 -- pure
+bookkeeping, no extra compute, recovering full multi-window integration AND a clean nh, and
+letting the ceiling and the threshold come back down.
+
+### 5r.2 the code phase was reduced at the wrong length
+
+The tracker despreads the 204600-chip overlaid code; the search reduced cp0 mod the 10230-chip
+PRIMARY, which cannot carry which of the 20 periods it was in. That is why NOTHING supplied the
+period: `--cl-assist` needs clock+range under half a period (0.5 ms here, vs L2C CL's 20 ms),
+and reconstructing from the measured `nh` needs a convention that turned out to depend on the
+replica anchor's own period index -- measured across three anchors, offset = (4 - k0) mod 20.
+
+Fixed by having the SEARCH report the phase at the overlaid length (`code_phase_long_chips`),
+which needs BOTH the nh lift AND dropping the `_snap_start_hop % Mp` shortcut (valid mod L,
+since one replica period is 16 L; invalid mod 20 L). Broker prefers it over any reconstruction.
+
+**Result on a snr-5801 PRN 32 transit, freshest seed:** within-period error **-0.50 chips**,
+against -11 to -18 before. The phase is right.
+
+**STILL WRONG, and where to start next:** the period is off by 4 even at 77 s, and BOTH errors
+grow with seed age -- (-0.50, -6.00, +36.50) chips and (-4, -5, -6) periods at (77, 214, 266) s,
+i.e. ~1 period per 95 s of residual rate. That is ~10 ppm, three orders of magnitude too large
+for a Doppler error and flatly contradicting the 0.0257 chips/s measured on the 2026-07-31 lock.
+So the -0.50 is ONE fresh point, not a fixed improvement -- do not build on it. Something in the
+propagation is rate-wrong at the long length while being right at the primary length; that
+asymmetry is the lead.
+
+**Method note.** Three times now a mapping derived on paper (the +kT shift, cp0 + nh*10230, and
+the -7 ms cl-time-adjust fitted to ONE satellite) survived to deployment and was wrong, while a
+noiseless injection sweep settled it in minutes. Injection is cheap here (mkframe + audit_nwin,
+seconds per point). Calibrate first, deploy second.
