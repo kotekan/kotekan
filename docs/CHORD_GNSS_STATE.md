@@ -1101,3 +1101,67 @@ where `<base.json>` is `curl -s http://cx19:12048/config` from a node running pr
   use it for beam maps and noise temperature; keep the X-engine healthy ±4 h around it.
 * Eight nodes: cx19(4) cx27(0) cx42(5) cx43(6) cx44(2) cx47(3) cx51(7) cx52(1), where the number
   is the mod-8 comb offset. Together they tile the science band exactly.
+
+## 5o. WHY THE SEARCH IS SLOW, and what is actually redundant (2026-08-01)
+
+A cyclic FFT correlation needs a window that is a whole number of hops AND a whole number of
+code periods. One L5 code period is 3.2e6 samples, a hop is 16384, and gcd is only 1024 -- so
+the shortest legal window is lcm/16384 = **3125 hops = 16 ms = SIXTEEN code periods**. On the
+airspy prototype the hop divided the code period, so the window was exactly ONE. That factor of
+16 is the whole difference, and it lands on `aggregate_accumulate`, whose
+`n_dop * Mp * s_stored * n_chan` loop is the cost of a pass. Measured on the archived P32
+frame: 73 s unfolded vs 9.4 s with the coarse axis capped at one code period -- so the surface
+aggregate IS the dominant cost, and it does scale with Mp.
+
+**But the obvious fold is WRONG, and the trap is worth recording.** The argument "repl0 is
+periodic in the window, so 15/16 of the lag axis is a copy" holds only for the BARE primary
+code. The search's repl0 carries the NH overlay (`nh_phase >= 0`), whose period is 20 ms
+against a 16 ms window -- not periodic at all. The (tau + 1 period, nh - 1) equivalence that
+looks like it should rescue this breaks at the cyclic wrap, because the window truncates at 16
+periods and not a multiple of 20. Measured, same frame, folded vs unfolded:
+
+    unfolded : snr 164.54  nh 10  cp 8991.83
+    folded   : snr 106.29  nh 12  cp 9060.60      <- 68.8 chips off, peak degraded
+
+Implemented, measured, reverted the same night. Do not re-attempt it in that form; the 7.8x is
+real but it is not free.
+
+**The direction that IS exact:** take the overlay OUT of the correlation. Correlate against the
+bare primary code (periodic in the window, so the coarse fold becomes exact), keep the per-code-
+period COMPLEX correlations, and recover the NH alignment afterwards as a sign-weighted sum over
+those 16 periods. That attacks both multipliers at once -- the 16x redundant lag axis and the
+20x whole-surface rescan (the surface is currently computed 20 times, once per alignment, and
+the alignments differ only by a per-period sign pattern). Needs care: the current surface is
+incoherent |D|^2, so the per-period correlations must be kept complex.
+
+Second lever, independent and easier: the fine axis is stored at full `s_stored` = 4096 columns
+= 0.0032-chip resolution, when the refine that follows spans +-4096 samples (+-13 chips) and
+only needs the peak localized well inside that. The cross-channel peak is ~157 samples wide
+(1/20.3 MHz of comb span), so a stride of ~64 samples samples it fine -- another ~64x sitting
+in the same loop.
+
+## 5p. SEEDING: what the broker was doing wrong (2026-08-01)
+
+* `--cl-assist` computed the long-code segment with L2C CL's 75 segments / 1.5 s epoch
+  HARDCODED, so every other overlaid signal was pinned to period 0. Parameterised
+  (`--long-code-segments`, `--long-code-epoch-s`); defaults unchanged, L2C bit-identical.
+* The tracker's phase propagation dropped the code-Doppler feed-forward (fixed, e9892d445 --
+  see 5n). Hand seeding hid it because it had been supplying that exact term as `code_phase_rate`.
+* The seed carried the MODEL Doppler (`src=pred`), never the measured one, whenever `--almanac`
+  was on. Model-vs-measured is +231 Hz with a 244 Hz spread here, against a measured Doppler
+  good to ~3 Hz (proven by the residual code rate of the 5n.1 lock). At a 456 s anchor that is
+  340 chips of seed error vs 12. New `--seed-doppler det`; measured seed error on PRN 4 went
+  from >300 chips to **-14.5**.
+* **The NH period the assist picks is WRONG by 7 ms** (seeded period 8, truth 1, measured
+  against the oracle at ratio 165.8). And the `fine +-0.5 ms` figure the assist logs CANNOT
+  reveal it: k absorbs whole milliseconds, so `fine` is confined to +-0.5 ms however wrong the
+  absolute time is. On L2C CL a segment is 20 ms and that log's +-10 ms budget is real; our NH20
+  segment is 1 ms, needing 20x better absolute time. `--cl-time-adjust` is the escape hatch and
+  the constant is measurable from one strong satellite -- but VERIFY it per satellite before
+  trusting it, since a range-model error would not be common-mode while a clock error would.
+
+**Anchor age is the multiplier behind all of this.** A detection's `ref_hop` stamps its
+snapshot's START, but the result only appears when the whole pass finishes, so a seed is already
+~13 minutes old the first time it is posted. Doppler error x anchor age is the seed error:
+0.0087 chips per Hz per second. Nothing here locks reliably until the pass is seconds, which is
+why 5o matters.
