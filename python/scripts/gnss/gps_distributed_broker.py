@@ -1139,6 +1139,18 @@ def main(argv=None):
             _log("TRIM FORCE (bench): PRN %s armed, car_trim %+.1f Hz at first seed"
                  % (_p, float(_v)))
     cp_hist = {}     # prn -> [(ref_hop, cp0, dop_det), ...] recent distinct snapshots (slope fit)
+    # PERIOD CONTINUITY. The search's sub-period phase is sound, but the OVERLAY PERIOD it
+    # reports re-randomises every pass (measured: exact integer-period jumps of +1/+3/-4/+3/
+    # +3/-1/-2, with only +-10 chips of sub-period residual). A satellite's code phase evolves
+    # deterministically, so the period is pinned by requiring continuity with the previous pass:
+    # predict this pass's phase from the last accepted one and take the integer that lands
+    # nearest. The margin is not marginal -- over a 270 s revisit with a 1.5 Hz Doppler error the
+    # prediction is good to ~3.5 chips against a 5115-chip half-period tolerance, a factor 1500.
+    #
+    # NOTE what this does and does not give: it makes the period SELF-CONSISTENT, not absolute.
+    # A whole sequence can still sit a constant integer off -- one calibration per satellite (or
+    # one common one), rather than a fresh coin flip every pass.
+    ph_hist = {}     # prn -> (ref_hop, resolved_phase, dop)
 
     def cp_to_seed_currency(pts, dop_seed, dop_rate=0.0):
         """Re-express search cp0 points in the CURRENT seed's Doppler currency.
@@ -1772,7 +1784,32 @@ def main(argv=None):
                 # error by ~5900 chips/Hz = 0.58 overlay PERIODS per Hz -- so the period that
                 # survives that route is noise. A phase at its own epoch has no such lever.
                 if cp_at_ref >= 0.0:
-                    seed["code_phase_at_ref_chips"] = cp_at_ref % (LC_SEG * CODE_LEN)
+                    LLc = LC_SEG * CODE_LEN
+                    ph = cp_at_ref % LLc
+                    prev = ph_hist.get(prn)
+                    if prev is not None:
+                        h0, ph0, dop0 = prev
+                        dh = ref_hop - h0
+                        gap_s = dh / args.hops_per_sec
+                        if 0 < gap_s <= 900.0:
+                            rate = (args.chip_rate_hz / args.hops_per_sec
+                                    * (1.0 + args.code_doppler_sign * 0.5 * (dop0 + dop)
+                                       / args.carrier_hz))
+                            ph_pred = (ph0 + dh * rate) % LLc  # NB not `pred` -- that is the
+                            # almanac prediction dict in this scope, and shadowing it breaks
+                            # the alias census a hundred lines down with a TypeError.
+                            m = int(round(((ph_pred - ph) % LLc) / CODE_LEN)) % LC_SEG
+                            if m:
+                                _log_rl("phcont-%d" % prn,
+                                        "PRN %d period continuity: %+d periods (gap %.0f s, "
+                                        "residual %+.1f chips)"
+                                        % (prn, m, gap_s,
+                                           ((ph + m * CODE_LEN - ph_pred + LLc / 2) % LLc)
+                                           - LLc / 2),
+                                        every_s=60.0)
+                            ph = (ph + m * CODE_LEN) % LLc
+                    ph_hist[prn] = (ref_hop, ph, dop)
+                    seed["code_phase_at_ref_chips"] = ph
             elif det_nh >= 0 and LC_SEG > 1:
                 seed["code_phase_chips"] = ((seed["code_phase_chips"] % CODE_LEN)
                                             + (det_nh % LC_SEG) * CODE_LEN) % (LC_SEG * CODE_LEN)
