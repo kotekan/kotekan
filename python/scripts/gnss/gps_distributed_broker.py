@@ -723,6 +723,19 @@ def main(argv=None):
                          "is known a priori (0 plus a fixed instrumental/cable delay), so pass "
                          "0.0 to start and calibrate the constant later from the measured "
                          "integrity residual, which the broker logs every cycle.")
+    ap.add_argument("--seed-doppler", default="auto", choices=("auto", "det"),
+                    help="which Doppler the SEED carries. 'auto' (default, unchanged) prefers "
+                         "the almanac/DR model + solved clock bias, which is smooth and owns "
+                         "the undetected sats. 'det' uses the search's MEASURED Doppler "
+                         "instead. Pick 'det' when the model is not trustworthy to well under "
+                         "a Hz at the seed's age: cp0 is an ARGUMENT, so a seed's phase moves "
+                         "chip_rate/carrier chips per second per Hz of Doppler error (0.0087 "
+                         "chips/Hz/s) for as long as the tracker extrapolates it. Measured on "
+                         "CHORD 2026-08-01: model-vs-measured +231 Hz with a 244 Hz spread, "
+                         "against a measured Doppler good to ~3 Hz (proven by the residual "
+                         "code rate of a real lock) -- at a 456 s anchor that is 340 chips of "
+                         "seed error versus 12. 'det' also makes cp_to_seed_currency a no-op, "
+                         "since cp0 was fit at exactly that Doppler.")
     ap.add_argument("--long-code-segments", type=int, default=75,
                     help="number of primary periods in the overlaid/long code the TRACKERS "
                          "despread (L2C CL = 75 x 10230; GPS L5 Q5 with NH20 baked in = 20 x "
@@ -1267,7 +1280,7 @@ def main(argv=None):
     while True:
         t0 = time.time()
         # 1. collect best-SNR detection per PRN across all detection sources
-        best = {}  # prn -> (snr, dop, cp, ref_hop)
+        best = {}  # prn -> (snr, dop, cp, ref_hop, nh)
         for d_ep in detectors:
             try:
                 dets = _get("%s/get_detections" % d_ep)
@@ -1280,7 +1293,7 @@ def main(argv=None):
                     continue
                 if prn not in best or snr > best[prn][0]:
                     best[prn] = (snr, float(d["doppler_hz"]), float(d["code_phase_chips"]),
-                                 int(d.get("ref_hop", 0)))
+                                 int(d.get("ref_hop", 0)), int(d.get("nh", -1)))
         for _p, _b in best.items():
             # A detection is FRESH when its ref_hop advanced (the stage re-detected it,
             # not a stale REST snapshot) -- the alias escape below must never act on a
@@ -1588,7 +1601,7 @@ def main(argv=None):
                 _log("time anchor unavailable (%s); retrying" % e)
         dr_pd = (dr_state or {}).get("pd") or {}
         dr_pd2 = (dr_state or {}).get("pd2") or {}
-        for prn, (snr, dop, cp, ref_hop) in best.items():
+        for prn, (snr, dop, cp, ref_hop, det_nh) in best.items():
             # DETECTION ALIAS CENSUS (2026-07-20; was briefly a FOLD, corrected same day):
             # the search's Doppler estimate is ambiguous mod 1/(2*t_rec) -- 25 Hz on L2C's
             # 20 ms records, 50 Hz B1C. An alias-bin detection is HARMLESS to the cp
@@ -1629,6 +1642,13 @@ def main(argv=None):
                 _dop_src = "dr"
                 seed_dop = (args.doppler_sign * (-v_dr["range_rate_mps"] / C_LIGHT
                                                  * args.carrier_hz) + clock_bias)
+            # ...unless the measured Doppler is explicitly preferred (--seed-doppler det). Last
+            # word, so it overrides the model AND the DR: those two exist to keep the seed
+            # smooth and to own undetected sats, but neither helps a sat we HAVE measured, and
+            # a model error rides the seed's whole extrapolation age at 0.0087 chips/Hz/s.
+            if args.seed_doppler == "det":
+                _dop_src = "det"
+                seed_dop = dop
             # SEED-STEP ATTRIBUTION (2026-07-18, the one-grid-step NCO disease): any seed
             # doppler step > 10 Hz vs the sat's previous seed is loud, with its source --
             # a ~exact-doppler_step jump here is the smoking gun for a grid/quantization
@@ -1732,7 +1752,17 @@ def main(argv=None):
             # clock only picks the segment (needs ~10 ms absolute accuracy, and the logged
             # residual MEASURES the anchor+host-clock error). Second-order cp0/range drift keeps
             # this valid for ~hour-long runs.
-            if args.cl_assist and utc0_sample0 and args.almanac and prn in pred:
+            # MEASURED overlay alignment (search reports `nh`) beats the time-assist below.
+            # Both cp0 and the seed are arguments in the same C = arg + n*cps convention, so
+            # matching the primary phase AND the overlay index gives simply
+            #     cp_long = cp_primary + nh * CODE_LEN   (mod LC_SEG*CODE_LEN)
+            # -- no wall clock, no range model, no half-period accuracy requirement, and
+            # per-satellite rather than one fitted constant for the whole sky.
+            if det_nh >= 0 and LC_SEG > 1:
+                seed["code_phase_chips"] = ((seed["code_phase_chips"] % CODE_LEN)
+                                            + (det_nh % LC_SEG) * CODE_LEN) % (LC_SEG * CODE_LEN)
+                cl_report.append("PRN %d nh=%d (measured)" % (prn, det_nh))
+            elif args.cl_assist and utc0_sample0 and args.almanac and prn in pred:
                 tau = pred[prn][3] / C_LIGHT
                 cl_chips = (((utc0_sample0 - tau + args.cl_time_adjust) % LC_EPOCH)
                             * args.chip_rate_hz)
@@ -2388,7 +2418,7 @@ def main(argv=None):
                 # minus the prediction, epoch-normalized to now (the offset drifts at
                 # f_chip*(l-a)); the circular median over sats is the receiver clock.
                 offs = []
-                for prn, (snr, dop, cp, ref_hop) in sorted(best.items()):
+                for prn, (snr, dop, cp, ref_hop, _nh) in sorted(best.items()):
                     v = pd.get((tag, prn))
                     if v is None:
                         continue

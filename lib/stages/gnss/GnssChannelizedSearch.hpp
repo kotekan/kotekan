@@ -93,6 +93,17 @@ private:
         float snr = 0.0f;
         bool valid = false;
         int misses = 0; ///< consecutive non-detecting snapshots since last valid hit
+        /// Secondary-code (NH) alignment this detection was found at -- the @c nh_phase the
+        /// replica generator was given, i.e. overlay chip for absolute primary-period k is
+        /// secondary[(k + nh) mod len]. -1 when the signal has no secondary code.
+        ///
+        /// The search SCANS all alignments and therefore MEASURES this, per satellite, every
+        /// pass. Reporting it lets a consumer skip reconstructing it from absolute time (the
+        /// broker's --cl-assist), which needs the wall clock and the modelled range good to well
+        /// under half a primary period -- 0.5 ms for L5 NH20 -- and silently picks the wrong
+        /// period when they are not. Measured beats computed, and per-satellite beats a fitted
+        /// common constant.
+        int nh = -1;
     };
 
     /// Global spectrum index of local channel @c lc, and its inverse (-1 = not ours).

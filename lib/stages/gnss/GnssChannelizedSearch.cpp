@@ -504,6 +504,7 @@ void GnssChannelizedSearch::search_snapshot() {
             det.doppler_hz = dop;
             det.code_phase_chips = cp;
             det.ref_hop = _snap_start_hop; // capture-time anchor for cp0 (for the slope fit)
+            det.nh = (_n_nh > 1) ? best_nh : -1; // MEASURED overlay alignment, not reconstructed
             det.valid = true;
             // DIAG: decompose where cp comes from, to localize any instability:
             //   hop   = absolute snapshot reference (sample_seq/fft_len)
@@ -711,6 +712,7 @@ void GnssChannelizedSearch::get_detections_callback(kotekan::connectionInstance&
                          {"doppler_hz", d.doppler_hz},
                          {"code_phase_chips", d.code_phase_chips},
                          {"ref_hop", d.ref_hop},
+                         {"nh", d.nh},
                          {"snr", d.snr}});
     }
     conn.send_json_reply(reply);
