@@ -151,9 +151,11 @@ gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: 120
 gps_search:
-  acquire_snr: 5.5
+  acquire_snr: 30.0
   acquire_threads: 6
-  acquire_windows: 8
+  acquire_fine_step: 32
+  prns_per_pass: 1
+  acquire_windows: 1
   channel_ids:
   - 5972
   - 5988
