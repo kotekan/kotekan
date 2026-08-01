@@ -445,8 +445,18 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
             const double dh = (double)(hop0 - sd.ref_hop);
             const double dt = dh * (double)S.fft_len / S.sample_rate;
             const double dop = sd.doppler_hz + sd.dop_rate * dt;
-            const double chips_per_hop =
-                S.replica->chip_rate_hz() * (double)S.fft_len / S.sample_rate;
+            // The phase advances at the TRUE code rate: nominal scaled by the code Doppler.
+            // Dropping the scaling makes the model lose chip_rate*dop/(carrier*hops_per_sec)
+            // chips per hop -- 1.05e-4 at dop 2350, so 41 chips on a seed only 2 s old and
+            // thousands on a minute-old one. It is invisible if the seed's `code_phase_rate`
+            // happens to carry that same term (which is what hand seeding did, and why hand
+            // seeds locked), but the broker's convention -- airspy's, and the right one -- is
+            // that code_phase_rate is a RESIDUAL and the geometry is fed forward here, exactly
+            // as the replica generator feeds it forward through cps(dop). So feed it forward.
+            const double chips_per_hop = S.replica->chip_rate_hz() * (double)S.fft_len
+                                         / S.sample_rate
+                                         * (1.0 + S.replica->code_doppler_sign * sd.doppler_hz
+                                                      / S.replica->carrier_hz());
             const double quad = 0.5 * (S.replica->chip_rate_hz() / S.f_offset_hz) * sd.dop_rate
                                 * dt * dt;
             const long long wstart_p = hop0 * (long long)S.fft_len;
