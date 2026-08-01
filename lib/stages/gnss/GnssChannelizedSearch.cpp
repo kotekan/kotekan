@@ -101,6 +101,18 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     // sph/(covering comb span) samples wide -- 157 at CHORD -- so storing it per sample is
     // ~157x oversampled, and the surface is the entire cost of a pass. See AcquisitionSurface.
     _acquire_fine_step = std::max(1, config.get_default<int>(unique_name, "acquire_fine_step", 1));
+    // How many ELIGIBLE PRNs to search per snapshot, round-robin. 0 = all of them, which is the
+    // historical behaviour and what airspy runs.
+    //
+    // A detection's ref_hop is the SNAPSHOT's start hop, and one snapshot used to serve the whole
+    // pass -- so a PRN searched last carried an epoch as old as the pass itself (285 s at CHORD
+    // even after the 2026-08-01 speedups). Seed error is Doppler error x anchor age at 0.0087
+    // chips per Hz per second, so that alone put every seed tens of chips off before the tracker
+    // ever saw it: the seed was never accurate at ANY moment, which is what a tracker needs in
+    // order to pull in. Searching a few PRNs against a FRESH snapshot each time bounds the epoch
+    // at emit by (pass time)/(PRNs per pass) instead, and the cursor makes the visits fair --
+    // a fixed order would keep re-detecting whichever PRNs sit at the front of the list.
+    _prns_per_pass = std::max(0, config.get_default<int>(unique_name, "prns_per_pass", 0));
     _hint_dop_sign = config.get_default<double>(unique_name, "hint_doppler_sign", -1.0);
     _require_hint = config.get_default<bool>(unique_name, "require_hint", false);
     _hint_ttl_s = config.get_default<double>(unique_name, "hint_ttl_s", 8.0);
@@ -292,6 +304,37 @@ void GnssChannelizedSearch::search_snapshot() {
     int best_any_prn = -1;
     int best_any_nh = -1;
     int n_unhinted = 0;
+    int n_deferred = 0;
+
+    // Pick this pass's slice of the eligible set, before the search loop so the cursor advances
+    // once per snapshot. The hint-validity test here MUST match the one in the loop below (it is
+    // only the validity predicate, not the grid construction); if they ever disagree the cursor
+    // walks a different set than the loop searches.
+    std::vector<char> selected((size_t)n_prn, 1);
+    if (_prns_per_pass > 0 && !cov_local.empty()) {
+        std::vector<int> elig;
+        {
+            std::lock_guard<std::mutex> lk(_hint_mtx);
+            for (int p = 0; p < n_prn; ++p) {
+                const DopHint& hh =
+                    _snap_hints.size() == _prns.size() ? _snap_hints[(size_t)p] : _dop_hints[(size_t)p];
+                const bool hinted =
+                    hh.valid && (_hint_ttl_s <= 0.0 || _snap_taken_s - hh.t_recv < _hint_ttl_s);
+                if (!_require_hint || hinted)
+                    elig.push_back(p);
+            }
+        }
+        const int ne = (int)elig.size();
+        if (ne > _prns_per_pass) {
+            std::fill(selected.begin(), selected.end(), (char)0);
+            if (_prn_cursor >= ne)
+                _prn_cursor = 0;
+            for (int i = 0; i < _prns_per_pass; ++i)
+                selected[(size_t)elig[(size_t)((_prn_cursor + i) % ne)]] = 1;
+            _prn_cursor = (_prn_cursor + _prns_per_pass) % ne;
+        }
+    }
+
     for (int p = 0; p < n_prn; ++p) {
         if (cov_local.empty()) { // carrier not in this subband: nothing to find
             std::lock_guard<std::mutex> lk(_det_mtx);
@@ -345,6 +388,16 @@ void GnssChannelizedSearch::search_snapshot() {
             ++n_unhinted;
             std::lock_guard<std::mutex> lk(_det_mtx);
             _detections[p] = Detection{};
+            continue;
+        }
+
+        // ROUND-ROBIN: search only this pass's slice of the eligible set, and leave everyone
+        // else's HELD detection untouched (they are not misses -- they simply were not looked
+        // at, so neither the latch nor the miss counter may fire). Selection is over the
+        // eligible PRNs, not the raw list, or a sky full of below-horizon PRNs would spend the
+        // pass's slots on satellites that get skipped anyway.
+        if (!selected[(size_t)p]) {
+            ++n_deferred;
             continue;
         }
 
@@ -501,10 +554,14 @@ void GnssChannelizedSearch::search_snapshot() {
             ceiling = kx / (double)kwin;
         }
         INFO("GnssChannelizedSearch[{:s}]: pass best snr {:.2f} (PRN {:d}{:s}), threshold {:.2f}, "
-             "pure-noise ceiling ~{:.2f}{:s}",
+             "pure-noise ceiling ~{:.2f}{:s}{:s}",
              unique_name, best_any, best_any_prn,
              (_n_nh > 1) ? fmt::format(", nh {:d}/{:d}", best_any_nh, _n_nh) : std::string(),
              _acquire_snr, ceiling,
+             (n_deferred > 0)
+                 ? fmt::format(" | round-robin: {:d} searched, {:d} deferred to later passes",
+                               _prns_per_pass, n_deferred)
+                 : std::string(),
              (_acquire_snr < ceiling) ? "  [THRESHOLD BELOW NOISE CEILING -- every \"detection\" "
                                         "is meaningless]"
                                       : "");

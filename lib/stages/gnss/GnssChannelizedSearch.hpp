@@ -145,6 +145,8 @@ private:
     bool _require_hint = false;
     int _acquire_threads = 1; ///< parallelism of the aggregate (see channelized_accumulate)
     int _acquire_fine_step = 1; ///< fine-lag decimation of the surface (see AcquisitionSurface)
+    int _prns_per_pass = 0;     ///< eligible PRNs searched per snapshot (0 = all, as before)
+    int _prn_cursor = 0;        ///< round-robin start into the ELIGIBLE list, advanced per pass
     double _hint_dop_sign = -1.0; ///< physical->internal Doppler map (see the hint window note)
     long _last_surface_cells = 0; ///< cells in the last surface (for the noise-ceiling log)
     long _empty_hint_passes = 0;  ///< require_hint passes that scanned nothing (rate-limited WARN)
