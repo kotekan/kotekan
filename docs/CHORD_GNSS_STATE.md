@@ -1274,3 +1274,98 @@ asymmetry is the lead.
 the -7 ms cl-time-adjust fitted to ONE satellite) survived to deployment and was wrong, while a
 noiseless injection sweep settled it in minutes. Injection is cheap here (mkframe + audit_nwin,
 seconds per point). Calibrate first, deploy second.
+
+# ============================================================================
+# 6. STATE AT COMPACTION (2026-08-02). READ THIS SECTION FIRST.
+# ============================================================================
+
+## 6.1 Known FOR SURE (measured, reproducible, with the number)
+
+**Geometry -- the root of most of it.** CHORD's record is 2048 hops = 10.4857 code periods.
+The replica period Mp = 3125 hops = **16** code periods exactly. NH20 is **20** periods. 16 and
+20 do not divide each other and neither is a whole number of hops. airspy had record = period =
+1, so every one of these was invisible there.
+
+**The code phase is an ARGUMENT, not a phase.** Every generator forms
+`C(n) = arg + n*cps(doppler)` over the ABSOLUTE sample index. At 6.8 days of uptime that gives
+`d(arg)/d(doppler) = 5095 chips/Hz`, measured by injection (509.50 chips at 0.1 Hz, predicted
+509.49). Referenced to the search's FIXED anchor instead: **1e-4 chips/Hz**, 4e7x smaller.
+NEVER transport an argument; transport a phase at its own epoch. (Fixed: db02bebfc.)
+
+**Sub-period phase is now CORRECT.** Verified live across 4 satellites over consecutive passes:
+the reported phase advances exactly as the code rate requires, residual +-10 chips (the
+acquire's own resolution). Every remaining error is an EXACT integer number of overlay periods.
+
+**The overlay period randomised every pass** (+1/+3/-4/+3/+3/-1/-2), because `best_nh` is the
+alignment of a replica at a FIXED anchor while the correlation lag slides it by a varying number
+of periods. Pinned by continuity across passes (52bb7e6f1): margin is 1500x (a 270 s revisit at
+1.5 Hz Doppler error predicts to ~3.5 chips against a 5115-chip half-period tolerance).
+
+**acquire_windows > 1 was destroying SNR.** Each accumulated window advances the overlay
+alignment by 16 = +4 mod 20 and lands in a DIFFERENT nh bin. Noiseless synthetic: a second
+window HALVES the SNR, every injection (9121 -> 4579). Live: PRN 23 snr 342 with one window vs
+56 with eight. Deployed `acquire_windows: 1`; the noise ceiling rises 4.45 -> 19.1 (Gamma(1),
+not Gamma(8)) so `acquire_snr` MUST rise with it -- it is 30 now, in both stage and broker.
+
+**Search cost.** fine-lag decimation (`acquire_fine_step: 32`, 7.4x -- the fine axis stored a
+157-sample-wide lobe at 1-sample resolution), (Doppler x coarse-lag) parallelism, and parallel
+per-channel correlation: 64.6 -> 7.3 s offline. With `prns_per_pass: 1`, ~9 s per PRN-pass live,
+from 790-1270 s three days ago. Seed epoch at emit: <= ~27 s.
+
+**Where it stands right now:** 4-6 satellites at q 2.4-3.2 simultaneously on ALL FOUR tracker
+stages, holding for minutes, trims agreeing across stages to ~0.05 chips. q_locked is ~3.6.
+
+## 6.2 The ONE thing now blocking, and it is a single number
+
+Code trims walk at 0.034 chips/s and saturate the +-3 chip `trim_clamp` in ~90 s. That is
+**3.9 Hz of residual Doppler** -- a RATE error, not a phase error. The lever that cancels it is
+`code_phase_rate`, and the broker is emitting **0.000e+00** where it needs **1.736e-07
+chips/hop**. The broker's cp-slope fit is meant to produce this from `cp_hist`. Either it is not
+accumulating points (round-robin gives each PRN one only every ~90-270 s) or its output is being
+discarded. Both are checkable in the broker alone, no sky.
+
+## 6.3 RETRACTED -- do not re-attempt these
+
+* **The NH restructure** (all 20 alignments from one correlation via `D^(k)(tau) = D^(0)(tau+kT)`).
+  Algebra is right, including the `+kT` sign. The REPRESENTATION fails: the cross-channel
+  reconstruction is approximate for a windowed PFB (its own header says so), fine for localizing
+  a peak, not for coherently summing 16 sub-hop-shifted copies. Noiseless per-period magnitudes
+  that must be identical came out 10..239. See 5q.
+* **The coarse-lag fold.** Only valid for the BARE code; repl0 carries the overlay, whose 20 ms
+  period does not divide the 16 ms window. Measured 68.8 chips off. See 5o.
+* **Reconstructing the period from absolute time** (`--cl-assist`). Needs clock+range good to
+  under half a period -- 0.5 ms for NH20, against L2C CL's 20 ms. Off by 7-11 ms in practice.
+* **`--cl-time-adjust` as a fitted constant.** Measured 7 periods on PRN 4 and 11 on PRN 23: NOT
+  common across satellites, so no single constant exists.
+* **The instrumental-delay figures (~148 chips, then ~16 chips).** Contaminated. -9 chips of the
+  latter is an ACQUIRE artefact, measured on NOISELESS synthetic. Re-measure from scratch once
+  the period is settled.
+* **`--carrier-gain` before a lock exists.** Its gate only engages for sats already in TRACK, so
+  with nothing locked it integrates +-20 Hz of noise into the NCOs. Tried twice, wrong twice.
+
+## 6.4 Proposed next moves, in order
+
+1. **BUILD THE END-TO-END HARNESS FIRST.** Inject a known cp204 (`scripts/mkframe.cpp`), run it
+   through the search stage, the broker's seed arithmetic, the tracker's propagation, and the
+   GPU despread, and print the final error in chips. Every piece already exists and is already
+   used separately -- they have never been closed into one loop, and that is precisely why this
+   week found bugs one at a time in deployment order rather than all at once. Nothing else on
+   this list should be attempted before it exists.
+2. The `code_phase_rate` lever (6.2) -- the current blocker.
+3. A residual gate on the continuity correction: one live correction came back +18 periods with
+   a -173.6 chip residual against ~10 for the others. That is resolution against a bad prior;
+   reject corrections whose residual exceeds ~50 chips, or one bad pass poisons a whole sequence.
+4. One oracle calibration on a strong satellite to pin the ABSOLUTE period. Continuity gives
+   self-consistency, not absolute truth -- a whole sequence can sit a constant integer off.
+5. The window/overlay bookkeeping fix: route window w into bin (a + 4w) mod 20, recovering full
+   multi-window integration AND a clean nh at no compute cost, and letting the noise ceiling and
+   `acquire_snr` come back down from 19.1/30 to 4.5/5.5.
+
+## 6.5 Method note, addressed to whoever picks this up (including me)
+
+Three separate mappings derived on paper reached deployment wrong this week: the `+kT` shift
+direction, `cp204 = cp0 + nh*10230`, and a `-7 ms` cl-time-adjust fitted to ONE satellite and
+generalised. A noiseless injection sweep settled each in minutes -- `mkframe` + `audit_nwin` is
+seconds per point. The tooling was there the whole time and was used to CONFIRM after deploying
+rather than to DECIDE before. Calibrate first, deploy second, and close the loop end to end
+before trusting any component in isolation.
