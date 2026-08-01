@@ -1165,3 +1165,57 @@ snapshot's START, but the result only appears when the whole pass finishes, so a
 ~13 minutes old the first time it is posted. Doppler error x anchor age is the seed error:
 0.0087 chips per Hz per second. Nothing here locks reliably until the pass is seconds, which is
 why 5o matters.
+
+## 5q. SEARCH COST, ROUND 2 (2026-08-01): what worked, and why the NH restructure cannot
+
+**Landed, verified, 8.8x end to end** on the archived P32 frame (`scripts/audit_step.cpp`,
+commit 088394619). The surface is the entire cost of a pass -- 2.8 GB and 15 Tflop per pass,
+both of which match the ~880 s observed -- so all three changes attack it:
+
+1. **Fine-lag decimation, `acquire_fine_step` (7.4x).** The fine axis is the beam of the
+   covering comb: main lobe `sph/(comb span in bins)` = 157 samples, stored at 1-sample
+   resolution, i.e. ~157x oversampled. Step 1 vs 32: snr 164.54 -> 163.77, cp 8991.83 ->
+   8991.86, same NH alignment, same Doppler. 0.03 chips and 0.5% for 7.4x. Unlike 5o's fold
+   this assumes NO periodicity, so the secondary code cannot invalidate it.
+2. **Aggregate splits the (Doppler x coarse-lag) product**, not the Doppler axis alone -- the
+   d axis is short exactly when the broker's hints are working, so the old split idled cores
+   in the case that matters.
+3. **Per-channel correlation runs in parallel** (it was serial only because all channels
+   shared the one caller-owned FFTW workspace). 6.9 -> 4.3 s, and it dominates once (1) lands.
+
+At `fine_step 1` the new code reproduces the original serial answer EXACTLY.
+
+### The NH restructure: attempted, measured, abandoned -- and the reason is worth keeping
+
+The idea: the 20 NH alignments are not independent problems. The overlay multiplies each CHIP
+by a sign, so `repl^(nh) = sum_k NH[(k+nh) mod L] B_k` with `B_k` the replica restricted to code
+period k; correlation is linear; and since the primary code repeats, `B_k` is `B_0` delayed by
+exactly one code period T. If `D^(k)(tau) = D^(0)(tau + kT)` then ONE correlate + ONE aggregate
+yields all 20 alignments as sign-weighted sums of 16 shifted copies -- ~17x, and it delivers 5o's
+coarse-axis reduction for free because the periods get summed explicitly.
+
+The algebra is right (note `+kT`, not `-kT`: the surface's lag axis is the negative of physical
+delay, and the wrong sign sums one real peak against 15 empty cells -- a ~sqrt(n_per) SNR loss
+that reads as "nearly working"). **The representation is what fails.** Measured on NOISELESS
+synthetic injection, the per-period magnitudes at `tau + kT`, which must be identical, came out
+
+    10, 27, 73, 92, 113, 135, 186, 200, 211, 228, 239   (should all be 239)
+
+and the assembled result was snr 971 vs 4470, 16 chips off, with the wrong NH alignment.
+
+The cause is stated in gnssChannelizedAcquire.hpp's own header: the cross-channel reconstruction
+`D(q,s)` is *exact for a critically-sampled rectangular bank and APPROXIMATE for the windowed
+PFB* -- "sufficient because acquisition only has to localize the peak to ~1 chip". Summing 16
+shifted copies COHERENTLY needs `D` accurate in amplitude and phase at 16 arbitrary sub-hop
+offsets (the k-th shift lands at `k*0.3125` hop, spanning the full range), which is a far
+stronger requirement than localizing a peak. The spread above IS that reconstruction error.
+
+**Do not retry this by re-deriving the indexing.** Anything that coherently combines `D` at
+sub-hop offsets inherits the same limit. The routes that remain honest are: generate 16
+separately PFB-correct masked replicas (only 20/16 = 1.25x, not worth it), or accept the 20-way
+scan and attack the surface, which is what (1)-(3) do.
+
+**Remaining, untried:** the Doppler grid is 31.25 Hz, exactly half the 62.5 Hz bin spacing of
+the Mp-point transform. At 62.5 Hz the wipe becomes an integer bin rotation, so `FFT(wiped)` is
+a cyclic shift of ONE `FFT(data)` -- roughly halving the correlate cost, which is now the
+dominant term. The parabolic refine already recovers sub-grid Doppler.
