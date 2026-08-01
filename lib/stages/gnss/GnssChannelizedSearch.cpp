@@ -530,6 +530,24 @@ void GnssChannelizedSearch::search_snapshot() {
                 if (cpl < 0.0)
                     cpl += (double)LL;
                 det.code_phase_long_chips = cpl;
+                // ...and the same phase referenced to the SNAPSHOT, which is what should
+                // actually be transported. best_cp is the argument of a replica at `anchor`
+                // that matches the data at the snapshot, so the data's phase there is just
+                // best_cp lifted plus the ANCHOR's own advance -- a fixed ~163732 chips whose
+                // Doppler sensitivity is 1e-4 chips/Hz, against 5903 chips/Hz for the sample-0
+                // route above. Same information, seven orders of magnitude better conditioned.
+                const long double n_anc = (long double)anchor + (long double)_fft_len - 1.0L;
+                const long double cps_d =
+                    (long double)cps
+                    * (1.0L
+                       + (long double)(_replica->code_doppler_sign * dop / _replica->carrier_hz()));
+                const long double a_adv = n_anc * cps_d;
+                double phr = std::fmod(best_cp + (double)best_nh * L
+                                           + (double)(a_adv - std::floor(a_adv / LL) * LL),
+                                       (double)LL);
+                if (phr < 0.0)
+                    phr += (double)LL;
+                det.code_phase_at_ref_chips = phr;
             }
             det.valid = true;
             // DIAG: decompose where cp comes from, to localize any instability:
@@ -740,6 +758,7 @@ void GnssChannelizedSearch::get_detections_callback(kotekan::connectionInstance&
                          {"ref_hop", d.ref_hop},
                          {"nh", d.nh},
                          {"code_phase_long_chips", d.code_phase_long_chips},
+                         {"code_phase_at_ref_chips", d.code_phase_at_ref_chips},
                          {"snr", d.snr}});
     }
     conn.send_json_reply(reply);

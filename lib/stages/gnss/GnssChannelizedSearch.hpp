@@ -108,6 +108,16 @@ private:
         /// signal has no secondary code. This is what a tracker despreading the long code needs;
         /// @c code_phase_chips is reduced mod the PRIMARY length and cannot carry the period.
         double code_phase_long_chips = -1.0;
+        /// PHYSICAL code phase at @c ref_hop, in the overlaid code's length; -1 if none.
+        ///
+        /// This, not @c code_phase_chips, is what a consumer should transport. cp0 back-
+        /// references the phase to sample 0 through a Doppler-scaled rate, ~2e15 samples away,
+        /// which multiplies the reported Doppler's error by 5903 chips/Hz = 0.58 PERIODS per Hz
+        /// -- and the acquire's Doppler is only good to ~1.5 Hz, so the overlay period that
+        /// comes out is a coin flip. Referenced to the search's own fixed replica anchor
+        /// instead, the same lever is 1e-4 chips/Hz: 4e7 times smaller, because the anchor is a
+        /// small fixed index rather than the absolute stream position.
+        double code_phase_at_ref_chips = -1.0;
     };
 
     /// Global spectrum index of local channel @c lc, and its inverse (-1 = not ours).

@@ -137,6 +137,11 @@ void cudaGnssChordTrackState::set_seeds_callback(kotekan::connectionInstance& co
                     sd.dop_rate = s.value("doppler_rate_hz_s", 0.0);
                     sd.ctrim_hz = s.value("carrier_trim_hz", 0.0);
                     sd.ref_hop = s.value("ref_hop", (long long)0);
+                    // PHYSICAL phase at ref_hop, when the producer can supply it. Preferred
+                    // over cp_chips: an argument back-references to sample 0 through a
+                    // Doppler-scaled rate, so the producer's Doppler error arrives multiplied
+                    // by ~5900 chips/Hz. A phase carries no such lever.
+                    sd.phase_ref_chips = s.value("code_phase_at_ref_chips", -1.0);
                     upd.emplace_back(i, sd);
                     break;
                 }
@@ -461,8 +466,11 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
                                 * dt * dt;
             const long long wstart_p = hop0 * (long long)S.fft_len;
             // The seed's argument -> the true code phase at ref_hop, at the seed's Doppler.
-            const double phase_ref = S.replica->phase_from_arg(
-                sd.cp_chips, sd.ref_hop * (long long)S.fft_len, sd.doppler_hz);
+            const double phase_ref =
+                (sd.phase_ref_chips >= 0.0)
+                    ? sd.phase_ref_chips // transported as a phase: no back-reference at all
+                    : S.replica->phase_from_arg(sd.cp_chips, sd.ref_hop * (long long)S.fft_len,
+                                                sd.doppler_hz);
             // The DLL trim rides ON TOP of the model phase: the broker keeps owning the seed
             // (fit/coast state stays pure), the trim owns the sub-chip residual.
             const double phase_now =

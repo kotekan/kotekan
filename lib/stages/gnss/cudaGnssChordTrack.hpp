@@ -61,7 +61,8 @@ public:
         double cp_rate = 0.0;     ///< chips per hop (the broker's measured l-a residual)
         double dop_rate = 0.0;    ///< Hz/s
         double ctrim_hz = 0.0;    ///< broker carrier trim
-        long long ref_hop = 0;    ///< absolute hop the cp is referenced to
+        long long ref_hop = 0;
+        double phase_ref_chips = -1.0; ///< physical code phase at ref_hop (-1 = derive from cp)
     };
     std::mutex seed_mtx;
     std::vector<Seed> seeds;
