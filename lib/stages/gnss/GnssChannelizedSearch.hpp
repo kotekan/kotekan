@@ -104,6 +104,10 @@ private:
         /// period when they are not. Measured beats computed, and per-satellite beats a fitted
         /// common constant.
         int nh = -1;
+        /// Code phase in the OVERLAID code's own length (n_nh * code_length), or -1 when the
+        /// signal has no secondary code. This is what a tracker despreading the long code needs;
+        /// @c code_phase_chips is reduced mod the PRIMARY length and cannot carry the period.
+        double code_phase_long_chips = -1.0;
     };
 
     /// Global spectrum index of local channel @c lc, and its inverse (-1 = not ours).

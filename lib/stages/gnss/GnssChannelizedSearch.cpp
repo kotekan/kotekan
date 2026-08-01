@@ -505,6 +505,32 @@ void GnssChannelizedSearch::search_snapshot() {
             det.code_phase_chips = cp;
             det.ref_hop = _snap_start_hop; // capture-time anchor for cp0 (for the slope fit)
             det.nh = (_n_nh > 1) ? best_nh : -1; // MEASURED overlay alignment, not reconstructed
+            // LONG-CODE PHASE, mod n_nh*L -- the phase a tracker despreading the overlaid code
+            // actually needs. Everything above is reduced mod L, which is right for the primary
+            // and DESTROYS the overlay period: a phase known only mod L leaves the tracker a
+            // 1-in-n_nh guess, and no constant correction can supply the missing period because
+            // it is not constant. Two separate reductions have to change, not one:
+            //   * best_cp lifts into the long space by the alignment the acquire MEASURED;
+            //   * the `% Mp` shortcut is valid ONLY mod L. One replica period is
+            //     Mp*fft_len*cps = 16 L exactly at CHORD -- 0 mod L, but NOT 0 mod 20 L -- so
+            //     the long form needs the FULL absolute advance. That product reaches ~7e12
+            //     chips and must stay good to a chip, hence long double (double's ulp there is
+            //     ~1e-3 chips, fine, but the margin is free).
+            if (_n_nh > 1) {
+                const long double LL = (long double)L * (long double)_n_nh;
+                const long double adv =
+                    (long double)_snap_start_hop * (long double)_fft_len * (long double)cps;
+                const long double off_l = adv - std::floor(adv / LL) * LL;
+                const double drift_l =
+                    std::fmod((double)_snap_start_hop * (double)_fft_len * cps
+                                  * (_replica->code_doppler_sign * dop / _replica->carrier_hz()),
+                              (double)LL);
+                double cpl = std::fmod(best_cp + (double)best_nh * L - (double)off_l - drift_l,
+                                       (double)LL);
+                if (cpl < 0.0)
+                    cpl += (double)LL;
+                det.code_phase_long_chips = cpl;
+            }
             det.valid = true;
             // DIAG: decompose where cp comes from, to localize any instability:
             //   hop   = absolute snapshot reference (sample_seq/fft_len)
@@ -713,6 +739,7 @@ void GnssChannelizedSearch::get_detections_callback(kotekan::connectionInstance&
                          {"code_phase_chips", d.code_phase_chips},
                          {"ref_hop", d.ref_hop},
                          {"nh", d.nh},
+                         {"code_phase_long_chips", d.code_phase_long_chips},
                          {"snr", d.snr}});
     }
     conn.send_json_reply(reply);

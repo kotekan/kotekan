@@ -1280,7 +1280,7 @@ def main(argv=None):
     while True:
         t0 = time.time()
         # 1. collect best-SNR detection per PRN across all detection sources
-        best = {}  # prn -> (snr, dop, cp, ref_hop, nh)
+        best = {}  # prn -> (snr, dop, cp, ref_hop, nh, cp_long)
         for d_ep in detectors:
             try:
                 dets = _get("%s/get_detections" % d_ep)
@@ -1293,7 +1293,8 @@ def main(argv=None):
                     continue
                 if prn not in best or snr > best[prn][0]:
                     best[prn] = (snr, float(d["doppler_hz"]), float(d["code_phase_chips"]),
-                                 int(d.get("ref_hop", 0)), int(d.get("nh", -1)))
+                                 int(d.get("ref_hop", 0)), int(d.get("nh", -1)),
+                                 float(d.get("code_phase_long_chips", -1.0)))
         for _p, _b in best.items():
             # A detection is FRESH when its ref_hop advanced (the stage re-detected it,
             # not a stale REST snapshot) -- the alias escape below must never act on a
@@ -1601,7 +1602,7 @@ def main(argv=None):
                 _log("time anchor unavailable (%s); retrying" % e)
         dr_pd = (dr_state or {}).get("pd") or {}
         dr_pd2 = (dr_state or {}).get("pd2") or {}
-        for prn, (snr, dop, cp, ref_hop, det_nh) in best.items():
+        for prn, (snr, dop, cp, ref_hop, det_nh, cp_long) in best.items():
             # DETECTION ALIAS CENSUS (2026-07-20; was briefly a FOLD, corrected same day):
             # the search's Doppler estimate is ambiguous mod 1/(2*t_rec) -- 25 Hz on L2C's
             # 20 ms records, 50 Hz B1C. An alias-bin detection is HARMLESS to the cp
@@ -1758,7 +1759,14 @@ def main(argv=None):
             #     cp_long = cp_primary + nh * CODE_LEN   (mod LC_SEG*CODE_LEN)
             # -- no wall clock, no range model, no half-period accuracy requirement, and
             # per-satellite rather than one fitted constant for the whole sky.
-            if det_nh >= 0 and LC_SEG > 1:
+            if cp_long >= 0.0 and LC_SEG > 1:
+                # The SEARCH already reduced this at the overlaid code's own length, so it
+                # carries the period. Reconstructing it here -- from `nh`, or from absolute
+                # time via --cl-assist -- means re-deriving a convention the search already
+                # knows, which is where every previous attempt went wrong.
+                seed["code_phase_chips"] = cp_long % (LC_SEG * CODE_LEN)
+                cl_report.append("PRN %d long-cp (search)" % prn)
+            elif det_nh >= 0 and LC_SEG > 1:
                 seed["code_phase_chips"] = ((seed["code_phase_chips"] % CODE_LEN)
                                             + (det_nh % LC_SEG) * CODE_LEN) % (LC_SEG * CODE_LEN)
                 cl_report.append("PRN %d nh=%d (measured)" % (prn, det_nh))
@@ -2418,7 +2426,7 @@ def main(argv=None):
                 # minus the prediction, epoch-normalized to now (the offset drifts at
                 # f_chip*(l-a)); the circular median over sats is the receiver clock.
                 offs = []
-                for prn, (snr, dop, cp, ref_hop, _nh) in sorted(best.items()):
+                for prn, (snr, dop, cp, ref_hop, _nh, _cpl) in sorted(best.items()):
                     v = pd.get((tag, prn))
                     if v is None:
                         continue
