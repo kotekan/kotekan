@@ -2,7 +2,8 @@
 
 #include "fftwPlannerLock.hpp" // for fftw_planner_mutex
 
-#include <cmath>   // for cos, sin, fmod, M_PI
+#include <algorithm> // for max
+#include <cmath>   // for cos, sin, fmod, M_PI, round
 #include <cstdlib> // for abs
 #include <mutex>   // for lock_guard
 #include <numeric> // for gcd
@@ -67,6 +68,50 @@ channel_correlate(const std::vector<cf>& data, const std::vector<cf>& repl0,
 
     const float inv_mp = 1.0f / (float)Mp; // FFTW backward is unnormalized
     std::vector<std::vector<cf>> P(nd, std::vector<cf>(Mp));
+
+    // BIN-ALIGNED DOPPLER GRID: wiping the data by f_d multiplies it by e^{-i 2pi f_d m sph/Fs},
+    // which is a pure cyclic SHIFT of its spectrum -- exactly, with no approximation -- whenever
+    // f_d is a whole number of this transform's own bins, Fs/(Mp*sph) = 62.5 Hz at CHORD. Then
+    // ONE forward transform serves every Doppler trial instead of one per trial, halving the
+    // per-channel correlation, which is the dominant cost once the surface is decimated.
+    //
+    // Detected rather than configured: a caller whose doppler_step lands on the bin spacing gets
+    // it for free, and one whose does not (the historical 31.25 Hz = HALF a bin) keeps the
+    // original path bit-for-bit. Halving the grid costs Doppler resolution the parabolic refine
+    // in channelized_peak already recovers to ~step/20.
+    const double bin_hz = (Mp > 0 && sph > 0) ? sample_rate / ((double)Mp * (double)sph) : 0.0;
+    std::vector<int> bshift((size_t)nd);
+    bool on_bins = (nd > 0 && bin_hz > 0.0);
+    for (int d = 0; d < nd && on_bins; ++d) {
+        const double b = doppler_grid[d] / bin_hz;
+        const double rb = std::round(b);
+        if (std::fabs(b - rb) > 1e-6 * std::max(1.0, std::fabs(rb)))
+            on_bins = false;
+        else
+            bshift[(size_t)d] = (int)((((long long)rb % Mp) + Mp) % Mp);
+    }
+    if (on_bins) {
+        std::vector<cf> A(Mp);
+        for (int m = 0; m < M; ++m)
+            IN[m] = data[m];
+        for (int m = M; m < Mp; ++m)
+            IN[m] = cf(0.0f, 0.0f);
+        fftwf_execute(ws.fwd);
+        for (int k = 0; k < Mp; ++k)
+            A[k] = OUT[k];
+        for (int d = 0; d < nd; ++d) {
+            const int b = bshift[(size_t)d];
+            for (int k = 0; k < Mp - b; ++k)
+                IN[k] = A[k + b] * conjB[k];
+            for (int k = Mp - b; k < Mp; ++k)
+                IN[k] = A[k + b - Mp] * conjB[k];
+            fftwf_execute(ws.inv);
+            for (int q = 0; q < Mp; ++q)
+                P[d][q] = OUT[q] * inv_mp;
+        }
+        return P;
+    }
+
     std::vector<cf> wipe(M);
     for (int d = 0; d < nd; ++d) {
         // Per-hop Doppler wipe e^{-i 2pi fd (m*sph)/Fs} via a phasor recurrence.
