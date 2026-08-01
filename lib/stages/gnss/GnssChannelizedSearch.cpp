@@ -97,6 +97,10 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     // exact serial path -- unless configured: the airspy chains are sized for one core, while
     // the aggregator's 27-channel surface is ~10 s/window serial and owns several cores.
     _acquire_threads = config.get_default<int>(unique_name, "acquire_threads", 1);
+    // Fine-lag decimation. 1 = every sample (the old behaviour). The fine axis resolves a lobe
+    // sph/(covering comb span) samples wide -- 157 at CHORD -- so storing it per sample is
+    // ~157x oversampled, and the surface is the entire cost of a pass. See AcquisitionSurface.
+    _acquire_fine_step = std::max(1, config.get_default<int>(unique_name, "acquire_fine_step", 1));
     _hint_dop_sign = config.get_default<double>(unique_name, "hint_doppler_sign", -1.0);
     _require_hint = config.get_default<bool>(unique_name, "require_hint", false);
     _hint_ttl_s = config.get_default<double>(unique_name, "hint_ttl_s", 8.0);
@@ -365,7 +369,7 @@ void GnssChannelizedSearch::search_snapshot() {
                         dch[lc][m] = _snapshot[((size_t)(w * hpr + m)) * _n_chan + lc];
                 dims = gnss::channelized_accumulate(dch, repl0, cov_local, grid, _sample_rate,
                                                     _n_chan, surf, _acq_ws, cov_global, _fft_len,
-                                                    _acquire_threads);
+                                                    _acquire_threads, _acquire_fine_step);
             }
             _last_surface_cells = dims.size();
             const auto ai = gnss::channelized_peak(surf, dims, grid, _sample_rate,

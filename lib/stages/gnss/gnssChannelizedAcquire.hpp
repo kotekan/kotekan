@@ -79,13 +79,30 @@ struct AcquisitionResult {
 /// columns are bit-for-bit copies -- see @ref channelized_accumulate. The fine lag still
 /// STRIDES by @c sph when converting a surface cell to an absolute delay (tau = q*sph + s);
 /// only the stored width shrinks. Use @c s_stored for indexing and @c sph for delay arithmetic.
+/// @c s_step DECIMATES that stored width. The fine-lag response is the beam of the covering
+/// comb, so its main lobe is @c sph/(comb span in bins) wide -- 157 samples for CHORD's 27
+/// channels over 104 bins -- while the axis is stored at 1-sample resolution. Sampling a
+/// 157-sample lobe every sample is ~157x oversampled, and the surface is the whole cost of a
+/// pass (2.8 GB and 15 Tflop per pass at CHORD scale, both of which fit the ~880 s observed).
+/// Stepping s costs only scalloping: at step 32 the worst-case peak offset is 16 samples,
+/// ~0.15 dB. Nothing downstream needs better, because the refine that follows the acquire
+/// rescans +-refine_span samples anyway. This is NOT the coarse-axis fold that was tried and
+/// reverted (see docs/CHORD_GNSS_STATE.md 5o): it assumes no periodicity, so the secondary
+/// code cannot invalidate it.
 struct AcquisitionSurface {
     int n_dop;        ///< Doppler trials (= doppler_grid.size())
     int Mp;           ///< replica hop-period (coarse-lag range)
     int sph;          ///< full-rate samples per hop (the fine-lag STRIDE in absolute delay)
-    int s_stored = 0; ///< fine-lag columns actually stored (== sph when not periodic)
+    int s_stored = 0; ///< fine-lag WIDTH in samples (== sph when not periodic)
+    int s_step = 1;   ///< samples per stored column (1 = every sample, the old behaviour)
     /// Distinct fine-lag columns, tolerating a surface built before @c s_stored existed.
-    int fine() const { return s_stored > 0 ? s_stored : sph; }
+    int fine() const {
+        const int w = s_stored > 0 ? s_stored : sph;
+        const int st = s_step > 0 ? s_step : 1;
+        return (w + st - 1) / st;
+    }
+    /// Absolute delay of surface cell (q, i), full-rate samples.
+    long tau(int q, int i) const { return (long)q * sph + (long)i * (s_step > 0 ? s_step : 1); }
     long size() const { return (long)n_dop * Mp * fine(); }
 };
 
@@ -143,7 +160,7 @@ channelized_accumulate(const std::vector<std::vector<std::complex<float>>>& data
                        const std::vector<int>& covering, const std::vector<double>& doppler_grid,
                        double sample_rate, int num_chan, std::vector<double>& surf,
                        AcquireWorkspace& ws, const std::vector<int>& chan_freq = {},
-                       int samples_per_hop = 0, int n_threads = 1);
+                       int samples_per_hop = 0, int n_threads = 1, int fine_step = 1);
 
 /// Per-channel coarse correlation for ONE channel -- the distributable half of the
 /// search. P_c[d][q] = IFFT{ FFT(wiped0_d) * conj(FFT(repl0)) } for each Doppler d
@@ -161,10 +178,11 @@ channel_correlate(const std::vector<std::complex<float>>& data,
 /// and the covering channels' global frequency indices @c chan_freq, add the
 /// |D(q,s)|^2 surface into @c surf (pass the same surf across snapshots to integrate).
 /// Returns the surface dimensions.
+/// @c fine_step decimates the fine-lag axis (1 = every sample; see AcquisitionSurface::s_step).
 AcquisitionSurface
 aggregate_accumulate(const std::vector<std::vector<std::vector<std::complex<float>>>>& P,
                      const std::vector<int>& chan_freq, int samples_per_hop,
-                     std::vector<double>& surf, int n_threads = 1);
+                     std::vector<double>& surf, int n_threads = 1, int fine_step = 1);
 
 /// Reduce an accumulated surface to its peak: code phase, Doppler, lag and SNR
 /// (peak / surface mean). Mirrors @ref channelized_acquire's peak bookkeeping.

@@ -94,7 +94,7 @@ channel_correlate(const std::vector<cf>& data, const std::vector<cf>& repl0,
 AcquisitionSurface
 aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
                      const std::vector<int>& chan_freq, int samples_per_hop,
-                     std::vector<double>& surf, int n_threads) {
+                     std::vector<double>& surf, int n_threads, int fine_step) {
     const int nc = (int)P.size();
     const int nd = nc ? (int)P[0].size() : 0;
     const int Mp = (nc && nd) ? (int)P[0][0].size() : 0;
@@ -127,8 +127,11 @@ aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
     // g == 0 means a single covering channel: |D|^2 is then flat in s (one unit-modulus ramp),
     // so one column suffices. std::gcd(0, sph) == sph gives exactly that.
     const int s_stored = (nc > 0 && sph > 0) ? sph / std::gcd(g, sph) : sph;
-
-    const AcquisitionSurface dims{nd, Mp, sph, s_stored};
+    // Decimate the fine axis: it is sampled every sample but its lobe is sph/(comb span)
+    // samples wide (157 here), so the stored width is ~157x finer than the peak it resolves.
+    const int s_step = std::max(1, fine_step);
+    const AcquisitionSurface dims{nd, Mp, sph, s_stored, s_step};
+    const int s_cols = dims.fine();
     if ((long)surf.size() != dims.size())
         surf.assign(dims.size(), 0.0);
     if (nc == 0)
@@ -138,14 +141,14 @@ aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
     // inner s-loop vectorizes (std::complex<float> does not auto-vectorize).
     // NOTE the ramp argument still divides by the FULL sph -- s_stored bounds the range of s,
     // it does not rescale the frequency.
-    std::vector<std::vector<float>> rampRe(nc, std::vector<float>(s_stored));
-    std::vector<std::vector<float>> rampIm(nc, std::vector<float>(s_stored));
+    std::vector<std::vector<float>> rampRe(nc, std::vector<float>(s_cols));
+    std::vector<std::vector<float>> rampIm(nc, std::vector<float>(s_cols));
     for (int ci = 0; ci < nc; ++ci) {
         const int fc = chan_freq[ci];
-        for (int s = 0; s < s_stored; ++s) {
-            const double a = 2.0 * M_PI * fc * s / sph;
-            rampRe[ci][s] = (float)std::cos(a);
-            rampIm[ci][s] = (float)std::sin(a);
+        for (int i = 0; i < s_cols; ++i) {
+            const double a = 2.0 * M_PI * fc * (double)(i * s_step) / sph;
+            rampRe[ci][i] = (float)std::cos(a);
+            rampIm[ci][i] = (float)std::sin(a);
         }
     }
 
@@ -154,39 +157,43 @@ aggregate_accumulate(const std::vector<std::vector<std::vector<cf>>>& P,
     // channels x 4096 stored lags x 11 Doppler bins is ~3e10 flops per window, ~10 s on one
     // core -- which multiplied by windows x NH alignments x PRNs is HOURS per pass. n_threads=1
     // (the default everywhere it is not explicitly configured) runs the identical serial loop.
-    const auto run_d = [&](int d0, int d1) {
-        std::vector<float> Dre(s_stored), Dim(s_stored);
-        for (int d = d0; d < d1; ++d) {
-            double* base = surf.data() + (long)d * Mp * s_stored;
-            for (int q = 0; q < Mp; ++q) {
-                for (int s = 0; s < s_stored; ++s) {
-                    Dre[s] = 0.0f;
-                    Dim[s] = 0.0f;
-                }
-                for (int ci = 0; ci < nc; ++ci) {
-                    const float pre = P[ci][d][q].real(), pim = P[ci][d][q].imag();
-                    const float* rr = rampRe[ci].data();
-                    const float* ri = rampIm[ci].data();
-                    for (int s = 0; s < s_stored; ++s) {
-                        Dre[s] += pre * rr[s] - pim * ri[s];
-                        Dim[s] += pre * ri[s] + pim * rr[s];
-                    }
-                }
-                double* row = base + (long)q * s_stored;
-                for (int s = 0; s < s_stored; ++s)
-                    row[s] += (double)(Dre[s] * Dre[s] + Dim[s] * Dim[s]);
+    // Split the (Doppler x coarse-lag) PRODUCT, not the Doppler axis alone. Each (d,q) owns one
+    // surface row, so the write is disjoint either way -- but the d axis is short exactly when
+    // the search is working well (the broker's hints narrow it to a handful of bins), which
+    // capped the old split at min(n_threads, n_dop) and left most cores idle in the case that
+    // matters. n_rows = n_dop*Mp is tens of thousands, so every core gets work regardless.
+    const long n_rows = (long)nd * Mp;
+    const auto run_rows = [&](long r0, long r1) {
+        std::vector<float> Dre(s_cols), Dim(s_cols);
+        for (long r = r0; r < r1; ++r) {
+            const int d = (int)(r / Mp), q = (int)(r % Mp);
+            for (int s = 0; s < s_cols; ++s) {
+                Dre[s] = 0.0f;
+                Dim[s] = 0.0f;
             }
+            for (int ci = 0; ci < nc; ++ci) {
+                const float pre = P[ci][d][q].real(), pim = P[ci][d][q].imag();
+                const float* rr = rampRe[ci].data();
+                const float* ri = rampIm[ci].data();
+                for (int s = 0; s < s_cols; ++s) {
+                    Dre[s] += pre * rr[s] - pim * ri[s];
+                    Dim[s] += pre * ri[s] + pim * rr[s];
+                }
+            }
+            double* row = surf.data() + r * s_cols;
+            for (int s = 0; s < s_cols; ++s)
+                row[s] += (double)(Dre[s] * Dre[s] + Dim[s] * Dim[s]);
         }
     };
-    const int nt = std::max(1, std::min(n_threads, nd));
+    const int nt = (int)std::max(1L, std::min((long)std::max(1, n_threads), n_rows));
     if (nt == 1) {
-        run_d(0, nd);
+        run_rows(0, n_rows);
     } else {
         std::vector<std::thread> pool;
         for (int t = 0; t < nt; ++t) {
-            const int d0 = nd * t / nt, d1 = nd * (t + 1) / nt;
-            if (d1 > d0)
-                pool.emplace_back(run_d, d0, d1);
+            const long r0 = n_rows * t / nt, r1 = n_rows * (t + 1) / nt;
+            if (r1 > r0)
+                pool.emplace_back(run_rows, r0, r1);
         }
         for (auto& th : pool)
             th.join();
@@ -200,7 +207,7 @@ channelized_accumulate(const std::vector<std::vector<std::complex<float>>>& data
                        const std::vector<int>& covering, const std::vector<double>& doppler_grid,
                        double sample_rate, int num_chan, std::vector<double>& surf,
                        AcquireWorkspace& ws, const std::vector<int>& chan_freq, int samples_per_hop,
-                       int n_threads) {
+                       int n_threads, int fine_step) {
     // The decimation (samples per hop): N for a critically-sampled complex bank,
     // 2N for an r2c real-FFT bank. This is now just per-channel correlate (the
     // distributable part) + cross-channel aggregate (see channel_correlate /
@@ -209,13 +216,38 @@ channelized_accumulate(const std::vector<std::vector<std::complex<float>>>& data
     const int sph = (samples_per_hop > 0) ? samples_per_hop : num_chan;
     const int nc = (int)covering.size();
     std::vector<std::vector<std::vector<cf>>> P(nc);
-    for (int ci = 0; ci < nc; ++ci)
-        P[ci] = channel_correlate(data_ch[covering[ci]], repl0_ch[covering[ci]], doppler_grid,
-                                  sample_rate, sph, ws);
+    // Per-channel correlation, in parallel over CHANNELS. Once the fine axis is decimated this
+    // is the dominant cost (measured on the archived P32 frame at fine_step 32: 6.9 s here vs
+    // 1.9 s of replica generation), and it was entirely serial -- not for any ordering reason,
+    // but because every channel shared the one caller-owned FFTW workspace. Each worker gets
+    // its OWN workspace; the caller's is reused by worker 0 so the single-threaded path keeps
+    // its persistent plans exactly as before. The extra workspaces are function-local, so they
+    // re-plan per call: FFTW_ESTIMATE at this length is cheap next to the transforms it saves,
+    // and the alternative (a caller-owned pool) would change the signature for every caller.
+    const int nt_c = std::max(1, std::min(n_threads, nc));
+    if (nt_c == 1) {
+        for (int ci = 0; ci < nc; ++ci)
+            P[ci] = channel_correlate(data_ch[covering[ci]], repl0_ch[covering[ci]], doppler_grid,
+                                      sample_rate, sph, ws);
+    } else {
+        std::vector<AcquireWorkspace> extra((size_t)nt_c - 1);
+        const auto run_ch = [&](int t) {
+            AcquireWorkspace& mine = (t == 0) ? ws : extra[(size_t)t - 1];
+            for (int ci = t; ci < nc; ci += nt_c)
+                P[ci] = channel_correlate(data_ch[covering[ci]], repl0_ch[covering[ci]],
+                                          doppler_grid, sample_rate, sph, mine);
+        };
+        std::vector<std::thread> pool;
+        for (int t = 1; t < nt_c; ++t)
+            pool.emplace_back(run_ch, t);
+        run_ch(0);
+        for (auto& th : pool)
+            th.join();
+    }
     std::vector<int> fc(nc);
     for (int ci = 0; ci < nc; ++ci)
         fc[ci] = chan_freq.empty() ? covering[ci] : chan_freq[ci];
-    return aggregate_accumulate(P, fc, sph, surf, n_threads);
+    return aggregate_accumulate(P, fc, sph, surf, n_threads, fine_step);
 }
 
 AcquisitionResult channelized_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
@@ -228,10 +260,12 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     long best_tau = 0;
     std::vector<double> dop_peak(dims.n_dop, 0.0); // per-Doppler max-over-tau (for the sub-grid fit)
 
-    // Index by the STORED fine-lag width, but form the absolute delay with the full sph: the
-    // surface may hold one period of a periodic fine-lag axis (see channelized_accumulate), and
-    // tau is still q*sph + s. Dropping identical copies changes neither the peak cell (first
-    // strict max, which already fell in the first period) nor the mean (uniform copies).
+    // Index by the STORED fine-lag COLUMNS, and form the absolute delay through dims.tau(),
+    // which reapplies both the coarse stride sph and the fine decimation s_step. The surface
+    // may hold one period of a periodic fine-lag axis, decimated (see channelized_accumulate);
+    // dropping identical copies changes neither the peak cell (first strict max, which already
+    // fell in the first period) nor the mean (uniform copies), and the decimation costs only
+    // the sub-lobe interpolation the following refine redoes exactly anyway.
     const int sfine = dims.fine();
     for (int d = 0; d < dims.n_dop; ++d) {
         const double* base = surf.data() + (long)d * dims.Mp * sfine;
@@ -246,7 +280,7 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
                 if (pw > best.peak) {
                     best.peak = pw;
                     best_d = d;
-                    best_tau = (long)q * dims.sph + s;
+                    best_tau = dims.tau(q, s);
                 }
             }
         }

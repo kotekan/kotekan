@@ -143,7 +143,8 @@ private:
     /// grid) -> cost tracks the visible count, and the set follows the sky (mid-run PRN swap) when
     /// `prns` lists the whole constellation. hint_ttl_s: a hint older than this counts as absent.
     bool _require_hint = false;
-    int _acquire_threads = 1; ///< d-parallelism of the aggregate (see channelized_accumulate)
+    int _acquire_threads = 1; ///< parallelism of the aggregate (see channelized_accumulate)
+    int _acquire_fine_step = 1; ///< fine-lag decimation of the surface (see AcquisitionSurface)
     double _hint_dop_sign = -1.0; ///< physical->internal Doppler map (see the hint window note)
     long _last_surface_cells = 0; ///< cells in the last surface (for the noise-ceiling log)
     long _empty_hint_passes = 0;  ///< require_hint passes that scanned nothing (rate-limited WARN)
