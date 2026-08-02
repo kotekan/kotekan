@@ -27,9 +27,58 @@
 #ifndef GNSS_SEED_TRANSPORT_HPP
 #define GNSS_SEED_TRANSPORT_HPP
 
+#include "gnssChannelizedAcquire.hpp" // for AcquisitionSurface
 #include "gnssChannelizedReplica.hpp"
 
+#include <complex>
+#include <vector>
+
 namespace gnss {
+
+/// Localize the acquire peak to sub-chip precision by scanning the FULL lag ambiguity.
+///
+/// WHY THE SPAN IS THE WHOLE STORY (measured 2026-08-02, after two wrong fixes).
+///
+/// The covering channels share a common factor with @c sph (the aggregator combs 27 channels
+/// at stride 4), so the fine-lag response is periodic and carries grating lobes every
+/// @c s_stored = 16384/4 = 4096 samples = 13.09 chips. The acquire's own surface is EXACTLY
+/// periodic there and cannot choose between them. This despread, however, is not: the lobes
+/// differ in height. Dumped over a full hop (`e2e --dump-refine`) on a known-bad injection:
+///
+///   off  +5376 samp  +17.186 chips   pw 1.5124e-02   <- truth
+///   off  +1280 samp   +4.092 chips   pw 1.2818e-02   <- grating lobe, 4096 samples away
+///
+/// The true lobe wins by ~15%, so ANY scan that reaches it is correct and no tie-breaking is
+/// required. The aggregator ran `refine_span: 4096`, could not reach +17.19 chips, and settled
+/// on the +4.09 lobe -- an error of exactly 13.09 chips, which is what 4 of 15 noiseless
+/// injections showed.
+///
+/// Two cleverer fixes were tried and are recorded so they are not tried again. Evaluating
+/// candidates at exact multiples of @c s_stored fails (13.198 chips out): the true lobe sits at
+/// 4096+1280, not at a multiple of 4096, because the coarse estimate carries its own sub-alias
+/// error. Making that candidate set symmetric fails worse (26.292 chips out). The lobes are
+/// only sph/(comb span in bins) = 157 samples wide, so the step cannot be opened up for a
+/// coarse-to-fine pass either -- it would step over the lobe it is hunting. REACH THE PEAK; DO
+/// NOT MODEL IT.
+///
+/// So the span is simply the full ambiguity (default @c fft_len, one whole hop) and the cost is
+/// paid with threads: the scan is embarrassingly parallel and @c hoprate_stream is const and
+/// touches no shared FFTW state. The reduction is deliberately serial so a tie cannot be broken
+/// by thread scheduling -- that is how a deterministic bug learns to look intermittent.
+///
+/// @param data  the covering channels' columns, in the SAME order as @c cov_global.
+/// @param dims  the acquire surface's dimensions. Informational: the scan no longer depends on
+///        @c s_stored, but the shape it describes is why the span must be this wide.
+/// @param nh_phase  the overlay alignment the peak was found at, or < 0 for none. The refine
+///        MUST use it, or it despreads an overlay-blind replica against an overlay-aligned peak
+///        and walks off it.
+/// @return the refined code phase (the ARGUMENT of a replica at @c anchor), in chips.
+double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
+                   const std::vector<std::vector<std::complex<float>>>& data,
+                   const std::vector<int>& cov_global, double coarse_cp,
+                   const AcquisitionSurface& dims, int nh_phase, double dop, long long anchor,
+                   int n_hops, double sample_rate, int refine_span, int refine_step,
+                   int n_threads = 1);
 
 /// What the search reports about one detected peak's code phase. Three currencies, because
 /// three consumers exist and they do not want the same thing:
@@ -63,9 +112,14 @@ struct DetectionPhase {
 /// @param snap_start_hop  absolute hop index of the snapshot's first hop.
 /// @param anchor    the absolute sample the replicas were generated at (Mp * fft_len).
 /// @param sample_rate  full pre-channelization rate, Hz.
+/// @param peak_tau_samples  the acquire peak's ABSOLUTE lag (AcquisitionResult::peak_tau_samples).
+///        REQUIRED for the overlay period: @c best_cp is the lag already reduced mod one primary
+///        period, so the count of whole periods inside the lag -- which spans 16 of them at CHORD
+///        and changes every pass -- is only recoverable from here. Omitting it is what made the
+///        reported period a pure function of @c best_nh, and wrong 8 times in 15.
 DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_cp, int best_nh,
                                int n_nh, double dop, long long snap_start_hop, long long anchor,
-                               double sample_rate);
+                               double sample_rate, long peak_tau_samples);
 
 /// A seed as it arrives at a tracker (the /set_seeds contract, numeric fields only).
 struct SeedState {

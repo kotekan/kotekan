@@ -108,6 +108,10 @@ struct Opt {
     double seed_dop_rate = 0.0;      ///< Hz/s handed to the tracker
     int quantize = 0;                ///< 1 = 4+4b like GnssQuantize44, 0 = float (noiseless)
     int skip_search = 0;             ///< 1 = seed straight from truth (isolates the tracker leg)
+    /// Write the detection in /get_detections wire format. e2e_broker.py serves this to the
+    /// REAL broker, so its seed arithmetic can be put in the loop too (--seed-file the result).
+    const char* emit_det = nullptr;
+    const char* dump_refine = nullptr; ///< dump the refine objective over a full hop
 };
 
 static void usage() {
@@ -131,6 +135,7 @@ static void usage() {
         "  --seed-cp-rate X   code_phase_rate handed to the tracker, chips/hop\n"
         "  --seed-dop-rate F  doppler_rate_hz_s handed to the tracker\n"
         "  --seed-file P      use a REAL captured broker seed (seeds.jsonl) for this PRN\n"
+        "  --emit-detection P write the detection in /get_detections wire format (for e2e_broker)\n"
         "  --quantize         quantize the synthetic sky to 4+4b (default: noiseless float)\n"
         "  --skip-search      seed straight from truth -- isolates the tracker/despread leg\n"
         "  --code-doppler-sign S   (default +1)\n");
@@ -210,6 +215,8 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--seed-cp-rate")) o.seed_cp_rate = next_d();
         else if (arg_eq(a, "--seed-dop-rate")) o.seed_dop_rate = next_d();
         else if (arg_eq(a, "--seed-file")) o.seed_file = argv[++i];
+        else if (arg_eq(a, "--emit-detection")) o.emit_det = argv[++i];
+        else if (arg_eq(a, "--dump-refine")) o.dump_refine = argv[++i];
         else if (arg_eq(a, "--quantize")) o.quantize = 1;
         else if (arg_eq(a, "--skip-search")) o.skip_search = 1;
         else if (arg_eq(a, "--code-doppler-sign")) o.code_doppler_sign = next_d();
@@ -294,6 +301,7 @@ int main(int argc, char** argv) {
 
         gnss::AcquireWorkspace ws;
         gnss::AcquisitionResult a{};
+        gnss::AcquisitionSurface adims{}; // the refine needs s_stored to de-alias
         std::vector<double> surf;
         std::vector<std::vector<cf>> w((size_t)o.s_nchan, std::vector<cf>((size_t)Mp));
         for (int nh = 0; nh < n_nh; ++nh) {
@@ -311,33 +319,62 @@ int main(int argc, char** argv) {
             }
             const auto ai = gnss::channelized_peak(surf, dims, grid, o.sample_rate,
                                                    sbank.chip_rate_hz(), sbank.code_length());
-            if (best_nh < 0 || ai.snr > a.snr) { a = ai; best_nh = nh; }
+            if (best_nh < 0 || ai.snr > a.snr) { a = ai; best_nh = nh; adims = dims; }
         }
         snr = a.snr;
         det_dop = -a.doppler_hz; // r2c fold conjugates the channel frequency axis
         const double cps = sbank.chip_rate_hz() / o.sample_rate;
 
-        // The refine, exactly as the stage does it (banded, filter hoisted, at the WINNING
-        // overlay alignment -- refining against an overlay-blind replica walks off the peak).
-        const auto rf = sbank.hoprate_filter(s_chans, det_dop);
+        // ---- THE SHIPPED REFINE (de-alias, then localize) ----
         std::vector<std::vector<cf>> d((size_t)o.s_nchan, std::vector<cf>((size_t)Mp));
         for (int c = 0; c < o.s_nchan; ++c)
             for (int m = 0; m < Mp; ++m)
                 d[(size_t)c][(size_t)m] = data[(size_t)c][(size_t)m];
-        double best_cp = a.code_phase_chips, best_pw = -1.0;
-        for (int off = -o.refine_span; off <= o.refine_span; off += o.refine_step) {
-            const double cp = a.code_phase_chips + off * cps;
-            const auto r = sbank.hoprate_stream(rf, 0, anchor, cp, det_dop, Mp, {}, best_nh);
-            const double pw = std::norm(gnss::channelized_despread(d, r).amplitude);
-            if (pw > best_pw) { best_pw = pw; best_cp = cp; }
+        // DIAGNOSTIC: dump the refine's own objective over a full hop, so the shape of the
+        // ambiguity is MEASURED rather than inferred from a coincidence. 13.09 chips is both
+        // s_stored*cps and (the old) refine_span*cps -- two completely different explanations
+        // for one number, which is exactly how a wrong story gets confirmed.
+        if (o.dump_refine) {
+            const auto rf = sbank.hoprate_filter(s_chans, det_dop);
+            FILE* fp = fopen(o.dump_refine, "w");
+            const double ph_t = truth_phase_at(W0);
+            fprintf(fp, "# off_samples off_chips power  (truth ph@ref %.4f)\n", ph_t);
+            for (int off = -FFT / 2; off <= FFT / 2; off += 16) {
+                const double cp = a.code_phase_chips + off * cps;
+                const auto r = sbank.hoprate_stream(rf, 0, anchor, cp, det_dop, Mp, {}, best_nh);
+                fprintf(fp, "%d %.4f %.6e\n", off, off * cps,
+                        std::norm(gnss::channelized_despread(d, r).amplitude));
+            }
+            fclose(fp);
+            printf("    dumped refine profile -> %s\n", o.dump_refine);
         }
+        const double best_cp =
+            gnss::refine_peak(sbank, 0, d, s_chans, a.code_phase_chips, adims, best_nh, det_dop,
+                              anchor, Mp, o.sample_rate, o.refine_span, o.refine_step,
+                              o.threads);
 
         // ---- THE SHIPPED REPORTING ARITHMETIC ----
         dp = gnss::detection_phase(sbank, best_cp, best_nh, n_nh, det_dop, o.hop0, anchor,
-                                   o.sample_rate);
+                                   o.sample_rate, a.peak_tau_samples);
 
         const double ph_true = truth_phase_at(W0);
         const double e_ref = wrap(dp.cp_at_ref - ph_true, LL);
+
+        // PERIOD DIAGNOSTICS. The acquire's coarse lag runs over a FULL replica period,
+        // Mp*sph samples = 16 primary code periods at CHORD -- but `code_phase_chips` is that
+        // lag reduced mod ONE period, so the whole-period part of the lag is discarded before
+        // anything downstream sees it. The overlay is 20 periods and 16 is not 0 mod 20, so
+        // that discarded count is exactly the term the nh lift needs and does not have.
+        // Printed here so the relationship can be READ OFF ground truth rather than derived on
+        // paper for a fourth time.
+        const double tau_chips = (double)a.peak_tau_samples * sbank.chip_rate_hz() / o.sample_rate;
+        const int tau_per = ((int)std::floor(tau_chips / L)) % n_nh;
+        const int true_per = (int)std::floor(ph_true / L);
+        const int got_per = (int)std::floor(dp.cp_at_ref / L);
+        printf("    tau %ld samp = %.2f chips = %d periods + %.2f | nh %d | period true %d "
+               "got %d (err %+d)\n",
+               a.peak_tau_samples, tau_chips, tau_per, std::fmod(tau_chips, L), best_nh, true_per,
+               got_per, ((got_per - true_per + 30) % n_nh) - 10);
         printf("    snr %.1f   dop %+.4f (err %+.4f Hz)   nh %d   coarse %.2f refine %+.2f\n",
                snr, det_dop, det_dop - o.dop, best_nh, a.code_phase_chips,
                best_cp - a.code_phase_chips);
@@ -357,6 +394,23 @@ int main(int argc, char** argv) {
     // LEG 2: the seed. Either built directly from the detection (what the broker does when it
     // has nothing to add), or read from a REAL captured broker payload.
     // -----------------------------------------------------------------------------------------
+    // The detection in /get_detections wire format, so the REAL broker can be put in the loop:
+    // e2e_broker.py serves this file, runs gps_distributed_broker.py against it, and captures
+    // the /set_seeds payload for --seed-file. Written even with --skip-search (the fields are
+    // then the truth, which is the useful control case for the broker's own arithmetic).
+    if (o.emit_det) {
+        FILE* fp = fopen(o.emit_det, "wb");
+        if (!fp) { printf("cannot write %s\n", o.emit_det); return 3; }
+        fprintf(fp,
+                "[{\"prn\":%d,\"doppler_hz\":%.10g,\"code_phase_chips\":%.10g,\"ref_hop\":%lld,"
+                "\"nh\":%d,\"code_phase_long_chips\":%.10g,\"code_phase_at_ref_chips\":%.10g,"
+                "\"snr\":%.6g}]\n",
+                o.prn, det_dop, dp.cp0, o.hop0, best_nh, dp.cp_long, dp.cp_at_ref,
+                o.skip_search ? 1e4 : snr);
+        fclose(fp);
+        printf("    wrote detection -> %s\n", o.emit_det);
+    }
+
     gnss::SeedState sd;
     sd.ref_hop = o.hop0;
     sd.phase_ref_chips = dp.cp_at_ref;

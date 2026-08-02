@@ -412,10 +412,10 @@ void GnssChannelizedSearch::search_snapshot() {
         int best_nh = -1;
         std::vector<double> surf;
         std::vector<std::vector<cf>> dch(_n_chan, std::vector<cf>(hpr));
+        gnss::AcquisitionSurface dims{}; // hoisted: the refine needs s_stored to de-alias
         for (int nh = 0; nh < _n_nh; ++nh) {
             // repl0 (code 0, Doppler 0) on the covering channels -- precomputed, not rebuilt.
             const std::vector<std::vector<cf>>& repl0 = _repl0[(size_t)nh][p];
-            gnss::AcquisitionSurface dims{};
             surf.assign(surf.size(), 0.0); // reuse the allocation, drop the previous alignment
             for (int w = 0; w < nwin; ++w) {
                 for (int lc = 0; lc < _n_chan; ++lc)
@@ -446,49 +446,26 @@ void GnssChannelizedSearch::search_snapshot() {
         if (detected) {
             // r2c fold conjugates the channel frequency axis -> flip Doppler sign.
             const double dop = -a.doppler_hz;
-            // Refine code phase within the acquire's coarse (hop) lag quantum: an exact-despread
-            // scan over +-_refine_span samples in _refine_step steps, on window 0.
+            // Refine the code phase: de-alias the fine lag, then localize within the surviving
+            // ambiguity. Lives in gnssSeedTransport (with the full argument for why it is an
+            // alias SCAN and not a wider span) so the offline harness drives THIS code.
             //
-            // Banded, with the filter built ONCE. The Doppler is fixed across the scan, so the
-            // slow half of the hop-rate generator (the cumulative channel filter, O(num_taps *
-            // fft_len) per channel) is Doppler-only and can be hoisted; only the per-chip stream
-            // varies with cp. channels_hoprate() would rebuild the filter every step. This
-            // replaced a full-spectrum channels() call per step, which at CHORD scale was 204.8 MB
-            // and ~1170x the needed work, 32769 times over -- i.e. the first detection would have
-            // looked like a hang rather than a result.
-            //
-            // On _refine_step: only the covering channels enter the despread, so it is
-            // band-limited to n_cover * bin_width and cannot resolve code phase better than
-            // ~fft_len/n_cover samples (7.5 chips for 7 CHORD channels). Stepping finer than that
-            // costs a replica build per step and buys nothing but interpolation of a peak whose
-            // width is set elsewhere. The default step is 1, which is right for a narrow bank
-            // (airspy: fft_len 20, so 41 evaluations either way) and wrong for a wide one.
-            const gnss::ChannelizedReplicaBank::HopRateFilter rf =
-                _replica->hoprate_filter(cov_global, dop);
-            // Hoist the data columns too: they do not depend on the trial cp, and rebuilding them
+            // Hoist the data columns: they do not depend on the trial cp, and rebuilding them
             // per step was copying hpr * n_cover samples for nothing.
             std::vector<std::vector<cf>> d(cov_local.size(), std::vector<cf>(hpr));
             for (size_t i = 0; i < cov_local.size(); ++i)
                 for (int m = 0; m < hpr; ++m)
                     d[i][m] = _snapshot[((size_t)m) * _n_chan + cov_local[i]];
-            double best_cp = a.code_phase_chips, best_pw = -1.0;
-            for (int off = -_refine_span; off <= _refine_span; off += _refine_step) {
-                const double cp = a.code_phase_chips + off * cps;
-                // Same secondary-code alignment the peak was found at, or the refine despreads
-                // an overlay-blind replica against an overlay-aligned peak and walks off it.
-                const auto r = _replica->hoprate_stream(rf, p, anchor, cp, dop, hpr, {},
-                                                        (_n_nh > 1) ? best_nh : -1);
-                const double pw = std::norm(gnss::channelized_despread(d, r).amplitude);
-                if (pw > best_pw) {
-                    best_pw = pw;
-                    best_cp = cp;
-                }
-            }
+            const double best_cp = gnss::refine_peak(
+                *_replica, p, d, cov_global, a.code_phase_chips, dims,
+                (_n_nh > 1) ? best_nh : -1, dop, anchor, hpr, _sample_rate, _refine_span,
+                _refine_step, _acquire_threads);
             // Peak -> reported phases. The arithmetic lives in gnssSeedTransport so the
             // offline end-to-end harness (scripts/e2e.cpp) drives THIS code rather than a
             // second copy of it -- see that header for why.
             const gnss::DetectionPhase dp = gnss::detection_phase(
-                *_replica, best_cp, best_nh, _n_nh, dop, _snap_start_hop, anchor, _sample_rate);
+                *_replica, best_cp, best_nh, _n_nh, dop, _snap_start_hop, anchor, _sample_rate,
+                a.peak_tau_samples);
             det.doppler_hz = dop;
             det.code_phase_chips = dp.cp0;
             det.ref_hop = _snap_start_hop; // capture-time anchor for cp0 (for the slope fit)
