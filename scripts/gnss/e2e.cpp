@@ -89,6 +89,12 @@ struct Opt {
     int s_chan0 = 5972, s_stride = 4, s_nchan = 27;
     double dop_half = 1000.0, dop_step = 31.25;
     int acquire_windows = 1, fine_step = 32, threads = 6;
+    /// How many replica-periods of data the REFINE integrates over. The stage (and this
+    /// harness until now) refines on window 0 only, i.e. 16 ms. The refine's job is to pick
+    /// between grating lobes that differ by only ~15%, so its noise -- not the margin -- is
+    /// what decides, and that falls as sqrt of the integration length. The overlay is indexed
+    /// by ABSOLUTE period inside hoprate_stream, so a longer window stays coherent for free.
+    int refine_windows = 1;
     // Defaults MATCH WHAT SHIPS: refine_span 0 -> fft_len (the stage default, one whole
     // hop = the full lag ambiguity), refine_step 303 (what gen_chord_gnss_config.py
     // emits: fft_len/n_chan/2). The old 4096/75 here were the hand-added override that
@@ -118,6 +124,8 @@ struct Opt {
     /// REAL broker, so its seed arithmetic can be put in the loop too (--seed-file the result).
     const char* emit_det = nullptr;
     const char* dump_refine = nullptr; ///< dump the refine objective over a full hop
+    int ms_split = 0;   ///< >0 = run the ms-split acquire with this many ~1 ms sub-windows
+    int sub_hops = 196; ///< N: ceil(code period in hops) at CHORD
     /// Additive complex Gaussian noise, std as a MULTIPLE of the synthetic signal's rms.
     /// This is the regime knob that --quantize is not: quantizing a noiseless full-scale
     /// signal changes nothing (measured, byte-identical), because on sky the satellite sits
@@ -142,6 +150,7 @@ static void usage() {
         "  --dop-half F       Doppler search half-range about truth (default 1000; 0 = exact)\n"
         "  --dop-step F       Doppler grid step (default 31.25)\n"
         "  --windows N        acquire_windows (default 1 -- see 16-vs-20 in the state doc)\n"
+        "  --refine-windows N replica-periods the REFINE integrates (default 1 = 16 ms)\n"
         "  --fine-step N      acquire_fine_step (default 32)\n"
         "  --threads N        acquire threads (default 6)\n"
         "  --refine-span N    refine +-samples (default fft_len)  --refine-step N (default 303)\n"
@@ -150,6 +159,8 @@ static void usage() {
         "  --seed-dop-rate F  doppler_rate_hz_s handed to the tracker\n"
         "  --seed-file P      use a REAL captured broker seed (seeds.jsonl) for this PRN\n"
         "  --emit-detection P write the detection in /get_detections wire format (for e2e_broker)\n"
+        "  --ms-split K       run the ms-split acquire over K ~1 ms sub-windows instead\n"
+        "  --sub-hops N       hops per sub-window (default 196 = ceil(code period))\n"
         "  --noise R          add complex Gaussian noise, std = R x signal rms (0 = noiseless)\n"
         "  --trials N         repeat the search on N noise realizations, print the spread\n"
         "  --nseed N          RNG seed (default 12345), so a noisy run is reproducible\n"
@@ -224,6 +235,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--dop-half")) o.dop_half = next_d();
         else if (arg_eq(a, "--dop-step")) o.dop_step = next_d();
         else if (arg_eq(a, "--windows")) o.acquire_windows = next_i();
+        else if (arg_eq(a, "--refine-windows")) o.refine_windows = next_i();
         else if (arg_eq(a, "--fine-step")) o.fine_step = next_i();
         else if (arg_eq(a, "--threads")) o.threads = next_i();
         else if (arg_eq(a, "--refine-span")) o.refine_span = next_i();
@@ -234,6 +246,8 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--seed-file")) o.seed_file = argv[++i];
         else if (arg_eq(a, "--emit-detection")) o.emit_det = argv[++i];
         else if (arg_eq(a, "--dump-refine")) o.dump_refine = argv[++i];
+        else if (arg_eq(a, "--ms-split")) o.ms_split = next_i();
+        else if (arg_eq(a, "--sub-hops")) o.sub_hops = next_i();
         else if (arg_eq(a, "--noise")) o.noise = next_d();
         else if (arg_eq(a, "--trials")) o.trials = next_i();
         else if (arg_eq(a, "--nseed")) o.nseed = (unsigned)next_i();
@@ -307,7 +321,10 @@ int main(int argc, char** argv) {
     double snr = 0.0;
 
     if (!o.skip_search) {
-        const int nwin = std::max(1, o.acquire_windows);
+        const int nwin = o.ms_split > 0
+                             ? -(-(o.ms_split * o.sub_hops) / Mp) // enough hops for K sub-windows
+                             : std::max(std::max(1, o.acquire_windows),
+                                        std::max(1, o.refine_windows));
         printf("[1] SEARCH -- synthesizing %d x %d hops (%.1f ms) on %d channels...\n", nwin, Mp,
                1e3 * nwin * Mp * hop_s, o.s_nchan);
         const auto clean = tbank.channels_hoprate(0, W0, o.cp204, o.dop, nwin * Mp, s_chans, {}, -1);
@@ -357,12 +374,32 @@ int main(int argc, char** argv) {
         best_nh = -1;
         std::vector<double> surf;
         std::vector<std::vector<cf>> w((size_t)o.s_nchan, std::vector<cf>((size_t)Mp));
-        for (int nh = 0; nh < n_nh; ++nh) {
+        if (o.ms_split > 0) {
+            // MS-SPLIT: one pass, no NH alignment axis at all -- a ~1 ms sub-window spans
+            // exactly one overlay chip, a constant +-1, which |D|^2 cannot see. That is the
+            // 20x. The lag axis is one code period, not sixteen: the other 12.5x.
+            surf.assign(surf.size(), 0.0);
+            gnss::AcquisitionSurface dm = gnss::ms_split_accumulate(
+                sbank, 0, data, s_chans, W0, o.sub_hops, o.ms_split, grid, o.sample_rate, surf,
+                ws, o.fine_step, o.threads);
+            const auto ai = gnss::channelized_peak(surf, dm, grid, o.sample_rate,
+                                                   sbank.chip_rate_hz(), sbank.code_length());
+            a = ai; best_nh = 0; adims = dm;
+            printf("    ms-split: %d sub-windows x %d hops (%.1f ms each, %.0f ms total), "
+                   "lag axis %d, no NH axis\n",
+                   o.ms_split, o.sub_hops, o.sub_hops * hop_s * 1e3,
+                   o.ms_split * o.sub_hops * hop_s * 1e3, dm.Mp);
+        }
+        for (int nh = 0; o.ms_split == 0 && nh < n_nh; ++nh) {
             // repl0: code 0, Doppler 0, overlay alignment nh -- what the stage precomputes.
             auto repl0 = sbank.channels_hoprate(0, anchor, 0.0, 0.0, Mp, s_chans, {}, nh);
             gnss::AcquisitionSurface dims{};
             surf.assign(surf.size(), 0.0);
-            for (int wi = 0; wi < nwin; ++wi) {
+            // ACQUIRE accumulates acquire_windows, NOT nwin. nwin is only how much data was
+            // synthesized (max of acquire_windows and refine_windows); conflating them made
+            // --refine-windows silently raise acquire_windows, which smears across NH bins --
+            // acquire snr fell 185->55 and the period broke 0/12 -> 10/12, all of it artifact.
+            for (int wi = 0; wi < std::max(1, o.acquire_windows); ++wi) {
                 for (int c = 0; c < o.s_nchan; ++c)
                     for (int m = 0; m < Mp; ++m)
                         w[(size_t)c][(size_t)m] = data[(size_t)c][(size_t)(wi * Mp + m)];
@@ -379,9 +416,10 @@ int main(int argc, char** argv) {
         const double cps = sbank.chip_rate_hz() / o.sample_rate;
 
         // ---- THE SHIPPED REFINE (de-alias, then localize) ----
-        std::vector<std::vector<cf>> d((size_t)o.s_nchan, std::vector<cf>((size_t)Mp));
+        const int rhops = Mp * std::max(1, o.refine_windows);
+        std::vector<std::vector<cf>> d((size_t)o.s_nchan, std::vector<cf>((size_t)rhops));
         for (int c = 0; c < o.s_nchan; ++c)
-            for (int m = 0; m < Mp; ++m)
+            for (int m = 0; m < rhops; ++m)
                 d[(size_t)c][(size_t)m] = data[(size_t)c][(size_t)m];
         // DIAGNOSTIC: dump the refine's own objective over a full hop, so the shape of the
         // ambiguity is MEASURED rather than inferred from a coincidence. 13.09 chips is both
@@ -403,7 +441,7 @@ int main(int argc, char** argv) {
         }
         const double best_cp =
             gnss::refine_peak(sbank, 0, d, s_chans, a.code_phase_chips, adims, best_nh, det_dop,
-                              anchor, Mp, o.sample_rate, o.refine_span, o.refine_step,
+                              anchor, rhops, o.sample_rate, o.refine_span, o.refine_step,
                               o.threads);
 
         // ---- THE SHIPPED REPORTING ARITHMETIC ----

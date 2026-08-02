@@ -33,6 +33,8 @@
 #ifndef GNSS_CHANNELIZED_ACQUIRE_HPP
 #define GNSS_CHANNELIZED_ACQUIRE_HPP
 
+#include "gnssChannelizedReplica.hpp" // for ChannelizedReplicaBank (ms_split_accumulate)
+
 #include <complex> // for complex
 #include <fftw3.h> // for fftwf_plan, fftwf_complex
 #include <vector>  // for vector
@@ -186,6 +188,43 @@ aggregate_accumulate(const std::vector<std::vector<std::vector<std::complex<floa
 
 /// Reduce an accumulated surface to its peak: code phase, Doppler, lag and SNR
 /// (peak / surface mean). Mirrors @ref channelized_acquire's peak bookkeeping.
+/// SUB-WINDOW ("ms-split") ACCUMULATION -- docs/CHORD_GNSS_MS_SPLIT_SEARCH.md.
+///
+/// The ordinary acquire integrates coherently over ONE REPLICA PERIOD, because that is what
+/// makes its cyclic correlation exact. On airspy that period IS one code period (fft_len
+/// divides code_samples: 250 hops = 1 ms). On CHORD it is SIXTEEN of them (195.3125 hops per
+/// code period), and that single fact inflates three axes at once: the coarse-lag range (3125
+/// vs ~196), the Doppler grid (1/T resolution: 62.5 Hz vs 1000 Hz) and the NH alignment search
+/// (a 16 ms window straddles 16 of the 20 overlay chips at an unknown offset; a 1 ms window
+/// spans exactly one -- a constant sign, invisible to |D|^2). Nobody chose a 16 ms window;
+/// Mp chose it.
+///
+/// This integrates ~1 ms sub-windows instead and sums |D|^2 across them. Three things make it
+/// work, and each is where a naive version goes wrong:
+///
+///  1. FULL OVERLAP AT EVERY LAG. The replica spans TWO code periods and the data ONE, so every
+///     lag in [0, one period) sees all N data hops. Zero-padding only the replica gives a
+///     triangular weighting -- SNR falling off across the lag axis, which reads as a weak
+///     satellite rather than as a bug.
+///  2. NO CYCLIC WRAP. A 196-hop replica is NOT periodic over 196 hops (one code period is
+///     195.3125), so a cyclic correlation at that length wraps 36.0 chips wrong.
+///  3. NO PER-SUB-WINDOW ROLL. Each sub-window's replica is generated at ITS OWN absolute start
+///     with argument 0, and every generator here forms C(n) = arg + n*cps over the ABSOLUTE
+///     sample index -- so the peak lands at the same lag (the satellite's argument) in every
+///     sub-window, with nothing to realign. Same property that makes seed transport work
+///     (ChannelizedReplicaBank::phase_from_arg), used a second time.
+///
+/// @param sub_hops   N, hops per sub-window: ceil(code period in hops) = 196 at CHORD.
+/// @param n_sub      K, how many sub-windows to accumulate (100 = ~100 ms).
+/// @return surface dimensions; @c surf accumulates |D|^2 exactly as channelized_accumulate does.
+AcquisitionSurface
+ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
+                    const std::vector<std::vector<std::complex<float>>>& data_ch,
+                    const std::vector<int>& chan_ids, long long window_start_sample, int sub_hops,
+                    int n_sub, const std::vector<double>& doppler_grid, double sample_rate,
+                    std::vector<double>& surf, AcquireWorkspace& ws, int fine_step = 1,
+                    int n_threads = 1);
+
 AcquisitionResult channelized_peak(const std::vector<double>& surf,
                                    const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,

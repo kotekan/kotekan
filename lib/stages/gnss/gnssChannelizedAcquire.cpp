@@ -295,6 +295,50 @@ channelized_accumulate(const std::vector<std::vector<std::complex<float>>>& data
     return aggregate_accumulate(P, fc, sph, surf, n_threads, fine_step);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Sub-window ("ms-split") accumulation. Header carries the argument; this is the mechanics.
+// ---------------------------------------------------------------------------------------------
+AcquisitionSurface
+ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
+                    const std::vector<std::vector<std::complex<float>>>& data_ch,
+                    const std::vector<int>& chan_ids, long long window_start_sample, int sub_hops,
+                    int n_sub, const std::vector<double>& doppler_grid, double sample_rate,
+                    std::vector<double>& surf, AcquireWorkspace& ws, int fine_step,
+                    int n_threads) {
+    const int nc = (int)chan_ids.size();
+    const int N = sub_hops;
+    const int fft_len = bank.fft_len();
+    const int sph = fft_len;
+    AcquisitionSurface dims{};
+    if (nc == 0 || N <= 0 || n_sub <= 0)
+        return dims;
+
+    for (int k = 0; k < n_sub; ++k) {
+        const long long W = window_start_sample + (long long)k * N * fft_len;
+        // TWO code periods of replica, starting ONE period EARLY, against one period of data.
+        // Early start is what makes lag 0 reachable: channel_correlate forms
+        // P[q] = sum_m data[m] conj(repl[m - q]), so a replica beginning at W would need
+        // negative indices for any positive delay. Beginning at W - N*fft_len puts zero delay
+        // at q = N and the whole [0, one period) lag range inside [N, 2N) -- with every one of
+        // the N data hops overlapped, which is the point.
+        const long long W_repl = W - (long long)N * fft_len;
+        std::vector<std::vector<std::complex<float>>> repl =
+            bank.channels_hoprate(prn_index, W_repl, 0.0, 0.0, 2 * N, chan_ids, {}, -1);
+
+        std::vector<std::vector<std::vector<std::complex<float>>>> P((size_t)nc);
+        for (int c = 0; c < nc; ++c) {
+            std::vector<std::complex<float>> d((size_t)N);
+            for (int m = 0; m < N; ++m)
+                d[(size_t)m] = data_ch[(size_t)c][(size_t)(k * N + m)];
+            // data (N) shorter than replica (2N) -> channel_correlate zero-pads it to the
+            // transform length, which is exactly the linear correlation we want.
+            P[(size_t)c] = channel_correlate(d, repl[(size_t)c], doppler_grid, sample_rate, sph, ws);
+        }
+        dims = aggregate_accumulate(P, chan_ids, sph, surf, n_threads, fine_step);
+    }
+    return dims;
+}
+
 AcquisitionResult channelized_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,
                                    double chip_rate, long code_length) {
