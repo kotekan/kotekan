@@ -327,6 +327,8 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         "require_hint": True,
         "acquire_windows": args.acquire_windows,
         "acquire_snr": args.acquire_snr,
+        "acquire_fine_step": args.acquire_fine_step,
+        "prns_per_pass": args.prns_per_pass,
         # L5 Q5 is a dataless PILOT, which does not mean unmodulated: it carries the
         # NH20 secondary overlay, one +-1 chip per 1 ms code period. The coherent window
         # is 16 ms = SIXTEEN code periods, so an overlay-blind replica sums 16 chips of a
@@ -476,8 +478,13 @@ def build_aggregator_instance(cfg, nodes, args, port):
     })
     # The union surface is ~16x a single node's (4x channels x 4x stored lags); give the
     # search worker the spare cores and thread the aggregate across them.
-    out["gps_search"]["acquire_threads"] = 6
-    out["gps_search"]["cpu_affinity"] = list(cores[-6:])
+    # The union surface grows as (channels x stored lags): 2 nodes -> 27ch/4096, 8 nodes ->
+    # 106ch/16384, i.e. ~16x. Give the search worker the spare cores and thread across them;
+    # the affinity set must be at least as wide as the thread count or the extra threads
+    # contend on the same cores and buy nothing.
+    nth = max(1, int(args.acquire_threads))
+    out["gps_search"]["acquire_threads"] = nth
+    out["gps_search"]["cpu_affinity"] = list(cores[-max(nth, 6):])
     return out, feeds, union_ids
 
 
@@ -624,6 +631,21 @@ def main():
                          "directory that is not there.")
     ap.add_argument("--search-port-base", type=int, default=11040,
                     help="bufferRecv port for GPU 0; GPU 1 uses base+1")
+    ap.add_argument("--acquire-threads", type=int, default=6,
+                    help="threads for the aggregate half of the acquire (parallel over Doppler "
+                         "bins x coarse lags). Aggregator only; per-node instances keep 1.")
+    ap.add_argument("--acquire-fine-step", type=int, default=1,
+                    help="fine-lag decimation in the acquire surface. The fine axis resolves a "
+                         "lobe sph/(comb span in bins) wide -- ~156 samples at CHORD regardless "
+                         "of channel COUNT (the span sets it, not the density) -- so storing it "
+                         "per sample is ~156x oversampled and the surface is the whole cost of a "
+                         "pass. Step must stay well under the lobe width or the peak is missed.")
+    ap.add_argument("--prns-per-pass", type=int, default=0,
+                    help="how many ELIGIBLE PRNs to search per snapshot, round-robin. 0 = all "
+                         "(airspy's behaviour). A detection's ref_hop is the SNAPSHOT's start "
+                         "hop, so with one snapshot per pass the last PRN searched carries an "
+                         "epoch as old as the pass; seed error is Doppler error x that age at "
+                         "0.0087 chips/Hz/s. Bounds the epoch at emit by (pass time)/(this).")
     ap.add_argument("--acquire-windows", type=int, default=32,
                     help="windows stacked per acquisition attempt. CHOOSE BY INTEGRATION TIME, "
                          "not by copying the airspy count: a window is repl_period_hops long, "
