@@ -923,6 +923,12 @@ def main(argv=None):
                          "EPOCH, which holds when GPS-UTC (whole seconds) and the GPS epoch "
                          "offset (315964800) are both multiples of it -- true for 1.5 and for "
                          "0.02. Absolute-time accuracy needed is ~EPOCH/2.")
+    ap.add_argument("--bias-min-snr", type=float, default=0.0,
+                    help="detections below this SNR do not enter the clock-freq bias median. "
+                         "The bias is common-mode, so its uncertainty is (per-sat Doppler "
+                         "error)/sqrt(N) -- one noise satellite is costly when N is small. "
+                         "Ungated on CHORD the raw estimate scatters 10.5 Hz; the acquire's "
+                         "own error predicts 0.8 Hz at N=2. 0 (default) keeps every point.")
     ap.add_argument("--fit-min-snr", type=float, default=0.0,
                     help="detections below this SNR do not enter the cp-rate fit history. The "
                          "fit resolves a ~0.0148 chips/s residual; a near-threshold detection's "
@@ -1912,8 +1918,20 @@ def main(argv=None):
             # (fades, one-sat horizons) exposes the same feedback. det_fresh already tracks
             # exactly this (its comment even computes the hazard: "at 0.4 Hz/s slew, 100 s of
             # staleness fakes a 40 Hz mismatch") -- the bias solve just never consulted it.
+            # SNR gate as well as freshness (2026-08-02). This median is a COMMON-MODE
+            # estimate: its uncertainty is (per-sat Doppler error)/sqrt(N), so one satellite
+            # whose Doppler is noise does real damage when N is 2. The acquire's own
+            # interpolation error is ~1.2 Hz rms (measured sawtooth), which at N=2 predicts
+            # ~0.8 Hz -- but the raw estimate scatters 10.5 Hz, because every detection above
+            # acquire_snr enters, and ~half of CHORD's sit between the threshold (30) and the
+            # noise ceiling (19), where the reported Doppler is near-random inside the hint
+            # window. Gated, this is what decides whether predicted Doppler (BRDC 0.1 Hz +
+            # this) beats the detection's own (~2 Hz): at N=8 it should reach ~0.4 Hz.
+            # Default 0 keeps every point -- the prototype's behaviour, right for detections
+            # that sit far above threshold.
             resid = [best[p][1] - pred[p][0] for p in best
-                     if p in pred and t0 - det_fresh.get(p, (None, 0.0))[1] < args.bias_det_fresh_s]
+                     if p in pred and t0 - det_fresh.get(p, (None, 0.0))[1] < args.bias_det_fresh_s
+                     and best[p][0] >= args.bias_min_snr]
             # BAND-SHARED bias fusion (--clock-bias-siblings) is read BEFORE the min-sats
             # gate, and the gate counts LOCAL + SIBLING sats.
             #
