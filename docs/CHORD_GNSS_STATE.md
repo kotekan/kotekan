@@ -1369,3 +1369,77 @@ generalised. A noiseless injection sweep settled each in minutes -- `mkframe` + 
 seconds per point. The tooling was there the whole time and was used to CONFIRM after deploying
 rather than to DECIDE before. Calibrate first, deploy second, and close the loop end to end
 before trusting any component in isolation.
+
+# ============================================================================
+# 7. THE HARNESS, AND WHAT IT FOUND IN ITS FIRST DAY (2026-08-02)
+# ============================================================================
+
+## 7.1 It exists: scripts/gnss/e2e
+
+Item 6.4/1 is done. `scripts/gnss/e2e.cpp` injects a known cp204 into a noiseless synthetic
+CHORD sky and runs it through the ACTUAL SHIPPED code of every stage -- acquire, refine,
+`detection_phase`, seed, `propagate_seed`, GPU despread -- printing the error in chips at each
+hand-off. `--skip-search` isolates the tracker leg in ~5 s; the full chain is ~28 s per PRN.
+Build with `scripts/gnss/build_tool.sh e2e`.
+
+The rule that makes it worth anything: it CALLS the stage arithmetic rather than restating it.
+The three cross-stage mappings now live in `lib/stages/gnss/gnssSeedTransport.{hpp,cpp}` --
+`detection_phase`, `propagate_seed`, `refine_peak` -- and the stages and the harness call the
+same functions. A harness that re-derives a mapping tests the author's understanding of it,
+which is the thing already known to be unreliable.
+
+The KEY TRICK that makes arbitrary seed ages free: an argument is referenced to absolute sample
+0, so ONE argument describes the satellite for all time. A record at window W synthesized with
+argument cp204 is exactly the continuation of the same signal, so a 300 s seed age costs one
+extra 2048-hop synthesis, not 300 s of samples.
+
+## 7.2 What it found immediately
+
+**The tracker leg was already exact** -- 0.000 chips, P/P_true 1.0000. Good; that half was right.
+
+**6.2 confirmed and its fix verified without sky.** The search's phase transport is essentially
+exact (+0.07 chips); the whole failure is a +1.70 Hz Doppler error acting over the seed age.
+Measured drift 0.01476 chips/s against 0.01476 predicted from dop_err * chip_rate/carrier. With
+`code_phase_rate = -7.7e-8` chips/hop the error over 107 s goes 1.58 -> 0.038 chips and q holds
+at 3.06-3.11 instead of collapsing to 0.004.
+
+**THE OVERLAY PERIOD (5r's "STILL OPEN", now closed).** The coarse lag spans 16 primary periods
+but `best_cp` is that lag reduced mod ONE, so the lag's whole-period count never crossed the
+stage boundary; 16 is not 0 mod 20, so `best_nh` cannot carry it. Reported period came out
+(best_nh - 4) mod 20 every time and was wrong by -2..+3 in 8 of 15 runs. **That is the
+"+1/+3/-4/+3/+3/-1/-2" randomisation from 6.1, which was recorded as unexplained. It was never
+random.** Fixed by lifting with `peak_tau_samples` (present in AcquisitionResult all along).
+The fold of [0,16) into (-8,+8] is measured: over 25 injections |folded| never exceeded 3.
+
+**THE REFINE STOPPED TOO SOON.** `refine_span: 4096` on the aggregator against true offsets that
+reach +17.19 chips -> settles on the neighbouring grating lobe, exactly 13.09 chips out, 4 runs
+in 15. Restored to the fft_len default and parallelised: 4x the work, 2x FASTER (59 -> 27-29 s).
+
+Final acceptance on the fixed code: **16/16, every period correct, every residual <= 0.113
+chips**, over tau 0..15 and true periods 0..18, including held-out PRNs and snapshot epochs.
+
+## 7.3 A wrong turn worth remembering
+
+I first reported the 13.09-chip error as a fine-lag ALIAS the acquire could not resolve, "fixed"
+by span 8192, with 17/17 acceptance behind it. That was wrong. 13.09 chips is BOTH
+`s_stored*cps` AND the old `refine_span*cps`, because the aggregator's span had been set to
+4096 = s_stored -- two unrelated quantities, one number. Span 8192 helped because it reached the
+peak, not because it resolved an alias, and the 17/17 confirmed a coincidence. Two "clever"
+fixes built on the wrong mechanism made it worse (13.198 chips out, then 26.292).
+
+What settled it was dumping the objective (`e2e --dump-refine`) instead of theorising about it:
+lobes 4096 samples apart, the true one 15% higher, nothing to resolve. **Testing that a change
+HELPS is not testing that the explanation is RIGHT.** Look at the shape before naming the
+mechanism.
+
+## 7.4 Next
+
+1. `code_phase_rate` from the broker (6.2) -- now the only open item in the chain, and the
+   harness measures the fix directly (`--seed-cp-rate`).
+2. Put the REAL broker in the loop: `e2e --emit-detection` writes the /get_detections wire
+   format; serve it, run gps_distributed_broker.py against it, capture /set_seeds, feed back
+   with `--seed-file`. That closes the last stage that is still tested by proxy.
+3. The broker's continuity resolver (52bb7e6f1) was compensating for the period bug at source.
+   With 7.2 fixed it should now always agree -- verify, then consider whether the residual gate
+   (old 6.4/3) is still needed or whether continuity should simply become a consistency check.
+4. Re-measure the instrumental delay (6.3) now that the period and the refine are honest.
