@@ -239,8 +239,7 @@ gps_search:
   - 30
   - 31
   - 32
-  refine_span: 16384
-  refine_step: 75
+  refine_step: 303
   require_hint: true
   sample_rate: 3200000000.0
   signal: GPS_L5_Q
