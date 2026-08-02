@@ -923,6 +923,23 @@ def main(argv=None):
                          "EPOCH, which holds when GPS-UTC (whole seconds) and the GPS epoch "
                          "offset (315964800) are both multiples of it -- true for 1.5 and for "
                          "0.02. Absolute-time accuracy needed is ~EPOCH/2.")
+    ap.add_argument("--period-continuity", default="check",
+                    choices=("check", "correct", "off"),
+                    help="what to do when the search's reported overlay period disagrees with "
+                         "the one predicted from the previous pass. 'check' (default) LOGS the "
+                         "disagreement and applies nothing -- correct since the search began "
+                         "measuring the period from the acquire's coarse lag (4371ff4eb); a "
+                         "nonzero disagreement on a strong satellite then means the SOURCE "
+                         "regressed, which wants an alarm, not a silent repair. 'correct' "
+                         "restores the old override (it stored its own correction and "
+                         "predicted from that, so one bad call was permanent). 'off' skips the "
+                         "comparison entirely.")
+    ap.add_argument("--period-check-snr", type=float, default=60.0,
+                    help="detections below this SNR do not enter the period-continuity history "
+                         "and their disagreements are logged as 'weak det' rather than as "
+                         "source regressions. Measured on CHORD 2026-08-02: above ~60 the "
+                         "within-period phase is self-consistent to a few chips across a "
+                         "400 s gap, below it the residuals are ~2000 chips, i.e. noise.")
     ap.add_argument("--cl-time-adjust", type=float, default=0.0,
                     help="seconds added to the CL time-assist clock -- escape hatch for a future "
                          "non-multiple-of-1.5s GPS-UTC offset or a known host-clock bias")
@@ -2363,8 +2380,31 @@ def main(argv=None):
                 if cp_at_ref >= 0.0:
                     LLc = LC_SEG * CODE_LEN
                     ph = cp_at_ref % LLc
+                    # PERIOD CONTINUITY IS A CHECK, NOT AN AUTHORITY (2026-08-02).
+                    #
+                    # This existed because the search could not report the overlay period: it
+                    # lifted by best_nh alone and dropped the coarse lag's whole-period count,
+                    # so the reported period was wrong ~half the time. Since 4371ff4eb the
+                    # search MEASURES it (from AcquisitionResult::peak_tau_samples), verified
+                    # 16/16 on injection and 9/9 on sky above snr 60. The source is now right,
+                    # so overriding it from history is strictly a way to be wrong.
+                    #
+                    # And this loop could only ever be wrong in one direction. It stored its
+                    # OWN correction in ph_hist and predicted the next pass from that, so a
+                    # single bad correction was permanent: every later measurement got snapped
+                    # into agreement with the original error. Self-consistent, absolutely
+                    # wrong -- and with no residual gate, a marginal detection whose phase is
+                    # noise still yielded a confident-looking integer m. Measured 2026-08-02:
+                    # PRN 21 was period-consistent at the source across three consecutive
+                    # detections and collected four "corrections" anyway.
+                    #
+                    # So: compute it, log the disagreement, apply NOTHING, and store the
+                    # MEASURED phase. That turns the resolver into a regression detector for
+                    # the search's period -- a nonzero m on a STRONG satellite now means the
+                    # source broke, which is worth an alarm rather than a silent repair.
+                    # --period-continuity correct restores the old override if ever needed.
                     prev = ph_hist.get(prn)
-                    if prev is not None:
+                    if prev is not None and args.period_continuity != "off":
                         h0, ph0, dop0 = prev
                         dh = ref_hop - h0
                         gap_s = dh / args.hops_per_sec
@@ -2377,15 +2417,26 @@ def main(argv=None):
                             # the alias census a hundred lines down with a TypeError.
                             m = int(round(((ph_pred - ph) % LLc) / CODE_LEN)) % LC_SEG
                             if m:
+                                resid = ((ph + m * CODE_LEN - ph_pred + LLc / 2) % LLc) - LLc / 2
+                                # Only a STRONG disagreement is evidence about the source; a
+                                # marginal detection disagreeing tells us about the detection.
+                                sev = ("SOURCE PERIOD DISAGREES"
+                                       if snr >= args.period_check_snr else "weak det")
                                 _log_rl("phcont-%d" % prn,
-                                        "PRN %d period continuity: %+d periods (gap %.0f s, "
-                                        "residual %+.1f chips)"
-                                        % (prn, m, gap_s,
-                                           ((ph + m * CODE_LEN - ph_pred + LLc / 2) % LLc)
-                                           - LLc / 2),
+                                        "PRN %d period continuity %s: %+d periods "
+                                        "(snr %.0f, gap %.0f s, residual %+.1f chips) "
+                                        "-- NOT applied (%s)"
+                                        % (prn, sev, m, snr, gap_s, resid,
+                                           args.period_continuity),
                                         every_s=60.0)
-                            ph = (ph + m * CODE_LEN) % LLc
-                    ph_hist[prn] = (ref_hop, ph, dop)
+                            if args.period_continuity == "correct":
+                                ph = (ph + m * CODE_LEN) % LLc
+                    # Feed history only from detections whose phase means something. Below the
+                    # bar the phase is noise (measured: snr < 60 gives ~2000-chip within-period
+                    # residuals against a few chips above it), and a noise entry poisons every
+                    # comparison until that PRN is seen again -- 90-270 s at CHORD's revisit.
+                    if snr >= args.period_check_snr or prn not in ph_hist:
+                        ph_hist[prn] = (ref_hop, ph, dop)
                     seed["code_phase_at_ref_chips"] = ph
             elif det_nh >= 0 and LC_SEG > 1:
                 seed["code_phase_chips"] = ((seed["code_phase_chips"] % CODE_LEN)
