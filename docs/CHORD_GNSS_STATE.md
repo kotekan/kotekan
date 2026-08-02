@@ -1659,3 +1659,50 @@ would then be putting every seed a full hop (52.4 chips) off, which is exactly e
 the tracker despread noise while the search still reports a huge SNR. Fix would be to widen
 `refine_span` beyond one hop, or better, correct the fine sign so the coarse number is right and
 the refine only has to polish.
+
+### 8.7.3 It is the OVERLAY PERIOD, not the code phase -- measured 2026-08-02 21:5x
+
+Two broker changes (relaunch script `run_broker_all8.sh`, previous line saved beside it):
+
+* `--fit-min-snr 60 -> 0`, the documented default. At 60 the cp-rate fit was starved (PRN 10
+  skipping snr-54 points with 3 in history, 18 skipping snr-32 with 1, 32 skipping snr-30 with
+  2) -- and a starved fit still WINS, because :2369-2373 overwrites `seed["ref_hop"]` AND
+  `seed["code_phase_chips"]` with the fit's own anchor. The fresh detection was being discarded
+  in favour of an hour-old extrapolation. **This gate was added earlier the same day and is a
+  self-inflicted regression**; it postdates the 2026-07-31 probes that worked.
+* `--trackers` cx19+cx27 -> all 8 nodes (17 endpoints). The other six had NEVER been seeded --
+  no broker log this session mentions them. They were healthy throughout; nobody was talking to
+  them. Nothing to restart on the nodes.
+
+Result: ref_hop ages collapsed from ~5500 s to 0-12 s, seeded PRNs 9 -> 13, zero posting errors
+across 16 endpoints, zero fit-min-snr skips.
+
+**And the probe found the satellite.** Every probe before this returned ratio 2.4-2.8 (noise).
+With a fresh seed:
+
+| PRN | seed age | ratio | within-period err | NH period |
+|---|---|---|---|---|
+| 28 | 2.2 s | **22.98** | +151.00 chips | 7 vs seeded 1 |
+| 1 | 151 s | **9.8** | **+0.50 chips** | 2 vs seeded 6 |
+| 26 | 6.6 s | 1.6 (noise) | -63.50 | 2 vs seeded 0 |
+
+PRN 1 is the one that matters: **the within-period code phase is right to half a chip.** The
+seed arithmetic, the propagation, `phase_from_arg`/`arg_from_phase`, the argument currency --
+all of it transports correctly to a live frame. What is wrong is the **NH overlay period**: off
+by 4, 6 and 2 across the three.
+
+That is the signature we have been staring at all session. Despreading at the right code phase
+but the wrong overlay period yields incoherent power (the `amp_snr` 3-8) and no coherent
+detection (`coherence_s = 0` everywhere) -- exactly what the combiner reports.
+
+It also puts the blame back on the 16-vs-20 collision: the search resolves the overlay alignment
+mod 20 (`best_nh`) and the coarse lag mod 16 (`lag_span_periods`), and `gnss::detection_phase`
+has to combine them into one period label. That lift is correct ON THE BENCH (the shipped path
+at stride 1 reports `-0.000 periods`), so the defect is something the bench does not reproduce
+-- the obvious candidate being that the bench detects and despreads in the SAME window, while on
+sky the period label has to survive the ref_hop -> frame_hop gap.
+
+**Next:** instrument the period specifically. Compare, for one PRN over several passes, the
+period the search reports, the period the seed carries, and the period the oracle finds. The
+within-period residual is already good, so the whole question is which of the 20 the label lands
+on and where it changes.
