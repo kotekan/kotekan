@@ -1706,3 +1706,48 @@ sky the period label has to survive the ref_hop -> frame_hop gap.
 period the search reports, the period the seed carries, and the period the oracle finds. The
 within-period residual is already good, so the whole question is which of the 20 the label lands
 on and where it changes.
+
+### 8.7.4 The cx19 wedge is SELF-INFLICTED -- unpinned benchmarks, 2026-08-02
+
+It recurs, and the interval matches when I was running benchmarks on cx19:
+
+| | node started | gnss0 died | ran for |
+|---|---|---|---|
+| first | ~16:33 | 18:42 | ~2h09m |
+| second | 20:04 | 21:46 | ~1h41m |
+
+`chord_gnss_cx19.yaml` pins DPDK to `lcore_cpu_map [5, 21, 7, 6, 22, 23]`, `main_lcore_cpu 4`
+-- **the cores we were told never to touch** -- and `lcore_port_map [[0],[1]]`, so port 0's RX
+lcore is CPU 5. Port 0's downstream chain sits on very low cores: `process_packet_mask_0` = CPU
+**1**, `transpose_voltage_0` = CPU **2**. Port 1's equivalents are CPU 16 and 3.
+
+Every `scripts/gnss/e2e` run this session used `--threads 16` with **no affinity mask**, on
+cx19, which also hosts the aggregator and the broker. An unpinned OpenMP job fills CPUs 0-15
+first -- directly on top of port 0's entire chain, and next to its DPDK lcore. Port 1 is out of
+the blast radius, which is exactly the asymmetry observed (port 0 dropping 100%, port 1
+untouched, every time).
+
+That also explains why TRANSIENT contention becomes a PERMANENT wedge, and it is what the
+backtrace shows: starvation -> distributor ring overflows -> packets dropped -> the frame
+assembler waits for a frame whose packets no longer exist -> every stage parked in
+`Buffer::wait_for_full_frame`, none blocked on output. It never recovers because the missing
+packets are gone.
+
+**Rule from here: nothing heavy runs unpinned on cx19.** CPUs claimed by the node + aggregator
+configs are {0-8, 11-19, 21-24, 31, 57-63}; unclaimed are {9, 10, 20, 25-30, 32-47}. Run
+benchmarks as `taskset -c 36-47 ./scripts/gnss/e2e ... --threads 12`, or better, off this node
+entirely. The two "mystery" DPDK stalls in 8.7.1 were us.
+
+### 8.7.5 NH20 verified against the ICD
+
+`gps::L5_NH20` = {1,1,1,1,1,-1,1,1,-1,-1,1,-1,1,-1,1,1,-1,-1,-1,1} -> bits
+**00000100110101001110**, exactly the published GPS L5 Q5 Neuman-Hofman sequence, in phase.
+`GPS_L5_Q`/`GPS_L5_Q_NH` were untouched by the merge. So the shared-wrong-template hypothesis --
+the one class of defect the bench is structurally blind to, since e2e SYNTHESIZES its test
+signal with the same template it validates against -- is dead at the sequence level.
+
+Also settled this round: the broker preserves the search's period EXACTLY (seed argument ==
+detection `code_phase_long_chips`, +0.00 chips on all six PRNs, same ref_hop), so the period
+defect is not in the hand-off; and `detection_phase`'s `lag_periods` term IS correct for
+nonzero lag -- the default bench cp204 happens to give "0 periods", but sweeping cp204 to force
+lag values 15, 14, 1 gives the right period every time.
