@@ -1443,3 +1443,104 @@ mechanism.
    With 7.2 fixed it should now always agree -- verify, then consider whether the residual gate
    (old 6.4/3) is still needed or whether continuity should simply become a consistency check.
 4. Re-measure the instrumental delay (6.3) now that the period and the refine are honest.
+
+# ============================================================================
+# 8. STATE AT COMPACTION #2 (2026-08-02 evening). READ AFTER SECTION 6/7.
+# ============================================================================
+
+## 8.1 The one-line summary
+
+The ±60 chip seed scatter that was blocking every lock was **grating lobes from a 2-node comb**,
+and running all 8 nodes removes them structurally. That is now done and the nodes are stable --
+but the 8-node search does not complete a pass, so we have no detections yet.
+
+## 8.2 Settled today (measured, reproducible)
+
+* **The overlay period fix is correct.** 16/16 on injection, and **4/4 on sky against an
+  independent oracle** (PRN 20, snr 477, four different periods: 17, 16, 1, 14). Robust to
+  noise: 0/12 wrong at every noise level tested. Section 7's fix stands.
+* **`refine_span: 4096` was a hand-added override** in a generated config, inside a commit about
+  broker clock drift. The generator emits `refine_step` from geometry and no span at all; the
+  stage default (`fft_len`) was always right. Reverted (58dd2e553). The override traded reach
+  for resolution at CONSTANT cost -- 109 vs 110 evaluations -- and cost a week.
+* **THE ±60 CHIP SCATTER = GRATING LOBES.** The 2-node comb is 27 channels at stride 4, so
+  gcd = 4, `s_stored` = 4096 samples = 13.09 chips, and the refine's objective carries grating
+  lobes at that spacing with the true one leading by only ~15%. Reproduced on the bench once the
+  harness gained additive noise:
+
+      noise  acquire snr   rms err   worst   WRONG LOBE
+         10        711     20.3 ch   56.4      42%
+         20        185     41.5 ch   60.9      92%
+         40         48     39.9 ch   61.0     100%
+
+  Sky agreed: PRN 20 probed at four seed ages gave -1.5 / +19.0 / +62.5 / +64.0 chips,
+  uncorrelated with age. **Raising `acquire_snr` does NOT fix it** -- 42% wrong at snr 711.
+* **8 nodes removes it structurally.** All eight `gpu_offsets_mod16` cover {0..15}, so the union
+  comb is 106 channels at **stride 1**: gcd 1, `s_stored` = 16384 = a whole hop, no periodicity,
+  no lobes. Merge confirmed live: "first aligned frame across 16 inputs (106 channels merged)".
+* **THE MERGE BROKE `GnssCoherentCombiner`.** All 8 nodes SIGSEGV at 42-46 s on the post-merge
+  binary; all 8 stable on `pre-merge-backup` (58dd2e553). That file took +342 lines in a
+  CONFLICT-FREE auto-merge (prototype added snr_q / NaN fail-open / overlay carrier squaring;
+  we added the per-antenna beam map), so nobody reviewed the combination. `_st_snr_q` and the
+  merged `_navbuf[p]` block are both cleared as suspects.
+* **Three SNR gates, one defect.** Continuity, the cp-rate fit, and the clock-freq bias median
+  all averaged per-satellite quantities with no quality gate. All three now gated
+  (`--period-check-snr`, `--fit-min-snr`, `--bias-min-snr`), all defaulting to 0 = prototype
+  behaviour. The bias median's raw scatter was 10.5 Hz where the acquire's own error predicts
+  0.8 Hz at N=2.
+* **`--fit-gap-s` defaults to 16 s** and resets the cp-fit history on every detection at CHORD's
+  90-270 s revisit, so `code_phase_rate` could NEVER be fitted. With `--fit-gap-s 900
+  --fit-min-snr 60` it fires and the common-mode clock path came alive for the first time.
+
+## 8.3 Open, in the order I would take them
+
+1. **The ms-split lag mapping** (see 8.4) -- the search-cost fix, half built.
+2. **The 8-node search does not complete a pass.** Two measured causes: a ~1.7 GB SERIAL `repl0`
+   precompute (32 PRN x 20 nh x 106 ch x 3125 hops, 4x the 2-node cost, ~13 min), and the
+   acquire then running at **97% of ONE core** despite `acquire_threads: 16`, a 10-core affinity,
+   40+ cores in the process mask and no `OMP_*` limits. The parallelism that gave 28 s passes on
+   2 nodes does not engage at 106 channels. Unexplained; find it before tuning anything else.
+3. **Bisect the combiner segfault** across the merge's 24 changed source files. Offline work.
+4. **Phase B of the ms-split** -- Phase A carries NO overlay period (phase mod 10230, not
+   204600), which is LESS than the current search reports.
+
+## 8.4 The ms-split, honestly
+
+`gnss::ms_split_accumulate` is implemented and builds; the harness drives it
+(`--ms-split K --sub-hops N --dump-mssplit`). Economics confirmed: over 100 ms it is
+**0.53 G ops vs 137 G** for today's full-length -- 258x -- because a ~1 ms sub-window spans one
+NH chip (no 20x alignment axis) and one code period of lag (not 16). Sensitivity cost is real:
+**-11.9 dB** vs a full-length search on the same 106 channels (-5.9 dB vs the 2-node baseline we
+were actually running).
+
+**It does not work yet, and two of the three bugs found were mine, not the algorithm's:**
+
+* `-(-a/b)` is NOT `ceil(a/b)` in C++ (truncation is toward zero). Gave `nwin = 0` (instant
+  crash) or a read PAST THE END of the data buffer. **Every ms-split number reported before
+  d05729d37 came off out-of-bounds memory** -- and reproduced perfectly, because that memory was
+  stable. A deterministic result is not a correct one.
+* The two-period replica (needed for full overlap at every lag) makes the lag axis 2.0070 code
+  periods, so a periodic code appears on it TWICE and `channelized_peak` cannot prefer either.
+  Surface index maps to physical lag as `(q + N) mod 2N`. **Fix: restrict the peak search to
+  physical lag [0, N].**
+* The two copies are **6.55 chips too close** -- they must be exactly one code period apart. The
+  196-hop sub-window is 1.0035 code periods and that 0.35% is not handled anywhere. Same
+  non-integer-hops-per-period root as everything else, surfacing a third time.
+
+## 8.5 Running state at compaction
+
+* 8 nodes on `/home/kvand/gnss/kotekan_premerge` via `systemd-run --unit=gnss-node`.
+  **Its `--version` banner misleadingly reports HEAD** -- trust the path, not the banner.
+* Aggregator: `chord_gnss_agg8.yaml`, 106 channels, merging, NOT completing search passes.
+* Broker running with all three SNR gates plus `--fit-gap-s 900`.
+* `/tmp/gnss` created on all 8 nodes (records go there; `/data` exists only on cx19 and was
+  deliberately NOT created elsewhere).
+
+## 8.6 Method note
+
+Three wrong stories today, all the same shape: a number was explained before its mechanism was
+looked at. The 13.09-chip coincidence (`s_stored*cps` == the old `refine_span*cps`), the record
+directory (falsified by cx27 all along), and the ms-split offset fit (a peak nobody had dumped).
+Each was settled in one run by looking at the actual shape -- `--dump-refine`, then
+`--dump-mssplit`. **Dump the objective before naming the mechanism.** The harness now has the
+instrument for both; use it first, not after.

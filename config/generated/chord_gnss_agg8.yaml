@@ -527,7 +527,7 @@ gnss_pool:
   kotekan_metadata_pool: GnssChanMetadata
   num_metadata_objects: 120
 gps_search:
-  acquire_fine_step: 64
+  acquire_fine_step: 128
   acquire_snr: 30.0
   acquire_threads: 16
   acquire_windows: 1
