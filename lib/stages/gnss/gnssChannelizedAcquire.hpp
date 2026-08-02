@@ -230,6 +230,30 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf,
                                    const std::vector<double>& doppler_grid, double sample_rate,
                                    double chip_rate, long code_length);
 
+/// Peak-pick an ms-split surface. NOT channelized_peak: that one's tau -> code-phase mapping
+/// silently assumes two things the shipped geometry arranges and the ms-split cannot.
+///
+///  1. THE REPLICA STARTS AT CODE PHASE ~0. The search anchors repl0 at Mp*fft_len = 51,200,000
+///     samples = 16 exact code periods, so its phase there is 52.4 chips (one hop) and the
+///     following refine absorbs it. An ms-split replica has to sit N hops before ITS data
+///     window, at an arbitrary absolute sample ~1.9e15, whose phase is an arbitrary number --
+///     7611 chips at the bench point. Left uncorrected the reported phase is wrong by that
+///     amount, and it MOVES with the snapshot: -52.3776 chips per hop of uptime.
+///  2. Mp*sph IS A WHOLE NUMBER OF CODE PERIODS. True for the shipped 3125*16384 (16 periods),
+///     false for 2N*16384 (2.007 periods at N=196). At the peak the cyclic correlation reads
+///     replica indices (m-q) mod Mp, i.e. a whole Mp hops further on, so that 0.007 of a period
+///     -- 72.0 chips -- lands directly in the answer.
+///
+/// It also folds the fine index signed and restricts the coarse lag to the full-overlap window;
+/// see the implementation for why each is necessary, and what measured it.
+///
+/// @param phi_r0   the replica's own code phase at its index 0, for sub-window 0:
+///                 @c bank.phase_from_arg(0.0, window_start_sample - sub_hops*fft_len, 0.0).
+/// @param sub_hops N, the same value handed to @ref ms_split_accumulate.
+AcquisitionResult ms_split_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
+                                const std::vector<double>& doppler_grid, double sample_rate,
+                                double chip_rate, long code_length, double phi_r0, int sub_hops);
+
 } // namespace gnss
 
 #endif // GNSS_CHANNELIZED_ACQUIRE_HPP

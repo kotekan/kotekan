@@ -58,9 +58,16 @@ Split the snapshot into `K` sub-windows of `N ≈ 196` hops (one code period of 
    artefact for ~2× the transform cost, which is not where the money is.
 2. **Cross-channel combine** to recover fine lag, exactly as now:
    `D(s) = Σ_c P_c e^{i2πf_c s/sph}`.
-3. **Roll each sub-surface** by the known slip before summing. Sub-window k starts at hop `kN`,
-   whose code phase differs from sub-window 0's by a deterministic amount (nominal advance +
-   code Doppler). In the stored lag axis this is an integer column shift — cheap.
+3. ~~**Roll each sub-surface** by the known slip before summing.~~ **Not needed — measured
+   2026-08-02.** Every generator here forms `C(n) = arg + n·cps` over the *absolute* sample
+   index, so a sub-window's replica, generated at its own start with argument 0, advances in
+   lockstep with the data. The peak lands at the same lag in every sub-window. Confirmed by
+   K = 1, 2, 4, 16 all peaking in the same cell with power growing ~linearly in K.
+
+   What *does* drift is the code Doppler the replica omits: `N·sph·cps·ε` = **0.0165 chips per
+   sub-window**, so K = 100 smears the peak by 1.65 chips. That is a sensitivity question for
+   Phase A at full length, not a bookkeeping one, and it is 2000× smaller than the 35.9 chip
+   nominal slip the roll was written for.
 4. **Sum |D|²** across the K sub-windows.
 
 ### Phase B — coherent recombination (only if Phase A's sensitivity is not enough)
@@ -105,6 +112,39 @@ live detections already sit in that margin. Phase A alone would make that worse.
 deployed together with, or after, the window/overlay bookkeeping fix** (route window w into bin
 `(a + 4w) mod 20`), which restores multi-window integration and brings the ceiling to 4.45.
 
+## 4b. The peak mapping — measured 2026-08-02, `gnss::ms_split_peak`
+
+`channelized_peak` cannot be used on an ms-split surface. Its tau → code-phase mapping assumes
+two things the shipped geometry arranges and this one cannot, and both were worth thousands of
+chips:
+
+| term | why | size at the bench point |
+|---|---|---|
+| `phi_r0` | the replica's own code phase at its index 0. The search anchors repl0 at `Mp·fft_len` = 16 exact code periods, so it is ~0 there. The ms-split anchors N hops before *its* data, at an arbitrary absolute sample. | **7611 chips**, and it moves −52.3776 per hop of uptime |
+| `Ns·cps` | at the peak the cyclic correlation reads replica indices `(m−q) mod Mp`, a whole `Mp` hops on. Zero for the shipped `3125·16384` (16 periods); `2N·16384` is 2.007 periods. | **72.0 chips** |
+| fine sign | the coarse and fine halves of the lag carry **opposite** signs, so `AcquisitionSurface::tau()`'s `q·sph + i·s_step` is not the delay. Injecting +5 chips moves the fine index +49 columns at `s_step` 32 = 9.8/chip = exactly `1/cps`, while `q` moves the other way. | up to **52.4 chips** (one hop) |
+
+The fine index must also be folded signed into `(−sph/2, +sph/2]` first: the cross-channel DFT
+reports it modulo `sph`, so a small negative offset returns near the top of the axis and reads
+as a whole extra hop. Every +52.35 chip outlier in the bench sweeps was this.
+
+The shipped path never had to get the last two right, because `refine_peak` re-scans a full hop
+either way and absorbs them. That is worth remembering before trusting any *other* coarse
+number it produces.
+
+**The lag window.** The peak search is restricted to `q ∈ [N, 2N)`. Those are the lags whose
+replica indices are contiguous; for `q ∈ [1, N)` the sum straddles the replica's own wrap and
+correlates over only `N−q` hops. Those partial lags are not small — the strongest stood at
+**26% of the true peak's power, second place on the whole surface**, and it tracks the satellite
+(19.09 hops per 1000 chips, exactly `1/cph`), so no statistic distinguishes it from a detection.
+Accepting one seeds the tracker nearly a full code period off. `[N, 2N)` still covers the entire
+ambiguity: one code period is 195.3125 hops ≤ N = 196.
+
+**It only works at stride 1.** The mapping needs `s_stored == sph`, i.e. `g = 1`. At the 2-node
+stride-4 comb the fine axis spans 4096 of 16384 samples and the recovered phase is quantized to
+that: measured errors 0, ±13.33, ±26.42 chips — integer multiples of 13.09. Same structural
+requirement as the grating lobes, arrived at independently.
+
 ## 5. Validation — bench before sky, no exceptions
 
 `scripts/gnss/e2e` already injects a known code phase and reports the recovered phase and
@@ -113,6 +153,11 @@ things to test are the ones that have gone wrong before:
 
 1. **Recovered cp and period vs injection**, across a cp sweep and a hop0 sweep — same
    acceptance bar as the current path (period 16/16, residual ≲ 0.2 chips).
+   **Done 2026-08-02, stride 1** (`e2e --ms-split K --s-stride 1 --s-nchan 106`). Coarse phase
+   tracks the injection to <0.05 chips over cp +0…+2500, N = 196…300, hop0 +0…+11, K = 1…16;
+   end-to-end within-period residual −0.235 chips, and −0.337 at K ≥ 4 (the code-Doppler smear
+   of §3.3). Under noise 10 and 20: worst 0.337 chips, **0/8 wrong lobe**. Period is still
+   0/8 — Phase A carries no overlay period, as designed. That is the remaining gap.
 2. **The sub-window roll (step 3)** — this is the exact bookkeeping that `acquire_windows` got
    wrong, where each window landed in a different NH bin and a second window *halved* SNR. Test
    it by summing K sub-windows on a noiseless injection and confirming the peak grows as K, not

@@ -339,6 +339,103 @@ ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
     return dims;
 }
 
+AcquisitionResult ms_split_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
+                                const std::vector<double>& doppler_grid, double sample_rate,
+                                double chip_rate, long code_length, double phi_r0, int sub_hops) {
+    AcquisitionResult best{0.0, 0.0, 0, -1.0, 0.0};
+    const int sfine = dims.fine();
+    const int sph = dims.sph;
+    const double cps = chip_rate / sample_rate;
+    const double L = (double)code_length;
+
+    // THE PHYSICAL LAG WINDOW: q in [N, 2N), and nothing outside it is even looked at.
+    //
+    // The replica spans 2N hops starting N hops before the data's N, so lag q reads replica
+    // indices (m-q) mod 2N for m in [0,N). Those are contiguous -- one unbroken stretch of code
+    // -- exactly when q >= N. For q in [1, N) the sum straddles the replica's own wrap, joining
+    // its tail to its head across a 2.007-period jump: a partial correlation over only the
+    // (N-q) hops that still line up.
+    //
+    // Those partial lags are not a small effect to be thresholded away. At the bench point the
+    // strongest of them stood at 26% of the true peak's power -- second place on the whole
+    // surface, above every real sidelobe -- and it TRACKS the satellite (q moves 19.09 hops per
+    // 1000 chips of code phase, exactly 1/cph), so it looks like a detection in every way a
+    // statistic can see. It is also nearly a code period away from the truth, so accepting one
+    // seeds the tracker a full period off.
+    //
+    // [N, 2N) still covers the entire ambiguity: one code period is 195.3125 hops <= N = 196,
+    // so every physical delay has exactly one representative in the window.
+    const int q_lo = std::max(0, std::min(sub_hops, dims.Mp));
+    const int q_hi = dims.Mp;
+
+    double surf_sum = 0.0;
+    long surf_n = 0;
+    int best_d = 0, best_q = 0, best_i = 0;
+    std::vector<double> dop_peak(dims.n_dop, 0.0);
+    for (int d = 0; d < dims.n_dop; ++d) {
+        const double* base = surf.data() + (long)d * dims.Mp * sfine;
+        for (int q = q_lo; q < q_hi; ++q) {
+            const double* row = base + (long)q * sfine;
+            for (int s = 0; s < sfine; ++s) {
+                const double pw = row[s];
+                // Mean over the SEARCHED cells only. Including the partial-overlap half would
+                // put correlation energy into the noise estimate and quietly deflate the SNR
+                // this surface reports -- the acceptance threshold is compared against it.
+                surf_sum += pw;
+                surf_n++;
+                if (pw > dop_peak[d])
+                    dop_peak[d] = pw;
+                if (pw > best.peak) {
+                    best.peak = pw;
+                    best_d = d;
+                    best_q = q;
+                    best_i = s;
+                }
+            }
+        }
+    }
+
+    best.doppler_hz = doppler_grid.empty() ? 0.0 : doppler_grid[best_d];
+    const int nd = (int)doppler_grid.size();
+    if (nd >= 3 && best_d > 0 && best_d < nd - 1) {
+        const double sm = dop_peak[best_d - 1], s0 = dop_peak[best_d], sp = dop_peak[best_d + 1];
+        const double denom = sm - 2.0 * s0 + sp;
+        if (denom < 0.0) {
+            double delta = 0.5 * (sm - sp) / denom;
+            delta = std::max(-0.5, std::min(0.5, delta));
+            best.doppler_hz += delta * (doppler_grid[best_d + 1] - doppler_grid[best_d]);
+        }
+    }
+    const double mean = (surf_n > 0) ? surf_sum / (double)surf_n : 0.0;
+    best.snr = (mean > 0.0) ? best.peak / mean : 0.0;
+
+    // THE FINE HALF OF THE LAG CARRIES THE OPPOSITE SIGN TO THE COARSE HALF, so AcquisitionSurface
+    // ::tau()'s q*sph + i*s_step is not the delay here and cannot be used. Measured directly:
+    // injecting +5 chips of code phase moves the peak's fine index +49 columns at s_step 32,
+    // = 9.8 columns/chip = 312.8 samples/chip = exactly 1/cps, while q moves the other way.
+    // The shipped path never had to face this because refine_peak re-scans a full hop either
+    // way; here it is the difference between 0.05 chips and 52.4.
+    //
+    // Fold to the signed half-open hop first: the cross-channel DFT reports the fine lag modulo
+    // sph, so a small NEGATIVE offset comes back as i near the top of the axis. Read literally
+    // that is a whole extra hop of error -- every +52.35 chip outlier in the bench sweeps was
+    // this and only this.
+    long fine = (long)best_i * (long)(dims.s_step > 0 ? dims.s_step : 1);
+    if (fine > sph / 2)
+        fine -= sph;
+    const long tau_eff = (long)best_q * (long)sph - fine;
+
+    // The peak condition, all three terms: phi_r0 (the replica's own start phase) + Ns*cps (the
+    // cyclic wrap, since the peak reads indices a whole Mp hops on) - tau_eff*cps.
+    const long Ns = (long)dims.Mp * (long)sph;
+    best.peak_tau_samples = ((tau_eff % Ns) + Ns) % Ns;
+    double cp = std::fmod(phi_r0 + (double)(Ns - tau_eff) * cps, L);
+    if (cp < 0.0)
+        cp += L;
+    best.code_phase_chips = cp;
+    return best;
+}
+
 AcquisitionResult channelized_peak(const std::vector<double>& surf, const AcquisitionSurface& dims,
                                    const std::vector<double>& doppler_grid, double sample_rate,
                                    double chip_rate, long code_length) {
