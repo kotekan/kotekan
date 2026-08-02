@@ -584,6 +584,17 @@ def main(argv=None):
                          "for cannot yet be written. Exports each chain's PRE-fusion value "
                          "and its scatter, because the persisted .hz files already read each "
                          "other and their agreement is therefore partly manufactured.")
+    ap.add_argument("--decoded-eph-fallback", type=int, default=1,
+                    help="when the network BRDC fetch fails, keep the dead-reckon predict alive "
+                         "off THIS broker's own on-node decoded ephemeris (decoded_eph.py, which "
+                         "reuses each decoder's BRDC-validated propagator). Geometry+Doppler are "
+                         "exact; precise sat-clock is Galileo-complete, best-effort elsewhere. "
+                         "1=on (default), 0=off (pre-fallback behaviour: predict goes dark).")
+    ap.add_argument("--decoded-eph-fallback-force", type=int, default=0,
+                    help="ALWAYS predict from decoded eph, even when BRDC is available -- the live "
+                         "A/B validation harness (compare against the BRDC predict in the log). "
+                         "Exercises the BeiDou BDT frame + CNAV clock the offline test can't. "
+                         "Do NOT leave on in production.")
     ap.add_argument("--decode-health-file", default=None,
                     help="publish this broker's NAV-DECODE health as JSON (atomically "
                          "replaced) for the viewer + the eventual decoded-eph BRDC fallback: "
@@ -1647,6 +1658,63 @@ def main(argv=None):
         except Exception:
             pass
 
+    # ---- Decoded-eph BRDC fallback (decoded_eph.py). Registry: for each decoder that may be
+    # armed in THIS broker, (signal, sys, sv_position fn, toe-field, ephemeris getter). Built once;
+    # the getters read the live decoder vars (inav/fnav/... reassigned in the loop) at call time.
+    _decfb = None
+    if args.decoded_eph_fallback or args.decoded_eph_fallback_force:
+        try:
+            import decoded_eph as _decfb
+            from galileo_inav import sv_position_inav as _svp_inav
+            from galileo_fnav import sv_position_fnav as _svp_fnav
+            from gps_cnav import sv_position_cnav as _svp_cnav
+            from beidou_bcnav1 import sv_position_bcnav1 as _svp_bc1
+            from beidou_bcnav2 import sv_position_bcnav2 as _svp_bc2
+        except Exception as e:
+            _log("decoded-eph fallback DISABLED (import: %s)" % e)
+            _decfb = None
+    # (signal, sys, sv_pos, toe_field, lambda -> live decoder or None)
+    _dec_reg = [
+        ("GAL_E1B_INAV",   "E", _svp_inav, "t0e", lambda: inav) if _decfb else None,
+        ("GAL_E5AI_FNAV",  "E", _svp_fnav, "t0e", lambda: fnav) if _decfb else None,
+        (_cnav_sig,        "G", _svp_cnav, "toe", lambda: cnav) if _decfb else None,
+        ("BDS_B1C_BCNAV1", "C", _svp_bc1,  "t_oe", lambda: bcnav1) if _decfb else None,
+        ("BDS_B2A_BCNAV2", "C", _svp_bc2,  "t_oe", lambda: bcnav2) if _decfb else None,
+    ] if _decfb else []
+    _dec_reg = [r for r in _dec_reg if r]
+
+    def _decoded_entries(now_w):
+        """Build decoded_eph entries (sys, prn, signal, eph, sv_pos, toe_gpst) from whichever
+        decoders are armed. toe_gpst is reconstructed in NOW's week from the eph's sow field.
+        Never raises -- a bad decoder/eph is skipped, not fatal."""
+        ents = []
+        if not _decfb:
+            return ents
+        gpst_now = _decfb.gpst_of_utc(datetime.fromtimestamp(now_w, tz=timezone.utc))
+        wk = int(gpst_now // 604800)
+        for signal, sys, svp, toef, getter in _dec_reg:
+            try:
+                dec = getter()
+                if dec is None:
+                    continue
+                for prn in list(dec._p):
+                    try:
+                        e = dec.ephemeris(prn)
+                        if e is None or toef not in e:
+                            continue
+                        toe_gpst = wk * 604800 + e[toef]  # nearest-week fold
+                        if toe_gpst - gpst_now > 302400:
+                            toe_gpst -= 604800
+                        elif toe_gpst - gpst_now < -302400:
+                            toe_gpst += 604800
+                        ents.append((sys, prn, signal, e, svp, toe_gpst))
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+        return ents
+
+    _decfb_log_t = [0.0]
     CODE_LEN = float(args.code_length)
     # Search-Doppler record-alias quantum, 1/(2*t_rec): see the DETECTION ALIAS FOLD
     # in the seeding loop. 500 Hz on the 1 ms bands (never confused), 125 E1C, 50 B1C,
@@ -3023,7 +3091,12 @@ def main(argv=None):
                 except Exception as e:
                     _log("dead-reckon: BRDC unavailable (%s); retry in 10 min" % e)
                     dr_state["eph_t"] = now_w - 7200 + 600
-            if dr_state["eph"]:
+            # DECODED-EPH FALLBACK: keep predicting off our own decode when the network BRDC is
+            # gone (or always, under --decoded-eph-fallback-force, the live A/B harness).
+            _use_decoded = _decfb is not None and (
+                args.decoded_eph_fallback_force
+                or (args.decoded_eph_fallback and not dr_state["eph"]))
+            if dr_state["eph"] or _use_decoded:
                 tag = args.dr_constellation
                 t_now_abs = now_w - utc0_sample0
                 la = (args.code_bias_force * 1e-6 if args.code_bias_force is not None
@@ -3038,13 +3111,47 @@ def main(argv=None):
                 try:
                     # two epochs, 4 s apart: range_rate difference -> doppler RATE (the
                     # TLE almanac's rate is unused here -- BRDC governs model-owned sats)
-                    pd = dr_eph_mod.predict_all(
-                        dr_state["eph"], args.lat, args.lon, args.alt,
-                        datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0)
-                    pd2 = dr_eph_mod.predict_all(
-                        dr_state["eph"], args.lat, args.lon, args.alt,
-                        datetime.fromtimestamp(now_w + 4.0, tz=timezone.utc),
-                        mask_deg=-90.0)
+                    if _use_decoded:
+                        _ents = _decoded_entries(now_w)
+                        pd = _decfb.predict_from_decoders(
+                            _ents, args.lat, args.lon, args.alt,
+                            datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0)
+                        pd2 = _decfb.predict_from_decoders(
+                            _ents, args.lat, args.lon, args.alt,
+                            datetime.fromtimestamp(now_w + 4.0, tz=timezone.utc),
+                            mask_deg=-90.0)
+                        if time.time() - _decfb_log_t[0] > 60.0:
+                            _decfb_log_t[0] = time.time()
+                            ab = ""
+                            if args.decoded_eph_fallback_force and dr_state["eph"]:
+                                # A/B: compare decoded vs BRDC predict, worst common sat.
+                                pb = dr_eph_mod.predict_all(
+                                    dr_state["eph"], args.lat, args.lon, args.alt,
+                                    datetime.fromtimestamp(now_w, tz=timezone.utc),
+                                    mask_deg=-90.0)
+                                cm = set(pd) & set(pb)
+                                if cm:
+                                    dr_m = max(abs(pd[k]["range_m"] - pb[k]["range_m"])
+                                               for k in cm)
+                                    dd = max(abs(pd[k]["range_rate_mps"]
+                                                 - pb[k]["range_rate_mps"]) for k in cm)
+                                    ab = (" | A/B vs BRDC over %d sats: worst range %.1f m, "
+                                          "range-rate %.3f m/s (%.2f Hz@fc)"
+                                          % (len(cm), dr_m, dd,
+                                             dd / 299792458.0 * args.carrier_hz))
+                            _log("dead-reckon: predicting from DECODED eph (%s; %d entries -> "
+                                 "%d sats)%s"
+                                 % ("FORCE A/B" if args.decoded_eph_fallback_force
+                                    else "BRDC network DOWN -> fallback",
+                                    len(_ents), len(pd), ab))
+                    else:
+                        pd = dr_eph_mod.predict_all(
+                            dr_state["eph"], args.lat, args.lon, args.alt,
+                            datetime.fromtimestamp(now_w, tz=timezone.utc), mask_deg=-90.0)
+                        pd2 = dr_eph_mod.predict_all(
+                            dr_state["eph"], args.lat, args.lon, args.alt,
+                            datetime.fromtimestamp(now_w + 4.0, tz=timezone.utc),
+                            mask_deg=-90.0)
                 except Exception as e:
                     pd, pd2 = {}, {}
                     _log("dead-reckon: predict failed: %s" % e)
