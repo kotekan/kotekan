@@ -1788,3 +1788,43 @@ Corrections to earlier sections, both from measuring the wrong quantity:
   PRNs (:2373), not the detection epoch, so that number never meant what I read it as.
 * The "frozen PRN" split (1/4/17/25/28/32 vs 2/6/9/16/26) was the fitted/unfitted split, and the
   "smooth Doppler tracks" of the second group are BRDC dead-reckoning output, not measurements.
+
+### 8.7.7 A CONSTANT -4 OVERLAY PERIODS -- 4/4, measured 2026-08-02 23:5x
+
+The probe is validated first (8.7.6 / `seedchk`, worst 2.2e-3 chips vs the shipped
+`propagate_seed`), so these numbers stand on their own.
+
+| PRN | oracle ratio | period found vs seeded | offset |
+|---|---|---|---|
+| 3 | 30.1 | 8 vs 12 | **-4** |
+| 28 | 17.4 | 19 vs 3 | **-4** (+16) |
+| 1 | 25.8 | 5 vs 9 | **-4** |
+| 1 (earlier) | 9.8 | 2 vs 6 | **-4** |
+| 32 | 1.6 -- NOISE, discarded | 5 vs 0 | +5 |
+
+Four strong detections, three satellites, seed ages 151-680 s: **exactly -4 every time**, and
+-4 == +16 mod 20. Sixteen code periods = 3125 hops = `Mp` = `anchor`, the sample the search
+generates repl0 at (`anchor = Mp * fft_len` = 51,200,000 samples = 16 code periods EXACTLY).
+The within-period residuals (+54.5, +35.5, -220.5) are the separate latency problem of 8.7.6 --
+scattered, age-dependent, and not quantised. The period error is constant and quantised. **Two
+independent defects, cleanly separated.**
+
+Ruled out this round:
+* The acquire window is NOT shorter than the replica period: `_hops_per_record` defaults to
+  `repl_period_hops()` and the stage logs "3125-hop (16.0 ms) coherent window", same as e2e.
+* `_snap_start_hop` is the F-engine `sample_seq / fft_len` with frames placed at their true
+  offset, and `anchor` is `Mp * _fft_len` in both stage and harness -- the conventions agree.
+* Node and aggregator share one absolute sample counter (checked live; the only difference was
+  the detection's own age).
+
+**Why the bench cannot see it:** e2e SYNTHESISES its truth with the same absolutely-referenced
+overlay convention it then validates, so any constant offset between our overlay-period origin
+and real GPS's is invisible offline -- it cancels on both sides. Sky has an independent NH
+phase; the bench does not. This is the same blind spot flagged in 8.7.5, and it is the leading
+candidate: a replica generated at `anchor` presents overlay period `(16 + nh) mod 20`, not
+`nh`, and `detection_phase`'s lift is `(best_nh + lag_periods) * L`.
+
+**Next, and it is cheap:** the offset is constant and measured 4/4, so apply +16 (== -4) periods
+to the seed and see whether the tracker locks. That is minutes of work and settles empirically
+whether this is THE defect or only one of them -- then find the principled fix. Do not ship a
+constant; use it as an experiment.
