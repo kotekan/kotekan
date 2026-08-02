@@ -923,6 +923,13 @@ def main(argv=None):
                          "EPOCH, which holds when GPS-UTC (whole seconds) and the GPS epoch "
                          "offset (315964800) are both multiples of it -- true for 1.5 and for "
                          "0.02. Absolute-time accuracy needed is ~EPOCH/2.")
+    ap.add_argument("--fit-min-snr", type=float, default=0.0,
+                    help="detections below this SNR do not enter the cp-rate fit history. The "
+                         "fit resolves a ~0.0148 chips/s residual; a near-threshold detection's "
+                         "phase is noise, so one bad point destroys the slope rather than "
+                         "degrading it. 0 (default) keeps every point -- right for the "
+                         "prototype, whose detections sit well above threshold and whose "
+                         "revisit is seconds. CHORD wants ~60 alongside --fit-gap-s 900.")
     ap.add_argument("--period-continuity", default="check",
                     choices=("check", "correct", "off"),
                     help="what to do when the search's reported overlay period disagrees with "
@@ -2295,9 +2302,22 @@ def main(argv=None):
             h = cp_hist.get(prn, [])
             if h and (ref_hop - h[-1][0]) > MAX_GAP_HOPS:
                 h = []  # gap too large -> re-acquisition, old slope is stale
+            # SNR gate (2026-08-02). The slope this fit is trying to resolve is ~0.0148
+            # chips/s -- the drift from a ~1.7 Hz Doppler error. A detection near the
+            # acquire threshold has a phase that is simply noise (measured on CHORD: below
+            # snr ~60 the within-period residual runs ~2000 chips against a few chips above
+            # it), so ONE such point does not degrade the fit, it destroys it. Default 0
+            # keeps every point, which is the prototype's behaviour and right there: its
+            # detections sit far above threshold and its revisit is seconds.
             if not h or ref_hop != h[-1][0]:
-                h.append((ref_hop, cp, dop))
-                h = h[-HIST_LEN:]
+                if snr >= args.fit_min_snr:
+                    h.append((ref_hop, cp, dop))
+                    h = h[-HIST_LEN:]
+                elif h:
+                    _log_rl("fitsnr-%d" % prn,
+                            "PRN %d cp-fit: skipping snr %.0f point (< --fit-min-snr %.0f); "
+                            "%d in history" % (prn, snr, args.fit_min_snr, len(h)),
+                            every_s=120.0)
             cp_hist[prn] = h
 
             # The bare-detection cp is in the DETECTION's Doppler currency; the tracker will
