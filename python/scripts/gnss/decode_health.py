@@ -35,13 +35,15 @@ class DecodeHealthWriter:
     silently publishes nothing is acceptable; one that raises into the broker is an outage.
     """
 
-    def __init__(self, path, chain, sys=None, log=None, flush_s=5.0, stale_sat_s=300.0):
+    def __init__(self, path, chain, sys=None, log=None, flush_s=5.0, stale_sat_s=300.0,
+                 dead_decode_s=1800.0):
         self.path = path
         self.chain = chain
         self.sys = sys
         self._log = log or (lambda m: None)
         self.flush_s = float(flush_s)
         self.stale_sat_s = float(stale_sat_s)
+        self.dead_decode_s = float(dead_decode_s)
         self._last = 0.0
         # PERSISTENT current state: observe() runs on the 60 s health cadence but flush() runs
         # every broker cycle (~0.2 s), so _sats must survive flushes -- else the file is empty
@@ -80,10 +82,16 @@ class DecodeHealthWriter:
             if not force and t_now - self._last < self.flush_s:
                 return False
             self._last = t_now
-            # Age out satellites not re-observed within stale_sat_s (set, or the decoder dropped
-            # them) so the published state stays current without an ever-growing sat list.
-            for key, seen in list(self._seen_t.items()):
-                if t_now - seen > self.stale_sat_s:
+            # Age out a satellite when the decoder DROPS it (not re-observed within stale_sat_s)
+            # OR when its decode has been frozen far longer (dead_decode_s): a set / false-lock
+            # sat lingers in the decoder's PRN dict and keeps being observed with a static count,
+            # so observe-based aging alone never clears it -- it would sit forever at last_s ~=
+            # uptime and clutter the list. dead_decode_s is generous so a slow-but-alive weak sat
+            # survives between its infrequent decodes.
+            for key in list(self._seen_t):
+                seen = self._seen_t.get(key, 0.0)
+                dec = self._decode_t.get(key, seen)
+                if (t_now - seen > self.stale_sat_s) or (t_now - dec > self.dead_decode_s):
                     for d in (self._sats, self._seen_t, self._count, self._decode_t):
                         d.pop(key, None)
             sats = []
@@ -173,5 +181,9 @@ def read_all(dirpath, max_age_s=120.0, t_now=None):
         g["n_eph"] = sum(1 for r in rows if r.get("eph"))
         g["worst_dpos_m"] = max(dpos) if dpos else None
         g["median_dpos_m"] = statistics.median(dpos) if dpos else None
+        # newest = the LIVENESS number (a set/false-lock straggler must not make an active chain
+        # look dead); oldest kept for the straggler count.
+        g["newest_decode_s"] = min(last) if last else None
         g["oldest_decode_s"] = max(last) if last else None
+        g["n_stale"] = sum(1 for x in last if x > 300)
     return {"signals": out_sig, "chains": chains}

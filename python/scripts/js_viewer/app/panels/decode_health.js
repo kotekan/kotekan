@@ -30,10 +30,22 @@ function dot(color, title) {
 }
 
 // Overall per-signal status: green healthy, amber degraded/stale, grey no-sync.
+// Freshest decode across a signal's satellites = the LIVENESS number. A single set /
+// false-lock straggler must not make an actively-decoding chain look dead, so the headline is
+// min(last_s), not the worst sat. `nStale` (last_s > 300 s) is surfaced separately.
+function freshest(sig) {
+    const v = (sig.sats || []).map(s => s.last_s).filter(x => x != null);
+    return v.length ? Math.min(...v) : null;
+}
+function nStale(sig) {
+    return (sig.sats || []).filter(s => s.last_s != null && s.last_s > 300).length;
+}
+
 function status(sig) {
-    const fresh = sig.oldest_decode_s == null || sig.oldest_decode_s < 120;
+    const f = freshest(sig);
+    const fresh = f == null || f < 120;
     if (!sig.n_sync) return {c: "#8a8f98", t: "no satellite synced"};
-    if (!fresh) return {c: "#d0a215", t: "newest decode is stale (>120 s)"};
+    if (!fresh) return {c: "#d0a215", t: "freshest decode is stale (>120 s)"};
     // dpos gate only where an ephemeris (and thus a cross-check) exists.
     if (sig.worst_dpos_m != null && sig.worst_dpos_m > 5)
         return {c: "#d0a215", t: `BRDC dpos ${sig.worst_dpos_m.toFixed(1)} m (>5 m)`};
@@ -104,13 +116,17 @@ export class DecodeHealthPanel {
                 const dp = (s.median_dpos_m == null && s.worst_dpos_m == null)
                     ? "<span style='color:#8a8f98'>–</span>"
                     : `${fmt(s.median_dpos_m, "", 2)} / ${fmt(s.worst_dpos_m, "", 2)}`;
+                const ns = nStale(s);
+                const freshCell = `${fmt(freshest(s), " s", 0)}`
+                    + (ns ? ` <span style="color:#8a8f98" title="${ns} sat(s) not decoded `
+                            + `in >300 s (set / false lock)">(+${ns})</span>` : "");
                 html += `<tr style="border-bottom:1px solid #222">`
                       + `<td style="padding:2px 6px">${SIG_NAME[sig] || sig}</td>`
                       + `<td>${BAND_LABEL[s.band] || s.band}</td>`
                       + `<td>${s.n_sync}/${s.n_sats}</td>`
                       + `<td>${fmt(s.n_eph, "", 0)}</td>`
                       + `<td>${dp}</td>`
-                      + `<td>${fmt(s.oldest_decode_s, " s", 0)}</td>`
+                      + `<td>${freshCell}</td>`
                       + `<td>${dot(st.c, st.t)}</td></tr>`;
             }
         }
