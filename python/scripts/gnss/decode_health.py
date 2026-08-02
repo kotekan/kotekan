@@ -35,15 +35,20 @@ class DecodeHealthWriter:
     silently publishes nothing is acceptable; one that raises into the broker is an outage.
     """
 
-    def __init__(self, path, chain, sys=None, log=None, flush_s=5.0):
+    def __init__(self, path, chain, sys=None, log=None, flush_s=5.0, stale_sat_s=300.0):
         self.path = path
         self.chain = chain
         self.sys = sys
         self._log = log or (lambda m: None)
         self.flush_s = float(flush_s)
+        self.stale_sat_s = float(stale_sat_s)
         self._last = 0.0
-        self._sats = {}      # (signal, prn) -> field dict, cleared each flush
-        self._count = {}     # (signal, prn) -> last seen monotonic decode count (persistent)
+        # PERSISTENT current state: observe() runs on the 60 s health cadence but flush() runs
+        # every broker cycle (~0.2 s), so _sats must survive flushes -- else the file is empty
+        # 99% of the time. A sat not re-observed for stale_sat_s is dropped (set / decoder gone).
+        self._sats = {}      # (signal, prn) -> field dict (current state)
+        self._seen_t = {}    # (signal, prn) -> wall-clock t of last observe (for aging out)
+        self._count = {}     # (signal, prn) -> last seen monotonic decode count
         self._decode_t = {}  # (signal, prn) -> wall-clock t when count last INCREASED
         self._fails = 0
 
@@ -58,6 +63,7 @@ class DecodeHealthWriter:
             key = (str(signal), int(prn))
             rec = self._sats.setdefault(key, {})
             rec.update(fields)
+            self._seen_t[key] = float(t_now)
             if count is not None:
                 prev = self._count.get(key)
                 if prev is None or count > prev:
@@ -74,6 +80,12 @@ class DecodeHealthWriter:
             if not force and t_now - self._last < self.flush_s:
                 return False
             self._last = t_now
+            # Age out satellites not re-observed within stale_sat_s (set, or the decoder dropped
+            # them) so the published state stays current without an ever-growing sat list.
+            for key, seen in list(self._seen_t.items()):
+                if t_now - seen > self.stale_sat_s:
+                    for d in (self._sats, self._seen_t, self._count, self._decode_t):
+                        d.pop(key, None)
             sats = []
             for (sig, prn), f in sorted(self._sats.items()):
                 band = SIGNAL_BAND.get(sig, (self.sys, "?"))
@@ -82,7 +94,6 @@ class DecodeHealthWriter:
                 row["last_s"] = round(t_now - dt, 1) if dt is not None else None
                 row.update(f)
                 sats.append(row)
-            self._sats = {}
             rec = {"schema": SCHEMA, "t": round(float(t_now), 3),
                    "chain": self.chain, "sys": self.sys, "sats": sats}
             d = os.path.dirname(self.path)
