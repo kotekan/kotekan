@@ -113,6 +113,58 @@ OverlayWipeResult overlay_wipe(const std::vector<std::complex<double>>& a,
     return out;
 }
 
+bool overlay_apply(const std::vector<std::complex<double>>& a, const std::vector<double>& utc,
+                   const std::vector<int8_t>& overlay, int phase,
+                   const std::vector<std::complex<double>>* head,
+                   std::vector<std::complex<double>>& out_a,
+                   std::vector<std::complex<double>>* out_head) {
+    // THE ONE PLACE the overlay's record index is computed. overlay_wipe_at() calls this
+    // rather than repeating the expression, deliberately: a second, silently-divergent copy
+    // of an index convention is exactly what produced the L5 "pure sign" peel fault
+    // (a half-record probe into a record-indexed table, 2026-07-27). One copy, one
+    // convention: chip k = round((utc[r]-utc[0])/rec_dt) + phase, mod L, on the RECORD grid.
+    using cd = std::complex<double>;
+    const int nrec = (int)a.size();
+    const int L = (int)overlay.size();
+    if (L <= 0 || nrec < 2 || (int)utc.size() != nrec)
+        return false;
+    if (head && (int)head->size() != nrec)
+        head = nullptr; // size mismatch (mixed-schema window): fall back to unsegmented
+    std::vector<double> dt;
+    dt.reserve(nrec - 1);
+    for (int r = 1; r < nrec; ++r)
+        dt.push_back(utc[r] - utc[r - 1]);
+    std::nth_element(dt.begin(), dt.begin() + dt.size() / 2, dt.end());
+    const double rec_dt = dt[dt.size() / 2];
+    if (!(rec_dt > 0.0))
+        return false;
+    out_a.assign((size_t)nrec, cd(0.0, 0.0));
+    if (out_head)
+        out_head->assign((size_t)nrec, cd(0.0, 0.0));
+    for (int r = 0; r < nrec; ++r) {
+        long long k = ((long long)std::llround((utc[r] - utc[0]) / rec_dt) + phase) % L;
+        if (k < 0)
+            k += L;
+        const double c0 = (double)overlay[(size_t)k];
+        if (head) {
+            const double c1 = (double)overlay[(size_t)((k + 1) % L)];
+            const cd h = (*head)[r];
+            // head takes chip k, tail (a-h) takes chip k+1 -- a record straddling a chip
+            // TRANSITION must not be summed blind (it would cancel to |2f-1|).
+            const cd hw = h * c0;
+            out_a[(size_t)r] = hw + (a[(size_t)r] - h) * c1;
+            if (out_head)
+                (*out_head)[(size_t)r] = hw; // wiped head, so a downstream segmented wipe
+                                             // (nav-bit) keeps a consistent head/tail split
+        } else {
+            out_a[(size_t)r] = a[(size_t)r] * c0;
+            if (out_head)
+                (*out_head)[(size_t)r] = out_a[(size_t)r]; // head == a, tail 0
+        }
+    }
+    return true;
+}
+
 OverlayWipeResult overlay_wipe_at(const std::vector<std::complex<double>>& a,
                                   const std::vector<double>& utc,
                                   const std::vector<int8_t>& overlay, int phase,
@@ -125,36 +177,14 @@ OverlayWipeResult overlay_wipe_at(const std::vector<std::complex<double>>& a,
     // 2-dof), which is what makes the debiased coherent power unbiased per emit.
     using cd = std::complex<double>;
     OverlayWipeResult out;
-    const int nrec = (int)a.size();
     const int L = (int)overlay.size();
-    if (L <= 0 || nrec < 2 || (int)utc.size() != nrec)
+    std::vector<cd> v; // overlay-corrected records (segmented: head chip k, tail chip k+1)
+    if (!overlay_apply(a, utc, overlay, phase, head, v, nullptr))
         return out;
-    if (head && (int)head->size() != nrec)
-        head = nullptr; // size mismatch (mixed-schema window): fall back to unsegmented
-    std::vector<double> dt;
-    dt.reserve(nrec - 1);
-    for (int r = 1; r < nrec; ++r)
-        dt.push_back(utc[r] - utc[r - 1]);
-    std::nth_element(dt.begin(), dt.begin() + dt.size() / 2, dt.end());
-    const double rec_dt = dt[dt.size() / 2];
-    if (!(rec_dt > 0.0))
-        return out;
+    const int nrec = (int)v.size();
     cd s(0.0, 0.0);
-    std::vector<cd> v(nrec); // overlay-corrected records (segmented: head chip k, tail chip k+1)
-    for (int r = 0; r < nrec; ++r) {
-        long long k = ((long long)std::llround((utc[r] - utc[0]) / rec_dt) + phase) % L;
-        if (k < 0)
-            k += L;
-        const double c0 = (double)overlay[(size_t)k];
-        if (head) {
-            const double c1 = (double)overlay[(size_t)((k + 1) % L)];
-            const cd h = (*head)[r];
-            v[r] = h * c0 + (a[r] - h) * c1;
-        } else {
-            v[r] = a[r] * c0;
-        }
+    for (int r = 0; r < nrec; ++r)
         s += v[r];
-    }
     const double mag = std::abs(s);
     const cd rot = mag > 0.0 ? std::polar(1.0, -std::arg(s)) : cd(1.0, 0.0);
     double noise2 = 0.0;

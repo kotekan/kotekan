@@ -66,8 +66,12 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
                                                       std::max(1, _integration_length / 10)));
     _navwipe_bit_records = config.get_default<int>(unique_name, "navwipe_bit_records", 0);
     // Known secondary overlay (the L5 Neuman-Hofman pilot overlay) -> deep coherent integration
-    // by searching its alignment, instead of the squaring nav-bit estimate. Mutually exclusive
-    // with navwipe_bit_records (a pilot has no nav bit). Both buffer the per-record A.
+    // by searching its alignment, instead of the squaring nav-bit estimate. Both buffer the
+    // per-record A.
+    // NOT mutually exclusive with navwipe_bit_records since S4 phase 2: setting BOTH selects
+    // the COMPOSED wipe (overlay first, then the nav-bit wipe on the result), which is what a
+    // data component carrying a secondary overlay needs -- GPS L5-I (CNAV under NH10) is the
+    // only such chain here. A dataless pilot still sets the overlay alone.
     const std::string sec = config.get_default<std::string>(unique_name, "secondary_overlay", "");
     // TABLE-DRIVEN dispatch (gnssOverlay.cpp): one registry row per known name carries the
     // overlay's shape and generator, so adding a signal means adding a row, not a branch.
@@ -89,6 +93,20 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
             WARN("overlay registry/descriptor mismatch: {:s}", msg);
     }
     _wipe_buffer = (_navwipe_bit_records > 0 || !_secondary.empty() || !_l1co.empty());
+
+    // Real-time cost instrumentation -- see the header note. The derived quantity is the DUTY
+    // CYCLE: (d ingest_us + d emit_us) / (d records x record_period). < 1 keeps up; >= 1 is
+    // saturated and no amount of valve_slack fixes it.
+    {
+        using namespace kotekan::prometheus;
+        auto& m = Metrics::instance();
+        _m_ingest_us = &m.add_counter("kotekan_gnss_combiner_ingest_time_us_total", unique_name);
+        _m_emit_us = &m.add_counter("kotekan_gnss_combiner_emit_time_us_total", unique_name);
+        _m_records = &m.add_counter("kotekan_gnss_combiner_records_total", unique_name);
+        _m_emits = &m.add_counter("kotekan_gnss_combiner_emits_total", unique_name);
+        _m_last_emit_us = &m.add_gauge("kotekan_gnss_combiner_last_emit_time_us", unique_name);
+        _m_last_emit_prns = &m.add_gauge("kotekan_gnss_combiner_last_emit_prns", unique_name);
+    }
     // Auto-coherence (default ON, the clock_profile philosophy: automatic unless overridden):
     // integration_length is a MAX -- at emit the deep wipe is also evaluated over trailing
     // sub-windows (full, 1/2, 1/4, ... octaves) and the best deep SNR wins, so the deep |A|
@@ -166,6 +184,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_s4.assign(_n_prn, 0.0f);
     _st_s4_raw.assign(_n_prn, 0.0f);
     _st_sigma_phi.assign(_n_prn, 0.0f);
+    _st_snr_q.assign(_n_prn, NAN);
     _st_car_resid.assign(_n_prn, 0.0f);
     _adr_cyc.assign(_n_prn, 0.0);
     _trim_cyc.assign(_n_prn, 0.0);
@@ -278,6 +297,9 @@ void GnssCoherentCombiner::main_thread() {
         }
         if (stopping)
             break;
+        // Cost clock starts only AFTER wait_for_full_frame returns: blocking on input is IDLE,
+        // not work, and counting it would make an under-loaded stage look saturated.
+        const double _t_ingest0 = current_time();
 
         for (int p = 0; p < _n_prn; ++p) {
             // Sum the un-normalized correlation and replica energy across subbands
@@ -667,6 +689,11 @@ void GnssCoherentCombiner::main_thread() {
             }
         }
 
+        if (_m_ingest_us)
+            _m_ingest_us->inc((uint64_t)std::max(0.0, (current_time() - _t_ingest0) * 1e6));
+        if (_m_records)
+            _m_records->inc(); // the DATA clock: records consumed (x record period = data time)
+
         for (size_t i = 0; i < in_bufs.size(); ++i)
             in_bufs[i]->mark_frame_empty(unique_name, in_ids[i]++);
 
@@ -682,6 +709,8 @@ void GnssCoherentCombiner::main_thread() {
         float* out = (float*)out_buf->wait_for_empty_frame(unique_name, out_id);
         if (out == nullptr)
             break;
+        // Again after the blocking wait: downstream backpressure is not this stage's cost.
+        const double _t_emit0 = current_time();
         // block: divide sums by the block count. rolling: the EMA is already a mean, so just
         // undo the warm-up bias (1-(1-alpha)^n_roll) -> a true running mean from record 1.
         const double inv = _rolling ? 1.0 / (1.0 - std::pow(1.0 - alpha, (double)n_roll))
@@ -691,7 +720,12 @@ void GnssCoherentCombiner::main_thread() {
         std::vector<int> nh_phase(_n_prn, -1);     // secondary-overlay alignment found (L5; -1 = n/a)
         std::vector<double> amp_dbi(_n_prn, 0.0);  // noise-debiased (unbiased) signal amplitude
         std::vector<double> s4_raw(_n_prn, 0.0);   // amplitude scintillation index (raw)
-        std::vector<double> sigma_phi(_n_prn, 0.0);// carrier-phase jitter about the slope fit (rad)
+        std::vector<double> sigma_phi(_n_prn, NAN); // carrier-phase jitter (rad); NaN = NOT MEASURED
+                                                    // this emit (short window / no-wipe fallback /
+                                                    // no carrier data). Overwritten with a real value
+                                                    // only when carrier_resid_hz actually fits.
+        std::vector<double> snr_q(_n_prn, NAN);     // modulation-immune per-record SNR (LINEAR pilots
+                                                    // only); NaN = not available (data fit / no fit)
         std::vector<double> coh_s(_n_prn, 0.0);    // measured coherence: span of the winning window
         std::vector<int> deep_rec(_n_prn, 0);      // records in the winning deep window
         std::vector<double> deep_floor(_n_prn, 0.0); // rectification floor at the reported rung
@@ -825,8 +859,10 @@ void GnssCoherentCombiner::main_thread() {
                         if (std::norm(z) > 0.0)
                             ++nw;
                     resid_hz = (nw >= 16)
-                        ? carrier_resid_hz(_navwipe[p], _navutc[p], &sigma_phi[p], /*prewiped=*/true)
-                        : carrier_resid_hz(_navbuf[p], _navutc[p], &sigma_phi[p]);
+                        ? carrier_resid_hz(_navwipe[p], _navutc[p], &sigma_phi[p], /*prewiped=*/true,
+                                           &snr_q[p])
+                        : carrier_resid_hz(_navbuf[p], _navutc[p], &sigma_phi[p], /*prewiped=*/false,
+                                           &snr_q[p]);
                 } else if (car_n[p] > 0 && std::abs(car_S[p]) > 0.0) {
                     const double dphi = std::arg(car_S[p]) / (carrier_raw() ? 1.0 : 2.0);
                     resid_hz = dphi / (2.0 * M_PI * (car_dt[p] / car_n[p]));
@@ -868,7 +904,194 @@ void GnssCoherentCombiner::main_thread() {
                 // applied further down, once deep_snr/deep_rec exist. Here: the raw index.
                 s4_raw[p] = (m2 > 1e-12) ? std::sqrt(var) / m2 : 0.0;
             }
-            if (!_secondary.empty() || !_l1co.empty()) {
+            if (!_secondary.empty() && _navwipe_bit_records > 0) {
+                // ---- OVERLAY *AND* NAVWIPE (S4 phase 2) -- the GPS L5-I case ----
+                // L5-I is the only chain on this node that is BOTH a data component and an
+                // overlay carrier: 50 sps CNAV under the 10-chip NH10. It needs the two wipes
+                // COMPOSED, in order -- NH10 off each 1 ms record first, then the nav-bit wipe
+                // over 20-record symbols on the result. Until now these were mutually
+                // exclusive branches, which is why phase 1 could only reach the 20 ms data-bit
+                // boundary (measured: ~14 dB below the L5-Q sibling at the 1 s rung).
+                //
+                // ★ THE PHASE SEARCH CANNOT BE COHERENT HERE. overlay_wipe() picks its
+                // alignment by maximising a coherent sum over the whole window -- valid for a
+                // dataless pilot, meaningless for a data channel, where the +-1 symbols destroy
+                // that sum past 20 ms. So the alignment is chosen by the NAVWIPE statistic
+                // instead: wipe at each of the L candidate alignments and keep the one whose
+                // nav-bit wipe reads highest. That criterion is bit-robust by construction
+                // (navwipe estimates each symbol's sign), which is the whole point.
+                const auto& ab = _navbuf[p];
+                const auto& ub = _navutc[p];
+                const auto& hb = _navhead[p];
+                const std::vector<int8_t>& ov = _secondary;
+                const size_t L = std::max<size_t>(ov.size(), 1);
+                // Floor = the navwipe floor (nb free symbol signs) PLUS the extra selection
+                // over L overlay alignments. Both selections are real and both must be paid:
+                // reporting only the navwipe term would let a noise-only sat clear its bar.
+                const double sel = std::sqrt(std::log((double)std::max(_navwipe_bit_records, 2)))
+                                   + std::sqrt(std::log((double)std::max<size_t>(L, 2)));
+                auto nav_floor = [&](size_t len) {
+                    const double nb = std::max(1.0, (double)len / (double)_navwipe_bit_records);
+                    return std::sqrt(2.0 * nb / M_PI) + sel;
+                };
+                bool cleared = false;
+                double full_amp = 0.0, full_snr = 0.0;
+                size_t full_len = 0;
+                std::vector<std::complex<double>> aw, hw; // NH-wiped records + wiped heads
+                // ★ The alignment is searched ONCE, on the longest window, and reused for every
+                // rung. It is a property of the SIGNAL (the overlay advances deterministically in
+                // capture-UTC), not of the trailing window we happen to be scoring, so a per-rung
+                // search would (a) cost L x the navwipe on the band with the least real-time
+                // slack and (b) be statistically worse -- every extra maximisation rectifies more
+                // noise, and the floor would have to grow to pay for selections that buy nothing.
+                // ★★ AND IT IS SCORED BY A CHEAP O(n) STATISTIC, NOT BY navwipe.
+                // The first cut of this branch scored each alignment with navwipe_amplitude --
+                // which runs its OWN bit-phase search over navwipe_bit_records alignments. The
+                // two searches then MULTIPLY: 10 NH x 20 bit-phase = 200 inner passes per PRN
+                // per emit, which took /l5_valve to 57327 in six minutes (2026-07-29 02:05Z).
+                // No ladder tuning fixes a product.
+                //
+                // navwipe is only needed to MEASURE the winner, not to RANK the candidates.
+                // Ranking just needs a statistic that peaks at the right alignment and is blind
+                // to the symbol signs: sum over fixed blocks of |coherent sum of the NH-wiped
+                // records in that block|. A wrong NH alignment leaves residual +-1 overlay
+                // modulation INSIDE every block, which cancels the block sum; the right one
+                // leaves only the (constant-within-a-symbol) data sign, which |.| discards.
+                // The block grid is fixed and generally misaligned to the true symbol epoch --
+                // deliberately fine, because that misalignment costs EVERY candidate the same
+                // and this statistic is only ever used for argmax. navwipe then does the real
+                // bit-phase search once, at the winner.
+                // Cost: L x O(n) to rank + ONE navwipe per rung, i.e. 10 + 20 instead of 10 x 20.
+                //
+                // ⚠️ KNOWN LIMIT, measured: selection is reliable at per-record S >~ 0.25
+                // (19-20/20 on synthetic data) and degrades below it (6/20 at S=0.12). A sat
+                // that weak cannot clear its floor anyway, and the failure is FAIL-CLOSED: a
+                // wrong alignment despreads noise, navwipe reads low, the floor gate rejects it,
+                // and the next emit (0.1 s later) re-picks. It cannot manufacture a detection.
+                int best_ph = -1;
+                {
+                    double best = -1.0;
+                    const size_t B = (size_t)std::max(_navwipe_bit_records, 1);
+                    for (size_t ph = 0; ph < L; ++ph) {
+                        if (!gnss::overlay_apply(ab, ub, ov, (int)ph, &hb, aw, &hw))
+                            continue;
+                        // POWER, not magnitude: under noise E[|s|^2] is a constant independent
+                        // of the alignment, so it biases every candidate equally and cancels in
+                        // the argmax, while the signal term adds linearly. Measured on synthetic
+                        // NH10 x random-symbol data, power roughly DOUBLES the margin over the
+                        // runner-up vs sum|s| (4.95 vs 2.16 at per-record S=1; 1.36 vs 1.15 at
+                        // S=0.25) for identical cost.
+                        double stat = 0.0;
+                        for (size_t i = 0; i < aw.size(); i += B) {
+                            std::complex<double> s(0.0, 0.0);
+                            const size_t e = std::min(i + B, aw.size());
+                            for (size_t j = i; j < e; ++j)
+                                s += aw[j];
+                            stat += std::norm(s);
+                        }
+                        if (stat > best) {
+                            best = stat;
+                            best_ph = (int)ph;
+                        }
+                    }
+                }
+                if (best_ph >= 0) {
+                    nh_phase[p] = best_ph;
+                    // ★★ THE BIT EPOCH IS SEARCHED ONCE, ON THE LONGEST RUNG, AND PINNED FOR THE
+                    // REST. navwipe's internal bit sync is navwipe_bit_records full passes over
+                    // the window; re-running it per rung is what still cost ~140 drops/s after
+                    // the NH-ranking fix (L5-I: 20 alignments x 1000 records = 100x L2C's 1 x 200,
+                    // then x ~5 rungs). The epoch is a property of the signal, not of the trailing
+                    // window, so pinning it is EXACT -- the shorter rungs are strict suffixes of
+                    // the window the epoch was found on.
+                    //
+                    // ⚠️ The phase is WINDOW-RELATIVE (bit index counts from each window's own
+                    // utc[0]), so it must be shifted by the two windows' record-index offset --
+                    // derived from UTC, never from buffer positions: a valve drop skips an index,
+                    // and position arithmetic would slide every bit epoch by the gap.
+                    int pin = -1;
+                    double rec_dt_full = 0.0;
+                    if (ub.size() >= 2) {
+                        std::vector<double> dt;
+                        dt.reserve(ub.size() - 1);
+                        for (size_t r = 1; r < ub.size(); ++r)
+                            dt.push_back(ub[r] - ub[r - 1]);
+                        std::nth_element(dt.begin(), dt.begin() + dt.size() / 2, dt.end());
+                        rec_dt_full = dt[dt.size() / 2];
+                    }
+                    for (size_t len :
+                         ladder(ab.size(), min_rung(ub, 4 * (size_t)_navwipe_bit_records))) {
+                        const bool is_full = (len == ab.size());
+                        const std::vector<std::complex<double>> as(ab.end() - (long)len, ab.end());
+                        const std::vector<double> us(ub.end() - (long)len, ub.end());
+                        const std::vector<std::complex<double>> hs(hb.end() - (long)len, hb.end());
+                        if (!gnss::overlay_apply(as, us, ov, best_ph, &hs, aw, &hw))
+                            continue;
+                        double snr = 0.0;
+                        int used_ph = -1;
+                        // Shift the pinned epoch into THIS rung's frame (0 on the full window).
+                        int pin_here = -1;
+                        if (pin >= 0 && rec_dt_full > 0.0) {
+                            const long long d =
+                                (long long)std::llround((us.front() - ub.front()) / rec_dt_full);
+                            const long long m = ((pin + d) % _navwipe_bit_records
+                                                 + _navwipe_bit_records)
+                                                % _navwipe_bit_records;
+                            pin_here = (int)m;
+                        }
+                        // Export the per-symbol decisions on the full window only -- same rule as
+                        // the plain navwipe path (the longest rung sees every symbol the broker's
+                        // CNAV stitcher wants).
+                        const double amp = navwipe_amplitude(
+                            aw, us, &snr, &hw, (is_full && _bit_export) ? &nav_obs[p] : nullptr,
+                            pin_here, &used_ph);
+                        if (pin < 0 && used_ph >= 0)
+                            pin = used_ph; // first (longest) rung searched: pin the rest to it
+                        if (full_len == 0) { // ladder walks longest-first
+                            full_amp = amp;
+                            full_snr = snr;
+                            full_len = len;
+                        }
+                        if (snr < FLOOR_MARGIN * nav_floor(len))
+                            continue; // indistinguishable from noise rectification
+                        if (!cleared || snr > deep_snr[p] * 1.05) {
+                            rec[8] = (float)amp;
+                            deep_snr[p] = snr;
+                            deep_rec[p] = (int)len;
+                            deep_floor[p] = nav_floor(len);
+                            coh_s[p] = coh_span(ub, len);
+                            cleared = true;
+                        }
+                    }
+                }
+                if (!cleared && full_len > 0) {
+                    rec[8] = (float)full_amp;
+                    deep_snr[p] = full_snr;
+                    deep_rec[p] = (int)full_len;
+                    deep_floor[p] = nav_floor(full_len);
+                    coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
+                }
+                // ★★ RETIRE THE WINDOW. Every branch owns its own clear (the overlay branch
+                // and the plain-navwipe branch each have one further down), and this branch
+                // was added WITHOUT one -- so _navbuf grew without bound: 1000 records at the
+                // first emit, 2000 at the second, 3000 at the third. That single omission
+                // produced every symptom this cost me three days to chase: an emit ~4000x its
+                // op count, onset ALWAYS delayed (the buffer has to grow first), duty climbing
+                // 0.671 -> 1.56 over six minutes (which I misread as "satellites acquiring"),
+                // a deeper rec_buf delaying but never fixing it, and a shorter
+                // integration_length appearing to make things WORSE. A missing clear does not
+                // look like a leak from the outside; it looks like an expensive algorithm.
+                if (!_rolling) {
+                    _navbuf[p].clear();
+                    _navutc[p].clear();
+                    _navhead[p].clear();
+                    _navwipe[p].clear();
+                    if (_peel_depth) {
+                        _navbuf_res[p].clear();
+                        _navhead_res[p].clear();
+                    }
+                }
+            } else if (!_secondary.empty() || !_l1co.empty()) {
                 // Dataless pilot: wipe the KNOWN secondary overlay at its best-fitting alignment
                 // -> deep coherent |A| past the primary period (no nav-bit estimate). L5 Q5 uses
                 // one PRN-independent NH overlay; L1C-P uses the per-PRN L1CO, picked by the
@@ -1422,6 +1645,7 @@ void GnssCoherentCombiner::main_thread() {
                 }
                 _st_s4_raw[p] = (float)s4_raw[p];
                 _st_sigma_phi[p] = (float)sigma_phi[p];
+                _st_snr_q[p] = (float)snr_q[p];
                 _st_car_resid[p] = rec[gnss::CMB_CARRIER_RESID];
                 // ADR snapshot: the phase itself is a double (REST only); the record carries
                 // the arc id, which is what makes a raw capture self-describing about slips.
@@ -1433,6 +1657,22 @@ void GnssCoherentCombiner::main_thread() {
                 _st_adr_n[p] = _adr_ok[p] ? _adr_n[p] : 0;
                 _st_adr_lock[p] =
                     (_adr_ok[p] && _adr_t0[p] > 0.0) ? (utc_e - _adr_t0[p]) : 0.0;
+            }
+        }
+        {
+            const double us = std::max(0.0, (current_time() - _t_emit0) * 1e6);
+            if (_m_emit_us)
+                _m_emit_us->inc((uint64_t)us);
+            if (_m_emits)
+                _m_emits->inc();
+            if (_m_last_emit_us)
+                _m_last_emit_us->set(us);
+            if (_m_last_emit_prns) {
+                int active = 0;
+                for (int p = 0; p < _n_prn; ++p)
+                    if (!_navbuf[(size_t)p].empty())
+                        ++active;
+                _m_last_emit_prns->set((double)active); // cost scales with THIS, not with n_prn
             }
         }
         out_buf->mark_frame_full(unique_name, out_id++);
@@ -1497,6 +1737,7 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"s4", _st_s4[p]},
                          {"s4_raw", _st_s4_raw[p]},
                          {"sigma_phi", _st_sigma_phi[p]},
+                         {"snr_q", _st_snr_q[p]},
                          {"carrier_hz_resid", _st_car_resid[p]},
                          // Accumulated carrier phase (cycles) on the current unbroken arc,
                          // its id, its length in records, and how long it has held (s). 0
@@ -1551,8 +1792,8 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
 double
 GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>& a,
                                         const std::vector<double>& utc, double* snr_out,
-                                        const std::vector<std::complex<double>>* head,
-                                        NavObs* obs) const {
+                                        const std::vector<std::complex<double>>* head, NavObs* obs,
+                                        int pin_phase, int* out_phase) const {
     const int br = _navwipe_bit_records;
     const int nrec = (int)a.size();
     if (br <= 0 || nrec < 2 * br)
@@ -1623,17 +1864,26 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
             *powsum = nb >= 2 ? g / nb : -1.0;
     };
 
-    // Bit sync: the phase (0..br-1) maximising the mean per-bit coherent power.
+    // Bit sync: the phase (0..br-1) maximising the mean per-bit coherent power -- UNLESS the
+    // caller pinned it. The search is br full passes over the window, so on a chain with many
+    // records per symbol it dominates everything else this function does; pinning is what makes
+    // the ladder affordable there (see the header note, and the caller's UTC-derived shift).
     int best_phase = 0;
-    double best_g = -1.0;
-    for (int phase = 0; phase < br; ++phase) {
-        double g;
-        bit_sums(phase, nullptr, &g);
-        if (g > best_g) {
-            best_g = g;
-            best_phase = phase;
+    if (pin_phase >= 0) {
+        best_phase = ((pin_phase % br) + br) % br;
+    } else {
+        double best_g = -1.0;
+        for (int phase = 0; phase < br; ++phase) {
+            double g;
+            bit_sums(phase, nullptr, &g);
+            if (g > best_g) {
+                best_g = g;
+                best_phase = phase;
+            }
         }
     }
+    if (out_phase)
+        *out_phase = best_phase;
     std::vector<cd> s;
     std::vector<long long> s_bi;
     bit_sums(best_phase, &s, nullptr, obs ? &s_bi : nullptr);
@@ -1682,10 +1932,23 @@ GnssCoherentCombiner::navwipe_amplitude(const std::vector<std::complex<double>>&
 double
 GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& a,
                                        const std::vector<double>& utc,
-                                       double* sigma_phi_out, bool prewiped) const {
+                                       double* sigma_phi_out, bool prewiped,
+                                       double* snr_q_out) const {
     const int n = (int)a.size();
-    if (n < 16)
+    // snr_q_out defaults to NaN ("not available"): it is only produced on the LINEAR (pilot /
+    // prewiped) path below, and every early return must leave it as the not-measured sentinel.
+    if (snr_q_out != nullptr)
+        *snr_q_out = NAN;
+    // CONTRACT: this function ALWAYS writes *sigma_phi_out. Too few records to fit a
+    // phase slope -> return the residual's "no measurement" value (0.0, which the broker's
+    // carrier loop reads as skip -- see gps_distributed_broker.py `if resid == 0.0`) and mark
+    // the jitter UNMEASURED with NaN, NOT 0.0. A 0.0 here is indistinguishable from a pristine
+    // lock ("silence reads as success"); NaN ships as JSON null and reads as "not measured".
+    if (n < 16) {
+        if (sigma_phi_out != nullptr)
+            *sigma_phi_out = NAN;
         return 0.0;
+    }
     using cd = std::complex<double>;
     // Bit-robust phase-SLOPE fit: square A to cancel the +-1 nav-bit pi flips (a data signal), or
     // fit the raw phase for a dataless pilot. TWO STAGES, because a sequential record-to-record
@@ -1758,8 +2021,11 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
         Swtp += w * t * phi;
     }
     const double det = Sw * Swtt - Swt * Swt;
-    if (!(std::fabs(det) > 0.0))
+    if (!(std::fabs(det) > 0.0)) {
+        if (sigma_phi_out != nullptr)
+            *sigma_phi_out = NAN; // degenerate fit -> jitter unmeasured, not zero
         return 0.0;
+    }
     const double slope = (Sw * Swtp - Swt * Swp) / det; // d(phi)/dt (rad/s)
     const double icept = (Swtt * Swp - Swt * Swtp) / det;
     // SIGMA_PHI (scintillation / multipath phase jitter): the weighted RMS of the SAME fit's
@@ -1768,8 +2034,23 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
     // swing, scintillation, and thermal noise. Divide by `mult` to undo the bit-robust
     // squaring and get radians on the true carrier. A second pass is needed because the
     // accumulators above cannot yield residuals; it is O(n) on a window already in cache.
-    if (sigma_phi_out != nullptr) {
+    // MODULATION-IMMUNE (quadrature-referenced) noise -- snr_q_out. The 4th-moment incoherent
+    // debias (<|A|^2>,<|A|^4> -> s2,N, feeding cn0_inc) is fooled by BOC pilots: a steep BOC ACF
+    // turns code-phase jitter into large per-record AMPLITUDE modulation, which the moment debias
+    // books as noise, so cn0_inc under-reads (E1C ~-7, B1C ~-13 dB). Here the carrier is fitted
+    // out (f_coarse + the slope), so the signal sits at a FIXED phase and amplitude modulation
+    // lives entirely on the in-phase axis; the QUADRATURE component |v|*sin(resid) is thermal
+    // noise with the amplitude divided back out (a*(n_perp/a) = n_perp), so its variance is the
+    // per-component noise power INDEPENDENT of the modulation. This needs a phase reference, i.e.
+    // it is COHERENCE-REFERENCED -- valid only while the fit holds over the window (phase wander
+    // << pi); a decohered window has no fixed signal axis and this is not meaningful. LINEAR path
+    // only (sq==false: overlay-wiped or dataless pilots -- exactly the BOC signals); a squared
+    // (data) fit has no single amplitude axis, so snr_q stays NaN there and cn0_inc is used.
+    if (sigma_phi_out != nullptr || snr_q_out != nullptr) {
         double phi2 = 0.0, raw_prev2 = 0.0, Sw2 = 0.0, Sr2 = 0.0;
+        // quadrature-noise accumulators (uniform per-record weight -- see the |v| cancellation):
+        double Kq = 0.0, S_im = 0.0, S_im2 = 0.0, S_pow = 0.0;
+        const bool want_q = (snr_q_out != nullptr) && !sq;
         bool have2 = false;
         for (int r = 0; r < n; ++r) {
             const double w = std::norm(a[r]);
@@ -1794,8 +2075,27 @@ GnssCoherentCombiner::carrier_resid_hz(const std::vector<std::complex<double>>& 
             const double resid = phi2 - (icept + slope * t);
             Sw2 += w;
             Sr2 += w * resid * resid;
+            if (want_q) {
+                // |v|*sin(resid) = the record's amplitude projected onto the quadrature (noise)
+                // axis of the carrier-removed frame. For thermal noise resid ~ n_perp/|v|, so this
+                // is ~ n_perp regardless of |v| -> modulation-immune per-record noise sample.
+                const double imq = std::sqrt(w) * std::sin(resid);
+                Kq += 1.0;
+                S_im += imq;
+                S_im2 += imq * imq;
+                S_pow += w; // <|v|^2> = <|A|^2> over the same window (rotation preserves magnitude)
+            }
         }
-        *sigma_phi_out = (Sw2 > 0.0) ? std::sqrt(Sr2 / Sw2) / mult : 0.0;
+        if (sigma_phi_out != nullptr)
+            *sigma_phi_out = (Sw2 > 0.0) ? std::sqrt(Sr2 / Sw2) / mult : NAN; // unmeasured -> NaN
+        if (want_q && Kq >= 16.0) {
+            const double mean_im = S_im / Kq;
+            const double var_im = std::max(0.0, S_im2 / Kq - mean_im * mean_im); // per-component noise
+            const double noise = 2.0 * var_im;             // complex thermal power / record
+            const double m2 = S_pow / Kq;                  // total power / record
+            const double sig = std::max(0.0, m2 - noise);  // modulation-immune signal power / record
+            *snr_q_out = (noise > 1e-300) ? sig / noise : NAN; // per-record SNR; /t_rec -> C/N0 downstream
+        }
     }
     // Total residual = the slip-free coarse stage PLUS the fine LSQ slope of what it left.
     return f_coarse + slope / mult / (2.0 * M_PI);      // -> residual carrier (Hz)

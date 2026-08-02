@@ -265,6 +265,19 @@ int main(int argc, char** argv) {
                       cudaMemcpyDeviceToHost));
         CK(cudaMemcpy(g_x.data(), d_xcorr, g_x.size() * sizeof(double2), cudaMemcpyDeviceToHost));
 
+        // Does enabling the cross-terms (XC=off vs on, the two launch_despread calls above)
+        // leave corr/energy unchanged? It is a MATH no-op -- acc[t]/e[t] sum the same terms
+        // in the same order either way -- but NOT bitwise: with XC on the kernel keeps r_P
+        // live and the xc MACs raise register pressure, so nvcc contracts/schedules the
+        // identical corr/energy float MACs differently, shifting them ~1 ULP (~1e-7 rel,
+        // and DATA-DEPENDENT: seen 1.9e-7..2.7e-7 across runs/machines). Gate at the suite's
+        // own float floor (the plain despread-vs-CPU check above lands ~6e-7), NOT at
+        // bit-identity -- 1e-12 was wrong for a float quantity. A real leak from the xc path
+        // into acc/e would be orders larger. STATIC PROOF it is codegen, not a leak: in the
+        // kernel's accumulation region xc[] is never written into acc[]/e[] on any path, so
+        // no cross-term value can reach corr/energy -- only the compiler's float choices,
+        // which differ because XC changes register liveness, can move them.
+        const double XC_INVARIANCE_TOL = 1e-6;
         double max_reorder = 0.0;
         for (size_t i = 0; i < g_corr_xc.size(); ++i) {
             const std::complex<double> a(g_corr[i].x, g_corr[i].y), b(g_corr_xc[i].x,
@@ -273,9 +286,9 @@ int main(int argc, char** argv) {
             max_reorder = std::max(max_reorder, std::fabs(g_energy_xc[i] - g_energy[i])
                                                     / std::max(1e-30, g_energy[i]));
         }
-        printf("trial reorder {E,P,L} -> {P,E,L} perturbs corr/energy by %.3e %s\n", max_reorder,
-               (max_reorder < 1e-12) ? "OK" : "FAIL");
-        pass = pass && (max_reorder < 1e-12);
+        printf("cross-terms off->on perturb corr/energy by %.3e (float codegen; tol %.0e) %s\n",
+               max_reorder, XC_INVARIANCE_TOL, (max_reorder < XC_INVARIANCE_TOL) ? "OK" : "FAIL");
+        pass = pass && (max_reorder < XC_INVARIANCE_TOL);
 
         // CPU cross-terms: <R_P, R_k> = sum_hop r_P conj(r_k), whole window and head-restricted.
         double max_xc = 0.0;

@@ -478,7 +478,10 @@ void GnssChannelizedSearch::search_snapshot() {
             //   coarse= cross-channel acquire cp (pre-refine)   refine= +- from refine
             //   nh    = MEASURED overlay alignment
             //   cp0   = argument at sample 0 (mod L); ph@ref = physical phase at hop (mod 20L)
-            INFO("GnssChannelizedSearch[{:s}]: PRN {:d} snr {:.1f} dop {:+.0f} | hop {:d} "
+            // DEBUG, not INFO (50c4a0563): unthrottled once per PRN per snapshot, which is spam
+            // at the prototype's cadence. CHORD re-enables it per stage (log_level: debug on
+            // gps_search) rather than globally -- it is the seeding investigation's instrument.
+            DEBUG("GnssChannelizedSearch[{:s}]: PRN {:d} snr {:.1f} dop {:+.0f} | hop {:d} "
                  "coarse {:.2f} refine {:+.2f} nh {:d} -> cp0 {:.2f} cp_long {:.2f} "
                  "ph@ref {:.2f}",
                  unique_name, _prns[p], a.snr, dop, _snap_start_hop, a.code_phase_chips,

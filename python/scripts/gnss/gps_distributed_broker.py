@@ -306,6 +306,111 @@ def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
         return " | BRDC xcheck err: %s" % ex
 
 
+def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
+    """S5 ephemeris cross-check, the _cnav_brdc_xcheck analogue for Galileo I/NAV: ECEF
+    position residual between the live-decoded I/NAV ephemeris and BRDC, both propagated to
+    the I/NAV t0e. BRDC's Galileo record IS I/NAV-derived, so a right decode matches it to a
+    few metres; a huge residual flags a decode/convention fault (the G2 or field-offset
+    conventions galileo_inav flagged as ICD-owned) or a week straddle (shown via toe delta).
+    Kepler only, no Viterbi."""
+    try:
+        import galileo_inav as _I
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        t0e = inav_eph["t0e"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + t0e
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _I.sv_position_inav(inav_eph, t0e)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODnav %d)" % (
+            dpos, be["toe_sow"] - t0e, inav_eph.get("IODnav", -1))
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
+def _fnav_brdc_xcheck(brdc_alm, sys, prn, fnav_eph, log):
+    """S5 ephemeris cross-check for Galileo E5a-I F/NAV, the _inav_brdc_xcheck analogue.
+    F/NAV and I/NAV describe the SAME Galileo orbit through different framing, so a correct
+    F/NAV decode matches BRDC to a few metres just as I/NAV does; a huge residual flags a
+    decode/convention fault (the sync / interleaver / field-offset conventions galileo_fnav
+    flagged as ICD-owned, pending live symbols) or a week straddle. Kepler only."""
+    try:
+        import galileo_fnav as _F
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        t0e = fnav_eph["t0e"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + t0e
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _F.sv_position_fnav(fnav_eph, t0e)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODnav %d)" % (
+            dpos, be["toe_sow"] - t0e, fnav_eph.get("IODnav", -1))
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
+def _bcnav2_brdc_xcheck(brdc_alm, sys, prn, bcnav2_eph, log):
+    """S5 ephemeris cross-check for BeiDou B2a B-CNAV2, the _fnav_brdc_xcheck analogue on the
+    BDS broker (sys='C'). B-CNAV2 and BRDC describe the same BDS-3 orbit through different
+    framing, so a correct decode matches BRDC to a few metres; a huge residual flags a decode
+    fault (the NB-LDPC / field-offset / GEO-vs-MEO conventions beidou_bcnav2 flagged as
+    ICD-owned, pending live symbols). Kepler/CNAV only."""
+    try:
+        import beidou_bcnav2 as _B
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        t0e = bcnav2_eph["t_oe"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + t0e
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _B.sv_position_bcnav2(bcnav2_eph, t0e)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODE %d, SatType %d)" % (
+            dpos, be["toe_sow"] - t0e, bcnav2_eph.get("IODE", -1),
+            int(round(bcnav2_eph.get("SatType", -1))))
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
+def _bcnav1_brdc_xcheck(brdc_alm, sys, prn, bcnav1_eph, log):
+    """S5 ephemeris cross-check for BeiDou B1C B-CNAV1, the _bcnav2_brdc_xcheck analogue on the
+    L1 BDS broker (sys='C'). B-CNAV1 SF2 and BRDC describe the same BDS-3 orbit; a correct
+    decode matches BRDC to a few metres. Same CNAV propagation as B-CNAV2."""
+    try:
+        import beidou_bcnav1 as _B
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        t0e = bcnav1_eph["t_oe"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + t0e
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _B.sv_position_bcnav1(bcnav1_eph, t0e)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODE %d, SatType %d)" % (
+            dpos, be["toe_sow"] - t0e, bcnav1_eph.get("IODE", -1),
+            int(round(bcnav1_eph.get("SatType", -1))))
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
 def visible_prns(lat, lon, alt_m, mask_deg, look_ahead_s):
     """PRNs above the elevation mask now (and look_ahead_s ahead). Needs skyfield."""
     try:
@@ -462,6 +567,77 @@ def main(argv=None):
                          "(~8-10) -- an identifiability fix, not a tuning knob. Chains in "
                          "drift-alarm stop persisting, so poisoned estimates go quiet "
                          "automatically.")
+    ap.add_argument("--state-file", default=None,
+                    help="S2 / Mechanism B OBSERVER: publish this chain's receiver-state "
+                         "estimates as JSON (atomically replaced, ~1 Hz) for cross-chain "
+                         "comparison. WRITE-ONLY -- exporting changes no estimate and no "
+                         "seed. It exists because eight brokers estimate the same four "
+                         "physical quantities independently, four of them measure the SAME "
+                         "per-dongle clock error by different routes (search-Doppler median, "
+                         "carrier-loop trim, l-a slope, DR drift), nothing has ever compared "
+                         "carrier-side against code-side, and NOTHING anywhere carries a "
+                         "variance -- so the covariance-weighted fuser this is a prerequisite "
+                         "for cannot yet be written. Exports each chain's PRE-fusion value "
+                         "and its scatter, because the persisted .hz files already read each "
+                         "other and their agreement is therefore partly manufactured.")
+    ap.add_argument("--state-dongle", default=None,
+                    help="fusion scope key for --state-file: what physically shares an LO "
+                         "(one airspy per band, so this is the band tag, identical for every "
+                         "chain on it). Do NOT fuse across dongles -- the per-band offsets "
+                         "(-151/-15/+31 Hz) are frac-N synthesis constants, not a common "
+                         "reference error, and averaging them is meaningless.")
+    ap.add_argument("--state-fuse", type=int, default=1,
+                    help="with --state-file: also compute and PUBLISH this dongle's fused "
+                         "fractional LO estimate (S2c). STILL WRITE-ONLY -- no seed, gate "
+                         "or estimator consumes it; the broker logs what the fused prior "
+                         "WOULD have said beside what the chain actually uses, so the flip "
+                         "is decided on a soak of evidence rather than on argument. Fuses "
+                         "in ppm because carrier (Hz at this band) and code (l-a in ppm) "
+                         "measure the same FRACTIONAL error, and only from siblings' RAW "
+                         "values -- fusing their smoothed ones would feed the estimate back "
+                         "on itself and its covariance would be fiction.")
+    ap.add_argument("--state-consume", type=int, default=0,
+                    help="S2d, RESCUE-ONLY (revised 2026-07-29): consume the dongle's fused "
+                         "LO estimate EXACTLY when this chain has no estimate of its own "
+                         "(cold start, below min-sats, warm-start file lost). The original "
+                         "always-on scope was tried and REVERTED the same day -- car_trim "
+                         "rose 30-36% at matched node age, because the LO is a CONSTANT and "
+                         "the chain's own EMA (minutes of time-averaging) beats one cycle "
+                         "of cross-chain averaging; rescored against the EMA, fusion lost "
+                         "7 of 8 chains. In the rescue case there is no EMA to lose to, and "
+                         "the fused state's unique value is the cross-FAMILY rescue "
+                         "(code->carrier) that --clock-bias-siblings structurally cannot "
+                         "provide. With the chain solved, this flag is a PROVEN no-op. The "
+                         "'untested rescue path' worry is answered by scoring it always "
+                         "(the SHADOW log line) and exercising it deliberately "
+                         "(diag/receiver_state_rescue_test.py + the isolated-broker "
+                         "method), not by running it always.")
+    ap.add_argument("--state-fuse-floor-ppm", type=float, default=0.001,
+                    help="covariance FLOOR: no source may claim a standard error below "
+                         "this. ON by default, and the default was chosen from a live "
+                         "capture, not from theory. The 15-min cross-chain scan said a "
+                         "floor was unnecessary (pairwise |z| = 0.2 -- pure noise), but "
+                         "that scan compared MEDIANS over 150 samples and the fuser runs "
+                         "PER CYCLE: on the very first live fusion the L5 GPS chain claimed "
+                         "se = 0.00018 ppm (0.21 Hz, 100x tighter than any sibling) while "
+                         "sitting 22.7 sigma off, because its handful of satellites "
+                         "happened to agree that cycle. Its inverse-variance weight alone "
+                         "would have dragged the dongle's answer from +32.3 Hz to +14.7 Hz "
+                         "with all three chains actually at +31.5..+33.8. MAD over 2-6 "
+                         "satellites is a poor scatter estimate and can come out near zero "
+                         "by chance; the floor is the statement that no chain can beat "
+                         "~1.5 Hz from a few sats no matter what its MAD says.")
+    ap.add_argument("--state-fuse-reject-sigma", type=float, default=5.0,
+                    help="drop a source this far from the ROBUST (median) centre, then "
+                         "refit. Judged against the median, never the inverse-variance "
+                         "mean: with one bad source among three the mean is dragged far "
+                         "enough that the GOOD sources also exceed the bar, the survivor "
+                         "list comes back empty and a naive implementation then rejects "
+                         "nothing while publishing the contaminated estimate. 0 disables.")
+    ap.add_argument("--state-flush-s", type=float, default=1.0,
+                    help="--state-file publish cadence (s). Current state only; history is "
+                         "the scorer's job (8 brokers appending at 1 Hz is ~200 MB/day in a "
+                         "cache directory that has to survive reboots).")
     ap.add_argument("--clock-bias-alarm-hz", type=float, default=10.0,
                     help="CLOCK DRIFT ALARM bar: loud log if the live bias EMA departs the "
                          "warm-start calibration by more than this (GPSDO unlock / thermal "
@@ -765,6 +941,84 @@ def main(argv=None):
                     help="the CL chain's combiner stage: polled each cycle so the CL-vs-CM "
                          "deep_snr comparison (the segment-pin VERIFY -- a wrong k despreads "
                          "as noise) lands in this broker's own log next to the k it verifies.")
+    ap.add_argument("--cl-kscan-prn", type=int, default=0,
+                    help="DIAGNOSTIC (default 0 = OFF): step the CL segment for THIS probe PRN "
+                         "through {k, k-1, k+1, k-2, k+2} and log which offset despreads best. "
+                         "Convention-free test for the whole-segment anchor bug that fine_ms "
+                         "cannot see (fine is the residual after round()). Only the probe PRN's "
+                         "SEED is shifted; the fleet's pin, the fine, and the auto-center are "
+                         "untouched, so this is safe to leave off and harmless when on. Pick a "
+                         "strong CM sat as the probe.")
+    ap.add_argument("--xband-combiner", default=None,
+                    help="S5 CROSS-BAND ASSIST (SHADOW): a SIBLING band's combiner stage "
+                         "(e.g. l1_gps_combiner) whose per-sat tracked Doppler this broker "
+                         "reads to predict THIS band's Doppler by the exact carrier ratio. "
+                         "The satellite-motion part is geometry -- common to both bands and "
+                         "scaling as f_this/f_sibling -- so `(D_sib - LO_sib)*ratio + LO_this` "
+                         "predicts this band's observed Doppler; the LO terms come from each "
+                         "band's own S2 fused state (the dongle LOs are INDEPENDENT -- "
+                         "measured, no GPSDO common-mode -- so neither can be borrowed). "
+                         "SHADOW: logs the prediction beside this band's actual acquisition "
+                         "for every dual-tracked sat and accumulates the residual; nothing is "
+                         "seeded from it yet. The eventual flip is RESCUE-ONLY (seed a sat "
+                         "this band cannot predict itself -- cold start / stale BRDC), the "
+                         "S2d lesson applied.")
+    ap.add_argument("--xband-lo-dongle", default=None,
+                    help="the sibling band's S2 state dongle key (e.g. gps_l1), to read its "
+                         "fused LO for --xband-combiner")
+    ap.add_argument("--xband-carrier-hz", type=float, default=None,
+                    help="the sibling band's carrier frequency (Hz), for the Doppler ratio")
+    ap.add_argument("--xband-seed", type=int, default=1,
+                    help="S5b THE FLIP (default ON; a provable no-op in normal operation): "
+                         "emit a SEARCH DOPPLER HINT from the cross-band prediction for a sat "
+                         "the SIBLING band tracks but THIS band has NO prediction of its own "
+                         "for (not in BRDC pred / no almanac). Cross-band transfers Doppler "
+                         "(carrier ratio) but NOT code phase (the codes differ), so it hints "
+                         "the SEARCH -- narrowing its Doppler window -- it does not seed the "
+                         "tracker. RESCUE-ONLY by construction: for any sat BRDC already "
+                         "predicts, the BRDC hint stands and NO cross-band hint is added, so "
+                         "with fresh BRDC the cross-band hint list is EMPTY. It fires only "
+                         "when BRDC is missing a sat the sibling sees (outage / deep cold "
+                         "start / a band too weak to hold its own almanac lock) -- the "
+                         "S2d-learned rescue-only scope, structural not just gated. 0 = pure "
+                         "shadow (log the residual, emit no hints).")
+    ap.add_argument("--xband-hint-margin-hz", type=float, default=60.0,
+                    help="search margin for a cross-band RESCUE hint (Hz): the cross-band "
+                         "seed accuracy is the inter-band MAD (~10 Hz) plus this band's own "
+                         "unsolved-LO width, so wider than a BRDC hint but far tighter than "
+                         "the blind grid")
+    ap.add_argument("--cl-autoseg", type=int, default=1,
+                    help="CL segment AUTO-SEARCH (default ON; the durable fix for the "
+                         "~40%%-of-launches CL failure): when the CL-vs-CM verify reads a "
+                         "dead fleet under strong CM, step an integer-segment correction "
+                         "through 0,-1,+1,-2,... (one 20 ms segment per step) and LATCH on "
+                         "green. Compensates the whole-segment utc0_sample0 anchor error "
+                         "(stamped from system_clock::now() on the first USB transfer, "
+                         "tens of ms of per-launch jitter; the auto-center absorbs only "
+                         "the fractional part). A working launch latches 0 immediately.")
+    ap.add_argument("--cl-autoseg-dwell", type=float, default=30.0,
+                    help="seconds per correction step (tracker re-lock + combiner deep "
+                         "build; the k-scan measured green appearing well inside 30 s)")
+    ap.add_argument("--cl-kscan-chips", default="",
+                    help="FRACTIONAL scan mode: CSV of CHIP offsets added to the probe "
+                         "PRN's seeded cp (e.g. '0,0.25,-0.25,0.5,-0.5,0.75,-0.75,1,-1') "
+                         "instead of whole-segment steps. The comb/sub-chip test: CM/CL "
+                         "are chip-interleaved at 1.023 Mcps (one comb slot = 0.5 chip of "
+                         "the 511.5 kcps code), and slot parity couples with code phase "
+                         "when the replica timeline shifts, so scan a fine grid rather "
+                         "than betting on +-0.5 -- a half-chip code offset degrades ~6 dB "
+                         "rather than nulling, so any partial despread stands far above "
+                         "the ~2 noise floor and names the true offset.")
+    ap.add_argument("--cl-kscan-segs", default="",
+                    help="explicit CSV of SEGMENT offsets for the scan (e.g. the full-75 "
+                         "sweep '0,-1,1,...,-37,37'). The default +-2 neighbourhood only "
+                         "exonerates SMALL anchor errors; utc0_sample0 is stamped from "
+                         "system_clock::now() on the FIRST USB transfer and carries tens "
+                         "of ms of per-launch startup latency -- several 20 ms segments.")
+    ap.add_argument("--cl-kscan-dwell", type=int, default=20,
+                    help="CL k-scan: broker cycles to dwell per offset (the CL combiner's deep "
+                         "integration must respond before stepping). 20 cycles ~= 4 s at the "
+                         "0.2 s interval, matching L2C's coherence window.")
     ap.add_argument("--nh-assist", action="store_true",
                     help="secondary-overlay TIME-ASSIST for a per-PRN-overlay pilot (B1C/E5a/B2a): "
                          "POST each visible sat's PREDICTED absolute overlay-chip index (from "
@@ -914,6 +1168,55 @@ def main(argv=None):
                          "ephemeris/messages and shadow-serves the signs of DECODED spans. Set "
                          "cnav on the L2C broker so its nav_obs (CNAV symbols) go to the right "
                          "decoder instead of churning the LNAV frame-sync forever.")
+    ap.add_argument("--cnav-combiner", default=None,
+                    help="AUXILIARY combiner polled purely for CNAV nav_obs, in ADDITION to "
+                         "--combiner (S4). Exists because a band's CNAV can live on a chain "
+                         "that is not this broker's own: at L5 the broker's combiner is the "
+                         "Q PILOT (whose nav_obs are deterministic overlay predictions, which "
+                         "belong to the LNAV/pilot path), while the CNAV symbols come from the "
+                         "derived L5-I DATA sibling. Pointing --nav-decoder at the main "
+                         "combiner cannot express that split. Symbols from here go to the CNAV "
+                         "decoder regardless of --nav-decoder, and are cross-checked against "
+                         "BRDC on the usual 60 s health cadence -- giving a SECOND, independent "
+                         "decode of the same message set L2C already decodes, so an ephemeris "
+                         "can be verified three ways (L2C vs L5 vs BRDC).")
+    ap.add_argument("--inav-combiner", default=None,
+                    help="AUXILIARY combiner polled for Galileo E1B I/NAV nav_obs (S5 "
+                         "D-component #1), the exact analogue of --cnav-combiner: the GAL "
+                         "broker's own --combiner is the E1C PILOT (deterministic overlay "
+                         "signs), while the I/NAV DATA symbols come off the derived E1B "
+                         "sibling chain. Symbols from here go to the InavPredictor and the "
+                         "decoded ephemeris is cross-checked against BRDC on the 60 s health "
+                         "cadence -- an independent E1B decode validating the Galileo "
+                         "ephemeris (and the codec's ICD conventions) against the almanac.")
+    ap.add_argument("--fnav-combiner", default=None,
+                    help="AUXILIARY combiner polled for Galileo E5a-I F/NAV nav_obs (S5 "
+                         "D-component #2), the --inav-combiner analogue on the L5 band: the "
+                         "GAL/E5a broker's own --combiner is the E5a-Q PILOT (deterministic "
+                         "CS100 overlay signs), while the F/NAV DATA symbols come off the "
+                         "derived E5a-I sibling chain (CS20 secondary + navwipe). Symbols go "
+                         "to the FnavPredictor and the decoded ephemeris is cross-checked "
+                         "against BRDC on the 60 s health cadence -- an independent E5a decode "
+                         "validating the Galileo ephemeris (and galileo_fnav's ICD "
+                         "conventions) against the almanac, beside E1B's I/NAV decode.")
+    ap.add_argument("--bcnav2-combiner", default=None,
+                    help="AUXILIARY combiner polled for BeiDou B2a B-CNAV2 nav_obs (S5 "
+                         "D-component #3, the FIRST non-binary FEC), the --fnav-combiner "
+                         "analogue on the BDS broker: the BDS broker's own --combiner is the "
+                         "B2a-P PILOT (deterministic Weil overlay signs), while the B-CNAV2 "
+                         "DATA symbols come off the derived B2a-D sibling chain (CS5 secondary "
+                         "+ navwipe). Symbols go to the Bcnav2Predictor (GF(64) NB-LDPC codec) "
+                         "and the decoded ephemeris is cross-checked against BRDC on the 60 s "
+                         "health cadence -- an independent BDS-3 decode validating the "
+                         "ephemeris (and the LDPC + CNAV-eph conventions) against the almanac.")
+    ap.add_argument("--bcnav1-combiner", default=None,
+                    help="AUXILIARY combiner polled for BeiDou B1C B-CNAV1 nav_obs (S5 "
+                         "D-component #4, the LAST), the --bcnav2-combiner analogue on the L1 "
+                         "BDS broker: the broker's own --combiner is the B1C-P PILOT, while the "
+                         "B-CNAV1 DATA symbols come off the derived B1C-D sibling. Symbols go to "
+                         "the Bcnav1Predictor (reusing the GF(64) NB-LDPC codec, different H "
+                         "matrices for SF2/SF3) and the decoded ephemeris is cross-checked "
+                         "against BRDC -- completing the civil D-component set (GPS+GAL+BDS).")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -960,6 +1263,11 @@ def main(argv=None):
     combiner = resolve_prefix(args.combiner, base)
     cl_tracker = resolve_prefix(args.cl_tracker, base) if args.cl_tracker else None
     cl_combiner = resolve_prefix(args.cl_combiner, base) if args.cl_combiner else None
+    cnav_combiner = resolve_prefix(args.cnav_combiner, base) if args.cnav_combiner else None
+    inav_combiner = resolve_prefix(args.inav_combiner, base) if args.inav_combiner else None
+    fnav_combiner = resolve_prefix(args.fnav_combiner, base) if args.fnav_combiner else None
+    bcnav2_combiner = resolve_prefix(args.bcnav2_combiner, base) if args.bcnav2_combiner else None
+    bcnav1_combiner = resolve_prefix(args.bcnav1_combiner, base) if args.bcnav1_combiner else None
     gating = args.lat is not None and args.lon is not None
 
     # Almanac assist: BRDC (default; PRN-indexed, label-rot-proof) or the legacy TLE path.
@@ -1075,6 +1383,79 @@ def main(argv=None):
     cl_k = {}        # prn -> last CL segment index k (class-2 pin: log every step, never average)
     cl_pred0 = {}    # anchor-epoch geometry cache: {"key": (utc0, eph_t), "val": {prn: tuple}}
     cl_toff = [0.0]  # measured common clock offset (s): slow EMA of the across-sat median fine
+    # CL SEGMENT AUTO-SEARCH (--cl-autoseg, the durable fix for the ~40%-of-launches CL
+    # failure, root-caused 2026-07-29). utc0_sample0 is stamped from system_clock::now() on
+    # the FIRST USB transfer (airspyInput.cpp:396-405) and carries tens of ms of per-launch
+    # startup latency. The auto-center absorbs the FRACTIONAL part (its job), so fine_ms
+    # always reads perfect -- but the INTEGER part (N x 20 ms) lands wholesale in the
+    # segment index k: fleet-common, fixed at startup, invisible to every seed-level
+    # diagnostic. Proven by the full-75 k-scan (k-1 despread 185 with all 74 others at
+    # noise) and clinched by --cl-time-adjust -0.020 turning the whole fleet green on the
+    # same anchor. N measured 0 (~60% of launches), 1, and >=3 -- so no fixed constant
+    # fixes it. Instead: the broker already measures the truth every cycle (the CL-vs-CM
+    # verify); when the fleet reads dead-CL-under-strong-CM, step the correction through
+    # the spiral 0,-1,+1,-2,... (~25 s per step, negative first: a LATE anchor pushes k
+    # HIGH, and USB latency only makes anchors late), and LATCH on green -- the class-2
+    # discipline, verify + lockout, never averaged. A working launch latches 0 on the
+    # first check and is untouched.
+    cl_segsearch = {"corr": 0, "idx": 0, "latched": False, "t_step": 0.0}
+    _clseg_spiral = [0] + [v for n in range(1, 38) for v in (-n, n)]
+    xband = resolve_prefix(args.xband_combiner, base) if args.xband_combiner else None
+    _xb_resid = []   # rolling cross-band prediction residuals (Hz), shadow accumulation
+    _xb_dir = os.path.dirname(args.state_file) if args.state_file else None
+
+    def _fused_lo_ppm(dongle):
+        # this band's own LO comes from _fuse_cached; a sibling's is read fresh from its file
+        if state_w is not None and dongle == args.state_dongle:
+            f = _fuse_cached(time.time())
+        elif _xb_dir:
+            try:
+                f = receiver_state.fuse_dongle(
+                    receiver_state.read_dongle(_xb_dir, dongle, max_age_s=30.0,
+                                               t_now=time.time()),
+                    floor_ppm=0.001, reject_sigma=5.0)
+            except Exception:
+                f = None
+        else:
+            f = None
+        return (f.get("lo_ppm") if f and not f.get("all_outliers") else None)
+    # CL K-SCAN (diagnostic, --cl-kscan-prn; default 0 = OFF, zero effect). The recurring
+    # "CL despreads noise on ~40% of launches while fine_ms looks perfect" is the signature
+    # of a WHOLE-SEGMENT (N x 20 ms) anchor error: fine is the residual AFTER round(), so an
+    # error that is an exact multiple of the segment folds entirely into k and reports a
+    # perfect margin. A single restart cannot confirm this (60% base rate), and any absolute
+    # cross-check needs the TOW convention + slot mapping exact. A k-scan is CONVENTION-FREE:
+    # it steps the seeded segment for ONE probe PRN through {k-2..k+2}, dwelling long enough
+    # for the CL combiner's deep integration to respond, and the verify names which offset
+    # despreads. If k+-N wins, the whole-segment bug is PROVEN and its magnitude N is known.
+    # Two scan modes share the machinery:
+    #   SEGMENT mode (default): offsets are whole segments k+N -- the whole-segment test.
+    #     RESULT 2026-07-29: falsified. On a broken launch NOTHING in k+-2 despreads
+    #     (incl. k+0); positive control on a working launch shows k+0 winning 39x. The
+    #     segment pin is EXONERATED.
+    #   FRACTIONAL mode (--cl-kscan-chips "0,0.25,-0.25,..."): offsets are CHIPS added to
+    #     the seeded cp -- the comb/sub-chip test. CM/CL are chip-interleaved at 1.023 Mcps
+    #     (one comb slot = 0.5 chip at the 511.5 kcps code), so a TDM comb-phase fault
+    #     lands somewhere on a sub-chip grid. A fine grid rather than a bet on +-0.5
+    #     exactly: slot parity and code phase COUPLE when the replica timeline shifts, and
+    #     a half-chip code offset degrades ~6 dB rather than nulling -- so any partial
+    #     despread (~half of CM's deep) stands far above the noise floor of ~2 and names
+    #     the true offset.
+    if args.cl_kscan_chips:
+        _kscan_seq = [float(x) for x in args.cl_kscan_chips.split(",") if x.strip()]
+        _kscan_frac = True
+    elif args.cl_kscan_segs:
+        # explicit segment list -- built for the FULL-75 sweep after the +-2 scan was
+        # over-read as exoneration (it exonerated |N|<=2 ONLY; the anchor's startup
+        # latency jitter is tens of ms, i.e. potentially several 20 ms segments)
+        _kscan_seq = [int(x) for x in args.cl_kscan_segs.split(",") if x.strip()]
+        _kscan_frac = False
+    else:
+        _kscan_seq = [0, -1, 1, -2, 2]   # true k first (baseline), then neighbours
+        _kscan_frac = False
+    _kfmt = (lambda o: "c%+.2f" % o) if _kscan_frac else (lambda o: "k%+d" % o)
+    _kscan = [0]     # [cycle counter], advanced once per CL cycle
+    _kscan_deep = {} # offset -> best cl_deep seen for the probe PRN at that offset
     bp_pushed = {}   # prn -> utc0 of the bit_pred table last ATTACHED to a seed row. The
                      # combiner regenerates bit_pred once per EMIT (~1 Hz) but seeds push every
                      # --interval (0.25 s), so re-attaching each cycle is 75% redundant payload
@@ -1084,6 +1465,14 @@ def main(argv=None):
                      # matters most at L5: 1 ms records make each table 4x an L1 pilot's.
     navbits = None   # LNAV decode-and-predict (P7a); created lazily on the first nav_obs row
     cnav = None      # CNAV decoder (--nav-decoder cnav, L2C-CM/L5-I); created lazily likewise
+    inav = None      # I/NAV decoder (--inav-combiner, Galileo E1B); created lazily
+    _inav_log_t = [0.0]
+    fnav = None      # F/NAV decoder (--fnav-combiner, Galileo E5a-I); created lazily
+    _fnav_log_t = [0.0]
+    bcnav2 = None    # B-CNAV2 decoder (--bcnav2-combiner, BeiDou B2a-D); created lazily
+    _bcnav2_log_t = [0.0]
+    bcnav1 = None    # B-CNAV1 decoder (--bcnav1-combiner, BeiDou B1C-D); created lazily
+    _bcnav1_log_t = [0.0]
     navbits_log_t = 0.0
     # CONSTRUCTED bits for satellites too weak to decode (2026-07-25). The decoder above needs
     # 620 contiguous parity-clean bits, which is exactly what a weak satellite cannot give; this
@@ -1249,6 +1638,50 @@ def main(argv=None):
     _bias_meas_t = time.time()     # last multi-sat bias measurement (stale-rescue clock;
                                    # birth-stamped so warm-start gets a full grace window)
     bias_stale = False             # solved-but-unmeasured for > --bias-stale-s
+    bias_available = False         # is ANY usable bias in hand (own or fused)? S2d gate
+    # Fuse at most once a second and cache: the state files themselves only republish at
+    # 1 Hz, so fusing at the broker's 5 Hz cycle would re-read the same bytes four times
+    # for the same answer.
+    _fus_cache = [0.0, None]
+    _fus_seen = [False]           # have we EVER had a fused state? startup vs fault
+
+    def _fuse_cached(t_now):
+        if state_w is None or not _state_dir or not args.state_fuse:
+            return None
+        if t_now - _fus_cache[0] < 1.0:
+            return _fus_cache[1]
+        _fus_cache[0] = t_now
+        try:
+            _fus_cache[1] = receiver_state.fuse_dongle(
+                receiver_state.read_dongle(_state_dir, args.state_dongle,
+                                           max_age_s=30.0, t_now=t_now),
+                floor_ppm=args.state_fuse_floor_ppm,
+                reject_sigma=args.state_fuse_reject_sigma)
+        except Exception:
+            _fus_cache[1] = None
+        return _fus_cache[1]
+
+    # S2 observer (write-only). Import is local + tolerant so a missing/broken module can
+    # never stop a broker from starting: a diagnostic riding in a live receiver's control
+    # loop must fail to nothing, not fail loudly.
+    state_w = None
+    _state_dir = None
+    if args.state_file:
+        try:
+            import receiver_state
+            _state_dir = os.path.dirname(args.state_file) or "."
+            state_w = receiver_state.StateWriter(
+                args.state_file,
+                chain=os.path.basename(args.state_file).rsplit(".", 1)[0],
+                dongle=args.state_dongle or "unknown",
+                carrier_hz=args.carrier_hz, log=_log,
+                flush_s=args.state_flush_s)
+            _log("receiver-state export -> %s (dongle %s, %.1f s) [WRITE-ONLY: no estimate "
+                 "or seed consumes this yet]"
+                 % (args.state_file, args.state_dongle, args.state_flush_s))
+        except Exception as e:
+            _log("receiver-state export DISABLED: %s" % e)
+            state_w = None
     CODE_LEN = float(args.code_length)
     # The long/overlaid code the TRACKERS despread, in primary periods and in seconds. The
     # time-assist below computes WHICH period a seed's cp sits in rather than searching it;
@@ -1328,10 +1761,61 @@ def main(argv=None):
                          if utc0_sample0 else t0)
                 det_fresh[_p] = (_b[3], t_det)
 
+        # ---- S2d, REVISED SCOPE (2026-07-29): RESCUE-ONLY consumption ---------------
+        # Always-on consumption was tried and REVERTED the same day: car_trim rose +30-36%
+        # at matched node age, and rescored against the EMA the chains actually seed with,
+        # fusion lost 7 of 8 -- the LO is flat within noise (a CONSTANT), and minutes of
+        # time-averaging beat one cycle of cross-chain averaging. The original premise
+        # ("consume always so the rescue path is never untested") was the wrong cure: the
+        # durable one is publish + SCORE always (the SHADOW line below runs regardless) and
+        # EXERCISE deliberately (diag/receiver_state_rescue_test.py offline; the
+        # isolated-broker method live).
+        #
+        # So: the fused state is consumed EXACTLY when this chain has no estimate of its
+        # own -- cold start, below min-sats, warm-start file lost. There it has no EMA to
+        # lose to, and its unique value over --clock-bias-siblings is real: cross-FAMILY
+        # rescue (code -> carrier), which the sibling files structurally cannot provide
+        # (measured: all-carriers-dark recovers to 0.6-1.8 Hz on every dongle from code
+        # fits alone, including the lone-chain L2C dongle where a sibling rescue cannot
+        # exist). When the chain HAS its own estimate, this block is byte-identical to
+        # pre-S2d -- proven exhaustively over the input combinations, not argued.
+        _fus_now = _fuse_cached(t0)
+        _fused_hz = None
+        if _fus_now and _fus_now.get("lo_ppm") is not None and not _fus_now["all_outliers"]:
+            _fused_hz = _fus_now["lo_ppm"] * 1e-6 * args.carrier_hz
+        if _fus_now is not None:
+            _fus_seen[0] = True
+        if args.state_consume and clock_bias_ema is None and _fused_hz is not None:
+            clock_bias = _fused_hz
+            bias_available = True
+            _log_rl("fusrescue",
+                    "FUSED-STATE RESCUE: this chain is UNSOLVED; consuming the dongle's "
+                    "fused LO %+.1f Hz (%d src: %dc/%dd over %s) until it solves itself"
+                    % (_fused_hz, _fus_now["n_src"], _fus_now["n_carrier"],
+                       _fus_now["n_code"], ",".join(_fus_now["chains"])),
+                    every_s=10.0)
+        else:
+            clock_bias = clock_bias_ema if clock_bias_ema is not None else 0.0
+            bias_available = clock_bias_ema is not None
+            if args.state_consume and clock_bias_ema is None and _fus_now is None:
+                # STARTUP is not a fault. On the first cycles after launch no broker has
+                # published a fresh record yet and the previous run's files are correctly
+                # refused as stale, so "unavailable" is the expected state for a few
+                # seconds. Saying "infrastructure fault" there is a false alarm, and false
+                # alarms are how real ones get ignored -- so only call it a fault once we
+                # have actually HAD a fused state and then lost it.
+                _log_rl("fusegone",
+                        ("FUSED STATE not yet available (starting up) -- using this "
+                         "chain's own bias %s meanwhile"
+                         if not _fus_seen[0] else
+                         "FUSED STATE LOST -- falling back to this chain's own bias %s. "
+                         "We had one and it went away: infrastructure fault (state dir "
+                         "unreadable, or every sibling gone stale), not a normal mode.")
+                        % (("%+.1f Hz" % clock_bias_ema) if clock_bias_ema is not None
+                           else "UNSOLVED"), every_s=30.0)
+
         # 2. orbit-predicted Doppler + visibility (almanac assist), else plain gate
         pred = {}          # prn -> (doppler_hz, rate_hz_s, elev_deg) [sign-applied]
-        # Hold the last smoothed bias through detection dropouts (the TCXO didn't move).
-        clock_bias = clock_bias_ema if clock_bias_ema is not None else 0.0
         # STALE-BIAS RESCUE (--bias-stale-s): a solved bias nobody has measured for minutes
         # is a LIABILITY, not a constant -- if it latched away from truth (mid-walk during
         # the 2026-07-20 GPSDO unlock) the narrow hints it centers are what PREVENT the
@@ -1531,6 +2015,28 @@ def main(argv=None):
                                 "(|d| > %.0f Hz, %d sats) -- GPSDO unlock / thermal event? INVESTIGATE"
                                 % (clock_bias_ema, clock_bias_cal, _abar, len(resid)),
                                 every_s=60.0)
+            # S2 OBSERVER: publish the carrier-side estimate. OUTSIDE the solve gate on
+            # purpose -- an unsolved chain is exactly the case the fused state exists to
+            # rescue, so it has to be visible, and `null` is how that is said (never 0).
+            # `raw_hz` is this chain's OWN median, computed here rather than reusing
+            # `raw_bias` above, which is already sibling-FUSED. Scoring cross-chain
+            # agreement on a fused number measures the fusion, not the estimator.
+            if state_w is not None:
+                try:
+                    _raw_local = statistics.median(resid) if resid else None
+                    state_w.observe(
+                        "carrier",
+                        hz=clock_bias_ema,
+                        raw_hz=_raw_local,
+                        mad_hz=receiver_state.mad(resid, _raw_local),
+                        n=len(resid),
+                        sib_hz=(_sib_bw / _sib_w) if _sib_w else None,
+                        sib_n=n_sib,
+                        cal_hz=clock_bias_cal,
+                        stale=bool(bias_stale),
+                        meas_age_s=round(t0 - _bias_meas_t, 2))
+                except Exception:
+                    pass
             for p in sorted(best):
                 if p in pred:
                     _log_rl("meas-%d" % p,
@@ -1556,18 +2062,81 @@ def main(argv=None):
         elif gating:
             up = visible_prns(args.lat, args.lon, args.alt, args.mask_deg, 0.0)
 
+        # 2a-xband. S5 CROSS-BAND: read the sibling band's per-sat tracked Doppler ONCE and
+        # predict THIS band's by the exact carrier ratio (satellite motion is geometry, common
+        # to both bands, scaling as f_this/f_sib; the LO terms come from each band's own S2
+        # fused state -- the dongle LOs are INDEPENDENT, measured, so neither is borrowed).
+        # Feeds two things below: the SHADOW residual (validate + measure the inter-band bias)
+        # and, when --xband-seed, RESCUE search-Doppler hints for sats BRDC does not predict.
+        _xb_pred = {}   # prn -> cross-band predicted Doppler for THIS band (bias-removed)
+        if xband and args.xband_carrier_hz and args.xband_lo_dongle:
+            try:
+                _sib = {int(r["prn"]): r for r in _get("%s/get_status" % xband)}
+                _lo_sib = _fused_lo_ppm(args.xband_lo_dongle)
+                _lo_own = _fused_lo_ppm(args.state_dongle)
+                if _lo_sib is not None and _lo_own is not None:
+                    _ratio = args.carrier_hz / args.xband_carrier_hz
+                    _LOsib = _lo_sib * 1e-6 * args.xband_carrier_hz
+                    _LOown = _lo_own * 1e-6 * args.carrier_hz
+                    # inter-band bias = the rolling median residual (LO diff + iono divergence);
+                    # it drifts ~20 Hz/day so it must be LIVE, not a constant. Removed from the
+                    # prediction so the hint centers on the truth.
+                    _bias = statistics.median(_xb_resid) if len(_xb_resid) >= 20 else 0.0
+                    for _p, _sr in _sib.items():
+                        _ds = _sr.get("doppler_hz")
+                        if _ds is None or (_sr.get("amp_snr") or 0) < 30:
+                            continue      # only ride a sat the sibling holds STRONGLY
+                        _xb_pred[_p] = (_ds - _LOsib) * _ratio + _LOown - _bias
+                        # SHADOW: accumulate the residual for every dual-tracked sat
+                        _own = status.get(_p) or {}
+                        _do = _own.get("doppler_hz")
+                        if _do is not None and (_own.get("amp_snr") or 0) >= 30:
+                            _xb_resid.append(_do - ((_ds - _LOsib) * _ratio + _LOown))
+                    if len(_xb_resid) > 4000:
+                        del _xb_resid[:len(_xb_resid) - 4000]
+                    if _xb_resid:
+                        _med = statistics.median(_xb_resid)
+                        _mad = receiver_state.mad(_xb_resid, _med) if len(_xb_resid) > 1 else None
+                        _log_rl("xband",
+                                "XBAND from %s: %d sibling-tracked; rolling n=%d bias %+.1f "
+                                "mad %s Hz%s"
+                                % (xband, len(_xb_pred), len(_xb_resid), _med,
+                                   ("%.1f" % _mad) if _mad is not None else "-",
+                                   " [seeding rescue hints]" if args.xband_seed else " [shadow]"),
+                                every_s=30.0)
+            except Exception as e:
+                _log_rl("xband", "XBAND read failed: %s" % e)
+
         # 2b. Almanac-narrow the SEARCH: push per-PRN predicted Doppler to the detectors so each
         # scans only doppler +- margin instead of its blind grid -- far cheaper + more sensitive,
         # and it's what lets the not-yet-detected sats be acquired without a full sweep. The margin
         # is WIDE until the common clock-freq bias is solved (the geometric Doppler is then offset
         # by the unknown TCXO), NARROW once a few sats pin it. Sent for all predicted+visible sats.
-        if args.narrow_search and args.almanac and pred:
+        if (args.narrow_search and args.almanac and pred) or (_xb_pred and args.xband_seed):
             margin = (args.search_margin_hz
                       if clock_bias_ema is not None and not bias_stale
                       else args.search_margin_wide_hz)
             hints = [dict(prn=p, doppler_hz=pred[p][0] + clock_bias, margin_hz=margin)
                      for p in sorted(pred) if (up is None or p in up)
-                     and (_capable is None or p in _capable)]
+                     and (_capable is None or p in _capable)] if (args.almanac and pred) else []
+            # RESCUE: for a sat the sibling band tracks but BRDC did NOT just hint (no pred /
+            # no almanac), add a cross-band hint so the search narrows instead of going blind.
+            # Wider margin than a BRDC hint -- the cross-band seed accuracy is the inter-band
+            # MAD (~10 Hz) plus this band's own unsolved-LO width -- but far better than the
+            # blind grid. Provably rescue-only: a sat BRDC covered is already in `hints`.
+            if args.xband_seed and _xb_pred:
+                _hinted = {h["prn"] for h in hints}
+                _xb_margin = max(margin, args.xband_hint_margin_hz)
+                for _p, _xd in sorted(_xb_pred.items()):
+                    if _p in _hinted or (_capable is not None and _p not in _capable):
+                        continue
+                    if up is not None and _p not in up:
+                        continue
+                    hints.append(dict(prn=_p, doppler_hz=_xd, margin_hz=_xb_margin))
+                    _log_rl("xbandseed-%d" % _p,
+                            "XBAND RESCUE HINT PRN %d: %+.0f Hz (sibling tracks it, BRDC does "
+                            "not) -> search narrows instead of blind" % (_p, _xd),
+                            every_s=30.0)
             pushed = 0
             for d_ep in detectors:
                 try:
@@ -1668,7 +2237,15 @@ def main(argv=None):
             # a ~exact-doppler_step jump here is the smoking gun for a grid/quantization
             # slip upstream (the hint-anchored search grid was one such; fixed same day).
             _prev_sd = seeds.get(prn, {}).get("doppler_hz")
-            if _prev_sd is None and args.almanac and clock_bias_ema is None:
+            if _prev_sd is None and args.almanac and not bias_available:
+                # S2d: the condition is now "no bias FROM ANY SOURCE", not "this chain has
+                # not solved its own". Same guard, wider supply. It is the exact deadlock
+                # that cost 2h45m on 2026-07-27: L5 GPS could measure one satellite, never
+                # reached --bias-min-sats, so this line withheld every first seed -- while
+                # its two siblings sat in the same band holding the right answer (+32 Hz)
+                # and its OWN l-a fit held a better one still. With the fused state that
+                # chain is `bias_available` from cycle 1 and never enters this branch.
+                #
                 # BIAS-UNSOLVED FIRST-SEED GUARD (2026-07-18): a first seed sent before the
                 # clock-freq bias solves carries the FULL dongle offset (~150 Hz at L1,
                 # measured: PRN 5 first seed 1146.5 vs det 974.1 at bias +0.0). A strong sat
@@ -2132,6 +2709,148 @@ def main(argv=None):
                 # out of the sky? Scored only where the satellite is strong enough that a
                 # disagreement means OUR bits are wrong rather than the air reading being wrong.
                 navhealth.score(_p, _r["nav_obs"], _r.get("deep_snr"))
+            # AUXILIARY CNAV CHAIN (--cnav-combiner, S4): a second combiner polled only for its
+            # CNAV symbols. At L5 this broker's own combiner is the Q PILOT -- its nav_obs are
+            # deterministic overlay predictions handled above -- while CNAV arrives on the
+            # derived L5-I data sibling, which no broker otherwise reads. Failure here is
+            # deliberately NON-FATAL and quiet-ish: this is an observability path, and a chain
+            # that has not acquired yet simply returns nothing. It must never disturb the
+            # tracking loop that shares this cycle.
+            if cnav_combiner:
+                try:
+                    _aux = {int(r["prn"]): r for r in _get("%s/get_status" % cnav_combiner)
+                            if r.get("prn")}
+                except Exception as e:
+                    _aux = {}
+                    _log_rl("cnavaux", "cnav aux combiner %s unreadable: %s"
+                            % (cnav_combiner, e))
+                for _p, _r in _aux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if cnav is None:
+                        from cnav_predictor import CnavPredictor
+                        cnav = CnavPredictor(log=_log)
+                        _log("CNAV decoder armed on aux chain %s" % cnav_combiner)
+                    cnav.ingest(_p, _r["nav_obs"])
+            # S5 D-component #1: Galileo E1B I/NAV, the exact CNAV-aux analogue.
+            if inav_combiner:
+                try:
+                    _iaux = {int(r["prn"]): r for r in _get("%s/get_status" % inav_combiner)
+                             if r.get("prn")}
+                except Exception as e:
+                    _iaux = {}
+                    _log_rl("inavaux", "inav aux combiner %s unreadable: %s"
+                            % (inav_combiner, e))
+                for _p, _r in _iaux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if inav is None:
+                        from inav_predictor import InavPredictor
+                        inav = InavPredictor(log=_log)
+                        _log("I/NAV decoder armed on aux chain %s" % inav_combiner)
+                    inav.ingest(_p, _r["nav_obs"])
+                # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker)
+                if inav is not None and time.time() - _inav_log_t[0] > 60.0:
+                    _inav_log_t[0] = time.time()
+                    for _p in sorted(inav._p):
+                        h = inav.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = inav.ephemeris(_p)
+                        xc = (_inav_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("inav PRN %d: %d pages, %d words, have %s, eph %s%s"
+                             % (_p, h["pages"], h["words"], h["have"],
+                                "YES" if eph is not None else "no", xc))
+            # S5 D-component #2: Galileo E5a-I F/NAV, the exact I/NAV-aux analogue on L5.
+            if fnav_combiner:
+                try:
+                    _faux = {int(r["prn"]): r for r in _get("%s/get_status" % fnav_combiner)
+                             if r.get("prn")}
+                except Exception as e:
+                    _faux = {}
+                    _log_rl("fnavaux", "fnav aux combiner %s unreadable: %s"
+                            % (fnav_combiner, e))
+                for _p, _r in _faux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if fnav is None:
+                        from fnav_predictor import FnavPredictor
+                        fnav = FnavPredictor(log=_log)
+                        _log("F/NAV decoder armed on aux chain %s" % fnav_combiner)
+                    fnav.ingest(_p, _r["nav_obs"])
+                # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker)
+                if fnav is not None and time.time() - _fnav_log_t[0] > 60.0:
+                    _fnav_log_t[0] = time.time()
+                    for _p in sorted(fnav._p):
+                        h = fnav.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = fnav.ephemeris(_p)
+                        xc = (_fnav_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("fnav PRN %d: %d pages, %d words, have %s, eph %s%s"
+                             % (_p, h["pages"], h["words"], h["have"],
+                                "YES" if eph is not None else "no", xc))
+            # S5 D-component #3: BeiDou B2a B-CNAV2 (first LDPC), the F/NAV-aux analogue on BDS.
+            if bcnav2_combiner:
+                try:
+                    _baux = {int(r["prn"]): r for r in _get("%s/get_status" % bcnav2_combiner)
+                             if r.get("prn")}
+                except Exception as e:
+                    _baux = {}
+                    _log_rl("bcnav2aux", "bcnav2 aux combiner %s unreadable: %s"
+                            % (bcnav2_combiner, e))
+                for _p, _r in _baux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if bcnav2 is None:
+                        from bcnav2_predictor import Bcnav2Predictor
+                        bcnav2 = Bcnav2Predictor(log=_log)
+                        _log("B-CNAV2 decoder armed on aux chain %s" % bcnav2_combiner)
+                    bcnav2.ingest(_p, _r["nav_obs"])
+                # 60 s health + BRDC cross-check (alm_sys is 'C' for the BDS broker)
+                if bcnav2 is not None and time.time() - _bcnav2_log_t[0] > 60.0:
+                    _bcnav2_log_t[0] = time.time()
+                    for _p in sorted(bcnav2._p):
+                        h = bcnav2.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = bcnav2.ephemeris(_p)
+                        xc = (_bcnav2_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("bcnav2 PRN %d: %d frames, %d crc, have %s, eph %s%s"
+                             % (_p, h["pages"], h["words"], h["have"],
+                                "YES" if eph is not None else "no", xc))
+            # S5 D-component #4 (LAST): BeiDou B1C B-CNAV1, the B-CNAV2-aux analogue on L1 BDS.
+            if bcnav1_combiner:
+                try:
+                    _c1aux = {int(r["prn"]): r for r in _get("%s/get_status" % bcnav1_combiner)
+                              if r.get("prn")}
+                except Exception as e:
+                    _c1aux = {}
+                    _log_rl("bcnav1aux", "bcnav1 aux combiner %s unreadable: %s"
+                            % (bcnav1_combiner, e))
+                for _p, _r in _c1aux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if bcnav1 is None:
+                        from bcnav1_predictor import Bcnav1Predictor
+                        bcnav1 = Bcnav1Predictor(log=_log)
+                        _log("B-CNAV1 decoder armed on aux chain %s" % bcnav1_combiner)
+                    bcnav1.ingest(_p, _r["nav_obs"])
+                if bcnav1 is not None and time.time() - _bcnav1_log_t[0] > 60.0:
+                    _bcnav1_log_t[0] = time.time()
+                    for _p in sorted(bcnav1._p):
+                        h = bcnav1.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = bcnav1.ephemeris(_p)
+                        xc = (_bcnav1_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("bcnav1 PRN %d: %d frames, %d crc, have %s, eph %s%s"
+                             % (_p, h["pages"], h["words"], h["have"],
+                                "YES" if eph is not None else "no", xc))
             # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
             # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
             # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
@@ -2901,6 +3620,28 @@ def main(argv=None):
                     car_step_hist.pop(k, None)
                     car_fade.pop(k, None)
 
+        # S2 OBSERVER: the SECOND carrier-side estimator of the same LO. `car_trim`'s own
+        # arg help calls the converged fleet trim "the chain's deterministic frac-N LO
+        # offset ... stable across restarts (e.g. the L5 chain sits ~+30 Hz)" -- which is
+        # the same physical number `clock_bias_ema` solves for from search Doppler, on a
+        # different observable and a different timescale. The two have never been compared
+        # and this one is never persisted, so it is rebuilt from zero every launch despite
+        # being described as a restart-stable constant. Exported outside the carrier-loop
+        # gate so a chain with the loop disabled reports null rather than vanishing.
+        if state_w is not None:
+            try:
+                _ct = sorted(car_trim.values())
+                _ctm = statistics.median(_ct) if _ct else None
+                state_w.observe(
+                    "carrier_trim",
+                    median_hz=_ctm,
+                    mad_hz=receiver_state.mad(_ct, _ctm),
+                    n=len(_ct),
+                    railed=sum(1 for v in _ct if args.carrier_max_hz > 0.0
+                               and abs(v) >= 0.95 * args.carrier_max_hz))
+            except Exception:
+                pass
+
         # 3b. Receiver code-rate clock offset (l-a): pool the strong sats' per-fit samples (robust
         # median), EMA-smooth it (slow -> tracks TCXO/OCXO drift), then SEED it to every sat that
         # could NOT fit its own slope (weak / just-acquired / coasting) as carrier-aiding + (l-a).
@@ -2933,6 +3674,24 @@ def main(argv=None):
                             f.write("%.4f\n" % (code_bias_ema * 1e6))
                     except Exception:
                         pass
+        # S2 OBSERVER: the code-side twin. Outside the min-sats gate, same reason as the
+        # carrier export. This one is the honest cross-chain comparison of the two: l-a has
+        # NO sibling fusion at all, so its spread across a band's chains is a real measure
+        # of estimator scatter, where the carrier's is partly manufactured by the fusion.
+        if state_w is not None:
+            try:
+                _raw_la = statistics.median(la_samples) if la_samples else None
+                state_w.observe(
+                    "code",
+                    ppm=(code_bias_ema * 1e6) if code_bias_ema is not None else None,
+                    raw_ppm=(_raw_la * 1e6) if _raw_la is not None else None,
+                    mad_ppm=(lambda m: m * 1e6 if m is not None else None)(
+                        receiver_state.mad(la_samples, _raw_la)),
+                    n=len(la_samples),
+                    cal_ppm=(code_bias_cal * 1e6) if code_bias_cal is not None else None,
+                    forced=args.code_bias_force is not None)
+            except Exception:
+                pass
         cb_to_seed = (args.code_bias_force * 1e-6 if args.code_bias_force is not None
                       else code_bias_ema)
         if cb_to_seed is not None:
@@ -3133,7 +3892,11 @@ def main(argv=None):
                 _g = _pred0.get(d["prn"])
                 tau0 = (_g[3] if _g is not None else pv[3]) / C_LIGHT
                 clk0 = _g[4] if _g is not None else pv[4]
-                t_sv = utc0_sample0 - tau0 + clk0 + args.cl_time_adjust - cl_toff[0]
+                # Their segment-search correction (cl_segsearch) on OUR parameterised epoch:
+                # LC_EPOCH/LC_SEG replaced the hardcoded 1.5 s / 75 segments so the CL assist
+                # is not L2C-CL-only. Defaults are 1.5/75, so this is a no-op on the prototype.
+                t_sv = (utc0_sample0 - tau0 + clk0 + args.cl_time_adjust - cl_toff[0]
+                        + cl_segsearch["corr"] * 0.020)
                 cl_chips = (t_sv % LC_EPOCH) * args.chip_rate_hz
                 cp_cm = d["code_phase_chips"] % CODE_LEN
                 k = int(round((cl_chips - cp_cm) / CODE_LEN))
@@ -3148,9 +3911,25 @@ def main(argv=None):
                             "CL PIN MARGIN THIN: PRN %d fine %+.2f ms of +-10 (post-center; "
                             "clock-offset est %+.2f ms)"
                             % (d["prn"], fine_ms, cl_toff[0] * 1e3))
+                # K-SCAN: for the one probe PRN, offset the seed by the current step --
+                # whole segments (segment mode) or fractional chips (comb mode) -- so its
+                # CL row despreads at the shifted position. Everything else (fine, k
+                # report, auto-center) uses the true k untouched; only the probe's seed is
+                # shifted, so the scan cannot perturb the fleet's pin.
+                _cp_extra = 0.0
+                k_seed = k
+                if args.cl_kscan_prn and d["prn"] == args.cl_kscan_prn:
+                    _off = _kscan_seq[(_kscan[0] // max(args.cl_kscan_dwell, 1))
+                                      % len(_kscan_seq)]
+                    if _kscan_frac:
+                        _cp_extra = _off
+                    else:
+                        k_seed = (k + int(_off)) % LC_SEG
                 dcl = {kk: d[kk] for kk in ("prn", "doppler_hz", "code_phase_rate", "ref_hop",
                                             "doppler_rate_hz_s", "carrier_trim_hz") if kk in d}
-                dcl["code_phase_chips"] = (cp_cm + k * CODE_LEN) % (float(LC_SEG) * CODE_LEN)
+                # Their k-scan probe (k_seed/_cp_extra) on OUR parameterised segment count.
+                dcl["code_phase_chips"] = ((cp_cm + k_seed * CODE_LEN + _cp_extra)
+                                           % (float(LC_SEG) * CODE_LEN))
                 cl_payload.append(dcl)
                 kp = cl_k.get(d["prn"])
                 if kp is not None and kp != k:
@@ -3194,13 +3973,195 @@ def main(argv=None):
                         pairs.append("%d:%.0f/%.0f" % (prn, cm_d, cl_d))
                     if pairs:
                         _log_rl("clverify", "CL verify (PRN:cm/cl deep): " + " ".join(pairs))
+                    # SEGMENT AUTO-SEARCH, judged on this same verify data. Step only when
+                    # the fleet is unambiguously dead (>=2 strong CM sats, ZERO green CL) --
+                    # a partly-green fleet must never be stepped away from -- and latch the
+                    # moment >=2 strong sats read green. Disabled while a k-scan diagnostic
+                    # is shifting the probe's seed.
+                    if (args.cl_autoseg and not args.cl_kscan_prn
+                            and not cl_segsearch["latched"]):
+                        _strong = [prn for prn in cl_k
+                                   if ((status.get(prn) or {}).get("deep_snr") or 0.0) > 50.0]
+                        _green = [prn for prn in _strong
+                                  if ((cls_.get(prn) or {}).get("deep_snr") or 0.0)
+                                  > ((status.get(prn) or {}).get("deep_snr") or 0.0) / 3.0]
+                        _nowv = time.time()
+                        if cl_segsearch["t_step"] == 0.0:
+                            cl_segsearch["t_step"] = _nowv
+                        elif len(_strong) >= 2 and len(_green) >= 2:
+                            cl_segsearch["latched"] = True
+                            _log("CL SEG-SEARCH LATCHED: correction %+d segment(s) "
+                                 "(compensating a %+.0f ms utc0_sample0 anchor error); "
+                                 "%d/%d strong sats green"
+                                 % (cl_segsearch["corr"], -cl_segsearch["corr"] * 20.0,
+                                    len(_green), len(_strong)))
+                        elif (len(_strong) >= 2 and not _green
+                              and _nowv - cl_segsearch["t_step"] > args.cl_autoseg_dwell):
+                            cl_segsearch["idx"] = ((cl_segsearch["idx"] + 1)
+                                                   % len(_clseg_spiral))
+                            cl_segsearch["corr"] = _clseg_spiral[cl_segsearch["idx"]]
+                            cl_segsearch["t_step"] = _nowv
+                            _log("CL SEG-SEARCH: fleet dead under strong CM (%d strong, 0 "
+                                 "green) -- trying correction %+d segment(s)"
+                                 % (len(_strong), cl_segsearch["corr"]))
+                    # K-SCAN readout. The seeded offset for THIS cycle is
+                    # seq[(cycle//dwell) % n]; the combiner is integrating that same offset
+                    # (the seed goes out just above, then we read deep next). CL deep takes
+                    # tens of seconds to build, and the tracker needs a few cycles to re-lock
+                    # after a segment jump -- so only RECORD in the back half of each dwell,
+                    # and only DECLARE a result after a full sweep has completed, requiring a
+                    # winner that clears noise by a real margin.
+                    if args.cl_kscan_prn:
+                        _p = args.cl_kscan_prn
+                        _dw = max(args.cl_kscan_dwell, 1)
+                        _idx = (_kscan[0] // _dw) % len(_kscan_seq)
+                        _cur = _kscan_seq[_idx]
+                        _pos = _kscan[0] % _dw            # position within this dwell
+                        _cl = (cls_.get(_p) or {}).get("deep_snr") or 0.0
+                        _cm = (status.get(_p) or {}).get("deep_snr") or 0.0
+                        if _pos >= _dw // 2:              # settled back half only
+                            _kscan_deep[_cur] = max(_kscan_deep.get(_cur, 0.0), _cl)
+                        _log_rl("kscan-%d" % _p,
+                                "CL KSCAN PRN %d: %s (dwell %d/%d) cl_deep %.0f cm %.0f"
+                                % (_p, _kfmt(_cur), _pos, _dw, _cl, _cm), every_s=5.0)
+                        # a full sweep completes when we return to seq index 0 having filled
+                        # every offset; declare once per sweep.
+                        if (_idx == 0 and _pos == 0 and _kscan[0] > 0
+                                and len(_kscan_deep) >= len(_kscan_seq)):
+                            _best = max(_kscan_deep, key=_kscan_deep.get)
+                            _bd = _kscan_deep[_best]
+                            _2nd = sorted(_kscan_deep.values())[-2]
+                            _cmp = (status.get(_p) or {}).get("deep_snr") or 0.0
+                            _clear = _bd > 20.0 and _bd > 3.0 * max(_2nd, 1.0)
+                            _win_says = (
+                                ("SUB-CHIP/COMB FAULT, offset %s chips" % _kfmt(_best)
+                                 if _best != 0 else
+                                 "true cp CORRECT -- fault is not a sub-chip seed offset")
+                                if _kscan_frac else
+                                ("WHOLE-SEGMENT ANCHOR BUG, magnitude %s" % _kfmt(_best)
+                                 if _best != 0 else
+                                 "true k CORRECT -- fault is NOT the segment pin"))
+                            _log("CL KSCAN PRN %d SWEEP: %s -> %s"
+                                 % (_p, " ".join("%s:%.0f" % (_kfmt(o), _kscan_deep[o])
+                                                 for o in sorted(_kscan_deep)),
+                                    ("best %s clears noise %.0fx: %s" % (
+                                        _kfmt(_best), _bd / max(_2nd, 1.0), _win_says))
+                                    if _clear else
+                                    "NO offset in this range despreads (best %s only %.0f "
+                                    "vs cm %.0f) -- %s" % (
+                                        _kfmt(_best), _bd, _cmp,
+                                        "not a sub-chip seed offset either; the fault is "
+                                        "past the seed (replica/carrier/comb in the C++)"
+                                        if _kscan_frac else
+                                        "not a small whole-segment error; widen the range "
+                                        "or look past the pin")))
+                            _kscan_deep.clear()          # fresh accumulation next sweep
+                    _kscan[0] += 1
                 except Exception as e:
                     _log_rl("clverify", "CL verify poll failed: %s" % e)
+
+        # (S5 cross-band read + shadow accumulation + rescue hints moved EARLY, block 2a-xband
+        # above -- it must run before the search-hint POST it feeds.)
 
         _log_rl("active", "active=%s (%d); seeded %d/%d trackers" % (sorted(seeds), len(seeds), ok, len(trackers)))
         if cl_report:
             _log_rl("clreport", "CL: " + "; ".join(cl_report))
 
+        # S2 OBSERVER: receiver clock, then publish the whole record. dr_state persists
+        # across cycles so it is read here rather than at its solve site -- and it is the
+        # one shared quantity with ZERO persistence today, so every restart re-bootstraps
+        # it from nothing. `integ` is the only per-measurement residual the system keeps
+        # anywhere; it is used to VETO satellites and has never been used as a weight.
+        if state_w is not None:
+            try:
+                if dr_state is not None:
+                    _iw = time.time()
+                    _ir = [v[0] for v in dr_state.get("integ", {}).values()
+                           if isinstance(v, (list, tuple)) and _iw - v[1] < 30.0]
+                    # ⚠️ CHIPS ARE NOT COMPARABLE ACROSS CHAINS -- a chip is a different
+                    # duration per signal (1.023 Mcps at L1 C/A, 10.23 at L5), and this
+                    # value is mod a different CODE_LEN too. Publishing only chips is the
+                    # count-where-a-time-was-meant trap that has bitten this node three
+                    # times; carry the rate and the derived TIME/FRACTIONAL forms so a
+                    # consumer never has to guess. drift_ppm is the important one: it is
+                    # directly comparable to l-a and to the carrier bias in ppm, and that
+                    # comparison is what shows dr drift to be a RESIDUAL (measured 0.000
+                    # -0.11 of l-a on all 8 chains) rather than a third estimator.
+                    _cr = float(args.chip_rate_hz) if args.chip_rate_hz else None
+                    _dr = dr_state.get("drift")
+                    _im = receiver_state.mad(_ir)
+                    state_w.observe(
+                        "rxclock",
+                        chips=dr_state.get("clk"),
+                        chip_rate_hz=_cr,
+                        us=((dr_state["clk"] / _cr * 1e6)
+                            if (_cr and dr_state.get("clk") is not None) else None),
+                        drift_chips_s=_dr,
+                        drift_ppm=((_dr / _cr * 1e6) if (_cr and _dr is not None) else None),
+                        n=len(_ir),
+                        integ_mad_chips=_im,
+                        integ_mad_us=((_im / _cr * 1e6) if (_cr and _im is not None) else None),
+                        untrusted=len(dr_untrusted),
+                        age_s=(round(t0 - dr_state["clk_t"], 2)
+                               if dr_state.get("clk_t") else None))
+                # ---- S2c: fuse this dongle's chains, PUBLISH, consume NOTHING ----
+                # Sources are read from the state files, self included (self's record is up
+                # to one flush old -- irrelevant for a quantity measured flat within noise
+                # over 15 min, and it keeps the ordering trivial). No feedback loop exists:
+                # sources_from() reads only `carrier.raw_hz` / `code.raw_ppm`, never the
+                # `fused` group this writes back.
+                if args.state_fuse and _state_dir:
+                    # Reuse the cycle's cached fusion -- the same object the consumption
+                    # path above was handed, so the published record and the value actually
+                    # used can never disagree.
+                    _fus = _fuse_cached(t0)
+                    if _fus:
+                        state_w.observe(
+                            "fused",
+                            lo_ppm=_fus["lo_ppm"], se_ppm=_fus["se_ppm"],
+                            lo_ppm_norej=_fus["lo_ppm_norej"],
+                            n_src=_fus["n_src"], n_carrier=_fus["n_carrier"],
+                            n_code=_fus["n_code"], n_rejected=_fus["n_rejected"],
+                            all_outliers=_fus["all_outliers"],
+                            worst_sigma=_fus["worst_sigma"], chains=_fus["chains"],
+                            hz_here=_fus["lo_ppm"] * 1e-6 * args.carrier_hz)
+                        # SHADOW LINE: what the fused prior says, beside what this chain is
+                        # actually using. The delta is the whole S2d decision, logged every
+                        # minute so a soak can be read straight out of the broker log.
+                        _fhz = _fus["lo_ppm"] * 1e-6 * args.carrier_hz
+                        _own = clock_bias_ema
+                        _log_rl("shadowfuse",
+                                "SHADOW fused LO %+.5f ppm +-%.5f (%d src: %dc/%dd over %s"
+                                "%s%s) -> %+.2f Hz here; chain uses %s; delta %s [%s]"
+                                % (_fus["lo_ppm"], _fus["se_ppm"] or 0.0, _fus["n_src"],
+                                   _fus["n_carrier"], _fus["n_code"],
+                                   ",".join(_fus["chains"]),
+                                   "; REJECTED %d" % _fus["n_rejected"]
+                                   if _fus["n_rejected"] else "",
+                                   "; ALL-OUTLIERS (no majority -- do not trust)"
+                                   if _fus["all_outliers"] else "",
+                                   _fhz,
+                                   ("%+.2f Hz" % _own) if _own is not None else "UNSOLVED",
+                                   ("%+.2f Hz" % (_fhz - _own)) if _own is not None
+                                   else "n/a (this is exactly the case fusion rescues)",
+                                   # three honest modes: actively rescuing an unsolved
+                                   # chain / armed but idle (steady state, proven no-op) /
+                                   # pure shadow. "CONSUMED" when the chain is solved would
+                                   # be a lie under rescue-only semantics.
+                                   ("RESCUING (own unsolved)"
+                                    if args.state_consume and clock_bias_ema is None
+                                    else "RESCUE-ARMED, idle"
+                                    if args.state_consume else "SHADOW")),
+                                every_s=60.0)
+                state_w.flush(t0)
+            except Exception as e:
+                # NOT a bare pass. A silent except here once swallowed a broken format
+                # string in the shadow line: the line simply stopped appearing and nothing
+                # said why -- and a soak read from that log would have looked like "the
+                # fuser stopped running" or, worse, like clean data. Rate-limited so a
+                # persistent fault names itself once a minute instead of flooding.
+                _log_rl("stateobs", "receiver-state observe/flush failed: %r" % (e,),
+                        every_s=60.0)
         if args.once:
             return
         dt = args.interval - (time.time() - t0)

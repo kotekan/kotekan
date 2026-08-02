@@ -27,5 +27,14 @@ std::array<int8_t, E5A_CODE_LENGTH> generate_e5aq_code(int prn);
 /// E5a-Q CS100 secondary overlay (100 chips, one per primary period), PRN 1..50.
 std::array<int8_t, 100> e5aq_secondary(int prn);
 
+/// E5a-I (DATA) primary code, PRN 1..50, as +-1 chips. Same generator as E5a-Q (shared X1
+/// all-ones base register; per-PRN X2 start value), only the X2 start table differs. The
+/// second S5 D-component (F/NAV) rides this channel.
+std::array<int8_t, E5A_CODE_LENGTH> generate_e5ai_code(int prn);
+
+/// E5a-I CS20 secondary overlay (20 chips = 20 ms = ONE F/NAV symbol), SAME sequence for
+/// every satellite (unlike the per-PRN E5a-Q CS100). The F/NAV data symbol rides on top.
+std::array<int8_t, 20> e5ai_secondary();
+
 } // namespace galileo
 #endif // GALILEO_E5A_CODE_HPP

@@ -23,6 +23,27 @@ static const int B1CP_TRUNC[63] = {
     5565, 7160, 2277,
 };
 
+// B1C-DATA Weil-code parameters (BDS-SIS-ICD-B1C Table via PocketSDR B1CD_ph_diff/trunc_pnt,
+// used directly). Same Legendre-10243 Weil construction as the pilot, different phase-diff /
+// truncation tables -- verified generate_b1cd_code bit-exact vs PocketSDR gen_code_B1CD
+// (de-BOC) for PRN 19/20/30/45/63 (2026-07-30).
+static const int B1CD_PH_DIFF[63] = {
+    2678, 4802, 958, 859, 3843, 2232, 124, 4352, 1816, 1126, 1860, 4800,
+    2267, 424, 4192, 4333, 2656, 4148, 243, 1330, 1593, 1470, 882, 3202,
+    5095, 2546, 1733, 4795, 4577, 1627, 3638, 2553, 3646, 1087, 1843, 216,
+    2245, 726, 1966, 670, 4130, 53, 4830, 182, 2181, 2006, 1080, 2288,
+    2027, 271, 915, 497, 139, 3693, 2054, 4342, 3342, 2592, 1007, 310,
+    4203, 455, 4318,
+};
+static const int B1CD_TRUNC[63] = {
+    699, 694, 7318, 2127, 715, 6682, 7850, 5495, 1162, 7682, 6792, 9973,
+    6596, 2092, 19, 10151, 6297, 5766, 2359, 7136, 1706, 2128, 6827, 693,
+    9729, 1620, 6805, 534, 712, 1929, 5355, 6139, 6339, 1470, 6867, 7851,
+    1162, 7659, 1156, 2672, 6043, 2862, 180, 2663, 6940, 1645, 1582, 951,
+    6878, 7701, 1823, 2391, 2606, 822, 6403, 239, 442, 6769, 2560, 2502,
+    5072, 7268, 341,
+};
+
 static const int B1CS_PH_DIFF[63] = {
     269, 1448, 1028, 1324, 822, 5, 155, 458, 310, 959, 1238, 1180,
     1288, 334, 885, 1362, 181, 1648, 838, 313, 750, 225, 1477, 309,
@@ -59,6 +80,18 @@ std::array<int8_t, B1C_CODE_LENGTH> generate_b1cp_code(int prn) {
     check_prn(prn);
     static const std::vector<int8_t> L = legendre(10243);
     const int w = B1CP_PH_DIFF[prn - 1], p = B1CP_TRUNC[prn - 1];
+    std::array<int8_t, B1C_CODE_LENGTH> out{};
+    for (int i = 0; i < B1C_CODE_LENGTH; ++i) {
+        const int j = (i + p - 1) % 10243;
+        out[(size_t)i] = (int8_t)(L[(size_t)j] * L[(size_t)((j + w) % 10243)]);
+    }
+    return out;
+}
+
+std::array<int8_t, B1C_CODE_LENGTH> generate_b1cd_code(int prn) {
+    check_prn(prn);
+    static const std::vector<int8_t> L = legendre(10243);
+    const int w = B1CD_PH_DIFF[prn - 1], p = B1CD_TRUNC[prn - 1];
     std::array<int8_t, B1C_CODE_LENGTH> out{};
     for (int i = 0; i < B1C_CODE_LENGTH; ++i) {
         const int j = (i + p - 1) % 10243;

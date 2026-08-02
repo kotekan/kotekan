@@ -43,11 +43,30 @@ export function configure_chains(defs) {
 // off r.sig_by[combiner]; the table renders one column per signal.
 export let SIGNALS = null;
 export let RF_BANDS = null;
-export function configure_signals(sigs, rf) {
+// CAPABILITY: signal key -> Set of PRNs whose satellite BLOCK actually broadcasts it (server
+// side, from the cached Celestrak block names). Lets the table separate "this satellite does
+// not transmit that signal" from "it does and we are not seeing it" -- a Block IIR sat blank
+// across L1C/L2C/L5 is correct, the same blanks on a Block III sat are a fault. Empty/absent
+// -> every cell is treated as capable, i.e. exactly the old behaviour: we never claim a
+// satellite is incapable on the strength of information we could not obtain.
+export let CAPABILITY = null;
+export function configure_signals(sigs, rf, caps) {
     if (!Array.isArray(sigs) || !sigs.length) { SIGNALS = null; return; }
     SIGNALS = sigs.map(s => Object.assign({key: s.combiner}, s));
     RF_BANDS = Array.isArray(rf) && rf.length ? rf : null;
+    CAPABILITY = null;
+    if (caps && typeof caps === "object") {
+        const by_key = {};
+        for (const s of SIGNALS)
+            if (s.sigid && Array.isArray(caps[s.sigid]))
+                by_key[s.key] = new Set(caps[s.sigid]);
+        if (Object.keys(by_key).length) CAPABILITY = by_key;
+    }
     if (_active_feed) _active_feed._reconfigure();
+}
+/// true when `prn` is known NOT to transmit the signal `key`. False when capable OR unknown.
+export function not_transmitted(key, prn) {
+    return !!(CAPABILITY && CAPABILITY[key] && !CAPABILITY[key].has(prn));
 }
 
 // One combiner get_status record -> the derived per-signal metrics the panels display. Pulled
@@ -284,13 +303,28 @@ export class GpsFeed {
                     for (const d of l.det) {
                         const r = get(sg.tag, d.prn);
                         r.detected = true;
-                        if (d.snr != null && (r.snr == null || d.snr > r.snr)) r.snr = d.snr;
+                        if (d.snr != null) {
+                            // Keep the search SNR PER SIGNAL, not just as a row maximum: it is
+                            // the one metric that reports on the ACQUISITION rather than the
+                            // deep integration, so "strong in search, wrong downstream" is
+                            // exactly the state it exists to show -- and a row max hides which
+                            // signal is which. The row-level r.snr (sky colour, sort) is
+                            // unchanged.
+                            const e = (r.sig_by[sg.key] = r.sig_by[sg.key] || {});
+                            e.snr = Math.max(e.snr || 0, d.snr);
+                            if (r.snr == null || d.snr > r.snr) r.snr = d.snr;
+                        }
                     }
                 if (Array.isArray(l.status))
                     for (const s of l.status) {
                         if (!s.prn) continue;
                         const r = get(sg.tag, s.prn);
                         const m = signal_metrics(s, sg.t_rec);
+                        // The det loop above may already have stashed this signal's search SNR;
+                        // signal_metrics() knows nothing about detections, so carry it across
+                        // rather than letting the status overwrite it.
+                        const prev = r.sig_by[sg.key];
+                        if (prev && prev.snr != null) m.snr = prev.snr;
                         r.sig_by[sg.key] = m;
                         if ((m.sig || 0) >= SNR_LOCK) r.n_sig += 1;
                         // Row summary = the BEST signal (sky colour, sort default, lock gate).

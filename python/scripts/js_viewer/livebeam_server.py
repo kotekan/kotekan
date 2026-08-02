@@ -768,25 +768,97 @@ BAND_CHAINS = {
 #   peel       whether this chain runs the voltage peel (peel-depth column applies)
 # The table renders columns in THIS order; add a signal by adding a row.
 UNIFIED_SIGNALS = [
-    {"tag": "G", "band": "L1", "col": "CA",  "name": "GPS L1 C/A",
+    {"tag": "G", "band": "L1", "col": "CA",  "name": "GPS L1 C/A", "sigid": "GPS_L1CA",
      "combiner": "l1_gps_combiner", "search": "l1_gps_search",  "t_rec": 1e-3,  "peel": True},
-    {"tag": "G", "band": "L1", "col": "L1C", "name": "GPS L1C-P",
+    {"tag": "G", "band": "L1", "col": "L1C", "name": "GPS L1C-P", "sigid": "GPS_L1C_P",
      "combiner": "l1_l1c_combiner", "search": "l1_l1c_search",  "t_rec": 10e-3, "peel": True},
-    {"tag": "G", "band": "L2", "col": "CM",  "name": "GPS L2C-CM",
+    {"tag": "G", "band": "L2", "col": "CM",  "name": "GPS L2C-CM", "sigid": "GPS_L2C_CM",
      "combiner": "l2c_gps_combiner", "search": "l2c_gps_search", "t_rec": 20e-3, "peel": False},
-    {"tag": "G", "band": "L2", "col": "CL",  "name": "GPS L2C-CL (pilot)",
+    {"tag": "G", "band": "L2", "col": "CL",  "name": "GPS L2C-CL (pilot)", "sigid": "GPS_L2C_CL",
      "combiner": "l2c_cl_combiner", "search": None,             "t_rec": 20e-3, "peel": False},
-    {"tag": "G", "band": "L5", "col": "Q",   "name": "GPS L5-Q",
+    {"tag": "G", "band": "L5", "col": "Q",   "name": "GPS L5-Q", "sigid": "GPS_L5_Q",
      "combiner": "l5_gps_combiner", "search": "l5_gps_search",  "t_rec": 1e-3,  "peel": True},
+    # L5-I is the DATA component of the same signal L5-Q pilots (S4 phase 2). Like L2C-CL it
+    # is DERIVED, not acquired -- seeded verbatim from its sibling's rows -- so search is None
+    # and it will never show an SNR cell. Its combiner runs the composed NH10 + CNAV navwipe,
+    # which is what lets it integrate past the 20 ms symbol boundary. Judge it against Q, its
+    # equal-power sibling, not against an absolute: measured 6.4 dB below Q at the 1 s rung
+    # (2026-07-29), down from 15.4 dB before the navwipe.
+    {"tag": "G", "band": "L5", "col": "I",   "name": "GPS L5-I (data, CNAV)", "sigid": "GPS_L5_I",
+     "combiner": "l5_i_combiner",   "search": None,             "t_rec": 1e-3,  "peel": False},
     {"tag": "E", "band": "L1", "col": "E1C", "name": "Galileo E1-C",
      "combiner": "l1_gal_combiner", "search": "l1_gal_search",  "t_rec": 4e-3,  "peel": True},
+    # E1B / E5a-I / B1C-data / B2a-data: the DATA components (S5 D-components), each DERIVED off
+    # its band-mate pilot (search None, seeded verbatim). Their combiners run the nav-bit wipe
+    # (navwipe_bit_records) that lets a data channel integrate to 1 s, so they carry coherent
+    # C/N0 like any chain; judge each against its pilot sibling, not an absolute. Unpeeled
+    # (peel is GPS-only for now).
+    {"tag": "E", "band": "L1", "col": "E1B", "name": "Galileo E1-B (data, I/NAV)",
+     "combiner": "l1_e1b_combiner",  "search": None,            "t_rec": 4e-3,  "peel": False},
     {"tag": "E", "band": "L5", "col": "E5a", "name": "Galileo E5a-Q",
      "combiner": "l5_gal_combiner", "search": "l5_gal_search",  "t_rec": 1e-3,  "peel": True},
+    {"tag": "E", "band": "L5", "col": "E5aI","name": "Galileo E5a-I (data, F/NAV)",
+     "combiner": "l5_e5a_i_combiner","search": None,            "t_rec": 1e-3,  "peel": False},
     {"tag": "C", "band": "L1", "col": "B1C", "name": "BeiDou B1C",
      "combiner": "l1_bds_combiner", "search": "l1_bds_search",  "t_rec": 10e-3, "peel": True},
+    {"tag": "C", "band": "L1", "col": "B1CD","name": "BeiDou B1C (data, B-CNAV1)",
+     "combiner": "l1_b1c_d_combiner","search": None,            "t_rec": 10e-3, "peel": False},
     {"tag": "C", "band": "L5", "col": "B2a", "name": "BeiDou B2a",
      "combiner": "l5_bds_combiner", "search": "l5_bds_search",  "t_rec": 1e-3,  "peel": True},
+    {"tag": "C", "band": "L5", "col": "B2aD","name": "BeiDou B2a (data, B-CNAV2)",
+     "combiner": "l5_b2a_d_combiner","search": None,            "t_rec": 1e-3,  "peel": False},
 ]
+
+def _gps_signal_capability():
+    """{sigid: [PRNs that BROADCAST it]} for the GPS signals in UNIFIED_SIGNALS.
+
+    Lets the table distinguish "this satellite does not transmit that signal" from "it does and
+    we are not seeing it" -- the difference between a blank row and a fault. A Block IIR sat
+    showing 238 sigma on L1 C/A and nothing on L1C/L2C/L5 is CORRECT (IIR predates all three);
+    the same pattern on a Block III sat is a real problem, and the table could not tell them
+    apart.
+
+    Two deliberate choices:
+      * The block -> signal rule is IMPORTED from gps_beamtrack (_signal_block_filter), not
+        restated here. Which block first carried each civil signal is exactly the kind of
+        convention that rots when it exists in two places.
+      * The PRN -> block map is parsed from the CACHED Celestrak TLE names
+        (~/.cache/kotekan_gps/tle_gps-ops.txt, written by the brokers), so the viewer needs no
+        network and no skyfield. Block is METADATA, not orbital state: a stale TLE gives stale
+        ORBITS but the block of a launched satellite never changes, so an old cache is fine
+        here even though it would not be for visibility.
+    Returns {} on any failure -- the client then falls back to today's behaviour (everything
+    unknown reads as "no detection"), which is the safe direction: never claim a satellite is
+    incapable when we could not check.
+    """
+    try:
+        import re as _re
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                        "..", "gnss"))
+        from gps_beamtrack import _signal_block_filter
+        tle = os.path.expanduser("~/.cache/kotekan_gps/tle_gps-ops.txt")
+        blocks = {}
+        with open(tle) as fh:
+            for ln in fh:
+                m = _re.match(r"\s*GPS\s+B([A-Z]+)-?\d+\s*\(PRN\s*(\d+)\)", ln)
+                if m:
+                    blocks[int(m.group(2))] = m.group(1)
+        if not blocks:
+            return {}
+        caps = {}
+        for s in UNIFIED_SIGNALS:
+            sid = s.get("sigid")
+            if not sid:
+                continue          # non-GPS: no capability model here -> client shows "--"
+            f = _signal_block_filter(sid)
+            caps[sid] = sorted(blocks) if f is None else sorted(p for p, b in blocks.items()
+                                                                if f(b))
+        return caps
+    except Exception as e:
+        logger.warning("GPS signal capability unavailable (%s); "
+                       "table cannot distinguish not-transmitted from not-detected", e)
+        return {}
+
 
 # The three physical front ends, for the unified page's RF selector (spectrum + waterfall +
 # airspy controls switch between them). ws_port = the per-band livebeam_server the browser
@@ -826,6 +898,10 @@ class WsPortResource(resource.Resource):
         if unified:
             self.signals = [dict(s) for s in UNIFIED_SIGNALS]
             self.rf_bands = [dict(b) for b in UNIFIED_RF_BANDS]
+            # Attach the transmitting-PRN list per signal so the table can say
+            # "not transmitted" instead of "not detected". Computed once here (cheap: one
+            # cached-file parse), empty when unavailable -> client keeps today's behaviour.
+            self.capability = _gps_signal_capability()
             self.chains = [{"tag": "G", "name": "GPS",     "color": "#4d9de0"},
                            {"tag": "E", "name": "Galileo", "color": "#e8923c"},
                            {"tag": "C", "name": "BeiDou",  "color": "#d64550"}]
@@ -854,6 +930,7 @@ class WsPortResource(resource.Resource):
             reply["unified"] = True
             reply["signals"] = self.signals
             reply["rf_bands"] = self.rf_bands
+            reply["capability"] = self.capability  # {sigid: [transmitting PRNs]}
         return json.dumps(reply).encode("utf-8")
 
 

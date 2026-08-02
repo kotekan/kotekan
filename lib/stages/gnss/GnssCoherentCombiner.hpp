@@ -12,8 +12,9 @@
 #include "Stage.hpp"           // for Stage
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
-#include "gnssRecord.hpp"      // for RECORD_FLOATS + slot names (the record schema)
-#include "restServer.hpp"      // for connectionInstance
+#include "gnssRecord.hpp"        // for RECORD_FLOATS + slot names (the record schema)
+#include "prometheusMetrics.hpp" // for Counter, Gauge (real-time cost instrumentation)
+#include "restServer.hpp"        // for connectionInstance
 
 #include <complex> // for complex
 #include <cstdint> // for int8_t
@@ -138,26 +139,49 @@ private:
         std::vector<std::pair<long long, int8_t>> bits; ///< (bit index, +-1 sign)
     };
 
+    /// @p pin_phase >= 0 SKIPS the internal bit-sync search and uses that epoch phase directly;
+    /// @p out_phase (optional) reports the phase actually used. Both exist because the search is
+    /// @c navwipe_bit_records full passes over the window, and re-running it per ladder rung is
+    /// the dominant cost on a chain with many records per symbol (L5-I: 20 alignments x 1000
+    /// records vs L2C's 1 x 200 -- 100x per rung). The epoch is a property of the SIGNAL, so
+    /// searching it once on the longest window and pinning the rest is exact, not an approximation.
+    ///
+    /// ⚠️ THE PHASE IS WINDOW-RELATIVE: bit index = (round((utc[r]-utc[0])/rec_dt) + phase)/br,
+    /// so a phase found on one window is valid on another only after shifting by the two windows'
+    /// record-index offset. Callers MUST derive that offset from UTC
+    /// (@c llround((sub_utc0 - full_utc0)/rec_dt)), never from buffer positions -- a valve drop
+    /// skips an index, and binning by position would slide every bit epoch.
     double navwipe_amplitude(const std::vector<std::complex<double>>& a,
                              const std::vector<double>& utc, double* snr_out = nullptr,
                              const std::vector<std::complex<double>>* head = nullptr,
-                             NavObs* obs = nullptr) const;
+                             NavObs* obs = nullptr, int pin_phase = -1,
+                             int* out_phase = nullptr) const;
 
     /// Residual carrier frequency (Hz) from a window of per-record A, as a bit-robust phase-SLOPE
     /// fit over the whole window (long baseline -> low variance -- the clean measurement the shared
     /// carrier loop needs; the old consecutive-record product was short-baseline + doubly-noisy and
     /// made the loop noise-inject). Squares A to cancel the +-1 nav-bit pi flips (data signals);
     /// a dataless pilot (carrier_pilot) fits the raw phase. Uses capture-UTC as the time axis so
-    /// valve-drop gaps don't bias the slope. Returns 0 if too short / degenerate.
+    /// valve-drop gaps don't bias the slope. Returns 0 (the broker's carrier-loop "skip"
+    /// sentinel -- `if resid == 0.0`) if too short / degenerate.
     /// @param sigma_phi_out (optional) weighted RMS of THIS fit's residuals, radians on the
-    /// true carrier -- the phase-jitter half of the multipath/scintillation pair.
+    /// true carrier -- the phase-jitter half of the multipath/scintillation pair. ALWAYS
+    /// written when non-null: a real value when the fit succeeds, else NaN ("not measured").
+    /// NEVER 0.0 on a failed fit -- a 0 jitter is indistinguishable from a pristine lock, so
+    /// an unmeasurable window would masquerade as a perfect one (fail-open); NaN reads honestly.
     /// @param prewiped the records are ALREADY overlay-free (the caller passes _navwipe = the
     /// de-rotated v_cur stream), so fit the RAW phase (mult 1, no squaring) exactly as for a
     /// dataless pilot -- half the phase noise AND no |2f-1| straddle null at boundary_f=0.5.
+    /// @param snr_q_out (optional) MODULATION-IMMUNE per-record SNR s^2/N -- noise taken from the
+    /// QUADRATURE component in the carrier-removed frame, so BOC amplitude modulation (which the
+    /// 4th-moment cn0_inc debias mistakes for noise) does not bias it. Divide by t_rec downstream
+    /// for C/N0. COHERENCE-REFERENCED (needs the carrier fit to hold over the window) and produced
+    /// only on the LINEAR path (pilots / prewiped); NaN for squared (data) fits and short windows.
     double carrier_resid_hz(const std::vector<std::complex<double>>& a,
                             const std::vector<double>& utc,
                             double* sigma_phi_out = nullptr,
-                            bool prewiped = false) const;
+                            bool prewiped = false,
+                            double* snr_q_out = nullptr) const;
 
     std::vector<Buffer*> in_bufs;
     Buffer* out_buf;
@@ -231,6 +255,29 @@ private:
     bool _bit_export = false;
     std::vector<NavObs> _st_nav_obs; ///< last emit's observations per PRN (under _st_mtx)
 
+    /// ---- REAL-TIME COST INSTRUMENTATION (2026-07-29) ----
+    /// Added because four S4-phase-2 configurations were tuned against valve DROP RATE, which
+    /// cannot support that comparison: past the real-time cliff a stage's drop rate reflects
+    /// the pipeline's collapse dynamics, not its own cost, so every over-budget config reports
+    /// a number that says "already broken" rather than "this expensive". Worse, the rates were
+    /// not even ordered by cost -- shrinking the window 4x made them WORSE.
+    ///
+    /// THE NUMBER THESE EXIST TO PRODUCE is a DUTY CYCLE: CPU-seconds spent per second of DATA
+    /// consumed, = (d ingest_us + d emit_us) / (d records x record_period). Below 1 the stage
+    /// keeps up with real time; at 1 it is saturated and drops are inevitable no matter how deep
+    /// the buffer. That distinction is exactly what a bigger valve_slack cannot change: buffering
+    /// absorbs a TRANSIENT overrun (duty < 1 with spikes) and merely postpones a STEADY one
+    /// (duty >= 1). Read the duty BEFORE reaching for more buffer.
+    ///
+    /// Times are microseconds (Counter is integral). Per-emit gauges give the spike shape that
+    /// a cumulative counter averages away.
+    kotekan::prometheus::Counter* _m_ingest_us = nullptr; ///< cumulative record-ingest time
+    kotekan::prometheus::Counter* _m_emit_us = nullptr;   ///< cumulative emit/deep-block time
+    kotekan::prometheus::Counter* _m_records = nullptr;   ///< records consumed (the data clock)
+    kotekan::prometheus::Counter* _m_emits = nullptr;     ///< emits completed
+    kotekan::prometheus::Gauge* _m_last_emit_us = nullptr;  ///< last emit's deep-block time
+    kotekan::prometheus::Gauge* _m_last_emit_prns = nullptr; ///< PRNs carrying data that emit
+
     /// P7b PILOT OVERLAY PREDICTION. A pilot's secondary overlay (E1C CS25 / B1C / L1C-O /
     /// L5 NH) is DETERMINISTIC -- no decode needed, unlike LNAV. Once the dead-reckon anchor
     /// is pinned (_dr_phase/_dr_utc/_dr_rec_dt: the same anchor the ADR wipe projects from),
@@ -290,6 +337,7 @@ private:
     std::vector<float> _st_s4;       ///< amplitude scintillation index, thermal floor removed
     std::vector<float> _st_s4_raw;   ///< ... before the debias (diagnostic)
     std::vector<float> _st_sigma_phi;///< carrier-phase jitter about the slope fit (rad)
+    std::vector<float> _st_snr_q;    ///< modulation-immune per-record SNR (quadrature noise); NaN n/a
     std::vector<float> _st_car_resid; ///< full-band carrier residual, Hz (shared carrier loop)
     std::vector<float> _st_coh_s;  ///< measured coherence: time span of the chosen deep window (s)
                                    ///< -- 0 when NO ladder rung beat its rectification floor

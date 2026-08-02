@@ -127,10 +127,10 @@ quant: { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, targe
 gputrack:
     kotekan_stage: cudaProcess
     gpu_id: 0
-    num_cuda_streams: 5
+    num_cuda_streams: 7
     frame_arrival_period: 0.0
     in_buffers: { q_buf: q_buf }
-    out_buffers: { epl_buf: epl_buf, gal_epl_buf: gal_epl_buf, bds_epl_buf: bds_epl_buf, l1c_epl_buf: l1c_epl_buf }
+    out_buffers: { epl_buf: epl_buf, gal_epl_buf: gal_epl_buf, e1b_epl_buf: e1b_epl_buf, bds_epl_buf: bds_epl_buf, b1c_d_epl_buf: b1c_d_epl_buf, l1c_epl_buf: l1c_epl_buf }
     commands:
         # ONE host->device copy of the channelized 4+4b frame
         - name: cudaInputData
@@ -200,10 +200,32 @@ gputrack:
           out_buf: gal_epl_buf
           in_buf: ""
         - name: cudaGnssTrack
+          signal: GAL_E1B
+          max_anchor_age_s: 0.0
+          fll_reacq_hz: 15.0
+          cuda_stream: 3
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: e1b_epl
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
+          n_channels: 10
+          channel_offset: 0
+          n_prn: 36
+          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+          capture_utc0: 1.0
+          fll_gain: 0.0
+          carrier_shared: true
+          seed_endpoint: "/e1b_track/set_seeds"
+        - name: cudaOutputData
+          cuda_stream: 3
+          gpu_mem: e1b_epl
+          out_buf: e1b_epl_buf
+          in_buf: ""
+        - name: cudaGnssTrack
           signal: BDS_B1C_P
           max_anchor_age_s: 0.0
           fll_reacq_hz: 15.0    # tight snap-to-model fence (rec B; alias limit 25 Hz at 10 ms)
-          cuda_stream: 3
+          cuda_stream: 4
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: bds_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
@@ -223,15 +245,37 @@ gputrack:
           peel_sign_dump_prn: -1
           peel_sign_dump_path: /tmp/gnss_run/peel_sign_l1_bds.csv
         - name: cudaOutputData
-          cuda_stream: 3
+          cuda_stream: 4
           gpu_mem: bds_epl
           out_buf: bds_epl_buf
+          in_buf: ""
+        - name: cudaGnssTrack
+          signal: BDS_B1C_D
+          max_anchor_age_s: 0.0
+          fll_reacq_hz: 15.0
+          cuda_stream: 5
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: b1c_d_epl
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
+          n_channels: 10
+          channel_offset: 0
+          n_prn: 63
+          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+          capture_utc0: 1.0
+          fll_gain: 0.0
+          carrier_shared: true
+          seed_endpoint: "/b1c_d_track/set_seeds"
+        - name: cudaOutputData
+          cuda_stream: 5
+          gpu_mem: b1c_d_epl
+          out_buf: b1c_d_epl_buf
           in_buf: ""
         - name: cudaGnssTrack
           signal: GPS_L1C_P
           max_anchor_age_s: 0.0
           fll_reacq_hz: 15.0    # tight snap-to-model fence (rec B; free under dop-continuous; alias limit 25 Hz at 10 ms)
-          cuda_stream: 4
+          cuda_stream: 6
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: l1c_epl
           quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
@@ -249,7 +293,7 @@ gputrack:
           peel_warmup_records: 100
           peel_fll_gain: 0.05
         - name: cudaOutputData
-          cuda_stream: 4
+          cuda_stream: 6
           gpu_mem: l1c_epl
           out_buf: l1c_epl_buf
           in_buf: ""
@@ -301,6 +345,36 @@ gal_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: gal_epl_buf, out_b
 gal_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [gal_rec_buf], out_buf: gal_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 250, secondary_overlay: E1_CS25, peel_depth: true, bit_export: true }
 gal_record: { kotekan_stage: rawFileWrite, in_buf: gal_out_buf, base_dir: "/tmp/gpswipe", file_name: "gal_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
+# ---- Galileo E1-B DATA component (S5 D-component #1: I/NAV) ----
+# DERIVED from E1C exactly as L5-I is from L5-Q and CL is from CM: no search stage.
+# E1B (data) and E1C (pilot) are chip-synchronous BOC(1,1) on E1, SAME 4 ms primary
+# period and epoch -- only the code differs -- so an E1B row is the E1C row VERBATIM:
+# no code-phase lift, no segment index, no broker flag. run_live adds e1b_track to
+# the GAL broker's --trackers so it gets the same consensus seeds as gal_track (E1C).
+# The combiner exports the per-4ms-symbol signs (navwipe_bit_records 1 + bit_export,
+# the L2C-CM data-channel pattern -- NOT secondary_overlay, E1B has no secondary
+# code), and run_live hands e1b_combiner to the broker as --inav-combiner so its
+# nav_obs reach the InavPredictor (galileo_inav codec) and the decoded I/NAV
+# ephemeris is cross-checked against BRDC.
+# GPU budget: measured L1 gal combiner duty ~0.25% (2026-07-30), so a second Galileo
+# despread + a simple 1 s combiner on the L1 band has ample headroom -- unlike the
+# L5-I case that broke real time only because it rode three PEELING L5 chains. rec_buf
+# sized in TIME anyway, per the L5-I lesson.
+e1b_n_prn: 36
+e1b_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: e1b_n_prn * record_floats * sizeof_float }
+e1b_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: e1b_n_prn * record_floats * sizeof_float }
+e1b_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * e1b_n_prn + 15360 * e1b_n_prn }
+e1b_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: e1b_epl_buf, out_buf: e1b_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36] }
+# integration_length 250 x 4 ms = 1 s = ONE I/NAV page part per emit -- the cadence
+# inav_predictor is built for (a page part is 1 s = 250 symbols). navwipe_bit_records
+# 1: a 4 ms E1B record is exactly ONE I/NAV symbol, so one sign is exported per
+# record (the L2C-CM data pattern, where a 20 ms record is one CNAV symbol -> also
+# navwipe_bit_records 1). bit_export publishes those per-symbol signs as nav_obs.
+# NO secondary_overlay: E1B is a pure data channel (CS25 is the E1C PILOT's secondary
+# code, not E1B's). NO peel, so NO epl_frame override (shared 15360 default).
+e1b_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [e1b_rec_buf], out_buf: e1b_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 250, navwipe_bit_records: 1, bit_export: true }
+e1b_record: { kotekan_stage: rawFileWrite, in_buf: e1b_out_buf, base_dir: "/tmp/gpswipe", file_name: "e1b_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+
 # ---- BeiDou-3 B1C parallel chain (third constellation, same 1575.42 tune). B1C
 # records are 10 ms (10000 hops) -> search doppler_step 50 (10 ms coherent bins),
 # combiner integration_length 100 = 1 s, deterministic per-PRN 1800-chip overlay
@@ -330,6 +404,32 @@ bds_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: bds_epl_buf, out_b
 # silently dropped (e1eba7a2); it is generated now and cannot be dropped again.
 bds_combiner: { kotekan_stage: GnssCoherentCombiner, nh_assist: true, nh_min_refs: 3, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 100, secondary_overlay: B1C, peel_depth: true, bit_export: true }
 bds_record: { kotekan_stage: rawFileWrite, in_buf: bds_out_buf, base_dir: "/tmp/gpswipe", file_name: "bds_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+
+# ---- BeiDou-3 B1C-DATA component (S5 D-component #4, LAST: B-CNAV1) ----
+# DERIVED from B1C-P exactly as E1B is from E1C: no search stage. B1C-D (data) and
+# B1C-P (pilot) share the SAME 10230-chip BOC(1,1) primary period and epoch (codes
+# differ only in the Weil tables) -- so a B1C-D row is the B1C-P row VERBATIM: no lift,
+# no broker flag. run_live adds b1c_d_track to the L1 BDS broker's --trackers so it gets
+# the same consensus seeds as bds_track (B1C-P). Like E1B (NOT the E5a-I/B2a-D case) it
+# is a PURE DATA channel with NO secondary: navwipe_bit_records 1 (one 10 ms code period
+# = one B-CNAV1 symbol) + bit_export, no secondary_overlay. run_live hands b1c_d_combiner
+# to the broker as --bcnav1-combiner so its nav_obs reach the Bcnav1Predictor (reusing
+# the GF(64) NB-LDPC codec) and the decoded B-CNAV1 ephemeris is cross-checked vs BRDC --
+# the LAST civil D-component, completing GPS + Galileo + BeiDou nav decoding.
+# ⚠️ B-CNAV1's frame is 18 s (>> the others): it needs a phase-CONTINUOUS tracking run
+# to decode (cannot re-sync per emit). GPU: 6th L1 chain -- MEASURE l1_valve.
+# rec_buf in TIME (the L5-I lesson).
+b1c_d_n_prn: 63
+b1c_d_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: b1c_d_n_prn * record_floats * sizeof_float }
+b1c_d_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: b1c_d_n_prn * record_floats * sizeof_float }
+b1c_d_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * b1c_d_n_prn + 15360 * b1c_d_n_prn }
+b1c_d_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: b1c_d_epl_buf, out_buf: b1c_d_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] }
+# integration_length 100 x 10 ms = 1 s emit; navwipe_bit_records 1: a 10 ms B1C record
+# is exactly ONE B-CNAV1 symbol, so one sign is exported per record (the E1B pattern).
+# NO secondary_overlay (B1C-D is a pure data channel; the 1800-chip overlay is the
+# B1C-P PILOT's). NO peel.
+b1c_d_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [b1c_d_rec_buf], out_buf: b1c_d_out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 100, navwipe_bit_records: 1, bit_export: true }
+b1c_d_record: { kotekan_stage: rawFileWrite, in_buf: b1c_d_out_buf, base_dir: "/tmp/gpswipe", file_name: "b1c_d_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- GPS L1C-P parallel chain (4th L1 constellation, same 1575.42 tune) ----
 # Modernized civil pilot (Block III), BOC(1,1)+TMBOC modeled as BOC(1,1) like E1C/B1C

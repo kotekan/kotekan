@@ -54,6 +54,33 @@ std::array<int8_t, E5A_CODE_LENGTH> generate_e5aq_code(int prn) {
     return a;
 }
 
+// Per-PRN base-register-2 START VALUES for E5a-I (the DATA channel), same source and
+// convention as E5AQ_X2_START (ICD Annex C via PocketSDR sdr_code.py, bit-reversed into this
+// LFSR convention). Derived by rev_reg(E5AI_X2_init, 14) -- VALIDATED by reproducing all 50
+// E5a-Q values from PocketSDR's E5AQ_X2_init through the identical transform (2026-07-30).
+namespace {
+constexpr uint32_t E5AI_X2_START[50] = {
+    0x28C3, 0x0E46, 0x345D, 0x3FA1, 0x14D9, 0x333B, 0x0C76, 0x3EAA,
+    0x3AB0, 0x1E43, 0x09DD, 0x175C, 0x3FCF, 0x191E, 0x0E2C, 0x2836,
+    0x1545, 0x2672, 0x1FE5, 0x0660, 0x03B2, 0x175E, 0x293D, 0x10F3,
+    0x141A, 0x2026, 0x3AE7, 0x3A69, 0x3263, 0x1D5D, 0x02B0, 0x2446,
+    0x2B33, 0x0B89, 0x1CBB, 0x3EE8, 0x1CD1, 0x2A37, 0x3677, 0x2D65,
+    0x0D06, 0x3A1D, 0x086C, 0x2D33, 0x2B27, 0x3755, 0x33E1, 0x22F3,
+    0x14DE, 0x3F5A,
+};
+} // namespace
+
+std::array<int8_t, E5A_CODE_LENGTH> generate_e5ai_code(int prn) {
+    if (prn < 1 || prn > 50)
+        throw std::out_of_range("Galileo E5a PRN must be 1..50");
+    std::array<int8_t, E5A_CODE_LENGTH> a{}, x2{};
+    lfsr14(x2.data(), E5A_CODE_LENGTH, E5AI_X2_START[prn - 1], 0x6C5u);
+    const auto& x1 = x1_code(); // shared base register 1 (all-ones), identical to E5a-Q
+    for (int i = 0; i < E5A_CODE_LENGTH; ++i)
+        a[i] = (int8_t)(x1[i] * x2[i]);
+    return a;
+}
+
 // E5a-Q CS100 secondary (ICD Annex C, hex MSB-first, 100 chips / PRN), PRN 1..50.
 namespace {
 const char* const CS100_HEX[50] = {
@@ -116,6 +143,19 @@ std::array<int8_t, 100> e5aq_secondary(int prn) {
     std::array<int8_t, 100> s{};
     const char* hex = CS100_HEX[prn - 1];
     for (int i = 0; i < 100; ++i) {
+        const char c = hex[i / 4];
+        const int v = (c <= '9') ? c - '0' : (c | 0x20) - 'a' + 10;
+        s[i] = ((v >> (3 - i % 4)) & 1) ? -1 : 1;
+    }
+    return s;
+}
+
+// E5a-I CS20 secondary (ICD Annex C, hex MSB-first, 20 chips, SAME for every satellite --
+// verified identical source/convention to CS100 above, which matches live E5a-Q). '842E9'.
+std::array<int8_t, 20> e5ai_secondary() {
+    static const char* const hex = "842E9";
+    std::array<int8_t, 20> s{};
+    for (int i = 0; i < 20; ++i) {
         const char c = hex[i / 4];
         const int v = (c <= '9') ? c - '0' : (c | 0x20) - 'a' + 10;
         s[i] = ((v >> (3 - i % 4)) & 1) ? -1 : 1;

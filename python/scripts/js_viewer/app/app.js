@@ -104,7 +104,7 @@ export class App {
             // Unified viewer: the full signal inventory + RF-band selector list. Sets the feed
             // to poll every band's combiner and the table to render one column per signal.
             if (cfg && cfg.unified && cfg.signals) {
-                configure_signals(cfg.signals, cfg.rf_bands);
+                configure_signals(cfg.signals, cfg.rf_bands, cfg.capability);
                 this.gps_unified = true;
                 this.rf_bands = cfg.rf_bands || null;
             }

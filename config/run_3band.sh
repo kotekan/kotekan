@@ -214,6 +214,6 @@ if [ -n "$_bad" ]; then
     echo "=== 3-band node came up DEGRADED -- not running:$_bad ==="
     echo "    logs: $LOG, /tmp/gps_{l1,l2c,l5}_ctl.log"
 else
-    echo "=== 3-band node running: kotekan :$PORT, viewers :8080/:8081/:8082 -- Ctrl-C stops all ==="
+    echo "=== 3-band node running: kotekan :$PORT, unified viewer :8080 -- Ctrl-C stops all ==="
 fi
 wait
