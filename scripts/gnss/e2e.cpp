@@ -126,6 +126,7 @@ struct Opt {
     const char* dump_refine = nullptr; ///< dump the refine objective over a full hop
     int ms_split = 0;   ///< >0 = run the ms-split acquire with this many ~1 ms sub-windows
     int sub_hops = 196; ///< N: ceil(code period in hops) at CHORD
+    const char* dump_ms = nullptr; ///< dump the ms-split surface along the lag axis
     /// Additive complex Gaussian noise, std as a MULTIPLE of the synthetic signal's rms.
     /// This is the regime knob that --quantize is not: quantizing a noiseless full-scale
     /// signal changes nothing (measured, byte-identical), because on sky the satellite sits
@@ -248,6 +249,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--dump-refine")) o.dump_refine = argv[++i];
         else if (arg_eq(a, "--ms-split")) o.ms_split = next_i();
         else if (arg_eq(a, "--sub-hops")) o.sub_hops = next_i();
+        else if (arg_eq(a, "--dump-mssplit")) o.dump_ms = argv[++i];
         else if (arg_eq(a, "--noise")) o.noise = next_d();
         else if (arg_eq(a, "--trials")) o.trials = next_i();
         else if (arg_eq(a, "--nseed")) o.nseed = (unsigned)next_i();
@@ -387,6 +389,31 @@ int main(int argc, char** argv) {
             gnss::AcquisitionSurface dm = gnss::ms_split_accumulate(
                 sbank, 0, data, s_chans, W0, o.sub_hops, o.ms_split, grid, o.sample_rate, surf,
                 ws, o.fine_step, o.threads);
+            // DUMP THE SURFACE SHAPE BEFORE trusting any peak location. The lag offset
+            // would not sit still across injections and the SNR swung 2.5x on identical
+            // noiseless data -- both say the peak may be split or wrapped, and fitting a
+            // mapping to a peak you have not looked at is how the last three wrong stories
+            // started. Profile = max over the fine axis at each coarse lag.
+            if (o.dump_ms) {
+                const int F = dm.fine();
+                FILE* fp = fopen(o.dump_ms, "w");
+                fprintf(fp, "# Mp=%d fine=%d sph=%d s_step=%d ndop=%d\n", dm.Mp, F, dm.sph,
+                        dm.s_step, dm.n_dop);
+                fprintf(fp, "# q tau_samples tau_chips max_over_fine best_i\n");
+                for (int q = 0; q < dm.Mp; ++q) {
+                    double best = -1.0;
+                    int bi = 0;
+                    for (int i = 0; i < F; ++i) {
+                        const double v = surf[(size_t)(0 * dm.Mp + q) * (size_t)F + (size_t)i];
+                        if (v > best) { best = v; bi = i; }
+                    }
+                    const long tau = dm.tau(q, bi);
+                    fprintf(fp, "%d %ld %.4f %.6e %d\n", q, tau,
+                            (double)tau * sbank.chip_rate_hz() / o.sample_rate, best, bi);
+                }
+                fclose(fp);
+                printf("    dumped ms-split lag profile -> %s\n", o.dump_ms);
+            }
             const auto ai = gnss::channelized_peak(surf, dm, grid, o.sample_rate,
                                                    sbank.chip_rate_hz(), sbank.code_length());
             a = ai; best_nh = 0; adims = dm;
