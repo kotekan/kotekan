@@ -321,8 +321,13 @@ int main(int argc, char** argv) {
     double snr = 0.0;
 
     if (!o.skip_search) {
+        // ceil(K*N / Mp). NOT -(-a/b): C++ integer division truncates TOWARD ZERO, so
+        // -(-784/3125) is 0, not 1 -- which synthesized ZERO hops (instant crash), and for
+        // K=16 gave 1 window = 3125 hops where 16*196 = 3136 are needed, i.e. a read past the
+        // end of the buffer. Every ms-split number measured before this fix came off that
+        // out-of-bounds memory, which is why the lag offsets would not sit still.
         const int nwin = o.ms_split > 0
-                             ? -(-(o.ms_split * o.sub_hops) / Mp) // enough hops for K sub-windows
+                             ? (o.ms_split * o.sub_hops + Mp - 1) / Mp
                              : std::max(std::max(1, o.acquire_windows),
                                         std::max(1, o.refine_windows));
         printf("[1] SEARCH -- synthesizing %d x %d hops (%.1f ms) on %d channels...\n", nwin, Mp,
