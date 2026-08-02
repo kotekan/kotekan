@@ -707,6 +707,15 @@ int main(int argc, char** argv) {
 
         if (sig_value == SIGINT || sig_value == SIGTERM) {
             INFO_NON_OO("Got SIGINT or SIGTERM, shutting down kotekan...");
+            // Quiesce the REST server before destructing the stages: this
+            // teardown runs on the main thread while the server thread may
+            // still be handling a request that captured a stage's `this`
+            // (e.g. a monitor polling a stage's get_status endpoint), which
+            // would use-after-free once the stage is deleted below. Must
+            // happen before kotekan_state_lock is taken: the /start, /stop
+            // and /status handlers block on that lock, so draining while
+            // holding it would deadlock against any such handler in flight.
+            rest_server.stop_processing();
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
             if (kotekan_mode != nullptr) {
                 INFO_NON_OO("Attempting to stop and join kotekan_stages...");
