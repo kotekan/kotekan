@@ -1751,3 +1751,40 @@ detection `code_phase_long_chips`, +0.00 chips on all six PRNs, same ref_hop), s
 defect is not in the hand-off; and `detection_phase`'s `lag_periods` term IS correct for
 nonzero lag -- the default bench cp204 happens to give "0 periods", but sweeping cp204 to force
 lag values 15, 14, 1 gives the right period every time.
+
+### 8.7.6 The lock blocker is SEARCH LATENCY -- measured 2026-08-02 23:0x
+
+Measured directly (pass-count deltas, not inferred): **1 pass in 90 s**; 248 passes over the
+aggregator's 6h08m uptime = **89 s per pass**. `prns_per_pass: 1` with 13 hinted PRNs gives a
+**~19 minute revisit per PRN**.
+
+That interacts fatally with two settings:
+
+* `--fit-gap-s 900` (15 min) < the 19 min revisit, so `cp_hist` is RESET on every detection
+  (`if h and (ref_hop - h[-1][0]) > MAX_GAP_HOPS: h = []`). The history never reaches two
+  points, `fit_cp_rate` never returns, and `code_phase_rate` is **0.0000 for every PRN** --
+  observed directly after the broker relaunch. The same failure as the old `--fit-gap-s 16`,
+  just at a bigger number.
+* `--dll-gain 0.0 --carrier-gain 0.0 --dead-reckon`: the loops are open, so nothing corrects
+  what the missing rate leaves behind.
+
+The broker's own five-satellite fit says the local clock runs +0.337 ppm = **3.5 chips/s**. With
+no `code_phase_rate` to cancel it and a 19-minute gap, that is ~4000 chips of drift between
+updates, against a correlation lobe ~1 chip wide. The tracker cannot hold, which is exactly
+`amp_snr` 3-8 and `coherence_s = 0` on every stream.
+
+**So the search-cost work is not an optimisation -- it IS the lock blocker.** The ms-split
+(8.4 / the ms-split doc) is 258x cheaper and would take the revisit from ~19 min to seconds.
+
+NOT explained by this, and still open: PRN 28's probe had a seed age of **2.2 s** and was still
++151 chips / 6 periods off. Drift at 3.5 chips/s over 2.2 s is 7.7 chips, so staleness does not
+account for it. Either the probe is wrong (it is a Python re-implementation -- VALIDATE IT
+AGAINST THE SHIPPED `propagate_seed` VIA `e2e --seed-file` BEFORE BUILDING ON IT), or there is a
+second, phase-quantised defect. Do not conflate the two: the latency finding above is solid and
+actionable on its own.
+
+Corrections to earlier sections, both from measuring the wrong quantity:
+* 8.7 called the seeds "stale by an hour". The seed's `ref_hop` is the FIT ANCHOR for fitted
+  PRNs (:2373), not the detection epoch, so that number never meant what I read it as.
+* The "frozen PRN" split (1/4/17/25/28/32 vs 2/6/9/16/26) was the fitted/unfitted split, and the
+  "smooth Doppler tracks" of the second group are BRDC dead-reckoning output, not measurements.
