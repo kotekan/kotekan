@@ -6,6 +6,7 @@
 #include "gpsL5Code.hpp"               // for L5_NH20 (overlay reference)
 #include "pfbPrototype.hpp"            // for Window
 
+#include <algorithm>
 #include <boost/test/included/unit_test.hpp>
 #include <complex>
 #include <vector>
@@ -247,4 +248,53 @@ BOOST_AUTO_TEST_CASE(hoprate_stream_amortizes_and_matches) {
     // Large jump (> refresh): rebuild.
     stream.generate(ws, cp, dop + 500.0, n_hops);
     BOOST_CHECK_EQUAL(stream.rebuilds(), 2);
+}
+
+// Same identity at CHORD scale, which is a genuinely different regime from the airspy case
+// above and is the one the banded search now depends on: Fs = 3200 MSPS (real), N = 8192,
+// fft_len = 16384 so the prefix-sum filter is 65536 taps long, ~313 samples/chip, and the
+// carrier sits at bin ~6023 instead of ~5. Two things could plausibly break here and not
+// there -- the unit-modulus phasor recurrence over a 16384-sample hop, and the chip-to-tap
+// integer range mapping when a chip spans hundreds of samples -- so gate it directly.
+// GnssChannelizedSearch builds repl0 for ONLY the covering channels via this path; if it
+// ever stops matching channels(), the search silently correlates against the wrong replica.
+BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb_chord_scale) {
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
+    BOOST_REQUIRE(sig != nullptr);
+    // CHORD CRS F-engine: 4-tap Hamming, 16384 real samples/hop -> 8192 channels.
+    gnss::ChannelizedReplicaBank bank(*sig, 3200.0e6, 1176.45e6, 8192, 4, dsp::Window::Hamming,
+                                      {1});
+    const long long ws = 3125LL * bank.fft_len(); // the search's anchor
+    // Channels covering the L5 carrier: bin 6023.4 = 1176.45 MHz / (3200 MHz / 16384).
+    const std::vector<int> want = {5990, 6023, 6024, 6060};
+    // MUST BE A LONG RUN. The failure this guards against is a floating-point tie at an exact
+    // chip/tap boundary, which at zero Doppler recurs on a fixed period (~every 391 hops, = 2
+    // code periods) and FIRST STRIKES AT HOP 255. A dozen hops -- the natural thing to write,
+    // since channels() costs O(n_hops * 16384) here -- passes at 6e-8 while a full period is
+    // wrong by 1.8e-3 rms and 1.99 absolute. Do not shorten this.
+    for (double dop : {0.0, 2500.0, -2500.0}) {
+        const int n_hops = (dop == 0.0) ? bank.repl_period_hops() : 400;
+        auto exact = bank.channels(0, ws, 137.0, dop, n_hops);
+        auto hop = bank.channels_hoprate(0, ws, 137.0, dop, n_hops, want);
+        for (size_t ci = 0; ci < want.size(); ++ci) {
+            // 1e-6, not the 1e-5 used at airspy scale: the two paths agree to ~8e-8 here (both
+            // sit ~3.5e-8 from a double-precision reference), so a decade of headroom is ample
+            // and anything looser readmits the one-tap error at -53 dB.
+            BOOST_CHECK_MESSAGE(rel_err(hop[ci], exact[want[ci]]) < 1e-6,
+                                "dop " << dop << " ch " << want[ci] << " over " << n_hops
+                                       << " hops: CHORD hop-rate err "
+                                       << rel_err(hop[ci], exact[want[ci]]));
+            // Per-hop, so a single bad hop cannot hide under an rms over thousands of good ones
+            // (1.99 absolute out of 3125 hops is only 1.8e-3 in rms).
+            double worst = 0.0, ref = 0.0;
+            for (int m = 0; m < n_hops; ++m) {
+                worst = std::max(worst, (double)std::abs(hop[ci][m] - exact[want[ci]][m]));
+                ref += std::norm(exact[want[ci]][m]);
+            }
+            const double rms = std::sqrt(ref / n_hops);
+            BOOST_CHECK_MESSAGE(worst < 1e-4 * rms, "dop " << dop << " ch " << want[ci]
+                                                           << " worst single-hop err " << worst
+                                                           << " vs rms |R| " << rms);
+        }
+    }
 }

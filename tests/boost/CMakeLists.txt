@@ -65,7 +65,9 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/gpsL2CCode.cpp ../../lib/stages/gnss/gpsL5Code.cpp
         ../../lib/stages/gnss/gpsL1CCode.cpp # replica signal_code() dispatches GPS_L1C_P
         ../../lib/stages/gnss/galileoE1Code.cpp # + GAL_E1B/E1C memory codes
-        ../../lib/stages/gnss/beidouB1CCode.cpp) # + BDS B1C Weil codes
+        ../../lib/stages/gnss/beidouB1CCode.cpp # + BDS B1C Weil codes
+        ../../lib/stages/gnss/beidouB2aCode.cpp
+        ../../lib/stages/gnss/galileoE5aCode.cpp) # + the L5-band siblings B2a/E5a
     target_include_directories(test_gnss_channelized_acquire PRIVATE ../../lib/stages ../../lib/stages/gnss)
     target_include_directories(test_gnss_channelized_acquire SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_acquire PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
@@ -78,7 +80,8 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/gnssBandPlan.cpp ../../lib/stages/pfbPrototype.cpp
         ../../lib/stages/gnss/gpsCACode.cpp ../../lib/stages/gnss/gpsL1CCode.cpp ../../lib/stages/gnss/gpsL2CCode.cpp
         ../../lib/stages/gnss/gpsL5Code.cpp ../../lib/stages/gnss/galileoE1Code.cpp
-        ../../lib/stages/gnss/beidouB1CCode.cpp)
+        ../../lib/stages/gnss/beidouB1CCode.cpp ../../lib/stages/gnss/beidouB2aCode.cpp
+        ../../lib/stages/gnss/galileoE5aCode.cpp)
     target_include_directories(test_gnss_channelized_replica PRIVATE ../../lib/stages ../../lib/stages/gnss)
     target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
