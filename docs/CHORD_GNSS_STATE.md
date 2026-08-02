@@ -1559,3 +1559,44 @@ directory (falsified by cx27 all along), and the ms-split offset fit (a peak nob
 Each was settled in one run by looking at the actual shape -- `--dump-refine`, then
 `--dump-mssplit`. **Dump the objective before naming the mechanism.** The harness now has the
 instrument for both; use it first, not after.
+
+## 8.7 Why nothing locks -- measured 2026-08-02, NOT yet closed
+
+The viewer is right and it is not an interface fault. `GnssCoherentCombiner` reports
+`coherence_s = 0` deliberately: a wiped rung must clear `FLOOR_MARGIN` x its noise floor to
+count, "when none does, coherence_s = 0 (the honest 'no coherent detection')" -- a guard added
+2026-07-12 after a convincing false lock. Every PRN on every stream reports 0.
+
+What IS healthy, checked rather than assumed:
+
+* **The search.** Passes every few seconds; PRN 10 at snr 2827, 24 at 1072, 23 at 722 against
+  threshold 30 and ceiling 18.4.
+* **The detections are physically real.** The broker fits a code-rate clock offset of +0.337 ppm
+  from **five satellites independently**, each within ~0.1 ppm. Noise cannot agree like that.
+* **The record data.** `gnss1_srch_tap` (feeds the aggregator that detects at 2827) and
+  `gnss1_tap` (feeds the tracker that sees nothing) read the SAME `host_voltage_buffer_1`. The
+  data is identical; the fault is in the despread parameters, not the samples.
+* **Rate seeding.** Most PRNs carry the common (l-a) rate, matching the broker's fitted ppm.
+
+What is broken:
+
+1. **Half the seeds dead-reckon from reference epochs ~1 hour old.** Measured ref_hop ages in one
+   seed set: PRN 1/3/28/31 = 0 s, but 2 = 3414 s, 24 = 3505 s, 10 = 3799 s, 8 = 3890 s,
+   32 = 3981 s, 27 = 4633 s. With the loops open (`--dll-gain 0.0 --carrier-gain 0.0`,
+   `--dead-reckon`) a rate error of only **0.1 ppm** -- well inside the +-0.3 ppm scatter of the
+   per-satellite fits -- accumulates 3500-4700 chips over that. The code period is 10230. Those
+   PRNs cannot track, and the per-sat fits that deviate most (PRN 10 at +0.065 ppm vs the common
+   +0.34) are the worst off.
+2. **Something else, still unidentified.** A seed only **13.5 s** old (PRN 28) despreads to
+   ratio 2.79 -- noise. So staleness is necessary but not sufficient. Calibration for that
+   number: the same tool on the same kind of frame returned 19.5 / 17.3 / 12.3 on 2026-07-31.
+   Whatever changed since, this is the open end.
+3. **Only cx19 and cx27 are in the broker's `--trackers`.** The 8-node bring-up updated the
+   aggregator's feeds and never the tracker list; six nodes are not tracking at all.
+4. **cx19 gnss0 stopped** ~40 min before this was written (last record 18:42) while gnss1 kept
+   running. Its combiner status is frozen at that time. Unexplained.
+
+Next: (2) is the one that matters. Every earlier successful probe was on **gnss0**; all of
+today's were on gnss1, because gnss0 had stopped. Establish whether a fresh seed despreads on
+gnss0 before assuming the two branches behave alike -- they are structurally identical in the
+generated config, but they carry different channel combs.
