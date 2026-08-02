@@ -1122,6 +1122,31 @@ class GpsSkyResource(resource.Resource):
         return json.dumps(out).encode("utf-8")
 
 
+class DecodeHealthResource(resource.Resource):
+    """``GET /decode_health`` -> merged on-node nav-decode health, read from the brokers'
+    atomically-replaced JSON files (:mod:`decode_health`). Cheap (a handful of small files),
+    so it reads on each request; stale files are dropped by the reader, so a decoder going
+    dark shows up as the signal disappearing rather than freezing on its last value."""
+
+    isLeaf = True
+
+    def __init__(self, dirpath, max_age_s=120.0):
+        resource.Resource.__init__(self)
+        self.dirpath = dirpath
+        self.max_age_s = max_age_s
+
+    def render_GET(self, request):
+        request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
+        request.setHeader(b"Access-Control-Allow-Origin", b"*")
+        try:
+            import time as _t
+            import decode_health as _dh
+            out = _dh.read_all(self.dirpath, max_age_s=self.max_age_s, t_now=_t.time())
+        except Exception as e:
+            out = {"signals": {}, "chains": [], "error": str(e)}
+        return json.dumps(out).encode("utf-8")
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Bridge kotekan networkPowerStream to a browser viewer."
@@ -1232,6 +1257,11 @@ def main():
     gg.add_argument("--gps-combiner-stage", default="gps_combiner",
                     help="kotekan GnssCoherentCombiner stage name (get_status); "
                     "default 'gps_combiner' (alias-resolved to 'combiner' as above).")
+    gg.add_argument("--decode-health-dir",
+                    default=os.path.join(os.path.expanduser("~"), ".cache",
+                                         "kotekan_gps", "decode_health"),
+                    help="dir the brokers write nav-decode health JSON to (matches run_live's "
+                         "DECODE_DIR); served merged at /decode_health for the viewer panel")
     gg.add_argument("--gps-constellations", default="G,E,C",
                     help="constellations to show on the sky plot (G=GPS, E=Galileo, C=BeiDou). "
                          "L1 tri-band = G,E,C; L2C = G; L5 = G,E,C (E5a/B2a).")
@@ -1342,8 +1372,9 @@ def main():
         root.putChild(b"gps_sky",
                       GpsSkyResource(args.lat, args.lon, args.alt, args.gps_mask_deg,
                                      args.gps_constellations))
-        log_.info("GPS panel enabled (site lat=%s lon=%s alt=%s)",
-                  args.lat, args.lon, args.alt)
+        root.putChild(b"decode_health", DecodeHealthResource(args.decode_health_dir))
+        log_.info("GPS panel enabled (site lat=%s lon=%s alt=%s); decode-health dir %s",
+                  args.lat, args.lon, args.alt, args.decode_health_dir)
 
     reactor.listenTCP(args.http_port, server.Site(root))
 

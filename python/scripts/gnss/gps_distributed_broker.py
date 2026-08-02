@@ -278,6 +278,17 @@ def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     return out
 
 
+def _dh_dpos(xc):
+    """Pull the numeric BRDC-agreement residual (metres) out of an xcheck suffix string, or
+    None. The xcheck functions return a human suffix (' | BRDC dpos=0.05 m ...'); the
+    decode-health export wants the number. Parsing the string we already control keeps the five
+    shared, tested xcheck functions untouched (they ride the live seed loop)."""
+    if not xc:
+        return None
+    m = re.search(r"dpos=([-+]?\d+(?:\.\d+)?)", xc)
+    return float(m.group(1)) if m else None
+
+
 def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
     """S4 ephemeris cross-check: ECEF position residual between the live-decoded CNAV ephemeris
     and the downloaded BRDC (LNAV) ephemeris, both propagated to the SAME absolute instant (the
@@ -573,6 +584,13 @@ def main(argv=None):
                          "for cannot yet be written. Exports each chain's PRE-fusion value "
                          "and its scatter, because the persisted .hz files already read each "
                          "other and their agreement is therefore partly manufactured.")
+    ap.add_argument("--decode-health-file", default=None,
+                    help="publish this broker's NAV-DECODE health as JSON (atomically "
+                         "replaced) for the viewer + the eventual decoded-eph BRDC fallback: "
+                         "per (signal, PRN) whether SYNCED, whether a full ephemeris was "
+                         "EXTRACTED, the BRDC-agreement residual dpos_m, and decode freshness. "
+                         "WRITE-ONLY, sibling of --state-file; the viewer reads the directory "
+                         "and merges. Off when unset.")
     ap.add_argument("--state-dongle", default=None,
                     help="fusion scope key for --state-file: what physically shares an LO "
                          "(one airspy per band, so this is the band tag, identical for every "
@@ -1595,6 +1613,40 @@ def main(argv=None):
         except Exception as e:
             _log("receiver-state export DISABLED: %s" % e)
             state_w = None
+    # NAV-DECODE health export (viewer surface + the decoded-eph fallback's status hook).
+    dhw = None
+    if args.decode_health_file:
+        try:
+            import decode_health
+            dhw = decode_health.DecodeHealthWriter(
+                args.decode_health_file,
+                chain=os.path.basename(args.decode_health_file).rsplit(".", 1)[0],
+                sys=alm_sys, log=_log)
+            _log("decode-health export -> %s (sys %s)" % (args.decode_health_file, alm_sys))
+        except Exception as e:
+            _log("decode-health export DISABLED: %s" % e)
+            dhw = None
+    # cnav runs in a GPS band broker; label by carrier so L2C and L5 stay distinct in the file.
+    _cnav_sig = ("GPS_L2C_CNAV" if abs((args.carrier_hz or 0) - 1227.6e6) < 5e6
+                 else "GPS_L5_CNAV")
+
+    def _dh_obs(sig, prn, h, eph_obj, xc):
+        """One decode-health observation, uniform across decoders. `eph_obj` is the extracted
+        ephemeris object (None if not extracted / LNAV); `xc` the BRDC-xcheck suffix (dpos parsed
+        out). count is whatever monotonic decode counter the health dict carries. Never raises."""
+        if dhw is None:
+            return
+        try:
+            cnt = (h.get("words") or h.get("decoded") or h.get("decoded_sf")
+                   or h.get("pages") or 0)
+            syn = h.get("synced")
+            if syn is None:
+                syn = (h.get("words") or 0) > 0 or eph_obj is not None
+            dhw.observe(sig, prn, time.time(), count=cnt, synced=bool(syn),
+                        eph=(eph_obj is not None), dpos_m=_dh_dpos(xc))
+        except Exception:
+            pass
+
     CODE_LEN = float(args.code_length)
     # Search-Doppler record-alias quantum, 1/(2*t_rec): see the DETECTION ALIAS FOLD
     # in the seeding loop. 500 Hz on the 1 ms bands (never confused), 125 E1C, 50 B1C,
@@ -2584,6 +2636,7 @@ def main(argv=None):
                         _log("inav PRN %d: %d pages, %d words, have %s, eph %s%s"
                              % (_p, h["pages"], h["words"], h["have"],
                                 "YES" if eph is not None else "no", xc))
+                        _dh_obs("GAL_E1B_INAV", _p, h, eph, xc)
             # S5 D-component #2: Galileo E5a-I F/NAV, the exact I/NAV-aux analogue on L5.
             if fnav_combiner:
                 try:
@@ -2614,6 +2667,7 @@ def main(argv=None):
                         _log("fnav PRN %d: %d pages, %d words, have %s, eph %s%s"
                              % (_p, h["pages"], h["words"], h["have"],
                                 "YES" if eph is not None else "no", xc))
+                        _dh_obs("GAL_E5AI_FNAV", _p, h, eph, xc)
             # S5 D-component #3: BeiDou B2a B-CNAV2 (first LDPC), the F/NAV-aux analogue on BDS.
             if bcnav2_combiner:
                 try:
@@ -2644,6 +2698,7 @@ def main(argv=None):
                         _log("bcnav2 PRN %d: %d frames, %d crc, have %s, eph %s%s"
                              % (_p, h["pages"], h["words"], h["have"],
                                 "YES" if eph is not None else "no", xc))
+                        _dh_obs("BDS_B2A_BCNAV2", _p, h, eph, xc)
             # S5 D-component #4 (LAST): BeiDou B1C B-CNAV1, the B-CNAV2-aux analogue on L1 BDS.
             if bcnav1_combiner:
                 try:
@@ -2673,6 +2728,7 @@ def main(argv=None):
                         _log("bcnav1 PRN %d: %d frames, %d crc, have %s, eph %s%s"
                              % (_p, h["pages"], h["words"], h["have"],
                                 "YES" if eph is not None else "no", xc))
+                        _dh_obs("BDS_B1C_BCNAV1", _p, h, eph, xc)
             # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
             # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
             # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own
@@ -2705,6 +2761,7 @@ def main(argv=None):
                                 " -> CONSTRUCTED from BRDC"
                                 if (navbrdc is not None and navbrdc.ready())
                                 else " -> not peeled"))
+                    _dh_obs("GPS_L1_LNAV", _p, h, None, "")  # LNAV extracts no orbit elements
                 if navbrdc is not None:
                     # The calibration IS the trust boundary: a bad offset makes every
                     # constructed bit confidently wrong, so state it every cycle. `verify`
@@ -2737,6 +2794,7 @@ def main(argv=None):
                     if not h:
                         continue
                     eph_s = ""
+                    e = None
                     if h["eph"]:
                         e = cnav.ephemeris(_p)
                         if e is not None:
@@ -2750,6 +2808,7 @@ def main(argv=None):
                     else:
                         _log("cnav PRN %d: NO DECODE (%d emits accumulated, g2=%s)"
                              % (_p, h["emits"], h["g2"]))
+                    _dh_obs(_cnav_sig, _p, h, e, eph_s)
         # Lock metric: the detection SIGNIFICANCE (sigma above noise) -- the deep nav-wiped SNR when
         # available, else the noise-debiased incoherent SNR -- not the raw |A|. The incoherent |A| is
         # biased by the noise floor (~the floor for weak sats), so judging "still locked" by |A| >
@@ -3976,6 +4035,8 @@ def main(argv=None):
                 # persistent fault names itself once a minute instead of flooding.
                 _log_rl("stateobs", "receiver-state observe/flush failed: %r" % (e,),
                         every_s=60.0)
+        if dhw is not None:
+            dhw.flush(t0)
         if args.once:
             return
         dt = args.interval - (time.time() - t0)

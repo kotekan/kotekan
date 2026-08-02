@@ -472,6 +472,13 @@ STA_GPS="--state-file $STATE_DIR/${TAG}.json --state-dongle ${TAG} $STA_COMMON"
 STA_GAL="--state-file $STATE_DIR/${TAG}_gal.json --state-dongle ${TAG} $STA_COMMON"
 STA_BDS="--state-file $STATE_DIR/${TAG}_bds.json --state-dongle ${TAG} $STA_COMMON"
 STA_L1C="--state-file $STATE_DIR/${TAG}_l1c.json --state-dongle ${TAG} $STA_COMMON"
+# Nav-decode health export -> one shared dir the viewer merges. GPS carries LNAV+CNAV, GAL
+# I/NAV+F/NAV, BDS B-CNAV1/2; L1C is a pilot with no data decode, so no file for it.
+DECODE_DIR=${DECODE_DIR:-$BIAS_DIR/decode_health}
+mkdir -p "$DECODE_DIR" 2>/dev/null
+DH_GPS="--decode-health-file $DECODE_DIR/${TAG}.json"
+DH_GAL="--decode-health-file $DECODE_DIR/${TAG}_gal.json"
+DH_BDS="--decode-health-file $DECODE_DIR/${TAG}_bds.json"
 CBP=$BIAS_DIR/gps_clock_bias_${TAG}
 SIB_GPS="--clock-bias-siblings ${CBP}_gal.hz ${CBP}_bds.hz ${CBP}_l1c.hz"
 SIB_GAL="--clock-bias-siblings ${CBP}.hz ${CBP}_bds.hz ${CBP}_l1c.hz"
@@ -493,7 +500,7 @@ fi
 echo "signal $SIGNAL: hops/s ${HOPS_PER_SEC:-default}, chip ${CHIP_HZ:-default} Hz, code ${CODELEN:-default} chips, l-a file $CODE_BIAS_FILE"
 python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gps_search --trackers "$TRK" --combiner ${SP}gps_combiner \
         --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in" \
-        ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" --clock-bias-file "$CLOCK_BIAS_FILE" $SIB_GPS $STA_GPS \
+        ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file "$CODE_BIAS_FILE" --clock-bias-file "$CLOCK_BIAS_FILE" $SIB_GPS $STA_GPS $DH_GPS \
         ${CHIP_HZ:+--chip-rate-hz $CHIP_HZ} ${CODELEN:+--code-length $CODELEN} ${CPERR:+--hold-max-cp-err $CPERR} \
         --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
         --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
@@ -527,7 +534,7 @@ if grep -qE '^gal_track:|seed_endpoint:[[:space:]]*"/gal_track/set_seeds"' "$RUN
     echo "WARNING: gal_track present but LAT/LON unset -- Galileo require_hint search will scan NOTHING"
   fi
   echo "starting GALILEO broker ($GAL_SIGNAL: gal_search/gal_track/gal_combiner, TLE group=galileo)..."
-  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gal_search --trackers ${SP}gal_track${E1B_TRK}${E5A_I_TRK} --combiner ${SP}gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in"           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_gal.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_gal.hz $SIB_GAL $STA_GAL           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN --hold-max-cp-err $GAL_CPERR           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10}           ${BROKER_EXTRA:-} $GAL_ALM $CARG $INAVA $FNAVA           > /tmp/${TAG}_broker_gal.log 2>&1 &
+  python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}gal_search --trackers ${SP}gal_track${E1B_TRK}${E5A_I_TRK} --combiner ${SP}gal_combiner           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in"           ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_gal.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_gal.hz $SIB_GAL $STA_GAL $DH_GAL           --chip-rate-hz $GAL_CHIP --code-length $GAL_CODELEN --hold-max-cp-err $GAL_CPERR           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10}           ${BROKER_EXTRA:-} $GAL_ALM $CARG $INAVA $FNAVA           > /tmp/${TAG}_broker_gal.log 2>&1 &
   GALPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT           --combiner ${SP}gal_combiner --search ${SP}gal_search --airspy "${SP}$(grep -oE '^airspy[_a-z0-9]*:' "$RUNCFG" | head -1 | tr -d ':')"           --out "$RECDIR/status_log_gal.jsonl" > /tmp/${TAG}_logger_gal.log 2>&1 &
   GALLOGPID=$!
@@ -568,7 +575,7 @@ if grep -qE '^bds_track:|seed_endpoint:[[:space:]]*"/bds_track/set_seeds"' "$RUN
   echo "starting BEIDOU broker ($BDS_SIGNAL: bds_search/bds_track/bds_combiner, TLE group=beidou)..."
   python3 $BROKER --rest-url "http://localhost:$PORT" --detectors ${SP}bds_search --trackers ${SP}bds_track${B2A_D_TRK}${B1C_D_TRK} --combiner ${SP}bds_combiner \
           --acquire-snr 6 --interval 0.2 --coast-budget ${COAST_BUDGET:-300} --adc-stage "${SP}airspy_in" \
-          ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_bds.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_bds.hz $SIB_BDS $STA_BDS \
+          ${HOPS_PER_SEC:+--hops-per-sec $HOPS_PER_SEC} --code-bias-file $BIAS_DIR/gps_code_bias_${TAG}_bds.ppm --clock-bias-file $BIAS_DIR/gps_clock_bias_${TAG}_bds.hz $SIB_BDS $STA_BDS $DH_BDS \
           --chip-rate-hz $BDS_CHIP --code-length $BDS_CODELEN --hold-max-cp-err $BDS_CPERR \
           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
           --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
