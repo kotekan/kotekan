@@ -1122,18 +1122,110 @@ class GpsSkyResource(resource.Resource):
         return json.dumps(out).encode("utf-8")
 
 
+def _pvt_measurements(globs, max_age_s, t_now):
+    """Freshest per-(sys, prn, freq-band) code observation across the obs logs, for the PVT
+    self-survey. One row per satellite-frequency (pilot/data of the same sat dedupe to one, same
+    geometry). Residuals are wrapped clock-dominated ranges -> de-wrapped per group to the group
+    median so the common clock is a single free parameter and no sat straddles a code-period edge.
+    Returns a list of {group, az, el, resid_m}."""
+    import glob as _glob
+    import json as _json
+    C = 299792458.0
+
+    def _freq(band):
+        b = str(band)
+        if "L2" in b:
+            return "L2"
+        if "L5" in b or "E5" in b or "B2A" in b or "B2a" in b:
+            return "L5"
+        return "L1"
+
+    latest = {}   # (sys, prn, freq) -> (t, group, az, el, resid_m, L_m)
+    for pat in globs:
+        for path in _glob.glob(pat):
+            try:
+                size = os.path.getsize(path)
+                with open(path) as f:
+                    f.seek(max(0, size - 512 * 1024))   # tail: freshest rows only
+                    f.readline()
+                    for line in f:
+                        try:
+                            d = _json.loads(line)
+                        except Exception:
+                            continue
+                        t = d.get("t")
+                        sysid, prn = d.get("sys"), d.get("prn")
+                        res, az, el = d.get("code_resid_m"), d.get("az"), d.get("el")
+                        if (t is None or sysid is None or prn is None or res is None
+                                or az is None or el is None):
+                            continue
+                        if t_now - t > max_age_s:
+                            continue
+                        fr = _freq(d.get("band"))
+                        key = (sysid, prn, fr)
+                        if key in latest and latest[key][0] >= t:
+                            continue
+                        cl, ch = d.get("code_len"), d.get("chip_rate_hz")
+                        L = (cl / ch * C) if (cl and ch) else None
+                        latest[key] = (t, "%s-%s" % (sysid, fr), az, el, float(res), L)
+            except Exception:
+                continue
+
+    # de-wrap each group's residuals to the group median (handles the clock straddling a
+    # code-period boundary; L is the code period in metres).
+    import statistics as _st
+    by_group = {}
+    for (sysid, prn, fr), v in latest.items():
+        by_group.setdefault(v[1], []).append(v)
+    out = []
+    for group, rows in by_group.items():
+        med = _st.median([r[4] for r in rows])
+        for _t0, g, az, el, res, L in rows:
+            if L:
+                res = res - L * round((res - med) / L)   # unwrap to within +-L/2 of the median
+            out.append({"group": g, "az": az, "el": el, "resid_m": res})
+    return out
+
+
 class DecodeHealthResource(resource.Resource):
-    """``GET /decode_health`` -> merged on-node nav-decode health, read from the brokers'
-    atomically-replaced JSON files (:mod:`decode_health`). Cheap (a handful of small files),
-    so it reads on each request; stale files are dropped by the reader, so a decoder going
-    dark shows up as the signal disappearing rather than freezing on its last value."""
+    """``GET /decode_health`` -> merged on-node nav-decode health (from the brokers' JSON files)
+    PLUS a PVT self-survey computed from the obs-log code residuals (:mod:`gnss_pvt`). Stale
+    broker files / obs rows are dropped, so a decoder or the position solve going dark shows up
+    as the row/section disappearing, not a frozen last value. PVT is cached (recomputed every
+    `pvt_ttl_s`) since it tail-reads several obs logs and solves."""
 
     isLeaf = True
 
-    def __init__(self, dirpath, max_age_s=120.0):
+    def __init__(self, dirpath, max_age_s=120.0, lat=None, lon=None, alt=None,
+                 obs_globs=None, pvt_ttl_s=15.0, pvt_max_age_s=30.0):
         resource.Resource.__init__(self)
         self.dirpath = dirpath
         self.max_age_s = max_age_s
+        self.lat, self.lon, self.alt = lat, lon, (alt or 0.0)
+        self.obs_globs = obs_globs or []
+        self.pvt_ttl_s = pvt_ttl_s
+        # PVT wants NEAR-SIMULTANEOUS observations: the receiver clock (a free per-group param) is
+        # assumed common across a group's sats, and a disciplined-oscillator drift of ~1e-9 over
+        # 120 s is already ~36 m. 30 s keeps that error small while still catching ~1 row/sat.
+        self.pvt_max_age_s = pvt_max_age_s
+        self._pvt_cache = (0.0, None)
+
+    def _pvt(self, t_now):
+        if self.lat is None or self.lon is None or not self.obs_globs:
+            return None
+        if t_now - self._pvt_cache[0] < self.pvt_ttl_s:
+            return self._pvt_cache[1]
+        try:
+            import gnss_pvt as _pvt
+            meas = _pvt_measurements(self.obs_globs, self.pvt_max_age_s, t_now)
+            res = _pvt.solve(meas, self.lat, self.lon, self.alt) if meas else None
+            if res is not None:
+                res["apriori"] = {"lat": self.lat, "lon": self.lon, "alt": self.alt}
+                res["n_meas"] = len(meas)
+        except Exception as e:
+            res = {"error": str(e)}
+        self._pvt_cache = (t_now, res)
+        return res
 
     def render_GET(self, request):
         request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
@@ -1141,7 +1233,9 @@ class DecodeHealthResource(resource.Resource):
         try:
             import time as _t
             import decode_health as _dh
-            out = _dh.read_all(self.dirpath, max_age_s=self.max_age_s, t_now=_t.time())
+            now = _t.time()
+            out = _dh.read_all(self.dirpath, max_age_s=self.max_age_s, t_now=now)
+            out["pvt"] = self._pvt(now)
         except Exception as e:
             out = {"signals": {}, "chains": [], "error": str(e)}
         return json.dumps(out).encode("utf-8")
@@ -1262,6 +1356,11 @@ def main():
                                          "kotekan_gps", "decode_health"),
                     help="dir the brokers write nav-decode health JSON to (matches run_live's "
                          "DECODE_DIR); served merged at /decode_health for the viewer panel")
+    gg.add_argument("--pvt-obs-globs",
+                    default="/tmp/gpswipe/obs_*.jsonl,/tmp/gps_l2c_gpu/obs_*.jsonl,"
+                            "/tmp/gps_l5_gpu/obs_*.jsonl",
+                    help="comma-separated globs of obs-log jsonl (code_resid_m + az/el) the PVT "
+                         "self-survey reads; served under /decode_health's pvt field")
     gg.add_argument("--gps-constellations", default="G,E,C",
                     help="constellations to show on the sky plot (G=GPS, E=Galileo, C=BeiDou). "
                          "L1 tri-band = G,E,C; L2C = G; L5 = G,E,C (E5a/B2a).")
@@ -1372,7 +1471,9 @@ def main():
         root.putChild(b"gps_sky",
                       GpsSkyResource(args.lat, args.lon, args.alt, args.gps_mask_deg,
                                      args.gps_constellations))
-        root.putChild(b"decode_health", DecodeHealthResource(args.decode_health_dir))
+        root.putChild(b"decode_health",
+                      DecodeHealthResource(args.decode_health_dir, lat=args.lat, lon=args.lon,
+                                           alt=args.alt, obs_globs=args.pvt_obs_globs.split(",")))
         log_.info("GPS panel enabled (site lat=%s lon=%s alt=%s); decode-health dir %s",
                   args.lat, args.lon, args.alt, args.decode_health_dir)
 
