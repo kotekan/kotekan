@@ -1494,15 +1494,30 @@ but the 8-node search does not complete a pass, so we have no detections yet.
 
 ## 8.3 Open, in the order I would take them
 
-1. **The ms-split lag mapping** (see 8.4) -- the search-cost fix, half built.
-2. **The 8-node search does not complete a pass.** Two measured causes: a ~1.7 GB SERIAL `repl0`
-   precompute (32 PRN x 20 nh x 106 ch x 3125 hops, 4x the 2-node cost, ~13 min), and the
-   acquire then running at **97% of ONE core** despite `acquire_threads: 16`, a 10-core affinity,
-   40+ cores in the process mask and no `OMP_*` limits. The parallelism that gave 28 s passes on
-   2 nodes does not engage at 106 channels. Unexplained; find it before tuning anything else.
+1. ~~**The ms-split lag mapping**~~ **CLOSED 2026-08-02**, `41d5fe80a` / `gnss::ms_split_peak`.
+   Three terms, each isolated by a geometry sweep rather than argued: the replica's own anchor
+   phase, the cyclic wrap `Ns*cps`, and the fine axis's opposite sign. See
+   `CHORD_GNSS_MS_SPLIT_SEARCH.md` §4b. Exact to <0.05 chips at stride 1; still Phase A only,
+   so still no overlay period.
+2. ~~**The 8-node search does not complete a pass.**~~ **WRONG -- retracted 2026-08-02.** It
+   completes passes continuously and has all along. Checked at 2h21m uptime: `pass best snr`
+   lines every few seconds, PRN 10 at 2827, PRN 24 at 1072, PRN 23 at 722 against threshold 30
+   and a ceiling of 18.4; nine PRNs seeded, the newest 2 s old, all carrying a fitted
+   `code_phase_rate` and `doppler_rate_hz_s`. The process sits at 33% of ONE core *because it
+   is idle between passes*, not because the acquire is serial -- all 17 `/gps_search` threads
+   exist and no thread is above 3%.
+
+   What I mistook for a stalled pass was the round-robin: `1 searched, 9-11 deferred to later
+   passes`. One PRN per pass is by design, so a full PRN sweep takes ~10 passes; watching for
+   "a pass" to cover everything sees nothing finish. **The lesson is the one in 8.6 again --
+   I read a rate off a process-average `%CPU` and a partial log tail instead of asking the
+   stage what it had done.** The 1.7 GB / ~13 min serial `repl0` precompute is real and still
+   worth attacking, but it is a startup cost, not a stall.
 3. **Bisect the combiner segfault** across the merge's 24 changed source files. Offline work.
 4. **Phase B of the ms-split** -- Phase A carries NO overlay period (phase mod 10230, not
    204600), which is LESS than the current search reports.
+5. **Are the trackers locking?** The seeds are good and current; what happens downstream of
+   them on the nodes is now the open end of the chain, and is not yet measured.
 
 ## 8.4 The ms-split, honestly
 
