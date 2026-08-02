@@ -88,7 +88,12 @@ struct Opt {
     int s_chan0 = 5972, s_stride = 4, s_nchan = 27;
     double dop_half = 1000.0, dop_step = 31.25;
     int acquire_windows = 1, fine_step = 32, threads = 6;
-    int refine_span = 4096, refine_step = 75;
+    // Defaults MATCH WHAT SHIPS: refine_span 0 -> fft_len (the stage default, one whole
+    // hop = the full lag ambiguity), refine_step 303 (what gen_chord_gnss_config.py
+    // emits: fft_len/n_chan/2). The old 4096/75 here were the hand-added override that
+    // turned out to BE the bug -- a harness defaulting to a broken config silently
+    // reproduces the break and calls it baseline.
+    int refine_span = 0, refine_step = 303;
 
     // Tracker side (chord_gnss_cx19.yaml gnss0_track)
     int t_chan0 = 5972, t_stride = 16, t_nchan = 7;
@@ -130,7 +135,7 @@ static void usage() {
         "  --windows N        acquire_windows (default 1 -- see 16-vs-20 in the state doc)\n"
         "  --fine-step N      acquire_fine_step (default 32)\n"
         "  --threads N        acquire threads (default 6)\n"
-        "  --refine-span N    refine +-samples (default 4096)   --refine-step N (default 75)\n"
+        "  --refine-span N    refine +-samples (default fft_len)  --refine-step N (default 303)\n"
         "  --seed-dop-err F   Hz of Doppler error given ONLY to the seed (the live residual)\n"
         "  --seed-cp-rate X   code_phase_rate handed to the tracker, chips/hop\n"
         "  --seed-dop-rate F  doppler_rate_hz_s handed to the tracker\n"
@@ -224,6 +229,8 @@ int main(int argc, char** argv) {
     }
 
     const int FFT = 2 * o.spectrum_length;
+    if (o.refine_span <= 0)
+        o.refine_span = FFT; // the stage's own default
     const long long W0 = o.hop0 * (long long)FFT;
 
     std::vector<int> s_chans, t_chans, s_cov, t_cov;
@@ -292,12 +299,22 @@ int main(int argc, char** argv) {
         if (o.quantize)
             quantize44(data);
 
+        // ANCHOR THE GRID ABSOLUTELY, as GnssChannelizedSearch does (134f197dc): integer
+        // multiples of doppler_step, NOT the hint. Anchoring to the hint slides the origin with
+        // the satellite, so every trial samples the SAME sub-bin position -- which silently
+        // turned the first Doppler-bias sweep here into seven measurements of one point (all
+        // +1.6 to +1.8 Hz, "independent of Doppler", which is exactly what a fixed sub-bin
+        // offset looks like). The stage got this right for a live reason; the harness must
+        // match it or it cannot see interpolation error at all.
         std::vector<double> grid;
         if (o.dop_half <= 0.0)
             grid.push_back(-o.dop); // r2c fold: the grid runs in the flipped convention
-        else
-            for (double f = -o.dop - o.dop_half; f <= -o.dop + o.dop_half + 1e-9; f += o.dop_step)
+        else {
+            const double lo =
+                std::ceil((-o.dop - o.dop_half) / o.dop_step) * o.dop_step;
+            for (double f = lo; f <= -o.dop + o.dop_half + 1e-9; f += o.dop_step)
                 grid.push_back(f);
+        }
 
         gnss::AcquireWorkspace ws;
         gnss::AcquisitionResult a{};
