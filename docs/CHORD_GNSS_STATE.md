@@ -1600,3 +1600,62 @@ Next: (2) is the one that matters. Every earlier successful probe was on **gnss0
 today's were on gnss1, because gnss0 had stopped. Establish whether a fresh seed despreads on
 gnss0 before assuming the two branches behave alike -- they are structurally identical in the
 generated config, but they carry different channel combs.
+
+### 8.7.1 The cx19 wedge -- diagnosed, restarted 2026-08-02 20:05
+
+Not a GNSS bug and not a crash. For ~50 minutes cx19 dropped **100% of one of its two
+391k pkt/s ports**, so the 8-node aggregator ran on 15 of 16 streams (including for the
+detections quoted above as evidence the search is healthy -- they stand, but the SNRs are from
+a degraded comb).
+
+Measured before the restart:
+
+| | port 0 | port 1 |
+|---|---|---|
+| NIC receiving | 391,730/s | 391,730/s |
+| NIC rx errors / missed | 0 | 0 |
+| distributor forwarded | **0/s** | 391,731/s |
+| distributor dropped, ring full | **391,731/s** | 0/s |
+
+GPU 0 sat at 0% and 30 C, GPU 1 at 100% and 69 C; no Xid. Ruled out: network (all 16 feeds
+ESTABLISHED, every socket queue zero), disk (23% used, 1% inodes), the aggregator connection.
+
+The backtrace (`/home/kvand/gnss/cx19_wedge.bt`) says what it was NOT: every stage in the port-0
+chain -- `GnssChordVoltageTap`, `gpuProcess`/`cudaInputData::wait_on_precondition`,
+`TransposeBasebandArray`, `ProcessPacketMask` -- sat in `Buffer::wait_for_full_frame`, i.e.
+**starved for input**. Nothing was blocked on output, so nothing was holding frames, which rules
+out the ordinary downstream-deadlock. Meanwhile `dpdkCore::main_thread` was in its normal
+`sleep(0)` supervisory loop and both RX lcores were spinning in `ice_recv_pkts_vec_avx2_offload`
+/ `dpdkCore::lcore_rx`. So the packets were being received and never turned into frames: the
+stall is inside the DPDK distributor/handler for port 0, upstream of every kotekan GNSS stage.
+
+`sudo systemctl restart gnss-node` cleared it -- both ports now forward 391,488/s with zero
+drops and both branches write records. Cause still unknown; `journalctl -u gnss-node` around
+18:42 needs sudo and was not read. **If it recurs, that journal and the backtrace are the
+artifacts.** This is shared CHORD DPDK infrastructure, so it is not ours to change unilaterally.
+
+### 8.7.2 What the restart ruled out, and the live suspect
+
+A fresh 16.8 s seed probed on **gnss0** after the restart still despreads to ratio 2.43 -- noise,
+same as gnss1's 2.79. So the second fault is NOT branch-specific, and "I was probing a starved
+branch" is dead as an explanation.
+
+What did change between the probes that worked (2026-07-31: ratios 19.5 / 17.3 / 12.3) and now
+is the search comb: 2-node stride 4 -> 8-node stride 1. That interacts with today's ms-split
+finding. The shipped coarse mapping adds the fine lag with the WRONG SIGN (see 8.7 / the
+ms-split doc §4b); it is survivable only because `refine_peak` re-scans +-`refine_span` =
++-fft_len = +-52.38 chips. The size of that error is `s_stored`:
+
+* stride 4: `s_stored` = 4096 samples = **13.1 chips** -- comfortably inside the refine.
+* stride 1: `s_stored` = 16384 samples = **52.4 chips** -- exactly at its edge.
+
+Measured on the bench, noiseless, both recover: stride 4 lands -0.225 chips with the refine
+moving +10.58; stride 1 lands +0.206 with the refine moving **+50.30**, under 2 chips of margin
+against the span limit. Under noise 20, stride 4 is 0/12 wrong lobe, worst 0.225 chips. The
+stride-1 noise run is the open measurement.
+
+**If stride 1 shows wrong-lobe failures under noise, that is the live bug** -- the 8-node switch
+would then be putting every seed a full hop (52.4 chips) off, which is exactly enough to make
+the tracker despread noise while the search still reports a huge SNR. Fix would be to widen
+`refine_span` beyond one hop, or better, correct the fine sign so the coarse number is right and
+the refine only has to polish.
