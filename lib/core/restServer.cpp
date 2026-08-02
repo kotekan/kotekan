@@ -7,6 +7,7 @@
 
 #include <arpa/inet.h>             // for inet_pton, ntohs
 #include <assert.h>                // for assert
+#include <chrono>                  // for seconds
 #include <cstring>                 // for memset
 #include <event2/buffer.h>         // for evbuffer_add, evbuffer_peek, iovec, evbuffer_iovec
 #include <event2/event.h>          // for event_add, event_base_dispatch, event_base_free, even...
@@ -234,20 +235,25 @@ void restServer::start(const std::string& bind_address, u_short port) {
 void restServer::stop_processing() {
     // Refuse further dispatch first, so any request that has not yet taken the
     // shared lock will see this and 503 instead of invoking a callback.
-    _accepting_requests = false;
+    accepting_requests = false;
 
-    // If we are already on the server thread (a /stop handler tearing the mode
-    // down), the single-threaded event loop guarantees no other handler is in
-    // flight, and taking the lock exclusively here would dead-lock against our
-    // own shared hold. The flag above is enough; skip the drain.
+    // If we are already on the server thread, the single-threaded event loop
+    // guarantees no other handler is in flight, and taking the lock
+    // exclusively here would dead-lock against our own shared hold. The flag
+    // above is enough; skip the drain.
     if (std::this_thread::get_id() == main_thread.get_id())
         return;
 
     // Otherwise (main-thread signal shutdown) wait out any handler currently
     // running on the server thread. Once we hold the lock exclusively, no
     // handler is executing and none can start, so the caller may destruct the
-    // stages those handlers reach into.
-    std::unique_lock<std::shared_timed_mutex> drain(request_lock);
+    // stages those handlers reach into. Bound the wait: a handler stuck past
+    // it means shutdown would hang forever, and proceeding with a loud error
+    // at least leaves a restartable process (kotekan runs under a daemon).
+    std::unique_lock<std::shared_timed_mutex> drain(request_lock, std::chrono::seconds(30));
+    if (!drain.owns_lock())
+        ERROR_NON_OO("restServer: a request handler is still running 30s into shutdown; "
+                     "proceeding with teardown anyway.");
 }
 
 void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
@@ -260,7 +266,7 @@ void restServer::handle_request(struct evhttp_request* request, void* cb_data) {
     // is running. Distinct from callback_map_lock, which is dropped before the
     // callback runs (callbacks may re-register endpoints).
     std::shared_lock<std::shared_timed_mutex> request_guard(server->request_lock);
-    if (!server->_accepting_requests) {
+    if (!server->accepting_requests) {
         connectionInstance conn(request);
         conn.send_error("Server shutting down", HTTP_RESPONSE::SERVICE_UNAVAILABLE);
         return;
