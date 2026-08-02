@@ -251,7 +251,7 @@ gnss0_rec_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_record:
-  base_dir: /data/gnss
+  base_dir: /tmp/gnss
   cpu_affinity:
   - 58
   file_ext: raw
@@ -389,7 +389,7 @@ gnss1_rec_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_record:
-  base_dir: /data/gnss
+  base_dir: /tmp/gnss
   cpu_affinity:
   - 59
   file_ext: raw

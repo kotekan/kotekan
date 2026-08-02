@@ -244,5 +244,11 @@ runtime:
   cpu_affinity: [19, 24, 31, 57, 58, 59, 60, 61, 62, 63]
   rest_port: 12049              # production owns 12048
   # /home is NFS (shared across all four nodes -- good for code/config, wrong for records).
-  record_dir: /data/gnss        # local disk; / has 2.6 TB free on cx19
+  # /tmp/gnss, NOT /data/gnss. /data exists ONLY on cx19 -- the other seven nodes have no
+  # such path, and rawFileWrite takes base_dir straight from the config and dies on a
+  # directory that is not there (all eight nodes SIGSEGV'd ~46 s in, 2026-08-02). /tmp is on
+  # the same 3.5 TB nvme as / (3.2 TB free), so this is the same disk, not a ramdisk.
+  # Deliberately NOT fixed by creating /data on the other nodes: a /data that exists only
+  # because we made it is exactly the path people start dumping into by accident.
+  record_dir: /tmp/gnss
   venv: /home/kvand/gnss/venv   # skyfield 1.54 + numpy/scipy/h5py/yaml/requests
