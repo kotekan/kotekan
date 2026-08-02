@@ -66,6 +66,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -117,6 +118,14 @@ struct Opt {
     /// REAL broker, so its seed arithmetic can be put in the loop too (--seed-file the result).
     const char* emit_det = nullptr;
     const char* dump_refine = nullptr; ///< dump the refine objective over a full hop
+    /// Additive complex Gaussian noise, std as a MULTIPLE of the synthetic signal's rms.
+    /// This is the regime knob that --quantize is not: quantizing a noiseless full-scale
+    /// signal changes nothing (measured, byte-identical), because on sky the satellite sits
+    /// far UNDER the noise floor and every margin the refine relies on -- notably "the true
+    /// grating lobe beats its neighbour by 15%" -- is an infinite-SNR statement without it.
+    double noise = 0.0;
+    int trials = 1;            ///< independent noise realizations (>1 prints a distribution)
+    unsigned nseed = 12345;    ///< RNG seed, so a run is reproducible
 };
 
 static void usage() {
@@ -141,6 +150,9 @@ static void usage() {
         "  --seed-dop-rate F  doppler_rate_hz_s handed to the tracker\n"
         "  --seed-file P      use a REAL captured broker seed (seeds.jsonl) for this PRN\n"
         "  --emit-detection P write the detection in /get_detections wire format (for e2e_broker)\n"
+        "  --noise R          add complex Gaussian noise, std = R x signal rms (0 = noiseless)\n"
+        "  --trials N         repeat the search on N noise realizations, print the spread\n"
+        "  --nseed N          RNG seed (default 12345), so a noisy run is reproducible\n"
         "  --quantize         quantize the synthetic sky to 4+4b (default: noiseless float)\n"
         "  --skip-search      seed straight from truth -- isolates the tracker/despread leg\n"
         "  --code-doppler-sign S   (default +1)\n");
@@ -222,6 +234,9 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--seed-file")) o.seed_file = argv[++i];
         else if (arg_eq(a, "--emit-detection")) o.emit_det = argv[++i];
         else if (arg_eq(a, "--dump-refine")) o.dump_refine = argv[++i];
+        else if (arg_eq(a, "--noise")) o.noise = next_d();
+        else if (arg_eq(a, "--trials")) o.trials = next_i();
+        else if (arg_eq(a, "--nseed")) o.nseed = (unsigned)next_i();
         else if (arg_eq(a, "--quantize")) o.quantize = 1;
         else if (arg_eq(a, "--skip-search")) o.skip_search = 1;
         else if (arg_eq(a, "--code-doppler-sign")) o.code_doppler_sign = next_d();
@@ -295,9 +310,20 @@ int main(int argc, char** argv) {
         const int nwin = std::max(1, o.acquire_windows);
         printf("[1] SEARCH -- synthesizing %d x %d hops (%.1f ms) on %d channels...\n", nwin, Mp,
                1e3 * nwin * Mp * hop_s, o.s_nchan);
-        auto data = tbank.channels_hoprate(0, W0, o.cp204, o.dop, nwin * Mp, s_chans, {}, -1);
-        if (o.quantize)
-            quantize44(data);
+        const auto clean = tbank.channels_hoprate(0, W0, o.cp204, o.dop, nwin * Mp, s_chans, {}, -1);
+        double sig2 = 0.0;
+        size_t nsamp = 0;
+        for (const auto& ch : clean)
+            for (const cf& v : ch) { sig2 += std::norm(v); ++nsamp; }
+        const double sig_rms = std::sqrt(sig2 / (double)std::max<size_t>(nsamp, 1));
+        if (o.noise > 0.0)
+            printf("    noise: std = %.3f x signal rms (%.4g), %d trial(s), seed %u\n", o.noise,
+                   o.noise * sig_rms, o.trials, o.nseed);
+        std::mt19937 rng(o.nseed);
+        std::normal_distribution<double> gauss(0.0, o.noise * sig_rms / std::sqrt(2.0));
+        std::vector<double> errs;
+        std::vector<double> snrs;
+        auto data = clean;
 
         // ANCHOR THE GRID ABSOLUTELY, as GnssChannelizedSearch does (134f197dc): integer
         // multiples of doppler_step, NOT the hint. Anchoring to the hint slides the origin with
@@ -316,9 +342,19 @@ int main(int argc, char** argv) {
                 grid.push_back(f);
         }
 
-        gnss::AcquireWorkspace ws;
+      gnss::AcquireWorkspace ws;
+      gnss::AcquisitionSurface adims{}; // hoisted: the summary below needs s_stored
+      for (int trial = 0; trial < std::max(1, o.trials); ++trial) {
+        // Fresh realization each trial; the CLEAN signal is never overwritten.
+        if (o.noise > 0.0) {
+            for (size_t c = 0; c < clean.size(); ++c)
+                for (size_t m = 0; m < clean[c].size(); ++m)
+                    data[c][m] = clean[c][m] + cf((float)gauss(rng), (float)gauss(rng));
+        }
+        if (o.quantize)
+            quantize44(data);
         gnss::AcquisitionResult a{};
-        gnss::AcquisitionSurface adims{}; // the refine needs s_stored to de-alias
+        best_nh = -1;
         std::vector<double> surf;
         std::vector<std::vector<cf>> w((size_t)o.s_nchan, std::vector<cf>((size_t)Mp));
         for (int nh = 0; nh < n_nh; ++nh) {
@@ -399,6 +435,34 @@ int main(int argc, char** argv) {
                dp.cp0, dp.cp_long, dp.cp_at_ref, ph_true);
         printf("    >>> SEARCH LEG ERROR: %+.3f chips   (= %+.3f periods %+.3f within-period)\n",
                e_ref, std::round(e_ref / L), wrap(e_ref, L));
+        errs.push_back(e_ref);
+        snrs.push_back(snr);
+      } // trial
+        if (o.trials > 1) {
+            // A "wrong lobe" is a within-period error beyond half a grating spacing. The comb's
+            // fine-lag response repeats every s_stored samples, so that is the natural unit:
+            // anything past half of it means the refine chose the neighbour.
+            const double lobe = (double)((adims.s_stored > 0) ? adims.s_stored : FFT)
+                                * sbank.chip_rate_hz() / o.sample_rate;
+            int wrong = 0, badper = 0;
+            double s1 = 0.0, s2 = 0.0, worst = 0.0;
+            for (double e : errs) {
+                const double w = wrap(e, L);
+                if (std::fabs(e) > L / 2.0) ++badper;
+                if (std::fabs(w) > lobe / 2.0) ++wrong;
+                s1 += w; s2 += w * w; worst = std::max(worst, std::fabs(w));
+            }
+            const double n = (double)errs.size();
+            double msnr = 0.0;
+            for (double v : snrs) msnr += v;
+            printf("\n    ===== %d trials at noise %.3f =====\n", (int)n, o.noise);
+            printf("    acquire snr   mean %.1f\n", msnr / n);
+            printf("    within-period error: mean %+.3f  rms %.3f  worst %.3f chips\n",
+                   s1 / n, std::sqrt(s2 / n), worst);
+            printf("    grating lobe spacing %.2f chips -> WRONG LOBE in %d/%d (%.0f%%)\n",
+                   lobe, wrong, (int)n, 100.0 * wrong / n);
+            printf("    wrong PERIOD in %d/%d\n", badper, (int)n);
+        }
         printf("\n");
     } else {
         dp.cp_at_ref = truth_phase_at(W0);
