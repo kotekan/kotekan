@@ -161,6 +161,7 @@ if(FFTW_FOUND)
                 gnss/gnssChannelizedDespread.cpp
                 gnss/gnssChannelizedAcquire.cpp
                 gnss/gnssChannelizedReplica.cpp
+                gnss/gnssSeedTransport.cpp
                 gnss/GnssChannelizedTracker.cpp
                 gnss/GnssChannelizedSearch.cpp
                 gnss/GnssVoltagePeel.cpp

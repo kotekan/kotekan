@@ -3,6 +3,7 @@
 #include "cudaGnssChordDespread.hpp"
 #include "gnssBandPlan.hpp"
 #include "gnssGpuChain.hpp"
+#include "gnssSeedTransport.hpp"
 #include "gnssSignal.hpp"
 #include "GnssChanMetadata.hpp"
 #include "cudaUtils.hpp"
@@ -422,60 +423,22 @@ cudaEvent_t cudaGnssChordTrack::execute(cudaPipelineState& pipestate,
                 continue;
 
             // PROPAGATE IN THE PHASE DOMAIN, NEVER IN THE ARGUMENT DOMAIN (2026-07-31).
-            //
-            // `cp_seed` is not a physical code phase: the despread (like every generator in
-            // gnssChannelizedReplica) forms C(n) = cp_seed + n*cps(dop) over the ABSOLUTE
-            // sample index. Two consequences, both fatal to a seed and both measured by
-            // injection today (see ChannelizedReplicaBank::phase_from_arg):
-            //
-            //  1. The generator ALREADY applies the full code advance, including the nominal
-            //     52.3776 chips/hop. Adding it here on top -- which this stage did between
-            //     d37064e87 and now -- despread every record ~4969 chips off. The airspy
-            //     record being exactly one code period is what made the added term ~0 mod L
-            //     there and hid the double count; the term was never missing, and the "each
-            //     record at a pseudo-random offset" story that motivated it had the sign of
-            //     the error right and the cause backwards.
-            //  2. The argument carries the Doppler back-referenced over the whole uptime, so
-            //     d(arg)/d(dop) ~ 5095 chips per Hz here. `dop` below moves every record (the
-            //     dop_rate feed-forward alone is ~0.5 Hz/min), so a fixed seed argument
-            //     re-used against a moving Doppler slides thousands of chips per minute.
-            //
-            // So: lift the seed to a PHYSICAL phase at its own epoch using its OWN Doppler
-            // (the lever cancels exactly), propagate that phase -- nominal chips/hop +
-            // residual cp_rate + the quadratic code-Doppler feed-forward, the terms a phase
-            // genuinely needs -- and convert back with the Doppler this record actually
-            // passes to the kernel. A Doppler error then only accrues over dt (seconds), at
-            // chip_rate/carrier = 0.0087 chips per Hz per second, which is what the DLL trim
-            // is for.
-            const double dh = (double)(hop0 - sd.ref_hop);
-            const double dt = dh * (double)S.fft_len / S.sample_rate;
-            const double dop = sd.doppler_hz + sd.dop_rate * dt;
-            // The phase advances at the TRUE code rate: nominal scaled by the code Doppler.
-            // Dropping the scaling makes the model lose chip_rate*dop/(carrier*hops_per_sec)
-            // chips per hop -- 1.05e-4 at dop 2350, so 41 chips on a seed only 2 s old and
-            // thousands on a minute-old one. It is invisible if the seed's `code_phase_rate`
-            // happens to carry that same term (which is what hand seeding did, and why hand
-            // seeds locked), but the broker's convention -- airspy's, and the right one -- is
-            // that code_phase_rate is a RESIDUAL and the geometry is fed forward here, exactly
-            // as the replica generator feeds it forward through cps(dop). So feed it forward.
-            const double chips_per_hop = S.replica->chip_rate_hz() * (double)S.fft_len
-                                         / S.sample_rate
-                                         * (1.0 + S.replica->code_doppler_sign * sd.doppler_hz
-                                                      / S.replica->carrier_hz());
-            const double quad = 0.5 * (S.replica->chip_rate_hz() / S.f_offset_hz) * sd.dop_rate
-                                * dt * dt;
-            const long long wstart_p = hop0 * (long long)S.fft_len;
-            // The seed's argument -> the true code phase at ref_hop, at the seed's Doppler.
-            const double phase_ref =
-                (sd.phase_ref_chips >= 0.0)
-                    ? sd.phase_ref_chips // transported as a phase: no back-reference at all
-                    : S.replica->phase_from_arg(sd.cp_chips, sd.ref_hop * (long long)S.fft_len,
-                                                sd.doppler_hz);
-            // The DLL trim rides ON TOP of the model phase: the broker keeps owning the seed
-            // (fit/coast state stays pure), the trim owns the sub-chip residual.
-            const double phase_now =
-                phase_ref + (chips_per_hop + sd.cp_rate) * dh + quad + trim_now[(size_t)p];
-            const double cp = S.replica->arg_from_phase(phase_now, wstart_p, dop);
+            // The arithmetic (and the full argument for it) lives in gnssSeedTransport, so the
+            // offline end-to-end harness (scripts/e2e.cpp) drives THIS code rather than a
+            // second copy of it. The DLL trim rides ON TOP of the model phase: the broker
+            // keeps owning the seed (fit/coast state stays pure), the trim owns the sub-chip
+            // residual.
+            gnss::SeedState ss;
+            ss.cp_chips = sd.cp_chips;
+            ss.phase_ref_chips = sd.phase_ref_chips;
+            ss.doppler_hz = sd.doppler_hz;
+            ss.dop_rate = sd.dop_rate;
+            ss.cp_rate = sd.cp_rate;
+            ss.ref_hop = sd.ref_hop;
+            const gnss::SeedPropagation pr = gnss::propagate_seed(
+                *S.replica, ss, hop0, S.sample_rate, S.f_offset_hz, trim_now[(size_t)p]);
+            const double dop = pr.doppler_hz;
+            const double cp = pr.cp;
 
             GnssCudaDespread::Spec sp;
             sp.p = p;

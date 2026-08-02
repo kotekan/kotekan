@@ -3,6 +3,7 @@
 #include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
 #include "GnssChanMetadata.hpp"        // for get_gnss_chan_metadata, metadata_is_gnss_chan
 #include "clockProfile.hpp"           // for resolve_clock_profile, clock_doppler_half_range_hz
+#include "gnssSeedTransport.hpp"       // for detection_phase
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
 #include "gnssSignal.hpp"              // for SignalDescriptor, signal_by_name
 #include "kotekanLogging.hpp"          // for INFO, FATAL_ERROR
@@ -483,82 +484,28 @@ void GnssChannelizedSearch::search_snapshot() {
                     best_cp = cp;
                 }
             }
-            // best_cp is the satellite code phase at the snapshot's absolute start
-            // (S_snap = snap_start_hop * fft_len). Reference it to absolute sample 0
-            // so the tracker (on the same hop*2N grid) can seed directly:
-            // cp0 = best_cp - S_snap*chip_per_sample (mod L). Reduce the hop offset
-            // modulo the replica period first to keep float precision.
-            const double L = (double)_replica->code_length();
-            const double off = std::fmod((double)(_snap_start_hop % Mp) * (double)_fft_len * cps, L);
-            // Code-Doppler drift of the reference over the FULL absolute snapshot start
-            // (NOT Mp-periodic, so use the full snap_start_hop): makes cp0 the true
-            // sample-0 phase, matching the feed-forward in ChannelizedReplicaBank, so
-            // the seed is latency-invariant (a stale seed no longer drifts the cp).
-            const double drift = std::fmod((double)_snap_start_hop * (double)_fft_len * cps
-                                               * (_replica->code_doppler_sign * dop
-                                                  / _replica->carrier_hz()),
-                                           L);
-            double cp = std::fmod(best_cp - off - drift, L);
-            if (cp < 0.0)
-                cp += L;
+            // Peak -> reported phases. The arithmetic lives in gnssSeedTransport so the
+            // offline end-to-end harness (scripts/e2e.cpp) drives THIS code rather than a
+            // second copy of it -- see that header for why.
+            const gnss::DetectionPhase dp = gnss::detection_phase(
+                *_replica, best_cp, best_nh, _n_nh, dop, _snap_start_hop, anchor, _sample_rate);
             det.doppler_hz = dop;
-            det.code_phase_chips = cp;
+            det.code_phase_chips = dp.cp0;
             det.ref_hop = _snap_start_hop; // capture-time anchor for cp0 (for the slope fit)
             det.nh = (_n_nh > 1) ? best_nh : -1; // MEASURED overlay alignment, not reconstructed
-            // LONG-CODE PHASE, mod n_nh*L -- the phase a tracker despreading the overlaid code
-            // actually needs. Everything above is reduced mod L, which is right for the primary
-            // and DESTROYS the overlay period: a phase known only mod L leaves the tracker a
-            // 1-in-n_nh guess, and no constant correction can supply the missing period because
-            // it is not constant. Two separate reductions have to change, not one:
-            //   * best_cp lifts into the long space by the alignment the acquire MEASURED;
-            //   * the `% Mp` shortcut is valid ONLY mod L. One replica period is
-            //     Mp*fft_len*cps = 16 L exactly at CHORD -- 0 mod L, but NOT 0 mod 20 L -- so
-            //     the long form needs the FULL absolute advance. That product reaches ~7e12
-            //     chips and must stay good to a chip, hence long double (double's ulp there is
-            //     ~1e-3 chips, fine, but the margin is free).
-            if (_n_nh > 1) {
-                const long double LL = (long double)L * (long double)_n_nh;
-                const long double adv =
-                    (long double)_snap_start_hop * (long double)_fft_len * (long double)cps;
-                const long double off_l = adv - std::floor(adv / LL) * LL;
-                const double drift_l =
-                    std::fmod((double)_snap_start_hop * (double)_fft_len * cps
-                                  * (_replica->code_doppler_sign * dop / _replica->carrier_hz()),
-                              (double)LL);
-                double cpl = std::fmod(best_cp + (double)best_nh * L - (double)off_l - drift_l,
-                                       (double)LL);
-                if (cpl < 0.0)
-                    cpl += (double)LL;
-                det.code_phase_long_chips = cpl;
-                // ...and the same phase referenced to the SNAPSHOT, which is what should
-                // actually be transported. best_cp is the argument of a replica at `anchor`
-                // that matches the data at the snapshot, so the data's phase there is just
-                // best_cp lifted plus the ANCHOR's own advance -- a fixed ~163732 chips whose
-                // Doppler sensitivity is 1e-4 chips/Hz, against 5903 chips/Hz for the sample-0
-                // route above. Same information, seven orders of magnitude better conditioned.
-                const long double n_anc = (long double)anchor + (long double)_fft_len - 1.0L;
-                const long double cps_d =
-                    (long double)cps
-                    * (1.0L
-                       + (long double)(_replica->code_doppler_sign * dop / _replica->carrier_hz()));
-                const long double a_adv = n_anc * cps_d;
-                double phr = std::fmod(best_cp + (double)best_nh * L
-                                           + (double)(a_adv - std::floor(a_adv / LL) * LL),
-                                       (double)LL);
-                if (phr < 0.0)
-                    phr += (double)LL;
-                det.code_phase_at_ref_chips = phr;
-            }
+            det.code_phase_long_chips = dp.cp_long;
+            det.code_phase_at_ref_chips = dp.cp_at_ref;
             det.valid = true;
-            // DIAG: decompose where cp comes from, to localize any instability:
+            // DIAG: decompose where the reported phases come from, to localize instability:
             //   hop   = absolute snapshot reference (sample_seq/fft_len)
             //   coarse= cross-channel acquire cp (pre-refine)   refine= +- from refine
-            //   off/drift = nominal + code-Doppler back-reference to sample 0
-            //   cp0   = final reported code phase
+            //   nh    = MEASURED overlay alignment
+            //   cp0   = argument at sample 0 (mod L); ph@ref = physical phase at hop (mod 20L)
             INFO("GnssChannelizedSearch[{:s}]: PRN {:d} snr {:.1f} dop {:+.0f} | hop {:d} "
-                 "coarse {:.2f} refine {:+.2f} off {:.2f} drift {:.2f} -> cp0 {:.2f}",
+                 "coarse {:.2f} refine {:+.2f} nh {:d} -> cp0 {:.2f} cp_long {:.2f} "
+                 "ph@ref {:.2f}",
                  unique_name, _prns[p], a.snr, dop, _snap_start_hop, a.code_phase_chips,
-                 best_cp - a.code_phase_chips, off, drift, cp);
+                 best_cp - a.code_phase_chips, det.nh, dp.cp0, dp.cp_long, dp.cp_at_ref);
         }
         // Latch: a fresh detection replaces the held one; a miss keeps the last valid
         // detection for _hold_snapshots snapshots (a momentary miss must not drop the
