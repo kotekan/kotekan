@@ -87,8 +87,13 @@ def main():
 
     print("polling %d data channels for nav_obs; decoding until >=%d sats have an ephemeris "
           "(max %.0fs)..." % (len(decoders), args.min_sats, args.duration))
+    # ★ Poll FAST (~0.5 s). nav_obs is a ~1 s snapshot of the latest bit signs and the decoders
+    # need CONTIGUOUS bits to sync -- a slow poll leaves gaps the sync can never bridge. The
+    # decoders dedup by the nav_obs anchor, so over-polling is harmless. The production broker
+    # runs this at --interval 0.2.
     t0 = time.time()
     done = set()
+    last_print = 0.0
     while time.time() - t0 < args.duration and len(done) < len(decoders):
         for label, dec in decoders.items():
             if label in done:
@@ -103,16 +108,16 @@ def main():
                         dec.ingest(int(r["prn"]), r["nav_obs"])
                     except Exception:
                         pass
-            neph = sum(1 for prn in list(dec._p) if _safe_eph(dec, prn) is not None)
-            if neph >= args.min_sats:
+            if sum(1 for prn in list(dec._p) if _safe_eph(dec, prn) is not None) >= args.min_sats:
                 done.add(label)
         el = time.time() - t0
-        got = {lb: sum(1 for prn in list(d._p) if _safe_eph(d, prn) is not None)
-               for lb, d in decoders.items()}
-        print("  t=%3.0fs  eph/signal: %s" % (el, " ".join("%s:%d" % (lb.split()[0], n)
-                                                            for lb, n in got.items())))
-        if len(done) < len(decoders):
-            time.sleep(10)
+        if el - last_print >= 15.0:
+            last_print = el
+            got = {lb: sum(1 for prn in list(d._p) if _safe_eph(d, prn) is not None)
+                   for lb, d in decoders.items()}
+            print("  t=%3.0fs  eph/signal: %s" % (el, " ".join("%s:%d" % (lb.split()[0], n)
+                                                               for lb, n in got.items())))
+        time.sleep(0.5)
 
     # BRDC truth, once
     try:
