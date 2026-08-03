@@ -2116,3 +2116,48 @@ the next 3 dB has to come from somewhere else:
   hopeless the way they were at 6.6 Hz.
 * **The DLL trim**, now that it is on (`--dll-gain 0.25`, restored from an erroneous 0.0): a
   sub-chip code error costs amplitude directly, and the trim had never been allowed to converge.
+
+## 8.14 The lock is weak because the satellites are in the SIDELOBES (2026-08-03)
+
+The arithmetic that should have come first. Link budget for GPS L5Q on one CHORD feed,
+on boresight: 6 m dish, eta 0.5 -> 34.4 dBi; Tsys 50 K -> N0 -211.6 dBW/Hz; Prx -158 dBW gives
+**C/N0 ~88 dB-Hz**. Over one 10.5 ms record, on the 7 channels the tracker uses (6.7% of the
+L5 lobe), the expected per-record SNR is ~4.4e5. **Measured `amp_snr` is ~5.** That is a
+**~49 dB shortfall**, which no amount of error bar on Tsys or efficiency explains -- it is not a
+sensitivity limit, it is a gross loss.
+
+It is the beam. lambda/D at 1176 MHz on a 6 m dish is **2.44 degrees**, and CHORD is a transit
+instrument. Every satellite being tracked right now:
+
+| PRN | elev | off-zenith | amp_snr |
+|---|---|---|---|
+| 18 | 70 | 20 deg | 1.99 |
+| 29 | 59 | 31 deg | 1.39 |
+| 15 | 32 | 58 deg | 3.08 |
+| 27 |  1 | 89 deg | 4.21 |
+
+All of them tens of degrees out, i.e. deep in the sidelobes -- and `amp_snr` correlates with
+elevation not at all, which is what a sidelobe forest looks like. Nothing has been near
+boresight all day.
+
+**This reframes the whole afternoon.** Buying +3 dB by merging combiners against a 49 dB deficit
+was never going to produce a lock; the "first coherent detections at 10% duty cycle" (8.13) are
+just sidelobe-level signal occasionally clearing a threshold. Chasing SNR was the wrong axis.
+
+**And it reframes what success means.** For beam mapping the satellite is SUPPOSED to be off
+boresight most of the time -- measuring the sidelobes is the point. So the operating mode is:
+point the code phase and carrier from the BRDC model plus broker trims, COAST through the
+pattern (`--dead-reckon`), and record the amplitude per subband per feed. A hard lock is neither
+available nor required away from boresight. `coherence_s > 0` is a validation signal, not the
+product.
+
+What actually matters, then:
+1. **Pointing accuracy** -- the code phase must be right so the measured amplitude is the true
+   beam response and not a despread miss. That is what the -4 overlay-period fix (8.9) bought,
+   and it is worth more than every dB chased since.
+2. **A near-zenith transit to validate against.** Within ~1-2 degrees of boresight the signal
+   should be ~40 dB stronger and lock trivially. THAT is the test that closes this out, and it
+   is a scheduling question, not a code one: find when a GPS satellite passes within a degree or
+   so of zenith at 49.32 N, and look then.
+3. Per-subband tracking at sidelobe SNR needs the loop closed centrally (broker trims) with the
+   model carrying the phase -- not bigger coherent fits, which is where I was heading.
