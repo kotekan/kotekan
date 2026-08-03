@@ -852,12 +852,18 @@ def main(argv=None):
     ap.add_argument("--carrier-bleed-hz", type=float, default=2.0,
                     help="Shadow: minimum standing |trim| (Hz) to consider a bleed candidate. "
                          "Below this the sinc loss is negligible and not worth a re-pin.")
-    ap.add_argument("--carrier-bleed-stable-emits", type=int, default=5,
+    ap.add_argument("--carrier-bleed-stable-emits", type=int, default=8,
                     help="Shadow: consecutive coherent emits the trim must hold steady over to "
-                         "count as CONVERGED (a moving trim is still settling -- not a candidate).")
-    ap.add_argument("--carrier-bleed-stable-hz", type=float, default=0.6,
+                         "count as CONVERGED (a moving trim is still settling -- not a candidate). "
+                         "Longer window makes the drift SLOPE (below) measurable above noise.")
+    ap.add_argument("--carrier-bleed-stable-hz", type=float, default=0.4,
                     help="Shadow: max peak-to-peak trim spread (Hz) over the stability window to "
                          "call it converged.")
+    ap.add_argument("--carrier-bleed-max-slope", type=float, default=0.02,
+                    help="Shadow: max |least-squares trim slope| (Hz/s) over the window. A still-"
+                         "settling trim drifts (low spread but a monotonic climb); bleeding it folds "
+                         "a mid-convergence value and leaves a residual (the 2026-08-03 REFUTED "
+                         "class). Requiring a FLAT slope, not just low spread, rejects those.")
     ap.add_argument("--carrier-bleed", type=int, default=0,
                     help="ARM the trim-bleed (0 = shadow-only). On a verified candidate: zero "
                          "car_trim and flag the tracker to re-adopt the seed (f_ref = dop, phase-"
@@ -3712,10 +3718,24 @@ def main(argv=None):
                     bh.append((t0, car_trim[prn]))
                     del bh[:-args.carrier_bleed_stable_emits]
                     vals = [v for _, v in bh]
+                    # FLAT-TRIM gate (2026-08-03): a truly converged trim is FLAT; a still-settling
+                    # one DRIFTS (low spread but a monotonic climb toward a higher plateau). Bleeding
+                    # a drifting trim folds a mid-convergence value into f_ref and leaves the
+                    # remainder as a residual -> the REFUTED class from the L2C live arm (PRN21 bled
+                    # at +5.37 while climbing -> +2.86 resid). Spread alone can't tell drift from
+                    # noise; the least-squares SLOPE can (noise averages out, a drift does not).
+                    slope = 0.0
+                    if len(bh) >= 2:
+                        tb = sum(t for t, _ in bh) / len(bh)
+                        vb = sum(vals) / len(vals)
+                        den = sum((t - tb) ** 2 for t, _ in bh)
+                        if den > 0.0:
+                            slope = sum((t - tb) * (v - vb) for t, v in bh) / den
                     converged = (len(bh) >= args.carrier_bleed_stable_emits
-                                 and t0 - bh[0][0] < 30.0
+                                 and t0 - bh[0][0] < 90.0
                                  and abs(car_trim[prn]) >= args.carrier_bleed_hz
-                                 and max(vals) - min(vals) <= args.carrier_bleed_stable_hz)
+                                 and max(vals) - min(vals) <= args.carrier_bleed_stable_hz
+                                 and abs(slope) <= args.carrier_bleed_max_slope)
                     # ARMED: re-pin f_ref and zero the trim (one bleed per lockout, never while a
                     # step- or bleed-hypothesis is already under verify for this PRN).
                     if (converged and args.carrier_bleed and prn not in car_verify
@@ -3728,14 +3748,14 @@ def main(argv=None):
                         car_bleed_lock_t[prn] = t0 + args.carrier_bleed_lockout_s
                         car_bleed_hist[prn] = []
                         car_bleed_log_t[prn] = t0
-                        _log("CARRIER BLEED PRN %d: re-pinning f_ref (%+.2f Hz absorbed), trim->0, "
-                             "VERIFYING (heal in %d emits)"
-                             % (prn, prev_trim, args.carrier_bleed_verify_emits))
+                        _log("CARRIER BLEED PRN %d: re-pinning f_ref (%+.2f Hz absorbed, slope "
+                             "%+.3f Hz/s), trim->0, VERIFYING (heal in %d emits)"
+                             % (prn, prev_trim, slope, args.carrier_bleed_verify_emits))
                     elif converged and t0 - car_bleed_log_t.get(prn, 0.0) >= 60.0:
                         car_bleed_log_t[prn] = t0
                         _log("CAR-BLEED CANDIDATE PRN %d: trim %+.2f Hz stable %d emits "
-                             "(spread %.2f), coherent -> %s"
-                             % (prn, car_trim[prn], len(bh), max(vals) - min(vals),
+                             "(spread %.2f, slope %+.3f Hz/s), coherent -> %s"
+                             % (prn, car_trim[prn], len(bh), max(vals) - min(vals), slope,
                                 "locked out" if args.carrier_bleed
                                 else "would re-pin f_ref, predict trim->~0 (shadow, no action)"))
             if car_report:
