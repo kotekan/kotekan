@@ -52,6 +52,7 @@ add_library(
     gnss/gpsL2CCode.cpp
     gnss/gpsL5Code.cpp
     gnss/beidouB2aCode.cpp
+    gnss/beidouB2bCode.cpp
     gnss/gnssOverlay.cpp
     gnss/GnssSubbandSplit.cpp
     gnss/GnssQuantize44.cpp

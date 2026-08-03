@@ -232,6 +232,21 @@ inline constexpr SignalDescriptor BDS_B2A_D = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
 };
 
+/// BeiDou-3 B2b-I (1207.14 MHz) -- the OPEN PPP-B2b DATA channel carrying B-CNAV3: 10230-chip
+/// primary at 10.23 Mcps (1 ms) from two 13-stage LFSRs (its own G1 tap + per-PRN G2 start
+/// table). DATA-only: unlike B2a/B1C there is no dataless pilot in the open service, so deep
+/// integration needs nav-bit wipe (like GPS L1 C/A), not a pilot peel. B-CNAV3 runs at 1000 sps
+/// = exactly one symbol per 1 ms code period, so there is NO secondary overlay (navwipe_bit_
+/// records 1). SEPARATE carrier from GPS L2C (1227.6) -- one airspy tune covers B2b alone.
+/// ReplicaSource: beidouB2bCode (PocketSDR-sourced tables, bit-exact-verified; b2b_code_check.py).
+/// BDS-3 only (PPP-B2b is a BDS-3 service).
+inline constexpr SignalDescriptor BDS_B2B_I = {
+    "BDS_B2B_I", 1207.14e6, 10.23e6, 10230, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/false, /*nav_symbol_s=*/1e-3, /*secondary_length=*/0,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
@@ -239,7 +254,8 @@ inline constexpr SignalDescriptor BDS_B2A_D = {
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
-          &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D})
+          &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D,
+          &BDS_B2B_I})
         if (name == s->name)
             return s;
     return nullptr;
