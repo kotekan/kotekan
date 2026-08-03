@@ -144,22 +144,23 @@ export class DecodeHealthPanel {
 
     // Position self-survey (gnss_pvt): a from-the-code single-point position, per
     // (constellation, band) and a combined best-fit, reported as the OFFSET from the surveyed
-    // config position with 1-sigma error bars. Single-frequency (iono-limited ~10 m class); the
-    // per-group horizontal/RMS also doubles as a per-signal code-quality readout.
+    // config position with 1-sigma error bars. Two best-fits: the DUAL-FREQUENCY iono-free
+    // (combined_if, few-metre) headlined, and the single-frequency (combined, iono-limited
+    // ~10 m class) beneath it for comparison. The per-group horizontal/RMS (incl. the "-IF" rows)
+    // doubles as a per-signal code-quality readout.
     _renderPvt(pvt) {
         if (!pvt) return "";
         if (pvt.error)
             return `<div style="color:#8a8f98;padding:6px;font-size:11px">PVT: ${pvt.error}</div>`;
         const hyp = (a, b) => Math.sqrt(a * a + b * b);
-        const c = pvt.combined;
         let h = `<div style="border-top:1px solid #333;margin-top:4px;padding:6px 6px 2px">`
               + `<span style="color:#cbd5e1;font-weight:600">Position self-survey</span>`
-              + `<span style="color:#8a8f98;font-size:11px"> · single-freq, offset vs surveyed `
-              + `site</span></div>`;
-        if (c) {
+              + `<span style="color:#8a8f98;font-size:11px"> · offset vs surveyed site</span></div>`;
+        // best-fit line: bold label, horiz±/vert±, sats, PDOP, and the solved lat/lon/alt.
+        const fitLine = (c, label, labelColor) => {
             const ho = hyp(c.d_e, c.d_n), sh = hyp(c.sigma_e, c.sigma_n);
-            h += `<div style="padding:2px 8px;font-size:12px">`
-               + `<b>best-fit:</b> ${ho.toFixed(1)} m horiz `
+            return `<div style="padding:2px 8px;font-size:12px">`
+               + `<b style="color:${labelColor}">${label}:</b> ${ho.toFixed(1)} m horiz `
                + `<span style="color:#8a8f98">(±${sh.toFixed(0)})</span>, `
                + `${c.d_u >= 0 ? "+" : ""}${c.d_u.toFixed(1)} m vert `
                + `<span style="color:#8a8f98">(±${c.sigma_u.toFixed(0)})</span> · `
@@ -167,7 +168,10 @@ export class DecodeHealthPanel {
                + `PDOP ${c.pdop.toFixed(1)}<br>`
                + `<span style="color:#8a8f98">${c.lat.toFixed(6)}, ${c.lon.toFixed(6)}, `
                + `${c.alt.toFixed(0)} m</span></div>`;
-        }
+        };
+        if (pvt.combined_if) h += fitLine(pvt.combined_if, "iono-free", "#7dd3a8");
+        if (pvt.combined) h += fitLine(pvt.combined, pvt.combined_if ? "single-freq" : "best-fit",
+                                       "#cbd5e1");
         const groups = pvt.groups || {};
         const keys = Object.keys(groups).sort();
         if (keys.length) {

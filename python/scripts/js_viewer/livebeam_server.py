@@ -1172,18 +1172,41 @@ def _pvt_measurements(globs, max_age_s, t_now):
                 continue
 
     # de-wrap each group's residuals to the group median (handles the clock straddling a
-    # code-period boundary; L is the code period in metres).
+    # code-period boundary; L is the code period in metres). Keep the de-wrapped per-(sys,prn,freq)
+    # residual so the dual-frequency iono-free combination can be formed from CLEAN ranges.
     import statistics as _st
     by_group = {}
     for (sysid, prn, fr), v in latest.items():
-        by_group.setdefault(v[1], []).append(v)
+        by_group.setdefault(v[1], []).append((sysid, prn, fr, v))
     out = []
+    dw = {}   # (sys, prn, freq) -> (az, el, resid_dewrapped)
     for group, rows in by_group.items():
-        med = _st.median([r[4] for r in rows])
-        for _t0, g, az, el, res, L in rows:
+        med = _st.median([r[3][4] for r in rows])
+        for sysid, prn, fr, v in rows:
+            _t0, g, az, el, res, L = v
             if L:
                 res = res - L * round((res - med) / L)   # unwrap to within +-L/2 of the median
             out.append({"group": g, "az": az, "el": el, "resid_m": res})
+            dw[(sysid, prn, fr)] = (az, el, res)
+
+    # DUAL-FREQUENCY iono-free combination: for each satellite seen on two bands, remove the
+    # first-order ionosphere. rho_IF = (f1^2 rho1 - f2^2 rho2)/(f1^2 - f2^2) -- the ~1/f^2 iono
+    # cancels and any per-band clock/bias folds into a per-sat-independent constant the "-IF"
+    # group clock absorbs. Prefer the widest split (L1+L5) for the strongest iono removal. The
+    # solver puts these in their own combined_if solution (few-metre) beside the single-freq one.
+    FREQ_HZ = {"L1": 1575.42e6, "L2": 1227.60e6, "L5": 1176.45e6}
+    bysat = {}
+    for (sysid, prn, fr), (az, el, res) in dw.items():
+        bysat.setdefault((sysid, prn), {})[fr] = (az, el, res)
+    for (sysid, prn), bands in bysat.items():
+        pair = next((p for p in (("L1", "L5"), ("L1", "L2"), ("L2", "L5"))
+                     if p[0] in bands and p[1] in bands), None)
+        if pair is None:
+            continue
+        f1, f2 = FREQ_HZ[pair[0]], FREQ_HZ[pair[1]]
+        (az1, el1, r1), (_a2, _e2, r2) = bands[pair[0]], bands[pair[1]]
+        rif = (f1 * f1 * r1 - f2 * f2 * r2) / (f1 * f1 - f2 * f2)
+        out.append({"group": "%s-IF" % sysid, "az": az1, "el": el1, "resid_m": rif})
     return out
 
 

@@ -124,11 +124,16 @@ def _dops(Ninv3):
 
 def solve(measurements, lat0, lon0, alt0, min_el_deg=10.0):
     """PVT self-survey. `measurements`: iterable of dicts {group, az, el, resid_m} where `group`
-    is a (constellation, band) label. Returns {groups: {group: result}, combined: result|None}.
+    is a (constellation, band) label. A group whose label ends in "-IF" is an IONO-FREE
+    (dual-frequency) group; those are solved together into `combined_if`, and the single-frequency
+    groups into `combined`, so the two never mix (their clock biases differ and an IF sat is
+    correlated with its own single-freq rows). Returns {groups: {group: result}, combined,
+    combined_if}.
 
     Each result: n_sats, position (lat/lon/alt + ECEF), offset dENU (m) from the config a-priori,
-    clock (m), resid_rms_m, sigma_enu (1-sigma m), dops. `combined` solves ALL groups jointly with
-    one clock per group -- the best-fit position + error."""
+    clock (m), resid_rms_m, sigma_enu (1-sigma m), dops. `combined`/`combined_if` solve their
+    groups jointly with one clock per group -- the best-fit position + error. `combined_if` is the
+    few-metre iono-free answer; `combined` the single-frequency (iono-limited) one for comparison."""
     apr = _llh_to_ecef(lat0, lon0, alt0)
     R = _enu_axes(lat0, lon0)   # rows E,N,U in ECEF
     # bucket usable measurements by group
@@ -175,16 +180,60 @@ def solve(measurements, lat0, lon0, alt0, min_el_deg=10.0):
             if _ok(Ninv, sd):
                 out["groups"][g] = _pack(dx, clk[0], sig0, sd, Ninv, nu, nr)
 
-    # combined: one clock column per group
-    groups = sorted(by_group)
-    gi = {g: i for i, g in enumerate(groups)}
-    rows = [(los, res, gi[g]) for g in groups for los, res in by_group[g]]
-    s = _solve(rows, len(groups), gi)
-    if s and _ok(Ninv=s[4], sig_diag=s[3]):
+    # combined: one clock column per group. Solve single-frequency groups and iono-free (-IF)
+    # groups SEPARATELY -- an IF group's clock folds two dongle clocks together and its sats are
+    # the same physical satellites as the single-freq rows, so mixing them double-counts and
+    # cross-contaminates the two clock frames.
+    def _combined(sel):
+        if not sel:
+            return None
+        gi = {g: i for i, g in enumerate(sel)}
+        rows = [(los, res, gi[g]) for g in sel for los, res in by_group[g]]
+        s = _solve(rows, len(sel), gi)
+        if not (s and _ok(Ninv=s[4], sig_diag=s[3])):
+            return None
         dx, clks, sig0, sd, Ninv, nu, nr = s
         c = _pack(dx, 0.0, sig0, sd, Ninv, nu, nr)
         c["clock_m"] = None
-        c["clocks_m"] = {g: float(clks[gi[g]]) for g in groups}
-        c["n_groups"] = len(groups)
-        out["combined"] = c
+        c["clocks_m"] = {g: float(clks[gi[g]]) for g in sel}
+        c["n_groups"] = len(sel)
+        return c
+
+    all_groups = sorted(by_group)
+    out["combined"] = _combined([g for g in all_groups if not g.endswith("-IF")])
+    out["combined_if"] = _combined([g for g in all_groups if g.endswith("-IF")])
     return out
+
+
+if __name__ == "__main__":
+    # Synthetic self-test: a known site, sats at assorted az/el, and a per-sat ELEVATION-mapped
+    # ionosphere injected on L1 and L5 with the physical 1/f^2 ratio. Elevation-dependent iono is
+    # NOT absorbable by a constant per-group clock, so the single-frequency solve is biased (mostly
+    # vertical); the iono-free combination must remove it and recover the a-priori position.
+    import random
+    random.seed(1)
+    lat0, lon0, alt0 = 43.9687, -79.2521, 260.0
+    fq = {"L1": 1575.42e6, "L5": 1176.45e6}
+    dx_true = np.array([4.0, -3.0, 6.0])           # ENU offset (m) we must recover
+    clk = {"L1": 12.0, "L5": -5.0}                 # independent per-band dongle clocks (m)
+    m_l1, m_if = [], []
+    for _ in range(14):
+        az, el = random.uniform(0, 360), random.uniform(15, 85)
+        los = _los_enu(az, el)
+        iono_l1 = 3.0 / math.sin(math.radians(el))  # L1 slant iono delay (m), bigger at low el
+        base = -float(los @ dx_true)
+        r1 = base + clk["L1"] + iono_l1 + random.gauss(0, 0.3)
+        r5 = base + clk["L5"] + iono_l1 * (fq["L1"] / fq["L5"]) ** 2 + random.gauss(0, 0.3)
+        m_l1.append({"group": "G-L1", "az": az, "el": el, "resid_m": r1})
+        rif = (fq["L1"] ** 2 * r1 - fq["L5"] ** 2 * r5) / (fq["L1"] ** 2 - fq["L5"] ** 2)
+        m_if.append({"group": "G-IF", "az": az, "el": el, "resid_m": rif})
+    r_l1 = solve(m_l1, lat0, lon0, alt0)["groups"]["G-L1"]
+    r_if = solve(m_if, lat0, lon0, alt0)["groups"]["G-IF"]
+    e_l1 = math.sqrt(sum((r_l1[k] - dx_true[i]) ** 2 for i, k in enumerate(("d_e", "d_n", "d_u"))))
+    e_if = math.sqrt(sum((r_if[k] - dx_true[i]) ** 2 for i, k in enumerate(("d_e", "d_n", "d_u"))))
+    print("single-freq L1 position error: %.2f m  (sigma_u %.2f, iono-biased)"
+          % (e_l1, r_l1["sigma_u"]))
+    print("iono-free    IF position error: %.2f m  (sigma_u %.2f)" % (e_if, r_if["sigma_u"]))
+    assert e_if < e_l1, "iono-free did not beat single-frequency (%.2f vs %.2f)" % (e_if, e_l1)
+    assert e_if < 2.0, "iono-free residual too large: %.2f m" % e_if
+    print("PASS: dual-frequency iono-free removes the elevation-dependent iono bias")
