@@ -526,8 +526,7 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     AcquisitionResult best{0.0, 0.0, 0, -1.0, 0.0};
     double surf_sum = 0.0;
     long surf_n = 0;
-    int best_d = 0;
-    long best_tau = 0;
+    int best_d = 0, best_q = 0, best_i = 0;
     std::vector<double> dop_peak(dims.n_dop, 0.0); // per-Doppler max-over-tau (for the sub-grid fit)
 
     // Index by the STORED fine-lag COLUMNS, and form the absolute delay through dims.tau(),
@@ -550,7 +549,8 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
                 if (pw > best.peak) {
                     best.peak = pw;
                     best_d = d;
-                    best_tau = dims.tau(q, s);
+                    best_q = q;
+                    best_i = s;
                 }
             }
         }
@@ -581,6 +581,28 @@ AcquisitionResult channelized_peak(const std::vector<double>& surf, const Acquis
     // (data = repl0 advanced by the delay). Report the delay so it can seed the
     // measurement replica generator directly (same "code[floor(cp + n*r)]"
     // convention).
+    //
+    // THE FINE HALF CARRIES THE OPPOSITE SIGN TO THE COARSE HALF, so AcquisitionSurface::tau()'s
+    // q*sph + i*s_step is not the delay. Measured 2026-08-02: injecting +5 chips moves the peak's
+    // fine index +49 columns at s_step 32 = 9.8/chip = exactly 1/cps, while q moves the other way.
+    // Fold signed first -- the cross-channel DFT reports the fine lag modulo the axis's own
+    // period, so a small NEGATIVE offset returns near the top and reads as a whole extra hop.
+    //
+    // This was invisible for as long as refine_peak re-scanned a full hop, AND IT IS WHY IT HAD
+    // TO: with the sign wrong the coarse phase is off by up to sph (52.4 chips at CHORD), so the
+    // refine's span had to cover that. Corrected, the refine's chosen offset falls from +50.27
+    // chips to -0.44, `refine_span` drops 16384 -> 512, and the refine costs 426 evaluations
+    // instead of... 14. Measured 64.09 s -> 3.57 s with the answer unchanged (0.107 chips,
+    // period exact, and 0/8 wrong lobe or period at noise 20).
+    //
+    // Fold by the axis's STORED period, not sph: when the covering comb shares a factor g with
+    // sph the surface holds only sph/g columns (the grating-lobe redundancy), and folding by sph
+    // would step outside the data. At g = 1 (the 8-node comb) the two are the same.
+    const int fine_period = (dims.s_stored > 0) ? dims.s_stored : dims.sph;
+    long fine = (long)best_i * (long)(dims.s_step > 0 ? dims.s_step : 1);
+    if (fine > fine_period / 2)
+        fine -= fine_period;
+    const long best_tau = (long)best_q * (long)dims.sph - fine;
     const long Ns = (long)dims.Mp * dims.sph;
     best.peak_tau_samples = ((Ns - best_tau) % Ns + Ns) % Ns;
     const double chips = (double)best.peak_tau_samples * chip_rate / sample_rate;

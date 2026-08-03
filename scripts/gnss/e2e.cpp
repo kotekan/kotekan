@@ -119,6 +119,7 @@ struct Opt {
     double seed_dop_err = 0.0;       ///< Hz added to the seed's Doppler only (not the truth)
     double seed_cp_rate = 0.0;       ///< chips/hop residual handed to the tracker
     double seed_dop_rate = 0.0;      ///< Hz/s handed to the tracker
+    int fix_fine_sign = 0; ///< apply ms_split_peak's fine-sign correction to the shipped coarse cp
     int quantize = 0;                ///< 1 = 4+4b like GnssQuantize44, 0 = float (noiseless)
     int skip_search = 0;             ///< 1 = seed straight from truth (isolates the tracker leg)
     /// Write the detection in /get_detections wire format. e2e_broker.py serves this to the
@@ -260,6 +261,7 @@ int main(int argc, char** argv) {
         else if (arg_eq(a, "--noise")) o.noise = next_d();
         else if (arg_eq(a, "--trials")) o.trials = next_i();
         else if (arg_eq(a, "--nseed")) o.nseed = (unsigned)next_i();
+        else if (arg_eq(a, "--fix-fine-sign")) o.fix_fine_sign = 1;
         else if (arg_eq(a, "--quantize")) o.quantize = 1;
         else if (arg_eq(a, "--skip-search")) o.skip_search = 1;
         else if (arg_eq(a, "--code-doppler-sign")) o.code_doppler_sign = next_d();
@@ -511,8 +513,29 @@ int main(int argc, char** argv) {
                                                     surf, ws, s_chans, FFT, o.threads,
                                                     o.fine_step);
             }
-            const auto ai = gnss::channelized_peak(surf, dims, grid, o.sample_rate,
+            auto ai = gnss::channelized_peak(surf, dims, grid, o.sample_rate,
                                                    sbank.chip_rate_hz(), sbank.code_length());
+            // --fix-fine-sign: apply ms_split_peak's correction to the SHIPPED coarse phase.
+            // channelized_peak forms tau = q*sph + i*s_step, but the coarse and fine halves of
+            // the lag carry OPPOSITE signs (measured 2026-08-02), and i is reported mod sph so
+            // a small negative offset comes back near the top of the axis. Nobody noticed
+            // because refine_peak re-scans a full hop and finds the peak regardless -- which is
+            // precisely why refine_span has to be a full hop, and why the refine costs 426
+            // evaluations. If the sign is the reason, fixing it should collapse the refine's
+            // chosen offset toward zero, and the span with it.
+            if (o.fix_fine_sign) {
+                const long Ns = (long)dims.Mp * dims.sph;
+                long tau = ((Ns - (long)ai.peak_tau_samples) % Ns + Ns) % Ns;
+                long fine = tau % dims.sph, q = tau / dims.sph;
+                if (fine > dims.sph / 2)
+                    fine -= dims.sph;
+                const long tau_eff = q * (long)dims.sph - fine;
+                ai.peak_tau_samples = ((Ns - tau_eff) % Ns + Ns) % Ns;
+                double cp = std::fmod((double)ai.peak_tau_samples * sbank.chip_rate_hz()
+                                          / o.sample_rate, (double)sbank.code_length());
+                if (cp < 0.0) cp += (double)sbank.code_length();
+                ai.code_phase_chips = cp;
+            }
             if (best_nh < 0 || ai.snr > a.snr) { a = ai; best_nh = nh; adims = dims; }
         }
         T_acq += tnow() - t_acq0;

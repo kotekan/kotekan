@@ -277,6 +277,22 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
     return blocks, record_floats, n_elem
 
 
+def _comb_g(chan_ids, fft_len):
+    """gcd of the covering channels' frequency differences with fft_len.
+
+    This is exactly aggregate_accumulate's `g`: it sets s_stored = fft_len/g, the period of the
+    fine-lag axis, and hence how far the refine has to search. g == 1 means the axis spans a
+    whole hop and the coarse phase is unambiguous.
+    """
+    from math import gcd
+    if not chan_ids:
+        return fft_len
+    g = 0
+    for c in chan_ids[1:]:
+        g = gcd(g, abs(c - chan_ids[0]))
+    return gcd(g, fft_len) if g else fft_len
+
+
 def search_stage(cfg, args, in_buf, chan_ids, core):
     """The GnssChannelizedSearch block, shared by the per-node and aggregator instances so
     their search configuration CANNOT drift apart -- every hard-won constant below applies
@@ -351,6 +367,21 @@ def search_stage(cfg, args, in_buf, chan_ids, core):
         # made every published Doppler stale before the broker could solve on it. /2 keeps the
         # cp error well inside the comb ambiguity the model resolves anyway.
         "refine_step": max(1, int(2 * fe["num_bins"] / max(1, n_chan) / 2)),
+        # SPAN: derived from the comb, not guessed. channelized_peak's coarse phase used to be
+        # wrong by up to a whole hop (the fine lag was added with the wrong sign, 2026-08-03),
+        # so the refine had to scan +-fft_len to find the peak at all -- 426 evaluations, and
+        # the single biggest item in a pass at 88 s. Corrected, its chosen offset falls from
+        # +50.27 chips to -0.44 and a +-512 sample window is ample: measured 88.50 -> 4.74 s
+        # with the answer unchanged (period exact, 0.107 chips, and 0/8 wrong lobe or period at
+        # noise 20 AND 40).
+        #
+        # But only when g == 1. When the covering channels share a factor g with fft_len the
+        # fine axis stores just fft_len/g columns, so the recovered phase is right only modulo
+        # that -- the grating-lobe ambiguity, 13.09 chips at g=4 -- and the span must still
+        # cover it. 8 nodes give g=1; fewer can too (any two nodes with adjacent comb offsets),
+        # so compute it rather than assume the node count.
+        "refine_span": 512 if _comb_g(chan_ids, fe["num_bins"] * 2) == 1
+                       else fe["num_bins"] * 2,
         # The aggregate is parallel over Doppler bins and is the whole cost of an aggregator
         # pass (27 channels x 4096 lags x nd bins ~ 10 s/window on one core). The per-node
         # instances keep 1 thread; the aggregator overrides after construction.
