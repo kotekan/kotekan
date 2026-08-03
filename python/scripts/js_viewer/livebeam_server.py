@@ -1048,15 +1048,63 @@ def _gps_signal_capability():
         return {}
 
 
-# The three physical front ends, for the unified page's RF selector (spectrum + waterfall +
-# airspy controls switch between them). ws_port = the per-band livebeam_server the browser
-# opens for that band's power stream (those servers keep running as headless streamers);
-# airspy = the ADC stage on the merged kotekan. Must match gen_3band_config's port plan.
+# The physical front ends, for the unified page's RF selector (spectrum + waterfall + airspy
+# controls switch between them). ws_port = the per-band livebeam_server the browser opens for that
+# band's power stream; airspy = the ADC stage on the merged kotekan.
+#
+# STATIC FALLBACK ONLY: main() replaces this with discover_rf_bands() from the running /config, so
+# each front end is LABELLED BY ITS ACTUAL airspy tuning (not a hardcoded GPS band name -- the l2c
+# dongle now tunes 1207.14 for BeiDou B2b / Galileo E5b, not GPS L2C's 1227.6), and a suspended
+# band (absent airspy stage) drops out of the selector. Used only when /config is unreachable.
 UNIFIED_RF_BANDS = [
     {"band": "l1",  "ws_port": 8539, "airspy": "l1_airspy_in",  "label": "L1 · 1575.42 MHz"},
-    {"band": "l2c", "ws_port": 8639, "airspy": "l2c_airspy_in", "label": "L2C · 1227.6 MHz"},
+    {"band": "l2c", "ws_port": 8639, "airspy": "l2c_airspy_in", "label": "L2 · 1207.14 MHz"},
     {"band": "l5",  "ws_port": 8739, "airspy": "l5_airspy_in",  "label": "L5 · 1176.45 MHz"},
 ]
+_RF_WS_PORT = {"l1": 8539, "l2c": 8639, "l5": 8739}
+
+
+def discover_rf_bands(host, rest_port, timeout=3.0):
+    """Build the RF-band selector from the airspyInput stages in kotekan's /config: label each
+    front end by its ACTUAL airspy freq, and include only the front ends present (a suspended band
+    has no airspy stage -> drops out). Returns None on failure so main() keeps the static list."""
+    import urllib.request
+    if host in ("0.0.0.0", "", "::"):
+        host = "127.0.0.1"
+    try:
+        with urllib.request.urlopen("http://%s:%d/config" % (host, rest_port), timeout=timeout) as r:
+            cfg = json.load(r)
+    except Exception as e:  # noqa: BLE001
+        log_.warning("rf-band discovery: /config fetch failed (%s); using static table", e)
+        return None
+    found = {}
+
+    def walk(node):
+        if isinstance(node, dict):
+            for name, v in node.items():
+                if isinstance(v, dict) and v.get("kotekan_stage") == "airspyInput":
+                    m = re.match(r"([a-z0-9]+)_airspy", name)
+                    if m and v.get("freq") is not None:
+                        try:
+                            found[m.group(1)] = (name, float(v["freq"]))
+                        except (TypeError, ValueError):
+                            pass
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(cfg)
+    if not found:
+        return None
+    order = {"l1": 0, "l2c": 1, "l5": 2}
+    rows = []
+    for band, (name, freq_mhz) in sorted(found.items(), key=lambda kv: order.get(kv[0], 9)):
+        region = _band_of(freq_mhz * 1e6)  # airspy freq is in MHz
+        rows.append({"band": band, "ws_port": _RF_WS_PORT.get(band, 8539), "airspy": name,
+                     "label": "%s · %.2f MHz" % (region, freq_mhz)})
+    log_.info("rf-band discovery: %s", ", ".join(r["label"] for r in rows))
+    return rows
 
 
 class WsPortResource(resource.Resource):
@@ -1641,6 +1689,10 @@ def main():
         if discovered:
             global UNIFIED_SIGNALS
             UNIFIED_SIGNALS = discovered
+        rf = discover_rf_bands(args.kotekan_host, args.kotekan_rest_port)
+        if rf:
+            global UNIFIED_RF_BANDS
+            UNIFIED_RF_BANDS = rf
 
     static_dir = os.path.dirname(os.path.abspath(__file__))
 
