@@ -872,7 +872,13 @@ def main(argv=None):
                          "coherent) or it is logged REFUTED and the loop re-grows the trim from 0. "
                          "Default OFF -- validate on the replay bench (GNSS_TRIM_FORCE) first.")
     ap.add_argument("--carrier-bleed-verify-emits", type=int, default=3,
-                    help="Emits a bled sat must stay coherent to count the re-pin VERIFIED.")
+                    help="Emits to watch after a bleed before judging the re-pin by its residual.")
+    ap.add_argument("--carrier-bleed-ok-hz", type=float, default=1.5,
+                    help="Post-bleed |residual| (Hz) at the end of the verify window to count "
+                         "VERIFIED. Judged on the SETTLED residual, not coh_ok -- a re-pin resets "
+                         "the deep coherent window for ~1 emit (coherence_s blips) even on a good "
+                         "bleed, so coh_ok would false-refute; and a mild remainder still reduced "
+                         "the standing trim (net win).")
     ap.add_argument("--carrier-bleed-lockout-s", type=float, default=120.0,
                     help="Minimum seconds between bleeds of the same PRN (anti-churn).")
     ap.add_argument("--watchdog-s", type=float, default=0.0,
@@ -3579,16 +3585,23 @@ def main(argv=None):
                 if prn in car_bleed_verify:
                     bv = car_bleed_verify[prn]
                     bv["emits"] += 1
-                    if not coh_ok:
+                    if bv["emits"] >= args.carrier_bleed_verify_emits:
                         del car_bleed_verify[prn]
-                        _log("CARRIER BLEED REFUTED PRN %d: decohered after %d emit(s) (resid "
-                             "%+.2f Hz) -- loop re-grows trim from 0, %.0f s lockout"
-                             % (prn, bv["emits"], resid, args.carrier_bleed_lockout_s))
-                    elif bv["emits"] >= args.carrier_bleed_verify_emits:
-                        del car_bleed_verify[prn]
-                        _log("CARRIER BLEED VERIFIED PRN %d: coherent through %d emits "
-                             "(resid %+.2f Hz, trim now %+.2f)"
-                             % (prn, bv["emits"], resid, car_trim.get(prn, 0.0)))
+                        # Judge by the SETTLED residual, not coh_ok (which blips for ~1 emit on the
+                        # deep-window reset a re-pin causes, good bleed or not). A residual at/under
+                        # the bar means the fold left the carrier aligned; a large one is a real
+                        # miss (the loop re-grows the trim from 0 either way -- and even a mild miss
+                        # already REDUCED the standing trim, so the bar is generous).
+                        if abs(resid) <= args.carrier_bleed_ok_hz:
+                            _log("CARRIER BLEED VERIFIED PRN %d: resid settled %+.2f Hz "
+                                 "(<= %.2f) over %d emits, trim now %+.2f"
+                                 % (prn, resid, args.carrier_bleed_ok_hz, bv["emits"],
+                                    car_trim.get(prn, 0.0)))
+                        else:
+                            _log("CARRIER BLEED REFUTED PRN %d: resid %+.2f Hz (> %.2f) after "
+                                 "%d emits -- loop re-grows trim, %.0f s lockout"
+                                 % (prn, resid, args.carrier_bleed_ok_hz, bv["emits"],
+                                    args.carrier_bleed_lockout_s))
                 sig = (max(rec.get("deep_snr") or 0.0, rec.get("amp_snr") or 0.0)
                        if coh_ok else 0.0)
                 tracking = prn in car_locked
