@@ -747,7 +747,10 @@ BAND_CHAINS = {
             # DISTINCT viewer tag "L" (the series key is tag+prn) backed by explicit l1c_ stages
             # in WsPortResource.base -- reusing "G" would merge it into the C/A series.
             {"tag": "L", "name": "GPS L1C",     "t_rec": 10e-3, "color": "#6fbf73"}],
-    "l2c": [{"tag": "G", "name": "GPS L2C",     "t_rec": 20e-3, "color": "#4d9de0"}],
+    # l2c dongle REPURPOSED to BeiDou B2b (2026-08-03): tag C, 1 ms records (was GPS L2C, tag G,
+    # 20 ms). The mid-band swap (mid-band-gal-bds-receivers); the stage names stay l2c_gps_* (the
+    # Shape-A primary convention), only the constellation/signal displayed change.
+    "l2c": [{"tag": "C", "name": "BeiDou B2b",  "t_rec": 1e-3,  "color": "#d64550"}],
     "l5":  [{"tag": "G", "name": "GPS L5",      "t_rec": 1e-3,  "color": "#4d9de0"},
             {"tag": "E", "name": "Galileo E5a", "t_rec": 1e-3,  "color": "#e8923c"},
             {"tag": "C", "name": "BeiDou B2a",  "t_rec": 1e-3,  "color": "#d64550"}],
@@ -772,10 +775,11 @@ UNIFIED_SIGNALS = [
      "combiner": "l1_gps_combiner", "search": "l1_gps_search",  "t_rec": 1e-3,  "peel": True},
     {"tag": "G", "band": "L1", "col": "L1C", "name": "GPS L1C-P", "sigid": "GPS_L1C_P",
      "combiner": "l1_l1c_combiner", "search": "l1_l1c_search",  "t_rec": 10e-3, "peel": True},
-    {"tag": "G", "band": "L2", "col": "CM",  "name": "GPS L2C-CM", "sigid": "GPS_L2C_CM",
-     "combiner": "l2c_gps_combiner", "search": "l2c_gps_search", "t_rec": 20e-3, "peel": False},
-    {"tag": "G", "band": "L2", "col": "CL",  "name": "GPS L2C-CL (pilot)", "sigid": "GPS_L2C_CL",
-     "combiner": "l2c_cl_combiner", "search": None,             "t_rec": 20e-3, "peel": False},
+    # L2/MID band: the l2c dongle was REPURPOSED from GPS L2C (CM data + CL pilot) to BeiDou B2b
+    # (2026-08-03, mid-band-gal-bds-receivers). B2b is DATA-only (no pilot), tag C, 1 ms records;
+    # the primary stage keeps its l2c_gps_* name (Shape-A convention), only the signal changes.
+    {"tag": "C", "band": "L2", "col": "B2b", "name": "BeiDou B2b (data, B-CNAV3)", "sigid": "BDS_B2B_I",
+     "combiner": "l2c_gps_combiner", "search": "l2c_gps_search", "t_rec": 1e-3,  "peel": False},
     {"tag": "G", "band": "L5", "col": "Q",   "name": "GPS L5-Q", "sigid": "GPS_L5_Q",
      "combiner": "l5_gps_combiner", "search": "l5_gps_search",  "t_rec": 1e-3,  "peel": True},
     # L5-I is the DATA component of the same signal L5-Q pilots (S4 phase 2). Like L2C-CL it

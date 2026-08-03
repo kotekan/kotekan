@@ -67,7 +67,7 @@ const CN0_BASELINE = {
 // Unified overlay: signal draw order (frequency-ascending, pilot after its data sibling) and a
 // distinct-per-trace palette. Colours are by POSITION among a sat's signals, not fixed per
 // signal, so any constellation's 2-5 signals stay visually separable.
-const SIG_ORDER = {CA: 0, L1C: 1, E1C: 2, B1C: 3, CM: 4, CL: 5, Q: 6, E5a: 7, B2a: 8};
+const SIG_ORDER = {CA: 0, L1C: 1, E1C: 2, B1C: 3, B2b: 4, Q: 6, E5a: 7, B2a: 8};
 const SIG_PALETTE = ["#4d9de0", "#6fbf73", "#e8923c", "#c65d21", "#d64550", "#8e6fb0", "#39a0a0"];
 
 export class GpsAmpHistoryPanel {
