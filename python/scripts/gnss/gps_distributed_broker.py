@@ -425,6 +425,31 @@ def _bcnav2_brdc_xcheck(brdc_alm, sys, prn, bcnav2_eph, log):
         return " | BRDC xcheck err: %s" % ex
 
 
+def _bcnav3_brdc_xcheck(brdc_alm, sys, prn, bcnav3_eph, log):
+    """S5 ephemeris cross-check for BeiDou B2b B-CNAV3, the _bcnav2_brdc_xcheck analogue. Ready
+    for Phase 2 (needs beidou_bcnav3.sv_position_bcnav3 + a filled BCNV3_EPH_FIELDS); until then
+    the ephemeris is None so this is never reached. Kepler/CNAV-style."""
+    try:
+        import beidou_bcnav3 as _B
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        t0e = bcnav3_eph["t_oe"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + t0e
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _B.sv_position_bcnav3(bcnav3_eph, t0e)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODE %d, SatType %d)" % (
+            dpos, be["toe_sow"] - t0e, bcnav3_eph.get("IODE", -1),
+            int(round(bcnav3_eph.get("SatType", -1))))
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
 def _bcnav1_brdc_xcheck(brdc_alm, sys, prn, bcnav1_eph, log):
     """S5 ephemeris cross-check for BeiDou B1C B-CNAV1, the _bcnav2_brdc_xcheck analogue on the
     L1 BDS broker (sys='C'). B-CNAV1 SF2 and BRDC describe the same BDS-3 orbit; a correct
@@ -1200,9 +1225,11 @@ def main(argv=None):
                          "(bit_export: true), pushed as nav_bits with each seed row -- the "
                          "fused peel's sign source (P7a: ~11 -> >=26-35 dB). Self-gating: "
                          "chains whose combiner exports no nav_obs are untouched. 0 = off.")
-    ap.add_argument("--nav-decoder", default="lnav", choices=("lnav", "cnav"),
+    ap.add_argument("--nav-decoder", default="lnav", choices=("lnav", "cnav", "bcnav3"),
                     help="which decoder consumes nav_obs. lnav (default): the LNAV "
                          "decode-and-predict (GPS L1CA, the periodic-subframe future-bit source). "
+                         "bcnav3: the BeiDou B2b B-CNAV3 decoder (GF(64) NB-LDPC(162,81) + CRC-24Q, "
+                         "the B2b PRIMARY chain's own nav; pure decode + BRDC xcheck, no bit-pred). "
                          "cnav: the CNAV decoder (GPS L2C-CM / L5-I) -- FEC+CRC-24Q, NOT a "
                          "future-bit source (the type schedule is not fixed); it decodes live "
                          "ephemeris/messages and shadow-serves the signs of DECODED spans. Set "
@@ -1496,6 +1523,8 @@ def main(argv=None):
     _bcnav2_log_t = [0.0]
     bcnav1 = None    # B-CNAV1 decoder (--bcnav1-combiner, BeiDou B1C-D); created lazily
     _bcnav1_log_t = [0.0]
+    bcnav3 = None    # B-CNAV3 decoder (--nav-decoder bcnav3, BeiDou B2b PRIMARY chain); lazy
+    _bcnav3_log_t = [0.0]
     navbits_log_t = 0.0
     # CONSTRUCTED bits for satellites too weak to decode (2026-07-25). The decoder above needs
     # 620 contiguous parity-clean bits, which is exactly what a weak satellite cannot give; this
@@ -2727,6 +2756,14 @@ def main(argv=None):
                         cnav = CnavPredictor(log=_log)
                         _log("CNAV decoder armed (combiner exports nav_obs)")
                     cnav.ingest(_p, _r["nav_obs"])
+                elif args.nav_decoder == "bcnav3":
+                    # BeiDou B2b B-CNAV3: the PRIMARY chain's own nav decoder (NB-LDPC block, not a
+                    # bit-prediction scheme -> no peel role, pure decode + BRDC xcheck).
+                    if bcnav3 is None:
+                        from bcnav3_predictor import Bcnav3Predictor
+                        bcnav3 = Bcnav3Predictor(log=_log)
+                        _log("B-CNAV3 decoder armed (combiner exports nav_obs)")
+                    bcnav3.ingest(_p, _r["nav_obs"])
                 else:
                     if navbits is None:
                         from navbit_predictor import LnavPredictor
@@ -2979,6 +3016,22 @@ def main(argv=None):
                         _log("cnav PRN %d: NO DECODE (%d emits accumulated, g2=%s)"
                              % (_p, h["emits"], h["g2"]))
                     _dh_obs(_cnav_sig, _p, h, e, eph_s)
+            # B-CNAV3 decode health (BeiDou B2b PRIMARY chain). Frame decode is convention-complete
+            # (LDPC + CRC); the message-type histogram + SOW logged here is exactly what maps the
+            # ephemeris field table (Phase 2), after which eph + a BRDC dpos xcheck join (like cnav).
+            if bcnav3 is not None and time.time() - _bcnav3_log_t[0] > 60.0:
+                _bcnav3_log_t[0] = time.time()
+                for _p in sorted(bcnav3._p):
+                    h = bcnav3.health(_p)
+                    if not h or not h["words"]:
+                        continue
+                    eph = bcnav3.ephemeris(_p)
+                    xc = (_bcnav3_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                          if (eph is not None and brdc_alm is not None) else "")
+                    _log("bcnav3 PRN %d: %d frames CRC-OK, have %s, sow=%s, eph %s%s"
+                         % (_p, h["words"], h["have"], h["sow"],
+                            "YES" if eph is not None else "no", xc))
+                    _dh_obs("BDS_B2B_BCNAV3", _p, h, eph, xc)
         # Lock metric: the detection SIGNIFICANCE (sigma above noise) -- the deep nav-wiped SNR when
         # available, else the noise-debiased incoherent SNR -- not the raw |A|. The incoherent |A| is
         # biased by the noise floor (~the floor for weak sats), so judging "still locked" by |A| >

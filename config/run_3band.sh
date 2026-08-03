@@ -172,10 +172,14 @@ for b in $BANDS; do
     # Nav-decoder for the band's PRIMARY chain, keyed on its SIGNAL (not the band name) so a
     # retuned band picks the right one: GPS L2C-CM carries CNAV (FEC+CRC; route its nav_obs there
     # or the LNAV frame-sync churns on CNAV symbols forever, S3). GPS L1 C/A -> LNAV (broker
-    # default). BeiDou/Galileo primaries (B2b B-CNAV3, E5b I/NAV) have no broker decoder wired yet
-    # -> pass none; the default lnav simply never syncs on their symbols, which is harmless.
+    # default). BeiDou B2b -> B-CNAV3 (NB-LDPC(162,81)+CRC-24Q, the primary chain's own decoder).
+    # Other non-GPS primaries fall through to the default lnav, which simply never syncs on their
+    # symbols (harmless).
     _prim_sig=$(awk '/^[[:space:]]*signal:/{print $2; exit}' "$(cfg_of "$b")" 2>/dev/null)
-    case "$_prim_sig" in GPS_L2C*) BX="$BX --nav-decoder cnav" ;; esac
+    case "$_prim_sig" in
+        GPS_L2C*)  BX="$BX --nav-decoder cnav" ;;
+        BDS_B2B*)  BX="$BX --nav-decoder bcnav3" ;;
+    esac
     SKIP_KOTEKAN=1 STAGE_PREFIX=${b}_ PORT=$PORT TAG=gps_${b} \
         CFG=$(cfg_of $b) HTTP_PORT=$(http_of $b) \
         BROKER_EXTRA=$BX \
