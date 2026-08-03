@@ -1982,3 +1982,53 @@ the same `FLOOR_MARGIN` discipline and a Rayleigh floor that has no alignment se
 (a straight sum has no max-over-trials bias, so the floor is lower than the wipe rungs' one).
 `_navbuf` is only populated under `_wipe_buffer`, so that gate needs widening too. Then
 `amp_snr` stops being the only thing we can see.
+
+## 8.11 The merge segfault, the plain coherent rung, and what now blocks the lock -- 2026-08-03
+
+**The merge segfault is fixed** (c5e9e754a). Reproduced deterministically on cx51 under gdb --
+`vmovdqu (%rax),%ymm1` with `rax = 0` in `GnssCoherentCombiner::main_thread()` -- and it was one
+unguarded loop:
+
+```
+for (int p = 0; p < _n_prn; ++p) if (!_navbuf[p].empty()) ++active;
+```
+
+`_navbuf` is allocated ONLY under `_wipe_buffer`. CHORD configures no wipe, so it is EMPTY and
+the loop runs off the end; the compiler vectorises the `.empty()` checks into a null load. A
+conflict-free auto-merge (metrics block from one branch, `_wipe_buffer` gating from the other),
+and CHORD-specific for exactly the reason airspy never saw it -- the prototype sets
+`secondary_overlay: L5_NH20`, so `_navbuf` is always allocated there. **cx51 has now run
+post-merge code for the first time since the merge, with no crash.**
+
+**The plain coherent rung works.** cx51 vs cx19 (premerge control):
+
+| | cx51 | cx19 |
+|---|---|---|
+| `deep_snr` | **2.81** | 0.0 |
+| `deep_records` | **100** | 0 |
+| `deep_floor` | **2.177** (= sqrt(2 ln 2)+1, this rung's) | 0.0 |
+
+So `coherence_s = 0` is now an HONEST verdict instead of a structural impossibility:
+`deep_snr 2.81 < FLOOR_MARGIN 2.0 x 2.177 = 4.355`. Pure noise gives snr ~1.41, so there is
+signal -- it just is not building.
+
+**And it is not building because the carrier is spinning.** `carrier_hz_resid` = -6.6 Hz, which
+over the ladder's rungs is 6.96 / 3.48 / 1.74 / 0.84 / 0.42 cycles at 100 / 50 / 25 / 12 / 6
+records. A coherent sum needs well under half a cycle. EVERY rung is decohered.
+
+**Closing the carrier loop did not help, and the reason matters.** With `--carrier-gain 0.25`
+the per-emit residual swings +-20 Hz between 2 s polls and the trim wanders (PRN 10: +10.7,
++9.9, +13.8, +11.5, +5.0, +3.3, +1.2, +4.8) -- it chases noise. `deep_snr` went 2.81 -> 2.31.
+At `amp_snr` ~5 the per-emit carrier discriminator is noise-dominated: you need coherence to
+measure the carrier and the carrier to get coherence. Reverted to `--carrier-gain 0.0`.
+
+**Also found: `--dll-gain` was 0.0 against its own default of 0.25** -- the code loop was off
+too. Now on.
+
+**Next, and the code already names the way out:** the carrier offset is COMMON-MODE across
+satellites ("the converged trim is the chain's deterministic frac-N LO offset, common-mode
+across sats" -- the `--carrier-fleet-seed` comment). A per-PRN loop at this SNR cannot see it,
+but a FLEET estimate averages ~10 satellites and pulls the noise down by ~3x. The knobs exist:
+`--carrier-fleet-seed`, `--carrier-min-sig` (hold the trim when significance is low), and a much
+smaller `--carrier-gain` so the integrator averages over many polls instead of tracking each
+one. That is the principled configuration, and it should be tried before any more code.
