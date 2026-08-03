@@ -35,6 +35,7 @@ import json
 import logging
 import math
 import os
+import re
 import select
 import signal
 import socket
@@ -770,6 +771,11 @@ BAND_CHAINS = {
 #   t_rec      record period (s) -> incoherent C/N0 = x / t_rec
 #   peel       whether this chain runs the voltage peel (peel-depth column applies)
 # The table renders columns in THIS order; add a signal by adding a row.
+#
+# STATIC FALLBACK ONLY (2026-08-03): main() replaces this at startup with the list DISCOVERED
+# from kotekan's running /config (see discover_signals() below), so a band/constellation swap in
+# gnss_node.yaml -- L2C dongle -> BeiDou B2b today, Galileo E5b next, GLONASS later -- flows into
+# the viewer with no edit here. This literal is used only when /config is unreachable at launch.
 UNIFIED_SIGNALS = [
     {"tag": "G", "band": "L1", "col": "CA",  "name": "GPS L1 C/A", "sigid": "GPS_L1CA",
      "combiner": "l1_gps_combiner", "search": "l1_gps_search",  "t_rec": 1e-3,  "peel": True},
@@ -812,6 +818,184 @@ UNIFIED_SIGNALS = [
     {"tag": "C", "band": "L5", "col": "B2aD","name": "BeiDou B2a (data, B-CNAV2)",
      "combiner": "l5_b2a_d_combiner","search": None,            "t_rec": 1e-3,  "peel": False},
 ]
+
+# ---------------------------------------------------------------------------
+# Signal-list discovery from kotekan's running /config (the swap-proof path).
+#
+# The hardcoded UNIFIED_SIGNALS above needed a hand-edit on every band swap. Instead we read the
+# live merged config and reconstruct the table. Sources, all authoritative and per-chain:
+#   * the 13 `cudaGnssTrack` commands (nested in the per-band `cudaProcess` stages) -- each carries
+#     a seed_endpoint `/<chain>_track/set_seeds` (-> the combiner `<chain>_combiner`), the chain's
+#     real `signal` (None on a primary chain -> inherits, so we fall back to its search stage), and
+#     a per-chain `peel` flag.
+#   * the `GnssChannelizedSearch` stages -- `<chain>_search`: the acquired chains' signal, and the
+#     "is this chain acquired vs derived" flag (a derived data/pilot sibling has no search).
+# band + t_rec come from the signal descriptor (parsed from gnssSignal.hpp, the C++ source of
+# truth), so a signal newly added there flows through with no python edit. Only the display
+# labels (tag/column/full-name) are genuine presentation -- SIG_DISPLAY, with a derived fallback.
+
+# Presentation metadata per signal id: (viewer tag, short column label, full name). The tag is the
+# satellite-series key (tag+prn) across every band -- GPS L1C is "L" not "G" so it stays a distinct
+# series from C/A. Everything else about a signal is discovered; a signal absent here still renders
+# via _display_for()'s derived fallback, so this table only prettifies -- it is not required.
+SIG_DISPLAY = {
+    "GPS_L1CA":   ("G", "CA",   "GPS L1 C/A"),
+    "GPS_L1C_P":  ("L", "L1C",  "GPS L1C-P"),
+    "GPS_L2C_CM": ("G", "CM",   "GPS L2C-CM"),
+    "GPS_L2C_CL": ("G", "CL",   "GPS L2C-CL (pilot)"),
+    "GPS_L5_Q":   ("G", "Q",    "GPS L5-Q"),
+    "GPS_L5_I":   ("G", "I",    "GPS L5-I (data, CNAV)"),
+    "GAL_E1C":    ("E", "E1C",  "Galileo E1-C"),
+    "GAL_E1B":    ("E", "E1B",  "Galileo E1-B (data, I/NAV)"),
+    "GAL_E5A_Q":  ("E", "E5a",  "Galileo E5a-Q"),
+    "GAL_E5A_I":  ("E", "E5aI", "Galileo E5a-I (data, F/NAV)"),
+    "GAL_E5B_I":  ("E", "E5b",  "Galileo E5b-I (data, I/NAV)"),
+    "GAL_E5B_Q":  ("E", "E5bP", "Galileo E5b-Q (pilot)"),
+    "BDS_B1C_P":  ("C", "B1C",  "BeiDou B1C"),
+    "BDS_B1C_D":  ("C", "B1CD", "BeiDou B1C (data, B-CNAV1)"),
+    "BDS_B2A_P":  ("C", "B2a",  "BeiDou B2a"),
+    "BDS_B2A_D":  ("C", "B2aD", "BeiDou B2a (data, B-CNAV2)"),
+    "BDS_B2B_I":  ("C", "B2b",  "BeiDou B2b (data, B-CNAV3)"),
+}
+_SYS_TAG = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R"}
+
+
+def _display_for(sigid):
+    """(tag, col, name) for a signal id -- SIG_DISPLAY if known, else derived from the id."""
+    if sigid in SIG_DISPLAY:
+        return SIG_DISPLAY[sigid]
+    pre = sigid.split("_", 1)[0]
+    tag = _SYS_TAG.get(pre, (pre[:1] or "?"))
+    col = sigid.split("_")[-1]
+    return (tag, col, sigid)
+
+
+def _band_of(carrier_hz):
+    """RF-band column group (L1/L2/L5) from the sky carrier. The mid band (~1200-1280 MHz:
+    L2C, B2b/E5b, B3I, E6) groups under 'L2'; anything below 1.2 GHz (L5/E5a/B2a) under 'L5'."""
+    if carrier_hz >= 1.40e9:
+        return "L1"
+    if carrier_hz >= 1.20e9:
+        return "L2"
+    return "L5"
+
+
+def _signal_descriptors():
+    """Parse gnssSignal.hpp -> {sigid: (carrier_hz, code_period_s)}.
+
+    That C++ table is the single source of truth for every signal's sky carrier and primary-code
+    period, so parsing it here means a signal added there (e.g. Galileo E5b) supplies its own
+    band + record period with no edit in this file. Empty dict if the header can't be found ->
+    the caller drops back to the static table.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    cands = [
+        os.path.normpath(os.path.join(here, "../../../lib/stages/gnss/gnssSignal.hpp")),
+        os.path.normpath(os.path.join(here, "../../../../lib/stages/gnss/gnssSignal.hpp")),
+    ]
+    text = None
+    for p in cands:
+        try:
+            with open(p) as f:
+                text = f.read()
+            break
+        except OSError:
+            continue
+    out = {}
+    if not text:
+        return out
+    # Each descriptor initialiser begins:  "NAME", <carrier_hz>, <chip_rate>, <code_len>, <period>,
+    num = r"[0-9][0-9.eE+-]*"
+    pat = re.compile(r'"([A-Z0-9_]+)"\s*,\s*(%s)\s*,\s*%s\s*,\s*[0-9]+\s*,\s*(%s)' % (num, num, num))
+    for m in pat.finditer(text):
+        try:
+            out[m.group(1)] = (float(m.group(2)), float(m.group(3)))
+        except ValueError:
+            pass
+    return out
+
+
+def discover_signals(host, rest_port, timeout=3.0):
+    """Reconstruct the UNIFIED_SIGNALS table from kotekan's running /config. Returns the list, or
+    None on any failure (fetch/parse/empty) so main() keeps the static UNIFIED_SIGNALS fallback."""
+    import urllib.request
+    # --kotekan-host defaults to 0.0.0.0 (a *bind* address); reuse it as a connect target only
+    # after mapping the wildcard to loopback.
+    if host in ("0.0.0.0", "", "::"):
+        host = "127.0.0.1"
+    url = "http://%s:%d/config" % (host, rest_port)
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            cfg = json.load(r)
+    except Exception as e:  # noqa: BLE001 -- any failure -> fallback, never fatal
+        log_.warning("signal discovery: /config fetch failed (%s); using static table", e)
+        return None
+
+    searches = {}          # stage name -> signal (acquired chains only)
+    tracks = []            # (chain, signal_or_None, peel_bool) in config order
+
+    def walk(node):
+        if isinstance(node, dict):
+            for name, v in node.items():
+                if isinstance(v, dict):
+                    kind = v.get("kotekan_stage")
+                    if kind == "GnssChannelizedSearch":
+                        searches[name] = v.get("signal")
+                    elif kind == "cudaProcess":
+                        for cm in v.get("commands", []):
+                            if isinstance(cm, dict) and cm.get("name") == "cudaGnssTrack":
+                                m = re.match(r"/([A-Za-z0-9_]+)_track/set_seeds$",
+                                             cm.get("seed_endpoint") or "")
+                                if m:
+                                    tracks.append((m.group(1), cm.get("signal"),
+                                                   bool(cm.get("peel"))))
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    try:
+        walk(cfg)
+    except Exception as e:  # noqa: BLE001
+        log_.warning("signal discovery: config walk failed (%s); using static table", e)
+        return None
+    if not tracks:
+        log_.warning("signal discovery: no cudaGnssTrack commands in /config; using static table")
+        return None
+
+    desc = _signal_descriptors()
+    band_rank = {"L1": 0, "L2": 1, "L5": 2}
+    tag_rank = {"G": 0, "L": 1, "E": 2, "C": 3, "R": 4}
+    rows = []
+    for chain, sig, peel in tracks:
+        search_stage = chain + "_search"
+        sigid = sig or searches.get(search_stage)
+        if not sigid:
+            log_.warning("signal discovery: chain %s has no resolvable signal; skipping", chain)
+            continue
+        carrier, period = desc.get(sigid, (None, None))
+        tag, col, name = _display_for(sigid)
+        rows.append({
+            "tag": tag,
+            "band": _band_of(carrier) if carrier else "L1",
+            "col": col,
+            "name": name,
+            "sigid": sigid,
+            "combiner": chain + "_combiner",
+            # A derived data/pilot sibling has no search stage -> no SNR cell in the table.
+            "search": search_stage if search_stage in searches else None,
+            "t_rec": period if period else 1e-3,
+            "peel": peel,
+        })
+
+    # Column order: band (L1<L2<L5), then constellation (G<L<E<C<R), then acquired-before-derived.
+    rows.sort(key=lambda s: (band_rank.get(s["band"], 9),
+                             tag_rank.get(s["tag"], 9),
+                             0 if s["search"] else 1))
+    log_.info("signal discovery: %d chains from /config -> %s",
+              len(rows), ", ".join("%s/%s" % (r["band"], r["sigid"]) for r in rows))
+    return rows
+
 
 def _gps_signal_capability():
     """{sigid: [PRNs that BROADCAST it]} for the GPS signals in UNIFIED_SIGNALS.
@@ -1446,6 +1630,17 @@ def main():
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     log.startLogging(sys.stdout, setStdout=False)
+
+    # SWAP-PROOF SIGNAL LIST: rebuild UNIFIED_SIGNALS from kotekan's running /config so a
+    # band/constellation swap in gnss_node.yaml needs no viewer edit. Falls back to the static
+    # literal if /config is unreachable (kotekan not up yet, wrong port, ...). Reassigning the
+    # module global is enough: _gps_signal_capability() and WsPortResource read it at call time.
+    # Done after logging is configured so the discovery summary lands in the viewer log.
+    if args.unified:
+        discovered = discover_signals(args.kotekan_host, args.kotekan_rest_port)
+        if discovered:
+            global UNIFIED_SIGNALS
+            UNIFIED_SIGNALS = discovered
 
     static_dir = os.path.dirname(os.path.abspath(__file__))
 
