@@ -209,6 +209,13 @@ private:
     /// (airspy). A CHORD record is 10.4857 periods. Without this such a signal has no route to
     /// coherence_s at all and integrates one 10.5 ms record at a time.
     bool _deep_plain = false;
+    /// Subband UTC alignment (see the gather loop): the observed record period, the previous
+    /// frame's UTC on input 0, and a count of realignments -- nonzero means an input dropped a
+    /// frame relative to the others, which index-lockstep gathering would have absorbed
+    /// silently as a permanent epoch offset.
+    double _rec_dt_est = 0.0;
+    double _prev_utc0 = 0.0;
+    unsigned long _realigns = 0;
     bool _carrier_pilot;            ///< pilot: unsquared phase product (no bits; 2x range)
     /// Raw (unsquared) phase treatment is only valid for a TRULY dataless pilot. An overlay
     /// pilot (B1C L1CO, E1C CS25, E5a/B2a CS100, L5 NH) still carries +-1 secondary chips in

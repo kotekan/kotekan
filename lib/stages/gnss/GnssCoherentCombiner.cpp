@@ -303,6 +303,60 @@ void GnssCoherentCombiner::main_thread() {
         }
         if (stopping)
             break;
+
+        // ALIGN THE SUBBANDS BY THE RECORD'S OWN UTC, not by frame index.
+        //
+        // The gather above takes the i-th frame of every input, which is only correct while
+        // every input drops identically. That held for one host's two GPUs until a voltage tap
+        // dropped on one of them (kotekan_gnss_tap_dropped_frames_total is nonzero in normal
+        // running), and it can never hold across hosts. A single lost frame then offsets one
+        // subband by a record FOREVER, and the combine sums different epochs -- which does not
+        // error, it just quietly stops being coherent and reads as "no improvement".
+        //
+        // Records carry their capture UTC at RECORD_UTC_SLOT, so alignment is available for
+        // free: advance whichever stream lags the newest by more than half a record period.
+        // Tolerance is derived from the observed spacing rather than assumed, because the
+        // record period is 10.5 ms on CHORD and 1 ms on airspy.
+        if (in_bufs.size() > 1) {
+            const auto rec_utc = [this](const float* in) {
+                return *reinterpret_cast<const double*>(in + RECORD_UTC_SLOT);
+            };
+            if (_rec_dt_est <= 0.0 && _prev_utc0 > 0.0) {
+                const double d = rec_utc(ins[0]) - _prev_utc0;
+                if (d > 0.0)
+                    _rec_dt_est = d; // first positive gap: enough to bound "half a record"
+            }
+            if (_rec_dt_est > 0.0) {
+                // Bounded: a stream more than a few frames behind is a real fault, not jitter,
+                // and spinning here would stall every other subband behind it.
+                for (int guard = 0; guard < 64 && !stopping; ++guard) {
+                    double newest = rec_utc(ins[0]);
+                    for (size_t i = 1; i < ins.size(); ++i)
+                        newest = std::max(newest, rec_utc(ins[i]));
+                    bool moved = false;
+                    for (size_t i = 0; i < ins.size(); ++i) {
+                        if (newest - rec_utc(ins[i]) > 0.5 * _rec_dt_est) {
+                            in_bufs[i]->mark_frame_empty(unique_name, in_ids[i]++);
+                            float* nx =
+                                (float*)in_bufs[i]->wait_for_full_frame(unique_name, in_ids[i]);
+                            if (nx == nullptr) {
+                                stopping = true;
+                                break;
+                            }
+                            ins[i] = nx;
+                            moved = true;
+                            ++_realigns;
+                        }
+                    }
+                    if (!moved)
+                        break;
+                }
+                if (stopping)
+                    break;
+            }
+            _prev_utc0 = rec_utc(ins[0]);
+        }
+
         // Cost clock starts only AFTER wait_for_full_frame returns: blocking on input is IDLE,
         // not work, and counting it would make an under-loaded stage look saturated.
         const double _t_ingest0 = current_time();
@@ -1814,6 +1868,10 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          {"s4_raw", _st_s4_raw[p]},
                          {"sigma_phi", _st_sigma_phi[p]},
                          {"snr_q", _st_snr_q[p]},
+                         // Nonzero means a subband dropped a frame relative to the others and
+                         // was realigned. Index-lockstep gathering absorbed that silently as a
+                         // permanent epoch offset, so it is worth being able to see.
+                         {"subband_realigns", (double)_realigns},
                          {"carrier_hz_resid", _st_car_resid[p]},
                          // Accumulated carrier phase (cycles) on the current unbroken arc,
                          // its id, its length in records, and how long it has held (s). 0
