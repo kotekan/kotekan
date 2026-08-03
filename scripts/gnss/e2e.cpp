@@ -61,6 +61,7 @@
 #include "pfbPrototype.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <complex>
 #include <cstdio>
@@ -372,6 +373,12 @@ int main(int argc, char** argv) {
                 grid.push_back(f);
         }
 
+      // STAGE TIMERS. The ms-split acquire profiles at 9.1 s inside a 748 s run, so the
+      // acquire -- the thing the whole ms-split plan optimises -- is not where the time is.
+      // Measure the stages before optimising any of them again.
+      double T_acq = 0.0, T_nh = 0.0, T_ref = 0.0;
+      const auto tnow = [] { return std::chrono::duration<double>(
+              std::chrono::steady_clock::now().time_since_epoch()).count(); };
       gnss::AcquireWorkspace ws;
       gnss::AcquisitionSurface adims{}; // hoisted: the summary below needs s_stored
       for (int trial = 0; trial < std::max(1, o.trials); ++trial) {
@@ -384,6 +391,7 @@ int main(int argc, char** argv) {
         if (o.quantize)
             quantize44(data);
         gnss::AcquisitionResult a{};
+        const double t_acq0 = tnow();
         best_nh = -1;
         std::vector<double> surf;
         std::vector<std::vector<cf>> w((size_t)o.s_nchan, std::vector<cf>((size_t)Mp));
@@ -507,6 +515,7 @@ int main(int argc, char** argv) {
                                                    sbank.chip_rate_hz(), sbank.code_length());
             if (best_nh < 0 || ai.snr > a.snr) { a = ai; best_nh = nh; adims = dims; }
         }
+        T_acq += tnow() - t_acq0;
         snr = a.snr;
         det_dop = -a.doppler_hz; // r2c fold conjugates the channel frequency axis
         const double cps = sbank.chip_rate_hz() / o.sample_rate;
@@ -545,6 +554,7 @@ int main(int argc, char** argv) {
         // once the lag is known to a fraction of a chip, "which of the 20 overlay periods" is
         // 20 SINGLE despreads at that one phase -- not 20 acquisition surfaces. The 20x saving
         // is kept; only a rounding error of it is handed back.
+        const double t_nh0 = tnow();
         if (o.ms_split > 0) {
             const auto rf = sbank.hoprate_filter(s_chans, det_dop);
             double bestp = -1.0;
@@ -557,11 +567,15 @@ int main(int argc, char** argv) {
             printf("    NH postfix: overlay period %d of %d recovered by %d despreads\n", best_nh,
                    n_nh, n_nh);
         }
+        T_nh += tnow() - t_nh0;
+        const double t_ref0 = tnow();
         const double best_cp =
             gnss::refine_peak(sbank, 0, d, s_chans, a.code_phase_chips, adims, best_nh, det_dop,
                               anchor, rhops, o.sample_rate, o.refine_span, o.refine_step,
                               o.threads);
 
+        T_ref += tnow() - t_ref0;
+        printf("    [stages] acquire %.2fs | nh-postfix %.2fs | refine %.2fs\n", T_acq, T_nh, T_ref);
         // ---- THE SHIPPED REPORTING ARITHMETIC ----
         // The lag-period lift is for the SHIPPED geometry, where the coarse lag runs over
         // Mp = 3125 hops = 16 code periods and therefore carries a whole-period count that

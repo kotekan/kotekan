@@ -4,7 +4,9 @@
 
 #include <algorithm> // for max
 #include <cmath>   // for cos, sin, fmod, M_PI, round
-#include <cstdlib> // for abs
+#include <chrono>  // for the opt-in ms-split stage timers
+#include <cstdio>  // for fprintf (ditto)
+#include <cstdlib> // for abs, getenv
 #include <mutex>   // for lock_guard
 #include <numeric> // for gcd
 #include <thread>  // for thread (aggregate d-parallelism)
@@ -313,6 +315,17 @@ ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
     if (nc == 0 || N <= 0 || n_sub <= 0)
         return dims;
 
+    // Stage timers, opt-in via GNSS_MSSPLIT_PROFILE=1. This function was written and validated
+    // for CORRECTNESS and never timed, and the design plan's "258x cheaper" is an OP COUNT --
+    // measured end to end it came out 5.7x SLOWER than the shipped path. Op counts are not
+    // seconds, so the breakdown ships with the function.
+    const bool prof = std::getenv("GNSS_MSSPLIT_PROFILE") != nullptr;
+    double t_repl = 0.0, t_corr = 0.0, t_agg = 0.0;
+    const auto now = [] {
+        return std::chrono::duration<double>(
+                   std::chrono::steady_clock::now().time_since_epoch()).count();
+    };
+
     for (int k = 0; k < n_sub; ++k) {
         const long long W = window_start_sample + (long long)k * N * fft_len;
         // TWO code periods of replica, starting ONE period EARLY, against one period of data.
@@ -322,20 +335,57 @@ ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
         // at q = N and the whole [0, one period) lag range inside [N, 2N) -- with every one of
         // the N data hops overlapped, which is the point.
         const long long W_repl = W - (long long)N * fft_len;
+        double t0 = prof ? now() : 0.0;
         std::vector<std::vector<std::complex<float>>> repl =
             bank.channels_hoprate(prn_index, W_repl, 0.0, 0.0, 2 * N, chan_ids, {}, -1);
+        if (prof)
+            t_repl += now() - t0;
 
+        // PARALLEL OVER CHANNELS, exactly as channelized_accumulate does it. This loop was
+        // serial on the caller's single workspace, which is why the ms-split measured SLOWER
+        // than the path it was meant to replace: ~10x fewer ops, run on 1/12 of the machine.
+        // Each worker gets its own AcquireWorkspace (worker 0 reuses the caller's, so the
+        // single-threaded path keeps its persistent FFTW plans bit-for-bit).
+        t0 = prof ? now() : 0.0;
         std::vector<std::vector<std::vector<std::complex<float>>>> P((size_t)nc);
-        for (int c = 0; c < nc; ++c) {
+        const int nt_c = std::max(1, std::min(n_threads, nc));
+        const auto run_ch = [&](int t) {
+            AcquireWorkspace local;
+            AcquireWorkspace& mine = (t == 0) ? ws : local;
             std::vector<std::complex<float>> d((size_t)N);
-            for (int m = 0; m < N; ++m)
-                d[(size_t)m] = data_ch[(size_t)c][(size_t)(k * N + m)];
-            // data (N) shorter than replica (2N) -> channel_correlate zero-pads it to the
-            // transform length, which is exactly the linear correlation we want.
-            P[(size_t)c] = channel_correlate(d, repl[(size_t)c], doppler_grid, sample_rate, sph, ws);
+            for (int c = t; c < nc; c += nt_c) {
+                for (int m = 0; m < N; ++m)
+                    d[(size_t)m] = data_ch[(size_t)c][(size_t)(k * N + m)];
+                // data (N) shorter than replica (2N) -> channel_correlate zero-pads it to the
+                // transform length, which is exactly the linear correlation we want.
+                P[(size_t)c] =
+                    channel_correlate(d, repl[(size_t)c], doppler_grid, sample_rate, sph, mine);
+            }
+        };
+        if (nt_c == 1) {
+            run_ch(0);
+        } else {
+            std::vector<std::thread> pool;
+            pool.reserve((size_t)nt_c - 1);
+            for (int t = 1; t < nt_c; ++t)
+                pool.emplace_back(run_ch, t);
+            run_ch(0);
+            for (auto& th : pool)
+                th.join();
         }
+        if (prof)
+            t_corr += now() - t0;
+
+        t0 = prof ? now() : 0.0;
         dims = aggregate_accumulate(P, chan_ids, sph, surf, n_threads, fine_step);
+        if (prof)
+            t_agg += now() - t0;
     }
+    if (prof)
+        fprintf(stderr,
+                "[ms-split profile] K=%d N=%d nc=%d threads=%d | replica %.2fs  correlate %.2fs  "
+                "aggregate %.2fs  (total %.2fs)\n",
+                n_sub, N, nc, n_threads, t_repl, t_corr, t_agg, t_repl + t_corr + t_agg);
     return dims;
 }
 
