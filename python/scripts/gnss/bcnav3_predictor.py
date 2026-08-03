@@ -25,7 +25,8 @@ import beidou_bcnav3 as B
 
 SYM_S = B.SYM_S               # 0.001
 FRAME = B.FRAME_SYMS          # 1000 symbols per frame (1 s)
-EMIT_MAX = 128               # bound the stitched emit cache per PRN
+EMIT_MAX = 16                # bound the stitched emit cache per PRN (a 1000-sym frame is 1 s of
+                            # emits; ~16 frames of history is ample AND bounds the find_frames scan)
 FRAME_TTL_S = 3600.0        # a cached frame older than this is stale (ephemeris ~ hourly)
 
 
@@ -89,10 +90,14 @@ class Bcnav3Predictor:
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
+        # PER-PRN decode throttle (not the shared self._last_decode bcnav2 uses): the broker ingests
+        # every PRN each poll, so a single shared gate lets only the FIRST PRN in dict order decode
+        # -- if that one is weak, no frames ever land while strong sats go undecoded. Per-PRN gating
+        # decodes each satellite once per _min_gap.
         now = time.time()
-        if self._min_gap and now - self._last_decode < self._min_gap:
+        if self._min_gap and now - st.last_decode < self._min_gap:
             return
-        self._last_decode = now
+        st.last_decode = now
         self._decode(prn, st)
 
     # ----------------------------------------------------------------- decode
