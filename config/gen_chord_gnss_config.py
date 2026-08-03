@@ -263,6 +263,14 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             "n_elements": n_elem,
             "integration_length": args.integration_length,
             "integration_mode": "rolling",
+            # DEEP COHERENT INTEGRATION, no wipe. The tracker despreads GPS_L5_Q_NH -- the
+            # 204600-chip code with NH20 baked in -- so each record's amplitude already has the
+            # overlay removed, chip by chip, and the deep integration is a straight sum. It
+            # cannot use the wipe rungs: overlay_apply advances the overlay one chip per RECORD,
+            # an identity that holds on airspy (record = one primary period) and fails here
+            # (2048 hops = 10.4857 periods). Without this the combiner has NO route to
+            # coherence_s at all and integrates one 10.5 ms record at a time.
+            "deep_coherent": True,
             "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
         },
         f"{pre}record": {

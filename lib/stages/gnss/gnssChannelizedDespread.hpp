@@ -68,6 +68,27 @@ struct OverlayWipeResult {
  * the coherent sum, then sums the overlay-corrected records -- recovering the pilot's full
  * coherent gain (capped only by the carrier coherence time, not the 1 ms primary period).
  */
+/// Plain coherent sum of per-record amplitudes -- NO wipe of any kind.
+///
+/// For a pilot whose replica ALREADY carries the secondary overlay there is nothing left to
+/// wipe: the despread removed it chip by chip, correctly, whether or not a record straddles an
+/// overlay transition. CHORD is exactly that case -- its tracker despreads `GPS_L5_Q_NH`, the
+/// 204600-chip code with NH20 baked in -- and it CANNOT use the wipe rungs, because
+/// @ref overlay_apply advances the overlay ONE CHIP PER RECORD. That identity holds on airspy
+/// (record = one primary period) and fails on CHORD, where a record is 2048 hops = **10.4857**
+/// code periods, so the overlay would advance ~10.49 chips per record and flip ~10 times WITHIN
+/// one -- which the head/tail split cannot represent.
+///
+/// Without this, such a signal has no deep-integration path at all: every route to
+/// `coherence_s` in GnssCoherentCombiner runs through a wipe, so the stage reports 0 forever
+/// and the pilot is integrated one record at a time (10.5 ms here) when it supports far longer.
+///
+/// Same SNR convention as @ref overlay_wipe_at -- coherent sum over its own orthogonal-noise
+/// std, E[snr^2] = 2 exactly under pure noise -- so the result is directly comparable with the
+/// other rungs and their floors. @c phase is always 0: there is no alignment to report, and
+/// (the point) no max-over-alignments, so the noise floor carries no extreme-value inflation.
+OverlayWipeResult coherent_sum(const std::vector<std::complex<double>>& a);
+
 /// Selection-free overlay wipe at a GIVEN alignment (dead-reckoned by the caller):
 /// one coherent sum, no phase search -- E[snr^2] = 2 exactly under noise.
 ///

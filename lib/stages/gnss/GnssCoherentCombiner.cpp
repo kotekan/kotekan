@@ -92,7 +92,13 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         for (const std::string& msg : gnss::overlay_registry_check())
             WARN("overlay registry/descriptor mismatch: {:s}", msg);
     }
-    _wipe_buffer = (_navwipe_bit_records > 0 || !_secondary.empty() || !_l1co.empty());
+    // deep_coherent: opt-in, because it is only correct when the DESPREAD REPLICA already
+    // carries the secondary overlay. Config, not inference: the combiner does not see the
+    // tracker's signal descriptor, and guessing wrong means summing records whose overlay signs
+    // still alternate -- which cancels rather than integrates.
+    _deep_plain = config.get_default<bool>(unique_name, "deep_coherent", false);
+    _wipe_buffer = (_navwipe_bit_records > 0 || !_secondary.empty() || !_l1co.empty()
+                    || _deep_plain);
 
     // Real-time cost instrumentation -- see the header note. The derived quantity is the DUTY
     // CYCLE: (d ingest_us + d emit_us) / (d records x record_period). < 1 keeps up; >= 1 is
@@ -1368,6 +1374,63 @@ void GnssCoherentCombiner::main_thread() {
                         _navbuf_res[p].clear();
                         _navhead_res[p].clear();
                     }
+                }
+            } else if (_deep_plain) {
+                // PLAIN COHERENT RUNG -- no wipe. The replica already carries the secondary
+                // overlay (GPS_L5_Q_NH: NH20 baked into 204600 chips), so each record's
+                // amplitude arrives with the overlay removed chip by chip, straddling or not,
+                // and the deep integration is a straight sum.
+                //
+                // This exists because the wipe rungs CANNOT serve that case: overlay_apply
+                // advances the overlay one chip per RECORD, an identity that holds on airspy
+                // (record = one primary period) and fails on CHORD, where a record is 2048
+                // hops = 10.4857 periods. Before this branch such a config had no route to
+                // coherence_s at all -- every path ran through a wipe -- so the stage reported
+                // 0 forever and the pilot integrated one 10.5 ms record at a time.
+                const auto& ab = _navbuf[p];
+                const auto& ub = _navutc[p];
+                bool cleared = false;
+                gnss::OverlayWipeResult full{};
+                size_t full_len = 0;
+                // Floor with NO alignment search in it. The overlay rungs pay
+                // sqrt(2 ln n_align) for taking a max over alignments; a straight sum takes no
+                // max, so its floor is the plain Rayleigh tail and the bar sits LOWER -- which
+                // is the sensitivity this branch is for. n = 2 keeps the log defined and leaves
+                // a little margin for the ladder's own handful of rungs.
+                const double flr = std::sqrt(2.0 * std::log(2.0)) + 1.0;
+                for (size_t len : ladder(ab.size(), min_rung(ub, 4))) {
+                    const gnss::OverlayWipeResult cs =
+                        (len == ab.size())
+                            ? gnss::coherent_sum(ab)
+                            : gnss::coherent_sum(std::vector<std::complex<double>>(
+                                  ab.end() - (long)len, ab.end()));
+                    if (full_len == 0) { // ladder walks longest-first
+                        full = cs;
+                        full_len = len;
+                    }
+                    if (cs.snr < FLOOR_MARGIN * flr)
+                        continue; // indistinguishable from noise
+                    if (!cleared || cs.snr > deep_snr[p] * 1.05) {
+                        rec[8] = (float)cs.amplitude;
+                        deep_snr[p] = cs.snr;
+                        deep_rec[p] = (int)len;
+                        deep_floor[p] = flr;
+                        coh_s[p] = coh_span(ub, len);
+                        cleared = true;
+                    }
+                }
+                if (!cleared && full_len > 0) {
+                    rec[8] = (float)full.amplitude;
+                    deep_snr[p] = full.snr;
+                    deep_rec[p] = (int)full_len;
+                    deep_floor[p] = flr;
+                    coh_s[p] = 0.0; // no rung beat its floor: no coherent detection
+                }
+                if (full_len > 1 && ub.size() >= full_len) {
+                    const double span = ub.back() - ub[ub.size() - full_len];
+                    const double T = span * (double)full_len / (double)(full_len - 1);
+                    if (T > 0.0) // same 1-dof -> 2-dof debias as the other paths
+                        deep_pow[p] = (full.snr * full.snr - (flr * flr + 1.0)) / (2.0 * T);
                 }
             }
             *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = ref_utc[p];

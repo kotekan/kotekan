@@ -202,6 +202,13 @@ private:
     std::vector<int8_t> _secondary; ///< known PRN-independent overlay (L5 NH10/NH20); empty if unused
     std::vector<std::vector<int8_t>> _l1co; ///< per-PRN L1C-P overlays (index prn-1, 1..32); empty if unused
     bool _wipe_buffer = false;      ///< buffer per-record A for a deep wipe (navwipe or overlay)
+    /// Deep-integrate by a PLAIN coherent sum, no wipe. For a pilot whose replica already
+    /// carries the secondary overlay (CHORD despreads GPS_L5_Q_NH, NH20 baked into 204600
+    /// chips) there is nothing to wipe, and the wipe rungs are unusable anyway: overlay_apply
+    /// advances the overlay one chip per RECORD, true only when a record is one primary period
+    /// (airspy). A CHORD record is 10.4857 periods. Without this such a signal has no route to
+    /// coherence_s at all and integrates one 10.5 ms record at a time.
+    bool _deep_plain = false;
     bool _carrier_pilot;            ///< pilot: unsquared phase product (no bits; 2x range)
     /// Raw (unsquared) phase treatment is only valid for a TRULY dataless pilot. An overlay
     /// pilot (B1C L1CO, E1C CS25, E5a/B2a CS100, L5 NH) still carries +-1 secondary chips in

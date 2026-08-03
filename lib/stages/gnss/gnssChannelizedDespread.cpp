@@ -165,6 +165,33 @@ bool overlay_apply(const std::vector<std::complex<double>>& a, const std::vector
     return true;
 }
 
+OverlayWipeResult coherent_sum(const std::vector<std::complex<double>>& a) {
+    // The straight sum. Deliberately shares overlay_wipe_at's statistic line for line -- rotate
+    // the sum real, take the orthogonal component as the noise estimate -- because the combiner
+    // compares this against the SAME FLOOR_MARGIN as the wipe rungs, and two SNR conventions
+    // that differ by a factor nobody wrote down is how a floor stops meaning anything.
+    using cd = std::complex<double>;
+    OverlayWipeResult out;
+    const int nrec = (int)a.size();
+    if (nrec < 2)
+        return out;
+    cd s(0.0, 0.0);
+    for (int r = 0; r < nrec; ++r)
+        s += a[(size_t)r];
+    const double mag = std::abs(s);
+    const cd rot = mag > 0.0 ? std::polar(1.0, -std::arg(s)) : cd(1.0, 0.0);
+    double noise2 = 0.0;
+    for (int r = 0; r < nrec; ++r) {
+        const cd vr = a[(size_t)r] * rot;
+        noise2 += std::imag(vr) * std::imag(vr);
+    }
+    const double noise_sum = std::sqrt(noise2);
+    out.amplitude = mag / (double)nrec;
+    out.snr = noise_sum > 0.0 ? mag / noise_sum : 0.0;
+    out.phase = 0; // no alignment searched, hence no extreme-value bias in the floor
+    return out;
+}
+
 OverlayWipeResult overlay_wipe_at(const std::vector<std::complex<double>>& a,
                                   const std::vector<double>& utc,
                                   const std::vector<int8_t>& overlay, int phase,
