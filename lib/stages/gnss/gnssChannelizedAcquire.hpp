@@ -175,6 +175,19 @@ channel_correlate(const std::vector<std::complex<float>>& data,
                   const std::vector<double>& doppler_grid, double sample_rate, int samples_per_hop,
                   AcquireWorkspace& ws);
 
+/// As @ref channel_correlate, but writes into a caller-owned @c P, resizing only when the
+/// shape actually changes. For a caller in a loop this is the difference between one
+/// allocation and one per iteration -- and that mattered far more than it sounds:
+/// ms_split_accumulate allocated a fresh P per sub-window (16 x 106 channel vectors at CHORD),
+/// and the REFINE THAT RAN AFTERWARDS slowed by 9.5x -- 89 s at K=1 against 874 s at K=16 for
+/// the identical 426 evaluations. The acquire's allocation churn was being paid by a later,
+/// unrelated stage whose 12 OpenMP workers each allocate 2.65 MB per iteration.
+void channel_correlate_into(const std::vector<std::complex<float>>& data,
+                            const std::vector<std::complex<float>>& repl0,
+                            const std::vector<double>& doppler_grid, double sample_rate,
+                            int samples_per_hop, AcquireWorkspace& ws,
+                            std::vector<std::vector<std::complex<float>>>& P);
+
 /// Cross-channel fine-lag DFT + incoherent |D|^2 accumulation -- the central
 /// aggregation half. Given per-channel correlations @c P [n_covering][n_dop][Mp]
 /// and the covering channels' global frequency indices @c chan_freq, add the

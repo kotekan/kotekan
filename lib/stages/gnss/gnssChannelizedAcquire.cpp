@@ -51,6 +51,15 @@ std::vector<std::vector<cf>>
 channel_correlate(const std::vector<cf>& data, const std::vector<cf>& repl0,
                   const std::vector<double>& doppler_grid, double sample_rate, int samples_per_hop,
                   AcquireWorkspace& ws) {
+    std::vector<std::vector<cf>> P;
+    channel_correlate_into(data, repl0, doppler_grid, sample_rate, samples_per_hop, ws, P);
+    return P;
+}
+
+void channel_correlate_into(const std::vector<cf>& data, const std::vector<cf>& repl0,
+                            const std::vector<double>& doppler_grid, double sample_rate,
+                            int samples_per_hop, AcquireWorkspace& ws,
+                            std::vector<std::vector<cf>>& P) {
     const int M = (int)data.size();   // data window length, hops
     const int Mp = (int)repl0.size(); // replica hop-period (>= M)
     const int nd = (int)doppler_grid.size();
@@ -69,7 +78,13 @@ channel_correlate(const std::vector<cf>& data, const std::vector<cf>& repl0,
         conjB[k] = std::conj(OUT[k]);
 
     const float inv_mp = 1.0f / (float)Mp; // FFTW backward is unnormalized
-    std::vector<std::vector<cf>> P(nd, std::vector<cf>(Mp));
+    // Resize only on a real shape change: a caller looping over sub-windows hands back the
+    // same P every time, and reusing it is the whole point of this overload.
+    if ((int)P.size() != nd)
+        P.assign((size_t)nd, std::vector<cf>((size_t)Mp));
+    for (auto& row : P)
+        if ((int)row.size() != Mp)
+            row.assign((size_t)Mp, cf(0.0f, 0.0f));
 
     // BIN-ALIGNED DOPPLER GRID: wiping the data by f_d multiplies it by e^{-i 2pi f_d m sph/Fs},
     // which is a pure cyclic SHIFT of its spectrum -- exactly, with no approximation -- whenever
@@ -111,7 +126,7 @@ channel_correlate(const std::vector<cf>& data, const std::vector<cf>& repl0,
             for (int q = 0; q < Mp; ++q)
                 P[d][q] = OUT[q] * inv_mp;
         }
-        return P;
+        return;
     }
 
     std::vector<cf> wipe(M);
@@ -135,7 +150,6 @@ channel_correlate(const std::vector<cf>& data, const std::vector<cf>& repl0,
         for (int q = 0; q < Mp; ++q)
             P[d][q] = OUT[q] * inv_mp;
     }
-    return P;
 }
 
 AcquisitionSurface
@@ -326,6 +340,25 @@ ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
                    std::chrono::steady_clock::now().time_since_epoch()).count();
     };
 
+    // EVERYTHING THE SUB-WINDOW LOOP TOUCHES IS ALLOCATED ONCE, HERE.
+    //
+    // This is not micro-optimisation. With the replica and P allocated inside the loop, K=16
+    // did 16 x 106 channel-vector allocate/free cycles, and the REFINE THAT RAN AFTERWARDS --
+    // a different stage, with identical inputs and the same 426 evaluations -- slowed from
+    // 89 s to 874 s. Per-eval cost was flat to 129 evals then jumped 9.5x. The acquire's churn
+    // was being paid by somebody else's OpenMP workers.
+    //
+    // HopRateReplicaStream also caches the hop-rate FILTER, which is the slow half of the
+    // generator and depends on Doppler (fixed at 0 here), not on the sub-window. That is what
+    // §7 of the design plan asked about: it hoists, and it was the entire remaining acquire
+    // cost (replica 11.77 s of a 12.34 s acquire; correlate 0.13 s, aggregate 0.44 s).
+    HopRateReplicaStream repl_stream(bank, prn_index, chan_ids);
+    std::vector<std::vector<std::vector<std::complex<float>>>> P((size_t)nc);
+    const int nt_c = std::max(1, std::min(n_threads, nc));
+    std::vector<AcquireWorkspace> wsx((size_t)std::max(0, nt_c - 1));
+    std::vector<std::vector<std::complex<float>>> dbuf((size_t)nt_c,
+                                                       std::vector<std::complex<float>>((size_t)N));
+
     for (int k = 0; k < n_sub; ++k) {
         const long long W = window_start_sample + (long long)k * N * fft_len;
         // TWO code periods of replica, starting ONE period EARLY, against one period of data.
@@ -336,8 +369,9 @@ ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
         // the N data hops overlapped, which is the point.
         const long long W_repl = W - (long long)N * fft_len;
         double t0 = prof ? now() : 0.0;
-        std::vector<std::vector<std::complex<float>>> repl =
-            bank.channels_hoprate(prn_index, W_repl, 0.0, 0.0, 2 * N, chan_ids, {}, -1);
+        // Doppler 0 every call, so the cached filter is never rebuilt after the first.
+        const std::vector<std::vector<std::complex<float>>>& repl =
+            repl_stream.generate(W_repl, 0.0, 0.0, 2 * N, {});
         if (prof)
             t_repl += now() - t0;
 
@@ -347,19 +381,19 @@ ms_split_accumulate(gnss::ChannelizedReplicaBank& bank, int prn_index,
         // Each worker gets its own AcquireWorkspace (worker 0 reuses the caller's, so the
         // single-threaded path keeps its persistent FFTW plans bit-for-bit).
         t0 = prof ? now() : 0.0;
-        std::vector<std::vector<std::vector<std::complex<float>>>> P((size_t)nc);
-        const int nt_c = std::max(1, std::min(n_threads, nc));
         const auto run_ch = [&](int t) {
-            AcquireWorkspace local;
-            AcquireWorkspace& mine = (t == 0) ? ws : local;
-            std::vector<std::complex<float>> d((size_t)N);
+            // Worker 0 reuses the caller's workspace so the single-threaded path keeps its
+            // persistent FFTW plans bit-for-bit; the rest are hoisted out of the k-loop too,
+            // or every sub-window would re-plan.
+            AcquireWorkspace& mine = (t == 0) ? ws : wsx[(size_t)t - 1];
+            std::vector<std::complex<float>>& d = dbuf[(size_t)t];
             for (int c = t; c < nc; c += nt_c) {
                 for (int m = 0; m < N; ++m)
                     d[(size_t)m] = data_ch[(size_t)c][(size_t)(k * N + m)];
                 // data (N) shorter than replica (2N) -> channel_correlate zero-pads it to the
                 // transform length, which is exactly the linear correlation we want.
-                P[(size_t)c] =
-                    channel_correlate(d, repl[(size_t)c], doppler_grid, sample_rate, sph, mine);
+                channel_correlate_into(d, repl[(size_t)c], doppler_grid, sample_rate, sph, mine,
+                                       P[(size_t)c]);
             }
         };
         if (nt_c == 1) {
