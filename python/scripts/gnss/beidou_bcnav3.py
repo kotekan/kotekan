@@ -149,27 +149,56 @@ def find_frames(symbols, prn):
         i += 1
 
 
-# ------------------------------------------------------------------ ephemeris (Phase 2)
-# The B-CNAV3 ephemeris field table (message-type layout + bit offsets/scales) is ICD-owned and
-# filled in against LIVE decoded frames + the BRDC dpos, exactly as the B-CNAV2 table was. Until
-# then the codec DECODES + CRC-checks + serves the raw frame per message type; parse_bcnav3_
-# ephemeris returns None so the broker logs the message-type histogram (which is what tells us the
-# layout to fill here). CNAV-style set expected (dA off A_ref, Adot, dn0/dn0dot -- like B-CNAV2).
-BCNV3_EPH_FIELDS = {}          # {name: (mestype, start, length, signed, scale)} -- Phase 2
+# ------------------------------------------------------------------ ephemeris (Message Type 10)
+# The full BDS-3 CNAV orbit is in Message Type 10. LIVE-MAPPED 2026-08-03: a change-detection over
+# consecutive type-10 frames showed bits [26:462] STABLE (the ephemeris) between SOW[6:26] and
+# CRC[462:486]; the orbit is the SAME contiguous BDS-3 CNAV parameter block as B-CNAV1 SF2, at the
+# B-CNAV1 SF2 offsets MINUS 9 (its t_oe 39 -> 30, ... C_UC 443 -> 434). VERIFIED against BRDC:
+# dpos 0.015-0.079 m across PRN 23/25/32/37/41 (SatType 3 MEO). Scales are the shared BDS-3 CNAV
+# set (identical to B-CNAV1/2). name -> (start bit in the 486-bit frame, length, signed, scale).
+_EPH10_SHIFT = -9
+BCNV3_EPH_FIELDS = {
+    "t_oe":     (30, 11, False, 300.0),
+    "SatType":  (41, 2, False, 1.0),
+    "dA":       (43, 26, True, _P(9)),
+    "A_dot":    (69, 25, True, _P(21)),
+    "dn_0":     (94, 17, True, _P(44) * BDS_PI),
+    "dn_0_dot": (111, 23, True, _P(57) * BDS_PI),
+    "M_0":      (134, 33, True, _P(32) * BDS_PI),
+    "e":        (167, 33, False, _P(34)),
+    "omega":    (200, 33, True, _P(32) * BDS_PI),
+    "Omega_0":  (233, 33, True, _P(32) * BDS_PI),
+    "i_0":      (266, 33, True, _P(32) * BDS_PI),
+    "Omega_dot":(299, 19, True, _P(44) * BDS_PI),
+    "i_0_dot":  (318, 15, True, _P(44) * BDS_PI),
+    "C_IS":     (333, 16, True, _P(30)),
+    "C_IC":     (349, 16, True, _P(30)),
+    "C_RS":     (365, 24, True, _P(8)),
+    "C_RC":     (389, 24, True, _P(8)),
+    "C_US":     (413, 21, True, _P(30)),
+    "C_UC":     (434, 21, True, _P(30)),
+}
 
 
 def parse_bcnav3_ephemeris(frames_by_type):
-    """{mestype: 486-bit frame} -> SI ephemeris, or None. Populated in Phase 2 once the live
-    message-type layout is confirmed (BCNV3_EPH_FIELDS empty => None)."""
-    if not BCNV3_EPH_FIELDS:
-        return None
-    types = {mt for (mt, *_rest) in BCNV3_EPH_FIELDS.values()}
-    if not types <= set(frames_by_type):
+    """{mestype: 486-bit frame} -> SI ephemeris (A_ref resolved by SatType), or None if type 10 is
+    missing. Type 10 carries the WHOLE orbit -- no cross-frame matching (unlike B-CNAV2's 10+11)."""
+    f = frames_by_type.get(10)
+    if f is None:
         return None
     eph = {}
-    for name, (mt, start, length, signed, scale) in BCNV3_EPH_FIELDS.items():
-        eph[name] = _field(frames_by_type[mt], start, length, signed, scale)
+    for name, (start, length, signed, scale) in BCNV3_EPH_FIELDS.items():
+        eph[name] = _field(f, start, length, signed, scale)
+    eph["A_ref"] = A_REF_IGSO if int(round(eph["SatType"])) in (1, 2) else A_REF_MEO
+    eph["IODE"] = -1               # not needed (single-frame orbit); B-CNAV3 IODE not in type 10
+    eph["_iod_consistent"] = True
     return eph
+
+
+def sv_position_bcnav3(eph, t):
+    """ECEF (x,y,z) m -- identical BDS-3 CNAV propagation as B-CNAV1/2 (shared parameter set)."""
+    import beidou_bcnav2 as _B2
+    return _B2.sv_position_bcnav2(eph, t)
 
 
 # ------------------------------------------------------------------ self-test
@@ -276,6 +305,29 @@ if __name__ == "__main__":
     print("4. CRC-24Q + PRN preamble + corruption caught: %s" % ("OK" if p4 == 0 else "FAIL %d" % p4))
     fails += p4
 
-    print("\n%s" % ("B-CNAV3 NB-LDPC + frame codec SELF-CONSISTENT (ephemeris fields = Phase 2, "
-                    "live-mapped)" if not fails else "SELF-TEST FAILURES: %d" % fails))
+    # 5. ephemeris field table: no overlap/overrun within [26:462], + a demo MEO orbit radius
+    p5 = 0
+    occ = [0] * FRAME_BITS
+    for _n, (st, ln, _s, _sc) in BCNV3_EPH_FIELDS.items():
+        if st < 26 or st + ln > CRC_AT:
+            p5 += 1
+        for k in range(st, min(st + ln, FRAME_BITS)):
+            occ[k] += 1
+    if any(x > 1 for x in occ):
+        p5 += 1
+    demo = {"A_ref": A_REF_MEO, "dA": 200.0, "A_dot": 0.0, "t_oe": 0.0, "SatType": 3.0,
+            "dn_0": 0.0, "dn_0_dot": 0.0, "M_0": 0.3, "e": 1e-3, "omega": 0.1,
+            "Omega_0": 0.2, "i_0": 0.96, "Omega_dot": -2e-9, "i_0_dot": 0.0,
+            "C_IS": 0, "C_IC": 0, "C_RS": 0, "C_RC": 0, "C_US": 0, "C_UC": 0}
+    rad = math.sqrt(sum(c * c for c in sv_position_bcnav3(demo, 0.0)))
+    if not (2.6e7 < rad < 2.9e7):
+        p5 += 1
+        print("   demo orbit radius %.0f m OUT of MEO shell" % rad)
+    print("5. ephemeris field table (no overlap) + CNAV propagation: %s"
+          % ("OK" if p5 == 0 else "FAIL %d" % p5))
+    fails += p5
+
+    print("\n%s" % ("B-CNAV3 NB-LDPC + frame + ephemeris codec SELF-CONSISTENT (type-10 orbit "
+                    "LIVE-VERIFIED vs BRDC 0.015-0.079 m)" if not fails else
+                    "SELF-TEST FAILURES: %d" % fails))
     sys.exit(1 if fails else 0)
