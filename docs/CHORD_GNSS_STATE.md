@@ -2257,3 +2257,72 @@ The period must therefore be right up front, with no recovery path.
 2. Find the principled fix for the -4 (8.15.4).
 3. A near-zenith transit to validate against: within ~1–2 degrees of boresight the signal is
    ~40 dB stronger and everything should lock trivially. If it does not, THAT is a real bug.
+
+# ============================================================================
+# 8.16 FLEET-COMBINED DLL, BUILT (2026-08-03 afternoon)
+# ============================================================================
+
+`docs/CHORD_GNSS_SHARED_DLL.md` §9 steps 1-4 are implemented and pushed (369ae9d3f, aae275790).
+Nothing is measured on sky yet, and §8.16.2 is why.
+
+## 8.16.1 What shipped
+
+* **Combiner** publishes `e_pow` / `p_pow` / `l_pow` / `n_chan` / `pow_hop` / `pow_fft_len`.
+  Raw powers, because ratios do not sum. `pow_hop` is the absolute F-engine hop index, taken
+  from `GnssChanMetadata::sample_seq` on the input frames -- already stamped by the record
+  producers, so no new plumbing; `fft_len` on the combiner is the only new config key. Also
+  written to the combined record at `CMB_HOP_SLOT` (int64, free slots 19-20), so a raw capture
+  says exactly which window each row is.
+* **`p_pow` is NOT `acc_pow`.** `acc_pow` takes whichever straddle-immune form is available
+  (`|v_cur|^2`, or `|head|^2 + |tail|^2`), correct for `|A|` and wrong as the P in `2P/(E+L)`:
+  the segment split alone costs `f^2 + (1-f)^2`, 0.5 at a mid-record boundary, and would read as
+  a collapsing peak. E and L are unsegmented, so P must be too.
+* **Broker `fleet_dll()`** behind `--dll-combiners`: group by (PRN, `pow_hop`), sum, one
+  discriminator. Fewer than `--dll-min-instances` agreeing instances -> fall back to the single
+  combiner, so a partly-down fleet degrades instead of stalling. Trim HOLDS with no live
+  `code_phase_rate` (design §7).
+* **`--local-trim-gain 0`.** Measured first: every tracker already reported `trim +0.00`, since
+  no PRN clears its own 2.2 gate. Nothing was given up.
+
+## 8.16.2 THE PREREQUISITE, and it is not code
+
+`scripts/gnss/e2e`, noiseless, run both ways to be sure:
+
+| search comb | refine | seed handed to the trackers |
+|---|---|---|
+| stride 4 (**2 nodes** -- today) | -13.63 | **-13.188 chips**, a grating lobe |
+| stride 1 (**8 nodes**) | -0.07 | **+0.373 chips** |
+| stride 1 + `--seed-cp-rate -7.06e-8` | | **0.373 over 4 records -- CHAIN CLOSES** |
+
+A DLL pulls in +-0.5 chips. Thirteen is 26x outside it, so at 2 nodes no code loop of any kind
+can recover, and every lock-quality measurement is measuring the wrong thing. **Check the node
+count before concluding anything about tracking.**
+
+## 8.16.3 The gate, and a prediction of mine that was wrong
+
+The design predicted that summing instances would lift `q = 2P/(E+L)` past 2.2. It will not.
+`q` is a ratio of means and summing K instances scales every tap's mean by K alike -- a fleet of
+eight reports the same 1.5 one node does. What collapses is the **variance**, as 1/sqrt(K): a
+signal-free PRN's `q` tightens from a measured tail of 1.87 (K=1) toward ~1.3 at K=8.
+
+The gain is therefore a **lower bar, not a higher statistic**, so any constant gate is right for
+exactly one fleet size -- and one chosen for K=1 rejects every real signal once the sum has
+tightened the distribution around 1.0. `fleet_dll()` re-measures the floor each cycle as
+median + `--dll-quality-sigma` x MAD-sigma over the live `q` population (most tracked PRNs are
+signal-free at any moment, so the median IS the no-peak value) and logs it every time.
+
+This also settles what looked like a contradiction with §8.15: 1.3 is 1.5 sigma INTO one
+instance's noise and ~3 sigma clear of eight instances'. Same number, opposite verdict, because
+the population changed. The rule survives -- never move a threshold to buy sensitivity, measure
+the population you are thresholding.
+
+## 8.16.4 Config debt
+
+All eight node configs were patched in place (fft_len + deep_coherent on every combiner,
+trim_gain 0 on every tracker) because the generator needs a live production `/config` on 12048
+as its base and production is not running. Six of them still predate `--combine-gpus` and run
+two 7-channel combiners instead of one merged 14-channel one -- a graph change, not a scalar, so
+it wants a real regeneration. It costs 3 dB per instance and doubles the endpoint count; it
+costs the fleet DLL no bandwidth, since the sum is over instances either way.
+
+**Regenerate all eight the next time production is up on 12048.**
