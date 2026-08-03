@@ -2032,3 +2032,50 @@ but a FLEET estimate averages ~10 satellites and pulls the noise down by ~3x. Th
 `--carrier-fleet-seed`, `--carrier-min-sig` (hold the trim when significance is low), and a much
 smaller `--carrier-gain` so the integrator averages over many polls instead of tracking each
 one. That is the principled configuration, and it should be tried before any more code.
+
+## 8.12 There is NO common-mode carrier offset -- 8.11's diagnosis was wrong
+
+Ran the fleet measurement with both nodes on the deep path (cx19 regenerated with
+`deep_coherent`, so its carrier residual comes from the buffered-stream fit rather than the
+per-emit squared fallback -- median |resid| 12.57 -> ~3.4 Hz).
+
+46 signed samples across 12 PRNs and 4 streams:
+
+```
+fleet mean   -0.436 Hz
+fleet median +0.535 Hz
+fleet stdev   4.127 Hz
+mean is 0.7 sigma from zero
+```
+
+**No common-mode offset.** The per-PRN values scatter within a single PRN across streams
+(PRN 27: +6.67, -8.03, +2.73, -6.36), which is noise, not a satellite-dependent Doppler error
+and not a chain LO offset. So `--carrier-fleet-seed` has nothing to average toward, and the
+-6.6 Hz in 8.11 was ONE DRAW from a +-4 Hz distribution, not a measured offset. **8.11's "the
+carrier is spinning at -6.6 Hz" is retracted.**
+
+What the 4 Hz scatter actually is: `carrier_resid_hz` fits phase evolution across the buffered
+records, so when those records are not coherent the fit returns noise. The residual is a
+SYMPTOM of no coherence, not its cause. The loop is circular -- no coherence -> noisy phase fit
+-> no carrier correction -> no coherence -- and closing the carrier loop on it (8.11) could only
+ever chase noise, which is exactly what it did.
+
+**Breaking the circle needs per-record SNR, and there is a free 3 dB sitting in the config.**
+`GnssCoherentCombiner`'s contract is "Per-subband tracker record streams" (plural) combined
+coherently -- "one loop at full-band SNR instead of N noise-driven per-channel FLLs". CHORD runs
+it as TWO combiners with ONE input each:
+
+```
+gnss0_combine  in_bufs=['gnss0_rec_buf']   # GPU 0: 7 channels 5972, 5988, 6004, ...
+gnss1_combine  in_bufs=['gnss1_rec_buf']   # GPU 1: 7 channels 5980, 5996, 6012, ...
+```
+
+The two GPUs' combs are interleaved (stride 16, offset 8): together they are the node's full
+stride-8 comb, 14 channels. One combiner over both `in_bufs` is +3 dB per record, is what the
+stage was designed for, and needs no code.
+
++3 dB alone may not clear the bar (`deep_snr` 2.8 needs x1.56 = +3.9 dB), but the gain is not
+just linear: a better per-record SNR also sharpens the carrier phase fit, which is the thing
+currently returning noise. That is the lever worth pulling next, and 14 channels is the per-node
+ceiling -- combining ACROSS nodes would mean shipping records to one place, which the aggregator
+does for the search and nothing does for tracking.
