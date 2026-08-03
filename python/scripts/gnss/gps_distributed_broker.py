@@ -840,6 +840,24 @@ def main(argv=None):
     #  by surviving mechanisms: a stale/aliased f_ref offset is snapped by the TIGHT
     #  tracker fence (fll_reacq_hz ~15 Hz, free under --dop-continuous), and a walked/
     #  aliased TRIM latch is the watchdog's lifecycle rescue below.)
+    ap.add_argument("--carrier-bleed-shadow", type=int, default=1,
+                    help="f_ref TRIM-BLEED SHADOW (1 = on, log-only): report where a converged, "
+                         "coherent, STANDING carrier trim WOULD be re-pinned into f_ref (which "
+                         "would drop the sinc(ctrim*T_rec) despread loss, ~0.13-0.26 dB on L2C). "
+                         "Takes NO action -- it validates the TRIGGER on live data before any "
+                         "tracker change (the fleet-collapse lesson: a carrier correction that "
+                         "fires on the wrong sat is catastrophic). Gated on coherent + converged "
+                         "so it can never flag the BOOTSTRAP/incoherent noise-walk that killed "
+                         "alias-escape v1/v2.")
+    ap.add_argument("--carrier-bleed-hz", type=float, default=2.0,
+                    help="Shadow: minimum standing |trim| (Hz) to consider a bleed candidate. "
+                         "Below this the sinc loss is negligible and not worth a re-pin.")
+    ap.add_argument("--carrier-bleed-stable-emits", type=int, default=5,
+                    help="Shadow: consecutive coherent emits the trim must hold steady over to "
+                         "count as CONVERGED (a moving trim is still settling -- not a candidate).")
+    ap.add_argument("--carrier-bleed-stable-hz", type=float, default=0.6,
+                    help="Shadow: max peak-to-peak trim spread (Hz) over the stability window to "
+                         "call it converged.")
     ap.add_argument("--watchdog-s", type=float, default=0.0,
                     help="TRACK WATCHDOG (0 = off): a sat with a fresh detection at "
                          ">= --watchdog-det-snr that has ZERO coherent emits for this many "
@@ -1491,6 +1509,16 @@ def main(argv=None):
     # anchors). VERIFY_EMITS bounds the hypothesis: heal within 3 emits or be reverted.
     CARRIER_EXPLAIN_HZ = 0.5
     CARRIER_VERIFY_EMITS = 3
+    # f_ref TRIM-BLEED shadow (2026-08-02): a converged, coherent, STANDING carrier trim means
+    # f_ref was pinned off-true at acquisition and the sub-fence offset froze in (the AGE re-pin
+    # keeps the slope but never re-adopts the seed) -- so the despread replica runs at f_ref while
+    # the true carrier is f_ref+ctrim, costing sinc(ctrim*T_rec) (L2C's 20 ms records: 0.13-0.26
+    # dB). The fix is an occasional gated re-adopt; this SHADOW logs where it WOULD fire, to
+    # validate the trigger on live data BEFORE any tracker change (the fleet-collapse lesson: a
+    # carrier correction that fires on the wrong sat is catastrophic -- see [[carrier-loop-
+    # absorbing-state]] alias-escape v1/v2). Log-only; takes NO action.
+    car_bleed_hist = {}   # prn -> [recent trim values on coherent ungated emits] (convergence)
+    car_bleed_log_t = {}  # prn -> last shadow-log walltime (rate limit)
     det_fresh = {}      # prn -> (ref_hop, walltime) of the last NEW detection (alias escape)
     wd_birth = {}       # prn -> when it entered seeds (track-watchdog judgment window)
     wd_coh_t = {}       # prn -> last coherent walltime (track-watchdog's own clock)
@@ -3637,6 +3665,28 @@ def main(argv=None):
                                            min(args.carrier_max_step, trim - prev_trim))
                 car_trim[prn] = max(-args.carrier_max_hz, min(args.carrier_max_hz, trim))
                 car_report.append("PRN %d resid %+.2f Hz trim %+.2f" % (prn, resid, car_trim[prn]))
+                # ---- f_ref TRIM-BLEED SHADOW (log-only, no action) ----
+                # This emit is COHERENT and TRACKING (it reached the integrator ungated). If the
+                # trim has held a STANDING value across the stability window, f_ref is pinned
+                # off-true by ~that trim and a re-pin (f_ref += trim) would clear it. Log the
+                # candidate so the trigger can be validated on live data before it is ever armed.
+                # Recency-windowed like car_step_hist (a decoherence gap ages the window out ->
+                # not "converged"), so no per-gate-branch cleanup is needed.
+                if args.carrier_bleed_shadow and tracking and coh_ok:
+                    bh = car_bleed_hist.setdefault(prn, [])
+                    bh.append((t0, car_trim[prn]))
+                    del bh[:-args.carrier_bleed_stable_emits]
+                    vals = [v for _, v in bh]
+                    if (len(bh) >= args.carrier_bleed_stable_emits
+                            and t0 - bh[0][0] < 30.0
+                            and abs(car_trim[prn]) >= args.carrier_bleed_hz
+                            and max(vals) - min(vals) <= args.carrier_bleed_stable_hz
+                            and t0 - car_bleed_log_t.get(prn, 0.0) >= 60.0):
+                        car_bleed_log_t[prn] = t0
+                        _log("CAR-BLEED CANDIDATE PRN %d: trim %+.2f Hz stable %d emits "
+                             "(spread %.2f), coherent -> would re-pin f_ref, predict trim->~0 "
+                             "(shadow, no action)"
+                             % (prn, car_trim[prn], len(bh), max(vals) - min(vals)))
             if car_report:
                 _log("CAR: " + "; ".join(car_report))
             for k in list(car_trim):
@@ -3646,6 +3696,8 @@ def main(argv=None):
                     car_verify.pop(k, None)  # a dropped sat's hypothesis dies with it
                     car_step_hist.pop(k, None)
                     car_fade.pop(k, None)
+                    car_bleed_hist.pop(k, None)  # its convergence history dies with it
+                    car_bleed_log_t.pop(k, None)
 
         # S2 OBSERVER: the SECOND carrier-side estimator of the same LO. `car_trim`'s own
         # arg help calls the converged fleet trim "the chain's deterministic frac-N LO
