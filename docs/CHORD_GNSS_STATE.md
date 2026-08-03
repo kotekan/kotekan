@@ -1860,3 +1860,38 @@ established later.
 Order of work from here: **8.7.6 (latency) first, then re-test 8.7.7.** The latency defect
 blocks locking on its own AND confounds every period test, because it is what makes strong
 satellites rare in any given probe window.
+
+## 8.8 Deployed 2026-08-03 -- the latency defect is FIXED, and it was not the lock blocker
+
+`channelized_peak`'s fine-lag sign fix (1dffd625b) is live on the aggregator.
+
+| | before | after |
+|---|---|---|
+| pass | 50.0 s | **6.0 s** |
+| revisit (12 hinted PRNs) | 10.4 min | **1.2 min** |
+| seed `ref_hop` age | ~4000 s | **0-138 s** |
+| seeded `code_phase_rate` | 0.0000 (never fitted) | **-0.0971 ppm** |
+
+8.7.6 is closed: the revisit is now far inside `--fit-gap-s 900`, so `cp_hist` stops resetting on
+every detection, the fit forms, and the seeds carry a real rate. Everything that section blamed
+for the lock failure is gone.
+
+**And the trackers still do not lock:** `coherent 0/32` on all four streams, `amp_snr` 3.2-4.4.
+So search latency was a real defect and a real 8x win, but it was NOT what stands between us and
+a lock. What remains is 8.7.7 -- the constant **-4 overlay periods**, measured 4/4 -- which is
+now finally *testable*, because seeds refresh every ~1 min instead of every ~20.
+
+Deployment notes, both mistakes worth not repeating:
+* Regenerating the aggregator config, I dropped `--acquire-windows 1` and the generator's
+  default of **32** applied. Multi-window accumulation smears across NH bins (the 16-vs-20
+  defect), and detections collapsed to snr 2.3 against a 2.23 ceiling. Any regeneration must
+  carry ALL the original flags: `--acquire-fine-step 128 --prns-per-pass 1 --acquire-threads 16
+  --acquire-windows 1`.
+* The 8-node config had been running on 2 nodes all night: a 106-channel comb of which **79
+  channels were pure noise**. `chord_gnss_agg2.yaml` is the honest config for cx19+cx27.
+
+**Standing recommendation: cx19+cx27 is the WORST live pair.** Offsets 4 and 0 differ by 4, so
+g = 4, `s_stored` = 4096, and the 13.09-chip grating lobes -- the original lock blocker -- are
+back. cx19 paired with cx42, cx47, cx51 or cx52 gives **g = 1** at identical thermal cost: same
+two nodes, same channel count, no lobes, and `refine_span` 512 instead of 16384. Swapping cx27
+for any of those is free and strictly better.
