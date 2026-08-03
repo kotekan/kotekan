@@ -1934,3 +1934,51 @@ enough signal for a lock to be possible at all.
 CORRECT, which changes its status from guess to finding, but the principled fix is to locate why
 `detection_phase`'s lift is 4 periods (== +16 == Mp, the anchor's own 16 code periods) short and
 fix it there. The flag is the experiment; the fix belongs in the code.
+
+## 8.10 `coherence_s = 0` DOES NOT MEAN "NOT LOCKED" -- 2026-08-03
+
+I have been reading `coherence_s` as the lock indicator all session (8.7 onwards). **On CHORD it
+cannot be anything but zero**, and that is a property of the configuration, not of the sky.
+
+`GnssCoherentCombiner` computes `coh_s[p]` in exactly three places (1062, 1142, 1309), and all
+three are rungs INSIDE a wipe:
+
+```
+_wipe_buffer = (_navwipe_bit_records > 0 || !_secondary.empty() || !_l1co.empty());
+```
+
+`chord_gnss_cx19.yaml`'s `gnss0_combine` sets **none** of those three: no `navwipe_bit_records`,
+no `secondary_overlay`, no per-PRN L1CO. So `_wipe_buffer` is false, the deep block at :850 is
+skipped entirely, and `coherence_s` stays at its initialised 0.0 forever. Every "coherent 0/128"
+in 8.7-8.9 is that, not a failed detection. The combiner's own "honest no coherent detection"
+comment applies when a wipe RUNS and clears nothing -- not when no wipe is configured.
+
+**And the reason it is not configured is a cadence assumption -- the fifth instance.**
+`overlay_apply` (gnssChannelizedDespread.cpp:145) computes the overlay chip index as
+
+```
+k = round((utc[r] - utc[0]) / rec_dt) + phase   (mod L)
+```
+
+i.e. **one overlay chip per RECORD**, stated in the header as "one record = one primary period,
+so one overlay chip". True on airspy. On CHORD a record is 2048 hops = **10.4857 code periods**,
+so the overlay advances ~10.49 chips per record and flips ~10 times WITHIN each record -- which
+the head/tail split (built for records straddling ONE boundary, the 2026-07-15 bistable fix)
+cannot represent. Enabling `secondary_overlay` here would run that path and get garbage.
+
+**What CHORD actually needs is simpler than any of the wipes.** Its tracker despreads with
+`GPS_L5_Q_NH` -- the 204600-chip code with the overlay BAKED IN (verified in the live
+cudaGnssChordTrack command) -- so each record's amplitude already has the overlay removed,
+correctly, chip by chip, straddling or not. The right deep integration is therefore a **plain
+coherent sum of per-record amplitudes with no wipe at all**, and the combiner has no such rung:
+every path to `coh_s` goes through a wipe.
+
+So the deep-integration gain (~15 dB per the combiner's own comment) has never been available on
+CHORD, which also reframes 8.9's "sensitivity" suspicion: the tracker is running incoherently at
+one record (10.5 ms) when the pilot supports far longer.
+
+**Next:** add a no-wipe coherent rung -- sum `_navbuf[p]` directly over the ladder lengths, with
+the same `FLOOR_MARGIN` discipline and a Rayleigh floor that has no alignment search in it
+(a straight sum has no max-over-trials bias, so the floor is lower than the wipe rungs' one).
+`_navbuf` is only populated under `_wipe_buffer`, so that gate needs widening too. Then
+`amp_snr` stops being the only thing we can see.
