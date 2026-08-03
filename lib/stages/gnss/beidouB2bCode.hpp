@@ -16,8 +16,10 @@
  *
  * Tables sourced from PocketSDR (T.Takasu sdr_code.py, transcribed from the BDS B2b ICD)
  * and TRANSCRIPTION-VERIFIED bit-exact for PRN 1/19/20/30/45/63
- * (python/scripts/gnss/b2b_code_check.py). Sky-validation (live acquisition off the retuned
- * 1207.14 MHz dongle) is the remaining step, mirroring B2a's 2026-07-15 first light.
+ * (python/scripts/gnss/b2b_code_check.py). SKY-VALIDATED 2026-08-03: unseeded acquisition of
+ * C24/C33/C42/C28 off a 1207.14 MHz grab from the retuned L2C dongle (mid_band_decode.py),
+ * random-code control at the noise floor and a code-shift test tracking the peak -- the only
+ * proof a code table is right, mirroring B2a's 2026-07-15 first light.
  */
 #include <array>
 #include <cstdint>

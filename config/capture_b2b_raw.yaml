@@ -1,0 +1,41 @@
+---
+# Short raw grab of the 1207.14 MHz mid-band on the L2C dongle -- captures BeiDou B2b AND
+# Galileo E5b at once (they share this centre frequency). For offline acquisition validation
+# of the new B2b-I / E5b codes before the live chain is built. Wide mode (20 MSPS real) for
+# the 10.23 Mcps signals. Mirrors capture_l5_raw.yaml; only the tune + serial + out dir change.
+type: config
+log_level: info
+instrument_name: airspy_gps
+telescope: { name: ICETelescope, num_polarizations: 1, num_dishes: 1 }
+samples_per_data_set: 49920
+bytes_per_sample: 2
+buffer_depth: 32          # deeper than live: disk write must never backpressure the airspy
+sample_rate: 20.0e6
+cpu_affinity: [14, 15, 16, 17]
+input_buf:
+    kotekan_buffer: standard
+    metadata_pool: none
+    num_frames: buffer_depth
+    frame_size: samples_per_data_set * bytes_per_sample
+airspy_in:
+    cpu_affinity: [18]
+    kotekan_stage: airspyInput
+    out_buf: input_buf
+    serial: 0x744C60C821692F4F   # L2C unit (repurposed for the mid-band grab)
+    freq: 1207.14                # BeiDou B2b == Galileo E5b centre
+    sample_bw: 10                # airspy 10 MSPS mode -> 20 MSPS real
+    gain_lna: 11                 # L2C unit's live gains
+    gain_mix: 11
+    gain_if: 11
+    biast_power: false           # antenna fed by the SEPARATE inline bias tee
+    dither_disable: true
+capture:
+    kotekan_stage: rawFileWrite
+    in_buf: input_buf
+    base_dir: "/tmp/gpsin_b2b"
+    file_name: "gpsin"
+    file_ext: "raw"
+    prefix_hostname: false
+    num_frames_per_file: 1        # rawFileWrite emits [size][meta][frame] per frame
+    exit_after_n_files: 1000000
+    allow_ndarray: true
