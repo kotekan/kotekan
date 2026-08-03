@@ -616,13 +616,20 @@ bands:
             1 ms records (like L5), so the fleet 15 Hz fence applies -- the 12 Hz L2C value
             was for 20 ms records (12.5 Hz bit-robust alias limit) and no longer applies here.
         combiner:
-          params: { n_prn: 63, prns: RANGE, integration_length: 100, navwipe_bit_records: 1, bit_export: true }
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, navwipe_bit_records: 1, bit_export: true }
           note: |
             DATA-only B2b: navwipe_bit_records 1 (B-CNAV3 is 1000 sps = one symbol per 1 ms
             record, so a record is exactly one symbol -- the L5-I / B2a-D discipline) wipes the
             data so the sum integrates past 1 ms. bit_export publishes the per-record bit
-            decisions as nav_obs for the future B-CNAV3 decoder. NO secondary_overlay (B2b has
-            no secondary code). No peel / epl_frame override (data channel, shared 15360 default).
+            decisions as nav_obs for the B-CNAV3 decoder. NO secondary_overlay (B2b has no
+            secondary code). No peel / epl_frame override (data channel, shared 15360 default).
+            ★ integration_length 1000 NOT 100 (2026-08-03): the emit window is integration_length
+            RECORDS = a TIME only via the record period. B2b records are 1 ms, so 100 = a 0.1 s
+            emit -- SHORTER than the broker's 0.2 s nav_obs poll, so consecutive get_status
+            snapshots don't overlap and the symbol timeline fragments at ~200 syms, far short of
+            the 1000-symbol B-CNAV3 frame. 1000 records = 1 s = one full frame per emit, captured
+            gap-free (b1c_d gets away with 100 only because its B1C records are 10 ms = 1 s). The
+            count-where-a-time-was-meant trap, in the nav-decode export path.
 
       # STACKED 2026-08-03 (mid-band-gal-bds-receivers): Galileo E5b rides the SAME 1207.14
       # front-end as B2b -- E5b and B2b share the sky frequency, so one dongle tune samples

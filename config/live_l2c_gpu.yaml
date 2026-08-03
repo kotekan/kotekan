@@ -188,9 +188,16 @@ assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_
 # DATA-only B2b: navwipe_bit_records 1 (B-CNAV3 is 1000 sps = one symbol per 1 ms
 # record, so a record is exactly one symbol -- the L5-I / B2a-D discipline) wipes the
 # data so the sum integrates past 1 ms. bit_export publishes the per-record bit
-# decisions as nav_obs for the future B-CNAV3 decoder. NO secondary_overlay (B2b has
-# no secondary code). No peel / epl_frame override (data channel, shared 15360 default).
-gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 100, navwipe_bit_records: 1, bit_export: true }
+# decisions as nav_obs for the B-CNAV3 decoder. NO secondary_overlay (B2b has no
+# secondary code). No peel / epl_frame override (data channel, shared 15360 default).
+# ★ integration_length 1000 NOT 100 (2026-08-03): the emit window is integration_length
+# RECORDS = a TIME only via the record period. B2b records are 1 ms, so 100 = a 0.1 s
+# emit -- SHORTER than the broker's 0.2 s nav_obs poll, so consecutive get_status
+# snapshots don't overlap and the symbol timeline fragments at ~200 syms, far short of
+# the 1000-symbol B-CNAV3 frame. 1000 records = 1 s = one full frame per emit, captured
+# gap-free (b1c_d gets away with 100 only because its B1C records are 10 ms = 1 s). The
+# count-where-a-time-was-meant trap, in the nav-decode export path.
+gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 1000, navwipe_bit_records: 1, bit_export: true }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gps_l2c_gpu", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
 # ---- Galileo E5b-Q parallel chain (dataless pilot, PRN 1..36, 1207.14 MHz) ----
