@@ -1895,3 +1895,42 @@ g = 4, `s_stored` = 4096, and the 13.09-chip grating lobes -- the original lock 
 back. cx19 paired with cx42, cx47, cx51 or cx52 gives **g = 1** at identical thermal cost: same
 two nodes, same channel count, no lobes, and `refine_span` 512 instead of 16384. Swapping cx27
 for any of those is free and strictly better.
+
+## 8.9 The -4 is REAL and VALIDATED -- 2026-08-03
+
+Conditions were finally clean enough to test it: cx19+cx51 (offsets 4,7 -> **g=1**, no grating
+lobes), pass 1.05 s, revisit 12 s, seed `ref_hop` ages 0-17 s, `code_phase_rate` fitted.
+
+The probe reproduced **-4 overlay periods** again on both PRNs tested (26: period 6 vs seeded
+10; 28: 10 vs 14, within-period only -1.50 chips). That is **6/6** across two node pairs, two
+combs (g=4 and g=1), two days and four satellites.
+
+Then `--nh-period-offset -4`, verified reaching the seeds (PRNs 11/21/26/28 all showing exactly
+-4 between the detection's period and the seed's -- checked, because an earlier run of this
+experiment silently tested a no-op). Re-probed:
+
+```
+tracker would despread at cp204 25115.53 (NH period 2)
+oracle peak:              cp204 25115.53  ratio 6.87  (period 2)
+```
+
+**Exact.** Period error 0, phase error 0, and the oracle ratio ROSE from 3.5 to 6.87 -- the
+signal is stronger at the corrected position, which is what a true correction does and what a
+coincidence does not. The seed now points at the satellite.
+
+**And the trackers still report `coherent: 0/128`.** So the -4 was a genuine defect and is now
+fixed, but it is still not sufficient. `amp_snr` sits at 3-6 across all 32 PRNs on every stream,
+which is a noise distribution, and the strongest per-stream entry (P26 at 6.1 on cx51 gnss1) is
+the satellite the oracle can only see at ratio 6.87 -- weak.
+
+The live suspicion is therefore SENSITIVITY, not bookkeeping: the tracker despreads on 7
+channels (t_stride 16, one GPU's comb) regardless of how many nodes are up, so unlike the search
+it gains nothing from more nodes. Yesterday the same oracle saw ratios 17-30 on the same code
+path; today's satellites are simply weaker. Before concluding anything, re-run when a satellite
+with search snr > 1000 is up -- the probe's own ratio is the honest gauge of whether there is
+enough signal for a lock to be possible at all.
+
+**Do not leave `--nh-period-offset -4` running as a magic constant.** It is now validated as
+CORRECT, which changes its status from guess to finding, but the principled fix is to locate why
+`detection_phase`'s lift is 4 periods (== +16 == Mp, the anchor's own 16 code periods) short and
+fix it there. The flag is the experiment; the fix belongs in the code.

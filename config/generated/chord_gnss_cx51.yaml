@@ -271,7 +271,7 @@ gnss0_srch_send:
   kotekan_stage: bufferSend
   retry_time: 5.0
   server_ip: 10.222.1.19
-  server_port: 11052
+  server_port: 11042
   use_config_tracker: false
 gnss0_srch_tap:
   chan_ids: &id002
@@ -408,7 +408,7 @@ gnss1_srch_send:
   kotekan_stage: bufferSend
   retry_time: 5.0
   server_ip: 10.222.1.19
-  server_port: 11053
+  server_port: 11043
   use_config_tracker: false
 gnss1_srch_tap:
   chan_ids: &id003
