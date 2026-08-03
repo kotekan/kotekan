@@ -43,6 +43,17 @@ ap.add_argument("--e2e-arg", action="append", default=[],
                      "--e2e-arg=1). Use the 8-node comb for a realistic search leg.")
 ap.add_argument("--broker-arg", action="append", default=[],
                 help="extra argument passed to the broker (repeatable)")
+ap.add_argument("--passes", type=int, default=1,
+                help="serve N successive detections of the SAME satellite at advancing snapshot "
+                     "hops, one search pass apart, instead of one static detection. This is what "
+                     "exercises cp_hist / fit_cp_rate: the rate fit needs 3 points at DISTINCT "
+                     "ref_hops, and on sky it has never once returned (0 cp-fit lines in 12 min "
+                     "over 67 passes) even though detections are plentiful. Uses --skip-search so "
+                     "each pass is instant and exact -- cp_hist accumulates well before the "
+                     "cp_long branch, so skipping the search does not bypass what is under test.")
+ap.add_argument("--revisit-s", type=float, default=90.0,
+                help="gap between served passes, seconds of SNAPSHOT hop (not wall clock)")
+ap.add_argument("--hop0", type=int, default=114436200145)
 a = ap.parse_args()
 
 os.makedirs(a.outdir, exist_ok=True)
@@ -56,10 +67,30 @@ for f in (DET, SEEDS):
 print("=" * 92)
 print("LEG 1 -- e2e alone (the control): search -> its OWN seed -> despread")
 print("=" * 92)
-leg1 = subprocess.run([K + "/scripts/gnss/e2e", "--prn", str(a.prn),
-                       "--emit-detection", DET] + a.e2e_arg,
-                      capture_output=True, text=True, cwd=K)
-sys.stdout.write(leg1.stdout)
+HOP_STEP = int(a.revisit_s * 195312.5)
+passes = []          # the detection JSON for each simulated search pass
+if a.passes > 1:
+    # Same satellite, successive snapshot epochs. cp204 is an ARGUMENT referenced to absolute
+    # sample 0, so the same value at a later hop IS the same signal continuing -- no need to
+    # model its evolution, which is the whole point of the argument convention.
+    for k in range(a.passes):
+        p = os.path.join(a.outdir, "det_%d.json" % k)
+        r = subprocess.run([K + "/scripts/gnss/e2e", "--prn", str(a.prn), "--skip-search",
+                            "--hop0", str(a.hop0 + k * HOP_STEP), "--emit-detection", p]
+                           + [x for x in a.e2e_arg if not x.startswith("--s-")],
+                           capture_output=True, text=True, cwd=K)
+        if not os.path.exists(p):
+            sys.exit("pass %d: e2e wrote no detection\n%s" % (k, r.stdout[-1500:]))
+        passes.append(json.load(open(p)))
+        print("  pass %d: hop %d  %s" % (k, a.hop0 + k * HOP_STEP,
+                                         json.dumps(passes[-1][0])))
+    json.dump(passes[0], open(DET, "w"))
+    leg1 = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+else:
+    leg1 = subprocess.run([K + "/scripts/gnss/e2e", "--prn", str(a.prn),
+                           "--emit-detection", DET] + a.e2e_arg,
+                          capture_output=True, text=True, cwd=K)
+    sys.stdout.write(leg1.stdout)
 if not os.path.exists(DET):
     sys.exit("e2e did not write a detection (%s)" % leg1.stderr[-500:])
 det = json.load(open(DET))
@@ -67,6 +98,7 @@ print("detection served: %s\n" % json.dumps(det[0]))
 
 # --------------------------------------------------------------------- the fake pipeline server
 captured = []
+serve = {"n": 0, "at": -1, "polls_per_pass": 3}
 
 
 class H(http.server.BaseHTTPRequestHandler):
@@ -83,6 +115,18 @@ class H(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.endswith("/get_detections"):
+            # Advance one simulated search pass per N polls, so the broker sees a sequence of
+            # DISTINCT ref_hops exactly as it would on sky. cp_hist appends only when ref_hop
+            # changes, so a static detection can never build the 3 points fit_cp_rate needs --
+            # serving one is the difference between testing the fit and testing nothing.
+            if passes:
+                i = min(serve["n"] // max(1, serve["polls_per_pass"]), len(passes) - 1)
+                if i != serve["at"]:
+                    serve["at"] = i
+                    print("  -> serving pass %d (hop %d)" % (i, passes[i][0]["ref_hop"]))
+                serve["n"] += 1
+                self._send(passes[i])
+                return
             self._send(json.load(open(DET)))
         elif self.path.endswith("/get_status"):
             self._send([])          # no combiner: no DLL trim, no drop decisions
@@ -125,7 +169,10 @@ print("broker: %s\n" % " ".join(cmd[2:]))
 blog = open(os.path.join(a.outdir, "broker.log"), "w")
 proc = subprocess.Popen(cmd, cwd=K, stdout=blog, stderr=subprocess.STDOUT)
 t0 = time.time()
-while time.time() - t0 < a.settle_s and not captured:
+# Single-pass: stop as soon as a seed lands, the payload is all we want. Multi-pass: run the
+# FULL window regardless -- the point is to let the server walk through every pass, and
+# stopping at the first POST would serve only pass 0 and test nothing.
+while time.time() - t0 < a.settle_s and (a.passes > 1 or not captured):
     time.sleep(0.5)
 time.sleep(2.0)
 proc.terminate()
@@ -139,6 +186,24 @@ srv.shutdown()
 if not captured:
     print(open(os.path.join(a.outdir, "broker.log")).read()[-3000:])
     sys.exit("broker POSTed no seeds in %.0f s -- see %s/broker.log" % (a.settle_s, a.outdir))
+
+# ------------------------------------------------------------------ did the RATE FIT ever run?
+if a.passes > 1:
+    log = open(os.path.join(a.outdir, "broker.log")).read()
+    fits = [l for l in log.splitlines() if "cp-fit" in l]
+    print("=" * 92)
+    print("RATE FIT over %d served passes (%.0f s revisit)" % (a.passes, a.revisit_s))
+    print("=" * 92)
+    if fits:
+        for l in fits[-6:]:
+            print("  " + l.strip())
+    else:
+        print("  NO cp-fit LINE -- fit_cp_rate never returned. It needs 3 points at distinct")
+        print("  ref_hops in cp_hist; %d distinct hops were served." % a.passes)
+    rates = [json.loads(c)[0].get("code_phase_rate") for c in captured if json.loads(c)]
+    print("  code_phase_rate in the POSTed seeds: %s"
+          % sorted({r for r in rates if r is not None}))
+    print()
 
 seed = None
 for row in json.loads(captured[-1]):

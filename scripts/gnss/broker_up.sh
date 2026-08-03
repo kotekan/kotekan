@@ -47,6 +47,6 @@ http://127.0.0.1:12099/sink_track" \
     --code-bias-alpha 0.05 --code-bias-min-sats 2 \
     --lat 49.32075144444 --lon -119.62081125 --alt 545 --mask-deg 0 --interval 2 \
     --search-margin-wide-hz 200 --search-margin-hz 100 \
-    --fit-gap-s 900 --fit-min-snr 0 --bias-min-snr 60 \
+    --fit-gap-s 3600 --fit-min-snr 0 --bias-min-snr 60 \
     --nh-period-offset 0 \
     "$@"
