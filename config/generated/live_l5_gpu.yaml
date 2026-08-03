@@ -140,10 +140,10 @@ quant: { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, targe
 gputrack:
     kotekan_stage: cudaProcess
     gpu_id: 0
-    num_cuda_streams: 6
+    num_cuda_streams: 7
     frame_arrival_period: 0.0
     in_buffers: { q_buf: q_buf }
-    out_buffers: { epl_buf: epl_buf, i_epl_buf: i_epl_buf, gal_epl_buf: gal_epl_buf, e5a_i_epl_buf: e5a_i_epl_buf, bds_epl_buf: bds_epl_buf }
+    out_buffers: { epl_buf: epl_buf, i_epl_buf: i_epl_buf, gal_epl_buf: gal_epl_buf, e5a_i_epl_buf: e5a_i_epl_buf, bds_epl_buf: bds_epl_buf, b2a_d_epl_buf: b2a_d_epl_buf }
     commands:
         # ONE host->device copy of the channelized 4+4b frame
         - name: cudaInputData
@@ -265,6 +265,28 @@ gputrack:
           cuda_stream: 5
           gpu_mem: bds_epl
           out_buf: bds_epl_buf
+          in_buf: ""
+        - name: cudaGnssTrack
+          signal: BDS_B2A_D
+          max_anchor_age_s: 0.0
+          fll_reacq_hz: 15.0
+          cuda_stream: 6
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: b2a_d_epl
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
+          n_channels: 10
+          channel_offset: 0
+          n_prn: 63
+          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+          capture_utc0: 1.0
+          fll_gain: 0.0
+          carrier_shared: true
+          seed_endpoint: "/b2a_d_track/set_seeds"
+        - name: cudaOutputData
+          cuda_stream: 6
+          gpu_mem: b2a_d_epl
+          out_buf: b2a_d_epl_buf
           in_buf: ""
 assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_buf, sample_rate: 20.0e6 }
 # L5 DEEP WIPE: Q5 is a dataless pilot under the KNOWN NH20 overlay (one +-1 chip
@@ -426,4 +448,30 @@ bds_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: bds_epl_buf, out_b
 bds_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [bds_rec_buf], out_buf: bds_out_buf, n_prn: 63, integration_length: 1000, secondary_overlay: B2A_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
 bds_record: { kotekan_stage: rawFileWrite, in_buf: bds_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "bds_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 
-spawn_pyviewer: { kotekan_stage: SpawnProcess, in_buf: out_buf, exec: '${VIEWER_PYTHON:-python3} python/scripts/js_viewer/livebeam_server.py --no-power-stream --http-port 8082 --ws-port 8739 --kotekan-rest-port 12248 --gps-constellations G,E,C --band l5' }
+# ---- BeiDou-3 B2a-DATA component (S5 D-component #3: B-CNAV2, first LDPC) ----
+# DERIVED from B2a-P exactly as E5a-I is from E5a-Q and L5-I from L5-Q: no search stage.
+# B2a-D (data) and B2a-P (pilot) share the SAME 10230-chip primary period and epoch
+# (their codes differ only in the generator polys) -- so a B2a-D row is the B2a-P row
+# VERBATIM: no code-phase lift, no broker flag. run_live adds b2a_d_track to the BDS
+# broker's --trackers so it gets the same consensus seeds as bds_track (B2a-P). The
+# combiner wipes the 5-chip CS5 secondary AND exports the per-5ms-symbol signs
+# (secondary_overlay B2A_CS5 + navwipe_bit_records 5 + bit_export -- the composed wipe
+# E5a-I/L5-I proved, since a B-CNAV2 symbol is 5 ms = one CS5 period). run_live hands
+# b2a_d_combiner to the broker as --bcnav2-combiner so its nav_obs reach the
+# Bcnav2Predictor (beidou_bcnav2's GF(64) NON-BINARY LDPC codec) and the decoded
+# B-CNAV2 ephemeris is cross-checked against BRDC -- BeiDou's first nav-message decode
+# here, beside the two Galileo ones (E1B I/NAV, E5a F/NAV).
+# GPU BUDGET: 6th L5 chain -- MEASURE l5_valve after enabling (loaded band; peel OFF).
+# rec_buf sized in TIME (the L5-I / count-vs-time lesson).
+b2a_d_n_prn: 63
+b2a_d_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: 1200, frame_size: b2a_d_n_prn * record_floats * sizeof_float }
+b2a_d_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: b2a_d_n_prn * record_floats * sizeof_float }
+b2a_d_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * b2a_d_n_prn + 15360 * b2a_d_n_prn }
+b2a_d_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: b2a_d_epl_buf, out_buf: b2a_d_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] }
+# integration_length 1000 x 1 ms = 1 s emit; navwipe_bit_records 5 = 5 ms / 1 ms
+# records = ONE B-CNAV2 symbol per CS5 period (the count-vs-time discipline).
+# secondary_overlay B2A_CS5 wipes the 5-chip overlay so the 5 code periods within a
+# symbol sum coherently; bit_export publishes the per-symbol signs as nav_obs. NO peel.
+b2a_d_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [b2a_d_rec_buf], out_buf: b2a_d_out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 1000, secondary_overlay: B2A_CS5, navwipe_bit_records: 5, bit_export: true }
+b2a_d_record: { kotekan_stage: rawFileWrite, in_buf: b2a_d_out_buf, base_dir: "/tmp/gps_l5_gpu", file_name: "b2a_d_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+
