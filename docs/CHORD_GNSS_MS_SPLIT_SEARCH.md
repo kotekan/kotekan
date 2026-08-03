@@ -185,3 +185,38 @@ Whether the 100 sub-correlations can share work. Sub-window k's replica differs 
 by a known phase advance, so the per-channel filter (the slow half of the hop-rate generator)
 should hoist across all K — the same trick the refine already uses. If it does, Phase A's
 correlation cost drops further and Phase B becomes clearly the better deal.
+
+## 8. Measured cost, 2026-08-03 -- the acquire was never the bill
+
+Timed at live parameters (stride 1, 106 channels, fine_step 128, refine_step 77, dop +-200 Hz,
+12 threads, one PRN). `GNSS_MSSPLIT_PROFILE=1` and e2e's `[stages]` line:
+
+| | acquire | nh-postfix | refine | total |
+|---|---|---|---|---|
+| shipped | 42.18 s | -- | 88.12 s | 135 s |
+| ms-split K=1 | **0.55 s** | 32.55 s | 89.51 s | ~123 s |
+| ms-split K=16 | 12.36 s | 41.41 s | **874.39 s** | 933 s |
+
+Three things, and only the first was in the plan:
+
+1. **The acquire claim holds.** 0.55 s vs 42.18 s is **77x**. Inside the K=16 acquire: replica
+   11.77 s, correlate 0.13 s, aggregate 0.44 s -- it is now ALL replica generation, which is
+   still not hoisted across sub-windows (§7).
+2. **The acquire is only ~30% of the bill.** The REFINE is 88 s and is identical in both paths
+   (`refine_peak` ignores `dims`; 426 evals either way; 0.21-0.33 s/eval measured at 9, 33 and
+   129 evals in both). A free acquire takes the shipped path 135 -> 93 s and no further. **The
+   ms-split cannot fix the ~10 min revisit on its own.** The refine -- 426 full replica builds
+   per detection -- is the target nobody has looked at.
+3. **K=16's 874 s refine is an ALLOCATION artefact, not algorithmic.** Same 426 evals, same
+   inputs; K=1 refines in 89.51 s (== shipped 88.12) and K=16 in 874 s. Cost per eval is flat
+   to 129 evals (0.216-0.272 s) then jumps 9.5x -- a cliff, not a slope. `ms_split_accumulate`
+   allocates a fresh `repl` and a fresh `P` per sub-window (16 x 106 channel vectors), and the
+   refine's 12 OpenMP workers then pay ~10x on their own 2.65 MB per-iteration allocations.
+   Fix: hoist `repl`/`P`/`d` out of the k-loop and reuse them. That also removes most of the
+   remaining replica cost, since the hop-rate FILTER is Doppler-dependent, not
+   sub-window-dependent.
+
+**Revised plan.** Reuse the buffers (fixes 3, cheap). Then attack the refine, not the acquire --
+that is where the revisit actually lives. The "258x cheaper -> revisit in seconds" claim in §4
+was an op count for the acquire alone and does NOT translate to pass time; §4 stands as an op
+count and nothing more.
