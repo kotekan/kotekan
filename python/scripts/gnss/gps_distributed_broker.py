@@ -296,6 +296,9 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
                     # by the combiner (|sum of subband correlations|^2 / energy^2), which is what
                     # makes this comparable across instances and meaningful once summed.
                     "q": 2.0 * P / (E + L),
+                    # kept raw: the gate is built on the summed PROMPT POWER (see below), and a
+                    # ratio cannot answer "is there signal here" -- only "am I on the peak".
+                    "p_pow": P,
                     "hop": newest,
                     "n_src": len(use),
                     "n_chan": sum(r[4] for r in use)}
@@ -308,20 +311,41 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
     # MAD is its spread; both are outlier-immune to the handful of sats that do have a peak.
     # This is the same discipline as the search's Gamma ceiling: derive the bar from the
     # population you are thresholding, and log it so it is never a silent constant.
-    qs = sorted(v["q"] for v in out.values())
-    med = sigma = None
-    if len(qs) >= 8:  # too few rows to characterise a population: fall back to the fixed bar
-        med = qs[len(qs) // 2]
-        mad = sorted(abs(q - med) for q in qs)[len(qs) // 2]
-        sigma = 1.4826 * mad
+    # GATE ON SIGNAL PRESENT, NOT ON q. This was wrong in the first version and the sky showed
+    # it (2026-08-03): q = 2P/(E+L) is a peak-SHARPNESS metric, high only when the tracker is
+    # ALREADY on the peak, so gating the trim on it says "only correct the code once it is
+    # already correct" -- the loop can never pull in from the shoulder, which is the entire
+    # pull-in region a DLL exists for. Measured that evening: PRN 10 at q 0.68 / disc -0.30 and
+    # PRN 1 at q 0.77 / disc -0.54 were sitting on real, correctly-signed shoulders with the
+    # fleet floor at 1.07, so the gate rejected exactly the satellites it existed to rescue.
+    #
+    # The right precondition is "is there signal here at all", which is independent of WHERE on
+    # the correlation function we sit -- the summed PROMPT POWER against the noise population of
+    # prompt powers. Same self-calibrating median/MAD as before (most tracked PRNs are
+    # signal-free at any moment, so the median IS the no-signal level), applied to the statistic
+    # that actually answers the question. q stays, reported, as the lock DIAGNOSTIC it is.
+    def _floor(vals, k, lo_margin):
+        s = sorted(vals)
+        if len(s) < 8:  # too few rows to characterise a population
+            return None, None, None
+        m = s[len(s) // 2]
+        mad = sorted(abs(x - m) for x in s)[len(s) // 2]
+        sg = 1.4826 * mad
+        # If MAD collapses (a degenerate population -- every instance reporting the same window
+        # of zeros) the bar would collapse with it, so keep a small absolute margin too.
+        return m, sg, max(m + k * sg, m + lo_margin)
+
+    q_med, q_sigma, q_floor = _floor([v["q"] for v in out.values()], k_sigma, 0.05)
+    # Prompt power spans orders of magnitude between satellites, so the bar is multiplicative:
+    # median = the noise level, and a PRN must exceed it by k sigma to count as present.
+    p_med, p_sigma, p_floor = _floor([v["p_pow"] for v in out.values()], k_sigma, 0.0)
     for v in out.values():
-        v["q_med"], v["q_sigma"] = med, sigma
-        v["q_floor"] = (q_fallback if med is None
-                        # A floor is only as good as the spread it is built on: if MAD collapses
-                        # (a degenerate population, every instance reporting the same window of
-                        # zeros) the bar would too, so keep a small absolute margin over the
-                        # median as well.
-                        else max(med + k_sigma * sigma, med + 0.05))
+        v["q_med"], v["q_sigma"] = q_med, q_sigma
+        v["q_floor"] = q_fallback if q_med is None else q_floor
+        v["p_med"], v["p_floor"] = p_med, p_floor
+        # No population to characterise -> fall back to the q bar rather than gating on nothing.
+        v["present"] = (v["q"] >= v["q_floor"] if p_floor is None
+                        else v["p_pow"] >= p_floor)
     return out
 
 
@@ -3692,7 +3716,7 @@ def main(argv=None):
                         _log_rl("dll-norate-%d" % prn,
                                 "fleet DLL PRN %d: no live code_phase_rate, holding trim" % prn)
                         continue
-                    if fl["q"] < fl["q_floor"]:
+                    if not fl["present"]:
                         continue
                     # One integration per new WINDOW -- an exact integer test, where the
                     # single-instance path below can only watch for a changed float.
@@ -3723,7 +3747,9 @@ def main(argv=None):
                     "PRN %d disc %+.3f trim %+.2f%s"
                     % (prn, disc, dll_trim[prn],
                        "" if fl is None
-                       else " [fleet %d/%d q %.2f]" % (fl["n_src"], len(dll_combiners), fl["q"])))
+                       else " [fleet %d/%d q %.2f p %.1fx]"
+                            % (fl["n_src"], len(dll_combiners), fl["q"],
+                               fl["p_pow"] / fl["p_med"] if fl.get("p_med") else 0.0)))
             if dll_report:
                 _log("DLL: " + "; ".join(dll_report))
             # The BAR, every cycle it is measured. A threshold on a noisy statistic that is
@@ -3732,8 +3758,9 @@ def main(argv=None):
             if fleet:
                 any_fl = next(iter(fleet.values()))
                 _log_rl("dll-floor",
-                        "fleet DLL: %d PRN(s) over %d combiner(s), q floor %.2f%s"
-                        % (len(fleet), len(dll_combiners), any_fl["q_floor"],
+                        "fleet DLL: %d PRN(s) over %d combiner(s), %d present, q floor %.2f%s"
+                        % (len(fleet), len(dll_combiners),
+                           sum(1 for v in fleet.values() if v["present"]), any_fl["q_floor"],
                            "" if any_fl["q_med"] is None
                            else " (noise median %.2f, sigma %.3f)"
                                 % (any_fl["q_med"], any_fl["q_sigma"])))
