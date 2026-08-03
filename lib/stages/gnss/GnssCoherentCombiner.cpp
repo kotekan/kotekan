@@ -1731,9 +1731,22 @@ void GnssCoherentCombiner::main_thread() {
             if (_m_last_emit_us)
                 _m_last_emit_us->set(us);
             if (_m_last_emit_prns) {
+                // BOUND BY _navbuf's OWN SIZE, not _n_prn. _navbuf is allocated only under
+                // _wipe_buffer (see the ctor), so in a config with no wipe -- no
+                // navwipe_bit_records, no secondary_overlay, no L1CO -- it is EMPTY, and
+                // looping to _n_prn indexes past the end. The compiler vectorises the .empty()
+                // checks, so that reads 32 bytes from a null data pointer and SIGSEGVs:
+                // `vmovdqu (%rax),%ymm1` with rax = 0, in main_thread, every time.
+                //
+                // A conflict-free auto-merge: this metrics block came from one branch and the
+                // _wipe_buffer gating from the other, and nothing made them disagree textually.
+                // It is CHORD-specific for the same reason -- airspy sets secondary_overlay
+                // (L5_NH20), so _navbuf is always allocated there and the prototype never sees
+                // it. That is also why it read as "the merge broke GnssCoherentCombiner": the
+                // stage is only the messenger.
                 int active = 0;
-                for (int p = 0; p < _n_prn; ++p)
-                    if (!_navbuf[(size_t)p].empty())
+                for (size_t p = 0; p < _navbuf.size(); ++p)
+                    if (!_navbuf[p].empty())
                         ++active;
                 _m_last_emit_prns->set((double)active); // cost scales with THIS, not with n_prn
             }
