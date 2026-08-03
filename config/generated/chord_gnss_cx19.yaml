@@ -189,6 +189,7 @@ gnss0_cmb_buf:
 gnss0_combine:
   cpu_affinity:
   - 31
+  deep_coherent: true
   in_bufs:
   - gnss0_rec_buf
   integration_length: 100
@@ -327,6 +328,7 @@ gnss1_cmb_buf:
 gnss1_combine:
   cpu_affinity:
   - 57
+  deep_coherent: true
   in_bufs:
   - gnss1_rec_buf
   integration_length: 100

@@ -18,8 +18,16 @@
 # Needs an interactive sudo on the target, so it uses `ssh -t` and will prompt per node.
 set -u
 K=/home/kvand/gnss/kotekan
-BIN=/home/kvand/gnss/kotekan_premerge   # NOT build/kotekan: the merge broke GnssCoherentCombiner
-                                        # (segfault, still unbisected -- see CHORD_GNSS_STATE.md)
+# build/kotekan since 2026-08-03: the merge segfault is FIXED (c5e9e754a -- an emit-metrics loop
+# indexed _navbuf past the end whenever no wipe was configured, which is every CHORD config).
+# cx51 ran the fixed binary for hours without crashing. kotekan_premerge is kept as the fallback
+# and is what `up-premerge` runs; it has NO deep coherent rung, so a node on it reports
+# coherence_s = 0 structurally and a ~3x worse carrier residual (per-emit squared fit rather
+# than the buffered-stream fit).
+# GNSS_BIN overrides (that is how up-premerge works: exec re-reads this file, so the
+# choice has to travel in the ENVIRONMENT, not a shell variable).
+PREMERGE=/home/kvand/gnss/kotekan_premerge
+BIN=${GNSS_BIN:-/home/kvand/gnss/kotekan/build/kotekan/kotekan}
 N=${1:?usage: node_up.sh <node> [up|down|status]}
 ACT=${2:-up}
 CFG=$K/config/generated/chord_gnss_$N.yaml
@@ -69,5 +77,8 @@ case "$ACT" in
       && sleep 5 && printf "%-6s " "$N" && ssh -o BatchMode=yes "$N" systemctl is-active gnss-node \
       && echo "backtrace (if it faults) lands in /tmp/gnss_node_dbg.log on $N"
     ;;
-  *) echo "unknown action '$ACT' (up|down|status|debug)"; exit 2 ;;
+  up-premerge)
+    GNSS_BIN=$PREMERGE exec "$0" "$N" up
+    ;;
+  *) echo "unknown action '$ACT' (up|down|status|debug|up-premerge)"; exit 2 ;;
 esac
