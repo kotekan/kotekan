@@ -35,7 +35,12 @@ mkdir -p /tmp/gpswipe /tmp/gps_l2c_gpu /tmp/gps_l5_gpu /tmp/gnss_run
 # Bands: original config (parsed by run_live for all derived quantities), stage prefix, TAG
 # (log stems + l-a code-bias files -- SAME TAGs as run_band.sh so the converged per-dongle l-a
 # estimates carry over), and the viewer HTTP/WS ports (must match the merged config's spawns).
-BANDS="l1 l2c l5"
+# BANDS = which dongles/bands run in THIS node. Override to suspend a band during dev, e.g.
+# BANDS="l1 l2c" ./config/run_3band.sh  (drop L5 -> free GPU + stop its valve loss). Exported so
+# gen_3band_config.py merges the SAME subset into the one kotekan process (a band is suspended by
+# leaving it OUT of the merged config, not by stopping a broker -- all bands share one process).
+BANDS="${BANDS:-l1 l2c l5}"
+export BANDS
 cfg_of()  { case "$1" in l1) echo config/live_l1_dual20.yaml;; l2c) echo config/live_l2c_gpu.yaml;; l5) echo config/live_l5_gpu.yaml;; esac; }
 http_of() { case "$1" in l1) echo 8080;; l2c) echo 8081;; l5) echo 8082;; esac; }
 # (viewer WS ports are baked into each config's spawn_pyviewer exec -- no env plumbing)

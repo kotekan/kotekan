@@ -26,10 +26,18 @@ MECHANICS. Per band (l1 / l2c / l5), from the validated single-band config:
 Top-level: one rest_server (CORS = union), one metadata pool per band (prefixed), shared
 log_level/cpu_affinity.
 """
+import os
 import re
 import sys
 
-BANDS = [("l1", "live_l1_dual20.yaml"), ("l2c", "live_l2c_gpu.yaml"), ("l5", "live_l5_gpu.yaml")]
+_ALL_BANDS = [("l1", "live_l1_dual20.yaml"), ("l2c", "live_l2c_gpu.yaml"), ("l5", "live_l5_gpu.yaml")]
+# Band SUBSET support (2026-08-03): the $BANDS env (space/comma list, e.g. "l1 l2c") selects which
+# bands merge into the one kotekan process -- suspending a band (free GPU / stop its valve loss
+# during mid-band dev) is a config regen, not a stopped broker, because all bands run in ONE
+# process. run_3band.sh exports the same $BANDS so its control-plane loop matches. Empty/unset =
+# all three. Bands are independent (nothing crosses frequency), so any subset is a valid node.
+_sel = os.environ.get("BANDS", "").replace(",", " ").split()
+BANDS = [b for b in _ALL_BANDS if b[0] in _sel] if _sel else list(_ALL_BANDS)
 PORT = 12048  # the ONE kotekan REST port; viewers + brokers all talk to it
 HERE = "config/"
 
