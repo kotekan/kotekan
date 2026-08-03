@@ -1828,3 +1828,35 @@ candidate: a replica generated at `anchor` presents overlay period `(16 + nh) mo
 to the seed and see whether the tracker locks. That is minutes of work and settles empirically
 whether this is THE defect or only one of them -- then find the principled fix. Do not ship a
 constant; use it as an experiment.
+
+### 8.7.8 The -4 experiment -- INCONCLUSIVE, and why
+
+Added `--nh-period-offset N` to the broker (default 0, so nothing changes unless asked). It
+shifts every seed's overlay period by N primary code periods, applied to **both**
+`code_phase_at_ref_chips` and `code_phase_chips` -- the former matters, because
+`propagate_seed` prefers `phase_ref_chips` whenever it is >= 0, so offsetting only the argument
+would change nothing the tracker reads. `ph_hist` keeps the UNSHIFTED phase so the period
+continuity check still compares like with like.
+
+Ran it at -4. Result: **no lock** (`coherent: 0/32` on all six streams, `amp_snr` 2.8-4.7), and
+the follow-up probe was **inconclusive** -- the oracle returned ratio 1.6 on both PRNs, i.e. it
+found nothing, so no period could be read at all.
+
+The null is NOT evidence against the offset. Checked immediately after: PRN 1 had **no current
+detection**, and PRN 3 had fallen from snr 2527 to **294** -- the sky moved on in the hour
+between measuring the -4 and testing it. 8.6x less power puts the expected oracle ratio near 4;
+we saw 1.6. The test was badly timed, not informative.
+
+The no-lock result is also confounded by 8.7.6 and was expected: with a ~19 min revisit and no
+`code_phase_rate`, the within-period phase drifts tens to hundreds of chips between updates, so
+a correct period alone cannot lock.
+
+**Live system reverted to `--nh-period-offset 0`.** The -4 measurement (4/4, ratios 30.1-9.8)
+stands; it just has not been tested. Re-run when a satellite is strong: pick one with search snr
+> 1000, probe it, apply -4, probe again within minutes. Do not leave the constant running in
+between -- an unvalidated shift in the live seeds is exactly the kind of thing that gets read as
+established later.
+
+Order of work from here: **8.7.6 (latency) first, then re-test 8.7.7.** The latency defect
+blocks locking on its own AND confounds every period test, because it is what makes strong
+satellites rare in any given probe window.

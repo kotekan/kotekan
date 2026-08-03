@@ -929,6 +929,16 @@ def main(argv=None):
                          "error)/sqrt(N) -- one noise satellite is costly when N is small. "
                          "Ungated on CHORD the raw estimate scatters 10.5 Hz; the acquire's "
                          "own error predicts 0.8 Hz at N=2. 0 (default) keeps every point.")
+    ap.add_argument("--nh-period-offset", type=int, default=0,
+                    help="EXPERIMENT (2026-08-02): shift every seed's overlay period by N "
+                         "primary code periods. The oracle measures the seeded period as a "
+                         "CONSTANT 4 too high -- 4/4 strong detections, 3 satellites, seed ages "
+                         "151-680 s, oracle ratios 30.1/25.8/17.4/9.8 -- and -4 == +16 mod 20, "
+                         "where 16 code periods = 3125 hops = Mp = the anchor the search builds "
+                         "repl0 at. This exists to TEST that, not to fix it: a constant that "
+                         "works without a mechanism is how refine_span:4096 got baked in. "
+                         "Applied to BOTH code_phase_at_ref_chips (which propagate_seed prefers) "
+                         "and code_phase_chips. 0 = off.")
     ap.add_argument("--fit-min-snr", type=float, default=0.0,
                     help="detections below this SNR do not enter the cp-rate fit history. The "
                          "fit resolves a ~0.0148 chips/s residual; a near-threshold detection's "
@@ -2409,7 +2419,8 @@ def main(argv=None):
                 # carries the period. Reconstructing it here -- from `nh`, or from absolute
                 # time via --cl-assist -- means re-deriving a convention the search already
                 # knows, which is where every previous attempt went wrong.
-                seed["code_phase_chips"] = cp_long % (LC_SEG * CODE_LEN)
+                seed["code_phase_chips"] = ((cp_long + args.nh_period_offset * CODE_LEN)
+                                            % (LC_SEG * CODE_LEN))
                 cl_report.append("PRN %d long-cp (search)" % prn)
                 # And carry the PHASE at the search's own epoch. cp0 back-references to sample
                 # 0 through a Doppler-scaled rate, which multiplies the reported Doppler's
@@ -2475,6 +2486,12 @@ def main(argv=None):
                     # comparison until that PRN is seen again -- 90-270 s at CHORD's revisit.
                     if snr >= args.period_check_snr or prn not in ph_hist:
                         ph_hist[prn] = (ref_hop, ph, dop)
+                    # --nh-period-offset: applied HERE, after the continuity check has had its
+                    # say, and to the phase rather than the argument -- propagate_seed prefers
+                    # phase_ref_chips whenever it is >= 0, so offsetting only code_phase_chips
+                    # would change nothing the tracker ever reads. ph_hist keeps the UNSHIFTED
+                    # phase so the continuity check still compares like with like.
+                    ph = (ph + args.nh_period_offset * CODE_LEN) % LLc
                     seed["code_phase_at_ref_chips"] = ph
             elif det_nh >= 0 and LC_SEG > 1:
                 seed["code_phase_chips"] = ((seed["code_phase_chips"] % CODE_LEN)
