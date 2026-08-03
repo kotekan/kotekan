@@ -984,7 +984,7 @@ sub_integration_ntime: 8192
 telescope:
   auto_correct_gps_week_rollover: true
   check_duplicate_dish_grid: false
-  dish_coelev_deg: -27.3
+  dish_coelev_deg: -8.59
   dish_elev_axis:
   - 0.9999999983813239
   - -5.6897733584327e-05

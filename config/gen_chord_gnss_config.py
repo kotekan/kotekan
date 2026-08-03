@@ -698,6 +698,15 @@ def main():
                          "noise fit and the carrier loop has nothing to lock to (STATE 8.12). "
                          "GPU 1's combiner and record stage are dropped; the merged pair is "
                          "written by gnss0_record.")
+    ap.add_argument("--dish-coelev-deg", type=float, default=-8.59,
+                    help="dish pointing co-elevation (degrees from vertical, negative = south), "
+                         "OVERRIDING whatever the production base carries. Bases have been "
+                         "captured with -27.3, which is 18.7 deg wrong and puts boresight at "
+                         "dec +22.0 instead of the true dec +40.73 (elevation 81.41, Cyg A's "
+                         "declination, matching its measured 81.5 deg transit). Nothing in the "
+                         "GNSS chain reads it -- it feeds CHORDTelescope's dish geometry -- but "
+                         "every satellite-pass prediction is computed from it, so a stale value "
+                         "silently sends you looking for the wrong satellite on the wrong night.")
     ap.add_argument("--local-trim-gain", type=float, default=0.0,
                     help="cudaGnssChordTrack's IN-TRACKER code-trim gain. 0 (the default since "
                          "2026-08-03) hands the code loop to the broker's fleet DLL "
@@ -751,6 +760,17 @@ def main():
     with open(args.base) as fh:
         base = json.load(fh) if args.base.endswith(".json") else yaml.safe_load(fh)
     out = copy.deepcopy(base)
+
+    # THE PRODUCTION BASE CARRIES A STALE POINTING. Captured bases have read
+    # telescope.dish_coelev_deg = -27.3, which puts boresight at dec +22.0 / elevation 62.7.
+    # The dishes are actually 8.59 deg SOUTH of zenith -- dec +40.73, elevation 81.41 -- which
+    # is Cyg A's declination and matches its measured 81.5 deg transit. The 18.7 deg
+    # disagreement is not academic: it moves every predicted satellite pass. Taking the field at
+    # face value on 2026-08-03 produced a completely wrong transit list ("PRN 3 at 0.55 deg in
+    # 2 h"; the truth was PRN 19 at 0.40 deg, 10 h later, a different satellite on a different
+    # night). Override rather than inherit, and say so in the emitted config.
+    if isinstance(out.get("telescope"), dict) and "dish_coelev_deg" in out["telescope"]:
+        out["telescope"]["dish_coelev_deg"] = args.dish_coelev_deg
 
     sig = cfg["signals"]
     chans = covering_channels(node_channels(cfg, args.node), float(sig["carrier_hz"]),
