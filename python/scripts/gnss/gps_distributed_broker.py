@@ -858,6 +858,17 @@ def main(argv=None):
     ap.add_argument("--carrier-bleed-stable-hz", type=float, default=0.6,
                     help="Shadow: max peak-to-peak trim spread (Hz) over the stability window to "
                          "call it converged.")
+    ap.add_argument("--carrier-bleed", type=int, default=0,
+                    help="ARM the trim-bleed (0 = shadow-only). On a verified candidate: zero "
+                         "car_trim and flag the tracker to re-adopt the seed (f_ref = dop, phase-"
+                         "continuous reanchored==2) -- folding the frozen sub-fence pin offset into "
+                         "f_ref so the despread runs on-true. EXPLAIN-APPLY-VERIFY: heal (stay "
+                         "coherent) or it is logged REFUTED and the loop re-grows the trim from 0. "
+                         "Default OFF -- validate on the replay bench (GNSS_TRIM_FORCE) first.")
+    ap.add_argument("--carrier-bleed-verify-emits", type=int, default=3,
+                    help="Emits a bled sat must stay coherent to count the re-pin VERIFIED.")
+    ap.add_argument("--carrier-bleed-lockout-s", type=float, default=120.0,
+                    help="Minimum seconds between bleeds of the same PRN (anti-churn).")
     ap.add_argument("--watchdog-s", type=float, default=0.0,
                     help="TRACK WATCHDOG (0 = off): a sat with a fresh detection at "
                          ">= --watchdog-det-snr that has ZERO coherent emits for this many "
@@ -1519,6 +1530,11 @@ def main(argv=None):
     # absorbing-state]] alias-escape v1/v2). Log-only; takes NO action.
     car_bleed_hist = {}   # prn -> [recent trim values on coherent ungated emits] (convergence)
     car_bleed_log_t = {}  # prn -> last shadow-log walltime (rate limit)
+    # ARMED action (--carrier-bleed): when a candidate fires, zero car_trim and flag the tracker to
+    # re-adopt the seed (f_ref = dop, phase-continuous) -- folding the frozen offset into f_ref.
+    car_repin_pending = set()  # prns to carry carrier_repin=1 in THIS cycle's seed (one-shot)
+    car_bleed_verify = {}      # prn -> {emits, prev_trim, t}: post-bleed EXPLAIN-APPLY-VERIFY
+    car_bleed_lock_t = {}      # prn -> earliest walltime to bleed this prn again (anti-churn)
     det_fresh = {}      # prn -> (ref_hop, walltime) of the last NEW detection (alias escape)
     wd_birth = {}       # prn -> when it entered seeds (track-watchdog judgment window)
     wd_coh_t = {}       # prn -> last coherent walltime (track-watchdog's own clock)
@@ -3548,6 +3564,25 @@ def main(argv=None):
                         continue
                     else:
                         continue  # verdict pending: hold, no further corrections
+                # ---- POST-BLEED VERIFY (trim-bleed, explain-apply-verify) ----
+                # A re-pin is a falsifiable hypothesis too: after folding the trim into f_ref, the
+                # sat must stay coherent. Unlike a step, there is NOTHING to revert (the re-pin is
+                # phase-continuous and car_trim correctly re-grows from 0 via the normal loop), so
+                # this only OBSERVES the outcome and lets the lockout prevent churn. It falls
+                # through to integrate normally either way (trim re-grows to the small remnant).
+                if prn in car_bleed_verify:
+                    bv = car_bleed_verify[prn]
+                    bv["emits"] += 1
+                    if not coh_ok:
+                        del car_bleed_verify[prn]
+                        _log("CARRIER BLEED REFUTED PRN %d: decohered after %d emit(s) (resid "
+                             "%+.2f Hz) -- loop re-grows trim from 0, %.0f s lockout"
+                             % (prn, bv["emits"], resid, args.carrier_bleed_lockout_s))
+                    elif bv["emits"] >= args.carrier_bleed_verify_emits:
+                        del car_bleed_verify[prn]
+                        _log("CARRIER BLEED VERIFIED PRN %d: coherent through %d emits "
+                             "(resid %+.2f Hz, trim now %+.2f)"
+                             % (prn, bv["emits"], resid, car_trim.get(prn, 0.0)))
                 sig = (max(rec.get("deep_snr") or 0.0, rec.get("amp_snr") or 0.0)
                        if coh_ok else 0.0)
                 tracking = prn in car_locked
@@ -3672,21 +3707,37 @@ def main(argv=None):
                 # candidate so the trigger can be validated on live data before it is ever armed.
                 # Recency-windowed like car_step_hist (a decoherence gap ages the window out ->
                 # not "converged"), so no per-gate-branch cleanup is needed.
-                if args.carrier_bleed_shadow and tracking and coh_ok:
+                if (args.carrier_bleed_shadow or args.carrier_bleed) and tracking and coh_ok:
                     bh = car_bleed_hist.setdefault(prn, [])
                     bh.append((t0, car_trim[prn]))
                     del bh[:-args.carrier_bleed_stable_emits]
                     vals = [v for _, v in bh]
-                    if (len(bh) >= args.carrier_bleed_stable_emits
-                            and t0 - bh[0][0] < 30.0
-                            and abs(car_trim[prn]) >= args.carrier_bleed_hz
-                            and max(vals) - min(vals) <= args.carrier_bleed_stable_hz
-                            and t0 - car_bleed_log_t.get(prn, 0.0) >= 60.0):
+                    converged = (len(bh) >= args.carrier_bleed_stable_emits
+                                 and t0 - bh[0][0] < 30.0
+                                 and abs(car_trim[prn]) >= args.carrier_bleed_hz
+                                 and max(vals) - min(vals) <= args.carrier_bleed_stable_hz)
+                    # ARMED: re-pin f_ref and zero the trim (one bleed per lockout, never while a
+                    # step- or bleed-hypothesis is already under verify for this PRN).
+                    if (converged and args.carrier_bleed and prn not in car_verify
+                            and prn not in car_bleed_verify
+                            and t0 >= car_bleed_lock_t.get(prn, 0.0)):
+                        prev_trim = car_trim[prn]
+                        car_trim[prn] = 0.0             # f_ref re-pin absorbs the offset
+                        car_repin_pending.add(prn)      # -> carrier_repin=1 in this cycle's seed
+                        car_bleed_verify[prn] = {"emits": 0, "prev_trim": prev_trim, "t": t0}
+                        car_bleed_lock_t[prn] = t0 + args.carrier_bleed_lockout_s
+                        car_bleed_hist[prn] = []
+                        car_bleed_log_t[prn] = t0
+                        _log("CARRIER BLEED PRN %d: re-pinning f_ref (%+.2f Hz absorbed), trim->0, "
+                             "VERIFYING (heal in %d emits)"
+                             % (prn, prev_trim, args.carrier_bleed_verify_emits))
+                    elif converged and t0 - car_bleed_log_t.get(prn, 0.0) >= 60.0:
                         car_bleed_log_t[prn] = t0
                         _log("CAR-BLEED CANDIDATE PRN %d: trim %+.2f Hz stable %d emits "
-                             "(spread %.2f), coherent -> would re-pin f_ref, predict trim->~0 "
-                             "(shadow, no action)"
-                             % (prn, car_trim[prn], len(bh), max(vals) - min(vals)))
+                             "(spread %.2f), coherent -> %s"
+                             % (prn, car_trim[prn], len(bh), max(vals) - min(vals),
+                                "locked out" if args.carrier_bleed
+                                else "would re-pin f_ref, predict trim->~0 (shadow, no action)"))
             if car_report:
                 _log("CAR: " + "; ".join(car_report))
             for k in list(car_trim):
@@ -3698,6 +3749,9 @@ def main(argv=None):
                     car_fade.pop(k, None)
                     car_bleed_hist.pop(k, None)  # its convergence history dies with it
                     car_bleed_log_t.pop(k, None)
+                    car_bleed_verify.pop(k, None)
+                    car_bleed_lock_t.pop(k, None)
+                    car_repin_pending.discard(k)
 
         # S2 OBSERVER: the SECOND carrier-side estimator of the same LO. `car_trim`'s own
         # arg help calls the converged fleet trim "the chain's deterministic frac-N LO
@@ -3802,6 +3856,12 @@ def main(argv=None):
                 d["code_phase_chips"] = d["code_phase_chips"] + dll_trim[prn]
             if car_trim.get(prn):
                 d["carrier_trim_hz"] = car_trim[prn]
+            if prn in car_repin_pending:
+                # ONE-SHOT trim-bleed re-pin: the tracker re-adopts the seed (f_ref = dop) this
+                # frame. Consume it here so it rides exactly this post (car_trim was zeroed above,
+                # so no carrier_trim_hz accompanies it -- the offset moves wholly into f_ref).
+                d["carrier_repin"] = 1
+                car_repin_pending.discard(prn)
             # Peel sign source. PILOTS (P7b): the combiner publishes bit_pred directly --
             # its secondary overlay is DETERMINISTIC, so the chips are projected from the
             # pinned dead-reckon anchor with no decode and no round trip; forward verbatim.

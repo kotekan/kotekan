@@ -59,6 +59,13 @@ public:
     std::vector<double> dop, cp, cp_rate, dop_rate, ctrim;
     std::vector<long long> ref_hop;
     std::vector<uint8_t> active;
+    /// f_ref TRIM-BLEED (phase 1): a ONE-SHOT per-PRN re-pin request from the broker. When the
+    /// broker bleeds a converged, coherent, standing carrier trim it zeroes its own ctrim and
+    /// sets this so the tracker re-adopts the seed (f_ref = dop) phase-continuously (reanchored
+    /// == 2) -- folding the frozen sub-fence pin offset into f_ref so the despread replica runs
+    /// on-true. Set in set_seeds_callback, CONSUMED+CLEARED at the per-frame snapshot (one re-pin
+    /// per request, never a standing forced re-pin). See gps_distributed_broker --carrier-bleed.
+    std::vector<uint8_t> carrier_repin;
 
     // Tracking control state (pass-1 owns it; command instances execute in frame order).
     std::vector<double> f_ref;         ///< pinned replica carrier per PRN (NaN = unset)
