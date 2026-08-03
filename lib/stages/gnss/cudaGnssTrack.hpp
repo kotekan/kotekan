@@ -59,13 +59,15 @@ public:
     std::vector<double> dop, cp, cp_rate, dop_rate, ctrim;
     std::vector<long long> ref_hop;
     std::vector<uint8_t> active;
-    /// f_ref TRIM-BLEED (phase 1): a ONE-SHOT per-PRN re-pin request from the broker. When the
-    /// broker bleeds a converged, coherent, standing carrier trim it zeroes its own ctrim and
-    /// sets this so the tracker re-adopts the seed (f_ref = dop) phase-continuously (reanchored
-    /// == 2) -- folding the frozen sub-fence pin offset into f_ref so the despread replica runs
-    /// on-true. Set in set_seeds_callback, CONSUMED+CLEARED at the per-frame snapshot (one re-pin
-    /// per request, never a standing forced re-pin). See gps_distributed_broker --carrier-bleed.
-    std::vector<uint8_t> carrier_repin;
+    /// f_ref TRIM-BLEED (phase 1): a ONE-SHOT per-PRN re-pin AMOUNT (Hz) from the broker. When
+    /// the broker bleeds a converged, coherent, standing trim it zeroes its own ctrim and sends
+    /// the absorbed amount here; the tracker does f_ref += amount (NOT f_ref = dop -- dop is the
+    /// FLEET model, off from this sat's true carrier by exactly the per-sat trim). Adding the
+    /// trim to f_ref leaves the combined carrier f_ref+ctrim INVARIANT (coherence preserved),
+    /// phase-continuous via reanchored==2, and moves the frozen offset out of the despread ramp.
+    /// Set in set_seeds_callback, CONSUMED+CLEARED at the per-frame snapshot (one re-pin per
+    /// request). 0 = no request. See gps_distributed_broker --carrier-bleed.
+    std::vector<double> carrier_repin;
 
     // Tracking control state (pass-1 owns it; command instances execute in frame order).
     std::vector<double> f_ref;         ///< pinned replica carrier per PRN (NaN = unset)

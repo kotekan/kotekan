@@ -1532,7 +1532,7 @@ def main(argv=None):
     car_bleed_log_t = {}  # prn -> last shadow-log walltime (rate limit)
     # ARMED action (--carrier-bleed): when a candidate fires, zero car_trim and flag the tracker to
     # re-adopt the seed (f_ref = dop, phase-continuous) -- folding the frozen offset into f_ref.
-    car_repin_pending = set()  # prns to carry carrier_repin=1 in THIS cycle's seed (one-shot)
+    car_repin_pending = {}     # prn -> bleed amount (Hz) to carry as carrier_repin in this seed
     car_bleed_verify = {}      # prn -> {emits, prev_trim, t}: post-bleed EXPLAIN-APPLY-VERIFY
     car_bleed_lock_t = {}      # prn -> earliest walltime to bleed this prn again (anti-churn)
     det_fresh = {}      # prn -> (ref_hop, walltime) of the last NEW detection (alias escape)
@@ -3723,7 +3723,7 @@ def main(argv=None):
                             and t0 >= car_bleed_lock_t.get(prn, 0.0)):
                         prev_trim = car_trim[prn]
                         car_trim[prn] = 0.0             # f_ref re-pin absorbs the offset
-                        car_repin_pending.add(prn)      # -> carrier_repin=1 in this cycle's seed
+                        car_repin_pending[prn] = prev_trim  # tracker does f_ref += prev_trim
                         car_bleed_verify[prn] = {"emits": 0, "prev_trim": prev_trim, "t": t0}
                         car_bleed_lock_t[prn] = t0 + args.carrier_bleed_lockout_s
                         car_bleed_hist[prn] = []
@@ -3751,7 +3751,7 @@ def main(argv=None):
                     car_bleed_log_t.pop(k, None)
                     car_bleed_verify.pop(k, None)
                     car_bleed_lock_t.pop(k, None)
-                    car_repin_pending.discard(k)
+                    car_repin_pending.pop(k, None)
 
         # S2 OBSERVER: the SECOND carrier-side estimator of the same LO. `car_trim`'s own
         # arg help calls the converged fleet trim "the chain's deterministic frac-N LO
@@ -3857,11 +3857,11 @@ def main(argv=None):
             if car_trim.get(prn):
                 d["carrier_trim_hz"] = car_trim[prn]
             if prn in car_repin_pending:
-                # ONE-SHOT trim-bleed re-pin: the tracker re-adopts the seed (f_ref = dop) this
-                # frame. Consume it here so it rides exactly this post (car_trim was zeroed above,
-                # so no carrier_trim_hz accompanies it -- the offset moves wholly into f_ref).
-                d["carrier_repin"] = 1
-                car_repin_pending.discard(prn)
+                # ONE-SHOT trim-bleed re-pin: the tracker does f_ref += this amount this frame.
+                # Consume it here so it rides exactly this post (car_trim was zeroed above, so no
+                # carrier_trim_hz accompanies it -- the trim moves wholly into f_ref, leaving the
+                # combined carrier invariant).
+                d["carrier_repin"] = car_repin_pending.pop(prn)
             # Peel sign source. PILOTS (P7b): the combiner publishes bit_pred directly --
             # its secondary overlay is DETERMINISTIC, so the chips are projected from the
             # pinned dead-reckon anchor with no decode and no round trip; forward verbatim.
