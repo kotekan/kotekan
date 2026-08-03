@@ -175,6 +175,18 @@ constexpr int CMB_PEEL_DEEP = 17; ///< deep |A| of the PEEL RESIDUAL (the CMB_DE
                                   ///< slots 20-23) -> depth_dB = 20*log10(CMB_DEEP/CMB_PEEL_DEEP)
 constexpr int CMB_PEEL_INCOH = 18;///< incoherent |A| of the peel residual (the CMB_AMP_INCOH twin).
                                   ///< Both zero when no peel ran.
+constexpr int CMB_HOP_SLOT = 19;  ///< absolute HOP index (int64 aliased at slots 19-20) the E/P/L
+                                  ///< window ends on = GnssChanMetadata::sample_seq / fft_len.
+                                  ///< -1 (or 0 from an older writer) = unset. int64 and not a
+                                  ///< float because the whole point is an EXACT integer key: the
+                                  ///< fleet DLL groups instances by equal hop, and the hop reaches
+                                  ///< ~1.7e10/day -- past float32's 2^24 by three orders of
+                                  ///< magnitude, so a float slot would quantize the key into
+                                  ///< collisions. UTC at slot 9 stays: overlay_apply and coh_span
+                                  ///< use it, and this is additive.
+                                  ///< COMBINER RECORDS ONLY -- tracker records use 19-23 for
+                                  ///< REC_TRIM_INC / REC_RES_*, and the two flavours never share
+                                  ///< a buffer. See docs/CHORD_GNSS_SHARED_DLL.md.
 
 // ---------------------------------------------------------------------------------------
 // ELEMENT AXIS (CHORD)

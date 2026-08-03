@@ -137,26 +137,73 @@ like the DLL diverging rather than the feed-forward failing.
 So: **gate the shared trim on a live rate fit.** If `code_phase_rate` is stale or absent for a
 PRN, hold the trim rather than integrate. This is the same discipline as `--carrier-min-sig`.
 
-## 8. Expected gain, honestly
+## 8. Expected gain — and it is NOT the gain this document first claimed
 
-Summing 16 instances takes the correlated bandwidth from 1.37 MHz to the full 20.46 MHz: the
-**+11.8 dB** that separates us from a commercial receiver. Expect less than all of it —
-non-coherent summing has a squaring loss at low per-instance SNR, and instances with no signal
-add noise to E and L equally (diluting, though not biasing, the discriminator). But it is the
-structural gap rather than a tuning knob, and it should move `q` from ~1.5 to comfortably clear
-of the 2.2 gate, which is the difference between episodic and continuous code lock.
+Summing K instances takes the correlated bandwidth from 1.37 MHz toward the full 20.46 MHz.
+What that does to `q` is the part I had wrong, and it inverts the gate design:
 
-**Do not lower `trim_quality_min` to chase this instead.** Measured noise floor for `q` is 1.0
-with a tail reaching **1.87**; the 2.2 gate sits just above it and is correctly placed. Lowering
-it walks the trim onto noise peaks.
+**Summing does not raise `q`.** `q = 2P/(E+L)` is a ratio of means, and every tap's mean scales
+by K: a fleet of eight reports the same 1.5 a single node does. The first draft of this section
+predicted `q` moving from ~1.5 to clear of 2.2. It will not, ever.
+
+**What collapses is the variance.** Each summed power has K times the mean and K times the
+variance, so `q`'s spread falls as 1/√K. A signal-free PRN's `q` tightens onto 1.0 — from a
+measured single-instance tail of **1.87** to roughly **1.3 at K = 8**.
+
+So the gain is a **lower bar**, not a higher statistic. That is still exactly what is needed —
+a real `q` of 1.5 that is 1.5σ inside one instance's noise is ~3σ clear of eight instances'
+noise — but it means:
+
+* **The gate must be measured, not fixed.** Any constant is correct for exactly one fleet size,
+  and a constant chosen for K = 1 (2.2, correct there) rejects every real signal once the sum
+  has tightened the distribution around 1.0. `fleet_dll` re-measures the floor each cycle as
+  median + kσ (MAD) over the live `q` population — most tracked PRNs are signal-free at any
+  moment, so the median *is* the no-peak value — and logs it every time it is used.
+* **This resolves what looked like a contradiction.** On 2026-08-03 I proposed lowering
+  `trim_quality_min` to 1.3 and it was 1.5σ into the noise. At K = 8 the same 1.3 is ~3σ clear.
+  Same number, opposite verdict, because the *population* changed. The rule survives intact:
+  never move a threshold to buy sensitivity — measure the population you are thresholding.
+
+**Still do not lower `trim_quality_min`.** That knob gates the per-instance loop, whose noise
+population really does tail to 1.87. It is the fleet floor, and only the fleet floor, that may
+legitimately sit lower.
+
+## 8a. The prerequisite this design cannot supply: a seed inside the pull-in
+
+A DLL pulls in ±0.5 chips. Measured offline with `scripts/gnss/e2e` on 2026-08-03:
+
+| search comb | refine | seed error handed to the trackers |
+|---|---|---|
+| stride 4 (**2 nodes**, today) | −13.63 | **−13.188 chips** — a grating lobe |
+| stride 1 (**8 nodes**) | −0.07 | **+0.373 chips** — chain closes |
+
+Thirteen chips is 26× outside the pull-in, so with a 2-node comb **no** code loop — local,
+fleet, or otherwise — can recover it, and the fleet DLL's 11.8 dB buys nothing. The grating
+lobes are 13.09 chips apart because the covering channels are strided; only the full eight-node
+comb has g = 1 and no lobes. **Bring the fleet up first.** Adding `--seed-cp-rate` on top of
+stride 1 holds the whole chain at 0.373 chips over the tested records; with the rate absent it
+walks to 1.16 chips, which is §7's gate in miniature.
 
 ## 9. Order of work
 
-1. Carry the absolute hop index in the combined record (int64 aliased at free slots 19–20) and
-   publish `e_pow`, `p_pow`, `l_pow`, `pow_hop`, `n_chan` in
+1. ✅ Carry the absolute hop index in the combined record (int64 at `CMB_HOP_SLOT` 19–20) and
+   publish `e_pow`, `p_pow`, `l_pow`, `n_chan`, `pow_hop`, `pow_fft_len` in
    `GnssCoherentCombiner::get_status`. Additive; changes nothing that reads the record today.
-2. Broker: group by (PRN, window), sum, compute `disc` from the sums. Keep every existing gate.
-3. Set `trim_gain: 0` in the generator so there is exactly one code loop.
-4. Gate on a live `code_phase_rate` (§7).
-5. Measure `q` before/after on the same satellites. That is the acceptance test — not
-   `coherence_s`, which is a carrier-side statistic and a separate problem.
+   The hop comes from `GnssChanMetadata::sample_seq` on the input frames, which the record
+   producers already stamp — no new plumbing, and `fft_len` on the combiner is the only new
+   config key.
+2. ✅ Broker `fleet_dll()`: `--dll-combiners`, group by (PRN, `pow_hop`), sum, compute `disc`
+   from the sums. Every existing gate kept; a PRN with fewer than `--dll-min-instances`
+   agreeing instances falls back to the single-combiner path, so a partly-down fleet degrades
+   instead of stalling.
+3. ✅ `--local-trim-gain`, default 0, so there is exactly one code loop. (Measured 2026-08-03:
+   the local loop was already inert — every tracker reported `trim +0.00` because no PRN ever
+   cleared its own 2.2 gate. Nothing is being given up.)
+4. ✅ Gate on a live `code_phase_rate` (§7) — hold rather than integrate when it is absent.
+5. ⬜ **Bring the other six nodes up (§8a).** Until the comb is stride 1 the seed is 13 chips
+   out and none of the above can matter.
+6. ⬜ Measure `q` before/after on the same satellites. That is the acceptance test — not
+   `coherence_s`, which is a carrier-side statistic and a separate problem. Note §8: `q` itself
+   is not expected to rise, so the test is **the measured noise floor falling** and the trim
+   integrating continuously rather than in bursts. Baseline captured 2026-08-03 before the
+   change, 2 nodes: per-instance `q` max 1.75, median ~1.1, every trim +0.00.

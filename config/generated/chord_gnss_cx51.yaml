@@ -190,6 +190,7 @@ gnss0_combine:
   cpu_affinity:
   - 31
   deep_coherent: true
+  fft_len: 16384
   in_bufs:
   - gnss0_rec_buf
   - gnss1_rec_buf
@@ -218,6 +219,7 @@ gnss0_gpu:
     - 6055
     - 6071
     code_trim: true
+    trim_gain: 0.0
     conjugate: true
     elem_stride: 32
     f_offset_hz: 1176450000.0
@@ -339,6 +341,7 @@ gnss1_gpu:
     - 6047
     - 6063
     code_trim: true
+    trim_gain: 0.0
     conjugate: true
     elem_stride: 32
     f_offset_hz: 1176450000.0

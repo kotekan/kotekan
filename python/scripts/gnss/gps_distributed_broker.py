@@ -209,6 +209,112 @@ def parse_endpoints(csv, default_base):
     return prefixes
 
 
+def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
+    """Sum the fleet's raw Early/Prompt/Late powers per PRN -> one full-bandwidth discriminator.
+
+    THE PROBLEM THIS SOLVES. On CHORD the F-engine comb spreads L5 across all eight nodes and
+    each GPU holds seven 195.3 kHz channels, so one tracker instance correlates 1.37 MHz of a
+    20.46 MHz lobe -- 6.7%, -11.8 dB, and no instance can ever do better because the bandwidth
+    is not on the machine. That gap is why the code lock is episodic; it is NOT a signal deficit
+    (the full-band-equivalent C/N0 is 45.5 dB-Hz and a commercial receiver has tracked CHORD's
+    deep sidelobes) and NOT the quality gate (measured correctly placed above its noise floor).
+
+    WHY SUMMING IS LEGITIMATE, AND CHEAP. The DLL discriminator is NON-COHERENT -- (E-L)/(E+L)
+    is built from POWERS. Powers add. So this needs no phase alignment between nodes, no
+    sample-level sync, and no coherent machinery: only the same integration window, which
+    pow_hop identifies EXACTLY (an absolute F-engine hop index shared by every node, so equality
+    means the same sky -- no tolerance, unlike a capture-UTC float). Six numbers per PRN per
+    window is ~6 kbit/s per instance; it rides the REST polling that already exists. Shipping
+    record streams between hosts, or building a combiner hierarchy, is the wrong shape.
+
+    WHY RAW POWERS AND NOT dll_disc. Ratios do not sum: (SUM E - SUM L)/(SUM E + SUM L) is not
+    any function of the per-instance (E-L)/(E+L). Publishing e_pow/l_pow/p_pow was the single
+    enabling change on the combiner side.
+
+    WHAT THE SUM ACTUALLY BUYS, because it is NOT what it looks like. Summing K instances does
+    NOT raise q = 2P/(E+L): every tap's mean scales by K, so the RATIO is untouched -- a fleet
+    of 8 reports the same 1.5 a single node does. What collapses is the VARIANCE. Each summed
+    power has K times the mean and K times the variance, so q's spread falls as 1/sqrt(K), and
+    a signal-free PRN's q tightens onto 1.0 from a measured single-instance tail of 1.87 to
+    ~1.3 at K=8. The gain is therefore a LOWER BAR, not a higher statistic -- which is why the
+    caller must gate on a MEASURED noise floor and never on a fixed q. It also settles what
+    looked like a contradiction on 2026-08-03: 1.3 is 1.5 sigma INTO the noise for one instance
+    and ~3 sigma CLEAR of it for eight. Same number, opposite verdict, different population.
+
+    Returns {prn: {disc, q, hop, n_src, n_chan, q_floor, q_med, q_sigma}} for PRNs with >=
+    min_instances agreeing instances; PRNs below that are ABSENT, so the caller falls back to
+    the single-combiner discriminator and a partly-down fleet degrades rather than stalls.
+    """
+    if not endpoints:
+        return {}
+    # prn -> list of (hop, e, p, l, n_chan). Unreachable instances are skipped, not fatal:
+    # a node down for maintenance must cost sensitivity, never the loop.
+    rows = {}
+    for url in endpoints:
+        try:
+            got = _get("%s/get_status" % url)
+        except Exception as e:
+            _log_rl("fleet-dll-%s" % url, "fleet DLL: %s unreachable (%s)" % (url, e))
+            continue
+        for r in got:
+            hop = int(r.get("pow_hop", -1))
+            e = float(r.get("e_pow", 0.0))
+            l = float(r.get("l_pow", 0.0))
+            if hop < 0 or (e + l) <= 0.0:
+                continue  # no metadata on the record frames, or this PRN is not being despread
+            rows.setdefault(int(r["prn"]), []).append(
+                (hop, e, float(r.get("p_pow", 0.0)), l, float(r.get("n_chan", 0.0))))
+    out = {}
+    for prn, rs in rows.items():
+        # Instances free-run, so their emit phases differ by up to one emit period: take the
+        # newest window and admit everything within hop_window of it. INTEGER arithmetic on the
+        # F-engine's own counter -- an instance a full second stale is 0.003 chips of code
+        # motion at the measured 0.0033 chips/s, orders below what the discriminator resolves,
+        # and one that is further behind than that is a fault worth excluding.
+        newest = max(r[0] for r in rs)
+        use = [r for r in rs if newest - r[0] <= hop_window]
+        if len(use) < min_instances:
+            continue
+        E = sum(r[1] for r in use)
+        P = sum(r[2] for r in use)
+        L = sum(r[3] for r in use)
+        if E + L <= 0.0:
+            continue
+        out[prn] = {"disc": (E - L) / (E + L),
+                    # q = 2P/(E+L): 1.0 with no peak (all three taps equal noise power), 4.0 at
+                    # a clean lock with 0.5-chip spacing. The three powers are built identically
+                    # by the combiner (|sum of subband correlations|^2 / energy^2), which is what
+                    # makes this comparable across instances and meaningful once summed.
+                    "q": 2.0 * P / (E + L),
+                    "hop": newest,
+                    "n_src": len(use),
+                    "n_chan": sum(r[4] for r in use)}
+
+    # LIVE NOISE FLOOR for q, measured every cycle instead of assumed. The floor moves with the
+    # number of contributing instances and with the EMA length, so ANY constant is wrong for
+    # some fleet size -- and a constant set for K=1 (2.2, correct there) rejects every real
+    # signal once the sum has tightened the distribution around 1.0. Most tracked PRNs are
+    # signal-free at any moment, so the MEDIAN of the q population IS the no-peak value and the
+    # MAD is its spread; both are outlier-immune to the handful of sats that do have a peak.
+    # This is the same discipline as the search's Gamma ceiling: derive the bar from the
+    # population you are thresholding, and log it so it is never a silent constant.
+    qs = sorted(v["q"] for v in out.values())
+    med = sigma = None
+    if len(qs) >= 8:  # too few rows to characterise a population: fall back to the fixed bar
+        med = qs[len(qs) // 2]
+        mad = sorted(abs(q - med) for q in qs)[len(qs) // 2]
+        sigma = 1.4826 * mad
+    for v in out.values():
+        v["q_med"], v["q_sigma"] = med, sigma
+        v["q_floor"] = (q_fallback if med is None
+                        # A floor is only as good as the spread it is built on: if MAD collapses
+                        # (a degenerate population, every instance reporting the same window of
+                        # zeros) the bar would too, so keep a small absolute margin over the
+                        # median as well.
+                        else max(med + k_sigma * sigma, med + 0.05))
+    return out
+
+
 def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
     """BRDC-almanac analog of gps_beamtrack.predict_dopplers for ONE constellation:
     {prn: (doppler_hz, doppler_rate_hz_s, elevation_deg, range_m, sat_clk_s)}.
@@ -862,6 +968,51 @@ def main(argv=None):
                     help="DLL integrator leak (0 = pure integrator): trim mean-reverts each "
                          "update so discriminator NOISE can't random-walk it to the clamp. DC "
                          "loop gain = dll_gain/dll_leak; ~1/leak windows of smoothing.")
+    ap.add_argument("--dll-combiners", default="",
+                    help="FLEET-COMBINED DLL (docs/CHORD_GNSS_SHARED_DLL.md): comma-separated "
+                         "combiner endpoints ({a..b} ranges expanded) whose RAW Early/Prompt/"
+                         "Late powers are SUMMED before the discriminator is formed, closing "
+                         "ONE code loop at full signal bandwidth. On CHORD the F-engine comb "
+                         "spreads L5 across every node, so a single instance correlates 7 x "
+                         "195.3 kHz of a 20.46 MHz lobe -- 6.7%%, -11.8 dB -- and no instance "
+                         "can do better; that gap, not sensitivity or the quality gate, is why "
+                         "the code lock is episodic. The combine is legitimate because the "
+                         "discriminator is NON-COHERENT: (E-L)/(E+L) is built from POWERS, "
+                         "which add with no phase alignment and no sample sync, only the same "
+                         "window (pow_hop, exact). Empty = today's behaviour, --combiner alone. "
+                         "REQUIRES trim_gain 0 on the trackers: E/L are measured relative to "
+                         "the phase each instance despread at, so independent local trims make "
+                         "the sum SMEAR instead of sharpen (design section 5).")
+    ap.add_argument("--dll-hop-window-s", type=float, default=0.5,
+                    help="fleet DLL: how far back from the newest window an instance's "
+                         "measurement may be and still join the sum, in seconds (converted "
+                         "once to an integer hop count -- the key itself is never a float). "
+                         "Instances free-run, so their emit phases differ by up to one emit "
+                         "period; the code moves 0.0033 chips/s (measured), so even a full "
+                         "second of spread is 0.003 chips, far below anything the "
+                         "discriminator resolves.")
+    ap.add_argument("--dll-quality-sigma", type=float, default=3.0,
+                    help="fleet DLL: how many sigma above the MEASURED q noise floor a PRN must "
+                         "sit before its trim integrates. q = 2P/(E+L) is a peak-SHARPNESS "
+                         "metric, not an SNR: exactly 1.0 with no peak (all three taps see "
+                         "equal noise power), 4.0 for a clean lock at 0.5-chip spacing. Summing "
+                         "instances does NOT raise it -- every tap's mean scales alike -- it "
+                         "SHRINKS its spread as 1/sqrt(K), so the right bar falls as the fleet "
+                         "grows and no constant can be correct for more than one fleet size. "
+                         "The floor is therefore re-measured each cycle as median + this many "
+                         "MAD-sigma over the live q population (most tracked PRNs are "
+                         "signal-free at any moment, so the median IS the no-peak value), and "
+                         "logged every time it is used.")
+    ap.add_argument("--dll-quality-min", type=float, default=2.2,
+                    help="fleet DLL: FALLBACK q bar, used only when fewer than 8 PRNs report "
+                         "and the noise population cannot be characterised. 2.2 is the measured "
+                         "single-instance bar (noise mean ~1.0 with a tail to 1.87 on sky "
+                         "2026-08-03), so the fallback is the conservative one-node answer.")
+    ap.add_argument("--dll-min-instances", type=int, default=2,
+                    help="fleet DLL: instances that must report the same window before their "
+                         "sum is used. Below this the PRN falls back to the single --combiner "
+                         "discriminator, so a partially-down fleet degrades instead of "
+                         "stalling.")
     ap.add_argument("--cl-assist", action="store_true",
                     help="LEGACY single-chain CL mode (superseded by --cl-tracker, which keeps "
                          "CM running as the in-run control): lift each seed's code_phase_chips "
@@ -1301,6 +1452,13 @@ def main(argv=None):
     detectors = parse_endpoints(args.detectors, base)
     trackers = parse_endpoints(args.trackers, base)
     combiner = resolve_prefix(args.combiner, base)
+    # FLEET DLL: every combiner whose E/L powers join the sum. --combiner stays the ONE status
+    # source for everything else (amplitudes, drop decisions, nav bits) -- this list only feeds
+    # the code loop, so a chain that does not set it is bit-for-bit unchanged.
+    dll_combiners = parse_endpoints(args.dll_combiners, base) if args.dll_combiners else []
+    # Integer hop tolerance, derived once from the record geometry. Kept as an int so every
+    # comparison downstream is integer arithmetic on the F-engine's own counter.
+    dll_hop_window = max(0, int(round(args.dll_hop_window_s * args.hops_per_sec)))
     cl_tracker = resolve_prefix(args.cl_tracker, base) if args.cl_tracker else None
     cl_combiner = resolve_prefix(args.cl_combiner, base) if args.cl_combiner else None
     cnav_combiner = resolve_prefix(args.cnav_combiner, base) if args.cnav_combiner else None
@@ -1525,6 +1683,10 @@ def main(argv=None):
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
     dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
+    dll_last_hop = {}   # prn -> last integrated WINDOW (fleet DLL): the exact dedup dll_last
+                        # approximates. A changed float disc means "probably a new emit"; a
+                        # changed hop means it, and it cannot false-negative on a disc that
+                        # happens to repeat.
     cp_translated = set()  # PRNs whose first currency translation has been logged (once each)
     dop_clamped = set()    # PRNs that have tripped the one-cycle Doppler rate limit
     dr_untrusted = {}      # prn -> reason: the model is WRONG for this sat; use the search
@@ -3491,19 +3653,54 @@ def main(argv=None):
         # converges to the search fit's quantization bias instead of double-counting on coasted
         # seeds. Gated on lock significance (an unlocked PRN's disc is noise). Bounded +-3 chips.
         if args.dll_gain > 0.0:
+            # FLEET COMBINE (docs/CHORD_GNSS_SHARED_DLL.md). Sum the RAW powers across every
+            # instance that reports the same window, then form ONE discriminator. Ratios do not
+            # sum -- (SUM E - SUM L)/(SUM E + SUM L) is not any function of the per-instance
+            # dll_disc values -- which is exactly why the combiner publishes e_pow/l_pow/p_pow.
+            fleet = fleet_dll(dll_combiners, dll_hop_window, args.dll_min_instances,
+                              args.dll_quality_sigma, args.dll_quality_min)
             dll_report = []
             for prn in list(seeds):
                 rec = status.get(prn, {})
-                disc = float(rec.get("dll_disc", 0.0))
-                if sig_of(rec) < args.lock_snr or disc == 0.0:
-                    continue
-                # One integration per NEW measurement: the combiner emits a fresh disc each
-                # integration window (~1 s) while this loop polls at ~5 Hz -- integrating the
-                # stale value 5x per emit over-applies the gain (part of the 2026-07-07 L1
-                # runaway). A changed value marks a fresh emit.
-                if disc == dll_last.get(prn):
-                    continue
-                dll_last[prn] = disc
+                fl = fleet.get(prn)
+                if fl is not None:
+                    # THE FLEET PATH. Gate on the summed q against a floor MEASURED from this
+                    # cycle's own q population, not against a constant and not against the
+                    # single-instance significance. sig_of(rec) is one node's 6.7% view and
+                    # would keep vetoing precisely the satellites this exists for; a fixed bar
+                    # is worse still, because summing tightens the noise distribution instead
+                    # of raising q, so the correct bar FALLS as instances are added and any
+                    # constant is right for exactly one fleet size (see fleet_dll).
+                    #
+                    # THE RATE GATE (design section 7, and it is not optional): the clock offset
+                    # is 3.45 chips/s = 11 chips per loop round trip, fed forward by the seed's
+                    # code_phase_rate. The trim only ever absorbs the residual. With no live
+                    # rate the trim would face the whole 11 chips -- far outside the +-0.5 chip
+                    # pull-in, unrecoverable, and it would read as the DLL diverging rather than
+                    # the feed-forward being absent. So HOLD instead of integrating.
+                    if not float(seeds[prn].get("code_phase_rate", 0.0) or 0.0):
+                        _log_rl("dll-norate-%d" % prn,
+                                "fleet DLL PRN %d: no live code_phase_rate, holding trim" % prn)
+                        continue
+                    if fl["q"] < fl["q_floor"]:
+                        continue
+                    # One integration per new WINDOW -- an exact integer test, where the
+                    # single-instance path below can only watch for a changed float.
+                    if fl["hop"] == dll_last_hop.get(prn):
+                        continue
+                    dll_last_hop[prn] = fl["hop"]
+                    disc = fl["disc"]
+                else:
+                    disc = float(rec.get("dll_disc", 0.0))
+                    if sig_of(rec) < args.lock_snr or disc == 0.0:
+                        continue
+                    # One integration per NEW measurement: the combiner emits a fresh disc each
+                    # integration window (~1 s) while this loop polls at ~5 Hz -- integrating the
+                    # stale value 5x per emit over-applies the gain (part of the 2026-07-07 L1
+                    # runaway). A changed value marks a fresh emit.
+                    if disc == dll_last.get(prn):
+                        continue
+                    dll_last[prn] = disc
                 tau = -max(-1.0, min(1.0, disc)) / 4.0 * (args.dll_spacing / 0.5)
                 # LEAKY integrator: mean-reverts, so discriminator NOISE cannot random-walk the
                 # trim to the clamp (a pure integrator did -- L1 trims reached +-1 to 3 chips
@@ -3512,12 +3709,28 @@ def main(argv=None):
                 # static fit bias; noise averages over ~1/leak windows.
                 trim = (1.0 - args.dll_leak) * dll_trim.get(prn, 0.0) + args.dll_gain * tau
                 dll_trim[prn] = max(-3.0, min(3.0, trim))
-                dll_report.append("PRN %d disc %+.3f trim %+.2f" % (prn, disc, dll_trim[prn]))
+                dll_report.append(
+                    "PRN %d disc %+.3f trim %+.2f%s"
+                    % (prn, disc, dll_trim[prn],
+                       "" if fl is None
+                       else " [fleet %d/%d q %.2f]" % (fl["n_src"], len(dll_combiners), fl["q"])))
             if dll_report:
                 _log("DLL: " + "; ".join(dll_report))
+            # The BAR, every cycle it is measured. A threshold on a noisy statistic that is
+            # never printed is a threshold nobody can audit -- and this one legitimately moves
+            # with the fleet size, so a reader has to be able to see where it went.
+            if fleet:
+                any_fl = next(iter(fleet.values()))
+                _log_rl("dll-floor",
+                        "fleet DLL: %d PRN(s) over %d combiner(s), q floor %.2f%s"
+                        % (len(fleet), len(dll_combiners), any_fl["q_floor"],
+                           "" if any_fl["q_med"] is None
+                           else " (noise median %.2f, sigma %.3f)"
+                                % (any_fl["q_med"], any_fl["q_sigma"])))
             for k in list(dll_trim):
                 if k not in seeds:
                     del dll_trim[k]
+                    dll_last_hop.pop(k, None)
 
         # 3d. SHARED CARRIER LOOP (the carrier twin of 3c): integrate the combiner's full-band
         # cross-record phase-walk residual into a commanded NCO frequency per PRN. The residual

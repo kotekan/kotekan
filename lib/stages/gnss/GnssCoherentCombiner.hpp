@@ -216,6 +216,15 @@ private:
     double _rec_dt_est = 0.0;
     double _prev_utc0 = 0.0;
     unsigned long _realigns = 0;
+    /// Hops per record frame -- the F-engine FFT length, and the ONLY reason this stage needs
+    /// to know it: GnssChanMetadata::sample_seq is an absolute SAMPLE index, and the currency
+    /// every other part of the chain speaks (the seed's ref_hop, the replica generators, the
+    /// search's reported phase) is the absolute HOP index = sample_seq / fft_len. Publishing the
+    /// hop rather than the sample keeps the fleet DLL's grouping key an exact integer match
+    /// against everything else (docs/CHORD_GNSS_SHARED_DLL.md). 0 = unset: pow_hop then carries
+    /// the raw sample index, and pow_fft_len (also published) says which currency it is, so a
+    /// consumer can never silently mix the two.
+    int _fft_len = 0;
     bool _carrier_pilot;            ///< pilot: unsquared phase product (no bits; 2x range)
     /// Raw (unsquared) phase treatment is only valid for a TRULY dataless pilot. An overlay
     /// pilot (B1C L1CO, E1C CS25, E5a/B2a CS100, L5 NH) still carries +-1 secondary chips in
@@ -347,6 +356,19 @@ private:
     std::vector<int> _bp_veto;
     std::vector<uint8_t> _bp_agree; ///< per-PRN: this emit's anchor projection == searched phase
     std::vector<float> _st_dll_disc; ///< window-averaged DLL discriminator (broker closes the loop)
+    /// FLEET DLL (docs/CHORD_GNSS_SHARED_DLL.md). The window-averaged Early/Prompt/Late POWERS
+    /// that _st_dll_disc is the ratio of, published RAW because ratios do not sum: one instance
+    /// correlates 6.7% of the L5 lobe, and (SUM E - SUM L)/(SUM E + SUM L) across the fleet is
+    /// not any function of the per-instance discriminators. All three are built identically --
+    /// |sum of subband correlations|^2 / energy^2 -- so they are directly comparable, which is
+    /// what makes q = 2P/(E+L) meaningful across instances.
+    std::vector<float> _st_e_pow;
+    std::vector<float> _st_p_pow;
+    std::vector<float> _st_l_pow;
+    std::vector<float> _st_nchan;    ///< covering channels that contributed (weight; 0 = dead)
+    /// Absolute HOP index the E/P/L window ends on (rolling: the newest record; block: the
+    /// window's first). The fleet combine groups instances by this -- see _fft_len.
+    long long _st_pow_hop = -1;
     std::vector<float> _st_head_frac; ///< boundary fraction f = <head energy>/<prompt energy>
     std::vector<float> _st_s4;       ///< amplitude scintillation index, thermal floor removed
     std::vector<float> _st_s4_raw;   ///< ... before the debias (diagnostic)

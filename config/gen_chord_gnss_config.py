@@ -194,6 +194,18 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
                  # loop fast enough for the clock chain's +-1 chip / ~20 s breathing. The
                  # broker's own DLL (3c) sees disc ~ 0 once this holds and stays quiet.
                  "code_trim": True,
+                 # LOCAL trim gain, 0 by default -- the fleet DLL owns the code loop.
+                 #
+                 # E, P and L are measured relative to the code phase THIS instance despread at.
+                 # With every instance running its own trim they drift to different delays, and
+                 # summing E/L taken at different delays SMEARS the discriminator instead of
+                 # sharpening it -- the broker's 11.8 dB of combined bandwidth would be thrown
+                 # away silently, with nothing in the logs to say so. So there is exactly one
+                 # code loop, in the broker (--dll-combiners), and this one is off.
+                 #
+                 # Set --local-trim-gain 0.15 to restore the in-tracker loop (the pre-2026-08-03
+                 # behaviour) for a single-node bench, or as the control in a before/after.
+                 "trim_gain": args.local_trim_gain,
                  "trim_endpoint": f"/{pre}track/get_trim",
                  # GPS-disciplined UTC of absolute sample 0 -- without it the assembler
                  # stamps records with HOST wall clock (see cudaGnssChordTrack.cpp).
@@ -275,6 +287,12 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
             # (2048 hops = 10.4857 periods). Without this the combiner has NO route to
             # coherence_s at all and integrates one 10.5 ms record at a time.
             "deep_coherent": True,
+            # Hops per record frame: turns the frame metadata's sample_seq into the absolute HOP
+            # index, which is what the seed (ref_hop), the replica generators and the search all
+            # speak. Published as pow_hop so the broker can group EVERY node's E/L powers by an
+            # exact integer match and close ONE code loop at full L5 bandwidth -- a single
+            # instance sees 6.7% of the lobe (docs/CHORD_GNSS_SHARED_DLL.md).
+            "fft_len": cfg["fengine"]["fft_length"],
             "cpu_affinity": [cores[(gpu + 2) % len(cores)]],
         },
         f"{pre}record": {
@@ -680,6 +698,16 @@ def main():
                          "noise fit and the carrier loop has nothing to lock to (STATE 8.12). "
                          "GPU 1's combiner and record stage are dropped; the merged pair is "
                          "written by gnss0_record.")
+    ap.add_argument("--local-trim-gain", type=float, default=0.0,
+                    help="cudaGnssChordTrack's IN-TRACKER code-trim gain. 0 (the default since "
+                         "2026-08-03) hands the code loop to the broker's fleet DLL "
+                         "(--dll-combiners, docs/CHORD_GNSS_SHARED_DLL.md), which sums Early/"
+                         "Late POWERS across every instance and so closes at the full 20.46 MHz "
+                         "L5 bandwidth instead of the 6.7% one instance can see. Two loops "
+                         "cannot coexist: E/L are measured relative to the phase each instance "
+                         "despread at, so independent local trims drift apart and the fleet sum "
+                         "smears rather than sharpens. 0.15 restores the stage default for a "
+                         "single-node bench or an A/B control.")
     ap.add_argument("--record-dir", default=None,
                     help="override runtime.record_dir from the node file. Needed on any node "
                          "without /data: rawFileWrite takes base_dir from the config, so pointing "

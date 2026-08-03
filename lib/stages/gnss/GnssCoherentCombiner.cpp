@@ -1,7 +1,8 @@
 #include "GnssCoherentCombiner.hpp"
 
-#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
-#include "visUtil.hpp"      // for frameID
+#include "GnssChanMetadata.hpp" // for get_gnss_chan_metadata (the record's absolute hop)
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "visUtil.hpp"          // for frameID
 
 #include "gnssChannelizedDespread.hpp" // for overlay_wipe
 #include "gnssOverlay.hpp"             // for overlay_by_name (the secondary-overlay registry)
@@ -97,6 +98,10 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     // tracker's signal descriptor, and guessing wrong means summing records whose overlay signs
     // still alternate -- which cancels rather than integrates.
     _deep_plain = config.get_default<bool>(unique_name, "deep_coherent", false);
+    // Hops per record frame, purely to turn sample_seq into the hop index the rest of the chain
+    // speaks (see the hpp). Unset is not an error -- pow_fft_len ships alongside so the currency
+    // is always self-declared.
+    _fft_len = config.get_default<int>(unique_name, "fft_len", 0);
     _wipe_buffer = (_navwipe_bit_records > 0 || !_secondary.empty() || !_l1co.empty()
                     || _deep_plain);
 
@@ -186,6 +191,10 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_dop.assign(_n_prn, 0.0f);
     _st_cp.assign(_n_prn, 0.0f);
     _st_dll_disc.assign(_n_prn, 0.0f);
+    _st_e_pow.assign(_n_prn, 0.0f);
+    _st_p_pow.assign(_n_prn, 0.0f);
+    _st_l_pow.assign(_n_prn, 0.0f);
+    _st_nchan.assign(_n_prn, 0.0f);
     _st_head_frac.assign(_n_prn, 0.0f);
     _st_s4.assign(_n_prn, 0.0f);
     _st_s4_raw.assign(_n_prn, 0.0f);
@@ -265,6 +274,13 @@ void GnssCoherentCombiner::main_thread() {
     std::vector<double> acc_pow(_n_prn), acc_ar(_n_prn), acc_ai(_n_prn), acc_nchan(_n_prn);
     std::vector<double> acc_pow2(_n_prn); // <|A|^4>, for the noise-debiased incoherent significance
     std::vector<double> acc_epow(_n_prn), acc_lpow(_n_prn); // <|E|^2>, <|L|^2> for the DLL disc
+    // <|A|^2> built EXACTLY like acc_epow/acc_lpow -- the raw per-record prompt power, no
+    // overlay wipe and no head/tail split. acc_pow is the science amplitude and takes whichever
+    // straddle-immune form is available (|v_cur|^2, or |head|^2+|tail|^2), which is right for
+    // |A| and WRONG as the P in q = 2P/(E+L): the segment split alone costs a factor f^2+(1-f)^2
+    // -- 0.5 at a mid-record boundary -- and would read as a collapsing peak. E and L are
+    // unsegmented, so their P must be too. Publish-only; nothing else reads it.
+    std::vector<double> acc_ppow(_n_prn);
     // Boundary fraction f = <head energy>/<prompt energy>: where the code-period boundary sits
     // inside the window (0/1 = edge, ~0.5 = the old bistable's null zone). Pure diagnostic.
     std::vector<double> acc_he(_n_prn), acc_pe(_n_prn);
@@ -286,6 +302,7 @@ void GnssCoherentCombiner::main_thread() {
     _acc_eai.assign((size_t)_n_prn * _n_elements, 0.0);
     _alpha_el = 1.0 / (double)_integration_length;
     long long n_roll = 0;      // rolling: total records seen (for EMA bias correction)
+    long long win_hop = -1;    // absolute hop index labelling the current E/P/L window
     int since_emit = 0;        // rolling: records since the last emit
     const double alpha = 1.0 / (double)_integration_length; // rolling EMA weight
 
@@ -355,6 +372,23 @@ void GnssCoherentCombiner::main_thread() {
                     break;
             }
             _prev_utc0 = rec_utc(ins[0]);
+        }
+
+        // ABSOLUTE HOP INDEX of this record's window, from the frame metadata the record
+        // producer already stamps (GnssGpuRecordAssemble / GnssChannelizedTracker set
+        // sample_seq = window_start). This is the fleet DLL's grouping key: every node's
+        // sample_seq descends from the same F-engine fpga_seq_num, so equal hop IS the same sky
+        // -- an integer match, where the record's capture UTC would need a tolerance. Read here
+        // because the frames are released a few lines below. Input 0 only: the realign loop
+        // above has already put every input on the same window.
+        {
+            const GnssChanMetadata* mi = get_gnss_chan_metadata(in_bufs[0], in_ids[0]);
+            const long long cur_hop = (mi && mi->sample_seq >= 0)
+                                          ? (_fft_len > 0 ? mi->sample_seq / _fft_len
+                                                          : (long long)mi->sample_seq)
+                                          : -1;
+            if (_rolling || n_acc == 0) // rolling: the newest record, as ref_utc is; block: the
+                win_hop = cur_hop;      // window's first, as ref_utc is
         }
 
         // Cost clock starts only AFTER wait_for_full_frame returns: blocking on input is IDLE,
@@ -653,6 +687,7 @@ void GnssCoherentCombiner::main_thread() {
                 acc_pow2[p] += alpha * (p2 * p2 - acc_pow2[p]);
                 acc_epow[p] += alpha * (e2 - acc_epow[p]);
                 acc_lpow[p] += alpha * (l2 - acc_lpow[p]);
+                acc_ppow[p] += alpha * ((ar * ar + ai * ai) - acc_ppow[p]);
                 acc_he[p] += alpha * (h_energy - acc_he[p]);
                 acc_pe[p] += alpha * (energy - acc_pe[p]);
                 acc_ar[p] += alpha * (ar - acc_ar[p]);
@@ -708,6 +743,7 @@ void GnssCoherentCombiner::main_thread() {
                 acc_pow2[p] += p2 * p2;
                 acc_epow[p] += e2;
                 acc_lpow[p] += l2;
+                acc_ppow[p] += ar * ar + ai * ai;
                 acc_he[p] += h_energy;
                 acc_pe[p] += energy;
                 acc_ar[p] += ar;
@@ -775,6 +811,7 @@ void GnssCoherentCombiner::main_thread() {
         // undo the warm-up bias (1-(1-alpha)^n_roll) -> a true running mean from record 1.
         const double inv = _rolling ? 1.0 / (1.0 - std::pow(1.0 - alpha, (double)n_roll))
                                     : 1.0 / (double)n_acc;
+        std::vector<float> p_pow_out(_n_prn, 0.0f); // fleet-DLL prompt power (see acc_ppow)
         std::vector<double> deep_snr(_n_prn, 0.0); // significance of the deep detection (for REST)
         std::vector<double> amp_snr(_n_prn, 0.0);  // noise-debiased incoherent significance (REST)
         std::vector<int> nh_phase(_n_prn, -1);     // secondary-overlay alignment found (L5; -1 = n/a)
@@ -893,6 +930,10 @@ void GnssCoherentCombiner::main_thread() {
                 rec[gnss::CMB_L_POW] = (float)l_pow;
                 rec[gnss::CMB_DLL_DISC] =
                     (e_pow + l_pow) > 0.0 ? (float)((e_pow - l_pow) / (e_pow + l_pow)) : 0.0f;
+                // FLEET DLL (docs/CHORD_GNSS_SHARED_DLL.md): the PROMPT power, held for the
+                // status snapshot below. E and L are already in the record; this one is not,
+                // and acc_ppow is reset here in block mode, so it has to be carried out.
+                p_pow_out[p] = (float)(acc_ppow[p] * inv);
                 // Boundary fraction f (diagnostic; the inv normalization cancels in the ratio).
                 rec[gnss::CMB_HEAD_FRAC] =
                     acc_pe[p] > 0.0 ? (float)(acc_he[p] / acc_pe[p]) : 0.0f;
@@ -1488,8 +1529,13 @@ void GnssCoherentCombiner::main_thread() {
                 }
             }
             *reinterpret_cast<double*>(rec + RECORD_UTC_SLOT) = ref_utc[p];
+            // Absolute hop of this window, alongside the UTC rather than instead of it (slot 9
+            // has consumers, and overlay_apply/coh_span are UTC-based). Makes a recorded .raw
+            // self-describing about WHICH window each row is, exactly -- the same key the fleet
+            // DLL groups on. Same value for every PRN: one window, one hop.
+            *reinterpret_cast<long long*>(rec + gnss::CMB_HOP_SLOT) = win_hop;
             if (!_rolling) {
-                acc_pow[p] = acc_pow2[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = acc_epow[p] = acc_lpow[p] = acc_he[p] = acc_pe[p] = 0.0; // block: reset
+                acc_pow[p] = acc_pow2[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = acc_epow[p] = acc_lpow[p] = acc_ppow[p] = acc_he[p] = acc_pe[p] = 0.0; // block: reset
                 for (int el = 0; el < _n_elements; ++el) { // per-antenna block reset
                     const size_t k = (size_t)p * _n_elements + el;
                     _acc_epow_el[k] = _acc_ear[k] = _acc_eai[k] = 0.0;
@@ -1657,6 +1703,7 @@ void GnssCoherentCombiner::main_thread() {
         // Publish the latest full-band amplitudes for the broker's drop decisions.
         {
             std::lock_guard<std::mutex> lk(_st_mtx);
+            _st_pow_hop = win_hop; // one window, one hop -- not per PRN
             for (int p = 0; p < _n_prn; ++p) {
                 const float* rec = out + (size_t)p * _rec_stride;
                 _st_prn[p] = (int)std::lround(rec[0]);
@@ -1747,6 +1794,12 @@ void GnssCoherentCombiner::main_thread() {
                     _st_bit_pred[p] = std::move(bp);
                 }
                 _st_dll_disc[p] = rec[gnss::CMB_DLL_DISC];
+                // FLEET DLL: the discriminator's INGREDIENTS. Ratios do not sum, so the
+                // broker needs these to combine instances (docs/CHORD_GNSS_SHARED_DLL.md).
+                _st_e_pow[p] = rec[gnss::CMB_E_POW];
+                _st_l_pow[p] = rec[gnss::CMB_L_POW];
+                _st_p_pow[p] = p_pow_out[p];
+                _st_nchan[p] = rec[gnss::CMB_NCHAN];
                 _st_head_frac[p] = rec[gnss::CMB_HEAD_FRAC];
                 // S4, thermal floor removed using the COHERENT SNR (independent of the
                 // amplitude fluctuation we are trying to measure). Per-record power SNR
@@ -1857,6 +1910,27 @@ void GnssCoherentCombiner::get_status_callback(kotekan::connectionInstance& conn
                          // deep_floor a significance -- comparing those is a units error).
                          {"peel_deep_snr", _st_peel_deep_snr[p]},
                          {"dll_disc", _st_dll_disc[p]},
+                         // FLEET DLL (docs/CHORD_GNSS_SHARED_DLL.md). dll_disc is a RATIO and
+                         // ratios do not sum: one instance correlates 7 x 195.3 kHz = 6.7% of
+                         // the L5 lobe, and the full-band discriminator is
+                         // (SUM e_pow - SUM l_pow)/(SUM e_pow + SUM l_pow) over every instance,
+                         // which is not any function of the per-instance dll_disc values. So
+                         // the three POWERS ship raw. All are built the same way -- |sum of
+                         // subband correlations|^2 / energy^2 -- so q = 2*p_pow/(e_pow+l_pow)
+                         // is comparable instance to instance and, summed, is the fleet's.
+                         {"e_pow", _st_e_pow[p]},
+                         {"p_pow", _st_p_pow[p]},
+                         {"l_pow", _st_l_pow[p]},
+                         {"n_chan", _st_nchan[p]},
+                         // The GROUPING KEY: absolute hop index of the window these powers were
+                         // accumulated over, from the F-engine sample counter every node shares.
+                         // Equal hop IS the same sky, exactly -- no tolerance, unlike "utc".
+                         // pow_fft_len declares the currency: 0 means pow_hop is a raw SAMPLE
+                         // index (this stage was configured without fft_len), so a consumer can
+                         // never mix hops and samples by accident. -1 = no metadata on the
+                         // record frames at all.
+                         {"pow_hop", _st_pow_hop},
+                         {"pow_fft_len", _fft_len},
                          // boundary fraction f: where the code-period boundary sits inside
                          // the despread window (segmented-wipe diagnostic; ~0.5 was the old
                          // bistable's null zone, now harmless).
