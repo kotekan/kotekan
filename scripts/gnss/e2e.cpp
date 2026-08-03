@@ -535,14 +535,44 @@ int main(int argc, char** argv) {
             fclose(fp);
             printf("    dumped refine profile -> %s\n", o.dump_refine);
         }
+        // ---- PHASE A's MISSING HALF: recover the overlay period ----
+        // ms_split_accumulate carries NO NH axis (that is where its 20x comes from -- a ~1 ms
+        // sub-window spans one overlay chip, a constant sign that |D|^2 cannot see), so it
+        // resolves the phase mod 10230 and the seed would carry LESS than the current search
+        // reports. The design plan's answer was Phase B (coherent NH recombination); this is
+        // the cheaper one, and it works because the expensive part is already done:
+        //
+        // once the lag is known to a fraction of a chip, "which of the 20 overlay periods" is
+        // 20 SINGLE despreads at that one phase -- not 20 acquisition surfaces. The 20x saving
+        // is kept; only a rounding error of it is handed back.
+        if (o.ms_split > 0) {
+            const auto rf = sbank.hoprate_filter(s_chans, det_dop);
+            double bestp = -1.0;
+            for (int nh = 0; nh < n_nh; ++nh) {
+                const auto r = sbank.hoprate_stream(rf, 0, anchor, a.code_phase_chips, det_dop,
+                                                    rhops, {}, nh);
+                const double p = std::norm(gnss::channelized_despread(d, r).amplitude);
+                if (p > bestp) { bestp = p; best_nh = nh; }
+            }
+            printf("    NH postfix: overlay period %d of %d recovered by %d despreads\n", best_nh,
+                   n_nh, n_nh);
+        }
         const double best_cp =
             gnss::refine_peak(sbank, 0, d, s_chans, a.code_phase_chips, adims, best_nh, det_dop,
                               anchor, rhops, o.sample_rate, o.refine_span, o.refine_step,
                               o.threads);
 
         // ---- THE SHIPPED REPORTING ARITHMETIC ----
+        // The lag-period lift is for the SHIPPED geometry, where the coarse lag runs over
+        // Mp = 3125 hops = 16 code periods and therefore carries a whole-period count that
+        // detection_phase has to fold back in. The ms-split's lag axis is [N, 2N) -- one code
+        // period, by construction (8.7.7 / the ms-split doc) -- so that count is always zero
+        // here, and letting detection_phase derive it from the BANK's Mp (16) instead of the
+        // ms-split's 2N (2.007) adds a period that was never there. Measured: err +1 with the
+        // lift, 0 without.
+        const long lift_tau = (o.ms_split > 0) ? 0L : a.peak_tau_samples;
         dp = gnss::detection_phase(sbank, best_cp, best_nh, n_nh, det_dop, o.hop0, anchor,
-                                   o.sample_rate, a.peak_tau_samples);
+                                   o.sample_rate, lift_tau);
 
         const double ph_true = truth_phase_at(W0);
         const double e_ref = wrap(dp.cp_at_ref - ph_true, LL);
