@@ -192,6 +192,7 @@ gnss0_combine:
   deep_coherent: true
   in_bufs:
   - gnss0_rec_buf
+  - gnss1_rec_buf
   integration_length: 100
   integration_mode: rolling
   kotekan_stage: GnssCoherentCombiner
@@ -320,23 +321,6 @@ gnss1_assemble:
   prns: *id001
   reference_element: 0
   sample_rate: 3200000000.0
-gnss1_cmb_buf:
-  frame_size: 32 * 408 * sizeof_float32
-  kotekan_buffer: standard
-  metadata_pool: gnss_pool
-  num_frames: 4
-gnss1_combine:
-  cpu_affinity:
-  - 57
-  deep_coherent: true
-  in_bufs:
-  - gnss1_rec_buf
-  integration_length: 100
-  integration_mode: rolling
-  kotekan_stage: GnssCoherentCombiner
-  n_elements: 32
-  n_prn: 32
-  out_buf: gnss1_cmb_buf
 gnss1_epl_buf:
   frame_size: 7487664
   kotekan_buffer: standard
@@ -390,14 +374,6 @@ gnss1_rec_buf:
   kotekan_buffer: standard
   metadata_pool: gnss_pool
   num_frames: 4
-gnss1_record:
-  base_dir: /tmp/gnss
-  cpu_affinity:
-  - 59
-  file_ext: raw
-  file_name: cx19_gnss1_cmb
-  in_buf: gnss1_cmb_buf
-  kotekan_stage: rawFileWrite
 gnss1_srch_buf:
   frame_size: samples_per_data_set * 7 * 1
   kotekan_buffer: standard

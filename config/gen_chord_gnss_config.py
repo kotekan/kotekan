@@ -257,7 +257,11 @@ def build_gnss_branch(cfg, node, gpu, chan_idx, args, freq_ids=None):
         },
         f"{pre}combine": {
             "kotekan_stage": "GnssCoherentCombiner",
-            "in_bufs": [rec_buf],
+            # --combine-gpus: GPU 0's combiner takes BOTH streams (the other GPU's rec_buf name
+            # is deterministic, so no cross-branch plumbing is needed) and GPU 1's is dropped
+            # below. Order is GPU-major so the subband layout is stable across regenerations.
+            "in_bufs": ([rec_buf, f"gnss{1 - gpu}_rec_buf"] if (args.combine_gpus and gpu == 0)
+                        else [rec_buf]),
             "out_buf": cmb_buf,
             "n_prn": n_prn,
             "n_elements": n_elem,
@@ -663,6 +667,19 @@ def main():
  combs (e.g. --aggregator-instance cx19 cx27). Feeds listen on search_port_base + i in\
  node-major, GPU-minor order -- the same ports the node configs already target. Implies\
  everything --search-instance implies (no DPDK/GPU/hugepages, ordinary user).")
+    ap.add_argument("--combine-gpus", action="store_true",
+                    help="ONE GnssCoherentCombiner over BOTH GPUs' tracker record streams "
+                         "instead of one per GPU. The stage is documented for exactly this -- "
+                         "'Per-subband tracker record streams', combined coherently, 'one loop "
+                         "at full-band SNR instead of N noise-driven per-channel FLLs' -- and "
+                         "the two GPUs hold INTERLEAVED stride-16 combs (GPU0 5972,5988,...; "
+                         "GPU1 5980,5996,...), so together they are the node's full stride-8 "
+                         "comb: 14 channels instead of 7, +3 dB per record. Per-record SNR is "
+                         "what currently blocks coherent integration -- carrier_resid_hz is a "
+                         "phase fit over the buffered records, so incoherent records give a "
+                         "noise fit and the carrier loop has nothing to lock to (STATE 8.12). "
+                         "GPU 1's combiner and record stage are dropped; the merged pair is "
+                         "written by gnss0_record.")
     ap.add_argument("--record-dir", default=None,
                     help="override runtime.record_dir from the node file. Needed on any node "
                          "without /data: rawFileWrite takes base_dir from the config, so pointing "
@@ -804,6 +821,14 @@ def main():
         blocks, record_floats, n_elem = build_gnss_branch(
             cfg, args.node, gpu, [i for _, i in pairs], args,
             freq_ids=[f for f, _ in pairs])
+        if args.combine_gpus and gpu != 0:
+            # GPU 0's combiner consumed this GPU's rec_buf too, so its own combiner would be a
+            # duplicate reader of the same stream -- two stages competing for one buffer, each
+            # seeing half the frames. Drop it and its record stage; the merged output is written
+            # by gnss0_record. The BUFFER stays: gnss1_rec_buf is still produced, just consumed
+            # by the other branch.
+            for k in (f"gnss{gpu}_combine", f"gnss{gpu}_record", f"gnss{gpu}_cmb_buf"):
+                blocks.pop(k, None)
         out.update(blocks)
 
     hdr = [
