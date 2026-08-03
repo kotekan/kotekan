@@ -560,27 +560,28 @@ bands:
     kotekan_rest_port: 12148
     samples_per_data_set: 49920
     frame_note: |
-      49920 samples / 5 MSPS = 9.984 ms per frame (matches live_l2c). L2C records are 20 ms,
-      so a record spans ~2 frames -- the cudaGnssTrack device ring (ring_records 50)
-      accumulates across frames and emits each 5000-hop record when complete.
-    sample_rate: "5.0e6"
-    f_offset: "1.25e6"
-    f_offset_note: "LO on carrier, Fs/4 (same front-end model as L1)"
-    spectrum_note: "N=10 -> fft_len 20, channel width 250 kHz, 10 channels span 2.5 MHz"
+      49920 samples / 20 MSPS = 2.496 ms per frame (matches L5). BeiDou B2b records are 1 ms
+      (one 10230-chip period at 10.23 Mcps), so ~2.5 records complete per frame -- inside MAX_REC.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4 (same front-end model as L1/L5)"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
     airspy:
       cpu_affinity: [12]
       serial: "0x744C60C821692F4F"
-      serial_note: "L2C unit"
-      freq: 1227.6
-      sample_bw: 2.5
-      sample_bw_note: "airspy 2.5 MSPS mode -> 5 MSPS real"
+      serial_note: "L2C unit -- REPURPOSED 2026-08-03 from GPS L2C (1227.6/5 MSPS) to BeiDou B2b
+        (1207.14/20 MSPS). Same physical dongle; the mid-band build retunes it (mid-band-gal-bds-
+        receivers). B2b == Galileo E5b centre, so the same tune also reaches E5b later."
+      freq: 1207.14
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real (10.23 Mcps B2b needs the wide mode)"
       gain: 11
-    doppler_min: -4500.0
-    doppler_max: 4500.0
-    doppler_step: 50
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
     doppler_note: |
-      L2 geometric Doppler ~ 0.779 x L1 -> tighter than L1's +-5500. FINE step: the 20 ms
-      coherent integration washes out if the grid is coarser than ~50 Hz.
+      BeiDou B2b at 1207 MHz ~ 0.766 x L1 geometric Doppler; +-5000 with margin. step 100 (was
+      50 for 20 ms L2C coherent bins): B2b records are 1 ms (like L5), so L5's 100 Hz grid applies.
     num_cuda_streams: 3
     per_chain_streams: false
     record_dir: /tmp/gps_l2c_gpu
@@ -589,87 +590,38 @@ bands:
     # viewer_args: "--http-port 8081 --ws-port 8639 --kotekan-rest-port 12148 --gps-constellations G --band l2c"
     chains:
 
+      # SHAPE A (2026-08-03 B2b repurpose, see mid-band-gal-bds-receivers): the primary chain
+      # stays labelled `constellation: gps` so gen_band_config emits the UN-PREFIXED
+      # gps_search/gps_track/gps_combiner stage names the control-plane's primary-broker path
+      # requires -- but its SIGNAL is BeiDou B2b, and run_live.sh points the broker at BeiDou
+      # (constellation C, BeiDou-3 TLE, --sys C) via a per-band conditional on the BDS_ signal
+      # name. B2b is DATA-only (no dataless pilot): acquired directly + nav-wiped, like GPS L1
+      # C/A -- NOT the B2a pilot-derive path. No secondary overlay, no peel/epl_frame override.
       - constellation: gps
-        signal: GPS_L2C_CM
+        signal: BDS_B2B_I
         tracker_signal_explicit: true
-        n_prn: 32
+        n_prn: 63
         seed_endpoint: /gps_track/set_seeds
         record_name: level
         search:
-          params: { acquire_snr: 8.0, acquire_windows: 40, hops_per_record: 5000, require_hint: true, hint_ttl_s: 30.0 }
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
           note: |
-            require_hint: scan only broker-hinted (visible + L2C-capable) PRNs.
-            hops_per_record 5000 = the 20 ms CM period at this geometry (search needs it
-            explicitly; the tracker derives it).
+            require_hint: scan only broker-hinted (visible + B2b-capable BDS-3) PRNs.
+            hops_per_record 1000 = the 1 ms B2b code period at 20 MSPS (like L5's Q5; the
+            tracker derives its own).
         tracker:
-          fll_reacq_hz: 12.0
+          fll_reacq_hz: 15.0
           note: |
-            2026-07-19 flap census: the DEFAULT fence (0.1 cyc/rec = 5 Hz at 20 ms records)
-            is exactly the size of every hold-release dop step, so each release tripped a
-            tracker re-pin whose FLL/deep reset costs "one deep window" -- at L2C's weak-
-            signal integration needs, the WHOLE stretch (54% of censused deaths were
-            RELEASE/CARRIER-STEP class). With max_anchor_age 0 the per-record fold keeps
-            f_ref current against slew, so the fence only needs to catch LARGE seed steps:
-            12 Hz lets the routine <=10 Hz steps ride the code-currency translation
-            seamlessly. (12 vs the fleet's 15 is deliberate -- L2C's 20 ms records put the
-            bit-robust FLL alias limit at 12.5 Hz.)
+            1 ms records (like L5), so the fleet 15 Hz fence applies -- the 12 Hz L2C value
+            was for 20 ms records (12.5 Hz bit-robust alias limit) and no longer applies here.
         combiner:
-          params: { integration_length: 200, navwipe_bit_records: 1, bit_export: true }
+          params: { n_prn: 63, prns: RANGE, integration_length: 100, navwipe_bit_records: 1, bit_export: true }
           note: |
-            bit_export (2026-07-28, S3): export the per-20ms navwipe bit decisions as nav_obs
-            so the broker's CNAV decoder (gps_cnav.decode_cnav via a CnavPredictor) can stitch
-            the 50 sps symbol stream. ★ The RECORD FILE is NOT the symbol stream -- it holds
-            the combiner's ~0.1 Hz DEEP EMITS (positive amplitude, ~8 s apart), so
-            gps_cnav.py's offline read_symbols path is a dead end for GPU-chain records; the
-            live symbols only come through nav_obs (this flag), exactly as LNAV does at L1.
-            L2C DEEP WIPE: a 20 ms record is exactly ONE CNAV symbol, so navwipe_bit_records
-            1 wipes the 50 sym/s data and the sum integrates past 20 ms. integration_length
-            200 = 4 s max buffer (the auto-coherence ladder finds the knee live).
-            DIVERGENT (audit): 4 s window here vs ~1 s everywhere else.
-
-      - constellation: cl
-        signal: GPS_L2C_CL
-        tracker_signal_explicit: true
-        n_prn: 32
-        seed_endpoint: /cl_track/set_seeds
-        record_name: cl_level
-        section_note: |
-          L2C CL DATALESS PILOT -- the first Mechanism-A chain (docs/gnss_shared_knowledge_
-          framework.md, S1). NO SEARCH STAGE, deliberately: CL is DERIVED, not acquired. CM
-          and CL are chip-interleaved on one 511.5 kcps clock, so the broker (--cl-tracker,
-          set by run_live when it sees this chain) copies each CM seed row with the code
-          phase lifted by k*10230 -- the segment k pinned from absolute capture time
-          (utc0_sample0) + model range + SV clock, snapped to the measured CM cp. Same
-          doppler/rates/trim verbatim: CM's tracked solution IS CL's (same carrier, same
-          chip clock). CM stays untouched as the in-run control.
-          THE PRIZE: 1.5 s of code with NO data and NO overlay -> zero free signs, so the
-          navwipe floor (11.3 sigma at CM's 200 free signs / 4 s) collapses to the plain
-          Rayleigh floor and no bit can ever flip. The descriptor has called CL "best
-          target for peeling" since it was written; this chain is what makes that reachable.
-        tracker:
-          # Same record geometry and FLL fence as CM: 20 ms records (5000 hops), 12 Hz
-          # alias limit. hops_per_record is EXPLICIT because the tracker's default is
-          # repl_period_hops() = one code period -- 5000 at CM but 375,000 (1.5 s!) at CL.
-          # A CL record is a rolling 1/75th SEGMENT of the code; the despread kernel walks
-          # the full 1,534,500-comb-chip table with its ordinary code-index wrap
-          # (validated: cuda_gnss_despread_test GPS_L2C_CL 10 5000 [765749.75]).
-          fll_reacq_hz: 12.0
-          params:
-            hops_per_record: 5000
-        combiner:
-          # COHERENT = the length-1 all-ones overlay (gnssOverlay.cpp wrote the row for
-          # exactly this chain): overlay_wipe degenerates to a plain gap-robust coherent
-          # sum -- deep integration with no bit estimate, no alignment search, and the
-          # PREWIPED carrier path (raw phase fit, no squaring). navwipe_bit_records stays
-          # 0: CL has no data, and the whole point is to never pay the free-sign floor.
-          params: { n_prn: 32, prns: RANGE, integration_length: 200, secondary_overlay: COHERENT }
-          note: |
-            CL DEEP: plain coherent integration over the auto-coherence ladder (min_rung is
-            a TIME since f57b9388, so the 20 ms records get rungs down to 0.24 s). Floor =
-            sqrt(2 ln 2)+1 ~ 2.2 sigma vs CM's navwipe 11.3 -- the certification bar drops
-            ~5x for the SAME satellites on the SAME band. Equal TDM power split means a
-            healthy CL should read within a few dB of its CM sibling; judge it against CM
-            (the in-run control), not against an absolute.
+            DATA-only B2b: navwipe_bit_records 1 (B-CNAV3 is 1000 sps = one symbol per 1 ms
+            record, so a record is exactly one symbol -- the L5-I / B2a-D discipline) wipes the
+            data so the sum integrates past 1 ms. bit_export publishes the per-record bit
+            decisions as nav_obs for the future B-CNAV3 decoder. NO secondary_overlay (B2b has
+            no secondary code). No peel / epl_frame override (data channel, shared 15360 default).
 
   l5:
     out_file: live_l5_gpu.yaml

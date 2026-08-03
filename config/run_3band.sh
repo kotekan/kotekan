@@ -169,10 +169,13 @@ for b in $BANDS; do
     # other callers. The transport was since fixed (c839b3ca: parse outside seed_mtx +
     # NAVBITS-BAD counter, broker CPU 98->31%), and the node has run it on all day.
     BX="${BROKER_EXTRA:---dop-continuous --nav-bits-brdc 1}"
-    # L2C-CM carries CNAV (FEC+CRC), not LNAV: route its nav_obs to the CNAV decoder or the
-    # LNAV frame-sync churns on CNAV symbols forever (S3, 2026-07-28). A band property, appended
-    # regardless of BROKER_EXTRA; the cnav path ignores --nav-bits-brdc (LNAV-only), so no clash.
-    [ "$b" = l2c ] && BX="$BX --nav-decoder cnav"
+    # Nav-decoder for the band's PRIMARY chain, keyed on its SIGNAL (not the band name) so a
+    # retuned band picks the right one: GPS L2C-CM carries CNAV (FEC+CRC; route its nav_obs there
+    # or the LNAV frame-sync churns on CNAV symbols forever, S3). GPS L1 C/A -> LNAV (broker
+    # default). BeiDou/Galileo primaries (B2b B-CNAV3, E5b I/NAV) have no broker decoder wired yet
+    # -> pass none; the default lnav simply never syncs on their symbols, which is harmless.
+    _prim_sig=$(awk '/^[[:space:]]*signal:/{print $2; exit}' "$(cfg_of "$b")" 2>/dev/null)
+    case "$_prim_sig" in GPS_L2C*) BX="$BX --nav-decoder cnav" ;; esac
     SKIP_KOTEKAN=1 STAGE_PREFIX=${b}_ PORT=$PORT TAG=gps_${b} \
         CFG=$(cfg_of $b) HTTP_PORT=$(http_of $b) \
         BROKER_EXTRA=$BX \

@@ -196,6 +196,22 @@ sig_codelen() { [ -f "$SIGHDR" ] && awk -F, -v s="$1" '$1 ~ ("^[[:space:]]*\"" s
 # stage's signal can't leak in. Default = the L1-band signal (backward compat for dual20).
 blk_signal()  { awk -v b="^$1:" '$0 ~ b {f=1;next} /^[^[:space:]]/{f=0} f&&/^[[:space:]]*signal:/{print $2;exit}' "$CFG"; }
 CHIP_HZ=$(sig_chip "$SIGNAL"); CODELEN=$(sig_codelen "$SIGNAL")
+# ---- PRIMARY CONSTELLATION, derived from the primary chain's SIGNAL (2026-08-03) ----
+# A band's PRIMARY chain is emitted with the un-prefixed "gps_" stage names by convention
+# (gen_band_config chain_prefix: "gps_" now means "the primary chain", NOT necessarily GPS), but
+# its ACTUAL constellation comes from the signal. So a retuned band (L2C -> BeiDou B2b now, next
+# Galileo E5b on the same dongle, later GLONASS) drives the right broker with NO per-band flag:
+# the sys letter, TLE fallback and capability gate all follow from this one table. ★ TO SWAP A
+# BAND: change its airspy `freq:` + primary `signal:` in gnss_node.yaml and everything below
+# adapts (chip/code already come from the descriptor). A brand-new constellation = add a row here
+# (+ a nav decoder in the broker if you want the message). GPS keeps its PRN-indexed BRDC almanac
+# (empty TLE); the others fall back to celestrak TLE like the parallel gal_/bds_ chains do.
+case "$SIGNAL" in
+    GAL_*) PRIM_SYS=E; PRIM_TLE="https://celestrak.org/NORAD/elements/gp.php?GROUP=galileo&FORMAT=tle"; PRIM_TLE_FILTER="" ;;
+    BDS_*) PRIM_SYS=C; PRIM_TLE="https://celestrak.org/NORAD/elements/gp.php?GROUP=beidou&FORMAT=tle";  PRIM_TLE_FILTER="BEIDOU-3" ;;
+    GLO_*) PRIM_SYS=R; PRIM_TLE="https://celestrak.org/NORAD/elements/gp.php?GROUP=glo-ops&FORMAT=tle"; PRIM_TLE_FILTER="" ;;
+    *)     PRIM_SYS=G; PRIM_TLE=""; PRIM_TLE_FILTER="" ;;
+esac
 # Per-constellation signal params for the parallel gal_/bds_ chains (see the brokers below).
 # GAL_E1C -> 1.023e6/4092/obs_gal_e1 ; GAL_E5A_Q -> 10.23e6/10230/obs_gal_e5a. Likewise BDS.
 GAL_SIGNAL=$(blk_signal gal_search); GAL_SIGNAL=${GAL_SIGNAL:-GAL_E1C}
@@ -392,7 +408,12 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   ALM="--almanac --lat $LAT --lon $LON --alt ${ALT:-100} --carrier-hz ${CARRIER_HZ:-1575420000}"
   # --constellation: BRDC-almanac constellation gate (the default almanac source since
   # 2026-07-17; PRN-indexed = immune to the celestrak label rot. --tle stays as fallback).
-  ALM="$ALM --constellation G --doppler-sign ${DOPPLER_SIGN:-1}"
+  ALM="$ALM --constellation $PRIM_SYS --doppler-sign ${DOPPLER_SIGN:-1}"
+  # Non-GPS primary (retuned band): add the celestrak TLE fallback -- GPS uses the PRN-indexed
+  # BRDC almanac (no TLE), the others (BeiDou/Galileo/GLONASS) need their TLE like the gal_/bds_
+  # secondary chains do. Derived from PRIM_TLE above so a band swap needs no edit here.
+  [ -n "$PRIM_TLE" ] && ALM="$ALM --tle $PRIM_TLE"
+  [ -n "$PRIM_TLE_FILTER" ] && ALM="$ALM --tle-name-filter $PRIM_TLE_FILTER"
   # 2 deepest-below-horizon PRNs stay seeded as NOISE PROBES: genuine signal-free emits
   # calibrate the beam map's pedestal (the almanac gate otherwise never tracks one and
   # the GPS pedestal fell back to a signal percentile, blinding the map's low end).
@@ -405,7 +426,7 @@ if [ -n "${LAT:-}" ] && [ -n "${LON:-}" ]; then
   # receiver clock solved from detected sats seed CODE PHASE for every visible sat the
   # search hasn't found -- sub-threshold sats despread on-peak with no detection needed
   # (the search demotes to bootstrap/fallback/integrity; watch 'dead-reckon' broker lines).
-  if [ "${DEAD_RECKON:-1}" != "0" ]; then ALM="$ALM --dead-reckon --dr-constellation G"; fi
+  if [ "${DEAD_RECKON:-1}" != "0" ]; then ALM="$ALM --dead-reckon --dr-constellation $PRIM_SYS"; fi
   if [ "${NARROW_SEARCH:-1}" != "0" ]; then
     # --search-margin-wide-hz = the COLD per-PRN window (pre-clock-bias), sized from the clock
     # profile's accuracy bound; the warm margin (--search-margin-hz) applies once the bias solves.
@@ -448,7 +469,9 @@ CLOCK_BIAS_FILE=${CLOCK_BIAS_FILE:-$BIAS_DIR/gps_clock_bias_${TAG}.hz}
 # band's modernized signal (L2C -> IIR-M+, L5 -> IIF+, L1C -> III). The BeiDou-3 phantom fix
 # was a numeric PRN cutoff (--dr-min-prn) that can't express GPS's interspersed III sats.
 # L1 C/A is on every sat -> no gate (and no risk of excluding a sat missing from the TLE).
-case "$SIGNAL" in *L1CA*|*L1_CA*) SIG_CAP="";; *) SIG_CAP="--signal-capability $SIGNAL";; esac
+# --signal-capability is a GPS-BLOCK gate (IIR-M/IIF/III per modernized signal) -- meaningless
+# for BeiDou/Galileo/GLONASS, so suppress it for any non-GPS primary (and for L1 C/A, on all sats).
+case "$SIGNAL" in *L1CA*|*L1_CA*|GAL_*|BDS_*|GLO_*) SIG_CAP="";; *) SIG_CAP="--signal-capability $SIGNAL";; esac
 # S2 / Mechanism B OBSERVER (2026-07-29). Each broker publishes its receiver-state
 # estimates as JSON here. WRITE-ONLY: nothing consumes these yet, by design -- the fused
 # state gets a full soak of scoring before it is allowed to steer anything.
@@ -649,15 +672,22 @@ if [ "${OBSERVABLES:-1}" != "0" ]; then
   # from a hardcoded L1 triple. It used to be hardcoded, so an L2C run logged its observables as
   # "GPS_L1CA, 1023 chips, 1.023 Mcps" -- right carrier, wrong everything else, and the file was
   # even named obs_gps_l1.jsonl. Silently wrong data is worse than no data.
+  # Primary obs filename by signal (a retuned band names its file by the real signal, not L1).
   case "${SIGNAL:-GPS_L1CA}" in
     GPS_L2C*) _obs=obs_gps_l2c ;;
     GPS_L5*)  _obs=obs_gps_l5  ;;
     GPS_L1C_*) _obs=obs_gps_l1c ;;
+    BDS_B2B*) _obs=obs_bds_b2b ;;
+    BDS_*)    _obs=obs_bds ;;
+    GAL_E5B*) _obs=obs_gal_e5b ;;
+    GAL_E6*)  _obs=obs_gal_e6 ;;
+    GAL_*)    _obs=obs_gal ;;
+    GLO_*)    _obs=obs_glo ;;
     *)        _obs=obs_gps_l1  ;;
   esac
   # gal_/bds_ band params are DERIVED (GAL_SIGNAL/BDS_SIGNAL etc., above) so the same loop covers
   # the L1 tune (E1C/B1C) and the L5 tune (E5a-Q/B2a-P); the grep skips whichever chain is absent.
-  for _o in "gps_combiner gps_search G ${SIGNAL:-GPS_L1CA} ${CODELEN:-1023} $_obs ${CHIP_HZ:-1.023e6}" \
+  for _o in "gps_combiner gps_search $PRIM_SYS ${SIGNAL:-GPS_L1CA} ${CODELEN:-1023} $_obs ${CHIP_HZ:-1.023e6}" \
             "gal_combiner gal_search E $GAL_SIGNAL $GAL_CODELEN $GAL_OBS $GAL_CHIP" \
             "bds_combiner bds_search C $BDS_SIGNAL $BDS_CODELEN $BDS_OBS $BDS_CHIP" \
             "l1c_combiner l1c_search G ${L1C_SIGNAL:-GPS_L1C_P} ${L1C_CODELEN:-10230} obs_gps_l1c ${L1C_CHIP:-1.023e6}"; do
