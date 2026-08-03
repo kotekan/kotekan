@@ -344,6 +344,34 @@ def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
         return " | BRDC xcheck err: %s" % ex
 
 
+def _lnav_brdc_xcheck(brdc_alm, sys, prn, lnav_eph, log):
+    """LNAV ephemeris cross-check, the _inav_brdc_xcheck analogue for GPS L1 C/A. Unlike the
+    other constellations this is the STRONGEST possible check: BRDC's GPS record IS the LNAV
+    message, and sv_position_lnav is the same legacy Keplerian math as ge.sat_pos_clk, so a
+    correct on-node decode matches BRDC to ~centimetres (the only residual is a different
+    upload set, shown via the toe/IODE deltas). A large dpos here means a WRONG field offset in
+    LNAV_EPH_FIELDS -- this is the live validator that pack/unpack cannot be (see that table's
+    note). Kepler only, no framing."""
+    try:
+        import gps_nav_decode as _L
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        toe = lnav_eph["toe"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + toe
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _L.sv_position_lnav(lnav_eph, toe)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s, IODE %d/%d)" % (
+            dpos, be["toe_sow"] - toe, int(lnav_eph.get("IODE", -1)), int(be.get("iode", -1)))
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
 def _fnav_brdc_xcheck(brdc_alm, sys, prn, fnav_eph, log):
     """S5 ephemeris cross-check for Galileo E5a-I F/NAV, the _inav_brdc_xcheck analogue.
     F/NAV and I/NAV describe the SAME Galileo orbit through different framing, so a correct
@@ -1643,8 +1671,9 @@ def main(argv=None):
 
     def _dh_obs(sig, prn, h, eph_obj, xc):
         """One decode-health observation, uniform across decoders. `eph_obj` is the extracted
-        ephemeris object (None if not extracted / LNAV); `xc` the BRDC-xcheck suffix (dpos parsed
-        out). count is whatever monotonic decode counter the health dict carries. Never raises."""
+        ephemeris object (None until this decoder has a full set); `xc` the BRDC-xcheck suffix
+        (dpos parsed out). count is whatever monotonic decode counter the health dict carries.
+        Never raises."""
         if dhw is None:
             return
         try:
@@ -1668,6 +1697,7 @@ def main(argv=None):
             from galileo_inav import sv_position_inav as _svp_inav
             from galileo_fnav import sv_position_fnav as _svp_fnav
             from gps_cnav import sv_position_cnav as _svp_cnav
+            from gps_nav_decode import sv_position_lnav as _svp_lnav
             from beidou_bcnav1 import sv_position_bcnav1 as _svp_bc1
             from beidou_bcnav2 import sv_position_bcnav2 as _svp_bc2
         except Exception as e:
@@ -1675,6 +1705,7 @@ def main(argv=None):
             _decfb = None
     # (signal, sys, sv_pos, toe_field, lambda -> live decoder or None)
     _dec_reg = [
+        ("GPS_L1_LNAV",    "G", _svp_lnav, "toe", lambda: navbits) if _decfb else None,
         ("GAL_E1B_INAV",   "E", _svp_inav, "t0e", lambda: inav) if _decfb else None,
         ("GAL_E5AI_FNAV",  "E", _svp_fnav, "t0e", lambda: fnav) if _decfb else None,
         (_cnav_sig,        "G", _svp_cnav, "toe", lambda: cnav) if _decfb else None,
@@ -2817,10 +2848,22 @@ def main(argv=None):
                     h = navbits.health(_p)
                     if not h:
                         continue
+                    # Now that LNAV extracts the orbit set (subframes 1-3), surface the live
+                    # ephemeris + a BRDC position cross-check exactly as CNAV/I-NAV do -- this is
+                    # the live validator of the LNAV_EPH_FIELDS bit offsets (near-zero dpos, since
+                    # BRDC IS the LNAV message) and the on-node BRDC-fallback source for L1.
+                    eph_s = ""
+                    e = None
                     if h["synced"]:
-                        _log("navbit PRN %d: %d sf decoded, %d pages, predict-mismatch %s"
+                        e = navbits.ephemeris(_p)
+                        if e is not None:
+                            eph_s = " eph toe=%.0f e=%.3e" % (e["toe"], e["e"])
+                            if brdc_alm is not None:
+                                eph_s += _lnav_brdc_xcheck(brdc_alm, alm_sys, _p, e, _log)
+                        _log("navbit PRN %d: %d sf decoded, %d pages, predict-mismatch %s%s"
                              % (_p, h["decoded_sf"], h["pages"],
-                                ("%.4f" % h["mismatch"]) if h["mismatch"] is not None else "n/a"))
+                                ("%.4f" % h["mismatch"]) if h["mismatch"] is not None else "n/a",
+                                eph_s))
                     else:
                         # NOT synced == this PRN is NOT peeled (peel_require_bits). Say so, with
                         # the reason: contiguous run vs total history vs what sync needs.
@@ -2829,7 +2872,7 @@ def main(argv=None):
                                 " -> CONSTRUCTED from BRDC"
                                 if (navbrdc is not None and navbrdc.ready())
                                 else " -> not peeled"))
-                    _dh_obs("GPS_L1_LNAV", _p, h, None, "")  # LNAV extracts no orbit elements
+                    _dh_obs("GPS_L1_LNAV", _p, h, e, eph_s)
                 if navbrdc is not None:
                     # The calibration IS the trust boundary: a bad offset makes every
                     # constructed bit confidently wrong, so state it every cycle. `verify`

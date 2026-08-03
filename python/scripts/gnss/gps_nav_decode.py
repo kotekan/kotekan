@@ -20,6 +20,8 @@ weak sidelobe measurement -- the message is identical for every beam.
 Decoder works on hard bits (0/1). Upstream forms them from the per-20 ms despread
 sign; this module validates/syncs/polarity-locks them.
 """
+import math
+
 import numpy as np
 
 PREAMBLE = np.array([1, 0, 0, 0, 1, 0, 1, 1], dtype=np.int8)  # TLM preamble, 0x8B
@@ -156,6 +158,122 @@ def predict_next_frame(frame_data, frame_tows, D29s, D30s):
     return np.array(out, dtype=np.int8)
 
 
+# ---- ephemeris extraction (subframes 1-3, IS-GPS-200 Table 20-III) -----------
+# The decoder already yields per-subframe DATA words (10 x 24 bits, parity stripped and
+# D30*-corrected -- decode_subframe's `data`). This turns subframes 1/2/3 into the Keplerian
+# clock+orbit set and propagates it, so an L1-only GPS satellite feeds the decoded-eph BRDC
+# fallback exactly as the CNAV (L2C/L5) decoders do. GPS LNAV is the LEGACY orbit model
+# (sqrtA direct, no A_dot/dn0_dot) -- the same math as gnss_ephemeris.sat_pos_clk / Galileo
+# sv_position_inav -- so this reuses that propagation, only fed seconds-of-week.
+#
+# Fields are addressed as (word_index 0-9, start-bit 0-indexed within that word's 24 DATA bits,
+# length); multi-word quantities (M0/e/sqrtA/OMEGA0/i0/omega, IODC) list their MSB then LSB
+# segments, concatenated MSB-first. Angular fields are in semicircles -> * pi for radians.
+# ⚠️ These bit offsets are the ONE thing a pack/unpack round-trip cannot check; the LIVE BRDC
+# position cross-check (_lnav_brdc_xcheck in the broker; near-zero since BRDC *is* LNAV) is the
+# real validator. If it disagrees, correct THIS table, not the propagation.
+GPS_PI = 3.1415926535898
+GPS_MU = 3.986005e14
+GPS_OMEGA_E = 7.2921151467e-5
+_LP = lambda n: 2.0 ** (-n)
+
+LNAV_EPH_FIELDS = {
+    # subframe 1: clock + health (word 3 = index 2 ... word 10 = index 9)
+    "WN":     (1, [(2, 0, 10)],           False, 1.0),
+    "health": (1, [(2, 16, 6)],           False, 1.0),
+    "IODC":   (1, [(2, 22, 2), (7, 0, 8)], False, 1.0),
+    "TGD":    (1, [(6, 16, 8)],           True,  _LP(31)),
+    "toc":    (1, [(7, 8, 16)],           False, 16.0),
+    "af2":    (1, [(8, 0, 8)],            True,  _LP(55)),
+    "af1":    (1, [(8, 8, 16)],           True,  _LP(43)),
+    "af0":    (1, [(9, 0, 22)],           True,  _LP(31)),
+    # subframe 2: ephemeris part 1
+    "IODE2":  (2, [(2, 0, 8)],            False, 1.0),
+    "Crs":    (2, [(2, 8, 16)],           True,  _LP(5)),
+    "dn":     (2, [(3, 0, 16)],           True,  _LP(43) * GPS_PI),
+    "M0":     (2, [(3, 16, 8), (4, 0, 24)], True, _LP(31) * GPS_PI),
+    "Cuc":    (2, [(5, 0, 16)],           True,  _LP(29)),
+    "e":      (2, [(5, 16, 8), (6, 0, 24)], False, _LP(33)),
+    "Cus":    (2, [(7, 0, 16)],           True,  _LP(29)),
+    "sqrtA":  (2, [(7, 16, 8), (8, 0, 24)], False, _LP(19)),
+    "toe":    (2, [(9, 0, 16)],           False, 16.0),
+    # subframe 3: ephemeris part 2
+    "Cic":    (3, [(2, 0, 16)],           True,  _LP(29)),
+    "OMEGA0": (3, [(2, 16, 8), (3, 0, 24)], True, _LP(31) * GPS_PI),
+    "Cis":    (3, [(4, 0, 16)],           True,  _LP(29)),
+    "i0":     (3, [(4, 16, 8), (5, 0, 24)], True, _LP(31) * GPS_PI),
+    "Crc":    (3, [(6, 0, 16)],           True,  _LP(5)),
+    "omega":  (3, [(6, 16, 8), (7, 0, 24)], True, _LP(31) * GPS_PI),
+    "OMEGA_dot": (3, [(8, 0, 24)],        True,  _LP(43) * GPS_PI),
+    "IODE3":  (3, [(9, 0, 8)],            False, 1.0),
+    "idot":   (3, [(9, 8, 14)],           True,  _LP(43) * GPS_PI),
+}
+
+
+def _lnav_field(sf_data, segments, signed, scale):
+    """Concatenate the bit segments (MSB-first) of one field from a subframe's 10x24 data
+    words and scale. `sf_data` is {sfid: [word0..word9]}, each word a length-24 0/1 array."""
+    bits = []
+    for widx, start, length in segments:
+        w = sf_data[widx]
+        bits.extend(int(w[start + k]) for k in range(length))
+    v = 0
+    for b in bits:
+        v = (v << 1) | (b & 1)
+    if signed and bits and bits[0] == 1:
+        v -= (1 << len(bits))
+    return v * scale
+
+
+def parse_lnav_ephemeris(sf1, sf2, sf3):
+    """Decode the LNAV clock+ephemeris (SI) from subframes 1, 2, 3 (each a list of 10 data
+    words of 24 bits). Returns the eph dict, or None if the two IODEs / IODC LSBs disagree
+    (a mixed upload set). Angular elements are radians; toe/toc/WN in their native units."""
+    src = {1: sf1, 2: sf2, 3: sf3}
+    if any(v is None or len(v) < 10 for v in src.values()):
+        return None
+    eph = {}
+    for name, (sf, segs, signed, scale) in LNAV_EPH_FIELDS.items():
+        eph[name] = _lnav_field({0: src[sf][0], 1: src[sf][1], 2: src[sf][2], 3: src[sf][3],
+                                 4: src[sf][4], 5: src[sf][5], 6: src[sf][6], 7: src[sf][7],
+                                 8: src[sf][8], 9: src[sf][9]}, segs, signed, scale)
+    # Issue-of-data consistency: the two IODEs and IODC's 8 LSBs must match for one orbit set.
+    iode2, iode3, iodc = int(eph["IODE2"]), int(eph["IODE3"]), int(eph["IODC"])
+    eph["IODE"] = iode2
+    eph["_iod_consistent"] = (iode2 == iode3 == (iodc & 0xFF))
+    return eph
+
+
+def sv_position_lnav(eph, t):
+    """ECEF (x,y,z) m from LNAV ephemeris (IS-GPS-200 Table 20-IV). Legacy Keplerian --
+    identical math to gnss_ephemeris.sat_pos_clk / galileo sv_position_inav, GPS constants;
+    `t` in GPS seconds-of-week (the propagator week-wraps tk = t - toe)."""
+    A = eph["sqrtA"] ** 2
+    tk = t - eph["toe"]
+    if tk > 302400:
+        tk -= 604800
+    elif tk < -302400:
+        tk += 604800
+    n = math.sqrt(GPS_MU / A ** 3) + eph["dn"]
+    M = eph["M0"] + n * tk
+    e = eph["e"]
+    E = M
+    for _ in range(20):
+        E = M + e * math.sin(E)
+    v = math.atan2(math.sqrt(1 - e * e) * math.sin(E), math.cos(E) - e)
+    phi = v + eph["omega"]
+    s2, c2 = math.sin(2 * phi), math.cos(2 * phi)
+    u = phi + eph["Cus"] * s2 + eph["Cuc"] * c2
+    r = A * (1 - e * math.cos(E)) + eph["Crs"] * s2 + eph["Crc"] * c2
+    i = eph["i0"] + eph["idot"] * tk + eph["Cis"] * s2 + eph["Cic"] * c2
+    om = eph["OMEGA0"] + (eph["OMEGA_dot"] - GPS_OMEGA_E) * tk - GPS_OMEGA_E * eph["toe"]
+    xp, yp = r * math.cos(u), r * math.sin(u)
+    x = xp * math.cos(om) - yp * math.cos(i) * math.sin(om)
+    y = xp * math.sin(om) + yp * math.cos(i) * math.cos(om)
+    z = yp * math.sin(i)
+    return x, y, z
+
+
 if __name__ == "__main__":
     # Self-test: build a parity-correct multi-subframe stream, then decode it back.
     rng = np.random.RandomState(0)
@@ -226,3 +344,61 @@ if __name__ == "__main__":
     assert np.array_equal(pred, actual), "predicted frame != actual (%d/1500 bits differ)" \
         % int(np.sum(pred != actual))
     print("OK: ephemeris-predicted bits reproduce the next frame exactly (%d bits)" % len(pred))
+
+    # --- ephemeris field table: SELF-CONSISTENT pack/unpack + no overlaps/overruns ---
+    # (This proves the table is internally consistent, NOT that the offsets match the ICD --
+    # only the live BRDC position cross-check confirms that, see the field-table note.)
+    sfw = {sf: [np.zeros(24, dtype=np.int8) for _ in range(10)] for sf in (1, 2, 3)}
+    truth = {}
+    for name, (sf, segs, signed, scale) in LNAV_EPH_FIELDS.items():
+        nbits = sum(L for _, _, L in segs)
+        code = (hash(name) % ((1 << (nbits - 1)) - 1 if nbits > 1 else 1)) + 1
+        cb = [(code >> (nbits - 1 - k)) & 1 for k in range(nbits)]
+        off = 0
+        for (widx, start, L) in segs:
+            for k in range(L):
+                sfw[sf][widx][start + k] = cb[off + k]
+            off += L
+    for name, (sf, segs, signed, scale) in LNAV_EPH_FIELDS.items():
+        truth[name] = _lnav_field({i: sfw[sf][i] for i in range(10)}, segs, signed, scale)
+    eph_t = parse_lnav_ephemeris(sfw[1], sfw[2], sfw[3])
+    assert eph_t is not None and all(
+        abs(eph_t[n] - truth[n]) < 1e-12 * (abs(truth[n]) + 1) for n in truth), \
+        "ephemeris field pack/unpack mismatch"
+    # overlap / overrun guard, per subframe
+    for sf in (1, 2, 3):
+        occ = [0] * (10 * 24)
+        for name, (s, segs, signed, scale) in LNAV_EPH_FIELDS.items():
+            if s != sf:
+                continue
+            for (widx, start, L) in segs:
+                assert start + L <= 24, "%s overruns word %d" % (name, widx)
+                for k in range(start, start + L):
+                    occ[widx * 24 + k] += 1
+        assert max(occ) <= 1, "field overlap in subframe %d" % sf
+    print("OK: LNAV ephemeris field table self-consistent (pack/unpack, no overlap/overrun)")
+
+    # --- propagator agreement: sv_position_lnav == the trusted legacy sat_pos_clk ---
+    # Feed one synthetic orbit to BOTH the new LNAV propagator and gnss_ephemeris.sat_pos_clk
+    # (the RINEX/BRDC propagator the dpos cross-check already validates) at several epochs; they
+    # implement the same legacy Keplerian math, so they must agree to ~mm.
+    import gnss_ephemeris as _ge
+    orbit = dict(sqrtA=5153.7, e=0.008, M0=0.3, omega=-1.1, i0=0.96, OMEGA0=-0.7,
+                 OMEGA_dot=-8.0e-9, idot=1.0e-10, dn=4.5e-9, toe=345600.0,
+                 Cuc=1.0e-6, Cus=8.0e-6, Crc=200.0, Crs=-30.0, Cic=-1.0e-7, Cis=2.0e-7)
+    week = 2200
+    e_leg = dict(sys="G", sqrta=orbit["sqrtA"], ecc=orbit["e"], m0=orbit["M0"],
+                 omega=orbit["omega"], i0=orbit["i0"], omega0=orbit["OMEGA0"],
+                 omegadot=orbit["OMEGA_dot"], idot=orbit["idot"], dn=orbit["dn"],
+                 cuc=orbit["Cuc"], cus=orbit["Cus"], crc=orbit["Crc"], crs=orbit["Crs"],
+                 cic=orbit["Cic"], cis=orbit["Cis"], toe_sow=orbit["toe"],
+                 toe_gpst=week * 604800.0 + orbit["toe"], af0=0.0, af1=0.0, af2=0.0,
+                 toc_gpst=week * 604800.0 + orbit["toe"])
+    worst = 0.0
+    for dtk in (-7200.0, -1800.0, 0.0, 1800.0, 7200.0):
+        xl = sv_position_lnav(orbit, orbit["toe"] + dtk)
+        xg = _ge.sat_pos_clk(e_leg, week * 604800.0 + orbit["toe"] + dtk)[0]
+        worst = max(worst, math.sqrt(sum((a - b) ** 2 for a, b in zip(xl, xg))))
+    assert worst < 1e-3, "sv_position_lnav disagrees with sat_pos_clk by %.3e m" % worst
+    print("OK: sv_position_lnav agrees with the legacy sat_pos_clk (worst %.2e m over +-2 h)"
+          % worst)

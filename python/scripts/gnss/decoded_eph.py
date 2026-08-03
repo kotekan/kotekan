@@ -41,10 +41,13 @@ from gnss_ephemeris import (BDT_GPST, C_LIGHT, OMEGA_E, _azel, _ecef_of_llh, gps
 CLOCK_FIELDS = {
     "GAL_E1B_INAV": ("af0", "af1", "af2", "t0c"),
     "GAL_E5AI_FNAV": ("af0", "af1", "af2", "t0c"),
+    # GPS LNAV carries its clock in subframe 1 (af0/af1/af2 about toc) -- so unlike CNAV, the L1
+    # fallback can seed ABSOLUTE code phase, not just geometry/Doppler.
+    "GPS_L1_LNAV": ("af0", "af1", "af2", "toc"),
 }
 TOE_FIELD = {
     "GAL_E1B_INAV": "t0e", "GAL_E5AI_FNAV": "t0e",
-    "GPS_L2C_CNAV": "toe", "GPS_L5_CNAV": "toe",
+    "GPS_L1_LNAV": "toe", "GPS_L2C_CNAV": "toe", "GPS_L5_CNAV": "toe",
     "BDS_B1C_BCNAV1": "t_oe", "BDS_B2A_BCNAV2": "t_oe",
 }
 

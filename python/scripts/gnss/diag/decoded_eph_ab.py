@@ -42,6 +42,8 @@ REG = [
      "gps_cnav.sv_position_cnav",      "toe"),
     ("L5   CNAV",   "l5_i_combiner",    "G", "cnav_predictor.CnavPredictor",
      "gps_cnav.sv_position_cnav",      "toe"),
+    ("L1   LNAV",   "l1_gps_combiner",  "G", "navbit_predictor.LnavPredictor",
+     "gps_nav_decode.sv_position_lnav", "toe"),
 ]
 
 

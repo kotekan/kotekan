@@ -39,7 +39,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gps_nav_decode import (PREAMBLE, decode_subframe, frame_sync,
-                            set_how_tow)  # noqa: E402
+                            parse_lnav_ephemeris, set_how_tow)  # noqa: E402
 from gps_navdecode import _trim_word, encode_word  # noqa: E402  (ICD trim: chain resets/subframe)
 
 
@@ -406,6 +406,20 @@ class LnavPredictor:
         utc0 = autc + (slot_now - aslot) * st.bit_s
         return {"utc0": utc0, "bit_s": st.bit_s, "bits": [int(x) for x in out]}
 
+    def ephemeris(self, prn):
+        """Decoded LNAV clock+ephemeris (SI) from the latest subframes 1/2/3, or None until all
+        three are decoded and their issue-of-data (IODE/IODC) agree -- guarding against a set
+        stitched across a data-set upload. Fields per gps_nav_decode.LNAV_EPH_FIELDS (angles in
+        radians; toe/toc in GPS seconds-of-week). Consumed by the decoded-eph BRDC fallback and
+        the health panel exactly like the CNAV/I-NAV decoders' .ephemeris()."""
+        st = self._p.get(prn)
+        if st is None or not all(k in st.sf_data for k in (1, 2, 3)):
+            return None
+        eph = parse_lnav_ephemeris(st.sf_data[1], st.sf_data[2], st.sf_data[3])
+        if eph is None or not eph["_iod_consistent"]:
+            return None
+        return eph
+
     def health(self, prn):
         st = self._p.get(prn)
         if st is None:
@@ -430,6 +444,12 @@ def _selftest():
     # sf 1-3 constant data; sf 4/5 pages varying by frame (so hold-prediction would fail
     # without the page store); TOW advancing; trimmed words 2/10 via encode_subframe.
     sf_data = {k: [rng.randint(0, 2, 24).astype(np.int8) for _ in range(10)] for k in range(1, 4)}
+    # Make the issue-of-data agree across subframes 1/2/3 so .ephemeris() accepts the set:
+    # IODC 8 LSBs (sf1 word8 = index 7, bits 1-8) == IODE (sf2 word3 = index 2; sf3 word10 = 9).
+    _iode = np.array([0, 1, 0, 1, 1, 0, 0, 1], dtype=np.int8)
+    sf_data[1][7][0:8] = _iode
+    sf_data[2][2][0:8] = _iode
+    sf_data[3][9][0:8] = _iode
     pages = {}
     stream = []
     tow0 = 4000
@@ -508,6 +528,15 @@ def _selftest():
         ok += int(((seg != 0) & ~w).sum())
     print("self-test: predicted next frame: %d ok, %d wrong, %d unknown (of %d)"
           % (ok, wrong, unknown, 5 * SF_BITS))
+    # ephemeris extraction: .ephemeris() must accept the IOD-consistent set and reproduce a
+    # direct parse of the injected subframes (the decode of sf 1-3 is stored in st.sf_data).
+    eph = pred.ephemeris(7)
+    assert eph is not None and eph["_iod_consistent"], "ephemeris not extracted / IOD inconsistent"
+    ref = parse_lnav_ephemeris(sf_data[1], sf_data[2], sf_data[3])
+    assert all(abs(eph[k] - ref[k]) < 1e-12 * (abs(ref[k]) + 1)
+               for k in ("sqrtA", "e", "M0", "toe", "OMEGA0", "i0", "af0")), "ephemeris mismatch"
+    print("ephemeris: sqrtA=%.3f e=%.3e toe=%.0f  (IODE %d)"
+          % (eph["sqrtA"], eph["e"], eph["toe"], int(eph["IODE"])))
     print("health:", pred.health(7))
     assert wrong == 0, "prediction mismatches"
     assert ok >= 3 * SF_BITS, "subframes 1-3 must predict fully"
