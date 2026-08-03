@@ -38,7 +38,12 @@ case "$ACT" in
     ;;
   up)
     # The record dir is node-local (NOT the NFS home) and rawFileWrite fails on a missing one.
-    ssh -t "$N" "mkdir -p /tmp/gnss && test -r '$CFG' && sudo systemd-run --unit=gnss-node \
+    # `systemctl stop` on a transient unit usually removes it, but a stopped-or-failed unit can
+    # stay LOADED, and then systemd-run refuses the name: "Unit gnss-node.service was already
+    # loaded or has a fragment file". reset-failed clears it; harmless when there is nothing to
+    # clear, hence the `|| true`.
+    ssh -t "$N" "mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
+      test -r '$CFG' && sudo systemd-run --unit=gnss-node \
         --working-directory=$K \
         --property=StandardOutput=append:/tmp/gnss_node.log \
         --property=StandardError=append:/tmp/gnss_node.log \
@@ -54,7 +59,8 @@ case "$ACT" in
     # gdb --batch runs to completion and only prints on a fault, so a healthy node logs nothing
     # extra; `-ex run` starts it, and the two bt commands fire when it stops.
     DBG=/home/kvand/gnss/kotekan/build/kotekan/kotekan
-    ssh -t "$N" "mkdir -p /tmp/gnss && test -x '$DBG' && sudo systemd-run --unit=gnss-node \
+    ssh -t "$N" "mkdir -p /tmp/gnss && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
+      test -x '$DBG' && sudo systemd-run --unit=gnss-node \
         --working-directory=$K \
         --property=StandardOutput=append:/tmp/gnss_node_dbg.log \
         --property=StandardError=append:/tmp/gnss_node_dbg.log \
