@@ -37,6 +37,7 @@ http://cx51:12049/gnss{0..1}_track,http://cx52:12049/gnss{0..1}_track,\
 http://127.0.0.1:12099/sink_track" \
     --combiner gnss0_combine \
     --dll-combiners "${MERGED}${SPLIT}" \
+    --publish-port 12060 \
     --almanac --almanac-source brdc --dead-reckon --narrow-search \
     --time0-endpoint telescope/time0_ns --dr-clock-chips 0.0 \
     --constellation G --carrier-hz 1176.45e6 --chip-rate-hz 10.23e6 \

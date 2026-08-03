@@ -30,7 +30,7 @@ EPS = (["http://cx19:12049/gnss0_combine", "http://cx51:12049/gnss0_combine"]
           for n in ("cx27", "cx42", "cx43", "cx44", "cx47", "cx52") for g in (0, 1)])
 
 label = sys.argv[1] if len(sys.argv) > 1 else ""
-out = b.fleet_dll(EPS, 97656, 2, 3.0, 2.2)  # 0.5 s hop window, >=2 instances, 3 sigma
+out = b.fleet_dll(EPS, 976562, 2, 3.0, 2.2)  # 5 s hop window (instances free-run and drift), >=2 instances, 3 sigma
 if not out:
     print("%s %s  no fleet rows" % (time.strftime("%H:%M:%S"), label))
     raise SystemExit

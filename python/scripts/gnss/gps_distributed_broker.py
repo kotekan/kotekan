@@ -34,6 +34,8 @@ the ~0.5 s decorrelation time. REST via stdlib urllib; visibility via skyfield
 """
 
 import argparse
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import math
 import json
 import os
@@ -250,6 +252,7 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
     # prn -> list of (hop, e, p, l, n_chan). Unreachable instances are skipped, not fatal:
     # a node down for maintenance must cost sensitivity, never the loop.
     rows = {}
+    best_coh = {}   # prn -> ((deep_snr, amp_snr), row, url): strongest instance's COHERENT view
     for url in endpoints:
         try:
             got = _get("%s/get_status" % url)
@@ -272,8 +275,18 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
                         "fleet DLL: %s has no fft_len (pow_hop is a SAMPLE index) -- excluded; "
                         "regenerate that node's config" % url)
                 continue
-            rows.setdefault(int(r["prn"]), []).append(
+            prn = int(r["prn"])
+            rows.setdefault(prn, []).append(
                 (hop, e, float(r.get("p_pow", 0.0)), l, float(r.get("n_chan", 0.0))))
+            # BEST-OF for the COHERENT statistics. deep_amplitude / deep_snr / coherence_s come
+            # from each instance's own deep integration and CANNOT be merged here: this combine
+            # sums powers, which is exactly what makes it phase-blind and cheap. So carry the
+            # strongest instance's coherent row instead of pretending to a fleet number that
+            # would need cross-node phase alignment. Ranked on deep_snr, falling back to
+            # amp_snr so a chain that never certifies a deep still reports its best view.
+            key = (float(r.get("deep_snr", 0.0)), float(r.get("amp_snr", 0.0)))
+            if prn not in best_coh or key > best_coh[prn][0]:
+                best_coh[prn] = (key, r, url)
     out = {}
     for prn, rs in rows.items():
         # Instances free-run, so their emit phases differ by up to one emit period: take the
@@ -290,7 +303,11 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
         L = sum(r[3] for r in use)
         if E + L <= 0.0:
             continue
+        bc = best_coh.get(prn)
         out[prn] = {"disc": (E - L) / (E + L),
+                    # the strongest instance's coherent row + which node it came from
+                    "coh_row": bc[1] if bc else None,
+                    "coh_src": bc[2] if bc else None,
                     # q = 2P/(E+L): 1.0 with no peak (all three taps equal noise power), 4.0 at
                     # a clean lock with 0.5-chip spacing. The three powers are built identically
                     # by the combiner (|sum of subband correlations|^2 / energy^2), which is what
@@ -347,6 +364,101 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
         v["present"] = (v["q"] >= v["q_floor"] if p_floor is None
                         else v["p_pow"] >= p_floor)
     return out
+
+
+class FleetPublisher:
+    """Serve the broker's FLEET-MERGED per-PRN state over REST, in a combiner's schema.
+
+    WHY THE BROKER. The broker is already the shared-knowledge node -- it fuses the pooled (l-a)
+    code rate, the clock-frequency bias (with cross-band sibling sharing), the fused LO, the
+    cross-band Doppler assist. Merging a track across frequency subbands is the same kind of
+    object, and fleet_dll() already computes it every cycle. The only thing missing was
+    publication.
+
+    WHY NOT LET THE VIEWER DO IT. The viewer's polling is browser-side: livebeam_server hands
+    the page a rest_port and the JS fetches kotekan directly (there is even a comment in it
+    about cross-origin failures from doing exactly that). On the airspy prototype that is one
+    origin. On CHORD it would be FOURTEEN origins across eight hosts, and each would show only
+    that instance's 6.7% of the L5 lobe. The merge has to happen upstream of the browser, and
+    upstream of the browser is here.
+
+    SCHEMA. Rows carry the field names GnssCoherentCombiner::get_status uses, so the viewer's
+    signal_metrics() consumes them unchanged -- amplitude, coh_amplitude, deep_amplitude,
+    unbiased_amplitude, doppler_hz, coherence_s, deep_snr, deep_records, amp_snr, deep_floor,
+    peel_*. What each MEANS is chosen honestly rather than uniformly:
+
+      * MERGED across the fleet (this is the added value): dll_disc and the E/P/L powers, and
+        amp_snr / amplitude derived from the summed prompt power against the live noise
+        population -- full 20.46 MHz rather than one node's 1.37 MHz.
+      * BEST-OF a single instance: every COHERENT statistic (deep_amplitude, deep_snr,
+        coherence_s, peel_*). These need cross-node phase alignment to merge, which is the very
+        thing the power combine avoids; claiming a fleet number for them would be a lie. The
+        source node ships as `coh_src` so a reader can see whose view it is.
+      * BROKER-OWNED: doppler_hz, code_phase_chips, code_phase_rate, dll_trim -- the shared
+        model, which no single combiner knows.
+
+    Read-only, no side effects, and entirely optional: without --publish-port nothing starts.
+    """
+
+    def __init__(self, port, log):
+        self._rows, self._meta, self._lock = [], {}, threading.Lock()
+        pub = self
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass  # a browser polls this at 1 Hz; the broker's own log stays readable
+
+            def do_GET(self):
+                with pub._lock:
+                    body = (json.dumps(pub._rows) if self.path.rstrip("/").endswith("get_status")
+                            else json.dumps(pub._meta)).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                # The viewer is served from a different origin than this port, and its whole
+                # job is to fetch from here -- so say so explicitly rather than leaving the
+                # browser to fail a preflight with nothing in the log.
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        self._srv = ThreadingHTTPServer(("0.0.0.0", port), H)
+        threading.Thread(target=self._srv.serve_forever, daemon=True).start()
+        log("fleet publisher on :%d (GET /get_status -- fleet-merged per-PRN state)" % port)
+
+    def update(self, fleet, seeds, dll_trim, n_endpoints):
+        rows = []
+        for prn, v in sorted(fleet.items()):
+            c = v.get("coh_row") or {}
+            sd = seeds.get(prn, {})
+            # Fleet incoherent amplitude/significance from the SUMMED prompt power, referenced
+            # to the live noise median -- the same population the gate is built on, so the
+            # number in the viewer and the number the loop gates on cannot drift apart.
+            p_med = v.get("p_med") or 0.0
+            ratio = (v["p_pow"] / p_med) if p_med > 0 else 0.0
+            row = dict(c)                      # start from the best instance's row...
+            row.update({                       # ...then override what the fleet knows better
+                "prn": prn,
+                "amp_snr": math.sqrt(max(0.0, ratio - 1.0)) if ratio > 0 else 0.0,
+                "amplitude": math.sqrt(max(0.0, v["p_pow"])),
+                "unbiased_amplitude": math.sqrt(max(0.0, v["p_pow"] - p_med)),
+                "dll_disc": v["disc"],
+                "doppler_hz": sd.get("doppler_hz", c.get("doppler_hz", 0.0)),
+                "code_phase_chips": sd.get("code_phase_chips", c.get("code_phase_chips", 0.0)),
+                # fleet-only extras: not in the combiner schema, ignored by older consumers
+                "fleet_q": v["q"], "fleet_q_floor": v["q_floor"],
+                "fleet_p_over_noise": ratio, "fleet_present": bool(v["present"]),
+                "fleet_instances": v["n_src"], "fleet_channels": v["n_chan"],
+                "fleet_hop": v["hop"], "coh_src": v.get("coh_src"),
+                "code_phase_rate": sd.get("code_phase_rate", 0.0),
+                "dll_trim": dll_trim.get(prn, 0.0),
+            })
+            rows.append(row)
+        with self._lock:
+            self._rows = rows
+            self._meta = {"n_prn": len(rows), "n_endpoints": n_endpoints,
+                          "present": sum(1 for r in rows if r["fleet_present"]),
+                          "utc": time.time()}
 
 
 def brdc_predict(state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz):
@@ -1002,6 +1114,16 @@ def main(argv=None):
                     help="DLL integrator leak (0 = pure integrator): trim mean-reverts each "
                          "update so discriminator NOISE can't random-walk it to the clamp. DC "
                          "loop gain = dll_gain/dll_leak; ~1/leak windows of smoothing.")
+    ap.add_argument("--publish-port", type=int, default=0,
+                    help="serve the FLEET-MERGED per-PRN state on this port (0 = off): "
+                         "GET /get_status returns rows in GnssCoherentCombiner's schema, so "
+                         "the viewer consumes them unchanged, but built from ALL "
+                         "--dll-combiners instead of one instance's 6.7%% of the L5 lobe. The "
+                         "browser cannot merge 14 origins across 8 hosts itself, and the "
+                         "broker is already the shared-knowledge node (pooled l-a, clock-freq "
+                         "bias, fused LO, cross-band assist) -- this is the same kind of "
+                         "object. Coherent statistics are best-of-instance, not merged, and "
+                         "say so via coh_src; see FleetPublisher.")
     ap.add_argument("--dll-combiners", default="",
                     help="FLEET-COMBINED DLL (docs/CHORD_GNSS_SHARED_DLL.md): comma-separated "
                          "combiner endpoints ({a..b} ranges expanded) whose RAW Early/Prompt/"
@@ -1017,14 +1139,19 @@ def main(argv=None):
                          "REQUIRES trim_gain 0 on the trackers: E/L are measured relative to "
                          "the phase each instance despread at, so independent local trims make "
                          "the sum SMEAR instead of sharpen (design section 5).")
-    ap.add_argument("--dll-hop-window-s", type=float, default=0.5,
+    ap.add_argument("--dll-hop-window-s", type=float, default=5.0,
                     help="fleet DLL: how far back from the newest window an instance's "
                          "measurement may be and still join the sum, in seconds (converted "
                          "once to an integer hop count -- the key itself is never a float). "
                          "Instances free-run, so their emit phases differ by up to one emit "
                          "period; the code moves 0.0033 chips/s (measured), so even a full "
                          "second of spread is 0.003 chips, far below anything the "
-                         "discriminator resolves.")
+                         "discriminator resolves. DEFAULT 5 s, NOT the 0.084 s spread measured "
+                         "on 2026-08-03: instances free-run, so their emit phases random-walk "
+                         "apart without bound, and within hours that spread had grown to 0.503 "
+                         "s. A 0.5 s window then straddled it and the fleet flapped 14 -> 8 "
+                         "instances sample to sample, silently halving the combined bandwidth. "
+                         "Size this for DRIFT, not for a snapshot -- 5 s costs 0.017 chips.")
     ap.add_argument("--dll-quality-sigma", type=float, default=3.0,
                     help="fleet DLL: how many sigma above the MEASURED q noise floor a PRN must "
                          "sit before its trim integrates. q = 2P/(E+L) is a peak-SHARPNESS "
@@ -1493,6 +1620,9 @@ def main(argv=None):
     # Integer hop tolerance, derived once from the record geometry. Kept as an int so every
     # comparison downstream is integer arithmetic on the F-engine's own counter.
     dll_hop_window = max(0, int(round(args.dll_hop_window_s * args.hops_per_sec)))
+    # Optional REST publication of the fleet-merged state (see FleetPublisher). Started here so
+    # a bind failure is fatal at launch rather than silently leaving the viewer with no source.
+    publisher = FleetPublisher(args.publish_port, _log) if args.publish_port else None
     cl_tracker = resolve_prefix(args.cl_tracker, base) if args.cl_tracker else None
     cl_combiner = resolve_prefix(args.cl_combiner, base) if args.cl_combiner else None
     cnav_combiner = resolve_prefix(args.cnav_combiner, base) if args.cnav_combiner else None
@@ -3693,6 +3823,11 @@ def main(argv=None):
             # dll_disc values -- which is exactly why the combiner publishes e_pow/l_pow/p_pow.
             fleet = fleet_dll(dll_combiners, dll_hop_window, args.dll_min_instances,
                               args.dll_quality_sigma, args.dll_quality_min)
+            if publisher is not None:
+                # Published BEFORE the trim update so the row shows the state the loop acted
+                # on, not the state after it acted -- otherwise a reader can never see the
+                # input that produced a given correction.
+                publisher.update(fleet, seeds, dll_trim, len(dll_combiners))
             dll_report = []
             for prn in list(seeds):
                 rec = status.get(prn, {})
