@@ -262,6 +262,16 @@ def fleet_dll(endpoints, hop_window, min_instances, k_sigma, q_fallback):
             l = float(r.get("l_pow", 0.0))
             if hop < 0 or (e + l) <= 0.0:
                 continue  # no metadata on the record frames, or this PRN is not being despread
+            # CURRENCY CHECK. A combiner configured without fft_len publishes pow_hop as a raw
+            # SAMPLE index; its neighbours publish HOPS, 16384x smaller. Grouping those together
+            # matches nothing, and the failure would look like "the fleet never agrees" rather
+            # than "one config is stale" -- which is exactly why pow_fft_len is published. Drop
+            # the odd instance out loudly instead of silently summing a fleet of one.
+            if int(r.get("pow_fft_len", 0)) <= 0:
+                _log_rl("fleet-dll-cur-%s" % url,
+                        "fleet DLL: %s has no fft_len (pow_hop is a SAMPLE index) -- excluded; "
+                        "regenerate that node's config" % url)
+                continue
             rows.setdefault(int(r["prn"]), []).append(
                 (hop, e, float(r.get("p_pow", 0.0)), l, float(r.get("n_chan", 0.0))))
     out = {}

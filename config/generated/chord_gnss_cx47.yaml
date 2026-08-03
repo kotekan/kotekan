@@ -187,6 +187,8 @@ gnss0_cmb_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss0_combine:
+  fft_len: 16384
+  deep_coherent: true
   cpu_affinity:
   - 31
   in_bufs:
@@ -216,6 +218,7 @@ gnss0_gpu:
     - 6051
     - 6067
     code_trim: true
+    trim_gain: 0.0
     conjugate: true
     elem_stride: 32
     f_offset_hz: 1176450000.0
@@ -325,6 +328,8 @@ gnss1_cmb_buf:
   metadata_pool: gnss_pool
   num_frames: 4
 gnss1_combine:
+  fft_len: 16384
+  deep_coherent: true
   cpu_affinity:
   - 57
   in_bufs:
@@ -354,6 +359,7 @@ gnss1_gpu:
     - 6059
     - 6075
     code_trim: true
+    trim_gain: 0.0
     conjugate: true
     elem_stride: 32
     f_offset_hz: 1176450000.0
