@@ -34,9 +34,35 @@ Per PRN, per integration window, per instance:
 | field | why |
 |---|---|
 | `prn` | key |
-| `pow_utc` | window centre; groups instances into the same measurement |
+| `pow_hop` | **absolute hop index** of the window (see below); groups instances exactly |
 | `e_pow`, `p_pow`, `l_pow` | the correlator powers — **raw, not the ratio** |
 | `n_chan` | how many channels contributed (weighting, and detecting a dead instance) |
+
+**Key on the hop index, not UTC.** `GnssChanMetadata::sample_seq` is an int64 "absolute sample
+index of the frame's first hop", shared across every node off the same F-engine counter; the hop
+index is `sample_seq / fft_len`. Using it instead of a capture-UTC double:
+
+* **Exact.** UTC is derived as `frame0_utc + seq/rate` — a float re-derivation of an integer we
+  already have. Grouping instances by it needs a tolerance; grouping by hop index is `==`.
+* **It is already the currency everywhere else.** The seed keys on `ref_hop`. Every replica
+  generator forms `C(n) = arg + n·cps` over the **absolute sample index**. The search reports
+  `ref_hop`. UTC in the record is the odd one out.
+* **It removes the window-alignment question entirely.** §6's "group by nearest epoch, do not
+  build a synchroniser" becomes "group by equal hop index", with no tolerance to choose and
+  nothing to tune.
+
+The combined record carries capture-UTC at `RECORD_UTC_SLOT` (9–10) and does **not** carry the
+hop index today. `RECORD_FLOATS` is 24 and the CMB slots run to 18, so an int64 aliased into a
+free pair (19–20) adds it without disturbing the existing schema or the consumers of slot 9.
+Keep UTC — `overlay_apply` and the coherence ladder's `coh_span` use it — and add the hop index
+alongside rather than replacing it.
+
+**And anchor the trackers' reported window to the same index.** Internally the despread is
+already absolutely referenced to the sample index, so this is a reporting change, not a
+behavioural one: the record should state the hop its correlators were accumulated over. Then
+seed (`ref_hop`), despread anchor, EPL telemetry and trim all sit in one integer currency, and
+the broker never converts between two clocks to decide whether two measurements are the same
+measurement.
 
 **Raw powers, not `dll_disc`.** `get_status` publishes only the ratio today, and ratios do not
 sum: `(ΣE − ΣL)/(ΣE + ΣL)` is not any function of the per-instance `(E−L)/(E+L)`. Publishing
@@ -94,10 +120,12 @@ Against that, what the trim actually has to track: the measured residual is **0.
 Loop bandwidth should stay ≲ 1/(10·τ_d) ≈ 0.03 Hz (time constant ~40 s); the existing
 `--dll-gain 0.25` with its leak already sits near there.
 
-**Window misalignment does not need solving.** Instances free-run, so their windows will differ
-by a fraction of a second. At 0.0033 chips/s that is <0.002 chips of relative code motion —
-below anything the discriminator resolves. Group by nearest window epoch and sum; do not build
-a synchroniser.
+**Window misalignment does not need solving, and with the hop index it cannot even arise.**
+Instances free-run, but every window is labelled with an exact absolute hop, so grouping is an
+integer match. Where windows genuinely differ (an instance integrating over a different span),
+the mismatch is visible in the index rather than hidden in a float tolerance. Residual code
+motion between nearby windows is <0.002 chips at 0.0033 chips/s and below anything the
+discriminator resolves, so nearest-hop grouping is safe when exact match is unavailable.
 
 ## 7. The stability condition, and it is a hard one
 
@@ -124,8 +152,9 @@ it walks the trim onto noise peaks.
 
 ## 9. Order of work
 
-1. Publish `e_pow`, `p_pow`, `l_pow`, `pow_utc`, `n_chan` in `GnssCoherentCombiner::get_status`.
-   Three lines; changes nothing that reads it today.
+1. Carry the absolute hop index in the combined record (int64 aliased at free slots 19–20) and
+   publish `e_pow`, `p_pow`, `l_pow`, `pow_hop`, `n_chan` in
+   `GnssCoherentCombiner::get_status`. Additive; changes nothing that reads the record today.
 2. Broker: group by (PRN, window), sum, compute `disc` from the sums. Keep every existing gate.
 3. Set `trim_gain: 0` in the generator so there is exactly one code loop.
 4. Gate on a live `code_phase_rate` (§7).

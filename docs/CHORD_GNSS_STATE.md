@@ -2161,3 +2161,99 @@ What actually matters, then:
    so of zenith at 49.32 N, and look then.
 3. Per-subband tracking at sidelobe SNR needs the loop closed centrally (broker trims) with the
    model carrying the phase -- not bigger coherent fits, which is where I was heading.
+
+## 8.15 CONSOLIDATED STATE AT COMPACTION #3 (2026-08-03) — read this first
+
+### 8.15.1 Correction to 8.14: it is NOT a signal deficit
+
+8.14 concluded "the lock is weak because the satellites are in the sidelobes". Half right, and
+the conclusion drawn from it was wrong. Inverting the measurement instead of predicting it:
+`amp_snr` ~5 over a 10.5 ms record on 7 channels is **45.5 dB-Hz full-band-equivalent**.
+Receivers track to 25–30 dB-Hz, and a commercial receiver has already done this in CHORD's deep
+sidelobes. **The signal is comfortably trackable; the deficit is not the blocker.**
+
+The real limiter is **bandwidth, and it is structural**: the F-engine comb spreads L5 across all
+eight nodes, so one tracker instance correlates 7 × 195.3 kHz = 1.37 MHz of a 20.46 MHz lobe —
+**6.7%, −11.8 dB**. What the loop sees is **33.7 dB-Hz**. No single instance can ever do better;
+the bandwidth is not on the machine. That is the gap, and `docs/CHORD_GNSS_SHARED_DLL.md` is the
+design for closing it.
+
+### 8.15.2 The trim gate is CORRECT — do not lower it
+
+`q = 2P/(E+L)` from EMA'd Early/Prompt/Late powers (`trim_pow_alpha` 0.05, N_eff ≈ 39). It is a
+peak-sharpness metric, not an SNR: **1.0 with no peak** (all three taps see equal noise power),
+**→4.0** for a clean lock at 0.5-chip spacing. `trim_quality_min` 2.2 gates the trim update.
+
+Measured over 2 minutes across all PRNs on sky:
+
+| population | mean q | sigma | max seen |
+|---|---|---|---|
+| noise (PRNs 5,15,16,18,24,26,27,29,30) | 0.96–1.13 | 0.07–0.31 | **1.87** |
+| PRN 20 | 1.584 | 0.244 | 2.186 |
+| PRN 23 | 2.381 | 1.461 | 3.449 |
+
+**The noise tail reaches 1.87, so the 2.2 gate sits just above it and is correctly placed.**
+Lowering it to "let weak satellites through" walks the trim onto noise peaks — I proposed 1.3
+and it would have been 1.5 sigma into the noise. The gate is not the failure; the correlation
+peak is genuinely intermittent (PRN 23 swings q from 0.66 to 3.45), which is what 33.7 dB-Hz
+looks like.
+
+### 8.15.3 What is deployed right now
+
+* **Search**: 1.05 s/pass, ~12 s revisit (was 50 s / 10.4 min). From the `channelized_peak`
+  fine-lag SIGN fix (1dffd625b) — `refine_span` 16384 → 512, 426 despreads → 4.
+* **cx19 + cx51**, comb offsets 4 and 7 → **g = 1**, no grating lobes, `refine_span 512`.
+  cx19 hosts the aggregator + broker. Both on `build/kotekan/kotekan` (the fixed binary);
+  `node_up.sh` defaults to it, `up-premerge` is the fallback.
+* **Merge segfault FIXED** (c5e9e754a): an emit-metrics loop indexed `_navbuf` past the end
+  whenever no wipe was configured — i.e. every CHORD config. CHORD-specific because airspy sets
+  `secondary_overlay` and always allocates it.
+* **Plain coherent rung** (`deep_coherent: true`): CHORD's first route to `coherence_s` at all.
+  Before it, `coherence_s` was **structurally 0** — every path ran through a wipe, and
+  `overlay_apply` advances the overlay one chip per RECORD (true on airspy, where a record is
+  exactly 1 code period; false here at 10.4857).
+* **`--combine-gpus`**: one combiner over both GPUs, 7 → 14 channels. Produced the first
+  coherent detections ever seen on CHORD — but **marginal**: best `deep_snr` 4.77 against a
+  4.355 bar, median 2.58, over threshold ~10% of samples.
+* **Broker**: `--nh-period-offset -4` (validated, see below), `--dll-gain 0.25`,
+  `--carrier-gain 0.0`, all 8 nodes in `--trackers`. Launch scripts in the scratchpad;
+  `run_broker_dll.sh` is the current one.
+
+### 8.15.4 The -4 is real and validated — keep it
+
+Six independent measurements across two node pairs, two combs, two days, four satellites: the
+seeded overlay period is a constant **4 too high**. Applying `--nh-period-offset -4` puts the
+oracle's peak EXACTLY on the seeded position (cp204 25115.53 vs 25115.53, period 2 vs 2) and
+RAISES the oracle ratio 3.5 → 6.87. It is a finding, not a guess — but it is still a constant in
+a launch script. **The principled fix is to find why `detection_phase`'s lift is 4 periods
+(== +16 == Mp, the anchor's own 16 code periods) short.**
+
+This matters far more on CHORD than on airspy, and that asymmetry is the clue: airspy despreads
+`GPS_L5_Q` (primary only) and WIPES the overlay afterwards, searching all 20 alignments — so a
+wrong seeded period self-corrects every emit. CHORD despreads `GPS_L5_Q_NH` with the overlay
+baked in, because a record spans 10.49 overlay chips and a primary-only despread would cancel.
+The period must therefore be right up front, with no recovery path.
+
+### 8.15.5 Measurement discipline that cost real time today
+
+* **Time nothing on cx19 unpinned.** The node kotekan runs ~1000% CPU. Identical work measured
+  88 s and 693 s. Use `taskset -c 40-51` (verified free) and confirm reproducibility before
+  believing any number. Three separate "findings" today were my own interference.
+* **`nproc` says 48; the machine has 64.** The shell is masked to
+  `0-3,8-19,24-35,40-51,56-63`, so `taskset -c 36-47` silently gives 40-47.
+* **Diff every regenerated config against the running one.** Caught three silent breakages:
+  `--search-host` rewriting cx19's loopback feed to an external IP, a dropped
+  `--acquire-windows 1` letting the default 32 smear NH bins (detections collapsed to snr 2.3),
+  and the cx51 port-base mismatch.
+* **Rebuild AND RELINK.** `ninja kotekan_stages` does not relink `kotekan`; two crash runs
+  tested a stale binary.
+* **The node unit is TRANSIENT** — stopping it deletes it, so `systemctl start` can never bring
+  a node back. Use `scripts/gnss/node_up.sh`.
+
+### 8.15.6 Next, in order
+
+1. Implement `docs/CHORD_GNSS_SHARED_DLL.md` — §9 has the four steps. Acceptance test is **q
+   before/after**, not `coherence_s`.
+2. Find the principled fix for the -4 (8.15.4).
+3. A near-zenith transit to validate against: within ~1–2 degrees of boresight the signal is
+   ~40 dB stronger and everything should lock trivially. If it does not, THAT is a real bug.
