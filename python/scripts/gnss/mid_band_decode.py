@@ -50,7 +50,15 @@ def code_fn(sig):
     if sig == "b2b":
         from b2b_code_check import generate_b2bi_code
         return lambda prn: np.array(generate_b2bi_code(prn), dtype=np.int8), 10.23e6, 10230
-    raise SystemExit("unknown signal %s (b2b; e5b to come)" % sig)
+    # Galileo E5b (1207.14 MHz, same capture as B2b). Acquire on the PILOT E5b-Q (dataless ->
+    # cleanest peak); e5bi is the data component for the eventual I/NAV chain.
+    if sig in ("e5b", "e5bq"):
+        from e5b_code_check import generate_e5bq_code
+        return lambda prn: np.array(generate_e5bq_code(prn), dtype=np.int8), 10.23e6, 10230
+    if sig == "e5bi":
+        from e5b_code_check import generate_e5bi_code
+        return lambda prn: np.array(generate_e5bi_code(prn), dtype=np.int8), 10.23e6, 10230
+    raise SystemExit("unknown signal %s (b2b, e5b/e5bq, e5bi)" % sig)
 
 
 # Detection statistic: RATIO of the correlation peak to the 2nd-highest peak outside a guard

@@ -5,6 +5,7 @@
 #include "beidouB2aCode.hpp" // for b2ap_secondary (per-PRN B2a overlay)
 #include "galileoE1Code.hpp" // for E1C_CS25 (shared Galileo pilot overlay)
 #include "galileoE5aCode.hpp" // for e5aq_secondary (per-PRN E5a-Q overlay)
+#include "galileoE5bCode.hpp" // for e5bq_secondary (per-PRN E5b-Q overlay)
 #include "gpsL1CCode.hpp"    // for generate_l1co_code (per-PRN L1C-P overlay)
 #include "gpsL5Code.hpp"     // for L5_NH10/NH20 (shared Neuman-Hofman overlays)
 
@@ -43,6 +44,14 @@ static std::vector<int8_t> gen_b2ap(int prn) {
 }
 static std::vector<int8_t> gen_b2ad_cs5(int) {
     const auto o = beidou::b2ad_secondary(); // shared 5-chip CS5 (B2a data channel)
+    return {o.begin(), o.end()};
+}
+static std::vector<int8_t> gen_e5bq(int prn) {
+    const auto o = galileo::e5bq_secondary(prn);
+    return {o.begin(), o.end()};
+}
+static std::vector<int8_t> gen_e5bi_cs4(int) {
+    const auto o = galileo::e5bi_secondary(); // shared 4-chip CS4 (E5b-I data channel)
     return {o.begin(), o.end()};
 }
 static std::vector<int8_t> gen_l1co(int prn) {
@@ -84,6 +93,11 @@ static const OverlayDescriptor OVERLAY_REGISTRY[] = {
     // BeiDou-3 B2a DATA: 5-chip secondary, one SHARED sequence (the B-CNAV2 symbol rides on
     // top) -- the GAL_E5A_I case, just 5 ms/symbol. Floor ~sqrt(2 ln 5) ~1.8 sigma.
     {"B2A_CS5", /*per_prn=*/false, 1, 5, gen_b2ad_cs5, "BDS_B2A_D"},
+    // Galileo E5b-Q pilot: PER-PRN 100-chip CS100 secondary -- structurally the E5a-Q case.
+    {"E5B_CS100", /*per_prn=*/true, 50, 100, gen_e5bq, "GAL_E5B_Q"},
+    // Galileo E5b-I DATA: 4-chip CS4, one SHARED sequence (the I/NAV symbol rides on top) --
+    // the GAL_E5A_I case, just 4 ms/symbol. Floor ~sqrt(2 ln 4) ~1.7 sigma.
+    {"E5B_CS4", /*per_prn=*/false, 1, 4, gen_e5bi_cs4, "GAL_E5B_I"},
     // GPS L1C-P pilot: PER-PRN 1800-symbol L1CO overlay (18 s).
     {"L1CO", /*per_prn=*/true, 32, 1800, gen_l1co, "GPS_L1C_P"},
 };

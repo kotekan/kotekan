@@ -247,6 +247,29 @@ inline constexpr SignalDescriptor BDS_B2B_I = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
 };
 
+/// Galileo E5b-Q (1207.14 MHz) -- the E5b dataless *pilot*: 10230-chip primary at 10.23 Mcps
+/// (1 ms, two 14-stage LFSRs; E5b register polys, distinct from E5a), per-PRN 100-chip CS100
+/// secondary (100 ms). SAME sky carrier as BeiDou B2b -- one mid-band airspy tune covers both.
+/// ReplicaSource: galileoE5bCode (PocketSDR-sourced tables, bit-exact-verified; e5b_code_check.py).
+inline constexpr SignalDescriptor GAL_E5B_Q = {
+    "GAL_E5B_Q", 1207.14e6, 10.23e6, 10230, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/100,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
+};
+
+/// Galileo E5b-I (1207.14 MHz) -- the E5b DATA channel carrying I/NAV (the SAME message as
+/// E1-B): same 10230-chip primary at 1 ms (its own X2 start table), a 4-chip CS4 secondary
+/// shared by all sats. I/NAV is 125 bps through the rate-1/2 FEC = 250 sps, so a symbol is
+/// 4 ms = four 1 ms code periods, and CS4 covers exactly ONE symbol (the GAL_E5A_I / GPS_L5_I
+/// discipline). A future E5b D-component; DERIVED from the E5b-Q pilot, decoded by galileo_inav.
+inline constexpr SignalDescriptor GAL_E5B_I = {
+    "GAL_E5B_I", 1207.14e6, 10.23e6, 10230, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/false, /*nav_symbol_s=*/4e-3, /*secondary_length=*/4,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
@@ -255,7 +278,7 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
           &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D,
-          &BDS_B2B_I})
+          &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I})
         if (name == s->name)
             return s;
     return nullptr;

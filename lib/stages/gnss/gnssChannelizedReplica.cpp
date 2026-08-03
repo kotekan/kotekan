@@ -10,6 +10,7 @@
 #include "beidouB2bCode.hpp"
 #include "galileoE1Code.hpp"
 #include "galileoE5aCode.hpp"
+#include "galileoE5bCode.hpp"
 #include "gpsL5Code.hpp"       // for generate_l5i_code, generate_l5q_code
 
 #include <algorithm> // for max
@@ -82,6 +83,14 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
     }
     if (name == "BDS_B2B_I") {
         auto a = beidou::generate_b2bi_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "GAL_E5B_Q") {
+        auto a = galileo::generate_e5bq_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "GAL_E5B_I") {
+        auto a = galileo::generate_e5bi_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
     if (name == "GPS_L2C_CM")
@@ -167,6 +176,10 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
         }
         else if (name == "BDS_B2A_D") {
             const auto o = beidou::b2ad_secondary(); // shared 5-chip (5 ms = one B-CNAV2 symbol)
+            _secondary.assign(o.begin(), o.end());
+        }
+        else if (name == "GAL_E5B_I") {
+            const auto o = galileo::e5bi_secondary(); // shared CS4 (4 ms = one I/NAV symbol)
             _secondary.assign(o.begin(), o.end());
         }
         _secondary_length = (int)_secondary.size();
