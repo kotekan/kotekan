@@ -2778,9 +2778,12 @@ def main(argv=None):
                         inav = InavPredictor(log=_log)
                         _log("I/NAV decoder armed on aux chain %s" % inav_combiner)
                     inav.ingest(_p, _r["nav_obs"])
-                # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker)
+                # 60 s health + BRDC cross-check (Kepler only; alm_sys is 'E' for the GAL broker).
+                # I/NAV rides E1B on L1 and E5b-I on the mid band -- SAME message + decoder; label
+                # the decode-health obs by the actual carrier (from the aux combiner name).
                 if inav is not None and time.time() - _inav_log_t[0] > 60.0:
                     _inav_log_t[0] = time.time()
+                    _inav_sig = "GAL_E5BI_INAV" if "e5b" in inav_combiner else "GAL_E1B_INAV"
                     for _p in sorted(inav._p):
                         h = inav.health(_p)
                         if not h or not h["words"]:
@@ -2791,7 +2794,7 @@ def main(argv=None):
                         _log("inav PRN %d: %d pages, %d words, have %s, eph %s%s"
                              % (_p, h["pages"], h["words"], h["have"],
                                 "YES" if eph is not None else "no", xc))
-                        _dh_obs("GAL_E1B_INAV", _p, h, eph, xc)
+                        _dh_obs(_inav_sig, _p, h, eph, xc)
             # S5 D-component #2: Galileo E5a-I F/NAV, the exact I/NAV-aux analogue on L5.
             if fnav_combiner:
                 try:

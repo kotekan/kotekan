@@ -660,6 +660,38 @@ bands:
             chip per 1 ms period, 100 ms cycle -> the E5a-Q/B2a-P segmented-pilot case). Deep
             integrates fully coherently; integration_length 1000 x 1 ms = 1 s emit cadence.
 
+      - constellation: e5b_i
+        signal: GAL_E5B_I
+        tracker_signal_explicit: true
+        n_prn: 36
+        seed_endpoint: /e5b_i_track/set_seeds
+        record_name: e5b_i_level
+        section_note: |
+          ---- Galileo E5b-I DATA component (I/NAV) ----
+          DERIVED from E5b-Q exactly as E5a-I is from E5a-Q (and E1B from E1C): no search stage.
+          E5b-I (data) and E5b-Q (pilot) share the SAME 10230-chip primary at the SAME 1 ms
+          period and epoch -- only the X2 code differs -- so an E5b-I row is the E5b-Q row
+          VERBATIM: no code-phase lift, no segment index, no broker flag. run_live adds
+          e5b_i_track to the GAL(E5b) broker's --trackers so it gets the same consensus seeds as
+          gal_track (E5b-Q). The combiner wipes the 4-chip CS4 secondary AND exports per-4ms-symbol
+          signs (secondary_overlay E5B_CS4 + navwipe_bit_records 4 + bit_export -- the composed
+          wipe E5a-I proved, since an I/NAV symbol is 4 ms = one CS4 period). run_live hands
+          e5b_i_combiner to the broker as --inav-combiner so its nav_obs reach the SAME InavPredictor
+          E1B uses (E5b carries the SAME I/NAV message as E1B) and the decoded ephemeris is
+          BRDC-cross-checked -- a FOURTH independent Galileo ephemeris decode (E1B vs E5a-F/NAV vs
+          E5b-I/NAV vs BRDC). NO peel; rec_buf sized in TIME (the count-vs-time discipline).
+        rec_buf_depth: 1200
+        tracker:
+          fll_reacq_hz: 15.0
+        combiner:
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5B_CS4, navwipe_bit_records: 4, bit_export: true }
+          note: |
+            integration_length 1000 x 1 ms = 1 s emit; navwipe_bit_records 4 = 4 ms / 1 ms records
+            = ONE I/NAV symbol per CS4 period (a TIME expressed in records, count-vs-time). secondary
+            _overlay E5B_CS4 wipes the 4-chip overlay so the 4 code periods within a symbol sum
+            coherently; bit_export publishes the per-symbol signs as nav_obs. The composed
+            secondary+navwipe branch is the E5a-I / L5-I case, just 4 ms/symbol. NO peel (no epl_frame).
+
   l5:
     out_file: live_l5_gpu.yaml
     header: |
