@@ -2079,3 +2079,40 @@ just linear: a better per-record SNR also sharpens the carrier phase fit, which 
 currently returning noise. That is the lever worth pulling next, and 14 channels is the per-node
 ceiling -- combining ACROSS nodes would mean shipping records to one place, which the aggregator
 does for the search and nothing does for tracking.
+
+## 8.13 First coherent detections on CHORD -- marginal, but real (2026-08-03)
+
+One combiner over both GPUs (`--combine-gpus`, 010e8f487): 7 channels -> 14, the node's full
+stride-8 comb.
+
+| | 7-channel (before) | 14-channel (after) |
+|---|---|---|
+| best `deep_snr` | 2.81 | **4.77** (peak 7.46 over 2 min) |
+| `carrier_hz_resid` median | 3.4-4.4 Hz | **1.32 Hz** (cx19), 2.13 (cx51) |
+| `coherence_s > 0` | never, on any node, ever | **5 PRNs cleared the bar** |
+
+**The nonlinear feedback predicted in 8.12 is real and is the bigger half of the gain.** +3 dB
+of channels cannot by itself take 2.81 to 4.77 (that is +4.6 dB). What it also did was sharpen
+the carrier phase fit -- residual scatter fell ~3x -- and a sharper fit means less decoherence
+across the buffered records, which raises `deep_snr`, which sharpens the fit further. The
+circle of 8.12 turns the other way once there is enough per-record SNR to start it.
+
+**But it is marginal, and the honest number is a duty cycle, not a lock.** Sampling both nodes
+every 5 s for 2 minutes: best `deep_snr` **max 7.46, median 2.58, over the 4.355 threshold 10%
+of the time**. Five distinct PRNs cleared it (cx19 16/27, cx51 20/23/27) -- each in 1 of 24
+samples. So the chain now reaches coherent detection intermittently on several satellites
+rather than never on any. That is a threshold crossing, not a tracking lock, and it should not
+be reported as one.
+
+**What this says about the remaining gap:** ~3 dB more would move the median over the bar rather
+than the peak. The per-node ceiling is now reached -- 14 channels IS the node's full comb -- so
+the next 3 dB has to come from somewhere else:
+* **Across nodes.** Tracker records from cx19 and cx51 combined would be 28 channels. The
+  combiner already takes N subband streams; nothing currently ships records between nodes (the
+  aggregator does that for the SEARCH only). This is the obvious next lever and it is a
+  plumbing change, not a physics one.
+* **Longer coherent integration**, which is now finally worth something: with the residual at
+  1.3 Hz, 0.5 s is 0.65 cycles -- still lossy, but the ladder's shorter rungs are no longer
+  hopeless the way they were at 6.6 Hz.
+* **The DLL trim**, now that it is on (`--dll-gain 0.25`, restored from an erroneous 0.0): a
+  sub-chip code error costs amplitude directly, and the trim had never been allowed to converge.
