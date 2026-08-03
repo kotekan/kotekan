@@ -80,7 +80,7 @@ airspy_in:
     # like a bad antenna). Written in HEX exactly as airspy_info prints it. THE TRAP: a
     # serial that fails to parse becomes 0 = "open any", which still WORKS with one dongle
     # -- verify a new pin by BREAKING it (a wrong serial must fail AIRSPY_ERROR_NOT_FOUND).
-    serial: 0x744C60C821692F4F  # L2C unit -- REPURPOSED 2026-08-03 from GPS L2C (1227.6/5 MSPS) to BeiDou B2b (1207.14/20 MSPS). Same physical dongle; the mid-band build retunes it (mid-band-gal-bds- receivers). B2b == Galileo E5b centre, so the same tune also reaches E5b later.
+    serial: 0x744C60C821692F4F  # L2C unit -- REPURPOSED 2026-08-03 from GPS L2C (1227.6/5 MSPS) to BeiDou B2b (1207.14/20 MSPS). Same physical dongle; the mid-band build retunes it (mid-band-gal-bds- receivers). B2b == Galileo E5b centre, so this ONE tune samples BOTH: the l2c band now stacks a Galileo E5b-Q chain beside B2b (2026-08-03), no further retune.
     freq: 1207.14
     sample_bw: 10  # airspy 10 MSPS mode -> 20 MSPS real (10.23 Mcps B2b needs the wide mode)
     gain_lna: 11
@@ -110,7 +110,7 @@ gputrack:
     num_cuda_streams: 3
     frame_arrival_period: 0.0
     in_buffers: { q_buf: q_buf }
-    out_buffers: { epl_buf: epl_buf }
+    out_buffers: { epl_buf: epl_buf, gal_epl_buf: gal_epl_buf }
     commands:
         # ONE host->device copy of the channelized 4+4b frame
         - name: cudaInputData
@@ -142,6 +142,27 @@ gputrack:
           gpu_mem: gnss_epl
           out_buf: epl_buf
           in_buf: ""
+        - name: cudaGnssTrack
+          signal: GAL_E5B_Q
+          max_anchor_age_s: 0.0
+          fll_reacq_hz: 15.0    # 1 ms records -> fleet 15 Hz fence (alias limit 250 Hz at 1 ms)
+          cuda_stream: 1
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: gal_epl
+          quantized_input: true    # 4+4b ring; scales via GnssChanMetadata::chan_scale
+          in_frame_len: samples_per_data_set / 2
+          n_channels: 10
+          channel_offset: 0
+          n_prn: 36
+          prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+          capture_utc0: 1.0
+          fll_gain: 0.0
+          carrier_shared: true
+          seed_endpoint: "/gal_track/set_seeds"
+        - name: cudaOutputData
+          gpu_mem: gal_epl
+          out_buf: gal_epl_buf
+          in_buf: ""
 assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_buf, sample_rate: 20.0e6 }
 # DATA-only B2b: navwipe_bit_records 1 (B-CNAV3 is 1000 sps = one symbol per 1 ms
 # record, so a record is exactly one symbol -- the L5-I / B2a-D discipline) wipes the
@@ -150,4 +171,34 @@ assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: epl_buf, out_buf: rec_
 # no secondary code). No peel / epl_frame override (data channel, shared 15360 default).
 gps_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [rec_buf], out_buf: out_buf, n_prn: 63, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63], integration_length: 100, navwipe_bit_records: 1, bit_export: true }
 record: { kotekan_stage: rawFileWrite, in_buf: out_buf, base_dir: "/tmp/gps_l2c_gpu", file_name: "level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
+
+# ---- Galileo E5b-Q parallel chain (dataless pilot, PRN 1..36, 1207.14 MHz) ----
+# Rides the B2b channelized stream (second consumer). Tracked by the shared l2c
+# gputrack; gal_epl_buf is its output. NO peel (light beside B2b, matching the L5
+# E5a-Q chain whose peel is currently off) -> no epl_frame override.
+gal_n_prn: 36
+gal_rec_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: gal_n_prn * record_floats * sizeof_float }
+gal_out_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: gal_n_prn * record_floats * sizeof_float }
+gal_epl_buf: { kotekan_buffer: standard, metadata_pool: none, num_frames: buffer_depth, frame_size: 176 + 1024 * gal_n_prn + 15360 * gal_n_prn }
+# 1000 hops/record = the 1 ms E5b primary at 20 MSPS (like L5 E5a-Q / B2b). require_hint:
+# scan only broker-hinted visible Galileo PRNs.
+gal_search:
+    kotekan_stage: GnssChannelizedSearch
+    in_buf: chan_buf
+    channel_offset: 0
+    n_channels: 10
+    signal: GAL_E5B_Q
+    n_prn: 36
+    prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+    acquire_snr: 8.0
+    acquire_windows: 100
+    hops_per_record: 1000
+    require_hint: true
+    hint_ttl_s: 30.0
+gal_assemble: { kotekan_stage: GnssGpuRecordAssemble, in_buf: gal_epl_buf, out_buf: gal_rec_buf, sample_rate: 20.0e6, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36] }
+# PURE PILOT once CS100 is wiped deterministically (secondary_overlay E5B_CS100, one
+# chip per 1 ms period, 100 ms cycle -> the E5a-Q/B2a-P segmented-pilot case). Deep
+# integrates fully coherently; integration_length 1000 x 1 ms = 1 s emit cadence.
+gal_combiner: { kotekan_stage: GnssCoherentCombiner, in_bufs: [gal_rec_buf], out_buf: gal_out_buf, n_prn: 36, prns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36], integration_length: 1000, secondary_overlay: E5B_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+gal_record: { kotekan_stage: rawFileWrite, in_buf: gal_out_buf, base_dir: "/tmp/gps_l2c_gpu", file_name: "gal_level", file_ext: "raw", prefix_hostname: false, num_frames_per_file: 1000000, exit_after_n_files: 1000000 }
 

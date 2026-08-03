@@ -220,7 +220,7 @@ GAL_CHIP=$(sig_chip "$GAL_SIGNAL");    GAL_CHIP=${GAL_CHIP:-1.023e6}
 GAL_CODELEN=$(sig_codelen "$GAL_SIGNAL"); GAL_CODELEN=${GAL_CODELEN:-4092}
 BDS_CHIP=$(sig_chip "$BDS_SIGNAL");    BDS_CHIP=${BDS_CHIP:-1.023e6}
 BDS_CODELEN=$(sig_codelen "$BDS_SIGNAL"); BDS_CODELEN=${BDS_CODELEN:-10230}
-case "$GAL_SIGNAL" in GAL_E5A*) GAL_OBS=obs_gal_e5a ;; *) GAL_OBS=obs_gal_e1 ;; esac
+case "$GAL_SIGNAL" in GAL_E5A*) GAL_OBS=obs_gal_e5a ;; GAL_E5B*) GAL_OBS=obs_gal_e5b ;; *) GAL_OBS=obs_gal_e1 ;; esac
 case "$BDS_SIGNAL" in BDS_B2A*) BDS_OBS=obs_bds_b2a ;; *) BDS_OBS=obs_bds_b1c ;; esac
 # Escape-referee threshold, CHIP-SCALED (2026-07-19 census): the broker default 0.4 chips is
 # calibrated in L1-scale chips. Detection-timing noise is constant in TIME, so in CHIPS it

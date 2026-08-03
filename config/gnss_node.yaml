@@ -571,7 +571,8 @@ bands:
       serial: "0x744C60C821692F4F"
       serial_note: "L2C unit -- REPURPOSED 2026-08-03 from GPS L2C (1227.6/5 MSPS) to BeiDou B2b
         (1207.14/20 MSPS). Same physical dongle; the mid-band build retunes it (mid-band-gal-bds-
-        receivers). B2b == Galileo E5b centre, so the same tune also reaches E5b later."
+        receivers). B2b == Galileo E5b centre, so this ONE tune samples BOTH: the l2c band now
+        stacks a Galileo E5b-Q chain beside B2b (2026-08-03), no further retune."
       freq: 1207.14
       sample_bw: 10
       sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real (10.23 Mcps B2b needs the wide mode)"
@@ -622,6 +623,42 @@ bands:
             data so the sum integrates past 1 ms. bit_export publishes the per-record bit
             decisions as nav_obs for the future B-CNAV3 decoder. NO secondary_overlay (B2b has
             no secondary code). No peel / epl_frame override (data channel, shared 15360 default).
+
+      # STACKED 2026-08-03 (mid-band-gal-bds-receivers): Galileo E5b rides the SAME 1207.14
+      # front-end as B2b -- E5b and B2b share the sky frequency, so one dongle tune samples
+      # BOTH, and this is a second constellation on one band exactly like L1's gps+gal+bds.
+      # E5b-Q is the dataless PILOT (PRN 1..36), the direct analogue of the L5 E5a-Q chain:
+      # 1 ms primary (1000 hops/record), per-PRN 100-chip CS100 secondary wiped deterministically
+      # (secondary_overlay E5B_CS100). SECONDARY chain -> constellation `gal` -> gen_band_config
+      # emits l2c_gal_search/track/combiner, and run_live's existing GALILEO-broker block (keyed
+      # on a gal_track stage) launches a group=galileo broker for it -- no launcher edit. Serial
+      # on GPU stream 1 beside B2b (per_chain_streams false, like L5). Sky-validated 2026-08-03:
+      # E5b-Q acquires E3/E5/E15/E32/E34 off this capture (e5b_code_check.py, mid_band_decode.py).
+      - constellation: gal
+        signal: GAL_E5B_Q
+        tracker_signal_explicit: true
+        n_prn: 36
+        seed_endpoint: /gal_track/set_seeds
+        record_name: gal_level
+        section_note: |
+          ---- Galileo E5b-Q parallel chain (dataless pilot, PRN 1..36, 1207.14 MHz) ----
+          Rides the B2b channelized stream (second consumer). Tracked by the shared l2c
+          gputrack; gal_epl_buf is its output. NO peel (light beside B2b, matching the L5
+          E5a-Q chain whose peel is currently off) -> no epl_frame override.
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          note: |
+            1000 hops/record = the 1 ms E5b primary at 20 MSPS (like L5 E5a-Q / B2b). require_hint:
+            scan only broker-hinted visible Galileo PRNs.
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence (alias limit 250 Hz at 1 ms)"
+        combiner:
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E5B_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+          note: |
+            PURE PILOT once CS100 is wiped deterministically (secondary_overlay E5B_CS100, one
+            chip per 1 ms period, 100 ms cycle -> the E5a-Q/B2a-P segmented-pilot case). Deep
+            integrates fully coherently; integration_length 1000 x 1 ms = 1 s emit cadence.
 
   l5:
     out_file: live_l5_gpu.yaml
