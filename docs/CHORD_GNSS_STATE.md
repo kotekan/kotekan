@@ -2847,3 +2847,71 @@ full command lines and the remote shell's line contains the pattern, so the rest
 The matching `pgrep -f ... && echo up` health check self-matches too and reports success with
 nothing running. Both halves lie in the same direction; the broker was down 20 minutes while
 each claimed success. The script uses the bracket form `[g]ps_distributed_broker`.
+
+### 8.20.5 Re-latching a 1.05 s reference onto a 16 ms measurement
+
+KV's architectural point, and the measurement behind it. Three Doppler estimates exist:
+
+| source | coherent span | 1/T | measured scatter |
+|---|---|---|---|
+| search detection | **16.0 ms** (`acquire_windows: 1`, one 3125-hop window) | 62.5 Hz | ~6.00 Hz per pass |
+| tracker deep window | **1049 ms** (100 records) | 0.95 Hz | 0.0-0.5 Hz split-half |
+| BRDC + solved clock bias | model | -- | 3.00 Hz step, 1-8 Hz vs meas |
+
+The tracker's span is **65x** the search's, and the measured precisions track that ratio. So the
+search's 6 Hz scatter is not a defect -- it is simply what a 16 ms frequency estimate costs at
+this SNR -- and re-pinning the tracker's `f_ref` to it discards ~18 dB of integration.
+
+`--seed-doppler det` was doing exactly that. Switched to `auto` (model + clock bias):
+
+```
+seed step > 9.54 Hz fence:   det 32% of steps      auto 4%
+median seed step:            det 6.00 Hz           auto 3.00 Hz
+reference jumps in deep_rate: 18% of steps -> 7%;  interval 10.1 s -> 20.1 s
+```
+
+Note what this does NOT fix: the standing residual is 24.44 / 25.51 / 23.60 Hz across
+det-no-hold / det+hold / model+hold. Reference STABILITY improved; residual MAGNITUDE did not.
+
+**Caution on the narrow-search intuition.** Narrowing the search window does not reduce the
+per-pass scatter -- precision is set by the 16 ms span and the SNR, not by how many bins are
+scanned. Narrowing cuts cost and false alarms only. The fix is to keep the search's Doppler away
+from an already-tracking satellite, not to search less widely. `det` is still right for
+ACQUISITION; it is wrong for a locked sat.
+
+**The remaining piece of the loop KV described** is the one already on the list: publish `f_ref`.
+The tracker measures its residual against `f_ref`, so without it the broker cannot convert
+`deep_rate_hz` into an absolute Doppler. With it, `dop = f_ref + ctrim + residual` becomes a
+tracker-derived measurement 65x better than the search's, and it -- not the search -- should feed
+the clock-bias solve that corrects BRDC. There is no circularity: the tracker measures the real
+signal, so its residual is a true observable, not an echo of the seed. The one structural
+constraint is separability -- receiver clock vs per-satellite orbit error needs the multi-sat
+common-mode solve, which already exists (`--bias-min-sats`, 7 sats fitted).
+
+### 8.20.6 The carrier loop still rails, and the step test that was supposed to say why
+
+With model seeding AND the lock-hold, closing at gain 0.25 STILL walks trims to the rail: PRN 28
+at +-40 for 41% of samples, PRN 4 14%, 10% of all trims railed, and the residual does NOT fall as
+the trim climbs (PRN 28: trim -> 40 Hz, |resid| median 18 Hz). So "the reference keeps moving"
+was NOT a sufficient explanation.
+
+An actuator saturating while its sensor does not respond is the signature of an open loop, so
+`--carrier-trim-const` (the 0/+X/-X open-loop probe) is the right instrument. **The run was
+inconclusive and must be repeated properly:**
+
+```
++20 trim -> median shift  +4.17 Hz   (expect -20)
+-20 trim -> median shift +19.97 Hz   (expect +20)
+```
+
+Two defects in MY test, both mine, neither in the code under test:
+* **Confounded.** Each phase restarts the broker, which re-pins `f_ref` -- and `deep_rate_hz` is
+  measured AGAINST `f_ref`. The trim step and a reference change are inseparable as run.
+* **Underpowered.** `deep_rate_hz` straddles zero with ~24 Hz spread; ~20 samples of a signed
+  median cannot resolve a 20 Hz shift. (This also produced a near-miss: the small signed medians
+  in the trim-0 phase looked like the residual had fallen to ~5 Hz. It had not -- |median| was
+  still ~24 Hz. Signed median vs median of |.| on a zero-straddling quantity.)
+
+Do it again with the trim changed WITHOUT restarting the broker (so `f_ref` survives), and with
+enough samples to resolve 20 Hz against 24 Hz of scatter. Until then, no conclusion about
+plumbing or sign is supported.

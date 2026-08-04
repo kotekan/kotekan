@@ -28,6 +28,17 @@
 # a log line, and a PRN with fewer than --dll-min-instances agreeing instances falls back to the
 # single --combiner discriminator.
 #
+# --seed-doppler auto since 2026-08-04 (was `det`). The seed feeds the tracker's f_ref fence,
+# and `det` hands it the SEARCH's per-pass Doppler -- a 16 ms estimate, against the tracker's
+# own 1.049 s deep window. That is a 65x shorter coherent span, and it shows: the detection
+# Doppler steps a median 6.00 Hz between passes with 32% of steps exceeding the 9.54 Hz fence,
+# versus 3.00 Hz and 4% for the model+clock-bias prediction. Re-pinning a 1.05 s reference to a
+# 16 ms measurement throws the integration away. Measured effect: reference jumps in
+# deep_rate_hz fell 18% -> 7% of steps and their interval went 10.1 s -> 20.1 s.
+# `det` remains right for ACQUISITION (no track yet, or the model is what is being checked);
+# it is wrong for a satellite already locked. The standing residual (~24 Hz) is NOT changed by
+# this -- that is a separate, still-open defect (STATE 8.20.3).
+#
 # NB: --nh-overlay-len 20 below is GPS L5 Q5's NH20. The broker's default is 1800 (B1C) and
 # getting it wrong does not error -- the alignment is computed mod the wrong length, so the hint
 # narrows the search to an effectively RANDOM alignment (observed: offset 1015, where the only
@@ -71,7 +82,7 @@ http://127.0.0.1:12099/sink_track" \
     --constellation G --carrier-hz 1176.45e6 --chip-rate-hz 10.23e6 \
     --code-length 10230 --hops-per-sec 195312.5 \
     --cl-assist --long-code-segments 20 --long-code-epoch-s 0.02 \
-    --seed-doppler det --acquire-snr 30 \
+    --seed-doppler auto --acquire-snr 30 \
     --dll-gain 0.25 --carrier-gain 0.0 \
     --code-bias-alpha 0.05 --code-bias-min-sats 2 \
     --lat 49.32075144444 --lon -119.62081125 --alt 545 --mask-deg 0 --interval 2 \
