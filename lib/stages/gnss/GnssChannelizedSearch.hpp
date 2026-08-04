@@ -252,6 +252,7 @@ private:
     std::vector<std::vector<std::vector<std::complex<float>>>> _repl_tail;
     std::vector<long long> _repl_k0; ///< [hop] period index of that hop's first chip
     std::vector<std::vector<std::complex<float>>> _repl_scratch; ///< materialised R_nh, reused
+    std::vector<float> _sgn0, _sgn1; ///< per-hop overlay sign pair for the current alignment
     std::vector<int> _repl0_cover; ///< the covering set _repl0 was built for (rebuild key)
     /// Search every secondary-code (Neuman-Hofman) alignment and keep the best peak. Costs
     /// secondary_length() acquires per PRN and buys back the coherent loss that an

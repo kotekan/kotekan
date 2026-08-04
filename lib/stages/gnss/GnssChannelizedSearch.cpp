@@ -474,16 +474,24 @@ void GnssChannelizedSearch::search_snapshot() {
             // Materialise this alignment: R[m] = s(k0[m]+nh)*head[m] + s(k0[m]+1+nh)*tail[m].
             // A per-hop complex scale over ~331k elements (~1 ms) against a correlation costing
             // seconds -- so twenty alignments cost one build, not twenty.
+            // The sign pair depends on the HOP and the alignment, not on the channel, so hoist
+            // it: computing it inside the channel loop evaluated overlay_sign 106x per hop and
+            // made a pass SLOWER than the eager bank it replaced (7.14 s vs 4.4 s, measured).
+            _sgn0.resize((size_t)Mp);
+            _sgn1.resize((size_t)Mp);
+            for (int m = 0; m < Mp; ++m) {
+                _sgn0[(size_t)m] = (float)_replica->overlay_sign(_repl_k0[(size_t)m], nh);
+                _sgn1[(size_t)m] = (float)_replica->overlay_sign(_repl_k0[(size_t)m] + 1, nh);
+            }
             for (size_t ii = 0; ii < cov_local.size(); ++ii) {
                 const size_t lc = (size_t)cov_local[ii];
-                const auto& hd = _repl_head[(size_t)p][lc];
-                const auto& tl = _repl_tail[(size_t)p][lc];
-                auto& outv = _repl_scratch[lc];
-                for (int m = 0; m < Mp; ++m) {
-                    const float s0 = (float)_replica->overlay_sign(_repl_k0[(size_t)m], nh);
-                    const float s1 = (float)_replica->overlay_sign(_repl_k0[(size_t)m] + 1, nh);
-                    outv[(size_t)m] = hd[(size_t)m] * s0 + tl[(size_t)m] * s1;
-                }
+                const cf* __restrict hd = _repl_head[(size_t)p][lc].data();
+                const cf* __restrict tl = _repl_tail[(size_t)p][lc].data();
+                cf* __restrict outv = _repl_scratch[lc].data();
+                const float* __restrict a0 = _sgn0.data();
+                const float* __restrict a1 = _sgn1.data();
+                for (int m = 0; m < Mp; ++m)
+                    outv[m] = hd[m] * a0[m] + tl[m] * a1[m];
             }
             const std::vector<std::vector<cf>>& repl0 = _repl_scratch;
             surf.assign(surf.size(), 0.0); // reuse the allocation, drop the previous alignment
