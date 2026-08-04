@@ -197,6 +197,7 @@ for b in $BANDS; do
     SKIP_KOTEKAN=1 STAGE_PREFIX=${b}_ PORT=$PORT TAG=gps_${b} \
         CFG=$(cfg_of $b) HTTP_PORT=$(http_of $b) \
         BROKER_EXTRA=$BX \
+        NO_SIG_CAP=${NO_SIG_CAP:-0} \
         bash config/run_live.sh > /tmp/gps_${b}_ctl.log 2>&1 &
     SUBPIDS="$SUBPIDS $!"
     echo "  $b control plane up (brokers/loggers; log /tmp/gps_${b}_ctl.log)"

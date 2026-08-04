@@ -508,6 +508,17 @@ case "$SIGNAL" in
     GLO_*)                      SIG_CAP="" ;;
     *)                          SIG_CAP="--signal-capability $SIGNAL" ;;
 esac
+# NO_SIG_CAP=1 drops the gate for one run. It is a CAPABILITY claim, not a measurement --
+# "which satellites transmit this signal" is read off satellite metadata (GPS block names,
+# GLONASS's 'K' marker), and metadata can be wrong or incomplete. Relaxing it turns the gate
+# into a question the SKY answers: hint everything visible and see which PRNs actually lock.
+# ★ Live use: GLONASS L3OC is gated to GLONASS-K, but late GLONASS-M units are reported to
+# carry it too -- if so the gate is hiding satellites we could be tracking. Cheap to check,
+# and the only cost of being wrong is wasted search channels.
+if [ "${NO_SIG_CAP:-0}" != "0" ] && [ -n "$SIG_CAP" ]; then
+    echo "NO_SIG_CAP=1: signal-capability gate DISABLED for this run (was: $SIG_CAP)"
+    SIG_CAP=""
+fi
 # S2 / Mechanism B OBSERVER (2026-07-29). Each broker publishes its receiver-state
 # estimates as JSON here. WRITE-ONLY: nothing consumes these yet, by design -- the fused
 # state gets a full soak of scoring before it is allowed to steer anything.
