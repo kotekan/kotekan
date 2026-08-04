@@ -2915,3 +2915,36 @@ Two defects in MY test, both mine, neither in the code under test:
 Do it again with the trim changed WITHOUT restarting the broker (so `f_ref` survives), and with
 enough samples to resolve 20 Hz against 24 Hz of scatter. Until then, no conclusion about
 plumbing or sign is supported.
+
+### 8.20.7 CHORD HAS NO f_ref FENCE -- the seed IS the reference
+
+Correcting 8.19.3, 8.20.2 and my own deployment on 2026-08-04. Those sections explain the
+carrier reference jumps via `S.f_ref` and the `fll_reacq_hz` fence. **That is `cudaGnssTrack`,
+which CHORD does not run.** Every generated node config instantiates `cudaGnssChordTrack`
+(`grep -c cudaGnssTrack config/generated/chord_gnss_cx19.yaml` -> **0**), and that class has no
+f_ref, no fll_reacq_hz and no re-anchor logic whatsoever:
+
+```cpp
+ss.doppler_hz = sd.doppler_hz;   // the replica carrier IS the seed, refreshed every window
+c.f_nco       = sd.ctrim_hz;     // the NCO carries ONLY the trim
+```
+
+So on CHORD the **seed is the reference**. A jump in the seeded Doppler is a reference jump
+directly; there is no fence holding anything, nothing to tune, and no "re-anchor" event. The
+`reanchored` flag, `max_anchor_age_s`, the 0.1-cycle rule and the airspy-vs-CHORD fence-cadence
+comparison in 8.19.3 all belong to the OTHER tracker.
+
+Consequences, stated plainly because two of them are mine:
+* The `cudaGnssTrack` lock-hold I wrote, built, and had the nodes restarted for is **inert on
+  CHORD**. The improvement measured in the same window (reference jumps 18% -> 7% of steps,
+  interval 10.1 s -> 20.1 s) came from `--seed-doppler auto` ALONE.
+* The generator was writing `reseed_hold_snr`/`reseed_hold_hz` into `cudaGnssChordTrack`, which
+  ignores them. Removed, along with the two CLI flags.
+* Two changes went live in one restart, so even the measurement could not have separated them.
+  One change per deploy.
+
+This is the same failure as the ULP episode (8.19.5): fixed the file that read correctly, not the
+one that runs. **The check costs one command and must precede the edit:**
+`grep -c <ClassName> config/generated/*.yaml`. CHORD carries near-duplicate pairs
+(`cudaGnssTrack` / `cudaGnssChordTrack`, `GnssChannelizedTracker`) that make
+reading-the-plausible-file fail silently every time.
