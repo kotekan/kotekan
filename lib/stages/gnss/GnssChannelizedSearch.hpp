@@ -228,6 +228,30 @@ private:
     /// @c nh_search, in which case one per secondary-code alignment. See the note at the
     /// build site for why a dataless pilot needs this.
     std::vector<std::vector<std::vector<std::vector<std::complex<float>>>>> _repl0;
+    /// EXACT nh FACTORISATION. The twenty alignments of a PRN are the same primary code with a
+    /// different +-1 overlay chip on each code period, so building twenty is ~20x redundant
+    /// (1223 s and 1696 MB at CHORD dimensions -- twenty minutes before the first pass, on
+    /// every restart).
+    ///
+    /// The generator applies the overlay PER CHIP (gnssChannelizedReplica.cpp:
+    /// cv *= overlay_sign(floor(chip/L), nh_phase)), so a hop straddling a period boundary
+    /// already gets the correct mix of two signs -- 195.3125 hops per period means 16 of every
+    /// 3125 hops straddle, and a per-HOP sign would quietly corrupt them. That per-chip
+    /// resolution is what makes an exact decomposition possible. Writing each hop as the part
+    /// belonging to the earlier period plus the part belonging to the later one,
+    ///     R_nh[m] = s(k0[m] + nh) * head[m]  +  s(k0[m] + 1 + nh) * tail[m]
+    /// and head/tail follow from TWO generator calls via the nav_bit hook (which takes the
+    /// absolute CHIP index, so it can impose any per-period pattern):
+    ///     A: nav_bit = +1            -> A[m] = head[m] + tail[m]
+    ///     B: nav_bit = (-1)^period   -> B[m] = (-1)^k0[m] * (head[m] - tail[m])
+    /// Two calls per PRN instead of twenty, exact to the same precision as before. Measured
+    /// 2026-08-04: 1223 s -> 124 s, 1696 MB -> 170 MB, pass 4.4 s -> 1.67 s (the smaller bank
+    /// also stops thrashing L3), and PRN 4 still detected at snr 11652 -- a sign error anywhere
+    /// in the decomposition would have collapsed that to noise.
+    std::vector<std::vector<std::vector<std::complex<float>>>> _repl_head; ///< [prn][chan][hop]
+    std::vector<std::vector<std::vector<std::complex<float>>>> _repl_tail;
+    std::vector<long long> _repl_k0; ///< [hop] period index of that hop's first chip
+    std::vector<std::vector<std::complex<float>>> _repl_scratch; ///< materialised R_nh, reused
     std::vector<int> _repl0_cover; ///< the covering set _repl0 was built for (rebuild key)
     /// Search every secondary-code (Neuman-Hofman) alignment and keep the best peak. Costs
     /// secondary_length() acquires per PRN and buys back the coherent loss that an

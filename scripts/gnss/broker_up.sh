@@ -12,6 +12,12 @@
 # a log line, and a PRN with fewer than --dll-min-instances agreeing instances falls back to the
 # single --combiner discriminator.
 #
+# NB: --nh-overlay-len 20 below is GPS L5 Q5's NH20. The broker's default is 1800 (B1C) and
+# getting it wrong does not error -- the alignment is computed mod the wrong length, so the hint
+# narrows the search to an effectively RANDOM alignment (observed: offset 1015, where the only
+# legal values are 0..19). And do NOT put comments between the continued lines below: a comment
+# on a backslash-joined line terminates the command, silently dropping every argument after it.
+#
 # usage:  broker_up.sh [extra broker args...]
 #         broker_up.sh --dll-gain 0          # fleet DLL polled but not applied (a control run)
 set -u
@@ -38,6 +44,7 @@ http://127.0.0.1:12099/sink_track" \
     --combiner gnss0_combine \
     --dll-combiners "${MERGED}${SPLIT}" \
     --publish-port 12060 \
+    --nh-overlay-len 20 \
     --nh-hint --nh-hint-span 2 \
     --almanac --almanac-source brdc --dead-reckon --narrow-search \
     --time0-endpoint telescope/time0_ns --dr-clock-chips 0.0 \

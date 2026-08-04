@@ -269,25 +269,50 @@ void GnssChannelizedSearch::search_snapshot() {
     // the non-covering rows stay empty vectors (24 B each) and are never read.
     if (!cov_local.empty() && cov_global != _repl0_cover) {
         const double t_build = steady_s();
-        for (int nh = 0; nh < _n_nh; ++nh) {
-            // nh_phase < 0 leaves the overlay OFF, which is the single-alignment default and
-            // what the airspy chain has always used; >= 0 applies that alignment.
-            const int nh_phase = (_n_nh > 1) ? nh : -1;
-            for (int p = 0; p < n_prn; ++p) {
-                const auto banded = _replica->channels_hoprate(p, anchor, 0.0, 0.0, Mp, cov_global,
-                                                               {}, nh_phase);
-                _repl0[(size_t)nh][p].assign((size_t)_n_chan, {});
-                for (size_t i = 0; i < cov_local.size(); ++i)
-                    _repl0[(size_t)nh][p][(size_t)cov_local[i]] = banded[i];
+        const long Lc = _replica->eff_code_length();
+        // Period index of each hop's FIRST chip. cp = 0 and Doppler = 0 here (repl0 is the
+        // zero-phase, zero-Doppler bank), so chip(m) = (anchor + m*fft_len) * chip_rate/Fs.
+        _repl_k0.assign((size_t)Mp, 0);
+        for (int m = 0; m < Mp; ++m) {
+            const double chip = ((double)anchor + (double)m * (double)_fft_len)
+                                * _replica->chip_rate_hz() / _sample_rate;
+            _repl_k0[(size_t)m] = (long long)std::floor(chip / (double)Lc);
+        }
+        _repl_head.assign((size_t)n_prn, {});
+        _repl_tail.assign((size_t)n_prn, {});
+        for (int p = 0; p < n_prn; ++p) {
+            // A: no overlay -> head + tail.   B: (-1)^period -> (-1)^k0 * (head - tail).
+            const auto A = _replica->channels_hoprate(p, anchor, 0.0, 0.0, Mp, cov_global, {}, -1);
+            const auto B = _replica->channels_hoprate(
+                p, anchor, 0.0, 0.0, Mp, cov_global,
+                [Lc](long long chip) {
+                    const long long k = (long long)std::floor((double)chip / (double)Lc);
+                    return ((k % 2 + 2) % 2 == 0) ? 1.0f : -1.0f;
+                },
+                -1);
+            _repl_head[(size_t)p].assign((size_t)_n_chan, {});
+            _repl_tail[(size_t)p].assign((size_t)_n_chan, {});
+            for (size_t i = 0; i < cov_local.size(); ++i) {
+                const size_t lc = (size_t)cov_local[i];
+                _repl_head[(size_t)p][lc].assign((size_t)Mp, cf(0.0f, 0.0f));
+                _repl_tail[(size_t)p][lc].assign((size_t)Mp, cf(0.0f, 0.0f));
+                for (int m = 0; m < Mp; ++m) {
+                    const float sgn = ((_repl_k0[(size_t)m] % 2 + 2) % 2 == 0) ? 1.0f : -1.0f;
+                    const cf d = B[i][(size_t)m] * sgn; // = head - tail
+                    _repl_head[(size_t)p][lc][(size_t)m] = 0.5f * (A[i][(size_t)m] + d);
+                    _repl_tail[(size_t)p][lc][(size_t)m] = 0.5f * (A[i][(size_t)m] - d);
+                }
             }
         }
+        _repl_scratch.assign((size_t)_n_chan, {});
+        for (size_t i = 0; i < cov_local.size(); ++i)
+            _repl_scratch[(size_t)cov_local[i]].assign((size_t)Mp, cf(0.0f, 0.0f));
+        INFO("GnssChannelizedSearch[{:s}]: repl0 head/tail built for {:d} PRNs x {:d} channels x "
+             "{:d} hops in {:.2f} s ({:.1f} MB) -- the {:d} nh alignments are a per-hop sign "
+             "pair, 2 generator calls per PRN instead of {:d}",
+             unique_name, n_prn, (int)cov_local.size(), Mp, steady_s() - t_build,
+             2e-6 * (double)n_prn * cov_local.size() * Mp * sizeof(cf), _n_nh, _n_nh);
         _repl0_cover = cov_global;
-        INFO("GnssChannelizedSearch[{:s}]: precomputed banded repl0 for {:d} PRNs x {:d} channels "
-             "x {:d} hops x {:d} nh alignment(s) in {:.2f} s ({:.1f} MB; the full-spectrum form "
-             "would be {:.1f} MB and is rebuilt no further)",
-             unique_name, n_prn, (int)cov_local.size(), Mp, _n_nh, steady_s() - t_build,
-             1e-6 * (double)_n_nh * n_prn * cov_local.size() * Mp * sizeof(cf),
-             1e-6 * (double)_n_nh * n_prn * _replica->spectrum_length() * Mp * sizeof(cf));
         // The refine cost is one exact replica build per step, so say the number out loud: at
         // fft_len 16384 with the default step of 1 this is 32769 builds on the FIRST detection,
         // which looks exactly like a hang. See the refine loop for the resolution argument.
@@ -446,7 +471,21 @@ void GnssChannelizedSearch::search_snapshot() {
                 nh_scan.push_back(i);
         for (int nh : nh_scan) {
             // repl0 (code 0, Doppler 0) on the covering channels -- precomputed, not rebuilt.
-            const std::vector<std::vector<cf>>& repl0 = _repl0[(size_t)nh][p];
+            // Materialise this alignment: R[m] = s(k0[m]+nh)*head[m] + s(k0[m]+1+nh)*tail[m].
+            // A per-hop complex scale over ~331k elements (~1 ms) against a correlation costing
+            // seconds -- so twenty alignments cost one build, not twenty.
+            for (size_t ii = 0; ii < cov_local.size(); ++ii) {
+                const size_t lc = (size_t)cov_local[ii];
+                const auto& hd = _repl_head[(size_t)p][lc];
+                const auto& tl = _repl_tail[(size_t)p][lc];
+                auto& outv = _repl_scratch[lc];
+                for (int m = 0; m < Mp; ++m) {
+                    const float s0 = (float)_replica->overlay_sign(_repl_k0[(size_t)m], nh);
+                    const float s1 = (float)_replica->overlay_sign(_repl_k0[(size_t)m] + 1, nh);
+                    outv[(size_t)m] = hd[(size_t)m] * s0 + tl[(size_t)m] * s1;
+                }
+            }
+            const std::vector<std::vector<cf>>& repl0 = _repl_scratch;
             surf.assign(surf.size(), 0.0); // reuse the allocation, drop the previous alignment
             for (int w = 0; w < nwin; ++w) {
                 for (int lc = 0; lc < _n_chan; ++lc)
