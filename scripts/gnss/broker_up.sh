@@ -52,7 +52,7 @@ http://127.0.0.1:12099/sink_track" \
     --code-length 10230 --hops-per-sec 195312.5 \
     --cl-assist --long-code-segments 20 --long-code-epoch-s 0.02 \
     --seed-doppler det --acquire-snr 30 \
-    --dll-gain 0.25 --carrier-gain 0.0 \
+    --dll-gain 0.25 --carrier-gain 0.25 \
     --code-bias-alpha 0.05 --code-bias-min-sats 2 \
     --lat 49.32075144444 --lon -119.62081125 --alt 545 --mask-deg 0 --interval 2 \
     --search-margin-wide-hz 200 --search-margin-hz 100 \

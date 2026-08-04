@@ -123,6 +123,35 @@ def fit_cp_rate(hist, code_len):
     return rate, h0, cp_ref % code_len
 
 
+def fit_dop_rate(hist, hops_per_sec, min_pts, min_span_s):
+    """Least-squares slope of MEASURED Doppler vs time -> doppler_rate_hz_s, or None.
+
+    Replaces BRDC's range-rate differencing over a 4 s epoch pair, which is a numerical
+    derivative evaluated where the curvature is largest (near zenith, exactly where the strong
+    passes are). Measured 2026-08-04: BRDC gave PRN 3 -0.4699 Hz/s against -0.578 from the
+    Doppler track, and that 0.108 Hz/s error is ~0.7 rad of phase curvature inside the 1.05 s
+    deep window -- part of the 2.55 rad that costs the coherent sum 29 dB.
+
+    Returns None unless there are min_pts points spanning min_span_s, because a slope fitted to
+    a short baseline is fitted to detection noise: with ~1.5 Hz per-point scatter the slope
+    error is ~sigma/(T*sqrt(N/12)), so 4 points over 44 s give ~0.06 Hz/s (already better than
+    BRDC) and 8 over 88 s give ~0.02 Hz/s. Below that the model's rate is the better bet.
+    """
+    if len(hist) < max(2, min_pts):
+        return None
+    t = [h / hops_per_sec for h, _ in hist]
+    f = [d for _, d in hist]
+    span = t[-1] - t[0]
+    if span < min_span_s:
+        return None
+    n = len(t)
+    mt, mf = sum(t) / n, sum(f) / n
+    den = sum((x - mt) ** 2 for x in t)
+    if den <= 0.0:
+        return None
+    return sum((x - mt) * (y - mf) for x, y in zip(t, f)) / den
+
+
 def code_clock_bias_sample(rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz, carrier_hz):
     """One satellite's estimate of the receiver LO-vs-ADC clock offset (l - a), dimensionless.
 
@@ -401,7 +430,7 @@ class FleetPublisher:
     """
 
     def __init__(self, port, log):
-        self._rows, self._meta, self._lock = [], {}, threading.Lock()
+        self._rows, self._meta, self._dets, self._lock = [], {}, [], threading.Lock()
         pub = self
 
         class H(BaseHTTPRequestHandler):
@@ -409,9 +438,19 @@ class FleetPublisher:
                 pass  # a browser polls this at 1 Hz; the broker's own log stays readable
 
             def do_GET(self):
+                # The viewer builds every URL as <base>/<stage>/<endpoint> from ONE host:port,
+                # so it cannot straddle the search (12050) and this publisher. Serving the raw
+                # detections here as well makes the broker a single origin for both -- which is
+                # also the right shape: it already merges across all 14 combiners, and a browser
+                # cannot poll 14 origins itself.
                 with pub._lock:
-                    body = (json.dumps(pub._rows) if self.path.rstrip("/").endswith("get_status")
-                            else json.dumps(pub._meta)).encode()
+                    p = self.path.rstrip("/")
+                    if p.endswith("get_detections"):
+                        body = json.dumps(pub._dets).encode()
+                    elif p.endswith("get_status"):
+                        body = json.dumps(pub._rows).encode()
+                    else:
+                        body = json.dumps(pub._meta).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 # The viewer is served from a different origin than this port, and its whole
@@ -426,7 +465,7 @@ class FleetPublisher:
         threading.Thread(target=self._srv.serve_forever, daemon=True).start()
         log("fleet publisher on :%d (GET /get_status -- fleet-merged per-PRN state)" % port)
 
-    def update(self, fleet, seeds, dll_trim, n_endpoints):
+    def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None):
         rows = []
         for prn, v in sorted(fleet.items()):
             c = v.get("coh_row") or {}
@@ -462,6 +501,8 @@ class FleetPublisher:
             rows.append(row)
         with self._lock:
             self._rows = rows
+            if dets is not None:
+                self._dets = dets
             self._meta = {"n_prn": len(rows), "n_endpoints": n_endpoints,
                           "present": sum(1 for r in rows if r["fleet_present"]),
                           "utc": time.time()}
@@ -1166,6 +1207,14 @@ def main(argv=None):
                          "bias, fused LO, cross-band assist) -- this is the same kind of "
                          "object. Coherent statistics are best-of-instance, not merged, and "
                          "say so via coh_src; see FleetPublisher.")
+    ap.add_argument("--dop-rate-min-pts", type=int, default=4,
+                    help="detections needed before the MEASURED doppler rate is seeded in place "
+                         "of the almanac's. Below this the model is the better bet.")
+    ap.add_argument("--dop-rate-min-span-s", type=float, default=30.0,
+                    help="baseline the doppler-rate fit must span (s). Slope error goes as "
+                         "sigma/(T*sqrt(N/12)), so at ~1.5 Hz detection scatter 4 points over "
+                         "44 s give ~0.06 Hz/s and 8 over 88 s ~0.02 Hz/s, against BRDC's "
+                         "measured 0.108 Hz/s error. A short baseline fits noise.")
     ap.add_argument("--dll-combiners", default="",
                     help="FLEET-COMBINED DLL (docs/CHORD_GNSS_SHARED_DLL.md): comma-separated "
                          "combiner endpoints ({a..b} ranges expanded) whose RAW Early/Prompt/"
@@ -1889,6 +1938,8 @@ def main(argv=None):
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
     dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
+    last_dets = []      # most recent raw /get_detections, re-served by the publisher so
+                        # the viewer has ONE origin for both search and combiner data
     nh_off_hist = []    # pooled (predicted - reported) samples: ONE receiver-clock constant
     nh_offset = [None]  # the calibrated constant, once enough samples agree
     nh_seen = {}        # prn -> (nh, ref_hop) last REPORTED by the search: calibrates the offset
@@ -1939,6 +1990,8 @@ def main(argv=None):
             _trim_force[int(_p)] = float(_v)
             _log("TRIM FORCE (bench): PRN %s armed, car_trim %+.1f Hz at first seed"
                  % (_p, float(_v)))
+    dop_rate_fitted = {} # prn -> the fitted rate actually seeded (for the log)
+    dop_hist = {}    # prn -> [(ref_hop, doppler_hz), ...] for the MEASURED doppler-rate fit
     cp_hist = {}     # prn -> [(ref_hop, cp0, dop_det), ...] recent distinct snapshots (slope fit)
     # PERIOD CONTINUITY. The search's sub-period phase is sound, but the OVERLAY PERIOD it
     # reports re-randomises every pass (measured: exact integer-period jumps of +1/+3/-4/+3/
@@ -2141,6 +2194,8 @@ def main(argv=None):
         for d_ep in detectors:
             try:
                 dets = _get("%s/get_detections" % d_ep)
+                if dets:
+                    last_dets[:] = dets   # published verbatim (see FleetPublisher)
             except Exception as e:
                 _log("get_detections %s failed: %s" % (d_ep, e))
                 continue
@@ -2794,6 +2849,27 @@ def main(argv=None):
 
             # Maintain a per-PRN cp0-vs-hop history (only distinct snapshots; the search
             # holds its detection between updates) and fit the first-order code drift.
+            # DOPPLER-RATE HISTORY. The seed's doppler_rate_hz_s drives BOTH the tracker's
+            # carrier NCO (out.doppler_hz = doppler + dop_rate*dt) and the quadratic CODE term
+            # (quad = 0.5*(chip/f_c)*dop_rate*dt^2), so its error shows up twice. BRDC computes
+            # it by range-rate differencing over a 4 s epoch pair -- a numerical derivative, and
+            # we use it at the worst moment, near zenith where the curvature peaks. Measured
+            # 2026-08-04: BRDC gave PRN 3 -0.4699 Hz/s where the Doppler track said -0.578, and
+            # that 0.108 Hz/s residual is ~0.7 rad of phase curvature inside the 1.05 s deep
+            # window -- a direct contributor to the 2.55 rad that costs the coherent sum 29 dB.
+            #
+            # We measure the Doppler every pass, so fit its slope instead. Well-conditioned at
+            # an 11 s revisit: four points span ~44 s over which the Doppler moves ~25 Hz
+            # against ~1.5 Hz per-detection noise. Same gap rule as the cp history -- a gap
+            # means re-acquisition and the old slope is stale.
+            dh_ = dop_hist.get(prn, [])
+            if dh_ and (ref_hop - dh_[-1][0]) > MAX_GAP_HOPS:
+                dh_ = []
+            if not dh_ or ref_hop != dh_[-1][0]:
+                dh_.append((ref_hop, dop))
+                dh_ = dh_[-HIST_LEN:]
+            dop_hist[prn] = dh_
+
             h = cp_hist.get(prn, [])
             if h and (ref_hop - h[-1][0]) > MAX_GAP_HOPS:
                 h = []  # gap too large -> re-acquisition, old slope is stale
@@ -2836,6 +2912,15 @@ def main(argv=None):
                                              / C_LIGHT * args.carrier_hz)
             elif args.almanac and prn in pred:
                 seed["doppler_rate_hz_s"] = pred[prn][1]
+            # MEASURED rate beats the model's, and it is the LAST word here for the same reason
+            # --seed-doppler det is: the model exists to own sats we have not measured. Gated on
+            # enough points over enough baseline that the slope is real rather than fitted to
+            # detection noise.
+            _dr = fit_dop_rate(dop_hist.get(prn, []), args.hops_per_sec,
+                               args.dop_rate_min_pts, args.dop_rate_min_span_s)
+            if _dr is not None:
+                seed["doppler_rate_hz_s"] = _dr
+                dop_rate_fitted[prn] = _dr
             elif args.force_doppler_rate is not None:
                 # Replay-bench override: a recorded capture's sky is at another epoch (no almanac),
                 # so inject a known rate into every seed to exercise the NCO feed-forward offline.
@@ -3968,7 +4053,7 @@ def main(argv=None):
                 # Published BEFORE the trim update so the row shows the state the loop acted
                 # on, not the state after it acted -- otherwise a reader can never see the
                 # input that produced a given correction.
-                publisher.update(fleet, seeds, dll_trim, len(dll_combiners))
+                publisher.update(fleet, seeds, dll_trim, len(dll_combiners), last_dets)
             dll_report = []
             for prn in list(seeds):
                 rec = status.get(prn, {})
@@ -4044,6 +4129,12 @@ def main(argv=None):
                                fl["p_pow"] / fl["p_med"] if fl.get("p_med") else 0.0)))
             if dll_report:
                 _log("DLL: " + "; ".join(dll_report))
+            if dop_rate_fitted:
+                _log_rl("doprate", "doppler-rate FIT seeded on %d sat(s): %s"
+                        % (len(dop_rate_fitted),
+                           "; ".join("PRN %d %+.4f Hz/s" % (k, v)
+                                     for k, v in sorted(dop_rate_fitted.items())[:5])),
+                        every_s=60.0)
             # The BAR, every cycle it is measured. A threshold on a noisy statistic that is
             # never printed is a threshold nobody can audit -- and this one legitimately moves
             # with the fleet size, so a reader has to be able to see where it went.
