@@ -2998,3 +2998,53 @@ carry the trim, i.e. `wc = 2*pi*(f_off + doppler_hz +/- ctrim)/fs` with `ctrim` 
    bookkeeping breaks. Change both together, and check `adr_cycles` continuity across the switch.
 
 Until then **keep `--carrier-gain 0.0`**: with no actuator, any nonzero gain is a pure ratchet.
+
+### 8.20.9 The deep fold is CAPPED, not noise-limited (KV, from the viewer)
+
+Observation: deep significance sits at ~12-15 for essentially every satellite while search SNR
+spans 100..3000. If the deep sum were noise-limited it would scale with brightness. It does not.
+
+`coherent_sum` computes `snr = |sum a| / sqrt(sum Im(a*rot)^2)` -- the noise is estimated from the
+records' OWN scatter about the mean phase. Two regimes:
+
+* thermal-limited: `snr = sqrt(N) * rho` (rho = per-record voltage SNR) -- scales with signal
+* phase-limited: if the scatter is a systematic per-record phase error, `Im ~ S*phi`, the signal
+  CANCELS, and `snr -> sqrt(N)/sigma_phi` -- independent of brightness
+
+Measured across the fleet (full 1.049 s window, N = 100):
+
+```
+PRN   amp_snr   deep_snr   sqrt(N)/deep_snr   deep_amp/amp
+ 1     63-86    10.4-10.6      0.94-0.97          0.73
+ 3     27-29    11.3-11.9      0.84-0.88          0.82
+28    8.9-9.5   10.8-11.5      0.87-0.92          0.65
+```
+
+amp_snr spans **9x**; deep_snr is flat. `deep_amplitude/amplitude` gives the SAME sigma_phi
+independently via `exp(-sigma^2/2)`. And `amp_snr = s2 * Keff^0.25 / noise` is a POWER ratio, so
+rho = sqrt(amp_snr/Keff^0.25): PRN 1 should reach `sqrt(100)*5.2 ~ 52` and reads 10.5, while
+PRN 28 should reach ~17 and reads 11.5. **The ceiling binds hardest on the brightest satellites.**
+
+What the cap is NOT:
+* **not the carrier residual.** sigma_phi is flat at 0.745-0.750 across |deep_rate_hz| = 0..47.7 Hz;
+  Spearman rho = **+0.026** over 4446 samples. (This was my prediction, and it is refuted.)
+* **not Doppler-rate curvature.** At the measured -0.109..-0.465 Hz/s the residual after a linear
+  fit is 0.03-0.13 rad, implying caps of 78-389, not 12-15.
+* **not a slow drift.** Between the 50- and 100-record rungs `snr/sqrt(len)` is constant (1.386 vs
+  1.414; 1.235 vs 1.194), so the per-record errors are WHITE. (The 25/12 rungs collapse because
+  the rate search fails on short spans -- an artifact, not physics.)
+
+So: a **white, per-record, signal-independent phase error of sigma_phi = 0.745 +- 0.005 rad**,
+stable to that precision over 4446 samples and identical across satellites AND nodes. That
+stability is itself the strongest clue -- a physical per-satellite effect would not hold to 0.7%.
+
+Leading candidates, all consistent with "white, per-record, signal-independent": residual
+secondary-code (NH20) or nav-bit sign/phase error left on each record; the record straddle /
+boundary handling (already flagged in the incoherent-moment comments for collapsing amp_snr at
+every straddle); or the peel subtracting a mis-estimated waveform. **The decisive test is the
+offline harness with a NOISELESS synthetic** -- if sigma_phi = 0.745 rad survives with no noise
+at all, the floor is in our arithmetic, not on the sky. That is the same discipline that found
+the sparse-comb replica bug, and it costs one e2e run.
+
+Note this also compromises `deep_rate_hz` as a loop observable, which is why the carrier-trim
+probe cannot resolve a 20 Hz step (phase-to-phase scatter at CONSTANT trim reached 32 Hz).
