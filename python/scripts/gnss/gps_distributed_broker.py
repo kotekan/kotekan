@@ -179,7 +179,8 @@ def code_clock_bias_sample(rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz
     return rate_chips_per_hop * hops_per_sec / chip_hz
 
 
-def rate_residuals(status, min_q, clip_hz, log=None):
+def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, fft_len=16384,
+                   rec_hops=2048):
     """Per-PRN carrier residual (Hz) from the combiner's phase-rate search.
 
     TWO FAILURE MODES, TWO DEFENCES. Measured on sky 2026-08-04 by splitting each PRN's records
@@ -209,14 +210,37 @@ def rate_residuals(status, min_q, clip_hz, log=None):
     Returns {prn: residual_hz}; empty when nothing clears the gate.
     """
     cand = {}
+    gapped = []
     for prn, rec in (status or {}).items():
         q = float(rec.get("deep_rate_q") or 0.0)
         f = rec.get("deep_rate_hz")
         if f is None or q < min_q:
             continue
+        # CONTINUITY GATE (2026-08-04). Measured per emit window: when the sequence is
+        # CONTIGUOUS the rate walks -0.24..-0.72 Hz per emit (~-0.36 Hz/s), smooth and
+        # trackable. Every jump of tens of Hz lands on a GAP, where the PRN was dropped and
+        # the tracker re-anchored -- so the step across a gap is a reference change, not a
+        # measurement, and integrating it walks the trim to the rail. Same rule the nh anchor
+        # and code_phase_chips already taught us: never transport a quantity across a
+        # discontinuity. After a gap we RE-BASELINE (record the hop, skip this sample) rather
+        # than guess.
+        h = rec.get("pow_hop")
+        if prev_hop is not None:
+            if h is None or h < 0:
+                continue
+            ph = prev_hop.get(int(prn))
+            prev_hop[int(prn)] = h
+            if ph is None or h == ph:
+                continue                       # first sight, or the same window again
+            if (h - ph) > max_gap * rec_hops * 1.0:
+                gapped.append(int(prn))
+                continue                       # re-anchored: re-baselined above, skip
         w = float(rec.get("amp_snr") or 0.0)
         if w > 0.0:
             cand[int(prn)] = (float(f), w)
+    if log and gapped:
+        log("carrier-rate: %d PRN(s) skipped across a window gap (re-anchor, not a "
+            "measurement): %s" % (len(gapped), sorted(gapped)))
     if not cand:
         return {}
     vals = sorted(v[0] for v in cand.values())
@@ -1118,6 +1142,17 @@ def main(argv=None):
                          "far better than free-running -- and strictly better than a wrong bin.")
     ap.add_argument("--no-carrier-rate-inherit", dest="carrier_rate_inherit",
                     action="store_false", help="disable the consensus fallback (per-PRN only)")
+    ap.add_argument("--carrier-trim-const", type=float, default=None,
+                    help="DIAGNOSTIC: command this fixed carrier_trim_hz to every seeded PRN, "
+                         "independent of --carrier-gain. Use with --carrier-gain 0 to measure the "
+                         "open-loop step response of deep_rate_hz: sweep 0 / +X / -X and the "
+                         "measured rate should move by exactly -X. Same sign => the loop is "
+                         "inverted; no movement => the trim never reaches the despread.")
+    ap.add_argument("--carrier-rate-max-gap", type=float, default=2.0,
+                    help="max window gap, in RECORDS, across which a rate measurement is still "
+                         "believed. Measured: contiguous emits step -0.24..-0.72 Hz, while any "
+                         "gap steps by tens of Hz because the tracker re-anchored. A gap "
+                         "re-baselines rather than integrating a reference change.")
     ap.add_argument("--carrier-max-hz", type=float, default=40.0,
                     help="clamp on the shared carrier trim (Hz)")
     ap.add_argument("--carrier-leak", type=float, default=0.05,
@@ -2054,6 +2089,7 @@ def main(argv=None):
     cp_escape_sign = {} # prn -> last disagreement (sign-consistency: real parks are one-signed)
     cp_err_hist = {}      # prn -> last 9 cp_err samples (median gate: noise cannot sustain it)
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
+    rate_prev_hop = {}  # prn -> last pow_hop used by the carrier loop (continuity gate)
     car_trim = {}       # prn -> persistent NCO frequency command (Hz): the shared carrier loop
     car_last = {}       # prn -> last SEEN residual (dedup: one gate-check/integration per emit)
     car_locked = set()  # prns certified coherent since seed: BOOTSTRAP -> TRACK mode latch
@@ -4297,7 +4333,8 @@ def main(argv=None):
             rate_resid, rate_consensus = {}, None
             if args.carrier_source == "rate":
                 rate_resid, rate_consensus = rate_residuals(
-                    status, args.carrier_rate_min_q, args.carrier_rate_clip_hz, _log)
+                    status, args.carrier_rate_min_q, args.carrier_rate_clip_hz, _log,
+                    prev_hop=rate_prev_hop, max_gap=args.carrier_rate_max_gap)
             car_report = []
             for prn in list(seeds):
                 if prn in probe_set:
@@ -4604,6 +4641,23 @@ def main(argv=None):
                 _log_rl("la-seed", "seeded code rate from (l-a) %+.3f ppm%s -> %d sat(s)"
                      % (cb_to_seed * 1e6,
                         " [FORCED]" if args.code_bias_force is not None else "", n_seeded))
+
+        # 3e. OPEN-LOOP TRIM (diagnostic). Command a FIXED carrier_trim_hz to every seeded PRN,
+        # independent of --carrier-gain. This is the transfer-function probe the loop debugging
+        # needs and could not otherwise get: GNSS_TRIM_FORCE fires once at first seed and lives
+        # inside the gain>0 block, so the loop immediately corrects away from it and the step
+        # response is unobservable.
+        #
+        # With the loop OFF and a held trim, deep_rate_hz answers three questions at once:
+        #   response = -step  -> plumbed and correctly signed; any non-convergence is dynamics
+        #   response = +step  -> SIGN ERROR (and a wrong-signed integrator runs to the rail,
+        #                        which is what trims sitting at +28..31 against a +-40 clamp
+        #                        look like)
+        #   no response      -> the trim never reaches the despread; the loop is open, and no
+        #                        amount of gain tuning would ever have helped.
+        if args.carrier_trim_const is not None:
+            for prn in seeds:
+                car_trim[prn] = args.carrier_trim_const
 
         # 4. push consensus seeds to every tracker (DLL trim applied at POST time only)
         payload = []
