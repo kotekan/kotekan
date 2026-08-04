@@ -205,6 +205,12 @@ private:
     /// Lock for the work queue
     std::mutex work_queue_lock;
 
+    /// All open connection instances, so they can be cleaned up on exit
+    std::deque<connInstance*> instance_list;
+
+    /// Lock for the instance list
+    std::mutex instance_list_lock;
+
     /// Condition variable for the state (empty or not) of the work queue
     std::condition_variable work_cv;
 
