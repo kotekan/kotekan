@@ -72,6 +72,8 @@ size_t VisMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t le
 size_t VisMetadata::serialize(char* bytes) {
     size_t sz = get_serialized_size();
     VisMetadataFormat* fmt = reinterpret_cast<VisMetadataFormat*>(bytes);
+    // Zero first so struct padding is not written out uninitialized
+    memset(bytes, 0, sz);
     fmt->fpga_seq_start = fpga_seq_start;
     fmt->ctime = ctime;
     fmt->fpga_seq_length = fpga_seq_length;

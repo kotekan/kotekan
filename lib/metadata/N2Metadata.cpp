@@ -4,6 +4,7 @@
 #include "factory.hpp"     // for REGISTER_TYPE_WITH_FACTORY
 #include "timeUtil.hpp"    // for EOP
 
+#include <cstring>  // for memset
 #include <json.hpp> // for json
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, N2Metadata);
@@ -54,6 +55,8 @@ size_t N2Metadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t len
 
 size_t N2Metadata::serialize(char* bytes) {
     N2MetadataFormat* fmt = reinterpret_cast<N2MetadataFormat*>(bytes);
+    // Zero first so struct padding is not written out uninitialized
+    memset(bytes, 0, sizeof(N2MetadataFormat));
 
     fmt->fpga_start_tick = fpga_start_tick;
     fmt->frame_start_time_ns = frame_start_time_ns;

@@ -95,6 +95,7 @@ void restClient::event_thread() {
         return;
     }
     _base = event_base_new_with_config(ev_config);
+    event_config_free(ev_config);
     if (!_base) {
         FATAL_ERROR_NON_OO("restClient: Failure creating new event_base.");
         return;
