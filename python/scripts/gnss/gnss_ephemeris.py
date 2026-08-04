@@ -301,6 +301,62 @@ def parse_rinex_nav(paths):
     return _parse_rinex_nav_file(paths)
 
 
+def glonass_freq_channels(paths=None):
+    """{slot: frequency-channel number k} for GLONASS, read from the SAME BRDC files everything
+    else uses. `paths` defaults to fetch_brdc().
+
+    ★ WHY THIS EXISTS AS ITS OWN PARSER. GLONASS is FDMA: every satellite transmits the SAME
+    511-chip code and is separated by CARRIER, satellite k sitting at 1246.0 + k*0.4375 MHz on
+    L2. So a GLONASS receiver needs k per satellite before it can even search -- and k is not in
+    the TLE, not in the satellite name, and NOT a constant (it is reassigned as satellites are
+    replaced, so a hardcoded table silently goes stale and points the search at the wrong
+    carrier).
+
+    ★ AND WHY IT IS NOT parse_rinex_nav(). That parser filters `sysc in "GEC"` and skips GLONASS
+    entirely, correctly: GLONASS broadcasts a position/velocity/acceleration state vector to be
+    integrated by Runge-Kutta, not a Keplerian element set, so none of the orbit code applies.
+    But k is just an INTEGER sitting in those same records -- no orbit maths needed to read it.
+    This function takes only that one field and ignores everything else, so we get the frequency
+    plan from an authoritative live source without owning a GLONASS propagator.
+
+    RINEX 3 GLONASS record = 4 lines: epoch/clock, then X/X'/X''/health, Y/Y'/Y''/**freq num**,
+    Z/Z'/Z''/age. k is the 4th field of the SECOND orbit line. Returns {} if nothing parses.
+    ⚠️ k is NOT unique across the constellation: antipodal satellites share a channel (they are
+    never simultaneously visible), so expect ~14 distinct values over ~24 satellites.
+    """
+    if paths is None:
+        paths = fetch_brdc()
+    if isinstance(paths, str):
+        paths = [paths]
+    out = {}
+    for path in paths:
+        try:
+            op = gzip.open if str(path).endswith(".gz") else open
+            with op(path, "rt", errors="replace") as f:
+                lines = f.readlines()
+        except Exception:
+            continue
+        i = 0
+        while i < len(lines) and "END OF HEADER" not in lines[i]:
+            i += 1
+        i += 1
+        while i + 3 < len(lines):
+            line = lines[i]
+            if not line.startswith("R"):
+                i += 1
+                continue
+            try:
+                slot = int(line[1:3])
+                k = int(round(_f(lines[i + 2][61:80])))
+            except Exception:
+                i += 1
+                continue
+            i += 4
+            if -7 <= k <= 6 and 1 <= slot <= 32:
+                out.setdefault(slot, k)  # first (freshest source) wins
+    return out
+
+
 def _parse_rinex_nav_file(path):
     """Parse ONE RINEX 3 mixed-nav file -> {(sys, prn): [eph dicts sorted by toe_gpst]}."""
     op = gzip.open if path.endswith(".gz") else open
