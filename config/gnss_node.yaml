@@ -1743,3 +1743,95 @@ bands:
             a TIME only via the record period. L3OC records are 1 ms, so 200 would be a 0.2 s
             emit -- right at the broker's nav_obs poll, fragmenting the symbol timeline (the
             B2b count-vs-time trap). 1000 records = 1 s = 200 nav symbols per emit.
+
+  # ============================================================================================
+  # GLONASS L2OC (1248.06) -- the modernised CDMA pilot; the LAST GLONASS signal (2026-08-04).
+  # ============================================================================================
+  # ★ Its own band tuned to 1248.06 in DEV (a swap-in, like e6/b1i/b3i); on CHORD it rides the
+  # SAME 1246 front end as L2OF (1248.06 is +2.06 MHz off the k=0 nominal, inside the 10 MHz
+  # window). GLONASS-K only -- the same 7 satellites as L3OC -- so the l3oc GLONASS path is reused
+  # verbatim: constellation R, glo-ops TLE, the K-capability gate, no BRDC/dead-reckon.
+  # ⚠️ Two things are genuinely new here and are the reasons this is the hard GLONASS signal:
+  #   1. 20 ms code period (40920 chips at 2.046 Mcps), acquired blind like GPS L2C-CM -- 20x the
+  #      search data of every 1 ms band. Watch acquisition cost; time-assist is the fallback.
+  #   2. Carrier 1248.06 is the ICD value; PocketSDR rounds to 1248.0. 60 kHz is far outside a
+  #      +-5 kHz Doppler window, so if nothing locks while L2OF shows K-sats overhead, RE-TUNE to
+  #      1248.0 before touching anything else -- settle it on the sky, do not assume (the L3OC
+  #      code-index lesson).
+  l2oc:
+    out_file: live_l2oc_gpu.yaml
+    header: |
+      GLONASS L2OC-p on the GPU chain, 1248.06 MHz: the modernised dataless CDMA PILOT.
+      ★ Its base ranging code is BIT-IDENTICAL to L3OC-p's -- GLONASS reuses one sequence across
+      the L2/L3 CDMA pilots. The transmitted code is that sequence run through a per-chip
+      [0,0,+1,-1] BOC(1,1)+TDM expansion: 40920 chips at 2.046 Mcps, 20 ms period, HALF of them
+      zero (the data component's TDM slots). See glonassL2OCCode.hpp + l2oc_code_check.py.
+      ⚠️⚠️ READ deep_snr AGAINST deep_floor, SUSTAINED, BESIDE A WORKING CHAIN -- the E6/L3OC
+      lesson. Judge it against L3OC: SAME 7 GLONASS-K satellites, so if L3OC locks and L2OC does
+      not, suspect the 1248.06-vs-1248.0 carrier or the 20 ms acquisition, not the sky.
+    http_port: 8088
+    kotekan_rest_port: 12848
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 20 MSPS = 2.496 ms per frame. L2OC records are 1 ms (1000 hops at fft_len
+      20); the CODE is 20 ms = 20 records, so the search accumulates 20 records per code period.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4 (same front-end model as every other band)"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
+    airspy:
+      cpu_affinity: [13]
+      serial: "0x03A464C837264F67"
+      serial_note: "Fallback only -- the top-level `dongles:` pool assigns serials in $BANDS
+        order. Any dongle can carry any band."
+      freq: 1248.06
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real (the 2.046 Mcps expanded code + BOC
+        wants the wide mode)"
+      # 11, matching l2c/l3oc: 1248.06 is in the same regime the sweep measured healthy.
+      gain: 11
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
+    doppler_note: |
+      L2OC at 1248.06 ~ 0.792 x L1 geometric Doppler; +-5000 with margin. step 100: 1 ms records.
+      ⚠️ GLONASS orbits are lower/more inclined than GPS's, so the Doppler rate runs high -- same
+      caution as l3oc/l2of. ★ The +-5 kHz window does NOT absorb the 1248.06-vs-1248.0 carrier
+      ambiguity (60 kHz); that is settled by re-tuning, not by widening this.
+    prns_note: |
+      PRN = ORBITAL SLOT, GLONASS-K only (same 7 as L3OC), gated by the K-capability marker.
+    num_cuda_streams: 2
+    per_chain_streams: false
+    record_dir: /tmp/gps_l2oc_gpu
+    chains:
+
+      # SHAPE A: primary chain labelled `constellation: gps` so gen_band_config emits the
+      # un-prefixed gps_* stage names the primary-broker path needs; the SIGNAL is GLONASS and
+      # run_live derives constellation R + the glo-ops TLE from it.
+      - constellation: gps
+        signal: GLO_L2OC_P
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        section_note: |
+          ---- GLONASS L2OC-p dataless PILOT (1248.06 MHz), 20 ms code ----
+          Shared 50-chip OC2 secondary wiped deterministically (secondary_overlay L2OC_OC2, one
+          chip per 20 ms primary period, 1 s cycle) -> integrates fully coherently once aligned.
+          The E5a-Q / E6-C segmented-pilot shape, just a 20 ms primary and a 50-phase overlay.
+          No peel (new band, keep it light).
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 5.0, acquire_windows: 200, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          # 5.0/200 for bring-up: only 7 candidate sats, modernised signal (may be faint or not
+          # fully deployed), and a 20 ms code -- buy sensitivity with a low threshold + more
+          # incoherent windows. Raise once it locks. hops_per_record 1000 = 1 ms at 20 MSPS; the
+          # search accumulates 20 records to span the 20 ms code period.
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence"
+        combiner:
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, secondary_overlay: L2OC_OC2, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+          note: |
+            integration_length 1000 x 1 ms = 1 s emit = one full 50-chip OC2 overlay cycle, so
+            the 50-phase alignment resolves within one emit. PURE PILOT once OC2 is wiped.

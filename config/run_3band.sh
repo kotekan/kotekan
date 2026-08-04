@@ -43,8 +43,8 @@ mkdir -p /tmp/gpswipe /tmp/gps_l2c_gpu /tmp/gps_l5_gpu /tmp/gnss_run
 # add: BANDS="l1 l2c e6". gen_3band_config.py refuses l5+e6 together (one airspy, two bands).
 BANDS="${BANDS:-l1 l2c l5}"
 export BANDS
-cfg_of()  { case "$1" in l1) echo config/live_l1_dual20.yaml;; l2c) echo config/live_l2c_gpu.yaml;; l5) echo config/live_l5_gpu.yaml;; e6) echo config/live_e6_gpu.yaml;; b1i) echo config/live_b1i_gpu.yaml;; b3i) echo config/live_b3i_gpu.yaml;; l3oc) echo config/live_l3oc_gpu.yaml;; l2of) echo config/live_l2of_gpu.yaml;; esac; }
-http_of() { case "$1" in l1) echo 8080;; l2c) echo 8081;; l5) echo 8082;; e6) echo 8083;; b1i) echo 8084;; b3i) echo 8085;; l3oc) echo 8086;; l2of) echo 8087;; esac; }
+cfg_of()  { case "$1" in l1) echo config/live_l1_dual20.yaml;; l2c) echo config/live_l2c_gpu.yaml;; l5) echo config/live_l5_gpu.yaml;; e6) echo config/live_e6_gpu.yaml;; b1i) echo config/live_b1i_gpu.yaml;; b3i) echo config/live_b3i_gpu.yaml;; l3oc) echo config/live_l3oc_gpu.yaml;; l2of) echo config/live_l2of_gpu.yaml;; l2oc) echo config/live_l2oc_gpu.yaml;; esac; }
+http_of() { case "$1" in l1) echo 8080;; l2c) echo 8081;; l5) echo 8082;; e6) echo 8083;; b1i) echo 8084;; b3i) echo 8085;; l3oc) echo 8086;; l2of) echo 8087;; l2oc) echo 8088;; esac; }
 # (viewer WS ports are baked into each config's spawn_pyviewer exec -- no env plumbing)
 
 # ---- teardown of anything stale (we own the whole box's GNSS control plane here) ----
