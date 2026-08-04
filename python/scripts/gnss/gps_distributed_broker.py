@@ -451,6 +451,12 @@ class FleetPublisher:
                 "fleet_instances": v["n_src"], "fleet_channels": v["n_chan"],
                 "fleet_hop": v["hop"], "coh_src": v.get("coh_src"),
                 "code_phase_rate": sd.get("code_phase_rate", 0.0),
+                # The SECOND-ORDER carrier term. propagate_seed turns this into the quadratic
+                # CODE term (quad = 0.5*(chip/f_c)*dop_rate*dt^2), which is what holds the phase
+                # while the Doppler accelerates -- maximal near zenith, i.e. exactly where the
+                # signal is strongest. Published so its ABSENCE is visible: a seed that omits it
+                # walks the code several chips per seed interval and no loop can hold that.
+                "doppler_rate_hz_s": sd.get("doppler_rate_hz_s"),
                 "dll_trim": dll_trim.get(prn, 0.0),
             })
             rows.append(row)
@@ -1114,6 +1120,13 @@ def main(argv=None):
                     help="DLL integrator leak (0 = pure integrator): trim mean-reverts each "
                          "update so discriminator NOISE can't random-walk it to the clamp. DC "
                          "loop gain = dll_gain/dll_leak; ~1/leak windows of smoothing.")
+    ap.add_argument("--nh-hint", action="store_true",
+                    help="echo each PRN's last REPORTED secondary-code alignment back to the "
+                         "search as its own hint, so the acquire scans nh_hint_span alignments "
+                         "instead of all 20 (~92%% of a pass). DISABLED by default: the "
+                         "reported nh does not currently propagate deterministically (4 of 26 "
+                         "correct on 2026-08-04), and a wrong hint narrows the scan away from "
+                         "the truth. Enable only once the alignment report is reproducible.")
     ap.add_argument("--publish-port", type=int, default=0,
                     help="serve the FLEET-MERGED per-PRN state on this port (0 = off): "
                          "GET /get_status returns rows in GnssCoherentCombiner's schema, so "
@@ -1847,6 +1860,8 @@ def main(argv=None):
     utc0_sample0 = 0.0  # CL time-assist: wall UTC of capture sample 0 (fetched lazily in the loop)
     dll_trim = {}       # prn -> persistent cp trim (chips) from the E/L delay-lock loop
     dll_last = {}       # prn -> last integrated disc (dedup: one integration per emit)
+    nh_seen = {}        # prn -> (nh, ref_hop) last REPORTED by the search: echoed back
+                        # as its own alignment hint, so nothing external has to be trusted
     dll_last_hop = {}   # prn -> last integrated WINDOW (fleet DLL): the exact dedup dll_last
                         # approximates. A changed float disc means "probably a new emit"; a
                         # changed hop means it, and it cannot false-negative on a disc that
@@ -2107,6 +2122,18 @@ def main(argv=None):
                                  int(d.get("ref_hop", 0)), int(d.get("nh", -1)),
                                  float(d.get("code_phase_long_chips", -1.0)),
                                  float(d.get("code_phase_at_ref_chips", -1.0)))
+        # Remember each PRN's REPORTED alignment + the hop it was measured at, to echo back as
+        # that PRN's own nh hint. Gated on the same acquire_snr as the detection itself: a
+        # marginal detection's nh is a coin flip, and a wrong hint narrows the scan AWAY from
+        # the truth (recoverable -- the hint expires and the full scan returns -- but it costs a
+        # revisit, so do not feed it noise).
+        for _p, _b in best.items():
+            if _b[4] >= 0 and _b[3] > 0:
+                nh_seen[_p] = (_b[4], _b[3])
+        for _p in list(nh_seen):
+            if _p not in seeds and _p not in best:
+                del nh_seen[_p]          # sat set: stop hinting a PRN we no longer track
+
         for _p, _b in best.items():
             # A detection is FRESH when its ref_hop advanced (the stage re-detected it,
             # not a stale REST snapshot) -- the alias escape below must never act on a
@@ -2515,10 +2542,30 @@ def main(argv=None):
                             "XBAND RESCUE HINT PRN %d: %+.0f Hz (sibling tracks it, BRDC does "
                             "not) -> search narrows instead of blind" % (_p, _xd),
                             every_s=30.0)
+            # SECONDARY-CODE ALIGNMENT HINT, the Doppler hint's twin and the bigger saving:
+            # the acquire builds a FULL surface per alignment, so 20 of them are ~92% of a pass.
+            # We echo back the stage's OWN last reported nh with the hop it was measured at, and
+            # it propagates by counter arithmetic (one index per code period, an exact hop
+            # count). Self-referential on purpose: no GPS time, no range model, nothing to
+            # bootstrap -- a PRN with no hint simply scans all 20 as before, and one detection
+            # establishes it. Only worth anything because the revisit is now short: over the
+            # 1276 s revisit this fleet had before 2026-08-04 the prediction would drift 4.3
+            # periods and be worse than useless.
+            # OFF BY DEFAULT, and it must stay off until the reported nh is reproducible.
+            # Measured 2026-08-04: propagating the search's own reported alignment forward gets
+            # 4 of 26 right, whether or not the code phase is carried. PRN 3 reported 11->11
+            # over 78.2 s and 11->10 over 77.7 s -- gaps differing by exactly 0 mod 20 periods,
+            # so no propagation law fits. Posting a wrong hint NARROWS the scan away from the
+            # truth, which is worse than not hinting: self-healing (the TTL restores the full
+            # scan) but at the cost of a revisit each time.
+            nh_hints = ([dict(prn=_p, nh=int(_nh), ref_hop=int(_rh))
+                         for _p, (_nh, _rh) in nh_seen.items()] if args.nh_hint else [])
             pushed = 0
             for d_ep in detectors:
                 try:
                     _post("%s/set_doppler_hints" % d_ep, hints)
+                    if nh_hints:
+                        _post("%s/set_nh_hint" % d_ep, nh_hints)
                     pushed += 1
                 except Exception as e:
                     _log("set_doppler_hints %s failed: %s" % (d_ep, e))

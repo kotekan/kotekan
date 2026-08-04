@@ -116,6 +116,7 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _prns_per_pass = std::max(0, config.get_default<int>(unique_name, "prns_per_pass", 0));
     _hint_dop_sign = config.get_default<double>(unique_name, "hint_doppler_sign", -1.0);
     _require_hint = config.get_default<bool>(unique_name, "require_hint", false);
+    _nh_hint_span = std::max(0, config.get_default<int>(unique_name, "nh_hint_span", 1));
     _hint_ttl_s = config.get_default<double>(unique_name, "hint_ttl_s", 8.0);
     double dmin = config.get_default<double>(unique_name, "doppler_min", -6000.0);
     double dmax = config.get_default<double>(unique_name, "doppler_max", 6000.0);
@@ -192,6 +193,8 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
 
     _detections.assign(_prns.size(), Detection{});
     _dop_hints.assign(_prns.size(), DopHint{});
+    _nh_hints.assign(_prns.size(), NhHint{});
+    _nh_snap_hints.assign(_prns.size(), NhHint{});
     _repl0.assign((size_t)_n_nh, std::vector<std::vector<std::vector<cf>>>(_prns.size()));
     _snap_hops = (size_t)_acquire_windows * _hops_per_record;
     _snapshot.assign(_snap_hops * (size_t)_n_chan, cf(0.0f, 0.0f));
@@ -413,7 +416,35 @@ void GnssChannelizedSearch::search_snapshot() {
         std::vector<double> surf;
         std::vector<std::vector<cf>> dch(_n_chan, std::vector<cf>(hpr));
         gnss::AcquisitionSurface dims{}; // hoisted: the refine needs s_stored to de-alias
-        for (int nh = 0; nh < _n_nh; ++nh) {
+        // WHICH ALIGNMENTS TO SCAN. Each one costs a FULL acquisition surface, so with a
+        // 20-chip overlay this loop is ~92% of a pass (measured: acquire 40.00 s vs refine
+        // 3.62 s at live parameters). The alignment advances exactly one index per primary code
+        // period and a period is an exact hop count, so a hint from OUR OWN last detection
+        // propagates by counter arithmetic alone -- no clock, nothing to bootstrap. See NhHint.
+        std::vector<int> nh_scan;
+        {
+            std::lock_guard<std::mutex> lk(_hint_mtx);
+            const NhHint& nhh = (_nh_snap_hints.size() == _prns.size())
+                                    ? _nh_snap_hints[(size_t)p] : NhHint{};
+            const bool fresh = nhh.valid && _n_nh > 1
+                               && (_hint_ttl_s <= 0.0 || _snap_taken_s - nhh.t_recv < _hint_ttl_s);
+            if (fresh) {
+                // hops per primary code period; exact for this signal's geometry
+                const double per_hops = (_replica->code_length() / _replica->chip_rate_hz())
+                                        * _sample_rate / (double)_fft_len;
+                const long long dperiods =
+                    (per_hops > 0.0)
+                        ? (long long)std::llround((double)(_snap_start_hop - nhh.ref_hop) / per_hops)
+                        : 0;
+                const int pred = (int)(((nhh.nh + dperiods) % _n_nh + _n_nh) % _n_nh);
+                for (int d = -_nh_hint_span; d <= _nh_hint_span; ++d)
+                    nh_scan.push_back(((pred + d) % _n_nh + _n_nh) % _n_nh);
+            }
+        }
+        if (nh_scan.empty())                       // no fresh hint -> the full blind scan
+            for (int i = 0; i < _n_nh; ++i)
+                nh_scan.push_back(i);
+        for (int nh : nh_scan) {
             // repl0 (code 0, Doppler 0) on the covering channels -- precomputed, not rebuilt.
             const std::vector<std::vector<cf>>& repl0 = _repl0[(size_t)nh][p];
             surf.assign(surf.size(), 0.0); // reuse the allocation, drop the previous alignment
@@ -588,6 +619,9 @@ void GnssChannelizedSearch::main_thread() {
     kotekan::restServer::instance().register_post_callback(
         unique_name + "/set_doppler_hints",
         std::bind(&GnssChannelizedSearch::set_doppler_hints_callback, this, _1, _2));
+    kotekan::restServer::instance().register_post_callback(
+        unique_name + "/set_nh_hint",
+        std::bind(&GnssChannelizedSearch::set_nh_hint_callback, this, _1, _2));
 
     _worker = std::thread(&GnssChannelizedSearch::search_worker, this);
 
@@ -648,6 +682,7 @@ void GnssChannelizedSearch::main_thread() {
                     // Freeze the hint table at the data's epoch -- see _snap_hints.
                     std::lock_guard<std::mutex> hk(_hint_mtx);
                     _snap_hints = _dop_hints;
+                    _nh_snap_hints = _nh_hints; // freeze with the data, same reason as the Doppler hints
                     _snap_taken_s = steady_s();
                 }
                 std::lock_guard<std::mutex> lk(_m);
@@ -689,6 +724,34 @@ void GnssChannelizedSearch::get_detections_callback(kotekan::connectionInstance&
                          {"snr", d.snr}});
     }
     conn.send_json_reply(reply);
+}
+
+void GnssChannelizedSearch::set_nh_hint_callback(kotekan::connectionInstance& conn,
+                                                 nlohmann::json& json_request) {
+    // Body: [{prn, nh, ref_hop}, ...] -- the alignment index THIS STAGE last reported for that
+    // PRN, and the absolute hop it was measured at. nh < 0 CLEARS (revert to the full scan).
+    // PRNs not listed keep their hint. Unknown PRNs ignored. Deliberately self-referential:
+    // the broker echoes back our own measurement, so there is no clock to bootstrap.
+    try {
+        std::lock_guard<std::mutex> lk(_hint_mtx);
+        for (const auto& h : json_request) {
+            const int prn = h.at("prn").get<int>();
+            for (size_t i = 0; i < _prns.size(); ++i) {
+                if (_prns[i] != prn)
+                    continue;
+                const int nh = h.value("nh", -1);
+                if (nh < 0)
+                    _nh_hints[i] = NhHint{};
+                else
+                    _nh_hints[i] = NhHint{true, nh, h.value("ref_hop", (long long)0), steady_s()};
+                break;
+            }
+        }
+    } catch (const std::exception& e) {
+        conn.send_error(e.what(), kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
 void GnssChannelizedSearch::set_doppler_hints_callback(kotekan::connectionInstance& conn,

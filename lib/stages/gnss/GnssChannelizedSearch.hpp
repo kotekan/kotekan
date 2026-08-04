@@ -85,6 +85,7 @@ private:
     void search_snapshot();
     void get_detections_callback(kotekan::connectionInstance& conn);
     void set_doppler_hints_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
+    void set_nh_hint_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
 
     struct Detection {
         double doppler_hz = 0.0;
@@ -163,6 +164,35 @@ private:
     /// the data removes it; residual = broker interval (10 s) x rate ~ 7 Hz.
     std::vector<DopHint> _snap_hints;
     double _snap_taken_s = 0.0; ///< steady_s() when the snapshot finalized (for hint TTL)
+    /// Per-PRN SECONDARY-CODE ALIGNMENT hint (POST set_nh_hint), the Doppler hint's twin and by
+    /// far the bigger saving: the acquire builds a FULL surface per alignment, so a 20-chip
+    /// overlay costs 20 surfaces per PRN and is ~92% of a pass (measured 2026-08-04: acquire
+    /// 40.00 s vs refine 3.62 s at live parameters).
+    ///
+    /// It is redundant work. The alignment advances exactly one index per primary code period,
+    /// and a period is an exact hop count, so
+    ///     nh(H) = (nh0 + (H - H0) / period_hops) mod n_nh
+    /// is pure F-engine counter arithmetic. NO absolute clock, no range model, no utc0_sample0
+    /// -- deliberately unlike the combiner's --cl-hint, whose GPS-time route carries a
+    /// bootstrap dependency and an anchor-latency failure mode. The hint only ever refines
+    /// something THIS stage already measured and reported, so there is nothing to bootstrap:
+    /// no hint scans all n_nh (the old behaviour), the first detection establishes it, and a
+    /// stale hint expires back to the full scan.
+    ///
+    /// Accuracy comes from the revisit being short. An entirely unmodelled 4 kHz Doppler slips
+    /// the period count by 0.041 periods over 12 s -- but 4.3 periods over the 1276 s revisit
+    /// this fleet had before 2026-08-04, where the hint would have been worse than useless.
+    struct NhHint {
+        bool valid = false;
+        int nh = 0;             ///< alignment index measured at ref_hop
+        long long ref_hop = 0;  ///< absolute hop it was measured at
+        double t_recv = 0.0;
+    };
+    std::vector<NhHint> _nh_hints;      ///< live, updated by REST
+    std::vector<NhHint> _nh_snap_hints; ///< frozen with the snapshot, like _snap_hints
+    /// Alignments scanned either side of the predicted one. 1 (three of twenty) keeps ~6.7x of
+    /// the saving while tolerating an off-by-one hint; 0 takes the full 20x and trusts it.
+    int _nh_hint_span = 1;
     std::mutex _hint_mtx;
     /// require_hint: scan ONLY PRNs with a fresh broker hint (visible sats), SKIP the rest (no blind
     /// grid) -> cost tracks the visible count, and the set follows the sky (mid-run PRN swap) when
