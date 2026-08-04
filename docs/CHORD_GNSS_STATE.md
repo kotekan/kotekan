@@ -2714,3 +2714,124 @@ restoring service needs only a node restart plus aggregator+broker on cx19.
 5. cf06: instrument the merge (per-input arrival timing) rather than guessing at the link.
 6. Still open from 8.18.3: cross-node coherent combining (`fleetcoh.py` is written, and the
    ramp removal it was waiting on now exists); the beam anomaly.
+
+## 8.20 The cf06 "freeze" was a config regression, and the carrier loop was never fed
+
+Two independent defects, both of which presented as something else entirely.
+
+### 8.20.1 The aggregator was not frozen -- it was computing one enormous pass
+
+`GnssChanAlignMerge` logged `first aligned frame at sample_seq ... across 12 inputs`, then
+nothing, forever. 8.19.8 had ruled out feed wiring, bandwidth, replica/config and buffer depth,
+and left "cf06 is on a 1 Gb/s NIC on another subnet" as the surviving suspect. That was wrong.
+
+The aggregator config had been regenerated **without the search tuning**, so it took the
+generator's defaults:
+
+| param | agg8 (cx19, worked) | agg6 (cf06) | cost |
+|---|---|---|---|
+| `prns_per_pass` | 1 | 0 = all 12 hinted | x12 |
+| `acquire_windows` | 1 | 32 | x32 |
+| `acquire_fine_step` | 128 | 1 | x128 |
+| `acquire_threads` | 16 | 6 | x2.7 |
+
+~1e5x the work per pass. **Every log line in the stage comes AFTER the pass**, so a pass that
+would have taken about a day printed nothing at all. Cores 58-63 were 30-99% busy the whole
+time -- it was never blocked. Fixed: passes 0.14-0.80 s, detections back at snr 941/670/183
+against a 17.7 pure-noise ceiling, and the chain closed behind it (cp-fits, fleet DLL 10/10
+combiners, clock bias solved, search narrowed to +-100 Hz).
+
+Two diagnostic mistakes worth keeping:
+* I read `last_frame_acquired/released` as monotonic counters and concluded "frozen at 17".
+  They are RING SLOT indices and were wrapping (1 -> 39 -> 14): data was flowing the whole time.
+* I then read `top -b -n 1` and `ps -o pcpu` as current load. Both report LIFETIME averages;
+  the first `top` iteration is meaningless. `mpstat -P 58-63 2 1` gave the real answer in one
+  command and reversed the conclusion from "blocked" to "compute-bound".
+
+**Root cause, and why the docs did not prevent it.** This was the SECOND occurrence (8.19
+deployment notes named all four flags). The `--acquire-windows` help text actively argued FOR
+32, contradicting 5r.1's measurement. Prose lost to the default. The deployed values are now
+the DEFAULTS, with the help rewritten to carry the measurement; a bare regeneration now
+reproduces the deployed config exactly. Node configs were also regenerated to
+`--search-host 10.222.3.6`: they still named cx19, and since the merge blocks on every feed it
+was built with, one node restart would have stalled the aggregator for real.
+
+### 8.20.2 The carrier continuity gate was in RECORD units and rejected 100% of samples
+
+The gate compared `pow_hop - prev` against `max_gap * rec_hops` = 4096 hops = two RECORDS.
+Successive observations are one EMIT apart, **measured at 389120 hops = 190 records = 1.99 s**.
+It overshot ~95x: **118 log lines, zero measurements admitted**. The loop has been starved since
+the gate went in, while looking like it was running -- the skip line reads as a normal event.
+8.19.4's "the loop does not converge" was therefore never a statement about the loop.
+
+The gate now LEARNS the emit spacing from the stream (running minimum positive step) rather than
+naming it. 0/10 -> 10/10 admitted on contiguous emits; a 4-emit gap still rejected.
+
+Decomposed before re-closing (536 samples, 4 min), which killed two of my guesses:
+
+```
+80% of contiguous steps SMOOTH: median -0.238 Hz/emit = -0.101 Hz/s   <- the real signal
+20% genuine jumps, median 25.5 Hz                                     <- reference changes
+NOT alias wraps: only 1/51 large steps falls below 3 Hz when unwrapped by the
+  +-47.68 Hz search period. I predicted wrapping because the values fill the full
+  range; the unwrap test refuted it.
+```
+
+So the 3 Hz slew gate sits correctly between 0.6 Hz (sd of the smooth walk) and the smallest
+re-anchor -- it was simply unreachable behind the hop gate.
+
+`--carrier-rate-inherit` is now **OFF**. It assumed the residual is common-mode; across 131
+emits with >=3 PRNs, the spread of `deep_rate_hz` BETWEEN PRNs within ONE emit is **median
+60.8 Hz**, near the full search range. Each residual is against its own tracker's `f_ref`, which
+re-pins per PRN, so there is no shared zero to average toward. The claim that IS true is a
+different one: across NODES, the same PRN at the same emit agrees to **0.00 Hz**.
+
+### 8.20.3 What actually bounds the carrier loop: the re-seed cadence
+
+With the gate fixed and the loop closed at gain 0.25, residuals do respond -- PRN 3 went
+-5.96 -> -0.95 -> -0.24 Hz in three cycles -- and the fleet median improves, without costing
+tracking:
+
+```
+                    OPEN (starved)   CLOSED g=0.25   (repeat)   g=0.6
+|deep_rate_hz| med      23.60 Hz        18.36 Hz    20.27 Hz   24.80 Hz
+frac |rate| < 3 Hz            8%             15%          4%
+deep_snr median            13.39           13.21               (unharmed)
+coherence_s median         1.049           1.049       1.049
+n                             954             370         257        134
+```
+
+**Read this cautiously.** The direction is consistent (closed < open in both runs) but the
+magnitude is not reproducible -- 18.36 vs 20.27 Hz against a 23.60 baseline, and `frac < 3 Hz`
+went 15% -> 4% between two runs of the same configuration. So the honest claim is only that
+closing the loop does not HURT (deep_snr and coherence are unchanged) and may help slightly.
+It certainly does not converge to zero. What IS solid is that **raising the gain makes it
+worse**: 0.6 is no better than open loop, with trims driven to +-37 against a +-40 rail. The
+loop is not too slow.
+
+The measurement that explains it: the search runs 12 eligible PRNs at `prns_per_pass: 1` and
+~0.8 s per pass, so **each PRN is re-seeded every ~9.6 s** -- and the measured median time
+between >3 Hz reference jumps is **10.1 s**. Those jumps are not the FLL fence (at the measured
+0.101 Hz/s drift, the 9.5 Hz fence would fire every ~94 s). They are the search re-seeds
+re-pinning `f_ref`. The loop gets ~5 cycles before its reference is reset, and a bigger gain
+just makes each reset a bigger trim excursion.
+
+**So the binding constraint is that the reference keeps moving, not how fast we chase it.**
+The fix is to stop moving it, not to chase harder:
+
+1. **Publish `f_ref` (or a re-anchor counter) from the tracker.** Then a re-anchor is a known
+   reference change to be subtracted, not a discontinuity to be gated out. This was 8.19.9
+   item 3; it is now the top item, and it converts the 20% of samples we currently discard into
+   usable ones.
+2. **Do not re-pin `f_ref` on a re-seed when the tracker is already tracking.** A fresh
+   detection should not reset the carrier reference of a satellite that is locked.
+3. Only then revisit gain. Gain is not the free parameter it looked like.
+
+### 8.20.4 Operational
+
+`scripts/gnss/broker_restart.sh` exists now because
+`ssh cf06 'pkill -f gps_distributed_broker; ... &'` **kills its own shell** -- pkill -f matches
+full command lines and the remote shell's line contains the pattern, so the restart never runs.
+The matching `pgrep -f ... && echo up` health check self-matches too and reports success with
+nothing running. Both halves lie in the same direction; the broker was down 20 minutes while
+each claimed success. The script uses the bracket form `[g]ps_distributed_broker`.
