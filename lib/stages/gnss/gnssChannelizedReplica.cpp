@@ -308,6 +308,20 @@ std::vector<int> ChannelizedReplicaBank::covering_bins(double doppler_hz,
     return std::vector<int>(ids.begin(), ids.end());
 }
 
+std::vector<int> ChannelizedReplicaBank::covering_bins_union(double doppler_hz,
+                                                             double doppler_margin_hz) const {
+    if (_prn_df.empty())
+        return covering_bins(doppler_hz, doppler_margin_hz, -1);
+    std::vector<int> all;
+    for (size_t p = 0; p < _prn_df.size(); ++p) {
+        const auto b = covering_bins(doppler_hz, doppler_margin_hz, (int)p);
+        all.insert(all.end(), b.begin(), b.end());
+    }
+    std::sort(all.begin(), all.end());
+    all.erase(std::unique(all.begin(), all.end()), all.end());
+    return all;
+}
+
 std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long window_start_sample,
                                                               double code_phase_chips,
                                                               double doppler_hz, int n_hops,

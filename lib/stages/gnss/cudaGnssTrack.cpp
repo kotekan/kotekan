@@ -1008,7 +1008,7 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate,
                 continue;
             }
             // Covering channels at the seed Doppler (GLOBAL ids -> this subband's local set).
-            auto cover = S.replica->covering_bins(dop[p], S.doppler_margin_hz);
+            auto cover = S.replica->covering_bins(dop[p], S.doppler_margin_hz, p);  // p: FDMA carriers are per-PRN (GLONASS)
             // DIAGNOSTIC channel-width trim (max_cover_bins, 2026-07-21): keep only the N
             // covering channels nearest the carrier IF -- the narrow-despread A/B for the
             // L5-band ADR wander (wide 10.23 Mcps chains wander 20-50x vs the narrow chains

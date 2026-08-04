@@ -315,7 +315,7 @@ void GnssChannelizedTracker::main_thread() {
                 // Effective carrier Doppler for the replica = the broker seed. Covering
                 // channels follow it.
                 const double dop_eff = dop[p];
-                const auto cover = _replica->covering_bins(dop_eff, _doppler_margin_hz);
+                const auto cover = _replica->covering_bins(dop_eff, _doppler_margin_hz, p);  // p: FDMA carriers are per-PRN (GLONASS)
                 for (int c : cover)
                     if (c >= _chan_offset && c < _chan_offset + _n_chan)
                         cmds[p].owned.push_back(c);

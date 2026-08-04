@@ -146,7 +146,12 @@ void GnssChannelizedSearch::search_snapshot() {
     const int nwin = std::min(_acquire_windows, (int)(_snap_hops / (size_t)hpr));
 
     // Covering channels (global) for this carrier that fall in this subband.
-    const auto cover = _replica->covering_bins(dmax, _doppler_margin_hz);
+    // ★ UNION over PRNs, because this set is sliced ONCE and then reused for every PRN below.
+    // Under FDMA (GLONASS) each satellite sits on its own carrier, so a single PRN's covering
+    // set would send the search looking for every OTHER satellite in channels it does not
+    // occupy -- which finds nothing, while the front end, the codes and the hints all look
+    // healthy. Identical to the old call for CDMA, where every PRN shares one carrier.
+    const auto cover = _replica->covering_bins_union(dmax, _doppler_margin_hz);
     std::vector<int> cov_local, cov_global;
     for (int c : cover)
         if (c >= _chan_offset && c < _chan_offset + _n_chan) {

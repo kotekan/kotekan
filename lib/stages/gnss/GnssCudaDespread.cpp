@@ -63,7 +63,7 @@ struct GnssCudaDespread::Impl {
         all_chans.resize(nc);
         for (int c = 0; c < nc; ++c)
             all_chans[c] = coff + c;
-        const auto probe = bank.hoprate_filter(all_chans, 0.0);
+        const auto probe = bank.hoprate_filter(all_chans, 0.0); // sizing only -> band-wide ok
         Lf = (int)probe.PhiA[0].size() - 1;
 
         // Code table: concatenate every PRN slot's combined-stream code once.
@@ -139,8 +139,11 @@ struct GnssCudaDespread::Impl {
         return bank.eff_chip_rate() / fs
                * (1.0 + bank.code_doppler_sign * doppler_hz / bank.carrier_hz());
     }
-    double wc_for(double doppler_hz) const {
-        return 2.0 * M_PI * (f_off + doppler_hz) / fs;
+    // ★ PER-PRN carrier. f_off is the BAND offset; under FDMA (GLONASS L1OF/L2OF) each
+    // satellite sits on its own carrier, so the phasor has to come from the bank's per-PRN
+    // total. Identical to f_off for every CDMA signal, where no offsets are set.
+    double wc_for(int p, double doppler_hz) const {
+        return 2.0 * M_PI * (bank.carrier_offset(p) + doppler_hz) / fs;
     }
 
     // (Re)build PRN p's Phi bucket at this Doppler if it moved more than refresh_hz.
@@ -148,7 +151,8 @@ struct GnssCudaDespread::Impl {
         PhiCache& pc = phi[(size_t)p];
         if (pc.valid && std::fabs(doppler - pc.doppler) <= refresh_hz)
             return pc;
-        const auto f = bank.hoprate_filter(all_chans, doppler);
+        // phi[] is already indexed per PRN; build this PRN's carrier into it too.
+        const auto f = bank.hoprate_filter(all_chans, doppler, p);
         const size_t n = (size_t)n_chan * (Lf + 1);
         std::vector<float2> hA(n), hB(n);
         for (int c = 0; c < n_chan; ++c)
@@ -174,7 +178,13 @@ struct GnssCudaDespread::Impl {
 GnssCudaDespread::GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn, int n_chan,
                                    int chan_offset, int n_hops, double sample_rate,
                                    double f_offset, double refresh_hz) :
-    _impl(new Impl(bank, n_prn, n_chan, chan_offset, n_hops, sample_rate, f_offset, refresh_hz)) {}
+    _impl(new Impl(bank, n_prn, n_chan, chan_offset, n_hops, sample_rate, f_offset, refresh_hz)) {
+    // FDMA (GLONASS L1OF/L2OF) IS supported: the Phi cache was already indexed per PRN, so it
+    // only needed the per-PRN carrier passed into the filter and the phasor. A guard here first
+    // caught that this path -- reached INTERNALLY from cudaGnssTrack, which is why grepping the
+    // band config for "GnssCudaDespread" found nothing -- was quietly building every satellite's
+    // filter at the band centre.
+}
 
 GnssCudaDespread::~GnssCudaDespread() = default;
 
@@ -212,7 +222,7 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
         const double cps =
             im.bank.eff_chip_rate() / im.fs
             * (1.0 + im.bank.code_doppler_sign * sp.doppler_hz / im.bank.carrier_hz());
-        const double wc = 2.0 * M_PI * (im.f_off + sp.doppler_hz) / im.fs;
+        const double wc = im.wc_for(sp.p, sp.doppler_hz); // per-PRN carrier (FDMA-safe)
         uint64_t mask = 0;
         for (int c : sp.covering)
             if (c >= 0 && c < im.n_chan)
@@ -288,7 +298,7 @@ int GnssCudaDespread::enqueue_batch_device(const void* d_window, int data_stride
         const double cps =
             im.bank.eff_chip_rate() / im.fs
             * (1.0 + im.bank.code_doppler_sign * sp.doppler_hz / im.bank.carrier_hz());
-        const double wc = 2.0 * M_PI * (im.f_off + sp.doppler_hz) / im.fs;
+        const double wc = im.wc_for(sp.p, sp.doppler_hz); // per-PRN carrier (FDMA-safe)
         uint64_t mask = 0;
         for (int c : sp.covering)
             if (c >= 0 && c < im.n_chan)
@@ -382,7 +392,7 @@ int GnssCudaDespread::enqueue_peel_device(const void* d_window, int data_stride,
         im.h_pjobs[(size_t)i] = {cp0,
                                  cps,
                                  1.0 / cps,
-                                 im.wc_for(sp.doppler_hz),
+                                 im.wc_for(sp.p, sp.doppler_hz),
                                  im.code_offset[(size_t)sp.p],
                                  (int)im.code_len,
                                  mask,

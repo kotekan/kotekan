@@ -142,6 +142,14 @@ public:
     /// offset. @c p < 0 (or unset) gives the band offset alone.
     double carrier_offset(int prn_index) const;
 
+    /// Covering channels for the UNION of every PRN's carrier -- what a caller needs when it
+    /// extracts ONE channel set for all PRNs (the search does: it slices the band once, then
+    /// loops PRNs). Identical to @ref covering_bins for CDMA, where all PRNs share a carrier.
+    /// ★ Safe to over-cover: the replica is built PER PRN with that PRN's carrier, so in
+    /// channels outside its own lobe the replica is ~0 and the matched filter -- which
+    /// normalises by |replica| -- weights them away. The cost is compute, not SNR.
+    std::vector<int> covering_bins_union(double doppler_hz, double doppler_margin_hz) const;
+
     /// Bipolar code chip for PRN index @c p at fractional chip phase (wraps period).
     int8_t code_chip(int p, double chip_phase) const;
 

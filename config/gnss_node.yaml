@@ -1562,7 +1562,12 @@ bands:
           symbol instead of 20. The per-PRN carrier offsets are the whole FDMA story.
         rec_buf_depth: 1200
         search:
-          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          params: { acquire_snr: 4.0, acquire_windows: 200, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0, log_level: info }
+          # ⚠️ TEMPORARILY 4.0/200 + log_level info for FDMA BRING-UP (2026-08-04): a low
+          # threshold shows the SHAPE of what the search sees (right PRNs at 5-7 = a margin
+          # problem; random PRNs at 4 = noise, i.e. still pointed at the wrong frequency), and
+          # the per-stage log_level surfaces the "FDMA carrier offsets applied" line that the
+          # node-wide `log_level: warn` otherwise swallows. Restore 8.0/100 once it locks.
           # 8.0/100 (the proven mid-band setting), NOT L3OC's relaxed 6.0/200: L2OF is an
           # operational signal on ~26 satellites in a band the sweep says is healthy, so there
           # is no reason to spend threshold margin before seeing what it does.

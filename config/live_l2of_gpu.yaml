@@ -54,8 +54,8 @@ code_doppler_sign: 1.0
 n_prn: 28
 record_floats: 24
 doppler_margin_hz: 250000.0
-acquire_snr: 8.0
-acquire_windows: 100
+acquire_snr: 4.0
+acquire_windows: 200
 # L2OF at ~1246 ~ 0.791 x L1 geometric Doppler; +-5000 with margin. ⚠️ GLONASS orbits are
 # lower (19100 km) and more inclined (64.8 deg) than GPS's, so the Doppler RATE runs higher
 # than the carrier ratio alone suggests -- the same caution as the l3oc band.
@@ -113,7 +113,7 @@ fengine: { kotekan_stage: fftwEngine, in_buf: input_buf, out_buf: chan_buf, inpu
 
 # hops_per_record 1000 = the 1 ms L2OF period at 20 MSPS.
 # require_hint: scan only broker-hinted visible slots WITH a known frequency channel.
-gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0, prn_freq_offset_hz: [437500.0, -1750000.0, 2187500.0, 2625000.0, 437500.0, -1750000.0, 2187500.0, 2625000.0, -875000.0, -3062500.0, 0.0, -437500.0, -875000.0, -3062500.0, 0.0, -437500.0, 1750000.0, -1312500.0, 1312500.0, 875000.0, 1750000.0, -1312500.0, 1312500.0, 875000.0, 0.0, -2625000.0, -2187500.0, 0.0] }
+gps_search: { kotekan_stage: GnssChannelizedSearch, in_buf: chan_buf, channel_offset: 0, n_channels: 10, acquire_snr: 4.0, acquire_windows: 200, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0, log_level: info, prn_freq_offset_hz: [437500.0, -1750000.0, 2187500.0, 2625000.0, 437500.0, -1750000.0, 2187500.0, 2625000.0, -875000.0, -3062500.0, 0.0, -437500.0, -875000.0, -3062500.0, 0.0, -437500.0, 1750000.0, -1312500.0, 1312500.0, 875000.0, 1750000.0, -1312500.0, 1312500.0, 875000.0, 0.0, -2625000.0, -2187500.0, 0.0] }
 valve: { kotekan_stage: Valve, in_buf: chan_buf, out_buf: chan_buf2 }
 quant: { kotekan_stage: GnssQuantize44, in_buf: chan_buf2, out_buf: q_buf, target_lsb: 2.1, measure_frames: 64 }  # the RFSoC's job in software: noise rms -> target_lsb, freeze, demote to CHORD 4+4b (2.1 point, cold soak closed 07-19)
 

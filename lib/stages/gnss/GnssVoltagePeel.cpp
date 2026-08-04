@@ -235,7 +235,7 @@ void GnssVoltagePeel::main_thread() {
                 if (!active[p])
                     continue;
                 const double fcar = dop[p];
-                const auto cover = _replica->covering_bins(fcar, _doppler_margin_hz);
+                const auto cover = _replica->covering_bins(fcar, _doppler_margin_hz, p);  // p: FDMA carriers are per-PRN (GLONASS)
                 std::vector<int> owned;
                 for (int c : cover)
                     if (c >= _chan_offset && c < _chan_offset + _n_chan)
