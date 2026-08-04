@@ -551,6 +551,16 @@ class FleetPublisher:
 
     def __init__(self, port, log):
         self._rows, self._meta, self._dets, self._lock = [], {}, [], threading.Lock()
+        # RUNTIME CONTROL, deliberately narrow. Everything else here is read-only; this one
+        # value is writable because the experiment that needs it CANNOT be run any other way.
+        # Measuring the carrier loop's open-loop transfer function means holding a fixed
+        # carrier_trim_hz and watching deep_rate_hz -- but deep_rate_hz is measured against the
+        # tracker's f_ref, and changing the trim via --carrier-trim-const requires a broker
+        # restart, whose first seed list drops PRNs (the tracker's `active` fill is
+        # authoritative, so a dropped PRN sets f_ref = NaN and re-acquires). The step and the
+        # reference change are then inseparable, which is exactly how the 2026-08-04 attempt
+        # came out uninterpretable. Setting it in a LIVE broker holds f_ref still.
+        self._ctl = {"carrier_trim_const": None}
         pub = self
 
         class H(BaseHTTPRequestHandler):
@@ -581,9 +591,50 @@ class FleetPublisher:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def do_POST(self):
+                # ONLY /set_carrier_trim. Body {"hz": <float>} holds that trim on every seeded
+                # PRN; {"hz": null} releases it back to --carrier-trim-const. Diagnostic: pair
+                # it with --carrier-gain 0 so the loop does not immediately correct the step away.
+                p = self.path.rstrip("/")
+                if not p.endswith("set_carrier_trim"):
+                    self.send_response(404)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                try:
+                    n = int(self.headers.get("Content-Length", 0))
+                    req = json.loads(self.rfile.read(n) or b"{}")
+                    hz = req.get("hz")
+                    hz = None if hz is None else float(hz)
+                except Exception as e:
+                    body = json.dumps({"error": str(e)}).encode()
+                    self.send_response(400)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                with pub._lock:
+                    pub._ctl["carrier_trim_const"] = hz
+                pub._log("carrier trim const set to %s by REST (diagnostic)"
+                         % ("released" if hz is None else "%+.3f Hz" % hz))
+                body = json.dumps({"carrier_trim_const": hz}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        self._log = log
         self._srv = ThreadingHTTPServer(("0.0.0.0", port), H)
         threading.Thread(target=self._srv.serve_forever, daemon=True).start()
-        log("fleet publisher on :%d (GET /get_status -- fleet-merged per-PRN state)" % port)
+        log("fleet publisher on :%d (GET /get_status -- fleet-merged per-PRN state; "
+            "POST /set_carrier_trim {\"hz\": x} -- diagnostic open-loop trim)" % port)
+
+    def carrier_trim_const(self, fallback):
+        """The REST override if one has been posted, else the command-line value."""
+        with self._lock:
+            v = self._ctl["carrier_trim_const"]
+        return fallback if v is None else v
 
     def update(self, fleet, seeds, dll_trim, n_endpoints, dets=None):
         rows = []
@@ -4706,9 +4757,11 @@ def main(argv=None):
         #                        look like)
         #   no response      -> the trim never reaches the despread; the loop is open, and no
         #                        amount of gain tuning would ever have helped.
-        if args.carrier_trim_const is not None:
+        _ctc = (publisher.carrier_trim_const(args.carrier_trim_const)
+                if publisher is not None else args.carrier_trim_const)
+        if _ctc is not None:
             for prn in seeds:
-                car_trim[prn] = args.carrier_trim_const
+                car_trim[prn] = _ctc
 
         # 4. push consensus seeds to every tracker (DLL trim applied at POST time only)
         payload = []
