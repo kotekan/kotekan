@@ -294,7 +294,14 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
     // Renormalised per hop so the unit-modulus phasor doesn't drift; matches the direct
     // cos to ~1e-12, and is in fact steadier at large n (no huge-argument range loss).
     const std::complex<double> cstep(std::cos(wcarrier), std::sin(wcarrier));
-    std::complex<double> cph = std::polar(1.0, wcarrier * (double)start); // phasor at n=start
+    // Same one-radian-ULP trap as hoprate_stream_into (see the note there): wcarrier * start
+    // reaches ~7e15 at CHORD's absolute sample index, where a double quantises to 1 rad. This
+    // path is the REFERENCE the fast path is validated against, so it has to be at least as
+    // exact or the comparison certifies the wrong thing.
+    const long double wcL =
+        2.0L * (long double)M_PI * (long double)(_f_offset + doppler_hz) / (long double)_sample_rate;
+    std::complex<double> cph = // phasor at n=start
+        std::polar(1.0, (double)std::fmod(wcL * (long double)start, 2.0L * (long double)M_PI));
 
     for (int h = 0; h < total; ++h) {
         for (int i = 0; i < _fft_len; ++i) {
@@ -402,7 +409,22 @@ ChannelizedReplicaBank::hoprate_stream_into(const HopRateFilter& f, int p,
         if ((int)row.size() != n_hops)
             row.assign((size_t)n_hops, cf(0.0f, 0.0f));
     const long long n0 = window_start_sample + _fft_len - 1;
-    std::complex<double> pa = std::polar(1.0, std::fmod(wc * (double)n0, 2.0 * M_PI));
+    // LONG DOUBLE for the carrier's absolute-sample product, for exactly the reason
+    // window_advance_chips already does it for the CODE (see the note at its top) -- and this
+    // path had been left out. wc ~ 2.31 rad/sample and n0 ~ 2.95e15 after ten days of F-engine
+    // uptime, so wc*n0 ~ 6.8e15 lands in the binade [2^52, 2^53) where a double's ULP is
+    // EXACTLY ONE RADIAN. Every record's replica therefore started with up to +-0.5 rad of pure
+    // quantisation noise: measured 0.604 rad rms over 200 consecutive records, which costs
+    // exp(-sigma^2/2) = 0.83 of the coherent amplitude before anything else goes wrong.
+    //
+    // It is invisible on the prototype by twelve orders of magnitude (airspy n0 ~ 1e9 -> ULP
+    // 4.8e-7 rad), and it is SLOW-ONSET here: the error grows with the sample counter, so a
+    // freshly-started F-engine looks fine and a long-running one does not. long double's 64-bit
+    // mantissa puts the ULP at 7.4e-4 rad (0.04 deg) at the same n0.
+    const long double wcL =
+        2.0L * (long double)M_PI * (long double)(_f_offset + doppler_hz) / (long double)_sample_rate;
+    std::complex<double> pa =
+        std::polar(1.0, (double)std::fmod(wcL * (long double)n0, 2.0L * (long double)M_PI));
     const std::complex<double> pstep = std::polar(1.0, std::fmod(wc * (double)_fft_len, 2.0 * M_PI));
     // Per-chip tap range + code value for one hop. Identical for every channel (the channel
     // only enters through Phi), so it is computed once per hop rather than once per hop per
