@@ -44,6 +44,7 @@ http://127.0.0.1:12099/sink_track" \
     --combiner gnss0_combine \
     --dll-combiners "${MERGED}${SPLIT}" \
     --publish-port 12060 \
+    --carrier-from-code \
     --nh-overlay-len 20 \
     --nh-hint --nh-hint-span 2 \
     --almanac --almanac-source brdc --dead-reckon --narrow-search \

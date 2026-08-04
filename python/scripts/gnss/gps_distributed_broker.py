@@ -1213,6 +1213,12 @@ def main(argv=None):
                          "bias, fused LO, cross-band assist) -- this is the same kind of "
                          "object. Coherent statistics are best-of-instance, not merged, and "
                          "say so via coh_src; see FleetPublisher.")
+    ap.add_argument("--carrier-from-code", action="store_true",
+                    help="SHADOW: log the carrier error DERIVED from the fitted code slope "
+                         "(x f_carrier/f_chip) beside the measured carrier_hz_resid, without "
+                         "applying it. carrier_hz_resid is signal-free at CHORD SNR, so the "
+                         "carrier loop was integrating noise; the code side is strong. Compare "
+                         "the two before letting the derived value drive anything.")
     ap.add_argument("--dop-rate-max", type=float, default=0.8,
                     help="reject a fitted doppler rate beyond this (Hz/s) and fall back to the "
                          "almanac's. PHYSICAL, not tuned: GPS Doppler acceleration peaks near "
@@ -2002,6 +2008,7 @@ def main(argv=None):
             _trim_force[int(_p)] = float(_v)
             _log("TRIM FORCE (bench): PRN %s armed, car_trim %+.1f Hz at first seed"
                  % (_p, float(_v)))
+    cp_fit_slope = {}    # prn -> fitted cp slope, chips/s (x f_carrier/f_chip = carrier error)
     dop_rate_fitted = {} # prn -> the fitted rate actually seeded (for the log)
     dop_hist = {}    # prn -> [(ref_hop, doppler_hz), ...] for the MEASURED doppler-rate fit
     cp_hist = {}     # prn -> [(ref_hop, cp0, dop_det), ...] recent distinct snapshots (slope fit)
@@ -2948,6 +2955,7 @@ def main(argv=None):
                 seed["ref_hop"] = h0
                 seed["code_phase_chips"] = cp_ref
                 fitted.add(prn)
+                cp_fit_slope[prn] = rate * args.hops_per_sec   # chips/s, for CARRIER-FROM-CODE
                 # This fit contributes an (l-a) sample: its code_frac minus the sat's carrier_frac.
                 # Only strong, geometry-clean detections (SNR gate) -- weak/noisy slopes would bias it.
                 la = code_clock_bias_sample(rate, seed_dop, args.hops_per_sec,
@@ -4142,6 +4150,35 @@ def main(argv=None):
                                fl["p_pow"] / fl["p_med"] if fl.get("p_med") else 0.0)))
             if dll_report:
                 _log("DLL: " + "; ".join(dll_report))
+            # CODE-DERIVED CARRIER ERROR, logged only -- not applied yet.
+            #
+            # Carrier and code are locked in ratio: a Doppler error dF drifts the code at
+            # dF * f_chip/f_carrier (validated offline, STATE 7.2: measured 0.01476 chips/s
+            # against 0.01476 predicted). Inverting, the fitted cp slope gives the carrier error
+            # directly, at f_carrier/f_chip = 115.03 Hz per chip/s.
+            #
+            # This matters because carrier_hz_resid is signal-free (2026-08-04: |resid| median
+            # 0.519 Hz on satellites with signal, 0.492 Hz on satellites without), so the carrier
+            # loop was integrating noise and is now off. The code side, by contrast, is strong --
+            # sustained q ~ 3.2 and an 8-point cp fit.
+            #
+            # LOGGED, NOT APPLIED. Three loops today were found eating a statistic that did not
+            # measure what its name said; this one gets compared against the estimator it would
+            # replace before it is allowed to move anything.
+            if args.carrier_from_code:
+                _k = args.carrier_hz / args.chip_rate_hz
+                _rows = []
+                for _p in sorted(cp_fit_slope):
+                    _rec = status.get(_p, {})
+                    _meas = float(_rec.get("carrier_hz_resid", 0.0))
+                    _sig = sig_of(_rec)
+                    if _sig < args.lock_snr:
+                        continue
+                    _rows.append("PRN %d code->%+.2f Hz meas %+.2f Hz (sig %.1f)"
+                                 % (_p, cp_fit_slope[_p] * _k, _meas, _sig))
+                if _rows:
+                    _log_rl("carfromcode", "CARRIER-FROM-CODE (shadow): " + "; ".join(_rows[:6]),
+                            every_s=30.0)
             if dop_rate_fitted:
                 _log_rl("doprate", "doppler-rate FIT seeded on %d sat(s): %s"
                         % (len(dop_rate_fitted),
