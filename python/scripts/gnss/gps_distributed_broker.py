@@ -180,7 +180,7 @@ def code_clock_bias_sample(rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz
 
 
 def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, fft_len=16384,
-                   rec_hops=2048):
+                   rec_hops=2048, prev_val=None, max_step=3.0):
     """Per-PRN carrier residual (Hz) from the combiner's phase-rate search.
 
     TWO FAILURE MODES, TWO DEFENCES. Measured on sky 2026-08-04 by splitting each PRN's records
@@ -210,7 +210,7 @@ def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, f
     Returns {prn: residual_hz}; empty when nothing clears the gate.
     """
     cand = {}
-    gapped = []
+    gapped, stepped = [], []
     for prn, rec in (status or {}).items():
         q = float(rec.get("deep_rate_q") or 0.0)
         f = rec.get("deep_rate_hz")
@@ -235,12 +235,30 @@ def rate_residuals(status, min_q, clip_hz, log=None, prev_hop=None, max_gap=2, f
             if (h - ph) > max_gap * rec_hops * 1.0:
                 gapped.append(int(prn))
                 continue                       # re-anchored: re-baselined above, skip
+            # SLEW GATE. The hop gap above only catches re-anchors that COINCIDE with a dropped
+            # window, and the tracker's f_ref fence does not: it fires mid-tracking whenever
+            # |f_ref - dop| exceeds fll_reacq_hz, adopting the new seed wholesale. The
+            # phase-continuity fold keeps Phi_cmd smooth across that, but the FREQUENCY steps --
+            # so a fence re-anchor is a reference change with no gap to mark it.
+            #
+            # It is separable by size. Measured per emit: contiguous tracking steps -0.238 to
+            # -0.715 Hz (the residual drifting at the Doppler rate against a FIXED f_ref), while
+            # the smallest observed re-anchor jump was 7.6 Hz. max_step sits in that gap.
+            pf = prev_val.get(int(prn)) if prev_val is not None else None
+            if prev_val is not None:
+                prev_val[int(prn)] = float(f)
+                if pf is not None and abs(float(f) - pf) > max_step:
+                    stepped.append(int(prn))
+                    continue                   # f_ref re-pinned: re-baselined, do not integrate
         w = float(rec.get("amp_snr") or 0.0)
         if w > 0.0:
             cand[int(prn)] = (float(f), w)
     if log and gapped:
         log("carrier-rate: %d PRN(s) skipped across a window gap (re-anchor, not a "
             "measurement): %s" % (len(gapped), sorted(gapped)))
+    if log and stepped:
+        log("carrier-rate: %d PRN(s) skipped on a slew step >%.1f Hz (f_ref re-pin, not a "
+            "measurement): %s" % (len(stepped), max_step, sorted(stepped)))
     if not cand:
         return {}, None   # (residuals, consensus) -- ALWAYS a 2-tuple; a bare {} here killed
                           # the broker the first time every PRN was gated out at once
@@ -1154,6 +1172,13 @@ def main(argv=None):
                          "believed. Measured: contiguous emits step -0.24..-0.72 Hz, while any "
                          "gap steps by tens of Hz because the tracker re-anchored. A gap "
                          "re-baselines rather than integrating a reference change.")
+    ap.add_argument("--carrier-rate-max-step", type=float, default=3.0,
+                    help="reject a rate residual that jumped more than this since the last "
+                         "believed sample, and re-baseline. Catches the tracker's f_ref FENCE "
+                         "re-anchor, which fires mid-tracking with no window gap to mark it: the "
+                         "phase-continuity fold keeps the phase smooth but the FREQUENCY steps. "
+                         "Measured separation -- contiguous emits step 0.24-0.72 Hz, the smallest "
+                         "re-anchor jump was 7.6 Hz.")
     ap.add_argument("--carrier-max-hz", type=float, default=40.0,
                     help="clamp on the shared carrier trim (Hz)")
     ap.add_argument("--carrier-leak", type=float, default=0.05,
@@ -2091,6 +2116,7 @@ def main(argv=None):
     cp_err_hist = {}      # prn -> last 9 cp_err samples (median gate: noise cannot sustain it)
     hold_miss = {}      # prn -> consecutive sub-gate status reads while held (blank-poll rides)
     rate_prev_hop = {}  # prn -> last pow_hop used by the carrier loop (continuity gate)
+    rate_prev_val = {}  # prn -> last rate residual (slew gate: catches f_ref re-pins)
     car_trim = {}       # prn -> persistent NCO frequency command (Hz): the shared carrier loop
     car_last = {}       # prn -> last SEEN residual (dedup: one gate-check/integration per emit)
     car_locked = set()  # prns certified coherent since seed: BOOTSTRAP -> TRACK mode latch
@@ -4335,7 +4361,8 @@ def main(argv=None):
             if args.carrier_source == "rate":
                 rate_resid, rate_consensus = rate_residuals(
                     status, args.carrier_rate_min_q, args.carrier_rate_clip_hz, _log,
-                    prev_hop=rate_prev_hop, max_gap=args.carrier_rate_max_gap)
+                    prev_hop=rate_prev_hop, max_gap=args.carrier_rate_max_gap,
+                    prev_val=rate_prev_val, max_step=args.carrier_rate_max_step)
             car_report = []
             for prn in list(seeds):
                 if prn in probe_set:
