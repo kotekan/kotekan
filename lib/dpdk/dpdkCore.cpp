@@ -1,5 +1,19 @@
 #include "dpdkCore.hpp"
 
+#include "Config.hpp"                  // for Config
+#include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
+#include "captureHandler.hpp"          // for captureHandler
+#include "crs16BoardCaptureWorker.hpp" // for crs16BoardCaptureWorker
+#include "crs16BoardDistributor.hpp"   // for crs16BoardDistributor
+#include "crs1BoardCaptureWorker.hpp"  // for crs1BoardCaptureWorker
+#include "crs1BoardDistributor.hpp"    // for crs1BoardDistributor
+#include "iceBoardShuffle.hpp"         // for iceBoardShuffle
+#include "iceBoardStandard.hpp"        // for iceBoardStandard
+#include "iceBoardVDIF.hpp"            // for iceBoardVDIF
+
+#include "fmt.hpp"  // for format, compile_string_to_view, fmt, format_string
+#include "json.hpp" // for basic_json, json, iter_impl
+
 #include <functional>              // for bind, function
 #include <numa.h>                  // for numa_node_of_cpu, numa_num_configured_nodes
 #include <rte_branch_prediction.h> // for unlikely
@@ -22,20 +36,6 @@
 #include <sys/types.h>             // for uint
 #include <unistd.h>                // for sleep
 #include <vector>                  // for vector
-
-#include "Config.hpp"                  // for Config
-#include "StageFactory.hpp"            // for REGISTER_KOTEKAN_STAGE
-#include "captureHandler.hpp"          // for captureHandler
-#include "crs16BoardCaptureWorker.hpp" // for crs16BoardCaptureWorker
-#include "crs16BoardDistributor.hpp"   // for crs16BoardDistributor
-#include "crs1BoardCaptureWorker.hpp"  // for crs1BoardCaptureWorker
-#include "crs1BoardDistributor.hpp"    // for crs1BoardDistributor
-#include "iceBoardShuffle.hpp"         // for iceBoardShuffle
-#include "iceBoardStandard.hpp"        // for iceBoardStandard
-#include "iceBoardVDIF.hpp"            // for iceBoardVDIF
-
-#include "fmt.hpp"  // for format, compile_string_to_view, fmt, format_string
-#include "json.hpp" // for basic_json, json, iter_impl
 
 using nlohmann::json;
 using std::string;

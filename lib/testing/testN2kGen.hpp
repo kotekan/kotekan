@@ -55,7 +55,7 @@ class testN2kGen : public kotekan::Stage {
 public:
     testN2kGen(kotekan::Config& config, const std::string& unique_name,
                kotekan::bufferContainer& buffer_container);
-    ~testN2kGen() {};
+    ~testN2kGen(){};
     void main_thread() override;
 
 private:

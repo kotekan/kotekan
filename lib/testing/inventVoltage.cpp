@@ -26,10 +26,10 @@
 #ifdef WITH_OMP
 #include <omp.h> // for omp_get_wtime
 #endif
-#include <sstream>    // for basic_ostream, operator<<, basic_ostrin...
-#include <string>     // for basic_string, char_traits, string, oper...
-#include <unistd.h>   // for gethostname, sleep
-#include <vector>     // for vector
+#include <sstream>  // for basic_ostream, operator<<, basic_ostrin...
+#include <string>   // for basic_string, char_traits, string, oper...
+#include <unistd.h> // for gethostname, sleep
+#include <vector>   // for vector
 
 [[maybe_unused]] static std::uint32_t xorshift32(std::uint32_t state) {
     state ^= state << 13;

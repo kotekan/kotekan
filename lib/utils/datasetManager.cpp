@@ -1,14 +1,14 @@
 #include "datasetManager.hpp"
 
-#include <fmt.hpp>         // for fmt
-#include <json.hpp>        // for json, operator!=, basic_json, input_adapter, operator==, iter_...
-#include <functional>      // for bind, function, _1
-#include <mutex>           // for mutex, lock_guard, lock, adopt_lock, unique_lock
+#include "Config.hpp"     // for Config
+#include "Hash.hpp"       // for operator<, hash, Hash, operator==
+#include "restClient.hpp" // for restClient
+#include "restServer.hpp" // for HTTP_RESPONSE, restServer, connectionInstance
 
-#include "Config.hpp"      // for Config
-#include "Hash.hpp"        // for operator<, hash, Hash, operator==
-#include "restClient.hpp"  // for restClient
-#include "restServer.hpp"  // for HTTP_RESPONSE, restServer, connectionInstance
+#include <fmt.hpp>    // for fmt
+#include <functional> // for bind, function, _1
+#include <json.hpp>   // for json, operator!=, basic_json, input_adapter, operator==, iter_...
+#include <mutex>      // for mutex, lock_guard, lock, adopt_lock, unique_lock
 
 using nlohmann::json;
 

@@ -221,10 +221,10 @@ public:
             // vectors very simple, with a single component in the x and y directions
             // respectively.
             const float sigmaM_x = frb1_swap_MN ? 0 : telescope.get_feed_separation_x_m();
-            const float sigmaM_y = frb1_swap_MN ? telescope.get_feed_separation_y_m(): 0;
+            const float sigmaM_y = frb1_swap_MN ? telescope.get_feed_separation_y_m() : 0;
             const float sigmaM_z = 0;
 
-            const float sigmaN_x = frb1_swap_MN ? telescope.get_feed_separation_y_m(): 0;
+            const float sigmaN_x = frb1_swap_MN ? telescope.get_feed_separation_y_m() : 0;
             const float sigmaN_y = frb1_swap_MN ? 0 : telescope.get_feed_separation_y_m();
             const float sigmaN_z = 0;
 

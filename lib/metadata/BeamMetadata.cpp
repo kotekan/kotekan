@@ -1,13 +1,13 @@
 #include "BeamMetadata.hpp"
 
-#include <assert.h>           // for assert
-#include <cstring>            // for memset
-#include <json.hpp>           // for json
-#include <memory>             // for allocator, shared_ptr, dynamic_pointer_cast, __shared_ptr_a...
-#include <string>             // for basic_string
+#include "chordMetadata.hpp" // for CHORD_META_MAX_FREQ
+#include "factory.hpp"       // for REGISTER_TYPE_WITH_FACTORY
 
-#include "chordMetadata.hpp"  // for CHORD_META_MAX_FREQ
-#include "factory.hpp"        // for REGISTER_TYPE_WITH_FACTORY
+#include <assert.h> // for assert
+#include <cstring>  // for memset
+#include <json.hpp> // for json
+#include <memory>   // for allocator, shared_ptr, dynamic_pointer_cast, __shared_ptr_a...
+#include <string>   // for basic_string
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, BeamMetadata);
 

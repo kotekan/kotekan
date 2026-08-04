@@ -1,11 +1,11 @@
 #include "N2Metadata.hpp"
 
-#include <cstring>          // for memset
-#include <json.hpp>         // for json
+#include "N2FrameDesc.hpp" // for N2FrameDesc
+#include "factory.hpp"     // for REGISTER_TYPE_WITH_FACTORY
+#include "timeUtil.hpp"    // for EOP
 
-#include "N2FrameDesc.hpp"  // for N2FrameDesc
-#include "factory.hpp"      // for REGISTER_TYPE_WITH_FACTORY
-#include "timeUtil.hpp"     // for EOP
+#include <cstring>  // for memset
+#include <json.hpp> // for json
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, N2Metadata);
 N2Metadata::N2Metadata() = default;

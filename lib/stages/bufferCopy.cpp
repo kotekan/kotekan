@@ -1,16 +1,17 @@
 #include "bufferCopy.hpp"
 
-#include <stdint.h>            // for uint8_t
-#include <cstring>             // for memcpy
-#include <functional>          // for bind, function
-#include <memory>              // for shared_ptr
-#include <stdexcept>           // for runtime_error, invalid_argument
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "kotekanLogging.hpp" // for INFO, DEBUG2, FATAL_ERROR
+#include "visUtil.hpp"        // for frameID, modulo
 
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "kotekanLogging.hpp"  // for INFO, DEBUG2, FATAL_ERROR
-#include "visUtil.hpp"         // for frameID, modulo
-#include "fmt.hpp"             // for compile_string_to_view, format, fmt
-#include "json.hpp"            // for json, basic_json, iter_impl
+#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "json.hpp" // for json, basic_json, iter_impl
+
+#include <cstring>    // for memcpy
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr
+#include <stdexcept>  // for runtime_error, invalid_argument
+#include <stdint.h>   // for uint8_t
 
 
 using nlohmann::json;

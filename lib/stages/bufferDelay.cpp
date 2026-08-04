@@ -1,20 +1,21 @@
 #include "bufferDelay.hpp"
 
-#include <stdint.h>            // for uint32_t, uint8_t
-#include <cassert>             // for assert
-#include <cstring>             // for memcpy
-#include <functional>          // for bind, function
-#include <memory>              // for shared_ptr, __shared_ptr_access
-#include <stdexcept>           // for runtime_error, invalid_argument
-#include <vector>              // for vector
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"         // for Buffer
+#include "kotekanLogging.hpp" // for DEBUG
+#include "metadata.hpp"       // for metadataObject
+#include "visUtil.hpp"        // for frameID, modulo
 
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"          // for Buffer
-#include "kotekanLogging.hpp"  // for DEBUG
-#include "metadata.hpp"        // for metadataObject
-#include "visUtil.hpp"         // for frameID, modulo
-#include "fmt.hpp"             // for compile_string_to_view, format, fmt
-#include "json.hpp"            // for json
+#include "fmt.hpp"  // for compile_string_to_view, format, fmt
+#include "json.hpp" // for json
+
+#include <cassert>    // for assert
+#include <cstring>    // for memcpy
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdexcept>  // for runtime_error, invalid_argument
+#include <stdint.h>   // for uint32_t, uint8_t
+#include <vector>     // for vector
 
 
 using nlohmann::json;

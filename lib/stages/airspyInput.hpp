@@ -7,20 +7,21 @@
 #ifndef AIRSPY_INPUT_HPP
 #define AIRSPY_INPUT_HPP
 
-#include <airspy.h>             // for airspy_transfer_t
-#include <pthread.h>            // for pthread_mutex_t
-#include <stdint.h>             // for uint32_t
-#include <atomic>               // for atomic
-#include <condition_variable>   // for condition_variable
-#include <mutex>                // for mutex
-#include <string>               // for string, basic_string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "restServer.hpp"       // for connectionInstance
-#include "json.hpp"             // for json
+#include "json.hpp" // for json
+
+#include <airspy.h>           // for airspy_transfer_t
+#include <atomic>             // for atomic
+#include <condition_variable> // for condition_variable
+#include <mutex>              // for mutex
+#include <pthread.h>          // for pthread_mutex_t
+#include <stdint.h>           // for uint32_t
+#include <string>             // for string, basic_string
 
 #define BYTES_PER_SAMPLE 2
 

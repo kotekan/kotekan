@@ -1,9 +1,11 @@
 #include "N2FrameDesc.hpp"
 
-#include <set>                 // for set
-#include <ostream>             // for basic_ostream, operator<<
-#include "kotekanLogging.hpp"  // for FATAL_ERROR_NON_OO
-#include "fmt.hpp"             // for format, compile_string_to_view, format_string
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
+
+#include "fmt.hpp" // for format, compile_string_to_view, format_string
+
+#include <ostream> // for basic_ostream, operator<<
+#include <set>     // for set
 
 namespace kotekan {
 

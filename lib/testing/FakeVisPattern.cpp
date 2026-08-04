@@ -525,8 +525,10 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
             uint32_t pol_i = el_i / num_dishes;
             uint32_t pol_j = el_j / num_dishes;
 
-            vec3d_t pos_i = tel.element_index_to_feed_position_m(el_i, ElementOrder::CHORDBeamformer);
-            vec3d_t pos_j = tel.element_index_to_feed_position_m(el_j, ElementOrder::CHORDBeamformer);
+            vec3d_t pos_i =
+                tel.element_index_to_feed_position_m(el_i, ElementOrder::CHORDBeamformer);
+            vec3d_t pos_j =
+                tel.element_index_to_feed_position_m(el_j, ElementOrder::CHORDBeamformer);
 
             double phase = 2 * M_PI
                            * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]
@@ -610,8 +612,10 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
             uint32_t pol_i = el_i / num_dishes;
             uint32_t pol_j = el_j / num_dishes;
 
-            vec3d_t pos_i = tel.element_index_to_feed_position_m(el_i, ElementOrder::CHORDBeamformer);
-            vec3d_t pos_j = tel.element_index_to_feed_position_m(el_j, ElementOrder::CHORDBeamformer);
+            vec3d_t pos_i =
+                tel.element_index_to_feed_position_m(el_i, ElementOrder::CHORDBeamformer);
+            vec3d_t pos_j =
+                tel.element_index_to_feed_position_m(el_j, ElementOrder::CHORDBeamformer);
 
             double phase = 2 * M_PI
                            * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]

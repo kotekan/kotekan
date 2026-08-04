@@ -1,13 +1,14 @@
 #include "gateSpec.hpp"
 
-#include <time.h>              // for timespec
-#include <json.hpp>            // for json_ref, json
-#include <exception>           // for exception
-#include <utility>             // for move
+#include "kotekanLogging.hpp" // for WARN, logLevel, INFO
+#include "visUtil.hpp"        // for operator-, ts_to_double
 
-#include "kotekanLogging.hpp"  // for WARN, logLevel, INFO
-#include "visUtil.hpp"         // for operator-, ts_to_double
-#include "fmt.hpp"             // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <exception> // for exception
+#include <json.hpp>  // for json_ref, json
+#include <time.h>    // for timespec
+#include <utility>   // for move
 
 
 REGISTER_GATESPEC(pulsarSpec, "pulsar");

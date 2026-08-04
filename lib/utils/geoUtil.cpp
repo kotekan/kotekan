@@ -214,4 +214,3 @@ vec3d_t vec3d_axes_rotation_R3(const vec3d_t& v, double theta) {
 
     return v_rot;
 }
-

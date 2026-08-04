@@ -207,10 +207,9 @@ void bufferRecv::internal_accept_connection(evutil_socket_t listener, short even
               ip_str);
     }
 
-    connInstance* instance =
-        new connInstance(accept_args->unique_name, accept_args->buf, accept_args->buffer_recv,
-                         ip_str, port, read_timeout, use_config_tracker, use_frame_desc,
-                         conn_upstream_rest_port);
+    connInstance* instance = new connInstance(
+        accept_args->unique_name, accept_args->buf, accept_args->buffer_recv, ip_str, port,
+        read_timeout, use_config_tracker, use_frame_desc, conn_upstream_rest_port);
 
     // Setup logging for the instance object.
     instance->set_log_prefix(accept_args->unique_name + "/instance");
@@ -421,8 +420,8 @@ connInstance::~connInstance() {
     DEBUG("Closing FD");
     {
         std::lock_guard<std::mutex> lock(buffer_recv->instance_list_lock);
-        auto it = std::find(buffer_recv->instance_list.begin(),
-                            buffer_recv->instance_list.end(), this);
+        auto it =
+            std::find(buffer_recv->instance_list.begin(), buffer_recv->instance_list.end(), this);
         if (it != buffer_recv->instance_list.end()) {
             buffer_recv->instance_list.erase(it);
         }

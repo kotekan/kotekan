@@ -1,17 +1,18 @@
 #include "Telescope.hpp"
 
-#include <mutex>              // for unique_lock
-#include <shared_mutex>       // for shared_lock
-#include <stdexcept>          // for invalid_argument
-#include <algorithm>          // for copy, lower_bound, sort
-#include <functional>         // for bind, _1, function
-#include <limits>             // for numeric_limits
+#include "configUpdater.hpp" // for configUpdater
+#include "geoUtil.hpp"       // for GeoFrame
+#include "restServer.hpp"    // for restServer, connectionInstance
+#include "timeUtil.hpp"      // for EOP, BareEOP, get_ERA_from_UT1, EOP_comp_time, eop_null
 
-#include "configUpdater.hpp"  // for configUpdater
-#include "geoUtil.hpp"        // for GeoFrame
-#include "restServer.hpp"     // for restServer, connectionInstance
-#include "timeUtil.hpp"       // for EOP, BareEOP, get_ERA_from_UT1, EOP_comp_time, eop_null
-#include "fmt.hpp"            // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>    // for copy, lower_bound, sort
+#include <functional>   // for bind, _1, function
+#include <limits>       // for numeric_limits
+#include <mutex>        // for unique_lock
+#include <shared_mutex> // for shared_lock
+#include <stdexcept>    // for invalid_argument
 
 using kotekan::connectionInstance;
 using kotekan::restServer;
@@ -31,9 +32,7 @@ static constexpr BareEOP dummy_bare_eop_last = {.t_inst_ns = std::numeric_limits
 
 Telescope::Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
                      const std::string& eop_updatable_config_path, const GeoFrame& frame) :
-    _unique_name(tel_path),
-    _frame(frame),
-    _require_eop(require_eop) {
+    _unique_name(tel_path), _frame(frame), _require_eop(require_eop) {
     set_log_level(log_level);
     set_log_prefix("/telescope");
 
@@ -436,7 +435,7 @@ vec3d_t Telescope::vec_cirs_from_ra_dec(double ra_cirs_deg, double dec_cirs_deg)
     // Taking the ra & dec to be in CIRS frame
     double phi = deg2rad * ra_cirs_deg;
     double theta = deg2rad * (90 - dec_cirs_deg);
-    
+
     // unit vector pointing to ra/dec in spherical coordinates
     // fixed to the Earth.  phi=0 ~ Greenwich
     vec3d_t n_cirs = {cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta)};
@@ -444,12 +443,13 @@ vec3d_t Telescope::vec_cirs_from_ra_dec(double ra_cirs_deg, double dec_cirs_deg)
     return n_cirs;
 }
 
-void Telescope::vec_cirs_to_ra_dec(const vec3d_t& v_cirs, double& ra_cirs_deg, double& dec_cirs_deg) const {
+void Telescope::vec_cirs_to_ra_dec(const vec3d_t& v_cirs, double& ra_cirs_deg,
+                                   double& dec_cirs_deg) const {
 
     ra_cirs_deg = atan2(v_cirs[1], v_cirs[0]) / deg2rad;
     dec_cirs_deg = 90.0 - acos(v_cirs[2]) / deg2rad;
 }
-    
+
 vec3d_t Telescope::vec_grid_to_cirs(const vec3d_t& v_grid, const EOP& eop) const {
     vec3d_t v_topo = vec_grid_to_topo(v_grid);
     vec3d_t v_itrs = vec_topo_to_itrs(v_topo);
@@ -465,13 +465,15 @@ vec3d_t Telescope::vec_cirs_to_grid(const vec3d_t& v_cirs, const EOP& eop) const
 
     return v_grid;
 }
-    
-vec3d_t Telescope::vec_cirs_ra_dec_to_grid(double ra_cirs_deg, double dec_cirs_deg, const EOP& eop) const {
+
+vec3d_t Telescope::vec_cirs_ra_dec_to_grid(double ra_cirs_deg, double dec_cirs_deg,
+                                           const EOP& eop) const {
     vec3d_t v_cirs = vec_cirs_from_ra_dec(ra_cirs_deg, dec_cirs_deg);
     return vec_cirs_to_grid(v_cirs, eop);
 }
 
-grid_idx_2d_t Telescope::element_index_to_main_array_grid_indices(uint64_t el_idx, ElementOrder ord) const {
+grid_idx_2d_t Telescope::element_index_to_main_array_grid_indices(uint64_t el_idx,
+                                                                  ElementOrder ord) const {
     station_id_t st_id = element_index_to_station_id(el_idx, ord);
     return station_id_to_main_array_grid_indices(st_id);
 }
@@ -481,19 +483,21 @@ vec3d_t Telescope::element_index_to_feed_position_m(uint64_t el_idx, ElementOrde
     return station_id_to_feed_position_m(st_id);
 }
 
-std::vector<grid_idx_2d_t> Telescope::get_main_array_grid_indices(uint64_t num_elements, ElementOrder ord) const {
+std::vector<grid_idx_2d_t> Telescope::get_main_array_grid_indices(uint64_t num_elements,
+                                                                  ElementOrder ord) const {
     std::vector<grid_idx_2d_t> grid_indices(num_elements);
 
-    for(uint64_t el_idx = 0; el_idx < num_elements; el_idx++) 
+    for (uint64_t el_idx = 0; el_idx < num_elements; el_idx++)
         grid_indices.at(el_idx) = element_index_to_main_array_grid_indices(el_idx, ord);
 
     return grid_indices;
 }
 
-std::vector<vec3d_t> Telescope::get_feed_positions_m(uint64_t num_elements, ElementOrder ord) const {
+std::vector<vec3d_t> Telescope::get_feed_positions_m(uint64_t num_elements,
+                                                     ElementOrder ord) const {
     std::vector<vec3d_t> feed_positions_m(num_elements);
 
-    for(uint64_t el_idx = 0; el_idx < num_elements; el_idx++) 
+    for (uint64_t el_idx = 0; el_idx < num_elements; el_idx++)
         feed_positions_m.at(el_idx) = element_index_to_feed_position_m(el_idx, ord);
 
     return feed_positions_m;
@@ -503,9 +507,9 @@ void Telescope::fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const
                                           const std::vector<vec3d_t> feed_positions_m,
                                           std::vector<std::complex<float>>& phases) const {
 
-    if (feed_positions_m.size() != phases.size()) 
+    if (feed_positions_m.size() != phases.size())
         FATAL_ERROR("fill_fringestop: feed_positions_m size {:d} != phases size {:d}",
-                     feed_positions_m.size(), phases.size());
+                    feed_positions_m.size(), phases.size());
 
     // Get the phase center (pointing vector) of the telescope.  Depends on the dish coelevation
     // angle, which is fixed during a run.
@@ -563,7 +567,7 @@ vec3d_t Telescope::vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const
 }
 
 std::string ElementOrder_to_string(const ElementOrder& o) {
-    switch(o) {
+    switch (o) {
         case ElementOrder::CHIMECorrelator:
             return "CHIMECorrelator";
         case ElementOrder::CHIMECylinder:

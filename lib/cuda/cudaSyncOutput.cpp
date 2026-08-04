@@ -1,12 +1,13 @@
 #include "cudaSyncOutput.hpp"
 
-#include <stdint.h>            // for int32_t
-#include <vector>              // for vector
+#include "cudaCommand.hpp"    // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascudaCommand
+#include "gpuCommand.hpp"     // for gpuCommandType
+#include "kotekanLogging.hpp" // for DEBUG
 
-#include "cudaCommand.hpp"     // for cudaCommand, REGISTER_CUDA_COMMAND, _factory_aliascudaCommand
-#include "gpuCommand.hpp"      // for gpuCommandType
-#include "kotekanLogging.hpp"  // for DEBUG
-#include "fmt.hpp"             // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <stdint.h> // for int32_t
+#include <vector>   // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;

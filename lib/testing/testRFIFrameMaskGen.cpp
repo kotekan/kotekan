@@ -61,7 +61,7 @@ class testRFIFrameMaskGen : public Stage {
 public:
     testRFIFrameMaskGen(Config& config, const std::string& unique_name,
                         bufferContainer& buffer_container);
-    ~testRFIFrameMaskGen() {};
+    ~testRFIFrameMaskGen(){};
     void main_thread() override;
 
 private:

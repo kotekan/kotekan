@@ -1,12 +1,12 @@
 #include "HFBMetadata.hpp"
 
-#include <assert.h>     // for assert
-#include <cstring>      // for memset
-#include <json.hpp>     // for json
-#include <string>       // for basic_string
-
-#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
+#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
 #include "visUtil.hpp" // Needed for timespec conversion  // IWYU pragma: keep
+
+#include <assert.h> // for assert
+#include <cstring>  // for memset
+#include <json.hpp> // for json
+#include <string>   // for basic_string
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, HFBMetadata);
 

@@ -1,7 +1,7 @@
 #include "TransposeBasebandArray.hpp"
 
-#include "Config.hpp"          // for Config
-#include "DataType.hpp"        // for DataType
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for DataType
 #include "NDArray.hpp"
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer

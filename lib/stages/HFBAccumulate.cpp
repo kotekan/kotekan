@@ -1,30 +1,31 @@
 #include "HFBAccumulate.hpp"
 
-#include <time.h>              // for timespec
-#include <algorithm>           // for fill, transform
-#include <cmath>               // for pow
-#include <cstring>             // for memcpy, size_t
-#include <functional>          // for bind, function
-#include <iterator>            // for back_insert_iterator, begin, end, back_inserter
-#include <memory>              // for __shared_ptr_access, shared_ptr
-#include <numeric>             // for iota
-#include <string>              // for allocator, basic_string, string
-#include <utility>             // for pair
-#include <vector>              // for vector
+#include "HFBFrameView.hpp"   // for HFBFrameView
+#include "Hash.hpp"           // for operator!=, Hash
+#include "StageFactory.hpp"   // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"      // for Telescope
+#include "buffer.hpp"         // for Buffer
+#include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
+#include "datasetManager.hpp" // for datasetManager, dset_id_t
+#include "datasetState.hpp"   // for beamState, freqState, metadataState, subfreqState
+#include "kotekanLogging.hpp" // for DEBUG, DEBUG2
+#include "version.h"          // for get_git_commit_hash
+#include "visUtil.hpp"        // for frameID, modulo, freq_ctype
 
-#include "HFBFrameView.hpp"    // for HFBFrameView
-#include "Hash.hpp"            // for operator!=, Hash
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"       // for Telescope
-#include "buffer.hpp"          // for Buffer
-#include "chordMetadata.hpp"   // for get_chord_metadata, chordMetadata
-#include "datasetManager.hpp"  // for datasetManager, dset_id_t
-#include "datasetState.hpp"    // for beamState, freqState, metadataState, subfreqState
-#include "kotekanLogging.hpp"  // for DEBUG, DEBUG2
-#include "version.h"           // for get_git_commit_hash
-#include "visUtil.hpp"         // for frameID, modulo, freq_ctype
-#include "fmt.hpp"             // for compile_string_to_view
-#include "gsl-lite.hpp"        // for span
+#include "fmt.hpp"      // for compile_string_to_view
+#include "gsl-lite.hpp" // for span
+
+#include <algorithm>  // for fill, transform
+#include <cmath>      // for pow
+#include <cstring>    // for memcpy, size_t
+#include <functional> // for bind, function
+#include <iterator>   // for back_insert_iterator, begin, end, back_inserter
+#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <numeric>    // for iota
+#include <string>     // for allocator, basic_string, string
+#include <time.h>     // for timespec
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
