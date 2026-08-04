@@ -35,11 +35,14 @@ _ALL_BANDS = [("l1", "live_l1_dual20.yaml"), ("l2c", "live_l2c_gpu.yaml"), ("l5"
               # (1176.45), not a fourth front end. Defining it as its own band makes the swap a
               # launch-time choice that preserves both configs: BANDS="l1 l2c e6". It is excluded
               # from the default set for exactly that reason. See the e6 note in gnss_node.yaml.
-              ("e6", "live_e6_gpu.yaml")]
+              ("e6", "live_e6_gpu.yaml"),
+              # b1i/b3i BORROW the l2c dongle (see the band notes): another exclusive group.
+              ("b1i", "live_b1i_gpu.yaml"), ("b3i", "live_b3i_gpu.yaml")]
 # Bands that CANNOT run together (same physical airspy). Listing both would have two airspyInput
 # stages open one serial -- which fails late and confusingly (or worse, "opens any" if the serial
 # were ever unparsed), so refuse it up front.
-_EXCLUSIVE = [{"l5", "e6"}]
+# Groups of bands that share ONE physical airspy: at most one member of each may run.
+_EXCLUSIVE = [{"l5", "e6"}, {"l2c", "b1i", "b3i"}]
 _DEFAULT = ["l1", "l2c", "l5"]
 # Band SUBSET support (2026-08-03): the $BANDS env (space/comma list, e.g. "l1 l2c") selects which
 # bands merge into the one kotekan process -- suspending a band (free GPU / stop its valve loss
@@ -47,10 +50,11 @@ _DEFAULT = ["l1", "l2c", "l5"]
 # process. run_3band.sh exports the same $BANDS so its control-plane loop matches. Empty/unset =
 # all three. Bands are independent (nothing crosses frequency), so any subset is a valid node.
 _sel = os.environ.get("BANDS", "").replace(",", " ").split()
-for _pair in _EXCLUSIVE:
-    if _pair <= set(_sel):
+for _grp in _EXCLUSIVE:                     # at most ONE member of each group
+    _clash = sorted(_grp & set(_sel))
+    if len(_clash) > 1:
         raise SystemExit("BANDS: %s share one airspy and cannot run together (got %r)"
-                         % (" and ".join(sorted(_pair)), " ".join(_sel)))
+                         % (" and ".join(_clash), " ".join(_sel)))
 _unknown = [b for b in _sel if b not in {n for n, _ in _ALL_BANDS}]
 if _unknown:
     raise SystemExit("BANDS: unknown band(s) %r; known: %s"

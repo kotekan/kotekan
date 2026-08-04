@@ -2,7 +2,9 @@
 
 #include "gnssSignal.hpp"    // for signal_by_name (the documentary cross-check)
 #include "beidouB1CCode.hpp" // for generate_b1cp_secondary (per-PRN B1C overlay)
+#include "beidouB1ICode.hpp" // for B1I_NH20 (shared legacy-BeiDou D1 overlay)
 #include "beidouB2aCode.hpp" // for b2ap_secondary (per-PRN B2a overlay)
+#include "beidouB3ICode.hpp" // for B3I_NH20 (same sequence, own registry row)
 #include "galileoE1Code.hpp" // for E1C_CS25 (shared Galileo pilot overlay)
 #include "galileoE5aCode.hpp" // for e5aq_secondary (per-PRN E5a-Q overlay)
 #include "galileoE5bCode.hpp" // for e5bq_secondary (per-PRN E5b-Q overlay)
@@ -50,6 +52,12 @@ static std::vector<int8_t> gen_b2ad_cs5(int) {
 static std::vector<int8_t> gen_e5bq(int prn) {
     const auto o = galileo::e5bq_secondary(prn);
     return {o.begin(), o.end()};
+}
+static std::vector<int8_t> gen_b1i_nh20(int) {
+    return {beidou::B1I_NH20.begin(), beidou::B1I_NH20.end()}; // shared 20-chip D1 NH
+}
+static std::vector<int8_t> gen_b3i_nh20(int) {
+    return {beidou::B3I_NH20.begin(), beidou::B3I_NH20.end()}; // identical sequence to B1I's
 }
 static std::vector<int8_t> gen_e6c(int prn) {
     const auto o = galileo::generate_e6c_secondary(prn);
@@ -109,6 +117,12 @@ static const OverlayDescriptor OVERLAY_REGISTRY[] = {
     // E5b-Q case. ⚠️ per-PRN, NOT the shared-CS25 shape E1-C uses. E6-B (the HAS data
     // channel) has NO overlay: its 1000 sps symbol IS one 1 ms code period.
     {"E6_CS100", /*per_prn=*/true, 50, 100, gen_e6c, "GAL_E6_C"},
+    // LEGACY BeiDou B1I/B3I: the 20-chip D1 NH secondary, one SHARED sequence for every
+    // satellite AND identical between the two signals (kept as two rows so each chain's
+    // registry entry names its own signal). One chip per 1 ms period, 20 ms per NAV symbol --
+    // structurally the GPS L5_NH10 / E5A_CS20 / B2A_CS5 case. Floor ~sqrt(2 ln 20) ~2.4 sigma.
+    {"B1I_NH20", /*per_prn=*/false, 1, 20, gen_b1i_nh20, "BDS_B1I"},
+    {"B3I_NH20", /*per_prn=*/false, 1, 20, gen_b3i_nh20, "BDS_B3I"},
 };
 
 const OverlayDescriptor* overlay_by_name(const std::string& name) {

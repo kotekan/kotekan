@@ -307,6 +307,33 @@ inline constexpr SignalDescriptor GAL_E6_B = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
 };
 
+/// BeiDou B1I (1561.098 MHz) -- LEGACY BDS, broadcast by BDS-2 and BDS-3 alike: 2046-chip
+/// ALGORITHMIC Gold code at 2.046 Mcps (1 ms), BPSK(2). DATA-ONLY -- no pilot component, so it
+/// is acquired directly and nav-wiped (the GPS L1 C/A discipline). The D1 NAV message is 50 bps
+/// spread by a 20-chip NH secondary, one chip per 1 ms code period => 20 ms/symbol (the
+/// GPS_L5_I / BDS_B2A_D shape: secondary_length 20 AND nav_symbol_s 20 ms, wiped as a composed
+/// overlay+navwipe). ⚠️ 1561.098 is 14.3 MHz from L1 -- it does NOT fit an L1 tune's ~10 MHz
+/// window, so it needs its own front end. ReplicaSource: beidouB1ICode (b1i_b3i_code_check.py).
+inline constexpr SignalDescriptor BDS_B1I = {
+    "BDS_B1I", 1561.098e6, 2.046e6, 2046, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/false, /*nav_symbol_s=*/20e-3, /*secondary_length=*/20,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
+/// BeiDou B3I (1268.52 MHz) -- the B1I sibling one band down, same legacy D1 message: 10230-chip
+/// code at 10.23 Mcps (1 ms), BPSK(10), from two 13-stage LFSRs with the ICD's G1 all-ones reset.
+/// DATA-ONLY, same 20-chip NH secondary and 20 ms symbol as B1I. Its 10.23 Mcps / 1 ms record
+/// geometry is IDENTICAL to BDS_B2B_I, so the front-end and record shapes are already proven --
+/// only the code generator differs. ⚠️ 1268.52 is 10.23 MHz from Galileo E6 (1278.75), just
+/// outside a ~10 MHz window, so the two cannot share a tune. ReplicaSource: beidouB3ICode.
+inline constexpr SignalDescriptor BDS_B3I = {
+    "BDS_B3I", 1268.52e6, 10.23e6, 10230, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/false, /*nav_symbol_s=*/20e-3, /*secondary_length=*/20,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 63,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
@@ -315,7 +342,8 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
           &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D,
-          &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I, &GPS_L1C_D, &GAL_E6_C, &GAL_E6_B})
+          &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I, &GPS_L1C_D, &GAL_E6_C, &GAL_E6_B, &BDS_B1I,
+          &BDS_B3I})
         if (name == s->name)
             return s;
     return nullptr;

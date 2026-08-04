@@ -1259,3 +1259,150 @@ bands:
             a TIME only via the record period. E6 records are 1 ms, so 100 would be a 0.1 s emit
             -- shorter than the broker's 0.2 s nav_obs poll, fragmenting the symbol timeline
             (exactly the B2b count-vs-time trap). 1000 records = 1 s = 1000 HAS symbols per emit.
+
+  # ============================================================================================
+  # LEGACY BEIDOU B1I (1561.098) and B3I (1268.52) -- the last two public signals (2026-08-04).
+  # ============================================================================================
+  # ★ BOTH BORROW THE L2C DONGLE (serial 0x744C60C8...), so `l2c`, `b1i` and `b3i` are MUTUALLY
+  # EXCLUSIVE -- gen_3band_config enforces at most one per group. Running one costs the B2b
+  # B-CNAV3 + E5b-Q/E5b-I stack for the duration, which is the price of a test, not a permanent
+  # trade. (The l5/e6 dongle is the other exclusive group.) Neither signal can stack with
+  # anything we run: B1I is 14.3 MHz from L1 and B3I is 10.23 MHz from E6, both just outside a
+  # ~10 MHz window. ★ On CHORD this whole constraint evaporates -- it runs every band at once,
+  # so each simply needs its own front end; the contention is a DEV artifact.
+  #
+  # Both are DATA-ONLY legacy signals: acquired directly and nav-wiped (the GPS L1 C/A shape),
+  # with the D1 message at 50 bps spread by a 20-chip NH secondary. The combiner therefore runs
+  # the COMPOSED wipe that B2a-D / E5a-I / L5-I proved: secondary_overlay B?I_NH20 (one chip per
+  # 1 ms period) AND navwipe_bit_records 20 (20 x 1 ms records = one 20 ms NAV symbol).
+  b1i:
+    out_file: live_b1i_gpu.yaml
+    header: |
+      BeiDou B1I on the GPU chain, 1561.098 MHz: 2046-chip Gold code at 2.046 Mcps (1 ms),
+      BPSK(2), from two 11-stage LFSRs -- ALGORITHMIC, not a memory table. See beidouB1ICode.hpp
+      (⚠️ its G2 output tap is THREE taps for PRN 38..63) and b1i_b3i_code_check.py.
+      Runs the 20 MSPS front-end geometry for uniformity with the other bands; B1I's 4.1 MHz
+      main lobe would fit the 10 MSPS mode, so this band is a candidate for halving later.
+    http_port: 8084
+    kotekan_rest_port: 12448
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 20 MSPS = 2.496 ms per frame. B1I records are 1 ms (one 2046-chip period
+      at 2.046 Mcps), so ~2.5 records complete per frame -- inside MAX_REC, as for B2b/E5b/L5.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4 (same front-end model as every other band)"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
+    airspy:
+      cpu_affinity: [12]
+      serial: "0x744C60C821692F4F"
+      serial_note: "The L2C unit, BORROWED for B1I (1207.14 -> 1561.098). Same physical dongle as
+        the `l2c` and `b3i` bands -- at most one of the three in $BANDS."
+      freq: 1561.098
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real"
+      gain: 11
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
+    doppler_note: |
+      B1I at 1561.098 ~ 0.991 x L1 geometric Doppler -- essentially L1's range. step 100: 1 ms
+      records, so the L5/B2b grid argument applies verbatim.
+    prns_note: |
+      BDS PRN 1..63. ⚠️ run_live's BDS_* case filters the TLE to BEIDOU-3, so the BDS-2 GEO/IGSO
+      satellites (which also broadcast B1I/B3I, and whose GEOs carry the 500 bps D2 message
+      instead of D1) are NOT hinted. BDS-3 alone is ~24+ satellites, so that is a fine start --
+      but it IS the knob to open if the legacy BDS-2 birds are ever wanted.
+    num_cuda_streams: 2
+    per_chain_streams: false
+    record_dir: /tmp/gps_b1i_gpu
+    chains:
+
+      - constellation: gps
+        signal: BDS_B1I
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        section_note: |
+          ---- BeiDou B1I, DATA-ONLY (no pilot) ----
+          Acquired directly and nav-wiped, like GPS L1 C/A and B2b -- NOT a pilot-derive chain.
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          note: |
+            hops_per_record 1000 = the 1 ms B1I period at 20 MSPS (as for B2b/E5b/L5).
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence (alias limit 250 Hz at 1 ms)"
+        combiner:
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, secondary_overlay: B1I_NH20, navwipe_bit_records: 20, bit_export: true }
+          note: |
+            The COMPOSED wipe (B2a-D / E5a-I / L5-I discipline): secondary_overlay B1I_NH20 wipes
+            the 20-chip NH so the 20 code periods inside one symbol sum coherently, and
+            navwipe_bit_records 20 (= 20 ms / 1 ms records = ONE D1 symbol) then estimates and
+            wipes the NAV symbol itself. integration_length 1000 x 1 ms = 1 s emit. bit_export
+            publishes the per-symbol signs as nav_obs, ready for a future D1 decoder.
+
+  b3i:
+    out_file: live_b3i_gpu.yaml
+    header: |
+      BeiDou B3I on the GPU chain, 1268.52 MHz: 10230 chips at 10.23 Mcps (1 ms), BPSK(10), from
+      two 13-stage LFSRs. See beidouB3ICode.hpp (⚠️ G1 RESETS to all-ones at 0011111111111 --
+      omit it and the code correlates weakly rather than not at all) and b1i_b3i_code_check.py.
+      ★ Chip rate + record geometry are IDENTICAL to B2b, so the front-end and record shapes are
+      already proven on this very dongle -- only the code generator differs.
+    http_port: 8085
+    kotekan_rest_port: 12548
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 20 MSPS = 2.496 ms per frame. B3I records are 1 ms, like B2b -- ~2.5
+      records per frame, inside MAX_REC.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
+    airspy:
+      cpu_affinity: [12]
+      serial: "0x744C60C821692F4F"
+      serial_note: "The L2C unit, BORROWED for B3I (1207.14 -> 1268.52) -- a 61 MHz hop, well
+        inside the same LNA passband that already gives this dongle ADC rms ~1050 at 1207.14.
+        Same physical dongle as `l2c` and `b1i`; at most one of the three in $BANDS."
+      freq: 1268.52
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real (10.23 Mcps B3I needs the wide mode)"
+      gain: 11
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
+    doppler_note: |
+      B3I at 1268.52 ~ 0.805 x L1 geometric Doppler; +-5000 with margin. step 100 (1 ms records).
+    prns_note: |
+      BDS PRN 1..63; the BEIDOU-3 TLE filter note on the b1i band applies here identically.
+    num_cuda_streams: 2
+    per_chain_streams: false
+    record_dir: /tmp/gps_b3i_gpu
+    chains:
+
+      - constellation: gps
+        signal: BDS_B3I
+        tracker_signal_explicit: true
+        n_prn: 63
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        section_note: |
+          ---- BeiDou B3I, DATA-ONLY (no pilot) -- the B1I sibling one band down ----
+          Same D1 message, same 20-chip NH, same composed wipe; only the code and rate differ.
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          note: |
+            hops_per_record 1000 = the 1 ms B3I period at 20 MSPS -- identical to the B2b chain
+            this dongle already runs.
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence"
+        combiner:
+          params: { n_prn: 63, prns: RANGE, integration_length: 1000, secondary_overlay: B3I_NH20, navwipe_bit_records: 20, bit_export: true }
+          note: |
+            Composed wipe, exactly as the b1i chain -- see its note. 1 s emit at 1 ms records.
