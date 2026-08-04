@@ -14,6 +14,11 @@
 /nbproject/
 /cmake-build*/
 build-*
+# any out-of-tree build dir. `build/` carries its own .gitignore ('*' + !.gitignore),
+# but build_nodpdk/ (the DPDK-free build for cf06) did not -- so `git add -A` swept 523
+# build artifacts into the history on 2026-08-04, ~200 MB of objects. Cover the pattern,
+# not just the one directory.
+build_*/
 docs/sphinx/html/*
 .ccache/*
 .cache/*
