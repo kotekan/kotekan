@@ -128,12 +128,38 @@ class Cnav2Predictor:
             return None
         return C2.parse_cnav2_ephemeris(st.sf2[0])
 
+    def symbol_transition_rate(self, prn):
+        """Fraction of adjacent symbols that DIFFER, over the longest contiguous run.
+
+        ★ THE INSTRUMENT THAT SAYS "the decoder is fine, the sky is empty" (2026-08-03).
+        CNAV-2 symbols are LDPC-coded, so a real message sits at ~0.5; even an all-zero
+        message still shows the 52-symbol SF1/TOI burst every 1800 symbols (~0.014). A
+        value at the noise floor (<0.05 on a STRONG sat, where noise cannot be flipping
+        signs) means the data component carries NO modulation at all -- the satellite is
+        radiating an unmodulated L1C-D carrier, not a message we are failing to decode.
+        Measured 0.003 on PRN 4 (GPS III-1, deep_snr 138) against 0.46 on the L1C-P
+        pilot's L1CO overlay through the identical path, so it is the AIR, not us.
+        """
+        st = self._p.get(prn)
+        if st is None:
+            return None
+        runs = self._runs(st)
+        if not runs:
+            return None
+        syms = max((s for _, s in runs), key=len)
+        if len(syms) < 2:
+            return None
+        return float(np.mean(syms[1:] != syms[:-1]))
+
     def health(self, prn):
         st = self._p.get(prn)
         if st is None:
             return None
+        tr = self.symbol_transition_rate(prn)
         return {"pages": st.n_frames, "words": st.n_frames, "toi": st.toi,
-                "have": ([2, 3] if st.sf2 else []), "eph": self.ephemeris(prn) is not None}
+                "have": ([2, 3] if st.sf2 else []), "eph": self.ephemeris(prn) is not None,
+                # ~0.5 = a real message; ~0 on a strong sat = an UNMODULATED data channel
+                "trans": None if tr is None else round(tr, 4)}
 
 
 # ------------------------------------------------------------------- self-test
