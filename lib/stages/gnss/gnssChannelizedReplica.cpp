@@ -275,6 +275,18 @@ void ChannelizedReplicaBank::set_prn_freq_offset(int prn_index, double df_hz) {
     _prn_df[(size_t)prn_index] = df_hz;
 }
 
+void ChannelizedReplicaBank::set_prn_freq_offsets(const std::vector<double>& df_hz) {
+    _prn_df = df_hz;
+}
+
+int ChannelizedReplicaBank::prn_freq_offsets_set() const {
+    int n = 0;
+    for (double d : _prn_df)
+        if (d != 0.0)
+            ++n;
+    return n;
+}
+
 double ChannelizedReplicaBank::carrier_offset(int prn_index) const {
     if (prn_index < 0 || (size_t)prn_index >= _prn_df.size())
         return _f_offset;

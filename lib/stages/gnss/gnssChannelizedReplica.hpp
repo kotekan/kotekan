@@ -127,6 +127,17 @@ public:
     /// Extra carrier offset for PRN index @c p, Hz, on top of @c f_offset (0 = CDMA default).
     void set_prn_freq_offset(int prn_index, double df_hz);
 
+    /// Whole table at once, indexed by PRN index (the order the bank was constructed with).
+    /// An empty vector clears it -> CDMA behaviour. This is what the stages hand the config's
+    /// `prn_freq_offset_hz` to; the config generator builds it from the live GLONASS frequency
+    /// plan, so the numbers are visible in the generated yaml next to the PRN list.
+    void set_prn_freq_offsets(const std::vector<double>& df_hz);
+
+    /// Number of PRNs with a NON-ZERO offset -- for the stage's init log, so "FDMA applied to N
+    /// satellites" is on the record. An all-zero table on an FDMA signal parks every satellite
+    /// on the band centre, which looks exactly like a broken code.
+    int prn_freq_offsets_set() const;
+
     /// Total carrier offset from band centre for PRN index @c p: @c f_offset + its FDMA
     /// offset. @c p < 0 (or unset) gives the band offset alone.
     double carrier_offset(int prn_index) const;

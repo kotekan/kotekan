@@ -1467,6 +1467,119 @@ bands:
             Composed wipe, exactly as the b1i chain -- see its note. 1 s emit at 1 ms records.
 
   # ============================================================================================
+  # GLONASS L2OF (FDMA) + later L2OC -- the fourth constellation's WORKHORSE band (2026-08-04).
+  # ============================================================================================
+  # ★★ THE ONE BAND WHERE SATELLITES ARE SEPARATED BY FREQUENCY, NOT BY CODE. Every GLONASS
+  # satellite transmits the SAME 511-chip m-sequence; satellite with frequency-channel number k
+  # sits at 1246.0 MHz + k*0.4375 MHz, k = -7..+6. So the per-satellite identity lives in
+  # `prn_freq_offset_hz` (emitted per chain by gen_band_config from the LIVE BRDC frequency plan,
+  # never hardcoded -- k is reassigned as satellites are replaced), and the codes carry none of it.
+  #
+  # ★ TUNED TO 1246.0 = the k=0 NOMINAL CARRIER, deliberately, not to the comb's geometric centre
+  # (1245.78). Tuning to the nominal makes each satellite's offset EXACTLY k*437.5 kHz with no
+  # re-centring arithmetic anywhere -- the number in the yaml is the number in the ICD. The comb
+  # then lands at IF 1.94-7.63 MHz inside the 0-10 MHz digitized band, ~1.9 MHz of margin below
+  # and ~2.4 MHz above, with every satellite's +-0.511 MHz main lobe fully inside.
+  #
+  # ✅ FRONT END CONFIRMED SAFE HERE (2026-08-04 sweep): 1246 measures -2.9 dB from the low-band
+  # peak and only 0.9 dB below GPS L2C, which works perfectly. That comparison holds regardless
+  # of how the mid-band deficit question resolves -- see docs/buglist.md.
+  # ⚠️ L2OC (1248.06, CDMA) rides THIS SAME TUNE and is phase 2: it is TDM+BOC(1,1) on a 511.5
+  # kcps chip (PocketSDR mod_code [0,0,1,-1]), which is a modulation shape the descriptor cannot
+  # express yet. Do it after L2OF locks; no retune needed when it lands.
+  l2of:
+    out_file: live_l2of_gpu.yaml
+    header: |
+      GLONASS L2OF on the GPU chain, 1246.0 MHz + k*0.4375: the legacy FDMA open signal, on
+      EVERY GLONASS satellite (~26 with a known channel) rather than the 7 GLONASS-K that carry
+      L3OC. 511-chip m-sequence at 511 kcps (1 ms), BPSK, ONE code shared by all satellites.
+      See glonassCACode.hpp + glonass_ca_code_check.py (which asserts the ideal m-sequence
+      autocorrelation exactly: all 510 non-zero shifts = -1).
+      ★ The per-satellite carrier offsets are in `prn_freq_offset_hz` on the search and track
+      commands -- READ THEM FIRST if a satellite will not lock. They are k*437.5 kHz with k from
+      the live BRDC plan; a wrong or zero table points the search at the wrong carrier and looks
+      exactly like a broken code.
+      DATA-ONLY: 50 bps MANCHESTER-encoded to 100 sym/s, so a symbol is 10 ms = ten 1 ms code
+      periods -> navwipe_bit_records 10 and NO secondary_overlay. Each 20 ms bit is a +-/-+
+      symbol pair, which the 10 ms wipe handles for free (each half is a constant +-1).
+      ⚠️⚠️ READ deep_snr AGAINST deep_floor, SUSTAINED, BESIDE A WORKING CHAIN -- the E6/L3OC
+      lesson. And judge L2OF against L3OC: same constellation, same front end, far more
+      satellites, and an operational service rather than a testbed signal.
+    http_port: 8087
+    kotekan_rest_port: 12748
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 20 MSPS = 2.496 ms per frame. L2OF records are 1 ms (one 511-chip period
+      at 511 kcps), so ~2.5 records per frame -- inside MAX_REC, as for every 1 ms band.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on the k=0 nominal carrier, Fs/4; per-PRN offsets ride on top of this"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
+    airspy:
+      cpu_affinity: [13]
+      serial: "0x03A464C837264F67"
+      serial_note: "Fallback only -- the top-level `dongles:` pool assigns serials in $BANDS
+        order. Any dongle can carry any band."
+      freq: 1246.0
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real; the 5.69 MHz comb needs the wide mode
+        even though a single 511 kcps satellite would not"
+      # 11, as l2c/l3oc: 1246 measured -2.9 dB from the low-band peak, the same regime as
+      # 1207/1228 where this gain gives ADC rms ~1030. Watch railfrac after any bump.
+      gain: 11
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
+    doppler_note: |
+      L2OF at ~1246 ~ 0.791 x L1 geometric Doppler; +-5000 with margin. ⚠️ GLONASS orbits are
+      lower (19100 km) and more inclined (64.8 deg) than GPS's, so the Doppler RATE runs higher
+      than the carrier ratio alone suggests -- the same caution as the l3oc band.
+      ★ The per-PRN carrier offset is NOT Doppler and must never be folded into this window: it
+      is static (a different channel, not a different velocity) and correctly does not scale the
+      code rate. It is applied separately via prn_freq_offset_hz.
+    prns_note: |
+      PRN = ORBITAL SLOT (1..24 in the classic plan; 26/27 also in use). Slots with no published
+      frequency channel get offset 0 AND are excluded from seeds/hints by the capability gate --
+      a satellite whose carrier we do not know is not trackable.
+    num_cuda_streams: 2
+    per_chain_streams: false
+    record_dir: /tmp/gps_l2of_gpu
+    chains:
+
+      # SHAPE A: primary chain labelled `constellation: gps` so gen_band_config emits the
+      # un-prefixed gps_* stage names the primary-broker path needs; the SIGNAL is GLONASS and
+      # run_live derives constellation R + the glo-ops TLE from it.
+      - constellation: gps
+        signal: GLO_L2OF
+        tracker_signal_explicit: true
+        n_prn: 28
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        section_note: |
+          ---- GLONASS L2OF, DATA-ONLY, FDMA ----
+          No pilot and no secondary overlay: acquire directly and nav-wipe at the 10 ms
+          Manchester symbol (navwipe_bit_records 10), the GPS L1 C/A discipline with a 10 ms
+          symbol instead of 20. The per-PRN carrier offsets are the whole FDMA story.
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          # 8.0/100 (the proven mid-band setting), NOT L3OC's relaxed 6.0/200: L2OF is an
+          # operational signal on ~26 satellites in a band the sweep says is healthy, so there
+          # is no reason to spend threshold margin before seeing what it does.
+          note: |
+            hops_per_record 1000 = the 1 ms L2OF period at 20 MSPS.
+            require_hint: scan only broker-hinted visible slots WITH a known frequency channel.
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence"
+        combiner:
+          params: { n_prn: 28, prns: RANGE, integration_length: 1000, navwipe_bit_records: 10, bit_export: true }
+          note: |
+            10 records x 1 ms = one 10 ms Manchester symbol. integration_length 1000 = 1 s emit
+            at 1 ms records (100 nav symbols), well clear of the broker's 0.2 s nav_obs poll --
+            the count-vs-time trap that fragmented B2b.
+
+  # ============================================================================================
   # GLONASS L3OC (1202.025) -- the FOURTH constellation, and the last public system (2026-08-04).
   # ============================================================================================
   # ★ Filtered through the sub-1500 MHz rule: GLONASS L1OF (~1602) and L1OC (1600.995) are

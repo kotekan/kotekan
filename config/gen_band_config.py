@@ -124,6 +124,58 @@ def prn_list(n):
     return list(range(1, n + 1))
 
 
+_GLO_K = None
+
+
+def fdma_offsets(chain):
+    """`prn_freq_offset_hz` for an FDMA chain, else None.
+
+    ★ GLONASS is the one system that separates satellites by CARRIER rather than by code: every
+    satellite transmits the same 511-chip sequence, and satellite with frequency-channel number k
+    sits at 1246.0 + k*0.4375 MHz on L2. So each PRN needs its own offset from band centre, and
+    the whole comb still fits one 10 MHz tune -- no retuning, just this table.
+
+    k comes from the LIVE BRDC frequency plan (gnss_ephemeris.glonass_freq_channels), never a
+    constant: channels are reassigned as satellites are replaced, and a stale table points the
+    search at the wrong carrier -- which would look exactly like a broken code. Emitting it here
+    rather than pushing it at runtime also means the frequency plan is READABLE in the generated
+    yaml, right next to the PRN list, which is where you would look when a satellite will not
+    lock.
+
+    ⚠️ HARD FAILURE if the plan cannot be built. An all-zero table would park every satellite on
+    the band centre -- a silent-wrong that acquires nothing and blames the codes.
+    Slots with no k get 0.0 and are separately excluded from seeds/hints by the capability gate
+    (gps_beamtrack.signal_capable_prns): a satellite whose carrier we do not know is not
+    trackable, so it has no business in a search list.
+    """
+    sig = (chain.get("signal") or "").upper()
+    if not (sig.startswith("GLO_") and "OF" in sig):
+        return None
+    global _GLO_K
+    if _GLO_K is None:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                        "..", "python", "scripts", "gnss"))
+        import gnss_ephemeris as ge
+        _GLO_K = ge.glonass_freq_channels()
+        if not _GLO_K:
+            raise SystemExit(
+                "gen_band_config: %s is FDMA but the GLONASS frequency plan is EMPTY "
+                "(glonass_freq_channels returned nothing -- BRDC unreachable?). Refusing to "
+                "emit a config: an all-zero offset table would put every satellite on the band "
+                "centre and acquire nothing, while looking like a code bug." % sig)
+    spacing = 437.5e3
+    offs, missing = [], []
+    for slot in prn_list(chain["n_prn"]):
+        k = _GLO_K.get(slot)
+        offs.append(0.0 if k is None else round(k * spacing, 1))
+        if k is None:
+            missing.append(slot)
+    if missing:
+        print("  note: %s has no frequency channel for slots %s -- offset 0, and the capability "
+              "gate keeps them out of seeds/hints" % (sig, missing), file=sys.stderr)
+    return offs
+
+
 def chain_prefix(chain):
     return "" if chain["constellation"] == "gps" else chain["constellation"] + "_"
 
@@ -180,6 +232,9 @@ def search_stage(sh, chain):
             ("prns", prn_list(chain["n_prn"])),
         ]
     params = list(chain["search"]["params"].items())
+    fo = fdma_offsets(chain)
+    if fo is not None:
+        params = params + [("prn_freq_offset_hz", fo)]
     if prim:
         return dict(head + params)
     return Block([E(k, v) for k, v in head + params])
@@ -210,6 +265,10 @@ def tracker_cmd(sh, chain, stream, per_chain_streams, first):
     if prefix:
         cmd.append(E("n_prn", chain["n_prn"]))
         cmd.append(E("prns", prn_list(chain["n_prn"])))
+    fo = fdma_offsets(chain)
+    if fo is not None:
+        cmd.append(E("prn_freq_offset_hz", fo,
+                     i="FDMA: per-PRN carrier offset from band centre (k * 437.5 kHz)"))
     cmd.append(E("capture_utc0", sh["capture_utc0"]))
     cmd.append(E("fll_gain", sh["fll_gain"]))
     cmd.append(E("carrier_shared", sh["carrier_shared"]))

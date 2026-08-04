@@ -90,7 +90,7 @@ airspy_in:
     # like a bad antenna). Written in HEX exactly as airspy_info prints it. THE TRAP: a
     # serial that fails to parse becomes 0 = "open any", which still WORKS with one dongle
     # -- verify a new pin by BREAKING it (a wrong serial must fail AIRSPY_ERROR_NOT_FOUND).
-    serial: 0x03A464C837525967  # ASSIGNED from the dongle pool: unit A (historically L1) (slot 0 of BANDS='l1 l3oc'). Not a pin -- see the `dongles:` note.
+    serial: 0x03A464C837525967  # ASSIGNED from the dongle pool: unit A (historically L1) (slot 0 of BANDS='l1 l3oc l2of'). Not a pin -- see the `dongles:` note.
     freq: 1575.42
     sample_bw: 10  # airspy 10 MSPS mode -> 20 MSPS real
     # Gains dropped 14/15/15 -> 11/11/11 for the 2026-07-14 front end: a second-stage amp

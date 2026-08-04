@@ -307,6 +307,32 @@ def _glonass_block_filter(signal):
     return None                             # L1OF/L2OF (and unknown) -- every satellite
 
 
+def glonass_fdma_trackable(_cache={}):
+    """Slots we can actually track on GLONASS FDMA = those with a known frequency-channel number.
+
+    ★ FDMA capability is not about the satellite's generation, it is about whether we KNOW ITS
+    CARRIER. Every satellite transmits L1OF/L2OF, but they are separated by frequency, so a slot
+    whose k we cannot read is one we would have to search at the wrong frequency -- it has no
+    business in a seed or hint list. That makes "has a k" the natural capability test, filling the
+    same role the GPS block name and the GLONASS 'K' marker play for the CDMA signals.
+
+    Cached for an hour; empty set on failure => caller disables the filter rather than darking
+    the chain (the standing fail-open-is-worse-than-fail-loud tradeoff for capability lookups)."""
+    import time
+    now = time.monotonic()
+    if _cache.get("t") and now - _cache["t"] < 3600.0:
+        return _cache["v"]
+    try:
+        import gnss_ephemeris as ge
+        v = set(ge.glonass_freq_channels())
+    except Exception as e:
+        print("[gps_beamtrack] GLONASS frequency plan unavailable (%s); FDMA capability filter "
+              "DISABLED" % e, file=sys.stderr)
+        v = set()
+    _cache["t"], _cache["v"] = now, v
+    return v
+
+
 def signal_capable_prns(signal, tle_source=DEFAULT_TLE_URL, _sats=None):
     """PRNs whose satellite block actually broadcasts `signal`, from the live Celestrak names, so
     it tracks launches/commissioning automatically. Returns ALL PRNs when the signal is on every
@@ -316,6 +342,13 @@ def signal_capable_prns(signal, tle_source=DEFAULT_TLE_URL, _sats=None):
 
     Dispatches on the signal token's constellation prefix: GLO_* reads the GLONASS K marker (and
     defaults to the glo-ops TLE group), everything else reads the GPS block name."""
+    sig_u = (signal or "").upper()
+    if sig_u.startswith("GLO_") and "OF" in sig_u:
+        # FDMA: capability = "we know this satellite's carrier" (see glonass_fdma_trackable).
+        cap = glonass_fdma_trackable()
+        if cap:
+            return cap
+        # fall through to the block path (which returns everything) if the plan is unavailable
     if (signal or "").upper().startswith("GLO_"):
         # Guard the easy mistake: a GLONASS signal asked for against the GPS default TLE group
         # would find no 'K' marker on anything and return an EMPTY set, which callers treat as

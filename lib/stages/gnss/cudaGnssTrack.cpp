@@ -64,6 +64,15 @@ cudaGnssTrackState::cudaGnssTrackState(Config& config, const std::string& unique
         *sig, sample_rate, f_offset, N, num_taps, dsp::window_from_string(win), prns);
     replica->code_doppler_sign =
         config.get_default<double>(unique_name, "code_doppler_sign", 1.0);
+    // FDMA (GLONASS L1OF/L2OF): every satellite shares one code and is separated by CARRIER, so
+    // each PRN needs its own offset from band centre. The table is built by the config generator
+    // from the live GLONASS frequency plan and travels in the yaml, where it is readable next to
+    // the PRN list. Absent/empty -> CDMA, i.e. every other signal, unchanged.
+    replica->set_prn_freq_offsets(
+        config.get_default<std::vector<double>>(unique_name, "prn_freq_offset_hz", {}));
+    if (replica->prn_freq_offsets_set() > 0)
+        INFO("cudaGnssTrack: FDMA carrier offsets applied to {:d} of {:d} PRNs",
+             replica->prn_freq_offsets_set(), (int)prns.size());
     hops_per_record =
         config.get_default<int>(unique_name, "hops_per_record", replica->repl_period_hops());
     // dll_spacing_chips is in EFFECTIVE (post-comb) chips: /comb_mult converts to the component

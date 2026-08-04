@@ -504,8 +504,11 @@ CLOCK_BIAS_FILE=${CLOCK_BIAS_FILE:-$BIAS_DIR/gps_clock_bias_${TAG}.hz}
 # do not transmit the signal at all. GLONASS FDMA (L1OF/L2OF) is on every satellite -> no gate.
 case "$SIGNAL" in
     *L1CA*|*L1_CA*|GAL_*|BDS_*) SIG_CAP="" ;;
-    GLO_*OC*)                   SIG_CAP="--signal-capability $SIGNAL" ;;
-    GLO_*)                      SIG_CAP="" ;;
+    # ★ ALL GLONASS is gated, but for two different reasons. CDMA (L3OC/L2OC/L1OC) is
+    # GLONASS-K only -- 7 of 28 satellites. FDMA (L1OF/L2OF) is on every satellite, but its
+    # capability test is "do we KNOW ITS CARRIER": satellites are separated by frequency, so a
+    # slot whose channel number k we cannot read would be searched at the wrong frequency.
+    GLO_*)                      SIG_CAP="--signal-capability $SIGNAL" ;;
     *)                          SIG_CAP="--signal-capability $SIGNAL" ;;
 esac
 # NO_SIG_CAP=1 drops the gate for one run. It is a CAPABILITY claim, not a measurement --
