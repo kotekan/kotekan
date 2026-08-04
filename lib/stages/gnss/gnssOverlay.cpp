@@ -6,6 +6,7 @@
 #include "galileoE1Code.hpp" // for E1C_CS25 (shared Galileo pilot overlay)
 #include "galileoE5aCode.hpp" // for e5aq_secondary (per-PRN E5a-Q overlay)
 #include "galileoE5bCode.hpp" // for e5bq_secondary (per-PRN E5b-Q overlay)
+#include "galileoE6Code.hpp" // for generate_e6c_secondary (per-PRN E6-C overlay)
 #include "gpsL1CCode.hpp"    // for generate_l1co_code (per-PRN L1C-P overlay)
 #include "gpsL5Code.hpp"     // for L5_NH10/NH20 (shared Neuman-Hofman overlays)
 
@@ -48,6 +49,10 @@ static std::vector<int8_t> gen_b2ad_cs5(int) {
 }
 static std::vector<int8_t> gen_e5bq(int prn) {
     const auto o = galileo::e5bq_secondary(prn);
+    return {o.begin(), o.end()};
+}
+static std::vector<int8_t> gen_e6c(int prn) {
+    const auto o = galileo::generate_e6c_secondary(prn);
     return {o.begin(), o.end()};
 }
 static std::vector<int8_t> gen_e5bi_cs4(int) {
@@ -100,6 +105,10 @@ static const OverlayDescriptor OVERLAY_REGISTRY[] = {
     {"E5B_CS4", /*per_prn=*/false, 1, 4, gen_e5bi_cs4, "GAL_E5B_I"},
     // GPS L1C-P pilot: PER-PRN 1800-symbol L1CO overlay (18 s).
     {"L1CO", /*per_prn=*/true, 32, 1800, gen_l1co, "GPS_L1C_P"},
+    // Galileo E6-C pilot: PER-PRN 100-chip secondary (100 ms) -- structurally the E5a-Q /
+    // E5b-Q case. ⚠️ per-PRN, NOT the shared-CS25 shape E1-C uses. E6-B (the HAS data
+    // channel) has NO overlay: its 1000 sps symbol IS one 1 ms code period.
+    {"E6_CS100", /*per_prn=*/true, 50, 100, gen_e6c, "GAL_E6_C"},
 };
 
 const OverlayDescriptor* overlay_by_name(const std::string& name) {

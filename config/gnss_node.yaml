@@ -1111,3 +1111,129 @@ bands:
             records = ONE B-CNAV2 symbol per CS5 period (the count-vs-time discipline).
             secondary_overlay B2A_CS5 wipes the 5-chip overlay so the 5 code periods within a
             symbol sum coherently; bit_export publishes the per-symbol signs as nav_obs. NO peel.
+
+  # ============================================================================================
+  # GALILEO E6 (1278.75 MHz) -- the LAST Galileo signal we don't track (2026-08-04).
+  # ============================================================================================
+  # ★ SHARES THE L5 DONGLE. This band and `l5` above declare the SAME airspy serial: only ONE of
+  # them may appear in $BANDS at a time. That is deliberate -- with three dongles, the third one
+  # is a REPURPOSABLE slot, and defining each tuning as its own band (rather than editing `l5` in
+  # place) makes the swap a LAUNCH-TIME choice that preserves every config:
+  #     BANDS="l1 l2c l5"   -> GPS L5 + Galileo E5a + BeiDou B2a  (6 chains, 3 constellations)
+  #     BANDS="l1 l2c e6"   -> Galileo E6-C pilot + E6-B HAS data (this band)
+  # A future `b3i` band joins the same way. ⚠️ E6 (1278.75) and BeiDou B3I (1268.52) are 10.23 MHz
+  # apart and 20 MSPS real gives ~10 MHz, so they CANNOT be stacked on one tune -- unlike B2b+E5b,
+  # which share 1207.14 EXACTLY. That near-miss is why this is a band swap, not another stack.
+  #
+  # Everything else adapts with NO launcher edit (run_live.sh's band-swap contract): the primary
+  # chain's GAL_ signal drives PRIM_SYS=E + the Galileo TLE, and chip rate / code length come from
+  # the GAL_E6_C descriptor. The E6-B sibling is seeded by THIS band's own primary broker (E6-C and
+  # E6-B share chip rate and code length exactly), so unlike l1c_d/b1c_d it needs NO exclusion from
+  # the tracker auto-collection and NO second broker -- it simply appears in --trackers.
+  e6:
+    out_file: live_e6_gpu.yaml
+    header: |
+      Galileo E6 on the GPU chain: E6-C dataless pilot + E6-B HAS data channel, 1278.75 MHz.
+      5115-chip MEMORY codes at 5.115 Mcps -> 1 ms period, BPSK(5), same record geometry as
+      B2b/E5b/L5. Codes from the EU "E6-B/C Codes Technical Note" Issue 1 Jan 2019 (published
+      to enable HAS); see galileoE6Code.hpp + e6_code_check.py.
+      ★ 5.115 Mcps main lobe (+-5.115 MHz) FITS the 10 MHz window -- better than B2b, whose
+      10.23 Mcps lobe is captured half and still decodes.
+    http_port: 8083
+    kotekan_rest_port: 12348
+    samples_per_data_set: 49920
+    frame_note: |
+      49920 samples / 20 MSPS = 2.496 ms per frame (matches L5/L2C). E6 records are 1 ms (one
+      5115-chip period at 5.115 Mcps), so ~2.5 records complete per frame -- inside MAX_REC.
+    sample_rate: "20.0e6"
+    f_offset: "5.0e6"
+    f_offset_note: "LO on carrier, Fs/4 (same front-end model as L1/L2C/L5)"
+    spectrum_note: "N=10 -> fft_len 20, channel width 1 MHz at 20 MSPS, 10 channels span 10 MHz"
+    airspy:
+      cpu_affinity: [13]
+      serial: "0x03A464C837264F67"
+      serial_note: "The L5 unit, RETUNED to E6 (1176.45 -> 1278.75). Same physical dongle as the
+        `l5` band above -- never put both in $BANDS."
+      freq: 1278.75
+      sample_bw: 10
+      sample_bw_note: "airspy 10 MSPS mode -> 20 MSPS real (5.115 Mcps E6 wants the wide mode)"
+      # 15, not the l5 unit's 8: at 1278.75 the first launch measured ADC rms 94 vs l2c's 1049
+      # (21 dB down) with railfrac 0 -- the band sits high on the LNA/filter skirt, so it needs
+      # the headroom spent. Watch railfrac after any further bump.
+      gain: 15
+    doppler_min: -5000.0
+    doppler_max: 5000.0
+    doppler_step: 100
+    doppler_note: |
+      E6 at 1278.75 MHz ~ 0.812 x L1 geometric Doppler; +-5000 with margin. step 100: E6 records
+      are 1 ms (like L5/B2b), so the L5 100 Hz grid argument applies verbatim.
+    prns_note: |
+      Galileo PRN 1..36 (n_prn 36, the gal convention); the code tables cover 1..50.
+    # 3 = stream 0 (shared cudaInputData) + the two chains. Bump if a chain is added: emitted
+    # VERBATIM, not derived from the chain count.
+    num_cuda_streams: 3
+    per_chain_streams: false
+    record_dir: /tmp/gps_e6_gpu
+    chains:
+
+      # SHAPE A: the primary chain stays labelled `constellation: gps` so gen_band_config emits
+      # the UN-PREFIXED gps_search/gps_track/gps_combiner names the primary-broker path needs --
+      # its SIGNAL is Galileo, and run_live derives constellation E + the Galileo TLE from that.
+      - constellation: gps
+        signal: GAL_E6_C
+        tracker_signal_explicit: true
+        n_prn: 36
+        seed_endpoint: /gps_track/set_seeds
+        record_name: level
+        section_note: |
+          ---- Galileo E6-C dataless PILOT (1278.75 MHz) ----
+          The acquisition/tracking anchor for the band, exactly as E5b-Q is on l2c. Per-PRN
+          100-chip secondary wiped deterministically (secondary_overlay E6_CS100, one chip per
+          1 ms period, 100 ms cycle) -> integrates fully coherently past the code period.
+          ⚠️ PER-PRN secondary, unlike E1-C's SHARED CS25 -- E6 follows the E5a-Q/E5b-Q shape.
+          No peel (new band, keep it light) -> no epl_frame override.
+        rec_buf_depth: 1200
+        search:
+          params: { acquire_snr: 8.0, acquire_windows: 100, hops_per_record: 1000, require_hint: true, hint_ttl_s: 30.0 }
+          note: |
+            hops_per_record 1000 = the 1 ms E6 primary at 20 MSPS (like L5 E5a-Q / B2b / E5b-Q).
+            require_hint: scan only broker-hinted visible Galileo PRNs.
+        tracker:
+          fll_reacq_hz: 15.0
+          note_inline: "1 ms records -> fleet 15 Hz fence (alias limit 250 Hz at 1 ms)"
+        combiner:
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, secondary_overlay: E6_CS100, adr_smooth_records: 10, bit_export: true, bit_pred_horizon_s: 2.0 }
+          note: |
+            PURE PILOT once CS100 is wiped (the E5a-Q/E5b-Q/B2a-P segmented-pilot case).
+            integration_length 1000 x 1 ms = 1 s emit cadence.
+
+      # The E6-B DATA sibling: DERIVED from the E6-C pilot (no search, seeded verbatim), the
+      # B1C-D / L1C-D / E5b-I discipline. ★ Seeded by THIS band's OWN primary broker -- E6-C and
+      # E6-B share chip rate (5.115 Mcps) and code length (5115) exactly, so the primary's
+      # consensus seeds apply VERBATIM and e6_b_track needs no exclusion regex entry and no
+      # second broker. That is why this sibling is cheaper to wire than every previous one.
+      - constellation: b
+        signal: GAL_E6_B
+        tracker_signal_explicit: true
+        n_prn: 36
+        seed_endpoint: /b_track/set_seeds
+        record_name: e6_b_level
+        section_note: |
+          ---- Galileo E6-B DATA component (HAS, High Accuracy Service) ----
+          HAS is 1000 sps, so a symbol is 1 ms = EXACTLY ONE 5115-chip code period ->
+          navwipe_bit_records 1 + bit_export, NO secondary_overlay (the 100-chip secondary is
+          the E6-C PILOT's). ★ HAS has been OPERATIONAL since Jan 2023, so unlike GPS L1C-D
+          there IS a live message here -- but CHECK IT FIRST with the symbol transition rate
+          (~0.5 = real message, ~0 = unmodulated carrier; see gps-l1c-chain) BEFORE building a
+          HAS page decoder. That decoder is a NEW family (Reed-Solomon/MDS over HAS pages),
+          NOT a reuse of the B-CNAV / I-NAV spines.
+        rec_buf_depth: 1200
+        tracker:
+          fll_reacq_hz: 15.0
+        combiner:
+          params: { n_prn: 36, prns: RANGE, integration_length: 1000, navwipe_bit_records: 1, bit_export: true }
+          note: |
+            ★ integration_length 1000, NOT 100: the emit window is integration_length RECORDS,
+            a TIME only via the record period. E6 records are 1 ms, so 100 would be a 0.1 s emit
+            -- shorter than the broker's 0.2 s nav_obs poll, fragmenting the symbol timeline
+            (exactly the B2b count-vs-time trap). 1000 records = 1 s = 1000 HAS symbols per emit.

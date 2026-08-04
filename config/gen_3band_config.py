@@ -30,14 +30,33 @@ import os
 import re
 import sys
 
-_ALL_BANDS = [("l1", "live_l1_dual20.yaml"), ("l2c", "live_l2c_gpu.yaml"), ("l5", "live_l5_gpu.yaml")]
+_ALL_BANDS = [("l1", "live_l1_dual20.yaml"), ("l2c", "live_l2c_gpu.yaml"), ("l5", "live_l5_gpu.yaml"),
+              # e6 SHARES the l5 dongle -- Galileo E6 (1278.75) is a RETUNE of the L5 unit
+              # (1176.45), not a fourth front end. Defining it as its own band makes the swap a
+              # launch-time choice that preserves both configs: BANDS="l1 l2c e6". It is excluded
+              # from the default set for exactly that reason. See the e6 note in gnss_node.yaml.
+              ("e6", "live_e6_gpu.yaml")]
+# Bands that CANNOT run together (same physical airspy). Listing both would have two airspyInput
+# stages open one serial -- which fails late and confusingly (or worse, "opens any" if the serial
+# were ever unparsed), so refuse it up front.
+_EXCLUSIVE = [{"l5", "e6"}]
+_DEFAULT = ["l1", "l2c", "l5"]
 # Band SUBSET support (2026-08-03): the $BANDS env (space/comma list, e.g. "l1 l2c") selects which
 # bands merge into the one kotekan process -- suspending a band (free GPU / stop its valve loss
 # during mid-band dev) is a config regen, not a stopped broker, because all bands run in ONE
 # process. run_3band.sh exports the same $BANDS so its control-plane loop matches. Empty/unset =
 # all three. Bands are independent (nothing crosses frequency), so any subset is a valid node.
 _sel = os.environ.get("BANDS", "").replace(",", " ").split()
-BANDS = [b for b in _ALL_BANDS if b[0] in _sel] if _sel else list(_ALL_BANDS)
+for _pair in _EXCLUSIVE:
+    if _pair <= set(_sel):
+        raise SystemExit("BANDS: %s share one airspy and cannot run together (got %r)"
+                         % (" and ".join(sorted(_pair)), " ".join(_sel)))
+_unknown = [b for b in _sel if b not in {n for n, _ in _ALL_BANDS}]
+if _unknown:
+    raise SystemExit("BANDS: unknown band(s) %r; known: %s"
+                     % (" ".join(_unknown), " ".join(n for n, _ in _ALL_BANDS)))
+BANDS = [b for b in _ALL_BANDS if b[0] in _sel] if _sel else [b for b in _ALL_BANDS
+                                                              if b[0] in _DEFAULT]
 PORT = 12048  # the ONE kotekan REST port; viewers + brokers all talk to it
 HERE = "config/"
 

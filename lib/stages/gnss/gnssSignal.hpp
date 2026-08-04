@@ -282,6 +282,31 @@ inline constexpr SignalDescriptor GAL_E5B_I = {
     /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
 };
 
+/// Galileo E6-C (1278.75 MHz) -- the E6 dataless *pilot*: 5115-chip MEMORY code at 5.115 Mcps
+/// (1 ms), BPSK(5), with a PER-PRN 100-chip secondary (100 ms). ⚠️ per-PRN, unlike E1-C's
+/// SHARED CS25 -- E6 follows the E5a-Q / E5b-Q pattern instead. Its own front-end tune
+/// (1278.75); B3I at 1268.52 is 10.23 MHz away and does NOT fit the same 10 MHz window.
+/// ReplicaSource: galileoE6Code (EU E6-B/C Codes Technical Note tables; e6_code_check.py).
+inline constexpr SignalDescriptor GAL_E6_C = {
+    "GAL_E6_C", 1278.75e6, 5.115e6, 5115, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/true, /*nav_symbol_s=*/0.0, /*secondary_length=*/100,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
+};
+
+/// Galileo E6-B (1278.75 MHz) -- the E6 DATA channel carrying the High Accuracy Service (HAS)
+/// message at 1000 sps, so a symbol is 1 ms = EXACTLY ONE code period -> navwipe_bit_records 1
+/// and NO secondary of its own (the 100-chip secondary is the E6-C PILOT's). HAS has been
+/// operational since Jan 2023, so unlike GPS L1C-D there IS a live message here -- confirm it
+/// with the decoder's `trans` (symbol transition rate) before building a page decoder.
+/// DERIVED from the E6-C pilot (no search, seeded verbatim), the B1C-D / L1C-D discipline.
+inline constexpr SignalDescriptor GAL_E6_B = {
+    "GAL_E6_B", 1278.75e6, 5.115e6, 5115, 1e-3,
+    Modulation::BPSK, 0, 0,
+    /*pilot=*/false, /*nav_symbol_s=*/1e-3, /*secondary_length=*/0,
+    /*time_multiplexed=*/false, /*tdm_phase=*/0, /*time_assisted=*/false, 1, 50,
+};
+
 /// Look up a descriptor by its @c name (config string). Returns nullptr if
 /// unknown. The full transmitted L2C signal is CM and CL combined; the two
 /// descriptors let the correlator target either the data (CM) or the dataless
@@ -290,7 +315,7 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
     for (const SignalDescriptor* s :
          {&GPS_L1CA, &GPS_L1C_P, &GPS_L2C_CM, &GPS_L2C_CL, &GPS_L5_I, &GPS_L5_Q, &GAL_E1C,
           &GAL_E1B, &BDS_B1C_P, &BDS_B1C_D, &GAL_E5A_Q, &GAL_E5A_I, &BDS_B2A_P, &BDS_B2A_D,
-          &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I, &GPS_L1C_D})
+          &BDS_B2B_I, &GAL_E5B_Q, &GAL_E5B_I, &GPS_L1C_D, &GAL_E6_C, &GAL_E6_B})
         if (name == s->name)
             return s;
     return nullptr;
