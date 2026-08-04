@@ -317,6 +317,29 @@ def _cnav_brdc_xcheck(brdc_alm, sys, prn, cnav_eph, log):
         return " | BRDC xcheck err: %s" % ex
 
 
+def _cnav2_brdc_xcheck(brdc_alm, sys, prn, cnav2_eph, log):
+    """GPS L1C-D CNAV-2 ephemeris cross-check -- the _cnav_brdc_xcheck analogue (CNAV-2 SF2 is the
+    same CNAV Keplerian set, so sv_position reuses gps_cnav). Ready for the live field map; until
+    CNV2_EPH_FIELDS is filled the ephemeris is None so this is never reached."""
+    try:
+        import gps_cnav2 as _C2
+        ge = brdc_alm["mod"]
+        recs = brdc_alm["eph"].get((sys, prn))
+        if not recs:
+            return " | BRDC:no-eph"
+        be = ge.best_eph(recs, ge.gpst_of_utc(time.time()))
+        if be is None:
+            return " | BRDC:stale"
+        toe = cnav2_eph["toe"]
+        t_com = (be["toe_gpst"] - be["toe_sow"]) + toe
+        bx, by, bz = ge.sat_pos_clk(be, t_com)[0]
+        cx, cy, cz = _C2.sv_position_cnav2(cnav2_eph, toe)
+        dpos = math.sqrt((bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2)
+        return " | BRDC dpos=%.2f m (brdc toe %+.0f s)" % (dpos, be["toe_sow"] - toe)
+    except Exception as ex:
+        return " | BRDC xcheck err: %s" % ex
+
+
 def _inav_brdc_xcheck(brdc_alm, sys, prn, inav_eph, log):
     """S5 ephemeris cross-check, the _cnav_brdc_xcheck analogue for Galileo I/NAV: ECEF
     position residual between the live-decoded I/NAV ephemeris and BRDC, both propagated to
@@ -1284,6 +1307,14 @@ def main(argv=None):
                          "the Bcnav1Predictor (reusing the GF(64) NB-LDPC codec, different H "
                          "matrices for SF2/SF3) and the decoded ephemeris is cross-checked "
                          "against BRDC -- completing the civil D-component set (GPS+GAL+BDS).")
+    ap.add_argument("--cnav2-combiner", default=None,
+                    help="AUXILIARY combiner polled for GPS L1C-D CNAV-2 nav_obs, the "
+                         "--bcnav1-combiner analogue on the L1C broker: the broker's own --combiner "
+                         "is the L1C-P PILOT (deterministic L1CO overlay signs), while the CNAV-2 "
+                         "DATA symbols come off the derived L1C-D sibling. Symbols go to the "
+                         "Cnav2Predictor (binary-LDPC systematic extract + CRC-24Q, 18 s frame) and "
+                         "the decoded ephemeris is cross-checked against BRDC -- the 4th GPS-family "
+                         "decode (LNAV / CNAV / CNAV-2).")
     ap.add_argument("--once", action="store_true",
                     help="run a single control-loop iteration and exit (for tests)")
     args = ap.parse_args(argv)
@@ -1335,6 +1366,7 @@ def main(argv=None):
     fnav_combiner = resolve_prefix(args.fnav_combiner, base) if args.fnav_combiner else None
     bcnav2_combiner = resolve_prefix(args.bcnav2_combiner, base) if args.bcnav2_combiner else None
     bcnav1_combiner = resolve_prefix(args.bcnav1_combiner, base) if args.bcnav1_combiner else None
+    cnav2_combiner = resolve_prefix(args.cnav2_combiner, base) if args.cnav2_combiner else None
     gating = args.lat is not None and args.lon is not None
 
     # Almanac assist: BRDC (default; PRN-indexed, label-rot-proof) or the legacy TLE path.
@@ -1523,6 +1555,8 @@ def main(argv=None):
     _bcnav2_log_t = [0.0]
     bcnav1 = None    # B-CNAV1 decoder (--bcnav1-combiner, BeiDou B1C-D); created lazily
     _bcnav1_log_t = [0.0]
+    cnav2 = None     # CNAV-2 decoder (--cnav2-combiner, GPS L1C-D); created lazily
+    _cnav2_log_t = [0.0]
     bcnav3 = None    # B-CNAV3 decoder (--nav-decoder bcnav3, BeiDou B2b PRIMARY chain); lazy
     _bcnav3_log_t = [0.0]
     navbits_log_t = 0.0
@@ -2924,6 +2958,36 @@ def main(argv=None):
                              % (_p, h["pages"], h["words"], h["have"],
                                 "YES" if eph is not None else "no", xc))
                         _dh_obs("BDS_B1C_BCNAV1", _p, h, eph, xc)
+            # GPS L1C-D CNAV-2: the bcnav1-aux analogue on the L1C broker (alm_sys 'G'). The broker's
+            # own --combiner is the L1C-P pilot; the CNAV-2 data symbols come off the derived L1C-D.
+            if cnav2_combiner:
+                try:
+                    _c2aux = {int(r["prn"]): r for r in _get("%s/get_status" % cnav2_combiner)
+                              if r.get("prn")}
+                except Exception as e:
+                    _c2aux = {}
+                    _log_rl("cnav2aux", "cnav2 aux combiner %s unreadable: %s"
+                            % (cnav2_combiner, e))
+                for _p, _r in _c2aux.items():
+                    if "nav_obs" not in _r:
+                        continue
+                    if cnav2 is None:
+                        from cnav2_predictor import Cnav2Predictor
+                        cnav2 = Cnav2Predictor(log=_log)
+                        _log("CNAV-2 decoder armed on aux chain %s" % cnav2_combiner)
+                    cnav2.ingest(_p, _r["nav_obs"])
+                if cnav2 is not None and time.time() - _cnav2_log_t[0] > 60.0:
+                    _cnav2_log_t[0] = time.time()
+                    for _p in sorted(cnav2._p):
+                        h = cnav2.health(_p)
+                        if not h or not h["words"]:
+                            continue
+                        eph = cnav2.ephemeris(_p)
+                        xc = (_cnav2_brdc_xcheck(brdc_alm, alm_sys, _p, eph, _log)
+                              if (eph is not None and brdc_alm is not None) else "")
+                        _log("cnav2 PRN %d: %d frames CRC-OK, toi=%s, eph %s%s"
+                             % (_p, h["words"], h["toi"], "YES" if eph is not None else "no", xc))
+                        _dh_obs("GPS_L1CD_CNAV2", _p, h, eph, xc)
             # Recalibrate the constructed source: it needs the ephemeris, this cycle's geometry
             # (range + sat clock per PRN), and at least one SYNCED satellite to pin the common
             # capture-clock -> GPS offset. GPS LNAV only; other constellations get their own

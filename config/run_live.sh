@@ -662,7 +662,7 @@ if grep -qE '^l1c_track:|seed_endpoint:[[:space:]]*"/l1c_track/set_seeds"' "$RUN
           --chip-rate-hz $L1C_CHIP --code-length $L1C_CODELEN --hold-max-cp-err $L1C_CPERR \
           --watchdog-s ${WATCHDOG_S:-45} --watchdog-det-snr ${WATCHDOG_DET_SNR:-100} \
           --carrier-det-gate-s ${CARRIER_DET_GATE_S:-10} \
-          ${BROKER_EXTRA:-} $ALM $CARG $L1C_NH --signal-capability ${L1C_SIGNAL:-GPS_L1C_P} \
+          ${BROKER_EXTRA:-} $ALM $CARG $L1C_NH $CNAV2A --signal-capability ${L1C_SIGNAL:-GPS_L1C_P} \
           > /tmp/${TAG}_broker_l1c.log 2>&1 &
   L1CPID=$!
   python3 python/scripts/gnss/gps_status_logger.py --url http://localhost:$PORT \
