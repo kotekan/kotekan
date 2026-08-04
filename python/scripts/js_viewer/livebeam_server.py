@@ -1747,7 +1747,12 @@ def main():
     # sky to the full sky (the RF band selector owns which spectrum shows).
     if args.unified:
         args.gps = True
-        args.gps_constellations = "G,E,C"
+        # DERIVED, not a literal: "the full sky" is whatever constellations GpsSkyResource
+        # knows how to place. This was hardcoded "G,E,C" and had already gone stale twice over
+        # -- it silently dropped the synthetic "L" (GPS L1C) layer, and would have dropped
+        # GLONASS the day it came up, on a page whose whole point is showing every signal at
+        # once. Adding a constellation to CONSTELLATIONS is now enough.
+        args.gps_constellations = ",".join(t for t, _ in GpsSkyResource.CONSTELLATIONS)
     args._gps_enabled = bool(args.gps or args.no_power_stream or args.unified)
 
     logging.basicConfig(
