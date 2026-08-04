@@ -123,7 +123,7 @@ def fit_cp_rate(hist, code_len):
     return rate, h0, cp_ref % code_len
 
 
-def fit_dop_rate(hist, hops_per_sec, min_pts, min_span_s):
+def fit_dop_rate(hist, hops_per_sec, min_pts, min_span_s, max_rate):
     """Least-squares slope of MEASURED Doppler vs time -> doppler_rate_hz_s, or None.
 
     Replaces BRDC's range-rate differencing over a 4 s epoch pair, which is a numerical
@@ -149,7 +149,13 @@ def fit_dop_rate(hist, hops_per_sec, min_pts, min_span_s):
     den = sum((x - mt) ** 2 for x in t)
     if den <= 0.0:
         return None
-    return sum((x - mt) * (y - mf) for x, y in zip(t, f)) / den
+    rate = sum((x - mt) * (y - mf) for x, y in zip(t, f)) / den
+    # PHYSICAL BOUND, not a tuned one: GPS Doppler acceleration peaks at ~0.94 Hz/s at L1, so
+    # ~0.70 Hz/s at L5 (scaled by 1176.45/1575.42). A fit beyond that is detection noise, not
+    # sky -- observed immediately on deploy, PRN 20 fitted at -1.16 Hz/s -- and seeding it would
+    # ADD curvature error rather than remove it. Reject rather than clamp: a rejected fit falls
+    # back to the almanac's rate, which is at least physical.
+    return rate if abs(rate) <= max_rate else None
 
 
 def code_clock_bias_sample(rate_chips_per_hop, doppler_hz, hops_per_sec, chip_hz, carrier_hz):
@@ -1207,6 +1213,12 @@ def main(argv=None):
                          "bias, fused LO, cross-band assist) -- this is the same kind of "
                          "object. Coherent statistics are best-of-instance, not merged, and "
                          "say so via coh_src; see FleetPublisher.")
+    ap.add_argument("--dop-rate-max", type=float, default=0.8,
+                    help="reject a fitted doppler rate beyond this (Hz/s) and fall back to the "
+                         "almanac's. PHYSICAL, not tuned: GPS Doppler acceleration peaks near "
+                         "0.94 Hz/s at L1, so ~0.70 at L5 (x 1176.45/1575.42); 0.8 leaves "
+                         "margin. Seeding a noise-fitted rate ADDS curvature error -- observed "
+                         "on deploy, PRN 20 fitted at -1.16 Hz/s.")
     ap.add_argument("--dop-rate-min-pts", type=int, default=4,
                     help="detections needed before the MEASURED doppler rate is seeded in place "
                          "of the almanac's. Below this the model is the better bet.")
@@ -2917,7 +2929,8 @@ def main(argv=None):
             # enough points over enough baseline that the slope is real rather than fitted to
             # detection noise.
             _dr = fit_dop_rate(dop_hist.get(prn, []), args.hops_per_sec,
-                               args.dop_rate_min_pts, args.dop_rate_min_span_s)
+                               args.dop_rate_min_pts, args.dop_rate_min_span_s,
+                               args.dop_rate_max)
             if _dr is not None:
                 seed["doppler_rate_hz_s"] = _dr
                 dop_rate_fitted[prn] = _dr
