@@ -54,7 +54,24 @@ __global__ void gnss_waveform_kernel(const int8_t* __restrict__ code,
         const long long n_m = p.n0 + (long long)mh * p.fft_len;
         const double C_P = job.cp0 + (double)n_m * job.cps;
 
-        const double ang = fmod(job.wc * (double)n_m, 2.0 * M_PI);
+        // TWO-PRODUCT before the reduction. wc ~ 2.31 rad/sample and n_m ~ 2.95e15 after ten
+        // days of F-engine uptime, so wc*n_m ~ 6.8e15 lands in the binade [2^52, 2^53) where a
+        // double's ULP is EXACTLY ONE RADIAN -- and n_m advances per HOP, so the error re-rolls
+        // 2048 times inside every record rather than once per record. Measured 0.604 rad rms,
+        // costing exp(-sigma^2/2) = 0.83 of the correlation amplitude.
+        //
+        // fma recovers the part the product rounded away EXACTLY (n_m < 2^53 is exact as a
+        // double, so wc*n_m = pr + er with no error), and reducing pr while carrying er
+        // separately is congruent mod 2pi. What remains is wc's own representation error times
+        // n_m -- large in absolute terms but varying by only ~8e-9 rad across a whole record,
+        // i.e. a constant phase offset, which a correlation does not care about.
+        //
+        // long double is the fix on the host side (see gnssChannelizedReplica.cpp); CUDA maps
+        // long double to double, so the same trick is not available here. This is invisible at
+        // prototype scale -- airspy's n_m ~ 1e9 gives a 4.8e-7 rad ULP.
+        const double pr = job.wc * (double)n_m;
+        const double er = fma(job.wc, (double)n_m, -pr);
+        const double ang = fmod(pr, 2.0 * M_PI) + er;
         float sn, cn;
         sincosf((float)ang, &sn, &cn);
         const float2 pa = make_float2(cn, sn);

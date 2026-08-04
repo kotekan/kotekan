@@ -114,7 +114,12 @@ __global__ void gnss_despread_kernel(const T* __restrict__ data,          // [nc
 
         // Carrier phasor pa = e^{i wc n_m}: range-reduce in DOUBLE, trig in float. ONE per hop
         // for the whole quad -- E/P/L share a Doppler, and P_HEAD *is* the prompt.
-        const double ang = fmod(job.wc * (double)n_m, 2.0 * M_PI);
+        // Two-product before the reduction -- see the long note in cudaGnssChordDespread.cu.
+        // wc*n_m reaches the binade where a double's ULP is one radian at CHORD's absolute
+        // sample index, and n_m steps per hop, so the error re-rolls inside every record.
+        const double pr_ = job.wc * (double)n_m;
+        const double er_ = fma(job.wc, (double)n_m, -pr_);
+        const double ang = fmod(pr_, 2.0 * M_PI) + er_;
         float sn, cn;
         sincosf((float)ang, &sn, &cn);
         const float2 pa = make_float2(cn, sn);
@@ -372,7 +377,10 @@ __global__ void gnss_peel_kernel(const T* __restrict__ data,           // [nchan
             const int mh = base + t * (int)blockDim.x;
             const long long n_m = p.n0 + (long long)mh * p.fft_len;
             const double C_P = job.cp0 + (double)n_m * job.cps;
-            const double ang = fmod(job.wc * (double)n_m, 2.0 * M_PI);
+            // Two-product before the reduction -- see cudaGnssChordDespread.cu.
+            const double pr_ = job.wc * (double)n_m;
+            const double er_ = fma(job.wc, (double)n_m, -pr_);
+            const double ang = fmod(pr_, 2.0 * M_PI) + er_;
             float sn, cn;
             sincosf((float)ang, &sn, &cn);
             const float2 pa = make_float2(cn, sn);
