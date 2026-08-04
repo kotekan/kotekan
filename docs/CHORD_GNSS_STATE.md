@@ -3048,3 +3048,54 @@ the sparse-comb replica bug, and it costs one e2e run.
 
 Note this also compromises `deep_rate_hz` as a loop observable, which is why the carrier-trim
 probe cannot resolve a 20 Hz step (phase-to-phase scatter at CONSTANT trim reached 32 Hz).
+
+### 8.20.10 Synthetic test: the floor is NOT in the despread arithmetic
+
+Ran 8.20.9's cap through `scripts/gnss/e2e` (noiseless synthetic, perfect seed, 100 CONTIGUOUS
+records = the live deep-window geometry), folding the prompts with the combiner's OWN
+`coherent_sum` rather than a restatement of it:
+
+```
+noiseless, --skip-search, 100 records:  coherent snr 134367   sigma_phi 0.0001 rad
+```
+
+**The shipped despread + seed propagation are phase-exact.** `P/P_true = 1.0000` on every record
+and the fold is clean to 1e-4 rad. So the 0.745 rad floor is not in that arithmetic.
+
+**A harness defect found on the way, and it mattered.** `--noise` was applied ONLY to the search
+snapshot; the per-record tracker synthesis was always clean. A sweep over `--noise 0..300`
+returned BIT-IDENTICAL numbers at every level -- the tracker/deep leg had never been tested
+against noise at all, which is the one regime that decides this question. Now wired through
+(independent RNG stream so a tracker sweep is reproducible on its own). With that:
+
+```
+noise x1   sigma_phi 0.0060      noise x30  sigma_phi 0.1828
+noise x3   sigma_phi 0.0181      noise x100 sigma_phi 0.6196   (+quantize 0.6310)
+noise x10  sigma_phi 0.0606
+```
+
+sigma_phi is linear in noise, exactly as thermal theory says, and **4+4b quantization adds ~2%**
+-- so quantization is not the floor either.
+
+**What the live data actually shows**, sorted by amplitude rather than by amp_snr (amp_snr is a
+POWER ratio with a Keff^0.25 factor and was the wrong axis):
+
+```
+unbiased_amp  1.44e-5 1.54e-5 1.73e-5 | 4.0e-5 4.9e-5 9.4e-5 1.43e-4
+deep_snr         1.18    1.57    3.08 |  13.3   11.9   13.1    14.0
+```
+
+Faint sats scale PROPORTIONALLY (thermal-limited, as the harness reproduces); everything above
+~4e-5 pins at 13-14 across a further 3.6x in amplitude. That is
+`sigma_phi^2 = sigma_thermal^2 + sigma_sys^2` with **sigma_sys ~ 0.7 rad**: thermal dominates
+when faint, the systematic takes over when bright and caps deep_snr at sqrt(N)/0.7 ~ 14. So the
+cap is real (8.20.9 stands) AND the faint-end behaviour is ordinary -- both were needed to
+localize it.
+
+**Where it is NOT:** despread arithmetic, seed propagation, quantization, carrier residual
+(Spearman +0.026), Doppler curvature, slow drift. **Where it must be:** the live per-record path
+the harness does not model -- the NH20 overlay wipe, the nav-bit wipe, the record straddle, or
+the multi-record assembly. The next test is cheap and already plumbed: `/get_records` exports the
+live per-record complex prompts, so the phase scatter can be measured directly on sky and
+compared against what `deep_snr` implies. If the exported prompts already carry 0.7 rad, the
+damage is upstream of the fold; if they do not, the fold's own noise estimate is the problem.

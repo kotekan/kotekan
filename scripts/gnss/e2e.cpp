@@ -738,6 +738,9 @@ int main(int argc, char** argv) {
     const long long age_hops = (long long)std::llround(o.age_s / hop_s);
     const long long gap_hops = (long long)std::llround(o.rec_gap_s / hop_s);
     double worst = 0.0;
+    std::vector<std::complex<double>> prompts; // per-record P, for the deep fold below
+    // Independent of the search realization, so a tracker sweep is reproducible on its own.
+    std::mt19937 trk_rng(o.nseed + 1000u);
     for (int r = 0; r < o.nrec; ++r) {
         const long long h = o.hop0 + age_hops + (long long)r * gap_hops;
         const long long W = h * (long long)FFT;
@@ -758,6 +761,21 @@ int main(int argc, char** argv) {
         const double err = wrap(pr.phase_now - truth_phase_at(W), LL);
 
         auto rec = tbank.channels_hoprate(0, W, o.cp204, o.dop, o.hops_per_record, t_chans, {}, -1);
+        // --noise REACHES THE TRACKER LEG TOO (2026-08-04). It did not before: noise was added
+        // only to the search snapshot, so every record despread here was noiseless no matter
+        // what --noise said, and a sweep over it returned bit-identical numbers at every level.
+        // That makes the whole tracker/deep leg untestable against the one regime that matters.
+        if (o.noise > 0.0) {
+            double s2 = 0.0;
+            size_t ns = 0;
+            for (const auto& ch : rec)
+                for (const cf& v : ch) { s2 += std::norm(v); ++ns; }
+            const double rms = std::sqrt(s2 / (double)std::max<size_t>(ns, 1));
+            std::normal_distribution<double> g(0.0, o.noise * rms / std::sqrt(2.0));
+            for (auto& ch : rec)
+                for (cf& v : ch)
+                    v += cf((float)g(trk_rng), (float)g(trk_rng));
+        }
         if (o.quantize)
             quantize44(rec);
         std::vector<cf> win((size_t)o.hops_per_record * (size_t)o.t_nchan);
@@ -777,6 +795,44 @@ int main(int argc, char** argv) {
                (double)(h - o.hop0) * hop_s, pr.cp, err, std::round(err / L),
                Pt > 0 ? P / Pt : 0.0, (E + La) > 0 ? 2.0 * P / (E + La) : 0.0);
         worst = std::max(worst, std::fabs(err));
+        prompts.push_back(res[0][1].correlation);
+    }
+
+    // ---- THE DEEP FOLD, on the SAME statistic the combiner publishes ----
+    // Live, deep_snr sits at 10-14 for EVERY satellite across a 9x range of amp_snr, which
+    // means the fold is limited by a per-record phase error rather than by noise: coherent_sum
+    // estimates its own noise from the records' scatter about the mean phase, so a systematic
+    // phase error makes the signal cancel and the statistic saturate at sqrt(N)/sigma_phi.
+    // Run it here with NO noise and a perfect seed: if sigma_phi survives that, the floor is in
+    // our arithmetic and not on the sky.
+    if (prompts.size() >= 4) {
+        const int N = (int)prompts.size();
+        const gnss::OverlayWipeResult cs = gnss::coherent_sum(prompts);
+        // ... and again after removing a best-fit LINEAR phase ramp, which is what the
+        // combiner's rate search does before folding. Any residual after that is not a ramp.
+        std::vector<double> ph(prompts.size());
+        double pu = 0.0, prev = 0.0;
+        for (size_t i = 0; i < prompts.size(); ++i) { // unwrapped phase
+            const double a = std::arg(prompts[i]);
+            if (i) { double d = a - prev; while (d > M_PI) d -= 2*M_PI; while (d < -M_PI) d += 2*M_PI; pu += d; }
+            prev = a; ph[i] = pu;
+        }
+        double sx = 0, sy = 0, sxx = 0, sxy = 0;
+        for (int i = 0; i < N; ++i) { sx += i; sy += ph[i]; sxx += (double)i*i; sxy += (double)i*ph[i]; }
+        const double den = N*sxx - sx*sx;
+        const double b = den != 0.0 ? (N*sxy - sx*sy)/den : 0.0, a0 = (sy - b*sx)/N;
+        double s2 = 0.0;
+        for (int i = 0; i < N; ++i) { const double e = ph[i] - (a0 + b*i); s2 += e*e; }
+        const double sig_res = std::sqrt(s2/N);
+        printf("\n[4] DEEP FOLD over %d records (the combiner's own coherent_sum)\n", N);
+        printf("    coherent snr %.2f   amplitude %.6g\n", cs.snr, cs.amplitude);
+        printf("    implied sigma_phi = sqrt(N)/snr = %.4f rad\n", cs.snr > 0 ? std::sqrt((double)N)/cs.snr : 0.0);
+        printf("    per-record phase residual about a linear ramp: %.4f rad rms\n", sig_res);
+        printf("    LIVE reads sigma_phi ~0.745 rad, flat across a 9x amp_snr range.\n");
+        printf("    %s\n", sig_res > 0.2
+               ? ">>> the floor REPRODUCES with no noise -- it is in our arithmetic"
+               : ">>> noiseless chain is phase-clean; the live floor comes from something this "
+                 "harness does not model (overlay/nav wipe, straddle, multi-channel, or the sky)");
     }
 
     printf("\n================================================================================\n");
